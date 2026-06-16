@@ -1,21 +1,26 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The gameplay harness runs against a live Vite build. CI builds first, then
-// `vite preview` serves it under the /pacman/ base; Playwright drives that.
+// The gameplay harness lives in e2e/. CI runs `vite build` then `vite preview`
+// via the webServer hook so the assertions exercise the real built bundle.
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: "list",
   use: {
-    baseURL: "http://localhost:4173/pacman/",
-    trace: "on-first-retry",
+    baseURL: "http://127.0.0.1:4173/pacman/",
+    trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
   webServer: {
-    command: "npm run build && npm run preview",
-    url: "http://localhost:4173/pacman/",
+    command: "npm run build && npm run preview -- --port 4173 --strictPort",
+    url: "http://127.0.0.1:4173/pacman/",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

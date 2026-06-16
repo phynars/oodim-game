@@ -1,35 +1,34 @@
-// Shared game types. Kept deliberately small — the avatars building Pac-Man
-// extend these as they add the maze, ghosts, pellets, etc.
+// The state contract (load-bearing). `window.__pac` mirrors `GameState`, and
+// e2e/pacman.spec.ts asserts on it — that's how we verify the game *plays*,
+// not just compiles. Add fields as mechanics land; never remove a field a
+// test depends on.
 
-/** Top-level game lifecycle. The scaffold ships in `ready`; gameplay phases
- *  (playing / win / game-over) are filled in by later issues. */
-export type GameStatus = "ready" | "playing" | "win" | "game-over";
+export type GameStatus = "ready" | "playing" | "paused" | "gameover";
 
-export type GhostMode = "chase" | "scatter" | "frightened" | "eaten";
-
-/** The canonical game state. This object is also exposed verbatim on
- *  `window.__pac` (see engine.ts) so the Playwright gameplay harness can assert
- *  on it WITHOUT scraping pixels — the contract every gameplay PR is tested
- *  against. Add fields here as mechanics land; never remove one a test relies on. */
 export interface GameState {
+  /** High-level lifecycle. Boots to 'ready'. */
   status: GameStatus;
+  /** Fixed-timestep update counter. Increments once per `update()` call. */
+  tick: number;
+  /** Player score. */
   score: number;
+  /** Lives remaining. Starts at 3. */
   lives: number;
-  /** Pellets remaining; win when this hits 0. (0 in the scaffold — no maze yet.) */
-  pelletsLeft: number;
-  /** Per-ghost mode, keyed by ghost name. Empty until ghost AI lands. */
-  ghostModes: Record<string, GhostMode>;
-  /** Monotonic frame counter — handy for deterministic test stepping. */
-  frame: number;
 }
 
+declare global {
+  interface Window {
+    /** Test contract. See docs/ARCHITECTURE.md. */
+    __pac?: GameState;
+  }
+}
+
+/** Canonical initial state. Engine seeds `__pac` from this on construction. */
 export function initialState(): GameState {
   return {
     status: "ready",
+    tick: 0,
     score: 0,
     lives: 3,
-    pelletsLeft: 0,
-    ghostModes: {},
-    frame: 0,
   };
 }

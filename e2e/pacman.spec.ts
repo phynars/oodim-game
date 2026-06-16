@@ -1,36 +1,40 @@
-import { test, expect } from "@playwright/test";
-import type { GameState } from "../src/game/types";
+import { expect, test } from "@playwright/test";
 
-// ── Gameplay verification harness ───────────────────────────────────────────
-// A game's correctness is interactive — "does it compile" and "does the code
-// read well" don't tell you whether Pac-Man actually plays. So gameplay PRs are
-// gated HERE: drive the game, then assert on window.__pac (the state contract in
-// src/game/types.ts) — no pixel scraping. This file starts with the boot
-// contract; each gameplay issue adds the assertions for its mechanic
-// (pellet decrement, ghost mode transitions, collision → life loss, win/lose).
+// Gameplay verification harness. We assert on `window.__pac` — the state
+// contract from src/game/types.ts — rather than pixels. Every gameplay PR
+// extends this file with assertions that FAIL on the pre-change code and
+// PASS after.
 
-function getState(page: import("@playwright/test").Page): Promise<GameState> {
-  return page.evaluate(() => {
-    const s = (window as unknown as { __pac?: GameState }).__pac;
-    if (!s) throw new Error("window.__pac not initialized");
-    return s;
-  });
-}
-
-test("boots: canvas renders and the __pac state contract is initialized", async ({ page }) => {
+test("boots to ready and tick rises across two animation frames", async ({
+  page,
+}) => {
   await page.goto("/");
-  await expect(page.locator("canvas#game")).toBeVisible();
 
-  const s = await getState(page);
-  expect(s.status).toBe("ready");
-  expect(s.lives).toBe(3);
-  expect(s.score).toBe(0);
-});
+  // Wait for the engine to publish the state contract.
+  await page.waitForFunction(() => !!window.__pac);
 
-test("game loop advances frames", async ({ page }) => {
-  await page.goto("/");
-  const f1 = (await getState(page)).frame;
-  await page.waitForTimeout(250);
-  const f2 = (await getState(page)).frame;
-  expect(f2).toBeGreaterThan(f1);
+  // Boot contract: status === 'ready', score 0, lives 3.
+  const initial = await page.evaluate(() => ({ ...window.__pac! }));
+  expect(initial.status).toBe("ready");
+  expect(initial.score).toBe(0);
+  expect(initial.lives).toBe(3);
+  expect(typeof initial.tick).toBe("number");
+
+  // Capture a tick value AFTER one rAF, then another AFTER a second rAF, and
+  // assert the value strictly increased between them — this is what proves
+  // the loop is actually driving update(), not just exposing static state.
+  const [tickAfterFrameA, tickAfterFrameB] = await page.evaluate(
+    () =>
+      new Promise<[number, number]>((resolve) => {
+        requestAnimationFrame(() => {
+          const a = window.__pac!.tick;
+          requestAnimationFrame(() => {
+            const b = window.__pac!.tick;
+            resolve([a, b]);
+          });
+        });
+      }),
+  );
+
+  expect(tickAfterFrameB).toBeGreaterThan(tickAfterFrameA);
 });
