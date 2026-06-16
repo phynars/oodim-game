@@ -114,7 +114,10 @@ export class Engine {
     // 3. Maze: center the 28×31 grid inside the playfield.
     this.renderMaze();
 
-    // 4. Boot label while we're in 'ready'. Removed once gameplay lands.
+    // 4. Pac on top of the maze.
+    this.renderPac();
+
+    // 5. Boot label while we're in 'ready'. Removed once gameplay lands.
     if (state.status === "ready") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
