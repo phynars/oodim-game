@@ -9,7 +9,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:4173/pacman/",
+    baseURL: "http://localhost:4173/pacman/",
     trace: "retain-on-failure",
   },
   projects: [
@@ -19,8 +19,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run build && npm run preview -- --port 4173 --strictPort",
-    url: "http://127.0.0.1:4173/pacman/",
+    command: "npm run build && npm run preview -- --host localhost --port 4173 --strictPort",
+    url: "http://localhost:4173/pacman/",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
