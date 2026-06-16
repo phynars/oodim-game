@@ -1,0 +1,20 @@
+{
+  // Assets-only Cloudflare Worker that serves the built game at
+  // https://game.oodim.com/pacman/. No server code — `assets.directory`
+  // (./public) is uploaded and served directly.
+  //
+  // The CI deploy (.github/workflows/deploy.yml) builds the Vite app
+  // (base "/pacman/") into dist/, then stages it under public/pacman/ so the
+  // built /pacman/asset URLs resolve, plus a root redirect public/index.html
+  // → /pacman/. The custom domain is provisioned on deploy (token needs
+  // Workers Scripts + Zone DNS edit on the oodim.com zone).
+  "name": "oodim-game",
+  "compatibility_date": "2025-05-01",
+  "account_id": "REDACTED-ACCOUNT-ID",
+  "assets": {
+    "directory": "./public"
+  },
+  "routes": [
+    { "pattern": "game.oodim.com", "custom_domain": true }
+  ]
+}

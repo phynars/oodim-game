@@ -1,0 +1,47 @@
+name: Deploy game.oodim.com
+
+# Publishes the built game to https://game.oodim.com/pacman/ via an
+# assets-only Cloudflare Worker. Runs on every push to main (after a slice
+# merges) and on manual dispatch. CI (ci.yml) is the quality gate; this is
+# the publish step.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-game
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # CF_TOKEN mirrors the secret so the deploy step can skip gracefully
+    # (job stays green) until the CLOUDFLARE_API_TOKEN repo secret is added.
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - name: Stage built assets under /pacman/
+        run: |
+          rm -rf public
+          mkdir -p public/pacman
+          cp -r dist/* public/pacman/
+          # Root redirect so game.oodim.com/ → /pacman/.
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/pacman/"><title>oodim Game</title><a href="/pacman/">oodim Game</a>' > public/index.html
+      - name: Deploy to Cloudflare
+        if: ${{ env.CF_TOKEN != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Note if deploy skipped
+        if: ${{ env.CF_TOKEN == '' }}
+        run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."
