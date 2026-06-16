@@ -16,6 +16,12 @@ export interface GameState {
   score: number;
   /** Lives remaining. Starts at 3. */
   lives: number;
+  /** Remaining pellets on the board. Seeded from the static maze layout;
+   *  decremented as pellets are eaten in a later slice. */
+  pellets: number;
+  /** Static maze dimensions. Published so tests + HUD code can read the
+   *  grid shape without importing the maze module. */
+  maze: { cols: number; rows: number };
 }
 
 declare global {

@@ -6,6 +6,7 @@
 // the accumulator at a constant STEP_MS. This keeps `tick` deterministic
 // across machines — the Playwright harness counts on that.
 import { initialState, type GameState } from "./types";
+import { COLS, ROWS, TILE, MAZE, tileAt } from "./maze";
 
 /** Logical update rate: 60 Hz. */
 const STEP_MS = 1000 / 60;
@@ -17,6 +18,18 @@ const MAX_FRAME_MS = 250;
 const PLAYFIELD_INSET = 8;
 /** Border thickness for the playfield rectangle. */
 const PLAYFIELD_BORDER = 2;
+
+// Maze rendering palette. Local to the engine — the maze module owns the
+// LAYOUT (what's at each tile); the engine owns the LOOK (how it's drawn).
+/** Arcade-blue wall stroke. */
+const WALL_COLOR = "#2121de";
+const WALL_LINE_WIDTH = 1;
+/** Soft cream for the pellet dots. */
+const PELLET_COLOR = "#ffb8ae";
+const PELLET_RADIUS = 1;
+const POWER_PELLET_RADIUS = 3;
+/** Ghost-house door — pale pink bar. */
+const DOOR_COLOR = "#ffb8ae";
 
 export class Engine {
   private readonly canvas: HTMLCanvasElement;
