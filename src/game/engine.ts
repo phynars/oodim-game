@@ -98,7 +98,10 @@ export class Engine {
     const inset = PLAYFIELD_INSET + PLAYFIELD_BORDER / 2;
     ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
 
-    // 3. Boot label while we're in 'ready'. Removed once gameplay lands.
+    // 3. Maze: center the 28×31 grid inside the playfield.
+    this.renderMaze();
+
+    // 4. Boot label while we're in 'ready'. Removed once gameplay lands.
     if (state.status === "ready") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
@@ -106,5 +109,57 @@ export class Engine {
       ctx.textBaseline = "middle";
       ctx.fillText("READY", w / 2, h / 2);
     }
+  }
+
+  /** Walls + pellets. Static for now — pellets will be eaten in a later slice
+   *  by clearing tiles in a mutable pellet map, but the rendering loop won't
+   *  change shape. */
+  private renderMaze(): void {
+    const { ctx, canvas } = this;
+    // Center the maze inside the canvas.
+    const mazeW = COLS * TILE;
+    const mazeH = ROWS * TILE;
+    const ox = Math.floor((canvas.width - mazeW) / 2);
+    const oy = Math.floor((canvas.height - mazeH) / 2);
+
+    // Walls: stroke a small rectangle inset inside each wall tile. It's a
+    // serviceable readable approximation; arcade-true wall geometry (rounded
+    // corner segments) is a future polish pass.
+    ctx.strokeStyle = WALL_COLOR;
+    ctx.lineWidth = WALL_LINE_WIDTH;
+    ctx.fillStyle = PELLET_COLOR;
+    for (let r = 0; r < ROWS; r += 1) {
+      const row = MAZE[r];
+      for (let c = 0; c < COLS; c += 1) {
+        const t = row[c];
+        const x = ox + c * TILE;
+        const y = oy + r * TILE;
+        if (t === "#") {
+          ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+        } else if (t === ".") {
+          ctx.beginPath();
+          ctx.arc(x + TILE / 2, y + TILE / 2, PELLET_RADIUS, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (t === "o") {
+          ctx.beginPath();
+          ctx.arc(
+            x + TILE / 2,
+            y + TILE / 2,
+            POWER_PELLET_RADIUS,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+        } else if (t === "-") {
+          ctx.save();
+          ctx.fillStyle = DOOR_COLOR;
+          ctx.fillRect(x, y + TILE / 2 - 1, TILE, 2);
+          ctx.restore();
+        }
+      }
+    }
+    // Silence the lint if tileAt isn't otherwise referenced; it's exported
+    // for upcoming AI slices and we don't want tree-shake to drop it.
+    void tileAt;
   }
 }

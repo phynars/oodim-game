@@ -3,6 +3,8 @@
 // not just compiles. Add fields as mechanics land; never remove a field a
 // test depends on.
 
+import { COLS, ROWS, countPellets } from "./maze";
+
 export type GameStatus = "ready" | "playing" | "paused" | "gameover";
 
 export interface GameState {
@@ -30,5 +32,7 @@ export function initialState(): GameState {
     tick: 0,
     score: 0,
     lives: 3,
+    pellets: countPellets(),
+    maze: { cols: COLS, rows: ROWS },
   };
 }
