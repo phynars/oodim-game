@@ -38,3 +38,27 @@ test("boots to ready and tick rises across two animation frames", async ({
 
   expect(tickAfterFrameB).toBeGreaterThan(tickAfterFrameA);
 });
+
+test("publishes maze dims and the static pellet count at boot", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => !!window.__pac);
+
+  const { cols, rows, pellets } = await page.evaluate(() => ({
+    cols: window.__pac!.maze.cols,
+    rows: window.__pac!.maze.rows,
+    pellets: window.__pac!.pellets,
+  }));
+
+  // Classic arcade layout.
+  expect(cols).toBe(28);
+  expect(rows).toBe(31);
+
+  // The pellet field is the static '.' count in src/game/maze.ts. We import
+  // the source from this Node test process — same module, same number —
+  // so the assertion stays load-bearing even if we tweak the grid later.
+  const { countPellets } = await import("../src/game/maze");
+  expect(pellets).toBe(countPellets());
+  expect(pellets).toBeGreaterThan(0);
+});
