@@ -1,16 +1,19 @@
 {
-  // Assets-only Cloudflare Worker that serves the built game at
+  // PROD: assets-only Cloudflare Worker serving the built game at
   // https://game.oodim.com/pacman/. No server code — `assets.directory`
   // (./public) is uploaded and served directly.
   //
-  // The CI deploy (.github/workflows/deploy.yml) builds the Vite app
-  // (base "/pacman/") into dist/, then stages it under public/pacman/ so the
-  // built /pacman/asset URLs resolve, plus a root redirect public/index.html
-  // → /pacman/. The custom domain is provisioned on deploy (token needs
-  // Workers Scripts + Zone DNS edit on the oodim.com zone).
+  // account_id is intentionally NOT here (this repo is public). It's supplied
+  // at deploy time: CI passes the CLOUDFLARE_ACCOUNT_ID secret via
+  // wrangler-action's accountId input; local deploys export CLOUDFLARE_ACCOUNT_ID.
+  //
+  // CI (.github/workflows/deploy.yml) builds the Vite app (base "/pacman/")
+  // into dist/, stages it under public/pacman/ + a root redirect → /pacman/,
+  // then deploys. Custom domain provisioned on deploy (token needs Workers
+  // Scripts + Zone DNS edit on the oodim.com zone). Staging is the parallel
+  // wrangler.staging.jsonc → staging.game.oodim.com.
   "name": "oodim-game",
   "compatibility_date": "2025-05-01",
-  "account_id": "REDACTED-ACCOUNT-ID",
   "assets": {
     "directory": "./public"
   },

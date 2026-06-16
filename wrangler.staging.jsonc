@@ -1,0 +1,18 @@
+{
+  // STAGING: parallel to wrangler.jsonc — a separate Worker serving the same
+  // build at https://staging.game.oodim.com/pacman/ for preview before a
+  // change reaches prod (game.oodim.com). Mirrors oodim's prod/staging split.
+  //
+  // Deployed by .github/workflows/deploy-staging.yml (workflow_dispatch with a
+  // branch input — the same "deploy a PR branch to staging, eyeball it, then
+  // merge to main → prod" flow oodim uses). account_id supplied at deploy time
+  // (CLOUDFLARE_ACCOUNT_ID secret/env), never committed.
+  "name": "oodim-game-staging",
+  "compatibility_date": "2025-05-01",
+  "assets": {
+    "directory": "./public"
+  },
+  "routes": [
+    { "pattern": "staging.game.oodim.com", "custom_domain": true }
+  ]
+}

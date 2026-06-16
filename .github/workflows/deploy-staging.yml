@@ -1,0 +1,52 @@
+name: Deploy staging.game.oodim.com
+
+# Mirrors oodim's deploy-staging: dispatch with a branch/ref to preview a
+# change at https://staging.game.oodim.com/pacman/ before it reaches prod.
+# The autonomous pipeline opens PRs to this repo; deploy the PR branch here to
+# eyeball the gameplay, then merge to main → prod (game.oodim.com). The
+# gameplay E2E (CI) is the hard gate; staging is the visual preview.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch/ref to deploy to staging"
+        required: false
+        default: main
+
+concurrency:
+  group: deploy-game-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - name: Stage built assets under /pacman/
+        run: |
+          rm -rf public
+          mkdir -p public/pacman
+          cp -r dist/* public/pacman/
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/pacman/"><title>oodim Game (staging)</title><a href="/pacman/">oodim Game — staging</a>' > public/index.html
+      - name: Deploy to Cloudflare (staging)
+        if: ${{ env.CF_TOKEN != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.100.0"
+          command: deploy --config wrangler.staging.jsonc
+      - name: Note if deploy skipped
+        if: ${{ env.CF_TOKEN == '' }}
+        run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish to staging."
