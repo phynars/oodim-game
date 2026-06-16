@@ -42,6 +42,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler 3.x predates assets-only Workers (errors "Missing
+          # entry-point"); pin 4.x to match the local deploy.
+          wranglerVersion: "4.100.0"
       - name: Note if deploy skipped
         if: ${{ env.CF_TOKEN == '' }}
         run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."
