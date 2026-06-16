@@ -1,7 +1,10 @@
 name: CI
+# PR-only quality gate (2026-06-16). The post-merge run on `push: [main]` was
+# redundant: slices merge serially (the linear blocked-by chain), so there's no
+# concurrent-merge interaction for a main re-run to catch, and deploy.yml
+# rebuilds on main (a broken main still fails to publish). PR-only halves CI
+# minutes per slice and speeds merge→deploy.
 on:
-  push:
-    branches: [main]
   pull_request:
 
 jobs:
