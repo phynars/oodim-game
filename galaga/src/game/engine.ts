@@ -10,6 +10,11 @@
 // the studio builds up from, mirroring how Pac-Man started from a loop + maze.
 
 import { initialState, WIDTH, HEIGHT, type GameState } from "./types";
+import {
+  createKeyboardInput,
+  PLAYER_SPEED_PX_PER_TICK,
+  type InputSource,
+} from "./input";
 
 interface Star {
   x: number;
@@ -29,6 +34,7 @@ export class Engine {
   private readonly ctx: CanvasRenderingContext2D;
   private state: GameState;
   private stars: Star[];
+  private readonly input: InputSource;
   private lastTime = 0;
   private accumulator = 0;
 
@@ -61,14 +67,15 @@ export class Engine {
     return stars;
   }
 
-  /** First input leaves the READY state; once playing, the loop ticks. The
-   *  actual control mapping (move/fire) is a backlog slice — here we only
-   *  need "something happened" to start the simulation. */
+  /** First input leaves the READY state; once playing, the loop ticks.
+   *  Keyboard goes through the InputSource (so its onFirstInput hook fires
+   *  the flip); pointerdown on the canvas is a separate path for touch /
+   *  click on the READY screen. */
   private bindInput(): void {
     const start = (): void => {
       if (this.state.status === "ready") this.state.status = "playing";
     };
-    window.addEventListener("keydown", start);
+    this.input.onFirstInput(start);
     this.canvas.addEventListener("pointerdown", start);
   }
 
@@ -102,6 +109,17 @@ export class Engine {
     }
     if (this.state.status === "playing") {
       this.state.tick += 1;
+      // Sample input once per fixed-step so movement is deterministic at
+      // 60 Hz regardless of render cadence. Both arrows held = no motion
+      // (they cancel), matching the arcade feel.
+      const snap = this.input.read();
+      const dir = (snap.right ? 1 : 0) - (snap.left ? 1 : 0);
+      if (dir !== 0 && this.state.player.alive && !this.state.player.captured) {
+        const nextX = this.state.player.x + dir * PLAYER_SPEED_PX_PER_TICK;
+        // Clamp to the field; the contract's field.width is the canvas WIDTH.
+        const w = this.state.field.width;
+        this.state.player.x = nextX < 0 ? 0 : nextX > w ? w : nextX;
+      }
     }
   }
 
