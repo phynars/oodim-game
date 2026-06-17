@@ -16,5 +16,5 @@
     "types": ["vite/client"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "e2e", "playwright.config.ts", "vite.config.ts"]
+  "exclude": ["node_modules", "../dist-pacman", "e2e", "playwright.config.ts", "vite.config.ts"]
 }

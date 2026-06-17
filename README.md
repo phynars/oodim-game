@@ -32,17 +32,21 @@ The studio ships multiple products from this one repo — each a self-contained
 build (its own vite config, tsconfig, and gameplay harness), published to its
 own subpath behind the same "CI for gameplay" gate.
 
-### Pac-Man — `game.oodim.com/pacman/` *(complete)*
+Each product is a self-contained subdirectory — `pacman/`, `galaga/` — with its
+own vite config, tsconfig, and Playwright harness. Per-project scripts are
+`build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
+`build` / `typecheck` / `test:e2e` aggregate across all products.
+
+### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
 A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
 maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
-score, lives, win/lose, and touch controls. Lives at the repo root.
+score, lives, win/lose, and touch controls. See `pacman/docs/ARCHITECTURE.md`.
 
-### Galaga — `game.oodim.com/galaga/` *(in progress)*
+### Galaga — `galaga/` → `game.oodim.com/galaga/` *(in progress)*
 The studio's second project, harder than Pac-Man: enemy **formations** + entrance
 choreography, **diving attacks**, scoring + stages, and the signature boss-Galaga
-**tractor-beam capture → rescue → dual-fighter** mechanic. Lives under `galaga/`
-(`npm run build:galaga`, `npm run test:e2e:galaga`); built slice by slice from a
-human-seeded scaffold against an ordered `blocked-by` backlog. See
+**tractor-beam capture → rescue → dual-fighter** mechanic. Built slice by slice
+from a human-seeded scaffold against an ordered `blocked-by` backlog. See
 `galaga/docs/ARCHITECTURE.md`.
 
 ## How it's built
