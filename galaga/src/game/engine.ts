@@ -39,6 +39,7 @@ export class Engine {
     this.ctx = ctx;
     this.state = initialState();
     this.stars = this.seedStars();
+    this.input = createKeyboardInput();
     this.publish();
     this.bindInput();
   }
