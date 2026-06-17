@@ -78,6 +78,11 @@ export class Engine {
    *  0 each time frightened mode re-arms. Drives the 200/400/800/1600
    *  score escalation. */
   private frightenedEatStreak = 0;
+  /** Per-level baseline ghost speed scalar. Boots at 1.0; bumped ~10%
+   *  each time handleLevelWon fires, capped at 1.5×. Threaded into
+   *  tickGhost so scatter/chase speeds scale but frightened/eaten do
+   *  not (preserves the power-pellet escape window across levels). */
+  private ghostSpeedMultiplier = 1.0;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -128,6 +133,20 @@ export class Engine {
           g.mode = "chase";
         }
         g._progress = 0;
+      },
+      // Test hook: zero out the pellet field in one step. The eat-every-
+      // dot path is too slow + race-prone to drive from an e2e (the ghost
+      // AI would kill Pac mid-clear on slow CI). Instead we drop pellets
+      // to 0 and clear the pellet map; the next update() observes the
+      // win condition and flips status to 'won' via handleLevelWon.
+      clearPellets: (): void => {
+        this.state.pellets = 0;
+        for (let r = 0; r < this.state.pelletMap.length; r += 1) {
+          const row = this.state.pelletMap[r];
+          for (let c = 0; c < row.length; c += 1) {
+            row[c] = false;
+          }
+        }
       },
     };
   }
@@ -213,6 +232,14 @@ export class Engine {
         this.frightenedEatStreak = 0;
       }
     }
+    // Win check: if the last pellet has been eaten (or zeroed by the
+    // clearPellets test hook), flip to 'won' and reset for the next
+    // level. Return early so ghosts don't tick onto the freshly reset
+    // Pac (which would immediately drop a life).
+    if (this.state.pellets <= 0) {
+      this.handleLevelWon();
+      return;
+    }
     // Ghosts: Inky needs Blinky's position as a pivot, so snapshot it
     // before any ghost moves this tick (consistent within the step).
     const blinky = this.ghosts.find((g) => g.name === "blinky");
@@ -224,6 +251,7 @@ export class Engine {
         blinkyPos,
         this.totalPelletsAtBoot,
         this.frightenedTicksLeft,
+        this.ghostSpeedMultiplier,
       );
     }
     // Pac↔ghost collisions. Tile-aligned check — both entities snap to

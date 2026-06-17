@@ -347,6 +347,7 @@ export function tickGhost(
   blinky: { x: number; y: number } | null,
   totalPelletsAtBoot: number,
   frightenedTicksLeft: number,
+  speedMultiplier: number,
 ): void {
   // 1. Mode resolution. Priority: eaten > frightened > scatter/chase.
   if (g.mode !== "eaten") {
