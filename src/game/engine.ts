@@ -234,10 +234,18 @@ export class Engine {
     void tileAt;
   }
 
-  /** Pac as a fat yellow disc on his current tile. Sub-tile glide
-   *  progress is intentionally not visualized yet — the tile-snapped
-   *  draw matches the test contract (which polls integer tile coords)
-   *  and is plenty readable. Smoother interpolation is a polish pass. */
+  /** Pac as a yellow chomping wedge, gliding between tiles.
+   *
+   *  Three render-only derivations of state — no contract change:
+   *    - Sub-tile glide: `pac._progress` (internal field set by tickPac)
+   *      offsets the draw position along `pac.dir`, so motion is smooth
+   *      between integer tile commits. `state.pac.x/y` themselves still
+   *      tick once per tile — the e2e harness sees the same integers.
+   *    - Facing rotation: `pac.dir` picks the wedge orientation.
+   *    - Mouth chomp: `state.tick % 12` drives a 5 Hz open/close cycle
+   *      (60 Hz / 12 = 5). When `dir === "none"` we freeze the mouth
+   *      half-open instead of animating — feels alive but not chewing
+   *      air at a wall. */
   private renderPac(): void {
     const { ctx, canvas, state } = this;
     const mazeW = COLS * TILE;
@@ -245,13 +253,64 @@ export class Engine {
     const ox = Math.floor((canvas.width - mazeW) / 2);
     const oy = Math.floor((canvas.height - mazeH) / 2);
 
-    const cx = ox + state.pac.x * TILE + TILE / 2;
-    const cy = oy + state.pac.y * TILE + TILE / 2;
+    // Sub-tile glide. `_progress` is set internally by tickPac (see
+    // pacman.ts) — it's not on the public PacState type, so we read it
+    // through a narrow cast. Falls back to 0 if absent (first frame, or
+    // dir==="none" after a wall stop).
+    const pac = state.pac as typeof state.pac & { _progress?: number };
+    const progress = pac.dir === "none" ? 0 : pac._progress ?? 0;
+    let dx = 0;
+    let dy = 0;
+    let angle = 0;
+    switch (pac.dir) {
+      case "right":
+        dx = 1;
+        angle = 0;
+        break;
+      case "left":
+        dx = -1;
+        angle = Math.PI;
+        break;
+      case "down":
+        dy = 1;
+        angle = Math.PI / 2;
+        break;
+      case "up":
+        dy = -1;
+        angle = -Math.PI / 2;
+        break;
+      case "none":
+        // Keep last-known facing implicit (angle=0); no motion offset.
+        break;
+    }
+
+    const cx = ox + (pac.x + dx * progress) * TILE + TILE / 2;
+    const cy = oy + (pac.y + dy * progress) * TILE + TILE / 2;
+    const r = TILE / 2 - 0.5;
+
+    // Chomp phase: 5 Hz (12 ticks at 60 Hz per full cycle). When at rest,
+    // freeze the mouth half-open so the sprite still reads as Pac-Man.
+    let mouth: number;
+    if (pac.dir === "none") {
+      mouth = 0.175 * Math.PI; // ~31° — half of the peak opening
+    } else {
+      const phase = (state.tick % 12) / 12; // 0..1
+      mouth = Math.abs(Math.sin(phase * Math.PI)) * 0.35 * Math.PI; // 0..~63°
+    }
 
     ctx.fillStyle = "#ffd76a";
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
     ctx.beginPath();
-    ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
+    // Wedge: arc from +mouth around to 2π-mouth, then line back to center
+    // so the missing slice points along +x (the travel direction after
+    // rotation).
+    ctx.arc(0, 0, r, mouth, Math.PI * 2 - mouth);
+    ctx.lineTo(0, 0);
+    ctx.closePath();
     ctx.fill();
+    ctx.restore();
   }
 
   /** Ghosts as flat coloured discs on their tile. Blinky is red. */
