@@ -6,7 +6,13 @@
 import { COLS, ROWS, countPellets } from "./maze";
 import type { GhostState } from "./ghost";
 
-export type GameStatus = "ready" | "playing" | "paused" | "lost" | "gameover";
+export type GameStatus =
+  | "ready"
+  | "playing"
+  | "paused"
+  | "won"
+  | "lost"
+  | "gameover";
 
 /** Cardinal direction, plus a 'none' rest state for a stopped Pac. */
 export type Direction = "none" | "up" | "down" | "left" | "right";

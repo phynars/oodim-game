@@ -136,11 +136,9 @@ export class Engine {
   start(): void {
     if (this.running) return;
     this.running = true;
-    // Transition out of the boot 'ready' label the moment the loop spins
-    // up — keeps the READY text from sitting on top of a moving Pac.
-    if (this.state.status === "ready") {
-      this.state.status = "playing";
-    }
+    // NOTE: we used to flip 'ready'→'playing' here. Per issue #8 the
+    // READY! overlay should hold until the player's first input — the
+    // flip now lives inside update(), gated on a queued direction.
     // Bind keyboard once the loop is live. Safe to call repeatedly; we
     // only bind on the first start().
     if (this.inputBinding === null) {
@@ -184,6 +182,23 @@ export class Engine {
   /** One simulation step. Deterministic — drive new mechanics off `tick`. */
   private update(): void {
     this.state.tick += 1;
+    // If the level is already terminal (won/lost), freeze the simulation:
+    // don't tick Pac or ghosts, don't run collisions, don't re-fire the
+    // win check.
+    if (this.state.status === "won" || this.state.status === "lost") {
+      return;
+    }
+    // First-input gate (issue #8): hold the READY! overlay until the
+    // player asks to move. bindInput writes the requested direction onto
+    // `pac.queued`; once that's non-'none' we flip to 'playing' and let
+    // tickPac take over.
+    if (this.state.status === "ready") {
+      if (this.state.pac.queued !== "none") {
+        this.state.status = "playing";
+      } else {
+        return;
+      }
+    }
     // Pac-Man movement + pellet eating. The result surfaces whether a
     // power pellet was eaten this tick; if so we (re)arm frightened mode.
     const pacResult = tickPac(this.state);
@@ -253,6 +268,33 @@ export class Engine {
     }
   }
 
+  /** Pac ate the final pellet. Flip status to 'won', refill the pellet
+   *  board for the next level, bump baseline ghost speed (slightly), and
+   *  re-spawn Pac + ghosts to their starting tiles. Frightened state is
+   *  cleared so a win mid-power-pellet doesn't carry residual blue
+   *  ghosts into the next level. */
+  private handleLevelWon(): void {
+    this.state.status = "won";
+    // Refill the pellet map from the static maze and restore the count.
+    this.state.pelletMap = buildPelletMap();
+    this.state.pellets = this.totalPelletsAtBoot;
+    // Ghosts speed up ~10% per level. Cap at 1.5× so the simulation
+    // doesn't tip into "ghost moves more than one tile per update" land.
+    this.ghostSpeedMultiplier = Math.min(this.ghostSpeedMultiplier * 1.1, 1.5);
+    // Clear any active power-pellet window.
+    this.frightenedTicksLeft = 0;
+    this.frightenedEatStreak = 0;
+    // Re-spawn the full roster and Pac.
+    this.ghosts = spawnGhosts();
+    resetPacToSpawn(this.state);
+    // Republish the slim ghost view so a test polling on the very next
+    // tick sees the reset roster aligned with the new status.
+    this.state.ghosts.length = this.ghosts.length;
+    for (let i = 0; i < this.ghosts.length; i += 1) {
+      this.state.ghosts[i] = publicGhostView(this.ghosts[i]);
+    }
+  }
+
   /** A chase/scatter ghost touched Pac. Decrement lives; on >0, reset Pac
    *  and the full ghost roster to spawn positions and resume play. On
    *  zero, flip status to 'lost' — the loop still runs (so the render
@@ -309,13 +351,28 @@ export class Engine {
     //     red disc never gets hidden under the player when they stack).
     this.renderGhosts();
 
-    // 5. Boot label while we're in 'ready'. Removed once gameplay lands.
+    // 5. Status overlays:
+    //    - 'ready' → READY! boot label, held until the loop starts.
+    //    - 'won'   → YOU WIN! after clearing the level.
+    //    - 'lost'  → GAME OVER after running out of lives.
     if (state.status === "ready") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("READY", w / 2, h / 2);
+      ctx.fillText("READY!", w / 2, h / 2);
+    } else if (state.status === "won") {
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("YOU WIN!", w / 2, h / 2);
+    } else if (state.status === "lost") {
+      ctx.fillStyle = "#ff5d5d";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("GAME OVER", w / 2, h / 2);
     }
   }
 
@@ -510,6 +567,7 @@ declare global {
       clydeTarget: typeof clydeTarget;
       scatterTarget: typeof scatterTarget;
       forceGhostOntoPac: (name: GhostName) => void;
+      clearPellets: () => void;
     };
   }
 }

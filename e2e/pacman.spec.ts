@@ -96,9 +96,12 @@ test("ghost roster exposes Blinky and the mode flips scatter→chase", async ({
   expect(initial.first.name).toBe("blinky");
   expect(["scatter", "chase"]).toContain(initial.first.mode);
 
-  // Focus the page so the engine has started ticking; otherwise we'd
-  // be polling a paused tick counter and never see the mode flip.
+  // Focus the page and press a direction so the engine leaves the
+  // READY! state and begins ticking ghosts; otherwise we'd be polling
+  // a paused mode timer and never see the flip. (Issue #8: 'ready'
+  // holds until first input.)
   await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
 
   const startMode = initial.first.mode;
   // Wait for ANY mode change. With a 5s period and a 10s budget the
@@ -284,7 +287,10 @@ test("chase-mode ghost collision drops a life and resets Pac", async ({
 
   // Focus the canvas so the rAF loop is running and the engine is
   // actually ticking — the collision is detected inside update().
+  // Per issue #8, update() is gated on first input until status flips
+  // to 'playing', so press a direction to unfreeze the simulation.
   await page.locator("canvas").click();
+  await page.keyboard.press("ArrowUp");
 
   const before = await page.evaluate(() => {
     const s = window.__pac!;
@@ -322,4 +328,56 @@ test("chase-mode ghost collision drops a life and resets Pac", async ({
   expect(after.pac).toEqual({ x: 13, y: 23, dir: "none" });
   // Still playable — not 'lost' yet.
   expect(after.status).not.toBe("lost");
+});
+
+// Issue #8 — level-win state.
+//
+// We use the `clearPellets` test hook to zero out the pellet field in
+// one step (eating every dot live would race the ghost AI on slow CI).
+// On the next update() tick the engine sees pellets <= 0 and flips
+// status to 'won', also refilling the pellet field for the next level.
+//
+// FAILS on the pre-change code (no 'won' status, no level-reset path).
+// PASSES once the engine wires the win check + level reset.
+test("clearing all pellets sets status='won' and refills the pellet field", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+  await page.waitForFunction(() => Boolean(window.__pacInternals));
+
+  // Focus the canvas so the rAF loop is running — without this, the
+  // engine is constructed but no update() ticks fire, and the win
+  // check never runs.
+  await page.locator("canvas").click();
+
+  // Press a direction so the READY! overlay gives way to 'playing' —
+  // the win check is gated on status === 'playing'.
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => window.__pac?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  const beforePelletTotal = await page.evaluate(() => window.__pac!.pellets);
+  expect(beforePelletTotal).toBeGreaterThan(0);
+
+  // Drop the floor out from under the level — zero pellets remaining.
+  await page.evaluate(() => {
+    window.__pacInternals!.clearPellets();
+  });
+
+  // Wait for the engine to observe the win condition and flip status.
+  await page.waitForFunction(() => window.__pac?.status === "won", null, {
+    timeout: 3000,
+  });
+
+  const after = await page.evaluate(() => {
+    const s = window.__pac!;
+    return { status: s.status, pellets: s.pellets };
+  });
+  expect(after.status).toBe("won");
+  // Pellet field reset for the next level — the count is back at the
+  // boot total (we don't expose it directly, but it must be > 0 and
+  // match what we captured before clearing).
+  expect(after.pellets).toBe(beforePelletTotal);
 });
