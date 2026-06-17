@@ -9,6 +9,12 @@ import { initialState, type GameState } from "./types";
 import { COLS, ROWS, TILE, MAZE, tileAt } from "./maze";
 import { buildPelletMap, tickPac } from "./pacman";
 import { bindInput, type InputBinding } from "./input";
+import {
+  publicGhostView,
+  spawnBlinky,
+  tickGhost,
+  type GhostInternal,
+} from "./ghost";
 
 /** Logical update rate: 60 Hz. */
 const STEP_MS = 1000 / 60;
@@ -43,6 +49,9 @@ export class Engine {
   private accumulatorMs = 0;
   private running = false;
   private inputBinding: InputBinding | null = null;
+  /** Internal ghost roster — full AI state. Public projections live on
+   *  `state.ghosts` (the test contract). Source of truth is here. */
+  private ghosts: GhostInternal[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -55,6 +64,9 @@ export class Engine {
     // Seed the live pellet map from the static layout. Owned by the engine
     // and mutated by tickPac as pellets get eaten.
     this.state.pelletMap = buildPelletMap();
+    // Spawn the first ghost. Public roster mirrors the internal one.
+    this.ghosts = [spawnBlinky()];
+    this.state.ghosts = this.ghosts.map(publicGhostView);
     // Publish the state contract immediately so tests that poll at boot
     // (before the first rAF tick) still see `status: 'ready'`.
     window.__pac = this.state;
@@ -115,6 +127,17 @@ export class Engine {
     // Pac-Man movement + pellet eating. Ghosts and power-pellet effects
     // will hang off the same tick once they land.
     tickPac(this.state);
+    // Ghosts: advance internal AI, then re-publish the slim view onto
+    // the state contract so `window.__pac.ghosts` stays current.
+    for (const g of this.ghosts) {
+      tickGhost(g, this.state);
+    }
+    // Reuse the existing array (mutate length + indices) so consumers
+    // holding a reference to state.ghosts still see updates.
+    this.state.ghosts.length = this.ghosts.length;
+    for (let i = 0; i < this.ghosts.length; i += 1) {
+      this.state.ghosts[i] = publicGhostView(this.ghosts[i]);
+    }
   }
 
   /** Draw the current frame. Reads state; never mutates it. */
@@ -138,6 +161,10 @@ export class Engine {
 
     // 4. Pac on top of the maze.
     this.renderPac();
+
+    // 4b. Ghosts on top of Pac (so a collision is visible — and so the
+    //     red disc never gets hidden under the player when they stack).
+    this.renderGhosts();
 
     // 5. Boot label while we're in 'ready'. Removed once gameplay lands.
     if (state.status === "ready") {
@@ -225,5 +252,22 @@ export class Engine {
     ctx.beginPath();
     ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  /** Ghosts as flat coloured discs on their tile. Blinky is red. */
+  private renderGhosts(): void {
+    const { ctx, canvas, state } = this;
+    const mazeW = COLS * TILE;
+    const mazeH = ROWS * TILE;
+    const ox = Math.floor((canvas.width - mazeW) / 2);
+    const oy = Math.floor((canvas.height - mazeH) / 2);
+    for (const g of state.ghosts) {
+      const cx = ox + g.x * TILE + TILE / 2;
+      const cy = oy + g.y * TILE + TILE / 2;
+      ctx.fillStyle = g.name === "blinky" ? "#ff1d1d" : "#ffffff";
+      ctx.beginPath();
+      ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }

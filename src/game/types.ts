@@ -4,6 +4,7 @@
 // test depends on.
 
 import { COLS, ROWS, countPellets } from "./maze";
+import type { GhostState } from "./ghost";
 
 export type GameStatus = "ready" | "playing" | "paused" | "gameover";
 
@@ -44,6 +45,9 @@ export interface GameState {
   /** Mutable mirror of which tiles still hold food. [row][col] → present.
    *  Owned by the engine; read by the renderer; mutated by tickPac. */
   pelletMap: boolean[][];
+  /** Public ghost roster. Slim views (name/x/y/mode) — internal AI state
+   *  is held privately by the engine. The e2e contract reads this. */
+  ghosts: GhostState[];
 }
 
 declare global {
@@ -68,5 +72,6 @@ export function initialState(): GameState {
     maze: { cols: COLS, rows: ROWS },
     pac: { x: 13, y: 23, dir: "none", queued: "none" },
     pelletMap: [],
+    ghosts: [],
   };
 }
