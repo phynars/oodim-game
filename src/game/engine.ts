@@ -561,15 +561,24 @@ export class Engine {
     ctx.restore();
   }
 
-  /** Ghosts as flat coloured discs on their tile. One colour per ghost,
-   *  except:
+  /** Ghosts as flat coloured discs, gliding between tiles. One colour per
+   *  ghost, except:
    *    • frightened → arcade blue. Flashes white in the last ~1.5s of the
    *      window (last 90 ticks) — the telegraph that frightened is about
    *      to wear off.
    *    • eaten → small white "eyes" dot (no body). Communicates that the
-   *      ghost is in transit back to the house. */
+   *      ghost is in transit back to the house.
+   *
+   *  Render-only sub-tile glide (mirrors `renderPac`): we read the engine's
+   *  INTERNAL roster `this.ghosts` (not `state.ghosts`, which is the
+   *  stripped `publicGhostView` projection holding integer tile coords for
+   *  the e2e contract). Each `GhostInternal` carries `_progress: 0..1` and
+   *  `lastDir: Dir`, advanced every tick by `tickGhost` — we offset the
+   *  draw position along `lastDir` so motion is smooth between integer
+   *  tile commits. In-house ghosts (`status !== "out"`) stay snapped to
+   *  their spawn tile — they don't carry meaningful glide. */
   private renderGhosts(): void {
-    const { ctx, canvas, state } = this;
+    const { ctx, canvas } = this;
     const mazeW = COLS * TILE;
     const mazeH = ROWS * TILE;
     const ox = Math.floor((canvas.width - mazeW) / 2);
@@ -579,9 +588,31 @@ export class Engine {
       this.frightenedTicksLeft > 0 &&
       this.frightenedTicksLeft < FLASH_WINDOW &&
       Math.floor(this.frightenedTicksLeft / 8) % 2 === 0;
-    for (const g of state.ghosts) {
-      const cx = ox + g.x * TILE + TILE / 2;
-      const cy = oy + g.y * TILE + TILE / 2;
+    for (const g of this.ghosts) {
+      // Sub-tile glide. Only released ghosts interpolate; ones still
+      // bouncing in the house stay on their tile.
+      const progress = g.status !== "out" ? 0 : g._progress;
+      let dx = 0;
+      let dy = 0;
+      switch (g.lastDir) {
+        case "right":
+          dx = 1;
+          break;
+        case "left":
+          dx = -1;
+          break;
+        case "down":
+          dy = 1;
+          break;
+        case "up":
+          dy = -1;
+          break;
+        case "none":
+          // No motion offset — keeps the ghost on its tile center.
+          break;
+      }
+      const cx = ox + (g.x + dx * progress) * TILE + TILE / 2;
+      const cy = oy + (g.y + dy * progress) * TILE + TILE / 2;
       if (g.mode === "eaten") {
         // Eyes: a small white dot, no body.
         ctx.fillStyle = "#ffffff";
