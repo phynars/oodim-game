@@ -112,3 +112,75 @@ test("player ship moves left then right under keyboard input, clamped to the fie
   expect(afterRight.x).toBeLessThanOrEqual(start.width);
   expect(afterRight.y).toBe(start.y);
 });
+
+test("Space fires a player bullet that travels upward; cap is 2 concurrent", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  // Leave READY and start the loop.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  // Fire one shot. The bullet should appear in `bullets` with from:'player'
+  // and a `y` value (record it so we can prove it decreases next).
+  await page.keyboard.press(" ");
+  await page.waitForFunction(
+    () => (window.__galaga?.bullets ?? []).some((b) => b.from === "player"),
+    null,
+    { timeout: 2000 },
+  );
+  const firstBullet = await page.evaluate(() => {
+    const b = window.__galaga!.bullets.find((x) => x.from === "player");
+    return b ? { x: b.x, y: b.y } : null;
+  });
+  expect(firstBullet).not.toBeNull();
+
+  // After a few ticks, SOME player bullet's `y` must be strictly less than
+  // the spawn `y` we observed — i.e. the shot is moving up. We don't track
+  // identity (no id on bullets per the contract), so we check the minimum
+  // player-bullet y has dropped below the spawn y.
+  await page.waitForFunction(
+    (spawnY) => {
+      const ys = (window.__galaga?.bullets ?? [])
+        .filter((b) => b.from === "player")
+        .map((b) => b.y);
+      if (ys.length === 0) return false;
+      return Math.min(...ys) < spawnY - 5;
+    },
+    firstBullet!.y,
+    { timeout: 3000 },
+  );
+
+  // Fire FIVE more presses in quick succession. The cap is 2 concurrent
+  // player bullets — at no observation point should the live count exceed 2.
+  // We sample the count between presses to catch a buggy implementation that
+  // briefly spawns a 3rd before pruning.
+  const maxObserved = await page.evaluate(async () => {
+    let max = (window.__galaga?.bullets ?? []).filter(
+      (b) => b.from === "player",
+    ).length;
+    // The Playwright keyboard helper isn't available inside evaluate, so we
+    // dispatch raw KeyboardEvents — same code path the input source uses.
+    for (let i = 0; i < 5; i++) {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+      );
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { key: " ", bubbles: true }),
+      );
+      // Yield a frame so the engine ticks and we sample fresh state.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const live = (window.__galaga?.bullets ?? []).filter(
+        (b) => b.from === "player",
+      ).length;
+      if (live > max) max = live;
+    }
+    return max;
+  });
+  expect(maxObserved).toBeLessThanOrEqual(2);
+});
