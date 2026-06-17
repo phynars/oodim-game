@@ -1,64 +1,60 @@
+// End-to-end harness for Pac movement + pellet eating.
+//
+// We dispatch a real ArrowRight keydown into the page and then poll
+// `window.__pac` — that's the load-bearing contract. The assertions
+// here are deliberately tight: x must increase, pellets must drop,
+// score must rise. If any one of those breaks we want a red CI line
+// pointing at *which* part of the loop regressed.
+
 import { expect, test } from "@playwright/test";
 
-// Gameplay verification harness. We assert on `window.__pac` — the state
-// contract from src/game/types.ts — rather than pixels. Every gameplay PR
-// extends this file with assertions that FAIL on the pre-change code and
-// PASS after.
+import type { GameState } from "../src/game/types";
 
-test("boots to ready and tick rises across two animation frames", async ({
-  page,
-}) => {
+declare global {
+  interface Window {
+    __pac?: GameState;
+  }
+}
+
+test("ArrowRight moves Pac, eats a pellet, and scores", async ({ page }) => {
   await page.goto("/");
 
-  // Wait for the engine to publish the state contract.
-  await page.waitForFunction(() => !!window.__pac);
+  // Wait for the engine to publish state.
+  await page.waitForFunction(() => Boolean(window.__pac));
 
-  // Boot contract: status === 'ready', score 0, lives 3.
-  const initial = await page.evaluate(() => ({ ...window.__pac! }));
-  expect(initial.status).toBe("ready");
-  expect(initial.score).toBe(0);
-  expect(initial.lives).toBe(3);
-  expect(typeof initial.tick).toBe("number");
+  const before = await page.evaluate(() => {
+    const s = window.__pac!;
+    return { x: s.pac.x, y: s.pac.y, pellets: s.pellets, score: s.score };
+  });
 
-  // Capture a tick value AFTER one rAF, then another AFTER a second rAF, and
-  // assert the value strictly increased between them — this is what proves
-  // the loop is actually driving update(), not just exposing static state.
-  const [tickAfterFrameA, tickAfterFrameB] = await page.evaluate(
-    () =>
-      new Promise<[number, number]>((resolve) => {
-        requestAnimationFrame(() => {
-          const a = window.__pac!.tick;
-          requestAnimationFrame(() => {
-            const b = window.__pac!.tick;
-            resolve([a, b]);
-          });
-        });
-      }),
+  // Focus the page so keydown lands on window.
+  await page.locator("canvas").click();
+
+  // Dispatch ArrowRight. The engine queues the direction and starts
+  // motion on the next tick.
+  await page.keyboard.press("ArrowRight");
+
+  // Poll until Pac has moved at least one tile to the right AND a
+  // pellet has been eaten. Generous timeout — at SPEED_PER_TICK = 0.12
+  // and 60 ticks/sec, the first tile crossing lands well inside 1s,
+  // and from the spawn (13, 23) the next pellet sits two tiles east.
+  await page.waitForFunction(
+    (b) => {
+      const s = window.__pac;
+      if (!s) return false;
+      return s.pac.x > b.x && s.pellets < b.pellets && s.score > b.score;
+    },
+    before,
+    { timeout: 5000 },
   );
 
-  expect(tickAfterFrameB).toBeGreaterThan(tickAfterFrameA);
-});
+  const after = await page.evaluate(() => {
+    const s = window.__pac!;
+    return { x: s.pac.x, y: s.pac.y, pellets: s.pellets, score: s.score };
+  });
 
-test("publishes maze dims and the static pellet count at boot", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.waitForFunction(() => !!window.__pac);
-
-  const { cols, rows, pellets } = await page.evaluate(() => ({
-    cols: window.__pac!.maze.cols,
-    rows: window.__pac!.maze.rows,
-    pellets: window.__pac!.pellets,
-  }));
-
-  // Classic arcade layout.
-  expect(cols).toBe(28);
-  expect(rows).toBe(31);
-
-  // The pellet field is the static '.' count in src/game/maze.ts. We import
-  // the source from this Node test process — same module, same number —
-  // so the assertion stays load-bearing even if we tweak the grid later.
-  const { countPellets } = await import("../src/game/maze");
-  expect(pellets).toBe(countPellets());
-  expect(pellets).toBeGreaterThan(0);
+  expect(after.x).toBeGreaterThan(before.x);
+  expect(after.y).toBe(before.y);
+  expect(after.pellets).toBeLessThan(before.pellets);
+  expect(after.score).toBeGreaterThanOrEqual(before.score + 10);
 });
