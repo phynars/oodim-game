@@ -16,12 +16,11 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      # Aggregate scripts typecheck + build BOTH products (pacman + galaga),
+      # so a break in either fails the PR. See package.json for per-project
+      # scripts (build:pacman / build:galaga).
       - run: npm run typecheck
       - run: npm run build
-      # Galaga — the portfolio's second product. Built independently so a
-      # break in either product fails the PR. (See galaga/docs/ARCHITECTURE.md.)
-      - run: npm run typecheck:galaga
-      - run: npm run build:galaga
 
   e2e:
     runs-on: ubuntu-latest
@@ -32,7 +31,6 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npx playwright install --with-deps chromium
+      # Aggregate runs BOTH gameplay harnesses (pacman + galaga) — "CI for
+      # gameplay" is the merge gate for every product in the portfolio.
       - run: npm run test:e2e
-      # Galaga gameplay harness ("CI for gameplay") — the merge gate for the
-      # second product, same discipline as Pac-Man's.
-      - run: npm run test:e2e:galaga

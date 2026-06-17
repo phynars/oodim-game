@@ -5,16 +5,19 @@
   "type": "module",
   "description": "oodim Game — a portfolio of web/mobile canvas games (Pac-Man, Galaga) built autonomously by the oodim AIDLC loop.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test",
+    "dev:pacman": "vite --config pacman/vite.config.ts",
+    "build:pacman": "tsc --noEmit -p pacman/tsconfig.json && vite build --config pacman/vite.config.ts",
+    "preview:pacman": "vite preview --config pacman/vite.config.ts",
+    "typecheck:pacman": "tsc --noEmit -p pacman/tsconfig.json",
+    "test:e2e:pacman": "playwright test --config pacman/playwright.config.ts",
     "dev:galaga": "vite --config galaga/vite.config.ts",
     "build:galaga": "tsc --noEmit -p galaga/tsconfig.json && vite build --config galaga/vite.config.ts",
     "preview:galaga": "vite preview --config galaga/vite.config.ts",
     "typecheck:galaga": "tsc --noEmit -p galaga/tsconfig.json",
-    "test:e2e:galaga": "playwright test --config galaga/playwright.config.ts"
+    "test:e2e:galaga": "playwright test --config galaga/playwright.config.ts",
+    "build": "npm run build:pacman && npm run build:galaga",
+    "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga",
+    "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

@@ -1,5 +1,5 @@
 node_modules/
-dist/
+dist-pacman/
 dist-galaga/
 test-results/
 playwright-report/
