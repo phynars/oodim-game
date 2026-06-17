@@ -74,7 +74,6 @@ interface Choreography {
 const choreographies = new Map<number, Choreography>();
 
 let nextId = 1;
-let initialized = false;
 
 /** Compute the formation grid slots. Row 0 = top (bosses), then butterflies,
  *  then bees on the bottom row — classic Galaga vertical ordering. */
@@ -126,10 +125,19 @@ function bezier(p0: number, p1: number, p2: number, t: number): number {
 
 /** Spawn the full wave: populate `state.enemies` with one enemy per slot,
  *  all starting in `'entering'` at their arc origin. Idempotent — calling
- *  twice on the same state is a no-op once enemies exist. */
+ *  twice while enemies exist is a no-op.
+ *
+ *  Idempotency is keyed on `state.enemies.length`, NOT a module-level
+ *  "already-spawned" flag — that flag was a foot-gun for the future
+ *  "new game" path (a fresh `initialState()` produces an empty roster,
+ *  but a stale flag would suppress the respawn). Calling this with an
+ *  empty roster also clears the module-private choreography map, so we
+ *  don't leak per-enemy entries across game resets. */
 export function spawnWave(state: GameState): void {
-  if (initialized || state.enemies.length > 0) return;
-  initialized = true;
+  if (state.enemies.length > 0) return;
+  // Fresh wave → drop any choreography left over from a previous game.
+  choreographies.clear();
+  nextId = 1;
   const slots = buildFormation();
   // Order the spawn so bees (front-line) launch first, then butterflies,
   // then bosses — feels like the swarm builds up to the heavies.
@@ -182,10 +190,11 @@ export function tickEnemies(state: GameState): void {
   }
 }
 
-/** Test seam: reset module-private state. Called only from tests; production
- *  code constructs a fresh Engine per game, but tests share the module. */
+/** Test seam: reset module-private state. Production code doesn't need this
+ *  — `spawnWave` self-clears when given an empty roster (see above) — but
+ *  unit tests that share the module across cases can call this to drop
+ *  any per-enemy choreography between assertions. */
 export function __resetEnemiesForTests(): void {
   choreographies.clear();
   nextId = 1;
-  initialized = false;
 }
