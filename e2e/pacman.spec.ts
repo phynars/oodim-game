@@ -148,6 +148,79 @@ test("ghost quartet — roster has Blinky, Pinky, Inky, Clyde", async ({
 // __pacInternals bridge. Each ghost's targeting fn is pure; we feed it
 // crafted inputs and assert the exact tile it returns. These cover each
 // targeting function independently of the live engine state.
+// Issue #6 — power pellets flip ghosts to 'frightened'.
+//
+// This test drives Pac from spawn (13, 23) around to the bottom-left
+// power pellet at (1, 23) via the left-down corridor, then asserts that
+// the moment the power pellet is eaten, at least one ghost reports
+// `mode === 'frightened'` on the public roster.
+//
+// FAILS on the pre-change code (ghost mode is only 'scatter' | 'chase').
+// PASSES once the engine arms FRIGHTENED_TICKS on power-pellet eat and
+// tickGhost honors it.
+test("power pellet flips ghosts to frightened mode", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+
+  // Focus the canvas so keyboard input drives the engine.
+  await page.locator("canvas").click();
+
+  // Walk Pac to the bottom-left power pellet. The path is:
+  //   (13,23) --Left-→ (6,23) --Up-→ (6,20) --Left-→ (1,20) --Down-→ (1,23)
+  // We queue each turn only once Pac has reached the corner tile,
+  // because the engine's pre-turn check only honors `queued` when the
+  // neighbor in that direction is walkable. Doing it any earlier would
+  // get ignored and the test would race.
+  const reach = async (tile: { x: number; y: number }) =>
+    page.waitForFunction(
+      (t) => {
+        const s = window.__pac;
+        return Boolean(s) && s!.pac.x === t.x && s!.pac.y === t.y;
+      },
+      tile,
+      { timeout: 15_000 },
+    );
+
+  await page.keyboard.press("ArrowLeft");
+  await reach({ x: 6, y: 23 });
+
+  await page.keyboard.press("ArrowUp");
+  await reach({ x: 6, y: 20 });
+
+  await page.keyboard.press("ArrowLeft");
+  await reach({ x: 1, y: 20 });
+
+  await page.keyboard.press("ArrowDown");
+
+  // The power pellet sits at (1, 23). Once Pac arrives we expect at
+  // least one ghost in 'frightened' mode within the very next ticks.
+  await page.waitForFunction(
+    () => {
+      const s = window.__pac;
+      if (!s) return false;
+      // Power pellet is eaten on tile commit at (1, 23). Frightened
+      // mode is arrived-at the same tick.
+      return (
+        s.pac.x === 1 &&
+        s.pac.y === 23 &&
+        s.ghosts.some((g) => g.mode === "frightened")
+      );
+    },
+    null,
+    { timeout: 15_000 },
+  );
+
+  const snapshot = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      pac: { x: s.pac.x, y: s.pac.y },
+      modes: s.ghosts.map((g) => g.mode),
+    };
+  });
+  expect(snapshot.pac).toEqual({ x: 1, y: 23 });
+  expect(snapshot.modes).toContain("frightened");
+});
+
 test("ghost targeting — Blinky/Pinky/Inky/Clyde each compute distinct targets", async ({
   page,
 }) => {
