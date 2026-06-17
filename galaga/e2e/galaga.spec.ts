@@ -60,3 +60,55 @@ test("first input flips ready→playing and the fixed-step loop advances tick", 
   const t2 = await page.evaluate(() => window.__galaga!.tick);
   expect(t2).toBeGreaterThan(t1);
 });
+
+test("player ship moves left then right under keyboard input, clamped to the field", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  // Capture the spawn x and field width up front; the contract guarantees
+  // y is constant so we sample it too and assert it never changes.
+  const start = await page.evaluate(() => ({
+    x: window.__galaga!.player.x,
+    y: window.__galaga!.player.y,
+    width: window.__galaga!.field.width,
+  }));
+
+  await page.locator("canvas").click();
+
+  // Hold ArrowLeft long enough to traverse well past the left edge — the
+  // clamp must keep x >= 0 (the assertion below also checks the visible
+  // sprite stays inside the playfield).
+  await page.keyboard.down("ArrowLeft");
+  await page.waitForFunction(
+    (sx) => (window.__galaga?.player.x ?? sx) < sx - 5,
+    start.x,
+    { timeout: 5000 },
+  );
+  // Keep pressing past the wall so the clamp is exercised.
+  await page.waitForTimeout(2000);
+  await page.keyboard.up("ArrowLeft");
+
+  const afterLeft = await page.evaluate(() => window.__galaga!.player);
+  expect(afterLeft.x).toBeLessThan(start.x);
+  expect(afterLeft.x).toBeGreaterThanOrEqual(0);
+  expect(afterLeft.x).toBeLessThanOrEqual(start.width);
+  expect(afterLeft.y).toBe(start.y);
+
+  // Now drive right past the opposite wall.
+  await page.keyboard.down("ArrowRight");
+  await page.waitForFunction(
+    (lx) => (window.__galaga?.player.x ?? lx) > lx + 5,
+    afterLeft.x,
+    { timeout: 5000 },
+  );
+  await page.waitForTimeout(2000);
+  await page.keyboard.up("ArrowRight");
+
+  const afterRight = await page.evaluate(() => window.__galaga!.player);
+  expect(afterRight.x).toBeGreaterThan(afterLeft.x);
+  expect(afterRight.x).toBeGreaterThanOrEqual(0);
+  expect(afterRight.x).toBeLessThanOrEqual(start.width);
+  expect(afterRight.y).toBe(start.y);
+});
