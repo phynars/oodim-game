@@ -83,6 +83,11 @@ export class Engine {
    *  tickGhost so scatter/chase speeds scale but frightened/eaten do
    *  not (preserves the power-pellet escape window across levels). */
   private ghostSpeedMultiplier = 1.0;
+  /** Current level number (1-indexed). Bumped in handleLevelWon. Not yet
+   *  part of the GameState type contract (types.ts is out of scope for
+   *  the HUD slice); mirrored onto state via a runtime property so the
+   *  HUD in main.ts can read it through `window.__pac`. */
+  private level = 1;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -100,6 +105,9 @@ export class Engine {
     // house and are released as the dot counter crosses each threshold.
     this.ghosts = spawnGhosts();
     this.state.ghosts = this.ghosts.map(publicGhostView);
+    // Seed the runtime `level` mirror so the HUD has a value to display
+    // before the first tick (the HUD polls __pac).
+    (this.state as GameState & { level: number }).level = this.level;
     // Publish the state contract immediately so tests that poll at boot
     // (before the first rAF tick) still see `status: 'ready'`.
     window.__pac = this.state;
@@ -311,6 +319,10 @@ export class Engine {
    *  ghosts into the next level. */
   private handleLevelWon(): void {
     this.state.status = "won";
+    // Bump the level counter and republish the mirror so the HUD picks
+    // it up on the next animation frame.
+    this.level += 1;
+    (this.state as GameState & { level: number }).level = this.level;
     // Refill the pellet map from the static maze and restore the count.
     this.state.pelletMap = buildPelletMap();
     this.state.pellets = this.totalPelletsAtBoot;
