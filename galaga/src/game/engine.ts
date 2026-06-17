@@ -9,9 +9,11 @@
 // AUTONOMOUS BACKLOG (see galaga/docs/ARCHITECTURE.md). This file is the floor
 // the studio builds up from, mirroring how Pac-Man started from a loop + maze.
 
-import { initialState, WIDTH, HEIGHT, type GameState } from "./types";
+import { initialState, WIDTH, HEIGHT, type Bullet, type GameState } from "./types";
 import {
   createKeyboardInput,
+  MAX_PLAYER_BULLETS,
+  PLAYER_BULLET_SPEED_PX_PER_TICK,
   PLAYER_SPEED_PX_PER_TICK,
   type InputSource,
 } from "./input";
@@ -114,11 +116,51 @@ export class Engine {
       // (they cancel), matching the arcade feel.
       const snap = this.input.read();
       const dir = (snap.right ? 1 : 0) - (snap.left ? 1 : 0);
-      if (dir !== 0 && this.state.player.alive && !this.state.player.captured) {
+      const canAct = this.state.player.alive && !this.state.player.captured;
+      if (dir !== 0 && canAct) {
         const nextX = this.state.player.x + dir * PLAYER_SPEED_PX_PER_TICK;
         // Clamp to the field; the contract's field.width is the canvas WIDTH.
         const w = this.state.field.width;
         this.state.player.x = nextX < 0 ? 0 : nextX > w ? w : nextX;
+      }
+
+      // Firing: edge-triggered, capped at MAX_PLAYER_BULLETS concurrent
+      // player shots. Consume the press unconditionally (so it doesn't
+      // queue across ticks while at cap) — the arcade drops the input if
+      // both your shots are still on screen.
+      const wantsFire = this.input.consumeFire();
+      if (wantsFire && canAct) {
+        let liveCount = 0;
+        for (const b of this.state.bullets) {
+          if (b.from === "player") liveCount++;
+        }
+        if (liveCount < MAX_PLAYER_BULLETS) {
+          // Spawn from the nose of the ship (the triangle tip is at y-9).
+          this.state.bullets.push({
+            x: this.state.player.x,
+            y: this.state.player.y - 9,
+            from: "player",
+          });
+        }
+      }
+
+      // Advance bullets, despawn off-screen. Player shots travel UP (y--);
+      // enemy shots (not in this slice) will travel DOWN — same array, the
+      // `from` discriminator drives direction.
+      if (this.state.bullets.length > 0) {
+        const next: Bullet[] = [];
+        for (const b of this.state.bullets) {
+          if (b.from === "player") {
+            const ny = b.y - PLAYER_BULLET_SPEED_PX_PER_TICK;
+            if (ny + 4 < 0) continue; // off the top, drop it
+            next.push({ x: b.x, y: ny, from: "player" });
+          } else {
+            const ny = b.y + PLAYER_BULLET_SPEED_PX_PER_TICK;
+            if (ny - 4 > this.state.field.height) continue;
+            next.push({ x: b.x, y: ny, from: "enemy" });
+          }
+        }
+        this.state.bullets = next;
       }
     }
   }
@@ -132,6 +174,13 @@ export class Engine {
     for (const s of this.stars) {
       ctx.fillStyle = `rgba(255,255,255,${s.level.toFixed(2)})`;
       ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+    }
+
+    // Bullets — thin vertical tracers. Player shots are warm white, enemy
+    // shots (future slice) get a hostile tint so the player can read them.
+    for (const b of this.state.bullets) {
+      ctx.fillStyle = b.from === "player" ? "#fffae0" : "#ff7777";
+      ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y) - 4, 2, 8);
     }
 
     // Player fighter — a simple upward-pointing arrow. Movement is a backlog
