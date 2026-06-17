@@ -607,10 +607,12 @@ export class Engine {
         case "up":
           dy = -1;
           break;
-        case "none":
-          // No motion offset — keeps the ghost on its tile center.
-          break;
       }
+      // NB: no `case "none"` — a ghost's `lastDir` is `Dir`
+      // ("up"|"down"|"left"|"right"), never "none" (that rest state
+      // belongs to Pac's `Direction`). dx/dy default to 0, so a stopped
+      // ghost already stays tile-centered without a dead case. (TS2678
+      // on the invalid case broke main's build + every agent CI, 2026-06-17.)
       const cx = ox + (g.x + dx * progress) * TILE + TILE / 2;
       const cy = oy + (g.y + dy * progress) * TILE + TILE / 2;
       if (g.mode === "eaten") {
