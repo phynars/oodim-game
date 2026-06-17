@@ -12,6 +12,7 @@ import { bindInput, type InputBinding } from "./input";
 import {
   blinkyTarget,
   clydeTarget,
+  FRIGHTENED_TICKS,
   inkyTarget,
   pinkyTarget,
   publicGhostView,
@@ -68,6 +69,15 @@ export class Engine {
   private ghosts: GhostInternal[] = [];
   /** Pellet count at boot — used by the ghost-house dot counter. */
   private readonly totalPelletsAtBoot: number;
+  /** Remaining ticks of frightened mode. >0 means a power pellet is
+   *  currently active. Eating another power pellet RE-arms this to
+   *  FRIGHTENED_TICKS (does not stack). */
+  private frightenedTicksLeft = 0;
+  /** Combo counter for the current frightened activation: how many
+   *  ghosts Pac has already eaten this power-pellet window. Resets to
+   *  0 each time frightened mode re-arms. Drives the 200/400/800/1600
+   *  score escalation. */
+  private frightenedEatStreak = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -152,15 +162,55 @@ export class Engine {
   /** One simulation step. Deterministic — drive new mechanics off `tick`. */
   private update(): void {
     this.state.tick += 1;
-    // Pac-Man movement + pellet eating. Ghosts and power-pellet effects
-    // will hang off the same tick once they land.
-    tickPac(this.state);
+    // Pac-Man movement + pellet eating. The result surfaces whether a
+    // power pellet was eaten this tick; if so we (re)arm frightened mode.
+    const pacResult = tickPac(this.state);
+    if (pacResult.atePowerPellet) {
+      this.frightenedTicksLeft = FRIGHTENED_TICKS;
+      this.frightenedEatStreak = 0;
+    } else if (this.frightenedTicksLeft > 0) {
+      this.frightenedTicksLeft -= 1;
+      if (this.frightenedTicksLeft === 0) {
+        // Frightened expired: reset the combo so the next activation
+        // starts at 200 again.
+        this.frightenedEatStreak = 0;
+      }
+    }
     // Ghosts: Inky needs Blinky's position as a pivot, so snapshot it
     // before any ghost moves this tick (consistent within the step).
     const blinky = this.ghosts.find((g) => g.name === "blinky");
     const blinkyPos = blinky ? { x: blinky.x, y: blinky.y } : null;
     for (const g of this.ghosts) {
-      tickGhost(g, this.state, blinkyPos, this.totalPelletsAtBoot);
+      tickGhost(
+        g,
+        this.state,
+        blinkyPos,
+        this.totalPelletsAtBoot,
+        this.frightenedTicksLeft,
+      );
+    }
+    // Pac↔ghost collisions. Tile-aligned check — both entities snap to
+    // tile coords once per their respective progress windows, so an
+    // overlap on shared (x,y) is the contact signal.
+    //   • frightened ghost  → eat: score 200/400/800/1600 escalating,
+    //                          ghost flips to 'eaten' (eyes) and races
+    //                          home; tickGhost handles the revive.
+    //   • eaten ghost       → no interaction (eyes pass through Pac).
+    //   • scatter / chase   → would normally kill Pac; that arrives
+    //                          with the lives slice. For now: ignore so
+    //                          this slice stays scoped to power pellets.
+    for (const g of this.ghosts) {
+      if (g.status !== "out") continue;
+      if (g.x !== this.state.pac.x || g.y !== this.state.pac.y) continue;
+      if (g.mode === "frightened") {
+        this.frightenedEatStreak += 1;
+        // 1→200, 2→400, 3→800, 4→1600. Cap the exponent at 3 so a fifth
+        // (impossible in practice — only 4 ghosts) wouldn't run away.
+        const idx = Math.min(this.frightenedEatStreak - 1, 3);
+        this.state.score += 200 * (1 << idx);
+        g.mode = "eaten";
+        g._progress = 0;
+      }
     }
     // Reuse the existing array (mutate length + indices) so consumers
     // holding a reference to state.ghosts still see updates.
@@ -343,17 +393,40 @@ export class Engine {
     ctx.restore();
   }
 
-  /** Ghosts as flat coloured discs on their tile. One colour per ghost. */
+  /** Ghosts as flat coloured discs on their tile. One colour per ghost,
+   *  except:
+   *    • frightened → arcade blue. Flashes white in the last ~1.5s of the
+   *      window (last 90 ticks) — the telegraph that frightened is about
+   *      to wear off.
+   *    • eaten → small white "eyes" dot (no body). Communicates that the
+   *      ghost is in transit back to the house. */
   private renderGhosts(): void {
     const { ctx, canvas, state } = this;
     const mazeW = COLS * TILE;
     const mazeH = ROWS * TILE;
     const ox = Math.floor((canvas.width - mazeW) / 2);
     const oy = Math.floor((canvas.height - mazeH) / 2);
+    const FLASH_WINDOW = 90; // last 1.5s of frightened
+    const frightenedFlashOn =
+      this.frightenedTicksLeft > 0 &&
+      this.frightenedTicksLeft < FLASH_WINDOW &&
+      Math.floor(this.frightenedTicksLeft / 8) % 2 === 0;
     for (const g of state.ghosts) {
       const cx = ox + g.x * TILE + TILE / 2;
       const cy = oy + g.y * TILE + TILE / 2;
-      ctx.fillStyle = GHOST_COLORS[g.name] ?? "#ffffff";
+      if (g.mode === "eaten") {
+        // Eyes: a small white dot, no body.
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      if (g.mode === "frightened") {
+        ctx.fillStyle = frightenedFlashOn ? "#ffffff" : "#1d1dff";
+      } else {
+        ctx.fillStyle = GHOST_COLORS[g.name] ?? "#ffffff";
+      }
       ctx.beginPath();
       ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
       ctx.fill();

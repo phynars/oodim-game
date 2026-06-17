@@ -96,9 +96,17 @@ function wrap(x: number, y: number): { x: number; y: number } {
   return { x, y };
 }
 
+/** Result of one Pac tick — surfaces events the engine needs to react to.
+ *  Right now: did Pac eat a POWER pellet this tick? (Regular pellets are
+ *  fully self-contained inside tickPac — score + pellet count update in
+ *  place.) The engine watches `atePowerPellet` to arm frightened mode. */
+export interface PacTickResult {
+  atePowerPellet: boolean;
+}
+
 /** One tick of Pac motion. Mutates `state.pac`, `state.pelletMap`,
  *  `state.pellets`, `state.score`. The engine calls this from `update()`. */
-export function tickPac(state: GameState): void {
+export function tickPac(state: GameState): PacTickResult {
   const pac = state.pac;
 
   // 1. Try to honor the queued direction at the current tile. If the
@@ -113,13 +121,16 @@ export function tickPac(state: GameState): void {
     }
   }
 
+  // Default result; flipped below if a power pellet is eaten this tick.
+  const result: PacTickResult = { atePowerPellet: false };
+
   // 2. If we have an active direction, attempt the move. Tile-aligned
   //    only — we step exactly one tile per (1 / SPEED_PER_TICK) ticks
   //    by accumulating progress, but to keep the harness simple and the
   //    state field count tight we move one whole tile when progress
   //    overflows. Track progress on the pac object via a non-enumerable
   //    field would complicate types — instead, derive ticks-per-tile.
-  if (pac.dir === "none") return;
+  if (pac.dir === "none") return result;
 
   // Progress lives on a closure-local cache keyed off the engine tick.
   // To avoid adding fields to the public PacState (and breaking the test
@@ -129,7 +140,7 @@ export function tickPac(state: GameState): void {
 
   if (prog < 1) {
     internal._progress = prog;
-    return;
+    return result;
   }
 
   // 3. Commit one tile of movement.
@@ -140,20 +151,30 @@ export function tickPac(state: GameState): void {
     // Wall in front: stop at tile center, wait for a viable queued dir.
     internal._progress = 0;
     pac.dir = "none";
-    return;
+    return result;
   }
 
   pac.x = wrapped.x;
   pac.y = wrapped.y;
   internal._progress = prog - 1;
 
-  // 4. Eat pellet if one lives on this tile.
+  // 4. Eat pellet if one lives on this tile. Power pellets ('o' in the
+  //    static MAZE) and regular pellets ('.') share the same boolean
+  //    pelletMap, so we re-check the static tile to distinguish them
+  //    for scoring + the frightened-mode trigger surfaced via result.
   const row = state.pelletMap[pac.y];
   if (row && row[pac.x]) {
     row[pac.x] = false;
     state.pellets -= 1;
-    state.score += 10;
+    const staticTile = MAZE[pac.y]?.[pac.x];
+    if (staticTile === "o") {
+      state.score += 50;
+      result.atePowerPellet = true;
+    } else {
+      state.score += 10;
+    }
   }
+  return result;
 }
 
 /** Test/debug helper: set the queued direction. */
