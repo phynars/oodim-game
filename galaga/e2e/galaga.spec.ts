@@ -184,3 +184,62 @@ test("Space fires a player bullet that travels upward; cap is 2 concurrent", asy
   });
   expect(maxObserved).toBeLessThanOrEqual(2);
 });
+
+test("enemies enter on arcs and settle into formation; all three kinds present", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  // Leave READY so the wave can spawn and the choreography can tick.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  // The wave spawns on the first 'playing' tick — give the engine a beat to
+  // populate `enemies` before asserting non-empty.
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    null,
+    { timeout: 5000 },
+  );
+
+  const roster = await page.evaluate(() => window.__galaga!.enemies);
+  expect(roster.length).toBeGreaterThan(0);
+  // Every enemy must declare a known kind, an id, and finite coords.
+  for (const e of roster) {
+    expect(["bee", "butterfly", "boss"]).toContain(e.kind);
+    expect(Number.isFinite(e.x)).toBe(true);
+    expect(Number.isFinite(e.y)).toBe(true);
+    expect(typeof e.id).toBe("number");
+  }
+  // All three kinds present (contract requirement).
+  const kinds = new Set(roster.map((e) => e.kind));
+  expect(kinds.has("bee")).toBe(true);
+  expect(kinds.has("butterfly")).toBe(true);
+  expect(kinds.has("boss")).toBe(true);
+
+  // Within a bounded number of ticks, every enemy must reach 'formation'.
+  // Entrance is ~90 ticks plus per-enemy stagger (~6 ticks each); with a
+  // ~7×3 grid that's <180 game ticks. Give the harness generous wall-clock
+  // time since the loop runs at rAF cadence, not real-time ticks.
+  await page.waitForFunction(
+    () => {
+      const es = window.__galaga?.enemies ?? [];
+      return es.length > 0 && es.every((e) => e.state === "formation");
+    },
+    null,
+    { timeout: 15000 },
+  );
+
+  // Spot-check: parked enemies cluster near the top of the field (the grid
+  // sits well above the player). Catches a regression where 'formation' is
+  // claimed but enemies never actually move to the grid.
+  const parked = await page.evaluate(() => window.__galaga!.enemies);
+  for (const e of parked) {
+    expect(e.state).toBe("formation");
+    expect(e.y).toBeLessThan(window.__galaga!.field.height / 2);
+  }
+});

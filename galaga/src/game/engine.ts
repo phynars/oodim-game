@@ -17,6 +17,7 @@ import {
   PLAYER_SPEED_PX_PER_TICK,
   type InputSource,
 } from "./input";
+import { spawnWave, tickEnemies } from "./enemies";
 
 interface Star {
   x: number;
@@ -111,6 +112,10 @@ export class Engine {
     }
     if (this.state.status === "playing") {
       this.state.tick += 1;
+      // Spawn the enemy wave once we're playing; tick the formation every
+      // step so entrance arcs advance and parked enemies breathe.
+      spawnWave(this.state);
+      tickEnemies(this.state);
       // Sample input once per fixed-step so movement is deterministic at
       // 60 Hz regardless of render cadence. Both arrows held = no motion
       // (they cancel), matching the arcade feel.
@@ -181,6 +186,26 @@ export class Engine {
     for (const b of this.state.bullets) {
       ctx.fillStyle = b.from === "player" ? "#fffae0" : "#ff7777";
       ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y) - 4, 2, 8);
+    }
+
+    // Enemies — color-coded by kind so the formation reads at a glance.
+    // Geometry is intentionally crude (the sprite slice is a later backlog
+    // item); what matters here is that the formation choreography is on
+    // screen and matches `window.__galaga.enemies`.
+    for (const e of this.state.enemies) {
+      ctx.fillStyle =
+        e.kind === "boss"
+          ? "#3ad6a8" // green boss Galaga
+          : e.kind === "butterfly"
+          ? "#ff5e7a" // red/pink butterfly
+          : "#5ab8ff"; // blue bee
+      const size = e.kind === "boss" ? 12 : 10;
+      ctx.fillRect(
+        Math.round(e.x) - size / 2,
+        Math.round(e.y) - size / 2,
+        size,
+        size,
+      );
     }
 
     // Player fighter — a simple upward-pointing arrow. Movement is a backlog
