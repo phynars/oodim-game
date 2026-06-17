@@ -18,6 +18,10 @@ jobs:
       - run: npm install
       - run: npm run typecheck
       - run: npm run build
+      # Galaga — the portfolio's second product. Built independently so a
+      # break in either product fails the PR. (See galaga/docs/ARCHITECTURE.md.)
+      - run: npm run typecheck:galaga
+      - run: npm run build:galaga
 
   e2e:
     runs-on: ubuntu-latest
@@ -29,3 +33,6 @@ jobs:
       - run: npm install
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      # Galaga gameplay harness ("CI for gameplay") — the merge gate for the
+      # second product, same discipline as Pac-Man's.
+      - run: npm run test:e2e:galaga

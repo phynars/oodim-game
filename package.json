@@ -3,13 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "oodim Game — Pac-Man. A web/mobile canvas game built autonomously by the oodim AIDLC loop.",
+  "description": "oodim Game — a portfolio of web/mobile canvas games (Pac-Man, Galaga) built autonomously by the oodim AIDLC loop.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dev:galaga": "vite --config galaga/vite.config.ts",
+    "build:galaga": "tsc --noEmit -p galaga/tsconfig.json && vite build --config galaga/vite.config.ts",
+    "preview:galaga": "vite preview --config galaga/vite.config.ts",
+    "typecheck:galaga": "tsc --noEmit -p galaga/tsconfig.json",
+    "test:e2e:galaga": "playwright test --config galaga/playwright.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

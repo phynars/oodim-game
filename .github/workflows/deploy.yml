@@ -29,13 +29,15 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - name: Stage built assets under /pacman/
+      - run: npm run build:galaga
+      - name: Stage built assets (portfolio — /pacman/ + /galaga/)
         run: |
           rm -rf public
-          mkdir -p public/pacman
+          mkdir -p public/pacman public/galaga
           cp -r dist/* public/pacman/
-          # Root redirect so game.oodim.com/ → /pacman/.
-          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/pacman/"><title>oodim Game</title><a href="/pacman/">oodim Game</a>' > public/index.html
+          cp -r dist-galaga/* public/galaga/
+          # Root portfolio landing linking both products.
+          cp landing/index.html public/index.html
       - name: Deploy to Cloudflare
         if: ${{ env.CF_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
