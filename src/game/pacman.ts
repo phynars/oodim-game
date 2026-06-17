@@ -26,9 +26,22 @@ import type { Direction, GameState, PacState } from "./types";
 const SPEED_PER_TICK = 0.12;
 
 /** Classic-ish spawn: row 23, in the open gap left of center. From here
- *  the very next tile right is a pellet, which is what the e2e relies on. */
-const SPAWN_X = 13;
-const SPAWN_Y = 23;
+ *  the very next tile right is a pellet, which is what the e2e relies on.
+ *  Exported so the collision-reset path can snap Pac back to start. */
+export const SPAWN_X = 13;
+export const SPAWN_Y = 23;
+
+/** Reset Pac to spawn — used by the engine after a fatal ghost collision.
+ *  Clears direction + queued input + internal glide progress so the next
+ *  tick starts cleanly. Does NOT touch lives or score. */
+export function resetPacToSpawn(state: GameState): void {
+  const pac = state.pac as PacState & { _progress?: number };
+  pac.x = SPAWN_X;
+  pac.y = SPAWN_Y;
+  pac.dir = "none";
+  pac.queued = "none";
+  pac._progress = 0;
+}
 
 /** Pellet map: mutable mirror of the static MAZE for tiles that *contain*
  *  food. `true` = pellet present, `false` = eaten. Indexed [row][col].

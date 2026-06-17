@@ -21,6 +21,7 @@ interface PacInternals {
   inkyTarget: (pac: Tile & { dir: Dir }, blinky: Tile) => Tile;
   clydeTarget: (clyde: Tile, pac: Tile) => Tile;
   scatterTarget: (name: "blinky" | "pinky" | "inky" | "clyde") => Tile;
+  forceGhostOntoPac: (name: "blinky" | "pinky" | "inky" | "clyde") => void;
 }
 
 declare global {
@@ -262,4 +263,63 @@ test("ghost targeting — Blinky/Pinky/Inky/Clyde each compute distinct targets"
   // Clyde — far chases Pac directly; close returns the scatter corner.
   expect(results.clydeFar).toEqual({ x: 20, y: 5 });
   expect(results.clydeClose).toEqual(results.clydeCorner);
+});
+
+// Issue #7 — chase/scatter collision costs a life and resets positions.
+//
+// We force the overlap via the `forceGhostOntoPac` test hook: warping
+// Blinky directly onto Pac's tile guarantees a same-tick collision
+// regardless of where the live AI happens to have wandered. Without
+// this hook the test would race the targeting heuristic on every CI
+// machine.
+//
+// FAILS on the pre-change code (no collision handling — lives stays 3).
+// PASSES once the engine decrements lives + resets on chase contact.
+test("chase-mode ghost collision drops a life and resets Pac", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+  await page.waitForFunction(() => Boolean(window.__pacInternals));
+
+  // Focus the canvas so the rAF loop is running and the engine is
+  // actually ticking — the collision is detected inside update().
+  await page.locator("canvas").click();
+
+  const before = await page.evaluate(() => {
+    const s = window.__pac!;
+    return { lives: s.lives, status: s.status };
+  });
+  expect(before.lives).toBe(3);
+
+  // Warp Blinky onto Pac. Blinky boots in 'scatter' (then flips to
+  // 'chase' at tick 300); either mode is fatal — both are non-frightened.
+  await page.evaluate(() => {
+    window.__pacInternals!.forceGhostOntoPac("blinky");
+  });
+
+  // Wait for the collision to be processed on the next update tick.
+  await page.waitForFunction(
+    (b) => {
+      const s = window.__pac;
+      return Boolean(s) && s!.lives < b.lives;
+    },
+    before,
+    { timeout: 3000 },
+  );
+
+  const after = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      lives: s.lives,
+      status: s.status,
+      pac: { x: s.pac.x, y: s.pac.y, dir: s.pac.dir },
+    };
+  });
+
+  expect(after.lives).toBe(2);
+  // Pac snapped back to spawn (13, 23) with no active direction.
+  expect(after.pac).toEqual({ x: 13, y: 23, dir: "none" });
+  // Still playable — not 'lost' yet.
+  expect(after.status).not.toBe("lost");
 });

@@ -7,7 +7,7 @@
 // across machines — the Playwright harness counts on that.
 import { initialState, type GameState } from "./types";
 import { COLS, ROWS, TILE, MAZE, tileAt } from "./maze";
-import { buildPelletMap, tickPac } from "./pacman";
+import { buildPelletMap, resetPacToSpawn, tickPac } from "./pacman";
 import { bindInput, type InputBinding } from "./input";
 import {
   blinkyTarget,
@@ -107,6 +107,28 @@ export class Engine {
       inkyTarget,
       clydeTarget,
       scatterTarget,
+      // Test hook: warp the named ghost onto Pac's current tile in a
+      // fatal mode. The engine's collision check runs at the end of the
+      // next update() and will trigger handlePacDeath — costing a life
+      // and snapping Pac back to spawn. Used by the chase-collision e2e
+      // to avoid racing the live targeting AI on slow CI machines.
+      //
+      // Forces status='out' (in case the ghost is still in the house)
+      // and mode='chase' if currently 'frightened' or 'eaten', so the
+      // collision branch is unambiguously the kill path. Resets the
+      // ghost's sub-tile progress so it doesn't immediately glide off
+      // Pac's tile before the collision check fires.
+      forceGhostOntoPac: (name: GhostName): void => {
+        const g = this.ghosts.find((gh) => gh.name === name);
+        if (!g) return;
+        g.x = this.state.pac.x;
+        g.y = this.state.pac.y;
+        g.status = "out";
+        if (g.mode === "frightened" || g.mode === "eaten") {
+          g.mode = "chase";
+        }
+        g._progress = 0;
+      },
     };
   }
 
@@ -196,9 +218,11 @@ export class Engine {
     //                          ghost flips to 'eaten' (eyes) and races
     //                          home; tickGhost handles the revive.
     //   • eaten ghost       → no interaction (eyes pass through Pac).
-    //   • scatter / chase   → would normally kill Pac; that arrives
-    //                          with the lives slice. For now: ignore so
-    //                          this slice stays scoped to power pellets.
+    //   • scatter / chase   → costs a life. Pac + all ghosts snap back
+    //                          to spawn; at zero lives, status flips to
+    //                          'lost' and the loop effectively halts on
+    //                          a frozen frame.
+    let pacDied = false;
     for (const g of this.ghosts) {
       if (g.status !== "out") continue;
       if (g.x !== this.state.pac.x || g.y !== this.state.pac.y) continue;
@@ -210,10 +234,49 @@ export class Engine {
         this.state.score += 200 * (1 << idx);
         g.mode = "eaten";
         g._progress = 0;
+      } else if (g.mode === "scatter" || g.mode === "chase") {
+        // Fatal contact — handle once per tick even if multiple ghosts
+        // sit on Pac's tile.
+        pacDied = true;
+        break;
       }
+      // 'eaten' ghosts (eyes) pass through Pac harmlessly — no branch.
+    }
+    if (pacDied) {
+      this.handlePacDeath();
     }
     // Reuse the existing array (mutate length + indices) so consumers
     // holding a reference to state.ghosts still see updates.
+    this.state.ghosts.length = this.ghosts.length;
+    for (let i = 0; i < this.ghosts.length; i += 1) {
+      this.state.ghosts[i] = publicGhostView(this.ghosts[i]);
+    }
+  }
+
+  /** A chase/scatter ghost touched Pac. Decrement lives; on >0, reset Pac
+   *  and the full ghost roster to spawn positions and resume play. On
+   *  zero, flip status to 'lost' — the loop still runs (so the render
+   *  stays painted) but no further collisions can fire because every
+   *  ghost has been reset away from Pac and Pac won't move (dir='none').
+   *  Frightened state is cleared so a death mid-power-pellet doesn't
+   *  carry residual blue ghosts into the next life. */
+  private handlePacDeath(): void {
+    this.state.lives -= 1;
+    this.frightenedTicksLeft = 0;
+    this.frightenedEatStreak = 0;
+    // Re-spawn the entire ghost roster — Blinky out, the rest back in
+    // the house gated by the dot counter (which is unchanged because
+    // pellets eaten so far are kept).
+    this.ghosts = spawnGhosts();
+    // Reset Pac to spawn AFTER ghosts, so the new roster isn't sitting
+    // on Pac's old tile (which we just vacated anyway).
+    resetPacToSpawn(this.state);
+    if (this.state.lives <= 0) {
+      this.state.lives = 0;
+      this.state.status = "lost";
+    }
+    // Republish the slim ghost view immediately so a test polling on the
+    // very next tick sees the reset roster.
     this.state.ghosts.length = this.ghosts.length;
     for (let i = 0; i < this.ghosts.length; i += 1) {
       this.state.ghosts[i] = publicGhostView(this.ghosts[i]);
@@ -446,6 +509,7 @@ declare global {
       inkyTarget: typeof inkyTarget;
       clydeTarget: typeof clydeTarget;
       scatterTarget: typeof scatterTarget;
+      forceGhostOntoPac: (name: GhostName) => void;
     };
   }
 }
