@@ -1,34 +1,49 @@
-// Blinky — the red ghost. First slice of ghost AI.
+// The ghost quartet — Blinky, Pinky, Inky, Clyde.
 //
-// Movement model:
-// - Tile-based. At each tile boundary, Blinky looks at the four neighbors,
-//   excludes the tile he just came from (no reversing), and picks the
-//   walkable neighbor whose squared distance to the current target tile
-//   is smallest. Classic Pac AI — deterministic, no path-finding.
-// - A mode timer alternates SCATTER ↔ CHASE on a fixed cadence. In
-//   scatter Blinky targets a fixed corner; in chase he targets Pac's
-//   current tile. The arcade uses a longer, irregular schedule; we use
-//   a single steady period so the e2e can deterministically observe a
-//   transition inside its polling window.
+// Each ghost shares the same per-tile AI shell (mode timer + greedy
+// neighbor pick that minimises squared distance to a target tile,
+// arcade tie-break up>left>down>right, no 180° reversals). What makes
+// them feel distinct is the TARGET TILE — and each ghost computes that
+// differently. Those targeting rules are the load-bearing bit, so they
+// live as PURE, EXPORTED functions: easy to call from a unit test with
+// hand-crafted inputs.
 //
-// Speed: one tile per (1 / SPEED_PER_TICK) ticks, mirroring Pac's
-// sub-tile glide so the ghost moves at a comparable rate.
+// Targeting rules (arcade-canonical):
+//   • Blinky: chases Pac's current tile.
+//   • Pinky:  ambushes 4 tiles ahead of Pac's facing direction.
+//             (We omit the original "up" overflow bug — not needed for
+//             the harness contract.)
+//   • Inky:   uses Blinky as a pivot. Take the tile 2 ahead of Pac,
+//             then double the vector FROM Blinky TO that pivot.
+//   • Clyde:  chases Pac when far (>8 tiles), flees to his corner
+//             when close. Famously cowardly.
+// All four fall back to a fixed corner during SCATTER.
+//
+// House-exit timing is gated by the GLOBAL DOT COUNTER (pellets eaten
+// since boot). Blinky starts already out. Pinky leaves at 7, Inky at
+// 17, Clyde at 32 — matches the arcade thresholds closely enough for
+// a believable stagger without porting the full per-ghost counter.
 
 import { COLS, MAZE, ROWS } from "./maze";
-import type { GameState } from "./types";
+import type { Direction, GameState } from "./types";
 
 export type GhostMode = "scatter" | "chase";
+export type GhostName = "blinky" | "pinky" | "inky" | "clyde";
 
 /** Public ghost state — mirrored onto `window.__pac.ghosts`. Keep this
  *  small; the e2e contract only needs name, tile coords, and mode. */
 export interface GhostState {
-  name: string;
+  name: GhostName;
   /** Tile column. */
   x: number;
   /** Tile row. */
   y: number;
   mode: GhostMode;
 }
+
+/** Where a ghost is in its lifecycle. "house" = waiting inside the
+ *  ghost-house, gated by the dot counter. "out" = roaming the maze. */
+export type GhostStatus = "house" | "out";
 
 /** Internal ghost — adds the bits the AI needs but the test contract
  *  doesn't care about. The engine stores these; we publish the slim
@@ -38,6 +53,10 @@ export interface GhostInternal extends GhostState {
   lastDir: Dir;
   /** Sub-tile glide progress, 0..1. Same trick Pac uses. */
   _progress: number;
+  /** "house" until the dot-counter releases this ghost; then "out". */
+  status: GhostStatus;
+  /** Dot-counter threshold for leaving the house. Blinky = 0. */
+  releaseAtPellets: number;
 }
 
 type Dir = "up" | "down" | "left" | "right";
@@ -47,19 +66,33 @@ const DIRS: readonly Dir[] = ["up", "down", "left", "right"] as const;
  *  builds without being immediately lethal. */
 const GHOST_SPEED_PER_TICK = 0.10;
 
-/** Mode period, in ticks. 60 ticks/s × 5s = 300 ticks per phase. The
- *  e2e waits up to ~6s after boot, so a transition is guaranteed inside
- *  the polling window. Boots in scatter (matches arcade). */
+/** Mode period, in ticks. 60 ticks/s × 5s = 300 ticks per phase. */
 export const MODE_PERIOD_TICKS = 300;
 
-/** Blinky's scatter target: top-right corner, just outside the maze
- *  proper. Arcade-canonical. */
-const BLINKY_SCATTER: { x: number; y: number } = { x: COLS - 2, y: 0 };
+/** Scatter corners — one per ghost, arcade-canonical. */
+const SCATTER_CORNERS: Record<GhostName, { x: number; y: number }> = {
+  blinky: { x: COLS - 2, y: 0 }, // top-right
+  pinky: { x: 1, y: 0 }, // top-left
+  inky: { x: COLS - 1, y: ROWS - 1 }, // bottom-right
+  clyde: { x: 0, y: ROWS - 1 }, // bottom-left
+};
 
-/** Blinky's spawn tile. Top of the ghost-house — the spot Blinky leaves
- *  from in the arcade. Row 11 column 13/14 is the open lip above the
- *  house; we pick (13, 11) which is the empty cell just inside. */
-const BLINKY_SPAWN: { x: number; y: number } = { x: 13, y: 11 };
+/** Spawn tiles. Blinky boots already out (top of the house). The other
+ *  three boot inside the house — the dot counter releases them. */
+const SPAWN_TILES: Record<GhostName, { x: number; y: number }> = {
+  blinky: { x: 13, y: 11 },
+  pinky: { x: 13, y: 14 },
+  inky: { x: 11, y: 14 },
+  clyde: { x: 15, y: 14 },
+};
+
+/** Dot-counter thresholds for house exit. Arcade-true enough. */
+const RELEASE_THRESHOLDS: Record<GhostName, number> = {
+  blinky: 0,
+  pinky: 7,
+  inky: 17,
+  clyde: 32,
+};
 
 /** Reverse of a direction (for the "no 180°" rule). */
 function opposite(d: Dir): Dir {
@@ -115,24 +148,113 @@ function sqDist(ax: number, ay: number, bx: number, by: number): number {
   return dx * dx + dy * dy;
 }
 
-/** Build the initial Blinky. Engine calls this once at construction. */
-export function spawnBlinky(): GhostInternal {
-  return {
-    name: "blinky",
-    x: BLINKY_SPAWN.x,
-    y: BLINKY_SPAWN.y,
-    mode: "scatter",
-    lastDir: "left",
-    _progress: 0,
-  };
+/** Unit vector for a Direction, in tile coords. 'none' → (0,0). */
+function dirVector(d: Direction): { dx: number; dy: number } {
+  switch (d) {
+    case "up":
+      return { dx: 0, dy: -1 };
+    case "down":
+      return { dx: 0, dy: 1 };
+    case "left":
+      return { dx: -1, dy: 0 };
+    case "right":
+      return { dx: 1, dy: 0 };
+    case "none":
+      return { dx: 0, dy: 0 };
+  }
 }
 
-/** Decide Blinky's current target tile from mode + Pac position. */
-function targetFor(g: GhostInternal, state: GameState): { x: number; y: number } {
-  if (g.mode === "chase") {
-    return { x: state.pac.x, y: state.pac.y };
+// ---------------------------------------------------------------------------
+// Targeting functions — pure, exported, individually unit-testable.
+// Each takes the minimal inputs it needs. They never read the maze;
+// targets are allowed to land on walls — the greedy picker still chooses
+// the best WALKABLE neighbor toward that target, exactly like the arcade.
+// ---------------------------------------------------------------------------
+
+/** Blinky targets Pac's current tile. */
+export function blinkyTarget(pac: { x: number; y: number }): { x: number; y: number } {
+  return { x: pac.x, y: pac.y };
+}
+
+/** Pinky targets 4 tiles ahead of Pac in his facing direction. */
+export function pinkyTarget(pac: {
+  x: number;
+  y: number;
+  dir: Direction;
+}): { x: number; y: number } {
+  const v = dirVector(pac.dir);
+  return { x: pac.x + v.dx * 4, y: pac.y + v.dy * 4 };
+}
+
+/** Inky targets the tile reached by doubling the Blinky→pivot vector,
+ *  where pivot = 2 tiles ahead of Pac. */
+export function inkyTarget(
+  pac: { x: number; y: number; dir: Direction },
+  blinky: { x: number; y: number },
+): { x: number; y: number } {
+  const v = dirVector(pac.dir);
+  const pivot = { x: pac.x + v.dx * 2, y: pac.y + v.dy * 2 };
+  return { x: pivot.x + (pivot.x - blinky.x), y: pivot.y + (pivot.y - blinky.y) };
+}
+
+/** Clyde chases Pac when his squared distance is > 64 (>8 tiles),
+ *  otherwise flees to his scatter corner. */
+export function clydeTarget(
+  clyde: { x: number; y: number },
+  pac: { x: number; y: number },
+): { x: number; y: number } {
+  if (sqDist(clyde.x, clyde.y, pac.x, pac.y) > 64) {
+    return { x: pac.x, y: pac.y };
   }
-  return BLINKY_SCATTER;
+  return SCATTER_CORNERS.clyde;
+}
+
+/** Scatter target for any ghost by name. */
+export function scatterTarget(name: GhostName): { x: number; y: number } {
+  return SCATTER_CORNERS[name];
+}
+
+/** Build the initial ghost roster — all four ghosts, with Blinky out
+ *  and the others gated by the dot counter. */
+export function spawnGhosts(): GhostInternal[] {
+  const make = (name: GhostName, status: GhostStatus, lastDir: Dir): GhostInternal => ({
+    name,
+    x: SPAWN_TILES[name].x,
+    y: SPAWN_TILES[name].y,
+    mode: "scatter",
+    lastDir,
+    _progress: 0,
+    status,
+    releaseAtPellets: RELEASE_THRESHOLDS[name],
+  });
+  return [
+    make("blinky", "out", "left"),
+    make("pinky", "house", "up"),
+    make("inky", "house", "up"),
+    make("clyde", "house", "up"),
+  ];
+}
+
+/** Decide a ghost's current target tile from mode + game state. */
+function targetFor(
+  g: GhostInternal,
+  state: GameState,
+  blinky: { x: number; y: number } | null,
+): { x: number; y: number } {
+  if (g.mode === "scatter") return scatterTarget(g.name);
+  const pac = { x: state.pac.x, y: state.pac.y, dir: state.pac.dir };
+  switch (g.name) {
+    case "blinky":
+      return blinkyTarget(pac);
+    case "pinky":
+      return pinkyTarget(pac);
+    case "inky":
+      // Fallback to Blinky's own position if Blinky isn't in the roster
+      // (shouldn't happen in normal play, but the targeting fn is total).
+      return inkyTarget(pac, blinky ?? { x: pac.x, y: pac.y });
+    case "clyde":
+      return clydeTarget({ x: g.x, y: g.y }, pac);
+  }
 }
 
 /** Pick the best non-reversing walkable neighbor for `g`. Ties broken
@@ -169,27 +291,50 @@ function pickDirection(g: GhostInternal, target: { x: number; y: number }): Dir 
   return best;
 }
 
+/** Compute pellets-eaten since boot — used as the dot counter. */
+function pelletsEaten(state: GameState, totalPelletsAtBoot: number): number {
+  return totalPelletsAtBoot - state.pellets;
+}
+
 /** One tick of ghost AI. Mutates the ghost in place; updates mode based
- *  on the engine tick. Publishes a slim view onto state.ghosts. */
-export function tickGhost(g: GhostInternal, state: GameState): void {
+ *  on the engine tick. The engine is responsible for re-publishing the
+ *  slim view onto state.ghosts after each tick. */
+export function tickGhost(
+  g: GhostInternal,
+  state: GameState,
+  blinky: { x: number; y: number } | null,
+  totalPelletsAtBoot: number,
+): void {
   // 1. Mode timer. Period-based flip; deterministic w.r.t. tick.
-  //    tick 0..MODE_PERIOD-1 → scatter, MODE_PERIOD..2*MODE_PERIOD-1 →
-  //    chase, and so on.
   const phase = Math.floor(state.tick / MODE_PERIOD_TICKS) % 2;
   g.mode = phase === 0 ? "scatter" : "chase";
 
-  // 2. Advance sub-tile progress.
+  // 2. House gating. While "house", count pellets and step out when the
+  //    threshold is crossed. Movement inside the house is intentionally
+  //    skipped — a simple stagger that's easy to reason about and lets
+  //    the e2e watch the roster grow into the maze deterministically.
+  if (g.status === "house") {
+    if (pelletsEaten(state, totalPelletsAtBoot) >= g.releaseAtPellets) {
+      // Step out the door onto the lip tile above the house.
+      g.x = 13;
+      g.y = 11;
+      g.status = "out";
+      g.lastDir = "left";
+      g._progress = 0;
+    }
+    return;
+  }
+
+  // 3. Advance sub-tile progress.
   g._progress += GHOST_SPEED_PER_TICK;
   if (g._progress < 1) return;
   g._progress -= 1;
 
-  // 3. At the tile boundary, choose a direction and move one tile.
-  const target = targetFor(g, state);
+  // 4. At the tile boundary, choose a direction and move one tile.
+  const target = targetFor(g, state, blinky);
   const dir = pickDirection(g, target);
   const s = step(g.x, g.y, dir);
   const next = wrap(s.x, s.y);
-  // pickDirection only returns walkable neighbors except the fully-boxed-in
-  // edge case; guard once more for safety.
   if (!isWalkableForGhost(next.x, next.y)) {
     g._progress = 0;
     return;
@@ -202,4 +347,9 @@ export function tickGhost(g: GhostInternal, state: GameState): void {
 /** Strip a GhostInternal down to the public contract shape. */
 export function publicGhostView(g: GhostInternal): GhostState {
   return { name: g.name, x: g.x, y: g.y, mode: g.mode };
+}
+
+/** Back-compat alias — older code paths still importing `spawnBlinky`. */
+export function spawnBlinky(): GhostInternal {
+  return spawnGhosts()[0];
 }

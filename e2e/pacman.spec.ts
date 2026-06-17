@@ -1,4 +1,4 @@
-// End-to-end harness for Pac movement + pellet eating.
+// End-to-end harness for Pac movement + pellet eating + ghost AI.
 //
 // We dispatch a real ArrowRight keydown into the page and then poll
 // `window.__pac` — that's the load-bearing contract. The assertions
@@ -10,9 +10,23 @@ import { expect, test } from "@playwright/test";
 
 import type { GameState } from "../src/game/types";
 
+// Shape of the in-browser unit-test bridge exposed by engine.ts. Each
+// function is the same pure targeting fn imported from src/game/ghost.ts;
+// the bridge lets us call them via page.evaluate with crafted inputs.
+type Tile = { x: number; y: number };
+type Dir = "none" | "up" | "down" | "left" | "right";
+interface PacInternals {
+  blinkyTarget: (pac: Tile) => Tile;
+  pinkyTarget: (pac: Tile & { dir: Dir }) => Tile;
+  inkyTarget: (pac: Tile & { dir: Dir }, blinky: Tile) => Tile;
+  clydeTarget: (clyde: Tile, pac: Tile) => Tile;
+  scatterTarget: (name: "blinky" | "pinky" | "inky" | "clyde") => Tile;
+}
+
 declare global {
   interface Window {
     __pac?: GameState;
+    __pacInternals?: PacInternals;
   }
 }
 
@@ -107,4 +121,72 @@ test("ghost roster exposes Blinky and the mode flips scatter→chase", async ({
   // Sanity: tile coords stay on the grid.
   expect(Number.isInteger(finalState.x)).toBe(true);
   expect(Number.isInteger(finalState.y)).toBe(true);
+});
+
+// Issue #5 — full ghost quartet. The roster contract grows to four named
+// entries. This test FAILS on the pre-change code (which only spawns
+// Blinky) and PASSES once spawnGhosts() returns all four.
+test("ghost quartet — roster has Blinky, Pinky, Inky, Clyde", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+
+  const roster = await page.evaluate(() => {
+    const s = window.__pac!;
+    return s.ghosts.map((g) => g.name);
+  });
+
+  expect(roster.length).toBe(4);
+  // Set equality — order is engine-internal, but the four names are fixed.
+  expect(new Set(roster)).toEqual(
+    new Set(["blinky", "pinky", "inky", "clyde"]),
+  );
+});
+
+// Issue #5 — per-ghost targeting unit tests, run in-browser via the
+// __pacInternals bridge. Each ghost's targeting fn is pure; we feed it
+// crafted inputs and assert the exact tile it returns. These cover each
+// targeting function independently of the live engine state.
+test("ghost targeting — Blinky/Pinky/Inky/Clyde each compute distinct targets", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pacInternals));
+
+  const results = await page.evaluate(() => {
+    const api = window.__pacInternals!;
+    return {
+      // Blinky: targets Pac's current tile, full stop.
+      blinky: api.blinkyTarget({ x: 10, y: 20 }),
+      // Pinky: 4 tiles ahead of Pac in his facing direction.
+      pinkyRight: api.pinkyTarget({ x: 10, y: 20, dir: "right" }),
+      pinkyUp: api.pinkyTarget({ x: 10, y: 20, dir: "up" }),
+      pinkyNone: api.pinkyTarget({ x: 10, y: 20, dir: "none" }),
+      // Inky: double the Blinky→pivot vector, where pivot is 2 ahead of Pac.
+      // Pac at (10,20) facing right → pivot (12,20). Blinky at (4,20) →
+      // vector (8,0) → target (20,20).
+      inky: api.inkyTarget({ x: 10, y: 20, dir: "right" }, { x: 4, y: 20 }),
+      // Clyde: chase when far (>8 tiles), flee when close.
+      clydeFar: api.clydeTarget({ x: 0, y: 30 }, { x: 20, y: 5 }),
+      clydeClose: api.clydeTarget({ x: 5, y: 5 }, { x: 6, y: 6 }),
+      clydeCorner: api.scatterTarget("clyde"),
+    };
+  });
+
+  // Blinky.
+  expect(results.blinky).toEqual({ x: 10, y: 20 });
+
+  // Pinky.
+  expect(results.pinkyRight).toEqual({ x: 14, y: 20 });
+  expect(results.pinkyUp).toEqual({ x: 10, y: 16 });
+  // 'none' direction → no offset.
+  expect(results.pinkyNone).toEqual({ x: 10, y: 20 });
+
+  // Inky.
+  expect(results.inky).toEqual({ x: 20, y: 20 });
+
+  // Clyde — far chases Pac directly; close returns the scatter corner.
+  expect(results.clydeFar).toEqual({ x: 20, y: 5 });
+  expect(results.clydeClose).toEqual(results.clydeCorner);
 });

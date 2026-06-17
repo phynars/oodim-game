@@ -10,10 +10,16 @@ import { COLS, ROWS, TILE, MAZE, tileAt } from "./maze";
 import { buildPelletMap, tickPac } from "./pacman";
 import { bindInput, type InputBinding } from "./input";
 import {
+  blinkyTarget,
+  clydeTarget,
+  inkyTarget,
+  pinkyTarget,
   publicGhostView,
-  spawnBlinky,
+  scatterTarget,
+  spawnGhosts,
   tickGhost,
   type GhostInternal,
+  type GhostName,
 } from "./ghost";
 
 /** Logical update rate: 60 Hz. */
@@ -39,6 +45,14 @@ const POWER_PELLET_RADIUS = 3;
 /** Ghost-house door — pale pink bar. */
 const DOOR_COLOR = "#ffb8ae";
 
+/** Per-ghost render colour. Arcade-canonical. */
+const GHOST_COLORS: Record<GhostName, string> = {
+  blinky: "#ff1d1d",
+  pinky: "#ffb8de",
+  inky: "#00ffde",
+  clyde: "#ffb847",
+};
+
 export class Engine {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -52,6 +66,8 @@ export class Engine {
   /** Internal ghost roster — full AI state. Public projections live on
    *  `state.ghosts` (the test contract). Source of truth is here. */
   private ghosts: GhostInternal[] = [];
+  /** Pellet count at boot — used by the ghost-house dot counter. */
+  private readonly totalPelletsAtBoot: number;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -64,12 +80,24 @@ export class Engine {
     // Seed the live pellet map from the static layout. Owned by the engine
     // and mutated by tickPac as pellets get eaten.
     this.state.pelletMap = buildPelletMap();
-    // Spawn the first ghost. Public roster mirrors the internal one.
-    this.ghosts = [spawnBlinky()];
+    this.totalPelletsAtBoot = this.state.pellets;
+    // Spawn the full quartet. Blinky boots out; the others wait in the
+    // house and are released as the dot counter crosses each threshold.
+    this.ghosts = spawnGhosts();
     this.state.ghosts = this.ghosts.map(publicGhostView);
     // Publish the state contract immediately so tests that poll at boot
     // (before the first rAF tick) still see `status: 'ready'`.
     window.__pac = this.state;
+    // Expose pure targeting functions for the in-browser unit tests. The
+    // e2e harness calls these via page.evaluate with crafted inputs to
+    // verify each ghost's targeting rule in isolation.
+    window.__pacInternals = {
+      blinkyTarget,
+      pinkyTarget,
+      inkyTarget,
+      clydeTarget,
+      scatterTarget,
+    };
   }
 
   /** Begin the loop. Idempotent — calling twice is a no-op. */
@@ -127,10 +155,12 @@ export class Engine {
     // Pac-Man movement + pellet eating. Ghosts and power-pellet effects
     // will hang off the same tick once they land.
     tickPac(this.state);
-    // Ghosts: advance internal AI, then re-publish the slim view onto
-    // the state contract so `window.__pac.ghosts` stays current.
+    // Ghosts: Inky needs Blinky's position as a pivot, so snapshot it
+    // before any ghost moves this tick (consistent within the step).
+    const blinky = this.ghosts.find((g) => g.name === "blinky");
+    const blinkyPos = blinky ? { x: blinky.x, y: blinky.y } : null;
     for (const g of this.ghosts) {
-      tickGhost(g, this.state);
+      tickGhost(g, this.state, blinkyPos, this.totalPelletsAtBoot);
     }
     // Reuse the existing array (mutate length + indices) so consumers
     // holding a reference to state.ghosts still see updates.
@@ -254,7 +284,7 @@ export class Engine {
     ctx.fill();
   }
 
-  /** Ghosts as flat coloured discs on their tile. Blinky is red. */
+  /** Ghosts as flat coloured discs on their tile. One colour per ghost. */
   private renderGhosts(): void {
     const { ctx, canvas, state } = this;
     const mazeW = COLS * TILE;
@@ -264,10 +294,26 @@ export class Engine {
     for (const g of state.ghosts) {
       const cx = ox + g.x * TILE + TILE / 2;
       const cy = oy + g.y * TILE + TILE / 2;
-      ctx.fillStyle = g.name === "blinky" ? "#ff1d1d" : "#ffffff";
+      ctx.fillStyle = GHOST_COLORS[g.name] ?? "#ffffff";
       ctx.beginPath();
       ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+}
+
+// Augment the global Window with the in-browser unit-test bridge. The
+// real GameState contract lives on `window.__pac` (declared in types.ts);
+// the targeting functions are exposed separately so the e2e harness can
+// invoke them with crafted inputs.
+declare global {
+  interface Window {
+    __pacInternals?: {
+      blinkyTarget: typeof blinkyTarget;
+      pinkyTarget: typeof pinkyTarget;
+      inkyTarget: typeof inkyTarget;
+      clydeTarget: typeof clydeTarget;
+      scatterTarget: typeof scatterTarget;
+    };
   }
 }
