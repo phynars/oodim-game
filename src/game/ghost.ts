@@ -347,6 +347,7 @@ export function tickGhost(
   blinky: { x: number; y: number } | null,
   totalPelletsAtBoot: number,
   frightenedTicksLeft: number,
+  speedMultiplier: number,
 ): void {
   // 1. Mode resolution. Priority: eaten > frightened > scatter/chase.
   if (g.mode !== "eaten") {
@@ -375,12 +376,20 @@ export function tickGhost(
   }
 
   // 3. Advance sub-tile progress at the mode-appropriate speed.
-  const speed =
+  //    `speedMultiplier` lets the engine bump baseline ghost speed
+  //    each time the level resets (see Engine.handleLevelWon). Frightened
+  //    + eaten modes are intentionally unscaled — keeping those constant
+  //    preserves the power-pellet escape window across levels.
+  const baseSpeed =
     g.mode === "frightened"
       ? FRIGHTENED_SPEED_PER_TICK
       : g.mode === "eaten"
       ? EATEN_SPEED_PER_TICK
       : GHOST_SPEED_PER_TICK;
+  const speed =
+    g.mode === "frightened" || g.mode === "eaten"
+      ? baseSpeed
+      : baseSpeed * speedMultiplier;
   g._progress += speed;
   if (g._progress < 1) return;
   g._progress -= 1;
