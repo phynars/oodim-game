@@ -158,10 +158,18 @@ export class Engine {
     // NOTE: we used to flip 'ready'→'playing' here. Per issue #8 the
     // READY! overlay should hold until the player's first input — the
     // flip now lives inside update(), gated on a queued direction.
-    // Bind keyboard once the loop is live. Safe to call repeatedly; we
-    // only bind on the first start().
+    // Bind keyboard + touch once the loop is live. Safe to call repeatedly;
+    // we only bind on the first start(). Swipes target the canvas itself;
+    // an optional #dpad container (rendered by index.html) routes button
+    // taps through the same direction-intent path.
     if (this.inputBinding === null) {
-      this.inputBinding = bindInput(this.state);
+      const dpad = document.getElementById("dpad");
+      this.inputBinding = bindInput(
+        this.state,
+        window,
+        this.canvas,
+        dpad instanceof HTMLElement ? dpad : null,
+      );
     }
     this.lastFrameMs = performance.now();
     this.accumulatorMs = 0;

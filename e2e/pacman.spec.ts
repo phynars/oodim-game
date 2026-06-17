@@ -330,6 +330,90 @@ test("chase-mode ghost collision drops a life and resets Pac", async ({
   expect(after.status).not.toBe("lost");
 });
 
+// Issue #9 — touch controls in a mobile viewport.
+//
+// Drives a swipe-right gesture via touch events on the canvas and
+// asserts Pac actually moved. FAILS on the pre-change code (which
+// only binds keyboard) and PASSES once bindInput routes touch
+// gestures through the same direction-queue path.
+//
+// Uses a fresh Playwright context with `hasTouch: true` + a mobile
+// viewport so TouchEvent dispatches and CSS pointer:coarse rules
+// apply. We synthesize the gesture with CDP-level
+// `dispatchTouchEvent` because page.touchscreen.tap() doesn't
+// emit start/end pairs separated by a drag.
+test("mobile swipe-right moves Pac across at least one tile", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 }, // iPhone 13 portrait
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto("/");
+    await page.waitForFunction(() => Boolean(window.__pac));
+
+    const before = await page.evaluate(() => {
+      const s = window.__pac!;
+      return { x: s.pac.x, y: s.pac.y };
+    });
+
+    // Locate the canvas to derive the swipe coordinates.
+    const canvas = page.locator("#game");
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("canvas has no bounding box");
+    const startX = box.x + box.width * 0.3;
+    const startY = box.y + box.height * 0.5;
+    const endX = box.x + box.width * 0.7;
+    const endY = startY;
+
+    // Synthesize a swipe: touchstart at the left, drag to the right,
+    // release. Playwright's CDP `Input.dispatchTouchEvent` is the
+    // path that actually fires TouchEvents on the page (the higher-
+    // level page.touchscreen helpers don't expose start/move/end as
+    // separate steps).
+    const client = await context.newCDPSession(page);
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: startX, y: startY }],
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: (startX + endX) / 2, y: startY }],
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: endX, y: endY }],
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+
+    // Wait for the engine to consume the queued direction and move
+    // Pac at least one tile east.
+    await page.waitForFunction(
+      (b) => {
+        const s = window.__pac;
+        return Boolean(s) && s!.pac.x > b.x;
+      },
+      before,
+      { timeout: 5000 },
+    );
+
+    const after = await page.evaluate(() => {
+      const s = window.__pac!;
+      return { x: s.pac.x, y: s.pac.y };
+    });
+    expect(after.x).toBeGreaterThan(before.x);
+    expect(after.y).toBe(before.y);
+  } finally {
+    await context.close();
+  }
+});
+
 // Issue #8 — level-win state.
 //
 // We use the `clearPellets` test hook to zero out the pellet field in
