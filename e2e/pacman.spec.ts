@@ -414,6 +414,105 @@ test("mobile swipe-right moves Pac across at least one tile", async ({
   }
 });
 
+// Issue #10 — HUD visibility.
+//
+// The HUD is a DOM strip above the canvas with three cells —
+// score / lives / level — wired in main.ts off `window.__pac`. The
+// `[data-hud]` attributes are the load-bearing contract: e2e reads
+// them, never the visual rendering.
+//
+// FAILS on the pre-change code (no `[data-hud]` elements existed).
+// PASSES once index.html ships the HUD strip and main.ts mirrors state
+// into it.
+test("HUD renders score/lives/level and score climbs as Pac eats", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+
+  // The three HUD cells must exist and be visible from boot.
+  const scoreEl = page.locator('[data-hud="score"]');
+  const livesEl = page.locator('[data-hud="lives"]');
+  const levelEl = page.locator('[data-hud="level"]');
+  await expect(scoreEl).toBeVisible();
+  await expect(livesEl).toBeVisible();
+  await expect(levelEl).toBeVisible();
+
+  // Boot values: 0 score, 3 lives, level 1. The HUD mirrors state via
+  // rAF, so wait a beat to let the first frame paint.
+  await expect(scoreEl).toHaveText("0");
+  await expect(livesEl).toHaveText("3");
+  await expect(levelEl).toHaveText("1");
+
+  // Drive Pac so the score increments, then assert the HUD picks it up.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => (window.__pac?.score ?? 0) > 0, null, {
+    timeout: 5000,
+  });
+
+  // Read the HUD text and parse it as an integer — must be > 0.
+  const hudScore = await scoreEl.evaluate(
+    (el) => Number.parseInt(el.textContent ?? "0", 10) || 0,
+  );
+  expect(hudScore).toBeGreaterThan(0);
+});
+
+// Issue #10 — game-over overlay + HUD lives drain to 0.
+//
+// Drives Blinky onto Pac three times via the `forceGhostOntoPac` test
+// hook to drain lives from 3 → 0, then asserts the engine flips status
+// to 'lost' (the canvas paints "GAME OVER" — we assert on the load-
+// bearing state contract, since pixel reads on canvas are too flaky
+// across rendering backends).
+//
+// FAILS on the pre-change code (no test exercised the lives=0 path
+// through to the GAME OVER overlay).
+// PASSES once the engine + HUD wire-up holds end-to-end.
+test("game-over overlay fires after lives reach zero and HUD reflects it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+  await page.waitForFunction(() => Boolean(window.__pacInternals));
+
+  // Unfreeze the simulation (issue #8 — update() is gated on first input).
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowUp");
+
+  // Kill Pac three times. Between each kill we wait for the engine to
+  // observe the new lives count before launching the next warp — if we
+  // fire all three back-to-back, the second + third warps would land
+  // on the same tick and only count once.
+  for (let i = 3; i >= 1; i -= 1) {
+    const targetLives = i - 1;
+    await page.evaluate(() => {
+      window.__pacInternals!.forceGhostOntoPac("blinky");
+    });
+    await page.waitForFunction(
+      (t) => (window.__pac?.lives ?? -1) === t,
+      targetLives,
+      { timeout: 5000 },
+    );
+  }
+
+  // After the third death, status flips to 'lost' and the engine paints
+  // the GAME OVER overlay on the canvas.
+  await page.waitForFunction(() => window.__pac?.status === "lost", null, {
+    timeout: 3000,
+  });
+
+  const after = await page.evaluate(() => {
+    const s = window.__pac!;
+    return { status: s.status, lives: s.lives };
+  });
+  expect(after.status).toBe("lost");
+  expect(after.lives).toBe(0);
+
+  // HUD must mirror the zeroed lives.
+  await expect(page.locator('[data-hud="lives"]')).toHaveText("0");
+});
+
 // Issue #8 — level-win state.
 //
 // We use the `clearPellets` test hook to zero out the pellet field in
