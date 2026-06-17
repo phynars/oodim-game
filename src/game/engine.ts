@@ -107,6 +107,28 @@ export class Engine {
       inkyTarget,
       clydeTarget,
       scatterTarget,
+      // Test hook: warp the named ghost onto Pac's current tile in a
+      // fatal mode. The engine's collision check runs at the end of the
+      // next update() and will trigger handlePacDeath — costing a life
+      // and snapping Pac back to spawn. Used by the chase-collision e2e
+      // to avoid racing the live targeting AI on slow CI machines.
+      //
+      // Forces status='out' (in case the ghost is still in the house)
+      // and mode='chase' if currently 'frightened' or 'eaten', so the
+      // collision branch is unambiguously the kill path. Resets the
+      // ghost's sub-tile progress so it doesn't immediately glide off
+      // Pac's tile before the collision check fires.
+      forceGhostOntoPac: (name: GhostName): void => {
+        const g = this.ghosts.find((gh) => gh.name === name);
+        if (!g) return;
+        g.x = this.state.pac.x;
+        g.y = this.state.pac.y;
+        g.status = "out";
+        if (g.mode === "frightened" || g.mode === "eaten") {
+          g.mode = "chase";
+        }
+        g._progress = 0;
+      },
     };
   }
 
