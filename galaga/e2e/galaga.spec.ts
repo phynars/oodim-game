@@ -238,3 +238,67 @@ test("enemy roster flies in and settles into a formation of bees, butterflies, a
     expect(typeof e.y).toBe("number");
   }
 });
+
+test("after the formation settles, an enemy peels off into 'diving' and its y increases during the dive", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  // Leave READY so the formation choreography starts.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  // Wait until at least one enemy is in the 'diving' state. The first dive
+  // launches after the full formation has settled + DIVE_START_DELAY ticks,
+  // so allow generous wall time at 60Hz.
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies ?? []).some((e) => e.state === "diving"),
+    null,
+    { timeout: 20000 },
+  );
+
+  // Snapshot the diver's id and starting y. We track by id so the same
+  // enemy is followed across ticks (other enemies are still breathing in
+  // the formation; we only care about this one's descent).
+  const start = await page.evaluate(() => {
+    const diver = (window.__galaga?.enemies ?? []).find(
+      (e) => e.state === "diving",
+    );
+    return diver ? { id: diver.id, y: diver.y } : null;
+  });
+  expect(start).not.toBeNull();
+
+  // The contract: during the dive, `y` increases (the diver descends toward
+  // the player at the bottom of the field). Wait for a strictly larger y
+  // value on the SAME enemy id.
+  await page.waitForFunction(
+    (s) => {
+      const same = (window.__galaga?.enemies ?? []).find((e) => e.id === s.id);
+      return Boolean(same && same.y > s.y + 1);
+    },
+    start!,
+    { timeout: 5000 },
+  );
+
+  const mid = await page.evaluate(
+    (id) => (window.__galaga?.enemies ?? []).find((e) => e.id === id) ?? null,
+    start!.id,
+  );
+  expect(mid).not.toBeNull();
+  expect(mid!.y).toBeGreaterThan(start!.y);
+
+  // And the dive must terminate — the same enemy returns to 'formation'.
+  // (Generous timeout: DIVE_TICKS at 60Hz ≈ 2s, plus easing slack.)
+  await page.waitForFunction(
+    (id) => {
+      const same = (window.__galaga?.enemies ?? []).find((e) => e.id === id);
+      return Boolean(same && same.state === "formation");
+    },
+    start!.id,
+    { timeout: 10000 },
+  );
+});
