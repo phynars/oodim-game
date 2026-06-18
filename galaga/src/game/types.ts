@@ -179,13 +179,43 @@ declare global {
   }
 }
 
-/** Point values per archetype. Galaga's formation values; close-enough for
- *  our condensed roster (bonus diving values are a follow-up backlog item). */
+/** Formation-state point values per archetype. Galaga's "parked" values.
+ *  Diving / capturing kills score the higher per-state value via `scoreFor`
+ *  (#71). Kept as a flat lookup for back-compat with callers that don't
+ *  know the enemy's state — gameplay code should prefer `scoreFor`. */
 export const SCORE_BY_KIND: Record<EnemyKind, number> = {
   bee: 50,
   butterfly: 80,
   boss: 150,
 };
+
+/** Diving-state point values per archetype (arcade-faithful 2× formation,
+ *  rounded to the classic table). `capturing` bosses score the diving
+ *  value — they're mid-attack with the tractor beam armed. `escort` is
+ *  scored separately on rescue (1000) and not represented here; if an
+ *  escort is ever killed in-flight (out of scope today), it falls back to
+ *  the formation value. */
+export const SCORE_BY_KIND_DIVING: Record<EnemyKind, number> = {
+  bee: 100,
+  butterfly: 160,
+  boss: 400,
+};
+
+/** Per-state score helper (#71). Galaga's signature risk/reward — shoot
+ *  enemies WHILE they dive, score more. Centralized so the engine's
+ *  `killEnemy` call site AND the floating "+N" popup take the same value.
+ *
+ *  Rules:
+ *   - `diving` and `capturing` → diving table (mid-attack).
+ *   - `formation`, `entering`, `escort` → formation table.
+ *
+ *  Boss values (150 / 400) must match #68's per-state scoring. */
+export function scoreFor(kind: EnemyKind, state: EnemyState): number {
+  if (state === "diving" || state === "capturing") {
+    return SCORE_BY_KIND_DIVING[kind];
+  }
+  return SCORE_BY_KIND[kind];
+}
 
 /** Squared hit radius for player-bullet vs enemy. The enemy diamond sprite
  *  is ~12px wide; bullets are 2x8 — an 8px center-to-center radius matches

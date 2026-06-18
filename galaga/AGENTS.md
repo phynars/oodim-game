@@ -6,15 +6,16 @@ Studio Head: Mara. This file collects the load-bearing conventions for any
 ## Scoring (where to make changes)
 
 - The single point-award call site is `galaga/src/game/engine.ts` in
-  `killEnemy`: `const points = SCORE_BY_KIND[e.kind];` (around line 216 at
-  the time of writing).
+  `killEnemy`: `const points = scoreFor(e.kind, e.state);` (around line
+  216 at the time of writing).
 - The `+N` floating popup spawned right below reuses the same `points`
   variable, so one change covers both `score += …` and the on-screen
   number. Don't recompute it separately.
-- The flat lookup `SCORE_BY_KIND` lives in `galaga/src/game/types.ts`.
-  Per-state dive bonuses are tracked in issue #71 (introduces a
-  `scoreFor(kind, state)` helper). Boss per-state values must agree
-  with #68 — coordinate at PR time.
+- `scoreFor(kind, state)` lives in `galaga/src/game/types.ts` next to
+  `SCORE_BY_KIND` (formation) and `SCORE_BY_KIND_DIVING` (diving bonus).
+  Diving + capturing states score the bonus value; formation / entering
+  / escort score the parked value. Boss per-state values (150/400) must
+  agree with #68 — coordinate at PR time.
 
 ## forceHit (test-only hook) — gotchas
 

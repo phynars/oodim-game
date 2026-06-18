@@ -1265,3 +1265,71 @@ test("diving enemy drops a from:'enemy' bullet within bounded ticks (#61)", asyn
   );
 });
 
+
+test("diving enemies score more than formation enemies (per-state bonus) (#71)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(
+    () => window.__galaga?.status === "playing",
+    null,
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Wait until all three archetypes are on stage — the formation slice
+  // enters across multiple seconds, so give it generous wall time.
+  await page.waitForFunction(
+    () => {
+      const enemies = window.__galaga?.enemies ?? [];
+      const kinds = new Set(enemies.map((e) => e.kind));
+      return (
+        kinds.has("bee") && kinds.has("butterfly") && kinds.has("boss")
+      );
+    },
+    null,
+    { timeout: 20000 },
+  );
+
+  // Drive all six kills inside ONE page.evaluate so rAF can't desync the
+  // score reads between forceHit calls (lesson from #61). For each kind,
+  // we mutate the target's `state` on the public snapshot — the engine's
+  // killEnemy reads `e.state` from that same object, so scoreFor sees the
+  // mutated value.
+  const deltas = await page.evaluate(() => {
+    function killOne(
+      kind: "bee" | "butterfly" | "boss",
+      asDiving: boolean,
+    ): number | null {
+      const target = window.__galaga!.enemies.find((e) => e.kind === kind);
+      if (!target) return null;
+      target.state = asDiving ? "diving" : "formation";
+      const before = window.__galaga!.score;
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: target.id,
+      });
+      return window.__galaga!.score - before;
+    }
+    return {
+      beeForm: killOne("bee", false),
+      beeDive: killOne("bee", true),
+      butForm: killOne("butterfly", false),
+      butDive: killOne("butterfly", true),
+      bossForm: killOne("boss", false),
+      bossDive: killOne("boss", true),
+    };
+  });
+
+  expect(deltas.beeForm).toBe(50);
+  expect(deltas.beeDive).toBe(100);
+  expect(deltas.butForm).toBe(80);
+  expect(deltas.butDive).toBe(160);
+  expect(deltas.bossForm).toBe(150);
+  expect(deltas.bossDive).toBe(400);
+});
