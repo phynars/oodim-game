@@ -1125,6 +1125,92 @@ test("challenging stage: no enemy bullets spawn during it and a perfect clear aw
   expect(result.stage).toBeGreaterThan(before.stage);
 });
 
+test("dual fighter fires two parallel shots straddling player.x; single still fires one (#63)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(
+    () => window.__galaga?.status === "playing",
+    null,
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // The whole test runs inside ONE evaluate so the rAF loop can't tick
+  // between (a) emptying bullets, (b) dispatching the fire press, and
+  // (c) sampling the bullets that spawned. Sampling across multiple
+  // page.evaluate round-trips would let advance/cull eat the shots
+  // before we see them — same race the polish-VFX test taught us about.
+  const sample = await page.evaluate(async () => {
+    // --- A) SINGLE-FIGHTER baseline: dual=false, one bullet at player.x. ---
+    window.__galagaInternals!.forceDual(false);
+    // Clear any in-flight player shots from the early ArrowLeft press, etc.,
+    // so the cap-count math starts clean. We mutate the live array because
+    // the engine reads it next tick.
+    window.__galaga!.bullets = window.__galaga!.bullets.filter(
+      (b) => b.from !== "player",
+    );
+    // Dispatch a Space keydown → engine.update() consumes the fire on its
+    // next fixed-step. Yield via rAF so we land past at least one tick.
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+    );
+    window.dispatchEvent(
+      new KeyboardEvent("keyup", { key: " ", bubbles: true }),
+    );
+    // Yield a couple of frames so the fixed-step loop definitely ticks.
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const single = window.__galaga!.bullets.filter(
+      (b) => b.from === "player",
+    );
+    const singleSnapshot = {
+      count: single.length,
+      xs: single.map((b) => b.x),
+      playerX: window.__galaga!.player.x,
+    };
+
+    // --- B) DUAL-FIGHTER: dual=true, two bullets straddling player.x. ---
+    window.__galagaInternals!.forceDual(true);
+    window.__galaga!.bullets = window.__galaga!.bullets.filter(
+      (b) => b.from !== "player",
+    );
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+    );
+    window.dispatchEvent(
+      new KeyboardEvent("keyup", { key: " ", bubbles: true }),
+    );
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const dual = window.__galaga!.bullets.filter((b) => b.from === "player");
+    const dualSnapshot = {
+      count: dual.length,
+      xs: dual.map((b) => b.x),
+      playerX: window.__galaga!.player.x,
+    };
+
+    return { single: singleSnapshot, dual: dualSnapshot };
+  });
+
+  // Companion assertion (#63 acceptance #3): single-fighter still spawns
+  // exactly ONE player bullet at player.x.
+  expect(sample.single.count).toBe(1);
+  expect(sample.single.xs[0]).toBe(sample.single.playerX);
+
+  // Primary assertion (#63 acceptance #1): dual fighter spawns TWO player
+  // bullets on a single fire-press, with one x < player.x and one >.
+  expect(sample.dual.count).toBe(2);
+  const sorted = [...sample.dual.xs].sort((a, b) => a - b);
+  expect(sorted[0]).toBeLessThan(sample.dual.playerX);
+  expect(sorted[1]).toBeGreaterThan(sample.dual.playerX);
+});
+
 test("diving enemy drops a from:'enemy' bullet within bounded ticks (#61)", async ({
   page,
 }) => {

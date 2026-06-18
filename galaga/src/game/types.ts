@@ -161,6 +161,13 @@ export interface GalagaInternals {
    *  hook keeps the harness deterministic — no need to advance through N
    *  normal stages to land on a challenging one. */
   startChallengingStage(): void;
+  /** Force the dual-fighter mode on/off without driving through the capture
+   *  + rescue choreography. The rescue chain is multi-second (boss arms beam
+   *  → capture → kill captor); for an e2e assertion that only cares about
+   *  the FIRING behavior in dual mode (#63), this hook lets the harness
+   *  flip `player.dual` directly. No side effects on lives/enemies — purely
+   *  a flag flip on the public contract. */
+  forceDual(value: boolean): void;
 }
 
 declare global {

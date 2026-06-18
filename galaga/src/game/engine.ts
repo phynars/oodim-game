@@ -201,6 +201,15 @@ export class Engine {
         this.state.captureBeamActive = true;
         this.publish();
       },
+      forceDual: (value) => {
+        // Test-only escape hatch (#63). The rescue choreography is several
+        // seconds end-to-end (beam → capture → kill captor → dock); for a
+        // FIRING-behavior assertion we just need `player.dual` flipped.
+        // Engine never reads from here — gameplay code only ever sets the
+        // flag through killEnemy's rescue path or demoteDual on death.
+        this.state.player.dual = value;
+        this.publish();
+      },
     };
   }
 
@@ -572,24 +581,61 @@ export class Engine {
       // player shots. Consume the press unconditionally (so it doesn't
       // queue across ticks while at cap) — the arcade drops the input if
       // both your shots are still on screen.
+      //
+      // Dual fighter (#63): when `player.dual===true`, the rescued escort
+      // is docked beside the primary fighter and BOTH ships fire on the
+      // same press. Two parallel shots leave the nose offsets (±7 px) that
+      // match the dual sprite. Classic Galaga also doubles the in-flight
+      // cap to 4 in dual mode (two pairs simultaneously) — without that
+      // bump the per-press rate-of-fire is identical to single, and the
+      // rescue's payoff feels invisible.
       const wantsFire = this.input.consumeFire();
       if (wantsFire && canAct) {
         let liveCount = 0;
         for (const b of this.state.bullets) {
           if (b.from === "player") liveCount++;
         }
-        if (liveCount < MAX_PLAYER_BULLETS) {
-          // Spawn from the nose of the ship (the triangle tip is at y-9).
+        const dual = this.state.player.dual;
+        const cap = dual ? MAX_PLAYER_BULLETS * 2 : MAX_PLAYER_BULLETS;
+        const desired = dual ? 2 : 1;
+        // Spawn as many as fit under the cap — prefer 2 → 1 → 0 in dual.
+        const toSpawn = Math.max(0, Math.min(desired, cap - liveCount));
+        const noseY = this.state.player.y - 9;
+        if (dual) {
+          // Two parallel shots from the side-by-side fighter offsets. The
+          // renderer places the dual sprite at player.x ± 7 (#38); the
+          // bullets leave from those same nose points so the visual reads.
+          // When only one slot is free, prefer the LEFT fighter so the
+          // pattern still looks symmetric across a series of presses.
+          if (toSpawn >= 1) {
+            this.state.bullets.push({
+              x: this.state.player.x - 7,
+              y: noseY,
+              from: "player",
+            });
+          }
+          if (toSpawn >= 2) {
+            this.state.bullets.push({
+              x: this.state.player.x + 7,
+              y: noseY,
+              from: "player",
+            });
+          }
+        } else if (toSpawn >= 1) {
+          // Single fighter: one shot at player.x, unchanged from before.
           this.state.bullets.push({
             x: this.state.player.x,
-            y: this.state.player.y - 9,
+            y: noseY,
             from: "player",
           });
-          // Hit-miss accuracy tally (#65). A normal-stage shot fired —
-          // count it whether it eventually lands or not. Challenging
-          // stages are damage-free + bonus-free; we skip the tally so
-          // the next normal stage's ratio isn't polluted.
-          if (!this.state.challenging) this.state.stageShotsFired += 1;
+        }
+        // Hit-miss accuracy tally (#65). One press = one shot intent for
+        // the ratio, regardless of how many bullets actually spawned —
+        // dual mode doesn't inflate the denominator. Skipped on
+        // challenging stages so the next normal stage's ratio isn't
+        // polluted. Only counted when at least one bullet actually fired.
+        if (toSpawn > 0 && !this.state.challenging) {
+          this.state.stageShotsFired += 1;
         }
       }
 
