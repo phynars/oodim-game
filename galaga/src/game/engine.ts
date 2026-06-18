@@ -10,6 +10,8 @@
 // the studio builds up from, mirroring how Pac-Man started from a loop + maze.
 
 import {
+  BOSS_SCORE_DIVING,
+  BOSS_SCORE_FORMATION,
   CHALLENGING_PERFECT_BONUS,
   EXPLOSION_TICKS,
   hitMissBonus,
@@ -222,7 +224,38 @@ export class Engine {
   private killEnemy(idx: number): void {
     const e = this.state.enemies[idx];
     if (!e) return;
-    const points = SCORE_BY_KIND[e.kind];
+    // Two-hit boss contract (#68). A boss that hasn't yet been damaged
+    // absorbs the first hit: flip the controller's flag, mirror it onto
+    // the live snapshot so the renderer paints blue/purple immediately,
+    // and RETURN early. No score, no VFX, no rescue branch — the kill
+    // moment is reserved for the second hit. Bees/butterflies fall
+    // through to the kill path on the first shot like before.
+    // EXCEPTION: challenging (bonus) stages are damage/bonus-free — any
+    // boss in a flythrough wave stays one-shot so the perfect-clear math
+    // and challenging-stage cadence are unchanged (#68 scope note).
+    if (
+      e.kind === "boss" &&
+      e.damaged !== true &&
+      !this.enemies.isChallenging()
+    ) {
+      if (this.enemies.damageBoss(e.id)) {
+        // Mirror onto this tick's public snapshot so e2e + renderer
+        // observe the flag without waiting for the next controller tick.
+        e.damaged = true;
+        return;
+      }
+      // damageBoss returned false → the persistent roster entry is
+      // already damaged (or gone). Fall through to the kill path.
+    }
+    // Boss scoring (#68): kill-while-diving is worth 400, otherwise 150.
+    // We ask the controller for the LIVE persistent-roster state (the
+    // public snapshot may already be stale by the time we arrive here).
+    const points =
+      e.kind === "boss"
+        ? this.enemies.isBossDiving(e.id)
+          ? BOSS_SCORE_DIVING
+          : BOSS_SCORE_FORMATION
+        : SCORE_BY_KIND[e.kind];
     this.state.score += points;
     // Polish VFX (#42): spawn an explosion burst + a floating "+N" popup at
     // the enemy's last position. These live on the public contract so the
@@ -808,9 +841,15 @@ export class Engine {
     // attackers; bees are the workhorse yellow grunts. Tiny diamonds keep
     // them readable at 320px width without sprite art.
     for (const e of this.state.enemies) {
+      // Boss palette shifts on damage (#68): undamaged green → damaged
+      // blue/purple. The shift is the player's visual cue that the next
+      // shot ends the boss; it lives entirely in the renderer so the
+      // game contract stays a single boolean (`damaged`).
       const palette =
         e.kind === "boss"
-          ? "#7cf07c"
+          ? e.damaged
+            ? "#6a7aff"
+            : "#7cf07c"
           : e.kind === "butterfly"
             ? "#ff7ab0"
             : "#ffd76a";

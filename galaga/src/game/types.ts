@@ -52,6 +52,10 @@ export interface Enemy {
   x: number;
   y: number;
   state: EnemyState;
+  /** Bosses only: true once they've absorbed their first shot. A damaged
+   *  boss palette-shifts (renderer) and dies on the NEXT hit (#68). Omitted
+   *  on bees/butterflies — they remain one-shot. */
+  damaged?: boolean;
 }
 
 /** A shot in flight. `from` distinguishes the player's bullets (travel up)
@@ -180,12 +184,21 @@ declare global {
 }
 
 /** Point values per archetype. Galaga's formation values; close-enough for
- *  our condensed roster (bonus diving values are a follow-up backlog item). */
+ *  our condensed roster. NOTE: `boss` is the FORMATION-kill value — when a
+ *  boss is killed in mid-DIVE the engine awards `BOSS_SCORE_DIVING` instead
+ *  (#68). The two-hit damage path is wired in `engine.killEnemy` so a first
+ *  hit only flips `damaged`; the second hit selects the score by state. */
 export const SCORE_BY_KIND: Record<EnemyKind, number> = {
   bee: 50,
   butterfly: 80,
   boss: 150,
 };
+
+/** Score for killing a boss while it is parked in the formation (or in any
+ *  non-diving state — capturing, entering). Matches arcade Galaga. */
+export const BOSS_SCORE_FORMATION = 150;
+/** Score for killing a boss while it is in mid-dive. Arcade value (#68). */
+export const BOSS_SCORE_DIVING = 400;
 
 /** Squared hit radius for player-bullet vs enemy. The enemy diamond sprite
  *  is ~12px wide; bullets are 2x8 — an 8px center-to-center radius matches

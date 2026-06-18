@@ -150,6 +150,10 @@ interface EnemyInternal {
   /** When non-null this enemy is an 'escort' (captured player fighter)
    *  locked above the boss with id `escortOf`. */
   escortOf: number | null;
+  /** Bosses only: true once the first shot has landed (#68). Mirrored onto
+   *  the public snapshot each tick so the renderer + e2e can read it.
+   *  False/unset for non-bosses (they remain one-shot). */
+  damaged: boolean;
 }
 
 export interface EnemyController {
@@ -175,6 +179,19 @@ export interface EnemyController {
    *  the controller would re-emit the slain enemy on the next tick from its
    *  persistent roster. */
   remove(id: number): void;
+  /** Flip the `damaged` flag on a boss (#68). First-hit-on-boss path: the
+   *  engine calls this instead of `remove()` so the boss survives one more
+   *  hit, palette-shifts, and stays on the field. Returns true if the id
+   *  matched a boss that flipped from undamaged → damaged; false otherwise
+   *  (non-boss, missing id, or already damaged — engine should kill in
+   *  those cases). */
+  damageBoss(id: number): boolean;
+  /** True if the enemy with this id is a boss currently in mid-DIVE. The
+   *  engine reads this on the SECOND (killing) hit to award the diving
+   *  boss bonus (#68: 400 vs 150 formation). Read against the persistent
+   *  roster — public snapshot may already be stale by the time the kill
+   *  lands inside `killEnemy`. */
+  isBossDiving(id: number): boolean;
   /** Begin the capture beam choreography on a boss positioned above
    *  `(playerX, playerY)`. The boss is parked above the player at a fixed
    *  altitude with its tractor beam armed. Returns the boss id (or null if
@@ -280,6 +297,7 @@ export function createEnemyController(): EnemyController {
           captureAnchorX: 0,
           captureAnchorY: 0,
           escortOf: null,
+          damaged: false,
         });
       }
     }
@@ -341,6 +359,26 @@ export function createEnemyController(): EnemyController {
         }
       }
     },
+    damageBoss(id: number): boolean {
+      // First-hit-on-boss (#68). Engine calls this from `killEnemy` when it
+      // sees a boss with `damaged !== true`; we flip the flag so the next
+      // tick re-emits the boss with `damaged:true` on the public snapshot
+      // (renderer paints it blue/purple, second hit kills + scores).
+      for (const e of roster) {
+        if (e.id === id) {
+          if (e.kind !== "boss" || e.damaged) return false;
+          e.damaged = true;
+          return true;
+        }
+      }
+      return false;
+    },
+    isBossDiving(id: number): boolean {
+      for (const e of roster) {
+        if (e.id === id) return e.kind === "boss" && e.state === "diving";
+      }
+      return false;
+    },
     beginCapture(playerX: number, playerY: number, bossId?: number): number | null {
       // Pick the requested boss, or the first 'formation' boss as a fallback
       // — the test harness uses the first-available path. The enemy is
@@ -390,6 +428,7 @@ export function createEnemyController(): EnemyController {
         captureAnchorX: 0,
         captureAnchorY: 0,
         escortOf: bossId,
+        damaged: false,
       };
       roster.push(escort);
       return id;
@@ -450,6 +489,7 @@ export function createEnemyController(): EnemyController {
           captureAnchorX: 0,
           captureAnchorY: 0,
           escortOf: null,
+          damaged: false,
         });
       }
       roster = wave;
@@ -526,7 +566,14 @@ export function createEnemyController(): EnemyController {
           everPopulated = true;
           e.x = e.captureAnchorX;
           e.y = e.captureAnchorY;
-          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          out.push({
+            id: e.id,
+            kind: e.kind,
+            state: e.state,
+            x: e.x,
+            y: e.y,
+            damaged: e.damaged,
+          });
           continue;
         }
         if (e.state === "escort") {
@@ -540,7 +587,14 @@ export function createEnemyController(): EnemyController {
             e.x = boss.x;
             e.y = boss.y - 16;
           }
-          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          out.push({
+            id: e.id,
+            kind: e.kind,
+            state: e.state,
+            x: e.x,
+            y: e.y,
+            damaged: e.damaged,
+          });
           continue;
         }
         if (currentTick < e.spawnTick) continue; // not yet on stage
@@ -592,7 +646,14 @@ export function createEnemyController(): EnemyController {
             e.y = HEIGHT + 1000;
             continue;
           }
-          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          out.push({
+            id: e.id,
+            kind: e.kind,
+            state: e.state,
+            x: e.x,
+            y: e.y,
+            damaged: e.damaged,
+          });
           continue;
         }
 
@@ -640,7 +701,14 @@ export function createEnemyController(): EnemyController {
           e.y = arc.y;
         }
 
-        out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+        out.push({
+          id: e.id,
+          kind: e.kind,
+          state: e.state,
+          x: e.x,
+          y: e.y,
+          damaged: e.damaged,
+        });
       }
       // Reap challenging-wave enemies that flew off the bottom (marked with
       // a sentinel y in the loop above). They're removed from the persistent

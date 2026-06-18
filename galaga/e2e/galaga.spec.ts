@@ -328,12 +328,20 @@ test("forceHit({target:'enemy'}) removes the enemy + scores; forceHit({target:'p
   });
 
   // --- Player bullet hits an enemy: roster count drops, score goes up. ---
+  // Pick a NON-BOSS enemy explicitly. Post-#68 bosses absorb the first hit
+  // (damaged flag flips, score unchanged, still on the field); only the
+  // second hit removes them. This test asserts the one-shot path, so we
+  // target a bee/butterfly which still dies in one hit.
   const before = await page.evaluate(() => ({
     count: window.__galaga!.enemies.length,
     score: window.__galaga!.score,
+    nonBossId: window.__galaga!.enemies.find((e) => e.kind !== "boss")?.id,
   }));
-  await page.evaluate(() =>
-    window.__galagaInternals!.forceHit({ target: "enemy" }),
+  expect(before.nonBossId).toBeDefined();
+  await page.evaluate(
+    (id) =>
+      window.__galagaInternals!.forceHit({ target: "enemy", enemyId: id }),
+    before.nonBossId,
   );
   const afterEnemyHit = await page.evaluate(() => ({
     count: window.__galaga!.enemies.length,
@@ -417,10 +425,19 @@ test("clearing the formation advances the stage, respawns a fresh non-empty form
       const target = (window.__galaga?.enemies ?? []).find((e) => e.kind === k);
       if (!target) continue;
       const s0 = window.__galaga!.score;
+      // Bosses are two-hit post-#68: first hit damages (no score), second
+      // hit kills + scores. We hit twice unconditionally for bosses so the
+      // delta captures the kill value. Bees/butterflies still die in one.
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: target.id,
       });
+      if (k === "boss") {
+        window.__galagaInternals!.forceHit({
+          target: "enemy",
+          enemyId: target.id,
+        });
+      }
       deltas[k] = window.__galaga!.score - s0;
     }
     return deltas;
@@ -617,12 +634,19 @@ test("destroying the captor frees the escort and arms the dual fighter", async (
   });
   expect(captorId).not.toBeNull();
 
+  // Two hits to kill the captor — post-#68 bosses are two-shot (first
+  // damages, second kills). Rescue must NOT trigger on the damage hit.
   await page.evaluate(
-    (id) =>
+    (id) => {
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: id ?? undefined,
-      }),
+      });
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: id ?? undefined,
+      });
+    },
     captorId,
   );
 
@@ -881,8 +905,16 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
   // holds at the spawning tick. forceHit publishes a fresh snapshot before
   // returning, so reading `window.__galaga` in the next statement of the
   // same evaluate captures that exact snapshot.
+  // Target a non-boss explicitly: post-#68 a boss's first hit is a damage
+  // hit (no VFX spawned). Bees/butterflies still die — and pop VFX — on
+  // the first shot, which is the contract this test asserts.
   const popped = await page.evaluate(() => {
-    window.__galagaInternals!.forceHit({ target: "enemy" });
+    const target = window.__galaga!.enemies.find((e) => e.kind !== "boss");
+    if (!target) return null;
+    window.__galagaInternals!.forceHit({
+      target: "enemy",
+      enemyId: target.id,
+    });
     return {
       ex: window.__galaga!.explosions[0],
       sp: window.__galaga!.scorePopups[0],
@@ -890,13 +922,14 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
       spLen: window.__galaga!.scorePopups.length,
     };
   });
-  expect(popped.exLen).toBeGreaterThanOrEqual(1);
-  expect(popped.spLen).toBeGreaterThanOrEqual(1);
-  expect(popped.ex.age).toBe(0);
-  expect(typeof popped.ex.x).toBe("number");
-  expect(typeof popped.ex.y).toBe("number");
-  expect(popped.sp.value).toBeGreaterThan(0);
-  expect(popped.sp.age).toBe(0);
+  expect(popped).not.toBeNull();
+  expect(popped!.exLen).toBeGreaterThanOrEqual(1);
+  expect(popped!.spLen).toBeGreaterThanOrEqual(1);
+  expect(popped!.ex.age).toBe(0);
+  expect(typeof popped!.ex.x).toBe("number");
+  expect(typeof popped!.ex.y).toBe("number");
+  expect(popped!.sp.value).toBeGreaterThan(0);
+  expect(popped!.sp.age).toBe(0);
 
   // VFX must AGE and CULL. After ~1.5s the explosion has outlived its
   // 30-tick lifetime; the score popup outlives its 45-tick lifetime.
@@ -1209,6 +1242,73 @@ test("dual fighter fires two parallel shots straddling player.x; single still fi
   const sorted = [...sample.dual.xs].sort((a, b) => a - b);
   expect(sorted[0]).toBeLessThan(sample.dual.playerX);
   expect(sorted[1]).toBeGreaterThan(sample.dual.playerX);
+});
+
+test("boss takes two hits — first damages, second kills + scores (#68)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(
+    () => window.__galaga?.status === "playing",
+    null,
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Wait for the formation to populate so a boss exists in row 0.
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies ?? []).some((e) => e.kind === "boss"),
+    null,
+    { timeout: 15000 },
+  );
+
+  // Run BOTH forceHit calls inside a single page.evaluate so the rAF loop
+  // can't desync the snapshot between them (lesson from #61's age==0 fix).
+  const result = await page.evaluate(() => {
+    const bossBefore = window.__galaga!.enemies.find(
+      (e) => e.kind === "boss",
+    )!;
+    const scoreBefore = window.__galaga!.score;
+    window.__galagaInternals!.forceHit({
+      target: "enemy",
+      enemyId: bossBefore.id,
+    });
+    const afterFirst = window.__galaga!.enemies.find(
+      (e) => e.id === bossBefore.id,
+    );
+    const scoreAfterFirst = window.__galaga!.score;
+    window.__galagaInternals!.forceHit({
+      target: "enemy",
+      enemyId: bossBefore.id,
+    });
+    const afterSecond = window.__galaga!.enemies.find(
+      (e) => e.id === bossBefore.id,
+    );
+    const scoreAfterSecond = window.__galaga!.score;
+    return {
+      afterFirst,
+      scoreAfterFirst,
+      afterSecond,
+      scoreAfterSecond,
+      scoreBefore,
+    };
+  });
+
+  // First hit: still on the field, marked damaged, no score change.
+  expect(result.afterFirst).toBeDefined();
+  expect(result.afterFirst!.damaged).toBe(true);
+  expect(result.scoreAfterFirst).toBe(result.scoreBefore);
+  // Second hit: gone, score went up by the kill value (150 formation,
+  // 400 diving — both ≥ 150).
+  expect(result.afterSecond).toBeUndefined();
+  expect(result.scoreAfterSecond).toBeGreaterThanOrEqual(
+    result.scoreBefore + 150,
+  );
 });
 
 test("diving enemy drops a from:'enemy' bullet within bounded ticks (#61)", async ({
