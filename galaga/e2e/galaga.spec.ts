@@ -874,23 +874,24 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
   expect(baseline.explosions.length).toBe(0);
   expect(baseline.scorePopups.length).toBe(0);
 
-  // Kill an enemy via the harness — both arrays must gain an entry on the
-  // same tick the kill resolves.
-  await page.evaluate(() =>
-    window.__galagaInternals!.forceHit({ target: "enemy" }),
-  );
-  await page.waitForFunction(
-    () =>
-      (window.__galaga?.explosions?.length ?? 0) >= 1 &&
-      (window.__galaga?.scorePopups?.length ?? 0) >= 1,
-    null,
-    { timeout: 2000 },
-  );
-
-  const popped = await page.evaluate(() => ({
-    ex: window.__galaga!.explosions[0],
-    sp: window.__galaga!.scorePopups[0],
-  }));
+  // Kill an enemy via the harness AND snapshot the VFX in the SAME evaluate
+  // so the rAF loop can't tick between `forceHit`'s synchronous `publish()`
+  // and our read. If these were separate `page.evaluate` calls, each round-
+  // trip lets rAF age the explosion past 0 — the assertion `age === 0` only
+  // holds at the spawning tick. forceHit publishes a fresh snapshot before
+  // returning, so reading `window.__galaga` in the next statement of the
+  // same evaluate captures that exact snapshot.
+  const popped = await page.evaluate(() => {
+    window.__galagaInternals!.forceHit({ target: "enemy" });
+    return {
+      ex: window.__galaga!.explosions[0],
+      sp: window.__galaga!.scorePopups[0],
+      exLen: window.__galaga!.explosions.length,
+      spLen: window.__galaga!.scorePopups.length,
+    };
+  });
+  expect(popped.exLen).toBeGreaterThanOrEqual(1);
+  expect(popped.spLen).toBeGreaterThanOrEqual(1);
   expect(popped.ex.age).toBe(0);
   expect(typeof popped.ex.x).toBe("number");
   expect(typeof popped.ex.y).toBe("number");

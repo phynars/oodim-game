@@ -46,10 +46,15 @@ interface Star {
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. */
 const STEP_MS = 1000 / 60;
-/** Deeper parallax starfield — three speed layers blended via per-star
- *  `speed`. The arcade's signature horizon-of-stars feel needs density:
- *  90 stars at 320×448 is ~1 star per ~1600 px², readable but not noisy. */
+/** Deeper parallax starfield — three discrete speed layers (far/mid/near).
+ *  Continuous speed spread doesn't read as parallax; quantizing into tiers
+ *  is what makes the eye lock onto the depth. The arcade's signature
+ *  horizon-of-stars feel needs density too: 90 stars at 320×448 is ~1 star
+ *  per ~1600 px², readable but not noisy. */
 const STAR_COUNT = 90;
+/** px/tick per parallax tier. Far is barely-drifting backdrop; near races
+ *  past. Brightness is biased to match — distant stars dimmer than near. */
+const STAR_SPEEDS = [0.35, 0.7, 1.15] as const;
 /** Fixed-step frames the engine holds in the 'lost' state before advancing
  *  to 'gameover'. ~0.5s at 60Hz — long enough that the death frame reads,
  *  short enough that the overlay doesn't feel delayed. */
@@ -302,11 +307,17 @@ export class Engine {
       // A cheap PRNG seeded by index keeps the field stable across reloads
       // without Math.random (also avoids non-determinism in tests).
       const r = (n: number) => ((Math.sin(i * 12.9898 + n * 78.233) * 43758.5453) % 1 + 1) % 1;
+      // Bucket each star into one of three discrete speed tiers — true
+      // parallax depth, not a continuous smear. Brightness tracks the tier
+      // (far = dim, near = bright) so the eye reads the layering.
+      const tier = Math.floor(r(3) * STAR_SPEEDS.length);
+      const speed = STAR_SPEEDS[tier];
+      const baseLevel = 0.3 + tier * 0.25; // 0.30 / 0.55 / 0.80
       stars.push({
         x: r(1) * WIDTH,
         y: r(2) * HEIGHT,
-        speed: 0.3 + r(3) * 0.9,
-        level: 0.35 + r(4) * 0.65,
+        speed,
+        level: baseLevel + r(4) * 0.2,
       });
     }
     return stars;
