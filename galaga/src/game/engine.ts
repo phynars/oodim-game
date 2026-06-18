@@ -128,8 +128,52 @@ export class Engine {
     const e = this.state.enemies[idx];
     if (!e) return;
     this.state.score += SCORE_BY_KIND[e.kind];
+    // Before we splice the boss out, check whether it owns a captured-
+    // fighter escort. Killing the captor is the rescue moment (Galaga
+    // #38): the escort flies down and docks beside the player → dual
+    // fighter mode. The controller still holds the escort in its roster
+    // (the public snapshot mirrors it), so we ask the controller for the
+    // escort id, remove that escort from both the public state and the
+    // internal roster, and flip `player.dual`. We only trigger this when
+    // the player is still alive — a dead/respawning fighter can't dock
+    // a rescue ship, and `captured` must be cleared so the engine's
+    // input/firing path re-activates.
+    if (e.kind === "boss") {
+      const escortId = this.enemies.escortOfBoss(e.id);
+      if (escortId !== null && this.state.player.alive) {
+        // Remove the escort from the public snapshot (filter — the
+        // controller's next tick() won't re-emit it because we also call
+        // remove() on its persistent entry).
+        this.state.enemies = this.state.enemies.filter(
+          (en) => en.id !== escortId,
+        );
+        this.enemies.remove(escortId);
+        this.state.player.dual = true;
+        // The fighter was captured → now rescued: clear the captured flag
+        // and re-enable control. The beam is owned by the captor we just
+        // killed, so the controller's beam getters will return null on
+        // the next tick; mirror that on this tick for a consistent snap.
+        this.state.player.captured = false;
+        this.state.captureBeamActive = false;
+        // Adjust the splice index if the escort sat before the captor
+        // in the public roster — filter() may have shifted it.
+        const newIdx = this.state.enemies.findIndex((en) => en.id === e.id);
+        if (newIdx >= 0) {
+          this.state.enemies.splice(newIdx, 1);
+          this.enemies.remove(e.id);
+          return;
+        }
+      }
+    }
     this.state.enemies.splice(idx, 1);
     this.enemies.remove(e.id);
+  }
+
+  /** Drop from dual back to single fighter when a dual-mode life is lost.
+   *  Called from killPlayer; centralized so the contract's "losing a dual
+   *  fighter drops back to single" rule (#38) lives next to the rescue. */
+  private demoteDual(): void {
+    if (this.state.player.dual) this.state.player.dual = false;
   }
 
   /** When the formation has been fully cleared, advance to the next stage:
@@ -161,6 +205,9 @@ export class Engine {
   private killPlayer(): void {
     if (!this.state.player.alive) return; // already dead, no double-tap
     this.state.player.alive = false;
+    // Losing a fighter while dual drops back to single (the second life
+    // worth of ship is the docked rescue) — contract from #38.
+    this.demoteDual();
     this.state.lives = Math.max(0, this.state.lives - 1);
     if (this.state.lives <= 0) {
       this.state.status = "lost";
