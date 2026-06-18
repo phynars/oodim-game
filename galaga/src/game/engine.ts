@@ -58,6 +58,9 @@ export class Engine {
    *  spawn x, alive=true. At 0 lives we don't respawn — status flips to
    *  'lost' instead (the contract's terminal "you died" state). */
   private deathTick: number | null = null;
+  /** Tick until which the "STAGE N" banner is painted. Set when we advance
+   *  to the next stage; the renderer reads this each frame. Null = no banner. */
+  private stageBannerUntil: number | null = null;
   private lastTime = 0;
   private accumulator = 0;
 
@@ -93,6 +96,10 @@ export class Engine {
         } else {
           this.killPlayer();
         }
+        // forceHit is a test-only path; still honor the stage-clear contract
+        // so the e2e harness can drive an entire formation kill via repeated
+        // forceHit calls and observe `stage` increment + a fresh roster.
+        this.maybeAdvanceStage();
         this.publish();
       },
     };
@@ -100,12 +107,40 @@ export class Engine {
 
   /** Remove enemy at `idx` from the roster, add its kind's score. Centralized
    *  so the forceHit hook and the per-tick collision pass take the same path
-   *  (and so future "explosion sprite" work hooks in one place). */
+   *  (and so future "explosion sprite" work hooks in one place). The kill is
+   *  forwarded to the controller so the persistent roster also loses the
+   *  enemy — otherwise the next `tick()` would re-emit it from the original
+   *  schedule. */
   private killEnemy(idx: number): void {
     const e = this.state.enemies[idx];
     if (!e) return;
     this.state.score += SCORE_BY_KIND[e.kind];
     this.state.enemies.splice(idx, 1);
+    this.enemies.remove(e.id);
+  }
+
+  /** When the formation has been fully cleared, advance to the next stage:
+   *  bump `stage`, ask the controller for a fresh roster, and re-anchor the
+   *  formation tick so the new entrance choreography plays from t=0. Gated
+   *  on `hasSpawnedAny` so we don't flip stages during the brief window
+   *  before the first enemy arrives. */
+  private maybeAdvanceStage(): void {
+    if (this.state.status !== "playing") return;
+    if (this.state.enemies.length !== 0) return;
+    if (!this.enemies.hasSpawnedAny()) return;
+    // Also wait for any not-yet-spawned roster entries — otherwise a
+    // mid-entrance kill of every visible enemy would flip the stage while
+    // unspawned columns are still queued to fly in.
+    if (!this.enemies.isEmpty()) return;
+    this.state.stage += 1;
+    this.enemies.reset();
+    // Re-anchor so `formationTick` restarts at 0 next update — entrance arcs
+    // for stage N+1 play exactly like stage 1's did.
+    this.formationStartTick = null;
+    // Flash the "STAGE N" banner for ~1.5s. The renderer paints from this
+    // (we don't add a new GameState field — the banner is purely visual,
+    // not part of the contract any test asserts on).
+    this.stageBannerUntil = this.state.tick + 90;
   }
 
   /** Mark the fighter dead, decrement lives, arm the respawn timer. At zero
@@ -257,6 +292,9 @@ export class Engine {
       }
 
       this.resolveCollisions();
+      // Stage clear → next stage. Checked AFTER collisions so the same tick
+      // that takes the last enemy out also triggers the respawn.
+      this.maybeAdvanceStage();
     }
   }
 
@@ -399,6 +437,24 @@ export class Engine {
       ctx.font = "9px ui-monospace, monospace";
       ctx.fillStyle = "#9aa";
       ctx.fillText("press / tap to start", WIDTH / 2, HEIGHT / 2 + 18);
+    }
+
+    // STAGE N banner — painted during the brief window after a stage flip
+    // so the player gets a "you just cleared the wave" beat before the
+    // next formation flies in. Fades by simple cutoff (no alpha ramp).
+    if (
+      this.stageBannerUntil !== null &&
+      this.state.tick <= this.stageBannerUntil
+    ) {
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "20px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`STAGE ${this.state.stage}`, WIDTH / 2, HEIGHT / 2);
+    } else if (
+      this.stageBannerUntil !== null &&
+      this.state.tick > this.stageBannerUntil
+    ) {
+      this.stageBannerUntil = null;
     }
   }
 

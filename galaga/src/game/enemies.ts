@@ -112,6 +112,25 @@ export interface EnemyController {
   /** Advance the formation by one fixed-step tick and return the public
    *  snapshot (what gets stored on `GameState.enemies`). */
   tick(currentTick: number): Enemy[];
+  /** True once at least one enemy has appeared on stage (its spawnTick has
+   *  fired). The engine uses this to distinguish "formation not started yet"
+   *  from "formation cleared" — only the latter advances the stage. */
+  hasSpawnedAny(): boolean;
+  /** True when the internal roster is completely empty — every enemy this
+   *  stage spawned has been killed AND there are no pending spawns left
+   *  in the schedule. The engine pairs this with `hasSpawnedAny()` to
+   *  fire stage-clear: 'something existed, and now it doesn't'. */
+  isEmpty(): boolean;
+  /** Rebuild a fresh roster for the next stage. The engine calls this after
+   *  detecting `enemies.length === 0` post-clear; subsequent `tick()` calls
+   *  should treat `currentTick=0` as the start of a new entrance choreography
+   *  (the engine re-anchors its `formationStartTick` to match). */
+  reset(): void;
+  /** Remove the enemy with this id from the internal roster, so a kill via
+   *  `forceHit`/bullet collision actually empties the formation. Without this
+   *  the controller would re-emit the slain enemy on the next tick from its
+   *  persistent roster. */
+  remove(id: number): void;
 }
 
 /** Total ticks from currentTick=0 until every enemy has settled. Useful for
@@ -125,58 +144,102 @@ export function totalEntranceTicks(): number {
  *  on a staggered tick. Until its spawnTick fires, an enemy is "off-stage" —
  *  we don't include it in the published roster. */
 export function createEnemyController(): EnemyController {
-  const roster: EnemyInternal[] = [];
-  let id = 1;
-  // Spawn order: weave column-by-column, alternating sides — gives the
-  // classic two-streams-converging look without a dedicated path table.
-  for (let c = 0; c < COLS; c++) {
-    for (let r = 0; r < ROWS; r++) {
-      const order = c * ROWS + r;
-      roster.push({
-        id: id++,
-        kind: ROW_KIND[r] ?? "bee",
-        col: c,
-        row: r,
-        spawnTick: order * SPAWN_INTERVAL,
-        // Even columns from the left, odd from the right.
-        arcSide: c % 2 === 0 ? -1 : 1,
-        state: "entering",
-        // Off-screen until spawn; tick() overwrites these.
-        x: -100,
-        y: -100,
-        diveStartTick: null,
-        diveP0x: 0,
-        diveP0y: 0,
-        diveP1x: 0,
-        diveP1y: 0,
-      });
+  // Mutable so `reset()` can swap in a fresh stage without breaking the
+  // closure references the engine holds.
+  let roster: EnemyInternal[] = [];
+  // Globally unique ids — never reuse across stages so tests tracking a
+  // specific enemy by id can't be confused by a same-id respawn.
+  let nextId = 1;
+  // Tick offset: when the engine calls reset(), it re-anchors its
+  // formationStartTick, so the controller sees `currentTick` restart at 0
+  // for the new stage. This matches the original choreography contract
+  // (entrance arcs play from t=0).
+  let firstDiveTick = 0;
+  let orderedIndexes: number[] = [];
+  let everPopulated = false;
+
+  /** (Re)build the roster + dive schedule. Called on construction and again
+   *  when the engine clears the formation and asks for a fresh stage. */
+  function buildRoster(): void {
+    const next: EnemyInternal[] = [];
+    // Spawn order: weave column-by-column, alternating sides — gives the
+    // classic two-streams-converging look without a dedicated path table.
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        const order = c * ROWS + r;
+        next.push({
+          id: nextId++,
+          kind: ROW_KIND[r] ?? "bee",
+          col: c,
+          row: r,
+          spawnTick: order * SPAWN_INTERVAL,
+          // Even columns from the left, odd from the right.
+          arcSide: c % 2 === 0 ? -1 : 1,
+          state: "entering",
+          // Off-screen until spawn; tick() overwrites these.
+          x: -100,
+          y: -100,
+          diveStartTick: null,
+          diveP0x: 0,
+          diveP0y: 0,
+          diveP1x: 0,
+          diveP1y: 0,
+        });
+      }
     }
+    roster = next;
+    everPopulated = false;
+
+    // First dive begins after the whole formation has settled, plus a small
+    // delay so the harness can observe the all-settled state first.
+    firstDiveTick = totalEntranceTicks() + DIVE_START_DELAY;
+
+    // Deterministic dive order — interleaves rows + columns so the divers
+    // don't all come from the same corner. Using ((c*ROWS)+r)*7 mod COLS*ROWS
+    // gives a pseudo-shuffled but stable sequence.
+    const total = COLS * ROWS;
+    const diveOrder: number[] = [];
+    for (let i = 0; i < total; i++) {
+      diveOrder.push((i * 7) % total);
+    }
+    // De-dupe while preserving order (7 is coprime with total=40, so this is
+    // already a permutation, but stay defensive in case COLS/ROWS change).
+    const seen = new Set<number>();
+    const ordered: number[] = [];
+    for (const idx of diveOrder) {
+      if (!seen.has(idx)) {
+        seen.add(idx);
+        ordered.push(idx);
+      }
+    }
+    orderedIndexes = ordered;
   }
 
-  // First dive begins after the whole formation has settled, plus a small
-  // delay so the harness can observe the all-settled state first.
-  const firstDiveTick = totalEntranceTicks() + DIVE_START_DELAY;
-
-  // Deterministic dive order — interleaves rows + columns so the divers
-  // don't all come from the same corner. Using ((c*ROWS)+r)*7 mod COLS*ROWS
-  // gives a pseudo-shuffled but stable sequence.
-  const total = COLS * ROWS;
-  const diveOrder: number[] = [];
-  for (let i = 0; i < total; i++) {
-    diveOrder.push((i * 7) % total);
-  }
-  // De-dupe while preserving order (7 is coprime with total=40, so this is
-  // already a permutation, but stay defensive in case COLS/ROWS change).
-  const seen = new Set<number>();
-  const orderedIndexes: number[] = [];
-  for (const idx of diveOrder) {
-    if (!seen.has(idx)) {
-      seen.add(idx);
-      orderedIndexes.push(idx);
-    }
-  }
+  buildRoster();
 
   return {
+    hasSpawnedAny(): boolean {
+      return everPopulated;
+    },
+    isEmpty(): boolean {
+      return roster.length === 0;
+    },
+    reset(): void {
+      buildRoster();
+    },
+    remove(id: number): void {
+      // Splice the slain enemy out of the persistent roster so the next
+      // `tick()` doesn't re-emit it. The dive scheduler indexes into the
+      // roster by position — for this slice the only caller is the stage-
+      // clearing collision path, which removes enemies in bulk and then the
+      // engine calls `reset()`, so transient index shifts are tolerated.
+      for (let i = 0; i < roster.length; i++) {
+        if (roster[i].id === id) {
+          roster.splice(i, 1);
+          return;
+        }
+      }
+    },
     tick(currentTick: number): Enemy[] {
       const out: Enemy[] = [];
 
@@ -228,6 +291,7 @@ export function createEnemyController(): EnemyController {
       // 2. Per-enemy per-tick position update.
       for (const e of roster) {
         if (currentTick < e.spawnTick) continue; // not yet on stage
+        everPopulated = true;
 
         const ticksAlive = currentTick - e.spawnTick;
         const home = formationSlot(e.col, e.row);

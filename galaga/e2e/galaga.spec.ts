@@ -366,6 +366,133 @@ test("forceHit({target:'enemy'}) removes the enemy + scores; forceHit({target:'p
   });
 });
 
+test("clearing the formation advances the stage, respawns a fresh non-empty formation, and score accumulates across stages", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Wait for the entire formation to spawn + settle so `isEmpty()` will
+  // legitimately be true once we kill them all (stage-clear is gated on
+  // "everPopulated && no pending spawns"). Mirrors the formation test.
+  await page.waitForFunction(
+    () => {
+      const enemies = window.__galaga?.enemies ?? [];
+      return (
+        enemies.length > 0 && enemies.every((e) => e.state === "formation")
+      );
+    },
+    null,
+    { timeout: 15000 },
+  );
+
+  // Baseline before the clear.
+  const before = await page.evaluate(() => ({
+    stage: window.__galaga!.stage,
+    score: window.__galaga!.score,
+    initialCount: window.__galaga!.enemies.length,
+  }));
+  expect(before.stage).toBe(1);
+  expect(before.initialCount).toBeGreaterThan(0);
+
+  // Per-kind scoring: kill exactly one of each archetype FIRST and capture
+  // the score delta. Each delta must be > 0 — proves SCORE_BY_KIND fires
+  // per kill, not just at stage-clear.
+  const perKindDeltas = await page.evaluate(() => {
+    const kinds: Array<"bee" | "butterfly" | "boss"> = [
+      "bee",
+      "butterfly",
+      "boss",
+    ];
+    const deltas: Record<string, number> = {};
+    for (const k of kinds) {
+      const target = (window.__galaga?.enemies ?? []).find((e) => e.kind === k);
+      if (!target) continue;
+      const s0 = window.__galaga!.score;
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: target.id,
+      });
+      deltas[k] = window.__galaga!.score - s0;
+    }
+    return deltas;
+  });
+  expect(perKindDeltas.bee ?? 0).toBeGreaterThan(0);
+  expect(perKindDeltas.butterfly ?? 0).toBeGreaterThan(0);
+  expect(perKindDeltas.boss ?? 0).toBeGreaterThan(0);
+
+  // Now mop up the rest of the formation by id. Loop until enemies is
+  // empty AND stage has incremented (the engine bumps stage on the tick
+  // it observes a cleared roster). We re-read ids each pass because the
+  // controller's tick() re-emits surviving roster members.
+  await page.evaluate(async () => {
+    // Safety bound — formation is at most a few dozen enemies; 200 hits
+    // is comfortable headroom in case a tick rebuilds the snapshot.
+    for (let i = 0; i < 200; i++) {
+      const enemies = window.__galaga?.enemies ?? [];
+      if (enemies.length === 0) break;
+      const target = enemies[0];
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: target.id,
+      });
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+  });
+
+  // Stage must advance. We allow generous wall time because the engine
+  // checks `maybeAdvanceStage` per tick after collisions resolve.
+  await page.waitForFunction(
+    (priorStage) => (window.__galaga?.stage ?? priorStage) > priorStage,
+    before.stage,
+    { timeout: 5000 },
+  );
+
+  const afterClear = await page.evaluate(() => ({
+    stage: window.__galaga!.stage,
+    score: window.__galaga!.score,
+  }));
+  expect(afterClear.stage).toBe(before.stage + 1);
+  // Score must have accumulated across kills — never reset on stage flip.
+  expect(afterClear.score).toBeGreaterThan(before.score);
+
+  // The next stage's formation respawns. Wait for a fresh non-empty roster
+  // — the contract is "stage++ → new enemies appear", not "stage++ then
+  // empty forever".
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    null,
+    { timeout: 15000 },
+  );
+
+  const stage2 = await page.evaluate(() => window.__galaga!.enemies);
+  expect(stage2.length).toBeGreaterThan(0);
+
+  // And score keeps growing into stage 2 — kill one and confirm.
+  const scoreBeforeStage2Kill = afterClear.score;
+  await page.evaluate(() => {
+    const target = (window.__galaga?.enemies ?? [])[0];
+    if (target) {
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: target.id,
+      });
+    }
+  });
+  const scoreAfterStage2Kill = await page.evaluate(
+    () => window.__galaga!.score,
+  );
+  expect(scoreAfterStage2Kill).toBeGreaterThan(scoreBeforeStage2Kill);
+});
+
 test("running out of lives flips status to 'lost'", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
