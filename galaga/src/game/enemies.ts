@@ -150,6 +150,12 @@ interface EnemyInternal {
   /** When non-null this enemy is an 'escort' (captured player fighter)
    *  locked above the boss with id `escortOf`. */
   escortOf: number | null;
+  /** Boss two-hit armor (#68). Bosses survive their first hit: the engine
+   *  flips this false→true via `damageBoss(id)` instead of removing+scoring.
+   *  Mirrored onto the public snapshot so the renderer can recolor a damaged
+   *  boss and the e2e harness can assert the mid-armor state. Always false for
+   *  bees/butterflies (they die on the first hit and are never `damageBoss`'d). */
+  damaged: boolean;
 }
 
 export interface EnemyController {
@@ -175,6 +181,13 @@ export interface EnemyController {
    *  the controller would re-emit the slain enemy on the next tick from its
    *  persistent roster. */
   remove(id: number): void;
+  /** Boss two-hit armor (#68). Flip the internal `damaged` flag true on the
+   *  boss with this id — the engine calls this on a boss's FIRST hit instead
+   *  of `remove()`, so the boss survives (stays in the roster, no score) and
+   *  the next `tick()` snapshot reports `damaged===true`. No-op if the id
+   *  isn't a boss or isn't in the roster (defensive — the engine already
+   *  gates on kind/`damaged` before calling). */
+  damageBoss(id: number): void;
   /** Begin the capture beam choreography on a boss positioned above
    *  `(playerX, playerY)`. The boss is parked above the player at a fixed
    *  altitude with its tractor beam armed. Returns the boss id (or null if
@@ -280,6 +293,7 @@ export function createEnemyController(): EnemyController {
           captureAnchorX: 0,
           captureAnchorY: 0,
           escortOf: null,
+          damaged: false,
         });
       }
     }
@@ -341,6 +355,19 @@ export function createEnemyController(): EnemyController {
         }
       }
     },
+    damageBoss(id: number): void {
+      // First-hit armor (#68): mark the boss damaged in the persistent roster
+      // so the next tick()'s snapshot mirrors `damaged===true` and the boss
+      // keeps its slot (still blocking stage-advance). Only bosses arm the
+      // flag — bees/butterflies are removed outright by the engine and never
+      // reach this path.
+      for (const e of roster) {
+        if (e.id === id && e.kind === "boss") {
+          e.damaged = true;
+          return;
+        }
+      }
+    },
     beginCapture(playerX: number, playerY: number, bossId?: number): number | null {
       // Pick the requested boss, or the first 'formation' boss as a fallback
       // — the test harness uses the first-available path. The enemy is
@@ -390,6 +417,7 @@ export function createEnemyController(): EnemyController {
         captureAnchorX: 0,
         captureAnchorY: 0,
         escortOf: bossId,
+        damaged: false,
       };
       roster.push(escort);
       return id;
@@ -450,6 +478,7 @@ export function createEnemyController(): EnemyController {
           captureAnchorX: 0,
           captureAnchorY: 0,
           escortOf: null,
+          damaged: false,
         });
       }
       roster = wave;
@@ -526,7 +555,7 @@ export function createEnemyController(): EnemyController {
           everPopulated = true;
           e.x = e.captureAnchorX;
           e.y = e.captureAnchorY;
-          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y, damaged: e.damaged });
           continue;
         }
         if (e.state === "escort") {
@@ -540,7 +569,7 @@ export function createEnemyController(): EnemyController {
             e.x = boss.x;
             e.y = boss.y - 16;
           }
-          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y, damaged: e.damaged });
           continue;
         }
         if (currentTick < e.spawnTick) continue; // not yet on stage
@@ -592,7 +621,7 @@ export function createEnemyController(): EnemyController {
             e.y = HEIGHT + 1000;
             continue;
           }
-          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y, damaged: e.damaged });
           continue;
         }
 
@@ -640,7 +669,7 @@ export function createEnemyController(): EnemyController {
           e.y = arc.y;
         }
 
-        out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+        out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y, damaged: e.damaged });
       }
       // Reap challenging-wave enemies that flew off the bottom (marked with
       // a sentinel y in the loop above). They're removed from the persistent

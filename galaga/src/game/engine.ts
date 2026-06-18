@@ -222,6 +222,25 @@ export class Engine {
   private killEnemy(idx: number): void {
     const e = this.state.enemies[idx];
     if (!e) return;
+    // Boss two-hit armor (#68). A boss survives its FIRST hit: flip it to
+    // `damaged` and bail BEFORE scoring/VFX/removal/escort. The boss stays in
+    // the roster (still blocking stage-advance, still able to be mid-capture)
+    // and awards NOTHING this hit — the kill score lands only on the second
+    // hit, when `damaged===true` falls through to the normal path below. The
+    // accuracy tally (#65) already counted this hit (forceHit/resolveCollisions
+    // bump stageShotsFired+stageHits before calling killEnemy), so BOTH the
+    // damage hit and the eventual kill hit count toward the ratio — intended.
+    // The escort/rescue (#38) must NOT fire on a damage hit: returning here
+    // skips `escortOfBoss` entirely, so a damaged-while-capturing boss keeps
+    // its escort until the actual kill.
+    if (e.kind === "boss" && e.damaged !== true) {
+      this.enemies.damageBoss(e.id);
+      // Mirror onto the public snapshot immediately so the contract reports
+      // `damaged===true` on this very tick (don't wait for the next tick()'s
+      // re-emit), matching how the capture path mirrors escort spawns.
+      e.damaged = true;
+      return;
+    }
     // Per-state scoring (#71): diving/capturing kills score the bonus
     // value (bee 100 / butterfly 160 / boss 400); formation/entering/escort
     // score the parked value (bee 50 / butterfly 80 / boss 150). The "+N"
@@ -813,9 +832,15 @@ export class Engine {
     // attackers; bees are the workhorse yellow grunts. Tiny diamonds keep
     // them readable at 320px width without sprite art.
     for (const e of this.state.enemies) {
+      // Boss two-hit armor (#68): a boss that has taken its first hit
+      // (`damaged===true`) paints blue/purple so the player can read "shoot
+      // it again"; an undamaged boss stays the classic green prize color.
+      // Bees/butterflies never carry `damaged` and keep their fixed palette.
       const palette =
         e.kind === "boss"
-          ? "#7cf07c"
+          ? e.damaged === true
+            ? "#6a7aff"
+            : "#7cf07c"
           : e.kind === "butterfly"
             ? "#ff7ab0"
             : "#ffd76a";
