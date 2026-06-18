@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "oodim Game — a portfolio of web/mobile canvas games (Pac-Man, Galaga) built autonomously by the oodim AIDLC loop.",
+  "description": "oodim Game — a portfolio of web/mobile games (Pac-Man, Galaga, and the true-3D Doom) built autonomously by the oodim AIDLC loop.",
   "scripts": {
     "dev:pacman": "vite --config pacman/vite.config.ts",
     "build:pacman": "tsc --noEmit -p pacman/tsconfig.json && vite build --config pacman/vite.config.ts",
@@ -15,12 +15,21 @@
     "preview:galaga": "vite preview --config galaga/vite.config.ts",
     "typecheck:galaga": "tsc --noEmit -p galaga/tsconfig.json",
     "test:e2e:galaga": "playwright test --config galaga/playwright.config.ts",
-    "build": "npm run build:pacman && npm run build:galaga",
-    "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga",
-    "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga"
+    "dev:doom": "vite --config doom/vite.config.ts",
+    "build:doom": "tsc --noEmit -p doom/tsconfig.json && vite build --config doom/vite.config.ts",
+    "preview:doom": "vite preview --config doom/vite.config.ts",
+    "typecheck:doom": "tsc --noEmit -p doom/tsconfig.json",
+    "test:e2e:doom": "playwright test --config doom/playwright.config.ts",
+    "build": "npm run build:pacman && npm run build:galaga && npm run build:doom",
+    "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom",
+    "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga && npm run test:e2e:doom"
+  },
+  "dependencies": {
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
+    "@types/three": "^0.184.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }

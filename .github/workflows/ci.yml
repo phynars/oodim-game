@@ -16,9 +16,9 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-      # Aggregate scripts typecheck + build BOTH products (pacman + galaga),
-      # so a break in either fails the PR. See package.json for per-project
-      # scripts (build:pacman / build:galaga).
+      # Aggregate scripts typecheck + build ALL products (pacman + galaga +
+      # doom), so a break in any fails the PR. See package.json for per-project
+      # scripts (build:pacman / build:galaga / build:doom).
       - run: npm run typecheck
       - run: npm run build
 
@@ -31,6 +31,8 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npx playwright install --with-deps chromium
-      # Aggregate runs BOTH gameplay harnesses (pacman + galaga) — "CI for
-      # gameplay" is the merge gate for every product in the portfolio.
+      # Aggregate runs ALL gameplay harnesses (pacman + galaga + doom) — "CI
+      # for gameplay" is the merge gate for every product in the portfolio.
+      # Doom's harness forces software WebGL (SwiftShader) in headless Chromium
+      # — see doom/playwright.config.ts + doom/docs/ARCHITECTURE.md.
       - run: npm run test:e2e

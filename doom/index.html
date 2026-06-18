@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Doom — oodim Game</title>
+    <meta name="description" content="The studio's first true-3D project — a first-person shooter built on three.js + WebGL. Scaffolded for the autonomous loop; shipped slice by slice by AI avatars." />
+    <meta name="theme-color" content="#0a0a0f" />
+    <!-- Open Graph / Twitter share metadata. og.png is a 1200×630 PNG sibling
+         to this file; vite copies doom/* under /doom/ at build time so the
+         absolute URL resolves once art lands. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="oodim Game" />
+    <meta property="og:title" content="Doom · oodim Game" />
+    <meta property="og:description" content="The studio's first true-3D project — a first-person shooter on three.js + WebGL. Shipped autonomously, slice by slice." />
+    <meta property="og:url" content="https://game.oodim.com/doom/" />
+    <meta property="og:image" content="https://game.oodim.com/doom/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Doom · oodim Game" />
+    <meta name="twitter:description" content="The studio's first true-3D project — a first-person shooter on three.js + WebGL. Shipped autonomously, slice by slice." />
+    <meta name="twitter:image" content="https://game.oodim.com/doom/og.png" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230a0a0f'/%3E%3Cpath d='M6 22 L16 8 L26 22 Z' fill='%23cc3333'/%3E%3Crect x='14' y='15' width='4' height='7' fill='%230a0a0f'/%3E%3C/svg%3E"
+      type="image/svg+xml"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a0a0f;
+        color: #fff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
+        box-sizing: border-box;
+      }
+      /* Full-bleed 3D viewport. Unlike the 2D products (portrait, pixel-art),
+         Doom is a true-3D first-person view, so the canvas fills the viewport
+         in landscape. We size it via CSS to the available box; the engine
+         matches its drawing buffer to this displayed size (at device pixel
+         ratio) on construction + resize. A 960×540 attribute default seeds a
+         16:9 buffer before CSS layout settles. */
+      #game {
+        display: block;
+        width: 100vw;
+        height: 100dvh;
+        background: #0a0a0f;
+        touch-action: none;
+      }
+      /* HUD overlay — health / armor / score, pinned to the bottom of the
+         viewport over the 3D view. Monospace + tabular numerals so the layout
+         doesn't reflow as digits roll over. The [data-hud] attributes are the
+         contract doom/e2e reads. */
+      #hud {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+        padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+        font-variant-numeric: tabular-nums;
+        color: #e8eaff;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        pointer-events: none;
+      }
+      #hud .hud-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #hud .hud-label {
+        font-size: 10px;
+        color: #8ab;
+        opacity: 0.8;
+      }
+      #hud .hud-value {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      /* Health glows red, armor blue, score neutral — quick-read FPS HUD. */
+      #hud [data-hud="health"] {
+        color: #ff6a6a;
+      }
+      #hud [data-hud="armor"] {
+        color: #6ab0ff;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The 3D viewport. main.ts hands this to the three.js Engine. The width/
+         height attributes seed the initial drawing buffer; CSS drives the
+         displayed (responsive, full-bleed) size. -->
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <!-- HUD. main.ts mirrors window.__doom into the [data-hud] spans on every
+         animation frame. The data-hud attributes are the contract that
+         doom/e2e/doom.spec.ts asserts against. -->
+    <div id="hud" aria-label="Game status" role="status" aria-live="polite">
+      <div class="hud-cell">
+        <span class="hud-label">Health</span>
+        <span class="hud-value" data-hud="health">100</span>
+      </div>
+      <div class="hud-cell">
+        <span class="hud-label">Armor</span>
+        <span class="hud-value" data-hud="armor">0</span>
+      </div>
+      <div class="hud-cell">
+        <span class="hud-label">Score</span>
+        <span class="hud-value" data-hud="score">0</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
