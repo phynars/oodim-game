@@ -318,8 +318,14 @@ test("forceHit({target:'enemy'}) removes the enemy + scores; forceHit({target:'p
   await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
     timeout: 5000,
   });
+  // Wait specifically for a NON-BOSS enemy on stage. Roster spawn order is
+  // staggered (boss, butterfly, butterfly, bee, bee per column at 4-tick
+  // intervals), so a `length > 0` gate can resolve while only the first
+  // boss is visible — and post-#68 the first hit on a boss is a no-op
+  // damage flip, which would break the one-shot assertions below.
   await page.waitForFunction(
-    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    () =>
+      (window.__galaga?.enemies ?? []).some((e) => e.kind !== "boss"),
     null,
     { timeout: 10000 },
   );
@@ -881,8 +887,14 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
   await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
     timeout: 5000,
   });
+  // Wait for a NON-BOSS enemy on stage — the test kills a bee/butterfly to
+  // assert the one-shot kill VFX path. A bare `length > 0` gate can resolve
+  // with only the first boss visible (spawn order: boss, butterfly,
+  // butterfly, bee, bee per column at 4-tick intervals), and post-#68 a
+  // boss's first hit is a no-op damage flip — no VFX spawned.
   await page.waitForFunction(
-    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    () =>
+      (window.__galaga?.enemies ?? []).some((e) => e.kind !== "boss"),
     null,
     { timeout: 10000 },
   );
