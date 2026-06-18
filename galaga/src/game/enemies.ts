@@ -152,6 +152,11 @@ export interface EnemyController {
   /** Add an 'escort' enemy locked above the given boss. Returns the new
    *  enemy id. The engine calls this once the capture beam succeeds. */
   addEscort(bossId: number): number;
+  /** Id of the 'escort' currently locked above the given boss, or null.
+   *  The engine calls this when a boss dies to detect a pending rescue —
+   *  if a boss is killed while it owns an escort, the escort is freed and
+   *  the player gains the dual fighter. */
+  escortOfBoss(bossId: number): number | null;
   /** Center x of the capture beam this tick, or null if no beam is active.
    *  Read by the engine to test player-vs-beam overlap. The beam is a
    *  vertical column anchored to the capturing boss. */
@@ -330,6 +335,15 @@ export function createEnemyController(): EnemyController {
       };
       roster.push(escort);
       return id;
+    },
+    escortOfBoss(bossId: number): number | null {
+      // Linear scan — the roster is small (≤ COLS*ROWS + a handful of
+      // escorts) so this is cheap, and it keeps the lookup honest without
+      // a second index. Returns the FIRST escort attached to this boss.
+      for (const e of roster) {
+        if (e.state === "escort" && e.escortOf === bossId) return e.id;
+      }
+      return null;
     },
     captureBeamX(): number | null {
       if (capturingBossId === null) return null;

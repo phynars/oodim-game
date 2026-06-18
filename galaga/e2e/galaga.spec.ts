@@ -564,6 +564,91 @@ test("boss tractor beam captures the player: captureBeamActive→true, player.ca
   expect(after.lives).toBe(before.lives - 1);
 });
 
+test("destroying the captor frees the escort and arms the dual fighter", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Wait for at least one boss to be on stage so the capture hook has a
+  // captor to arm.
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies ?? []).some((e) => e.kind === "boss"),
+    null,
+    { timeout: 15000 },
+  );
+
+  // Baseline: not dual, not captured, no escort.
+  const before = await page.evaluate(() => ({
+    dual: window.__galaga!.player.dual,
+    captured: window.__galaga!.player.captured,
+    hasEscort: window.__galaga!.enemies.some((e) => e.state === "escort"),
+  }));
+  expect(before.dual).toBe(false);
+  expect(before.captured).toBe(false);
+  expect(before.hasEscort).toBe(false);
+
+  // Stage the capture: arm the beam, wait for the engine to complete the
+  // capture (player.captured=true AND an 'escort' enemy appears).
+  await page.evaluate(() => window.__galagaInternals!.triggerBossCapture());
+  await page.waitForFunction(
+    () =>
+      window.__galaga?.player.captured === true &&
+      (window.__galaga?.enemies ?? []).some((e) => e.state === "escort"),
+    null,
+    { timeout: 5000 },
+  );
+
+  // Identify the captor — the boss currently in 'capturing' state — and
+  // kill it via the test hook. This is the load-bearing assertion for #38.
+  const captorId = await page.evaluate(() => {
+    const captor = (window.__galaga?.enemies ?? []).find(
+      (e) => e.state === "capturing",
+    );
+    return captor?.id ?? null;
+  });
+  expect(captorId).not.toBeNull();
+
+  await page.evaluate(
+    (id) =>
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: id ?? undefined,
+      }),
+    captorId,
+  );
+
+  // After the captor dies: player.dual must be true AND no enemy is in
+  // 'escort' state anymore (the escort docked beside the player).
+  await page.waitForFunction(
+    () =>
+      window.__galaga?.player.dual === true &&
+      !(window.__galaga?.enemies ?? []).some((e) => e.state === "escort"),
+    null,
+    { timeout: 3000 },
+  );
+
+  const after = await page.evaluate(() => ({
+    dual: window.__galaga!.player.dual,
+    captured: window.__galaga!.player.captured,
+    escortCount: window.__galaga!.enemies.filter((e) => e.state === "escort")
+      .length,
+  }));
+  expect(after.dual).toBe(true);
+  expect(after.escortCount).toBe(0);
+  // Rescue clears the captured flag too — the fighter is back under
+  // player control.
+  expect(after.captured).toBe(false);
+});
+
 test("running out of lives flips status to 'lost'", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
