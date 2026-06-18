@@ -17,6 +17,7 @@ import {
   PLAYER_SPEED_PX_PER_TICK,
   type InputSource,
 } from "./input";
+import { createEnemyController, type EnemyController } from "./enemies";
 
 interface Star {
   x: number;
@@ -37,6 +38,11 @@ export class Engine {
   private state: GameState;
   private stars: Star[];
   private readonly input: InputSource;
+  private readonly enemies: EnemyController;
+  /** Tick at which the enemy formation choreography starts. Set when the
+   *  game leaves READY so the entrance arcs play from t=0 relative to
+   *  gameplay (not from whatever tick the loop happens to be on). */
+  private formationStartTick: number | null = null;
   private lastTime = 0;
   private accumulator = 0;
 
@@ -48,6 +54,7 @@ export class Engine {
     this.state = initialState();
     this.stars = this.seedStars();
     this.input = createKeyboardInput();
+    this.enemies = createEnemyController();
     this.publish();
     this.bindInput();
   }
@@ -111,6 +118,16 @@ export class Engine {
     }
     if (this.state.status === "playing") {
       this.state.tick += 1;
+      // Anchor the formation choreography to the first playing tick so the
+      // entrance arcs start at t=0 regardless of how many idle frames passed
+      // on the READY screen. (The state.tick counter is gated on `playing`
+      // and only ever increments here, so this is equivalent to `tick === 1`
+      // — kept explicit for readability.)
+      if (this.formationStartTick === null) {
+        this.formationStartTick = this.state.tick;
+      }
+      const formationTick = this.state.tick - this.formationStartTick;
+      this.state.enemies = this.enemies.tick(formationTick);
       // Sample input once per fixed-step so movement is deterministic at
       // 60 Hz regardless of render cadence. Both arrows held = no motion
       // (they cancel), matching the arcade feel.
@@ -174,6 +191,29 @@ export class Engine {
     for (const s of this.stars) {
       ctx.fillStyle = `rgba(255,255,255,${s.level.toFixed(2)})`;
       ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+    }
+
+    // Enemies — squat sprites colored by archetype. Bosses are the wide
+    // green prize targets up top; butterflies are the mid-row pink/red
+    // attackers; bees are the workhorse yellow grunts. Tiny diamonds keep
+    // them readable at 320px width without sprite art.
+    for (const e of this.state.enemies) {
+      const palette =
+        e.kind === "boss"
+          ? "#7cf07c"
+          : e.kind === "butterfly"
+            ? "#ff7ab0"
+            : "#ffd76a";
+      ctx.fillStyle = palette;
+      const cx = Math.round(e.x);
+      const cy = Math.round(e.y);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 5);
+      ctx.lineTo(cx + 6, cy);
+      ctx.lineTo(cx, cy + 5);
+      ctx.lineTo(cx - 6, cy);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // Bullets — thin vertical tracers. Player shots are warm white, enemy
