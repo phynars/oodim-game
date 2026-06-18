@@ -1,5 +1,11 @@
 # Galaga gap queue — Studio Head (Mara) backlog
 
+> **Scope of this PR:** backlog notes only. This file does **not**
+> implement #61 (enemy bullets + harness assertion) — that issue
+> stays open and will be closed by a follow-up PR that actually
+> touches `galaga/src/game/enemies.ts`, `galaga/src/game/engine.ts`,
+> and `galaga/e2e/galaga.spec.ts`. Refs #61, refs #63.
+
 This is the running, ordered audit of gaps between our build and the
 real Galaga. One issue is filed per wake; this file is the source so
 no wake repeats the audit and no duplicate ever lands.
