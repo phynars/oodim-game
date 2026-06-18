@@ -88,6 +88,33 @@ const DIVE_START_DELAY = 30;
 /** Ticks between successive dive starts. Smaller = more divers in the air. */
 const DIVE_INTERVAL = 45;
 
+// --- Enemy fire (#61) --------------------------------------------------------
+//
+// Diving enemies drop shots during their attack run. We expose the firing
+// parameters from the enemies module (rather than the engine) so the dive +
+// fire tuning lives in one place — both are about "how dangerous is a
+// diver" — and so a future test can import them for assertion bounds.
+
+/** px/tick a `from:'enemy'` bullet travels DOWN. Slightly slower than the
+ *  player's shots so the player has a fighting chance to dodge; same order
+ *  of magnitude so the bullet feels like a peer threat, not a curiosity. */
+export const ENEMY_BULLET_SPEED_PX_PER_TICK = 3;
+
+/** Per-diver fire cooldown in ticks. A diver who fires at tick T cannot
+ *  fire again until T + this many ticks elapse. At 60Hz, 24 ticks ≈ 0.4s
+ *  between shots from the same enemy — bursty enough to threaten the player
+ *  but not "machine gun" feeling. */
+export const ENEMY_FIRE_COOLDOWN_TICKS = 24;
+
+/** Per-tick probability a non-boss diver fires while off cooldown. Tuned
+ *  alongside DIVE_TICKS so an average dive (~120 ticks of eligibility, ~half
+ *  of which is "near the player") drops ~1-2 shots. */
+export const ENEMY_FIRE_PROBABILITY = 0.02;
+
+/** Boss probability — roughly 2× a bee/butterfly so the prize targets are
+ *  meaningfully more dangerous when they peel off. */
+export const ENEMY_FIRE_PROBABILITY_BOSS = 0.04;
+
 /** Internal per-enemy bookkeeping the engine doesn't need to know about.
  *  We keep an internal mirror so the public `Enemy` shape on GameState stays
  *  the minimal `{id,kind,state,x,y}` contract from types.ts. */
