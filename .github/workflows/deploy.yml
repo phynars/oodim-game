@@ -35,8 +35,11 @@ jobs:
           mkdir -p public/pacman public/galaga
           cp -r dist-pacman/* public/pacman/
           cp -r dist-galaga/* public/galaga/
-          # Root portfolio landing linking both products.
-          cp landing/index.html public/index.html
+          # Root portfolio landing linking both products. Copy the whole
+          # landing/ directory (not just index.html) so siblings like og.png
+          # resolve at site root — landing/index.html references
+          # https://game.oodim.com/og.png in its OG/Twitter tags.
+          cp -r landing/. public/
       - name: Deploy to Cloudflare
         if: ${{ env.CF_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
