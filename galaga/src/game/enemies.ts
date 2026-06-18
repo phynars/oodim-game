@@ -132,7 +132,12 @@ function bezier(p0: number, p1: number, p2: number, t: number): number {
  *  "new game" path (a fresh `initialState()` produces an empty roster,
  *  but a stale flag would suppress the respawn). Calling this with an
  *  empty roster also clears the module-private choreography map, so we
- *  don't leak per-enemy entries across game resets. */
+ *  don't leak per-enemy entries across game resets.
+ *
+ *  `launchedAt` is anchored to the CURRENT engine tick (not 0), so the
+ *  entrance choreography starts the moment the wave spawns regardless
+ *  of when that happens — important for the eventual "new wave per
+ *  stage" path, where waves spawn mid-game with `state.tick > 0`. */
 export function spawnWave(state: GameState): void {
   if (state.enemies.length > 0) return;
   // Fresh wave → drop any choreography left over from a previous game.
@@ -142,9 +147,10 @@ export function spawnWave(state: GameState): void {
   // Order the spawn so bees (front-line) launch first, then butterflies,
   // then bosses — feels like the swarm builds up to the heavies.
   const ordered = [...slots].sort((a, b) => b.row - a.row || a.col - b.col);
+  const spawnTick = state.tick;
   ordered.forEach((slot, index) => {
     const id = nextId++;
-    const arc = arcForSlot(slot, index * STAGGER_TICKS);
+    const arc = arcForSlot(slot, spawnTick + index * STAGGER_TICKS);
     choreographies.set(id, { slot, arc });
     const enemy: Enemy = {
       id,
@@ -190,11 +196,4 @@ export function tickEnemies(state: GameState): void {
   }
 }
 
-/** Test seam: reset module-private state. Production code doesn't need this
- *  — `spawnWave` self-clears when given an empty roster (see above) — but
- *  unit tests that share the module across cases can call this to drop
- *  any per-enemy choreography between assertions. */
-export function __resetEnemiesForTests(): void {
-  choreographies.clear();
-  nextId = 1;
-}
+

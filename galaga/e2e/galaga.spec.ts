@@ -191,9 +191,10 @@ test("enemies enter on arcs and settle into formation; all three kinds present",
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
 
-  // Leave READY so the wave can spawn and the choreography can tick.
+  // Leave READY so the wave can spawn and the choreography can tick. A
+  // pointerdown on the canvas flips status to 'playing' (see engine.ts);
+  // we don't need a keypress as well.
   await page.locator("canvas").click();
-  await page.keyboard.press("ArrowLeft");
   await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
     timeout: 5000,
   });
@@ -223,15 +224,15 @@ test("enemies enter on arcs and settle into formation; all three kinds present",
 
   // Within a bounded number of ticks, every enemy must reach 'formation'.
   // Entrance is ~90 ticks plus per-enemy stagger (~6 ticks each); with a
-  // ~7×3 grid that's <180 game ticks. Give the harness generous wall-clock
-  // time since the loop runs at rAF cadence, not real-time ticks.
+  // 7×3 grid that's ~210 game ticks ≈ 3.5s at 60Hz. Headless rAF cadence
+  // under CI load can be choppy, so we give a generous wall-clock budget.
   await page.waitForFunction(
     () => {
       const es = window.__galaga?.enemies ?? [];
       return es.length > 0 && es.every((e) => e.state === "formation");
     },
     null,
-    { timeout: 15000 },
+    { timeout: 20000 },
   );
 
   // Spot-check: parked enemies cluster near the top of the field (the grid
