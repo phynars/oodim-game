@@ -649,6 +649,70 @@ test("destroying the captor frees the escort and arms the dual fighter", async (
   expect(after.captured).toBe(false);
 });
 
+test("draining lives surfaces GAME OVER: status reaches 'gameover', HUD lives reads 0, overlay visible", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Baseline: overlay hidden before any deaths.
+  const overlay = page.locator('[data-overlay="gameover"]');
+  await expect(overlay).toBeHidden();
+
+  // Drain every life through the harness hook. We wait for alive=true
+  // between hits so each forceHit lands on a live fighter (not during the
+  // respawn pause). At lives=0 the engine flips status to 'lost' without
+  // re-arming the respawn timer, so the loop exits on the post-hit lives
+  // check rather than waiting for an alive flip that will never come.
+  for (let i = 0; i < 8; i++) {
+    const lives = await page.evaluate(() => window.__galaga!.lives);
+    if (lives <= 0) break;
+    await page.waitForFunction(
+      () => window.__galaga?.player.alive === true,
+      null,
+      { timeout: 5000 },
+    );
+    await page.evaluate(() =>
+      window.__galagaInternals!.forceHit({ target: "player" }),
+    );
+  }
+
+  // Contract: HUD reads 0 lives (data-hud="lives" mirrors window.__galaga.lives).
+  await expect(page.locator('[data-hud="lives"]')).toHaveText("0", {
+    timeout: 3000,
+  });
+
+  // Contract: status transitions through 'lost' to the terminal 'gameover'.
+  // The engine holds briefly in 'lost' so the death frame reads before the
+  // overlay paints; we wait for the final 'gameover' state.
+  await page.waitForFunction(
+    () => window.__galaga?.status === "gameover",
+    null,
+    { timeout: 5000 },
+  );
+
+  // Contract: the GAME OVER overlay is visible once we're in a terminal
+  // state. The element lives in index.html (data-overlay="gameover") and is
+  // toggled by main.ts from the window.__galaga.status contract.
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toContainText(/GAME OVER/i);
+
+  const final = await page.evaluate(() => ({
+    lives: window.__galaga!.lives,
+    status: window.__galaga!.status,
+  }));
+  expect(final.lives).toBe(0);
+  expect(final.status).toBe("gameover");
+});
+
 test("running out of lives flips status to 'lost'", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
@@ -680,7 +744,10 @@ test("running out of lives flips status to 'lost'", async ({ page }) => {
     status: window.__galaga!.status,
   }));
   expect(final.lives).toBe(0);
-  expect(final.status).toBe("lost");
+  // The lifecycle is 'lost' (immediate flip) → 'gameover' (after the brief
+  // hold). Either terminal state satisfies "ran out of lives" — the more
+  // specific gameover assertion lives in the GAME OVER overlay test above.
+  expect(["lost", "gameover"]).toContain(final.status);
 });
 
 test("challenging stage: no enemy bullets spawn during it and a perfect clear awards a bonus", async ({
