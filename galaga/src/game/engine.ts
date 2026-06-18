@@ -22,11 +22,14 @@ import {
   type GameState,
 } from "./types";
 import {
+  combineInputs,
   createKeyboardInput,
+  createTouchInput,
   MAX_PLAYER_BULLETS,
   PLAYER_BULLET_SPEED_PX_PER_TICK,
   PLAYER_SPEED_PX_PER_TICK,
   type InputSource,
+  type TouchInputElements,
 } from "./input";
 import { createEnemyController, type EnemyController } from "./enemies";
 
@@ -85,14 +88,21 @@ export class Engine {
   private lastTime = 0;
   private accumulator = 0;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, touchElements?: TouchInputElements) {
     this.canvas = canvas;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2d context unavailable");
     this.ctx = ctx;
     this.state = initialState();
     this.stars = this.seedStars();
-    this.input = createKeyboardInput();
+    // Keyboard is always present; touch is wired only when the host page
+    // hands us the three on-screen buttons (left/right/fire). Both sources
+    // feed the same edge-triggered/polled contract via combineInputs so
+    // the rest of the engine never knows which device is driving.
+    const keyboard = createKeyboardInput();
+    this.input = touchElements
+      ? combineInputs([keyboard, createTouchInput(touchElements)])
+      : keyboard;
     this.enemies = createEnemyController();
     this.publish();
     this.bindInput();

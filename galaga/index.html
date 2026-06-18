@@ -63,14 +63,24 @@
         box-sizing: border-box;
       }
       /* Canvas scales to fit while preserving the native 320:448 portrait
-         aspect. Portrait phones cap on height; wide screens cap on width. */
+         aspect. We reserve ~120px of vertical space for the HUD strip +
+         touch control pad (on mobile) — the canvas claims the rest. On
+         wider screens the cap on width kicks in first. The --gx-reserve
+         var is the running height we deduct from the viewport so the
+         canvas never overlaps the touch pad or scrolls the page. */
+      :root {
+        --gx-reserve: 160px;
+      }
       #game {
         background: #000;
         image-rendering: pixelated;
-        height: min(100dvh, calc(100vw / var(--gx-aspect)));
+        height: min(
+          calc(100dvh - var(--gx-reserve)),
+          calc(100vw / var(--gx-aspect))
+        );
         width: auto;
         max-width: 100vw;
-        max-height: 100dvh;
+        max-height: calc(100dvh - var(--gx-reserve));
         touch-action: none;
       }
       /* HUD strip above the canvas — score / lives / stage. Monospace +
@@ -108,8 +118,11 @@
          the canvas uses so the overlay scales 1:1 with the playfield. */
       #stage-wrap {
         position: relative;
-        height: min(100dvh, calc(100vw / var(--gx-aspect)));
-        max-height: 100dvh;
+        height: min(
+          calc(100dvh - var(--gx-reserve)),
+          calc(100vw / var(--gx-aspect))
+        );
+        max-height: calc(100dvh - var(--gx-reserve));
       }
       #stage-wrap > #game {
         display: block;
@@ -140,6 +153,73 @@
         color: #cdd;
         text-transform: uppercase;
         letter-spacing: 0.08em;
+      }
+      /* Touch control pad — three buttons beneath the canvas. Wide enough
+         to thumb comfortably one-handed in portrait; the LEFT/RIGHT pair
+         sits on one side and FIRE opposite. We size to the same width box
+         the HUD uses so everything stays aligned with the playfield. The
+         buttons are pointer-only (no text selection / no callout) and
+         `touch-action: none` so a press doesn't double as a scroll/zoom.
+         They're hidden on coarse=false devices (desktop mouse-only)
+         because keyboard is the canonical input there; on touch screens
+         + on hybrid devices (which report any-pointer:coarse) they show. */
+      #touchpad {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: min(90vw, calc((100dvh - var(--gx-reserve)) * var(--gx-aspect)));
+        max-width: 100vw;
+        padding: 0 8px;
+        box-sizing: border-box;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #touchpad .pad-cluster {
+        display: flex;
+        gap: 10px;
+      }
+      #touchpad button {
+        appearance: none;
+        -webkit-appearance: none;
+        background: rgba(232, 234, 255, 0.08);
+        border: 1px solid rgba(232, 234, 255, 0.35);
+        color: #e8eaff;
+        font-family: inherit;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        width: 64px;
+        height: 64px;
+        border-radius: 12px;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #touchpad button:active,
+      #touchpad button.is-pressed {
+        background: rgba(232, 234, 255, 0.22);
+        border-color: rgba(232, 234, 255, 0.7);
+      }
+      #touchpad [data-touch="fire"] {
+        background: rgba(255, 90, 90, 0.12);
+        border-color: rgba(255, 90, 90, 0.55);
+        color: #ff9a9a;
+      }
+      #touchpad [data-touch="fire"]:active,
+      #touchpad [data-touch="fire"].is-pressed {
+        background: rgba(255, 90, 90, 0.3);
+        border-color: rgba(255, 90, 90, 0.9);
+      }
+      /* Tighten the vertical reserve on desktop where the pad is largely
+         decorative — keyboard is the canonical input there. We keep the
+         pad visible (it's still usable with a mouse for testing) but
+         claw back some canvas height. Phones + hybrids that report any
+         coarse pointer keep the full reserve. */
+      @media not all and (any-pointer: coarse) {
+        :root {
+          --gx-reserve: 100px;
+        }
       }
     </style>
   </head>
@@ -181,6 +261,18 @@
           <span data-overlay-final-score>0</span>
         </div>
       </div>
+    </div>
+    <!-- Touch control pad. The data-touch attributes are the contract
+         src/main.ts queries for; if any of the three is missing we fall
+         back to keyboard-only. Buttons stay full-size on phones (64px
+         hit target) and dispatch the same intents as keyboard via the
+         shared InputSource interface. -->
+    <div id="touchpad" aria-label="Touch controls">
+      <div class="pad-cluster">
+        <button type="button" data-touch="left" aria-label="Move left">‹</button>
+        <button type="button" data-touch="right" aria-label="Move right">›</button>
+      </div>
+      <button type="button" data-touch="fire" aria-label="Fire">FIRE</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -1,4 +1,4 @@
-// Keyboard input for Galaga. Owns the "which directions are pressed right
+// Input sources for Galaga. Owns the "which directions are pressed right
 // now" state and exposes it as a small, polled snapshot the engine reads
 // once per fixed-step update. Polling (vs event-driven movement) keeps the
 // simulation deterministic — input is sampled at the same cadence as the
@@ -10,8 +10,11 @@
 // per keydown (auto-repeat keydowns DO count as fresh presses — that's how
 // the arcade behaves when you mash Space).
 //
-// Touch / gamepad are deliberately out of scope for this slice (see #31);
-// they slot in later as additional sources writing into the same snapshot.
+// Two concrete sources ship today: `createKeyboardInput` (desktop) and
+// `createTouchInput` (mobile, wired to on-screen buttons in index.html).
+// `combineInputs` merges them so the engine consumes a single InputSource
+// regardless of which device is driving — left/right OR across sources,
+// fire is the boolean OR of pending presses, firstInput fires on either.
 
 export interface InputSnapshot {
   /** True while a left-movement key is held (ArrowLeft or A). */
@@ -129,6 +132,180 @@ export function createKeyboardInput(
       target.removeEventListener("keydown", handleKeyDown as EventListener);
       target.removeEventListener("keyup", handleKeyUp as EventListener);
       target.removeEventListener("blur", handleBlur as EventListener);
+    },
+    onFirstInput(cb: () => void): void {
+      if (firedFirstInput) {
+        cb();
+        return;
+      }
+      firstInputCbs.push(cb);
+    },
+  };
+}
+
+/** Touch / pointer input bound to three on-screen buttons (left, right,
+ *  fire). Mirrors the keyboard source's contract exactly: hold-to-move on
+ *  left/right (pointerdown → pressed=true, pointerup/cancel/leave → false),
+ *  edge-triggered single shot on fire (pointerdown sets firePending; held
+ *  presses do NOT auto-repeat, matching the 2-shot cap). Buttons use
+ *  pointer events (not touch events) so the same code path drives mouse
+ *  clicks for desktop testing AND finger taps on mobile.
+ *
+ *  setPointerCapture is called on pointerdown so the press tracks even if
+ *  the finger slides off the button — without it, sliding off the LEFT
+ *  pad would silently release left and the ship would drift back. */
+export interface TouchInputElements {
+  left: HTMLElement;
+  right: HTMLElement;
+  fire: HTMLElement;
+}
+
+export function createTouchInput(elements: TouchInputElements): InputSource {
+  const pressed = { left: false, right: false };
+  let firePending = false;
+  const firstInputCbs: Array<() => void> = [];
+  let firedFirstInput = false;
+
+  const fireFirstInput = (): void => {
+    if (firedFirstInput) return;
+    firedFirstInput = true;
+    for (const cb of firstInputCbs) cb();
+  };
+
+  // Per-button handlers we register, kept in a list so dispose() can detach
+  // every listener cleanly. Each entry is [element, type, handler].
+  const bindings: Array<[HTMLElement, string, EventListener]> = [];
+
+  const bind = (
+    el: HTMLElement,
+    type: string,
+    handler: (ev: PointerEvent) => void,
+  ): void => {
+    const wrapped = ((ev: Event) => handler(ev as PointerEvent)) as EventListener;
+    el.addEventListener(type, wrapped, { passive: false });
+    bindings.push([el, type, wrapped]);
+  };
+
+  const armDirection = (which: "left" | "right", el: HTMLElement): void => {
+    bind(el, "pointerdown", (ev) => {
+      if (typeof ev.preventDefault === "function") {
+        try {
+          ev.preventDefault();
+        } catch {
+          // Some synthetic events refuse preventDefault; safe to ignore.
+        }
+      }
+      if (typeof el.setPointerCapture === "function" && ev.pointerId !== undefined) {
+        try {
+          el.setPointerCapture(ev.pointerId);
+        } catch {
+          // Capture is best-effort — older browsers / jsdom may refuse.
+        }
+      }
+      pressed[which] = true;
+      fireFirstInput();
+    });
+    const release = (ev: PointerEvent): void => {
+      pressed[which] = false;
+      if (
+        typeof el.releasePointerCapture === "function" &&
+        ev.pointerId !== undefined
+      ) {
+        try {
+          el.releasePointerCapture(ev.pointerId);
+        } catch {
+          // Releasing a capture we don't hold is harmless; ignore.
+        }
+      }
+    };
+    bind(el, "pointerup", release);
+    bind(el, "pointercancel", release);
+    // pointerleave covers the "finger slid off without capture" edge case
+    // on browsers where setPointerCapture isn't available.
+    bind(el, "pointerleave", release);
+  };
+
+  armDirection("left", elements.left);
+  armDirection("right", elements.right);
+
+  bind(elements.fire, "pointerdown", (ev) => {
+    if (typeof ev.preventDefault === "function") {
+      try {
+        ev.preventDefault();
+      } catch {
+        // ignore — see armDirection.
+      }
+    }
+    firePending = true;
+    fireFirstInput();
+  });
+
+  return {
+    read(): InputSnapshot {
+      return { left: pressed.left, right: pressed.right };
+    },
+    consumeFire(): boolean {
+      if (!firePending) return false;
+      firePending = false;
+      return true;
+    },
+    dispose(): void {
+      for (const [el, type, handler] of bindings) {
+        el.removeEventListener(type, handler);
+      }
+      bindings.length = 0;
+    },
+    onFirstInput(cb: () => void): void {
+      if (firedFirstInput) {
+        cb();
+        return;
+      }
+      firstInputCbs.push(cb);
+    },
+  };
+}
+
+/** Combine N input sources into one. The engine consumes a single
+ *  InputSource so we hide the multi-device fan-in here: directions are
+ *  OR'd across sources (holding LEFT on the keyboard while pressing
+ *  RIGHT on the touch pad cancels exactly like both keys held), fire
+ *  is the boolean OR of pending presses (drained from every source so
+ *  no shot is silently swallowed), and onFirstInput fires once across
+ *  the combined set. */
+export function combineInputs(sources: InputSource[]): InputSource {
+  const firstInputCbs: Array<() => void> = [];
+  let firedFirstInput = false;
+  const fireFirstInput = (): void => {
+    if (firedFirstInput) return;
+    firedFirstInput = true;
+    for (const cb of firstInputCbs) cb();
+  };
+  for (const src of sources) {
+    src.onFirstInput(fireFirstInput);
+  }
+  return {
+    read(): InputSnapshot {
+      let left = false;
+      let right = false;
+      for (const src of sources) {
+        const snap = src.read();
+        if (snap.left) left = true;
+        if (snap.right) right = true;
+      }
+      return { left, right };
+    },
+    consumeFire(): boolean {
+      // Drain EVERY source so a fire on either input lands; if we
+      // short-circuited the boolean OR we'd leave a queued shot on the
+      // un-checked source that the engine wouldn't see until next tick.
+      let fired = false;
+      for (const src of sources) {
+        if (src.consumeFire()) fired = true;
+      }
+      return fired;
+    },
+    dispose(): void {
+      for (const src of sources) src.dispose();
     },
     onFirstInput(cb: () => void): void {
       if (firedFirstInput) {
