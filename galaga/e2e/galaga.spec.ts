@@ -184,3 +184,57 @@ test("Space fires a player bullet that travels upward; cap is 2 concurrent", asy
   });
   expect(maxObserved).toBeLessThanOrEqual(2);
 });
+
+test("enemy roster flies in and settles into a formation of bees, butterflies, and bosses", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  // Leave READY so the formation choreography starts ticking.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  // Once any enemies are present, the contract demands non-empty + all three
+  // archetypes once the entrance choreography has played out. Give it enough
+  // wall time for the full staggered entrance: ~8 columns × 5 rows ×
+  // SPAWN_INTERVAL plus the ENTRANCE_TICKS arc, well under 10s at 60Hz.
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    null,
+    { timeout: 5000 },
+  );
+
+  // Wait until EVERY enemy has reached 'formation'. This is the load-bearing
+  // assertion: the entrance arcs must terminate, not loop or stall.
+  await page.waitForFunction(
+    () => {
+      const enemies = window.__galaga?.enemies ?? [];
+      return (
+        enemies.length > 0 && enemies.every((e) => e.state === "formation")
+      );
+    },
+    null,
+    { timeout: 10000 },
+  );
+
+  const enemies = await page.evaluate(() => window.__galaga!.enemies);
+  expect(enemies.length).toBeGreaterThan(0);
+  expect(enemies.every((e) => e.state === "formation")).toBe(true);
+
+  const kinds = new Set(enemies.map((e) => e.kind));
+  expect(kinds.has("bee")).toBe(true);
+  expect(kinds.has("butterfly")).toBe(true);
+  expect(kinds.has("boss")).toBe(true);
+
+  // Each enemy publishes the minimal shape consumers depend on.
+  for (const e of enemies) {
+    expect(typeof e.id).toBe("number");
+    expect(["bee", "butterfly", "boss"]).toContain(e.kind);
+    expect(typeof e.x).toBe("number");
+    expect(typeof e.y).toBe("number");
+  }
+});
