@@ -1,19 +1,23 @@
-// Enemy formation + entrance choreography (Galaga issue #33).
+// Enemy formation + entrance choreography + diving attacks (Galaga issues
+// #33 + #34).
 //
 // The arcade's signature opening: waves of enemies fly in along curving
 // entrance arcs from off-screen, settle into a rectangular grid near the top,
-// and "breathe" — the whole formation slides side-to-side as one body. This
-// module owns the roster lifecycle and produces NEW enemy snapshots each
-// tick; the engine just calls `tick(currentTick)` and stores the result on
-// the shared `GameState`. Keeping the math here (not in engine.ts) means the
-// engine stays a thin orchestrator and the formation can be unit-tested in
-// isolation later.
+// and "breathe" — the whole formation slides side-to-side as one body. Once
+// the formation is settled, enemies periodically peel off ('diving') and
+// sweep down at the player along a curved path, then loop back to their
+// formation slot. This module owns the roster lifecycle and produces NEW
+// enemy snapshots each tick; the engine just calls `tick(currentTick)` and
+// stores the result on the shared `GameState`. Keeping the math here (not in
+// engine.ts) means the engine stays a thin orchestrator and the formation
+// can be unit-tested in isolation later.
 //
 // Coordinate convention matches `types.ts`: pixel-space, origin top-left,
 // centers (not corners). All easing/curves are pure functions of
 // `t = ticksAlive / DURATION` so the choreography is deterministic given
 // the spawn schedule — important for the e2e harness which asserts every
-// enemy reaches `'formation'` within a bounded number of ticks.
+// enemy reaches `'formation'` within a bounded number of ticks, and that an
+// enemy enters `'diving'` with increasing `y` during the dive.
 
 import { HEIGHT, WIDTH, type Enemy, type EnemyKind } from "./types";
 
@@ -51,6 +55,33 @@ const BREATHE_AMPLITUDE = 12;
  *  cycle, the same languid sway the arcade has. */
 const BREATHE_OMEGA = (2 * Math.PI) / 240;
 
+// --- Diving choreography -----------------------------------------------------
+//
+// Once an enemy has reached its formation slot, it becomes eligible to dive.
+// We stagger dives so the formation doesn't empty out at once: the first
+// dive fires shortly after the formation settles, then a fresh dive begins
+// every DIVE_INTERVAL ticks. Each dive lasts DIVE_TICKS, half descending
+// toward the player's altitude and half climbing back to the formation slot.
+//
+// The dive path is a quadratic Bézier: P0 = formation slot (the breathing
+// position is captured at dive start so the curve begins exactly where the
+// sprite was rendered), P1 = a control point pulled down toward the bottom
+// of the field and laterally offset toward the player half, P2 = the
+// formation slot again. With t ∈ [0,1], the curve reaches its max y near
+// t=0.5 — that's the descent — and returns by t=1.
+
+/** How many ticks one dive takes from peel-off to return-to-formation. At
+ *  60Hz that's ~2s — long enough for `y` to visibly increase, short enough
+ *  the e2e harness can wait for it without flake. */
+const DIVE_TICKS = 120;
+
+/** First dive begins this many ticks after the LAST enemy has settled. Gives
+ *  the harness a chance to confirm the formation state first. */
+const DIVE_START_DELAY = 30;
+
+/** Ticks between successive dive starts. Smaller = more divers in the air. */
+const DIVE_INTERVAL = 45;
+
 /** Internal per-enemy bookkeeping the engine doesn't need to know about.
  *  We keep an internal mirror so the public `Enemy` shape on GameState stays
  *  the minimal `{id,kind,state,x,y}` contract from types.ts. */
@@ -64,9 +95,17 @@ interface EnemyInternal {
   spawnTick: number;
   /** Which entrance arc: -1 sweeps in from the left, +1 from the right. */
   arcSide: -1 | 1;
-  state: "entering" | "formation";
+  state: "entering" | "formation" | "diving";
   x: number;
   y: number;
+  /** Tick this enemy began its current dive (null when not diving). */
+  diveStartTick: number | null;
+  /** Bézier control point captured at dive start — locks the curve shape so
+   *  the breathing sway during the dive doesn't warp the arc mid-flight. */
+  diveP0x: number;
+  diveP0y: number;
+  diveP1x: number;
+  diveP1y: number;
 }
 
 export interface EnemyController {
@@ -105,27 +144,130 @@ export function createEnemyController(): EnemyController {
         // Off-screen until spawn; tick() overwrites these.
         x: -100,
         y: -100,
+        diveStartTick: null,
+        diveP0x: 0,
+        diveP0y: 0,
+        diveP1x: 0,
+        diveP1y: 0,
       });
+    }
+  }
+
+  // First dive begins after the whole formation has settled, plus a small
+  // delay so the harness can observe the all-settled state first.
+  const firstDiveTick = totalEntranceTicks() + DIVE_START_DELAY;
+
+  // Deterministic dive order — interleaves rows + columns so the divers
+  // don't all come from the same corner. Using ((c*ROWS)+r)*7 mod COLS*ROWS
+  // gives a pseudo-shuffled but stable sequence.
+  const total = COLS * ROWS;
+  const diveOrder: number[] = [];
+  for (let i = 0; i < total; i++) {
+    diveOrder.push((i * 7) % total);
+  }
+  // De-dupe while preserving order (7 is coprime with total=40, so this is
+  // already a permutation, but stay defensive in case COLS/ROWS change).
+  const seen = new Set<number>();
+  const orderedIndexes: number[] = [];
+  for (const idx of diveOrder) {
+    if (!seen.has(idx)) {
+      seen.add(idx);
+      orderedIndexes.push(idx);
     }
   }
 
   return {
     tick(currentTick: number): Enemy[] {
       const out: Enemy[] = [];
+
+      // 1. Maybe start a new dive this tick. We look at the global "dive
+      //    slot" — number of dives that should have begun by now — and if
+      //    the next slot's time has arrived, pick the next un-diving formation
+      //    enemy from the deterministic order and launch it.
+      if (currentTick >= firstDiveTick) {
+        const slotsElapsed =
+          Math.floor((currentTick - firstDiveTick) / DIVE_INTERVAL) + 1;
+        // Count how many dives have actually started so far — start more
+        // until we catch up to slotsElapsed (typically one per tick when due).
+        let started = 0;
+        for (const e of roster) {
+          if (e.diveStartTick !== null) started++;
+        }
+        while (started < slotsElapsed && started < orderedIndexes.length) {
+          const candidateIdx = orderedIndexes[started];
+          const candidate = roster[candidateIdx];
+          // Only launch if the candidate is currently parked in formation.
+          // If it's still entering (shouldn't happen past firstDiveTick) or
+          // already diving, skip to the next slot.
+          if (
+            candidate &&
+            candidate.state === "formation" &&
+            candidate.diveStartTick === null
+          ) {
+            // Capture the current rendered position as P0 so the curve starts
+            // exactly where the breathing sprite is — no visual snap.
+            const home = formationSlot(candidate.col, candidate.row);
+            const sway =
+              Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
+            candidate.diveP0x = home.x + sway;
+            candidate.diveP0y = home.y;
+            // Control point: pull the curve down to the lower playfield and
+            // sideways toward the center / opposite half so the dive sweeps
+            // across the screen rather than straight down (classic Galaga
+            // dives are S-shaped relative to the formation).
+            const sideSign = candidate.col < COLS / 2 ? 1 : -1;
+            candidate.diveP1x = WIDTH / 2 + sideSign * WIDTH * 0.25;
+            candidate.diveP1y = HEIGHT - 40;
+            candidate.diveStartTick = currentTick;
+            candidate.state = "diving";
+          }
+          started++;
+        }
+      }
+
+      // 2. Per-enemy per-tick position update.
       for (const e of roster) {
         if (currentTick < e.spawnTick) continue; // not yet on stage
 
         const ticksAlive = currentTick - e.spawnTick;
         const home = formationSlot(e.col, e.row);
 
-        if (ticksAlive >= ENTRANCE_TICKS) {
+        if (e.diveStartTick !== null) {
+          // Mid-dive. Advance along the Bézier; when finished, return to
+          // formation (the e2e contract requires the returning transition).
+          const diveT = (currentTick - e.diveStartTick) / DIVE_TICKS;
+          if (diveT >= 1) {
+            // Dive complete — snap back to the formation lifecycle. We clear
+            // diveStartTick so this enemy is again eligible for a future
+            // dive slot (though our scheduler only launches each enemy once
+            // in this slice; revisiting is a follow-up backlog item).
+            e.diveStartTick = null;
+            e.state = "formation";
+            const sway =
+              Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
+            e.x = home.x + sway;
+            e.y = home.y;
+          } else {
+            const eased = easeInOutCubic(diveT);
+            const pos = diveCurve(
+              eased,
+              e.diveP0x,
+              e.diveP0y,
+              e.diveP1x,
+              e.diveP1y,
+            );
+            e.state = "diving";
+            e.x = pos.x;
+            e.y = pos.y;
+          }
+        } else if (ticksAlive >= ENTRANCE_TICKS) {
           // Settled — breathe as one body.
           e.state = "formation";
           const sway = Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
           e.x = home.x + sway;
           e.y = home.y;
         } else {
-          // Flying the arc. `t` runs 0→1 over ENTRANCE_TICKS.
+          // Flying the entrance arc. `t` runs 0→1 over ENTRANCE_TICKS.
           const t = ticksAlive / ENTRANCE_TICKS;
           const eased = easeInOutCubic(t);
           const arc = entranceArc(e.arcSide, eased, home);
@@ -175,6 +317,23 @@ function entranceArc(
   const u = 1 - t;
   const x = u * u * p0x + 2 * u * t * p1x + t * t * p2x;
   const y = u * u * p0y + 2 * u * t * p1y + t * t * p2y;
+  return { x, y };
+}
+
+/** Dive curve — quadratic Bézier from (p0x,p0y) through control (p1x,p1y)
+ *  back to (p0x,p0y). Because P2 = P0, the path forms a loop: descend to
+ *  the control's vicinity by t≈0.5, climb back home by t=1. `t` is the
+ *  EASED parameter (0..1). */
+function diveCurve(
+  t: number,
+  p0x: number,
+  p0y: number,
+  p1x: number,
+  p1y: number,
+): { x: number; y: number } {
+  const u = 1 - t;
+  const x = u * u * p0x + 2 * u * t * p1x + t * t * p0x;
+  const y = u * u * p0y + 2 * u * t * p1y + t * t * p0y;
   return { x, y };
 }
 
