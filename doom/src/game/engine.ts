@@ -25,7 +25,15 @@ import {
   type Enemy,
   type EnemyKind,
 } from "./types";
-import { createKeyboardInput, type InputSource } from "./input";
+import {
+  createKeyboardInput,
+  MOUSE_SENSITIVITY,
+  PITCH_LIMIT,
+  PLAYER_RADIUS,
+  PLAYER_SPEED_PER_TICK,
+  PLAYER_TURN_PER_TICK,
+  type InputSource,
+} from "./input";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -297,13 +305,29 @@ export class Engine {
   /** First input leaves the READY state; once playing, the loop ticks.
    *  Keyboard goes through the InputSource (so its onFirstInput hook fires the
    *  flip); pointerdown on the canvas is a separate path for click/tap on the
-   *  READY screen. */
+   *  READY screen AND is where we ask the browser for pointer-lock (must be a
+   *  user-gesture handler). */
   private bindInput(): void {
     const start = (): void => {
       if (this.state.status === "ready") this.state.status = "playing";
     };
     this.input.onFirstInput(start);
-    this.canvas.addEventListener("pointerdown", start);
+    this.canvas.addEventListener("pointerdown", () => {
+      start();
+      // Request pointer-lock for mouselook. Wrapped in try/catch + feature
+      // check because jsdom / older browsers / headless Chromium may not
+      // expose it, and the game must still be playable via arrow-key turning.
+      const req = (this.canvas as HTMLCanvasElement & {
+        requestPointerLock?: () => void;
+      }).requestPointerLock;
+      if (typeof req === "function") {
+        try {
+          req.call(this.canvas);
+        } catch {
+          // Pointer-lock unavailable; keyboard turning still works.
+        }
+      }
+    });
   }
 
   start(): void {
@@ -344,13 +368,63 @@ export class Engine {
 
     if (this.state.status === "playing") {
       this.state.tick += 1;
-      // Sample input once per fixed-step so any future movement is
-      // deterministic at 60 Hz regardless of render cadence. The snapshot is
-      // read here (rather than in render) to keep the sim self-contained; the
-      // movement slice consumes it. consumeFire() is drained per tick so a
-      // queued shot doesn't pile up across frames.
-      this.input.read();
+      // Sample input once per fixed-step so movement is deterministic at 60 Hz
+      // regardless of render cadence. consumeFire() / consumeMouseDelta() are
+      // drained per tick so input doesn't pile up across frames.
+      const snap = this.input.read();
       this.input.consumeFire();
+      const mouse = this.input.consumeMouseDelta();
+
+      // --- LOOK -----------------------------------------------------------
+      // Yaw: mouse-x adds to yaw (locked pointer convention is rightward
+      // movementX → look right → DECREASE yaw with our Y-up / -z-forward
+      // basis). Keyboard ArrowLeft/Right also turn.
+      const p = this.state.player;
+      // Mouse: rightward (dx>0) should turn the view right. In a Y-up,
+      // looking-down-(-z)-at-yaw-0 frame, "turn right" is a NEGATIVE yaw
+      // change (right-handed rotation about +y).
+      p.yaw -= mouse.dx * MOUSE_SENSITIVITY;
+      // Mouse: downward (dy>0) should pitch the view down. Pitch is rotation
+      // about local x; positive pitch looks up, so dy>0 → decrease pitch.
+      p.pitch -= mouse.dy * MOUSE_SENSITIVITY;
+      // Arrow-key turning (mouselook fallback / keyboard-only play).
+      if (snap.turnLeft) p.yaw += PLAYER_TURN_PER_TICK;
+      if (snap.turnRight) p.yaw -= PLAYER_TURN_PER_TICK;
+      // Clamp pitch so the camera never flips over.
+      if (p.pitch > PITCH_LIMIT) p.pitch = PITCH_LIMIT;
+      if (p.pitch < -PITCH_LIMIT) p.pitch = -PITCH_LIMIT;
+
+      // --- MOVE -----------------------------------------------------------
+      // Build a movement intent in player-local space (forward/back +
+      // strafe). At yaw=0 the player looks down -z, so "forward" is the
+      // negative-z unit vector rotated by yaw.
+      let mz = 0;
+      let mx = 0;
+      if (snap.forward) mz -= 1;
+      if (snap.backward) mz += 1;
+      if (snap.left) mx -= 1;
+      if (snap.right) mx += 1;
+      if (mx !== 0 || mz !== 0) {
+        // Normalize so diagonal movement isn't √2 faster than cardinal.
+        const len = Math.hypot(mx, mz);
+        mx /= len;
+        mz /= len;
+        const cos = Math.cos(p.yaw);
+        const sin = Math.sin(p.yaw);
+        // Rotate (mx, mz) by yaw about +y. With yaw=0, the rotation is the
+        // identity → forward intent (mz=-1) becomes world delta (0,-1).
+        const dx = mx * cos + mz * sin;
+        const dz = -mx * sin + mz * cos;
+        // PER-AXIS COLLISION: resolve x and z independently so sliding along
+        // a wall works (hit a north wall → forward intent zeros z but keeps
+        // x). Field is centered on origin and spans FIELD_WIDTH × FIELD_HEIGHT.
+        const halfW = FIELD_WIDTH / 2 - PLAYER_RADIUS;
+        const halfH = FIELD_HEIGHT / 2 - PLAYER_RADIUS;
+        const nextX = p.x + dx * PLAYER_SPEED_PER_TICK;
+        const nextZ = p.z + dz * PLAYER_SPEED_PER_TICK;
+        p.x = nextX < -halfW ? -halfW : nextX > halfW ? halfW : nextX;
+        p.z = nextZ < -halfH ? -halfH : nextZ > halfH ? halfH : nextZ;
+      }
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
       // for exactly the tick it died lets a consumer observe the transition;
