@@ -88,12 +88,45 @@ export interface GameState {
   captureBeamActive: boolean;
 }
 
+/** Test-only escape hatch. The e2e harness can force a deterministic
+ *  collision outcome (kill an enemy, or kill the player) without having to
+ *  align bullet/enemy positions through the simulation. Exposed on `window`
+ *  alongside `__galaga` so Playwright can drive it from page.evaluate.
+ *
+ *  Intentionally tiny: one method, two targets. If `target` is 'enemy', the
+ *  first enemy (or `enemyId` if given) is treated as if a player bullet just
+ *  hit it — removed + scored. If `target` is 'player', the fighter takes a
+ *  hit (alive=false, lives--, respawn timer armed; at 0 lives → status='lost'). */
+export interface GalagaInternals {
+  forceHit(opts: { target: "enemy" | "player"; enemyId?: number }): void;
+}
+
 declare global {
   interface Window {
     /** Test contract. See galaga/docs/ARCHITECTURE.md. */
     __galaga?: GameState;
+    /** Test-only collision hook — see `GalagaInternals`. */
+    __galagaInternals?: GalagaInternals;
   }
 }
+
+/** Point values per archetype. Galaga's formation values; close-enough for
+ *  our condensed roster (bonus diving values are a follow-up backlog item). */
+export const SCORE_BY_KIND: Record<EnemyKind, number> = {
+  bee: 50,
+  butterfly: 80,
+  boss: 150,
+};
+
+/** Squared hit radius for player-bullet vs enemy. The enemy diamond sprite
+ *  is ~12px wide; bullets are 2x8 — an 8px center-to-center radius matches
+ *  the visible silhouette without being punitively generous. */
+export const ENEMY_HIT_RADIUS = 8;
+/** Squared hit radius for enemy-shot / diving-enemy vs the player fighter.
+ *  The fighter triangle is ~14px wide; 9px keeps grazes survivable. */
+export const PLAYER_HIT_RADIUS = 9;
+/** Ticks the fighter stays off-screen between lives. ~1s at 60Hz. */
+export const RESPAWN_TICKS = 60;
 
 /** Native playfield size — portrait, mobile-first (Galaga is a vertical
  *  shooter). Kept here so engine + index.html + tests share one source. */

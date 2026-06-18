@@ -8,11 +8,12 @@
 
 import { expect, test } from "@playwright/test";
 
-import type { GameState } from "../src/game/types";
+import type { GalagaInternals, GameState } from "../src/game/types";
 
 declare global {
   interface Window {
     __galaga?: GameState;
+    __galagaInternals?: GalagaInternals;
   }
 }
 
@@ -301,4 +302,100 @@ test("after the formation settles, an enemy peels off into 'diving' and its y in
     start!.id,
     { timeout: 10000 },
   );
+});
+
+test("forceHit({target:'enemy'}) removes the enemy + scores; forceHit({target:'player'}) decrements lives", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  // Leave READY + wait for the formation to populate so we have an enemy
+  // to hit. The forceHit hook doesn't require a settled enemy, just a live
+  // one in the roster, so we wait for length>0.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    null,
+    { timeout: 10000 },
+  );
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // --- Player bullet hits an enemy: roster count drops, score goes up. ---
+  const before = await page.evaluate(() => ({
+    count: window.__galaga!.enemies.length,
+    score: window.__galaga!.score,
+  }));
+  await page.evaluate(() =>
+    window.__galagaInternals!.forceHit({ target: "enemy" }),
+  );
+  const afterEnemyHit = await page.evaluate(() => ({
+    count: window.__galaga!.enemies.length,
+    score: window.__galaga!.score,
+  }));
+  expect(afterEnemyHit.count).toBe(before.count - 1);
+  expect(afterEnemyHit.score).toBeGreaterThan(before.score);
+
+  // --- Enemy hit kills the player: alive=false, lives decrements. ---
+  const livesBefore = await page.evaluate(() => window.__galaga!.lives);
+  expect(livesBefore).toBeGreaterThan(0);
+
+  await page.evaluate(() =>
+    window.__galagaInternals!.forceHit({ target: "player" }),
+  );
+  const afterPlayerHit = await page.evaluate(() => ({
+    alive: window.__galaga!.player.alive,
+    lives: window.__galaga!.lives,
+    status: window.__galaga!.status,
+  }));
+  expect(afterPlayerHit.alive).toBe(false);
+  expect(afterPlayerHit.lives).toBe(livesBefore - 1);
+  // Still mid-game — we had >0 lives left after this single hit.
+  expect(afterPlayerHit.status).toBe("playing");
+
+  // The respawn timer should bring the fighter back alive within a few
+  // ticks (RESPAWN_TICKS=60 ≈ 1s); proves the death pause terminates.
+  await page.waitForFunction(() => window.__galaga?.player.alive === true, null, {
+    timeout: 5000,
+  });
+});
+
+test("running out of lives flips status to 'lost'", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Hit the player once, wait for respawn, repeat — until lives hit 0 and
+  // status flips to 'lost'. We bound the loop generously; the contract
+  // starts at lives=3 so at most 3 fatal hits.
+  for (let i = 0; i < 6; i++) {
+    const lives = await page.evaluate(() => window.__galaga!.lives);
+    if (lives <= 0) break;
+    await page.waitForFunction(() => window.__galaga?.player.alive === true, null, {
+      timeout: 5000,
+    });
+    await page.evaluate(() =>
+      window.__galagaInternals!.forceHit({ target: "player" }),
+    );
+  }
+
+  const final = await page.evaluate(() => ({
+    lives: window.__galaga!.lives,
+    status: window.__galaga!.status,
+  }));
+  expect(final.lives).toBe(0);
+  expect(final.status).toBe("lost");
 });

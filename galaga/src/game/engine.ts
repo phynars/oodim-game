@@ -9,7 +9,17 @@
 // AUTONOMOUS BACKLOG (see galaga/docs/ARCHITECTURE.md). This file is the floor
 // the studio builds up from, mirroring how Pac-Man started from a loop + maze.
 
-import { initialState, WIDTH, HEIGHT, type Bullet, type GameState } from "./types";
+import {
+  initialState,
+  WIDTH,
+  HEIGHT,
+  ENEMY_HIT_RADIUS,
+  PLAYER_HIT_RADIUS,
+  RESPAWN_TICKS,
+  SCORE_BY_KIND,
+  type Bullet,
+  type GameState,
+} from "./types";
 import {
   createKeyboardInput,
   MAX_PLAYER_BULLETS,
@@ -43,6 +53,11 @@ export class Engine {
    *  game leaves READY so the entrance arcs play from t=0 relative to
    *  gameplay (not from whatever tick the loop happens to be on). */
   private formationStartTick: number | null = null;
+  /** Tick at which the fighter died; null while alive. Once
+   *  state.tick - deathTick >= RESPAWN_TICKS the fighter respawns at the
+   *  spawn x, alive=true. At 0 lives we don't respawn — status flips to
+   *  'lost' instead (the contract's terminal "you died" state). */
+  private deathTick: number | null = null;
   private lastTime = 0;
   private accumulator = 0;
 
@@ -57,6 +72,54 @@ export class Engine {
     this.enemies = createEnemyController();
     this.publish();
     this.bindInput();
+    this.exposeInternals();
+  }
+
+  /** Test-only escape hatch. The e2e harness can force a deterministic
+   *  collision outcome — kill the first enemy, or kill the player — without
+   *  having to align positions through the simulation. See `GalagaInternals`
+   *  in types.ts. Only the harness reads this; gameplay code never does. */
+  private exposeInternals(): void {
+    window.__galagaInternals = {
+      forceHit: (opts) => {
+        if (opts.target === "enemy") {
+          if (this.state.enemies.length === 0) return;
+          const idx =
+            opts.enemyId === undefined
+              ? 0
+              : this.state.enemies.findIndex((e) => e.id === opts.enemyId);
+          if (idx < 0) return;
+          this.killEnemy(idx);
+        } else {
+          this.killPlayer();
+        }
+        this.publish();
+      },
+    };
+  }
+
+  /** Remove enemy at `idx` from the roster, add its kind's score. Centralized
+   *  so the forceHit hook and the per-tick collision pass take the same path
+   *  (and so future "explosion sprite" work hooks in one place). */
+  private killEnemy(idx: number): void {
+    const e = this.state.enemies[idx];
+    if (!e) return;
+    this.state.score += SCORE_BY_KIND[e.kind];
+    this.state.enemies.splice(idx, 1);
+  }
+
+  /** Mark the fighter dead, decrement lives, arm the respawn timer. At zero
+   *  lives the contract's terminal lifecycle is 'lost' — we don't respawn. */
+  private killPlayer(): void {
+    if (!this.state.player.alive) return; // already dead, no double-tap
+    this.state.player.alive = false;
+    this.state.lives = Math.max(0, this.state.lives - 1);
+    if (this.state.lives <= 0) {
+      this.state.status = "lost";
+      this.deathTick = null;
+    } else {
+      this.deathTick = this.state.tick;
+    }
   }
 
   /** Seed a deterministic-ish starfield. Galaga's signature scrolling stars. */
@@ -161,6 +224,19 @@ export class Engine {
         }
       }
 
+      // Respawn the fighter once the death pause elapses (skipped when at
+      // zero lives — that path flipped status to 'lost' in killPlayer).
+      if (
+        !this.state.player.alive &&
+        this.deathTick !== null &&
+        this.state.tick - this.deathTick >= RESPAWN_TICKS
+      ) {
+        this.state.player.alive = true;
+        this.state.player.captured = false;
+        this.state.player.x = WIDTH / 2;
+        this.deathTick = null;
+      }
+
       // Advance bullets, despawn off-screen. Player shots travel UP (y--);
       // enemy shots (not in this slice) will travel DOWN — same array, the
       // `from` discriminator drives direction.
@@ -178,6 +254,85 @@ export class Engine {
           }
         }
         this.state.bullets = next;
+      }
+
+      this.resolveCollisions();
+    }
+  }
+
+  /** Per-tick collision pass. Two passes share the same per-pair distance
+   *  check — keeping them branch-free + colocated makes the math easy to
+   *  audit (no kd-tree or quadtree at this roster size; 8×5=40 enemies × a
+   *  handful of bullets is fine).
+   *
+   *  Pass 1 — player bullets ↔ enemies. Each player bullet checks every
+   *  live enemy; on first overlap, both vanish and the enemy's kind score
+   *  is added. We mutate `bullets` and `enemies` directly because the
+   *  bullet-advance step already produced fresh arrays this tick.
+   *
+   *  Pass 2 — enemy hazards ↔ player. An enemy bullet that overlaps the
+   *  fighter kills it; a diving enemy that overlaps the fighter ALSO kills
+   *  it (no separate bomb sprite — contact damage is the diver's threat).
+   *  We short-circuit when the player is already dead so the collision
+   *  ring doesn't double-fire during the respawn pause. */
+  private resolveCollisions(): void {
+    // Pass 1: player shots hit enemies.
+    if (this.state.bullets.length > 0 && this.state.enemies.length > 0) {
+      const r2 = ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS;
+      const survivingBullets: Bullet[] = [];
+      for (const b of this.state.bullets) {
+        if (b.from !== "player") {
+          survivingBullets.push(b);
+          continue;
+        }
+        let hitIdx = -1;
+        for (let i = 0; i < this.state.enemies.length; i++) {
+          const e = this.state.enemies[i];
+          const dx = e.x - b.x;
+          const dy = e.y - b.y;
+          if (dx * dx + dy * dy <= r2) {
+            hitIdx = i;
+            break;
+          }
+        }
+        if (hitIdx >= 0) {
+          this.killEnemy(hitIdx);
+          // Bullet is consumed — don't carry it forward.
+        } else {
+          survivingBullets.push(b);
+        }
+      }
+      this.state.bullets = survivingBullets;
+    }
+
+    // Pass 2: enemy hazards hit the player. Only when alive — a dead/
+    // respawning fighter can't take a second hit on the same life.
+    if (!this.state.player.alive) return;
+    const pr2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
+    const px = this.state.player.x;
+    const py = this.state.player.y;
+
+    // Enemy bullets.
+    for (let i = 0; i < this.state.bullets.length; i++) {
+      const b = this.state.bullets[i];
+      if (b.from !== "enemy") continue;
+      const dx = b.x - px;
+      const dy = b.y - py;
+      if (dx * dx + dy * dy <= pr2) {
+        this.state.bullets.splice(i, 1);
+        this.killPlayer();
+        return; // one hit per tick is enough
+      }
+    }
+
+    // Diving enemies (contact damage).
+    for (const e of this.state.enemies) {
+      if (e.state !== "diving") continue;
+      const dx = e.x - px;
+      const dy = e.y - py;
+      if (dx * dx + dy * dy <= pr2) {
+        this.killPlayer();
+        return;
       }
     }
   }
