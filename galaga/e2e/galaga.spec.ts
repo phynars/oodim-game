@@ -948,60 +948,94 @@ test("stage-clear awards hit-miss accuracy bonus by ratio tier (#65)", async ({
   expect(baseline.shots).toBe(0);
   expect(baseline.hits).toBe(0);
 
-  // Drive a perfect stage: forceHit every enemy. Each forceHit bumps both
-  // shotsFired and hits, so ratio=100% → top tier (>=95% → 10000) bonus.
-  // Done in ONE evaluate so rAF can't tick a stage-advance between the
-  // last forceHit and our counter sample.
-  const before = await page.evaluate(() => {
-    const ids = window.__galaga!.enemies.map((e) => e.id);
-    for (const id of ids) {
-      window.__galagaInternals!.forceHit({ target: "enemy", enemyId: id });
-    }
-    return {
-      stage: window.__galaga!.stage,
-      score: window.__galaga!.score,
-      shots: window.__galaga!.stageShotsFired,
-      hits: window.__galaga!.stageHits,
-    };
-  });
-  expect(before.shots).toBeGreaterThan(0);
-  // 100% ratio: every forceHit bumped both counters in lockstep.
-  expect(before.hits).toBe(before.shots);
-
-  // Mop up any controller re-emits, then wait for stage advance + bonus.
-  await page.evaluate(async () => {
-    for (let i = 0; i < 200; i++) {
-      const enemies = window.__galaga?.enemies ?? [];
-      if (enemies.length === 0) break;
-      window.__galagaInternals!.forceHit({
-        target: "enemy",
-        enemyId: enemies[0].id,
-      });
+  // Drive a perfect stage in ONE evaluate so the rAF loop can't race the
+  // stage-advance between our forceHit calls and our sample reads. The
+  // engine's `forceHit` calls `maybeAdvanceStage` after EACH hit — once
+  // the last enemy is removed, that same call awards the bonus and RESETS
+  // shotsFired/hits to 0 before we ever get a chance to read them. So we
+  // snapshot the counters mid-drain (just before the final kill) AND the
+  // post-advance state, all in one evaluate without releasing the JS turn.
+  const sample = await page.evaluate(async () => {
+    const stageAtStart = window.__galaga!.stage;
+    const scoreAtStart = window.__galaga!.score;
+    // Drain the formation, but keep one enemy alive so the stage hasn't
+    // advanced yet — that's the only window where the mid-stage counters
+    // (shotsFired, hits) are still observable as non-zero. The controller
+    // can re-emit not-yet-spawned roster members across rAF ticks, so we
+    // loop with a small budget and yield to rAF between sweeps.
+    let mid: { shots: number; hits: number } | null = null;
+    for (let pass = 0; pass < 200; pass++) {
+      // Stage already advanced (from a prior pass) → don't touch counters
+      // again or we'd overwrite `mid` with the new stage's reset zeros.
+      if (window.__galaga!.stage > stageAtStart) break;
+      const ids = window.__galaga!.enemies.map((e) => e.id);
+      if (ids.length === 0) {
+        // No enemies visible this frame but the stage hasn't advanced —
+        // the controller still has pending spawns. Yield and try again.
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+        continue;
+      }
+      if (ids.length === 1) {
+        // Snapshot RIGHT before the last kill — counters are still
+        // non-zero and lockstep-equal here, since maybeAdvanceStage
+        // hasn't reset them yet (this kill is what will trigger it).
+        mid = {
+          shots: window.__galaga!.stageShotsFired,
+          hits: window.__galaga!.stageHits,
+        };
+        // The final kill: forceHit → maybeAdvanceStage → bonus + reset
+        // + stage++. The next iteration's stage check will exit the loop.
+        window.__galagaInternals!.forceHit({
+          target: "enemy",
+          enemyId: ids[0],
+        });
+      } else {
+        // Kill all but the last enemy this pass — preserves the "one left"
+        // sentinel so the next pass takes the snapshot above.
+        for (let i = 0; i < ids.length - 1; i++) {
+          window.__galagaInternals!.forceHit({
+            target: "enemy",
+            enemyId: ids[i],
+          });
+        }
+      }
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     }
+    return {
+      mid,
+      stageBefore: stageAtStart,
+      scoreBefore: scoreAtStart,
+      stageAfter: window.__galaga!.stage,
+      scoreAfter: window.__galaga!.score,
+      shotsAfter: window.__galaga!.stageShotsFired,
+      hitsAfter: window.__galaga!.stageHits,
+    };
   });
 
+  // Mid-drain snapshot proves the counters are wired (#65 acceptance #1).
+  expect(sample.mid).not.toBeNull();
+  expect(sample.mid!.shots).toBeGreaterThan(0);
+  // 100% ratio: every forceHit bumped both counters in lockstep.
+  expect(sample.mid!.hits).toBe(sample.mid!.shots);
+
+  // Wait for the stage to actually advance (it should already have inside
+  // the evaluate, but the guard catches the rare case where the controller
+  // re-emitted faster than we drained).
   await page.waitForFunction(
     (prevStage) => (window.__galaga?.stage ?? prevStage) > prevStage,
-    before.stage,
+    sample.stageBefore,
     { timeout: 5000 },
   );
 
-  const after = await page.evaluate(() => ({
-    score: window.__galaga!.score,
-    shots: window.__galaga!.stageShotsFired,
-    hits: window.__galaga!.stageHits,
-    stage: window.__galaga!.stage,
-  }));
   // Top-tier bonus (>=95%) is 10000; the per-kill score gains are bounded
   // (a few hundred per enemy * roster size sits well under 10000). Assert
   // the bonus landed by checking the cross-stage delta exceeds 10000 on
   // top of the per-kill points.
-  expect(after.score - baseline.score).toBeGreaterThanOrEqual(10000);
+  expect(sample.scoreAfter - sample.scoreBefore).toBeGreaterThanOrEqual(10000);
   // Counters reset for the next stage.
-  expect(after.shots).toBe(0);
-  expect(after.hits).toBe(0);
-  expect(after.stage).toBe(before.stage + 1);
+  expect(sample.shotsAfter).toBe(0);
+  expect(sample.hitsAfter).toBe(0);
+  expect(sample.stageAfter).toBe(sample.stageBefore + 1);
 });
 
 test("challenging stage: no enemy bullets spawn during it and a perfect clear awards a bonus", async ({
