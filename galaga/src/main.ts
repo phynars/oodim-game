@@ -8,7 +8,21 @@ if (!(canvas instanceof HTMLCanvasElement)) {
   throw new Error("#game canvas not found");
 }
 
-const engine = new Engine(canvas);
+// Optional touch controls — the on-screen buttons live in index.html
+// behind [data-touch="left"|"right"|"fire"]. We pass them to the engine
+// when all three are present so mobile players get hold-to-move + tap-
+// to-fire dispatching the SAME intents as the keyboard. If any button is
+// missing (e.g. a stripped-down embed), we fall back to keyboard-only —
+// no runtime error.
+const touchLeft = document.querySelector<HTMLElement>('[data-touch="left"]');
+const touchRight = document.querySelector<HTMLElement>('[data-touch="right"]');
+const touchFire = document.querySelector<HTMLElement>('[data-touch="fire"]');
+const touchElements =
+  touchLeft && touchRight && touchFire
+    ? { left: touchLeft, right: touchRight, fire: touchFire }
+    : undefined;
+
+const engine = new Engine(canvas, touchElements);
 engine.start();
 
 // HUD mirror. The DOM cells live in index.html (#hud > [data-hud=...]);

@@ -713,6 +713,100 @@ test("draining lives surfaces GAME OVER: status reaches 'gameover', HUD lives re
   expect(final.status).toBe("gameover");
 });
 
+test("mobile viewport: tapping FIRE spawns a player bullet and tapping LEFT moves the ship", async ({
+  browser,
+}) => {
+  // Emulate a typical phone — portrait, touch primary, viewport ≈ iPhone 12.
+  // hasTouch=true makes Playwright dispatch real pointer/touch events on
+  // `tap()` so the touch InputSource's pointerdown listeners fire (a regular
+  // click would only land mouse events). A pre-change run lacks the three
+  // [data-touch] buttons entirely, so taps land on empty layout and no
+  // bullet ever spawns — i.e. this test fails on the prior code and passes
+  // after the touch pad + createTouchInput wiring lands.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    deviceScaleFactor: 3,
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto("/");
+    await page.waitForFunction(() => Boolean(window.__galaga));
+
+    // The touch pad must be present + visible on a touch viewport.
+    const fire = page.locator('[data-touch="fire"]');
+    const left = page.locator('[data-touch="left"]');
+    await expect(fire).toBeVisible();
+    await expect(left).toBeVisible();
+
+    // The native canvas height must fit inside the viewport's playable
+    // strip — the responsive sizing must NOT push the canvas off-screen
+    // on a mobile portrait viewport (the issue's "play correctly one-
+    // handed in portrait" requirement).
+    const canvasBox = await page.locator("#game").boundingBox();
+    expect(canvasBox).not.toBeNull();
+    expect(canvasBox!.height).toBeGreaterThan(200);
+    expect(canvasBox!.height).toBeLessThanOrEqual(844);
+    expect(canvasBox!.width).toBeGreaterThan(0);
+    expect(canvasBox!.width).toBeLessThanOrEqual(390);
+
+    // Capture spawn position; the engine starts in 'ready'.
+    const startX = await page.evaluate(() => window.__galaga!.player.x);
+
+    // Tap FIRE — same intent the Space key dispatches on desktop. First
+    // input must flip ready→playing and spawn ONE player bullet.
+    await fire.tap();
+    await page.waitForFunction(
+      () => window.__galaga?.status === "playing",
+      null,
+      { timeout: 5000 },
+    );
+    await page.waitForFunction(
+      () => (window.__galaga?.bullets ?? []).some((b) => b.from === "player"),
+      null,
+      { timeout: 3000 },
+    );
+    const bulletCount = await page.evaluate(
+      () =>
+        (window.__galaga?.bullets ?? []).filter((b) => b.from === "player")
+          .length,
+    );
+    expect(bulletCount).toBeGreaterThanOrEqual(1);
+
+    // Hold LEFT — pointerdown engages left=true and the ship drifts west.
+    // We dispatch a synthetic pointerdown into the LEFT button so the
+    // press stays held for a measurable window (page.tap() releases too
+    // quickly to observe movement against the 2.4 px/tick speed at
+    // 60Hz). Once the ship has moved at least 5px left we release with
+    // a pointerup. The touch InputSource listens for both events on the
+    // exact element we target here, matching the runtime path.
+    await left.dispatchEvent("pointerdown", {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      bubbles: true,
+    });
+    await page.waitForFunction(
+      (sx) => (window.__galaga?.player.x ?? sx) < sx - 5,
+      startX,
+      { timeout: 5000 },
+    );
+    await left.dispatchEvent("pointerup", {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      bubbles: true,
+    });
+
+    const endX = await page.evaluate(() => window.__galaga!.player.x);
+    expect(endX).toBeLessThan(startX);
+    expect(endX).toBeGreaterThanOrEqual(0);
+  } finally {
+    await context.close();
+  }
+});
+
 test("running out of lives flips status to 'lost'", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
