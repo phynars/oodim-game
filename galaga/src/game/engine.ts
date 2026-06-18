@@ -12,6 +12,7 @@
 import {
   CHALLENGING_PERFECT_BONUS,
   EXPLOSION_TICKS,
+  hitMissBonus,
   initialState,
   SCORE_POPUP_TICKS,
   WIDTH,
@@ -87,6 +88,16 @@ export class Engine {
   /** Tick until which the "PERFECT! +N" banner is painted after a perfect
    *  challenging clear. Null = no banner. */
   private perfectBannerUntil: number | null = null;
+  /** Hit-miss accuracy snapshot for the just-cleared normal stage (#65).
+   *  Captured at `maybeAdvanceStage` BEFORE counters reset so the renderer
+   *  can paint "SHOTS FIRED / HITS / RATIO / BONUS" lines under the
+   *  STAGE N banner. Null when no stage has been cleared yet OR the most
+   *  recent clear was a challenging stage (bonus path is skipped). */
+  private lastHitMiss: {
+    shots: number;
+    hits: number;
+    bonus: number;
+  } | null = null;
   /** Tick at which status flipped to 'lost'. After GAMEOVER_HOLD_FRAMES more
    *  fixed-step frames elapse the status advances to 'gameover' (the terminal
    *  state the GAME OVER overlay annotates). Null while still playing. */
@@ -133,6 +144,14 @@ export class Engine {
               ? 0
               : this.state.enemies.findIndex((e) => e.id === opts.enemyId);
           if (idx < 0) return;
+          // The hit-miss accuracy contract (#65): forceHit bypasses the
+          // bullet spawn path, so we bump BOTH counters here in lockstep —
+          // a simulated shot that lands. Skipped on challenging stages so
+          // the bonus path stays gated to normal stages only.
+          if (!this.state.challenging) {
+            this.state.stageShotsFired += 1;
+            this.state.stageHits += 1;
+          }
           this.killEnemy(idx);
         } else {
           this.killPlayer();
@@ -258,6 +277,10 @@ export class Engine {
     // the challenging flag inside the controller). A perfect clear means
     // the player destroyed EVERY enemy that flew through — none escaped
     // off the bottom. Award the bonus, then flip back to normal stages.
+    // The hit-miss accuracy bonus (#65) is explicitly SKIPPED on
+    // challenging stages — the per-stage shots/hits tally is not
+    // accumulated during them, and the post-stage screen is the normal-
+    // stage ritual only.
     if (this.enemies.isChallenging()) {
       const total = this.enemies.challengingTotalSpawned();
       if (total > 0 && this.challengingKills >= total) {
@@ -266,7 +289,32 @@ export class Engine {
       }
       this.state.challenging = false;
       this.challengingKills = 0;
+      this.lastHitMiss = null;
+    } else {
+      // Normal stage clear → award the hit-miss accuracy bonus (#65).
+      // Compute BEFORE we reset counters so the renderer can paint the
+      // breakdown under the STAGE N banner. The bonus also spawns a
+      // floating "+N" popup near top-center so the player sees the
+      // points land on the score line.
+      const shots = this.state.stageShotsFired;
+      const hits = this.state.stageHits;
+      const bonus = hitMissBonus(shots, hits);
+      this.lastHitMiss = { shots, hits, bonus };
+      if (bonus > 0) {
+        this.state.score += bonus;
+        this.state.scorePopups.push({
+          x: WIDTH / 2,
+          y: HEIGHT / 2 + 24,
+          value: bonus,
+          age: 0,
+        });
+      }
     }
+    // Reset per-stage accuracy counters for the next stage (both branches —
+    // a fresh normal stage starts with a clean tally regardless of whether
+    // we just cleared a normal or challenging one).
+    this.state.stageShotsFired = 0;
+    this.state.stageHits = 0;
     this.state.stage += 1;
     this.enemies.reset();
     // Re-anchor so `formationTick` restarts at 0 next update — entrance arcs
@@ -470,6 +518,11 @@ export class Engine {
             y: this.state.player.y - 9,
             from: "player",
           });
+          // Hit-miss accuracy tally (#65). A normal-stage shot fired —
+          // count it whether it eventually lands or not. Challenging
+          // stages are damage-free + bonus-free; we skip the tally so
+          // the next normal stage's ratio isn't polluted.
+          if (!this.state.challenging) this.state.stageShotsFired += 1;
         }
       }
 
@@ -571,6 +624,11 @@ export class Engine {
           }
         }
         if (hitIdx >= 0) {
+          // A real player-bullet kill — count toward the hit-miss tally
+          // for this stage's accuracy bonus (#65). The matching
+          // `stageShotsFired` was bumped at bullet spawn. Skipped on
+          // challenging stages (the bonus path is normal-stage only).
+          if (!this.state.challenging) this.state.stageHits += 1;
           this.killEnemy(hitIdx);
           // Bullet is consumed — don't carry it forward.
         } else {
@@ -749,6 +807,28 @@ export class Engine {
       ctx.font = "20px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.fillText(`STAGE ${this.state.stage}`, WIDTH / 2, HEIGHT / 2);
+      // Hit-miss accuracy screen (#65). Painted under the STAGE banner
+      // for the cleared NORMAL stage — faithful to the arcade's
+      // post-stage ritual. Skipped after challenging clears (lastHitMiss
+      // is null there) and on the very first stage (no clear yet).
+      if (this.lastHitMiss !== null) {
+        const { shots, hits, bonus } = this.lastHitMiss;
+        const ratio =
+          shots > 0 ? Math.round((hits / shots) * 100) : 0;
+        ctx.font = "9px ui-monospace, monospace";
+        ctx.fillStyle = "#cdd";
+        ctx.fillText(
+          `SHOTS FIRED: ${shots}   NUMBER OF HITS: ${hits}`,
+          WIDTH / 2,
+          HEIGHT / 2 + 20,
+        );
+        ctx.fillStyle = "#ffd76a";
+        ctx.fillText(
+          `HIT-MISS RATIO: ${ratio}%   BONUS: ${bonus}`,
+          WIDTH / 2,
+          HEIGHT / 2 + 34,
+        );
+      }
     } else if (
       this.stageBannerUntil !== null &&
       this.state.tick > this.stageBannerUntil
