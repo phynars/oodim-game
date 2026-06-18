@@ -248,10 +248,31 @@ test("level geometry: a KNOWN interior wall cell blocks movement (collision driv
     timeout: 5000,
   });
 
+  // Order matters here. The canvas click is a real mouse event sequence
+  // (move → down → up), and Playwright's pre-click pointer move can deliver
+  // a nonzero movementX/Y to the input source's mousemove handler. Once the
+  // loop starts, the FIRST tick drains that accumulated mouse delta into the
+  // player's yaw — which would rotate us off the +z axis and the forward
+  // walk would no longer aim at the pillar. Two defenses:
+  //   1. Click FIRST (flips ready→playing) and wait for the loop to actually
+  //      start ticking — that drains the queued mouse delta into a yaw nudge
+  //      we don't care about yet.
+  //   2. Then forceTeleport with an explicit yaw:0, which RESETS yaw back to
+  //      facing -z regardless of what the click did. Now ArrowUp walks
+  //      straight at the pillar.
+  await page.locator("canvas").click();
+  await page.waitForFunction(() => window.__doom?.status === "playing", null, {
+    timeout: 5000,
+  });
+  // Wait for at least one tick so the mouse-delta accumulator is drained.
+  await page.waitForFunction(() => (window.__doom?.tick ?? 0) > 0, null, {
+    timeout: 5000,
+  });
+
   // Teleport just south of the pillar pair at row=4 (world z≈-7). South face
   // of the pillar is at z = -7 + TILE_SIZE/2 = -6. Place the player a couple
   // of units further south so they walk INTO the wall (rather than already
-  // being against it before the loop starts).
+  // being against it before the loop starts). yaw:0 re-aims them at -z.
   await page.evaluate(() => {
     window.__doomInternals!.forceTeleport({ x: 0, z: -3, yaw: 0 });
   });
@@ -260,14 +281,15 @@ test("level geometry: a KNOWN interior wall cell blocks movement (collision driv
   const after = await page.evaluate(() => ({
     x: window.__doom!.player.x,
     z: window.__doom!.player.z,
+    yaw: window.__doom!.player.yaw,
   }));
   expect(after.x).toBeCloseTo(0, 1);
   expect(after.z).toBeCloseTo(-3, 1);
+  expect(after.yaw).toBeCloseTo(0, 1);
 
   // Hold forward (down -z, toward the pillar). At 4.8 u/s, 2s of held input
   // would travel 9.6u UNCLAMPED — way past the pillar at z≈-7. Map collision
   // must stop the player BEFORE the pillar's south face (z > -6 + radius).
-  await page.locator("canvas").click();
   await page.keyboard.down("ArrowUp");
   await page.waitForTimeout(2000);
   await page.keyboard.up("ArrowUp");
