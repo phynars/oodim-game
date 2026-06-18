@@ -19,7 +19,13 @@
 // enemy reaches `'formation'` within a bounded number of ticks, and that an
 // enemy enters `'diving'` with increasing `y` during the dive.
 
-import { HEIGHT, WIDTH, type Enemy, type EnemyKind } from "./types";
+import {
+  CHALLENGING_WAVE_COUNT,
+  HEIGHT,
+  WIDTH,
+  type Enemy,
+  type EnemyKind,
+} from "./types";
 
 // --- Formation geometry ------------------------------------------------------
 //
@@ -165,6 +171,19 @@ export interface EnemyController {
   captureBeamTopY(): number | null;
   /** Half-width of the beam column in px. */
   captureBeamHalfWidth(): number;
+  /** Rebuild the roster as a Challenging (bonus) stage: a set-pattern wave
+   *  that flies through the playfield from top to bottom without parking in
+   *  the formation grid. Returns the number of enemies in the wave (so the
+   *  engine can track perfect-clear). The engine should re-anchor its
+   *  formationStartTick so the wave's choreography plays from t=0. */
+  startChallengingStage(): number;
+  /** True while a challenging stage is in flight (roster built via
+   *  `startChallengingStage` and still has unspawned/onstage enemies). The
+   *  engine mirrors this onto `state.challenging`. */
+  isChallenging(): boolean;
+  /** Total enemies the current challenging wave released onto the field
+   *  (the denominator for perfect-clear: `killed === spawned` ⇒ perfect). */
+  challengingTotalSpawned(): number;
 }
 
 /** Total ticks from currentTick=0 until every enemy has settled. Useful for
@@ -195,6 +214,14 @@ export function createEnemyController(): EnemyController {
    *  Tracked at controller scope so `captureBeamX/TopY()` can find it in
    *  O(1) and the engine doesn't have to scan the roster each tick. */
   let capturingBossId: number | null = null;
+  /** True while the controller is running a Challenging (bonus) stage. The
+   *  engine reads this to suppress enemy fire + contact damage and to award
+   *  the perfect-clear bonus on stage-end. Set by `startChallengingStage`,
+   *  cleared by `reset()`/`buildRoster()`. */
+  let challenging = false;
+  /** Total enemies released onto the field during the current challenging
+   *  wave — the denominator for perfect-clear detection. */
+  let challengingSpawned = 0;
 
   /** (Re)build the roster + dive schedule. Called on construction and again
    *  when the engine clears the formation and asks for a fresh stage. */
@@ -231,6 +258,10 @@ export function createEnemyController(): EnemyController {
     }
     roster = next;
     everPopulated = false;
+    // A buildRoster() is always a NORMAL stage. The challenging path uses
+    // `startChallengingStage()` instead, which sets its own flag + roster.
+    challenging = false;
+    challengingSpawned = 0;
 
     // First dive begins after the whole formation has settled, plus a small
     // delay so the harness can observe the all-settled state first.
@@ -358,6 +389,59 @@ export function createEnemyController(): EnemyController {
     captureBeamHalfWidth(): number {
       return 10;
     },
+    startChallengingStage(): number {
+      // Replace the roster with a set-pattern flythrough wave. We use a
+      // staggered diagonal sweep across columns so the wave reads as
+      // CHOREOGRAPHED (set patterns are Challenging's signature), not as
+      // a normal entrance-then-park. These enemies never enter 'formation';
+      // they fly the entrance arc, then continue straight down past the
+      // bottom edge and are despawned by the controller.
+      const wave: EnemyInternal[] = [];
+      // Cycle through kinds so the wave shows all three archetypes — keeps
+      // the visual variety + lets the e2e roster assertion stay green.
+      const cycleKinds: EnemyKind[] = ["bee", "butterfly", "boss"];
+      for (let i = 0; i < CHALLENGING_WAVE_COUNT; i++) {
+        wave.push({
+          id: nextId++,
+          kind: cycleKinds[i % cycleKinds.length],
+          // Reuse the formation slot math for an aiming target — each enemy
+          // arcs toward a different column in the top row so the sweep
+          // fans across the screen.
+          col: i % COLS,
+          row: 0,
+          spawnTick: i * SPAWN_INTERVAL,
+          arcSide: i % 2 === 0 ? -1 : 1,
+          state: "entering",
+          x: -100,
+          y: -100,
+          diveStartTick: null,
+          diveP0x: 0,
+          diveP0y: 0,
+          diveP1x: 0,
+          diveP1y: 0,
+          capturing: false,
+          captureAnchorX: 0,
+          captureAnchorY: 0,
+          escortOf: null,
+        });
+      }
+      roster = wave;
+      orderedIndexes = [];
+      // Push firstDiveTick out of reach — no dives during a challenging
+      // stage. The flythrough IS the choreography.
+      firstDiveTick = Number.POSITIVE_INFINITY;
+      everPopulated = false;
+      capturingBossId = null;
+      challenging = true;
+      challengingSpawned = 0;
+      return wave.length;
+    },
+    isChallenging(): boolean {
+      return challenging;
+    },
+    challengingTotalSpawned(): number {
+      return challengingSpawned;
+    },
     tick(currentTick: number): Enemy[] {
       const out: Enemy[] = [];
 
@@ -433,10 +517,57 @@ export function createEnemyController(): EnemyController {
           continue;
         }
         if (currentTick < e.spawnTick) continue; // not yet on stage
+        // Count this challenging-wave enemy exactly once: the tick its
+        // spawnTick fires equals currentTick (since we just passed the
+        // guard above and spawnTick is unique per slot).
+        if (challenging && currentTick === e.spawnTick) {
+          challengingSpawned += 1;
+        }
         everPopulated = true;
 
         const ticksAlive = currentTick - e.spawnTick;
         const home = formationSlot(e.col, e.row);
+
+        if (challenging) {
+          // Challenging-stage trajectory: fly the entrance arc for the first
+          // ENTRANCE_TICKS, then continue straight DOWN past the bottom of
+          // the playfield. No formation parking, no diving — a single sweep
+          // through. State stays 'entering' the whole way so the engine can
+          // distinguish challenging flythroughs from normal divers (which
+          // also descend) — combined with `state.challenging===true`, the
+          // contract is unambiguous.
+          if (ticksAlive < ENTRANCE_TICKS) {
+            const t = ticksAlive / ENTRANCE_TICKS;
+            const eased = easeInOutCubic(t);
+            const arc = entranceArc(e.arcSide, eased, home);
+            e.state = "entering";
+            e.x = arc.x;
+            e.y = arc.y;
+          } else {
+            // Continue downward at a steady speed from the home slot. We
+            // don't curve — set patterns in Challenging are simple flythroughs.
+            const descentTicks = ticksAlive - ENTRANCE_TICKS;
+            e.state = "entering";
+            e.x = home.x;
+            e.y = home.y + descentTicks * 2; // 2 px/tick = 120 px/s
+          }
+          // Once an enemy has fallen off the bottom of the playfield, remove
+          // it from the persistent roster — it neither survived nor died,
+          // it just left. (Killed enemies are spliced via `remove()` from
+          // the engine's collision path.) This is also how the challenging
+          // stage TERMINATES: once every flythrough enemy has either been
+          // shot or flown off, the roster goes empty and the engine's
+          // stage-clear path runs.
+          if (e.y > HEIGHT + 20) {
+            // Defer the splice — mutating roster mid-iteration is the kind
+            // of footgun that hides flakes. Mark the enemy by giving it an
+            // off-stage y; we'll filter at the bottom of the tick.
+            e.y = HEIGHT + 1000;
+            continue;
+          }
+          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          continue;
+        }
 
         if (e.diveStartTick !== null) {
           // Mid-dive. Advance along the Bézier; when finished, return to
@@ -483,6 +614,14 @@ export function createEnemyController(): EnemyController {
         }
 
         out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+      }
+      // Reap challenging-wave enemies that flew off the bottom (marked with
+      // a sentinel y in the loop above). They're removed from the persistent
+      // roster so `isEmpty()` correctly flips true once every flythrough has
+      // either been shot or escaped — that's the signal the engine uses to
+      // award the perfect-clear bonus + advance the stage.
+      if (challenging) {
+        roster = roster.filter((e) => e.y < HEIGHT + 500);
       }
       return out;
     },

@@ -682,3 +682,90 @@ test("running out of lives flips status to 'lost'", async ({ page }) => {
   expect(final.lives).toBe(0);
   expect(final.status).toBe("lost");
 });
+
+test("challenging stage: no enemy bullets spawn during it and a perfect clear awards a bonus", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Baseline before the stage starts. The contract's `challenging` flag must
+  // default to false — a NORMAL stage must NOT be reported as challenging.
+  const before = await page.evaluate(() => ({
+    challenging: window.__galaga!.challenging,
+    score: window.__galaga!.score,
+    stage: window.__galaga!.stage,
+  }));
+  expect(before.challenging).toBe(false);
+
+  // Force the challenging stage via the harness — same pattern as
+  // triggerBossCapture: deterministic, no need to play through N stages.
+  await page.evaluate(() =>
+    window.__galagaInternals!.startChallengingStage(),
+  );
+
+  // Contract #1: state.challenging flips to true.
+  await page.waitForFunction(
+    () => window.__galaga?.challenging === true,
+    null,
+    { timeout: 3000 },
+  );
+
+  // Contract #2: NO `from:'enemy'` bullets appear at any sample point during
+  // the challenging stage. We poll repeatedly across ~3s of wall time, killing
+  // every flythrough enemy as it appears so the stage progresses toward a
+  // perfect clear. The same pass that proves no enemy fire also drives the
+  // perfect-clear preconditions.
+  const result = await page.evaluate(async () => {
+    let enemyBulletEverSeen = false;
+    const stageAtStart = window.__galaga!.stage;
+    // Bound the loop: enough frames to outlast the longest entrance arc +
+    // descent (~3-4 seconds of game time). The loop exits early once the
+    // stage advances away from the challenging stage.
+    for (let i = 0; i < 600; i++) {
+      const s = window.__galaga!;
+      if (s.bullets.some((b) => b.from === "enemy")) {
+        enemyBulletEverSeen = true;
+      }
+      // Kill any enemy on screen — drives toward a perfect clear.
+      for (const e of s.enemies) {
+        window.__galagaInternals!.forceHit({
+          target: "enemy",
+          enemyId: e.id,
+        });
+      }
+      // Stage has advanced past the challenging one — we're done.
+      if (s.stage > stageAtStart && s.challenging === false) break;
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    return {
+      enemyBulletEverSeen,
+      challenging: window.__galaga!.challenging,
+      score: window.__galaga!.score,
+      stage: window.__galaga!.stage,
+    };
+  });
+
+  // Contract #2 assertion: never a single enemy bullet during the stage.
+  expect(result.enemyBulletEverSeen).toBe(false);
+
+  // Contract #3: a perfect clear adds a BONUS to score — far more than the
+  // sum of per-kill points (each kill adds at most 150 for a boss; the bonus
+  // is 10000). We check the score grew by at least 1000 over the pre-stage
+  // baseline, which is comfortably above any per-kill accumulation but
+  // would FAIL if the bonus path didn't fire.
+  expect(result.score).toBeGreaterThan(before.score + 1000);
+
+  // Contract #4: the challenging flag clears once the stage ends.
+  expect(result.challenging).toBe(false);
+  // And the stage counter advanced — challenging stages count as stages too.
+  expect(result.stage).toBeGreaterThan(before.stage);
+});

@@ -10,6 +10,7 @@
 // the studio builds up from, mirroring how Pac-Man started from a loop + maze.
 
 import {
+  CHALLENGING_PERFECT_BONUS,
   initialState,
   WIDTH,
   HEIGHT,
@@ -61,6 +62,14 @@ export class Engine {
   /** Tick until which the "STAGE N" banner is painted. Set when we advance
    *  to the next stage; the renderer reads this each frame. Null = no banner. */
   private stageBannerUntil: number | null = null;
+  /** Per-stage kill count for the in-flight challenging stage. Compared
+   *  against `enemies.challengingTotalSpawned()` when the stage ends to
+   *  detect a perfect clear (every flythrough enemy destroyed). Reset
+   *  whenever a challenging stage starts. */
+  private challengingKills = 0;
+  /** Tick until which the "PERFECT! +N" banner is painted after a perfect
+   *  challenging clear. Null = no banner. */
+  private perfectBannerUntil: number | null = null;
   private lastTime = 0;
   private accumulator = 0;
 
@@ -102,6 +111,20 @@ export class Engine {
         this.maybeAdvanceStage();
         this.publish();
       },
+      startChallengingStage: () => {
+        // Replace the current roster with a Challenging (bonus) wave. The
+        // engine mirrors `enemies.isChallenging()` onto `state.challenging`
+        // each tick (see update()), so we don't need to flip the flag here
+        // — but we DO reset the per-stage kill counter and re-anchor the
+        // formation tick so the wave's choreography plays from t=0.
+        this.enemies.startChallengingStage();
+        this.state.enemies = [];
+        this.state.bullets = [];
+        this.state.challenging = true;
+        this.challengingKills = 0;
+        this.formationStartTick = null;
+        this.publish();
+      },
       triggerBossCapture: (opts) => {
         // Arm a boss tractor beam directly over the player. The controller
         // parks the boss above the fighter; the engine's per-tick capture
@@ -128,6 +151,9 @@ export class Engine {
     const e = this.state.enemies[idx];
     if (!e) return;
     this.state.score += SCORE_BY_KIND[e.kind];
+    // Track per-stage kills during a challenging stage so a perfect clear
+    // (kills === total spawned) can award the bonus on stage-end.
+    if (this.enemies.isChallenging()) this.challengingKills += 1;
     // Before we splice the boss out, check whether it owns a captured-
     // fighter escort. Killing the captor is the rescue moment (Galaga
     // #38): the escort flies down and docks beside the player → dual
@@ -189,6 +215,20 @@ export class Engine {
     // mid-entrance kill of every visible enemy would flip the stage while
     // unspawned columns are still queued to fly in.
     if (!this.enemies.isEmpty()) return;
+    // Was this a Challenging (bonus) stage? If so, check for a perfect
+    // clear before we rebuild the next stage's roster (which would clear
+    // the challenging flag inside the controller). A perfect clear means
+    // the player destroyed EVERY enemy that flew through — none escaped
+    // off the bottom. Award the bonus, then flip back to normal stages.
+    if (this.enemies.isChallenging()) {
+      const total = this.enemies.challengingTotalSpawned();
+      if (total > 0 && this.challengingKills >= total) {
+        this.state.score += CHALLENGING_PERFECT_BONUS;
+        this.perfectBannerUntil = this.state.tick + 90;
+      }
+      this.state.challenging = false;
+      this.challengingKills = 0;
+    }
     this.state.stage += 1;
     this.enemies.reset();
     // Re-anchor so `formationTick` restarts at 0 next update — entrance arcs
@@ -286,6 +326,10 @@ export class Engine {
       }
       const formationTick = this.state.tick - this.formationStartTick;
       this.state.enemies = this.enemies.tick(formationTick);
+      // Mirror the challenging flag onto the public contract every tick.
+      // The controller is the source of truth (the stage ends when it
+      // declares the wave empty); we just publish it.
+      this.state.challenging = this.enemies.isChallenging();
 
       // Capture-beam resolution. While a boss is mid-capture the controller
       // exposes a beam column (x, topY, halfWidth); we check whether the
@@ -457,6 +501,12 @@ export class Engine {
     // respawning fighter can't take a second hit on the same life. A
     // captured fighter is also untouchable: it's held in the beam, not
     // flying the playfield, so contact/bullet damage doesn't apply.
+    // Challenging (bonus) stages are damage-free by contract — enemies fly
+    // THROUGH the player without consequence, and no enemy bullets are
+    // ever spawned during a challenging stage (the firing path, when it
+    // lands, must gate on `!state.challenging`). We short-circuit BOTH
+    // passes of hazard resolution here.
+    if (this.state.challenging) return;
     if (!this.state.player.alive) return;
     if (this.state.player.captured) return;
     const pr2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
@@ -568,6 +618,35 @@ export class Engine {
       this.state.tick > this.stageBannerUntil
     ) {
       this.stageBannerUntil = null;
+    }
+
+    // CHALLENGING banner — painted while the bonus stage is in flight so
+    // the player understands why nothing is shooting back.
+    if (this.state.challenging) {
+      ctx.fillStyle = "#7cf07c";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("CHALLENGING STAGE", WIDTH / 2, 28);
+    }
+
+    // PERFECT! banner — painted briefly after a perfect challenging clear.
+    if (
+      this.perfectBannerUntil !== null &&
+      this.state.tick <= this.perfectBannerUntil
+    ) {
+      ctx.fillStyle = "#7cf07c";
+      ctx.font = "18px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        `PERFECT! +${CHALLENGING_PERFECT_BONUS}`,
+        WIDTH / 2,
+        HEIGHT / 2 + 30,
+      );
+    } else if (
+      this.perfectBannerUntil !== null &&
+      this.state.tick > this.perfectBannerUntil
+    ) {
+      this.perfectBannerUntil = null;
     }
   }
 

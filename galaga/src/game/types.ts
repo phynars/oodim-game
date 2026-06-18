@@ -86,6 +86,13 @@ export interface GameState {
   /** True while a boss Galaga's tractor beam is on screen (capture mechanic).
    *  Surfaced for the capture/rescue tests + HUD cues. */
   captureBeamActive: boolean;
+  /** True while a Challenging (bonus) stage is in flight. During a challenging
+   *  stage the contract guarantees: NO `from:'enemy'` bullets spawn, no contact
+   *  damage from divers, and a perfect clear (every enemy that flew through
+   *  was destroyed) awards `CHALLENGING_PERFECT_BONUS` to `score`. The stage
+   *  ends — and the flag flips back to false — once every wave has flown off
+   *  the bottom of the field (or been destroyed). */
+  challenging: boolean;
 }
 
 /** Test-only escape hatch. The e2e harness can force a deterministic
@@ -107,6 +114,13 @@ export interface GameState {
 export interface GalagaInternals {
   forceHit(opts: { target: "enemy" | "player"; enemyId?: number }): void;
   triggerBossCapture(opts?: { bossId?: number }): void;
+  /** Force the engine to start a Challenging (bonus) stage now, replacing the
+   *  current formation with a set-pattern flythrough wave. While active,
+   *  `state.challenging===true`, no `from:'enemy'` bullets spawn, divers don't
+   *  damage the player on contact, and a perfect clear awards a bonus. The
+   *  hook keeps the harness deterministic — no need to advance through N
+   *  normal stages to land on a challenging one. */
+  startChallengingStage(): void;
 }
 
 declare global {
@@ -160,5 +174,16 @@ export function initialState(): GameState {
     enemies: [],
     bullets: [],
     captureBeamActive: false,
+    challenging: false,
   };
 }
+
+/** Score awarded for a perfect challenging-stage clear (every flythrough
+ *  enemy destroyed). The arcade's bonus stage payouts varied — 10000 for a
+ *  perfect — we use a single round number here, matching the magnitude. */
+export const CHALLENGING_PERFECT_BONUS = 10000;
+
+/** How many enemies fly through during one challenging stage. Set-pattern
+ *  waves of 8 keep the e2e harness fast while preserving the "many enemies,
+ *  no fire" feel. */
+export const CHALLENGING_WAVE_COUNT = 8;
