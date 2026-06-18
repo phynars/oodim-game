@@ -166,6 +166,12 @@ export interface DoomInternals {
   forceHit(opts?: { enemyId?: number }): void;
   forceDamage(opts?: { amount?: number }): void;
   forcePickup(opts?: { id?: number }): void;
+  /** Teleport the player to a world-space position and (optionally) face them
+   *  at a yaw. Used by the e2e harness to position the player adjacent to a
+   *  KNOWN wall cell and prove collision blocks movement — deterministic
+   *  regardless of corridor layout. Bypasses collision (placing the player
+   *  inside a wall is the caller's mistake). */
+  forceTeleport(opts: { x: number; z: number; yaw?: number }): void;
 }
 
 declare global {

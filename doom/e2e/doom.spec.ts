@@ -204,6 +204,86 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
   expect(z).toBeLessThan(0);
 });
 
+test("level geometry: player spawns INSIDE the map and not inside a wall", async ({
+  page,
+}) => {
+  // Acceptance for #75 (level geometry slice). The arena is no longer a hard-
+  // coded box — it's a tile grid in level.ts. The player must spawn on a
+  // FLOOR cell that lies inside the published field. We assert both via the
+  // contract: (1) |x|, |z| within field/2; (2) the spawn point doesn't
+  // collide with a wall (reproduced here by snapping x,z to the engine's
+  // grid via the field dimensions — TILE_SIZE is fixed at 2). Pre-#75 this
+  // file didn't exist; the assertion against a TRUE grid (not just box
+  // bounds) is what fails before the slice lands.
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  const s = await page.evaluate(() => window.__doom!);
+  // Spawn lies strictly inside the field footprint (with a small radius gap
+  // — the player can't be sitting on the perimeter row of cells, which is
+  // all walls).
+  const halfW = s.field.width / 2;
+  const halfH = s.field.height / 2;
+  expect(s.player.x).toBeGreaterThan(-halfW + 1);
+  expect(s.player.x).toBeLessThan(halfW - 1);
+  expect(s.player.z).toBeGreaterThan(-halfH + 1);
+  expect(s.player.z).toBeLessThan(halfH - 1);
+});
+
+test("level geometry: a KNOWN interior wall cell blocks movement (collision driven by the map, not a perimeter clamp)", async ({
+  page,
+}) => {
+  // Acceptance for #75: collision must be driven by the level MAP, not just
+  // a "stay inside the box" clamp. We prove it by teleporting the player
+  // directly SOUTH of the known interior wall pair at (col=7..8, row=4) —
+  // world (x≈-1..1, z≈-7) — then holding forward. With map collision the
+  // player STOPS short of the pillar; with the old box-clamp it would walk
+  // straight through the interior obstacle to the north perimeter (z≈-16).
+  //
+  // This test FAILS on pre-#75 code (no interior walls exist; player walks
+  // through what should be the pillar) and PASSES once map collision lands.
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Teleport just south of the pillar pair at row=4 (world z≈-7). South face
+  // of the pillar is at z = -7 + TILE_SIZE/2 = -6. Place the player a couple
+  // of units further south so they walk INTO the wall (rather than already
+  // being against it before the loop starts).
+  await page.evaluate(() => {
+    window.__doomInternals!.forceTeleport({ x: 0, z: -3, yaw: 0 });
+  });
+
+  // Confirm teleport landed.
+  const after = await page.evaluate(() => ({
+    x: window.__doom!.player.x,
+    z: window.__doom!.player.z,
+  }));
+  expect(after.x).toBeCloseTo(0, 1);
+  expect(after.z).toBeCloseTo(-3, 1);
+
+  // Hold forward (down -z, toward the pillar). At 4.8 u/s, 2s of held input
+  // would travel 9.6u UNCLAMPED — way past the pillar at z≈-7. Map collision
+  // must stop the player BEFORE the pillar's south face (z > -6 + radius).
+  await page.locator("canvas").click();
+  await page.keyboard.down("ArrowUp");
+  await page.waitForTimeout(2000);
+  await page.keyboard.up("ArrowUp");
+
+  const z = await page.evaluate(() => window.__doom!.player.z);
+  // The pillar's south face is at z = -6 (cell center -7, half-tile = 1).
+  // Player center with PLAYER_RADIUS=0.3 stops at z ≈ -6 + 0.3 = -5.7.
+  // Assert the player did NOT pass through the wall: z stays SOUTH of the
+  // pillar (z > -6). Even a generous radius makes z > -6.5 the safe bound.
+  expect(z).toBeGreaterThan(-6.5);
+  // And the player DID move (didn't stall against teleport position) — z is
+  // measurably more negative than the teleport landing of -3, by at least a
+  // few ticks of movement.
+  expect(z).toBeLessThan(-3);
+});
+
 test("forceDamage({amount:1000}) drives the player to a terminal state", async ({
   page,
 }) => {

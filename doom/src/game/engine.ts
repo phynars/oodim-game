@@ -34,6 +34,14 @@ import {
   PLAYER_TURN_PER_TICK,
   type InputSource,
 } from "./input";
+import {
+  cellCenter,
+  collidesWithWall,
+  CURRENT_LEVEL,
+  iterateWallCells,
+  TILE_SIZE,
+  WALL_HEIGHT,
+} from "./level";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -160,6 +168,17 @@ export class Engine {
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
 
+    // --- Level geometry ---------------------------------------------------
+    // The arena is no longer a hard-coded box: walls come from level.ts. We
+    // seed the player at the level's spawn (overriding the initialState
+    // default), then build one box mesh per wall cell. Collision in update()
+    // reads the same map.
+    const spawn = CURRENT_LEVEL.spawn;
+    this.state.player.x = spawn.x;
+    this.state.player.z = spawn.z;
+    this.state.player.yaw = spawn.yaw;
+    this.buildWalls();
+
     // Seed the enemy roster + a placeholder box mesh per enemy.
     this.seedEnemies();
 
@@ -169,6 +188,26 @@ export class Engine {
     this.publish();
     this.bindInput();
     this.exposeInternals();
+  }
+
+  /** Build one BoxGeometry mesh per wall cell in CURRENT_LEVEL. Each box sits
+   *  centered on its cell, on the floor (y = WALL_HEIGHT/2 so its base is at
+   *  y=0). Collision is driven from the same map (see update()) — the mesh
+   *  is purely visual; geometry can't drift from collision because both read
+   *  CURRENT_LEVEL.cells. */
+  private buildWalls(): void {
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x4a4a55,
+      roughness: 0.9,
+      metalness: 0.05,
+    });
+    const wallGeo = new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE);
+    for (const { col, row } of iterateWallCells(CURRENT_LEVEL)) {
+      const { x, z } = cellCenter(CURRENT_LEVEL, col, row);
+      const mesh = new THREE.Mesh(wallGeo, wallMat);
+      mesh.position.set(x, WALL_HEIGHT / 2, z);
+      this.scene.add(mesh);
+    }
   }
 
   /** Seed the simulation's enemy roster from SEED_ENEMIES, and build a
@@ -233,6 +272,13 @@ export class Engine {
             : this.state.pickups.findIndex((p) => p.id === opts.id);
         if (idx < 0) return;
         this.applyPickup(idx);
+        this.publish();
+      },
+      forceTeleport: (opts) => {
+        const p = this.state.player;
+        p.x = opts.x;
+        p.z = opts.z;
+        if (typeof opts.yaw === "number") p.yaw = opts.yaw;
         this.publish();
       },
     };
@@ -415,15 +461,20 @@ export class Engine {
         // identity → forward intent (mz=-1) becomes world delta (0,-1).
         const dx = mx * cos + mz * sin;
         const dz = -mx * sin + mz * cos;
-        // PER-AXIS COLLISION: resolve x and z independently so sliding along
-        // a wall works (hit a north wall → forward intent zeros z but keeps
-        // x). Field is centered on origin and spans FIELD_WIDTH × FIELD_HEIGHT.
-        const halfW = FIELD_WIDTH / 2 - PLAYER_RADIUS;
-        const halfH = FIELD_HEIGHT / 2 - PLAYER_RADIUS;
+        // PER-AXIS COLLISION against the level map: try the x-step alone;
+        // if that would put the player inside a wall, reject it (the player
+        // slides). Then the z-step alone, same way. This gives free sliding
+        // along walls — hit a north wall, forward intent zeros z but keeps
+        // x — and works equally for the perimeter AND interior pillars,
+        // since both are just wall cells in CURRENT_LEVEL.cells.
         const nextX = p.x + dx * PLAYER_SPEED_PER_TICK;
+        if (!collidesWithWall(CURRENT_LEVEL, nextX, p.z, PLAYER_RADIUS)) {
+          p.x = nextX;
+        }
         const nextZ = p.z + dz * PLAYER_SPEED_PER_TICK;
-        p.x = nextX < -halfW ? -halfW : nextX > halfW ? halfW : nextX;
-        p.z = nextZ < -halfH ? -halfH : nextZ > halfH ? halfH : nextZ;
+        if (!collidesWithWall(CURRENT_LEVEL, p.x, nextZ, PLAYER_RADIUS)) {
+          p.z = nextZ;
+        }
       }
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
