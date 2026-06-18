@@ -20,7 +20,7 @@ import {
   ENEMY_HIT_RADIUS,
   PLAYER_HIT_RADIUS,
   RESPAWN_TICKS,
-  SCORE_BY_KIND,
+  scoreFor,
   type Bullet,
   type GameState,
 } from "./types";
@@ -222,7 +222,12 @@ export class Engine {
   private killEnemy(idx: number): void {
     const e = this.state.enemies[idx];
     if (!e) return;
-    const points = SCORE_BY_KIND[e.kind];
+    // Per-state scoring (#71): diving/capturing kills score the bonus
+    // value (bee 100 / butterfly 160 / boss 400); formation/entering/escort
+    // score the parked value (bee 50 / butterfly 80 / boss 150). The "+N"
+    // popup below reuses `points`, so one call here covers both `score`
+    // and the on-screen number.
+    const points = scoreFor(e.kind, e.state);
     this.state.score += points;
     // Polish VFX (#42): spawn an explosion burst + a floating "+N" popup at
     // the enemy's last position. These live on the public contract so the
