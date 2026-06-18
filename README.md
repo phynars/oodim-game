@@ -32,8 +32,8 @@ The studio ships multiple products from this one repo — each a self-contained
 build (its own vite config, tsconfig, and gameplay harness), published to its
 own subpath behind the same "CI for gameplay" gate.
 
-Each product is a self-contained subdirectory — `pacman/`, `galaga/` — with its
-own vite config, tsconfig, and Playwright harness. Per-project scripts are
+Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/` —
+with its own vite config, tsconfig, and Playwright harness. Per-project scripts are
 `build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
 `build` / `typecheck` / `test:e2e` aggregate across all products.
 
@@ -47,12 +47,23 @@ A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
 maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
 score, lives, win/lose, and touch controls. See `pacman/docs/ARCHITECTURE.md`.
 
-### Galaga — `galaga/` → `game.oodim.com/galaga/` *(in progress)*
+### Galaga — `galaga/` → `game.oodim.com/galaga/` *(complete)*
 The studio's second project, harder than Pac-Man: enemy **formations** + entrance
-choreography, **diving attacks**, scoring + stages, and the signature boss-Galaga
-**tractor-beam capture → rescue → dual-fighter** mechanic. Built slice by slice
-from a human-seeded scaffold against an ordered `blocked-by` backlog. See
+choreography, **diving attacks**, enemy fire, scoring + stages, and the signature
+boss-Galaga **tractor-beam capture → rescue → dual-fighter** mechanic. Built slice
+by slice from a human-seeded scaffold against an ordered `blocked-by` backlog. See
 `galaga/docs/ARCHITECTURE.md`.
+
+### Doom — `doom/` → `game.oodim.com/doom/` *(in progress)*
+The studio's first **true-3D** game — a first-person shooter on **three.js +
+WebGL**. The leap here is the verification gate: the gameplay harness runs over
+**WebGL in headless Chromium** (SwiftShader), asserting the `window.__doom` *state*
+contract (player pose, enemies, projectiles, pickups, doors, weapon) — never
+pixels — with a deterministic fixed-timestep simulation decoupled from rendering.
+Built slice by slice against an ordered `blocked-by` backlog: playable core on
+primitives first, then **procedurally-generated** assets (code-built textures,
+models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
+`doom/docs/ARCHITECTURE.md`.
 
 ## How it's built
 
