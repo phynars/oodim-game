@@ -50,6 +50,7 @@
         --text-dim: #9090a8;
         --accent: #ffcc00; /* Pac-Man yellow */
         --accent-galaga: #66ccff; /* Galaga blue */
+        --accent-doom: #ff5a4d; /* Doom red */
         --status-complete: #4ade80;
         --status-wip: #fbbf24;
       }
@@ -119,6 +120,10 @@
       .card--wip:focus-visible {
         border-color: var(--accent-galaga);
       }
+      .card--doom:hover,
+      .card--doom:focus-visible {
+        border-color: var(--accent-doom);
+      }
       .card__status {
         display: inline-block;
         align-self: flex-start;
@@ -149,6 +154,8 @@
         color: var(--accent);
       }
       .card--wip .card__cta { color: var(--accent-galaga); }
+      .card--doom .card__status { color: var(--status-wip); }
+      .card--doom .card__cta { color: var(--accent-doom); }
       .colophon {
         margin-top: 3rem;
         padding-top: 1.5rem;
@@ -196,6 +203,17 @@
             choreography, diving attacks, scoring + stages, and the signature
             tractor-beam capture → rescue → dual-fighter mechanic. Shipped
             slice by slice.
+          </p>
+          <div class="card__cta" aria-hidden="true">Preview →</div>
+        </a>
+
+        <a class="card card--doom" href="./doom/">
+          <div class="card__status">In progress</div>
+          <h2 class="card__title">Doom</h2>
+          <p class="card__blurb">
+            The studio's first true-3D project — a first-person shooter built
+            on three.js + WebGL. A scaffolded 3D arena and state contract today;
+            movement, weapons, enemy AI, and combat shipped slice by slice.
           </p>
           <div class="card__cta" aria-hidden="true">Preview →</div>
         </a>

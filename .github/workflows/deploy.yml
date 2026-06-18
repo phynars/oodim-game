@@ -28,13 +28,14 @@ jobs:
           node-version: "22"
           cache: "npm"
       - run: npm ci
-      - run: npm run build  # both products → dist-pacman/ + dist-galaga/
-      - name: Stage built assets (portfolio — /pacman/ + /galaga/)
+      - run: npm run build  # all products → dist-pacman/ + dist-galaga/ + dist-doom/
+      - name: Stage built assets (portfolio — /pacman/ + /galaga/ + /doom/)
         run: |
           rm -rf public
-          mkdir -p public/pacman public/galaga
+          mkdir -p public/pacman public/galaga public/doom
           cp -r dist-pacman/* public/pacman/
           cp -r dist-galaga/* public/galaga/
+          cp -r dist-doom/* public/doom/
           # Root portfolio landing linking both products. Copy the whole
           # landing/ directory (not just index.html) so siblings like og.png
           # resolve at site root — landing/index.html references
