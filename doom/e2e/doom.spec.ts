@@ -178,12 +178,20 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
   const field = await page.evaluate(() => window.__doom!.field);
   // The arena spans [-h/2, +h/2] in z. Holding forward (down -z) for long
   // enough that, UNCLAMPED, the player would overshoot the wall by a wide
-  // margin. At 0.08 u/step × 60Hz = 4.8 u/s; 4s ≫ field.height / 2.
+  // margin. At 0.08 u/step × 60Hz = 4.8 u/s; spawn is z=+12 on a 32-deep
+  // field, so the clamp sits near z=-16. Travel to the wall is ~28 u, ~5.8s.
   await page.locator("canvas").click();
   await page.keyboard.down("ArrowUp");
   // Wait a healthy budget — long enough to be SURE we hit the wall even on
-  // slow CI. The clamp is the assertion, not the timing.
-  await page.waitForTimeout(2500);
+  // slow CI. The clamp is the assertion, not the wall-clock.
+  //
+  // FLAKE NOTE: an earlier draft used 2500ms — at 4.8 u/s from spawn z=+12
+  // that lands the player at z≈0, RIGHT on the `z < 0` assertion line below.
+  // Any CI scheduling jitter (a dropped frame, a slow first paint) would
+  // leave z just barely positive and fail the test for non-movement reasons.
+  // 4000ms travels ~19.2 u → z≈-7.2: comfortably past 0, comfortably short
+  // of the clamp at -16. The clamp is now what's being measured.
+  await page.waitForTimeout(4000);
   await page.keyboard.up("ArrowUp");
 
   const z = await page.evaluate(() => window.__doom!.player.z);
