@@ -10,19 +10,17 @@
 // the studio builds up from, mirroring how Pac-Man started from a loop + maze.
 
 import {
-  BOSS_SCORE_DIVING,
-  BOSS_SCORE_FORMATION,
   CHALLENGING_PERFECT_BONUS,
   EXPLOSION_TICKS,
   hitMissBonus,
   initialState,
+  scoreFor,
   SCORE_POPUP_TICKS,
   WIDTH,
   HEIGHT,
   ENEMY_HIT_RADIUS,
   PLAYER_HIT_RADIUS,
   RESPAWN_TICKS,
-  SCORE_BY_KIND,
   type Bullet,
   type GameState,
 } from "./types";
@@ -247,15 +245,12 @@ export class Engine {
       // damageBoss returned false → the persistent roster entry is
       // already damaged (or gone). Fall through to the kill path.
     }
-    // Boss scoring (#68): kill-while-diving is worth 400, otherwise 150.
-    // We ask the controller for the LIVE persistent-roster state (the
-    // public snapshot may already be stale by the time we arrive here).
-    const points =
-      e.kind === "boss"
-        ? this.enemies.isBossDiving(e.id)
-          ? BOSS_SCORE_DIVING
-          : BOSS_SCORE_FORMATION
-        : SCORE_BY_KIND[e.kind];
+    // Scoring: `scoreFor` (#71) folds the boss state→points table in
+    // with the regular SCORE_BY_KIND lookup — a boss killed mid-dive
+    // pays 400, otherwise 150; bees/butterflies are flat regardless of
+    // state. The enemy snapshot carries its current `state` so we don't
+    // need to round-trip through the controller.
+    const points = scoreFor(e.kind, e.state);
     this.state.score += points;
     // Polish VFX (#42): spawn an explosion burst + a floating "+N" popup at
     // the enemy's last position. These live on the public contract so the

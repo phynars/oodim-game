@@ -185,20 +185,35 @@ declare global {
 
 /** Point values per archetype. Galaga's formation values; close-enough for
  *  our condensed roster. NOTE: `boss` is the FORMATION-kill value — when a
- *  boss is killed in mid-DIVE the engine awards `BOSS_SCORE_DIVING` instead
- *  (#68). The two-hit damage path is wired in `engine.killEnemy` so a first
- *  hit only flips `damaged`; the second hit selects the score by state. */
+ *  boss is killed in mid-DIVE the `scoreFor` helper substitutes the
+ *  `SCORE_BY_KIND_DIVING` override (#71). The two-hit damage path is wired
+ *  in `engine.killEnemy` so a first hit only flips `damaged`; the second
+ *  hit selects the score via `scoreFor(kind, state)`. */
 export const SCORE_BY_KIND: Record<EnemyKind, number> = {
   bee: 50,
   butterfly: 80,
   boss: 150,
 };
 
-/** Score for killing a boss while it is parked in the formation (or in any
- *  non-diving state — capturing, entering). Matches arcade Galaga. */
-export const BOSS_SCORE_FORMATION = 150;
-/** Score for killing a boss while it is in mid-dive. Arcade value (#68). */
-export const BOSS_SCORE_DIVING = 400;
+/** Score override for killing a boss while it is in mid-dive. Arcade
+ *  value (#71). Bees + butterflies don't get a diving bonus — only the
+ *  boss row pays out the higher value when caught mid-attack. */
+export const SCORE_BY_KIND_DIVING: Partial<Record<EnemyKind, number>> = {
+  boss: 400,
+};
+
+/** Resolve the point value for a kill, accounting for the enemy's current
+ *  state. Bosses killed while `state === 'diving'` pay out 400 (arcade);
+ *  every other (kind, state) pair falls back to the flat `SCORE_BY_KIND`
+ *  table. Centralized so engine + tests + future HUD share one source of
+ *  truth (#71). */
+export function scoreFor(kind: EnemyKind, state: EnemyState): number {
+  if (state === "diving") {
+    const override = SCORE_BY_KIND_DIVING[kind];
+    if (override !== undefined) return override;
+  }
+  return SCORE_BY_KIND[kind];
+}
 
 /** Squared hit radius for player-bullet vs enemy. The enemy diamond sprite
  *  is ~12px wide; bullets are 2x8 — an 8px center-to-center radius matches

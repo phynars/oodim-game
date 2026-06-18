@@ -186,12 +186,6 @@ export interface EnemyController {
    *  (non-boss, missing id, or already damaged — engine should kill in
    *  those cases). */
   damageBoss(id: number): boolean;
-  /** True if the enemy with this id is a boss currently in mid-DIVE. The
-   *  engine reads this on the SECOND (killing) hit to award the diving
-   *  boss bonus (#68: 400 vs 150 formation). Read against the persistent
-   *  roster — public snapshot may already be stale by the time the kill
-   *  lands inside `killEnemy`. */
-  isBossDiving(id: number): boolean;
   /** Begin the capture beam choreography on a boss positioned above
    *  `(playerX, playerY)`. The boss is parked above the player at a fixed
    *  altitude with its tractor beam armed. Returns the boss id (or null if
@@ -370,12 +364,6 @@ export function createEnemyController(): EnemyController {
           e.damaged = true;
           return true;
         }
-      }
-      return false;
-    },
-    isBossDiving(id: number): boolean {
-      for (const e of roster) {
-        if (e.id === id) return e.kind === "boss" && e.state === "diving";
       }
       return false;
     },
