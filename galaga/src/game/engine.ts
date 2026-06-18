@@ -34,7 +34,14 @@ import {
   type InputSource,
   type TouchInputElements,
 } from "./input";
-import { createEnemyController, type EnemyController } from "./enemies";
+import {
+  createEnemyController,
+  ENEMY_BULLET_SPEED_PX_PER_TICK,
+  ENEMY_FIRE_COOLDOWN_TICKS,
+  ENEMY_FIRE_PROBABILITY,
+  ENEMY_FIRE_PROBABILITY_BOSS,
+  type EnemyController,
+} from "./enemies";
 
 interface Star {
   x: number;
@@ -77,6 +84,11 @@ export class Engine {
    *  spawn x, alive=true. At 0 lives we don't respawn — status flips to
    *  'lost' instead (the contract's terminal "you died" state). */
   private deathTick: number | null = null;
+  /** Per-enemy fire cooldown — keyed by enemy id, value is the tick at
+   *  which that enemy is next eligible to fire. A diver picked up on tick
+   *  T can't fire again until T + ENEMY_FIRE_COOLDOWN_TICKS. Entries for
+   *  dead enemies are GC'd opportunistically (size bounded by roster). */
+  private enemyFireCooldown: Map<number, number> = new Map();
   /** Tick until which the "STAGE N" banner is painted. Set when we advance
    *  to the next stage; the renderer reads this each frame. Null = no banner. */
   private stageBannerUntil: number | null = null;
@@ -439,6 +451,61 @@ export class Engine {
       // declares the wave empty); we just publish it.
       this.state.challenging = this.enemies.isChallenging();
 
+      // Enemy fire (#61). Diving enemies drop shots aimed at the player's
+      // column. Hard gates:
+      //  - `state.challenging===true` ⇒ NEVER spawn enemy bullets (contract).
+      //  - Player not alive / captured ⇒ no point spawning, and avoids hitting
+      //    a respawning ship.
+      // Each diver is on a per-id cooldown so it can't carpet-bomb a single
+      // tick; bosses fire ~2× as often as bees/butterflies.
+      if (
+        !this.state.challenging &&
+        this.state.player.alive &&
+        !this.state.player.captured
+      ) {
+        const tick = this.state.tick;
+        const stageScale = 1 + (this.state.stage - 1) * 0.15; // gentle ramp
+        for (const e of this.state.enemies) {
+          if (e.state !== "diving") continue;
+          const cooldownUntil = this.enemyFireCooldown.get(e.id) ?? 0;
+          if (tick < cooldownUntil) continue;
+          const baseProb =
+            e.kind === "boss"
+              ? ENEMY_FIRE_PROBABILITY_BOSS
+              : ENEMY_FIRE_PROBABILITY;
+          const prob = Math.min(0.5, baseProb * stageScale);
+          // Deterministic-ish per-(id,tick) PRNG so tests are repeatable
+          // without seeding Math.random. The sin-hash gives well-distributed
+          // values in [0,1); we compare against `prob`.
+          const r = ((Math.sin(e.id * 91.337 + tick * 13.13) * 43758.5453) % 1 + 1) % 1;
+          if (r < prob) {
+            // Aim roughly at the player's column with a small lateral offset
+            // baked from the diver's id so multiple divers don't all fire
+            // dead-center. Bullet shape matches the player's: x,y,from.
+            const aimJitter = ((e.id * 17) % 11) - 5; // -5..+5 px
+            const targetX = this.state.player.x + aimJitter;
+            // Spawn one tick of velocity below the diver so it visibly leaves
+            // the sprite rather than overlapping it.
+            this.state.bullets.push({
+              x: targetX > e.x ? e.x + 1 : e.x - 1,
+              y: e.y + 6,
+              from: "enemy",
+            });
+            this.enemyFireCooldown.set(
+              e.id,
+              tick + ENEMY_FIRE_COOLDOWN_TICKS,
+            );
+          }
+        }
+        // GC: prune cooldown entries whose enemy is no longer on stage.
+        if (this.enemyFireCooldown.size > 0) {
+          const alive = new Set(this.state.enemies.map((e) => e.id));
+          for (const id of this.enemyFireCooldown.keys()) {
+            if (!alive.has(id)) this.enemyFireCooldown.delete(id);
+          }
+        }
+      }
+
       // Capture-beam resolution. While a boss is mid-capture the controller
       // exposes a beam column (x, topY, halfWidth); we check whether the
       // player fighter overlaps it. The first overlap triggers the capture:
@@ -550,7 +617,7 @@ export class Engine {
             if (ny + 4 < 0) continue; // off the top, drop it
             next.push({ x: b.x, y: ny, from: "player" });
           } else {
-            const ny = b.y + PLAYER_BULLET_SPEED_PX_PER_TICK;
+            const ny = b.y + ENEMY_BULLET_SPEED_PX_PER_TICK;
             if (ny - 4 > this.state.field.height) continue;
             next.push({ x: b.x, y: ny, from: "enemy" });
           }

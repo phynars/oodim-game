@@ -1124,3 +1124,58 @@ test("challenging stage: no enemy bullets spawn during it and a perfect clear aw
   // And the stage counter advanced — challenging stages count as stages too.
   expect(result.stage).toBeGreaterThan(before.stage);
 });
+
+test("diving enemy drops a from:'enemy' bullet within bounded ticks (#61)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(
+    () => window.__galaga?.status === "playing",
+    null,
+    { timeout: 5000 },
+  );
+
+  // Wait for at least one enemy to enter the 'diving' state. The dive
+  // schedule fires after the full formation has settled + DIVE_START_DELAY
+  // — same wait the existing dive test uses, with generous timeout.
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies ?? []).some((e) => e.state === "diving"),
+    null,
+    { timeout: 25000 },
+  );
+
+  // Contract for #61: once a diver is in the air, a `from:'enemy'` bullet
+  // must appear in `window.__galaga.bullets` within a bounded window. The
+  // firing model is rate-limited + probabilistic, so we give it generous
+  // wall time but bounded — failure here means the mechanic is missing or
+  // the gate is wrong.
+  await page.waitForFunction(
+    () => (window.__galaga?.bullets ?? []).some((b) => b.from === "enemy"),
+    null,
+    { timeout: 15000 },
+  );
+
+  // Sanity: an enemy bullet's y is >= the diving enemy's spawn-side of the
+  // playfield (top half), and it travels DOWN over subsequent ticks.
+  const first = await page.evaluate(() => {
+    const b = (window.__galaga?.bullets ?? []).find((x) => x.from === "enemy");
+    return b ? { x: b.x, y: b.y } : null;
+  });
+  expect(first).not.toBeNull();
+
+  await page.waitForFunction(
+    (spawnY) => {
+      const ys = (window.__galaga?.bullets ?? [])
+        .filter((b) => b.from === "enemy")
+        .map((b) => b.y);
+      if (ys.length === 0) return true; // bullet despawned past the bottom — also proves it descended
+      return Math.max(...ys) > spawnY + 5;
+    },
+    first!.y,
+    { timeout: 5000 },
+  );
+});
+
