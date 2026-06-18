@@ -909,6 +909,101 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
   );
 });
 
+test("stage-clear awards hit-miss accuracy bonus by ratio tier (#65)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(
+    () => window.__galaga?.status === "playing",
+    null,
+    { timeout: 5000 },
+  );
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Wait for the entire formation to settle (same gate as the stage-clear
+  // test) so `isEmpty()` is true once we kill them all and the stage flips.
+  await page.waitForFunction(
+    () => {
+      const enemies = window.__galaga?.enemies ?? [];
+      return (
+        enemies.length > 0 && enemies.every((e) => e.state === "formation")
+      );
+    },
+    null,
+    { timeout: 15000 },
+  );
+
+  // Counters exist on the contract and start at 0 (no real shots fired yet).
+  const baseline = await page.evaluate(() => ({
+    shots: window.__galaga!.stageShotsFired,
+    hits: window.__galaga!.stageHits,
+    score: window.__galaga!.score,
+    stage: window.__galaga!.stage,
+  }));
+  expect(baseline.shots).toBe(0);
+  expect(baseline.hits).toBe(0);
+
+  // Drive a perfect stage: forceHit every enemy. Each forceHit bumps both
+  // shotsFired and hits, so ratio=100% → top tier (>=95% → 10000) bonus.
+  // Done in ONE evaluate so rAF can't tick a stage-advance between the
+  // last forceHit and our counter sample.
+  const before = await page.evaluate(() => {
+    const ids = window.__galaga!.enemies.map((e) => e.id);
+    for (const id of ids) {
+      window.__galagaInternals!.forceHit({ target: "enemy", enemyId: id });
+    }
+    return {
+      stage: window.__galaga!.stage,
+      score: window.__galaga!.score,
+      shots: window.__galaga!.stageShotsFired,
+      hits: window.__galaga!.stageHits,
+    };
+  });
+  expect(before.shots).toBeGreaterThan(0);
+  // 100% ratio: every forceHit bumped both counters in lockstep.
+  expect(before.hits).toBe(before.shots);
+
+  // Mop up any controller re-emits, then wait for stage advance + bonus.
+  await page.evaluate(async () => {
+    for (let i = 0; i < 200; i++) {
+      const enemies = window.__galaga?.enemies ?? [];
+      if (enemies.length === 0) break;
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: enemies[0].id,
+      });
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+  });
+
+  await page.waitForFunction(
+    (prevStage) => (window.__galaga?.stage ?? prevStage) > prevStage,
+    before.stage,
+    { timeout: 5000 },
+  );
+
+  const after = await page.evaluate(() => ({
+    score: window.__galaga!.score,
+    shots: window.__galaga!.stageShotsFired,
+    hits: window.__galaga!.stageHits,
+    stage: window.__galaga!.stage,
+  }));
+  // Top-tier bonus (>=95%) is 10000; the per-kill score gains are bounded
+  // (a few hundred per enemy * roster size sits well under 10000). Assert
+  // the bonus landed by checking the cross-stage delta exceeds 10000 on
+  // top of the per-kill points.
+  expect(after.score - baseline.score).toBeGreaterThanOrEqual(10000);
+  // Counters reset for the next stage.
+  expect(after.shots).toBe(0);
+  expect(after.hits).toBe(0);
+  expect(after.stage).toBe(before.stage + 1);
+});
+
 test("challenging stage: no enemy bullets spawn during it and a perfect clear awards a bonus", async ({
   page,
 }) => {

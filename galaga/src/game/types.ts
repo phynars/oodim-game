@@ -114,6 +114,18 @@ export interface GameState {
   /** Floating "+N" score popups spawned alongside an explosion. Drift upward
    *  and fade; same lifecycle shape as explosions. */
   scorePopups: ScorePopup[];
+  /** Player bullets fired during the current non-challenging stage. Reset to
+   *  0 at the start of each new normal stage; the hit-miss accuracy bonus
+   *  (#65) is computed from `stageHits / stageShotsFired` at stage-advance.
+   *  `forceHit({target:'enemy'})` MUST bump this in lockstep with `stageHits`
+   *  so the e2e harness can simulate any accuracy ratio deterministically
+   *  (forceHit bypasses bullet spawn). Challenging stages do not advance
+   *  this counter — the bonus path is skipped on challenging clears. */
+  stageShotsFired: number;
+  /** Player-bullet kills landed during the current non-challenging stage.
+   *  Pairs with `stageShotsFired` to compute the post-stage hit-miss ratio
+   *  bonus (#65). Reset to 0 alongside `stageShotsFired` at stage-advance. */
+  stageHits: number;
   /** True while a Challenging (bonus) stage is in flight. During a challenging
    *  stage the contract guarantees: NO `from:'enemy'` bullets spawn, no contact
    *  damage from divers, and a perfect clear (every enemy that flew through
@@ -203,6 +215,8 @@ export function initialState(): GameState {
     bullets: [],
     captureBeamActive: false,
     challenging: false,
+    stageShotsFired: 0,
+    stageHits: 0,
     explosions: [],
     scorePopups: [],
   };
@@ -223,3 +237,36 @@ export const CHALLENGING_PERFECT_BONUS = 10000;
  *  waves of 8 keep the e2e harness fast while preserving the "many enemies,
  *  no fire" feel. */
 export const CHALLENGING_WAVE_COUNT = 8;
+
+/** Hit-miss accuracy bonus tiers (#65). Arcade-faithful Galaga grades the
+ *  player's per-stage firing accuracy on the post-stage "HIT-MISS RATIO"
+ *  screen and awards a tiered bonus. Tiers are ordered HIGHEST-FIRST so the
+ *  lookup walks down and picks the first whose `minRatio` is satisfied.
+ *  `ratio === 0 shots fired` short-circuits to 0 (no shutout exploit). */
+export interface HitMissTier {
+  /** Inclusive lower bound on hits/shots ratio (0..1). */
+  minRatio: number;
+  /** Point bonus awarded at stage-advance when the achieved ratio lands
+   *  in this tier. */
+  bonus: number;
+}
+export const HIT_MISS_BONUS_TIERS: ReadonlyArray<HitMissTier> = [
+  { minRatio: 0.95, bonus: 10000 },
+  { minRatio: 0.7, bonus: 5000 },
+  { minRatio: 0.5, bonus: 2000 },
+  { minRatio: 0.3, bonus: 1000 },
+  { minRatio: 0.1, bonus: 500 },
+  { minRatio: 0, bonus: 100 },
+] as const;
+
+/** Look up the hit-miss bonus for a given shots/hits pair. Returns 0 when
+ *  no shots were fired (you can't earn a bonus by holding fire). Centralized
+ *  so engine and tests agree on the tier math. */
+export function hitMissBonus(shotsFired: number, hits: number): number {
+  if (shotsFired <= 0) return 0;
+  const ratio = hits / shotsFired;
+  for (const t of HIT_MISS_BONUS_TIERS) {
+    if (ratio >= t.minRatio) return t.bonus;
+  }
+  return 0;
+}
