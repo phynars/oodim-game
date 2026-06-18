@@ -15,12 +15,8 @@
     "preview:galaga": "vite preview --config galaga/vite.config.ts",
     "typecheck:galaga": "tsc --noEmit -p galaga/tsconfig.json",
     "test:e2e:galaga": "playwright test --config galaga/playwright.config.ts",
-    "dev:landing": "vite --config landing/vite.config.ts",
-    "build:landing": "tsc --noEmit -p landing/tsconfig.json && vite build --config landing/vite.config.ts",
-    "preview:landing": "vite preview --config landing/vite.config.ts",
-    "typecheck:landing": "tsc --noEmit -p landing/tsconfig.json",
-    "build": "npm run build:landing && npm run build:pacman && npm run build:galaga",
-    "typecheck": "npm run typecheck:landing && npm run typecheck:pacman && npm run typecheck:galaga",
+    "build": "npm run build:pacman && npm run build:galaga",
+    "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga",
     "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga"
   },
   "devDependencies": {
