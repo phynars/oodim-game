@@ -141,6 +141,61 @@ test("forceHit() drops the first enemy's hp / flips it to 'dead' and scores", as
   expect(after.score).toBeGreaterThan(before.score);
 });
 
+test("ArrowUp moves the player forward — player.z DECREASES (camera looks down -z)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  // Capture spawn z BEFORE any input. The player spawns at the south edge
+  // looking north (down -z), so holding ArrowUp must decrease z.
+  const z0 = await page.evaluate(() => window.__doom!.player.z);
+
+  await page.locator("canvas").click();
+  // Hold forward for a beat; at 60Hz with PLAYER_SPEED_PER_TICK=0.08 the
+  // player should travel several world-units in well under a second.
+  await page.keyboard.down("ArrowUp");
+  // Wait until the contract reports we've MOVED — the assertion that proves
+  // movement is wired (this is what FAILED on pre-#74 code, where the
+  // engine sampled input but never translated the camera).
+  await page.waitForFunction(
+    (start) => (window.__doom?.player.z ?? start) < start - 0.5,
+    z0,
+    { timeout: 5000 },
+  );
+  await page.keyboard.up("ArrowUp");
+
+  const z1 = await page.evaluate(() => window.__doom!.player.z);
+  expect(z1).toBeLessThan(z0);
+});
+
+test("walking into a wall clamps player.z — the player does NOT pass through the playfield edge", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  const field = await page.evaluate(() => window.__doom!.field);
+  // The arena spans [-h/2, +h/2] in z. Holding forward (down -z) for long
+  // enough that, UNCLAMPED, the player would overshoot the wall by a wide
+  // margin. At 0.08 u/step × 60Hz = 4.8 u/s; 4s ≫ field.height / 2.
+  await page.locator("canvas").click();
+  await page.keyboard.down("ArrowUp");
+  // Wait a healthy budget — long enough to be SURE we hit the wall even on
+  // slow CI. The clamp is the assertion, not the timing.
+  await page.waitForTimeout(2500);
+  await page.keyboard.up("ArrowUp");
+
+  const z = await page.evaluate(() => window.__doom!.player.z);
+  // Z is bounded by -field.height/2 (with some PLAYER_RADIUS slack). We
+  // assert the WALL HELD: z never went below -height/2.
+  expect(z).toBeGreaterThan(-field.height / 2);
+  // And we DID reach the wall — z is far past the spawn (which was +12 on
+  // a 32-deep field). If movement silently no-op'd, this would still equal
+  // the spawn z. Pick a generous threshold: anywhere on the north half.
+  expect(z).toBeLessThan(0);
+});
+
 test("forceDamage({amount:1000}) drives the player to a terminal state", async ({
   page,
 }) => {
