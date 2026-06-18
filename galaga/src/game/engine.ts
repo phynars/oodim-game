@@ -42,6 +42,10 @@ interface Star {
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. */
 const STEP_MS = 1000 / 60;
 const STAR_COUNT = 60;
+/** Fixed-step frames the engine holds in the 'lost' state before advancing
+ *  to 'gameover'. ~0.5s at 60Hz — long enough that the death frame reads,
+ *  short enough that the overlay doesn't feel delayed. */
+const GAMEOVER_HOLD_FRAMES = 30;
 
 export class Engine {
   private readonly canvas: HTMLCanvasElement;
@@ -70,6 +74,14 @@ export class Engine {
   /** Tick until which the "PERFECT! +N" banner is painted after a perfect
    *  challenging clear. Null = no banner. */
   private perfectBannerUntil: number | null = null;
+  /** Tick at which status flipped to 'lost'. After GAMEOVER_HOLD_FRAMES more
+   *  fixed-step frames elapse the status advances to 'gameover' (the terminal
+   *  state the GAME OVER overlay annotates). Null while still playing. */
+  private lostTick: number | null = null;
+  /** Fixed-step frames accumulated since status flipped to 'lost'. We count
+   *  these independently of state.tick because state.tick is frozen once we
+   *  leave 'playing' (it's the in-game wall clock, not real time). */
+  private gameOverFrames = 0;
   private lastTime = 0;
   private accumulator = 0;
 
@@ -252,6 +264,11 @@ export class Engine {
     if (this.state.lives <= 0) {
       this.state.status = "lost";
       this.deathTick = null;
+      // Arm the gameover transition. The contract is two-step: 'lost' is the
+      // immediate "you died on your last life" flip; 'gameover' is the
+      // terminal state under the GAME OVER overlay. Holding briefly between
+      // the two lets the death frame land before the overlay paints.
+      this.lostTick = this.state.tick;
     } else {
       this.deathTick = this.state.tick;
     }
@@ -312,6 +329,17 @@ export class Engine {
       s.y += s.speed;
       if (s.y > HEIGHT) {
         s.y -= HEIGHT;
+      }
+    }
+    // 'lost' → 'gameover' transition. We use lostTick (captured at the
+    // moment lives hit 0, while state.tick was still advancing) and count
+    // wall-clock fixed-steps via gameOverFrames so the hand-off lands even
+    // though state.tick is frozen once status leaves 'playing'.
+    if (this.state.status === "lost" && this.lostTick !== null) {
+      this.gameOverFrames += 1;
+      if (this.gameOverFrames >= GAMEOVER_HOLD_FRAMES) {
+        this.state.status = "gameover";
+        this.lostTick = null;
       }
     }
     if (this.state.status === "playing") {
@@ -600,6 +628,27 @@ export class Engine {
       ctx.font = "9px ui-monospace, monospace";
       ctx.fillStyle = "#9aa";
       ctx.fillText("press / tap to start", WIDTH / 2, HEIGHT / 2 + 18);
+    }
+
+    // GAME OVER overlay — painted while status is 'lost' (the brief hold
+    // after the final fighter dies) or 'gameover' (the terminal state). The
+    // text is the contract any consumer/test can scan for; we also dim the
+    // playfield with a translucent black wash so the overlay reads against
+    // the starfield + leftover sprites.
+    if (this.state.status === "lost" || this.state.status === "gameover") {
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = "#ff5a5a";
+      ctx.font = "22px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2);
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.fillStyle = "#cdd";
+      ctx.fillText(
+        `final score ${this.state.score}`,
+        WIDTH / 2,
+        HEIGHT / 2 + 22,
+      );
     }
 
     // STAGE N banner — painted during the brief window after a stage flip

@@ -103,6 +103,44 @@
         font-size: 16px;
         font-weight: 600;
       }
+      /* Stage wrapper — positions the GAME OVER overlay over the canvas
+         without forcing a layout change. Sized to the same min(...) box
+         the canvas uses so the overlay scales 1:1 with the playfield. */
+      #stage-wrap {
+        position: relative;
+        height: min(100dvh, calc(100vw / var(--gx-aspect)));
+        max-height: 100dvh;
+      }
+      #stage-wrap > #game {
+        display: block;
+      }
+      #gameover-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #ff5a5a;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        pointer-events: none;
+      }
+      #gameover-overlay[hidden] {
+        display: none;
+      }
+      #gameover-overlay .overlay-title {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      #gameover-overlay .overlay-sub {
+        font-size: 11px;
+        color: #cdd;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
     </style>
   </head>
   <body>
@@ -123,7 +161,27 @@
         <span class="hud-value" data-hud="stage">1</span>
       </div>
     </div>
-    <canvas id="game" width="320" height="448"></canvas>
+    <!-- Canvas + the GAME OVER overlay share a positioned wrapper so the
+         overlay can sit on top of the playfield without disrupting the
+         flex layout the HUD relies on. The overlay is hidden by default;
+         main.ts toggles its `hidden` attribute when window.__galaga.status
+         is 'lost' or 'gameover'. The data-overlay attribute is the contract
+         galaga/e2e/galaga.spec.ts asserts on. -->
+    <div id="stage-wrap">
+      <canvas id="game" width="320" height="448"></canvas>
+      <div
+        id="gameover-overlay"
+        data-overlay="gameover"
+        role="status"
+        aria-live="polite"
+        hidden
+      >
+        <div class="overlay-title">GAME OVER</div>
+        <div class="overlay-sub">
+          <span data-overlay-final-score>0</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
