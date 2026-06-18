@@ -11,7 +11,9 @@
 
 import {
   CHALLENGING_PERFECT_BONUS,
+  EXPLOSION_TICKS,
   initialState,
+  SCORE_POPUP_TICKS,
   WIDTH,
   HEIGHT,
   ENEMY_HIT_RADIUS,
@@ -44,7 +46,15 @@ interface Star {
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. */
 const STEP_MS = 1000 / 60;
-const STAR_COUNT = 60;
+/** Deeper parallax starfield — three discrete speed layers (far/mid/near).
+ *  Continuous speed spread doesn't read as parallax; quantizing into tiers
+ *  is what makes the eye lock onto the depth. The arcade's signature
+ *  horizon-of-stars feel needs density too: 90 stars at 320×448 is ~1 star
+ *  per ~1600 px², readable but not noisy. */
+const STAR_COUNT = 90;
+/** px/tick per parallax tier. Far is barely-drifting backdrop; near races
+ *  past. Brightness is biased to match — distant stars dimmer than near. */
+const STAR_SPEEDS = [0.35, 0.7, 1.15] as const;
 /** Fixed-step frames the engine holds in the 'lost' state before advancing
  *  to 'gameover'. ~0.5s at 60Hz — long enough that the death frame reads,
  *  short enough that the overlay doesn't feel delayed. */
@@ -172,7 +182,13 @@ export class Engine {
   private killEnemy(idx: number): void {
     const e = this.state.enemies[idx];
     if (!e) return;
-    this.state.score += SCORE_BY_KIND[e.kind];
+    const points = SCORE_BY_KIND[e.kind];
+    this.state.score += points;
+    // Polish VFX (#42): spawn an explosion burst + a floating "+N" popup at
+    // the enemy's last position. These live on the public contract so the
+    // e2e harness can prove the polish state flag landed.
+    this.state.explosions.push({ x: e.x, y: e.y, age: 0 });
+    this.state.scorePopups.push({ x: e.x, y: e.y, value: points, age: 0 });
     // Track per-stage kills during a challenging stage so a perfect clear
     // (kills === total spawned) can award the bonus on stage-end.
     if (this.enemies.isChallenging()) this.challengingKills += 1;
@@ -291,11 +307,17 @@ export class Engine {
       // A cheap PRNG seeded by index keeps the field stable across reloads
       // without Math.random (also avoids non-determinism in tests).
       const r = (n: number) => ((Math.sin(i * 12.9898 + n * 78.233) * 43758.5453) % 1 + 1) % 1;
+      // Bucket each star into one of three discrete speed tiers — true
+      // parallax depth, not a continuous smear. Brightness tracks the tier
+      // (far = dim, near = bright) so the eye reads the layering.
+      const tier = Math.floor(r(3) * STAR_SPEEDS.length);
+      const speed = STAR_SPEEDS[tier];
+      const baseLevel = 0.3 + tier * 0.25; // 0.30 / 0.55 / 0.80
       stars.push({
         x: r(1) * WIDTH,
         y: r(2) * HEIGHT,
-        speed: 0.3 + r(3) * 0.9,
-        level: 0.35 + r(4) * 0.65,
+        speed,
+        level: baseLevel + r(4) * 0.2,
       });
     }
     return stars;
@@ -484,6 +506,29 @@ export class Engine {
       }
 
       this.resolveCollisions();
+      // Age VFX. Explosions are short bursts; score popups drift upward as
+      // they age. Both are pruned once they exceed their lifetime. Done
+      // AFTER collisions so a freshly-killed enemy's VFX gets one full
+      // tick on screen before being eligible for culling.
+      if (this.state.explosions.length > 0) {
+        const next: GameState["explosions"] = [];
+        for (const ex of this.state.explosions) {
+          if (ex.age + 1 < EXPLOSION_TICKS) {
+            next.push({ x: ex.x, y: ex.y, age: ex.age + 1 });
+          }
+        }
+        this.state.explosions = next;
+      }
+      if (this.state.scorePopups.length > 0) {
+        const next: GameState["scorePopups"] = [];
+        for (const p of this.state.scorePopups) {
+          if (p.age + 1 < SCORE_POPUP_TICKS) {
+            // Drift upward at 0.5 px/tick — gentle float, not a leap.
+            next.push({ x: p.x, y: p.y - 0.5, value: p.value, age: p.age + 1 });
+          }
+        }
+        this.state.scorePopups = next;
+      }
       // Stage clear → next stage. Checked AFTER collisions so the same tick
       // that takes the last enemy out also triggers the respawn.
       this.maybeAdvanceStage();
@@ -615,6 +660,38 @@ export class Engine {
     for (const b of this.state.bullets) {
       ctx.fillStyle = b.from === "player" ? "#fffae0" : "#ff7777";
       ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y) - 4, 2, 8);
+    }
+
+    // Explosion bursts — radial spokes that fade as `age` increases. Eight
+    // arms keep the silhouette readable at 320px wide; the orange→red shift
+    // sells the heat of the hit without needing sprite art.
+    for (const ex of this.state.explosions) {
+      const t = ex.age / EXPLOSION_TICKS; // 0..1
+      const radius = 3 + t * 12;
+      const alpha = 1 - t;
+      ctx.strokeStyle = `rgba(255, ${Math.round(180 - t * 140)}, 60, ${alpha.toFixed(2)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const cx = ex.x + Math.cos(a) * (radius - 2);
+        const cy = ex.y + Math.sin(a) * (radius - 2);
+        const dx = ex.x + Math.cos(a) * radius;
+        const dy = ex.y + Math.sin(a) * radius;
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(dx, dy);
+      }
+      ctx.stroke();
+    }
+
+    // Score popups — "+N" drifting up + fading.
+    for (const p of this.state.scorePopups) {
+      const t = p.age / SCORE_POPUP_TICKS;
+      const alpha = 1 - t;
+      ctx.fillStyle = `rgba(255, 230, 120, ${alpha.toFixed(2)})`;
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`+${p.value}`, p.x, p.y);
     }
 
     // Player fighter — a simple upward-pointing arrow. Movement is a backlog

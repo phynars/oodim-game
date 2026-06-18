@@ -62,6 +62,25 @@ export interface Bullet {
   from: "player" | "enemy";
 }
 
+/** Short-lived particle burst spawned on enemy death. */
+export interface Explosion {
+  /** Center of the burst, canvas-px. */
+  x: number;
+  y: number;
+  /** Fixed-step ticks since spawn. Engine increments each update; culled
+   *  once `age >= EXPLOSION_TICKS`. */
+  age: number;
+}
+
+/** Floating "+N" score popup spawned alongside an explosion. */
+export interface ScorePopup {
+  x: number;
+  y: number;
+  /** Score amount displayed, e.g. 50 for a bee. */
+  value: number;
+  age: number;
+}
+
 export interface GameState {
   /** Lifecycle. Boots to 'ready'. */
   status: GameStatus;
@@ -86,6 +105,15 @@ export interface GameState {
   /** True while a boss Galaga's tractor beam is on screen (capture mechanic).
    *  Surfaced for the capture/rescue tests + HUD cues. */
   captureBeamActive: boolean;
+  /** Active explosion VFX. Each entry is a short-lived particle burst spawned
+   *  when an enemy dies; the engine ticks `age` up per fixed-step and culls
+   *  once `age >= EXPLOSION_TICKS`. Surfaced on the contract so the e2e
+   *  harness can prove a polish-state flag landed (and so future renderers
+   *  or HUD overlays can read VFX without reaching into the engine). */
+  explosions: Explosion[];
+  /** Floating "+N" score popups spawned alongside an explosion. Drift upward
+   *  and fade; same lifecycle shape as explosions. */
+  scorePopups: ScorePopup[];
   /** True while a Challenging (bonus) stage is in flight. During a challenging
    *  stage the contract guarantees: NO `from:'enemy'` bullets spawn, no contact
    *  damage from divers, and a perfect clear (every enemy that flew through
@@ -175,8 +203,16 @@ export function initialState(): GameState {
     bullets: [],
     captureBeamActive: false,
     challenging: false,
+    explosions: [],
+    scorePopups: [],
   };
 }
+
+/** Ticks an explosion stays on screen before the engine culls it. ~0.5s
+ *  at 60Hz — long enough to read, short enough not to clutter. */
+export const EXPLOSION_TICKS = 30;
+/** Ticks a score popup drifts upward before culling. ~0.75s at 60Hz. */
+export const SCORE_POPUP_TICKS = 45;
 
 /** Score awarded for a perfect challenging-stage clear (every flythrough
  *  enemy destroyed). The arcade's bonus stage payouts varied — 10000 for a

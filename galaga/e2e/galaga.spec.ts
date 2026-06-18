@@ -844,6 +844,71 @@ test("running out of lives flips status to 'lost'", async ({ page }) => {
   expect(["lost", "gameover"]).toContain(final.status);
 });
 
+test("polish VFX: killing an enemy spawns an explosion + a score popup that ages and culls", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    null,
+    { timeout: 10000 },
+  );
+
+  // Contract: the polish-state arrays exist on every snapshot (this fails
+  // on the pre-change scaffold, which has neither field).
+  const baseline = await page.evaluate(() => ({
+    explosions: window.__galaga!.explosions,
+    scorePopups: window.__galaga!.scorePopups,
+  }));
+  expect(Array.isArray(baseline.explosions)).toBe(true);
+  expect(Array.isArray(baseline.scorePopups)).toBe(true);
+  expect(baseline.explosions.length).toBe(0);
+  expect(baseline.scorePopups.length).toBe(0);
+
+  // Kill an enemy via the harness AND snapshot the VFX in the SAME evaluate
+  // so the rAF loop can't tick between `forceHit`'s synchronous `publish()`
+  // and our read. If these were separate `page.evaluate` calls, each round-
+  // trip lets rAF age the explosion past 0 — the assertion `age === 0` only
+  // holds at the spawning tick. forceHit publishes a fresh snapshot before
+  // returning, so reading `window.__galaga` in the next statement of the
+  // same evaluate captures that exact snapshot.
+  const popped = await page.evaluate(() => {
+    window.__galagaInternals!.forceHit({ target: "enemy" });
+    return {
+      ex: window.__galaga!.explosions[0],
+      sp: window.__galaga!.scorePopups[0],
+      exLen: window.__galaga!.explosions.length,
+      spLen: window.__galaga!.scorePopups.length,
+    };
+  });
+  expect(popped.exLen).toBeGreaterThanOrEqual(1);
+  expect(popped.spLen).toBeGreaterThanOrEqual(1);
+  expect(popped.ex.age).toBe(0);
+  expect(typeof popped.ex.x).toBe("number");
+  expect(typeof popped.ex.y).toBe("number");
+  expect(popped.sp.value).toBeGreaterThan(0);
+  expect(popped.sp.age).toBe(0);
+
+  // VFX must AGE and CULL. After ~1.5s the explosion has outlived its
+  // 30-tick lifetime; the score popup outlives its 45-tick lifetime.
+  await page.waitForFunction(
+    () =>
+      (window.__galaga?.explosions?.length ?? 0) === 0 &&
+      (window.__galaga?.scorePopups?.length ?? 0) === 0,
+    null,
+    { timeout: 4000 },
+  );
+});
+
 test("challenging stage: no enemy bullets spawn during it and a perfect clear awards a bonus", async ({
   page,
 }) => {
