@@ -102,6 +102,19 @@ export class Engine {
         this.maybeAdvanceStage();
         this.publish();
       },
+      triggerBossCapture: (opts) => {
+        // Arm a boss tractor beam directly over the player. The controller
+        // parks the boss above the fighter; the engine's per-tick capture
+        // check then flips `captureBeamActive` + completes the capture.
+        const bossId = this.enemies.beginCapture(
+          this.state.player.x,
+          this.state.player.y,
+          opts?.bossId,
+        );
+        if (bossId === null) return;
+        this.state.captureBeamActive = true;
+        this.publish();
+      },
     };
   }
 
@@ -226,6 +239,56 @@ export class Engine {
       }
       const formationTick = this.state.tick - this.formationStartTick;
       this.state.enemies = this.enemies.tick(formationTick);
+
+      // Capture-beam resolution. While a boss is mid-capture the controller
+      // exposes a beam column (x, topY, halfWidth); we check whether the
+      // player fighter overlaps it. The first overlap triggers the capture:
+      // the player is marked captured, a life is decremented, and an
+      // 'escort' enemy (the captured fighter) is added locked above the
+      // boss. `captureBeamActive` mirrors the controller's beam state so
+      // the contract stays truthful even when no overlap occurs.
+      const beamX = this.enemies.captureBeamX();
+      if (beamX !== null) {
+        this.state.captureBeamActive = true;
+        if (
+          this.state.player.alive &&
+          !this.state.player.captured
+        ) {
+          const halfW = this.enemies.captureBeamHalfWidth();
+          const beamTop = this.enemies.captureBeamTopY() ?? 0;
+          // Player overlaps the beam when its x is within the column AND
+          // its y is below the beam's top (the beam runs downward from
+          // the boss to the bottom of the field).
+          if (
+            Math.abs(this.state.player.x - beamX) <= halfW + 7 &&
+            this.state.player.y >= beamTop
+          ) {
+            // Find which boss owns the beam so the escort can lock to it.
+            const bossEnemy = this.state.enemies.find(
+              (e) => e.state === "capturing",
+            );
+            this.state.player.captured = true;
+            this.state.lives = Math.max(0, this.state.lives - 1);
+            if (bossEnemy) {
+              const escortId = this.enemies.addEscort(bossEnemy.id);
+              // Mirror the escort onto this tick's public roster so the
+              // contract reports state:'escort' without waiting another
+              // frame. Position matches the controller's escort lock
+              // (immediately above the boss).
+              this.state.enemies.push({
+                id: escortId,
+                kind: "bee",
+                state: "escort",
+                x: bossEnemy.x,
+                y: bossEnemy.y - 16,
+              });
+            }
+          }
+        }
+      } else {
+        this.state.captureBeamActive = false;
+      }
+
       // Sample input once per fixed-step so movement is deterministic at
       // 60 Hz regardless of render cadence. Both arrows held = no motion
       // (they cancel), matching the arcade feel.
@@ -344,8 +407,11 @@ export class Engine {
     }
 
     // Pass 2: enemy hazards hit the player. Only when alive — a dead/
-    // respawning fighter can't take a second hit on the same life.
+    // respawning fighter can't take a second hit on the same life. A
+    // captured fighter is also untouchable: it's held in the beam, not
+    // flying the playfield, so contact/bullet damage doesn't apply.
     if (!this.state.player.alive) return;
+    if (this.state.player.captured) return;
     const pr2 = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS;
     const px = this.state.player.x;
     const py = this.state.player.y;

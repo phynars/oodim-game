@@ -493,6 +493,77 @@ test("clearing the formation advances the stage, respawns a fresh non-empty form
   expect(scoreAfterStage2Kill).toBeGreaterThan(scoreBeforeStage2Kill);
 });
 
+test("boss tractor beam captures the player: captureBeamActive→true, player.captured→true, an 'escort' enemy appears", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // Wait for the formation to populate enough that at least one boss is on
+  // stage — the trigger hook needs an existing boss to capture with.
+  await page.waitForFunction(
+    () =>
+      (window.__galaga?.enemies ?? []).some((e) => e.kind === "boss"),
+    null,
+    { timeout: 15000 },
+  );
+
+  // Baseline: no beam, not captured, no escort.
+  const before = await page.evaluate(() => ({
+    beam: window.__galaga!.captureBeamActive,
+    captured: window.__galaga!.player.captured,
+    lives: window.__galaga!.lives,
+    hasEscort: window.__galaga!.enemies.some((e) => e.state === "escort"),
+  }));
+  expect(before.beam).toBe(false);
+  expect(before.captured).toBe(false);
+  expect(before.hasEscort).toBe(false);
+
+  // Trigger the capture — the hook parks a boss above the player + arms
+  // the beam. The engine then closes the loop on the next tick.
+  await page.evaluate(() =>
+    window.__galagaInternals!.triggerBossCapture(),
+  );
+
+  // captureBeamActive must go true (contract assertion #1).
+  await page.waitForFunction(
+    () => window.__galaga?.captureBeamActive === true,
+    null,
+    { timeout: 3000 },
+  );
+
+  // Then the capture must complete: player.captured=true (contract #2)
+  // AND some enemy is in state:'escort' (contract #3).
+  await page.waitForFunction(
+    () =>
+      window.__galaga?.player.captured === true &&
+      (window.__galaga?.enemies ?? []).some((e) => e.state === "escort"),
+    null,
+    { timeout: 5000 },
+  );
+
+  const after = await page.evaluate(() => ({
+    beam: window.__galaga!.captureBeamActive,
+    captured: window.__galaga!.player.captured,
+    lives: window.__galaga!.lives,
+    escortCount: window.__galaga!.enemies.filter((e) => e.state === "escort")
+      .length,
+  }));
+  expect(after.beam).toBe(true);
+  expect(after.captured).toBe(true);
+  expect(after.escortCount).toBeGreaterThan(0);
+  // Lives must have decremented — capture costs one fighter.
+  expect(after.lives).toBe(before.lives - 1);
+});
+
 test("running out of lives flips status to 'lost'", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));

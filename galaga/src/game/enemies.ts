@@ -95,7 +95,7 @@ interface EnemyInternal {
   spawnTick: number;
   /** Which entrance arc: -1 sweeps in from the left, +1 from the right. */
   arcSide: -1 | 1;
-  state: "entering" | "formation" | "diving";
+  state: "entering" | "formation" | "diving" | "capturing" | "escort";
   x: number;
   y: number;
   /** Tick this enemy began its current dive (null when not diving). */
@@ -106,6 +106,17 @@ interface EnemyInternal {
   diveP0y: number;
   diveP1x: number;
   diveP1y: number;
+  /** True while this boss is descending with its tractor beam armed. The
+   *  controller holds it stationary above (capturePlayerX, capturePlayerY)
+   *  so the engine's beam-overlap check is deterministic. */
+  capturing: boolean;
+  /** When `capturing`, the (locked) anchor position the boss hovers at —
+   *  ~80px above the player's y at trigger time. */
+  captureAnchorX: number;
+  captureAnchorY: number;
+  /** When non-null this enemy is an 'escort' (captured player fighter)
+   *  locked above the boss with id `escortOf`. */
+  escortOf: number | null;
 }
 
 export interface EnemyController {
@@ -131,6 +142,24 @@ export interface EnemyController {
    *  the controller would re-emit the slain enemy on the next tick from its
    *  persistent roster. */
   remove(id: number): void;
+  /** Begin the capture beam choreography on a boss positioned above
+   *  `(playerX, playerY)`. The boss is parked above the player at a fixed
+   *  altitude with its tractor beam armed. Returns the boss id (or null if
+   *  no boss is available) — the engine uses this to drive the per-tick
+   *  beam-capture check. If `bossId` is given, that specific boss is used;
+   *  otherwise the first eligible boss in the roster is chosen. */
+  beginCapture(playerX: number, playerY: number, bossId?: number): number | null;
+  /** Add an 'escort' enemy locked above the given boss. Returns the new
+   *  enemy id. The engine calls this once the capture beam succeeds. */
+  addEscort(bossId: number): number;
+  /** Center x of the capture beam this tick, or null if no beam is active.
+   *  Read by the engine to test player-vs-beam overlap. The beam is a
+   *  vertical column anchored to the capturing boss. */
+  captureBeamX(): number | null;
+  /** Top y of the capture beam (just below the boss), or null. */
+  captureBeamTopY(): number | null;
+  /** Half-width of the beam column in px. */
+  captureBeamHalfWidth(): number;
 }
 
 /** Total ticks from currentTick=0 until every enemy has settled. Useful for
@@ -157,6 +186,10 @@ export function createEnemyController(): EnemyController {
   let firstDiveTick = 0;
   let orderedIndexes: number[] = [];
   let everPopulated = false;
+  /** Id of the boss currently running its capture choreography, or null.
+   *  Tracked at controller scope so `captureBeamX/TopY()` can find it in
+   *  O(1) and the engine doesn't have to scan the roster each tick. */
+  let capturingBossId: number | null = null;
 
   /** (Re)build the roster + dive schedule. Called on construction and again
    *  when the engine clears the formation and asks for a fresh stage. */
@@ -184,6 +217,10 @@ export function createEnemyController(): EnemyController {
           diveP0y: 0,
           diveP1x: 0,
           diveP1y: 0,
+          capturing: false,
+          captureAnchorX: 0,
+          captureAnchorY: 0,
+          escortOf: null,
         });
       }
     }
@@ -235,10 +272,77 @@ export function createEnemyController(): EnemyController {
       // engine calls `reset()`, so transient index shifts are tolerated.
       for (let i = 0; i < roster.length; i++) {
         if (roster[i].id === id) {
+          if (capturingBossId === roster[i].id) capturingBossId = null;
           roster.splice(i, 1);
           return;
         }
       }
+    },
+    beginCapture(playerX: number, playerY: number, bossId?: number): number | null {
+      // Pick the requested boss, or the first 'formation' boss as a fallback
+      // — the test harness uses the first-available path. The enemy is
+      // pulled out of any dive (we overwrite state) and parked above the
+      // player so the beam-overlap check is deterministic.
+      let boss: EnemyInternal | undefined;
+      if (bossId !== undefined) {
+        boss = roster.find((e) => e.id === bossId && e.kind === "boss");
+      } else {
+        boss = roster.find((e) => e.kind === "boss");
+      }
+      if (!boss) return null;
+      boss.state = "capturing";
+      boss.capturing = true;
+      boss.diveStartTick = null;
+      // Park ~80px above the player so the beam column has a visible run
+      // down to the fighter; clamp to stay on stage.
+      const anchorY = Math.max(40, playerY - 80);
+      boss.captureAnchorX = playerX;
+      boss.captureAnchorY = anchorY;
+      boss.x = playerX;
+      boss.y = anchorY;
+      capturingBossId = boss.id;
+      return boss.id;
+    },
+    addEscort(bossId: number): number {
+      const boss = roster.find((e) => e.id === bossId);
+      const id = nextId++;
+      const escort: EnemyInternal = {
+        id,
+        kind: "bee",
+        col: 0,
+        row: 0,
+        spawnTick: -1,
+        arcSide: -1,
+        state: "escort",
+        // Sit immediately above the boss (or above the field center as a
+        // defensive fallback if the boss vanished mid-flight).
+        x: boss ? boss.x : WIDTH / 2,
+        y: boss ? boss.y - 16 : 40,
+        diveStartTick: null,
+        diveP0x: 0,
+        diveP0y: 0,
+        diveP1x: 0,
+        diveP1y: 0,
+        capturing: false,
+        captureAnchorX: 0,
+        captureAnchorY: 0,
+        escortOf: bossId,
+      };
+      roster.push(escort);
+      return id;
+    },
+    captureBeamX(): number | null {
+      if (capturingBossId === null) return null;
+      const boss = roster.find((e) => e.id === capturingBossId);
+      return boss ? boss.x : null;
+    },
+    captureBeamTopY(): number | null {
+      if (capturingBossId === null) return null;
+      const boss = roster.find((e) => e.id === capturingBossId);
+      return boss ? boss.y + 6 : null;
+    },
+    captureBeamHalfWidth(): number {
+      return 10;
     },
     tick(currentTick: number): Enemy[] {
       const out: Enemy[] = [];
@@ -290,6 +394,30 @@ export function createEnemyController(): EnemyController {
 
       // 2. Per-enemy per-tick position update.
       for (const e of roster) {
+        // Capture/escort enemies skip the entrance + dive math — they're
+        // pinned by the capture controller and the engine. We still emit
+        // them to the public roster so the e2e harness can read them.
+        if (e.state === "capturing") {
+          everPopulated = true;
+          e.x = e.captureAnchorX;
+          e.y = e.captureAnchorY;
+          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          continue;
+        }
+        if (e.state === "escort") {
+          everPopulated = true;
+          // Lock above the boss we're escorting; if the boss is gone, hold
+          // last known position (the engine frees the escort in that case).
+          const boss = e.escortOf !== null
+            ? roster.find((r) => r.id === e.escortOf)
+            : undefined;
+          if (boss) {
+            e.x = boss.x;
+            e.y = boss.y - 16;
+          }
+          out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y });
+          continue;
+        }
         if (currentTick < e.spawnTick) continue; // not yet on stage
         everPopulated = true;
 
