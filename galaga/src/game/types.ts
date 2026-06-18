@@ -96,9 +96,17 @@ export interface GameState {
  *  Intentionally tiny: one method, two targets. If `target` is 'enemy', the
  *  first enemy (or `enemyId` if given) is treated as if a player bullet just
  *  hit it — removed + scored. If `target` is 'player', the fighter takes a
- *  hit (alive=false, lives--, respawn timer armed; at 0 lives → status='lost'). */
+ *  hit (alive=false, lives--, respawn timer armed; at 0 lives → status='lost').
+ *
+ *  `triggerBossCapture` arms a boss tractor beam directly over the player so
+ *  the capture mechanic (#37) can be asserted deterministically without
+ *  waiting for the dive scheduler to roll a boss into range. The hook picks
+ *  the first available boss in the roster (or the one matching `bossId`),
+ *  places it above the player, and flips `captureBeamActive=true`. The
+ *  engine's per-tick capture check then closes the loop on its own. */
 export interface GalagaInternals {
   forceHit(opts: { target: "enemy" | "player"; enemyId?: number }): void;
+  triggerBossCapture(opts?: { bossId?: number }): void;
 }
 
 declare global {
