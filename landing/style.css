@@ -1,0 +1,157 @@
+/* oodim Game — portfolio landing. Plain CSS, no framework. */
+
+:root {
+  --bg: #0a0a0f;
+  --surface: #14141c;
+  --surface-hover: #1c1c28;
+  --border: #2a2a3a;
+  --text: #e8e8f0;
+  --text-dim: #9090a8;
+  --accent: #ffcc00; /* Pac-Man yellow */
+  --accent-galaga: #66ccff; /* Galaga blue */
+  --status-complete: #4ade80;
+  --status-wip: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 4rem 1.25rem 3rem;
+}
+
+.masthead {
+  margin-bottom: 3rem;
+}
+
+.masthead h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 1.0625rem;
+  color: var(--text-dim);
+}
+
+.portfolio {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 720px) {
+  .portfolio {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.card:hover,
+.card:focus-visible {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.card--wip:hover,
+.card--wip:focus-visible {
+  border-color: var(--accent-galaga);
+}
+
+.card__status {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 0.2rem 0.6rem;
+  margin-bottom: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.card--complete .card__status {
+  color: var(--status-complete);
+}
+
+.card--wip .card__status {
+  color: var(--status-wip);
+}
+
+.card__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.card__blurb {
+  margin: 0 0 1.5rem;
+  color: var(--text-dim);
+  flex-grow: 1;
+}
+
+.card__cta {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.card--wip .card__cta {
+  color: var(--accent-galaga);
+}
+
+.colophon {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-dim);
+}
+
+.colophon a {
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+}
+
+.colophon a:hover {
+  color: var(--text);
+}

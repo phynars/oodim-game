@@ -37,6 +37,11 @@ own vite config, tsconfig, and Playwright harness. Per-project scripts are
 `build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
 `build` / `typecheck` / `test:e2e` aggregate across all products.
 
+### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
+A static index page listing the studio's shipped games and linking into
+each subpath build. Plain HTML/CSS, no framework — the front door is two
+cards and a tagline.
+
 ### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
 A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
 maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
