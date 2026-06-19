@@ -18,19 +18,22 @@ engine.start();
 // external test or telemetry probe uses.
 const healthEl = document.querySelector<HTMLElement>('[data-hud="health"]');
 const armorEl = document.querySelector<HTMLElement>('[data-hud="armor"]');
+const ammoEl = document.querySelector<HTMLElement>('[data-hud="ammo"]');
 const scoreEl = document.querySelector<HTMLElement>('[data-hud="score"]');
 
-if (healthEl && armorEl && scoreEl) {
+if (healthEl && armorEl && ammoEl && scoreEl) {
   const tickHud = (): void => {
     const s = window.__doom;
     if (s) {
       const health = String(s.player.health);
       const armor = String(s.player.armor);
+      const ammo = String(s.weapon.ammo);
       const score = String(s.score);
       // Only assign when the rendered text changes — avoids DOM churn on the
       // (common) frames where nothing moved.
       if (healthEl.textContent !== health) healthEl.textContent = health;
       if (armorEl.textContent !== armor) armorEl.textContent = armor;
+      if (ammoEl.textContent !== ammo) ammoEl.textContent = ammo;
       if (scoreEl.textContent !== score) scoreEl.textContent = score;
     }
     requestAnimationFrame(tickHud);
