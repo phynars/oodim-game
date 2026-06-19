@@ -79,10 +79,24 @@
         letter-spacing: -0.02em;
       }
       .tagline {
-        margin: 0;
+        margin: 0 0 1rem;
         max-width: 56ch;
         font-size: 1.0625rem;
+        color: var(--text);
+      }
+      .tagline strong { color: var(--text); font-weight: 600; }
+      .crew {
+        margin: 0;
+        max-width: 56ch;
+        font-size: 0.9375rem;
         color: var(--text-dim);
+      }
+      .crew strong { color: var(--text); font-weight: 600; }
+      .card__hook {
+        margin: 0 0 1rem;
+        font-size: 1rem;
+        color: var(--text);
+        font-style: italic;
       }
       .portfolio {
         display: grid;
@@ -176,10 +190,14 @@
       <header class="masthead">
         <h1>oodim Game</h1>
         <p class="tagline">
-          An autonomous AI game studio. A portfolio of web + mobile canvas
-          games, designed and shipped by AI avatars through the oodim AIDLC
-          loop — issue → implementation → review → CI → merge, with no human
-          writing the code.
+          A studio of AI avatars in West LA, shipping games end&#8209;to&#8209;end —
+          no human writes the code.
+        </p>
+        <p class="crew">
+          Five avatars, one per craft: <strong>Product</strong>,
+          <strong>Architect</strong>, <strong>Developer</strong>,
+          <strong>Designer</strong>, <strong>Story</strong> — plus the NPCs
+          who playtest and complain first.
         </p>
       </header>
 
@@ -187,10 +205,12 @@
         <a class="card card--complete" href="./pacman/">
           <div class="card__status">Complete</div>
           <h2 class="card__title">Pac-Man</h2>
+          <p class="card__hook">
+            The first thing the studio shipped to prove it could ship anything.
+          </p>
           <p class="card__blurb">
-            A faithful, playable Pac-Man for web + mobile: classic maze,
-            power pellets, the four-ghost AI quartet, score, lives, win/lose,
-            and touch controls.
+            Faithful maze, power pellets, the four-ghost AI quartet,
+            score, lives, win/lose, and touch controls.
           </p>
           <div class="card__cta" aria-hidden="true">Play →</div>
         </a>
@@ -198,11 +218,14 @@
         <a class="card card--wip" href="./galaga/">
           <div class="card__status">In progress</div>
           <h2 class="card__title">Galaga</h2>
+          <p class="card__hook">
+            Harder than Pac-Man — and the first game where the tractor beam
+            can take something from you.
+          </p>
           <p class="card__blurb">
-            The studio's second project. Enemy formations and entrance
-            choreography, diving attacks, scoring + stages, and the signature
-            tractor-beam capture → rescue → dual-fighter mechanic. Shipped
-            slice by slice.
+            Enemy formations and entrance choreography, diving attacks,
+            scoring + stages, and the signature capture → rescue →
+            dual-fighter mechanic. Shipped slice by slice.
           </p>
           <div class="card__cta" aria-hidden="true">Preview →</div>
         </a>
@@ -210,10 +233,14 @@
         <a class="card card--doom" href="./doom/">
           <div class="card__status">In progress</div>
           <h2 class="card__title">Doom</h2>
+          <p class="card__hook">
+            The studio's first step out of 2D — watch it learn three dimensions
+            in public.
+          </p>
           <p class="card__blurb">
-            The studio's first true-3D project — a first-person shooter built
-            on three.js + WebGL. A scaffolded 3D arena and state contract today;
-            movement, weapons, enemy AI, and combat shipped slice by slice.
+            A first-person shooter on three.js + WebGL. A scaffolded 3D arena
+            and state contract today; movement, weapons, enemy AI, and combat
+            shipped slice by slice.
           </p>
           <div class="card__cta" aria-hidden="true">Preview →</div>
         </a>
