@@ -112,22 +112,14 @@ export interface DoorState {
  *  `ammo` is rounds remaining for that weapon. The backlog adds a weapon
  *  inventory + switching behind this single equipped slot.
  *
- *  `lastShot` is the result of the most recent fire attempt — the harness +
- *  the (future) death/score slice consume it. Null until the first shot.
- *  `tick` is the fixed-step counter at fire time so consumers can tell two
- *  identical shots apart. `hitEnemyId` is the id of the enemy the raycast
- *  hit, or null on a miss / dry-fire. `dryFire` is true when fire was
- *  requested with ammo=0 (no ray cast, no ammo decrement). */
-export interface ShotRecord {
-  tick: number;
-  hitEnemyId: number | null;
-  dryFire: boolean;
-}
-
+ *  Shot results are NOT recorded here — they're on `DoomState.lastShot` so
+ *  the death/score slice and the e2e harness have a single, unambiguous
+ *  place to read what the gun just did. Keeping the weapon a pure "what
+ *  am I holding + how many rounds" record makes weapon-switching trivial
+ *  later (swap the slot; don't migrate shot history). */
 export interface Weapon {
   kind: string;
   ammo: number;
-  lastShot: ShotRecord | null;
 }
 
 /** Record of the most recent player shot, published on the contract so the
@@ -281,7 +273,6 @@ export const PLAYER_START_ARMOR = 0;
 export const STARTING_WEAPON: Weapon = {
   kind: "pistol",
   ammo: 50,
-  lastShot: null,
 };
 
 /** Canonical initial state. The engine seeds `window.__doom` from this, then

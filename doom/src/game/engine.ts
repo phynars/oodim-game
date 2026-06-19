@@ -22,7 +22,6 @@ import {
   type DoomState,
   type Enemy,
   type EnemyKind,
-  type ShotRecord,
 } from "./types";
 import {
   createKeyboardInput,
@@ -142,10 +141,6 @@ export class Engine {
    *  deterministically without going through the keyboard's edge-triggered
    *  consumeFire (which the forced-input path bypasses). */
   private forcedFire = false;
-
-  /** Reusable Raycaster — created once, aimed per-shot. three.js encourages
-   *  reusing the instance to avoid GC churn in a tight loop. */
-  private readonly raycaster = new THREE.Raycaster();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -300,6 +295,30 @@ export class Engine {
         this.applyPickup(idx);
         this.publish();
       },
+      forceFire: (opts) => {
+        // Like the other force* hooks, this fires immediately — no fixed-step
+        // advance required — so e2e can isolate "what the gun does" from
+        // movement. When enemyId is supplied, aim the camera at that enemy's
+        // mesh center first so the raycast lands deterministically; without
+        // it, fire straight ahead from the current view.
+        if (opts?.enemyId !== undefined) {
+          const target = this.state.enemies.find(
+            (e) => e.id === opts.enemyId && e.state !== "dead",
+          );
+          if (!target) return;
+          const p = this.state.player;
+          const dx = target.x - p.x;
+          const dy = target.y - p.y;
+          const dz = target.z - p.z;
+          // yaw=0 looks down -z; turn-right is NEGATIVE yaw (see update()).
+          // atan2(dx, -dz) gives the yaw that aims +forward at the target.
+          p.yaw = Math.atan2(dx, -dz);
+          const horiz = Math.hypot(dx, dz);
+          p.pitch = Math.atan2(dy, horiz);
+        }
+        this.tryFire();
+        this.publish();
+      },
       advance: (opts) => {
         const steps = Math.max(0, Math.floor(opts.steps));
         if (steps === 0) return;
@@ -321,11 +340,16 @@ export class Engine {
           turnLeft: false,
           turnRight: false,
         };
+        // Fire fires ONCE, on the first forced step — update() clears the
+        // flag after consuming so subsequent steps in the same advance() do
+        // not re-trigger (Space is edge-triggered in live play; mirror that).
+        this.forcedFire = Boolean(opts.fire);
         try {
           for (let i = 0; i < steps; i++) this.update();
         } finally {
           // Always restore live input, even if update() throws.
           this.forcedInput = null;
+          this.forcedFire = false;
         }
         this.publish();
       },
@@ -533,7 +557,15 @@ export class Engine {
       // so the harness gets frame-rate-independent travel. forcedInput is null
       // in all real play — see the field decl + exposeInternals().
       const snap = this.forcedInput ?? this.input.read();
-      const wantsFire = this.input.consumeFire();
+      // Fire intent: edge-triggered Space from the keyboard, OR a one-shot
+      // forced-fire flag set by `advance({fire: true})`. The forced flag is
+      // consumed here so it fires on exactly one step of an advance() run,
+      // matching how a keyboard Space-press would behave.
+      let wantsFire = this.input.consumeFire();
+      if (this.forcedFire) {
+        wantsFire = true;
+        this.forcedFire = false;
+      }
       const mouse = this.forcedInput
         ? { dx: 0, dy: 0 }
         : this.input.consumeMouseDelta();
