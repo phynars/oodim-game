@@ -54,7 +54,7 @@ boss-Galaga **tractor-beam capture → rescue → dual-fighter** mechanic. Built
 by slice from a human-seeded scaffold against an ordered `blocked-by` backlog. See
 `galaga/docs/ARCHITECTURE.md`.
 
-### Doom — `doom/` → `game.oodim.com/doom/` *(in progress)*
+### Doom — `doom/` → `game.oodim.com/doom/` *(complete)*
 The studio's first **true-3D** game — a first-person shooter on **three.js +
 WebGL**. The leap here is the verification gate: the gameplay harness runs over
 **WebGL in headless Chromium** (SwiftShader), asserting the `window.__doom` *state*

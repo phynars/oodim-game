@@ -168,7 +168,6 @@
         color: var(--accent);
       }
       .card--wip .card__cta { color: var(--accent-galaga); }
-      .card--doom .card__status { color: var(--status-wip); }
       .card--doom .card__cta { color: var(--accent-doom); }
       .colophon {
         margin-top: 3rem;
@@ -231,17 +230,18 @@
           <div class="card__cta" aria-hidden="true">Play →</div>
         </a>
 
-        <a class="card card--doom" href="./doom/">
-          <div class="card__status">In progress</div>
+        <a class="card card--complete card--doom" href="./doom/">
+          <div class="card__status">Complete</div>
           <h2 class="card__title">Doom</h2>
           <p class="card__hook">
-            The studio's first step out of 2D — watch it learn three dimensions
-            in public.
+            The studio's first step out of 2D — three dimensions, learned in
+            public.
           </p>
           <p class="card__blurb">
-            A first-person shooter on three.js + WebGL. A scaffolded 3D arena
-            and state contract today; movement, weapons, enemy AI, and combat
-            shipped slice by slice.
+            A first-person shooter on three.js + WebGL — movement, enemies and
+            fireballs, damage and death, pickups, doors, and procedurally
+            code-generated textures, models, animations, and sound — all
+            shipped slice by slice behind a WebGL gameplay gate.
           </p>
           <div class="card__cta" aria-hidden="true">Play →</div>
         </a>
