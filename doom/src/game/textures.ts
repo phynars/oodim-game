@@ -34,19 +34,20 @@ function hash01(x: number, y: number, seed: number): number {
   return h / 0xffffffff;
 }
 
-/** Allocate a square canvas + 2D context for painting. Uses
- *  OffscreenCanvas when available (workers / modern browsers); falls back to a
- *  document <canvas> for environments that lack it (jsdom in some test
- *  configs). Either way three.js can wrap the result in CanvasTexture. */
+/** Allocate a square HTMLCanvasElement + 2D context for painting.
+ *
+ *  Why HTMLCanvasElement and not OffscreenCanvas: three.js's CanvasTexture
+ *  constructor types accept HTMLCanvasElement reliably across r150+, while
+ *  the OffscreenCanvas union pulls in `CanvasRenderingContext2D |
+ *  OffscreenCanvasRenderingContext2D` whose `fillStyle` setter unions don't
+ *  collapse under strict TS — every painter call site then needs casts. The
+ *  engine boots on the main thread (we have a DOM), so an HTMLCanvasElement
+ *  is always available and one concrete type keeps the call sites clean.
+ *  If a future worker-side painter needs OffscreenCanvas, branch then. */
 function makeCanvas(size: number): {
-  canvas: HTMLCanvasElement | OffscreenCanvas;
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
 } {
-  if (typeof OffscreenCanvas !== "undefined") {
-    const canvas = new OffscreenCanvas(size, size);
-    const ctx = canvas.getContext("2d");
-    if (ctx) return { canvas, ctx };
-  }
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -60,7 +61,7 @@ function makeCanvas(size: number): {
  *  texture tiles correctly at very different surface scales (one cell of wall
  *  vs. the whole floor plane). */
 function wrap(
-  canvas: HTMLCanvasElement | OffscreenCanvas,
+  canvas: HTMLCanvasElement,
   repeatX: number,
   repeatY: number,
 ): THREE.CanvasTexture {
