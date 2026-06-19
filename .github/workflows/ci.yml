@@ -1,28 +1,45 @@
 name: CI
-# PR-only quality gate (2026-06-16). The post-merge run on `push: [main]` was
-# redundant: slices merge serially (the linear blocked-by chain), so there's no
-# concurrent-merge interaction for a main re-run to catch, and deploy.yml
-# rebuilds on main (a broken main still fails to publish). PR-only halves CI
-# minutes per slice and speeds merge→deploy.
+# Per-product CI lanes (2026-06-19). Previously ONE aggregate job ran
+# `typecheck && build && test:e2e` across pacman + galaga + doom, so ANY
+# product's broken test failed EVERY PR — a galaga regression jammed doom
+# slices and a doom WebGL flake jammed galaga (the recurring cross-product
+# CI jam). Now a `changes` job detects which product(s) a PR touches, and
+# only those lanes run: a doom-only PR is gated solely by doom's
+# typecheck/build/gameplay-harness; a shared/root change runs all three.
+# The auto-merge gate reads the workflow RUN conclusion (skipped lanes don't
+# fail it), so no branch-protection change is needed.
 on:
   pull_request:
 
 jobs:
-  build:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      pacman: ${{ steps.filter.outputs.pacman }}
+      galaga: ${{ steps.filter.outputs.galaga }}
+      doom: ${{ steps.filter.outputs.doom }}
+      shared: ${{ steps.filter.outputs.shared }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          node-version: 20
-      - run: npm install
-      # Aggregate scripts typecheck + build ALL products (pacman + galaga +
-      # doom), so a break in any fails the PR. See package.json for per-project
-      # scripts (build:pacman / build:galaga / build:doom).
-      - run: npm run typecheck
-      - run: npm run build
+          filters: |
+            pacman:
+              - 'pacman/**'
+            galaga:
+              - 'galaga/**'
+            doom:
+              - 'doom/**'
+            shared:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - '.github/workflows/ci.yml'
 
-  e2e:
+  pacman:
+    needs: changes
+    if: ${{ needs.changes.outputs.pacman == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,9 +47,37 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      - run: npm run typecheck:pacman
+      - run: npm run build:pacman
       - run: npx playwright install --with-deps chromium
-      # Aggregate runs ALL gameplay harnesses (pacman + galaga + doom) — "CI
-      # for gameplay" is the merge gate for every product in the portfolio.
-      # Doom's harness forces software WebGL (SwiftShader) in headless Chromium
-      # — see doom/playwright.config.ts + doom/docs/ARCHITECTURE.md.
-      - run: npm run test:e2e
+      - run: npm run test:e2e:pacman
+
+  galaga:
+    needs: changes
+    if: ${{ needs.changes.outputs.galaga == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run typecheck:galaga
+      - run: npm run build:galaga
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:galaga
+
+  doom:
+    needs: changes
+    if: ${{ needs.changes.outputs.doom == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run typecheck:doom
+      - run: npm run build:doom
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:doom
