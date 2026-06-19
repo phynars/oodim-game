@@ -18,6 +18,13 @@
 // fields; they must NEVER remove a field a test depends on — add fields as
 // mechanics land, deprecate by leaving them stable.
 
+// Arena footprint comes from the level map (level.ts) so state.field + the
+// floor mesh stay in sync. The #75 level-map slice introduced these and renamed
+// the old FIELD_WIDTH/FIELD_HEIGHT, but left initialState() referencing the old
+// names — a tsc break on main (2026-06-19). level.ts does not import types, so
+// this is not circular.
+import { MAP_WIDTH, MAP_HEIGHT } from "./level";
+
 /** High-level lifecycle. Boots to 'ready'; first input flips to 'playing'.
  *  'won' = level cleared; 'lost'/'gameover' = the player died (two-step
  *  terminal, mirroring Galaga: 'lost' is the immediate death flip, 'gameover'
@@ -242,12 +249,12 @@ export function initialState(): DoomState {
     tick: 0,
     score: 0,
     stage: 1,
-    field: { width: FIELD_WIDTH, height: FIELD_HEIGHT },
+    field: { width: MAP_WIDTH, height: MAP_HEIGHT },
     player: {
       // Stand at the south edge looking north (down -z) into the arena.
       x: 0,
       y: EYE_HEIGHT,
-      z: FIELD_HEIGHT / 2 - 4,
+      z: MAP_HEIGHT / 2 - 4,
       yaw: 0,
       pitch: 0,
       health: PLAYER_START_HEALTH,
