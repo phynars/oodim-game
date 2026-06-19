@@ -22,6 +22,7 @@ import {
   type DoomState,
   type Enemy,
   type EnemyKind,
+  type ShotRecord,
 } from "./types";
 import {
   createKeyboardInput,
@@ -46,6 +47,14 @@ import {
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
  *  logic is deterministic regardless of display refresh rate. */
 const STEP_MS = 1000 / 60;
+
+/** Maximum world-distance a hitscan ray travels before counting as a miss.
+ *  Larger than the arena's diagonal so the only way to miss is to not be
+ *  aimed at an enemy — the wall geometry naturally blocks farther shots if
+ *  added to the ray target list later (the scaffold raycasts ONLY against
+ *  live enemy meshes; walls don't block-shots-into-them yet, which is fine
+ *  for this slice — the contract is "shot at enemy = hit"). */
+const WEAPON_MAX_RANGE = 100;
 
 /** Fixed-step frames the engine holds in the 'lost' state before advancing to
  *  'gameover'. ~0.5s at 60Hz — long enough that the death beat reads, short
@@ -119,11 +128,24 @@ export class Engine {
   private lastTime = 0;
   private accumulator = 0;
 
+  /** Reusable Raycaster for hitscan fire. One instance lives on the engine so
+   *  we don't allocate per shot — `set(origin, direction)` re-aims it. */
+  private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
+
   /** TEST-ONLY forced-input override. When non-null, update() reads movement
    *  from THIS snapshot instead of the live keyboard, letting the `advance`
    *  hook (see exposeInternals) drive deterministic, wall-clock-free movement.
    *  Always null during real play — gameplay code never sets it. */
   private forcedInput: InputSnapshot | null = null;
+  /** TEST-ONLY forced fire flag, consumed exactly once. Set by `advance({fire:
+   *  true})` for the first forced step so the harness can pull the trigger
+   *  deterministically without going through the keyboard's edge-triggered
+   *  consumeFire (which the forced-input path bypasses). */
+  private forcedFire = false;
+
+  /** Reusable Raycaster — created once, aimed per-shot. three.js encourages
+   *  reusing the instance to avoid GC churn in a tight loop. */
+  private readonly raycaster = new THREE.Raycaster();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -310,6 +332,68 @@ export class Engine {
     };
   }
 
+  /** Fire the equipped weapon: hitscan raycast from the camera, find the
+   *  nearest live enemy mesh under the crosshair, decrement ammo, and record
+   *  the shot on the contract. At ammo=0 the trigger is a no-op (no shot, no
+   *  lastShot update) — out-of-ammo is observable by ammo===0, not by a
+   *  phantom miss. Centralized so live Space-fire AND the `forceFire` hook
+   *  take exactly the same path. */
+  private tryFire(): void {
+    const w = this.state.weapon;
+    if (w.ammo <= 0) return;
+    w.ammo -= 1;
+
+    // Origin = camera (the player's eye). Direction = the camera's forward
+    // axis, derived from its current world quaternion so it always matches
+    // what the player sees, regardless of yaw/pitch encoding. Three.js's
+    // default camera looks down -Z in local space, so the world forward is
+    // (0,0,-1) transformed by the camera's quaternion.
+    this.syncCamera();
+    const origin = new THREE.Vector3().copy(this.camera.position);
+    const direction = new THREE.Vector3(0, 0, -1)
+      .applyQuaternion(this.camera.quaternion)
+      .normalize();
+    this.raycaster.set(origin, direction);
+    this.raycaster.near = 0;
+    this.raycaster.far = WEAPON_MAX_RANGE;
+
+    // Raycast ONLY against live enemy meshes. Walls don't block this slice —
+    // adding wall occlusion is a follow-up. `recursive=false` because each
+    // enemy is a single Mesh, not a group.
+    const meshes = Array.from(this.enemyMeshes.values());
+    const hits = this.raycaster.intersectObjects(meshes, false);
+
+    let hitEnemyId: number | null = null;
+    let hitX: number | null = null;
+    let hitY: number | null = null;
+    let hitZ: number | null = null;
+    if (hits.length > 0) {
+      const first = hits[0];
+      // Resolve mesh → enemy id by scanning the map (small N, no allocation).
+      for (const [id, mesh] of this.enemyMeshes) {
+        if (mesh === first.object) {
+          hitEnemyId = id;
+          break;
+        }
+      }
+      hitX = first.point.x;
+      hitY = first.point.y;
+      hitZ = first.point.z;
+      if (hitEnemyId !== null) {
+        const idx = this.state.enemies.findIndex((e) => e.id === hitEnemyId);
+        if (idx >= 0) this.damageEnemy(idx, PLAYER_SHOT_DAMAGE);
+      }
+    }
+
+    this.state.lastShot = {
+      tick: this.state.tick,
+      enemyId: hitEnemyId,
+      hitX,
+      hitY,
+      hitZ,
+    };
+  }
+
   /** Deal `damage` to the enemy at `idx`. On lethal damage the enemy flips to
    *  'dead', its score is awarded, and its mesh is removed from the scene.
    *  Centralized so the forceHit hook and the (future) projectile-collision
@@ -449,7 +533,7 @@ export class Engine {
       // so the harness gets frame-rate-independent travel. forcedInput is null
       // in all real play — see the field decl + exposeInternals().
       const snap = this.forcedInput ?? this.input.read();
-      this.input.consumeFire();
+      const wantsFire = this.input.consumeFire();
       const mouse = this.forcedInput
         ? { dx: 0, dy: 0 }
         : this.input.consumeMouseDelta();
@@ -504,6 +588,12 @@ export class Engine {
         const nextZ = p.z + dz * PLAYER_SPEED_PER_TICK;
         if (!collidesAt(p.x, nextZ, PLAYER_RADIUS)) p.z = nextZ;
       }
+
+      // --- FIRE -----------------------------------------------------------
+      // Hitscan: edge-triggered Space (or pointerdown — wired through the same
+      // consumeFire() path on a future input slice) fires the equipped weapon
+      // once. tryFire() handles ammo / raycast / lastShot publication.
+      if (wantsFire) this.tryFire();
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
       // for exactly the tick it died lets a consumer observe the transition;

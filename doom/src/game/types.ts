@@ -18,13 +18,6 @@
 // fields; they must NEVER remove a field a test depends on — add fields as
 // mechanics land, deprecate by leaving them stable.
 
-// Arena footprint comes from the level map (level.ts) so state.field + the
-// floor mesh stay in sync. The #75 level-map slice introduced these and renamed
-// the old FIELD_WIDTH/FIELD_HEIGHT, but left initialState() referencing the old
-// names — a tsc break on main (2026-06-19). level.ts does not import types, so
-// this is not circular.
-import { MAP_WIDTH, MAP_HEIGHT } from "./level";
-
 /** High-level lifecycle. Boots to 'ready'; first input flips to 'playing'.
  *  'won' = level cleared; 'lost'/'gameover' = the player died (two-step
  *  terminal, mirroring Galaga: 'lost' is the immediate death flip, 'gameover'
@@ -117,10 +110,40 @@ export interface DoorState {
 
 /** The currently-equipped weapon. `kind` is a free-form id (e.g. 'pistol');
  *  `ammo` is rounds remaining for that weapon. The backlog adds a weapon
- *  inventory + switching behind this single equipped slot. */
+ *  inventory + switching behind this single equipped slot.
+ *
+ *  `lastShot` is the result of the most recent fire attempt — the harness +
+ *  the (future) death/score slice consume it. Null until the first shot.
+ *  `tick` is the fixed-step counter at fire time so consumers can tell two
+ *  identical shots apart. `hitEnemyId` is the id of the enemy the raycast
+ *  hit, or null on a miss / dry-fire. `dryFire` is true when fire was
+ *  requested with ammo=0 (no ray cast, no ammo decrement). */
+export interface ShotRecord {
+  tick: number;
+  hitEnemyId: number | null;
+  dryFire: boolean;
+}
+
 export interface Weapon {
   kind: string;
   ammo: number;
+  lastShot: ShotRecord | null;
+}
+
+/** Record of the most recent player shot, published on the contract so the
+ *  death slice (and the e2e harness) can observe what the gun just did
+ *  without inspecting the engine internals. `tick` is the fixed-step at
+ *  which the shot fired; `enemyId` is set when the ray intersected a live
+ *  enemy, null on a miss; `hitX/Y/Z` is the world-space impact point when
+ *  there was a hit (null on miss). Cleared back to null on the firing slice
+ *  only via a fresh shot — readers should compare `tick` to know if it's
+ *  current. */
+export interface LastShot {
+  tick: number;
+  enemyId: number | null;
+  hitX: number | null;
+  hitY: number | null;
+  hitZ: number | null;
 }
 
 export interface DoomState {
@@ -152,6 +175,10 @@ export interface DoomState {
   doors: DoorState[];
   /** The currently-equipped weapon. */
   weapon: Weapon;
+  /** Most recent player shot (null until the first shot fires). The death
+   *  slice consumes this to award damage / sounds / VFX; the e2e harness
+   *  asserts on `enemyId` to prove a hit registered. */
+  lastShot: LastShot | null;
 }
 
 /** Test-only escape hatches. The e2e harness can force deterministic combat
@@ -187,6 +214,13 @@ export interface DoomInternals {
   forceHit(opts?: { enemyId?: number }): void;
   forceDamage(opts?: { amount?: number }): void;
   forcePickup(opts?: { id?: number }): void;
+  /** Fire the equipped weapon exactly as a Space-press would, but
+   *  deterministically: when `enemyId` is given, aim the camera at that
+   *  enemy's center BEFORE firing so the raycast lands. Without `enemyId`,
+   *  fires straight ahead (a miss unless something is in front). Test-only:
+   *  the e2e harness uses this to assert ammo drops and a hit registers
+   *  without having to align mouselook through WebGL. */
+  forceFire(opts?: { enemyId?: number }): void;
   /** Step the fixed-step sim exactly `steps` times with the given movement
    *  keys forced held for the duration, then restore live input. `forward`/
    *  `back`/`left`/`right` map to the same forward/backward/strafe intents the
@@ -197,6 +231,11 @@ export interface DoomInternals {
     back?: boolean;
     left?: boolean;
     right?: boolean;
+    /** When true, the FIRST forced step treats fire as pressed — same path
+     *  the live keyboard takes through consumeFire(). Used by the hitscan
+     *  e2e to deterministically pull the trigger on a known frame, since
+     *  the forced-input path bypasses the keyboard's edge-triggered fire. */
+    fire?: boolean;
   }): void;
 }
 
@@ -239,7 +278,11 @@ export const PLAYER_START_HEALTH = 100;
 export const PLAYER_START_ARMOR = 0;
 
 /** The weapon the player boots with — a pistol with a starting magazine. */
-export const STARTING_WEAPON: Weapon = { kind: "pistol", ammo: 50 };
+export const STARTING_WEAPON: Weapon = {
+  kind: "pistol",
+  ammo: 50,
+  lastShot: null,
+};
 
 /** Canonical initial state. The engine seeds `window.__doom` from this, then
  *  layers the seeded enemy roster on top (see engine.ts seedEnemies()). */
@@ -249,12 +292,12 @@ export function initialState(): DoomState {
     tick: 0,
     score: 0,
     stage: 1,
-    field: { width: MAP_WIDTH, height: MAP_HEIGHT },
+    field: { width: FIELD_WIDTH, height: FIELD_HEIGHT },
     player: {
       // Stand at the south edge looking north (down -z) into the arena.
       x: 0,
       y: EYE_HEIGHT,
-      z: MAP_HEIGHT / 2 - 4,
+      z: FIELD_HEIGHT / 2 - 4,
       yaw: 0,
       pitch: 0,
       health: PLAYER_START_HEALTH,
@@ -266,5 +309,6 @@ export function initialState(): DoomState {
     pickups: [],
     doors: [],
     weapon: { ...STARTING_WEAPON },
+    lastShot: null,
   };
 }
