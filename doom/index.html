@@ -80,7 +80,7 @@
         right: 0;
         bottom: 0;
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
         gap: 16px;
         padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
         box-sizing: border-box;
@@ -105,12 +105,56 @@
         font-size: 20px;
         font-weight: 700;
       }
-      /* Health glows red, armor blue, score neutral — quick-read FPS HUD. */
+      /* Health glows red, armor blue, ammo amber, score neutral —
+         quick-read FPS HUD. */
       #hud [data-hud="health"] {
         color: #ff6a6a;
       }
       #hud [data-hud="armor"] {
         color: #6ab0ff;
+      }
+      #hud [data-hud="ammo"] {
+        color: #f0c674;
+      }
+      /* Crosshair. A tiny plus pinned dead-center over the canvas, drawn in
+         pure DOM (no WebGL) so headless e2e can assert its existence via a
+         selector without touching pixels. It's a visual sight only —
+         gameplay aim still derives from camera yaw/pitch in the state
+         contract. */
+      #crosshair {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        margin-left: -8px;
+        margin-top: -8px;
+        pointer-events: none;
+        opacity: 0.85;
+        z-index: 2;
+      }
+      #crosshair::before,
+      #crosshair::after {
+        content: "";
+        position: absolute;
+        background: #e8eaff;
+        box-shadow: 0 0 2px rgba(0, 0, 0, 0.7);
+      }
+      /* Horizontal bar. */
+      #crosshair::before {
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 2px;
+        margin-top: -1px;
+      }
+      /* Vertical bar. */
+      #crosshair::after {
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 2px;
+        margin-left: -1px;
       }
     </style>
   </head>
@@ -133,10 +177,18 @@
         <span class="hud-value" data-hud="armor">0</span>
       </div>
       <div class="hud-cell">
+        <span class="hud-label">Ammo</span>
+        <span class="hud-value" data-hud="ammo">50</span>
+      </div>
+      <div class="hud-cell">
         <span class="hud-label">Score</span>
         <span class="hud-value" data-hud="score">0</span>
       </div>
     </div>
+    <!-- Crosshair overlay. Pure-DOM plus sign pinned to the center of the
+         viewport over the WebGL canvas — read-only sight, no input. The
+         #crosshair selector is the contract doom/e2e asserts on. -->
+    <div id="crosshair" data-hud="crosshair" aria-hidden="true"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

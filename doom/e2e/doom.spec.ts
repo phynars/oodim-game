@@ -780,6 +780,68 @@ test("a ranged enemy emits a projectile with from==='enemy' (issue #81)", async 
   expect(result.snapshot.first?.from).toBe("enemy");
 });
 
+test("HUD mirrors __doom (health/ammo) and a crosshair is present (issue #83)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // The HUD is a strictly read-only consumer of `window.__doom`: each
+  // [data-hud] cell mirrors a state field every animation frame. Assert the
+  // STATE CONTRACT against the rendered DOM — not pixels — so a green CI run
+  // proves the HUD actually reflects gameplay.
+  const healthCell = page.locator('[data-hud="health"]');
+  const armorCell = page.locator('[data-hud="armor"]');
+  const ammoCell = page.locator('[data-hud="ammo"]');
+  const scoreCell = page.locator('[data-hud="score"]');
+  const crosshair = page.locator('#crosshair');
+
+  // Crosshair exists in the DOM (the centered sight over the canvas).
+  await expect(crosshair).toHaveCount(1);
+
+  // Baseline boot values mirror initialState(): health=100, armor=0,
+  // ammo=50 (pistol starting magazine), score=0.
+  await expect(healthCell).toHaveText("100", { timeout: 3000 });
+  await expect(armorCell).toHaveText("0", { timeout: 3000 });
+  await expect(ammoCell).toHaveText("50", { timeout: 3000 });
+  await expect(scoreCell).toHaveText("0", { timeout: 3000 });
+
+  // Drive a non-lethal chip via the deterministic forceDamage hook. The HUD
+  // must catch up within the next animation frame.
+  await page.evaluate(() => window.__doomInternals!.forceDamage({ amount: 10 }));
+  const expectedHealth = await page.evaluate(() =>
+    String(window.__doom!.player.health),
+  );
+  await expect(healthCell).toHaveText(expectedHealth, { timeout: 3000 });
+  // Pre-#83 the HUD never re-rendered (or had no ammo cell at all) so this
+  // assertion would fail on a missing wire.
+  expect(Number(expectedHealth)).toBeLessThan(100);
+
+  // Aim at the baron and fire once via the synchronous fire() internal —
+  // same code path as Space, decrements weapon.ammo by exactly 1. The
+  // [data-hud="ammo"] cell must reflect the new value.
+  const newAmmo = await page.evaluate(() => {
+    const s = window.__doom!;
+    const baron = s.enemies.find((e) => e.kind === "baron")!;
+    const p = s.player;
+    const distXZ = Math.hypot(p.x - baron.x, p.z - baron.z);
+    p.yaw = Math.atan2(p.x - baron.x, p.z - baron.z);
+    p.pitch = Math.atan2(baron.y - p.y, distXZ);
+    window.__doomInternals!.fire();
+    return String(window.__doom!.weapon.ammo);
+  });
+  await expect(ammoCell).toHaveText(newAmmo, { timeout: 3000 });
+  expect(Number(newAmmo)).toBe(49);
+
+  // Landing a hit on the baron awards score — the score cell must also
+  // reflect the update.
+  const newScore = await page.evaluate(() => String(window.__doom!.score));
+  await expect(scoreCell).toHaveText(newScore, { timeout: 3000 });
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +
