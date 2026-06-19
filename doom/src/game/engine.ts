@@ -75,6 +75,26 @@ const SEED_ENEMIES: ReadonlyArray<{ kind: EnemyKind; x: number; z: number }> = [
   { kind: "baron", x: -1, z: -7 },
 ];
 
+/** Seed pickups for the scaffold. One of each kind, scattered on walkable
+ *  floor cells (away from walls and the interior pillar). World-space (x, z).
+ *  The engine seeds these so forcePickup() has something to take and a player
+ *  walking the arena will eventually step on one. The FIRST entry is a health
+ *  pickup — the e2e harness asserts forcePickup() (no id) takes it. */
+const SEED_PICKUPS: ReadonlyArray<{
+  kind: "health" | "armor" | "ammo";
+  x: number;
+  z: number;
+}> = [
+  { kind: "health", x: -3, z: 5 },
+  { kind: "armor", x: 3, z: 5 },
+  { kind: "ammo", x: 0, z: 3 },
+];
+
+/** Walk-over pickup radius in world units. A pickup is grabbed when the
+ *  player's center sits within this distance of it. Slightly larger than
+ *  PLAYER_RADIUS (0.3) so the player doesn't have to thread the needle. */
+const PICKUP_RADIUS = 0.8;
+
 /** Visual size (world units) of a placeholder enemy box, per archetype — barons
  *  read as the biggest threat. Purely cosmetic; combat uses HP_BY_KIND. */
 const ENEMY_BOX_SIZE: Record<EnemyKind, number> = {
@@ -210,6 +230,9 @@ export class Engine {
     // Seed the enemy roster + a placeholder box mesh per enemy.
     this.seedEnemies();
 
+    // Seed the pickup roster.
+    this.seedPickups();
+
     // Keyboard is the canonical input. First keydown flips ready→playing.
     this.input = createKeyboardInput();
 
@@ -252,6 +275,39 @@ export class Engine {
       mesh.userData.enemyId = id;
       this.scene.add(mesh);
       this.enemyMeshes.set(id, mesh);
+    }
+  }
+
+  /** Seed the simulation's pickup roster from SEED_PICKUPS. No mesh in the
+   *  scaffold — the e2e harness asserts on state (`pickups[i].taken`), and a
+   *  visible mesh is a backlog polish slice. */
+  private seedPickups(): void {
+    let nextId = 1;
+    for (const seed of SEED_PICKUPS) {
+      this.state.pickups.push({
+        id: nextId++,
+        kind: seed.kind,
+        x: seed.x,
+        z: seed.z,
+        taken: false,
+      });
+    }
+  }
+
+  /** Check whether the player is standing on any un-taken pickup; apply the
+   *  first one within PICKUP_RADIUS. Called each fixed-step after the player
+   *  moves so a walk-over grant lands the same tick the player crosses the
+   *  pickup. */
+  private checkPickups(): void {
+    const p = this.state.player;
+    for (let i = 0; i < this.state.pickups.length; i++) {
+      const pk = this.state.pickups[i];
+      if (pk.taken) continue;
+      const dx = p.x - pk.x;
+      const dz = p.z - pk.z;
+      if (dx * dx + dz * dz <= PICKUP_RADIUS * PICKUP_RADIUS) {
+        this.applyPickup(i);
+      }
     }
   }
 
@@ -575,6 +631,13 @@ export class Engine {
         const nextZ = p.z + dz * PLAYER_SPEED_PER_TICK;
         if (!collidesAt(p.x, nextZ, PLAYER_RADIUS)) p.z = nextZ;
       }
+
+      // --- PICKUPS (issue #80) --------------------------------------------
+      // After movement settles, see if the player is now standing on any
+      // un-taken pickup; the first one in range is granted this tick. Runs
+      // unconditionally (even when no movement keys were held) so a pickup
+      // dropped at the player's feet by some future mechanic still grants.
+      this.checkPickups();
 
       // --- ENEMY AI (issue #77) -------------------------------------------
       // One step per live enemy, before the death-cull below — so an enemy

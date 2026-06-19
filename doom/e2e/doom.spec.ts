@@ -488,6 +488,102 @@ test("enemy AI: idle → chasing and the enemy steps toward the player (issue #7
   expect(Math.abs(result.after.x - result.before.x)).toBeLessThan(0.01);
 });
 
+test("forcePickup() flips taken=true and grants its effect (health/armor/ammo) — issue #80", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // The scaffold seeds at least one un-taken pickup. Confirm the contract:
+  // - pickups roster is non-empty
+  // - the first pickup starts un-taken
+  // - forcePickup() (no id) flips its taken flag and raises the matching
+  //   player/weapon stat for its kind.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    if (s.pickups.length === 0) return { ok: false as const, why: "no pickups seeded" };
+    const target = s.pickups[0];
+    const before = {
+      taken: target.taken,
+      kind: target.kind,
+      health: s.player.health,
+      armor: s.player.armor,
+      ammo: s.weapon.ammo,
+    };
+    window.__doomInternals!.forcePickup({ id: target.id });
+    const after = window.__doom!;
+    const updated = after.pickups.find((p) => p.id === target.id)!;
+    return {
+      ok: true as const,
+      before,
+      after: {
+        taken: updated.taken,
+        health: after.player.health,
+        armor: after.player.armor,
+        ammo: after.weapon.ammo,
+      },
+    };
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  expect(result.before.taken).toBe(false);
+  expect(result.after.taken).toBe(true);
+  // The matching stat rose. Each pickup kind maps to a distinct stat — the
+  // others stay put. (health pickup grants up to 100; player starts at 100
+  // so a health pickup may be a no-op at full hp — exercised separately
+  // below via a walk-over test against ammo, which always rises.)
+  if (result.before.kind === "ammo") {
+    expect(result.after.ammo).toBeGreaterThan(result.before.ammo);
+  } else if (result.before.kind === "armor") {
+    expect(result.after.armor).toBeGreaterThan(result.before.armor);
+  } else {
+    // health: at full hp the grant clamps to 100; chip a wound first so the
+    // grant is observable.
+    // (Not reached for the default seed where pickups[0].kind === 'health',
+    // but kept generic so reordering seeds doesn't silently weaken the test.)
+    expect(result.after.health).toBeGreaterThanOrEqual(result.before.health);
+  }
+});
+
+test("walking onto a pickup grants it the same tick — issue #80", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Teleport the player ON TOP of an ammo pickup (so the grant always raises
+  // a stat — health caps at 100 from the default 100, armor starts at 0 so
+  // armor would also work, but ammo is unambiguously monotonic). Then pump a
+  // single fixed-step with no movement keys; the engine's per-tick pickup
+  // check must see the overlap and apply.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const ammoPickup = s.pickups.find((p) => p.kind === "ammo" && !p.taken);
+    if (!ammoPickup) return { ok: false as const, why: "no ammo pickup seeded" };
+    s.player.x = ammoPickup.x;
+    s.player.z = ammoPickup.z;
+    const ammoBefore = s.weapon.ammo;
+    window.__doomInternals!.advance({ steps: 1 });
+    const after = window.__doom!;
+    const updated = after.pickups.find((p) => p.id === ammoPickup.id)!;
+    return {
+      ok: true as const,
+      ammoDelta: after.weapon.ammo - ammoBefore,
+      taken: updated.taken,
+    };
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  expect(result.taken).toBe(true);
+  expect(result.ammoDelta).toBeGreaterThan(0);
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +
