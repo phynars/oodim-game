@@ -392,6 +392,50 @@ test("forceDamage({amount:1000}) drives the player to a terminal state", async (
   expect(["lost", "gameover"]).toContain(settled);
 });
 
+test("forceDamage with a small amount only lowers health — player stays alive, status not terminal (issue #79)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Baseline: alive, full health, not terminal.
+  const before = await page.evaluate(() => ({
+    alive: window.__doom!.player.alive,
+    health: window.__doom!.player.health,
+    armor: window.__doom!.player.armor,
+    status: window.__doom!.status,
+  }));
+  expect(before.alive).toBe(true);
+  expect(before.health).toBe(100);
+  expect(before.status).not.toBe("lost");
+  expect(before.status).not.toBe("gameover");
+
+  // A non-lethal chip: damage well below starting health. The contract: the
+  // player must STILL be alive, health strictly decreased, and status NEVER
+  // flips to a terminal state. Pre-#79 the forceDamage hook didn't exist /
+  // didn't touch health — this assertion fails on a missing wire.
+  await page.evaluate(() =>
+    window.__doomInternals!.forceDamage({ amount: 10 }),
+  );
+
+  const after = await page.evaluate(() => ({
+    alive: window.__doom!.player.alive,
+    health: window.__doom!.player.health,
+    status: window.__doom!.status,
+  }));
+  expect(after.alive).toBe(true);
+  expect(after.health).toBeLessThan(before.health);
+  expect(after.health).toBeGreaterThan(0);
+  // Status stays on the pre-terminal side of the lifecycle. The game boots to
+  // 'ready' and only leaves on first input; a sub-lethal forceDamage must not
+  // arm the 'lost'/'gameover' transition.
+  expect(after.status).not.toBe("lost");
+  expect(after.status).not.toBe("gameover");
+});
+
 test("enemy AI: idle → chasing and the enemy steps toward the player (issue #77)", async ({
   page,
 }) => {
