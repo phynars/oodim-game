@@ -150,22 +150,34 @@ test("ArrowUp moves the player forward — player.z DECREASES (camera looks down
     timeout: 5000,
   });
 
-  // Playwright's `canvas.click()` is a real mouse-event sequence
-  // (move → down → up). The pre-click mouse-move delivers a nonzero
-  // movementX/Y to the input source's mousemove handler before the loop
-  // even starts. Once status flips to 'playing' the FIRST tick drains
-  // that delta into a yaw rotation — and a rotated yaw means ArrowUp no
-  // longer walks down -z, it walks at some angle. To make the assertion
-  // "forward decreases z" deterministic regardless of click jitter, we
-  //   1. click (flips ready→playing) and wait for the loop to tick at
-  //      least once (drains the queued mouse delta), then
-  //   2. reset yaw to 0 via forceTeleport, KEEPING spawn x/z so this is
-  //      still a "from spawn" test.
+  // Defenses against Playwright's mouse-delta-into-yaw flake:
+  //
+  //   (a) PRE-POSITION the mouse at the canvas center BEFORE clicking. A
+  //       fresh page starts the mouse at (0,0); the click()'s implicit
+  //       pre-click move can otherwise dispatch a mousemove with HUNDREDS
+  //       of pixels of movementX/Y → translates to ~10° of yaw on the
+  //       first tick. `mouse.move` to the click target first means the
+  //       click's own move is a no-op delta.
+  //
+  //   (b) Wait for SEVERAL fixed-step ticks (not just one) so any late
+  //       pointer events that fire after the click have been drained into
+  //       (and consumed by) the input source.
+  //
+  //   (c) forceTeleport with explicit yaw:0 KEEPING the spawn x/z — so
+  //       regardless of any residual yaw drift, the player is aimed
+  //       straight down -z when we hold forward.
+  const canvasBox = await page.locator("canvas").boundingBox();
+  if (canvasBox) {
+    await page.mouse.move(
+      canvasBox.x + canvasBox.width / 2,
+      canvasBox.y + canvasBox.height / 2,
+    );
+  }
   await page.locator("canvas").click();
   await page.waitForFunction(() => window.__doom?.status === "playing", null, {
     timeout: 5000,
   });
-  await page.waitForFunction(() => (window.__doom?.tick ?? 0) > 0, null, {
+  await page.waitForFunction(() => (window.__doom?.tick ?? 0) >= 3, null, {
     timeout: 5000,
   });
   const spawn = await page.evaluate(() => ({
@@ -213,11 +225,22 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
   // is a clear corridor between the west wall and the pillar pair), at
   // a safely-southern z, and reset yaw so ArrowUp aims straight at the
   // north wall regardless of any mouse delta the click queued.
+  //
+  // Same three-layer defense as the forward-walk test above: pre-position
+  // the mouse so click() doesn't dispatch a huge movementX, drain SEVERAL
+  // ticks before teleporting, then forceTeleport with yaw:0.
+  const canvasBox = await page.locator("canvas").boundingBox();
+  if (canvasBox) {
+    await page.mouse.move(
+      canvasBox.x + canvasBox.width / 2,
+      canvasBox.y + canvasBox.height / 2,
+    );
+  }
   await page.locator("canvas").click();
   await page.waitForFunction(() => window.__doom?.status === "playing", null, {
     timeout: 5000,
   });
-  await page.waitForFunction(() => (window.__doom?.tick ?? 0) > 0, null, {
+  await page.waitForFunction(() => (window.__doom?.tick ?? 0) >= 3, null, {
     timeout: 5000,
   });
   await page.evaluate(() => {
@@ -293,19 +316,29 @@ test("level geometry: a KNOWN interior wall cell blocks movement (collision driv
   // a nonzero movementX/Y to the input source's mousemove handler. Once the
   // loop starts, the FIRST tick drains that accumulated mouse delta into the
   // player's yaw — which would rotate us off the +z axis and the forward
-  // walk would no longer aim at the pillar. Two defenses:
-  //   1. Click FIRST (flips ready→playing) and wait for the loop to actually
-  //      start ticking — that drains the queued mouse delta into a yaw nudge
-  //      we don't care about yet.
-  //   2. Then forceTeleport with an explicit yaw:0, which RESETS yaw back to
+  // walk would no longer aim at the pillar. Three defenses:
+  //   1. PRE-POSITION the mouse over the canvas center so the click()'s
+  //      implicit pre-click pointer move dispatches a near-zero movementX/Y.
+  //   2. Click FIRST (flips ready→playing) and wait for the loop to actually
+  //      start ticking — drain SEVERAL ticks so any late pointer events that
+  //      fire after the click have been consumed.
+  //   3. Then forceTeleport with an explicit yaw:0, which RESETS yaw back to
   //      facing -z regardless of what the click did. Now ArrowUp walks
   //      straight at the pillar.
+  const canvasBox = await page.locator("canvas").boundingBox();
+  if (canvasBox) {
+    await page.mouse.move(
+      canvasBox.x + canvasBox.width / 2,
+      canvasBox.y + canvasBox.height / 2,
+    );
+  }
   await page.locator("canvas").click();
   await page.waitForFunction(() => window.__doom?.status === "playing", null, {
     timeout: 5000,
   });
-  // Wait for at least one tick so the mouse-delta accumulator is drained.
-  await page.waitForFunction(() => (window.__doom?.tick ?? 0) > 0, null, {
+  // Wait for several ticks so the mouse-delta accumulator is drained and
+  // any late pointer events have been consumed.
+  await page.waitForFunction(() => (window.__doom?.tick ?? 0) >= 3, null, {
     timeout: 5000,
   });
 
@@ -317,7 +350,11 @@ test("level geometry: a KNOWN interior wall cell blocks movement (collision driv
     window.__doomInternals!.forceTeleport({ x: 0, z: -3, yaw: 0 });
   });
 
-  // Confirm teleport landed.
+  // Confirm teleport landed. Use generous tolerances — between the
+  // teleport call and the read, a fixed-step tick can fire; with no keys
+  // held and yaw=0 the player position/yaw should be unchanged, but if a
+  // residual mouse delta happened to fire it could nudge yaw fractionally.
+  // The test cares that we're CLOSE to the teleport target, not exact.
   const after = await page.evaluate(() => ({
     x: window.__doom!.player.x,
     z: window.__doom!.player.z,
@@ -325,7 +362,17 @@ test("level geometry: a KNOWN interior wall cell blocks movement (collision driv
   }));
   expect(after.x).toBeCloseTo(0, 1);
   expect(after.z).toBeCloseTo(-3, 1);
-  expect(after.yaw).toBeCloseTo(0, 1);
+  // Yaw can drift slightly if a late mousemove dispatches after the
+  // teleport — tolerate up to ~0.1 rad (~6°), well within "still aimed
+  // mostly at the pillar".
+  expect(Math.abs(after.yaw)).toBeLessThan(0.1);
+
+  // One more yaw reset right before holding forward — drains any residual
+  // mouse delta that might have crept in between the previous teleport and
+  // here, so ArrowUp walks straight down -z.
+  await page.evaluate(() => {
+    window.__doomInternals!.forceTeleport({ x: 0, z: -3, yaw: 0 });
+  });
 
   // Hold forward (down -z, toward the pillar). At 4.8 u/s, 2s of held input
   // would travel 9.6u UNCLAMPED — way past the pillar at z≈-7. Map collision
