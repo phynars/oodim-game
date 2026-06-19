@@ -601,37 +601,71 @@ test("enemy variety + ranged fire: ≥2 distinct enemy kinds AND a ranged enemy 
   expect(kinds.length).toBeGreaterThanOrEqual(2);
 
   // AC#2: a ranged archetype produces a projectile with from==='enemy'.
-  // Setup: place the player directly in front of the baron (the ranged
-  // archetype) just inside RANGED_ATTACK_RANGE so its AI transitions
-  // idle→chasing→attacking and the cooldown fires within a short pump.
-  // Pre-change, the projectiles[] roster was empty forever — this assertion
-  // fails on main.
+  // Setup: place the player at the EDGE of RANGED_ATTACK_RANGE (8u south of
+  // the baron). The baron will attack on first AI tick, the initial windup
+  // (~15 ticks) elapses, and a fireball spawns. Then we PER-TICK SNAPSHOT
+  // projectiles[] so we observe the projectile while it's mid-flight — it
+  // would otherwise traverse + collide + splice out before a single 60-tick
+  // pump ended, leaving the roster empty.
+  //
+  // Pre-change (main), the projectiles[] roster was empty forever regardless
+  // of when we read it — so this assertion still fails on main.
   const result = await page.evaluate(() => {
     const s = window.__doom!;
     const baron = s.enemies.find((e) => e.kind === "baron");
     if (!baron) return { ok: false as const, why: "no baron seeded" };
-    // Sit 3u south of the baron — well inside RANGED_ATTACK_RANGE (8) so
-    // it'll attack on the first AI tick, plus the initial-cooldown windup
-    // (~15 ticks) fires shortly after.
+    // Sit 7u south of the baron — inside RANGED_ATTACK_RANGE (8) so the AI
+    // commits to attacking, but far enough that the fireball needs ~17
+    // ticks of flight to reach the player (PROJECTILE_SPEED_PER_TICK=0.4).
+    // Combined with per-tick snapshotting below, this gives a wide window
+    // to observe the projectile mid-flight.
     s.player.x = baron.x;
-    s.player.z = baron.z + 3;
-    // Pump enough fixed-steps to clear the initial windup with margin.
-    window.__doomInternals!.advance({ steps: 60 });
-    const after = window.__doom!;
-    const enemyProjectiles = after.projectiles.filter((p) => p.from === "enemy");
+    s.player.z = baron.z + 7;
+    // Step one tick at a time and snapshot whenever an enemy projectile is
+    // in flight. Capture the FIRST observation we see — that's our evidence
+    // the contract fired. 120 ticks covers the initial windup (~15) plus the
+    // first full cooldown (90) with margin, so a regression that breaks
+    // either the initial-windup path OR the cooldown-reset path still fails.
+    let firstEnemyProjectile: {
+      id: number;
+      x: number;
+      y: number;
+      z: number;
+      vx: number;
+      vy: number;
+      vz: number;
+      from: "player" | "enemy";
+    } | null = null;
+    let sawEnemyProjectile = false;
+    let totalEnemyProjectilesObserved = 0;
+    for (let i = 0; i < 120; i++) {
+      window.__doomInternals!.advance({ steps: 1 });
+      const live = window.__doom!.projectiles.filter((p) => p.from === "enemy");
+      if (live.length > 0) {
+        sawEnemyProjectile = true;
+        totalEnemyProjectilesObserved += live.length;
+        if (firstEnemyProjectile === null) {
+          // Structured clone via JSON so the snapshot survives subsequent
+          // engine mutations (splice on contact, position updates, etc).
+          firstEnemyProjectile = JSON.parse(JSON.stringify(live[0]));
+        }
+      }
+    }
     return {
       ok: true as const,
-      projectileCount: after.projectiles.length,
-      enemyProjectileCount: enemyProjectiles.length,
-      firstEnemyProjectile: enemyProjectiles[0] ?? null,
+      sawEnemyProjectile,
+      totalEnemyProjectilesObserved,
+      firstEnemyProjectile,
     };
   });
 
   expect(result.ok).toBe(true);
   if (!result.ok) return;
-  // At least one projectile fired from an enemy.
-  expect(result.enemyProjectileCount).toBeGreaterThanOrEqual(1);
-  // And the contract shape is right: from==='enemy' on the entry.
+  // We observed at least one enemy projectile in flight across the 120-tick
+  // window — the ranged-fire contract is wired and producing projectiles.
+  expect(result.sawEnemyProjectile).toBe(true);
+  expect(result.totalEnemyProjectilesObserved).toBeGreaterThanOrEqual(1);
+  // And the contract shape is right: from==='enemy' on the snapshot.
   expect(result.firstEnemyProjectile).not.toBeNull();
   expect(result.firstEnemyProjectile!.from).toBe("enemy");
 });
