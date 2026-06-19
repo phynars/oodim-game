@@ -16,7 +16,7 @@
 
 import * as THREE from "three";
 
-import type { Enemy, EnemyKind, EnemyState } from "./types";
+import type { EnemyKind, EnemyState } from "./types";
 
 /** Named animation clips every enemy carries (issue #86). One per AI state +
  *  a death anim; the active clip follows `enemy.state` (idle/chasing→walk,
