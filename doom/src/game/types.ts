@@ -161,11 +161,36 @@ export interface DoomState {
  *     on LETHAL damage the player dies (alive=false) and `status` flips to a
  *     terminal state ('lost' → 'gameover').
  *   - `forcePickup` marks a pickup taken (the first un-taken one, or `id` if
- *     given) and APPLIES its effect (health/armor/ammo). */
+ *     given) and APPLIES its effect (health/armor/ammo).
+ *   - `advance` runs the fixed-step simulation `steps` times SYNCHRONOUSLY with
+ *     a forced movement override, bypassing rAF + the wall clock entirely.
+ *     This makes movement FRAME-RATE-INDEPENDENT for the harness — essential
+ *     because Doom renders with WebGL, and under headless SwiftShader the rAF
+ *     that drives the engine's fixed-step accumulator (engine.ts start()) fires
+ *     far slower than 60Hz. A test that holds a key for a fixed wall-clock
+ *     `waitForTimeout` therefore moves a NON-DETERMINISTIC, machine-dependent
+ *     distance: green locally, far short in CI. `advance` instead steps the
+ *     sim a known number of times, so travel = steps × PLAYER_SPEED_PER_TICK is
+ *     exact regardless of render cadence. It mirrors Galaga's
+ *     deterministic-internals philosophy. The forced input feeds the SAME input
+ *     path real `update()` reads (the per-tick snapshot), so movement +
+ *     wall-collision clamping run identically to live play. Test-only: gameplay
+ *     code must NEVER call it. */
 export interface DoomInternals {
   forceHit(opts?: { enemyId?: number }): void;
   forceDamage(opts?: { amount?: number }): void;
   forcePickup(opts?: { id?: number }): void;
+  /** Step the fixed-step sim exactly `steps` times with the given movement
+   *  keys forced held for the duration, then restore live input. `forward`/
+   *  `back`/`left`/`right` map to the same forward/backward/strafe intents the
+   *  keyboard produces. Synchronous + wall-clock-free — see the doc above. */
+  advance(opts: {
+    steps: number;
+    forward?: boolean;
+    back?: boolean;
+    left?: boolean;
+    right?: boolean;
+  }): void;
 }
 
 declare global {

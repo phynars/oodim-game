@@ -146,24 +146,24 @@ test("ArrowUp moves the player forward — player.z DECREASES (camera looks down
 }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
 
   // Capture spawn z BEFORE any input. The player spawns at the south edge
-  // looking north (down -z), so holding ArrowUp must decrease z.
+  // looking north (down -z), so moving forward must decrease z.
   const z0 = await page.evaluate(() => window.__doom!.player.z);
 
-  await page.locator("canvas").click();
-  // Hold forward for a beat; at 60Hz with PLAYER_SPEED_PER_TICK=0.08 the
-  // player should travel several world-units in well under a second.
-  await page.keyboard.down("ArrowUp");
-  // Wait until the contract reports we've MOVED — the assertion that proves
-  // movement is wired (this is what FAILED on pre-#74 code, where the
-  // engine sampled input but never translated the camera).
-  await page.waitForFunction(
-    (start) => (window.__doom?.player.z ?? start) < start - 0.5,
-    z0,
-    { timeout: 5000 },
+  // Drive a known number of fixed-steps via the deterministic `advance` hook
+  // rather than a wall-clock key-hold — under headless SwiftShader the rAF
+  // loop ticks unpredictably slowly, so wall-clock travel is non-deterministic
+  // (see the wall-clamp test). 50 steps × 0.08 u = 4 u of forward travel —
+  // plenty to prove movement is wired (this is what FAILED on pre-#74 code,
+  // where the engine sampled input but never translated the camera) and well
+  // short of the ~28 u to the wall, so no clamp interferes.
+  await page.evaluate(() =>
+    window.__doomInternals!.advance({ steps: 50, forward: true }),
   );
-  await page.keyboard.up("ArrowUp");
 
   const z1 = await page.evaluate(() => window.__doom!.player.z);
   expect(z1).toBeLessThan(z0);
@@ -174,34 +174,40 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
 }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
 
   const field = await page.evaluate(() => window.__doom!.field);
-  // The arena spans [-h/2, +h/2] in z. Holding forward (down -z) for long
-  // enough that, UNCLAMPED, the player would overshoot the wall by a wide
-  // margin. At 0.08 u/step × 60Hz = 4.8 u/s; spawn is z=+12 on a 32-deep
-  // field, so the clamp sits near z=-16. Travel to the wall is ~28 u, ~5.8s.
-  await page.locator("canvas").click();
-  await page.keyboard.down("ArrowUp");
-  // Wait a healthy budget — long enough to be SURE we hit the wall even on
-  // slow CI. The clamp is the assertion, not the wall-clock.
+  const z0 = await page.evaluate(() => window.__doom!.player.z);
+
+  // DETERMINISM: drive the sim a KNOWN number of fixed-steps via the test-only
+  // `advance` hook instead of holding a key for a wall-clock `waitForTimeout`.
+  // Doom renders with WebGL, and under headless SwiftShader the rAF that pumps
+  // the engine's fixed-step accumulator fires far slower than 60Hz — so a
+  // wall-clock hold moves a machine-dependent distance (green locally, far
+  // short in CI: the exact flake that jammed the aggregate CI). `advance`
+  // steps the sim synchronously, so travel = steps × PLAYER_SPEED_PER_TICK is
+  // EXACT regardless of render cadence.
   //
-  // FLAKE NOTE: an earlier draft used 2500ms — at 4.8 u/s from spawn z=+12
-  // that lands the player at z≈0, RIGHT on the `z < 0` assertion line below.
-  // Any CI scheduling jitter (a dropped frame, a slow first paint) would
-  // leave z just barely positive and fail the test for non-movement reasons.
-  // 4000ms travels ~19.2 u → z≈-7.2: comfortably past 0, comfortably short
-  // of the clamp at -16. The clamp is now what's being measured.
-  await page.waitForTimeout(4000);
-  await page.keyboard.up("ArrowUp");
+  // 400 steps × 0.08 u = 32 u of forward intent. Spawn is z=+12 on a 32-deep
+  // field; the wall clamp sits at z = -(height/2 - PLAYER_RADIUS) ≈ -15.7.
+  // Travel to the wall is ~27.7 u, so 32 u OVERSHOOTS it by a wide margin —
+  // the player DEFINITELY reaches and is held at the wall.
+  await page.evaluate(() =>
+    window.__doomInternals!.advance({ steps: 400, forward: true }),
+  );
 
   const z = await page.evaluate(() => window.__doom!.player.z);
-  // Z is bounded by -field.height/2 (with some PLAYER_RADIUS slack). We
-  // assert the WALL HELD: z never went below -height/2.
+  // Z is bounded by -field.height/2 (with PLAYER_RADIUS slack). Assert the
+  // WALL HELD: z never passed through the edge.
   expect(z).toBeGreaterThan(-field.height / 2);
-  // And we DID reach the wall — z is far past the spawn (which was +12 on
-  // a 32-deep field). If movement silently no-op'd, this would still equal
-  // the spawn z. Pick a generous threshold: anywhere on the north half.
-  expect(z).toBeLessThan(0);
+  // And we DID reach the wall — with 32 u of forward intent the player must be
+  // clamped right at the north edge, not stranded at the +12 spawn. Assert z
+  // sits at the clamp (within PLAYER_RADIUS slack), proving both that movement
+  // ran AND that the clamp engaged.
+  expect(z).toBeLessThan(z0); // moved north
+  expect(z).toBeLessThan(-field.height / 2 + 1); // pressed against the wall
 });
 
 test("forceDamage({amount:1000}) drives the player to a terminal state", async ({

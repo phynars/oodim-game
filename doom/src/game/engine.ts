@@ -32,6 +32,7 @@ import {
   PLAYER_RADIUS,
   PLAYER_SPEED_PER_TICK,
   PLAYER_TURN_PER_TICK,
+  type InputSnapshot,
   type InputSource,
 } from "./input";
 
@@ -107,6 +108,12 @@ export class Engine {
   // Fixed-step accumulator state (see start()).
   private lastTime = 0;
   private accumulator = 0;
+
+  /** TEST-ONLY forced-input override. When non-null, update() reads movement
+   *  from THIS snapshot instead of the live keyboard, letting the `advance`
+   *  hook (see exposeInternals) drive deterministic, wall-clock-free movement.
+   *  Always null during real play — gameplay code never sets it. */
+  private forcedInput: InputSnapshot | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -233,6 +240,35 @@ export class Engine {
             : this.state.pickups.findIndex((p) => p.id === opts.id);
         if (idx < 0) return;
         this.applyPickup(idx);
+        this.publish();
+      },
+      advance: (opts) => {
+        const steps = Math.max(0, Math.floor(opts.steps));
+        if (steps === 0) return;
+        // update()'s movement block only runs while 'playing'; the real game
+        // flips here on first input, so do the same for the harness (only when
+        // we're not in a terminal/won state — never resurrect a dead player).
+        if (this.state.status === "ready") this.state.status = "playing";
+        if (this.state.status !== "playing") return;
+        // Install the forced movement override, then drive the fixed-step sim
+        // synchronously — no rAF, no wall clock. Each update() advances the
+        // player exactly PLAYER_SPEED_PER_TICK along the forced intent and runs
+        // the same per-axis wall clamp as live play.
+        this.forcedInput = {
+          forward: Boolean(opts.forward),
+          backward: Boolean(opts.back),
+          left: Boolean(opts.left),
+          right: Boolean(opts.right),
+          // advance drives translation only; turning stays neutral.
+          turnLeft: false,
+          turnRight: false,
+        };
+        try {
+          for (let i = 0; i < steps; i++) this.update();
+        } finally {
+          // Always restore live input, even if update() throws.
+          this.forcedInput = null;
+        }
         this.publish();
       },
     };
@@ -371,9 +407,16 @@ export class Engine {
       // Sample input once per fixed-step so movement is deterministic at 60 Hz
       // regardless of render cadence. consumeFire() / consumeMouseDelta() are
       // drained per tick so input doesn't pile up across frames.
-      const snap = this.input.read();
+      //
+      // TEST-ONLY: when the `advance` hook has set a forced-input override we
+      // read movement from it instead of the live keyboard (and skip mouselook)
+      // so the harness gets frame-rate-independent travel. forcedInput is null
+      // in all real play — see the field decl + exposeInternals().
+      const snap = this.forcedInput ?? this.input.read();
       this.input.consumeFire();
-      const mouse = this.input.consumeMouseDelta();
+      const mouse = this.forcedInput
+        ? { dx: 0, dy: 0 }
+        : this.input.consumeMouseDelta();
 
       // --- LOOK -----------------------------------------------------------
       // Yaw: mouse-x adds to yaw (locked pointer convention is rightward
