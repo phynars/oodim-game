@@ -123,6 +123,17 @@ export interface Weapon {
   ammo: number;
 }
 
+/** A landed hitscan-weapon hit, published on the contract so the death-slice
+ *  + e2e harness can OBSERVE that a shot connected without inspecting WebGL
+ *  pixels. `enemyId` is the Enemy.id the ray landed on; `tick` is state.tick
+ *  at the moment of the hit (0 if fired from READY). The roster is
+ *  append-only in the scaffold — the engine never trims it, so the harness
+ *  can assert "a hit was recorded" without racing a cull. */
+export interface Hit {
+  enemyId: number;
+  tick: number;
+}
+
 export interface DoomState {
   /** Lifecycle. Boots to 'ready'. */
   status: DoomStatus;
@@ -152,6 +163,10 @@ export interface DoomState {
   doors: DoorState[];
   /** The currently-equipped weapon. */
   weapon: Weapon;
+  /** Landed hits this run. The hitscan-fire slice (issue #76) appends one
+   *  entry per shot that connects. Append-only in the scaffold; backlog may
+   *  later cap or window it. */
+  hits: Hit[];
 }
 
 /** Test-only escape hatches. The e2e harness can force deterministic combat
@@ -182,7 +197,11 @@ export interface DoomState {
  *     deterministic-internals philosophy. The forced input feeds the SAME input
  *     path real `update()` reads (the per-tick snapshot), so movement +
  *     wall-collision clamping run identically to live play. Test-only: gameplay
- *     code must NEVER call it. */
+ *     code must NEVER call it.
+ *   - `fire` triggers ONE hitscan shot SYNCHRONOUSLY from the current camera
+ *     pose, going through the same path Space does (consume ammo, raycast,
+ *     damage + score on hit, append to `hits`). Test-only; bypasses the input
+ *     edge-trigger so the harness doesn't depend on rAF for ammo/hit timing. */
 export interface DoomInternals {
   forceHit(opts?: { enemyId?: number }): void;
   forceDamage(opts?: { amount?: number }): void;
@@ -198,6 +217,10 @@ export interface DoomInternals {
     left?: boolean;
     right?: boolean;
   }): void;
+  /** Fire one hitscan shot from the current camera pose. Mirrors a Space
+   *  press: decrements ammo (or no-ops at 0), raycasts against enemy meshes,
+   *  damages the nearest hit + appends to `hits`. Synchronous publish. */
+  fire(): void;
 }
 
 declare global {
@@ -266,5 +289,6 @@ export function initialState(): DoomState {
     pickups: [],
     doors: [],
     weapon: { ...STARTING_WEAPON },
+    hits: [],
   };
 }

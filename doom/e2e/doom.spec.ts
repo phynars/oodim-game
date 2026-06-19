@@ -222,6 +222,126 @@ test("a known wall cell BLOCKS forward movement — the interior pillar holds (i
   expect(z).toBeGreaterThan(z0 - 16);
 });
 
+test("Space (live keyboard) fires once: weapon.ammo decrements by 1 after the loop ticks", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Capture starting ammo BEFORE the player has fired. Live keyboard path is
+  // what we want to prove — Space → consumeFire → fireShot → ammo--. We must
+  // leave READY first (the fire path only runs in the playing-loop), so click
+  // the canvas to start.
+  const ammo0 = await page.evaluate(() => window.__doom!.weapon.ammo);
+  expect(ammo0).toBeGreaterThan(0);
+
+  await page.locator("canvas").click();
+  await page.waitForFunction(() => window.__doom?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  // Press Space. The keydown sets firePending on the input source; the next
+  // fixed-step update drains it via consumeFire() and runs fireShot(), which
+  // decrements ammo by exactly 1 (hit or miss). Wait for the published state
+  // to reflect that — under headless SwiftShader rAF cadence varies, but the
+  // assertion is on STATE, not time.
+  await page.keyboard.press(" ");
+  await page.waitForFunction((a0) => (window.__doom?.weapon.ammo ?? a0) < a0, ammo0, {
+    timeout: 5000,
+  });
+
+  const ammo1 = await page.evaluate(() => window.__doom!.weapon.ammo);
+  expect(ammo1).toBe(ammo0 - 1);
+});
+
+test("an aligned hitscan shot REGISTERS A HIT on the targeted enemy (issue #76)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Aim the camera at the seeded baron (largest box, eye-height) and fire via
+  // the synchronous `fire` internal — same code path as Space, just bypasses
+  // the input edge trigger so the assertion doesn't race rAF. Yaw is derived
+  // from the spawn→target xz vector using the engine's forward-vector basis:
+  //   dir = (-sin(yaw)·cos(pitch), sin(pitch), -cos(yaw)·cos(pitch))
+  // → yaw = atan2(x0 − target.x, z0 − target.z). Pitch points the ray at the
+  // box's vertical center so the eye (y=1.6) hits the baron's center (y=0.8)
+  // without grazing the top edge.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const baron = s.enemies.find((e) => e.kind === "baron");
+    if (!baron) return { ok: false as const, why: "no baron seeded" };
+    const p = s.player;
+    const distXZ = Math.hypot(p.x - baron.x, p.z - baron.z);
+    p.yaw = Math.atan2(p.x - baron.x, p.z - baron.z);
+    p.pitch = Math.atan2(baron.y - p.y, distXZ);
+    const ammoBefore = s.weapon.ammo;
+    const hitsBefore = s.hits.length;
+    const hpBefore = baron.hp;
+    window.__doomInternals!.fire();
+    const after = window.__doom!;
+    const baronAfter = after.enemies.find((e) => e.id === baron.id);
+    return {
+      ok: true as const,
+      ammoDelta: after.weapon.ammo - ammoBefore,
+      hitsDelta: after.hits.length - hitsBefore,
+      lastHitEnemyId: after.hits.at(-1)?.enemyId ?? null,
+      baronHpDelta: baronAfter ? baronAfter.hp - hpBefore : null,
+      targetId: baron.id,
+    };
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  // One shot consumed exactly one round.
+  expect(result.ammoDelta).toBe(-1);
+  // A hit was recorded, and it was on the baron we aimed at.
+  expect(result.hitsDelta).toBe(1);
+  expect(result.lastHitEnemyId).toBe(result.targetId);
+  // And the baron actually took damage (or was killed — the seeded baron has
+  // 200 hp, well above PLAYER_SHOT_DAMAGE=50, so it survives one shot).
+  expect(result.baronHpDelta).not.toBeNull();
+  expect(result.baronHpDelta!).toBeLessThan(0);
+});
+
+test("fire at 0 ammo is a no-op: ammo stays clamped at 0 and no hit is recorded", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    // Drain ammo + aim at the baron, then click the trigger one more time.
+    // The contract: ammo never goes negative and no hit lands.
+    s.weapon.ammo = 0;
+    const baron = s.enemies.find((e) => e.kind === "baron")!;
+    const p = s.player;
+    const distXZ = Math.hypot(p.x - baron.x, p.z - baron.z);
+    p.yaw = Math.atan2(p.x - baron.x, p.z - baron.z);
+    p.pitch = Math.atan2(baron.y - p.y, distXZ);
+    const hitsBefore = s.hits.length;
+    window.__doomInternals!.fire();
+    return {
+      ammo: window.__doom!.weapon.ammo,
+      hitsDelta: window.__doom!.hits.length - hitsBefore,
+    };
+  });
+
+  expect(result.ammo).toBe(0);
+  expect(result.hitsDelta).toBe(0);
+});
+
 test("forceDamage({amount:1000}) drives the player to a terminal state", async ({
   page,
 }) => {
@@ -271,3 +391,12 @@ test("forceDamage({amount:1000}) drives the player to a terminal state", async (
   const settled = await page.evaluate(() => window.__doom!.status);
   expect(["lost", "gameover"]).toContain(settled);
 });
+
+// NOTE: an earlier draft of this file also asserted against
+// `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
+// contracts that were never built. Issue #76's acceptance ("ammo drops" +
+// "shot at an enemy registers a hit") is fully covered above by the live-Space
+// ammo test, the `fire()`-internal hit test, and the 0-ammo no-op. Don't add
+// `fire` to `advance` or `lastShotTick`/`lastHitEnemyId` to `Weapon` without
+// a follow-up issue that names the consumer — the death slice reads
+// `__doom.hits`, which is the canonical hit publication.

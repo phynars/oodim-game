@@ -105,6 +105,9 @@ export class Engine {
    *  sync mesh transforms to the simulation's enemy positions + cull dead
    *  ones. */
   private readonly enemyMeshes: Map<number, THREE.Mesh> = new Map();
+  /** Reused raycaster for hitscan fire. One instance avoids per-shot
+   *  allocations; the origin + direction are set per call. */
+  private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
 
   /** Tick at which status flipped to 'lost'. After GAMEOVER_HOLD_FRAMES more
    *  fixed-step frames elapse the status advances to 'gameover'. Null while
@@ -242,6 +245,10 @@ export class Engine {
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(enemy.x, enemy.y, enemy.z);
+      // Stash the enemy id on the mesh so the hitscan ray maps an Intersection
+      // (which only carries the Object3D) back to the simulation entity in
+      // O(1) instead of scanning enemyMeshes.
+      mesh.userData.enemyId = id;
       this.scene.add(mesh);
       this.enemyMeshes.set(id, mesh);
     }
@@ -307,7 +314,64 @@ export class Engine {
         }
         this.publish();
       },
+      fire: () => {
+        // Synchronous test hook — bypasses the input edge-trigger and rAF so
+        // the harness can assert on ammo/hits without racing the loop. Goes
+        // through the SAME fireShot() path Space does.
+        this.fireShot();
+        this.publish();
+      },
     };
+  }
+
+  /** Fire one hitscan shot from the current camera pose: cast a ray from the
+   *  eye along the look direction (derived from yaw/pitch — independent of
+   *  three.js matrix state, so this is correct whether or not render() has
+   *  run this frame), find the nearest LIVE enemy mesh under the crosshair,
+   *  and on a hit damage it + append a Hit record to the state contract.
+   *
+   *  AMMO POLICY: no fire at 0 ammo (the trigger click is silent). Otherwise
+   *  every trigger pull decrements ammo by 1, hit or miss — that's the
+   *  classic FPS pistol contract and what the e2e harness asserts on. The
+   *  hit-record side is load-bearing for issue #76: a shot aligned at an
+   *  enemy must register a hit the harness can read off `__doom.hits`. */
+  private fireShot(): void {
+    if (this.state.weapon.ammo <= 0) return;
+    this.state.weapon.ammo -= 1;
+
+    const p = this.state.player;
+    // Forward unit vector from (yaw, pitch) using the camera's YXZ Euler
+    // order. At yaw=0,pitch=0 the player looks down -z (the contract's
+    // stated facing); yaw increases turning left.
+    const cp = Math.cos(p.pitch);
+    const dir = new THREE.Vector3(
+      -Math.sin(p.yaw) * cp,
+      Math.sin(p.pitch),
+      -Math.cos(p.yaw) * cp,
+    );
+    const origin = new THREE.Vector3(p.x, p.y, p.z);
+
+    // Only intersect against the live enemy roster. Walls don't block the
+    // hitscan in the scaffold — the level is small and the slice's goal is
+    // "shot at an enemy registers a hit"; wall-occlusion is a follow-up.
+    const meshes = Array.from(this.enemyMeshes.values());
+    if (meshes.length === 0) return;
+    this.raycaster.set(origin, dir);
+    this.raycaster.near = 0;
+    this.raycaster.far = CAMERA_FAR;
+    // recursive=false: enemy meshes are flat Mesh nodes with no children.
+    const intersections = this.raycaster.intersectObjects(meshes, false);
+    if (intersections.length === 0) return;
+
+    // Raycaster sorts by distance ascending — first is nearest.
+    const hit = intersections[0];
+    const enemyId = (hit.object.userData as { enemyId?: number }).enemyId;
+    if (typeof enemyId !== "number") return;
+    const idx = this.state.enemies.findIndex((e) => e.id === enemyId);
+    if (idx < 0) return;
+
+    this.damageEnemy(idx, PLAYER_SHOT_DAMAGE);
+    this.state.hits.push({ enemyId, tick: this.state.tick });
   }
 
   /** Deal `damage` to the enemy at `idx`. On lethal damage the enemy flips to
@@ -449,7 +513,13 @@ export class Engine {
       // so the harness gets frame-rate-independent travel. forcedInput is null
       // in all real play — see the field decl + exposeInternals().
       const snap = this.forcedInput ?? this.input.read();
-      this.input.consumeFire();
+      // Edge-triggered fire (issue #76): one Space keydown = one shot. Skip
+      // under forced input — the harness drives fire through the `fire`
+      // internal, not the keyboard buffer, so a synthetic Space press during
+      // an `advance` step pump can't double-fire.
+      if (!this.forcedInput && this.input.consumeFire()) {
+        this.fireShot();
+      }
       const mouse = this.forcedInput
         ? { dx: 0, dy: 0 }
         : this.input.consumeMouseDelta();
