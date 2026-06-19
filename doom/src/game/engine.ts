@@ -70,6 +70,12 @@ import {
   setActiveClip,
   type EnemyAnimationRig,
 } from "./models";
+import {
+  buildViewmodel,
+  pulseMuzzleFlash,
+  stepViewmodel,
+  type Viewmodel,
+} from "./viewmodel";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -164,6 +170,12 @@ export class Engine {
   /** Reused raycaster for hitscan fire. One instance avoids per-shot
    *  allocations; the origin + direction are set per call. */
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
+
+  /** First-person weapon viewmodel (#87). Built once at boot, parented to
+   *  the camera so it inherits view transform automatically. The engine
+   *  pulses its muzzle-flash on every shot and ticks its recoil/bob
+   *  state once per fixed-step (so easing is deterministic). */
+  private viewmodel: Viewmodel | null = null;
 
   /** The shared wall material (issue #84). One MeshStandardMaterial is reused
    *  across every wall mesh; we stash a reference so the e2e harness can read
@@ -322,6 +334,18 @@ export class Engine {
     // proximity check can route them back into level.ts's open-cell cache.
     this.seedDoors();
 
+    // First-person weapon viewmodel (#87). Built once, parented directly
+    // onto the camera so it inherits the view transform — no per-frame
+    // sync needed. The camera ITSELF must be in the scene graph for the
+    // viewmodel to render (a PerspectiveCamera with attached children
+    // renders its children only when the camera is part of the scene
+    // being rendered); we add the camera to the scene here.
+    const vm = buildViewmodel();
+    this.camera.add(vm.group);
+    this.scene.add(this.camera);
+    this.viewmodel = vm;
+    this.state.weapon.viewmodelPresent = true;
+
     // Keyboard is the canonical input. First keydown flips ready→playing.
     this.input = createKeyboardInput();
 
@@ -330,6 +354,21 @@ export class Engine {
     this.exposeInternals();
     this.exposeTextureHandle();
     this.exposeModelHandle();
+    this.exposeViewmodelHandle();
+  }
+
+  /** Publish the viewmodel contract to a test-only window handle (#87).
+   *  Lets the e2e harness assert that the viewmodel was built AND that
+   *  it's parented to the player camera, without traversing the three.js
+   *  scene graph from Playwright. Mirrors __doomModels / __doomTextures:
+   *  test-only, gameplay code must never read this. */
+  private exposeViewmodelHandle(): void {
+    const vm = this.viewmodel;
+    window.__doomViewmodel = {
+      present: vm !== null,
+      parentIsCamera: vm !== null && vm.group.parent === this.camera,
+      childCount: vm ? vm.group.children.length : 0,
+    };
   }
 
   /** Publish the procedural-texture state to a test-only window handle
@@ -651,6 +690,14 @@ export class Engine {
   private fireShot(): void {
     if (this.state.weapon.ammo <= 0) return;
     this.state.weapon.ammo -= 1;
+    // Pulse the muzzle flash + recoil kick (#87). Every fire that consumes
+    // ammo flashes, hit or miss — the same edge the e2e harness asserts on.
+    // Mirror the tick counter onto state.weapon so the contract reflects
+    // the pulse in the SAME synchronous publish fire() does.
+    if (this.viewmodel) {
+      pulseMuzzleFlash(this.viewmodel);
+      this.state.weapon.muzzleFlashTicks = this.viewmodel.flashTicks;
+    }
 
     const p = this.state.player;
     // Forward unit vector from (yaw, pitch) using the camera's YXZ Euler
@@ -941,6 +988,16 @@ export class Engine {
       // wandered into a solid wall / out of bounds) are removed in-place.
       this.stepProjectiles();
 
+      // --- VIEWMODEL (issue #87) ------------------------------------------
+      // Tick the viewmodel's recoil decay + flash countdown + idle-bob
+      // phase. All easing lives here in the fixed-step path so it's
+      // deterministic (no wall-clock reads). The flash tick mirror onto
+      // state.weapon lets the e2e harness + HUD observe the pulse without
+      // reaching into three.js.
+      if (this.viewmodel) {
+        stepViewmodel(this.viewmodel);
+        this.state.weapon.muzzleFlashTicks = this.viewmodel.flashTicks;
+      }
     }
 
     // Cull enemies that finished their death frame. Keeping a 'dead' enemy

@@ -132,10 +132,28 @@ export interface DoorState {
 
 /** The currently-equipped weapon. `kind` is a free-form id (e.g. 'pistol');
  *  `ammo` is rounds remaining for that weapon. The backlog adds a weapon
- *  inventory + switching behind this single equipped slot. */
+ *  inventory + switching behind this single equipped slot.
+ *
+ *  Issue #87 adds two viewmodel/flash fields to the contract:
+ *   - `muzzleFlashTicks` is the fixed-step frames remaining on the current
+ *     muzzle-flash pulse. Set to MUZZLE_FLASH_TICKS the tick a shot is
+ *     fired; counted down each fixed-step. >0 means the flash is showing
+ *     this tick — the HUD / e2e harness assert on this rather than reading
+ *     a pixel.
+ *   - `viewmodelPresent` is a boot-time flag: `true` once the engine has
+ *     built the first-person weapon viewmodel and parented it to the
+ *     camera. Lets the harness verify the model exists without reaching
+ *     into the three.js scene graph from Playwright. */
 export interface Weapon {
   kind: string;
   ammo: number;
+  /** Fixed-step frames remaining on the current muzzle-flash pulse (#87).
+   *  0 at rest; pulsed to MUZZLE_FLASH_TICKS by every fire that consumes
+   *  ammo, decremented each fixed-step. */
+  muzzleFlashTicks: number;
+  /** True once the viewmodel Group is built and parented to the camera
+   *  (#87). Stable for the engine's lifetime. */
+  viewmodelPresent: boolean;
 }
 
 /** A landed hitscan-weapon hit, published on the contract so the death-slice
@@ -272,6 +290,24 @@ export interface DoomModels {
   }>;
 }
 
+/** Test-only viewmodel contract (issue #87). The engine builds a first-
+ *  person weapon mesh and parents it to the camera at boot; this handle
+ *  publishes whether the viewmodel exists AND whether its parent is the
+ *  camera (so the harness can assert "fixed to the camera" without
+ *  reaching into three.js). `childCount` is the leaf primitive count
+ *  (grip + slide + barrel + sight + flash light + flash sprite) for a
+ *  multi-mesh assertion mirroring `__doomModels`. */
+export interface DoomViewmodel {
+  /** True iff the engine constructed the viewmodel group at boot. */
+  present: boolean;
+  /** True iff the viewmodel's parent is the player camera. The whole point
+   *  of #87 — "fixed to the camera" — is verified here. */
+  parentIsCamera: boolean;
+  /** Number of direct child meshes/lights on the viewmodel group. >1
+   *  guards against a single-box placeholder slipping in. */
+  childCount: number;
+}
+
 declare global {
   interface Window {
     /** Test contract. See doom/docs/ARCHITECTURE.md. */
@@ -282,6 +318,8 @@ declare global {
     __doomTextures?: DoomTextures;
     /** Test-only enemy-model contract — see `DoomModels` (issue #85). */
     __doomModels?: DoomModels;
+    /** Test-only viewmodel contract — see `DoomViewmodel` (issue #87). */
+    __doomViewmodel?: DoomViewmodel;
   }
 }
 
@@ -314,8 +352,16 @@ export const EYE_HEIGHT = 1.6;
 export const PLAYER_START_HEALTH = 100;
 export const PLAYER_START_ARMOR = 0;
 
-/** The weapon the player boots with — a pistol with a starting magazine. */
-export const STARTING_WEAPON: Weapon = { kind: "pistol", ammo: 50 };
+/** The weapon the player boots with — a pistol with a starting magazine.
+ *  `muzzleFlashTicks` and `viewmodelPresent` start at their resting values;
+ *  the engine flips `viewmodelPresent=true` once it has parented the
+ *  viewmodel to the camera (issue #87). */
+export const STARTING_WEAPON: Weapon = {
+  kind: "pistol",
+  ammo: 50,
+  muzzleFlashTicks: 0,
+  viewmodelPresent: false,
+};
 
 /** Canonical initial state. The engine seeds `window.__doom` from this, then
  *  layers the seeded enemy roster on top (see engine.ts seedEnemies()). */

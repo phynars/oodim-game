@@ -943,6 +943,53 @@ test("each enemy carries an AnimationMixer with named clips and the active clip 
   expect(after.activeClip).toBe("death");
 });
 
+test("a weapon viewmodel is parented to the camera and the muzzle flash pulses on fire (issue #87)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomViewmodel), null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // BOOT contract: the viewmodel exists, is parented to the camera, and
+  // has multiple primitives (grip + slide + barrel + sight + flash light
+  // + flash sprite). Pre-#87 the engine built no viewmodel → __doomViewmodel
+  // is undefined → the waitForFunction above times out. With the viewmodel
+  // wired we expect parentIsCamera=true and childCount>1.
+  const boot = await page.evaluate(() => window.__doomViewmodel!);
+  expect(boot.present).toBe(true);
+  expect(boot.parentIsCamera).toBe(true);
+  expect(boot.childCount).toBeGreaterThan(1);
+
+  // BOOT contract on the state contract surface: weapon.viewmodelPresent
+  // flips true after engine construction; muzzleFlashTicks resting at 0.
+  const wpn0 = await page.evaluate(() => ({
+    viewmodelPresent: window.__doom!.weapon.viewmodelPresent,
+    muzzleFlashTicks: window.__doom!.weapon.muzzleFlashTicks,
+  }));
+  expect(wpn0.viewmodelPresent).toBe(true);
+  expect(wpn0.muzzleFlashTicks).toBe(0);
+
+  // FIRE contract: firing one shot pulses the muzzle flash — the
+  // muzzleFlashTicks counter jumps from 0 to a positive value in the same
+  // synchronous publish fire() does. Pre-#87 this stays 0 (no flash
+  // wired). Sample in one evaluate so the next fixed-step can't decrement
+  // it before we read.
+  const afterFire = await page.evaluate(() => {
+    // Aim doesn't matter — fire pulses the flash on ammo consumption,
+    // hit or miss. Just fire once.
+    window.__doomInternals!.fire();
+    return {
+      muzzleFlashTicks: window.__doom!.weapon.muzzleFlashTicks,
+    };
+  });
+  expect(afterFire.muzzleFlashTicks).toBeGreaterThan(0);
+});
+
 test("wall material carries a procedural CanvasTexture map (issue #84)", async ({
   page,
 }) => {
