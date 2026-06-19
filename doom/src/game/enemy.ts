@@ -16,7 +16,13 @@
 // live enemy — same determinism contract as the player movement path.
 
 import { collidesAt } from "./level";
-import type { Enemy, PlayerState } from "./types";
+import {
+  RANGED_INITIAL_COOLDOWN_TICKS,
+  RANGED_KINDS,
+  RANGED_COOLDOWN_TICKS,
+  type Enemy,
+  type PlayerState,
+} from "./types";
 
 /** Distance (world units) within which a resting enemy notices the player and
  *  transitions idle → chasing. The seeded roster sits 11–15 u in front of the
@@ -46,12 +52,22 @@ export const ENEMY_SPEED_PER_TICK = 0.05;
  *  without snagging on a cell corner. */
 export const ENEMY_RADIUS = 0.25;
 
+/** Distance at which a RANGED enemy stops to attack from afar. Larger than
+ *  melee ATTACK_RANGE so barons hold ground at fireball range instead of
+ *  closing into the player's face. Below VISION_RADIUS so a ranged enemy can
+ *  still acquire and then halt. */
+export const RANGED_ATTACK_RANGE = 8;
+
 /** Advance one enemy by one fixed-step. MUTATES the enemy in place — the
  *  caller (engine.update) owns the roster, so this avoids per-tick
  *  allocations. Dead enemies are a no-op (the engine culls them the tick
- *  after death). */
-export function stepEnemyAI(enemy: Enemy, player: PlayerState): void {
-  if (enemy.state === "dead") return;
+ *  after death).
+ *
+ *  Returns TRUE when a ranged archetype's cooldown elapsed THIS tick and the
+ *  engine should spawn a projectile at the enemy aimed at the player. Returns
+ *  FALSE for melee kinds and for ranged kinds still on cooldown. */
+export function stepEnemyAI(enemy: Enemy, player: PlayerState): boolean {
+  if (enemy.state === "dead") return false;
 
   // Range to the player on the floor plane (y is the enemy/player vertical
   // offset, irrelevant for movement + AI gating).
@@ -60,24 +76,47 @@ export function stepEnemyAI(enemy: Enemy, player: PlayerState): void {
   const dist = Math.hypot(dx, dz);
 
   // --- State transitions ---------------------------------------------------
-  // idle → chasing: the player entered the vision band.
-  // chasing → attacking: within melee range.
-  // attacking → chasing: player slipped out of melee range (but still aggro'd).
-  // Once chasing/attacking, an enemy never returns to idle — see VISION_RADIUS
-  // comment above.
+  // Ranged kinds use RANGED_ATTACK_RANGE (hold at fireball distance); melee
+  // kinds use ATTACK_RANGE (close to bite). Both share the same
+  // idle→chasing→attacking↔chasing topology.
+  const ranged = RANGED_KINDS[enemy.kind];
+  const attackBand = ranged ? RANGED_ATTACK_RANGE : ATTACK_RANGE;
+
   if (enemy.state === "idle") {
     if (dist <= VISION_RADIUS) enemy.state = "chasing";
   } else if (enemy.state === "chasing") {
-    if (dist <= ATTACK_RANGE) enemy.state = "attacking";
+    if (dist <= attackBand) {
+      enemy.state = "attacking";
+      // Prime a short windup on first acquisition so a ranged enemy fires
+      // promptly instead of holding for the full cooldown.
+      if (ranged && enemy.rangedCooldown <= 0) {
+        enemy.rangedCooldown = RANGED_INITIAL_COOLDOWN_TICKS;
+      }
+    }
   } else if (enemy.state === "attacking") {
-    if (dist > ATTACK_RANGE) enemy.state = "chasing";
+    if (dist > attackBand) enemy.state = "chasing";
+  }
+
+  // --- Ranged fire ---------------------------------------------------------
+  // While attacking, tick the cooldown. On the tick it crosses 0, signal the
+  // engine to spawn a fireball + reset the cooldown for the next shot. We
+  // also REQUIRE dist > 0 so a degenerate overlap doesn't divide-by-zero
+  // when the engine computes the projectile direction.
+  if (ranged && enemy.state === "attacking" && dist > 0) {
+    if (enemy.rangedCooldown > 0) {
+      enemy.rangedCooldown -= 1;
+    }
+    if (enemy.rangedCooldown <= 0) {
+      enemy.rangedCooldown = RANGED_COOLDOWN_TICKS;
+      return true;
+    }
   }
 
   // --- Movement ------------------------------------------------------------
-  // Only chasing enemies move. Attacking enemies hold position; the damage
-  // tick is a follow-up slice. Idle enemies are rooted by definition.
-  if (enemy.state !== "chasing") return;
-  if (dist === 0) return; // standing on the player; nothing to do
+  // Only chasing enemies move. Attacking enemies hold position. Idle enemies
+  // are rooted by definition.
+  if (enemy.state !== "chasing") return false;
+  if (dist === 0) return false; // standing on the player; nothing to do
 
   // Unit vector toward the player, scaled to one tick's worth of travel.
   const stepX = (dx / dist) * ENEMY_SPEED_PER_TICK;
@@ -90,4 +129,6 @@ export function stepEnemyAI(enemy: Enemy, player: PlayerState): void {
   if (!collidesAt(nextX, enemy.z, ENEMY_RADIUS)) enemy.x = nextX;
   const nextZ = enemy.z + stepZ;
   if (!collidesAt(enemy.x, nextZ, ENEMY_RADIUS)) enemy.z = nextZ;
+
+  return false;
 }

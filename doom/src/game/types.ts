@@ -82,15 +82,27 @@ export interface Enemy {
   /** Hit points remaining. At <=0 the engine flips `state` to 'dead'. */
   hp: number;
   state: EnemyState;
+  /** Fixed-step cooldown counter for ranged archetypes. Counts DOWN each tick
+   *  while in 'attacking'; when it reaches 0 the enemy spawns a projectile and
+   *  the counter resets to RANGED_COOLDOWN_TICKS. Unused (stays 0) for melee
+   *  kinds. */
+  rangedCooldown: number;
 }
 
 /** A projectile in flight. `from` distinguishes the player's shots from enemy
- *  fire so collision + scoring can tell them apart. Positions are world-space;
- *  the backlog adds velocity/direction as the combat slice lands. */
+ *  fire so collision + scoring can tell them apart. Positions are world-space.
+ *  Velocity is world-units per fixed-step (60 Hz); the engine advances each
+ *  projectile by (vx,vy,vz) per tick and culls on player/wall contact or when
+ *  it leaves the arena. `id` is stable per spawn so the renderer + tests can
+ *  track an individual shot. */
 export interface Projectile {
+  id: number;
   x: number;
   y: number;
   z: number;
+  vx: number;
+  vy: number;
+  vz: number;
   from: "player" | "enemy";
 }
 
@@ -252,6 +264,41 @@ export const HP_BY_KIND: Record<EnemyKind, number> = {
  *  so a single `forceHit()` is lethal to the seeded imp — the e2e harness
  *  asserts forceHit() drops the first enemy to 'dead'. */
 export const PLAYER_SHOT_DAMAGE = 50;
+
+/** Which enemy kinds throw projectiles instead of melee-ing. Imps + demons
+ *  bite (handled by the melee-damage backlog slice); barons are the heavy
+ *  ranged threat — they hold at ATTACK_RANGE and lob fireballs at the player. */
+export const RANGED_KINDS: Record<EnemyKind, boolean> = {
+  imp: false,
+  demon: false,
+  baron: true,
+};
+
+/** Damage one enemy projectile deals to the player on contact. Tuned so a
+ *  baron fireball is a meaningful chip (10% of starting health) but not an
+ *  instant-kill — kiting + cover matters. */
+export const ENEMY_PROJECTILE_DAMAGE = 10;
+
+/** Projectile speed in world units per fixed-step (60 Hz). 0.4 u/tick = 24
+ *  u/s — fast enough to be threatening at typical engagement range but slow
+ *  enough that a moving player can sidestep. */
+export const PROJECTILE_SPEED_PER_TICK = 0.4;
+
+/** Collision radius of a projectile against the player. Generous so a near-
+ *  miss on the player's hitbox still connects (the projectile is conceptually
+ *  a fireball with some volume). */
+export const PROJECTILE_RADIUS = 0.4;
+
+/** Fixed-step cooldown between successive ranged shots from one enemy. 90
+ *  ticks = 1.5s at 60Hz — slow enough that a player has time to react /
+ *  break line, fast enough that a baron feels actively threatening. */
+export const RANGED_COOLDOWN_TICKS = 90;
+
+/** How long a ranged enemy stays in 'attacking' before the next shot
+ *  windup. We expose a SHORT initial cooldown on first transition into
+ *  'attacking' so the very first shot fires promptly (a baron doesn't wait
+ *  1.5s to fire when first acquiring the player). */
+export const RANGED_INITIAL_COOLDOWN_TICKS = 15;
 
 /** Eye height above the floor, in world units (~1.6 = a standing human in
  *  meters). The camera sits here; the floor plane is at y=0. */

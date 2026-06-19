@@ -15,13 +15,17 @@
 import * as THREE from "three";
 
 import {
+  ENEMY_PROJECTILE_DAMAGE,
   HP_BY_KIND,
   initialState,
   PLAYER_SHOT_DAMAGE,
+  PROJECTILE_RADIUS,
+  PROJECTILE_SPEED_PER_TICK,
   SCORE_BY_KIND,
   type DoomState,
   type Enemy,
   type EnemyKind,
+  type Projectile,
 } from "./types";
 import {
   createKeyboardInput,
@@ -149,6 +153,10 @@ export class Engine {
    *  Always null during real play — gameplay code never sets it. */
   private forcedInput: InputSnapshot | null = null;
 
+  /** Monotonic id source for spawned projectiles. Lets the renderer + tests
+   *  track an individual shot across ticks. */
+  private nextProjectileId: number = 1;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.state = initialState();
@@ -258,6 +266,7 @@ export class Engine {
         z: seed.z,
         hp: HP_BY_KIND[seed.kind],
         state: "idle",
+        rangedCooldown: 0,
       };
       this.state.enemies.push(enemy);
 
@@ -455,6 +464,87 @@ export class Engine {
     }
   }
 
+  /** Spawn a projectile at `enemy`'s eye-ish height aimed at the player.
+   *  Velocity is a unit vector toward the player's current eye position,
+   *  scaled by PROJECTILE_SPEED_PER_TICK. `from:'enemy'` distinguishes it
+   *  from player shots in the contract. Called by update() when stepEnemyAI
+   *  signals a fire-this-tick on a ranged archetype (issue #81). */
+  private spawnEnemyProjectile(enemy: Enemy): void {
+    const p = this.state.player;
+    // Aim from the enemy's center-of-mass toward the player's eye. Using
+    // (player.y) rather than enemy.y for the target y means a fireball
+    // travels with a slight upward arc when the enemy is shorter than the
+    // player — but our boxes are short, so this reads as "at face height".
+    const ox = enemy.x;
+    const oy = enemy.y; // box center
+    const oz = enemy.z;
+    const dx = p.x - ox;
+    const dy = p.y - oy;
+    const dz = p.z - oz;
+    const len = Math.hypot(dx, dy, dz);
+    if (len === 0) return; // degenerate; nothing to aim at
+    const inv = PROJECTILE_SPEED_PER_TICK / len;
+    const projectile: Projectile = {
+      id: this.nextProjectileId++,
+      x: ox,
+      y: oy,
+      z: oz,
+      vx: dx * inv,
+      vy: dy * inv,
+      vz: dz * inv,
+      from: "enemy",
+    };
+    this.state.projectiles.push(projectile);
+  }
+
+  /** Advance every projectile by its velocity for one fixed-step, then
+   *  resolve outcomes:
+   *   - PLAYER CONTACT (only for `from:'enemy'`): deal ENEMY_PROJECTILE_DAMAGE
+   *     and despawn the projectile.
+   *   - LEFT THE ARENA: cull projectiles whose floor-plane position falls
+   *     outside the level footprint. This is cheap + correct enough for the
+   *     scaffold; a proper wall-tile raycast is a backlog polish slice.
+   *
+   *  Player-fired projectiles (`from:'player'`) are not produced by the
+   *  scaffold (the equipped weapon is hitscan); we still tick + cull them
+   *  generically so a future weapon slice can drop them in without re-wiring.
+   *  Issue #81. */
+  private stepProjectiles(): void {
+    if (this.state.projectiles.length === 0) return;
+    const p = this.state.player;
+    const halfW = this.state.field.width / 2;
+    const halfH = this.state.field.height / 2;
+    // Walk backwards so in-place splice doesn't skip the next index.
+    for (let i = this.state.projectiles.length - 1; i >= 0; i--) {
+      const proj = this.state.projectiles[i];
+      proj.x += proj.vx;
+      proj.y += proj.vy;
+      proj.z += proj.vz;
+      // Out-of-bounds cull (floor-plane footprint is the arena).
+      if (
+        proj.x < -halfW ||
+        proj.x > halfW ||
+        proj.z < -halfH ||
+        proj.z > halfH
+      ) {
+        this.state.projectiles.splice(i, 1);
+        continue;
+      }
+      // Enemy fire vs player: 3D distance to the eye, since projectiles
+      // travel with vertical component. Squared compare to skip the sqrt.
+      if (proj.from === "enemy" && p.alive) {
+        const ddx = proj.x - p.x;
+        const ddy = proj.y - p.y;
+        const ddz = proj.z - p.z;
+        const r = PROJECTILE_RADIUS;
+        if (ddx * ddx + ddy * ddy + ddz * ddz <= r * r) {
+          this.damagePlayer(ENEMY_PROJECTILE_DAMAGE);
+          this.state.projectiles.splice(i, 1);
+        }
+      }
+    }
+  }
+
   /** Reduce player health by `amount`, routing through armor first (armor
    *  soaks a fraction; the backlog tunes the ratio). On lethal damage the
    *  player dies and the two-step terminal lifecycle arms (mirrors Galaga's
@@ -643,10 +733,19 @@ export class Engine {
       // One step per live enemy, before the death-cull below — so an enemy
       // that the player just killed via fireShot() this same tick doesn't
       // get a posthumous chase step. stepEnemyAI() handles its own state
-      // gating; dead enemies are a no-op.
+      // gating; dead enemies are a no-op. A `true` return means the enemy's
+      // ranged cooldown elapsed this tick — spawn a fireball aimed at the
+      // player (issue #81).
       for (const enemy of this.state.enemies) {
-        stepEnemyAI(enemy, this.state.player);
+        const fires = stepEnemyAI(enemy, this.state.player);
+        if (fires) this.spawnEnemyProjectile(enemy);
       }
+
+      // --- PROJECTILES (issue #81) ----------------------------------------
+      // Advance every projectile by its velocity, then resolve player /
+      // boundary collisions. Runs after enemy AI so a newly-spawned fireball
+      // gets its first travel tick this same update.
+      this.stepProjectiles();
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
       // for exactly the tick it died lets a consumer observe the transition;

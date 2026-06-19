@@ -584,6 +584,58 @@ test("walking onto a pickup grants it the same tick — issue #80", async ({ pag
   expect(result.ammoDelta).toBeGreaterThan(0);
 });
 
+test("enemy variety + ranged fire: ≥2 distinct enemy kinds AND a ranged enemy spawns a from:'enemy' projectile (issue #81)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // AC#1: ≥2 distinct enemy kinds exist on the seeded roster. Read the
+  // published state and assert on Set size.
+  const kinds = await page.evaluate(() => {
+    return Array.from(new Set(window.__doom!.enemies.map((e) => e.kind)));
+  });
+  expect(kinds.length).toBeGreaterThanOrEqual(2);
+
+  // AC#2: a ranged archetype produces a projectile with from==='enemy'.
+  // Setup: place the player directly in front of the baron (the ranged
+  // archetype) just inside RANGED_ATTACK_RANGE so its AI transitions
+  // idle→chasing→attacking and the cooldown fires within a short pump.
+  // Pre-change, the projectiles[] roster was empty forever — this assertion
+  // fails on main.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const baron = s.enemies.find((e) => e.kind === "baron");
+    if (!baron) return { ok: false as const, why: "no baron seeded" };
+    // Sit 3u south of the baron — well inside RANGED_ATTACK_RANGE (8) so
+    // it'll attack on the first AI tick, plus the initial-cooldown windup
+    // (~15 ticks) fires shortly after.
+    s.player.x = baron.x;
+    s.player.z = baron.z + 3;
+    // Pump enough fixed-steps to clear the initial windup with margin.
+    window.__doomInternals!.advance({ steps: 60 });
+    const after = window.__doom!;
+    const enemyProjectiles = after.projectiles.filter((p) => p.from === "enemy");
+    return {
+      ok: true as const,
+      projectileCount: after.projectiles.length,
+      enemyProjectileCount: enemyProjectiles.length,
+      firstEnemyProjectile: enemyProjectiles[0] ?? null,
+    };
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  // At least one projectile fired from an enemy.
+  expect(result.enemyProjectileCount).toBeGreaterThanOrEqual(1);
+  // And the contract shape is right: from==='enemy' on the entry.
+  expect(result.firstEnemyProjectile).not.toBeNull();
+  expect(result.firstEnemyProjectile!.from).toBe("enemy");
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +
