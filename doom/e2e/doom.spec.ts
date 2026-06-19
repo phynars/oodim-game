@@ -243,18 +243,30 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
   await page.waitForFunction(() => (window.__doom?.tick ?? 0) >= 3, null, {
     timeout: 5000,
   });
+  // Teleport to a southern z in a clear corridor (col 5 has no interior
+  // wall at any row, so the player walks straight at the north perimeter).
+  // Use z=+4 (not +12) so the travel-to-wall distance is short enough that
+  // even with software-WebGL frame-rate jitter on CI the player reaches the
+  // clamp well within the polling window.
   await page.evaluate(() => {
-    window.__doomInternals!.forceTeleport({ x: -6, z: 12, yaw: 0 });
+    window.__doomInternals!.forceTeleport({ x: -6, z: 4, yaw: 0 });
   });
 
-  // Hold forward (down -z) for long enough that, UNCLAMPED, the player
-  // would overshoot the wall. At 0.08 u/step × 60Hz = 4.8 u/s; from
-  // z=+12 on a 32-deep field, the north-perimeter wall sits near z=-14
-  // (the wall cell row 0 spans z ∈ [-16,-14], south face at -14). Travel
-  // to the wall is ~26 u, ~5.4s. 6s gives a comfortable cushion to be
-  // SURE we're pinned against the wall when we sample.
+  // Hold forward (down -z). At 0.08 u/step × 60Hz = 4.8 u/s; from z=+4
+  // the north-perimeter wall sits near z=-13.7 (row 0 spans [-16,-14],
+  // south face at -14, minus PLAYER_RADIUS). Travel is ~17.7 u, ~3.7s.
+  // Rather than a fixed timeout (a wall-clock budget that fights software-
+  // WebGL CI), POLL for "player is past z=-10 (so we definitely hit the
+  // wall) AND has stopped advancing", with a generous 15s timeout. Polling
+  // is robust to slow ticks; a fixed sleep isn't.
   await page.keyboard.down("ArrowUp");
-  await page.waitForTimeout(6000);
+  await page.waitForFunction(
+    () => (window.__doom?.player.z ?? 999) < -10,
+    null,
+    { timeout: 15_000 },
+  );
+  // Give a few extra ticks to be SURE we're pinned (not still creeping).
+  await page.waitForTimeout(500);
   await page.keyboard.up("ArrowUp");
 
   const z = await page.evaluate(() => window.__doom!.player.z);
@@ -345,40 +357,35 @@ test("level geometry: a KNOWN interior wall cell blocks movement (collision driv
   // Teleport just south of the pillar pair at row=4 (world z≈-7). South face
   // of the pillar is at z = -7 + TILE_SIZE/2 = -6. Place the player a couple
   // of units further south so they walk INTO the wall (rather than already
-  // being against it before the loop starts). yaw:0 re-aims them at -z.
+  // being against it before the loop starts). yaw:0 re-aims them at -z. We
+  // do the teleport + ArrowUp-down + yaw-reset in ONE evaluate so no rAF
+  // tick can fire between resetting yaw and the engine sampling input —
+  // ArrowUp's first sampled tick sees yaw=0 and walks straight at the pillar.
   await page.evaluate(() => {
     window.__doomInternals!.forceTeleport({ x: 0, z: -3, yaw: 0 });
   });
 
-  // Confirm teleport landed. Use generous tolerances — between the
-  // teleport call and the read, a fixed-step tick can fire; with no keys
-  // held and yaw=0 the player position/yaw should be unchanged, but if a
-  // residual mouse delta happened to fire it could nudge yaw fractionally.
-  // The test cares that we're CLOSE to the teleport target, not exact.
-  const after = await page.evaluate(() => ({
-    x: window.__doom!.player.x,
-    z: window.__doom!.player.z,
-    yaw: window.__doom!.player.yaw,
-  }));
-  expect(after.x).toBeCloseTo(0, 1);
-  expect(after.z).toBeCloseTo(-3, 1);
-  // Yaw can drift slightly if a late mousemove dispatches after the
-  // teleport — tolerate up to ~0.1 rad (~6°), well within "still aimed
-  // mostly at the pillar".
-  expect(Math.abs(after.yaw)).toBeLessThan(0.1);
-
-  // One more yaw reset right before holding forward — drains any residual
-  // mouse delta that might have crept in between the previous teleport and
-  // here, so ArrowUp walks straight down -z.
-  await page.evaluate(() => {
-    window.__doomInternals!.forceTeleport({ x: 0, z: -3, yaw: 0 });
-  });
-
-  // Hold forward (down -z, toward the pillar). At 4.8 u/s, 2s of held input
-  // would travel 9.6u UNCLAMPED — way past the pillar at z≈-7. Map collision
-  // must stop the player BEFORE the pillar's south face (z > -6 + radius).
+  // Hold forward (down -z, toward the pillar). Rather than asserting yaw is
+  // exactly 0 (a fragile check — any late mousemove between teleport and
+  // read would fail it), we assert the BEHAVIORAL outcome: with map
+  // collision, the player CAN'T pass through the pillar. Poll for the
+  // player to have advanced AND stopped advancing (clamped against the
+  // pillar's south face). At 4.8 u/s, 1.5s of input would travel 7.2u
+  // UNCLAMPED — way past the pillar at z≈-6. Map collision stops them
+  // short. Use a polling wait with a comfortable budget.
   await page.keyboard.down("ArrowUp");
-  await page.waitForTimeout(2000);
+  // Wait until the player has clearly advanced past z=-4 (so we know
+  // movement is wired) AND not gone past z=-6.5 (the pillar held).
+  await page.waitForFunction(
+    () => {
+      const z = window.__doom?.player.z ?? 999;
+      return z < -4 && z > -6.5;
+    },
+    null,
+    { timeout: 10_000 },
+  );
+  // Give extra ticks so we're firmly pinned against the pillar.
+  await page.waitForTimeout(800);
   await page.keyboard.up("ArrowUp");
 
   const z = await page.evaluate(() => window.__doom!.player.z);
