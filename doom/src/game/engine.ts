@@ -651,17 +651,15 @@ export class Engine {
     this.advanceToStage(this.state.stage + 1);
   }
 
-  /** Load `stage` (1-indexed): swap the level map, reset the player to the
-   *  new spawn, and clear all per-stage rosters. Does NOT reset score,
-   *  weapon, or health — those carry across stages, matching the genre. */
-  private advanceToStage(stage: number): void {
-    loadStage(stage);
-    this.state.stage = stage;
-    const spawn = findSpawn();
-    this.state.player.x = spawn.x;
-    this.state.player.z = spawn.z;
-    // Clear in-flight projectiles + landed-hit log; both are per-stage.
-    this.state.projectiles = [];
+  /** Shared stage-reload MECHANICS (#124): dispose every enemy mesh + rig,
+   *  swap the level map to `stage`, reposition the player to the new
+   *  spawn, update state.stage / state.field, and reseed the per-stage
+   *  rosters (enemies, pickups, doors). DOES NOT touch state-reset policy
+   *  — that's the caller's job. `restart()` wipes the full DoomState before
+   *  calling this; `advanceToStage()` clears projectiles + zeros rosters
+   *  before calling this (carrying score/weapon/health forward, per genre).
+   *  Owning the mechanics in ONE place keeps the two paths from drifting. */
+  private reloadStage(stage: number): void {
     // Drop existing enemy models from the scene; reseeding rebuilds them.
     // Each model is a Group of meshes (issue #85) — disposeEnemyModel
     // walks the children and frees every geometry + material.
@@ -677,13 +675,32 @@ export class Engine {
     }
     this.enemyRigs.clear();
     this.enemyMeshes.clear();
-    this.state.enemies = [];
-    this.state.pickups = [];
+
+    // Swap the level map + place the player at the new stage's spawn.
+    loadStage(stage);
+    this.state.stage = stage;
+    const spawn = findSpawn();
+    this.state.player.x = spawn.x;
+    this.state.player.z = spawn.z;
+    this.state.field = { width: MAP_WIDTH, height: MAP_HEIGHT };
+
     // Reseed rosters from the (new) map's defaults. Enemies + pickups come
     // back to their seeded positions; doors from the new map's `D` cells.
     this.seedEnemies();
     this.seedPickups();
     this.seedDoors();
+  }
+
+  /** Load `stage` (1-indexed): swap the level map, reset the player to the
+   *  new spawn, and clear all per-stage rosters. Does NOT reset score,
+   *  weapon, or health — those carry across stages, matching the genre. */
+  private advanceToStage(stage: number): void {
+    // Clear in-flight projectiles + zero the per-stage rosters; the shared
+    // reloadStage() helper handles the mesh/rig teardown + reseed.
+    this.state.projectiles = [];
+    this.state.enemies = [];
+    this.state.pickups = [];
+    this.reloadStage(stage);
   }
 
   /** Check whether the player is standing on any un-taken pickup; apply the
@@ -787,32 +804,14 @@ export class Engine {
    *  same seeded rosters the constructor builds — including rebuilding
    *  three.js models so the scene resets too. */
   private restart(): void {
-    // Tear down existing enemy meshes + rigs (the per-stage cleanup from
-    // advanceToStage covers this exactly).
-    for (const model of this.enemyMeshes.values()) {
-      this.scene.remove(model);
-      disposeEnemyModel(model);
-    }
-    for (const rig of this.enemyRigs.values()) {
-      rig.mixer.stopAllAction();
-      rig.mixer.uncacheRoot(rig.mixer.getRoot());
-    }
-    this.enemyRigs.clear();
-    this.enemyMeshes.clear();
-
-    // Reload stage 1 from the level map.
-    loadStage(1);
+    // Full state wipe — score/health/ammo/projectiles/hits/flash-shake all
+    // back to boot. The shared reloadStage() helper then does the mechanics
+    // (mesh + rig teardown, loadStage(1), reposition, reseed).
     this.state = initialState();
-    const spawn = findSpawn();
-    this.state.player.x = spawn.x;
-    this.state.player.z = spawn.z;
-    this.state.field = { width: MAP_WIDTH, height: MAP_HEIGHT };
+    this.reloadStage(1);
+    // viewmodel is constructed once at boot and persists across restarts;
+    // mirror its presence onto the freshly-wiped weapon state.
     this.state.weapon.viewmodelPresent = this.viewmodel !== null;
-
-    // Reseed rosters from the stage-1 map's defaults.
-    this.seedEnemies();
-    this.seedPickups();
-    this.seedDoors();
 
     // Clear terminal-lifecycle bookkeeping so the next death starts fresh.
     this.lostTick = null;
