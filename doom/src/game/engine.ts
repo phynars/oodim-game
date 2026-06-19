@@ -15,8 +15,6 @@
 import * as THREE from "three";
 
 import {
-  FIELD_HEIGHT,
-  FIELD_WIDTH,
   HP_BY_KIND,
   initialState,
   PLAYER_SHOT_DAMAGE,
@@ -35,6 +33,14 @@ import {
   type InputSnapshot,
   type InputSource,
 } from "./input";
+import {
+  collidesAt,
+  findSpawn,
+  MAP_HEIGHT,
+  MAP_WIDTH,
+  WALL_HEIGHT,
+  walls,
+} from "./level";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -58,10 +64,14 @@ const CAMERA_FAR = 200;
  *  scattered across the arena's north half, in front of the player's spawn.
  *  The FIRST entry is an imp whose hp (30) is below PLAYER_SHOT_DAMAGE (50),
  *  so a single forceHit() drops it to 'dead' — the e2e harness asserts that. */
+// Positions are world-space, chosen to land inside walkable cells of LEVEL_MAP
+// (the map is centered on origin: x ∈ ±MAP_WIDTH/2, z ∈ ±MAP_HEIGHT/2). All
+// three sit north of the south-central spawn so the player sees them
+// immediately, and clear of the interior pillar at (1, 5).
 const SEED_ENEMIES: ReadonlyArray<{ kind: EnemyKind; x: number; z: number }> = [
-  { kind: "imp", x: -4, z: -6 },
-  { kind: "demon", x: 4, z: -8 },
-  { kind: "baron", x: 0, z: -12 },
+  { kind: "imp", x: -5, z: -3 },
+  { kind: "demon", x: 5, z: -3 },
+  { kind: "baron", x: -1, z: -7 },
 ];
 
 /** Visual size (world units) of a placeholder enemy box, per archetype — barons
@@ -119,6 +129,14 @@ export class Engine {
     this.canvas = canvas;
     this.state = initialState();
 
+    // Level geometry drives spawn + footprint (issue #75). The map is the
+    // source of truth — the prior hard-coded box-clamp is gone, collision now
+    // queries level.ts cells. Spawn at the 'S' cell, looking north (down -z).
+    const spawn = findSpawn();
+    this.state.player.x = spawn.x;
+    this.state.player.z = spawn.z;
+    this.state.field = { width: MAP_WIDTH, height: MAP_HEIGHT };
+
     // --- three.js scene setup ---------------------------------------------
     // Renderer bound to the page's canvas. antialias:false keeps the headless
     // SwiftShader software path fast (and the e2e harness asserts on state,
@@ -156,8 +174,9 @@ export class Engine {
     this.scene.add(sun);
 
     // Floor — a plane spanning the arena, rotated flat (PlaneGeometry is built
-    // in the XY plane; rotate -90° about X to lay it in XZ at y=0).
-    const floorGeo = new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_HEIGHT);
+    // in the XY plane; rotate -90° about X to lay it in XZ at y=0). Sized from
+    // the level map so the floor exactly underlays the walkable cells.
+    const floorGeo = new THREE.PlaneGeometry(MAP_WIDTH, MAP_HEIGHT);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0x2a2a38,
       roughness: 1,
@@ -166,6 +185,23 @@ export class Engine {
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
+
+    // Build wall meshes from the level map (issue #75). One box per solid
+    // cell, sized CELL × WALL_HEIGHT × CELL, centered at the cell's world
+    // position. Geometry + material are shared across walls — every solid
+    // cell renders identically, and disposing them is a no-op for the scene
+    // lifecycle (the engine outlives the level for now).
+    const wallGeo = new THREE.BoxGeometry(2, WALL_HEIGHT, 2);
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x4a4a5a,
+      roughness: 0.9,
+      metalness: 0,
+    });
+    for (const w of walls()) {
+      const mesh = new THREE.Mesh(wallGeo, wallMat);
+      mesh.position.set(w.x, WALL_HEIGHT / 2, w.z);
+      this.scene.add(mesh);
+    }
 
     // Seed the enemy roster + a placeholder box mesh per enemy.
     this.seedEnemies();
@@ -458,15 +494,15 @@ export class Engine {
         // identity → forward intent (mz=-1) becomes world delta (0,-1).
         const dx = mx * cos + mz * sin;
         const dz = -mx * sin + mz * cos;
-        // PER-AXIS COLLISION: resolve x and z independently so sliding along
-        // a wall works (hit a north wall → forward intent zeros z but keeps
-        // x). Field is centered on origin and spans FIELD_WIDTH × FIELD_HEIGHT.
-        const halfW = FIELD_WIDTH / 2 - PLAYER_RADIUS;
-        const halfH = FIELD_HEIGHT / 2 - PLAYER_RADIUS;
+        // PER-AXIS COLLISION against the level map (issue #75): resolve x and
+        // z independently so sliding along a wall works (hit a north wall →
+        // forward intent zeros z but keeps x). collidesAt queries level.ts
+        // cells — off-map is treated as solid, so the map's outer ring IS the
+        // arena boundary (no separate field-box clamp).
         const nextX = p.x + dx * PLAYER_SPEED_PER_TICK;
+        if (!collidesAt(nextX, p.z, PLAYER_RADIUS)) p.x = nextX;
         const nextZ = p.z + dz * PLAYER_SPEED_PER_TICK;
-        p.x = nextX < -halfW ? -halfW : nextX > halfW ? halfW : nextX;
-        p.z = nextZ < -halfH ? -halfH : nextZ > halfH ? halfH : nextZ;
+        if (!collidesAt(p.x, nextZ, PLAYER_RADIUS)) p.z = nextZ;
       }
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
