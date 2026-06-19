@@ -22,6 +22,7 @@ import {
   type DoomState,
   type Enemy,
   type EnemyKind,
+  type Projectile,
 } from "./types";
 import {
   createKeyboardInput,
@@ -41,7 +42,12 @@ import {
   WALL_HEIGHT,
   walls,
 } from "./level";
-import { stepEnemyAI } from "./enemy";
+import {
+  PROJECTILE_DAMAGE,
+  PROJECTILE_HIT_RADIUS,
+  PROJECTILE_SPEED_PER_TICK,
+  stepEnemyAI,
+} from "./enemy";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -129,6 +135,12 @@ export class Engine {
   /** Reused raycaster for hitscan fire. One instance avoids per-shot
    *  allocations; the origin + direction are set per call. */
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
+
+  /** Stable id counter for projectiles (#81). Stamped onto each new
+   *  Projectile and incremented — same monotonic scheme as enemies/pickups,
+   *  so a test that tracks a projectile by id can. Instance-scoped so two
+   *  engines on the same page wouldn't collide. */
+  private nextProjectileId = 1;
 
   /** Tick at which status flipped to 'lost'. After GAMEOVER_HOLD_FRAMES more
    *  fixed-step frames elapse the status advances to 'gameover'. Null while
@@ -640,20 +652,33 @@ export class Engine {
       // dropped at the player's feet by some future mechanic still grants.
       this.checkPickups();
 
-      // --- ENEMY AI (issue #77) + DAMAGE (issue #79) ----------------------
+      // --- ENEMY AI (issue #77) + DAMAGE (issue #79) + RANGED FIRE (#81) ---
       // One step per live enemy, before the death-cull below — so an enemy
       // that the player just killed via fireShot() this same tick doesn't
       // get a posthumous chase step. stepEnemyAI() handles its own state
-      // gating; dead enemies are a no-op. Returned damage (>0 when an
-      // attacking enemy's cooldown elapsed) goes through damagePlayer() so
-      // armor absorption + the two-step terminal lifecycle stay centralized.
-      // We stop polling enemies once the player is dead — no posthumous hits.
+      // gating; dead enemies are a no-op. For melee kinds the returned
+      // `damage` (>0 when an attacking enemy's cooldown elapsed) goes
+      // through damagePlayer() so armor absorption + the two-step terminal
+      // lifecycle stay centralized. For ranged kinds (baron) the result
+      // sets `fireProjectile`, telling us to spawn a `from:'enemy'`
+      // projectile aimed at the player. We stop polling enemies once the
+      // player is dead — no posthumous hits.
       for (const enemy of this.state.enemies) {
-        const dmg = stepEnemyAI(enemy, this.state.player);
-        if (dmg > 0 && this.state.player.alive) {
-          this.damagePlayer(dmg);
+        const res = stepEnemyAI(enemy, this.state.player);
+        if (res.damage > 0 && this.state.player.alive) {
+          this.damagePlayer(res.damage);
+        }
+        if (res.fireProjectile && this.state.player.alive) {
+          this.spawnEnemyProjectile(enemy);
         }
       }
+
+      // --- PROJECTILES (issue #81) ----------------------------------------
+      // Advance every in-flight projectile by its velocity, check contact
+      // with the player (for enemy-origin) or with live enemies (for
+      // player-origin), and apply damage on hit. Spent projectiles (hit, or
+      // wandered into a solid wall / out of bounds) are removed in-place.
+      this.stepProjectiles();
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
       // for exactly the tick it died lets a consumer observe the transition;
@@ -664,6 +689,90 @@ export class Engine {
         );
       }
     }
+  }
+
+  /** Spawn a fireball from `enemy` aimed at the player's current floor-plane
+   *  position. Velocity is the unit vector toward the player scaled to one
+   *  tick's travel; height tracks the enemy's body so a baron's fireball
+   *  reads as coming from its torso, not the floor. Called by update() when
+   *  stepEnemyAI() signals a ranged attack tick (#81). */
+  private spawnEnemyProjectile(enemy: Enemy): void {
+    const p = this.state.player;
+    const dx = p.x - enemy.x;
+    const dz = p.z - enemy.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist === 0) return; // co-located; no direction
+    const vx = (dx / dist) * PROJECTILE_SPEED_PER_TICK;
+    const vz = (dz / dist) * PROJECTILE_SPEED_PER_TICK;
+    const projectile: Projectile = {
+      id: this.nextProjectileId++,
+      x: enemy.x,
+      y: enemy.y,
+      z: enemy.z,
+      vx,
+      vz,
+      damage: PROJECTILE_DAMAGE,
+      from: "enemy",
+    };
+    this.state.projectiles.push(projectile);
+  }
+
+  /** Advance every in-flight projectile by its velocity, collide it against
+   *  the appropriate target (player for enemy-origin, enemies for
+   *  player-origin), and prune anything that hit, hit a wall, or sailed off
+   *  the map. Allocation-light: rebuilds the array only when at least one
+   *  projectile died this tick. */
+  private stepProjectiles(): void {
+    if (this.state.projectiles.length === 0) return;
+    const survivors: Projectile[] = [];
+    let pruned = false;
+    for (const pr of this.state.projectiles) {
+      pr.x += pr.vx;
+      pr.z += pr.vz;
+
+      // Walls block projectiles — same predicate the player + enemies use.
+      // `collidesAt` treats off-map cells as solid, so this also catches a
+      // projectile that ran off the edge.
+      if (collidesAt(pr.x, pr.z, 0)) {
+        pruned = true;
+        continue;
+      }
+
+      if (pr.from === "enemy") {
+        // Hit the player? Floor-plane distance check against the player's
+        // capsule (PLAYER_RADIUS).
+        if (this.state.player.alive) {
+          const dx = this.state.player.x - pr.x;
+          const dz = this.state.player.z - pr.z;
+          if (dx * dx + dz * dz <= PROJECTILE_HIT_RADIUS * PROJECTILE_HIT_RADIUS) {
+            this.damagePlayer(pr.damage);
+            pruned = true;
+            continue;
+          }
+        }
+      } else {
+        // Player-origin: collide against the nearest live enemy in range.
+        let hitIdx = -1;
+        for (let i = 0; i < this.state.enemies.length; i++) {
+          const e = this.state.enemies[i];
+          if (e.state === "dead") continue;
+          const dx = e.x - pr.x;
+          const dz = e.z - pr.z;
+          if (dx * dx + dz * dz <= PROJECTILE_HIT_RADIUS * PROJECTILE_HIT_RADIUS) {
+            hitIdx = i;
+            break;
+          }
+        }
+        if (hitIdx >= 0) {
+          this.damageEnemy(hitIdx, pr.damage);
+          pruned = true;
+          continue;
+        }
+      }
+
+      survivors.push(pr);
+    }
+    if (pruned) this.state.projectiles = survivors;
   }
 
   /** Position the three.js camera at the player's eye + orient it from

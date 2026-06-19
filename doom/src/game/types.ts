@@ -91,11 +91,21 @@ export interface Enemy {
 
 /** A projectile in flight. `from` distinguishes the player's shots from enemy
  *  fire so collision + scoring can tell them apart. Positions are world-space;
- *  the backlog adds velocity/direction as the combat slice lands. */
+ *  `vx`/`vz` are world units per fixed-step (60 Hz). `damage` is applied to
+ *  whatever the projectile hits (a player for `from:'enemy'`, an enemy for
+ *  `from:'player'`). The engine advances + collision-tests these each tick. */
 export interface Projectile {
+  /** Stable per-spawn id (lets the renderer + tests track an individual). */
+  id: number;
   x: number;
   y: number;
   z: number;
+  /** Floor-plane velocity, world units per fixed-step. Projectiles travel in
+   *  a straight line at constant speed — no gravity, no homing. */
+  vx: number;
+  vz: number;
+  /** Damage dealt on contact. */
+  damage: number;
   from: "player" | "enemy";
 }
 

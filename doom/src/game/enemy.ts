@@ -18,6 +18,36 @@
 import { collidesAt } from "./level";
 import type { Enemy, EnemyKind, PlayerState } from "./types";
 
+/** Ranged archetypes — these spawn projectiles instead of dealing melee
+ *  damage on contact. Barons lob fireballs from a distance; imps and demons
+ *  must close to melee range. Used by the engine to branch the attack path. */
+export const RANGED_KINDS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(["baron"]);
+
+/** Is this enemy a ranged attacker (fires projectiles) rather than melee? */
+export function isRanged(kind: EnemyKind): boolean {
+  return RANGED_KINDS.has(kind);
+}
+
+/** Range (world units) at which a ranged enemy stops to fire. Wider than
+ *  melee ATTACK_RANGE so the baron lobs fireballs from across the room
+ *  rather than walking into the player's face. */
+export const RANGED_ATTACK_RANGE = 10;
+
+/** Fireball travel speed in world units per fixed-step (60 Hz). 0.2 u/step =
+ *  12 u/s — faster than the player's 4.8 u/s so a stationary player gets
+ *  hit, but slow enough that strafing dodges work. */
+export const PROJECTILE_SPEED_PER_TICK = 0.2;
+
+/** Damage a fireball deals on contact with the player. Tuned heavier than
+ *  the baron's melee (#79: 30) so closing into a ranged enemy still feels
+ *  costly even when dodging fireballs. */
+export const PROJECTILE_DAMAGE = 20;
+
+/** Hit radius of a projectile against the player, in world units. Generous
+ *  enough that a head-on fireball lands even when the player's collision
+ *  capsule (PLAYER_RADIUS = 0.3) just clips the edge. */
+export const PROJECTILE_HIT_RADIUS = 0.6;
+
 /** Distance (world units) within which a resting enemy notices the player and
  *  transitions idle → chasing. The seeded roster sits 11–15 u in front of the
  *  player's spawn, so the default 14 catches the nearest two on spawn; the
@@ -62,16 +92,30 @@ export const ATTACK_DAMAGE_BY_KIND: Record<EnemyKind, number> = {
  *  and predict exactly how many hits land. */
 export const ATTACK_COOLDOWN_TICKS = 30;
 
+/** Result of one AI step. `damage` is melee damage to apply to the player
+ *  this tick (0 if none). `fireProjectile` is true when a RANGED enemy's
+ *  attack cooldown elapsed and the engine should spawn a fireball aimed at
+ *  the player — the engine owns projectile construction so it can stamp a
+ *  monotonic id from the same counter as everything else. */
+export interface EnemyStepResult {
+  damage: number;
+  fireProjectile: boolean;
+}
+
+const NO_ACTION: EnemyStepResult = { damage: 0, fireProjectile: false };
+
 /** Advance one enemy by one fixed-step. MUTATES the enemy in place — the
  *  caller (engine.update) owns the roster, so this avoids per-tick
  *  allocations. Dead enemies are a no-op (the engine culls them the tick
  *  after death).
  *
- *  RETURNS the damage this enemy dealt to the player this tick (0 if none).
- *  The engine applies it via damagePlayer() so armor absorption + the death
- *  lifecycle stay centralized. */
-export function stepEnemyAI(enemy: Enemy, player: PlayerState): number {
-  if (enemy.state === "dead") return 0;
+ *  RETURNS what the engine should apply this tick: melee `damage` (for
+ *  imp/demon contact), or `fireProjectile:true` (for ranged kinds like the
+ *  baron, signalling the engine to spawn a `from:'enemy'` projectile). The
+ *  engine routes melee damage through damagePlayer() so armor absorption +
+ *  the death lifecycle stay centralized. */
+export function stepEnemyAI(enemy: Enemy, player: PlayerState): EnemyStepResult {
+  if (enemy.state === "dead") return NO_ACTION;
 
   // Range to the player on the floor plane (y is the enemy/player vertical
   // offset, irrelevant for movement + AI gating).
@@ -79,39 +123,46 @@ export function stepEnemyAI(enemy: Enemy, player: PlayerState): number {
   const dz = player.z - enemy.z;
   const dist = Math.hypot(dx, dz);
 
+  // Ranged enemies (#81) commit to attack from much further out than melee
+  // bruisers — they want to keep distance and lob, not close in.
+  const ranged = isRanged(enemy.kind);
+  const myAttackRange = ranged ? RANGED_ATTACK_RANGE : ATTACK_RANGE;
+
   // --- State transitions ---------------------------------------------------
   // idle → chasing: the player entered the vision band.
-  // chasing → attacking: within melee range.
-  // attacking → chasing: player slipped out of melee range (but still aggro'd).
+  // chasing → attacking: within attack range (kind-dependent).
+  // attacking → chasing: player slipped out of attack range (but still aggro'd).
   // Once chasing/attacking, an enemy never returns to idle — see VISION_RADIUS
   // comment above.
   if (enemy.state === "idle") {
     if (dist <= VISION_RADIUS) enemy.state = "chasing";
   } else if (enemy.state === "chasing") {
-    if (dist <= ATTACK_RANGE) enemy.state = "attacking";
+    if (dist <= myAttackRange) enemy.state = "attacking";
   } else if (enemy.state === "attacking") {
-    if (dist > ATTACK_RANGE) enemy.state = "chasing";
+    if (dist > myAttackRange) enemy.state = "chasing";
   }
 
   // --- Attack --------------------------------------------------------------
-  // Attacking enemies hold position and tick their melee cooldown. When the
-  // cooldown hits 0 they deal ATTACK_DAMAGE_BY_KIND[kind] to the player and
-  // reset for the next swing. Cooldown is also bled while chasing so a
-  // briefly-out-of-range hit-and-run doesn't reset the timer to full.
+  // Attacking enemies hold position and tick their attack cooldown. Melee
+  // kinds deal ATTACK_DAMAGE_BY_KIND on cooldown; ranged kinds emit a
+  // fireProjectile flag so the engine spawns a fireball this tick. Cooldown
+  // is also bled while chasing so a briefly-out-of-range hit-and-run doesn't
+  // reset the timer to full.
   if (enemy.attackCooldown > 0) enemy.attackCooldown -= 1;
   if (enemy.state === "attacking") {
     if (enemy.attackCooldown <= 0) {
       enemy.attackCooldown = ATTACK_COOLDOWN_TICKS;
-      return ATTACK_DAMAGE_BY_KIND[enemy.kind];
+      if (ranged) return { damage: 0, fireProjectile: true };
+      return { damage: ATTACK_DAMAGE_BY_KIND[enemy.kind], fireProjectile: false };
     }
-    return 0;
+    return NO_ACTION;
   }
 
   // --- Movement ------------------------------------------------------------
   // Only chasing enemies move. Attacking enemies hold position (handled
   // above). Idle enemies are rooted by definition.
-  if (enemy.state !== "chasing") return 0;
-  if (dist === 0) return 0; // standing on the player; nothing to do
+  if (enemy.state !== "chasing") return NO_ACTION;
+  if (dist === 0) return NO_ACTION; // standing on the player; nothing to do
 
   // Unit vector toward the player, scaled to one tick's worth of travel.
   const stepX = (dx / dist) * ENEMY_SPEED_PER_TICK;
@@ -126,5 +177,5 @@ export function stepEnemyAI(enemy: Enemy, player: PlayerState): number {
   if (!collidesAt(enemy.x, nextZ, ENEMY_RADIUS)) enemy.z = nextZ;
 
   // Chasing enemies don't damage; only 'attacking' lands hits (above).
-  return 0;
+  return NO_ACTION;
 }
