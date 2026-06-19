@@ -82,6 +82,11 @@ export interface Enemy {
   /** Hit points remaining. At <=0 the engine flips `state` to 'dead'. */
   hp: number;
   state: EnemyState;
+  /** Fixed-step frames remaining until this enemy can land its NEXT melee
+   *  hit on the player (#79). Counted down each tick while in 'attacking'
+   *  state; on 0, the engine applies ATTACK_DAMAGE_BY_KIND and resets the
+   *  cooldown. Starts at 0 so the first in-range tick lands a hit. */
+  attackCooldown: number;
 }
 
 /** A projectile in flight. `from` distinguishes the player's shots from enemy
