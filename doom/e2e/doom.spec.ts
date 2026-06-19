@@ -13,12 +13,17 @@
 
 import { expect, test } from "@playwright/test";
 
-import type { DoomInternals, DoomState } from "../src/game/types";
+import type {
+  DoomInternals,
+  DoomState,
+  DoomTextures,
+} from "../src/game/types";
 
 declare global {
   interface Window {
     __doom?: DoomState;
     __doomInternals?: DoomInternals;
+    __doomTextures?: DoomTextures;
   }
 }
 
@@ -851,6 +856,25 @@ test("HUD mirrors __doom (health/ammo) and a crosshair is present (issue #83)", 
   });
   expect(scoreAfter).toBeGreaterThan(scoreBefore);
   await expect(scoreCell).toHaveText(String(scoreAfter), { timeout: 3000 });
+});
+
+test("wall material carries a procedural CanvasTexture map (issue #84)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  // The engine paints procedural wall/floor/ceiling CanvasTextures at boot
+  // and publishes a test-only handle so we can assert the texture wiring
+  // without reaching into the three.js scene graph. Pre-#84 the wall
+  // material was a flat-color MeshStandardMaterial with no `map`; this
+  // assertion FAILS without the texture wiring and PASSES after.
+  await page.waitForFunction(() => Boolean(window.__doomTextures), null, {
+    timeout: 5000,
+  });
+  const wallMapPresent = await page.evaluate(
+    () => window.__doomTextures!.wallMapPresent,
+  );
+  expect(wallMapPresent).toBe(true);
 });
 
 // NOTE: an earlier draft of this file also asserted against

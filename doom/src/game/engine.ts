@@ -55,6 +55,11 @@ import {
   PROJECTILE_SPEED_PER_TICK,
   stepEnemyAI,
 } from "./enemy";
+import {
+  makeCeilingTexture,
+  makeFloorTexture,
+  makeWallTexture,
+} from "./textures";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -150,6 +155,11 @@ export class Engine {
    *  allocations; the origin + direction are set per call. */
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
 
+  /** The shared wall material (issue #84). One MeshStandardMaterial is reused
+   *  across every wall mesh; we stash a reference so the e2e harness can read
+   *  the published texture contract without traversing the scene graph. */
+  private wallMaterial: THREE.MeshStandardMaterial | null = null;
+
   /** Stable id counter for projectiles (#81). Stamped onto each new
    *  Projectile and incremented — same monotonic scheme as enemies/pickups,
    *  so a test that tracks a projectile by id can. Instance-scoped so two
@@ -232,9 +242,17 @@ export class Engine {
     // Floor — a plane spanning the arena, rotated flat (PlaneGeometry is built
     // in the XY plane; rotate -90° about X to lay it in XZ at y=0). Sized from
     // the level map so the floor exactly underlays the walkable cells.
+    //
+    // Issue #84: the surface materials carry a procedural CanvasTexture rather
+    // than a flat color. Textures are painted into an offscreen canvas at
+    // boot (no asset files ship), then tiled. Repeat is set so one painted
+    // tile is roughly one world unit — flagstones on the floor, bricks on
+    // the wall.
+    const floorTex = makeFloorTexture();
+    floorTex.repeat.set(MAP_WIDTH / 2, MAP_HEIGHT / 2);
     const floorGeo = new THREE.PlaneGeometry(MAP_WIDTH, MAP_HEIGHT);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2a38,
+      map: floorTex,
       roughness: 1,
       metalness: 0,
     });
@@ -242,17 +260,41 @@ export class Engine {
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
 
+    // Ceiling — same plane, mirrored above the arena at WALL_HEIGHT. Its
+    // texture is dimmer than the floor; the player rarely looks up so heavy
+    // ceiling detail is wasted budget.
+    const ceilingTex = makeCeilingTexture();
+    ceilingTex.repeat.set(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+    const ceilingMat = new THREE.MeshStandardMaterial({
+      map: ceilingTex,
+      roughness: 1,
+      metalness: 0,
+      // Render the under-side (toward the player); flip the normal.
+      side: THREE.BackSide,
+    });
+    const ceiling = new THREE.Mesh(floorGeo.clone(), ceilingMat);
+    ceiling.rotation.x = -Math.PI / 2;
+    ceiling.position.y = WALL_HEIGHT;
+    this.scene.add(ceiling);
+
     // Build wall meshes from the level map (issue #75). One box per solid
     // cell, sized CELL × WALL_HEIGHT × CELL, centered at the cell's world
     // position. Geometry + material are shared across walls — every solid
     // cell renders identically, and disposing them is a no-op for the scene
     // lifecycle (the engine outlives the level for now).
+    //
+    // Issue #84: walls carry a procedural brick CanvasTexture. The SAME
+    // material is reused across every wall mesh (cheap, and reads as one
+    // coherent surface). We hold a reference so the e2e harness can assert
+    // the published texture contract — see `window.__doomTextures` below.
+    const wallTex = makeWallTexture();
     const wallGeo = new THREE.BoxGeometry(2, WALL_HEIGHT, 2);
     const wallMat = new THREE.MeshStandardMaterial({
-      color: 0x4a4a5a,
+      map: wallTex,
       roughness: 0.9,
       metalness: 0,
     });
+    this.wallMaterial = wallMat;
     for (const w of walls()) {
       const mesh = new THREE.Mesh(wallGeo, wallMat);
       mesh.position.set(w.x, WALL_HEIGHT / 2, w.z);
@@ -276,6 +318,18 @@ export class Engine {
     this.publish();
     this.bindInput();
     this.exposeInternals();
+    this.exposeTextureHandle();
+  }
+
+  /** Publish the procedural-texture state to a test-only window handle
+   *  (issue #84). Lets the e2e harness assert on the STATE CONTRACT — a wall
+   *  material's `map` is non-null after engine boot — without traversing the
+   *  three.js scene graph from Playwright. Mirrors `__doomInternals`: test-
+   *  only, gameplay code must never read this. */
+  private exposeTextureHandle(): void {
+    window.__doomTextures = {
+      wallMapPresent: this.wallMaterial?.map !== null && this.wallMaterial?.map !== undefined,
+    };
   }
 
   /** Seed the simulation's enemy roster from SEED_ENEMIES, and build a
