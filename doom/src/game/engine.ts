@@ -41,6 +41,7 @@ import {
   WALL_HEIGHT,
   walls,
 } from "./level";
+import { stepEnemyAI } from "./enemy";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -573,6 +574,15 @@ export class Engine {
         if (!collidesAt(nextX, p.z, PLAYER_RADIUS)) p.x = nextX;
         const nextZ = p.z + dz * PLAYER_SPEED_PER_TICK;
         if (!collidesAt(p.x, nextZ, PLAYER_RADIUS)) p.z = nextZ;
+      }
+
+      // --- ENEMY AI (issue #77) -------------------------------------------
+      // One step per live enemy, before the death-cull below — so an enemy
+      // that the player just killed via fireShot() this same tick doesn't
+      // get a posthumous chase step. stepEnemyAI() handles its own state
+      // gating; dead enemies are a no-op.
+      for (const enemy of this.state.enemies) {
+        stepEnemyAI(enemy, this.state.player);
       }
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy
