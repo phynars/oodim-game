@@ -82,11 +82,15 @@ export interface Enemy {
   /** Hit points remaining. At <=0 the engine flips `state` to 'dead'. */
   hp: number;
   state: EnemyState;
-  /** Fixed-step cooldown counter for ranged archetypes. Counts DOWN each tick
-   *  while in 'attacking'; when it reaches 0 the enemy spawns a projectile and
-   *  the counter resets to RANGED_COOLDOWN_TICKS. Unused (stays 0) for melee
-   *  kinds. */
-  rangedCooldown: number;
+  /** Fixed-step attack-cadence counter, SHARED by melee + ranged kinds.
+   *  Counts DOWN each tick while in 'attacking'; on the tick it reaches 0
+   *  the AI signals a fire-this-tick to the engine (engine spawns a
+   *  projectile for ranged kinds, applies bite damage for melee kinds —
+   *  the latter is the next backlog slice) and resets to the kind's
+   *  cooldown constant (MELEE_COOLDOWN_TICKS or RANGED_COOLDOWN_TICKS).
+   *  Starts at 0; primed to ATTACK_INITIAL_COOLDOWN_TICKS on first
+   *  transition into 'attacking' so the first attack fires promptly. */
+  attackCooldown: number;
 }
 
 /** A projectile in flight. `from` distinguishes the player's shots from enemy
@@ -294,11 +298,17 @@ export const PROJECTILE_RADIUS = 0.4;
  *  break line, fast enough that a baron feels actively threatening. */
 export const RANGED_COOLDOWN_TICKS = 90;
 
-/** How long a ranged enemy stays in 'attacking' before the next shot
- *  windup. We expose a SHORT initial cooldown on first transition into
- *  'attacking' so the very first shot fires promptly (a baron doesn't wait
- *  1.5s to fire when first acquiring the player). */
-export const RANGED_INITIAL_COOLDOWN_TICKS = 15;
+/** Fixed-step cooldown between successive melee bites from one enemy. 45
+ *  ticks = 0.75s at 60Hz — faster than the ranged cadence because melee
+ *  damage is chip-per-bite, not a fireball burst. Used by the (next-slice)
+ *  melee-damage application path; the AI cooldown field itself ticks today. */
+export const MELEE_COOLDOWN_TICKS = 45;
+
+/** Short windup primed on first transition into 'attacking' so the first
+ *  attack fires promptly (a baron doesn't wait 1.5s to fire when first
+ *  acquiring the player, a demon doesn't wait 0.75s to first bite). Shared
+ *  across kinds because "first hit feels responsive" is universal. */
+export const ATTACK_INITIAL_COOLDOWN_TICKS = 15;
 
 /** Eye height above the floor, in world units (~1.6 = a standing human in
  *  meters). The camera sits here; the floor plane is at y=0. */

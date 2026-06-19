@@ -21,6 +21,7 @@ import {
   PLAYER_SHOT_DAMAGE,
   PROJECTILE_RADIUS,
   PROJECTILE_SPEED_PER_TICK,
+  RANGED_KINDS,
   SCORE_BY_KIND,
   type DoomState,
   type Enemy,
@@ -266,7 +267,7 @@ export class Engine {
         z: seed.z,
         hp: HP_BY_KIND[seed.kind],
         state: "idle",
-        rangedCooldown: 0,
+        attackCooldown: 0,
       };
       this.state.enemies.push(enemy);
 
@@ -729,16 +730,28 @@ export class Engine {
       // dropped at the player's feet by some future mechanic still grants.
       this.checkPickups();
 
-      // --- ENEMY AI (issue #77) -------------------------------------------
+      // --- ENEMY AI (issue #77, ranged-fire #81) --------------------------
       // One step per live enemy, before the death-cull below — so an enemy
       // that the player just killed via fireShot() this same tick doesn't
       // get a posthumous chase step. stepEnemyAI() handles its own state
-      // gating; dead enemies are a no-op. A `true` return means the enemy's
-      // ranged cooldown elapsed this tick — spawn a fireball aimed at the
-      // player (issue #81).
+      // gating; dead enemies are a no-op.
+      //
+      // The unified return `{fires, damage}` lets one branch cover both
+      // attack archetypes (Soren's #112 unification):
+      //   - ranged kind + fires=true → spawn a projectile (damage rides on
+      //     the projectile, applied by stepProjectiles on player contact).
+      //   - melee  kind + fires=true → apply `damage` to the player NOW
+      //     (the melee-damage application slice will start returning
+      //     damage>0; for this PR melee always reports damage=0 — the
+      //     contract is in place ahead of the behavior).
       for (const enemy of this.state.enemies) {
-        const fires = stepEnemyAI(enemy, this.state.player);
-        if (fires) this.spawnEnemyProjectile(enemy);
+        const result = stepEnemyAI(enemy, this.state.player);
+        if (!result.fires) continue;
+        if (RANGED_KINDS[enemy.kind]) {
+          this.spawnEnemyProjectile(enemy);
+        } else if (result.damage > 0) {
+          this.damagePlayer(result.damage);
+        }
       }
 
       // --- PROJECTILES (issue #81) ----------------------------------------
