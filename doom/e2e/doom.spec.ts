@@ -998,26 +998,10 @@ test("scene atmosphere: fog is set and more than one light exists (issue #88)", 
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__doom));
 
-  // The atmosphere contract is rendered three.js state — fog + multiple
-  // lights — so we probe through the canvas. three.js doesn't publish a
-  // global handle to the scene, but the renderer is keyed off the canvas
-  // and every scene we build attaches lights as children whose class names
-  // we can introspect via constructor.name. Pre-#88 the engine had ONE
-  // ambient + ONE directional (lightCount===2) with weak fog wired but
-  // the assertion below ALSO requires the fog to be a THREE.Fog instance,
-  // which is a stronger gate than "fog object exists". To get at the
-  // scene from Playwright we walk up from the renderer's internal info —
-  // but the cleanest path is to crack the renderer via webgl context
-  // probing. Instead, we use a small bridge: count lights and read fog
-  // by walking the THREE.Scene object directly. The engine doesn't
-  // publish it, so we attach a debug accessor in this test by reaching
-  // through the canvas's __r3f-style metadata — three.js doesn't ship
-  // one, so we fall back to an explicit window handle the engine sets.
-  //
-  // The engine publishes neither a scene handle today, so this test
-  // pokes at the published WALL material (which lives in the scene) to
-  // confirm the renderer rendered, and then asks the engine through
-  // a NEW test-only handle `__doomScene` for the atmosphere read-outs.
+  // Atmosphere lives on the three.js Scene (fog + lights), which Playwright
+  // can't introspect directly. The engine publishes `window.__doomScene`
+  // (see exposeSceneHandle) with flat getters that walk the scene each
+  // read — same test-only pattern as __doomTextures / __doomViewmodel.
   await page.waitForFunction(() => Boolean(window.__doomScene), null, {
     timeout: 5000,
   });

@@ -339,12 +339,6 @@ declare global {
     __doomViewmodel?: DoomViewmodel;
     /** Test-only scene-atmosphere contract — see `DoomScene` (issue #88). */
     __doomScene?: DoomScene;
-    /** Test-only direct handle on the active `THREE.Scene` — used by the
-     *  scene contract's getters to walk lights / read fog. Typed `unknown`
-     *  to avoid leaking a `three` dependency into the types file; the
-     *  engine assigns its `THREE.Scene` instance into this slot and the
-     *  getters cast back. (issue #88) */
-    __doomSceneRef?: unknown;
   }
 }
 

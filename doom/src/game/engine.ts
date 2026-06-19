@@ -411,7 +411,6 @@ export class Engine {
    *  reflect live. */
   private exposeSceneHandle(): void {
     const scene = this.scene;
-    window.__doomSceneRef = scene;
     window.__doomScene = {
       get hasFog(): boolean {
         return Boolean(scene.fog);
