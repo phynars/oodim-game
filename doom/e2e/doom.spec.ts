@@ -392,6 +392,58 @@ test("forceDamage({amount:1000}) drives the player to a terminal state", async (
   expect(["lost", "gameover"]).toContain(settled);
 });
 
+test("enemy AI: idle → chasing and the enemy steps toward the player (issue #77)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Setup: drop the player adjacent to the imp (the first seeded enemy), then
+  // pump fixed-steps with no movement keys. Pre-change, enemies hold their
+  // seed position forever and state.state stays 'idle' — this test fails.
+  // Post-change, the imp notices the player on the first AI step (well within
+  // VISION_RADIUS) and walks toward them every tick after.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const imp = s.enemies[0];
+    // Stand a few units south of the imp on the same x — close enough that
+    // VISION_RADIUS catches it on the first AI step, far enough that the
+    // first move doesn't immediately land in attack range (so we observe
+    // both the 'chasing' state AND the position step toward us).
+    s.player.x = imp.x;
+    s.player.z = imp.z + 5;
+    const before = { state: imp.state, x: imp.x, z: imp.z };
+    // 10 fixed-steps with no movement keys — the engine still ticks AI.
+    window.__doomInternals!.advance({ steps: 10 });
+    const after = window.__doom!.enemies.find((e) => e.id === imp.id);
+    return {
+      before,
+      after: after
+        ? { state: after.state, x: after.x, z: after.z }
+        : null,
+      playerZ: window.__doom!.player.z,
+    };
+  });
+
+  // Pre-conditions: the imp started 'idle' at its seed position.
+  expect(result.before.state).toBe("idle");
+  expect(result.after).not.toBeNull();
+  if (!result.after) return;
+  // STATE CONTRACT: the imp left 'idle' — either it's still closing
+  // ('chasing') or already in melee ('attacking'). Both prove the transition
+  // ran; idle would be a failure.
+  expect(result.after.state).not.toBe("idle");
+  expect(["chasing", "attacking"]).toContain(result.after.state);
+  // POSITION CONTRACT: the imp moved toward the player. Player is south of
+  // the imp (player.z > imp.z), so the imp's z must INCREASE as it closes.
+  expect(result.after.z).toBeGreaterThan(result.before.z);
+  // x was aligned with the player, so x stays put (within float tolerance).
+  expect(Math.abs(result.after.x - result.before.x)).toBeLessThan(0.01);
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +
