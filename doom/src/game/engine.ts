@@ -76,6 +76,7 @@ import {
   stepViewmodel,
   type Viewmodel,
 } from "./viewmodel";
+import { DoomAudio } from "./audio";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -187,6 +188,13 @@ export class Engine {
    *  across every wall mesh; we stash a reference so the e2e harness can read
    *  the published texture contract without traversing the scene graph. */
   private wallMaterial: THREE.MeshStandardMaterial | null = null;
+
+  /** Procedural SFX engine (#89). Constructed at boot, but the underlying
+   *  AudioContext is deferred until first user gesture (autoplay policy).
+   *  Every play* call is a silent no-op until `unlock()` runs. The engine
+   *  routes fire / hit / death / pickup events through this so audio sits
+   *  on the same edge the published state contract already does. */
+  private readonly audio: DoomAudio = new DoomAudio();
 
   /** Stable id counter for projectiles (#81). Stamped onto each new
    *  Projectile and incremented — same monotonic scheme as enemies/pickups,
@@ -400,6 +408,15 @@ export class Engine {
     this.exposeModelHandle();
     this.exposeViewmodelHandle();
     this.exposeSceneHandle();
+    this.exposeAudioHandle();
+  }
+
+  /** Publish the audio contract to a test-only window handle (#89).
+   *  Mirrors `__doomScene` / `__doomViewmodel`: live getters so the
+   *  harness reads current counter values, not a snapshot. Test-only;
+   *  gameplay code must never read this. */
+  private exposeAudioHandle(): void {
+    window.__doomAudio = this.audio.handle();
   }
 
   /** Publish the scene atmosphere state to a test-only window handle
@@ -767,6 +784,9 @@ export class Engine {
   private fireShot(): void {
     if (this.state.weapon.ammo <= 0) return;
     this.state.weapon.ammo -= 1;
+    // Weapon-shot SFX (#89). Triggered on every fire that consumes ammo —
+    // same edge as the muzzle flash. Silent no-op until audio is unlocked.
+    this.audio.playWeapon();
     // Pulse the muzzle flash + recoil kick (#87). Every fire that consumes
     // ammo flashes, hit or miss — the same edge the e2e harness asserts on.
     // Mirror the tick counter onto state.weapon so the contract reflects
@@ -822,10 +842,16 @@ export class Engine {
     const e = this.state.enemies[idx];
     if (!e || e.state === "dead") return;
     e.hp -= damage;
+    // Enemy-hit SFX (#89). Every landed strike pings, fatal or not — the
+    // death sound below is layered on top for the killing blow.
+    this.audio.playEnemyHit();
     if (e.hp <= 0) {
       e.hp = 0;
       e.state = "dead";
       this.state.score += SCORE_BY_KIND[e.kind];
+      // Death SFX (#89) — longer pitched-down groan distinct from the hit
+      // ping, so the killing blow reads aurally without needing the visual.
+      this.audio.playEnemyDeath();
       // Switch the rig (#86) to its death clip BEFORE the model is dropped
       // — the harness asserts on `__doomModels.list()` finding
       // `activeClip === 'death'` after forceHit. Removing the rig is
@@ -867,6 +893,10 @@ export class Engine {
     const pk = this.state.pickups[idx];
     if (!pk || pk.taken) return;
     pk.taken = true;
+    // Pickup SFX (#89). Triggered the moment the pickup flips taken, so
+    // walk-overs AND forcePickup() both ping (the harness asserts via the
+    // latter). Silent no-op until audio is unlocked.
+    this.audio.playPickup();
     const p = this.state.player;
     switch (pk.kind) {
       case "health":
@@ -889,6 +919,9 @@ export class Engine {
   private bindInput(): void {
     const start = (): void => {
       if (this.state.status === "ready") this.state.status = "playing";
+      // First user gesture — unlock WebAudio (#89). Autoplay policy gates
+      // AudioContext creation behind a gesture; idempotent past first call.
+      this.audio.unlock();
     };
     this.input.onFirstInput(start);
     this.canvas.addEventListener("pointerdown", () => {
