@@ -1126,6 +1126,108 @@ test("wall material carries a procedural CanvasTexture map (issue #84)", async (
   expect(wallMapPresent).toBe(true);
 });
 
+test.describe("touch controls (issue #90)", () => {
+  test.use({
+    hasTouch: true,
+    viewport: { width: 844, height: 390 }, // landscape phone-ish
+    isMobile: true,
+  });
+
+  test("stick drag moves the player and the fire button drops ammo", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    // Force the touch overlay visible in headless CI. Some headless contexts
+    // don't report pointer:coarse via the matchMedia path Playwright fakes,
+    // so we set an explicit attribute on <html> that the CSS opt-in reads.
+    // This also makes the test independent of media-query heuristics.
+    await page.evaluate(() => document.documentElement.setAttribute("data-touch", "on"));
+    await page.waitForFunction(() => Boolean(window.__doom));
+    await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+      timeout: 5000,
+    });
+
+    // Sanity: the overlay's three controls are present in the DOM.
+    await expect(page.locator('[data-touch="stick"]')).toHaveCount(1);
+    await expect(page.locator('[data-touch="look"]')).toHaveCount(1);
+    await expect(page.locator('[data-touch="fire"]')).toHaveCount(1);
+
+    // ----- MOVE: drag the stick UP (north) and assert player.z decreased.
+    // The stick maps screen-up to forward (the keyboard's W/ArrowUp intent);
+    // forward in this map decreases z (camera looks down -z). We dispatch
+    // pointer events directly so this works whether Playwright's touch
+    // emulation routes via touch* or pointer* — the input source listens
+    // on pointer*, which covers both.
+    const z0 = await page.evaluate(() => window.__doom!.player.z);
+
+    const stickBox = await page.locator('[data-touch="stick"]').boundingBox();
+    if (!stickBox) throw new Error("stick not laid out");
+    const cx = stickBox.x + stickBox.width / 2;
+    const cy = stickBox.y + stickBox.height / 2;
+
+    // Press at stick center, drag up beyond the deadzone (well past 25% of the
+    // 48px radius), hold long enough for the fixed-step loop to advance, then
+    // release. We wait via state — not wall-clock — to keep the assertion
+    // deterministic under SwiftShader's variable rAF cadence.
+    await page.locator('[data-touch="stick"]').dispatchEvent("pointerdown", {
+      pointerId: 1,
+      clientX: cx,
+      clientY: cy,
+      button: 0,
+      isPrimary: true,
+      pointerType: "touch",
+    });
+    await page.locator('[data-touch="stick"]').dispatchEvent("pointermove", {
+      pointerId: 1,
+      clientX: cx,
+      clientY: cy - 60, // up by 60 px → forward at full magnitude after clamp
+      pointerType: "touch",
+    });
+
+    // Wait until the simulation has registered forward intent AND the loop
+    // has moved the player south→north by a perceptible amount. The first
+    // input also flips ready→playing; on touch devices Engine binds the
+    // canvas click to start, but pointerdown on the stick also fires
+    // `onFirstInput` from input.ts. Wait for status playing first.
+    await page.waitForFunction(() => window.__doom?.status === "playing", null, {
+      timeout: 5000,
+    });
+    await page.waitForFunction((startZ) => (window.__doom?.player.z ?? startZ) < startZ - 0.1, z0, {
+      timeout: 5000,
+    });
+
+    await page.locator('[data-touch="stick"]').dispatchEvent("pointerup", {
+      pointerId: 1,
+      clientX: cx,
+      clientY: cy - 60,
+      pointerType: "touch",
+    });
+
+    const z1 = await page.evaluate(() => window.__doom!.player.z);
+    expect(z1).toBeLessThan(z0);
+
+    // ----- FIRE: tap the fire button and assert ammo dropped by exactly 1.
+    const ammo0 = await page.evaluate(() => window.__doom!.weapon.ammo);
+    expect(ammo0).toBeGreaterThan(0);
+
+    await page.locator('[data-touch="fire"]').dispatchEvent("pointerdown", {
+      pointerId: 2,
+      button: 0,
+      isPrimary: true,
+      pointerType: "touch",
+    });
+
+    // The pointerdown sets firePending; the next fixed-step drains it via
+    // consumeFire() → fireShot() → ammo--. Wait on STATE, not time.
+    await page.waitForFunction((a0) => (window.__doom?.weapon.ammo ?? a0) < a0, ammo0, {
+      timeout: 5000,
+    });
+
+    const ammo1 = await page.evaluate(() => window.__doom!.weapon.ammo);
+    expect(ammo1).toBe(ammo0 - 1);
+  });
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +

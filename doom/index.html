@@ -116,6 +116,92 @@
       #hud [data-hud="ammo"] {
         color: #f0c674;
       }
+      /* Touch overlay (issue #90). Three controls pinned over the canvas in
+         landscape: a move-stick (bottom-left), a look-drag region (right half
+         of the screen), a fire button (bottom-right). Each is hidden on
+         devices without coarse pointers — keyboard/mouse stays unobstructed.
+         Each element carries a [data-touch=*] attribute that input.ts queries
+         at boot; missing elements are simply ignored, so removing the overlay
+         from the DOM disables touch with zero engine changes. */
+      #touch {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 3;
+        display: none;
+      }
+      /* Show the overlay on coarse-pointer devices (touchscreens). Desktop
+         mice/trackpads report 'fine' and stay on keyboard/mouse. */
+      @media (pointer: coarse) {
+        #touch {
+          display: block;
+        }
+      }
+      /* Test override: e2e and any environment that wants to force-render
+         the overlay (Playwright's touch emulation reports pointer:coarse,
+         but we also support an explicit data attribute on <html> so unit
+         debug builds can toggle without devtools). */
+      html[data-touch="on"] #touch {
+        display: block;
+      }
+      [data-touch="stick"] {
+        position: absolute;
+        left: calc(24px + env(safe-area-inset-left));
+        bottom: calc(24px + env(safe-area-inset-bottom));
+        width: 128px;
+        height: 128px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(232, 234, 255, 0.35);
+        pointer-events: auto;
+        touch-action: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      [data-touch="stick-knob"] {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: rgba(232, 234, 255, 0.7);
+        box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+        transform: translate(0, 0);
+        pointer-events: none;
+      }
+      [data-touch="look"] {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 55%;
+        pointer-events: auto;
+        touch-action: none;
+        /* Transparent — the canvas shows through. */
+        background: transparent;
+      }
+      [data-touch="fire"] {
+        position: absolute;
+        right: calc(24px + env(safe-area-inset-right));
+        bottom: calc(40px + env(safe-area-inset-bottom));
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        background: rgba(240, 110, 90, 0.5);
+        border: 2px solid rgba(255, 200, 180, 0.6);
+        color: #fff;
+        font: 700 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        pointer-events: auto;
+        touch-action: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      [data-touch="fire"]:active {
+        background: rgba(255, 140, 110, 0.7);
+      }
       /* Crosshair. A tiny plus pinned dead-center over the canvas, drawn in
          pure DOM (no WebGL) so headless e2e can assert its existence via a
          selector without touching pixels. It's a visual sight only —
@@ -189,6 +275,20 @@
          viewport over the WebGL canvas — read-only sight, no input. The
          #crosshair selector is the contract doom/e2e asserts on. -->
     <div id="crosshair" data-hud="crosshair" aria-hidden="true"></div>
+
+    <!-- Touch overlay (issue #90). Hidden on fine-pointer (mouse) devices via
+         @media (pointer: coarse). input.ts auto-discovers each [data-touch=*]
+         element at boot and binds pointer-events; the stick produces the same
+         forward/back/left/right movement intents as WASD, the look pad pipes
+         pointer deltas into the same channel as mousemove (so MOUSE_SENSITIVITY
+         applies), and the fire button is edge-triggered like Space. -->
+    <div id="touch" aria-hidden="true">
+      <div data-touch="stick" aria-label="Move stick">
+        <div data-touch="stick-knob"></div>
+      </div>
+      <div data-touch="look" aria-label="Look drag region"></div>
+      <button type="button" data-touch="fire" aria-label="Fire">Fire</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
