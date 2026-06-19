@@ -238,12 +238,25 @@ export interface DoomInternals {
   fire(): void;
 }
 
+/** Test-only texture contract (issue #84). The engine paints procedural
+ *  CanvasTextures into the wall/floor/ceiling materials at boot; this handle
+ *  publishes whether the shared wall material's `map` is populated, so the
+ *  e2e harness can assert the texture wiring without reaching into the
+ *  three.js scene graph. */
+export interface DoomTextures {
+  /** True iff the shared wall material's `map` is a non-null Texture after
+   *  engine construction. */
+  wallMapPresent: boolean;
+}
+
 declare global {
   interface Window {
     /** Test contract. See doom/docs/ARCHITECTURE.md. */
     __doom?: DoomState;
     /** Test-only combat hooks — see `DoomInternals`. */
     __doomInternals?: DoomInternals;
+    /** Test-only texture contract — see `DoomTextures` (issue #84). */
+    __doomTextures?: DoomTextures;
   }
 }
 
