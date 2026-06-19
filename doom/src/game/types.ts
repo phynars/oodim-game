@@ -223,11 +223,6 @@ export const HP_BY_KIND: Record<EnemyKind, number> = {
  *  asserts forceHit() drops the first enemy to 'dead'. */
 export const PLAYER_SHOT_DAMAGE = 50;
 
-/** Level footprint — a square arena in world units. Kept here so engine +
- *  index.html + tests share one source of truth. */
-export const FIELD_WIDTH = 32;
-export const FIELD_HEIGHT = 32;
-
 /** Eye height above the floor, in world units (~1.6 = a standing human in
  *  meters). The camera sits here; the floor plane is at y=0. */
 export const EYE_HEIGHT = 1.6;
