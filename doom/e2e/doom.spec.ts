@@ -146,18 +146,43 @@ test("ArrowUp moves the player forward — player.z DECREASES (camera looks down
 }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
 
-  // Capture spawn z BEFORE any input. The player spawns at the south edge
-  // looking north (down -z), so holding ArrowUp must decrease z.
-  const z0 = await page.evaluate(() => window.__doom!.player.z);
-
+  // Playwright's `canvas.click()` is a real mouse-event sequence
+  // (move → down → up). The pre-click mouse-move delivers a nonzero
+  // movementX/Y to the input source's mousemove handler before the loop
+  // even starts. Once status flips to 'playing' the FIRST tick drains
+  // that delta into a yaw rotation — and a rotated yaw means ArrowUp no
+  // longer walks down -z, it walks at some angle. To make the assertion
+  // "forward decreases z" deterministic regardless of click jitter, we
+  //   1. click (flips ready→playing) and wait for the loop to tick at
+  //      least once (drains the queued mouse delta), then
+  //   2. reset yaw to 0 via forceTeleport, KEEPING spawn x/z so this is
+  //      still a "from spawn" test.
   await page.locator("canvas").click();
-  // Hold forward for a beat; at 60Hz with PLAYER_SPEED_PER_TICK=0.08 the
-  // player should travel several world-units in well under a second.
-  await page.keyboard.down("ArrowUp");
-  // Wait until the contract reports we've MOVED — the assertion that proves
+  await page.waitForFunction(() => window.__doom?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => (window.__doom?.tick ?? 0) > 0, null, {
+    timeout: 5000,
+  });
+  const spawn = await page.evaluate(() => ({
+    x: window.__doom!.player.x,
+    z: window.__doom!.player.z,
+  }));
+  await page.evaluate((s) => {
+    window.__doomInternals!.forceTeleport({ x: s.x, z: s.z, yaw: 0 });
+  }, spawn);
+  const z0 = spawn.z;
+
+  // Hold forward; at 60Hz with PLAYER_SPEED_PER_TICK=0.08 the player
+  // should travel several world-units in well under a second. Wait until
+  // the contract reports we've MOVED — the assertion that proves
   // movement is wired (this is what FAILED on pre-#74 code, where the
   // engine sampled input but never translated the camera).
+  await page.keyboard.down("ArrowUp");
   await page.waitForFunction(
     (start) => (window.__doom?.player.z ?? start) < start - 0.5,
     z0,
@@ -174,33 +199,48 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
 }) => {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
 
   const field = await page.evaluate(() => window.__doom!.field);
-  // The arena spans [-h/2, +h/2] in z. Holding forward (down -z) for long
-  // enough that, UNCLAMPED, the player would overshoot the wall by a wide
-  // margin. At 0.08 u/step × 60Hz = 4.8 u/s; spawn is z=+12 on a 32-deep
-  // field, so the clamp sits near z=-16. Travel to the wall is ~28 u, ~5.8s.
+
+  // This test asserts the PERIMETER clamp (the player can't pass through
+  // the north wall). #75 added an interior pillar at (col=7..8, row=4),
+  // which sits directly in front of the default spawn (x=-1) — if we
+  // walked from spawn we'd be measuring the pillar block, not the
+  // perimeter. Teleport into a column with no interior obstacles (x=-6
+  // is a clear corridor between the west wall and the pillar pair), at
+  // a safely-southern z, and reset yaw so ArrowUp aims straight at the
+  // north wall regardless of any mouse delta the click queued.
   await page.locator("canvas").click();
+  await page.waitForFunction(() => window.__doom?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => (window.__doom?.tick ?? 0) > 0, null, {
+    timeout: 5000,
+  });
+  await page.evaluate(() => {
+    window.__doomInternals!.forceTeleport({ x: -6, z: 12, yaw: 0 });
+  });
+
+  // Hold forward (down -z) for long enough that, UNCLAMPED, the player
+  // would overshoot the wall. At 0.08 u/step × 60Hz = 4.8 u/s; from
+  // z=+12 on a 32-deep field, the north-perimeter wall sits near z=-14
+  // (the wall cell row 0 spans z ∈ [-16,-14], south face at -14). Travel
+  // to the wall is ~26 u, ~5.4s. 6s gives a comfortable cushion to be
+  // SURE we're pinned against the wall when we sample.
   await page.keyboard.down("ArrowUp");
-  // Wait a healthy budget — long enough to be SURE we hit the wall even on
-  // slow CI. The clamp is the assertion, not the wall-clock.
-  //
-  // FLAKE NOTE: an earlier draft used 2500ms — at 4.8 u/s from spawn z=+12
-  // that lands the player at z≈0, RIGHT on the `z < 0` assertion line below.
-  // Any CI scheduling jitter (a dropped frame, a slow first paint) would
-  // leave z just barely positive and fail the test for non-movement reasons.
-  // 4000ms travels ~19.2 u → z≈-7.2: comfortably past 0, comfortably short
-  // of the clamp at -16. The clamp is now what's being measured.
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000);
   await page.keyboard.up("ArrowUp");
 
   const z = await page.evaluate(() => window.__doom!.player.z);
-  // Z is bounded by -field.height/2 (with some PLAYER_RADIUS slack). We
-  // assert the WALL HELD: z never went below -height/2.
+  // Z is bounded by the north-wall south face minus PLAYER_RADIUS. We
+  // assert the WALL HELD: z never went below -field.height/2.
   expect(z).toBeGreaterThan(-field.height / 2);
-  // And we DID reach the wall — z is far past the spawn (which was +12 on
-  // a 32-deep field). If movement silently no-op'd, this would still equal
-  // the spawn z. Pick a generous threshold: anywhere on the north half.
+  // And we DID reach the wall — z is far past the teleport landing
+  // (z=+12). If movement silently no-op'd this would still equal +12.
+  // Anywhere on the north half is the win condition.
   expect(z).toBeLessThan(0);
 });
 
