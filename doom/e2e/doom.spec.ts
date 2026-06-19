@@ -15,6 +15,7 @@ import { expect, test } from "@playwright/test";
 
 import type {
   DoomInternals,
+  DoomModels,
   DoomState,
   DoomTextures,
 } from "../src/game/types";
@@ -24,6 +25,7 @@ declare global {
     __doom?: DoomState;
     __doomInternals?: DoomInternals;
     __doomTextures?: DoomTextures;
+    __doomModels?: DoomModels;
   }
 }
 
@@ -856,6 +858,38 @@ test("HUD mirrors __doom (health/ammo) and a crosshair is present (issue #83)", 
   });
   expect(scoreAfter).toBeGreaterThan(scoreBefore);
   await expect(scoreCell).toHaveText(String(scoreAfter), { timeout: 3000 });
+});
+
+test("each enemy renders as a multi-mesh Group, not a single box (issue #85)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  // The engine builds a low-poly model per enemy out of merged primitives
+  // (see doom/src/game/models.ts) and publishes a test-only handle that
+  // returns the leaf-mesh count for each live enemy. Pre-#85 each enemy was
+  // a single `THREE.Mesh` (childCount === 0); post-#85 each is a
+  // `THREE.Group` with >1 child meshes giving it a distinct silhouette.
+  // STATE CONTRACT: assert on the published childCount, never on pixels.
+  await page.waitForFunction(() => Boolean(window.__doomModels), null, {
+    timeout: 5000,
+  });
+
+  const models = await page.evaluate(() => window.__doomModels!.list());
+
+  // The seeded roster ships one of each kind (#81) — three enemies.
+  expect(models.length).toBeGreaterThanOrEqual(3);
+  // Every enemy's scene object is a multi-mesh Group: childCount > 1. A
+  // single-box placeholder would report 0 (no children) — this is the
+  // failing-first wedge against the prior scaffold.
+  for (const m of models) {
+    expect(m.childCount).toBeGreaterThan(1);
+  }
+  // Distinct silhouettes: at least two kinds are represented in the
+  // published roster, so we know the per-kind builders are actually wired
+  // (not all-imps).
+  const kinds = new Set(models.map((m) => m.kind));
+  expect(kinds.size).toBeGreaterThanOrEqual(2);
 });
 
 test("wall material carries a procedural CanvasTexture map (issue #84)", async ({

@@ -249,6 +249,19 @@ export interface DoomTextures {
   wallMapPresent: boolean;
 }
 
+/** Test-only enemy-model contract (issue #85). The engine builds a low-poly
+ *  `THREE.Group` per enemy out of merged primitives (see `models.ts`); this
+ *  handle publishes the leaf-mesh count per enemy id so the e2e harness can
+ *  assert each enemy's scene object is a multi-mesh Group (childCount > 1),
+ *  not a single placeholder box — without reaching into the three.js scene
+ *  graph from Playwright. The map is rebuilt each call so it stays in sync
+ *  with the live roster (seeded models + stage reloads). */
+export interface DoomModels {
+  /** Read the current per-enemy child-mesh count. Returns one entry per
+   *  live (non-dead) enemy: `{ enemyId, kind, childCount }`. */
+  list(): Array<{ enemyId: number; kind: EnemyKind; childCount: number }>;
+}
+
 declare global {
   interface Window {
     /** Test contract. See doom/docs/ARCHITECTURE.md. */
@@ -257,6 +270,8 @@ declare global {
     __doomInternals?: DoomInternals;
     /** Test-only texture contract — see `DoomTextures` (issue #84). */
     __doomTextures?: DoomTextures;
+    /** Test-only enemy-model contract — see `DoomModels` (issue #85). */
+    __doomModels?: DoomModels;
   }
 }
 
