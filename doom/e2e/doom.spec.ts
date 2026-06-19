@@ -436,6 +436,43 @@ test("forceDamage with a small amount only lowers health — player stays alive,
   expect(after.status).not.toBe("gameover");
 });
 
+test("an attacking enemy in range damages the player (issue #79)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Stand the player one unit south of the imp — well inside ATTACK_RANGE
+  // so the AI flips chasing→attacking on the first AI step, then pump enough
+  // fixed-steps for the cooldown (30 ticks) to elapse and a melee hit to
+  // land. Pre-#79 the engine never applies enemy damage → player.health
+  // stays at 100. Post-#79 the imp lands at least one 10-damage hit.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const imp = s.enemies[0];
+    s.player.x = imp.x;
+    s.player.z = imp.z + 1; // inside ATTACK_RANGE (1.5)
+    const healthBefore = s.player.health;
+    // 60 steps = 1s @ 60Hz — guarantees ATTACK_COOLDOWN_TICKS (30) elapsed
+    // at least once after the chasing→attacking transition.
+    window.__doomInternals!.advance({ steps: 60 });
+    return {
+      healthBefore,
+      healthAfter: window.__doom!.player.health,
+      impState: window.__doom!.enemies.find((e) => e.id === imp.id)?.state,
+      alive: window.__doom!.player.alive,
+    };
+  });
+
+  expect(result.impState).toBe("attacking");
+  expect(result.healthAfter).toBeLessThan(result.healthBefore);
+  // A single imp hit (10 dmg) shouldn't kill a 100-hp player in 1s.
+  expect(result.alive).toBe(true);
+});
+
 test("enemy AI: idle → chasing and the enemy steps toward the player (issue #77)", async ({
   page,
 }) => {

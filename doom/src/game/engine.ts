@@ -258,6 +258,7 @@ export class Engine {
         z: seed.z,
         hp: HP_BY_KIND[seed.kind],
         state: "idle",
+        attackCooldown: 0,
       };
       this.state.enemies.push(enemy);
 
@@ -639,13 +640,19 @@ export class Engine {
       // dropped at the player's feet by some future mechanic still grants.
       this.checkPickups();
 
-      // --- ENEMY AI (issue #77) -------------------------------------------
+      // --- ENEMY AI (issue #77) + DAMAGE (issue #79) ----------------------
       // One step per live enemy, before the death-cull below — so an enemy
       // that the player just killed via fireShot() this same tick doesn't
       // get a posthumous chase step. stepEnemyAI() handles its own state
-      // gating; dead enemies are a no-op.
+      // gating; dead enemies are a no-op. Returned damage (>0 when an
+      // attacking enemy's cooldown elapsed) goes through damagePlayer() so
+      // armor absorption + the two-step terminal lifecycle stay centralized.
+      // We stop polling enemies once the player is dead — no posthumous hits.
       for (const enemy of this.state.enemies) {
-        stepEnemyAI(enemy, this.state.player);
+        const dmg = stepEnemyAI(enemy, this.state.player);
+        if (dmg > 0 && this.state.player.alive) {
+          this.damagePlayer(dmg);
+        }
       }
 
       // Cull enemies that finished their death frame. Keeping a 'dead' enemy

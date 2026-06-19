@@ -16,7 +16,7 @@
 // live enemy — same determinism contract as the player movement path.
 
 import { collidesAt } from "./level";
-import type { Enemy, PlayerState } from "./types";
+import type { Enemy, EnemyKind, PlayerState } from "./types";
 
 /** Distance (world units) within which a resting enemy notices the player and
  *  transitions idle → chasing. The seeded roster sits 11–15 u in front of the
@@ -46,12 +46,32 @@ export const ENEMY_SPEED_PER_TICK = 0.05;
  *  without snagging on a cell corner. */
 export const ENEMY_RADIUS = 0.25;
 
+/** Damage per melee hit, per archetype (#79). Tuned so the seeded baron
+ *  (1000 score, slowest pace) hits the hardest, imps chip. Total time-to-
+ *  kill is health/damage × cooldown/60s — for an imp adjacent at 10 dmg / 30
+ *  ticks (0.5s) = 20s to kill an unarmored player. */
+export const ATTACK_DAMAGE_BY_KIND: Record<EnemyKind, number> = {
+  imp: 10,
+  demon: 18,
+  baron: 30,
+};
+
+/** Fixed-step frames between successive melee hits while 'attacking'. 30 =
+ *  one hit every 0.5s at 60Hz — fast enough that closing into melee feels
+ *  punishing, slow enough that the harness can pump a known number of steps
+ *  and predict exactly how many hits land. */
+export const ATTACK_COOLDOWN_TICKS = 30;
+
 /** Advance one enemy by one fixed-step. MUTATES the enemy in place — the
  *  caller (engine.update) owns the roster, so this avoids per-tick
  *  allocations. Dead enemies are a no-op (the engine culls them the tick
- *  after death). */
-export function stepEnemyAI(enemy: Enemy, player: PlayerState): void {
-  if (enemy.state === "dead") return;
+ *  after death).
+ *
+ *  RETURNS the damage this enemy dealt to the player this tick (0 if none).
+ *  The engine applies it via damagePlayer() so armor absorption + the death
+ *  lifecycle stay centralized. */
+export function stepEnemyAI(enemy: Enemy, player: PlayerState): number {
+  if (enemy.state === "dead") return 0;
 
   // Range to the player on the floor plane (y is the enemy/player vertical
   // offset, irrelevant for movement + AI gating).
@@ -73,11 +93,25 @@ export function stepEnemyAI(enemy: Enemy, player: PlayerState): void {
     if (dist > ATTACK_RANGE) enemy.state = "chasing";
   }
 
+  // --- Attack --------------------------------------------------------------
+  // Attacking enemies hold position and tick their melee cooldown. When the
+  // cooldown hits 0 they deal ATTACK_DAMAGE_BY_KIND[kind] to the player and
+  // reset for the next swing. Cooldown is also bled while chasing so a
+  // briefly-out-of-range hit-and-run doesn't reset the timer to full.
+  if (enemy.attackCooldown > 0) enemy.attackCooldown -= 1;
+  if (enemy.state === "attacking") {
+    if (enemy.attackCooldown <= 0) {
+      enemy.attackCooldown = ATTACK_COOLDOWN_TICKS;
+      return ATTACK_DAMAGE_BY_KIND[enemy.kind];
+    }
+    return 0;
+  }
+
   // --- Movement ------------------------------------------------------------
-  // Only chasing enemies move. Attacking enemies hold position; the damage
-  // tick is a follow-up slice. Idle enemies are rooted by definition.
-  if (enemy.state !== "chasing") return;
-  if (dist === 0) return; // standing on the player; nothing to do
+  // Only chasing enemies move. Attacking enemies hold position (handled
+  // above). Idle enemies are rooted by definition.
+  if (enemy.state !== "chasing") return 0;
+  if (dist === 0) return 0; // standing on the player; nothing to do
 
   // Unit vector toward the player, scaled to one tick's worth of travel.
   const stepX = (dx / dist) * ENEMY_SPEED_PER_TICK;
@@ -90,4 +124,7 @@ export function stepEnemyAI(enemy: Enemy, player: PlayerState): void {
   if (!collidesAt(nextX, enemy.z, ENEMY_RADIUS)) enemy.x = nextX;
   const nextZ = enemy.z + stepZ;
   if (!collidesAt(enemy.x, nextZ, ENEMY_RADIUS)) enemy.z = nextZ;
+
+  // Chasing enemies don't damage; only 'attacking' lands hits (above).
+  return 0;
 }
