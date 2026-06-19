@@ -222,6 +222,77 @@ test("a known wall cell BLOCKS forward movement — the interior pillar holds (i
   expect(z).toBeGreaterThan(z0 - 16);
 });
 
+test("firing the weapon decrements weapon.ammo (issue #76)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  const ammoBefore = await page.evaluate(() => window.__doom!.weapon.ammo);
+  expect(ammoBefore).toBeGreaterThan(0);
+
+  // Fire once via the deterministic forceFire hook — no enemyId, just pull
+  // the trigger. Ammo MUST decrement regardless of whether the ray hit
+  // anything (the contract: a shot consumes a round; missing is observable
+  // via lastShot.enemyId===null, not by hiding the ammo cost).
+  await page.evaluate(() => window.__doomInternals!.forceFire());
+
+  const ammoAfter = await page.evaluate(() => window.__doom!.weapon.ammo);
+  expect(ammoAfter).toBe(ammoBefore - 1);
+
+  // lastShot is published — the death/score slice reads this.
+  const lastShot = await page.evaluate(() => window.__doom!.lastShot);
+  expect(lastShot).not.toBeNull();
+});
+
+test("a shot aligned at an enemy registers a hit (issue #76)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Pick the first live enemy. forceFire({enemyId}) aims the camera at that
+  // enemy's center, then fires through the same tryFire() path live Space
+  // takes — so a hit landing here proves the raycast pipeline is wired.
+  const target = await page.evaluate(() => {
+    const e = window.__doom!.enemies.find((x) => x.state !== "dead");
+    return e ? { id: e.id, hp: e.hp } : null;
+  });
+  expect(target).not.toBeNull();
+
+  const result = await page.evaluate((id) => {
+    window.__doomInternals!.forceFire({ enemyId: id });
+    const e = window.__doom!.enemies.find((x) => x.id === id) ?? null;
+    return {
+      lastShot: window.__doom!.lastShot,
+      // Enemy may have been culled if the shot was lethal — culling happens
+      // on the NEXT update(), but a 'dead' state in this same evaluate
+      // proves the hit landed.
+      enemyAfter: e ? { hp: e.hp, state: e.state } : null,
+    };
+  }, target!.id);
+
+  // The shot MUST be recorded as hitting THIS enemy.
+  expect(result.lastShot).not.toBeNull();
+  expect(result.lastShot!.enemyId).toBe(target!.id);
+
+  // And the hit MUST have dealt damage — either hp dropped or the enemy
+  // is dead (lethal). The seeded imp's hp (30) is below PLAYER_SHOT_DAMAGE
+  // (50), so the first enemy goes straight to 'dead'.
+  if (result.enemyAfter) {
+    const damaged =
+      result.enemyAfter.state === "dead" ||
+      result.enemyAfter.hp < target!.hp;
+    expect(damaged).toBe(true);
+  }
+});
+
 test("forceDamage({amount:1000}) drives the player to a terminal state", async ({
   page,
 }) => {

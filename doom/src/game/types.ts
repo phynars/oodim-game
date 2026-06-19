@@ -18,6 +18,14 @@
 // fields; they must NEVER remove a field a test depends on — add fields as
 // mechanics land, deprecate by leaving them stable.
 
+// Arena footprint comes from the level map (level.ts) so state.field stays in
+// sync with the walkable cells the engine actually builds. The #75 slice
+// renamed the old FIELD_WIDTH/FIELD_HEIGHT scaffold constants to MAP_WIDTH/
+// MAP_HEIGHT and made level.ts the source of truth — initialState() reads
+// them from there. level.ts does not import this file, so this is not
+// circular.
+import { MAP_HEIGHT, MAP_WIDTH } from "./level";
+
 /** High-level lifecycle. Boots to 'ready'; first input flips to 'playing'.
  *  'won' = level cleared; 'lost'/'gameover' = the player died (two-step
  *  terminal, mirroring Galaga: 'lost' is the immediate death flip, 'gameover'
@@ -283,12 +291,15 @@ export function initialState(): DoomState {
     tick: 0,
     score: 0,
     stage: 1,
-    field: { width: FIELD_WIDTH, height: FIELD_HEIGHT },
+    field: { width: MAP_WIDTH, height: MAP_HEIGHT },
     player: {
       // Stand at the south edge looking north (down -z) into the arena.
+      // The engine constructor immediately overwrites x/z with the level's
+      // 'S' spawn cell — these are sane defaults for any consumer who reads
+      // initialState() directly without an engine, e.g. unit tests.
       x: 0,
       y: EYE_HEIGHT,
-      z: FIELD_HEIGHT / 2 - 4,
+      z: MAP_HEIGHT / 2 - 4,
       yaw: 0,
       pitch: 0,
       health: PLAYER_START_HEALTH,
