@@ -941,32 +941,38 @@ export class Engine {
       // wandered into a solid wall / out of bounds) are removed in-place.
       this.stepProjectiles();
 
-      // Cull enemies that finished their death frame. Keeping a 'dead' enemy
-      // for exactly the tick it died lets a consumer observe the transition;
-      // we drop it on the following tick — along with its model + animation
-      // rig (#86), which the death-handling path deliberately deferred so
-      // the harness could observe `activeClip === 'death'` in the same
-      // synchronous publish forceHit triggered.
-      if (this.state.enemies.some((e) => e.state === "dead")) {
-        for (const e of this.state.enemies) {
-          if (e.state !== "dead") continue;
-          const model = this.enemyMeshes.get(e.id);
-          if (model) {
-            this.scene.remove(model);
-            disposeEnemyModel(model);
-            this.enemyMeshes.delete(e.id);
-          }
-          const rig = this.enemyRigs.get(e.id);
-          if (rig) {
-            rig.mixer.stopAllAction();
-            rig.mixer.uncacheRoot(rig.mixer.getRoot());
-            this.enemyRigs.delete(e.id);
-          }
+    }
+
+    // Cull enemies that finished their death frame. Keeping a 'dead' enemy
+    // for exactly the tick it died lets a consumer observe the transition;
+    // we drop it on the following tick — along with its model + animation
+    // rig (#86), which the death-handling path deliberately deferred so
+    // the harness could observe `activeClip === 'death'` in the same
+    // synchronous publish forceHit triggered.
+    //
+    // The cull runs OUTSIDE the `playing` gate so an enemy killed on the
+    // same tick the player dies (status flips to 'lost' inside the block)
+    // still gets its mesh + rig disposed — otherwise the rig leaks for the
+    // page's lifetime, since `lost`/`gameover` never re-enter this path.
+    if (this.state.enemies.some((e) => e.state === "dead")) {
+      for (const e of this.state.enemies) {
+        if (e.state !== "dead") continue;
+        const model = this.enemyMeshes.get(e.id);
+        if (model) {
+          this.scene.remove(model);
+          disposeEnemyModel(model);
+          this.enemyMeshes.delete(e.id);
         }
-        this.state.enemies = this.state.enemies.filter(
-          (e) => e.state !== "dead",
-        );
+        const rig = this.enemyRigs.get(e.id);
+        if (rig) {
+          rig.mixer.stopAllAction();
+          rig.mixer.uncacheRoot(rig.mixer.getRoot());
+          this.enemyRigs.delete(e.id);
+        }
       }
+      this.state.enemies = this.state.enemies.filter(
+        (e) => e.state !== "dead",
+      );
     }
   }
 

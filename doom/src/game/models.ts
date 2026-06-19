@@ -436,7 +436,6 @@ export function setActiveClip(
   name: EnemyClipName,
 ): void {
   if (rig.active === name) return;
-  const fade = 0.15;
   const next = rig.actions[name];
   // Death is one-shot: rewind + restart so a re-kill (or stage reload) plays
   // the collapse fresh instead of holding the clamped end pose.
@@ -445,6 +444,11 @@ export function setActiveClip(
     next.play();
   }
   // Cross-fade: ramp every other action's weight to 0, ramp the new one to 1.
+  // The weight-snap below is a simpler equivalent of `crossFadeTo` for the
+  // scaffold — mixer-internal cross-fades require the outgoing action to
+  // have non-zero weight, which isn't guaranteed here. When the rig gains
+  // an explicit cross-fade pass we'll switch to `crossFadeTo` with a
+  // duration constant.
   for (const key of Object.keys(rig.actions) as EnemyClipName[]) {
     const action = rig.actions[key];
     if (key === name) {
@@ -455,11 +459,6 @@ export function setActiveClip(
     }
   }
   rig.active = name;
-  // Silence the unused-var lint for `fade` — kept named for the next pass
-  // when we move to crossFadeTo (mixer-internal cross-fades require the
-  // outgoing action to have non-zero weight; our weight-snap above is a
-  // simpler equivalent for the scaffold).
-  void fade;
 }
 
 /** Dispose every geometry + material in `group` — called when the engine
