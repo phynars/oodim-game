@@ -21,7 +21,26 @@ const armorEl = document.querySelector<HTMLElement>('[data-hud="armor"]');
 const ammoEl = document.querySelector<HTMLElement>('[data-hud="ammo"]');
 const scoreEl = document.querySelector<HTMLElement>('[data-hud="score"]');
 
+// Overlay DOM (#91): title screen (status==='ready'), game-over (status===
+// 'gameover'|'lost'|'won'), and a red hit-flash veil that fades while
+// state.hitFlashTicks > 0. All read-only consumers of window.__doom — same
+// shape as the HUD.
+const titleEl = document.querySelector<HTMLElement>('[data-overlay="title"]');
+const gameoverEl = document.querySelector<HTMLElement>(
+  '[data-overlay="gameover"]',
+);
+const hitFlashEl = document.querySelector<HTMLElement>(
+  '[data-overlay="hit-flash"]',
+);
+const finalScoreEl = document.querySelector<HTMLElement>(
+  '[data-overlay="final-score"]',
+);
+
 if (healthEl && armorEl && ammoEl && scoreEl) {
+  let lastTitleVisible: boolean | null = null;
+  let lastGameoverVisible: boolean | null = null;
+  let lastFlash = -1;
+  let lastFinalScore = "";
   const tickHud = (): void => {
     const s = window.__doom;
     if (s) {
@@ -35,6 +54,31 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
       if (armorEl.textContent !== armor) armorEl.textContent = armor;
       if (ammoEl.textContent !== ammo) ammoEl.textContent = ammo;
       if (scoreEl.textContent !== score) scoreEl.textContent = score;
+      // Title overlay: shown only on the READY screen. Same pattern as the
+      // HUD — strict read of state.status, no input handling here.
+      const wantTitle = s.status === "ready";
+      if (titleEl && lastTitleVisible !== wantTitle) {
+        titleEl.style.display = wantTitle ? "flex" : "none";
+        lastTitleVisible = wantTitle;
+      }
+      // Game-over overlay: shown on any terminal state.
+      const wantGameover =
+        s.status === "gameover" || s.status === "lost" || s.status === "won";
+      if (gameoverEl && lastGameoverVisible !== wantGameover) {
+        gameoverEl.style.display = wantGameover ? "flex" : "none";
+        lastGameoverVisible = wantGameover;
+      }
+      if (finalScoreEl && wantGameover && score !== lastFinalScore) {
+        finalScoreEl.textContent = score;
+        lastFinalScore = score;
+      }
+      // Hit-flash overlay: opacity tracks hitFlashTicks. 0 → invisible;
+      // ramps up to ~0.5 at full pulse. CSS handles the red color.
+      if (hitFlashEl && s.hitFlashTicks !== lastFlash) {
+        const op = s.hitFlashTicks > 0 ? Math.min(0.5, s.hitFlashTicks / 24) : 0;
+        hitFlashEl.style.opacity = String(op);
+        lastFlash = s.hitFlashTicks;
+      }
     }
     requestAnimationFrame(tickHud);
   };

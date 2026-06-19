@@ -200,6 +200,17 @@ export interface DoomState {
    *  entry per shot that connects. Append-only in the scaffold; backlog may
    *  later cap or window it. */
   hits: Hit[];
+  /** Fixed-step frames remaining on the current damage-flash pulse (#91).
+   *  Set to HIT_FLASH_TICKS the tick the player takes damage; counted down
+   *  each fixed-step. >0 means the red overlay is showing this tick — the
+   *  HUD / e2e harness read this rather than a pixel. */
+  hitFlashTicks: number;
+  /** Fixed-step frames remaining on the current screen-shake pulse (#91).
+   *  Set to SHAKE_TICKS the tick the player takes damage; counted down each
+   *  fixed-step. While >0 the render pass perturbs the camera by a small
+   *  deterministic offset; resting at 0 the camera sits at the player's
+   *  eye unmodified. */
+  shakeTicks: number;
 }
 
 /** Test-only escape hatches. The e2e harness can force deterministic combat
@@ -254,6 +265,13 @@ export interface DoomInternals {
    *  press: decrements ammo (or no-ops at 0), raycasts against enemy meshes,
    *  damages the nearest hit + appends to `hits`. Synchronous publish. */
   fire(): void;
+  /** Restart the game after a terminal state (#91). Resets `status` to
+   *  'ready', clears `score`, restores `health`/`armor`/`alive`, refills
+   *  ammo, reseeds stage 1's enemies + pickups + doors, and clears
+   *  projectiles + hits. Idempotent: calling restart at any time hard-resets
+   *  the run, so the title-screen "press any key" path and the game-over
+   *  "press R to restart" path share the same wire. Synchronous publish. */
+  restart(): void;
 }
 
 /** Test-only texture contract (issue #84). The engine paints procedural
@@ -431,5 +449,20 @@ export function initialState(): DoomState {
     doors: [],
     weapon: { ...STARTING_WEAPON },
     hits: [],
+    hitFlashTicks: 0,
+    shakeTicks: 0,
   };
 }
+
+/** Fixed-step frames a damage-flash pulse holds (#91). ~12 ticks @ 60Hz =
+ *  200ms — long enough to read, short enough not to obscure play. */
+export const HIT_FLASH_TICKS = 12;
+
+/** Fixed-step frames a screen-shake pulse holds (#91). Same duration as the
+ *  hit flash so the two read as one beat. */
+export const SHAKE_TICKS = 12;
+
+/** World-units of camera offset at peak shake (#91). Decays linearly with
+ *  the tick counter so the perturbation fades smoothly. Small enough that
+ *  the player doesn't feel motion-sick on every chip. */
+export const SHAKE_AMPLITUDE = 0.08;
