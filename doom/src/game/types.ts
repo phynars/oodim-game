@@ -290,6 +290,23 @@ export interface DoomModels {
   }>;
 }
 
+/** Test-only scene-atmosphere contract (issue #88). The engine sets fog +
+ *  multiple lights on its `THREE.Scene` at boot; this handle publishes a
+ *  flat read-out so the e2e harness can assert atmosphere without
+ *  reaching into the three.js graph from Playwright. The getters walk the
+ *  scene each read so future light additions (or stage-specific lights)
+ *  are reflected live. */
+export interface DoomScene {
+  /** True iff `scene.fog` is set (non-null). */
+  readonly hasFog: boolean;
+  /** Constructor flavor of `scene.fog`: 'Fog' for linear, 'FogExp2' for
+   *  exponential, '' if no fog. Acceptance asserts 'Fog'. */
+  readonly fogType: string;
+  /** Count of Object3Ds in the scene where `isLight===true`. The
+   *  acceptance criterion is `> 1`. */
+  readonly lightCount: number;
+}
+
 /** Test-only viewmodel contract (issue #87). The engine builds a first-
  *  person weapon mesh and parents it to the camera at boot; this handle
  *  publishes whether the viewmodel exists AND whether its parent is the
@@ -320,6 +337,8 @@ declare global {
     __doomModels?: DoomModels;
     /** Test-only viewmodel contract — see `DoomViewmodel` (issue #87). */
     __doomViewmodel?: DoomViewmodel;
+    /** Test-only scene-atmosphere contract — see `DoomScene` (issue #88). */
+    __doomScene?: DoomScene;
   }
 }
 

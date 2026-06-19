@@ -16,6 +16,7 @@ import { expect, test } from "@playwright/test";
 import type {
   DoomInternals,
   DoomModels,
+  DoomScene,
   DoomState,
   DoomTextures,
 } from "../src/game/types";
@@ -26,6 +27,7 @@ declare global {
     __doomInternals?: DoomInternals;
     __doomTextures?: DoomTextures;
     __doomModels?: DoomModels;
+    __doomScene?: DoomScene;
   }
 }
 
@@ -988,6 +990,34 @@ test("a weapon viewmodel is parented to the camera and the muzzle flash pulses o
     };
   });
   expect(afterFire.muzzleFlashTicks).toBeGreaterThan(0);
+});
+
+test("scene atmosphere: fog is set and more than one light exists (issue #88)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  // Atmosphere lives on the three.js Scene (fog + lights), which Playwright
+  // can't introspect directly. The engine publishes `window.__doomScene`
+  // (see exposeSceneHandle) with flat getters that walk the scene each
+  // read — same test-only pattern as __doomTextures / __doomViewmodel.
+  await page.waitForFunction(() => Boolean(window.__doomScene), null, {
+    timeout: 5000,
+  });
+
+  const atmos = await page.evaluate(() => window.__doomScene!);
+
+  // Acceptance: scene.fog is set …
+  expect(atmos.hasFog).toBe(true);
+  expect(atmos.fogType).toBe("Fog");
+  // … and more than one light exists in the scene.
+  expect(atmos.lightCount).toBeGreaterThan(1);
+  // Be specific: at minimum a directional + ambient + at least one point
+  // light (the sconce or torch), so the atmosphere isn't a single ambient
+  // doubled. Pre-#88 there were 2 lights total (ambient + directional);
+  // post-#88 we expect 5+.
+  expect(atmos.lightCount).toBeGreaterThanOrEqual(4);
 });
 
 test("wall material carries a procedural CanvasTexture map (issue #84)", async ({
