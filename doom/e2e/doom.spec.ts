@@ -637,6 +637,90 @@ test("enemy variety: the roster includes at least 2 distinct kinds (issue #81)",
   expect(kinds.length).toBeGreaterThanOrEqual(2);
 });
 
+test("a proximity door FLIPS open as the player approaches (issue #82)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Setup: the map seeds at least one door (the stage-1 corridor west of
+  // spawn). It must be CLOSED at boot and OPEN once the player has walked
+  // close enough. Strafing left from the spawn drives the player toward the
+  // door; the engine's per-tick proximity check flips door.open. STATE
+  // CONTRACT: assert on `__doom.doors[i].open`, never on a rendered door.
+  // Pre-#82 the map had no `D` cells → state.doors is empty → this fails.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    if (s.doors.length === 0) {
+      return { ok: false as const, why: "no doors seeded" };
+    }
+    const door = s.doors[0];
+    const closedBefore = door.open === false;
+    // Strafe left until the player is within range — ~50 steps × 0.08 =
+    // 4 u of travel, enough to cross from spawn into proximity range of
+    // the corridor door. The map keeps the corridor west-of-spawn clear,
+    // so this walks straight into door range without hitting any wall.
+    window.__doomInternals!.advance({ steps: 50, left: true });
+    const after = window.__doom!.doors.find((d) => d.id === door.id);
+    return {
+      ok: true as const,
+      closedBefore,
+      openAfter: after?.open ?? false,
+    };
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  // Pre-change: door starts closed (the open flag must DEFAULT false).
+  expect(result.closedBefore).toBe(true);
+  // Post-change: walking toward the door flips it open.
+  expect(result.openAfter).toBe(true);
+});
+
+test("reaching a level-exit cell advances __doom.stage to the next stage (issue #82)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Setup: stage 1 places an exit `X` cell at the far west of the spawn
+  // corridor, past the proximity door. Strafing left from spawn for enough
+  // steps to (a) open the door and (b) cross the exit cell must increment
+  // `stage` (1 → 2). The engine reloads the next map (resets enemies +
+  // pickups + doors + repositions player at the new spawn). STATE CONTRACT:
+  // assert on `__doom.stage`; pre-#82 the engine had no exit logic → stage
+  // stayed at 1 forever → this fails.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const stageBefore = s.stage;
+    // 200 steps × 0.08 u = 16 u of left travel — more than the corridor
+    // depth, so the player reaches the exit regardless of where in the
+    // corridor it sits. The engine clamps short of the west wall, but the
+    // exit cell sits one tile inside that wall and is walkable.
+    window.__doomInternals!.advance({ steps: 200, left: true });
+    return {
+      stageBefore,
+      stageAfter: window.__doom!.stage,
+      enemiesAfter: window.__doom!.enemies.length,
+      pickupsAfter: window.__doom!.pickups.length,
+    };
+  });
+
+  expect(result.stageBefore).toBe(1);
+  expect(result.stageAfter).toBe(2);
+  // The new stage reseeds its rosters from level defaults — the engine
+  // rebuilds enemies + pickups when the stage loads, so these are still
+  // present (per the contract "loads the next map / reset enemies/pickups").
+  expect(result.enemiesAfter).toBeGreaterThanOrEqual(1);
+  expect(result.pickupsAfter).toBeGreaterThanOrEqual(1);
+});
+
 test("a ranged enemy emits a projectile with from==='enemy' (issue #81)", async ({
   page,
 }) => {
