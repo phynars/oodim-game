@@ -35,12 +35,19 @@ import {
   type InputSource,
 } from "./input";
 import {
+  CELL,
   collidesAt,
+  doors as levelDoors,
+  exits as levelExits,
   findSpawn,
+  loadStage,
   MAP_HEIGHT,
   MAP_WIDTH,
+  setOpenDoors,
+  TOTAL_STAGES,
   WALL_HEIGHT,
   walls,
+  worldToCell,
 } from "./level";
 import {
   PROJECTILE_DAMAGE,
@@ -101,6 +108,13 @@ const SEED_PICKUPS: ReadonlyArray<{
  *  PLAYER_RADIUS (0.3) so the player doesn't have to thread the needle. */
 const PICKUP_RADIUS = 0.8;
 
+/** Proximity radius for a door to flip OPEN (world units). When the player's
+ *  center is within DOOR_OPEN_RADIUS of a door cell's center, the door's
+ *  `open` flag flips true and collision starts treating that cell as floor.
+ *  Larger than a CELL so the door opens BEFORE the player walks into it
+ *  (otherwise the player would clip into a closed door for one tick). */
+const DOOR_OPEN_RADIUS = CELL * 1.25;
+
 /** Visual size (world units) of a placeholder enemy box, per archetype — barons
  *  read as the biggest threat. Purely cosmetic; combat uses HP_BY_KIND. */
 const ENEMY_BOX_SIZE: Record<EnemyKind, number> = {
@@ -141,6 +155,12 @@ export class Engine {
    *  so a test that tracks a projectile by id can. Instance-scoped so two
    *  engines on the same page wouldn't collide. */
   private nextProjectileId = 1;
+
+  /** Cell coords for each entry in state.doors, parallel-indexed. The level
+   *  map needs the cell coords to flip a cell's solidity, while the
+   *  state.doors contract surface only carries world-space — this parallel
+   *  array bridges the two without polluting the public type. */
+  private doorCells: Array<{ col: number; row: number }> = [];
 
   /** Tick at which status flipped to 'lost'. After GAMEOVER_HOLD_FRAMES more
    *  fixed-step frames elapse the status advances to 'gameover'. Null while
@@ -245,6 +265,11 @@ export class Engine {
     // Seed the pickup roster.
     this.seedPickups();
 
+    // Seed doors from the level map (#82). state.doors is the contract
+    // surface; cell coords are stashed on a parallel array so the per-tick
+    // proximity check can route them back into level.ts's open-cell cache.
+    this.seedDoors();
+
     // Keyboard is the canonical input. First keydown flips ready→playing.
     this.input = createKeyboardInput();
 
@@ -305,6 +330,95 @@ export class Engine {
         taken: false,
       });
     }
+  }
+
+  /** Seed the doors roster from the current level map. Each `D` cell becomes
+   *  one DoorState (initially closed) and one parallel doorCells entry the
+   *  per-tick proximity check uses to push opens back into level.ts's
+   *  collision cache. No mesh in the scaffold — the e2e harness asserts on
+   *  state (`doors[i].open`); a sliding door mesh is a polish slice. */
+  private seedDoors(): void {
+    let nextId = 1;
+    this.state.doors = [];
+    this.doorCells = [];
+    for (const d of levelDoors()) {
+      this.state.doors.push({ id: nextId++, x: d.x, z: d.z, open: false });
+      this.doorCells.push({ col: d.col, row: d.row });
+    }
+    // Reset the level's open-cell cache so the new stage's doors start closed.
+    setOpenDoors([]);
+  }
+
+  /** Per-tick door update (#82): a door flips OPEN when the player's center
+   *  is within DOOR_OPEN_RADIUS of its center; otherwise it's closed. After
+   *  recomputing, push the set of currently-open cells back to level.ts so
+   *  collision treats opened doors as walkable on the SAME tick.
+   *
+   *  Idempotent — running it twice with the same player position yields the
+   *  same flags. */
+  private updateDoors(): void {
+    if (this.state.doors.length === 0) return;
+    const p = this.state.player;
+    const r2 = DOOR_OPEN_RADIUS * DOOR_OPEN_RADIUS;
+    const openCells: Array<{ col: number; row: number }> = [];
+    for (let i = 0; i < this.state.doors.length; i++) {
+      const d = this.state.doors[i];
+      const dx = p.x - d.x;
+      const dz = p.z - d.z;
+      d.open = dx * dx + dz * dz <= r2;
+      if (d.open) openCells.push(this.doorCells[i]);
+    }
+    setOpenDoors(openCells);
+  }
+
+  /** Per-tick exit check (#82): if the player's current cell is an exit
+   *  (`X` in the map), advance the stage and load the next map. Resets
+   *  enemies/pickups/doors + repositions the player at the new map's spawn.
+   *  When already on the final stage, flips status to 'won' instead so the
+   *  player isn't stuck looping the last stage forever. */
+  private checkExit(): void {
+    const p = this.state.player;
+    const cell = worldToCell(p.x, p.z);
+    if (!cell) return;
+    // Match against this stage's exit cells.
+    const onExit = levelExits().some(
+      (e) => e.col === cell.col && e.row === cell.row,
+    );
+    if (!onExit) return;
+    if (this.state.stage >= TOTAL_STAGES) {
+      // Last stage cleared — flip to a terminal "won" state. Future content
+      // can add more stages; until then this is the end of the line.
+      this.state.status = "won";
+      return;
+    }
+    this.advanceToStage(this.state.stage + 1);
+  }
+
+  /** Load `stage` (1-indexed): swap the level map, reset the player to the
+   *  new spawn, and clear all per-stage rosters. Does NOT reset score,
+   *  weapon, or health — those carry across stages, matching the genre. */
+  private advanceToStage(stage: number): void {
+    loadStage(stage);
+    this.state.stage = stage;
+    const spawn = findSpawn();
+    this.state.player.x = spawn.x;
+    this.state.player.z = spawn.z;
+    // Clear in-flight projectiles + landed-hit log; both are per-stage.
+    this.state.projectiles = [];
+    // Drop existing enemy meshes from the scene; reseeding rebuilds them.
+    for (const mesh of this.enemyMeshes.values()) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    this.enemyMeshes.clear();
+    this.state.enemies = [];
+    this.state.pickups = [];
+    // Reseed rosters from the (new) map's defaults. Enemies + pickups come
+    // back to their seeded positions; doors from the new map's `D` cells.
+    this.seedEnemies();
+    this.seedPickups();
+    this.seedDoors();
   }
 
   /** Check whether the player is standing on any un-taken pickup; apply the
@@ -651,6 +765,18 @@ export class Engine {
       // unconditionally (even when no movement keys were held) so a pickup
       // dropped at the player's feet by some future mechanic still grants.
       this.checkPickups();
+
+      // --- DOORS (issue #82) ----------------------------------------------
+      // Flip door.open per the player's current proximity. Pushed BEFORE the
+      // exit check so a door blocking the path to the exit opens this tick
+      // and the next tick's movement isn't a frame behind.
+      this.updateDoors();
+
+      // --- LEVEL EXIT (issue #82) -----------------------------------------
+      // If the player is standing on an `X` cell, advance to the next stage
+      // (resets enemies/pickups/doors + repositions to the new spawn). On
+      // the final stage, status flips to 'won' instead.
+      this.checkExit();
 
       // --- ENEMY AI (issue #77) + DAMAGE (issue #79) + RANGED FIRE (#81) ---
       // One step per live enemy, before the death-cull below — so an enemy
