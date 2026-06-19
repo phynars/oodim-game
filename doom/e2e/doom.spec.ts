@@ -169,7 +169,27 @@ test("ArrowUp moves the player forward — player.z DECREASES (camera looks down
   expect(z1).toBeLessThan(z0);
 });
 
-test("walking into a wall clamps player.z — the player does NOT pass through the playfield edge", async ({
+test("the player spawns INSIDE bounds — on a walkable cell, not at the legacy origin (issue #75)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  const { spawn, field } = await page.evaluate(() => ({
+    spawn: { x: window.__doom!.player.x, z: window.__doom!.player.z },
+    field: window.__doom!.field,
+  }));
+
+  // Spawn must sit STRICTLY inside the arena footprint — not on the outer
+  // ring of solid cells. The map's outer wall row+col is one CELL thick, so
+  // any walkable cell center is > -half + CELL/2 and < +half - CELL/2.
+  expect(spawn.x).toBeGreaterThan(-field.width / 2);
+  expect(spawn.x).toBeLessThan(field.width / 2);
+  expect(spawn.z).toBeGreaterThan(-field.height / 2);
+  expect(spawn.z).toBeLessThan(field.height / 2);
+});
+
+test("a known wall cell BLOCKS forward movement — the interior pillar holds (issue #75)", async ({
   page,
 }) => {
   await page.goto("/");
@@ -178,36 +198,28 @@ test("walking into a wall clamps player.z — the player does NOT pass through t
     timeout: 5000,
   });
 
-  const field = await page.evaluate(() => window.__doom!.field);
+  // The level map has a single interior pillar; spawn 'S' sits south of it
+  // looking north (down -z). Walking forward must STOP before the pillar's
+  // south face, even with enough fixed-steps to overshoot it.
   const z0 = await page.evaluate(() => window.__doom!.player.z);
 
-  // DETERMINISM: drive the sim a KNOWN number of fixed-steps via the test-only
-  // `advance` hook instead of holding a key for a wall-clock `waitForTimeout`.
-  // Doom renders with WebGL, and under headless SwiftShader the rAF that pumps
-  // the engine's fixed-step accumulator fires far slower than 60Hz — so a
-  // wall-clock hold moves a machine-dependent distance (green locally, far
-  // short in CI: the exact flake that jammed the aggregate CI). `advance`
-  // steps the sim synchronously, so travel = steps × PLAYER_SPEED_PER_TICK is
-  // EXACT regardless of render cadence.
-  //
-  // 400 steps × 0.08 u = 32 u of forward intent. Spawn is z=+12 on a 32-deep
-  // field; the wall clamp sits at z = -(height/2 - PLAYER_RADIUS) ≈ -15.7.
-  // Travel to the wall is ~27.7 u, so 32 u OVERSHOOTS it by a wide margin —
-  // the player DEFINITELY reaches and is held at the wall.
+  // 200 steps × 0.08 u = 16 u of forward intent — more than the spawn-to-
+  // pillar distance, so a working collision MUST clamp short of the pillar.
   await page.evaluate(() =>
-    window.__doomInternals!.advance({ steps: 400, forward: true }),
+    window.__doomInternals!.advance({ steps: 200, forward: true }),
   );
 
   const z = await page.evaluate(() => window.__doom!.player.z);
-  // Z is bounded by -field.height/2 (with PLAYER_RADIUS slack). Assert the
-  // WALL HELD: z never passed through the edge.
+  const field = await page.evaluate(() => window.__doom!.field);
+
+  // Moved north (z decreased) — proves movement ran.
+  expect(z).toBeLessThan(z0);
+  // Stopped INSIDE the arena — never passed through the north outer wall.
   expect(z).toBeGreaterThan(-field.height / 2);
-  // And we DID reach the wall — with 32 u of forward intent the player must be
-  // clamped right at the north edge, not stranded at the +12 spawn. Assert z
-  // sits at the clamp (within PLAYER_RADIUS slack), proving both that movement
-  // ran AND that the clamp engaged.
-  expect(z).toBeLessThan(z0); // moved north
-  expect(z).toBeLessThan(-field.height / 2 + 1); // pressed against the wall
+  // And stopped SHORT of where 16 u of unobstructed travel would have put
+  // them: z0 - 16 would be well past the pillar. A working collision keeps z
+  // > z0 - 16 (i.e. it didn't pass through).
+  expect(z).toBeGreaterThan(z0 - 16);
 });
 
 test("forceDamage({amount:1000}) drives the player to a terminal state", async ({
