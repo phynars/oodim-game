@@ -279,6 +279,14 @@ export class Engine {
         p.x = opts.x;
         p.z = opts.z;
         if (typeof opts.yaw === "number") p.yaw = opts.yaw;
+        // CRITICAL for headless e2e: also DRAIN the accumulated mouse
+        // delta. Without this, any mousemove that fired between the last
+        // tick and this teleport (e.g., a Playwright pre-click pointer
+        // move that landed late) would be consumed by the NEXT tick and
+        // immediately rotate yaw back off whatever value the caller set.
+        // Teleport is a deterministic reset of the player's pose — the
+        // input accumulator must reset with it.
+        this.input.consumeMouseDelta();
         this.publish();
       },
     };
