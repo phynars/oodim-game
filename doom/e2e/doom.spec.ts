@@ -14,6 +14,7 @@
 import { expect, test } from "@playwright/test";
 
 import type {
+  DoomAudio,
   DoomInternals,
   DoomModels,
   DoomScene,
@@ -28,6 +29,7 @@ declare global {
     __doomTextures?: DoomTextures;
     __doomModels?: DoomModels;
     __doomScene?: DoomScene;
+    __doomAudio?: DoomAudio;
   }
 }
 
@@ -1018,6 +1020,91 @@ test("scene atmosphere: fog is set and more than one light exists (issue #88)", 
   // doubled. Pre-#88 there were 2 lights total (ambient + directional);
   // post-#88 we expect 5+.
   expect(atmos.lightCount).toBeGreaterThanOrEqual(4);
+});
+
+test("procedural audio: AudioContext is created on first gesture and fire / hit / pickup trigger sound nodes (issue #89)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomAudio), null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // BOOT contract: the audio handle is published but locked — no
+  // AudioContext yet (autoplay policy gates context construction behind
+  // a user gesture).
+  const boot = await page.evaluate(() => ({
+    unlocked: window.__doomAudio!.unlocked,
+    contextPresent: window.__doomAudio!.contextPresent,
+    weaponShots: window.__doomAudio!.weaponShots,
+    enemyHits: window.__doomAudio!.enemyHits,
+    pickups: window.__doomAudio!.pickups,
+  }));
+  expect(boot.unlocked).toBe(false);
+  expect(boot.contextPresent).toBe(false);
+  expect(boot.weaponShots).toBe(0);
+  expect(boot.enemyHits).toBe(0);
+  expect(boot.pickups).toBe(0);
+
+  // First gesture — clicking the canvas (the same path that flips
+  // ready→playing) must unlock audio and create the AudioContext.
+  await page.locator("canvas").click();
+  await page.waitForFunction(
+    () => window.__doomAudio?.contextPresent === true,
+    null,
+    { timeout: 5000 },
+  );
+  const unlocked = await page.evaluate(() => ({
+    unlocked: window.__doomAudio!.unlocked,
+    contextPresent: window.__doomAudio!.contextPresent,
+  }));
+  expect(unlocked.unlocked).toBe(true);
+  expect(unlocked.contextPresent).toBe(true);
+
+  // WIRING contract: fire / forceHit / forcePickup each trigger a sound
+  // node, so the matching counter increments. We assert the WIRING — that
+  // play* was called — not the audible output (headless Chromium can't
+  // read speakers any more than it can read pixels).
+  const events = await page.evaluate(() => {
+    const before = {
+      weaponShots: window.__doomAudio!.weaponShots,
+      enemyHits: window.__doomAudio!.enemyHits,
+      enemyDeaths: window.__doomAudio!.enemyDeaths,
+      pickups: window.__doomAudio!.pickups,
+    };
+    // One weapon shot via the synchronous fire() hook — same path Space
+    // takes, just without rAF. The seeded ammo (50) is plenty.
+    window.__doomInternals!.fire();
+    // One enemy hit (and death — the seeded imp's hp is below
+    // PLAYER_SHOT_DAMAGE so forceHit lands a lethal blow, triggering both
+    // the hit ping and the death groan).
+    const impId = window.__doom!.enemies[0].id;
+    window.__doomInternals!.forceHit({ enemyId: impId });
+    // One pickup.
+    const pickupId = window.__doom!.pickups[0].id;
+    window.__doomInternals!.forcePickup({ id: pickupId });
+    return {
+      before,
+      after: {
+        weaponShots: window.__doomAudio!.weaponShots,
+        enemyHits: window.__doomAudio!.enemyHits,
+        enemyDeaths: window.__doomAudio!.enemyDeaths,
+        pickups: window.__doomAudio!.pickups,
+      },
+    };
+  });
+
+  // Each event bumped its counter by at least 1. fire() may also hit an
+  // enemy (raycast against the seeded roster), so enemyHits delta >= 1 — we
+  // assert each individual event triggered, not exact deltas.
+  expect(events.after.weaponShots).toBeGreaterThan(events.before.weaponShots);
+  expect(events.after.enemyHits).toBeGreaterThan(events.before.enemyHits);
+  expect(events.after.enemyDeaths).toBeGreaterThan(events.before.enemyDeaths);
+  expect(events.after.pickups).toBeGreaterThan(events.before.pickups);
 });
 
 test("wall material carries a procedural CanvasTexture map (issue #84)", async ({

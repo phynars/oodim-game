@@ -307,6 +307,27 @@ export interface DoomScene {
   readonly lightCount: number;
 }
 
+/** Test-only audio contract (issue #89). The engine constructs a
+ *  procedural-SFX engine at boot but defers AudioContext creation until
+ *  the first user gesture (autoplay policy). After unlock the harness
+ *  can assert that an AudioContext exists AND that fire/hit/pickup events
+ *  bump the matching counter — proving each play* helper triggered a
+ *  sound node, without listening to headless audio. */
+export interface DoomAudio {
+  /** True iff `unlock()` ran AND an AudioContext was created. */
+  readonly unlocked: boolean;
+  /** True iff an `AudioContext` instance exists on the engine. */
+  readonly contextPresent: boolean;
+  /** Monotonic count of weapon-shot sound nodes triggered. */
+  readonly weaponShots: number;
+  /** Monotonic count of enemy-hit sound nodes triggered. */
+  readonly enemyHits: number;
+  /** Monotonic count of enemy-death sound nodes triggered. */
+  readonly enemyDeaths: number;
+  /** Monotonic count of pickup sound nodes triggered. */
+  readonly pickups: number;
+}
+
 /** Test-only viewmodel contract (issue #87). The engine builds a first-
  *  person weapon mesh and parents it to the camera at boot; this handle
  *  publishes whether the viewmodel exists AND whether its parent is the
@@ -339,6 +360,8 @@ declare global {
     __doomViewmodel?: DoomViewmodel;
     /** Test-only scene-atmosphere contract — see `DoomScene` (issue #88). */
     __doomScene?: DoomScene;
+    /** Test-only audio contract — see `DoomAudio` (issue #89). */
+    __doomAudio?: DoomAudio;
   }
 }
 
