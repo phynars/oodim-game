@@ -1228,6 +1228,139 @@ test.describe("touch controls (issue #90)", () => {
   });
 });
 
+test("title screen: status='ready' at boot, first input flips ready→playing and hides the title overlay (issue #91)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  // BOOT: status must be 'ready' AND the title overlay must be visible.
+  // The title overlay is a pure read of __doom.status from main.ts; we
+  // assert on BOTH the state contract (status) and the rendered DOM
+  // (overlay display) so a wire break in either path is caught.
+  const titleOverlay = page.locator('[data-overlay="title"]');
+  expect(await page.evaluate(() => window.__doom!.status)).toBe("ready");
+  await expect(titleOverlay).toBeVisible();
+
+  // First input flips status → 'playing' AND hides the title overlay.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowUp");
+  await page.waitForFunction(() => window.__doom?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await expect(titleOverlay).toBeHidden();
+});
+
+test("restart resets status / score / health / ammo + reseeds enemies (issue #91)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Drive the player into a 'dirty' state: leave READY, take damage, score
+  // a kill, burn ammo. Restart must wipe ALL of these back to boot values.
+  const dirty = await page.evaluate(() => {
+    const s = window.__doom!;
+    // Leave READY so status can flip to 'playing' / then terminal.
+    s.status = "playing";
+    // Take damage (drops hp + arms the lost-tick if lethal).
+    window.__doomInternals!.forceDamage({ amount: 30 });
+    // Kill the seeded imp for score.
+    const impId = s.enemies[0].id;
+    window.__doomInternals!.forceHit({ enemyId: impId });
+    // Burn one round.
+    s.weapon.ammo -= 5;
+    return {
+      status: window.__doom!.status,
+      score: window.__doom!.score,
+      health: window.__doom!.player.health,
+      ammo: window.__doom!.weapon.ammo,
+      enemies: window.__doom!.enemies.length,
+    };
+  });
+  // Dirty state is detectable: score raised, health below 100, ammo below
+  // 50. (Status may already be 'gameover' depending on damage path; that's
+  // fine — restart resets it either way.)
+  expect(dirty.score).toBeGreaterThan(0);
+  expect(dirty.health).toBeLessThan(100);
+  expect(dirty.ammo).toBeLessThan(50);
+
+  // Restart via the synchronous internal — same code path the R-keypress
+  // and the game-over click take. STATE CONTRACT: assert on __doom after.
+  const clean = await page.evaluate(() => {
+    window.__doomInternals!.restart();
+    const s = window.__doom!;
+    return {
+      status: s.status,
+      score: s.score,
+      health: s.player.health,
+      alive: s.player.alive,
+      ammo: s.weapon.ammo,
+      enemies: s.enemies.length,
+      pickupsTaken: s.pickups.filter((p) => p.taken).length,
+      stage: s.stage,
+    };
+  });
+  expect(clean.status).toBe("ready");
+  expect(clean.score).toBe(0);
+  expect(clean.health).toBe(100);
+  expect(clean.alive).toBe(true);
+  expect(clean.ammo).toBe(50);
+  expect(clean.stage).toBe(1);
+  // Stage 1 reseeds its rosters, so enemies are present + no pickups taken.
+  expect(clean.enemies).toBeGreaterThanOrEqual(1);
+  expect(clean.pickupsTaken).toBe(0);
+});
+
+test("damage pulses hitFlashTicks + shakeTicks; both decay back to 0 (issue #91)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // BOOT: both counters resting at 0.
+  const boot = await page.evaluate(() => ({
+    hitFlashTicks: window.__doom!.hitFlashTicks,
+    shakeTicks: window.__doom!.shakeTicks,
+  }));
+  expect(boot.hitFlashTicks).toBe(0);
+  expect(boot.shakeTicks).toBe(0);
+
+  // Take a non-lethal chip — both counters must pulse to a positive value
+  // in the same synchronous publish forceDamage does. Pre-#91 these fields
+  // don't exist on the contract → undefined → this fails.
+  const afterHit = await page.evaluate(() => {
+    window.__doomInternals!.forceDamage({ amount: 10 });
+    return {
+      hitFlashTicks: window.__doom!.hitFlashTicks,
+      shakeTicks: window.__doom!.shakeTicks,
+      alive: window.__doom!.player.alive,
+    };
+  });
+  expect(afterHit.hitFlashTicks).toBeGreaterThan(0);
+  expect(afterHit.shakeTicks).toBeGreaterThan(0);
+  expect(afterHit.alive).toBe(true);
+
+  // Decay: pump fixed-steps and both must return to 0. We have to leave
+  // READY for the playing-block decay to run; the harness's `advance` hook
+  // flips ready→playing automatically.
+  await page.evaluate(() =>
+    window.__doomInternals!.advance({ steps: 30 }),
+  );
+  const decayed = await page.evaluate(() => ({
+    hitFlashTicks: window.__doom!.hitFlashTicks,
+    shakeTicks: window.__doom!.shakeTicks,
+  }));
+  expect(decayed.hitFlashTicks).toBe(0);
+  expect(decayed.shakeTicks).toBe(0);
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +

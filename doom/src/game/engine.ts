@@ -15,10 +15,13 @@
 import * as THREE from "three";
 
 import {
+  HIT_FLASH_TICKS,
   HP_BY_KIND,
   initialState,
   PLAYER_SHOT_DAMAGE,
   SCORE_BY_KIND,
+  SHAKE_AMPLITUDE,
+  SHAKE_TICKS,
   type DoomState,
   type Enemy,
   type EnemyKind,
@@ -767,7 +770,53 @@ export class Engine {
         this.fireShot();
         this.publish();
       },
+      restart: () => {
+        this.restart();
+        this.publish();
+      },
     };
+  }
+
+  /** Hard-reset the game (#91). Returns the engine to its boot configuration:
+   *  status='ready', score=0, full health/armor/ammo, stage 1's seeded
+   *  enemies/pickups/doors, no projectiles, no hits, no flash/shake pulses.
+   *  Shared by the title-screen "press any key to start" path AND the
+   *  game-over "press R to restart" path so both go through one code path.
+   *
+   *  Reuses `initialState()` for the contract surface, then layers the
+   *  same seeded rosters the constructor builds — including rebuilding
+   *  three.js models so the scene resets too. */
+  private restart(): void {
+    // Tear down existing enemy meshes + rigs (the per-stage cleanup from
+    // advanceToStage covers this exactly).
+    for (const model of this.enemyMeshes.values()) {
+      this.scene.remove(model);
+      disposeEnemyModel(model);
+    }
+    for (const rig of this.enemyRigs.values()) {
+      rig.mixer.stopAllAction();
+      rig.mixer.uncacheRoot(rig.mixer.getRoot());
+    }
+    this.enemyRigs.clear();
+    this.enemyMeshes.clear();
+
+    // Reload stage 1 from the level map.
+    loadStage(1);
+    this.state = initialState();
+    const spawn = findSpawn();
+    this.state.player.x = spawn.x;
+    this.state.player.z = spawn.z;
+    this.state.field = { width: MAP_WIDTH, height: MAP_HEIGHT };
+    this.state.weapon.viewmodelPresent = this.viewmodel !== null;
+
+    // Reseed rosters from the stage-1 map's defaults.
+    this.seedEnemies();
+    this.seedPickups();
+    this.seedDoors();
+
+    // Clear terminal-lifecycle bookkeeping so the next death starts fresh.
+    this.lostTick = null;
+    this.gameOverFrames = 0;
   }
 
   /** Fire one hitscan shot from the current camera pose: cast a ray from the
@@ -878,6 +927,14 @@ export class Engine {
     const soaked = Math.min(p.armor, Math.floor(amount / 3));
     p.armor -= soaked;
     p.health -= amount - soaked;
+    // Pulse the damage feedback (#91): red flash overlay + camera shake.
+    // Both counters are decremented each fixed-step; the HUD overlay reads
+    // hitFlashTicks > 0 and the render pass perturbs the camera while
+    // shakeTicks > 0. Pulsing here (rather than at the call sites) means
+    // ALL damage paths — enemy melee, enemy projectile, forceDamage — pulse
+    // identically.
+    this.state.hitFlashTicks = HIT_FLASH_TICKS;
+    this.state.shakeTicks = SHAKE_TICKS;
     if (p.health <= 0) {
       p.health = 0;
       p.alive = false;
@@ -918,12 +975,32 @@ export class Engine {
    *  user-gesture handler). */
   private bindInput(): void {
     const start = (): void => {
+      // Game-over → ready→playing on any input: first reset state via the
+      // restart() path so a stale roster doesn't carry into the new run, then
+      // fall through to the normal ready→playing flip. Title-screen path is
+      // the second branch — first input flips ready→playing directly. We
+      // gate on the SETTLED terminal states ('gameover' / 'won'), NOT the
+      // transitional 'lost' beat — the death animation reads for ~0.5s
+      // before settling on 'gameover', and clicking during that beat
+      // shouldn't yank the player back to playing mid-death.
+      if (this.state.status === "gameover" || this.state.status === "won") {
+        this.restart();
+      }
       if (this.state.status === "ready") this.state.status = "playing";
       // First user gesture — unlock WebAudio (#89). Autoplay policy gates
       // AudioContext creation behind a gesture; idempotent past first call.
       this.audio.unlock();
     };
     this.input.onFirstInput(start);
+    // Dedicated R-to-restart from any state, so a player can hard-reset
+    // mid-run without dying first. Goes through the same restart() path
+    // the game-over screen uses, so the wire is shared.
+    window.addEventListener("keydown", (ev) => {
+      if (ev.key === "r" || ev.key === "R") {
+        this.restart();
+        this.publish();
+      }
+    });
     this.canvas.addEventListener("pointerdown", () => {
       start();
       // Request pointer-lock for mouselook. Wrapped in try/catch + feature
@@ -980,6 +1057,11 @@ export class Engine {
 
     if (this.state.status === "playing") {
       this.state.tick += 1;
+      // Decay damage-feedback pulses (#91). Counted down each tick so the
+      // red overlay + shake fade smoothly rather than snap off. Clamped at
+      // 0 so they don't go negative if a damage event sets them mid-decay.
+      if (this.state.hitFlashTicks > 0) this.state.hitFlashTicks -= 1;
+      if (this.state.shakeTicks > 0) this.state.shakeTicks -= 1;
       // Sample input once per fixed-step so movement is deterministic at 60 Hz
       // regardless of render cadence. consumeFire() / consumeMouseDelta() are
       // drained per tick so input doesn't pile up across frames.
@@ -1231,7 +1313,22 @@ export class Engine {
    *  yaw/pitch. Called every render so the view tracks the player. */
   private syncCamera(): void {
     const p = this.state.player;
-    this.camera.position.set(p.x, p.y, p.z);
+    // Screen shake (#91): while shakeTicks > 0, offset the camera by a small
+    // deterministic perturbation that decays linearly with the remaining
+    // ticks. Pure presentation — the simulation's player x/y/z are untouched,
+    // so collision + AI see the unshaken position. The offset is a function
+    // of tick + amplitude, not Math.random, so the same input sequence yields
+    // the same shake (the determinism contract still holds).
+    let ox = 0;
+    let oy = 0;
+    if (this.state.shakeTicks > 0) {
+      const k = this.state.shakeTicks / SHAKE_TICKS; // 1 → 0
+      const phase = this.state.tick;
+      // Alternating sign per tick + cheap sinusoid for a non-linear wiggle.
+      ox = Math.sin(phase * 1.7) * SHAKE_AMPLITUDE * k;
+      oy = Math.cos(phase * 2.3) * SHAKE_AMPLITUDE * k;
+    }
+    this.camera.position.set(p.x + ox, p.y + oy, p.z);
     // Euler order 'YXZ' = yaw (about world-up Y) then pitch (about local X) —
     // the standard FPS look order that avoids roll.
     this.camera.rotation.set(p.pitch, p.yaw, 0, "YXZ");

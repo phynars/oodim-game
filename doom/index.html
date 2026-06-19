@@ -202,6 +202,62 @@
       [data-touch="fire"]:active {
         background: rgba(255, 140, 110, 0.7);
       }
+      /* Title + game-over overlays (#91). Full-bleed, dark, pinned over the
+         canvas; main.ts toggles display based on __doom.status. Click /
+         keypress falls through to the canvas listener that flips
+         ready→playing (or restart on terminal states), so the overlay is
+         purely cosmetic — pointer-events:none keeps the canvas in charge of
+         input. */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 4;
+        background: rgba(10, 10, 15, 0.65);
+        color: #e8eaff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      .overlay h1 {
+        margin: 0 0 16px;
+        font-size: clamp(36px, 8vw, 72px);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #ff6a6a;
+        text-shadow: 0 0 12px rgba(255, 80, 80, 0.55);
+      }
+      .overlay p {
+        margin: 6px 0;
+        font-size: clamp(13px, 2vw, 18px);
+        opacity: 0.85;
+      }
+      .overlay .kbd {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        font-weight: 700;
+        margin: 0 2px;
+      }
+      /* Hit-flash veil — main.ts ramps opacity 0..0.5 while
+         hitFlashTicks > 0. Solid red, pinned over the viewport, below the
+         HUD so numbers stay readable. */
+      #hit-flash {
+        position: fixed;
+        inset: 0;
+        background: #ff2020;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 1;
+        transition: opacity 80ms linear;
+      }
       /* Crosshair. A tiny plus pinned dead-center over the canvas, drawn in
          pure DOM (no WebGL) so headless e2e can assert its existence via a
          selector without touching pixels. It's a visual sight only —
@@ -275,6 +331,38 @@
          viewport over the WebGL canvas — read-only sight, no input. The
          #crosshair selector is the contract doom/e2e asserts on. -->
     <div id="crosshair" data-hud="crosshair" aria-hidden="true"></div>
+
+    <!-- Hit-flash veil (#91). main.ts ramps its opacity while
+         __doom.hitFlashTicks > 0. Pure cosmetic; the engine state is the
+         source of truth. -->
+    <div id="hit-flash" data-overlay="hit-flash" aria-hidden="true"></div>
+
+    <!-- Title screen (#91). Shown on __doom.status === 'ready'; hidden once
+         the first input flips the engine to 'playing'. Click / keypress
+         lands on the canvas underneath (pointer-events:none on .overlay),
+         which the engine listens to for the ready→playing transition. -->
+    <div class="overlay" data-overlay="title" aria-live="polite">
+      <h1>Doom</h1>
+      <p>Press <span class="kbd">any key</span> or tap to enter</p>
+      <p style="margin-top: 16px; opacity: 0.6">
+        <span class="kbd">WASD</span> move ·
+        <span class="kbd">Mouse</span> look ·
+        <span class="kbd">Space</span> fire ·
+        <span class="kbd">R</span> restart
+      </p>
+    </div>
+
+    <!-- Game-over screen (#91). Shown on any terminal status
+         (lost / gameover / won). main.ts mirrors the final score; any input
+         on the canvas (or pressing R) routes through Engine.restart() and
+         reloads stage 1 with full health. -->
+    <div class="overlay" data-overlay="gameover" aria-live="polite">
+      <h1>Game Over</h1>
+      <p>Final score: <span data-overlay="final-score">0</span></p>
+      <p style="margin-top: 16px; opacity: 0.7">
+        Press <span class="kbd">R</span> or tap to restart
+      </p>
+    </div>
 
     <!-- Touch overlay (issue #90). Hidden on fine-pointer (mouse) devices via
          @media (pointer: coarse). input.ts auto-discovers each [data-touch=*]
