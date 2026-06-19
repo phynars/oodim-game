@@ -24,6 +24,7 @@ import {
   type EnemyKind,
   type Projectile,
 } from "./types";
+// Note: EnemyKind kept above for the SEED_ENEMIES literal type.
 import {
   createKeyboardInput,
   MOUSE_SENSITIVITY,
@@ -60,6 +61,11 @@ import {
   makeFloorTexture,
   makeWallTexture,
 } from "./textures";
+import {
+  buildEnemyModel,
+  disposeEnemyModel,
+  ENEMY_MODEL_SIZE,
+} from "./models";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
@@ -120,21 +126,10 @@ const PICKUP_RADIUS = 0.8;
  *  (otherwise the player would clip into a closed door for one tick). */
 const DOOR_OPEN_RADIUS = CELL * 1.25;
 
-/** Visual size (world units) of a placeholder enemy box, per archetype — barons
- *  read as the biggest threat. Purely cosmetic; combat uses HP_BY_KIND. */
-const ENEMY_BOX_SIZE: Record<EnemyKind, number> = {
-  imp: 0.8,
-  demon: 1.1,
-  baron: 1.6,
-};
-
-/** Placeholder enemy colors by archetype. Generic palette — no id Software
- *  art. Imps warm, demons hot pink, barons a heavy red. */
-const ENEMY_COLOR: Record<EnemyKind, number> = {
-  imp: 0xc89b6a,
-  demon: 0xff5aa0,
-  baron: 0xcc3333,
-};
+// Enemy visual size + color used to live here as flat boxes. Issue #85
+// replaced that with code-built low-poly models — see models.ts (one Group
+// of merged primitives per kind). The sizing constant moved to
+// ENEMY_MODEL_SIZE there; combat still uses HP_BY_KIND.
 
 export class Engine {
   private readonly canvas: HTMLCanvasElement;
@@ -147,10 +142,11 @@ export class Engine {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
-  /** Per-enemy placeholder mesh, keyed by enemy id — so the render pass can
-   *  sync mesh transforms to the simulation's enemy positions + cull dead
-   *  ones. */
-  private readonly enemyMeshes: Map<number, THREE.Mesh> = new Map();
+  /** Per-enemy model, keyed by enemy id — so the render pass can sync the
+   *  group's transform to the simulation's enemy position + cull dead ones.
+   *  Each value is a `THREE.Group` built by models.ts (issue #85): a
+   *  multi-mesh low-poly silhouette, not a single box. */
+  private readonly enemyMeshes: Map<number, THREE.Group> = new Map();
   /** Reused raycaster for hitscan fire. One instance avoids per-shot
    *  allocations; the origin + direction are set per call. */
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
@@ -319,6 +315,7 @@ export class Engine {
     this.bindInput();
     this.exposeInternals();
     this.exposeTextureHandle();
+    this.exposeModelHandle();
   }
 
   /** Publish the procedural-texture state to a test-only window handle
@@ -332,19 +329,51 @@ export class Engine {
     };
   }
 
+  /** Publish a live read of the per-enemy model child-mesh count (issue #85).
+   *  Each enemy's scene object is a `THREE.Group` of merged primitives, so
+   *  the harness can assert `childCount > 1` (vs. the prior single-box
+   *  scaffold). `list()` walks the live roster on every call so the readout
+   *  always matches the current scene — stage reloads, deaths, future
+   *  spawns all reflected. Test-only; gameplay code must never read this. */
+  private exposeModelHandle(): void {
+    window.__doomModels = {
+      list: () => {
+        const out: Array<{
+          enemyId: number;
+          kind: EnemyKind;
+          childCount: number;
+        }> = [];
+        for (const enemy of this.state.enemies) {
+          if (enemy.state === "dead") continue;
+          const model = this.enemyMeshes.get(enemy.id);
+          if (!model) continue;
+          out.push({
+            enemyId: enemy.id,
+            kind: enemy.kind,
+            childCount: model.children.length,
+          });
+        }
+        return out;
+      },
+    };
+  }
+
   /** Seed the simulation's enemy roster from SEED_ENEMIES, and build a
-   *  placeholder BoxGeometry mesh for each so the scene renders something
-   *  the moment WebGL comes up. */
+   *  low-poly model (issue #85) per kind so the scene renders distinct
+   *  silhouettes the moment WebGL comes up. Each model is a `THREE.Group`
+   *  of merged primitives — see models.ts. */
   private seedEnemies(): void {
     let nextId = 1;
     for (const seed of SEED_ENEMIES) {
       const id = nextId++;
-      const size = ENEMY_BOX_SIZE[seed.kind];
+      const size = ENEMY_MODEL_SIZE[seed.kind];
       const enemy: Enemy = {
         id,
         kind: seed.kind,
         x: seed.x,
-        // Box sits ON the floor: its center is half its height above y=0.
+        // Group origin sits at the enemy's CENTER (the builders place body
+        // primitives symmetrically about y=0), so the center is half the
+        // body height above the floor.
         y: size / 2,
         z: seed.z,
         hp: HP_BY_KIND[seed.kind],
@@ -353,20 +382,19 @@ export class Engine {
       };
       this.state.enemies.push(enemy);
 
-      const geo = new THREE.BoxGeometry(size, size, size);
-      const mat = new THREE.MeshStandardMaterial({
-        color: ENEMY_COLOR[seed.kind],
-        roughness: 0.7,
-        metalness: 0.1,
+      const model = buildEnemyModel(seed.kind);
+      model.position.set(enemy.x, enemy.y, enemy.z);
+      // Stash the enemy id on the group AND on every child mesh so the
+      // hitscan ray maps an Intersection (which only carries the leaf
+      // Object3D under the group) back to the simulation entity. Previously
+      // a single Mesh carried this in userData; now the leaf is one of many
+      // body parts, so we tag each so any of them resolves the same id.
+      model.userData.enemyId = id;
+      model.traverse((child) => {
+        child.userData.enemyId = id;
       });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(enemy.x, enemy.y, enemy.z);
-      // Stash the enemy id on the mesh so the hitscan ray maps an Intersection
-      // (which only carries the Object3D) back to the simulation entity in
-      // O(1) instead of scanning enemyMeshes.
-      mesh.userData.enemyId = id;
-      this.scene.add(mesh);
-      this.enemyMeshes.set(id, mesh);
+      this.scene.add(model);
+      this.enemyMeshes.set(id, model);
     }
   }
 
@@ -459,11 +487,12 @@ export class Engine {
     this.state.player.z = spawn.z;
     // Clear in-flight projectiles + landed-hit log; both are per-stage.
     this.state.projectiles = [];
-    // Drop existing enemy meshes from the scene; reseeding rebuilds them.
-    for (const mesh of this.enemyMeshes.values()) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
+    // Drop existing enemy models from the scene; reseeding rebuilds them.
+    // Each model is a Group of meshes (issue #85) — disposeEnemyModel
+    // walks the children and frees every geometry + material.
+    for (const model of this.enemyMeshes.values()) {
+      this.scene.remove(model);
+      disposeEnemyModel(model);
     }
     this.enemyMeshes.clear();
     this.state.enemies = [];
@@ -592,13 +621,16 @@ export class Engine {
     // Only intersect against the live enemy roster. Walls don't block the
     // hitscan in the scaffold — the level is small and the slice's goal is
     // "shot at an enemy registers a hit"; wall-occlusion is a follow-up.
-    const meshes = Array.from(this.enemyMeshes.values());
-    if (meshes.length === 0) return;
+    const models = Array.from(this.enemyMeshes.values());
+    if (models.length === 0) return;
     this.raycaster.set(origin, dir);
     this.raycaster.near = 0;
     this.raycaster.far = CAMERA_FAR;
-    // recursive=false: enemy meshes are flat Mesh nodes with no children.
-    const intersections = this.raycaster.intersectObjects(meshes, false);
+    // recursive=true: enemy models are now THREE.Group nodes (issue #85)
+    // whose actual geometry lives on child meshes. Each child carries the
+    // enemy id on userData (set in seedEnemies) so the Intersection still
+    // maps back to the simulation entity.
+    const intersections = this.raycaster.intersectObjects(models, true);
     if (intersections.length === 0) return;
 
     // Raycaster sorts by distance ascending — first is nearest.
@@ -624,13 +656,13 @@ export class Engine {
       e.hp = 0;
       e.state = "dead";
       this.state.score += SCORE_BY_KIND[e.kind];
-      // Drop the placeholder mesh — a dead enemy leaves the scene. (The death
-      // VFX / corpse is a backlog polish slice.)
-      const mesh = this.enemyMeshes.get(e.id);
-      if (mesh) {
-        this.scene.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+      // Drop the model — a dead enemy leaves the scene. The Group's child
+      // meshes are freed by disposeEnemyModel (#85). Death VFX / corpse is
+      // a backlog polish slice.
+      const model = this.enemyMeshes.get(e.id);
+      if (model) {
+        this.scene.remove(model);
+        disposeEnemyModel(model);
         this.enemyMeshes.delete(e.id);
       }
     }
