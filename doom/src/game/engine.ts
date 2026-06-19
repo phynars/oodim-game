@@ -177,6 +177,12 @@ export class Engine {
    *  state once per fixed-step (so easing is deterministic). */
   private viewmodel: Viewmodel | null = null;
 
+  /** Player-carried torch (#88). PointLight parented to the camera so it
+   *  travels with the view — the immediate cells read warm + bright, the
+   *  rest fades into fog. Constructed in the lighting block above; parented
+   *  to the camera in the same step that attaches the viewmodel. */
+  private playerTorch: THREE.PointLight | null = null;
+
   /** The shared wall material (issue #84). One MeshStandardMaterial is reused
    *  across every wall mesh; we stash a reference so the e2e harness can read
    *  the published texture contract without traversing the scene graph. */
@@ -235,8 +241,13 @@ export class Engine {
     this.sizeRenderer();
 
     this.scene = new THREE.Scene();
-    // A touch of fog hides the far plane pop-in and sells the murky interior.
-    this.scene.fog = new THREE.Fog(0x0a0a0f, 8, 60);
+    // ATMOSPHERE (issue #88): thicker fog rolls the far walls into murk and
+    // hides the far plane pop-in. The near distance is short enough that a
+    // wall two cells away already starts to fade — the corridor never feels
+    // sterile. Color matches the clear color so the fog "dissolves" geometry
+    // into the void rather than tinting it. Deterministic (literal constants,
+    // no Math.random) + perf-sane (linear fog is one mul/add per fragment).
+    this.scene.fog = new THREE.Fog(0x0a0a0f, 4, 28);
 
     // The camera IS the player. We position it at the player's eye each frame
     // (see syncCamera); construct it at the spawn so the very first rendered
@@ -253,13 +264,42 @@ export class Engine {
     );
     this.syncCamera();
 
-    // Lights: a soft ambient fill so nothing is pure black, plus a directional
-    // "sun" for shape. The scaffold doesn't do dynamic lighting (a backlog
-    // polish slice); this is enough to read the floor + enemy boxes.
-    this.scene.add(new THREE.AmbientLight(0x404050, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    // LIGHTING (issue #88): replace the flat ambient+sun pair with a layered
+    // rig that sells "dim corridors with hot spots". Five lights total:
+    //   1. AMBIENT FILL — dimmer than the scaffold (0.35 vs 1.2) so corners
+    //      genuinely darken; without this everything is washed flat.
+    //   2. HEMISPHERE — cool ceiling / warm floor bounce. Cheap (no shadow
+    //      pass) and gives the floor a different cast than the walls.
+    //   3. DIRECTIONAL "sun" — kept for shape on enemy silhouettes, dimmer
+    //      and tinted slightly cool to read as ambient skylight bleed.
+    //   4. PLAYER TORCH — a PointLight parented to the camera (added below
+    //      after camera-parent setup). Travels with the player so the
+    //      immediate few cells read warm + bright, the rest fades into fog.
+    //   5. ARENA SCONCE — a warm PointLight at the map center as a per-
+    //      sector hot spot. Deterministic (literal position, no Math.random),
+    //      per-fragment cost is constant in the fragment shader.
+    // Each light is added to the scene so e2e can count > 1 light in the
+    // graph (the acceptance criterion).
+    this.scene.add(new THREE.AmbientLight(0x303040, 0.35));
+    const hemi = new THREE.HemisphereLight(0x445566, 0x221a14, 0.45);
+    this.scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xb8c0d8, 0.4);
     sun.position.set(5, 10, 7);
     this.scene.add(sun);
+    // Arena sconce — warm point light at the map center, mounted high so it
+    // pools light on the floor below. Range capped so its falloff lives
+    // inside the fog distance (anything past the fog far is invisible
+    // anyway; a smaller range is cheaper on the fragment shader).
+    const sconce = new THREE.PointLight(0xff8844, 1.4, 14, 1.8);
+    sconce.position.set(0, WALL_HEIGHT - 0.4, 0);
+    this.scene.add(sconce);
+    // Player torch — parented to the camera further down where we already
+    // attach the viewmodel + camera to the scene; held aside so the
+    // construction order stays linear.
+    this.playerTorch = new THREE.PointLight(0xffb070, 1.1, 10, 1.6);
+    // Slightly below + ahead of the eye so the torch reads as held, not as
+    // a halo around the player's skull.
+    this.playerTorch.position.set(0, -0.2, -0.3);
 
     // Floor — a plane spanning the arena, rotated flat (PlaneGeometry is built
     // in the XY plane; rotate -90° about X to lay it in XZ at y=0). Sized from
@@ -342,6 +382,10 @@ export class Engine {
     // being rendered); we add the camera to the scene here.
     const vm = buildViewmodel();
     this.camera.add(vm.group);
+    // Player torch (#88): parent the torch to the camera so it inherits
+    // view position. The camera itself is added to the scene immediately
+    // below — same lifecycle as the viewmodel.
+    if (this.playerTorch) this.camera.add(this.playerTorch);
     this.scene.add(this.camera);
     this.viewmodel = vm;
     this.state.weapon.viewmodelPresent = true;
@@ -355,6 +399,40 @@ export class Engine {
     this.exposeTextureHandle();
     this.exposeModelHandle();
     this.exposeViewmodelHandle();
+    this.exposeSceneHandle();
+  }
+
+  /** Publish the scene atmosphere state to a test-only window handle
+   *  (issue #88). Lets the e2e harness assert that fog is set AND that
+   *  more than one light exists, without traversing the three.js graph
+   *  from Playwright. Mirrors the other __doom* handles — test-only,
+   *  gameplay code must never read this. The accessor walks the scene
+   *  on every read so future light additions (or stage-specific lights)
+   *  reflect live. */
+  private exposeSceneHandle(): void {
+    const scene = this.scene;
+    window.__doomSceneRef = scene;
+    window.__doomScene = {
+      get hasFog(): boolean {
+        return Boolean(scene.fog);
+      },
+      get fogType(): string {
+        const fog = scene.fog;
+        if (!fog) return "";
+        // Distinguish THREE.Fog (linear) from THREE.FogExp2 — both are
+        // valid three.js fog flavors but only Fog carries near/far.
+        return (fog as unknown as { isFogExp2?: boolean }).isFogExp2
+          ? "FogExp2"
+          : "Fog";
+      },
+      get lightCount(): number {
+        let count = 0;
+        scene.traverse((obj) => {
+          if ((obj as { isLight?: boolean }).isLight) count += 1;
+        });
+        return count;
+      },
+    };
   }
 
   /** Publish the viewmodel contract to a test-only window handle (#87).
