@@ -621,6 +621,81 @@ test("walking onto a pickup grants it the same tick — issue #80", async ({ pag
   expect(result.ammoDelta).toBeGreaterThan(0);
 });
 
+test("enemy variety: the roster includes at least 2 distinct kinds (issue #81)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+
+  // The seeded roster must publish more than one enemy archetype — variety
+  // is the whole point of #81 (an arena of imps is monotone). Asserting on
+  // the SET of kinds, not a specific name, so reorderings of the seed don't
+  // weaken the test.
+  const kinds = await page.evaluate(() =>
+    Array.from(new Set(window.__doom!.enemies.map((e) => e.kind))),
+  );
+  expect(kinds.length).toBeGreaterThanOrEqual(2);
+});
+
+test("a ranged enemy emits a projectile with from==='enemy' (issue #81)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // Drop the player one unit south of the baron — well inside the baron's
+  // RANGED_ATTACK_RANGE (10), so its AI flips chasing→attacking on the
+  // first step. After the attack cooldown elapses (~0.5s @ 60Hz) the engine
+  // must spawn a `from:'enemy'` projectile aimed at the player. We pump
+  // enough fixed-steps to guarantee both the state transition AND a cooldown
+  // tick. Pre-#81 the projectile slot was empty in the scaffold — this
+  // assertion FAILS without the ranged-attack wiring.
+  const result = await page.evaluate(() => {
+    const s = window.__doom!;
+    const baron = s.enemies.find((e) => e.kind === "baron");
+    if (!baron) return { ok: false as const, why: "no baron seeded" };
+    s.player.x = baron.x;
+    s.player.z = baron.z + 1;
+    // 60 fixed-steps = 1s @ 60Hz — covers ATTACK_COOLDOWN_TICKS (30) at least
+    // once after the chasing→attacking transition. We immediately freeze the
+    // projectile roster (count + the first projectile's metadata) BEFORE
+    // surveying state.projectiles further, because a fast-moving fireball at
+    // 0.2 u/step + 0.6 u hit radius will impact the on-top player within a
+    // handful of ticks and the engine then prunes it.
+    let snapshot: { count: number; first: { from: string; id: number } | null } = {
+      count: 0,
+      first: null,
+    };
+    for (let i = 0; i < 60; i++) {
+      window.__doomInternals!.advance({ steps: 1 });
+      const ps = window.__doom!.projectiles;
+      if (ps.length > 0 && snapshot.count === 0) {
+        snapshot = {
+          count: ps.length,
+          first: { from: ps[0].from, id: ps[0].id },
+        };
+      }
+    }
+    return {
+      ok: true as const,
+      baronState: window.__doom!.enemies.find((e) => e.id === baron.id)?.state,
+      snapshot,
+    };
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  // Baron should have engaged (chasing or attacking, never still idle).
+  expect(["chasing", "attacking"]).toContain(result.baronState ?? "");
+  // A projectile was observed mid-flight…
+  expect(result.snapshot.count).toBeGreaterThanOrEqual(1);
+  // …and it was an enemy-origin projectile (the contract for #81).
+  expect(result.snapshot.first?.from).toBe("enemy");
+});
+
 // NOTE: an earlier draft of this file also asserted against
 // `advance({fire:true})`, `weapon.lastShotTick`, and `weapon.lastHitEnemyId` —
 // contracts that were never built. Issue #76's acceptance ("ammo drops" +
