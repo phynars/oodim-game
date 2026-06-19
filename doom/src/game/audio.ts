@@ -15,12 +15,8 @@
 // asserts the wiring (counters increment, ctx exists), never the audible
 // output — headless Chromium can't read pixels OR speakers.
 
-/** Standardized WebAudio context type. `webkitAudioContext` is the Safari
- *  legacy alias; we keep the union so types stay portable. */
-type AnyAudioContext = AudioContext;
-
 interface AudioContextCtor {
-  new (): AnyAudioContext;
+  new (): AudioContext;
 }
 
 /** Pull the most-available AudioContext constructor. Returns null in
@@ -60,7 +56,7 @@ export interface DoomAudioHandle {
 
 /** The audio engine. Single instance per game; lazy WebAudio context. */
 export class DoomAudio {
-  private ctx: AnyAudioContext | null = null;
+  private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private _unlocked = false;
 
@@ -75,7 +71,7 @@ export class DoomAudio {
   /** Lazy-construct the AudioContext + master gain. Called by `unlock()`
    *  on first gesture; a no-op if the context already exists OR if the
    *  environment doesn't expose WebAudio. */
-  private ensureContext(): AnyAudioContext | null {
+  private ensureContext(): AudioContext | null {
     if (this.ctx) return this.ctx;
     const Ctor = getAudioContextCtor();
     if (!Ctor) return null;
@@ -220,7 +216,7 @@ export class DoomAudio {
 
   /** Return the live AudioContext if we're unlocked AND it constructed.
    *  Otherwise null — every play* helper short-circuits to a silent no-op. */
-  private maybeContext(): AnyAudioContext | null {
+  private maybeContext(): AudioContext | null {
     if (!this._unlocked) return null;
     const ctx = this.ctx;
     if (!ctx) return null;
