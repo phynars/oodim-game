@@ -892,6 +892,57 @@ test("each enemy renders as a multi-mesh Group, not a single box (issue #85)", a
   expect(kinds.size).toBeGreaterThanOrEqual(2);
 });
 
+test("each enemy carries an AnimationMixer with named clips and the active clip follows state (issue #86)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomModels), null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // BOOT contract: every seeded enemy reports the four expected clip names
+  // (idle/walk/attack/death). Pre-#86 each enemy had no AnimationMixer →
+  // `clipNames` was missing / empty → this assertion fails.
+  const boot = await page.evaluate(() => window.__doomModels!.list());
+  expect(boot.length).toBeGreaterThanOrEqual(1);
+  const expectedClips = ["idle", "walk", "attack", "death"];
+  for (const m of boot) {
+    // Set semantics: the rig publishes exactly these four named clips.
+    expect([...m.clipNames].sort()).toEqual([...expectedClips].sort());
+    // Every enemy boots on its idle loop (the engine starts there and
+    // swaps when state changes).
+    expect(m.activeClip).toBe("idle");
+  }
+
+  // STATE→CLIP contract: forcing a kill on the seeded imp flips its state
+  // to 'dead'; the engine swaps the rig's active clip to 'death' in the
+  // SAME synchronous publish (model + rig disposal are deferred to the
+  // next cull tick, so the death-clip handle is observable here). Sample
+  // in one evaluate so the next rAF can't cull before we read.
+  const after = await page.evaluate(() => {
+    const impId = window.__doom!.enemies[0].id;
+    window.__doomInternals!.forceHit({ enemyId: impId });
+    // The killed imp is still on the roster + still has its rig until the
+    // next fixed-step cull. Find it in the published model list.
+    const list = window.__doomModels!.list();
+    const entry = list.find((m) => m.enemyId === impId) ?? null;
+    return {
+      impState:
+        window.__doom!.enemies.find((e) => e.id === impId)?.state ?? null,
+      activeClip: entry ? entry.activeClip : null,
+    };
+  });
+
+  expect(after.impState).toBe("dead");
+  // The load-bearing assertion: the clip switched to 'death' the moment
+  // state did. Without the state→clip wiring this stays on 'idle'.
+  expect(after.activeClip).toBe("death");
+});
+
 test("wall material carries a procedural CanvasTexture map (issue #84)", async ({
   page,
 }) => {

@@ -258,8 +258,18 @@ export interface DoomTextures {
  *  with the live roster (seeded models + stage reloads). */
 export interface DoomModels {
   /** Read the current per-enemy child-mesh count. Returns one entry per
-   *  live (non-dead) enemy: `{ enemyId, kind, childCount }`. */
-  list(): Array<{ enemyId: number; kind: EnemyKind; childCount: number }>;
+   *  live (non-dead) enemy: `{ enemyId, kind, childCount, clipNames,
+   *  activeClip }`. `clipNames` is the list of animation clip names on the
+   *  enemy's `AnimationMixer` (issue #86 — always `['idle','walk','attack',
+   *  'death']` for now); `activeClip` is the name of the clip currently
+   *  playing, which the engine swaps when `enemy.state` changes. */
+  list(): Array<{
+    enemyId: number;
+    kind: EnemyKind;
+    childCount: number;
+    clipNames: string[];
+    activeClip: string;
+  }>;
 }
 
 declare global {
