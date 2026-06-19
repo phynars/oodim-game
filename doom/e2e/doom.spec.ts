@@ -836,10 +836,21 @@ test("HUD mirrors __doom (health/ammo) and a crosshair is present (issue #83)", 
   await expect(ammoCell).toHaveText(newAmmo, { timeout: 3000 });
   expect(Number(newAmmo)).toBe(49);
 
-  // Landing a hit on the baron awards score — the score cell must also
-  // reflect the update.
-  const newScore = await page.evaluate(() => String(window.__doom!.score));
-  await expect(scoreCell).toHaveText(newScore, { timeout: 3000 });
+  // Score: prove the cell mirrors a REAL increment, not a tautology.
+  // The baron survives one shot (200 hp >> PLAYER_SHOT_DAMAGE=50), so the
+  // fire above awarded no score — reading `__doom.score` and asserting the
+  // cell matches "0" would pass even if the mirror were broken. Force a
+  // lethal hit on the seeded imp (hp < PLAYER_SHOT_DAMAGE → guaranteed kill
+  // → guaranteed score award), capture before/after, and assert BOTH that
+  // score strictly increased AND that the HUD cell caught up.
+  const scoreBefore = await page.evaluate(() => window.__doom!.score);
+  const scoreAfter = await page.evaluate(() => {
+    const impId = window.__doom!.enemies[0].id;
+    window.__doomInternals!.forceHit({ enemyId: impId });
+    return window.__doom!.score;
+  });
+  expect(scoreAfter).toBeGreaterThan(scoreBefore);
+  await expect(scoreCell).toHaveText(String(scoreAfter), { timeout: 3000 });
 });
 
 // NOTE: an earlier draft of this file also asserted against
