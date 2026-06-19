@@ -62,9 +62,13 @@ import {
   makeWallTexture,
 } from "./textures";
 import {
+  buildEnemyAnimations,
   buildEnemyModel,
+  clipNameForState,
   disposeEnemyModel,
   ENEMY_MODEL_SIZE,
+  setActiveClip,
+  type EnemyAnimationRig,
 } from "./models";
 
 /** Fixed timestep: 60 logical updates/sec, decoupled from render rAF. The
@@ -147,6 +151,16 @@ export class Engine {
    *  Each value is a `THREE.Group` built by models.ts (issue #85): a
    *  multi-mesh low-poly silhouette, not a single box. */
   private readonly enemyMeshes: Map<number, THREE.Group> = new Map();
+  /** Per-enemy animation rig (issue #86) — `AnimationMixer` + named clips
+   *  built procedurally by models.ts. Advanced each render via
+   *  `mixer.update(dt)` and switched whenever the enemy's `state` changes.
+   *  Parallel-keyed with `enemyMeshes` (same enemy id). */
+  private readonly enemyRigs: Map<number, EnemyAnimationRig> = new Map();
+  /** Wall-clock source for animation deltas — `THREE.Clock` is the
+   *  canonical wallclock helper. Used ONLY by the render pass to advance
+   *  mixers; the SIMULATION's fixed-step loop is unaffected (mixers are
+   *  presentation, not state). */
+  private readonly animClock: THREE.Clock = new THREE.Clock();
   /** Reused raycaster for hitscan fire. One instance avoids per-shot
    *  allocations; the origin + direction are set per call. */
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
@@ -342,15 +356,34 @@ export class Engine {
           enemyId: number;
           kind: EnemyKind;
           childCount: number;
+          clipNames: string[];
+          activeClip: string;
         }> = [];
         for (const enemy of this.state.enemies) {
-          if (enemy.state === "dead") continue;
           const model = this.enemyMeshes.get(enemy.id);
           if (!model) continue;
+          const rig = this.enemyRigs.get(enemy.id);
+          // Body meshes live under the rig pivot (issue #86 inserted it so
+          // animations don't fight engine-driven position writes). If a
+          // pivot is present, the silhouette's leaf count is its child
+          // count; otherwise we fall back to the root's children (the
+          // pre-#86 layout). The #85 contract — "multi-mesh Group, not a
+          // single box" — still reads off this number.
+          const pivot = model.children.find(
+            (c) => c.name === "enemy-rig-pivot",
+          );
+          const childCount = pivot
+            ? pivot.children.length
+            : model.children.length;
           out.push({
             enemyId: enemy.id,
             kind: enemy.kind,
-            childCount: model.children.length,
+            childCount,
+            // The four named clips every enemy carries (#86) — published
+            // so the e2e harness can assert the contract without reaching
+            // into the AnimationMixer internals from Playwright.
+            clipNames: rig ? Object.keys(rig.clips) : [],
+            activeClip: rig ? rig.active : "",
           });
         }
         return out;
@@ -395,6 +428,12 @@ export class Engine {
       });
       this.scene.add(model);
       this.enemyMeshes.set(id, model);
+      // Build the per-enemy animation rig (#86): AnimationMixer + named
+      // procedural clips (idle/walk/attack/death). The active clip follows
+      // enemy.state — initial state is 'idle' so the boot pose is the idle
+      // bob.
+      const rig = buildEnemyAnimations(model);
+      this.enemyRigs.set(id, rig);
     }
   }
 
@@ -494,6 +533,13 @@ export class Engine {
       this.scene.remove(model);
       disposeEnemyModel(model);
     }
+    // Tear down every per-enemy mixer (#86) — the rig holds a reference to
+    // the group it animates, so dropping the map releases both sides.
+    for (const rig of this.enemyRigs.values()) {
+      rig.mixer.stopAllAction();
+      rig.mixer.uncacheRoot(rig.mixer.getRoot());
+    }
+    this.enemyRigs.clear();
     this.enemyMeshes.clear();
     this.state.enemies = [];
     this.state.pickups = [];
@@ -656,15 +702,18 @@ export class Engine {
       e.hp = 0;
       e.state = "dead";
       this.state.score += SCORE_BY_KIND[e.kind];
-      // Drop the model — a dead enemy leaves the scene. The Group's child
-      // meshes are freed by disposeEnemyModel (#85). Death VFX / corpse is
-      // a backlog polish slice.
-      const model = this.enemyMeshes.get(e.id);
-      if (model) {
-        this.scene.remove(model);
-        disposeEnemyModel(model);
-        this.enemyMeshes.delete(e.id);
-      }
+      // Switch the rig (#86) to its death clip BEFORE the model is dropped
+      // — the harness asserts on `__doomModels.list()` finding
+      // `activeClip === 'death'` after forceHit. Removing the rig is
+      // deferred to the per-update cull (next block in update()), so the
+      // contract is observable in the SAME synchronous publish forceHit
+      // does.
+      const rig = this.enemyRigs.get(e.id);
+      if (rig) setActiveClip(rig, "death");
+      // Model removal also defers to the per-update cull so the death-clip
+      // pose is observable for one death-frame, matching how the engine
+      // already keeps the dead enemy on the roster for one tick before
+      // filtering it.
     }
   }
 
@@ -892,14 +941,38 @@ export class Engine {
       // wandered into a solid wall / out of bounds) are removed in-place.
       this.stepProjectiles();
 
-      // Cull enemies that finished their death frame. Keeping a 'dead' enemy
-      // for exactly the tick it died lets a consumer observe the transition;
-      // we drop it on the following tick.
-      if (this.state.enemies.some((e) => e.state === "dead")) {
-        this.state.enemies = this.state.enemies.filter(
-          (e) => e.state !== "dead",
-        );
+    }
+
+    // Cull enemies that finished their death frame. Keeping a 'dead' enemy
+    // for exactly the tick it died lets a consumer observe the transition;
+    // we drop it on the following tick — along with its model + animation
+    // rig (#86), which the death-handling path deliberately deferred so
+    // the harness could observe `activeClip === 'death'` in the same
+    // synchronous publish forceHit triggered.
+    //
+    // The cull runs OUTSIDE the `playing` gate so an enemy killed on the
+    // same tick the player dies (status flips to 'lost' inside the block)
+    // still gets its mesh + rig disposed — otherwise the rig leaks for the
+    // page's lifetime, since `lost`/`gameover` never re-enter this path.
+    if (this.state.enemies.some((e) => e.state === "dead")) {
+      for (const e of this.state.enemies) {
+        if (e.state !== "dead") continue;
+        const model = this.enemyMeshes.get(e.id);
+        if (model) {
+          this.scene.remove(model);
+          disposeEnemyModel(model);
+          this.enemyMeshes.delete(e.id);
+        }
+        const rig = this.enemyRigs.get(e.id);
+        if (rig) {
+          rig.mixer.stopAllAction();
+          rig.mixer.uncacheRoot(rig.mixer.getRoot());
+          this.enemyRigs.delete(e.id);
+        }
       }
+      this.state.enemies = this.state.enemies.filter(
+        (e) => e.state !== "dead",
+      );
     }
   }
 
@@ -1024,11 +1097,27 @@ export class Engine {
       this.camera.updateProjectionMatrix();
     }
     this.syncCamera();
-    // Sync surviving enemy meshes to their simulation positions (no-op in the
-    // static scaffold, but keeps the render pass correct once AI moves them).
+    // Sync surviving enemy meshes to their simulation positions, AND sync
+    // each rig's active clip to the enemy's current AI state (#86). The
+    // animation mixer is presentation: state lives in the simulation; the
+    // rig just plays the clip that matches. State-change → setActiveClip
+    // cross-fades; idle/walk/attack are looping, death is one-shot.
     for (const e of this.state.enemies) {
       const mesh = this.enemyMeshes.get(e.id);
       if (mesh) mesh.position.set(e.x, e.y, e.z);
+      const rig = this.enemyRigs.get(e.id);
+      if (rig) {
+        const want = clipNameForState(e.state);
+        if (rig.active !== want) setActiveClip(rig, want);
+      }
+    }
+    // Advance every mixer by the wall-clock delta — animation is decoupled
+    // from the fixed-step sim (no determinism contract on visual easing).
+    // One shared THREE.Clock yields a delta that excludes time spent in
+    // background tabs, so a returning player doesn't see a giant skip.
+    const dt = this.animClock.getDelta();
+    if (dt > 0) {
+      for (const rig of this.enemyRigs.values()) rig.mixer.update(dt);
     }
     this.renderer.render(this.scene, this.camera);
   }
