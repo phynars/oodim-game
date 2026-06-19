@@ -157,6 +157,13 @@ export function buildViewmodel(): Viewmodel {
   const flashSprite = new THREE.Mesh(flashGeo, flashMat);
   flashSprite.position.set(0, 0.025, muzzleZ - 0.01);
   flashSprite.visible = false;
+  // renderOrder does NOT inherit from parent groups in three.js — it must
+  // be set on the leaf object itself. The group-level renderOrder above
+  // is a no-op (Group has no draw call); the flash needs its own override
+  // so its always-on-top depthTest:false pairs with a late draw position
+  // in the transparent sort, otherwise opaque slide/barrel can paint over
+  // the flash when it pulses.
+  flashSprite.renderOrder = 999;
   group.add(flashSprite);
 
   return {
