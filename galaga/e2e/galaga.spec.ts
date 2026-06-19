@@ -312,14 +312,15 @@ test("forceHit({target:'enemy'}) removes the enemy + scores; forceHit({target:'p
 
   // Leave READY + wait for the formation to populate so we have an enemy
   // to hit. The forceHit hook doesn't require a settled enemy, just a live
-  // one in the roster, so we wait for length>0.
+  // one in the roster — but we need a NON-boss present (bosses take two
+  // hits, #68), so we wait until at least one bee/butterfly has entered.
   await page.locator("canvas").click();
   await page.keyboard.press("ArrowLeft");
   await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
     timeout: 5000,
   });
   await page.waitForFunction(
-    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    () => (window.__galaga?.enemies ?? []).some((e) => e.kind !== "boss"),
     null,
     { timeout: 10000 },
   );
@@ -328,12 +329,24 @@ test("forceHit({target:'enemy'}) removes the enemy + scores; forceHit({target:'p
   });
 
   // --- Player bullet hits an enemy: roster count drops, score goes up. ---
-  const before = await page.evaluate(() => ({
-    count: window.__galaga!.enemies.length,
-    score: window.__galaga!.score,
-  }));
-  await page.evaluate(() =>
-    window.__galagaInternals!.forceHit({ target: "enemy" }),
+  // Target a NON-boss enemy explicitly. Bosses take two hits (#68): their
+  // first hit only flips `damaged` (no score, stays in the roster), so the
+  // default `forceHit({target:'enemy'})` — which picks index 0, the first
+  // on-stage enemy, typically the top-row boss — would NOT decrement the
+  // count or raise the score on a single call. A bee/butterfly dies on the
+  // first hit, which is the single-hit kill+score this assertion checks.
+  const before = await page.evaluate(() => {
+    const nonBoss = window.__galaga!.enemies.find((e) => e.kind !== "boss");
+    return {
+      count: window.__galaga!.enemies.length,
+      score: window.__galaga!.score,
+      nonBossId: nonBoss?.id,
+    };
+  });
+  expect(before.nonBossId).toBeDefined();
+  await page.evaluate(
+    (id) => window.__galagaInternals!.forceHit({ target: "enemy", enemyId: id }),
+    before.nonBossId,
   );
   const afterEnemyHit = await page.evaluate(() => ({
     count: window.__galaga!.enemies.length,
@@ -421,6 +434,15 @@ test("clearing the formation advances the stage, respawns a fresh non-empty form
         target: "enemy",
         enemyId: target.id,
       });
+      // Boss two-hit armor (#68): the first hit only damages (no score), so
+      // land a second hit to actually kill + score it. The delta from s0 is
+      // still the boss's kill value (the damage hit contributed 0).
+      if (k === "boss") {
+        window.__galagaInternals!.forceHit({
+          target: "enemy",
+          enemyId: target.id,
+        });
+      }
       deltas[k] = window.__galaga!.score - s0;
     }
     return deltas;
@@ -476,10 +498,13 @@ test("clearing the formation advances the stage, respawns a fresh non-empty form
   const stage2 = await page.evaluate(() => window.__galaga!.enemies);
   expect(stage2.length).toBeGreaterThan(0);
 
-  // And score keeps growing into stage 2 — kill one and confirm.
+  // And score keeps growing into stage 2 — kill one and confirm. Target a
+  // NON-boss so a single forceHit scores (bosses take two hits, #68); fall
+  // back to enemies[0] if (somehow) only bosses are on stage.
   const scoreBeforeStage2Kill = afterClear.score;
   await page.evaluate(() => {
-    const target = (window.__galaga?.enemies ?? [])[0];
+    const enemies = window.__galaga?.enemies ?? [];
+    const target = enemies.find((e) => e.kind !== "boss") ?? enemies[0];
     if (target) {
       window.__galagaInternals!.forceHit({
         target: "enemy",
@@ -617,12 +642,22 @@ test("destroying the captor frees the escort and arms the dual fighter", async (
   });
   expect(captorId).not.toBeNull();
 
+  // The captor is a BOSS, so it takes two hits (#68): the first only flips
+  // `damaged` (the boss stays mid-capture, escort still locked above it),
+  // the second is the actual KILL that triggers the rescue via
+  // `escortOfBoss`. Land both inside one evaluate so the rAF loop can't move
+  // the captor between hits.
   await page.evaluate(
-    (id) =>
+    (id) => {
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: id ?? undefined,
-      }),
+      });
+      window.__galagaInternals!.forceHit({
+        target: "enemy",
+        enemyId: id ?? undefined,
+      });
+    },
     captorId,
   );
 
@@ -857,8 +892,11 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
   await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
     timeout: 5000,
   });
+  // Wait for a NON-boss enemy: bosses take two hits (#68) and the first hit
+  // spawns no explosion/popup, so a single forceHit on a boss wouldn't
+  // produce VFX. A bee/butterfly dies (and bursts) on the first hit.
   await page.waitForFunction(
-    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    () => (window.__galaga?.enemies ?? []).some((e) => e.kind !== "boss"),
     null,
     { timeout: 10000 },
   );
@@ -882,7 +920,12 @@ test("polish VFX: killing an enemy spawns an explosion + a score popup that ages
   // returning, so reading `window.__galaga` in the next statement of the
   // same evaluate captures that exact snapshot.
   const popped = await page.evaluate(() => {
-    window.__galagaInternals!.forceHit({ target: "enemy" });
+    // Hit a NON-boss so the kill (and its VFX) lands on the first hit.
+    const nonBoss = window.__galaga!.enemies.find((e) => e.kind !== "boss");
+    window.__galagaInternals!.forceHit({
+      target: "enemy",
+      enemyId: nonBoss?.id,
+    });
     return {
       ex: window.__galaga!.explosions[0],
       sp: window.__galaga!.scorePopups[0],
@@ -1282,14 +1325,18 @@ test("diving enemies score more than formation enemies (per-state bonus) (#71)",
     timeout: 5000,
   });
 
-  // Wait until all three archetypes are on stage — the formation slice
-  // enters across multiple seconds, so give it generous wall time.
+  // Wait for the WHOLE formation to settle — not just "one of each kind on
+  // stage". The entrance choreography streams enemies in over several
+  // seconds, and a "kinds present" gate can fire when only a SINGLE bee /
+  // boss has arrived; the second `find` for that kind then misses (the lone
+  // one was just killed) and the delta reads null. Waiting for every enemy
+  // to reach 'formation' guarantees a full roster (≥2 of each kind) so each
+  // archetype can be killed in both states.
   await page.waitForFunction(
     () => {
       const enemies = window.__galaga?.enemies ?? [];
-      const kinds = new Set(enemies.map((e) => e.kind));
       return (
-        kinds.has("bee") && kinds.has("butterfly") && kinds.has("boss")
+        enemies.length > 0 && enemies.every((e) => e.state === "formation")
       );
     },
     null,
@@ -1314,6 +1361,17 @@ test("diving enemies score more than formation enemies (per-state bonus) (#71)",
         target: "enemy",
         enemyId: target.id,
       });
+      // Boss two-hit armor (#68): the FIRST hit only flips `damaged` (no
+      // score) and the boss stays in the roster. Land the SECOND hit so this
+      // measures the KILL score — the delta from `before` is still the
+      // single per-state value (first hit added 0). Bees/butterflies die on
+      // the first hit and never need this.
+      if (kind === "boss") {
+        window.__galagaInternals!.forceHit({
+          target: "enemy",
+          enemyId: target.id,
+        });
+      }
       return window.__galaga!.score - before;
     }
     return {

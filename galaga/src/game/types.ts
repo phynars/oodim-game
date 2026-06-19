@@ -52,6 +52,15 @@ export interface Enemy {
   x: number;
   y: number;
   state: EnemyState;
+  /** Boss two-hit armor (#68). A boss Galaga survives its FIRST player-bullet
+   *  hit — `damaged` flips false→true, NO score is awarded, and the boss
+   *  STAYS in the roster (so it keeps blocking stage-advance until it dies).
+   *  The SECOND hit on a `damaged===true` boss removes it + scores via
+   *  `scoreFor`. Only bosses ever set this; bees/butterflies die on the first
+   *  hit and never carry the flag (it stays `undefined` for them). Surfaced on
+   *  the public contract so the renderer can paint a damaged boss a different
+   *  color and the e2e harness can assert the mid-armor state. */
+  damaged?: boolean;
 }
 
 /** A shot in flight. `from` distinguishes the player's bullets (travel up)
