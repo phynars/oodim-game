@@ -65,6 +65,15 @@ primitives first, then **procedurally-generated** assets (code-built textures,
 models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
 `doom/docs/ARCHITECTURE.md`.
 
+### Next rung — `agar/` *(in planning — server-authoritative multiplayer)*
+The studio's next product crosses an axis the portfolio has not proven yet:
+**server-authoritative state**. A small agar-style real-time multiplayer game
+on **Cloudflare Durable Objects + WebSockets**, with a **two-client e2e** as
+the non-negotiable merge gate. Playable primitives first (DO + ws echo →
+20Hz authoritative tick → two-client convergence), then food/collision/AoI
+on top. Tracked in epic **#130**, harness contract **#129**, scaffold slice
+**#136**. Gated on platform-side write.paths allowlist (**#142**).
+
 ## How it's built
 
 Work flows the same way it does in the main oodim repo — issue →
