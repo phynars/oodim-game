@@ -231,9 +231,18 @@ export class Engine {
    *  already uses for enemy-fire RNG, so the e2e harness can assert exact
    *  spark counts without flakiness from `Math.random`.
    *
-   *  Hitstop and shake amplitude STACK on whatever the channel already
-   *  holds (max for amplitude, sum for hitstop) — two near-simultaneous
-   *  hits should feel like more impact, not less. Sparks/popups append. */
+   *  Hitstop and shake amplitude CLAMP via `max` (NOT sum). The first
+   *  draft used `+=` for hitstop so a flurry would extend the freeze —
+   *  but the e2e harness drives mass-kill bursts via `forceHit` (perfect-
+   *  stage / challenging-stage paths kill the entire roster across rAF
+   *  yields). Under `+=`, hitstop accumulated faster than it decayed:
+   *  N kills in one JS turn pinned the engine for 2N ticks, the spawn
+   *  scheduler + `maybeAdvanceStage` were frozen out, and stage-advance
+   *  waits never fired (CI red). `max` keeps the "frozen moment" feel
+   *  on the strongest impact while letting the sim resume promptly —
+   *  visually a flurry already conveys "lots of impact" through shake +
+   *  sparks + popups, so we don't need the freeze to also stack.
+   *  Sparks/popups still append (their bounded lifetimes self-cull). */
   private writeHitFeedback(
     x: number,
     y: number,
@@ -249,7 +258,9 @@ export class Engine {
     const sparkLife = isKill
       ? SPARK_LIFETIME_KILL_TICKS
       : SPARK_LIFETIME_DAMAGE_TICKS;
-    fb.hitstopTicks += hitstop;
+    // CLAMP, don't accumulate — see jsdoc above. A second hit landing
+    // while still mid-freeze just refreshes the freeze ceiling.
+    fb.hitstopTicks = Math.max(fb.hitstopTicks, hitstop);
     fb.shakeAmplitude = Math.max(fb.shakeAmplitude, amp);
     // Radial spark spawn. Deterministic per (enemyId, sparkIdx) so e2e
     // assertions on `feedback.sparks.length` (and positions) are stable.
@@ -1085,21 +1096,17 @@ export class Engine {
       ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 2);
     }
 
-    // Bullet→enemy hit juice (#133) — HIT POPUPS. Floating "+N" that
-    // eases UPWARD over its lifetime (ease-out-cubic on the offset) and
-    // fades. Distinct from the legacy `scorePopups` so the juice channel
-    // is self-contained and an e2e assertion can target it directly.
-    for (const p of this.state.feedback.popups) {
-      const tt = p.ageTicks / POPUP_LIFETIME_TICKS;
-      // ease-out-cubic: 1 - (1 - t)^3.
-      const ease = 1 - Math.pow(1 - tt, 3);
-      const yOffset = -16 * ease;
-      const alpha = Math.max(0, 1 - tt);
-      ctx.fillStyle = `rgba(255, 245, 180, ${alpha.toFixed(2)})`;
-      ctx.font = "bold 11px ui-monospace, monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(`+${p.value}`, p.x, p.y + yOffset);
-    }
+    // Bullet→enemy hit juice (#133) — HIT POPUPS are deliberately NOT
+    // DRAWN here. The legacy `scorePopups` render path above already
+    // paints a "+N" at the enemy's kill position (from #42); drawing
+    // `feedback.popups` too would double every kill ("+50" stacked on
+    // "+50"). The popup data still lives on the channel — the #133
+    // contract demands `feedback.popups.length === 1` after a kill so
+    // tests + future renderers can read it — but visual rendering is
+    // owned by the legacy field. If we later upgrade the kill popup to
+    // the ease-up + fade behavior the channel encodes, this block is
+    // where it goes: replace `scorePopups` rendering with this one (not
+    // augment).
 
     // Player fighter — a simple upward-pointing arrow. Movement is a backlog
     // slice; for now it sits centered at the spawn point.
