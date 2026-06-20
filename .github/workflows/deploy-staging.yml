@@ -31,7 +31,9 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-      - run: npm ci
+      # npm install (not `npm ci`) — see deploy.yml: keeps deploy tolerant of an
+      # avatar's package-lock drift so CI-green ⟹ deploy works.
+      - run: npm install
       - run: npm run build  # all products → dist-<name>/ per product (base /<name>/)
       - name: Stage built assets (portfolio — every product, auto-derived)
         run: |

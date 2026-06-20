@@ -27,7 +27,11 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-      - run: npm ci
+      # npm install (not `npm ci`) so the deploy tolerates a package-lock that an
+      # avatar's dependency change left out of sync — CI uses npm install too, so
+      # this keeps "CI green ⟹ deploy works" (avatars can edit package.json but
+      # can't regenerate the lock; npm ci's strict-sync broke deploys, 2026-06-20).
+      - run: npm install
       - run: npm run build  # all products → dist-<name>/ per product (base /<name>/)
       - name: Stage built assets (portfolio — every product, auto-derived)
         run: |
