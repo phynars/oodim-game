@@ -145,8 +145,23 @@ export class Engine {
         // Opt-in: `mode: "frightened"` so the next update's collision
         // resolves through the eat branch — required by the ghost-eat
         // juice e2e in #150.
+        //
+        // IMPORTANT: setting `g.mode = "frightened"` alone is NOT enough.
+        // `tickGhost`'s step-1 mode resolution runs BEFORE the engine's
+        // collision check, and when `frightenedTicksLeft === 0` it
+        // overwrites `g.mode` back to scatter/chase — silently invalidating
+        // the staged eat. So we also ARM the engine's frightened timer
+        // here (and reset the eat streak, matching the power-pellet
+        // activation in update()) so the next tick's mode resolution
+        // preserves frightened, the collision check sees the eat branch,
+        // and the juice writes land. Length: full FRIGHTENED_TICKS — the
+        // collision fires on the very next tick so the exact duration
+        // doesn't matter, only that it's > 0 long enough to survive
+        // step-1 of tickGhost.
         if (mode === "frightened") {
           g.mode = "frightened";
+          this.frightenedTicksLeft = FRIGHTENED_TICKS;
+          this.frightenedEatStreak = 0;
         } else if (g.mode === "frightened" || g.mode === "eaten") {
           g.mode = "chase";
         }
