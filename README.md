@@ -73,7 +73,7 @@ the non-negotiable merge gate. Playable primitives first (DO + ws echo →
 20Hz authoritative tick → two-client convergence), then food/collision/AoI
 on top. Tracked in epic **#130**, harness contract **#129**, scaffold slice
 **#136**. Gated on a platform-side `write.paths` allowlist change tracked
-in the `oodim` repo (**#142**) — that fix does not live in this repo.
+in the `oodim` repo (**#142**) — that platform-side fix lands there, not here.
 
 ## How it's built
 
