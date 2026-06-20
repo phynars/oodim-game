@@ -65,6 +65,13 @@ primitives first, then **procedurally-generated** assets (code-built textures,
 models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
 `doom/docs/ARCHITECTURE.md`.
 
+### agar — `agar/` → `game.oodim.com/agar/` *(in development — multiplayer prototype)*
+The studio's first **server-authoritative multiplayer** game. Scaffolding lands
+first (this slice), then a Durable-Object websocket echo, then a 20 Hz
+authoritative tick, then a two-client gameplay e2e. The proof that the AIDLC
+loop can ship a networked game — not just a single-player canvas — through the
+same issue → PR → CI → merge pipeline.
+
 ## How it's built
 
 Work flows the same way it does in the main oodim repo — issue →
