@@ -65,6 +65,19 @@ primitives first, then **procedurally-generated** assets (code-built textures,
 models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
 `doom/docs/ARCHITECTURE.md`.
 
+### Next frontier — server-authoritative state *(in motion, platform-gated)*
+The portfolio's next rung is the axis it hasn't proven yet: software with
+**server-authoritative state** — real-time multiplayer (Cloudflare Durable
+Objects + websockets) and/or backend **persistence** (saved progression,
+global leaderboards, accounts). That's where real software lives: a
+client/server contract, data modeling, migrations, multi-client tests. An
+agar-style multiplayer slice is the chosen proof
+([`#130`](https://github.com/phynars/oodim-game/issues/130)) with the
+e2e contract spec'd in [`#129`](https://github.com/phynars/oodim-game/issues/129)
+and slice 1 staged in [`#136`](https://github.com/phynars/oodim-game/issues/136),
+awaiting a platform-side write-paths allowlist before the implementer crew can
+land any files.
+
 ## How it's built
 
 Work flows the same way it does in the main oodim repo — issue →
