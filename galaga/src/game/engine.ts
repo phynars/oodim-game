@@ -14,16 +14,21 @@ import {
   EXPLOSION_TICKS,
   hitMissBonus,
   HITSTOP_DAMAGE_TICKS,
+  HITSTOP_DEATH_TICKS,
   HITSTOP_KILL_TICKS,
   initialState,
   POPUP_LIFETIME_TICKS,
+  RESPAWN_FADE_TICKS,
   SCORE_POPUP_TICKS,
   SHAKE_AMPLITUDE_DAMAGE,
+  SHAKE_AMPLITUDE_DEATH,
   SHAKE_AMPLITUDE_KILL,
   SHAKE_DECAY_PER_TICK,
   SPARK_COUNT_DAMAGE,
+  SPARK_COUNT_DEATH,
   SPARK_COUNT_KILL,
   SPARK_LIFETIME_DAMAGE_TICKS,
+  SPARK_LIFETIME_DEATH_TICKS,
   SPARK_LIFETIME_KILL_TICKS,
   WIDTH,
   HEIGHT,
@@ -95,6 +100,11 @@ export class Engine {
    *  spawn x, alive=true. At 0 lives we don't respawn — status flips to
    *  'lost' instead (the contract's terminal "you died" state). */
   private deathTick: number | null = null;
+  /** Tick at which the fighter respawned; null when not currently in a
+   *  fade-in window. Player-death juice (#160): for `RESPAWN_FADE_TICKS`
+   *  ticks after respawn, the engine writes `player.respawnFadeAlpha` so
+   *  the renderer fades the fighter in instead of snapping at full alpha. */
+  private respawnTick: number | null = null;
   /** Per-enemy fire cooldown — keyed by enemy id, value is the tick at
    *  which that enemy is next eligible to fire. A diver picked up on tick
    *  T can't fire again until T + ENEMY_FIRE_COOLDOWN_TICKS. Entries for
@@ -302,6 +312,43 @@ export class Engine {
     }
   }
 
+  /** Write player-death juice (#160) into the public `feedback` channel —
+   *  the inverse beat to `writeHitFeedback`'s "kill". Mirrors that helper's
+   *  shape (clamp hitstop/shake via Math.max, append sparks, NO popup) but
+   *  with HEAVIER constants: 8-tick freeze (vs kill's 2), 7px shake (vs 3),
+   *  20 outward sparks (vs 8) at 2.5–4.5 px/tick speed and 30-tick lifetime.
+   *
+   *  Deterministic spark velocities use the same sin-hash pattern as the
+   *  kill burst, seeded by `(state.tick, sparkIdx)` so the e2e harness can
+   *  assert exact spark counts without Math.random flakiness. No `enemyId`
+   *  to seed by — the player isn't an enemy — but the death tick is a fine
+   *  per-event seed (only one death per tick is possible). */
+  private writeDeathFeedback(x: number, y: number): void {
+    const fb = this.state.feedback;
+    fb.hitstopTicks = Math.max(fb.hitstopTicks, HITSTOP_DEATH_TICKS);
+    fb.shakeAmplitude = Math.max(fb.shakeAmplitude, SHAKE_AMPLITUDE_DEATH);
+    const seed = this.state.tick;
+    for (let i = 0; i < SPARK_COUNT_DEATH; i++) {
+      const baseAngle = (i / SPARK_COUNT_DEATH) * Math.PI * 2;
+      const jitter =
+        (((Math.sin(seed * 91.337 + i * 13.13) * 43758.5453) % 1) + 1) % 1;
+      const angle = baseAngle + (jitter - 0.5) * 0.4;
+      // 2.5..4.5 px/tick — faster than kill's 1.5..3, reads as "ship
+      // disintegrating outward" rather than "enemy popping radially".
+      const speed = 2.5 + jitter * 2.0;
+      const spark: FeedbackSpark = {
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        ageTicks: 0,
+        lifetimeTicks: SPARK_LIFETIME_DEATH_TICKS,
+      };
+      fb.sparks.push(spark);
+    }
+    // No popup — death doesn't earn points.
+  }
+
   /** Remove enemy at `idx` from the roster, add its kind's score. Centralized
    *  so the forceHit hook and the per-tick collision pass take the same path
    *  (and so future "explosion sprite" work hooks in one place). The kill is
@@ -480,6 +527,12 @@ export class Engine {
    *  lives the contract's terminal lifecycle is 'lost' — we don't respawn. */
   private killPlayer(): void {
     if (!this.state.player.alive) return; // already dead, no double-tap
+    // Player-death juice (#160) — write BEFORE flipping `alive=false` so
+    // the death position is the fighter's current (x,y), and BEFORE the
+    // lives--/status-flip so the same juice fires on the terminal death
+    // (zero lives → 'lost') as on a respawnable death. Both paths get the
+    // same beat: the final death deserves the same hitstop+shake+sparks.
+    this.writeDeathFeedback(this.state.player.x, this.state.player.y);
     this.state.player.alive = false;
     // Losing a fighter while dual drops back to single (the second life
     // worth of ship is the docked rescue) — contract from #38.
@@ -855,6 +908,33 @@ export class Engine {
         this.state.player.captured = false;
         this.state.player.x = WIDTH / 2;
         this.deathTick = null;
+        // Player-death juice (#160) — arm the respawn fade-in. The renderer
+        // multiplies `player.respawnFadeAlpha` into the fighter's draw
+        // alpha for the next `RESPAWN_FADE_TICKS` ticks so the new life
+        // eases in instead of snapping at full opacity. The first value
+        // is set in the tracker block below on this same tick.
+        this.respawnTick = this.state.tick;
+      }
+
+      // Player-death juice (#160) — respawn fade-in tracker. Writes a
+      // strictly-increasing `respawnFadeAlpha` on `player` for
+      // RESPAWN_FADE_TICKS ticks after respawn. The schedule matches the
+      // #160 spec exactly: `alpha = k / N` where `k = tick - respawnTick`,
+      // so on the respawn tick (k=0) the fighter is drawn at alpha 0 and
+      // on each subsequent tick the alpha climbs by 1/N. After N ticks
+      // the window closes — `respawnFadeAlpha` is removed from the
+      // snapshot and the fighter draws at full opacity. The AC requires
+      // 20 consecutive ticks with `alpha < 1.0 strictly increasing toward
+      // 1.0`, which this satisfies: alphas 0, 1/20, 2/20, …, 19/20 over
+      // ticks k=0..19, all < 1.0, all strictly increasing.
+      if (this.respawnTick !== null && this.state.player.alive) {
+        const k = this.state.tick - this.respawnTick; // 0..N-1 while in window
+        if (k >= RESPAWN_FADE_TICKS) {
+          this.respawnTick = null;
+          delete this.state.player.respawnFadeAlpha;
+        } else {
+          this.state.player.respawnFadeAlpha = k / RESPAWN_FADE_TICKS;
+        }
       }
 
       // Advance bullets, despawn off-screen. Player shots travel UP (y--);
@@ -1123,8 +1203,20 @@ export class Engine {
 
     // Player fighter — a simple upward-pointing arrow. Movement is a backlog
     // slice; for now it sits centered at the spawn point.
+    //
+    // Player-death juice (#160): when `respawnFadeAlpha` is set, the fighter
+    // is in the post-respawn fade-in window — multiply into globalAlpha so
+    // the new life eases in over RESPAWN_FADE_TICKS instead of snapping at
+    // full opacity. Outside the window the field is undefined (engine
+    // deletes it) and the fighter draws normally.
     if (this.state.player.alive) {
-      const { x, y } = this.state.player;
+      const { x, y, respawnFadeAlpha } = this.state.player;
+      const fading =
+        respawnFadeAlpha !== undefined && respawnFadeAlpha < 1;
+      if (fading) {
+        ctx.save();
+        ctx.globalAlpha = respawnFadeAlpha!;
+      }
       ctx.fillStyle = "#e8eaff";
       ctx.beginPath();
       ctx.moveTo(x, y - 9);
@@ -1132,6 +1224,9 @@ export class Engine {
       ctx.lineTo(x + 7, y + 7);
       ctx.closePath();
       ctx.fill();
+      if (fading) {
+        ctx.restore();
+      }
     }
 
     // Close the screen-shake transform — overlays (READY, GAME OVER,
