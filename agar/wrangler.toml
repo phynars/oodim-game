@@ -1,0 +1,29 @@
+# agar — slice 2/4 (Durable Object websocket echo).
+#
+# Wrangler config for the agar/ Worker that hosts the EchoRoom Durable
+# Object. Dev only in this slice: `wrangler dev` runs alongside vite
+# preview during the e2e merge gate so a Playwright test can prove the
+# round-trip through a REAL DO inside CI.
+#
+# Prod-hardening (origin allowlist on the WS upgrade, auth, rate limit,
+# multi-room routing) is deferred to slice 3+. The protocol intentionally
+# accepts any origin in dev — see issue #164 scope.
+
+name = "oodim-agar"
+main = "server/worker.ts"
+compatibility_date = "2024-11-01"
+workers_dev = false
+
+[[durable_objects.bindings]]
+name = "ECHO_ROOM"
+class_name = "EchoRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["EchoRoom"]
+
+[dev]
+# Pinned port — agar/playwright.config.ts and agar/src/main.ts both
+# expect ws://localhost:8787/ws during e2e and dev. The vite preview
+# server runs on 4274; these never collide.
+port = 8787

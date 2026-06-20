@@ -72,8 +72,8 @@ merge gate that asserts a real round-trip — not just "does it render". Slice 1
 (scaffold) is in; the rollout continues playable-primitives-first:
 
 1. ✅ **Scaffold** — `agar/` slot with `index.html`, vite config, Playwright harness, "in development" placeholder.
-2. ⏳ **Durable Object websocket echo** (#164) — one client, one DO, `seq`/`rtt` rendered on canvas, e2e times out red if the round-trip doesn't happen.
-3. **20 Hz authoritative tick** — server holds the canonical state; clients send input, render what the server says.
+2. ✅ **Durable Object websocket echo** — one client, one DO, `seq`/`rtt` rendered on canvas; e2e times out red if the round-trip doesn't happen. Real WS through `wrangler dev` inside the merge gate.
+3. ⏳ **20 Hz authoritative tick** — server holds the canonical state; clients send input, render what the server says.
 4. **Two-client gameplay e2e** — two browser contexts converge on the same authoritative snapshot; the merge gate.
 
 The proof that the AIDLC loop can ship a networked game — not just a
