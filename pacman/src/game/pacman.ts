@@ -180,11 +180,41 @@ export function tickPac(state: GameState): PacTickResult {
     row[pac.x] = false;
     state.pellets -= 1;
     const staticTile = MAZE[pac.y]?.[pac.x];
-    if (staticTile === "o") {
+    const isPower = staticTile === "o";
+    if (isPower) {
       state.score += 50;
       result.atePowerPellet = true;
     } else {
       state.score += 10;
+    }
+    // Issue #138 — pellet-pickup juice. Pure data: engine decays per
+    // tick (before this write), renderer reads. Power pellet gets a
+    // fatter package — bigger squash, more sparkles, and a screen
+    // flash that telegraphs the room-rule flip.
+    const fb = state.feedback;
+    fb.pacSquash = isPower ? 0.25 : 0.12;
+    fb.popups.push({
+      x: pac.x,
+      y: pac.y,
+      value: isPower ? 50 : 10,
+      ageTicks: 0,
+    });
+    const sparkleCount = isPower ? 12 : 4;
+    const sparkleSpeed = isPower ? 0.6 : 0.4;
+    // Deterministic angular distribution so the spec contract holds
+    // across runs — evenly spaced rays from the eaten tile center.
+    for (let i = 0; i < sparkleCount; i += 1) {
+      const theta = (i / sparkleCount) * Math.PI * 2;
+      fb.sparkles.push({
+        x: pac.x + 0.5,
+        y: pac.y + 0.5,
+        vx: Math.cos(theta) * sparkleSpeed,
+        vy: Math.sin(theta) * sparkleSpeed,
+        ageTicks: 0,
+      });
+    }
+    if (isPower) {
+      fb.flashAlpha = 0.18;
     }
   }
   return result;

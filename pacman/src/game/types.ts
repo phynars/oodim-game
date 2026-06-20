@@ -31,6 +31,31 @@ export interface PacState {
   queued: Direction;
 }
 
+/** Issue #138 — pellet-pickup juice channel. Pure data on GameState:
+ *  the engine writes it on the eat-event + decays it each tick, the
+ *  renderer reads it. Mirrors the Galaga shape (#133) so cross-game
+ *  feedback handling stays consistent. Pac-Man intentionally omits
+ *  screen-shake (graceful, not punchy). */
+export interface FeedbackChannel {
+  /** Brief scale-pop on Pac when a pellet lands. Renderer multiplies
+   *  Pac's draw radius by (1 + amp). Decays toward 0 each tick. */
+  pacSquash: number;
+  /** Floating score popups: "+10" / "+50". Rises and fades. */
+  popups: Array<{ x: number; y: number; value: number; ageTicks: number }>;
+  /** Screen flash for power-pellet activation only. Renderer overlays
+   *  a translucent white rect at this alpha; decays. */
+  flashAlpha: number;
+  /** Pellet-vanish bursts: small sparkles at the eaten tile, drifting
+   *  outward then fading. */
+  sparkles: Array<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    ageTicks: number;
+  }>;
+}
+
 export interface GameState {
   /** High-level lifecycle. Boots to 'ready'. */
   status: GameStatus;
@@ -54,6 +79,9 @@ export interface GameState {
   /** Public ghost roster. Slim views (name/x/y/mode) — internal AI state
    *  is held privately by the engine. The e2e contract reads this. */
   ghosts: GhostState[];
+  /** Render-feedback channel (issue #138). Written by tickPac/engine,
+   *  read by the renderer. Pure data — no DOM, no callbacks. */
+  feedback: FeedbackChannel;
 }
 
 declare global {
@@ -79,5 +107,11 @@ export function initialState(): GameState {
     pac: { x: 13, y: 23, dir: "none", queued: "none" },
     pelletMap: [],
     ghosts: [],
+    feedback: {
+      pacSquash: 0,
+      popups: [],
+      flashAlpha: 0,
+      sparkles: [],
+    },
   };
 }
