@@ -87,6 +87,13 @@ export interface Enemy {
    *  state; on 0, the engine applies ATTACK_DAMAGE_BY_KIND and resets the
    *  cooldown. Starts at 0 so the first in-range tick lands a hit. */
   attackCooldown: number;
+  /** Fixed-step frames remaining on the current hit-flash pulse (#166).
+   *  Set to ENEMY_HIT_FLASH_TICKS the tick a player shot connects with
+   *  this enemy; decremented each fixed-step AFTER the hitstop gate. The
+   *  renderer reads this and bumps the body material's emissive toward
+   *  white with intensity `hitFlashTicks / ENEMY_HIT_FLASH_TICKS`. 0 at
+   *  rest — only enemies with hitFlashTicks>0 get the emissive bump. */
+  hitFlashTicks: number;
 }
 
 /** A projectile in flight. `from` distinguishes the player's shots from enemy
@@ -211,6 +218,35 @@ export interface DoomState {
    *  deterministic offset; resting at 0 the camera sits at the player's
    *  eye unmodified. */
   shakeTicks: number;
+  /** Fixed-step frames remaining on the current GIVING-damage hitstop
+   *  pulse (#166). Clamped (NEVER `+=`) to HITSTOP_TICKS_ON_HIT each time a
+   *  player shot connects. While >0, the top of update()'s playing block
+   *  decrements this and SKIPS the move/AI/projectile/viewmodel passes —
+   *  input still drains, the tick counter still advances, the renderer
+   *  still draws so the spark + flash beats read during the freeze. */
+  hitstopTicks: number;
+  /** Fixed-step frames remaining on the current connect-shake pulse (#166).
+   *  Parallel to shakeTicks (player-damage shake from #91); this one is the
+   *  smaller "thump" the camera takes when YOUR shot lands on something.
+   *  Clamped to HIT_SHAKE_TICKS on connect, decayed each fixed-step AFTER
+   *  the hitstop gate. syncCamera() sums this on top of shakeTicks at half
+   *  amplitude so the two feedback beats stay semantically separate. */
+  hitShakeTicks: number;
+  /** Live impact-spark particles (#166). Each entry is one short-lived
+   *  world-space spark spawned at a hit point; the renderer maps these to
+   *  a pool of THREE.Mesh sprites by index, the simulation advances them
+   *  each tick (gravity + lifetime), and entries with ticksLeft<=0 are
+   *  pruned. Deterministic: spawn velocities come from a fixed offset
+   *  table, never Math.random. */
+  impactSparks: Array<{
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
+    ticksLeft: number;
+  }>;
 }
 
 /** Test-only escape hatches. The e2e harness can force deterministic combat
@@ -451,6 +487,9 @@ export function initialState(): DoomState {
     hits: [],
     hitFlashTicks: 0,
     shakeTicks: 0,
+    hitstopTicks: 0,
+    hitShakeTicks: 0,
+    impactSparks: [],
   };
 }
 
@@ -466,3 +505,52 @@ export const SHAKE_TICKS = 12;
  *  the tick counter so the perturbation fades smoothly. Small enough that
  *  the player doesn't feel motion-sick on every chip. */
 export const SHAKE_AMPLITUDE = 0.08;
+
+// --- Enemy-hit juice (#166) -------------------------------------------------
+// The GIVING-damage side: visual feedback when YOUR shot connects with an
+// enemy. Mirrors what #133 did for Galaga (bullet→enemy hit juice) and #150
+// did for Pac-Man (ghost eat). Doom is HEAVY: punchier than Galaga's arcade
+// pop, slower decay than Pac-Man's pickup pickup. Each landed shot is a
+// meat-thunk — body flash + impact spark + brief hitstop + a small camera
+// thump that's distinct from the recoil-on-fire kick (which lives on the
+// viewmodel group, not the camera).
+
+/** Fixed-step frames an enemy's hit-flash pulse holds. 6 ticks @ 60Hz =
+ *  ~100ms — fast linear decay so the bright pop reads, then is gone before
+ *  the next shot. The renderer reads `enemy.hitFlashTicks / ENEMY_HIT_FLASH_TICKS`
+ *  as a [0..1] emissive bump factor toward white. */
+export const ENEMY_HIT_FLASH_TICKS = 6;
+
+/** Fixed-step frames the global hitstop holds on every landed shot (#166).
+ *  2 ticks @ 60Hz = ~33ms — barely a flicker but enough that the player
+ *  FEELS the impact register. CLAMPED via Math.max (never `+=`) so a future
+ *  multi-pellet shotgun can't stack itself into a frozen engine. */
+export const HITSTOP_TICKS_ON_HIT = 2;
+
+/** Fixed-step frames the connect-shake holds on every landed shot (#166).
+ *  3 ticks @ 60Hz = ~50ms. Parallel to player-damage `shakeTicks` (#91) so
+ *  the two beats stay distinct — this one is the smaller thump of YOUR shot
+ *  finding meat, the other is your own body taking a hit. */
+export const HIT_SHAKE_TICKS = 3;
+
+/** Camera-offset scale for the connect-shake, relative to SHAKE_AMPLITUDE.
+ *  Half-amplitude — softer than the damage shake so the player can still
+ *  tell the two apart on feel alone. */
+export const HIT_SHAKE_AMPLITUDE_FACTOR = 0.5;
+
+/** Number of impact sparks spawned per landed shot (#166). 6 is dense
+ *  enough to read as a burst without flooding the scene or running the
+ *  pool dry on rapid-fire. */
+export const IMPACT_SPARK_COUNT = 6;
+
+/** Fixed-step frames each impact spark lives (#166). 18 ticks @ 60Hz =
+ *  ~300ms — long enough to arc, short enough that even sustained fire
+ *  caps the live spark pool. Per-tick: position += velocity; vy -= 0.005
+ *  (gravity); scale shrinks toward 0 linearly. */
+export const IMPACT_SPARK_LIFETIME = 18;
+
+/** Flinch-knock distance (world units) on a non-lethal hit (#166). The
+ *  enemy is pushed along the shot direction by this much, capped against
+ *  `collidesAt` so it doesn't tunnel through walls. Skipped on lethal —
+ *  the death clip owns that beat. */
+export const ENEMY_FLINCH_KNOCK = 0.08;
