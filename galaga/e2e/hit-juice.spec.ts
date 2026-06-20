@@ -97,9 +97,17 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
       s.feedback.sparks = [];
       s.feedback.popups = [];
       const tickBefore = s.tick;
+      // `juice: true` opts THIS forceHit into writing hitstop/shake/sparks/
+      // popup onto `state.feedback` (the channel #133 introduced). The
+      // default is `false` so EXISTING mass-kill harness patterns (perfect-
+      // stage drain, challenging-stage drain, formation clear) don't pin
+      // `hitstopTicks > 0` across rAF yields and starve the spawn scheduler
+      // / `maybeAdvanceStage` of simulation ticks. See `forceHit` jsdoc
+      // in galaga/src/game/types.ts.
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: target.id,
+        juice: true,
       });
       // After forceHit, the snapshot we read is conceptually "tick T"
       // (the kill tick) — feedback values are freshly written, undecayed
@@ -147,9 +155,12 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
       s.feedback.shakeAmplitude = 0;
       s.feedback.sparks = [];
       s.feedback.popups = [];
+      // Opt in to juice writes for this measurement. See the opt-in
+      // rationale above (and the `forceHit` jsdoc in types.ts).
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: target.id,
+        juice: true,
       });
       return window.__galaga!.tick;
     });

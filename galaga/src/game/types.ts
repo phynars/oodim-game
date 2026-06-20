@@ -94,13 +94,21 @@ export interface ScorePopup {
  *  public contract so the renderer (and any e2e assertion) can read the
  *  particle burst without reaching into engine internals. Velocities are
  *  px/tick (already multiplied each tick); `ageTicks` is incremented by
- *  the engine and the spark is culled at `SPARK_LIFETIME_TICKS`. */
+ *  the engine and the spark is culled when `ageTicks >= lifetimeTicks`.
+ *
+ *  Per-spark `lifetimeTicks` (rather than a single global ceiling) means a
+ *  damage-hit spark — which spawns 4 at half the lifetime of a kill burst —
+ *  records its OWN ceiling instead of bucket-sharing the kill ceiling via
+ *  a pre-aged `ageTicks`. Renderers reading `ageTicks/lifetimeTicks` as a
+ *  normalized 0..1 freshness value (for alpha/scale fades) get the right
+ *  answer in both buckets. */
 export interface FeedbackSpark {
   x: number;
   y: number;
   vx: number;
   vy: number;
   ageTicks: number;
+  lifetimeTicks: number;
 }
 
 /** Floating "+N" hit popup spawned on a kill (#133). Distinct from the
@@ -217,7 +225,23 @@ export interface GameState {
  *  places it above the player, and flips `captureBeamActive=true`. The
  *  engine's per-tick capture check then closes the loop on its own. */
 export interface GalagaInternals {
-  forceHit(opts: { target: "enemy" | "player"; enemyId?: number }): void;
+  /** Force a deterministic collision outcome. `juice` (default `false`) opts
+   *  into the bullet→enemy hit-juice writes (#133): when true, a successful
+   *  enemy kill writes hitstop/shake/sparks/popup to `state.feedback`; when
+   *  false, the kill is bookkeeping-only (no hitstop freeze of the sim).
+   *
+   *  The default is `false` so the EXISTING mass-kill test patterns
+   *  (perfect-stage, challenging-stage, formation-clear) — which call
+   *  `forceHit` dozens of times across rAF yields — don't keep `hitstopTicks`
+   *  pinned > 0 and starve the spawn scheduler / `maybeAdvanceStage` of
+   *  simulation ticks. The new hit-juice spec (galaga/e2e/hit-juice.spec.ts)
+   *  passes `juice: true` to OBSERVE the channel; real bullet→enemy
+   *  collisions in `resolveCollisions` always write the juice regardless. */
+  forceHit(opts: {
+    target: "enemy" | "player";
+    enemyId?: number;
+    juice?: boolean;
+  }): void;
   triggerBossCapture(opts?: { bossId?: number }): void;
   /** Force the engine to start a Challenging (bonus) stage now, replacing the
    *  current formation with a set-pattern flythrough wave. While active,

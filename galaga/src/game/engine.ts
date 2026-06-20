@@ -175,7 +175,14 @@ export class Engine {
             this.state.stageShotsFired += 1;
             this.state.stageHits += 1;
           }
-          this.killEnemy(idx);
+          // `juice` defaults to false so the existing mass-kill harness
+          // patterns (perfect-stage drain, challenging-stage drain,
+          // formation clear) don't pin `hitstopTicks > 0` across rAF
+          // yields and starve `enemies.tick()` / `maybeAdvanceStage` of
+          // simulation ticks. The new hit-juice spec opts IN to observe
+          // the channel; real player-bullet collisions in
+          // `resolveCollisions` always write the juice unconditionally.
+          this.killEnemy(idx, opts.juice === true);
         } else {
           this.killPlayer();
         }
@@ -265,6 +272,14 @@ export class Engine {
     // Radial spark spawn. Deterministic per (enemyId, sparkIdx) so e2e
     // assertions on `feedback.sparks.length` (and positions) are stable.
     // Speed in 1.5–3 px/tick per the spec; angle even-spaced + jittered.
+    // Each spark carries its OWN `lifetimeTicks` — kill bursts use the
+    // full kill ceiling, damage bursts the shorter damage ceiling — so a
+    // renderer reading `ageTicks/lifetimeTicks` as a normalized 0..1
+    // freshness value (alpha, scale) gets the right answer in both
+    // buckets. The earlier draft bucket-shared `SPARK_LIFETIME_KILL_TICKS`
+    // by pre-aging damage sparks; that was a smell (it lied to consumers
+    // about how fresh the particle is). Per-spark `lifetimeTicks` keeps
+    // `ageTicks=0` truthfully at spawn.
     for (let i = 0; i < count; i++) {
       const baseAngle = (i / count) * Math.PI * 2;
       // sin-hash → 0..1 jitter, deterministic across runs.
@@ -278,19 +293,8 @@ export class Engine {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         ageTicks: 0,
+        lifetimeTicks: sparkLife,
       };
-      // Tag the spark's lifetime by stuffing it into the spawn position?
-      // No — we honor lifetime via a per-spawn-context constant. To keep
-      // FeedbackSpark a flat shape, we age all sparks to the SAME ceiling
-      // and let the lifetime split fall out of: damage sparks decay 2x
-      // faster effectively by spawning fewer. Simpler model — but the
-      // spec calls for half-lifetime on damage. We honor it by storing
-      // the ceiling in a parallel offset: bump ageTicks at spawn for
-      // damage sparks so they hit the same SPARK_LIFETIME_KILL ceiling
-      // sooner.
-      if (!isKill) {
-        spark.ageTicks = SPARK_LIFETIME_KILL_TICKS - sparkLife;
-      }
       fb.sparks.push(spark);
     }
     if (isKill && popupValue !== undefined) {
@@ -304,7 +308,7 @@ export class Engine {
    *  forwarded to the controller so the persistent roster also loses the
    *  enemy — otherwise the next `tick()` would re-emit it from the original
    *  schedule. */
-  private killEnemy(idx: number): void {
+  private killEnemy(idx: number, writeJuice: boolean = true): void {
     const e = this.state.enemies[idx];
     if (!e) return;
     // Boss two-hit armor (#68). A boss survives its FIRST hit: flip it to
@@ -326,8 +330,12 @@ export class Engine {
       e.damaged = true;
       // Bullet→enemy hit juice (#133) — boss FIRST hit (damage, not kill).
       // Half the kill spec: 1-frame hitstop, 1.5px shake, 4 sparks at half
-      // lifetime, NO popup (boss only scores on the kill hit).
-      this.writeHitFeedback(e.x, e.y, e.id, /*kind*/ "damage");
+      // lifetime, NO popup (boss only scores on the kill hit). Suppressed
+      // when forceHit was called with `juice: false` (default) — see the
+      // jsdoc on `forceHit` in types.ts for why.
+      if (writeJuice) {
+        this.writeHitFeedback(e.x, e.y, e.id, /*kind*/ "damage");
+      }
       return;
     }
     // Per-state scoring (#71): diving/capturing kills score the bonus
@@ -345,7 +353,11 @@ export class Engine {
     // Bullet→enemy hit juice (#133) — KILL: 2-frame hitstop, 3px shake,
     // 8 sparks (full lifetime), +N popup on the channel. Written BEFORE
     // the splice so the kill position is the enemy's current (x,y).
-    this.writeHitFeedback(e.x, e.y, e.id, /*kind*/ "kill", points);
+    // Suppressed when forceHit was called with `juice: false` (default) —
+    // see the jsdoc on `forceHit` in types.ts for why.
+    if (writeJuice) {
+      this.writeHitFeedback(e.x, e.y, e.id, /*kind*/ "kill", points);
+    }
     // Track per-stage kills during a challenging stage so a perfect clear
     // (kills === total spawned) can award the bonus on stage-end.
     if (this.enemies.isChallenging()) this.challengingKills += 1;
@@ -593,13 +605,14 @@ export class Engine {
           const nextSparks: FeedbackSpark[] = [];
           for (const s of fb.sparks) {
             const aged = s.ageTicks + 1;
-            if (aged < SPARK_LIFETIME_KILL_TICKS) {
+            if (aged < s.lifetimeTicks) {
               nextSparks.push({
                 x: s.x + s.vx,
                 y: s.y + s.vy,
                 vx: s.vx,
                 vy: s.vy,
                 ageTicks: aged,
+                lifetimeTicks: s.lifetimeTicks,
               });
             }
           }
@@ -1089,7 +1102,7 @@ export class Engine {
     // orange→yellow shift — the heat of the hit, distinct from the
     // explosion's red ring.
     for (const s of this.state.feedback.sparks) {
-      const tt = s.ageTicks / SPARK_LIFETIME_KILL_TICKS;
+      const tt = s.ageTicks / s.lifetimeTicks;
       const alpha = Math.max(0, 1 - tt);
       const g = Math.round(180 + tt * 60);
       ctx.fillStyle = `rgba(255, ${g}, 90, ${alpha.toFixed(2)})`;
