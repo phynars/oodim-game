@@ -32,14 +32,15 @@ jobs:
           node-version: "22"
           cache: "npm"
       - run: npm ci
-      - run: npm run build  # all products → dist-pacman/ + dist-galaga/ + dist-doom/
-      - name: Stage built assets (portfolio — /pacman/ + /galaga/ + /doom/)
+      - run: npm run build  # all products → dist-pacman/ + dist-galaga/ + dist-doom/ + dist-agar/
+      - name: Stage built assets (portfolio — /pacman/ + /galaga/ + /doom/ + /agar/)
         run: |
           rm -rf public
-          mkdir -p public/pacman public/galaga public/doom
+          mkdir -p public/pacman public/galaga public/doom public/agar
           cp -r dist-pacman/* public/pacman/
           cp -r dist-galaga/* public/galaga/
           cp -r dist-doom/* public/doom/
+          cp -r dist-agar/* public/agar/
           cp landing/index.html public/index.html
       - name: Deploy to Cloudflare (staging)
         if: ${{ env.CF_TOKEN != '' }}
