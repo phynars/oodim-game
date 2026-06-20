@@ -18,6 +18,7 @@ jobs:
       pacman: ${{ steps.filter.outputs.pacman }}
       galaga: ${{ steps.filter.outputs.galaga }}
       doom: ${{ steps.filter.outputs.doom }}
+      agar: ${{ steps.filter.outputs.agar }}
       shared: ${{ steps.filter.outputs.shared }}
     steps:
       - uses: actions/checkout@v4
@@ -31,11 +32,26 @@ jobs:
               - 'galaga/**'
             doom:
               - 'doom/**'
+            agar:
+              - 'agar/**'
             shared:
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig*.json'
               - '.github/workflows/ci.yml'
+
+  # Product-wiring guard — always runs (no filter). Fails the PR if any product
+  # dir (<name>/vite.config.ts) isn't fully wired into package.json + ci.yml, so
+  # a new game can't ship half-registered (the agar/ deploy-404 + no-CI-lane
+  # class, 2026-06-20). See scripts/check-product-wiring.mjs.
+  wiring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/check-product-wiring.mjs
 
   pacman:
     needs: changes
@@ -81,3 +97,18 @@ jobs:
       - run: npm run build:doom
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:doom
+
+  agar:
+    needs: changes
+    if: ${{ needs.changes.outputs.agar == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run typecheck:agar
+      - run: npm run build:agar
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:agar

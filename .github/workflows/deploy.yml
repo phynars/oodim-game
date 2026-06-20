@@ -28,19 +28,27 @@ jobs:
           node-version: "22"
           cache: "npm"
       - run: npm ci
-      - run: npm run build  # all products → dist-pacman/ + dist-galaga/ + dist-doom/ + dist-agar/
-      - name: Stage built assets (portfolio — /pacman/ + /galaga/ + /doom/ + /agar/)
+      - run: npm run build  # all products → dist-<name>/ per product (base /<name>/)
+      - name: Stage built assets (portfolio — every product, auto-derived)
         run: |
           rm -rf public
-          mkdir -p public/pacman public/galaga public/doom public/agar
-          cp -r dist-pacman/* public/pacman/
-          cp -r dist-galaga/* public/galaga/
-          cp -r dist-doom/* public/doom/
-          cp -r dist-agar/* public/agar/
-          # Root portfolio landing linking both products. Copy the whole
-          # landing/ directory (not just index.html) so siblings like og.png
-          # resolve at site root — landing/index.html references
-          # https://game.oodim.com/og.png in its OG/Twitter tags.
+          # AUTO-DERIVE: stage EVERY dist-<name>/ the build emitted into
+          # public/<name>/. A new product ships automatically once its build
+          # produces dist-<name> — no per-game line to forget. (2026-06-20:
+          # agar/ shipped but a hardcoded per-game cp block only staged
+          # pacman/galaga/doom, so game.oodim.com/agar 404'd.)
+          shopt -s nullglob
+          staged=0
+          for d in dist-*/; do
+            name="${d#dist-}"; name="${name%/}"
+            mkdir -p "public/$name"
+            cp -r "$d"* "public/$name/"
+            echo "staged dist-$name -> public/$name/"
+            staged=$((staged+1))
+          done
+          if [ "$staged" -eq 0 ]; then echo "::error::no dist-*/ dirs to stage — did the build run?"; exit 1; fi
+          # Root portfolio landing. Whole dir (not just index.html) so siblings
+          # like og.png resolve at site root.
           cp -r landing/. public/
       - name: Deploy to Cloudflare
         if: ${{ env.CF_TOKEN != '' }}
