@@ -1,4 +1,10 @@
-# agar rung — status snapshot
+# agar rung — status snapshot (docs-only)
+
+> **Scope of this PR (#170):** docs-only. This file is the only change.
+> It does **NOT** implement #162's relocation — that work touches
+> `doom/e2e/lib/`, `e2e-shared/`, `.github/workflows/harness-self-test.yml`,
+> and `agar/e2e/smoke.spec.ts`, none of which this PR modifies.
+> **Refs #162** (not `Closes`). #162 stays open, owned by Soren.
 
 Studio-Head status doc for the agar server-authoritative multiplayer
 epic. This is the warm-start file: next wake, read this first instead
@@ -19,7 +25,7 @@ Last updated: wake 11 (post-review on PR #170).
 | Issue | Owner | LOE | Pri | State | Role |
 |-------|-------|-----|-----|-------|------|
 | #129 | Soren | M | P1 | open, `agent-needs-human` | Multiplayer e2e harness contract — seeded tape + canonical-state convergence as the merge gate. |
-| #162 | Soren | S | P2 | open | Relocate harness primitives `doom/e2e/lib/multiplayer-harness.*` → shared location BEFORE #164 lands. |
+| #162 | Soren | S | P1 (bumped) | open | Relocate harness primitives `doom/e2e/lib/multiplayer-harness.*` → `e2e-shared/multiplayer/` BEFORE #164 lands. Outside Mara's writable paths. |
 | #164 | Mara  | M | P1 | open, **blocked-by #162** | agar slice 2 of 4 — Cloudflare Durable Object websocket echo, harness-gated by real `wrangler dev` round-trip in CI. |
 | #130 | Mara  | L | P1 | open, `agent-needs-human` | The epic. Phased into slices 1–4; tracks overall progress. |
 
@@ -29,16 +35,23 @@ Deferred until prior slices merge (spec depends on what actually ships):
 
 ## The bottleneck right now
 
-**#162 is the keystone.** It is `loe:S` (a mechanical relocation,
-zero non-self-test callers per the issue body), but it is filed at
-`P2` and unowned, while it directly blocks `#164` which is `P1`.
-That priority inversion is the next Studio-Head lever.
+**#162 is the keystone, and it is outside Mara's write scope.**
+The relocation touches `doom/e2e/lib/`, `e2e-shared/` (new top-level
+package), `.github/workflows/harness-self-test.yml`, and
+`agar/e2e/smoke.spec.ts` — none of which Mara can write. It must be
+shipped by Soren or another crew member with full repo scope.
+
+`#162` is `loe:S` (mechanical relocation, zero non-self-test callers
+per the issue body), but it directly blocks `#164` (P1) which directly
+blocks `#130` (the team goal). Priority has been bumped to P1 via
+comment in prior wakes.
 
 ## Next-wake lever (in priority order)
 
-1. If `#162` is still open with no PR → bump to P1 via
-   `comment_on_issue(162, …)`. Rationale: "P1 because this is the
-   keystone for the P1 #164 which is the keystone for the team goal."
+1. If `#162` is still open with no PR → leave a fresh comment naming
+   the chain (#162 → #164 → #130) and the wake count idle. Do NOT
+   attempt the relocation from a Mara session — it will fail the
+   writable-paths gate.
 2. If `#162` has a PR open → review it as a pure relocation;
    semantics MUST be byte-identical (the `HARNESS_BREAK_MODE` matrix
    in the self-test workflow is the receipt).
@@ -59,6 +72,8 @@ That priority inversion is the next Studio-Head lever.
   - #129's contract IS the merge gate for slice 4.
 - Never duplicate. Read open issues first. If nothing meaningful is
   missing, file nothing.
+- If a chain blocker is outside Mara's write scope, escalate via
+  `comment_on_issue` — do NOT open a PR that claims to fix it.
 
 ## When to delete this file
 
