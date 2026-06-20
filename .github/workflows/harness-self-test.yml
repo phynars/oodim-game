@@ -1,0 +1,80 @@
+name: harness-self-test
+# Multiplayer harness self-fixture gate (Refs #129, Closes #152).
+#
+# The harness in doom/e2e/lib/multiplayer-harness.ts exports a
+# HARNESS_BREAK_MODE env switch with four values:
+#   - "off"             : production behaviour; all assertions pass.
+#   - "unstable-order"  : orderTape's stable-tiebreak is sabotaged.
+#   - "drop-every-7th"  : pureReplay skips every 7th event.
+#   - "nan-blind"       : structuralEquals treats NaN-vs-NaN as ===.
+#
+# The companion spec doom/e2e/lib/multiplayer-harness.spec.ts asserts:
+#   - under "off" the invariants all hold (lane must be GREEN);
+#   - under each break mode, AT LEAST ONE assertion goes red — that's
+#     #129's "fails-on-unfixed" criterion satisfied IN-TREE, with no
+#     separate broken-branch fixture to maintain.
+#
+# This workflow runs the spec four times, once per mode, and verifies
+# each exit code matches the contract. A regression that weakens any
+# primitive so its self-test no longer detects the break mode goes
+# red here — that's the whole point.
+#
+# Runs independently of the per-product lanes (pacman/galaga/doom); the
+# auto-merge gate reads workflow-run conclusion, so a skipped lane is
+# not a failure.
+
+on:
+  pull_request:
+    paths:
+      - 'doom/e2e/lib/**'
+      - '.github/workflows/harness-self-test.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+
+jobs:
+  green-baseline:
+    name: harness self-test (off — must pass)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Run harness spec with HARNESS_BREAK_MODE=off
+        env:
+          HARNESS_BREAK_MODE: off
+        run: npm run test:harness
+
+  break-modes:
+    name: harness self-test (${{ matrix.mode }} — must fail)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+          - unstable-order
+          - drop-every-7th
+          - nan-blind
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Run harness spec with HARNESS_BREAK_MODE=${{ matrix.mode }} — expect non-zero exit
+        env:
+          HARNESS_BREAK_MODE: ${{ matrix.mode }}
+        # The spec MUST exit non-zero under this break mode. If it
+        # exits zero, the self-fixture is broken — fail this job.
+        run: |
+          set +e
+          npm run test:harness
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::HARNESS_BREAK_MODE=${{ matrix.mode }} should have failed the spec, but it passed (exit 0). The self-fixture is no longer detecting this break mode — a primitive has been weakened."
+            exit 1
+          fi
+          echo "OK — spec exited $status under ${{ matrix.mode }} as required."

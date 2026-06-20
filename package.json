@@ -22,7 +22,8 @@
     "test:e2e:doom": "playwright test --config doom/playwright.config.ts",
     "build": "npm run build:pacman && npm run build:galaga && npm run build:doom",
     "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom",
-    "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga && npm run test:e2e:doom"
+    "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga && npm run test:e2e:doom",
+    "test:harness": "playwright test --config doom/playwright.harness.config.ts"
   },
   "dependencies": {
     "three": "^0.184.0"
