@@ -99,6 +99,16 @@ test("ghost render position glides continuously (no tile-snap)", async ({ page }
   // update()). We DON'T hold the key for the full window — Pac would
   // park at the first wall and stop being a useful comparator anyway.
   // The ghost ticks freely regardless of Pac's input state.
+  //
+  // IMPORTANT: under Playwright the page boots without keyboard focus
+  // on the canvas — page.keyboard.press() then routes to <body> and the
+  // engine's keydown listener never sees it, so status never flips to
+  // 'playing' and this spec times out. Every known-green Pac-Man
+  // keyboard spec in this repo does canvas.click() FIRST to seat focus
+  // before pressing a key. (Memory from a prior session: this is the
+  // single most common cause of pacman e2e timeout-to-timeout flake.)
+  const canvas = page.locator("canvas").first();
+  await canvas.click();
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction(() => window.__pac?.status === "playing");
 
