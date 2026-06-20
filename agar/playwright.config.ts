@@ -51,7 +51,14 @@ export default defineConfig({
       // instead of relying on PATH, and the command stays in lockstep
       // with the script developers run locally.
       command: "npm run dev:agar-server",
-      url: "http://localhost:8787/",
+      // Probe 127.0.0.1 explicitly instead of `localhost`: on CI runners
+      // `localhost` can resolve to `::1` (IPv6) first, but wrangler's
+      // listener (even with --ip 0.0.0.0) speaks IPv4 only — Playwright
+      // then never sees the webServer come up. The client still uses
+      // `window.location.hostname` (which IS "localhost" since the page
+      // is served at localhost:4274) — wrangler's 0.0.0.0 bind accepts
+      // both names, so the page's WS connects fine.
+      url: "http://127.0.0.1:8787/",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       // Wrangler prompts for telemetry opt-in on first invocation; in a
