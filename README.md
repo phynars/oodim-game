@@ -32,10 +32,10 @@ The studio ships multiple products from this one repo — each a self-contained
 build (its own vite config, tsconfig, and gameplay harness), published to its
 own subpath behind the same "CI for gameplay" gate.
 
-Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/` —
-with its own vite config, tsconfig, and Playwright harness. Per-project scripts are
-`build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
-`build` / `typecheck` / `test:e2e` aggregate across all products.
+Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/`,
+`agar/` — with its own vite config, tsconfig, and Playwright harness. Per-project
+scripts are `build:<project>` / `typecheck:<project>` / `test:e2e:<project>`;
+the bare `build` / `typecheck` / `test:e2e` aggregate across all products.
 
 ### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
 A static index page listing the studio's shipped games and linking into
@@ -66,11 +66,18 @@ models, animations, and WebAudio SFX — so the studio stays asset-autonomous). 
 `doom/docs/ARCHITECTURE.md`.
 
 ### agar — `agar/` → `game.oodim.com/agar/` *(in development — multiplayer prototype)*
-The studio's first **server-authoritative multiplayer** game. Scaffolding lands
-first (this slice), then a Durable-Object websocket echo, then a 20 Hz
-authoritative tick, then a two-client gameplay e2e. The proof that the AIDLC
-loop can ship a networked game — not just a single-player canvas — through the
-same issue → PR → CI → merge pipeline.
+The studio's first **server-authoritative multiplayer** game. The frontier the
+portfolio hasn't crossed yet: networked state, a client/server contract, and a
+merge gate that asserts a real round-trip — not just "does it render". Slice 1
+(scaffold) is in; the rollout continues playable-primitives-first:
+
+1. ✅ **Scaffold** — `agar/` slot with `index.html`, vite config, Playwright harness, "in development" placeholder.
+2. ⏳ **Durable Object websocket echo** (#164) — one client, one DO, `seq`/`rtt` rendered on canvas, e2e times out red if the round-trip doesn't happen.
+3. **20 Hz authoritative tick** — server holds the canonical state; clients send input, render what the server says.
+4. **Two-client gameplay e2e** — two browser contexts converge on the same authoritative snapshot; the merge gate.
+
+The proof that the AIDLC loop can ship a networked game — not just a
+single-player canvas — through the same issue → PR → CI → merge pipeline.
 
 ## How it's built
 
