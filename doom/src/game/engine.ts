@@ -15,8 +15,15 @@
 import * as THREE from "three";
 
 import {
+  ENEMY_FLINCH_KNOCK,
+  ENEMY_HIT_FLASH_TICKS,
   HIT_FLASH_TICKS,
+  HIT_SHAKE_AMPLITUDE_FACTOR,
+  HIT_SHAKE_TICKS,
+  HITSTOP_TICKS_ON_HIT,
   HP_BY_KIND,
+  IMPACT_SPARK_COUNT,
+  IMPACT_SPARK_LIFETIME,
   initialState,
   PLAYER_SHOT_DAMAGE,
   SCORE_BY_KIND,
@@ -174,6 +181,31 @@ export class Engine {
   /** Reused raycaster for hitscan fire. One instance avoids per-shot
    *  allocations; the origin + direction are set per call. */
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
+
+  /** Per-enemy snapshot of the body's resting emissive color (#166). The
+   *  hit-flash render pass multiplies the material's emissive toward white
+   *  by `hitFlashTicks / ENEMY_HIT_FLASH_TICKS`, then RESTORES to this
+   *  baseline when the flash ends. Without snapshotting on first use, the
+   *  flash would permanently brighten whatever color the model builder
+   *  set (and a follow-up flash would compound). Map key is the leaf
+   *  material's uuid so shared materials snapshot once. */
+  private readonly emissiveBaselines: Map<string, THREE.Color> = new Map();
+
+  /** Pool of impact-spark meshes (#166), parallel-indexed with
+   *  state.impactSparks. Each entry is a small bright-orange emissive
+   *  sphere positioned at the live spark's world coords each render. The
+   *  pool grows on demand (push) when there are more sparks than meshes,
+   *  and excess meshes are hidden (visible=false) rather than destroyed —
+   *  rapid-fire reuses the same THREE.Mesh objects across bursts. */
+  private readonly sparkMeshes: THREE.Mesh[] = [];
+
+  /** Shared geometry + material for spark meshes (#166). Built lazily on
+   *  first spawn so engine boot stays cheap; reused across every spark in
+   *  the pool. The material is `MeshBasicMaterial` so the sparks ignore
+   *  lighting + read full-bright through fog — a hit spark should pop
+   *  against the dim corridor, not fade into it. */
+  private sparkGeometry: THREE.SphereGeometry | null = null;
+  private sparkMaterial: THREE.MeshBasicMaterial | null = null;
 
   /** First-person weapon viewmodel (#87). Built once at boot, parented to
    *  the camera so it inherits view transform automatically. The engine
@@ -548,6 +580,7 @@ export class Engine {
         hp: HP_BY_KIND[seed.kind],
         state: "idle",
         attackCooldown: 0,
+        hitFlashTicks: 0,
       };
       this.state.enemies.push(enemy);
 
@@ -734,7 +767,26 @@ export class Engine {
             ? this.state.enemies.findIndex((e) => e.state !== "dead")
             : this.state.enemies.findIndex((e) => e.id === opts.enemyId);
         if (idx < 0) return;
+        // Synthesize a hit point + direction so #166's juice fires through
+        // the same path as fireShot(). The enemy's published position is
+        // the spark origin; the direction points from the player to the
+        // enemy (so the spark normal pushes back toward the shooter and
+        // the flinch knock — if non-lethal — moves the enemy further from
+        // the player). Normalized to a unit vector; falls back to -z if
+        // player and enemy share a cell.
+        const enemy = this.state.enemies[idx];
+        const willKill = enemy.hp - PLAYER_SHOT_DAMAGE <= 0;
+        const dx = enemy.x - this.state.player.x;
+        const dz = enemy.z - this.state.player.z;
+        const dist = Math.hypot(dx, dz);
+        const shotDir =
+          dist > 0
+            ? new THREE.Vector3(dx / dist, 0, dz / dist)
+            : new THREE.Vector3(0, 0, -1);
+        const hitPoint = new THREE.Vector3(enemy.x, enemy.y, enemy.z);
+        const hitNormal = shotDir.clone().multiplyScalar(-1);
         this.damageEnemy(idx, PLAYER_SHOT_DAMAGE);
+        this.applyHitJuice(idx, hitPoint, hitNormal, shotDir, willKill);
         this.publish();
       },
       forceDamage: (opts) => {
@@ -878,8 +930,132 @@ export class Engine {
     const idx = this.state.enemies.findIndex((e) => e.id === enemyId);
     if (idx < 0) return;
 
+    // Hit-juice (#166): capture the hit point + face normal BEFORE damaging
+    // (the enemy may flip to 'dead' inside damageEnemy and we still want the
+    // sparks/flash to fire on the killing blow). The flinch-knock is gated
+    // on the pre-damage hp so a lethal shot doesn't shove the corpse — the
+    // death clip owns that beat.
+    const hitPoint = hit.point.clone();
+    const hitNormal =
+      hit.face?.normal.clone() ?? dir.clone().multiplyScalar(-1);
+    const willKill = this.state.enemies[idx].hp - PLAYER_SHOT_DAMAGE <= 0;
+
     this.damageEnemy(idx, PLAYER_SHOT_DAMAGE);
     this.state.hits.push({ enemyId, tick: this.state.tick });
+    this.applyHitJuice(idx, hitPoint, hitNormal, dir, willKill);
+  }
+
+  /** Apply the visual/feel feedback that lands when a player shot connects
+   *  (#166): per-enemy body flash + hitstop freeze + connect-shake + impact
+   *  spark burst + non-lethal flinch knock. Shared between fireShot() (real
+   *  aim) and the forceHit test hook (synthesized point/dir). Called AFTER
+   *  damageEnemy so the lethal/non-lethal branch can read settled state;
+   *  `willKill` is computed pre-damage by the caller so a lethal shot still
+   *  flashes the corpse (it exists for one death-frame) but doesn't shove
+   *  it (death clip owns that beat). */
+  private applyHitJuice(
+    enemyIdx: number,
+    hitPoint: THREE.Vector3,
+    hitNormal: THREE.Vector3,
+    shotDir: THREE.Vector3,
+    willKill: boolean,
+  ): void {
+    const enemy = this.state.enemies[enemyIdx];
+    if (!enemy) return;
+
+    // Body emissive flash on the hit enemy. Even on a lethal hit the enemy
+    // still exists this tick (it's culled NEXT tick), so the flash reads
+    // alongside the death clip's first frame.
+    enemy.hitFlashTicks = ENEMY_HIT_FLASH_TICKS;
+
+    // Global hitstop: clamp (never `+=`). A multi-pellet future must not
+    // stack itself into a frozen sim — past learning from Galaga's juice.
+    this.state.hitstopTicks = Math.max(
+      this.state.hitstopTicks,
+      HITSTOP_TICKS_ON_HIT,
+    );
+
+    // Connect-shake: parallel to player-damage shake so the two stay
+    // semantically separate. Clamp the same way.
+    this.state.hitShakeTicks = Math.max(
+      this.state.hitShakeTicks,
+      HIT_SHAKE_TICKS,
+    );
+
+    // Impact-spark burst. 6 sparks spawn at the hit point with velocities
+    // chosen from a FIXED offset table (deterministic — no Math.random) so
+    // every shot at the same point spawns the same burst. The face normal
+    // pushes the spark cone back toward the shooter; per-spark jitter from
+    // the table fans the cone out.
+    this.spawnImpactSparks(hitPoint, hitNormal);
+
+    // Flinch knock (non-lethal only). Push the enemy back along the SHOT
+    // direction (not the surface normal — that would knock sideways on a
+    // grazing hit). Cap against collidesAt so it can't tunnel through walls.
+    if (!willKill && enemy.state !== "dead") {
+      const knockX = enemy.x + shotDir.x * ENEMY_FLINCH_KNOCK;
+      const knockZ = enemy.z + shotDir.z * ENEMY_FLINCH_KNOCK;
+      if (!collidesAt(knockX, knockZ, 0)) {
+        enemy.x = knockX;
+        enemy.z = knockZ;
+      }
+    }
+  }
+
+  /** Spawn IMPACT_SPARK_COUNT sparks at `point`, fanned out along `normal`.
+   *  Deterministic — velocities come from a fixed offset table (no
+   *  Math.random) so the same hit point produces the same burst. Each spark
+   *  lives IMPACT_SPARK_LIFETIME ticks; the per-tick step + renderer pool
+   *  live in stepImpactSparks() / syncImpactSparkMeshes(). */
+  private spawnImpactSparks(point: THREE.Vector3, normal: THREE.Vector3): void {
+    // 6 fixed jitter directions on the unit sphere — a small icosahedral
+    // fan so the burst reads as 3D, not a flat ring. The 0.08 scalar in
+    // the spec sets the base speed along the normal; jitter adds spread.
+    const JITTER: ReadonlyArray<readonly [number, number, number]> = [
+      [0.6, 0.7, 0.0],
+      [-0.6, 0.7, 0.0],
+      [0.0, 0.7, 0.6],
+      [0.0, 0.7, -0.6],
+      [0.5, 0.3, 0.5],
+      [-0.5, 0.3, -0.5],
+    ];
+    const base = normal.clone().multiplyScalar(0.08);
+    const n = Math.min(IMPACT_SPARK_COUNT, JITTER.length);
+    for (let i = 0; i < n; i++) {
+      const j = JITTER[i];
+      this.state.impactSparks.push({
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        vx: base.x + j[0] * 0.04,
+        vy: base.y + j[1] * 0.04,
+        vz: base.z + j[2] * 0.04,
+        ticksLeft: IMPACT_SPARK_LIFETIME,
+      });
+    }
+  }
+
+  /** Advance every live impact spark by one fixed-step: integrate position,
+   *  apply a tiny gravity (vy -= 0.005), and decrement ticksLeft. Sparks
+   *  with ticksLeft<=0 are pruned in-place. Allocation-light: rebuilds the
+   *  array only if at least one spark expired this tick. */
+  private stepImpactSparks(): void {
+    if (this.state.impactSparks.length === 0) return;
+    const survivors: DoomState["impactSparks"] = [];
+    let pruned = false;
+    for (const s of this.state.impactSparks) {
+      s.x += s.vx;
+      s.y += s.vy;
+      s.z += s.vz;
+      s.vy -= 0.005;
+      s.ticksLeft -= 1;
+      if (s.ticksLeft <= 0) {
+        pruned = true;
+        continue;
+      }
+      survivors.push(s);
+    }
+    if (pruned) this.state.impactSparks = survivors;
   }
 
   /** Deal `damage` to the enemy at `idx`. On lethal damage the enemy flips to
@@ -1056,11 +1232,53 @@ export class Engine {
 
     if (this.state.status === "playing") {
       this.state.tick += 1;
-      // Decay damage-feedback pulses (#91). Counted down each tick so the
-      // red overlay + shake fade smoothly rather than snap off. Clamped at
-      // 0 so they don't go negative if a damage event sets them mid-decay.
-      if (this.state.hitFlashTicks > 0) this.state.hitFlashTicks -= 1;
-      if (this.state.shakeTicks > 0) this.state.shakeTicks -= 1;
+
+      // HITSTOP GATE (#166). When the player's shot connects, the engine
+      // freezes for HITSTOP_TICKS_ON_HIT frames so the impact reads. Input
+      // still drains (we sample below regardless), the tick counter still
+      // advances (above), and the renderer still draws — so the spark +
+      // body flash are visible DURING the freeze. What's frozen: move/look,
+      // pickups, doors, exit, enemy AI, projectiles, viewmodel ticks, and
+      // the per-tick decay of all feedback pulses. Without freezing the
+      // decays, the very ticks the player can see the flash are the ones
+      // it's aging through — past Galaga learning, the flash collapses
+      // visually because frozen frames age the counter.
+      let frozen = false;
+      if (this.state.hitstopTicks > 0) {
+        // Freeze flag captured BEFORE the decrement so the full
+        // HITSTOP_TICKS_ON_HIT frames count as frozen. Without this the
+        // last freeze frame thaws early (decrement → 0 → !frozen) and
+        // the impact only reads for N-1 frames.
+        frozen = true;
+        this.state.hitstopTicks -= 1;
+      }
+
+      // Decay feedback pulses ONLY when not frozen. #91's player-damage
+      // flash + shake, #166's connect-shake, and every per-enemy
+      // hitFlashTicks all age here so the visuals fade smoothly post-freeze.
+      if (!frozen) {
+        if (this.state.hitFlashTicks > 0) this.state.hitFlashTicks -= 1;
+        if (this.state.shakeTicks > 0) this.state.shakeTicks -= 1;
+        if (this.state.hitShakeTicks > 0) this.state.hitShakeTicks -= 1;
+        for (const e of this.state.enemies) {
+          if (e.hitFlashTicks > 0) e.hitFlashTicks -= 1;
+        }
+      }
+
+      // Impact sparks step every tick INCLUDING frozen ones — wait, no:
+      // freezing the spark step is what gives them the suspended-in-air
+      // hang the rest of the world has. Same gate. Renderer still draws
+      // them, but they don't move during the freeze.
+      if (!frozen) this.stepImpactSparks();
+
+      // The sim pass below is gated on `!frozen` (captured pre-decrement
+      // above) so it skips for the FULL hitstop duration, not N-1 frames.
+      // While frozen: no input sample (queued fires can't double-fire on
+      // unfreeze), no move, no AI, no projectiles, no viewmodel tick. The
+      // death-cull at the END of update() runs OUTSIDE this `playing` gate
+      // and is unaffected — a kill landed on the freeze-trigger tick still
+      // gets its mesh + rig disposed on schedule.
+      if (!frozen) {
       // Sample input once per fixed-step so movement is deterministic at 60 Hz
       // regardless of render cadence. consumeFire() / consumeMouseDelta() are
       // drained per tick so input doesn't pile up across frames.
@@ -1189,6 +1407,7 @@ export class Engine {
         stepViewmodel(this.viewmodel);
         this.state.weapon.muzzleFlashTicks = this.viewmodel.flashTicks;
       }
+      } // close `if (!frozen)` — sim pass gate (#166)
     }
 
     // Cull enemies that finished their death frame. Keeping a 'dead' enemy
@@ -1308,6 +1527,96 @@ export class Engine {
     if (pruned) this.state.projectiles = survivors;
   }
 
+  /** Apply (or restore) the hit-flash emissive bump on an enemy's body
+   *  meshes (#166). When `flashTicks > 0`, every `MeshStandardMaterial`
+   *  under the group gets its emissive lerped toward white by
+   *  `flashTicks / ENEMY_HIT_FLASH_TICKS`. When `flashTicks === 0`, we
+   *  restore the snapshot baseline so the next flash starts clean. The
+   *  baseline is captured the first time we touch a material, keyed by
+   *  the material's uuid — shared materials snapshot once across the
+   *  whole pool.
+   *
+   *  Pure presentation: the engine's contract is the simulation; this
+   *  function only mutates THREE material color, never DoomState. */
+  private applyHitFlashEmissive(
+    group: THREE.Group,
+    flashTicks: number,
+  ): void {
+    const k = flashTicks > 0 ? flashTicks / ENEMY_HIT_FLASH_TICKS : 0;
+    group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+      // Only MeshStandardMaterial carries `emissive` in the way we need.
+      // Skip lights, helpers, and any material flavor without the field.
+      if (!mat || !(mat as { emissive?: THREE.Color }).emissive) return;
+      let baseline = this.emissiveBaselines.get(mat.uuid);
+      if (!baseline) {
+        baseline = mat.emissive.clone();
+        this.emissiveBaselines.set(mat.uuid, baseline);
+      }
+      if (k > 0) {
+        // Lerp baseline → white(1,1,1) by k. r = baseline.r + (1 - baseline.r) * k
+        mat.emissive.setRGB(
+          baseline.r + (1 - baseline.r) * k,
+          baseline.g + (1 - baseline.g) * k,
+          baseline.b + (1 - baseline.b) * k,
+        );
+      } else {
+        mat.emissive.copy(baseline);
+      }
+    });
+  }
+
+  /** Sync the impact-spark mesh pool to `state.impactSparks` (#166). One
+   *  visible mesh per live spark; extras hidden but kept in the pool for
+   *  reuse on the next burst. Scale shrinks toward 0 over the spark's
+   *  lifetime so the burst dissipates rather than snaps off.
+   *
+   *  Pure presentation — the simulation owns x/y/z/ticksLeft on the
+   *  contract; this just mirrors them onto THREE.Mesh transforms. */
+  private syncImpactSparkMeshes(): void {
+    const sparks = this.state.impactSparks;
+    // Lazy-build the shared geometry + material on first use.
+    if (sparks.length > 0 && this.sparkGeometry === null) {
+      // 0.04 world units is the spec's spark size — tiny enough to read as
+      // a chip, not a fireball. 6 segments is the cheapest sphere that
+      // doesn't read as a polygon at this scale.
+      this.sparkGeometry = new THREE.SphereGeometry(0.04, 6, 6);
+      this.sparkMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffaa44,
+        // Full-bright bypass of lighting + fog so the spark POPS against
+        // the dim corridor instead of getting eaten by the fog distance.
+        fog: false,
+      });
+    }
+    // Grow the pool to match. Cap pool growth at the live spark count —
+    // once allocated, meshes stick around (visible toggled).
+    while (
+      this.sparkMeshes.length < sparks.length &&
+      this.sparkGeometry &&
+      this.sparkMaterial
+    ) {
+      const m = new THREE.Mesh(this.sparkGeometry, this.sparkMaterial);
+      m.visible = false;
+      this.scene.add(m);
+      this.sparkMeshes.push(m);
+    }
+    // Position visible meshes; hide the tail of the pool.
+    for (let i = 0; i < this.sparkMeshes.length; i++) {
+      const m = this.sparkMeshes[i];
+      const s = sparks[i];
+      if (!s) {
+        m.visible = false;
+        continue;
+      }
+      m.visible = true;
+      m.position.set(s.x, s.y, s.z);
+      // Linear scale shrink with remaining lifetime — at spawn 1.0, dies at 0.
+      const k = Math.max(0, s.ticksLeft / IMPACT_SPARK_LIFETIME);
+      m.scale.setScalar(k);
+    }
+  }
+
   /** Position the three.js camera at the player's eye + orient it from
    *  yaw/pitch. Called every render so the view tracks the player. */
   private syncCamera(): void {
@@ -1326,6 +1635,25 @@ export class Engine {
       // Alternating sign per tick + cheap sinusoid for a non-linear wiggle.
       ox = Math.sin(phase * 1.7) * SHAKE_AMPLITUDE * k;
       oy = Math.cos(phase * 2.3) * SHAKE_AMPLITUDE * k;
+    }
+    // Connect-shake (#166): smaller, parallel beat to the damage shake.
+    // Phase-shifted so the two don't sum into a single bigger wiggle when
+    // both fire on the same tick (which can happen if your shot lands the
+    // same frame an enemy melee hits you). Half amplitude per the issue's
+    // HIT_SHAKE_AMPLITUDE_FACTOR; same SHAKE_AMPLITUDE scale.
+    if (this.state.hitShakeTicks > 0) {
+      const k2 = this.state.hitShakeTicks / HIT_SHAKE_TICKS;
+      const phase2 = this.state.tick;
+      ox +=
+        Math.cos(phase2 * 2.1) *
+        SHAKE_AMPLITUDE *
+        HIT_SHAKE_AMPLITUDE_FACTOR *
+        k2;
+      oy +=
+        Math.sin(phase2 * 1.9) *
+        SHAKE_AMPLITUDE *
+        HIT_SHAKE_AMPLITUDE_FACTOR *
+        k2;
     }
     this.camera.position.set(p.x + ox, p.y + oy, p.z);
     // Euler order 'YXZ' = yaw (about world-up Y) then pitch (about local X) —
@@ -1365,6 +1693,11 @@ export class Engine {
     // animation mixer is presentation: state lives in the simulation; the
     // rig just plays the clip that matches. State-change → setActiveClip
     // cross-fades; idle/walk/attack are looping, death is one-shot.
+    //
+    // ALSO apply the per-enemy hit-flash (#166): when hitFlashTicks>0,
+    // multiply the body material's emissive toward white by the remaining
+    // ticks / ENEMY_HIT_FLASH_TICKS. Restore the baseline when the flash
+    // expires so the next hit starts from the model builder's resting tint.
     for (const e of this.state.enemies) {
       const mesh = this.enemyMeshes.get(e.id);
       if (mesh) mesh.position.set(e.x, e.y, e.z);
@@ -1373,7 +1706,12 @@ export class Engine {
         const want = clipNameForState(e.state);
         if (rig.active !== want) setActiveClip(rig, want);
       }
+      if (mesh) this.applyHitFlashEmissive(mesh, e.hitFlashTicks);
     }
+    // Maintain the impact-spark mesh pool (#166). One mesh per live spark,
+    // positioned at the simulation's world coords; extras hidden. Lazy-
+    // builds geometry + material on first spawn so boot stays cheap.
+    this.syncImpactSparkMeshes();
     // Advance every mixer by the wall-clock delta — animation is decoupled
     // from the fixed-step sim (no determinism contract on visual easing).
     // One shared THREE.Clock yields a delta that excludes time spent in
