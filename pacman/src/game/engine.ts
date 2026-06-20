@@ -156,6 +156,70 @@ export class Engine {
           }
         }
       },
+      // Feel-spec probe (#137 merge gate). Returns the same sub-tile float
+      // coords that renderPac / renderGhosts use to compute draw position
+      // — i.e. (tile + dir * progress). The spec compares per-frame Δs of
+      // Pac vs an out-of-house ghost over a 2s straight-line window to
+      // assert visual-cadence parity. Source of truth for the math lives
+      // in renderPac()/renderGhosts() below; if those change, mirror here.
+      renderPositions: (): {
+        pac: { x: number; y: number };
+        ghosts: Array<{
+          name: GhostName;
+          x: number;
+          y: number;
+          status: GhostInternal["status"];
+          mode: GhostInternal["mode"];
+        }>;
+      } => {
+        const pac = this.state.pac as typeof this.state.pac & {
+          _progress?: number;
+        };
+        const pProg = pac.dir === "none" ? 0 : pac._progress ?? 0;
+        let pdx = 0;
+        let pdy = 0;
+        switch (pac.dir) {
+          case "right":
+            pdx = 1;
+            break;
+          case "left":
+            pdx = -1;
+            break;
+          case "down":
+            pdy = 1;
+            break;
+          case "up":
+            pdy = -1;
+            break;
+        }
+        const ghosts = this.ghosts.map((g) => {
+          const prog = g.status !== "out" ? 0 : g._progress;
+          let gdx = 0;
+          let gdy = 0;
+          switch (g.lastDir) {
+            case "right":
+              gdx = 1;
+              break;
+            case "left":
+              gdx = -1;
+              break;
+            case "down":
+              gdy = 1;
+              break;
+            case "up":
+              gdy = -1;
+              break;
+          }
+          return {
+            name: g.name,
+            x: g.x + gdx * prog,
+            y: g.y + gdy * prog,
+            status: g.status,
+            mode: g.mode,
+          };
+        });
+        return { pac: { x: pac.x + pdx * pProg, y: pac.y + pdy * pProg }, ghosts };
+      },
     };
   }
 
@@ -749,6 +813,16 @@ declare global {
       scatterTarget: typeof scatterTarget;
       forceGhostOntoPac: (name: GhostName) => void;
       clearPellets: () => void;
+      renderPositions: () => {
+        pac: { x: number; y: number };
+        ghosts: Array<{
+          name: GhostName;
+          x: number;
+          y: number;
+          status: GhostInternal["status"];
+          mode: GhostInternal["mode"];
+        }>;
+      };
     };
   }
 }
