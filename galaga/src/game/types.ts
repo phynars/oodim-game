@@ -27,6 +27,14 @@ export interface PlayerState {
   /** True once a captured fighter has been rescued → twin side-by-side ships
    *  fire together (the dual-fighter mechanic). */
   dual: boolean;
+  /** Player-death juice (#160): respawn fade-in alpha multiplier. The engine
+   *  writes this for `RESPAWN_FADE_TICKS` after the fighter respawns —
+   *  monotonically increasing from 1/N toward 1.0 over the fade window, then
+   *  stays at 1.0. Renderer multiplies into the fighter's draw alpha so the
+   *  next life eases in instead of snapping. Undefined when not in a
+   *  fade-in window (fully visible). Surfaced on the contract so the e2e
+   *  harness can assert the renderer-side easing without canvas pixel reads. */
+  respawnFadeAlpha?: number;
 }
 
 /** Galaga's three enemy archetypes. */
@@ -386,6 +394,36 @@ export const SPARK_LIFETIME_KILL_TICKS = 18;
 export const SPARK_LIFETIME_DAMAGE_TICKS = 9;
 /** Hit popup lifetime in ticks (~600ms at 60Hz). */
 export const POPUP_LIFETIME_TICKS = 36;
+
+// ---- Player-death juice constants (#160) ---------------------------------
+//
+// Death is the inverse of the bullet→enemy kill and must feel HEAVIER (not
+// just bigger): longer hitstop so the player registers what happened, a
+// larger shake that decays through more visible territory, an outward
+// spark burst that reads as your-ship-disintegrating, and a respawn ease-in
+// so the next fighter doesn't snap into existence at full alpha.
+
+/** Hitstop frames on player death (#160). 8 ticks ≈ 133ms at 60Hz — 4× the
+ *  kill freeze (`HITSTOP_KILL_TICKS = 2`). The player needs to *see* the
+ *  death frame, not blink past it. */
+export const HITSTOP_DEATH_TICKS = 8;
+/** Initial screen-shake amplitude (px) on player death (#160). 7px vs. the
+ *  kill's 3px — the bigger amp decays through more visible territory
+ *  (~480ms to <0.1 at SHAKE_DECAY_PER_TICK=0.78) so the room rattles. */
+export const SHAKE_AMPLITUDE_DEATH = 7;
+/** Spark count on player death (#160). 20 vs. the kill's 8 — reads as the
+ *  fighter disintegrating, not the enemy popping. Velocities are 2.5–4.5
+ *  px/tick (faster than the kill's 1.5–3) — outward burst, not gentle puff. */
+export const SPARK_COUNT_DEATH = 20;
+/** Per-spark lifetime on player death (#160). 30 ticks ≈ 500ms — sparks
+ *  linger longer than the kill's 18 ticks so the burst's silhouette reads
+ *  even after the hitstop releases. */
+export const SPARK_LIFETIME_DEATH_TICKS = 30;
+/** Respawn fade-in length in ticks (#160). The fighter draws at alpha
+ *  `k / RESPAWN_FADE_TICKS` for the first N ticks after respawn — linear
+ *  is fine; 20 ticks ≈ 333ms is short enough that an easing curve would
+ *  be over-engineering. After the window the fighter is at full alpha. */
+export const RESPAWN_FADE_TICKS = 20;
 
 /** Ticks an explosion stays on screen before the engine culls it. ~0.5s
  *  at 60Hz — long enough to read, short enough not to clutter. */
