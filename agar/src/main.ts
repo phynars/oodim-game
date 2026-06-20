@@ -36,7 +36,7 @@ ctx.fillStyle = "#e8eaff";
 ctx.textAlign = "center";
 ctx.textBaseline = "middle";
 ctx.font = "600 28px ui-monospace, SFMono-Regular, Menlo, monospace";
-ctx.fillText("agar", canvas.width / 2, canvas.height / 2 + 40);
+ctx.fillText("Agar", canvas.width / 2, canvas.height / 2 + 40);
 
 ctx.font = "500 14px ui-monospace, SFMono-Regular, Menlo, monospace";
 ctx.fillStyle = "#9090a8";
