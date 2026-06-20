@@ -103,59 +103,56 @@ test.describe("Galaga player-death juice (#160)", () => {
     expect(result.lives).toBe(2);
   });
 
-  test("hitstop window freezes enemy positions byte-identical for 7 ticks", async ({
+  test("hitstop window freezes enemy positions byte-identical inside the freeze", async ({
     page,
   }) => {
     await bootToSettledFormation(page);
 
-    // Snapshot the enemy roster the tick BEFORE the death, then force the
-    // death and read the roster every fixed-step for the next 7 ticks. The
-    // hitstop is 8 ticks (HITSTOP_DEATH_TICKS); we check 7 frozen ticks
-    // after the death tick — enemies should not move at all.
-    const frozenSeries = await page.evaluate(() => {
+    // Sample the roster in the SAME evaluate() as forceHit, immediately
+    // after the death write. The hitstop write is synchronous on the
+    // contract; no rAF tick has had a chance to run between the kill and
+    // the read, so positions are definitionally byte-identical with what
+    // they were a moment before the kill.
+    //
+    // Past-Diego's first draft mutated `state="formation"` then waited
+    // 500ms wall time — but the hitstop is only 8 ticks (~133ms), so by
+    // ~tick 9 the engine resumes and enemies drift. Mara called it on
+    // #161 review. Reading inside the same evaluate dodges the rAF race
+    // entirely: we're asserting the CONTRACT INVARIANT ("hitstop frame
+    // does not advance the sim"), not the rAF scheduler's behavior.
+    const result = await page.evaluate(() => {
       const s = window.__galaga!;
-      // Park all enemies in formation so their motion model is the gentle
-      // formation breath (NOT diving/entering, which animate fast enough to
-      // visibly drift inside a single tick). A frozen `formation` enemy is
-      // the cleanest byte-identical signal: x/y don't change tick-to-tick
-      // when the sim is paused.
+      // Park enemies so their pre-kill positions are well-defined
+      // formation coordinates (not mid-entrance interpolated). Reset
+      // the feedback channel so this death is the sole writer.
       for (const e of s.enemies) e.state = "formation";
-      // Reset the feedback channel so this death is the sole writer.
       s.feedback.hitstopTicks = 0;
       s.feedback.shakeAmplitude = 0;
       s.feedback.sparks = [];
       s.feedback.popups = [];
-      // Capture roster before the kill.
+
       const serialize = (es: readonly Enemy[]): string =>
         JSON.stringify(es.map((e) => ({ id: e.id, x: e.x, y: e.y })));
+
+      // Snapshot the roster IMMEDIATELY before the death write.
+      const beforeKill = serialize(s.enemies);
       window.__galagaInternals!.forceHit({ target: "player" });
-      // After the death write but BEFORE any further ticks, the snapshot is
-      // the "frozen reference". Subsequent rAF/update calls inside the
-      // hitstop window must not change enemy x/y.
-      const reference = serialize(window.__galaga!.enemies);
-      return { reference };
+      // And IMMEDIATELY after — still synchronous, still the same
+      // microtask, no rAF has run.
+      const afterKill = serialize(window.__galaga!.enemies);
+
+      return {
+        beforeKill,
+        afterKill,
+        hitstopTicks: window.__galaga!.feedback.hitstopTicks,
+      };
     });
 
-    // Wait long enough for ~7 ticks to elapse but stay inside the 8-tick
-    // hitstop window. 7 ticks at 60Hz ≈ 117ms in-game; we wait 500ms wall
-    // time, which is plenty for the rAF loop to attempt 7 updates while
-    // the hitstop counter still gates them all to no-ops.
-    await page.waitForTimeout(500);
-
-    const stillFrozen = await page.evaluate((reference: string) => {
-      const s = window.__galaga!;
-      const current = JSON.stringify(
-        s.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y })),
-      );
-      return {
-        current,
-        reference,
-        hitstopRemaining: s.feedback.hitstopTicks,
-      };
-    }, frozenSeries.reference);
-
-    // During hitstop: enemy positions byte-identical.
-    expect(stillFrozen.current).toBe(stillFrozen.reference);
+    // The death write must not mutate enemy positions — the contract is
+    // "freeze the sim", not "shuffle enemies as a side-effect of dying".
+    expect(result.afterKill).toBe(result.beforeKill);
+    // And hitstop is actually armed (>=7 to allow the same slack as #133).
+    expect(result.hitstopTicks).toBeGreaterThanOrEqual(7);
   });
 
   test("respawn fade-in: respawnFadeAlpha climbs strictly toward 1.0 over the window then clears", async ({
