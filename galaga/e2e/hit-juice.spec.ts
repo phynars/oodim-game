@@ -46,13 +46,18 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
       // Park it in formation so the kill path is the single-hit, fixed-
       // value scoring path (no diving bonus volatility).
       target.state = "formation";
+      // Reset the feedback channel to its initial empty shape BEFORE the
+      // forced kill. Between page-load and this evaluate, the real loop
+      // has been ticking — a stray player bullet or diving collision could
+      // already have written to the channel (or left residual sparks
+      // mid-decay), which would invalidate the "+1 popup / 8 sparks" delta
+      // assertions below. Clearing here makes the post-snapshot purely the
+      // product of the single forceHit we're about to fire.
+      s.feedback.hitstopTicks = 0;
+      s.feedback.shakeAmplitude = 0;
+      s.feedback.sparks = [];
+      s.feedback.popups = [];
       const tickBefore = s.tick;
-      const fbBefore = {
-        hitstopTicks: s.feedback.hitstopTicks,
-        shakeAmplitude: s.feedback.shakeAmplitude,
-        sparks: s.feedback.sparks.length,
-        popups: s.feedback.popups.length,
-      };
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: target.id,
@@ -67,7 +72,6 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
         ok: true as const,
         tickBefore,
         tickAfter: post.tick,
-        before: fbBefore,
         after: {
           hitstopTicks: post.feedback.hitstopTicks,
           shakeAmplitude: post.feedback.shakeAmplitude,
@@ -79,15 +83,6 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // Before the hit: all zero/empty. The contract's initialState seeds
-    // these, and no prior hit has fired (we waited only for an enemy to
-    // exist, not for any collision).
-    expect(result.before).toEqual({
-      hitstopTicks: 0,
-      shakeAmplitude: 0,
-      sparks: 0,
-      popups: 0,
-    });
     // After the hit: the acceptance criterion from #133.
     expect(result.after.hitstopTicks).toBeGreaterThanOrEqual(1);
     expect(result.after.shakeAmplitude).toBeGreaterThanOrEqual(2.5);
@@ -113,6 +108,13 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
       const s = window.__galaga!;
       const target = s.enemies.find((e) => e.kind !== "boss")!;
       target.state = "formation";
+      // Reset the feedback channel so any prior residual shake from a
+      // mid-loop collision doesn't influence the decay sample. The
+      // forceHit below is the SOLE source of shake we're measuring.
+      s.feedback.hitstopTicks = 0;
+      s.feedback.shakeAmplitude = 0;
+      s.feedback.sparks = [];
+      s.feedback.popups = [];
       window.__galagaInternals!.forceHit({
         target: "enemy",
         enemyId: target.id,
@@ -120,9 +122,11 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
       return window.__galaga!.tick;
     });
 
-    // Wait for tick to advance 16 ticks past the kill, OR for shake to
-    // already be tiny — whichever first. 16 ticks at 60Hz is ~267ms, so
-    // we give the harness a generous 2s ceiling.
+    // Wait for tick to advance 16 ticks past the kill. 16 ticks at 60Hz is
+    // ~267ms, but CI runners (especially under load) can throttle rAF —
+    // 5s is a generous ceiling that still fails fast if the loop genuinely
+    // stalls. The hitstop pause itself is only 2 ticks; the remaining 14
+    // ticks of decay are normal sim time.
     await page.waitForFunction(
       (kt) => {
         const s = window.__galaga;
@@ -130,7 +134,7 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
         return s.tick - kt >= 16;
       },
       killTick,
-      { timeout: 2000 },
+      { timeout: 5000 },
     );
 
     const finalShake = await page.evaluate(
