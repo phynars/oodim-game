@@ -25,6 +25,27 @@
 // the actual tick-delta sum, not the gap count. The per-frame bound is
 // likewise expressed per-tick.
 //
+// CORRECTION over the third draft (#148, this round — Mara's 3rd review):
+// the CI failure shape (logs 401 from here) was unrecoverable from the
+// outside, so this revision defuses every concrete failure mode I could
+// identify from re-reading the engine + the maze:
+//   (a) beforeEach now clicks the canvas BEFORE pressing a key — every
+//       known-green keyboard-driven pacman spec does this; without it
+//       the keydown can fail to land on the engine's window listener
+//       and the 'ready' → 'playing' wait hangs to test timeout.
+//   (b) renderPositions now reports pac.dir; the normal-tier sampler
+//       TRUNCATES to the contiguous prefix where Pac is still moving.
+//       From spawn (13,23) Pac walks left ~7 tiles before hitting the
+//       wall at x=5 — at 0.12/tick that's ~58 ticks, well inside a
+//       60-frame sample window once rAF drains multiple ticks per
+//       frame on software-WebGL CI. Without truncation, post-stop
+//       zero-displacement frames pull the self-ratio below RATIO_LO.
+//   (c) eaten tier: the eyes-return is fundamentally a 15-tick window
+//       (Blinky spawn (13,11) → REVIVE_TILE (13,14), 3 tiles ×
+//       5 ticks/tile at 0.20/tick). MIN_SAMPLES dropped to 4 for this
+//       tier — any more is structurally impossible. MIN_TOTAL_TICKS
+//       stays at 6 (enough for a meaningful ratio).
+//
 // PRECONDITION: this file depends on `__pacInternals.renderPositions()` —
 // a read-only probe that returns the float sub-tile draw positions for Pac
 // and every ghost (mirroring renderPac / renderGhosts math). If it is
@@ -55,20 +76,21 @@ const RATIO_HI = 1.25;
 // scales linearly; the per-tick rate is the actual invariant.
 const FRAME_BOUND_MULT = 3.5;
 
-// Minimum logical-tick samples required before computing a ratio.
-// The eaten tier has the tightest window (eyes path from Blinky's boot
-// tile to the revive tile is ~15 ticks at 0.20/tick); 8 leaves room for
-// truncation and at-least-one-tick-per-gap floors on a slow rAF.
+// Minimum logical-tick samples required before computing a ratio in the
+// normal + frightened tiers. The eaten tier has a hard structural ceiling
+// (~15-tick window) and uses MIN_SAMPLES_EATEN below.
 const MIN_SAMPLES = 8;
+const MIN_SAMPLES_EATEN = 4;
 // Minimum total ticks observed across a sub-test before computing a
 // ratio. This decouples sample-count (rAF-dependent) from logical-tick
 // coverage (engine-determined) — a slow rAF that yielded only 8 samples
 // might still cover 16 ticks, which is plenty for the ratio.
 const MIN_TOTAL_TICKS = 10;
+const MIN_TOTAL_TICKS_EATEN = 6;
 
 type RenderSample = {
   tick: number;
-  pac: { x: number; y: number };
+  pac: { x: number; y: number; dir: string };
   ghosts: Array<{ name: string; x: number; y: number; mode: string }>;
 };
 
@@ -86,7 +108,7 @@ async function sampleRenderPositions(
       __pacInternals?: {
         renderPositions?: () => {
           tick: number;
-          pac: { x: number; y: number };
+          pac: { x: number; y: number; dir: string };
           ghosts: Array<{ name: string; x: number; y: number; mode: string }>;
         };
       };
@@ -98,7 +120,7 @@ async function sampleRenderPositions(
     }
     const out: Array<{
       tick: number;
-      pac: { x: number; y: number };
+      pac: { x: number; y: number; dir: string };
       ghosts: Array<{ name: string; x: number; y: number; mode: string }>;
     }> = [];
     let lastTick = -1;
@@ -114,6 +136,22 @@ async function sampleRenderPositions(
     }
     return out;
   }, frames);
+}
+
+// Truncate a sample array to the contiguous prefix matching a predicate.
+// The FIRST sample that fails the predicate (and everything after it) is
+// dropped. Used to slice off post-stop frames — once Pac hits a wall its
+// dir flips to 'none' and renderPositions reports zero displacement
+// forever; averaging that into a ratio pulls it below RATIO_LO.
+function takeWhile<T>(arr: T[], pred: (t: T) => boolean): T[] {
+  let cutoff = arr.length;
+  for (let i = 0; i < arr.length; i += 1) {
+    if (!pred(arr[i])) {
+      cutoff = i;
+      break;
+    }
+  }
+  return arr.slice(0, cutoff);
 }
 
 // A per-gap measurement: displacement between two consecutive samples and
@@ -182,7 +220,12 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     await page.waitForFunction(() => Boolean(window.__pacInternals));
+    // Focus the canvas BEFORE dispatching keyboard input — matches every
+    // known-green keyboard-driven pacman spec. Without it, the keydown
+    // can miss the engine's window listener and the 'playing' wait hangs.
+    await page.locator("canvas").click();
     // First input: nudge Pac so the engine flips 'ready' → 'playing'.
+    // From spawn (13,23) ArrowLeft is walkable along row 23.
     await page.keyboard.press("ArrowLeft");
     await page.waitForFunction(() => window.__pac?.status === "playing");
   });
@@ -190,23 +233,33 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
   test("normal tier — straight-corridor self-parity", async ({ page }) => {
     // Pac glides left along row 23 from a clean tile-center commit.
     // Sample ~60 frames (~1s wall time on a 60Hz tick; ~2s under
-    // software-WebGL CI rAF at 30fps).
-    const samples = await sampleRenderPositions(page, 60);
-    expect(samples.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
+    // software-WebGL CI rAF at 30fps). Note: from (13,23) Pac walks
+    // left ~7 tiles before hitting the wall at x=5 — under multi-tick
+    // rAF this can happen well inside the sample window. We truncate
+    // below to the moving prefix.
+    const allSamples = await sampleRenderPositions(page, 60);
+    // Drop frames after Pac stops (wall-stop sets dir='none'). The
+    // moving prefix is what the self-ratio applies to — Blinky keeps
+    // moving regardless of Pac, so the ghost branch uses the full
+    // sample window.
+    const pacMovingSamples = takeWhile(allSamples, (s) => s.pac.dir !== "none");
+    expect(
+      pacMovingSamples.length,
+      "Pac stopped before producing a measurable sample window — sample early or grow MIN_SAMPLES floor downward",
+    ).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
-    const pacSteps = stepsFor(samples, (s) => s.pac);
+    const pacSteps = stepsFor(pacMovingSamples, (s) => s.pac);
     expect(totalTicks(pacSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS);
     const pacRatio = selfRatio(pacSteps, PAC_SPEED_PER_TICK);
     expect(pacRatio).toBeGreaterThan(RATIO_LO);
     expect(pacRatio).toBeLessThan(RATIO_HI);
 
-    // Blinky boots already out so it's always sampled. Truncate to the
-    // contiguous prefix where Blinky stays in scatter/chase — the engine
-    // flips scatter↔chase every MODE_PERIOD_TICKS, but BOTH modes use
+    // Blinky boots already out so it's always sampled. The engine flips
+    // scatter↔chase every MODE_PERIOD_TICKS, but BOTH modes use
     // GHOST_SPEED_PER_TICK so we don't need to split on the flip.
     const blinkyOf = (s: RenderSample) =>
       s.ghosts.find((g) => g.name === "blinky") ?? null;
-    const ghostSteps = stepsFor(samples, (s) => {
+    const ghostSteps = stepsFor(allSamples, (s) => {
       const g = blinkyOf(s);
       if (!g) return null;
       if (g.mode !== "scatter" && g.mode !== "chase") return null;
@@ -274,15 +327,10 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     const name = firstFrightened!.name;
 
     // Truncate to the contiguous prefix where this ghost is frightened.
-    let cutoff = samples.length;
-    for (let i = 0; i < samples.length; i += 1) {
-      const g = samples[i].ghosts.find((gg) => gg.name === name);
-      if (!g || g.mode !== "frightened") {
-        cutoff = i;
-        break;
-      }
-    }
-    const window_ = samples.slice(0, cutoff);
+    const window_ = takeWhile(samples, (s) => {
+      const g = s.ghosts.find((gg) => gg.name === name);
+      return Boolean(g && g.mode === "frightened");
+    });
     expect(window_.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
     const ghostSteps = stepsFor(window_, (s) => {
@@ -307,6 +355,9 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     // is short: from Blinky's spawn (13,11) to REVIVE_TILE (13,14) is
     // only 3 tiles × 5 ticks/tile = 15 ticks at 0.20/tick. We sample
     // aggressively and truncate to the contiguous eaten prefix.
+    // MIN_SAMPLES_EATEN (4) reflects the structural ceiling — there is
+    // no way to get 8 unique-tick samples out of a 15-tick window when
+    // CI rAF drains 2-3 ticks per frame.
     await page.evaluate(() => {
       const api = (window as unknown as {
         __pacInternals?: { setGhostEaten?: (name: string) => void };
@@ -343,24 +394,19 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     // window. We truncate to the contiguous eaten prefix before
     // measuring.
     const samples = await sampleRenderPositions(page, 40);
-    expect(samples.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
+    expect(samples.length).toBeGreaterThanOrEqual(MIN_SAMPLES_EATEN);
 
-    let cutoff = samples.length;
-    for (let i = 0; i < samples.length; i += 1) {
-      const g = samples[i].ghosts.find((gg) => gg.name === "blinky");
-      if (!g || g.mode !== "eaten") {
-        cutoff = i;
-        break;
-      }
-    }
-    const window_ = samples.slice(0, cutoff);
-    expect(window_.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
+    const window_ = takeWhile(samples, (s) => {
+      const g = s.ghosts.find((gg) => gg.name === "blinky");
+      return Boolean(g && g.mode === "eaten");
+    });
+    expect(window_.length).toBeGreaterThanOrEqual(MIN_SAMPLES_EATEN);
 
     const ghostSteps = stepsFor(window_, (s) => {
       const g = s.ghosts.find((gg) => gg.name === "blinky");
       return g ? { x: g.x, y: g.y } : null;
     });
-    expect(totalTicks(ghostSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS);
+    expect(totalTicks(ghostSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS_EATEN);
 
     const ghostRatio = selfRatio(ghostSteps, EATEN_SPEED_PER_TICK);
     expect(ghostRatio).toBeGreaterThan(RATIO_LO);
@@ -379,7 +425,11 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     // motion above 3.5× the per-tick speed. We don't require Pac to reach
     // a specific tile (that's terrain-dependent and brittle); we just
     // press Up and then Left after a small delay, sample throughout,
-    // and verify no actor ever teleports.
+    // and verify no actor ever teleports. NOTE: at (13,23) the tile
+    // above is a wall — ArrowUp queues but only fires once Pac reaches
+    // a tile where up is walkable (e.g. (12,23)). That's fine; we only
+    // assert the per-tick bound, which holds whether or not Pac actually
+    // turns.
     await page.keyboard.press("ArrowUp");
     // Sample a first window during the upward leg.
     const upSamples = await sampleRenderPositions(page, 20);
@@ -391,6 +441,10 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     const samples = [...upSamples, ...turnSamples];
     expect(samples.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
+    // Pac-step extraction is OK to compute over all samples here — even
+    // post-stop frames have displacement=0 and dTick>=1, which can only
+    // LOWER maxPerTickRate. The assertion is one-sided (no teleport),
+    // so wall-parking is harmless to this sub-test.
     const pacSteps = stepsFor(samples, (s) => s.pac);
     const ghostSteps = stepsFor(samples, (s) => {
       const g = s.ghosts.find((gg) => gg.name === "blinky");

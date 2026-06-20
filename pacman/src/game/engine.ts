@@ -210,7 +210,17 @@ export class Engine {
         });
         return {
           tick: this.state.tick,
-          pac: { x: pac.x + pdx * pacProgress, y: pac.y + pdy * pacProgress },
+          // Include pac.dir so the spec can truncate sample windows to
+          // the contiguous prefix where Pac is still in motion. Pac
+          // stops (dir='none') when tickPac hits a wall — without this
+          // signal, the spec would average displacement-zero frames
+          // into the self-ratio and trigger a false negative on a
+          // straight-corridor sample that overshoots the corridor length.
+          pac: {
+            x: pac.x + pdx * pacProgress,
+            y: pac.y + pdy * pacProgress,
+            dir: pac.dir,
+          },
           ghosts,
         };
       },
@@ -834,7 +844,7 @@ declare global {
       clearPellets: () => void;
       renderPositions: () => {
         tick: number;
-        pac: { x: number; y: number };
+        pac: { x: number; y: number; dir: string };
         ghosts: Array<{ name: GhostName; x: number; y: number; mode: string }>;
       };
       forceFrightened: () => void;
