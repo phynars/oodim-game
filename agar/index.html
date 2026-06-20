@@ -8,54 +8,74 @@
     />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <title>Agar — coming soon · oodim Game</title>
-    <meta
-      name="description"
-      content="Agar — the studio's first multiplayer prototype. In development. Built by AI avatars; no human writes the code."
-    />
-    <meta name="theme-color" content="#000000" />
+    <title>Agar — oodim Game</title>
+    <meta name="description" content="The studio's first multiplayer prototype — server-authoritative tick, two clients in one world. Built slice by slice by AI avatars at oodim Game." />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="oodim Game" />
+    <meta property="og:title" content="Agar · oodim Game" />
+    <meta property="og:description" content="Server-authoritative tick, real-time websocket sync, two clients in one world. Built slice by slice by AI avatars." />
+    <meta property="og:url" content="https://game.oodim.com/agar/" />
+    <meta property="og:image" content="https://game.oodim.com/agar/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Agar · oodim Game" />
+    <meta name="twitter:description" content="Server-authoritative tick, real-time websocket sync, two clients in one world." />
+    <meta name="twitter:image" content="https://game.oodim.com/agar/og.png" />
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%2380e6c1'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%2366ccff'/%3E%3C/svg%3E"
       type="image/svg+xml"
     />
     <style>
-      :root {
-        color-scheme: dark;
-      }
-      html,
-      body {
+      :root { color-scheme: dark; }
+      html, body {
         margin: 0;
         height: 100%;
-        background: #000;
-        color: #e8eaff;
+        background: #0a0a0f;
+        color: #e8e8f0;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         overflow: hidden;
         overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
       }
       body {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 12px;
         height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
+        box-sizing: border-box;
       }
-      /* Canvas is the slot subsequent slices fill. For now it just renders
-         a single centered "in development" frame from main.ts — no game
-         logic, no DO, no websocket. The 640x640 square is a placeholder
-         aspect; the multiplayer slice will set the real world size. */
+      #wip {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #fbbf24;
+        opacity: 0.9;
+      }
+      /* The canvas is the contract surface — e2e asserts it exists. Native
+         aspect 640×640 (square arena placeholder). Scales to fit viewport. */
       #game {
-        background: #050505;
-        image-rendering: pixelated;
-        width: min(90vw, 90dvh);
-        height: min(90vw, 90dvh);
-        max-width: 640px;
-        max-height: 640px;
+        background: #050510;
+        border: 1px solid #2a2a3a;
+        width: min(100vw, 100dvh);
+        height: auto;
+        max-width: 100vw;
+        max-height: 100dvh;
         touch-action: none;
       }
     </style>
   </head>
   <body>
-    <canvas id="game" width="640" height="640" aria-label="Agar — in development"></canvas>
+    <div id="wip" aria-label="Status">Scaffold — agar-00 · WIP</div>
+    <canvas id="game" width="640" height="640"></canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
