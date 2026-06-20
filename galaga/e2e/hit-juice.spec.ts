@@ -13,6 +13,24 @@
 // scoring path is deterministic (50 for a bee parked, 80 for a butterfly,
 // regardless of state at write time). The kill fires writeHitFeedback's
 // "kill" branch — full 8 sparks, 2-frame hitstop, 3px shake, +N popup.
+//
+// READINESS / TIMING (this file's earlier revisions were CI-red on cold
+// runners — three concrete fixes vs. v1):
+//   1. Mirror boss-two-hit.spec.ts's `bootToSettledFormation` exactly:
+//      wait for __galaga → click canvas → press ArrowLeft → wait
+//      status==='playing' → wait __galagaInternals → wait whole formation
+//      settled. v1 raced the entrance choreography: it waited only for
+//      "some non-boss enemy on stage", which can resolve while enemies
+//      are still in `entering` state and `__galagaInternals` may not
+//      yet exist on a slow boot.
+//   2. waitForFunction ceilings sized for cold CI: 5s for status flip
+//      and internals attach (sub-second on warm; cold rAF can take ~2s),
+//      20s for the full formation to settle (the entrance choreography
+//      is multiple seconds of staggered fly-ins).
+//   3. The 16-tick decay wait now allows 10s (was 5s). 16 sim ticks is
+//      ~267ms of in-game time, but cold rAF on CI throttles aggressively;
+//      a generous ceiling still fails fast if the loop genuinely stalls
+//      (e.g. hitstop accumulation freezing the spawn scheduler).
 
 import { expect, test } from "@playwright/test";
 
@@ -25,19 +43,40 @@ declare global {
   }
 }
 
+/** Boot the game out of READY and wait for the full enemy formation to
+ *  settle. Copied (intentionally) from boss-two-hit.spec.ts because that
+ *  spec has been CI-stable across hundreds of runs — the readiness
+ *  sequence (status flip → internals attach → every enemy reaches
+ *  formation) is the only pattern proven to avoid the race-with-entrance
+ *  flakiness on cold CI. */
+async function bootToSettledFormation(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(
+    () => {
+      const enemies = window.__galaga?.enemies ?? [];
+      return (
+        enemies.length > 0 && enemies.every((e) => e.state === "formation")
+      );
+    },
+    null,
+    { timeout: 20000 },
+  );
+}
+
 test.describe("Galaga bullet→enemy hit juice (#133)", () => {
   test("non-boss kill writes hitstop, shake, sparks, and a popup on the feedback channel", async ({
     page,
   }) => {
-    await page.goto("/");
-    // Start the loop + wait until a non-boss enemy is on stage.
-    await page.locator("canvas").click();
-    await page.waitForFunction(
-      () =>
-        !!window.__galaga &&
-        window.__galaga.enemies.some((e) => e.kind !== "boss"),
-      { timeout: 8000 },
-    );
+    await bootToSettledFormation(page);
 
     const result = await page.evaluate(() => {
       const s = window.__galaga!;
@@ -93,14 +132,7 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
   test("shake amplitude decays below 0.1 within 16 ticks of the hit", async ({
     page,
   }) => {
-    await page.goto("/");
-    await page.locator("canvas").click();
-    await page.waitForFunction(
-      () =>
-        !!window.__galaga &&
-        window.__galaga.enemies.some((e) => e.kind !== "boss"),
-      { timeout: 8000 },
-    );
+    await bootToSettledFormation(page);
 
     // Force a kill, capture the kill tick, then poll until 16 ticks have
     // elapsed and read the shake amplitude.
@@ -123,10 +155,11 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
     });
 
     // Wait for tick to advance 16 ticks past the kill. 16 ticks at 60Hz is
-    // ~267ms, but CI runners (especially under load) can throttle rAF —
-    // 5s is a generous ceiling that still fails fast if the loop genuinely
-    // stalls. The hitstop pause itself is only 2 ticks; the remaining 14
-    // ticks of decay are normal sim time.
+    // ~267ms in-game time, but cold-boot CI throttles rAF aggressively —
+    // 10s is a generous ceiling that still fails fast if the loop genuinely
+    // stalls (e.g. hitstop accumulation freezing the spawn scheduler).
+    // The hitstop pause itself is only 2 ticks; the remaining 14 ticks of
+    // decay are normal sim time.
     await page.waitForFunction(
       (kt) => {
         const s = window.__galaga;
@@ -134,7 +167,7 @@ test.describe("Galaga bullet→enemy hit juice (#133)", () => {
         return s.tick - kt >= 16;
       },
       killTick,
-      { timeout: 5000 },
+      { timeout: 10000 },
     );
 
     const finalShake = await page.evaluate(
