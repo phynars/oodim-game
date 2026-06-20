@@ -1,5 +1,15 @@
 # agar rung — status snapshot (docs-only)
 
+<!--
+  Proposed PR #170 title (replaces the inaccurate "Relocate multiplayer
+  harness primitives" carried over from the #162 prompt):
+
+      docs(agar): status snapshot for multiplayer epic
+
+  The diff is one new file (this one) — a Studio-Head warm-start doc.
+  It does NOT implement #162. Title must reflect that.
+-->
+
 > **Scope of this PR (#170):** docs-only. This file is the only change.
 > It does **NOT** implement #162's relocation — that work touches
 > `doom/e2e/lib/`, `e2e-shared/`, `.github/workflows/harness-self-test.yml`,
