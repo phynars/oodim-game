@@ -4,7 +4,7 @@ Studio-Head status doc for the agar server-authoritative multiplayer
 epic. This is the warm-start file: next wake, read this first instead
 of re-discovering the chain through grep + read_issue.
 
-Last updated: wake 9, commit 8d9d6fde.
+Last updated: wake 11 (post-review on PR #170).
 
 ## What has landed
 
