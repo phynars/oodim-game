@@ -74,6 +74,75 @@ test("ArrowRight moves Pac, eats a pellet, and scores", async ({ page }) => {
   expect(after.score).toBeGreaterThanOrEqual(before.score + 10);
 });
 
+// Issue #138 — pellet-pickup juice surfaces via the `feedback` channel.
+//
+// We drive Pac east from spawn until a pellet is eaten, then snapshot
+// `state.feedback` on that same tick. The acceptance gate (per #138):
+//   • pacSquash >= 0.10  (regular pellet pops to 0.12)
+//   • popups: one entry, value 10, ageTicks 0
+//   • sparkles: 4 entries, ageTicks 0
+//   • flashAlpha === 0   (regular pellet does NOT flash)
+//
+// FAILS on the pre-change code (no `feedback` field on GameState).
+// PASSES once tickPac writes the channel on the eat-event.
+test("pellet pickup writes feedback channel (squash + popup + sparkles)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+
+  const beforeScore = await page.evaluate(() => window.__pac!.score);
+
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowRight");
+
+  // Poll until a pellet is eaten AND grab the same-tick feedback snapshot
+  // atomically — the engine decays the channel each subsequent update(),
+  // so a two-call (wait then evaluate) split could let pacSquash slip
+  // below the acceptance floor between the predicate and the read. We
+  // return the snapshot directly from the predicate; `evaluateHandle`
+  // gives us the JSHandle then `jsonValue()` materialises it.
+  const handle = await page.waitForFunction(
+    (b) => {
+      const s = window.__pac;
+      if (!s || !s.feedback) return null;
+      if (s.score < b + 10) return null;
+      const fb = s.feedback;
+      if (fb.popups.length < 1 || fb.sparkles.length < 4) return null;
+      return {
+        score: s.score,
+        pacSquash: fb.pacSquash,
+        flashAlpha: fb.flashAlpha,
+        popup0: fb.popups[0],
+        popupCount: fb.popups.length,
+        sparkleCount: fb.sparkles.length,
+      };
+    },
+    beforeScore,
+    { timeout: 5000 },
+  );
+  const snapshot = (await handle.jsonValue()) as {
+    score: number;
+    pacSquash: number;
+    flashAlpha: number;
+    popup0: { x: number; y: number; value: number; ageTicks: number };
+    popupCount: number;
+    sparkleCount: number;
+  };
+
+  // Score climbed by 10 → ate a regular pellet (not the power pellet path).
+  expect(snapshot.score - beforeScore).toBe(10);
+  // Squash popped to >=0.10 (spec floor; engine writes 0.12).
+  expect(snapshot.pacSquash).toBeGreaterThanOrEqual(0.1);
+  // Regular pellet → no screen flash.
+  expect(snapshot.flashAlpha).toBe(0);
+  // Exactly one popup landed this eat, value matches scoring.
+  expect(snapshot.popupCount).toBe(1);
+  expect(snapshot.popup0.value).toBe(10);
+  // Four sparkles per regular pellet.
+  expect(snapshot.sparkleCount).toBe(4);
+});
+
 test("ghost roster exposes Blinky and the mode flips scatter→chase", async ({
   page,
 }) => {

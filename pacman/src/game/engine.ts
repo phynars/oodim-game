@@ -234,6 +234,45 @@ export class Engine {
         return;
       }
     }
+    // Issue #138 — decay the feedback channel BEFORE tickPac runs.
+    // Ordering rationale: the eat-event spec (#138 acceptance) requires
+    // the snapshot at T+1 to show full-amplitude pop values (regular
+    // pellet `pacSquash >= 0.10`, power pellet `>= 0.22`). If we decay
+    // AFTER the pickup write, 0.12 * 0.78 = 0.0936 fails the gate. By
+    // decaying first, the freshly-written pickup value is what the next
+    // poll observes — and it still decays on subsequent ticks because
+    // the decay runs every update() before any new write can land.
+    {
+      const fb = this.state.feedback;
+      fb.pacSquash *= 0.78;
+      if (fb.pacSquash < 0.01) fb.pacSquash = 0;
+      fb.flashAlpha *= 0.82;
+      if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Advance + cull sparkles (24-tick max lifetime — power-pellet
+      // ceiling; regular sparkles fade visually via the alpha curve in
+      // the renderer at the 12-tick mark).
+      const nextSparkles: typeof fb.sparkles = [];
+      for (const s of fb.sparkles) {
+        const age = s.ageTicks + 1;
+        if (age >= 24) continue;
+        nextSparkles.push({
+          x: s.x + s.vx,
+          y: s.y + s.vy,
+          vx: s.vx,
+          vy: s.vy,
+          ageTicks: age,
+        });
+      }
+      fb.sparkles = nextSparkles;
+      // Advance + cull popups (24-tick lifetime = 400ms at 60Hz).
+      const nextPopups: typeof fb.popups = [];
+      for (const p of fb.popups) {
+        const age = p.ageTicks + 1;
+        if (age >= 24) continue;
+        nextPopups.push({ x: p.x, y: p.y, value: p.value, ageTicks: age });
+      }
+      fb.popups = nextPopups;
+    }
     // Pac-Man movement + pellet eating. The result surfaces whether a
     // power pellet was eaten this tick; if so we (re)arm frightened mode.
     const pacResult = tickPac(this.state);
@@ -399,6 +438,10 @@ export class Engine {
     //     red disc never gets hidden under the player when they stack).
     this.renderGhosts();
 
+    // 4c. Issue #138 — pellet-pickup juice overlays: sparkles + score
+    //     popups in the maze coordinate frame, on top of Pac + ghosts.
+    this.renderFeedbackOverlays();
+
     // 5. Status overlays:
     //    - 'ready' → READY! boot label, held until the loop starts.
     //    - 'won'   → YOU WIN! after clearing the level.
@@ -421,6 +464,60 @@ export class Engine {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("GAME OVER", w / 2, h / 2);
+    }
+
+    // 6. Issue #138 — power-pellet screen flash. Drawn LAST so it
+    //    veils Pac + ghosts + status overlays uniformly. Cyan-white;
+    //    alpha decays to 0 over ~14 ticks (engine update()).
+    if (state.feedback.flashAlpha > 0) {
+      ctx.fillStyle = `rgba(230, 248, 255, ${state.feedback.flashAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  /** Issue #138 — sparkles + score popups. Maze coordinate frame
+   *  (the same origin used by renderMaze / renderPac). Sparkles are
+   *  tiny pellet-coloured discs drifting outward; popups are "+10" /
+   *  "+50" labels rising over 400ms. Both fade by `ageTicks/24`. */
+  private renderFeedbackOverlays(): void {
+    const { ctx, canvas, state } = this;
+    const mazeW = COLS * TILE;
+    const mazeH = ROWS * TILE;
+    const ox = Math.floor((canvas.width - mazeW) / 2);
+    const oy = Math.floor((canvas.height - mazeH) / 2);
+
+    // Sparkles.
+    for (const s of state.feedback.sparkles) {
+      const alpha = Math.max(0, 1 - s.ageTicks / 24);
+      if (alpha <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = PELLET_COLOR;
+      ctx.beginPath();
+      ctx.arc(ox + s.x * TILE, oy + s.y * TILE, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Score popups.
+    if (state.feedback.popups.length > 0) {
+      ctx.save();
+      ctx.font = "8px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const p of state.feedback.popups) {
+        const t = p.ageTicks / 24;
+        const alpha = Math.max(0, 1 - t);
+        if (alpha <= 0) continue;
+        // Ease-out-cubic on the lift.
+        const lift = (1 - (1 - t) ** 3) * 8;
+        const px = ox + p.x * TILE + TILE / 2;
+        const py = oy + p.y * TILE + TILE / 2 - lift;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`+${p.value}`, px, py);
+      }
+      ctx.restore();
     }
   }
 
@@ -534,7 +631,10 @@ export class Engine {
 
     const cx = ox + (pac.x + dx * progress) * TILE + TILE / 2;
     const cy = oy + (pac.y + dy * progress) * TILE + TILE / 2;
-    const r = TILE / 2 - 0.5;
+    // Issue #138 — pellet-pickup squash. Scale Pac's draw radius by
+    // (1 + pacSquash) so a fresh eat-event pops the sprite outward.
+    // Geometry-only; no transform stack tricks. Decays in update().
+    const r = (TILE / 2 - 0.5) * (1 + state.feedback.pacSquash);
 
     // Chomp phase: 5 Hz (12 ticks at 60 Hz per full cycle). When at rest,
     // freeze the mouth half-open so the sprite still reads as Pac-Man.
