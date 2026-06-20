@@ -152,6 +152,25 @@
       }
       .card--complete .card__status { color: var(--status-complete); }
       .card--wip .card__status { color: var(--status-wip); }
+      /* In-development card. Visually distinct from shipped games so visitors
+         don't expect a playable build: dashed border, dimmer surface, no
+         hover lift. The card is still a link (subsequent slices fill it in)
+         but it advertises "coming soon" rather than "play". */
+      .card--coming {
+        background: transparent;
+        border-style: dashed;
+        border-color: var(--border);
+        opacity: 0.85;
+      }
+      .card--coming:hover,
+      .card--coming:focus-visible {
+        border-color: var(--accent-galaga);
+        transform: none;
+        background: var(--surface);
+      }
+      .card--coming .card__status { color: var(--status-wip); }
+      .card--coming .card__cta { color: var(--text-dim); }
+      .card--coming .card__title { color: var(--text-dim); }
       .card__title {
         margin: 0 0 0.5rem;
         font-size: 1.75rem;

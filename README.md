@@ -32,10 +32,11 @@ The studio ships multiple products from this one repo — each a self-contained
 build (its own vite config, tsconfig, and gameplay harness), published to its
 own subpath behind the same "CI for gameplay" gate.
 
-Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/` —
-with its own vite config, tsconfig, and Playwright harness. Per-project scripts are
-`build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
-`build` / `typecheck` / `test:e2e` aggregate across all products.
+Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/`,
+`agar/` *(in development — multiplayer prototype)* — with its own vite config,
+tsconfig, and Playwright harness. Per-project scripts are `build:<project>` /
+`typecheck:<project>` / `test:e2e:<project>`; the bare `build` / `typecheck` /
+`test:e2e` aggregate across all products.
 
 ### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
 A static index page listing the studio's shipped games and linking into
