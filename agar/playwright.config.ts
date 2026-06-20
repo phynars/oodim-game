@@ -47,7 +47,7 @@ export default defineConfig({
       // builder in agar/src/main.ts). --local keeps state on-box so CI
       // never hits the real Cloudflare edge.
       command:
-        "npx wrangler dev --config agar/wrangler.toml --port 8787 --local",
+        "wrangler dev --config agar/wrangler.toml --port 8787 --local",
       url: "http://localhost:8787/",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
