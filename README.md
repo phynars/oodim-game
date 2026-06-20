@@ -1,82 +1,54 @@
-# oodim Game
+# oodim-game
 
-**oodim Game** is the game division of [oodim](https://oodim.com) — a small,
-autonomous game studio in **West Los Angeles**. Like every part of oodim, it's
-staffed entirely by AI avatars who design, build, and ship through oodim's
-autonomous **AI Development Life Cycle (AIDLC)**: they file their own issues,
-implement them, review each other's pull requests, gate on CI, and merge to
-`main` — end to end, with no human writing the code.
+The oodim studio's portfolio of complete games shipped via the AIDLC loop
+(issue → PR → review → merge, no human writing code).
 
-This repo is the studio's workshop. It's driven by a dedicated **"oodim Game"
-dimension** in oodim, the first time the AIDLC loop is pointed at a *separate
-repo* and a *greenfield product* — the proof that the workflow generalizes
-beyond oodim building itself.
+## Shipped
 
-## The studio
+- **pacman/** — 2D maze classic. Tile-based movement, ghost AI with
+  scatter/chase/frightened modes, pellet eating, win/lose lifecycle.
+- **galaga/** — 2D shoot-'em-up. Formation entry with eased Bézier
+  paths, dives, boss capture, accuracy tally per stage.
+- **doom/** — true-3D WebGL FPS. Hitscan combat, weapon switching,
+  level traversal.
+- **landing/** — index page for the portfolio at game.oodim.com.
 
-Five avatars, one per craft, plus a cast of NPCs who are the first to play what
-ships and the first to complain about it:
+## In flight
 
-| Role | Owns |
-|------|------|
-| **Product Manager** | what to build and why — scope, milestones, the player experience |
-| **Architect** | how it's built — engine structure, build/CI, the gameplay-verification harness |
-| **Developer** | the implementation — game loop, rendering, input, ghost AI |
-| **Designer** | look & feel — maze, sprites, color, motion, touch UX |
-| **Story** | the world — characters, tone, why anyone should care |
-| **NPCs** | first players — playtest, file bugs, react to what's shipped |
+- **agar/** — server-authoritative real-time multiplayer (Cloudflare
+  Durable Object + websockets). The studio's next rung: proving the
+  AIDLC loop on software with shared state across clients. See #130
+  (rollout) + #136 (scaffold) + #129 (multiplayer e2e harness).
 
-## Portfolio
+## Architecture
 
-The studio ships multiple products from this one repo — each a self-contained
-build (its own vite config, tsconfig, and gameplay harness), published to its
-own subpath behind the same "CI for gameplay" gate.
+Each game directory is self-contained: its own `vite` build, its own
+`src/`, its own `e2e/` (Playwright). Each game publishes a state
+contract on `window.__<game>` that the e2e suite asserts on — that's
+how mechanics are verified at merge time, not just compilation.
 
-Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/` —
-with its own vite config, tsconfig, and Playwright harness. Per-project scripts are
-`build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
-`build` / `typecheck` / `test:e2e` aggregate across all products.
+The engine/renderer split is load-bearing: `engine.ts` owns mutable
+state and runs the fixed-timestep `update()`; the renderer reads
+state and draws. New affordances (juice, networking, persistence)
+attach as pure-data sub-channels on the state object so the engine
+stays a thin orchestrator.
 
-### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
-A static index page listing the studio's shipped games and linking into
-each subpath build. Plain HTML/CSS, no framework — the front door is two
-cards and a tagline.
+## House conventions
 
-### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
-A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
-maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
-score, lives, win/lose, and touch controls. See `pacman/docs/ARCHITECTURE.md`.
+- **Feel kit (juice):** screen-shake, hitstop, particles, squash,
+  popups, flashes — all flow through a `FeedbackChannel` on the
+  state object. Engine writes; renderer reads. Tone-adapted per
+  game (Galaga punchy, Pac-Man graceful, Doom heavy). See #133
+  (Galaga) and #138 (Pac-Man) for the canonical shape.
+- **Easing vocabulary:** `easeOutCubic` for arc decel, exponential
+  (×0.88/tick) for impact decay, back-out cubic-bezier for squash
+  on hit, hard freeze for hitstop. Never `easeOutBack` on a Bézier
+  parameter — it extrapolates along the end-tangent.
+- **Tests are the gate:** every shipped mechanic has a deterministic
+  e2e assertion against the state contract. Flaky timing patterns
+  get refactored out before they bite the next product.
 
-### Galaga — `galaga/` → `game.oodim.com/galaga/` *(complete)*
-The studio's second project, harder than Pac-Man: enemy **formations** + entrance
-choreography, **diving attacks**, enemy fire, scoring + stages, and the signature
-boss-Galaga **tractor-beam capture → rescue → dual-fighter** mechanic. Built slice
-by slice from a human-seeded scaffold against an ordered `blocked-by` backlog. See
-`galaga/docs/ARCHITECTURE.md`.
+## Scripts
 
-### Doom — `doom/` → `game.oodim.com/doom/` *(complete)*
-The studio's first **true-3D** game — a first-person shooter on **three.js +
-WebGL**. The leap here is the verification gate: the gameplay harness runs over
-**WebGL in headless Chromium** (SwiftShader), asserting the `window.__doom` *state*
-contract (player pose, enemies, projectiles, pickups, doors, weapon) — never
-pixels — with a deterministic fixed-timestep simulation decoupled from rendering.
-Built slice by slice against an ordered `blocked-by` backlog: playable core on
-primitives first, then **procedurally-generated** assets (code-built textures,
-models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
-`doom/docs/ARCHITECTURE.md`.
-
-## How it's built
-
-Work flows the same way it does in the main oodim repo — issue →
-implementation → review → CI → merge — only here the pipeline targets *this*
-repo via the oodim Game dimension. Because a game's correctness is interactive
-(not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — canvas state assertions that drive the game and check pellet counts,
-ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
-code review.
-
-Roadmap and rationale live in the oodim repo:
-`docs/plan/multi-repo-greenfield-experiment.md`.
-
----
-*Built by AI avatars. A division of oodim — infinite dimensions (∞dim).*
+Per-project `dev` / `build` / `test` / `e2e` plus aggregate scripts
+at the repo root that fan out to every game directory.
