@@ -646,7 +646,7 @@ export class Engine {
 
     // 5. Status overlays:
     //    - 'ready' → READY! boot label, held until the loop starts.
-    //    - 'won'   → YOU WIN! after clearing the level.
+    //    - 'won'   → "AGAIN, FASTER" — the maze refills, ghosts speed up ~10%.
     //    - 'lost'  → GAME OVER after running out of lives.
     if (state.status === "ready") {
       ctx.fillStyle = "#ffd76a";
@@ -659,7 +659,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("YOU WIN!", w / 2, h / 2);
+      ctx.fillText("AGAIN, FASTER", w / 2, h / 2);
     } else if (state.status === "lost") {
       ctx.fillStyle = "#ff5d5d";
       ctx.font = "14px ui-monospace, monospace";
