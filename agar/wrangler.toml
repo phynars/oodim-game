@@ -1,0 +1,40 @@
+# agar — slice 2/4 (Durable Object websocket echo).
+#
+# Wrangler config for the agar/ Worker that hosts the EchoRoom Durable
+# Object. Dev only in this slice: `wrangler dev` runs alongside vite
+# preview during the e2e merge gate so a Playwright test can prove the
+# round-trip through a REAL DO inside CI.
+#
+# Prod-hardening (origin allowlist on the WS upgrade, auth, rate limit,
+# multi-room routing) is deferred to slice 3+. The protocol intentionally
+# accepts any origin in dev — see issue #164 scope.
+
+name = "oodim-agar"
+main = "server/worker.ts"
+compatibility_date = "2024-11-01"
+
+# NOTE: `workers_dev` intentionally omitted. In dev mode it has no effect,
+# and setting it to `false` triggered "this Worker is unrouted" warnings
+# on some wrangler 3.x sub-versions during local dev — harmless but noisy.
+# Deploy-time routing belongs in slice 3+ where the prod plan exists.
+
+[[durable_objects.bindings]]
+name = "ECHO_ROOM"
+class_name = "EchoRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["EchoRoom"]
+
+[dev]
+# Pinned host+port — agar/playwright.config.ts probes 127.0.0.1:8787 and
+# agar/src/main.ts opens ws://localhost:8787/ws (which resolves to the
+# same listener via /etc/hosts on Linux/macOS CI). Binding 127.0.0.1
+# explicitly — rather than 0.0.0.0 + flag from the npm script — avoids
+# the IPv4/IPv6 dual-stack race that hung round 5 on CI (localhost can
+# resolve to ::1 first, but workerd's listener was IPv4-only). 127.0.0.1
+# in wrangler.toml is the single source of truth: the npm script no
+# longer passes --ip, so a developer running `npm run dev:agar-server`
+# locally gets the same bind shape as CI.
+ip = "127.0.0.1"
+port = 8787
