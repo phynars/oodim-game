@@ -54,6 +54,13 @@ export interface FeedbackChannel {
     vy: number;
     ageTicks: number;
   }>;
+  /** Issue #150 — remaining hitstop ticks. While >0, the engine SKIPS
+   *  its per-tick simulation update (ghosts + Pac frozen). Renderer
+   *  still draws; decay still runs. Mirrors galaga's hitstop semantics.
+   *  Written via `Math.max` so an unlikely double-eat-this-tick doesn't
+   *  accumulate hitstop and freeze the engine. Decays by 1/tick in
+   *  the gate at the top of update(). */
+  hitstopTicks: number;
 }
 
 export interface GameState {
@@ -112,6 +119,7 @@ export function initialState(): GameState {
       popups: [],
       flashAlpha: 0,
       sparkles: [],
+      hitstopTicks: 0,
     },
   };
 }
