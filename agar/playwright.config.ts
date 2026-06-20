@@ -42,15 +42,26 @@ export default defineConfig({
     },
     {
       cwd: repoRoot,
-      // `wrangler dev` boots the Worker locally with the DO binding from
-      // agar/wrangler.toml. --port pins to 8787 (matches the client URL
-      // builder in agar/src/main.ts). --local keeps state on-box so CI
-      // never hits the real Cloudflare edge.
-      command:
-        "wrangler dev --config agar/wrangler.toml --port 8787 --local",
+      // `npm run dev:agar-server` boots the Worker locally with the DO
+      // binding from agar/wrangler.toml (--port 8787 matches the client
+      // URL builder in agar/src/main.ts; --local keeps state on-box so
+      // CI never hits the real Cloudflare edge). Routing through the
+      // npm script — same shape the pacman/galaga/doom webServers use —
+      // means npm resolves the wrangler binary from node_modules/.bin
+      // instead of relying on PATH, and the command stays in lockstep
+      // with the script developers run locally.
+      command: "npm run dev:agar-server",
       url: "http://localhost:8787/",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      // Wrangler prompts for telemetry opt-in on first invocation; in a
+      // fresh CI sandbox that prompt hangs on stdin and the webServer
+      // never reports "up". Forcing the env var off here is belt-and-
+      // suspenders alongside the same flag baked into wrangler.toml.
+      env: {
+        WRANGLER_SEND_METRICS: "false",
+        CI: "true",
+      },
       // The Worker returns 404 for GET / (only /ws is routed), which is
       // a healthy signal — Playwright treats any HTTP response as "up".
       ignoreHTTPSErrors: true,
