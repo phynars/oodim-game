@@ -13,8 +13,18 @@ import {
   CHALLENGING_PERFECT_BONUS,
   EXPLOSION_TICKS,
   hitMissBonus,
+  HITSTOP_DAMAGE_TICKS,
+  HITSTOP_KILL_TICKS,
   initialState,
+  POPUP_LIFETIME_TICKS,
   SCORE_POPUP_TICKS,
+  SHAKE_AMPLITUDE_DAMAGE,
+  SHAKE_AMPLITUDE_KILL,
+  SHAKE_DECAY_PER_TICK,
+  SPARK_COUNT_DAMAGE,
+  SPARK_COUNT_KILL,
+  SPARK_LIFETIME_DAMAGE_TICKS,
+  SPARK_LIFETIME_KILL_TICKS,
   WIDTH,
   HEIGHT,
   ENEMY_HIT_RADIUS,
@@ -22,6 +32,7 @@ import {
   RESPAWN_TICKS,
   scoreFor,
   type Bullet,
+  type FeedbackSpark,
   type GameState,
 } from "./types";
 import {
@@ -213,6 +224,69 @@ export class Engine {
     };
   }
 
+  /** Write a hit-juice burst into the public `feedback` channel (#133).
+   *  Centralized so the boss-damage path and the kill path drop into one
+   *  place. Sparks spawn radially with deterministic velocities derived
+   *  from a sin-hash of `(enemyId, sparkIndex)` — same approach the engine
+   *  already uses for enemy-fire RNG, so the e2e harness can assert exact
+   *  spark counts without flakiness from `Math.random`.
+   *
+   *  Hitstop and shake amplitude STACK on whatever the channel already
+   *  holds (max for amplitude, sum for hitstop) — two near-simultaneous
+   *  hits should feel like more impact, not less. Sparks/popups append. */
+  private writeHitFeedback(
+    x: number,
+    y: number,
+    enemyId: number,
+    kind: "kill" | "damage",
+    popupValue?: number,
+  ): void {
+    const fb = this.state.feedback;
+    const isKill = kind === "kill";
+    const hitstop = isKill ? HITSTOP_KILL_TICKS : HITSTOP_DAMAGE_TICKS;
+    const amp = isKill ? SHAKE_AMPLITUDE_KILL : SHAKE_AMPLITUDE_DAMAGE;
+    const count = isKill ? SPARK_COUNT_KILL : SPARK_COUNT_DAMAGE;
+    const sparkLife = isKill
+      ? SPARK_LIFETIME_KILL_TICKS
+      : SPARK_LIFETIME_DAMAGE_TICKS;
+    fb.hitstopTicks += hitstop;
+    fb.shakeAmplitude = Math.max(fb.shakeAmplitude, amp);
+    // Radial spark spawn. Deterministic per (enemyId, sparkIdx) so e2e
+    // assertions on `feedback.sparks.length` (and positions) are stable.
+    // Speed in 1.5–3 px/tick per the spec; angle even-spaced + jittered.
+    for (let i = 0; i < count; i++) {
+      const baseAngle = (i / count) * Math.PI * 2;
+      // sin-hash → 0..1 jitter, deterministic across runs.
+      const jitter =
+        (((Math.sin(enemyId * 91.337 + i * 13.13) * 43758.5453) % 1) + 1) % 1;
+      const angle = baseAngle + (jitter - 0.5) * 0.4;
+      const speed = 1.5 + jitter * 1.5; // 1.5..3.0 px/tick
+      const spark: FeedbackSpark = {
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        ageTicks: 0,
+      };
+      // Tag the spark's lifetime by stuffing it into the spawn position?
+      // No — we honor lifetime via a per-spawn-context constant. To keep
+      // FeedbackSpark a flat shape, we age all sparks to the SAME ceiling
+      // and let the lifetime split fall out of: damage sparks decay 2x
+      // faster effectively by spawning fewer. Simpler model — but the
+      // spec calls for half-lifetime on damage. We honor it by storing
+      // the ceiling in a parallel offset: bump ageTicks at spawn for
+      // damage sparks so they hit the same SPARK_LIFETIME_KILL ceiling
+      // sooner.
+      if (!isKill) {
+        spark.ageTicks = SPARK_LIFETIME_KILL_TICKS - sparkLife;
+      }
+      fb.sparks.push(spark);
+    }
+    if (isKill && popupValue !== undefined) {
+      fb.popups.push({ x, y, value: popupValue, ageTicks: 0 });
+    }
+  }
+
   /** Remove enemy at `idx` from the roster, add its kind's score. Centralized
    *  so the forceHit hook and the per-tick collision pass take the same path
    *  (and so future "explosion sprite" work hooks in one place). The kill is
@@ -239,6 +313,10 @@ export class Engine {
       // `damaged===true` on this very tick (don't wait for the next tick()'s
       // re-emit), matching how the capture path mirrors escort spawns.
       e.damaged = true;
+      // Bullet→enemy hit juice (#133) — boss FIRST hit (damage, not kill).
+      // Half the kill spec: 1-frame hitstop, 1.5px shake, 4 sparks at half
+      // lifetime, NO popup (boss only scores on the kill hit).
+      this.writeHitFeedback(e.x, e.y, e.id, /*kind*/ "damage");
       return;
     }
     // Per-state scoring (#71): diving/capturing kills score the bonus
@@ -253,6 +331,10 @@ export class Engine {
     // e2e harness can prove the polish state flag landed.
     this.state.explosions.push({ x: e.x, y: e.y, age: 0 });
     this.state.scorePopups.push({ x: e.x, y: e.y, value: points, age: 0 });
+    // Bullet→enemy hit juice (#133) — KILL: 2-frame hitstop, 3px shake,
+    // 8 sparks (full lifetime), +N popup on the channel. Written BEFORE
+    // the splice so the kill position is the enemy's current (x,y).
+    this.writeHitFeedback(e.x, e.y, e.id, /*kind*/ "kill", points);
     // Track per-stage kills during a challenging stage so a perfect clear
     // (kills === total spawned) can award the bonus on stage-end.
     if (this.enemies.isChallenging()) this.challengingKills += 1;
@@ -469,6 +551,81 @@ export class Engine {
     }
     if (this.state.status === "playing") {
       this.state.tick += 1;
+      // Bullet→enemy hit juice (#133) — per-tick DECAY of the feedback
+      // channel. Runs BEFORE the hitstop gate so a tick that's about to be
+      // frozen doesn't first decay this tick's particles — and runs BEFORE
+      // simulation/collisions so fresh writes from killEnemy land in a
+      // PRISTINE channel (no decay applied to the just-spawned values).
+      // The flow per tick is:
+      //    1. tick++.
+      //    2. decay (here): age sparks, fade shake, age popups. Skipped
+      //       when hitstopTicks > 0 (entering tick frozen).
+      //    3. hitstop gate: if frozen, decrement and return.
+      //    4. simulation: enemies, bullets, capture, fire, collisions.
+      //       Collisions may call killEnemy → writeHitFeedback, which
+      //       overwrites/appends fresh values.
+      //    5. publish.
+      // This ordering is what makes the acceptance criteria align:
+      //  - Snapshot at tick T+1 after a hit at tick T shows undecayed
+      //    values (shake>=2.5, sparks.length===8, popups.length===1)
+      //    because T+1 entered with hitstopTicks=2 and decay was skipped.
+      //  - Shake reaches <0.1 within 16 ticks: T spawns at amp=3, T+1
+      //    and T+2 are frozen (hitstop), T+3..T+16 are 14 decay ticks,
+      //    3 * 0.78^14 ≈ 0.095 < 0.1.
+      const fb = this.state.feedback;
+      if (fb.hitstopTicks === 0) {
+        if (fb.shakeAmplitude > 0) {
+          fb.shakeAmplitude *= SHAKE_DECAY_PER_TICK;
+          if (fb.shakeAmplitude < 0.01) fb.shakeAmplitude = 0;
+        }
+        if (fb.sparks.length > 0) {
+          const nextSparks: FeedbackSpark[] = [];
+          for (const s of fb.sparks) {
+            const aged = s.ageTicks + 1;
+            if (aged < SPARK_LIFETIME_KILL_TICKS) {
+              nextSparks.push({
+                x: s.x + s.vx,
+                y: s.y + s.vy,
+                vx: s.vx,
+                vy: s.vy,
+                ageTicks: aged,
+              });
+            }
+          }
+          fb.sparks = nextSparks;
+        }
+        if (fb.popups.length > 0) {
+          const nextPopups: typeof fb.popups = [];
+          for (const p of fb.popups) {
+            const aged = p.ageTicks + 1;
+            if (aged < POPUP_LIFETIME_TICKS) {
+              nextPopups.push({
+                x: p.x,
+                y: p.y,
+                value: p.value,
+                ageTicks: aged,
+              });
+            }
+          }
+          fb.popups = nextPopups;
+        }
+      }
+      // Bullet→enemy hit juice (#133) — HITSTOP GATE. While the feedback
+      // channel's `hitstopTicks > 0`, the simulation pass below is SKIPPED:
+      // enemies, bullets, capture beam, fire scheduler, collisions — all
+      // frozen. We decrement the counter (so the freeze ends after N
+      // ticks) and return. `state.tick` already advanced above so the
+      // wall clock keeps moving; renderer still draws (start() calls
+      // render() every rAF, independent of update()); input still buffers
+      // through the InputSource. This is the classic "the world holds
+      // still for one breath when you land a hit" arcade feel. We do NOT
+      // decay shake/sparks/popups here on purpose — a truly frozen frame
+      // means even the particles hang in place. Decay resumes on the
+      // first non-frozen tick below.
+      if (this.state.feedback.hitstopTicks > 0) {
+        this.state.feedback.hitstopTicks -= 1;
+        return;
+      }
       // Anchor the formation choreography to the first playing tick so the
       // entrance arcs start at t=0 regardless of how many idle frames passed
       // on the READY screen. (The state.tick counter is gated on `playing`
@@ -821,6 +978,26 @@ export class Engine {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+    // Bullet→enemy hit juice (#133) — SCREEN SHAKE. Apply an isotropic
+    // xy translate sized by `feedback.shakeAmplitude`. The offset is
+    // derived from a tick-driven sin hash so the shake reads as random
+    // jitter, not a smooth slide, without us reaching for Math.random
+    // (keeping replays/tests stable). The translate wraps everything
+    // EXCEPT the GAME OVER / READY overlays — those should sit still
+    // even mid-shake (a shaking GAME OVER text feels glitchy, not juicy).
+    const shake = this.state.feedback.shakeAmplitude;
+    if (shake > 0) {
+      const shakeTick = this.state.tick;
+      const rx =
+        (((Math.sin(shakeTick * 12.9898) * 43758.5453) % 1) + 1) % 1;
+      const ry =
+        (((Math.sin(shakeTick * 78.233 + 17.17) * 43758.5453) % 1) + 1) % 1;
+      const ox = (rx - 0.5) * 2 * shake;
+      const oy = (ry - 0.5) * 2 * shake;
+      ctx.save();
+      ctx.translate(ox, oy);
+    }
+
     // Starfield.
     for (const s of this.stars) {
       ctx.fillStyle = `rgba(255,255,255,${s.level.toFixed(2)})`;
@@ -887,12 +1064,41 @@ export class Engine {
 
     // Score popups — "+N" drifting up + fading.
     for (const p of this.state.scorePopups) {
-      const t = p.age / SCORE_POPUP_TICKS;
-      const alpha = 1 - t;
+      const tt = p.age / SCORE_POPUP_TICKS;
+      const alpha = 1 - tt;
       ctx.fillStyle = `rgba(255, 230, 120, ${alpha.toFixed(2)})`;
       ctx.font = "10px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.fillText(`+${p.value}`, p.x, p.y);
+    }
+
+    // Bullet→enemy hit juice (#133) — SPARK PARTICLES. Tiny radial pixels
+    // that age from full alpha at spawn to 0 at lifetime. Drawn as 2×2
+    // squares so they're readable at 320px wide. Color is a hot
+    // orange→yellow shift — the heat of the hit, distinct from the
+    // explosion's red ring.
+    for (const s of this.state.feedback.sparks) {
+      const tt = s.ageTicks / SPARK_LIFETIME_KILL_TICKS;
+      const alpha = Math.max(0, 1 - tt);
+      const g = Math.round(180 + tt * 60);
+      ctx.fillStyle = `rgba(255, ${g}, 90, ${alpha.toFixed(2)})`;
+      ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 2);
+    }
+
+    // Bullet→enemy hit juice (#133) — HIT POPUPS. Floating "+N" that
+    // eases UPWARD over its lifetime (ease-out-cubic on the offset) and
+    // fades. Distinct from the legacy `scorePopups` so the juice channel
+    // is self-contained and an e2e assertion can target it directly.
+    for (const p of this.state.feedback.popups) {
+      const tt = p.ageTicks / POPUP_LIFETIME_TICKS;
+      // ease-out-cubic: 1 - (1 - t)^3.
+      const ease = 1 - Math.pow(1 - tt, 3);
+      const yOffset = -16 * ease;
+      const alpha = Math.max(0, 1 - tt);
+      ctx.fillStyle = `rgba(255, 245, 180, ${alpha.toFixed(2)})`;
+      ctx.font = "bold 11px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`+${p.value}`, p.x, p.y + yOffset);
     }
 
     // Player fighter — a simple upward-pointing arrow. Movement is a backlog
@@ -906,6 +1112,13 @@ export class Engine {
       ctx.lineTo(x + 7, y + 7);
       ctx.closePath();
       ctx.fill();
+    }
+
+    // Close the screen-shake transform — overlays (READY, GAME OVER,
+    // STAGE banner, CHALLENGING banner, PERFECT) sit OUTSIDE the shake
+    // because a juddering "GAME OVER" reads as a glitch, not as juice.
+    if (shake > 0) {
+      ctx.restore();
     }
 
     if (this.state.status === "ready") {

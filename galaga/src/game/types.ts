@@ -90,6 +90,59 @@ export interface ScorePopup {
   age: number;
 }
 
+/** Per-tick juice spark spawned at a bullet→enemy hit (#133). Lives on the
+ *  public contract so the renderer (and any e2e assertion) can read the
+ *  particle burst without reaching into engine internals. Velocities are
+ *  px/tick (already multiplied each tick); `ageTicks` is incremented by
+ *  the engine and the spark is culled at `SPARK_LIFETIME_TICKS`. */
+export interface FeedbackSpark {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ageTicks: number;
+}
+
+/** Floating "+N" hit popup spawned on a kill (#133). Distinct from the
+ *  legacy `ScorePopup` (which the explosion VFX in `killEnemy` already
+ *  drives) — this one lives on the juice `FeedbackChannel` so the channel
+ *  is self-contained and the e2e contract can assert the hit-juice slot
+ *  independently. Renderer eases upward + fades. */
+export interface FeedbackPopup {
+  x: number;
+  y: number;
+  /** Score amount displayed at spawn. */
+  value: number;
+  ageTicks: number;
+}
+
+/** Bullet→enemy hit juice (#133). Pure-data channel on `GameState`: the
+ *  engine writes (on kills and boss-damage events), the renderer reads
+ *  (applies shake transform + draws sparks/popups). Decays each tick.
+ *
+ *  Hitstop semantics: while `hitstopTicks > 0`, the engine's per-tick
+ *  simulation update is SKIPPED — enemies/bullets stay byte-identical to
+ *  the prior tick — but the renderer still draws and the hitstop counter
+ *  itself decrements. That's the "frozen frame on the hit" beat.
+ *
+ *  Decay (per tick, when sim is NOT frozen):
+ *    shakeAmplitude *= SHAKE_DECAY_PER_TICK  (~τ 60ms at 60Hz)
+ *    sparks: position += velocity, ageTicks++, cull at SPARK_LIFETIME_TICKS
+ *    popups: ageTicks++, cull at POPUP_LIFETIME_TICKS
+ *    hitstopTicks: -- (one per tick, floored at 0) */
+export interface FeedbackChannel {
+  /** Decaying screen-shake amplitude in px. Renderer applies as a small
+   *  random xy translate on the canvas; decays toward 0 each tick. */
+  shakeAmplitude: number;
+  /** Remaining hitstop ticks. While >0, the engine SKIPS its per-tick
+   *  simulation update; renderer still draws; input still buffers. */
+  hitstopTicks: number;
+  /** Transient spark bursts spawned on hits/kills. Engine ages + prunes. */
+  sparks: FeedbackSpark[];
+  /** Floating "+N" hit popups. Renderer eases upward and fades. */
+  popups: FeedbackPopup[];
+}
+
 export interface GameState {
   /** Lifecycle. Boots to 'ready'. */
   status: GameStatus;
@@ -123,6 +176,9 @@ export interface GameState {
   /** Floating "+N" score popups spawned alongside an explosion. Drift upward
    *  and fade; same lifecycle shape as explosions. */
   scorePopups: ScorePopup[];
+  /** Bullet→enemy hit juice channel (#133). Engine writes on hits/kills,
+   *  decays each tick; renderer reads. Initial values all zero/empty. */
+  feedback: FeedbackChannel;
   /** Player bullets fired during the current non-challenging stage. Reset to
    *  0 at the start of each new normal stage; the hit-miss accuracy bonus
    *  (#65) is computed from `stageHits / stageShotsFired` at stage-advance.
@@ -265,8 +321,47 @@ export function initialState(): GameState {
     stageHits: 0,
     explosions: [],
     scorePopups: [],
+    feedback: {
+      shakeAmplitude: 0,
+      hitstopTicks: 0,
+      sparks: [],
+      popups: [],
+    },
   };
 }
+
+// ---- Bullet→enemy hit juice constants (#133) -----------------------------
+
+/** Hitstop frames on a NON-BOSS kill (bee / butterfly) or a boss's SECOND
+ *  hit. 2 frames at 60Hz ≈ 33ms — long enough to register the impact,
+ *  short enough not to feel sluggish. The engine's simulation pass is
+ *  SKIPPED for this many ticks after the hit. */
+export const HITSTOP_KILL_TICKS = 2;
+/** Hitstop frames on a boss's FIRST hit (damaged, not killed). 1 frame —
+ *  the half-hit registers but doesn't overstay. */
+export const HITSTOP_DAMAGE_TICKS = 1;
+/** Initial screen-shake amplitude (px) on a non-boss kill / boss second hit. */
+export const SHAKE_AMPLITUDE_KILL = 3;
+/** Initial screen-shake amplitude (px) on a boss FIRST hit (half-kill). */
+export const SHAKE_AMPLITUDE_DAMAGE = 1.5;
+/** Per-tick multiplicative shake decay. Sized to satisfy #133's acceptance
+ *  criterion "shake amplitude < 0.1 within 16 ticks of last hit" starting
+ *  from amplitude 3, accounting for the 2-frame hitstop pause (decay does
+ *  NOT run during hitstop): with 14 decay ticks inside the 16-tick window,
+ *  3 * 0.78^14 ≈ 0.095 — just under the bound. τ ≈ 60ms at 60Hz, matching
+ *  the issue's stated target. The spec's first-draft 0.88 was undershoot;
+ *  the issue body explicitly invites refinement. */
+export const SHAKE_DECAY_PER_TICK = 0.78;
+/** Spark count spawned on a kill (#133). */
+export const SPARK_COUNT_KILL = 8;
+/** Spark count spawned on a boss damage hit (half the kill). */
+export const SPARK_COUNT_DAMAGE = 4;
+/** Spark lifetime in ticks on a kill (~300ms at 60Hz). */
+export const SPARK_LIFETIME_KILL_TICKS = 18;
+/** Spark lifetime in ticks on a boss damage hit (half the kill). */
+export const SPARK_LIFETIME_DAMAGE_TICKS = 9;
+/** Hit popup lifetime in ticks (~600ms at 60Hz). */
+export const POPUP_LIFETIME_TICKS = 36;
 
 /** Ticks an explosion stays on screen before the engine culls it. ~0.5s
  *  at 60Hz — long enough to read, short enough not to clutter. */
