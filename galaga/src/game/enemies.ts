@@ -594,7 +594,9 @@ export function createEnemyController(): EnemyController {
           // contract is unambiguous.
           if (ticksAlive < ENTRANCE_TICKS) {
             const t = ticksAlive / ENTRANCE_TICKS;
-            const eased = easeInOutCubic(t);
+            // Entrance uses easeOutBack: blast in fast, decelerate hard,
+            // micro-overshoot at t≈0.85 for that arcade "settle" thunk.
+            const eased = easeOutBack(t);
             const arc = entranceArc(e.arcSide, eased, home);
             e.state = "entering";
             e.x = arc.x;
@@ -641,6 +643,8 @@ export function createEnemyController(): EnemyController {
             e.x = home.x + sway;
             e.y = home.y;
           } else {
+            // Dive keeps the symmetric ease — the dive is a CLOSED LOOP
+            // (P2 = P0) so overshoot here would read as jitter, not arrival.
             const eased = easeInOutCubic(diveT);
             const pos = diveCurve(
               eased,
@@ -661,8 +665,13 @@ export function createEnemyController(): EnemyController {
           e.y = home.y;
         } else {
           // Flying the entrance arc. `t` runs 0→1 over ENTRANCE_TICKS.
+          // easeOutBack gives the arcade-signature "blast in + thunk-into-slot"
+          // feel: accelerates fast, decelerates hard, micro-overshoots by
+          // ~10% of remaining distance around t≈0.85 before settling exactly
+          // at the home slot at t=1. The dive curve below KEEPS the symmetric
+          // easeInOutCubic — overshoot on a closed-loop dive reads as jitter.
           const t = ticksAlive / ENTRANCE_TICKS;
-          const eased = easeInOutCubic(t);
+          const eased = easeOutBack(t);
           const arc = entranceArc(e.arcSide, eased, home);
           e.state = "entering";
           e.x = arc.x;
@@ -738,7 +747,26 @@ function diveCurve(
   return { x, y };
 }
 
-/** Smoothstep-ish ease so the arc starts gentle, accelerates, then settles. */
+/** Symmetric ease — used by the DIVE curve (P2=P0 closed loop, where
+ *  overshoot would read as jitter, not arrival). For the ENTRANCE arc we
+ *  use `easeOutBack` instead so enemies decelerate-into-slot with a tiny
+ *  thunk — the arcade signature. */
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/** Decelerating ease with micro-overshoot — used by the ENTRANCE arc only.
+ *  Standard Penner `easeOutBack` with c1 = 1.70158: accelerates fast,
+ *  decelerates hard, peaks slightly past 1.0 around t≈0.85, then settles
+ *  at exactly 1.0 at t=1. Applied to the Bézier's `t` parameter, that
+ *  translates to a 1-3px overshoot past the home slot at the very end of
+ *  the entrance — the felt "thunk" of a Galaga enemy snapping into
+ *  formation, instead of the mushy drift a symmetric ease produces.
+ *
+ *  NOT used for the dive curve: that path is a closed loop (P2=P0), so
+ *  overshoot reads as jitter rather than arrival. */
+function easeOutBack(t: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
