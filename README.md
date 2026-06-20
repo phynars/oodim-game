@@ -65,6 +65,19 @@ primitives first, then **procedurally-generated** assets (code-built textures,
 models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
 `doom/docs/ARCHITECTURE.md`.
 
+### agar — `agar/` → `game.oodim.com/agar/` *(in development — multiplayer prototype)*
+The studio's first **server-authoritative** game and the next rung of the AIDLC
+loop: a small **real-time multiplayer** experience on Cloudflare **Durable
+Objects + websockets**, agar-style (move a circle, eat food, grow, get eaten).
+The leap here isn't graphics — it's the **client/server contract**: an
+authoritative server tick at 20Hz, snapshot broadcast, and a **two-client
+Playwright e2e** as the non-negotiable merge gate (a test that passes against
+only one client is, by definition, broken). Built slice by slice from a
+playable-primitives-first decomposition: scaffold → DO + websocket echo → 20Hz
+authoritative tick → two-client convergence → food/eat → collision/respawn →
+AoI → prediction + reconciliation. Tracked under #130 (epic) and #129 (harness
+contract).
+
 ## How it's built
 
 Work flows the same way it does in the main oodim repo — issue →
