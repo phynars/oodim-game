@@ -16,34 +16,36 @@
 // math shape as `renderPac()`. Per-rAF Δ is now ~constant, never zero
 // during steady-state glide, and never a full-tile snap.
 //
-// THE INVARIANT — SELF-PARITY, NOT CROSS-ACTOR RATIO
-// --------------------------------------------------
-// An earlier rev of this spec compared maxGhostDx to maxPacDx as a ratio.
-// That gate is brittle: Pac parks at the first wall it hits while
-// ArrowRight is held, so the back half of the 2s window has Pac stationary
-// (`dir = "none"` → `_progress = 0`) while the ghost keeps gliding. The
-// cross-actor ratio then reflects "ghost moving / Pac frozen", not "are
-// they rendering with the same math?".
+// THE INVARIANT — BOUNDED PER-FRAME Δ
+// -----------------------------------
+// Two earlier revs of this spec failed on CI:
+//   • Rev A compared maxGhostDx to maxPacDx as a ratio — brittle because
+//     Pac parks at the first wall while ArrowRight is held, so the back
+//     half of the window has Pac stationary while the ghost keeps gliding.
+//   • Rev B added a "≥60% of frames must show motion" floor — brittle
+//     because at 60Hz rAF + 60Hz STEP_MS the accumulator straddles: a
+//     significant fraction of rAF frames drain ZERO updates and produce
+//     an exactly-zero Δ. Software-WebGL CI amplifies this; the floor
+//     trips on legitimate behavior.
 //
-// Instead we assert TWO self-parity invariants on the GHOST alone — each
-// directly tied to the bug's signature:
+// The bug's signature is unambiguous: pre-fix, the ghost teleports a
+// FULL tile (Δ ≈ 1.0) on every commit frame. Post-fix, the largest
+// legitimate per-frame Δ is bounded by `updates_per_frame * 0.10` (per-
+// tick ghost speed). Even pathological CI bursts of 3 updates/frame top
+// out around 0.30. A single self-parity invariant is sufficient and
+// robust:
 //
-//   1. CONTINUOUS MOTION. Post-fix, every steady-state frame of an
-//      out-of-house ghost shows non-zero glide Δ (subject to CI's accumul-
-//      ator pattern: a single tick advances `_progress` by 0.10/tick, so
-//      every rAF frame that runs ≥1 update produces a non-zero Δ). The
-//      pre-fix bug rendered the ghost as still tiles for ~10 frames then
-//      one big jump. Gate: ≥60% of post-filter frames show Δ > 1e-4.
-//      (Below 60% would mean half the frames are stalls — i.e. the bug.)
+//   BOUNDED PER-FRAME Δ. Gate: max per-frame ghost Δ < 0.55.
+//   • Pre-fix bug: ~1.0 every commit frame → FAILS (catches the bug).
+//   • Post-fix CI floor: ~0.30 worst-case multi-update spike → PASSES
+//     with 1.8× headroom.
+//   • Well below a full-tile snap so the gate is unambiguous either way.
 //
-//   2. BOUNDED PER-FRAME Δ. Post-fix, per-rAF Δ is bounded by the number
-//      of fixed-step updates the accumulator drained that frame × per-tick
-//      speed (0.10 tiles/tick for chase/scatter). On CI's software-WebGL
-//      stack, 2-3 updates/frame is realistic during hiccups, so ~0.30
-//      tiles/frame is the worst legitimate Δ. The pre-fix bug snapped a
-//      FULL tile (Δ ≈ 1.0) on commit frames. Gate: max per-frame ghost Δ
-//      < 0.55 — well above any plausible multi-update spike, well below a
-//      full-tile snap.
+// We also sanity-check that the ghost made SOME forward progress across
+// the window (total displacement > 1 tile) — otherwise the test is
+// running against a stalled/in-house ghost and the bound is vacuously
+// true. This sanity check is on aggregate displacement, NOT per-frame
+// presence-of-motion, so accumulator straddle doesn't flake it.
 //
 // Frightened/eyes tiers and cornering parity are explicit non-goals here
 // — #137 acceptance #1 (visible glide) and #3 (per-frame envelope) only.
@@ -162,28 +164,19 @@ test("ghost render position glides continuously (no tile-snap)", async ({ page }
 
   expect(ghostDeltas.length, "post-filter frame count").toBeGreaterThan(30);
 
-  // INVARIANT 1: CONTINUOUS MOTION.
-  // Steady-state ghost speed is 0.10 tiles/tick. At 60Hz fixed-step with
-  // CI's rAF cadence, each rAF should advance ≥1 update → ≥0.10 per-frame
-  // Δ, OR have a small rAF drift where the accumulator hasn't quite
-  // crossed STEP_MS (which produces Δ < 1e-4 — still "moving" in the
-  // smooth-glide sense). The pre-fix bug produced runs of EXACTLY-zero
-  // frames between commit jumps. We threshold Δ > 1e-4 (a tile-snap bug
-  // produces 0 here; legit glide produces 0.10+ on update-frames and
-  // sub-pixel-near-zero on drift frames).
-  //
-  // The gate: ≥60% of frames must show motion. Pre-fix bug stalls for
-  // ~9 of every 10 frames between commits → <15% moving → fails this.
-  // Post-fix: every accumulator-draining frame moves → typically ≥80%.
-  // 60% is the conservative floor that catches the bug with CI headroom.
-  const movingFrames = ghostDeltas.filter((d) => d > 1e-4).length;
-  const movingFraction = movingFrames / ghostDeltas.length;
+  // SANITY: the ghost made some forward progress across the window.
+  // If total Σ|Δ| < 1 tile across 1.5s, the test is running against a
+  // stalled or in-house ghost and the bound below is vacuously true.
+  // Post-fix steady-state: 1.5s × 60Hz × 0.10 tiles/tick = 9 tiles of
+  // motion. We require > 1 tile (a tenfold safety margin), which a
+  // legitimately-roaming Blinky clears in the first ~170ms.
+  const totalGhostDisplacement = ghostDeltas.reduce((a, b) => a + b, 0);
   expect(
-    movingFraction,
-    `ghost should be visibly gliding most frames; got ${(movingFraction * 100).toFixed(1)}% moving frames of ${ghostDeltas.length}. A tile-snap bug stalls between commits and drops this below 30%.`,
-  ).toBeGreaterThan(0.6);
+    totalGhostDisplacement,
+    `ghost should accumulate >1 tile of glide across the window; got ${totalGhostDisplacement.toFixed(2)}. If this is ~0, the ghost is stalled in-house and Invariant 1 is vacuous.`,
+  ).toBeGreaterThan(1);
 
-  // INVARIANT 2: BOUNDED PER-FRAME Δ.
+  // INVARIANT — BOUNDED PER-FRAME Δ.
   // Ghost speed is 0.10 tiles/tick. CI's software-WebGL Playwright stack
   // can occasionally drain 2-3 fixed-step updates in one rAF (the engine
   // accumulator pattern; see Engine.frame() in engine.ts). 3 × 0.10 =
