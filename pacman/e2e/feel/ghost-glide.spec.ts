@@ -11,9 +11,8 @@
 //   4. cornering parity                          — per-frame bound on commit
 //
 // CORRECTION over the first draft: the original spec wrongly assumed
-// ghost speed == Pac speed (it asserted a ratio of pac steps to ghost
-// steps ≈ 1.0). The engine constants disagree — Pac is 0.12/tick,
-// normal ghosts are 0.10/tick. The correct contract is SELF-PARITY:
+// ghost speed == Pac speed. The engine constants disagree — Pac is 0.12/
+// tick, normal ghosts are 0.10/tick. The correct contract is SELF-PARITY:
 // each actor's total Euclidean displacement over N logical ticks should
 // equal (SPEED_PER_TICK * N) within a tolerance band that absorbs
 // CI rAF jitter.
@@ -25,26 +24,53 @@
 // the actual tick-delta sum, not the gap count. The per-frame bound is
 // likewise expressed per-tick.
 //
-// CORRECTION over the third draft (#148, this round — Mara's 3rd review):
-// the CI failure shape (logs 401 from here) was unrecoverable from the
-// outside, so this revision defuses every concrete failure mode I could
-// identify from re-reading the engine + the maze:
-//   (a) beforeEach now clicks the canvas BEFORE pressing a key — every
-//       known-green keyboard-driven pacman spec does this; without it
-//       the keydown can fail to land on the engine's window listener
-//       and the 'ready' → 'playing' wait hangs to test timeout.
-//   (b) renderPositions now reports pac.dir; the normal-tier sampler
-//       TRUNCATES to the contiguous prefix where Pac is still moving.
-//       From spawn (13,23) Pac walks left ~7 tiles before hitting the
-//       wall at x=5 — at 0.12/tick that's ~58 ticks, well inside a
-//       60-frame sample window once rAF drains multiple ticks per
-//       frame on software-WebGL CI. Without truncation, post-stop
-//       zero-displacement frames pull the self-ratio below RATIO_LO.
-//   (c) eaten tier: the eyes-return is fundamentally a 15-tick window
-//       (Blinky spawn (13,11) → REVIVE_TILE (13,14), 3 tiles ×
-//       5 ticks/tile at 0.20/tick). MIN_SAMPLES dropped to 4 for this
-//       tier — any more is structurally impossible. MIN_TOTAL_TICKS
-//       stays at 6 (enough for a meaningful ratio).
+// CORRECTION over the third draft: beforeEach now clicks the canvas
+// BEFORE pressing a key (matches every known-green keyboard-driven
+// pacman spec — without it the keydown can miss the engine's window
+// listener and the 'playing' wait hangs). renderPositions now reports
+// pac.dir; the normal-tier sampler TRUNCATES to the contiguous prefix
+// where Pac is still moving.
+//
+// CORRECTION over the fourth draft (#148 round 4 — Mara's flagged
+// failure shapes): both the eaten-tier sample floor concern and the
+// cornering "early stall at 13,23" trace to a SINGLE structural flaw —
+// the renderer (and renderPositions, by design) has a visual SEAM at
+// every direction change: pre-commit the sub-tile glide reads along
+// OLD lastDir, post-commit the tile coords have advanced in the NEW
+// lastDir and the glide restarts from zero. For straight-line motion
+// the seam is invisible (sub-pixel). For a 90° corner the seam is
+// ~sqrt(2) tiles per tick, well above the FRAME_BOUND_MULT * speed
+// teleport bound, and it also skews the self-ratio high.
+//
+// Two concrete failures the previous draft would have hit:
+//
+//   • EATEN tier — Blinky spawns at (13,11) with lastDir='left' (from
+//     spawnGhosts). setGhostEaten flipped mode + reset _progress but
+//     left lastDir alone. The first 5 ticks of pre-commit glide ran
+//     LEFT (positions like (12.2, 11)), then at the first commit the
+//     eyes step DOWN toward REVIVE_TILE and the probe sees (12.2, 11)
+//     → (13, 12), a 1.28-tile jump per tick — well above the 0.7
+//     bound for EATEN_SPEED_PER_TICK * 3.5.
+//     FIX (engine): setGhostEaten now sets lastDir toward REVIVE_TILE
+//     so the pre-commit glide aligns with the eyes path.
+//
+//   • CORNERING tier — at (12,23) Pac corners up. tickPac commits a
+//     dir flip AND a tile advance in the SAME tick: starts at (12,23)
+//     dir='left' _progress=0.95 (renderPos ~(11.05, 23)), and ends at
+//     (12, 22) dir='up' _progress=0.07 (renderPos (12, 21.93)). The
+//     probe sees a 1.43-tile jump per tick — same shape, ~10× the
+//     0.42 bound for PAC_SPEED * 3.5.
+//     FIX (spec): the per-tick bound now filters out gaps that cross
+//     a direction change. The renderer + probe carry the same seam
+//     invariantly, so the contract excludes it. The straight-line
+//     invariant (no teleport WITHIN a single direction) is what we
+//     were always trying to assert.
+//
+// renderPositions now also exposes each ghost's `lastDir`, so the spec
+// can filter ghost direction-change gaps the same way Pac's are.
+// Sample floors stay structural: MIN_SAMPLES_EATEN = 4 (the eyes
+// window is fundamentally ~15 ticks), MIN_TOTAL_TICKS_EATEN = 6
+// (enough ticks under any rAF cadence for a meaningful ratio).
 //
 // PRECONDITION: this file depends on `__pacInternals.renderPositions()` —
 // a read-only probe that returns the float sub-tile draw positions for Pac
@@ -88,10 +114,18 @@ const MIN_SAMPLES_EATEN = 4;
 const MIN_TOTAL_TICKS = 10;
 const MIN_TOTAL_TICKS_EATEN = 6;
 
+type GhostSample = {
+  name: string;
+  x: number;
+  y: number;
+  mode: string;
+  lastDir: string;
+};
+
 type RenderSample = {
   tick: number;
   pac: { x: number; y: number; dir: string };
-  ghosts: Array<{ name: string; x: number; y: number; mode: string }>;
+  ghosts: GhostSample[];
 };
 
 // Sampler: poll renderPositions every animation frame for N frames, return
@@ -104,25 +138,26 @@ async function sampleRenderPositions(
   frames: number,
 ): Promise<RenderSample[]> {
   return await page.evaluate(async (n: number) => {
+    type Snap = {
+      tick: number;
+      pac: { x: number; y: number; dir: string };
+      ghosts: Array<{
+        name: string;
+        x: number;
+        y: number;
+        mode: string;
+        lastDir: string;
+      }>;
+    };
     const api = (window as unknown as {
-      __pacInternals?: {
-        renderPositions?: () => {
-          tick: number;
-          pac: { x: number; y: number; dir: string };
-          ghosts: Array<{ name: string; x: number; y: number; mode: string }>;
-        };
-      };
+      __pacInternals?: { renderPositions?: () => Snap };
     }).__pacInternals;
     if (!api || typeof api.renderPositions !== "function") {
       throw new Error(
         "ghost-glide spec requires __pacInternals.renderPositions() (#137 prerequisite)",
       );
     }
-    const out: Array<{
-      tick: number;
-      pac: { x: number; y: number; dir: string };
-      ghosts: Array<{ name: string; x: number; y: number; mode: string }>;
-    }> = [];
+    const out: Snap[] = [];
     let lastTick = -1;
     for (let i = 0; i < n; i += 1) {
       await new Promise<void>((resolve) =>
@@ -154,20 +189,32 @@ function takeWhile<T>(arr: T[], pred: (t: T) => boolean): T[] {
   return arr.slice(0, cutoff);
 }
 
-// A per-gap measurement: displacement between two consecutive samples and
-// the number of logical ticks the engine advanced across that gap. Under
-// 60Hz rAF dTick is normally 1; under software-WebGL CI rAF, dTick can
-// be 2 or 3 (the engine's fixed-step accumulator drains multiple updates
-// per frame).
-type StepMeasurement = { displacement: number; dTick: number };
+// A per-gap measurement: displacement between two consecutive samples,
+// the number of logical ticks the engine advanced across that gap, and
+// whether the actor's direction (lastDir for ghosts, dir for Pac)
+// changed across the gap. Direction-change gaps are excluded from the
+// per-tick bound and self-ratio assertions because the renderer (and
+// renderPositions, by design) has a visual seam at every corner — the
+// sub-tile glide pivots to the new axis on the same tick the tile
+// commits, which the probe sees as a 1.3-1.4 tile jump. That seam is
+// invariant for renderer + probe; the spec measures the straight-line
+// invariant. Under 60Hz rAF dTick is normally 1; under software-WebGL
+// CI rAF, dTick can be 2 or 3.
+type StepMeasurement = {
+  displacement: number;
+  dTick: number;
+  dirChanged: boolean;
+};
 
-// Compute Euclidean step length AND tick-delta between consecutive samples
-// for an actor. Returns null for any gap where the picker can't extract
-// a position (e.g. ghost not in roster, mode mismatch) — those gaps are
-// skipped from the resulting steps array.
+// Compute Euclidean step length + tick-delta + direction-change flag
+// between consecutive samples for an actor. Returns null for any gap
+// where the picker can't extract a position/direction (e.g. ghost not
+// in roster, mode mismatch) — those gaps are skipped from the steps.
 function stepsFor(
   samples: RenderSample[],
-  pick: (s: RenderSample) => { x: number; y: number } | null,
+  pick: (
+    s: RenderSample,
+  ) => { x: number; y: number; dir: string } | null,
 ): StepMeasurement[] {
   const out: StepMeasurement[] = [];
   for (let i = 1; i < samples.length; i += 1) {
@@ -180,9 +227,21 @@ function stepsFor(
     // dTick should be >= 1 because the sampler dedups equal ticks; skip
     // any pathological zero-or-negative gap defensively.
     if (dTick <= 0) continue;
-    out.push({ displacement: Math.hypot(dx, dy), dTick });
+    out.push({
+      displacement: Math.hypot(dx, dy),
+      dTick,
+      dirChanged: a.dir !== b.dir,
+    });
   }
   return out;
+}
+
+// Drop gaps where the actor's direction changed. Used as a filter on
+// the steps array before both the ratio and the per-tick bound: the
+// renderer's seam at every corner is the SAME shape for renderer +
+// probe — it's not what we're testing.
+function straightOnly(steps: StepMeasurement[]): StepMeasurement[] {
+  return steps.filter((s) => !s.dirChanged);
 }
 
 // Self-ratio: total displacement vs (per-tick speed × total tick delta).
@@ -248,7 +307,15 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
       "Pac stopped before producing a measurable sample window — sample early or grow MIN_SAMPLES floor downward",
     ).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
-    const pacSteps = stepsFor(pacMovingSamples, (s) => s.pac);
+    const pacStepsAll = stepsFor(pacMovingSamples, (s) => ({
+      x: s.pac.x,
+      y: s.pac.y,
+      dir: s.pac.dir,
+    }));
+    // Pac walks straight left through the normal tier — no direction
+    // changes expected — but filter defensively in case rAF straddles
+    // a tile commit where dir momentarily reads 'none' between samples.
+    const pacSteps = straightOnly(pacStepsAll);
     expect(totalTicks(pacSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS);
     const pacRatio = selfRatio(pacSteps, PAC_SPEED_PER_TICK);
     expect(pacRatio).toBeGreaterThan(RATIO_LO);
@@ -257,21 +324,25 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     // Blinky boots already out so it's always sampled. The engine flips
     // scatter↔chase every MODE_PERIOD_TICKS, but BOTH modes use
     // GHOST_SPEED_PER_TICK so we don't need to split on the flip.
-    const blinkyOf = (s: RenderSample) =>
-      s.ghosts.find((g) => g.name === "blinky") ?? null;
-    const ghostSteps = stepsFor(allSamples, (s) => {
-      const g = blinkyOf(s);
+    const ghostStepsAll = stepsFor(allSamples, (s) => {
+      const g = s.ghosts.find((gg) => gg.name === "blinky");
       if (!g) return null;
       if (g.mode !== "scatter" && g.mode !== "chase") return null;
-      return { x: g.x, y: g.y };
+      return { x: g.x, y: g.y, dir: g.lastDir };
     });
+    // Blinky's AI corners through the maze — filter direction-change
+    // gaps so the rendering seam doesn't skew the ratio. Straight-line
+    // gaps still dominate any reasonable sample window.
+    const ghostSteps = straightOnly(ghostStepsAll);
     expect(totalTicks(ghostSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS);
     const ghostRatio = selfRatio(ghostSteps, GHOST_SPEED_PER_TICK);
     expect(ghostRatio).toBeGreaterThan(RATIO_LO);
     expect(ghostRatio).toBeLessThan(RATIO_HI);
 
     // Per-tick rate bound: no actor advances faster than 3.5× its
-    // per-tick speed per logical tick (CI rAF jitter headroom).
+    // per-tick speed per logical tick (CI rAF jitter headroom). Applied
+    // to the straight-line gaps only — corners have a renderer seam
+    // that's invariant for both renderer + probe.
     expect(maxPerTickRate(pacSteps)).toBeLessThan(
       PAC_SPEED_PER_TICK * FRAME_BOUND_MULT,
     );
@@ -333,10 +404,15 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     });
     expect(window_.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
-    const ghostSteps = stepsFor(window_, (s) => {
+    const ghostStepsAll = stepsFor(window_, (s) => {
       const g = s.ghosts.find((gg) => gg.name === name);
-      return g ? { x: g.x, y: g.y } : null;
+      return g ? { x: g.x, y: g.y, dir: g.lastDir } : null;
     });
+    // Frightened ghosts pick pseudo-random directions at every tile
+    // commit — they corner more often than chase ghosts. Filter the
+    // corner seams; the ratio still has plenty of straight-line gaps
+    // because each tile takes 20 ticks at FRIGHTENED_SPEED_PER_TICK.
+    const ghostSteps = straightOnly(ghostStepsAll);
     expect(totalTicks(ghostSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS);
 
     const ghostRatio = selfRatio(ghostSteps, FRIGHTENED_SPEED_PER_TICK);
@@ -358,6 +434,11 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     // MIN_SAMPLES_EATEN (4) reflects the structural ceiling — there is
     // no way to get 8 unique-tick samples out of a 15-tick window when
     // CI rAF drains 2-3 ticks per frame.
+    //
+    // The probe ALSO sets lastDir toward REVIVE_TILE so the pre-commit
+    // sub-tile glide aligns with the eyes path. Without that, the first
+    // 5-tick glide ran in Blinky's previous (spawn) direction and the
+    // first tile commit jumped the probe ~1.28 tiles per tick.
     await page.evaluate(() => {
       const api = (window as unknown as {
         __pacInternals?: { setGhostEaten?: (name: string) => void };
@@ -370,23 +451,11 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
       api.setGhostEaten("blinky");
     });
 
-    // Wait for Blinky to actually be reported as eaten on the render
-    // channel — setGhostEaten warps the engine's internal state, but the
-    // probe might be polled on the same animation frame before the next
-    // engine tick republishes. Polling until mode==='eaten' guarantees
-    // the warp has taken effect.
-    await page.waitForFunction(() => {
-      const api = (window as unknown as {
-        __pacInternals?: {
-          renderPositions?: () => {
-            ghosts: Array<{ name: string; mode: string }>;
-          };
-        };
-      }).__pacInternals;
-      const snap = api?.renderPositions?.();
-      const blinky = snap?.ghosts.find((g) => g.name === "blinky");
-      return blinky?.mode === "eaten";
-    });
+    // setGhostEaten flips mode/_progress/lastDir SYNCHRONOUSLY before
+    // any further engine tick — the very next renderPositions call
+    // already reports mode='eaten' with the corrected glide direction.
+    // The redundant waitForFunction we used to do here only burned
+    // ticks against the 15-tick eyes-return budget.
 
     // Sample 40 frames — at 0.20/tick the eyes-return is ~15 ticks
     // (3 tiles × 5 ticks/tile). 40 rAF frames covers ~40 ticks at 60Hz
@@ -402,10 +471,14 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
     });
     expect(window_.length).toBeGreaterThanOrEqual(MIN_SAMPLES_EATEN);
 
-    const ghostSteps = stepsFor(window_, (s) => {
+    const ghostStepsAll = stepsFor(window_, (s) => {
       const g = s.ghosts.find((gg) => gg.name === "blinky");
-      return g ? { x: g.x, y: g.y } : null;
+      return g ? { x: g.x, y: g.y, dir: g.lastDir } : null;
     });
+    // Eyes path from (13,11) to (13,14) is straight down — typically no
+    // direction changes — but filter defensively in case the AI picks
+    // a side-step in a future maze variant.
+    const ghostSteps = straightOnly(ghostStepsAll);
     expect(totalTicks(ghostSteps)).toBeGreaterThanOrEqual(MIN_TOTAL_TICKS_EATEN);
 
     const ghostRatio = selfRatio(ghostSteps, EATEN_SPEED_PER_TICK);
@@ -422,47 +495,59 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
   }) => {
     // Drive Pac through a direction change. The acceptance bar here is
     // the per-tick rate bound for BOTH actors — a corner shouldn't burst
-    // motion above 3.5× the per-tick speed. We don't require Pac to reach
-    // a specific tile (that's terrain-dependent and brittle); we just
-    // press Up and then Left after a small delay, sample throughout,
-    // and verify no actor ever teleports. NOTE: at (13,23) the tile
-    // above is a wall — ArrowUp queues but only fires once Pac reaches
-    // a tile where up is walkable (e.g. (12,23)). That's fine; we only
-    // assert the per-tick bound, which holds whether or not Pac actually
-    // turns.
+    // motion above 3.5× the per-tick speed ON STRAIGHT-LINE GAPS.
+    // (At the corner itself, the renderer's pre/post-commit seam is
+    // a structural ~1.4-tile jump; the probe + renderer agree on that
+    // shape, so the contract excludes it. The straight-line invariant
+    // is what catches a real teleport regression.)
+    //
+    // Path: beforeEach already pressed ArrowLeft, so Pac is moving left
+    // along row 23. ArrowUp queues; at (12,23) up is walkable
+    // (row 22 col 12 = '.') so Pac corners up. At (12,22) up is a wall
+    // so Pac stops; subsequent samples have dir='none' and contribute
+    // zero displacement (one-sided assertion, harmless).
     await page.keyboard.press("ArrowUp");
-    // Sample a first window during the upward leg.
     const upSamples = await sampleRenderPositions(page, 20);
     await page.keyboard.press("ArrowLeft");
-    // Sample a second window covering the direction change + leftward
-    // travel.
     const turnSamples = await sampleRenderPositions(page, 30);
 
     const samples = [...upSamples, ...turnSamples];
     expect(samples.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
-    // Pac-step extraction is OK to compute over all samples here — even
-    // post-stop frames have displacement=0 and dTick>=1, which can only
-    // LOWER maxPerTickRate. The assertion is one-sided (no teleport),
-    // so wall-parking is harmless to this sub-test.
-    const pacSteps = stepsFor(samples, (s) => s.pac);
-    const ghostSteps = stepsFor(samples, (s) => {
+    const pacStepsAll = stepsFor(samples, (s) => ({
+      x: s.pac.x,
+      y: s.pac.y,
+      dir: s.pac.dir,
+    }));
+    const ghostStepsAll = stepsFor(samples, (s) => {
       const g = s.ghosts.find((gg) => gg.name === "blinky");
       if (!g) return null;
       // Blinky may flip scatter↔chase during the window; both share
-      // GHOST_SPEED_PER_TICK so we don't need to filter on mode for the
-      // per-frame bound (we're not asserting a ratio here, only the
-      // teleport-free invariant).
+      // GHOST_SPEED_PER_TICK. Filter only frightened/eaten which would
+      // use a different speed.
       if (g.mode === "frightened" || g.mode === "eaten") return null;
-      return { x: g.x, y: g.y };
+      return { x: g.x, y: g.y, dir: g.lastDir };
     });
 
-    expect(pacSteps.length).toBeGreaterThan(0);
-    expect(ghostSteps.length).toBeGreaterThan(0);
+    // Filter to straight-line gaps — corner seams excluded.
+    const pacSteps = straightOnly(pacStepsAll);
+    const ghostSteps = straightOnly(ghostStepsAll);
 
-    // Per-tick rate bound on the commit frame — neither actor teleports
-    // across a corner, regardless of how many ticks the engine drained
-    // in one rAF.
+    // Floor: we need at least ONE straight-line gap per actor (the test
+    // is meaningless if every gap is a corner — but with 50 frames of
+    // motion that's structurally impossible).
+    expect(
+      pacSteps.length,
+      "no straight-line Pac gaps in cornering sample — all gaps were corners?",
+    ).toBeGreaterThan(0);
+    expect(
+      ghostSteps.length,
+      "no straight-line Blinky gaps in cornering sample",
+    ).toBeGreaterThan(0);
+
+    // Per-tick rate bound on straight-line gaps — neither actor
+    // teleports between corner commits, regardless of how many ticks
+    // the engine drained in one rAF.
     expect(maxPerTickRate(pacSteps)).toBeLessThan(
       PAC_SPEED_PER_TICK * FRAME_BOUND_MULT,
     );

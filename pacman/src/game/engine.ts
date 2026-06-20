@@ -16,6 +16,7 @@ import {
   inkyTarget,
   pinkyTarget,
   publicGhostView,
+  REVIVE_TILE,
   scatterTarget,
   spawnGhosts,
   tickGhost,
@@ -206,6 +207,12 @@ export class Engine {
             x: g.x + dx * progress,
             y: g.y + dy * progress,
             mode: g.mode,
+            // Expose lastDir so the spec can filter direction-change
+            // gaps from the per-tick bound. At every 90° corner the
+            // renderer has a visual seam (pre-commit glide along OLD
+            // lastDir, post-commit along NEW) — the seam is invariant
+            // for renderer + probe, so the contract excludes it.
+            lastDir: g.lastDir,
           };
         });
         return {
@@ -241,13 +248,34 @@ export class Engine {
       },
       // Issue #145 probe — warp the named ghost into eaten/eyes mode.
       // Forces status='out' (in case it was still in the house) so the
-      // eyes-return motion is observable on the render channel.
+      // eyes-return motion is observable on the render channel. ALSO
+      // resets `lastDir` to point toward REVIVE_TILE — without this,
+      // the pre-commit sub-tile glide reads in the ghost's previous
+      // direction (e.g. spawn's 'left'), and at the first tile commit
+      // the renderPositions probe sees a multi-tile jump as the eyes
+      // pivot toward (13,14). With the lastDir aligned to the
+      // destination, the pre-commit glide is along the actual eyes
+      // path and the cross-commit transition is smooth (no >0.7/tick
+      // teleport — well inside the FRAME_BOUND_MULT bound).
       setGhostEaten: (name: GhostName): void => {
         const g = this.ghosts.find((gh) => gh.name === name);
         if (!g) return;
         g.status = "out";
         g.mode = "eaten";
         g._progress = 0;
+        // Choose the axis with the larger absolute delta toward
+        // REVIVE_TILE. Cheap and correct for the spawn case (13,11) →
+        // (13,14) — picks 'down'. For other positions the first tile
+        // commit's pickDirection re-evaluates anyway; we only need the
+        // pre-commit glide to point in a sensible direction so the
+        // first commit doesn't read as a teleport on renderPositions.
+        const dx = REVIVE_TILE.x - g.x;
+        const dy = REVIVE_TILE.y - g.y;
+        if (Math.abs(dy) >= Math.abs(dx)) {
+          g.lastDir = dy >= 0 ? "down" : "up";
+        } else {
+          g.lastDir = dx >= 0 ? "right" : "left";
+        }
       },
     };
   }
@@ -845,7 +873,13 @@ declare global {
       renderPositions: () => {
         tick: number;
         pac: { x: number; y: number; dir: string };
-        ghosts: Array<{ name: GhostName; x: number; y: number; mode: string }>;
+        ghosts: Array<{
+          name: GhostName;
+          x: number;
+          y: number;
+          mode: string;
+          lastDir: string;
+        }>;
       };
       forceFrightened: () => void;
       setGhostEaten: (name: GhostName) => void;
