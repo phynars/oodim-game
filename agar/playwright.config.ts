@@ -43,34 +43,30 @@ export default defineConfig({
     {
       cwd: repoRoot,
       // `npm run dev:agar-server` boots the Worker locally with the DO
-      // binding from agar/wrangler.toml (--port 8787 matches the client
-      // URL builder in agar/src/main.ts; --local keeps state on-box so
-      // CI never hits the real Cloudflare edge). Routing through the
-      // npm script — same shape the pacman/galaga/doom webServers use —
-      // means npm resolves the wrangler binary from node_modules/.bin
-      // instead of relying on PATH, and the command stays in lockstep
-      // with the script developers run locally.
+      // binding from agar/wrangler.toml. The host + port live in
+      // wrangler.toml's [dev] block (ip=127.0.0.1, port=8787) — single
+      // source of truth — so the script stays a clean `wrangler dev
+      // --config …`. Routing through the npm script (same shape as the
+      // pacman/galaga/doom webServers) means npm resolves the wrangler
+      // binary from node_modules/.bin instead of relying on PATH.
       command: "npm run dev:agar-server",
-      // Probe 127.0.0.1 explicitly instead of `localhost`: on CI runners
-      // `localhost` can resolve to `::1` (IPv6) first, but wrangler's
-      // listener (even with --ip 0.0.0.0) speaks IPv4 only — Playwright
-      // then never sees the webServer come up. The client still uses
-      // `window.location.hostname` (which IS "localhost" since the page
-      // is served at localhost:4274) — wrangler's 0.0.0.0 bind accepts
-      // both names, so the page's WS connects fine.
+      // Probe 127.0.0.1 — matches the wrangler [dev] ip exactly. We
+      // probe a 200 health endpoint (GET / in server/worker.ts) rather
+      // than relying on the previous 404 sentinel. A 200 is unambiguous
+      // proof the listener is up AND the worker module compiled AND the
+      // request loop is running — three things the 404 couldn't
+      // distinguish from "bound but module crashed". This was the
+      // round-7 reviewer ask: "verify the bind actually answers".
       url: "http://127.0.0.1:8787/",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
-      // Wrangler prompts for telemetry opt-in on first invocation; in a
-      // fresh CI sandbox that prompt hangs on stdin and the webServer
-      // never reports "up". Forcing the env var off here is belt-and-
-      // suspenders alongside the same flag baked into wrangler.toml.
       env: {
+        // Wrangler prompts for telemetry opt-in on first invocation; in
+        // a fresh CI sandbox that prompt hangs on stdin and the
+        // webServer never reports "up". Belt-and-suspenders.
         WRANGLER_SEND_METRICS: "false",
         CI: "true",
       },
-      // The Worker returns 404 for GET / (only /ws is routed), which is
-      // a healthy signal — Playwright treats any HTTP response as "up".
       ignoreHTTPSErrors: true,
     },
   ],

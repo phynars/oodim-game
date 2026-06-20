@@ -90,6 +90,20 @@ const worker: ExportedHandler<Env> = {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // GET / is a deliberate health endpoint. Playwright's webServer probe
+    // waits for ANY HTTP response on the configured url, but in practice
+    // a 200 is more robust across versions/probers than a 404 — and round
+    // 7 of CI-red said "verify the bind actually answers", which a 404
+    // can't unambiguously do (the prober can't tell "bound but routed
+    // nowhere" from "ip mismatch"). 200 means: TCP up, listener up,
+    // module compiled, request loop running.
+    if (url.pathname === "/") {
+      return new Response("agar echo worker: ok", {
+        status: 200,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
+
     // Single fixed room — slice 2 has no multi-room logic. The path is
     // just a sanity guard so unrelated requests get a clear 404.
     if (url.pathname !== "/ws") {
