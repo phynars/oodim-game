@@ -16,9 +16,9 @@
 // math shape as `renderPac()`. Per-rAF Δ is now ~constant, never zero
 // during steady-state glide, and never a full-tile snap.
 //
-// THE INVARIANT — BOUNDED PER-FRAME Δ
-// -----------------------------------
-// Two earlier revs of this spec failed on CI:
+// THE INVARIANT — BOUNDED PER-FRAME Δ (CORNERING EXCLUDED)
+// --------------------------------------------------------
+// Three earlier revs of this spec failed on CI:
 //   • Rev A compared maxGhostDx to maxPacDx as a ratio — brittle because
 //     Pac parks at the first wall while ArrowRight is held, so the back
 //     half of the window has Pac stationary while the ghost keeps gliding.
@@ -27,19 +27,36 @@
 //     significant fraction of rAF frames drain ZERO updates and produce
 //     an exactly-zero Δ. Software-WebGL CI amplifies this; the floor
 //     trips on legitimate behavior.
+//   • Rev C (this PR's first push) had a bare `maxGhostDx < 0.55` over
+//     a 1.5s window — but Blinky spawns at (13,11) facing left, runs
+//     into the wall at column 8, and TURNS DOWN. At that corner, the
+//     prior frame's render pos is (~8.1, 11) and the next frame snaps
+//     to (9, ~12.1) because tickGhost commits the new tile under the
+//     NEW direction (lastDir flips left→down, the leftover `_progress`
+//     is discarded). The Euclidean Δ across the corner is √(0.81+1.21)
+//     ≈ 1.42 — legitimate behavior, but the bare bound treats it as a
+//     tile-snap and fails. Cornering interpolation is an EXPLICIT
+//     non-goal of #137 (acceptance #1/#3 cover straight-line glide);
+//     see #145 for the cornering follow-up. We therefore exclude
+//     corner-turn frames from the per-frame Δ check.
 //
-// The bug's signature is unambiguous: pre-fix, the ghost teleports a
-// FULL tile (Δ ≈ 1.0) on every commit frame. Post-fix, the largest
-// legitimate per-frame Δ is bounded by `updates_per_frame * 0.10` (per-
+// The bug's signature is unambiguous on STRAIGHT-LINE frames: pre-fix,
+// the ghost teleports a FULL tile (Δ ≈ 1.0) on every commit frame, even
+// when going straight. Post-fix, the largest legitimate per-frame Δ on
+// straight-line frames is bounded by `updates_per_frame * 0.10` (per-
 // tick ghost speed). Even pathological CI bursts of 3 updates/frame top
 // out around 0.30. A single self-parity invariant is sufficient and
 // robust:
 //
-//   BOUNDED PER-FRAME Δ. Gate: max per-frame ghost Δ < 0.55.
-//   • Pre-fix bug: ~1.0 every commit frame → FAILS (catches the bug).
+//   BOUNDED PER-FRAME Δ ON STRAIGHT-LINE FRAMES. Gate: max < 0.55.
+//   • Pre-fix bug: ~1.0 every commit frame, including straight ones
+//     → FAILS (catches the bug — corner exclusion doesn't help the
+//     pre-fix code because the pre-fix render path produced ~1.0 even
+//     on tile commits along a straight corridor).
 //   • Post-fix CI floor: ~0.30 worst-case multi-update spike → PASSES
 //     with 1.8× headroom.
-//   • Well below a full-tile snap so the gate is unambiguous either way.
+//   • Corner frames (tile changed in both axes OR lastDir flipped
+//     between samples) are excluded — out of scope per #137.
 //
 // We also sanity-check that the ghost made SOME forward progress across
 // the window (total displacement > 1 tile) — otherwise the test is
@@ -69,7 +86,16 @@ declare global {
     __pacInternals?: {
       renderPositions?: () => {
         pac: { x: number; y: number };
-        ghosts: Array<{ name: string; x: number; y: number; status: string; mode: string }>;
+        ghosts: Array<{
+          name: string;
+          x: number;
+          y: number;
+          tileX: number;
+          tileY: number;
+          lastDir: string;
+          status: string;
+          mode: string;
+        }>;
       };
       forceGhostOntoPac?: (name: string) => void;
       clearPellets?: () => void;
@@ -118,7 +144,16 @@ test("ghost render position glides continuously (no tile-snap)", async ({ page }
   // chase/scatter for the full window.
   type Sample = {
     t: number;
-    ghosts: Array<{ name: string; x: number; y: number; status: string; mode: string }>;
+    ghosts: Array<{
+      name: string;
+      x: number;
+      y: number;
+      tileX: number;
+      tileY: number;
+      lastDir: string;
+      status: string;
+      mode: string;
+    }>;
   };
   const samples: Sample[] = await page.evaluate(async (durationMs: number) => {
     const out: Sample[] = [];
@@ -157,6 +192,19 @@ test("ghost render position glides continuously (no tile-snap)", async ({ page }
 
   // Per-frame Δposition for the selected ghost, in sub-tile units (the
   // probe returns the same float coords the renderer multiplies by TILE).
+  //
+  // FILTERS (both out of scope per #137 acceptance #1/#3):
+  //  1. Tunnel wraps. Ghost speed is 0.10 tiles/tick; any single-rAF
+  //     jump >2 tiles must be a coordinate-system wrap on row 14
+  //     (x ↔ COLS), not a render artifact.
+  //  2. Corner-turn frames. When `lastDir` changes between two samples
+  //     OR the tile coordinate changed in BOTH axes between samples,
+  //     the ghost executed a tile commit with a direction flip — the
+  //     leftover sub-tile progress is discarded and the render position
+  //     legitimately snaps along the L of the corner (Δ can reach √2 ≈
+  //     1.41 across one frame). Cornering interpolation is the #145
+  //     follow-up; this gate only asserts straight-line glide.
+  let cornerFramesDropped = 0;
   const ghostDeltas: number[] = [];
   for (let i = 1; i < samples.length; i += 1) {
     const a = samples[i - 1];
@@ -164,11 +212,13 @@ test("ghost render position glides continuously (no tile-snap)", async ({ page }
     const ga = a.ghosts.find((g) => g.name === ghostName)!;
     const gb = b.ghosts.find((g) => g.name === ghostName)!;
     const gdx = Math.hypot(gb.x - ga.x, gb.y - ga.y);
-    // Filter tunnel wraps: ghost-can-only-move-1-tile-per-tick at speed
-    // 0.10/tick, so any single-rAF jump >2 tiles is a coordinate-system
-    // wrap (row 14 ↔ COLS), not a render artifact. Drop those frames
-    // symmetrically so they don't pollute either invariant.
     if (gdx > 2) continue;
+    const lastDirChanged = ga.lastDir !== gb.lastDir;
+    const tileChangedBothAxes = ga.tileX !== gb.tileX && ga.tileY !== gb.tileY;
+    if (lastDirChanged || tileChangedBothAxes) {
+      cornerFramesDropped += 1;
+      continue;
+    }
     ghostDeltas.push(gdx);
   }
 
@@ -186,16 +236,23 @@ test("ghost render position glides continuously (no tile-snap)", async ({ page }
     `ghost should accumulate >1 tile of glide across the window; got ${totalGhostDisplacement.toFixed(2)}. If this is ~0, the ghost is stalled in-house and Invariant 1 is vacuous.`,
   ).toBeGreaterThan(1);
 
-  // INVARIANT — BOUNDED PER-FRAME Δ.
+  // INVARIANT — BOUNDED PER-FRAME Δ ON STRAIGHT-LINE FRAMES.
   // Ghost speed is 0.10 tiles/tick. CI's software-WebGL Playwright stack
   // can occasionally drain 2-3 fixed-step updates in one rAF (the engine
   // accumulator pattern; see Engine.frame() in engine.ts). 3 × 0.10 =
   // 0.30 is the worst-case legitimate Δ; we ceiling at 0.55 — 1.8×
   // headroom over that, and well below the 1.0-tile snap the pre-fix
   // bug produced on every commit frame.
+  //
+  // The pre-fix bug still trips this gate easily: before #137, the ghost
+  // render path ignored `_progress` entirely, so per-frame Δ across a
+  // tile commit was ~1.0 even on a STRAIGHT corridor — and straight-line
+  // commits are NOT filtered out (tile changes in exactly one axis with
+  // lastDir unchanged). Only corner turns (L-shaped tile change OR
+  // lastDir flip) are excluded.
   const maxGhostDx = Math.max(...ghostDeltas);
   expect(
     maxGhostDx,
-    `no ghost frame should jump more than ~half a tile; got ${maxGhostDx.toFixed(4)}. A tile-snap bug produces ~1.0 here every commit frame.`,
+    `no straight-line ghost frame should jump more than ~half a tile; got ${maxGhostDx.toFixed(4)} (corner frames dropped: ${cornerFramesDropped}). A tile-snap bug produces ~1.0 here every commit frame.`,
   ).toBeLessThan(0.55);
 });

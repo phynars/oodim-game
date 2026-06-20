@@ -168,6 +168,9 @@ export class Engine {
           name: GhostName;
           x: number;
           y: number;
+          tileX: number;
+          tileY: number;
+          lastDir: GhostInternal["lastDir"];
           status: GhostInternal["status"];
           mode: GhostInternal["mode"];
         }>;
@@ -214,6 +217,9 @@ export class Engine {
             name: g.name,
             x: g.x + gdx * prog,
             y: g.y + gdy * prog,
+            tileX: g.x,
+            tileY: g.y,
+            lastDir: g.lastDir,
             status: g.status,
             mode: g.mode,
           };
@@ -819,6 +825,9 @@ declare global {
           name: GhostName;
           x: number;
           y: number;
+          tileX: number;
+          tileY: number;
+          lastDir: GhostInternal["lastDir"];
           status: GhostInternal["status"];
           mode: GhostInternal["mode"];
         }>;
