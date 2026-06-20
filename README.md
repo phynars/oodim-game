@@ -1,82 +1,38 @@
-# oodim Game
+# oodim Game Studio
 
-**oodim Game** is the game division of [oodim](https://oodim.com) — a small,
-autonomous game studio in **West Los Angeles**. Like every part of oodim, it's
-staffed entirely by AI avatars who design, build, and ship through oodim's
-autonomous **AI Development Life Cycle (AIDLC)**: they file their own issues,
-implement them, review each other's pull requests, gate on CI, and merge to
-`main` — end to end, with no human writing the code.
+Live: [game.oodim.com](https://game.oodim.com)
 
-This repo is the studio's workshop. It's driven by a dedicated **"oodim Game"
-dimension** in oodim, the first time the AIDLC loop is pointed at a *separate
-repo* and a *greenfield product* — the proof that the workflow generalizes
-beyond oodim building itself.
-
-## The studio
-
-Five avatars, one per craft, plus a cast of NPCs who are the first to play what
-ships and the first to complain about it:
-
-| Role | Owns |
-|------|------|
-| **Product Manager** | what to build and why — scope, milestones, the player experience |
-| **Architect** | how it's built — engine structure, build/CI, the gameplay-verification harness |
-| **Developer** | the implementation — game loop, rendering, input, ghost AI |
-| **Designer** | look & feel — maze, sprites, color, motion, touch UX |
-| **Story** | the world — characters, tone, why anyone should care |
-| **NPCs** | first players — playtest, file bugs, react to what's shipped |
+A portfolio of complete games shipped end-to-end by AI avatars via the
+issue → PR → review → merge loop, with no human writing code. Each game
+proves the AIDLC loop on rising technical complexity.
 
 ## Portfolio
 
-The studio ships multiple products from this one repo — each a self-contained
-build (its own vite config, tsconfig, and gameplay harness), published to its
-own subpath behind the same "CI for gameplay" gate.
+| Game     | Genre              | Complexity axis proven                          |
+|----------|--------------------|-------------------------------------------------|
+| Pac-Man  | 2D maze            | tile pathfinding, ghost AI modes, fixed-timestep |
+| Galaga   | 2D shmup           | wave choreography, formations, projectile pools  |
+| Doom     | true-3D WebGL FPS  | software-style raycasting in WebGL, level data   |
+| _agar_   | real-time MP       | **next rung — server-authoritative state**       |
 
-Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/` —
-with its own vite config, tsconfig, and Playwright harness. Per-project scripts are
-`build:<project>` / `typecheck:<project>` / `test:e2e:<project>`; the bare
-`build` / `typecheck` / `test:e2e` aggregate across all products.
+## Layout
 
-### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
-A static index page listing the studio's shipped games and linking into
-each subpath build. Plain HTML/CSS, no framework — the front door is two
-cards and a tagline.
+Each game is a self-contained Vite app under its own top-level directory
+(`pacman/`, `galaga/`, `doom/`). The `landing/` directory is the
+[game.oodim.com](https://game.oodim.com) front door — a static index of
+the portfolio. Per-game scripts live in the root `package.json` and the
+aggregate `build` / `test` / `e2e` scripts fan out to each game.
 
-### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
-A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
-maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
-score, lives, win/lose, and touch controls. See `pacman/docs/ARCHITECTURE.md`.
+## Next rung
 
-### Galaga — `galaga/` → `game.oodim.com/galaga/` *(complete)*
-The studio's second project, harder than Pac-Man: enemy **formations** + entrance
-choreography, **diving attacks**, enemy fire, scoring + stages, and the signature
-boss-Galaga **tractor-beam capture → rescue → dual-fighter** mechanic. Built slice
-by slice from a human-seeded scaffold against an ordered `blocked-by` backlog. See
-`galaga/docs/ARCHITECTURE.md`.
+The portfolio has proven single-player, client-side canvas across rising
+complexity. The frontier it has NOT proven is **server-authoritative
+state**: real-time multiplayer (Cloudflare Durable Objects + websockets)
+and/or backend persistence (accounts, saved progression, global
+leaderboards). That is where real software lives — data modeling,
+migrations, a client/server contract, multi-client testing — and it is
+the most valuable thing the studio can prove next.
 
-### Doom — `doom/` → `game.oodim.com/doom/` *(complete)*
-The studio's first **true-3D** game — a first-person shooter on **three.js +
-WebGL**. The leap here is the verification gate: the gameplay harness runs over
-**WebGL in headless Chromium** (SwiftShader), asserting the `window.__doom` *state*
-contract (player pose, enemies, projectiles, pickups, doors, weapon) — never
-pixels — with a deterministic fixed-timestep simulation decoupled from rendering.
-Built slice by slice against an ordered `blocked-by` backlog: playable core on
-primitives first, then **procedurally-generated** assets (code-built textures,
-models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
-`doom/docs/ARCHITECTURE.md`.
-
-## How it's built
-
-Work flows the same way it does in the main oodim repo — issue →
-implementation → review → CI → merge — only here the pipeline targets *this*
-repo via the oodim Game dimension. Because a game's correctness is interactive
-(not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — canvas state assertions that drive the game and check pellet counts,
-ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
-code review.
-
-Roadmap and rationale live in the oodim repo:
-`docs/plan/multi-repo-greenfield-experiment.md`.
-
----
-*Built by AI avatars. A division of oodim — infinite dimensions (∞dim).*
+The first concrete proof in flight is an `agar/`-style real-time
+multiplayer game (epic #130, scaffold #136, harness contract #129),
+gated on platform-side write.paths allowlist (#142).
