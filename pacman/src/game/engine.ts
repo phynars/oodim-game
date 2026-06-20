@@ -141,6 +141,13 @@ export class Engine {
           g.mode = "chase";
         }
         g._progress = 0;
+        // Issue #137: also reset the lerp's next-tile to the freshly-
+        // warped tile, otherwise the next tickGhost would glide from
+        // Pac's tile toward the ghost's STALE next-tile (a teleport).
+        // Setting nextX/Y == x/y triggers the start-of-traversal pick
+        // on the next tick.
+        g.nextX = g.x;
+        g.nextY = g.y;
       },
       // Test hook: zero out the pellet field in one step. The eat-every-
       // dot path is too slow + race-prone to drive from an e2e (the ghost
@@ -155,6 +162,70 @@ export class Engine {
             row[c] = false;
           }
         }
+      },
+      // Test hook (issue #137): expose the same float-precision render
+      // positions the canvas uses, so an e2e can sample max-per-frame
+      // Δposition for Pac and every ghost and verify the ghost glide
+      // mirrors Pac's. Returns SUB-TILE coordinates (the `(tile + dir *
+      // progress)` value, NOT pixels) — the test only needs the ratio
+      // and the per-frame bound, both of which are scale-invariant. The
+      // public `state.ghosts` projection is integer-tile only (test
+      // contract); this hook is the only path to the float positions
+      // without coupling the spec to TILE / canvas dimensions.
+      renderPositions: (): {
+        pac: { x: number; y: number };
+        ghosts: Array<{ name: GhostName; x: number; y: number; status: "house" | "out" }>;
+      } => {
+        const pacInternal = this.state.pac as typeof this.state.pac & {
+          _progress?: number;
+        };
+        const pacProg = this.state.pac.dir === "none" ? 0 : pacInternal._progress ?? 0;
+        let pdx = 0;
+        let pdy = 0;
+        switch (this.state.pac.dir) {
+          case "right":
+            pdx = 1;
+            break;
+          case "left":
+            pdx = -1;
+            break;
+          case "down":
+            pdy = 1;
+            break;
+          case "up":
+            pdy = -1;
+            break;
+        }
+        const pac = {
+          x: this.state.pac.x + pdx * pacProg,
+          y: this.state.pac.y + pdy * pacProg,
+        };
+        const ghosts = this.ghosts.map((g) => {
+          const prog = g.status !== "out" ? 0 : g._progress;
+          let gdx = 0;
+          let gdy = 0;
+          switch (g.lastDir) {
+            case "right":
+              gdx = 1;
+              break;
+            case "left":
+              gdx = -1;
+              break;
+            case "down":
+              gdy = 1;
+              break;
+            case "up":
+              gdy = -1;
+              break;
+          }
+          return {
+            name: g.name,
+            x: g.x + gdx * prog,
+            y: g.y + gdy * prog,
+            status: g.status,
+          };
+        });
+        return { pac, ghosts };
       },
     };
   }
@@ -569,14 +640,30 @@ export class Engine {
    *    • eaten → small white "eyes" dot (no body). Communicates that the
    *      ghost is in transit back to the house.
    *
-   *  Render-only sub-tile glide (mirrors `renderPac`): we read the engine's
-   *  INTERNAL roster `this.ghosts` (not `state.ghosts`, which is the
-   *  stripped `publicGhostView` projection holding integer tile coords for
-   *  the e2e contract). Each `GhostInternal` carries `_progress: 0..1` and
-   *  `lastDir: Dir`, advanced every tick by `tickGhost` — we offset the
-   *  draw position along `lastDir` so motion is smooth between integer
-   *  tile commits. In-house ghosts (`status !== "out"`) stay snapped to
-   *  their spawn tile — they don't carry meaningful glide. */
+   *  Render-only sub-tile glide (issue #137 — corner continuity).
+   *  We read the engine's INTERNAL roster `this.ghosts` (not
+   *  `state.ghosts`, which is the stripped `publicGhostView` projection
+   *  holding integer tile coords for the e2e contract). Each
+   *  `GhostInternal` carries:
+   *    • `x, y`           — current/committed tile (collision tile).
+   *    • `nextX, nextY`   — tile the ghost is heading toward, pre-decided
+   *                          at the START of each traversal by tickGhost.
+   *    • `_progress: 0..1` — fraction of journey from (x, y) to
+   *                          (nextX, nextY).
+   *
+   *  Render = linear interpolation `(x, y) → (nextX, nextY)` by
+   *  `_progress`. Tunnel wrap (row 14) is handled by lerping along the
+   *  signed `next - x` delta as picked — for non-wrap moves the delta
+   *  is ±1, identical to the old `dx, dy` model; for the tunnel commit
+   *  the ghost's `x, y` and `nextX, nextY` straddle the COLS-1 → 0 (or
+   *  0 → COLS-1) seam, which would lerp visually across the entire
+   *  width of the maze. We detect that case via `|delta| > 1` and snap
+   *  to the destination tile center (matches the OLD render's behavior
+   *  on the wrap frame — the ghost briefly visits the destination
+   *  tile, then continues gliding from there).
+   *
+   *  In-house ghosts (`status !== "out"`) stay snapped to their spawn
+   *  tile — they don't carry meaningful glide. */
   private renderGhosts(): void {
     const { ctx, canvas } = this;
     const mazeW = COLS * TILE;
@@ -592,29 +679,24 @@ export class Engine {
       // Sub-tile glide. Only released ghosts interpolate; ones still
       // bouncing in the house stay on their tile.
       const progress = g.status !== "out" ? 0 : g._progress;
-      let dx = 0;
-      let dy = 0;
-      switch (g.lastDir) {
-        case "right":
-          dx = 1;
-          break;
-        case "left":
-          dx = -1;
-          break;
-        case "down":
-          dy = 1;
-          break;
-        case "up":
-          dy = -1;
-          break;
+      // Lerp endpoints in tile coords. For a stationary ghost
+      // (nextX/Y == x/y) the lerp collapses to the tile center — no
+      // motion, same as the old code's dx=dy=0 default.
+      let deltaX = g.nextX - g.x;
+      let deltaY = g.nextY - g.y;
+      // Tunnel-wrap guard: when the ghost commits across the row-14
+      // seam, |delta| jumps to COLS-1. Lerping across that would slide
+      // the sprite across the entire maze. Snap to the destination
+      // instead (one frame of "popped to next tile"), matching the
+      // OLD render's behavior at the same wrap frame.
+      if (Math.abs(deltaX) > 1) {
+        deltaX = 0;
       }
-      // NB: no `case "none"` — a ghost's `lastDir` is `Dir`
-      // ("up"|"down"|"left"|"right"), never "none" (that rest state
-      // belongs to Pac's `Direction`). dx/dy default to 0, so a stopped
-      // ghost already stays tile-centered without a dead case. (TS2678
-      // on the invalid case broke main's build + every agent CI, 2026-06-17.)
-      const cx = ox + (g.x + dx * progress) * TILE + TILE / 2;
-      const cy = oy + (g.y + dy * progress) * TILE + TILE / 2;
+      if (Math.abs(deltaY) > 1) {
+        deltaY = 0;
+      }
+      const cx = ox + (g.x + deltaX * progress) * TILE + TILE / 2;
+      const cy = oy + (g.y + deltaY * progress) * TILE + TILE / 2;
       if (g.mode === "eaten") {
         // Eyes: a small white dot, no body.
         ctx.fillStyle = "#ffffff";
@@ -649,6 +731,15 @@ declare global {
       scatterTarget: typeof scatterTarget;
       forceGhostOntoPac: (name: GhostName) => void;
       clearPellets: () => void;
+      renderPositions: () => {
+        pac: { x: number; y: number };
+        ghosts: Array<{
+          name: GhostName;
+          x: number;
+          y: number;
+          status: "house" | "out";
+        }>;
+      };
     };
   }
 }

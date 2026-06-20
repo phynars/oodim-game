@@ -38,7 +38,12 @@ export const FRIGHTENED_TICKS = 360;
 export const REVIVE_TILE = { x: 13, y: 14 } as const;
 
 /** Public ghost state — mirrored onto `window.__pac.ghosts`. Keep this
- *  small; the e2e contract only needs name, tile coords, and mode. */
+ *  small; the e2e contract only needs name, tile coords, and mode.
+ *
+ *  Render-probe fields (`nextX`, `nextY`, `_progress`) are appended so
+ *  the feel-correctness e2e (issue #137) can compute the exact lerp the
+ *  canvas renderer paints, without OCR'ing pixels. They are NOT part
+ *  of the AI / collision contract — collision still uses (x, y) only. */
 export interface GhostState {
   name: GhostName;
   /** Tile column. */
@@ -46,6 +51,12 @@ export interface GhostState {
   /** Tile row. */
   y: number;
   mode: GhostMode;
+  /** Tile the ghost is heading toward (render-probe only). */
+  nextX: number;
+  /** Tile the ghost is heading toward (render-probe only). */
+  nextY: number;
+  /** Sub-tile glide progress 0..1 (render-probe only). */
+  _progress: number;
 }
 
 /** Where a ghost is in its lifecycle. "house" = waiting inside the
@@ -54,12 +65,15 @@ export type GhostStatus = "house" | "out";
 
 /** Internal ghost — adds the bits the AI needs but the test contract
  *  doesn't care about. The engine stores these; we publish the slim
- *  GhostState shape onto the state. */
+ *  GhostState shape onto the state.
+ *
+ *  GhostState now also carries `nextX, nextY, _progress` so the feel-
+ *  correctness e2e (issue #137) can verify the canvas-render lerp
+ *  without OCR'ing pixels — those three fields live on the base
+ *  interface, not duplicated here. */
 export interface GhostInternal extends GhostState {
   /** Direction last moved in, used to forbid 180° reversals. */
   lastDir: Dir;
-  /** Sub-tile glide progress, 0..1. Same trick Pac uses. */
-  _progress: number;
   /** "house" until the dot-counter releases this ghost; then "out". */
   status: GhostStatus;
   /** Dot-counter threshold for leaving the house. Blinky = 0. */
@@ -235,6 +249,11 @@ export function spawnGhosts(): GhostInternal[] {
     mode: "scatter",
     lastDir,
     _progress: 0,
+    // At spawn the ghost is stationary on its tile — next == current.
+    // The first tickGhost call (once `status === "out"`) will pick a
+    // real `nextX, nextY` before any glide progress accumulates.
+    nextX: SPAWN_TILES[name].x,
+    nextY: SPAWN_TILES[name].y,
     status,
     releaseAtPellets: RELEASE_THRESHOLDS[name],
   });
@@ -371,11 +390,33 @@ export function tickGhost(
       g.status = "out";
       g.lastDir = "left";
       g._progress = 0;
+      // Re-pin next-tile to match the just-set current tile; the next
+      // tick's traversal-setup branch (below) will pick a real next.
+      g.nextX = g.x;
+      g.nextY = g.y;
     }
     return;
   }
 
-  // 3. Advance sub-tile progress at the mode-appropriate speed.
+  // 3. Traversal setup (issue #137 — render continuity at corners).
+  //    If the ghost is sitting on its current tile with no next picked
+  //    yet (progress === 0 and next == current), choose the next-tile
+  //    NOW, before any glide progress accumulates. Then the render can
+  //    lerp (x, y) → (nextX, nextY) by `_progress` cleanly across the
+  //    whole 0→1 window. The OLD design picked direction AT the commit
+  //    moment AND advanced (x, y) in the same tick — which made the
+  //    render extrapolate `x + lastDir * progress` across a direction
+  //    flip and teleport at corners.
+  //
+  //    This branch also handles the rare "next was a wall" case: if a
+  //    previous tick somehow left next == current (e.g. fully boxed in,
+  //    or the post-commit pick below hit the dead-end fallback), we
+  //    re-pick here.
+  if (g._progress === 0 && g.nextX === g.x && g.nextY === g.y) {
+    pickNext(g, state, blinky);
+  }
+
+  // 4. Advance sub-tile progress at the mode-appropriate speed.
   //    `speedMultiplier` lets the engine bump baseline ghost speed
   //    each time the level resets (see Engine.handleLevelWon). Frightened
   //    + eaten modes are intentionally unscaled — keeping those constant
@@ -394,9 +435,49 @@ export function tickGhost(
   if (g._progress < 1) return;
   g._progress -= 1;
 
-  // 4. At the tile boundary, choose a direction. Frightened ghosts pick
-  //    pseudo-randomly (per-tick, per-name) instead of toward a target.
-  //    Eaten ghosts beeline to the revive tile in the ghost house.
+  // 5. Commit the move — (x, y) snaps to (nextX, nextY). The render
+  //    continuity invariant: at the exact moment of commit, the old
+  //    lerp endpoint (the previous nextX, nextY) becomes the new lerp
+  //    start (the new x, y). No teleport, even when the upcoming pick
+  //    flips direction by 90°.
+  g.x = g.nextX;
+  g.y = g.nextY;
+
+  // 6. If an eaten ghost reaches the revive tile, revive: status flips
+  //    back to "out" and mode resolves to the current chase/scatter phase
+  //    on the next tick. (We do NOT send it back to "house" + dot gate —
+  //    those thresholds are for the initial release, not respawns.)
+  if (g.mode === "eaten" && g.x === REVIVE_TILE.x && g.y === REVIVE_TILE.y) {
+    const phase = Math.floor(state.tick / MODE_PERIOD_TICKS) % 2;
+    g.mode = phase === 0 ? "scatter" : "chase";
+    g.lastDir = "up";
+    g._progress = 0;
+    // Re-pin so the next tick's setup branch picks fresh after revive.
+    g.nextX = g.x;
+    g.nextY = g.y;
+    return;
+  }
+
+  // 7. Pick the next-tile for the upcoming traversal. We do this NOW,
+  //    on the commit tick, so the leftover `_progress` (~0.05) already
+  //    represents progress toward the freshly-picked next-tile — the
+  //    render's first frame after commit is a tiny lerp from the just-
+  //    arrived tile toward the new next, which connects perfectly to
+  //    the last frame before commit (which was nearly at the just-
+  //    arrived tile).
+  pickNext(g, state, blinky);
+}
+
+/** Pick the next-tile a ghost is heading toward, updating `lastDir` +
+ *  `nextX, nextY` in place. Pure decision over current `g.x, g.y, mode,
+ *  lastDir` and the game state. Does NOT touch `_progress` — the caller
+ *  decides whether this is start-of-traversal (progress untouched) or
+ *  mid-traversal (won't happen in normal flow). */
+function pickNext(
+  g: GhostInternal,
+  state: GameState,
+  blinky: { x: number; y: number } | null,
+): void {
   let dir: Dir;
   if (g.mode === "frightened") {
     dir = frightenedDir(g, state.tick);
@@ -409,28 +490,28 @@ export function tickGhost(
   const s = step(g.x, g.y, dir);
   const next = wrap(s.x, s.y);
   if (!isWalkableForGhost(next.x, next.y)) {
-    g._progress = 0;
+    // Fully boxed in — hold position. Leaves next == current so the
+    // setup branch re-picks next tick (when targets / mode may shift).
+    g.nextX = g.x;
+    g.nextY = g.y;
     return;
   }
-  g.x = next.x;
-  g.y = next.y;
+  g.nextX = next.x;
+  g.nextY = next.y;
   g.lastDir = dir;
-
-  // 5. If an eaten ghost reaches the revive tile, revive: status flips
-  //    back to "out" and mode resolves to the current chase/scatter phase
-  //    on the next tick. (We do NOT send it back to "house" + dot gate —
-  //    those thresholds are for the initial release, not respawns.)
-  if (g.mode === "eaten" && g.x === REVIVE_TILE.x && g.y === REVIVE_TILE.y) {
-    const phase = Math.floor(state.tick / MODE_PERIOD_TICKS) % 2;
-    g.mode = phase === 0 ? "scatter" : "chase";
-    g.lastDir = "up";
-    g._progress = 0;
-  }
 }
 
 /** Strip a GhostInternal down to the public contract shape. */
 export function publicGhostView(g: GhostInternal): GhostState {
-  return { name: g.name, x: g.x, y: g.y, mode: g.mode };
+  return {
+    name: g.name,
+    x: g.x,
+    y: g.y,
+    mode: g.mode,
+    nextX: g.nextX,
+    nextY: g.nextY,
+    _progress: g._progress,
+  };
 }
 
 /** Back-compat alias — older code paths still importing `spawnBlinky`. */
