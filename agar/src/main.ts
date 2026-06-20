@@ -10,15 +10,20 @@
 // In dev/preview the page is served from a different port than the Worker,
 // so we point explicitly at port 8787 when running on localhost.
 
-const canvas = document.getElementById("game");
-if (!(canvas instanceof HTMLCanvasElement)) {
+const canvasEl = document.getElementById("game");
+if (!(canvasEl instanceof HTMLCanvasElement)) {
   throw new Error("agar: #game canvas not found");
 }
+// Re-bind to a const of the narrowed type so every nested closure
+// (draw, event handlers, setInterval) sees `HTMLCanvasElement` without
+// relying on cross-closure narrowing inference.
+const canvas: HTMLCanvasElement = canvasEl;
 
-const ctx = canvas.getContext("2d");
-if (!ctx) {
+const ctxOrNull = canvas.getContext("2d");
+if (!ctxOrNull) {
   throw new Error("agar: 2d context unavailable");
 }
+const ctx: CanvasRenderingContext2D = ctxOrNull;
 
 interface PongMessage {
   type: "pong";
@@ -52,8 +57,7 @@ let lastSeq = 0;
 let lastRtt = 0;
 let connected = false;
 
-function draw() {
-  if (!ctx) return;
+function draw(): void {
   ctx.fillStyle = "#050505";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -95,7 +99,7 @@ probe.dataset.connected = "false";
 probe.textContent = "seq=0 rtt=0";
 document.body.appendChild(probe);
 
-function syncProbe() {
+function syncProbe(): void {
   probe.dataset.seq = String(lastSeq);
   probe.dataset.rtt = String(lastRtt);
   probe.dataset.connected = String(connected);
@@ -119,7 +123,7 @@ ws.addEventListener("close", () => {
   draw();
 });
 
-ws.addEventListener("message", (event: MessageEvent) => {
+ws.addEventListener("message", (event) => {
   let parsed: unknown;
   try {
     parsed = typeof event.data === "string" ? JSON.parse(event.data) : null;
