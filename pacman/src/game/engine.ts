@@ -156,6 +156,89 @@ export class Engine {
           }
         }
       },
+      // Issue #137 probe — read-only float sub-tile draw positions for
+      // Pac and ghosts, mirroring renderPac / renderGhosts math. The
+      // ghost-glide feel spec polls this to assert visual motion parity
+      // without inspecting render-internal canvas state. Mirrors EXACTLY
+      // the offset calc in renderPac/renderGhosts: `x + dx*progress` per
+      // axis, with `_progress` zeroed for in-house ghosts and dir==='none' Pac.
+      renderPositions: () => {
+        const pac = this.state.pac as typeof this.state.pac & {
+          _progress?: number;
+        };
+        const pacProgress = pac.dir === "none" ? 0 : pac._progress ?? 0;
+        let pdx = 0;
+        let pdy = 0;
+        switch (pac.dir) {
+          case "right":
+            pdx = 1;
+            break;
+          case "left":
+            pdx = -1;
+            break;
+          case "down":
+            pdy = 1;
+            break;
+          case "up":
+            pdy = -1;
+            break;
+        }
+        const ghosts = this.ghosts.map((g) => {
+          const progress = g.status !== "out" ? 0 : g._progress;
+          let dx = 0;
+          let dy = 0;
+          switch (g.lastDir) {
+            case "right":
+              dx = 1;
+              break;
+            case "left":
+              dx = -1;
+              break;
+            case "down":
+              dy = 1;
+              break;
+            case "up":
+              dy = -1;
+              break;
+          }
+          return {
+            name: g.name,
+            x: g.x + dx * progress,
+            y: g.y + dy * progress,
+            mode: g.mode,
+          };
+        });
+        return {
+          tick: this.state.tick,
+          pac: { x: pac.x + pdx * pacProgress, y: pac.y + pdy * pacProgress },
+          ghosts,
+        };
+      },
+      // Issue #145 probe — flip every released ghost to frightened mode
+      // without routing Pac through a power pellet. Spec-only; mirrors
+      // the engine's atePowerPellet branch by arming the frightened
+      // window. Does NOT touch the score / combo counter.
+      forceFrightened: (): void => {
+        this.frightenedTicksLeft = FRIGHTENED_TICKS;
+        this.frightenedEatStreak = 0;
+        for (const g of this.ghosts) {
+          if (g.status !== "out") continue;
+          if (g.mode === "scatter" || g.mode === "chase") {
+            g.mode = "frightened";
+            g._progress = 0;
+          }
+        }
+      },
+      // Issue #145 probe — warp the named ghost into eaten/eyes mode.
+      // Forces status='out' (in case it was still in the house) so the
+      // eyes-return motion is observable on the render channel.
+      setGhostEaten: (name: GhostName): void => {
+        const g = this.ghosts.find((gh) => gh.name === name);
+        if (!g) return;
+        g.status = "out";
+        g.mode = "eaten";
+        g._progress = 0;
+      },
     };
   }
 
@@ -749,6 +832,13 @@ declare global {
       scatterTarget: typeof scatterTarget;
       forceGhostOntoPac: (name: GhostName) => void;
       clearPellets: () => void;
+      renderPositions: () => {
+        tick: number;
+        pac: { x: number; y: number };
+        ghosts: Array<{ name: GhostName; x: number; y: number; mode: string }>;
+      };
+      forceFrightened: () => void;
+      setGhostEaten: (name: GhostName) => void;
     };
   }
 }
