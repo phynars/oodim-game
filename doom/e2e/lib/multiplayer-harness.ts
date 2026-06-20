@@ -230,12 +230,18 @@ export function withFloatTolerance(
     throw new Error("withFloatTolerance: epsilon must be >= 0");
   }
   const eq = (a: unknown, b: unknown): boolean => {
-    if (a === b) return true;
+    // NOTE: the number-vs-number branch runs BEFORE the generic `a === b`
+    // short-circuit on purpose. `Infinity === Infinity` is true in JS, but
+    // we want Infinity to fail equality here — if state goes to Infinity
+    // that's almost certainly a bug we want to surface (see the spec's
+    // "rejects Infinity vs Infinity" case). The finite-guard below catches
+    // both Infinity and -Infinity for either operand.
     if (typeof a === "number" && typeof b === "number") {
       if (Number.isNaN(a) && Number.isNaN(b)) return true;
       if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
       return Math.abs(a - b) <= epsilon;
     }
+    if (a === b) return true;
     if (a === null || b === null) return false;
     if (typeof a !== "object" || typeof b !== "object") return false;
     if (Array.isArray(a)) {
