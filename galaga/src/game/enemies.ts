@@ -594,11 +594,17 @@ export function createEnemyController(): EnemyController {
           // contract is unambiguous.
           if (ticksAlive < ENTRANCE_TICKS) {
             const t = ticksAlive / ENTRANCE_TICKS;
-            const eased = easeInOutCubic(t);
+            // Entrance: decelerating ease on the Bézier (`t` stays in [0,1] so
+            // we never extrapolate past P2 — see easeOutCubic doc), with a
+            // SEPARATE screen-space "thunk" added only on the final ~15% of
+            // the arc. Sum of thunk on entry + exit is zero at t=1, so the
+            // handoff to the straight descent below stays continuous.
+            const eased = easeOutCubic(t);
             const arc = entranceArc(e.arcSide, eased, home);
+            const thunk = entranceThunk(t);
             e.state = "entering";
             e.x = arc.x;
-            e.y = arc.y;
+            e.y = arc.y + thunk;
           } else {
             // Continue downward at a steady speed from the home slot. We
             // don't curve — set patterns in Challenging are simple flythroughs.
@@ -641,6 +647,8 @@ export function createEnemyController(): EnemyController {
             e.x = home.x + sway;
             e.y = home.y;
           } else {
+            // Dive keeps the symmetric ease — the dive is a CLOSED LOOP
+            // (P2 = P0) so overshoot here would read as jitter, not arrival.
             const eased = easeInOutCubic(diveT);
             const pos = diveCurve(
               eased,
@@ -661,12 +669,31 @@ export function createEnemyController(): EnemyController {
           e.y = home.y;
         } else {
           // Flying the entrance arc. `t` runs 0→1 over ENTRANCE_TICKS.
+          //
+          // Two layers:
+          //  1. `easeOutCubic(t)` on the Bézier `t` parameter — pure
+          //     decelerating ease in [0,1]. Accelerates fast, decelerates
+          //     hard, settles exactly at the home slot at t=1. NEVER
+          //     extrapolates past P2 (the bug `easeOutBack` had: feeding
+          //     t>1 into a quadratic Bézier shoots out along the P2 end-
+          //     tangent, which for our control-point geometry points
+          //     UP-and-sideways from home — a ~40px upward snap, not a
+          //     gentle thunk into slot).
+          //  2. `entranceThunk(t)` — a separate screen-space y offset,
+          //     zero for t<0.85, ramps to +2-3px DOWNWARD by t≈0.93, then
+          //     decays to exactly 0 at t=1. This is the arcade "settle"
+          //     micro-overshoot felt as a tiny vertical bump just as the
+          //     enemy reaches its slot, independent of the Bézier geometry.
+          //
+          // The dive curve below KEEPS easeInOutCubic — overshoot on a
+          // closed-loop dive (P2=P0) reads as jitter, not arrival.
           const t = ticksAlive / ENTRANCE_TICKS;
-          const eased = easeInOutCubic(t);
+          const eased = easeOutCubic(t);
           const arc = entranceArc(e.arcSide, eased, home);
+          const thunk = entranceThunk(t);
           e.state = "entering";
           e.x = arc.x;
-          e.y = arc.y;
+          e.y = arc.y + thunk;
         }
 
         out.push({ id: e.id, kind: e.kind, state: e.state, x: e.x, y: e.y, damaged: e.damaged });
@@ -738,7 +765,51 @@ function diveCurve(
   return { x, y };
 }
 
-/** Smoothstep-ish ease so the arc starts gentle, accelerates, then settles. */
+/** Symmetric ease — used by the DIVE curve (P2=P0 closed loop, where
+ *  overshoot would read as jitter, not arrival). */
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/** Pure decelerating ease, range [0,1] over t∈[0,1] — used by the ENTRANCE
+ *  arc. Standard Penner `easeOutCubic`: fast start, slow finish, settles
+ *  exactly at 1.0 at t=1 with zero derivative. Critically, the output
+ *  NEVER exceeds 1.0, so feeding it into the Bézier `t` parameter never
+ *  extrapolates past P2.
+ *
+ *  Why this matters (the bug we fixed in this PR): a previous revision
+ *  used `easeOutBack` here, which peaks at ~1.10 around t≈0.58. For a
+ *  quadratic Bézier B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2, evaluating at
+ *  t=1.10 doesn't gently overshoot P2 — it extrapolates along the curve's
+ *  end-tangent direction (P2 − P1), scaled by (t−1). For the entrance arc
+ *  geometry (P1 in the lower playfield, P2 in the top row) that tangent
+ *  points UP-and-sideways, producing a ~40px upward snap, not the felt
+ *  "thunk into slot" the design wanted. The fix: decelerate cleanly here,
+ *  and layer the overshoot SEPARATELY in screen-space (see `entranceThunk`). */
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/** Screen-space "thunk" added on top of the entrance arc's y position.
+ *  Zero for t < THUNK_START, ramps to a small DOWNWARD bump (positive y in
+ *  our top-left origin = toward the floor, i.e. PAST the home slot which
+ *  sits above the field center), then decays to exactly 0 at t=1 so the
+ *  enemy lands precisely at `home` and the handoff to formation/descent
+ *  is geometrically continuous.
+ *
+ *  Shape: a single-hump curve over the final 15% of the arc, applied via
+ *  `easeOutBack` re-scaled so its overshoot lobe IS the thunk. Peak
+ *  amplitude THUNK_PX (px). Independent of Bézier control points, so the
+ *  felt overshoot is the same magnitude regardless of which arc side or
+ *  which formation column the enemy is targeting. */
+function entranceThunk(t: number): number {
+  const THUNK_START = 0.85;
+  const THUNK_PX = 2.5;
+  if (t <= THUNK_START) return 0;
+  // Re-scale t∈[THUNK_START, 1] to k∈[0, 1].
+  const k = (t - THUNK_START) / (1 - THUNK_START);
+  // A single-hump shape that's 0 at k=0, peaks near k≈0.5, returns to 0
+  // at k=1. sin(πk) is the cleanest such curve; raise to a slight power
+  // to keep the peak narrower (more "thunk", less "wobble").
+  return THUNK_PX * Math.pow(Math.sin(Math.PI * k), 1.2);
 }
