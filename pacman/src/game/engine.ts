@@ -131,13 +131,23 @@ export class Engine {
       // collision branch is unambiguously the kill path. Resets the
       // ghost's sub-tile progress so it doesn't immediately glide off
       // Pac's tile before the collision check fires.
-      forceGhostOntoPac: (name: GhostName): void => {
+      forceGhostOntoPac: (
+        name: GhostName,
+        mode?: "frightened" | "chase",
+      ): void => {
         const g = this.ghosts.find((gh) => gh.name === name);
         if (!g) return;
         g.x = this.state.pac.x;
         g.y = this.state.pac.y;
         g.status = "out";
-        if (g.mode === "frightened" || g.mode === "eaten") {
+        // Default: force into 'chase' so the collision branch is the
+        // unambiguous kill path (legacy behavior).
+        // Opt-in: `mode: "frightened"` so the next update's collision
+        // resolves through the eat branch — required by the ghost-eat
+        // juice e2e in #150.
+        if (mode === "frightened") {
+          g.mode = "frightened";
+        } else if (g.mode === "frightened" || g.mode === "eaten") {
           g.mode = "chase";
         }
         g._progress = 0;
@@ -234,6 +244,20 @@ export class Engine {
         return;
       }
     }
+    // Issue #150 — hitstop gate. When a frightened ghost is eaten, the
+    // ghost-eat branch writes `hitstopTicks` (default 3); this gate
+    // freezes the WHOLE simulation for that many ticks (Pac + ghosts
+    // skip their tickers, collisions don't re-fire). Decay-and-skip is
+    // collapsed into one branch so we never double-decrement: if the
+    // counter is >0 we burn one tick here and return; otherwise normal
+    // update proceeds. Decay still runs OUTSIDE this gate via the
+    // feedback decay block below — but only AFTER hitstop has expired.
+    // The renderer keeps drawing every frame regardless (render() is
+    // called per-rAF, not per-update).
+    if (this.state.feedback.hitstopTicks > 0) {
+      this.state.feedback.hitstopTicks -= 1;
+      return;
+    }
     // Issue #138 — decay the feedback channel BEFORE tickPac runs.
     // Ordering rationale: the eat-event spec (#138 acceptance) requires
     // the snapshot at T+1 to show full-amplitude pop values (regular
@@ -329,9 +353,51 @@ export class Engine {
         // 1→200, 2→400, 3→800, 4→1600. Cap the exponent at 3 so a fifth
         // (impossible in practice — only 4 ghosts) wouldn't run away.
         const idx = Math.min(this.frightenedEatStreak - 1, 3);
-        this.state.score += 200 * (1 << idx);
+        const value = 200 * (1 << idx);
+        this.state.score += value;
         g.mode = "eaten";
         g._progress = 0;
+        // Issue #150 — frightened-ghost-eat juice. The single biggest
+        // payoff moment in Pac-Man: brief hitstop (the thump), big
+        // squash (louder than power-pellet's 0.25), escalating popup
+        // (the receipt), and a radial sparkle burst. NO screen flash —
+        // the flash belongs to the power-pellet activation, this is
+        // what that activation earned.
+        const fb = this.state.feedback;
+        // Hitstop: 3 frames (~50ms @ 60Hz). Math.max so a hypothetical
+        // double-eat-this-tick can't compound a freeze (galaga lesson
+        // from #133). Pac-Man can't actually double-eat in one tick
+        // (collisions iterate one ghost at a time + Pac moves once per
+        // tile), but the defensive shape stays consistent.
+        fb.hitstopTicks = Math.max(fb.hitstopTicks, 3);
+        // Squash: 0.30 — bigger than power-pellet (0.25). Direct
+        // assignment (matches pellet-pickup convention in pacman.ts).
+        fb.pacSquash = 0.30;
+        // Score popup at the eaten tile. Reuses the existing 24-tick
+        // popup lifetime (decayed by the feedback decay block above).
+        fb.popups.push({ x: g.x, y: g.y, value, ageTicks: 0 });
+        // Sparkle burst: 16 sparkles, radial at 0.5 tile/tick, 20-tick
+        // lifetime. Deterministic — angle table seeded by the eat
+        // streak so each ghost in a 4-combo gets a distinct rotation
+        // and the e2e can assert sparkles.length === 16 without flake.
+        // (Existing sparkle decay loop culls at age >= 24, which is
+        // already past our 20-tick visual budget — alpha curve in the
+        // renderer fades them out earlier.)
+        const SPARKLE_COUNT = 16;
+        const SPARKLE_SPEED = 0.5;
+        // Per-eat rotation offset so a 4-ghost combo doesn't stack
+        // identical bursts on the same angles.
+        const rot = (this.frightenedEatStreak - 1) * (Math.PI / 16);
+        for (let i = 0; i < SPARKLE_COUNT; i += 1) {
+          const theta = (i / SPARKLE_COUNT) * Math.PI * 2 + rot;
+          fb.sparkles.push({
+            x: g.x + 0.5,
+            y: g.y + 0.5,
+            vx: Math.cos(theta) * SPARKLE_SPEED,
+            vy: Math.sin(theta) * SPARKLE_SPEED,
+            ageTicks: 0,
+          });
+        }
       } else if (g.mode === "scatter" || g.mode === "chase") {
         // Fatal contact — handle once per tick even if multiple ghosts
         // sit on Pac's tile.
@@ -747,7 +813,10 @@ declare global {
       inkyTarget: typeof inkyTarget;
       clydeTarget: typeof clydeTarget;
       scatterTarget: typeof scatterTarget;
-      forceGhostOntoPac: (name: GhostName) => void;
+      forceGhostOntoPac: (
+        name: GhostName,
+        mode?: "frightened" | "chase",
+      ) => void;
       clearPellets: () => void;
     };
   }

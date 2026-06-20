@@ -21,7 +21,10 @@ interface PacInternals {
   inkyTarget: (pac: Tile & { dir: Dir }, blinky: Tile) => Tile;
   clydeTarget: (clyde: Tile, pac: Tile) => Tile;
   scatterTarget: (name: "blinky" | "pinky" | "inky" | "clyde") => Tile;
-  forceGhostOntoPac: (name: "blinky" | "pinky" | "inky" | "clyde") => void;
+  forceGhostOntoPac: (
+    name: "blinky" | "pinky" | "inky" | "clyde",
+    mode?: "frightened" | "chase",
+  ) => void;
 }
 
 declare global {
@@ -632,4 +635,113 @@ test("clearing all pellets sets status='won' and refills the pellet field", asyn
   // boot total (we don't expose it directly, but it must be > 0 and
   // match what we captured before clearing).
   expect(after.pellets).toBe(beforePelletTotal);
+});
+
+// Issue #150 — frightened-ghost-eat juice (hitstop + big squash +
+// escalating popup + radial sparkle burst).
+//
+// We force a frightened ghost onto Pac via the extended
+// `forceGhostOntoPac(name, "frightened")` hook, then on the very
+// next collision tick snapshot the feedback channel. The acceptance
+// gate:
+//   • feedback.hitstopTicks === 3        (3-frame freeze on the eat)
+//   • feedback.pacSquash === 0.30        (bigger than power-pellet's
+//                                         0.25 — eat is louder than
+//                                         activation)
+//   • feedback.popups contains one popup with value 200 at the eaten
+//     tile (first frightened eat in this window → +200)
+//   • feedback.sparkles.length === 16    (radial burst, fully
+//                                         deterministic — no flake)
+//   • feedback.flashAlpha === 0          (eat does NOT flash; the
+//                                         flash belongs to the
+//                                         activation, not the kill)
+//   • score climbed by exactly 200       (the receipt)
+//
+// FAILS on the pre-change code (no hitstopTicks field, no juice in
+// the ghost-eat branch). PASSES once engine + types ship the channel
+// writes.
+test("frightened-ghost eat writes hitstop + big squash + popup + 16 sparkles", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+  await page.waitForFunction(() => Boolean(window.__pacInternals));
+
+  // Unfreeze the sim (issue #8 — update() gated on first input).
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowUp");
+  await page.waitForFunction(() => window.__pac?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  const beforeScore = await page.evaluate(() => window.__pac!.score);
+
+  // Force Blinky onto Pac in frightened mode. The next update() tick
+  // resolves the collision through the eat branch, writes the juice,
+  // and (because hitstopTicks=3 lands on the same tick) immediately
+  // begins the 3-tick freeze. We snapshot atomically inside
+  // waitForFunction so we observe the channel BEFORE any decay can
+  // touch it.
+  await page.evaluate(() => {
+    window.__pacInternals!.forceGhostOntoPac("blinky", "frightened");
+  });
+
+  const handle = await page.waitForFunction(
+    (b) => {
+      const s = window.__pac;
+      if (!s || !s.feedback) return null;
+      if (s.score < b + 200) return null;
+      const fb = s.feedback;
+      // Wait for the eat to have landed all four channel writes.
+      if (fb.sparkles.length < 16) return null;
+      if (fb.popups.length < 1) return null;
+      return {
+        score: s.score,
+        hitstopTicks: fb.hitstopTicks,
+        pacSquash: fb.pacSquash,
+        flashAlpha: fb.flashAlpha,
+        sparkleCount: fb.sparkles.length,
+        popupCount: fb.popups.length,
+        popup0: fb.popups[0],
+      };
+    },
+    beforeScore,
+    { timeout: 5000 },
+  );
+  const snap = (await handle.jsonValue()) as {
+    score: number;
+    hitstopTicks: number;
+    pacSquash: number;
+    flashAlpha: number;
+    sparkleCount: number;
+    popupCount: number;
+    popup0: { x: number; y: number; value: number; ageTicks: number };
+  };
+
+  // Score: exactly +200 (first frightened eat in this window).
+  expect(snap.score - beforeScore).toBe(200);
+  // Hitstop: 3 frames written on the eat. The gate at the top of
+  // update() decrements ONCE per tick and returns early, so we may
+  // sample anywhere in {3, 2, 1} depending on how many ticks have
+  // elapsed between the eat and the rAF poll. The contract is "non-
+  // zero hitstop is observable on the eat" — that's what the gate
+  // proves. Bounds: 1..3 inclusive.
+  expect(snap.hitstopTicks).toBeGreaterThanOrEqual(1);
+  expect(snap.hitstopTicks).toBeLessThanOrEqual(3);
+  // Squash: 0.30 written; same-tick read sees full amplitude because
+  // decay runs BEFORE writes (#138 ordering). The hitstop gate also
+  // short-circuits the decay path on subsequent frozen ticks, so the
+  // value stays at 0.30 across the freeze. Floor at 0.28 for any
+  // sampling drift.
+  expect(snap.pacSquash).toBeGreaterThanOrEqual(0.28);
+  // No screen flash on the eat (the flash belongs to power-pellet
+  // activation, not to the kill it earned).
+  expect(snap.flashAlpha).toBe(0);
+  // Exactly 16 sparkles — the deterministic radial burst. This is the
+  // load-bearing flake-proof assertion: angles are seeded by the eat
+  // streak, count is fixed, no rAF jitter can change it.
+  expect(snap.sparkleCount).toBe(16);
+  // Popup: +200 receipt at the eaten tile.
+  expect(snap.popupCount).toBeGreaterThanOrEqual(1);
+  expect(snap.popup0.value).toBe(200);
 });
