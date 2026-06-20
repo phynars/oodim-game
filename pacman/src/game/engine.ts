@@ -5,7 +5,13 @@
 // animation frame, but update() runs zero or more times per frame to drain
 // the accumulator at a constant STEP_MS. This keeps `tick` deterministic
 // across machines — the Playwright harness counts on that.
-import { initialState, type GameState } from "./types";
+import {
+  DEATH_ANIM_TICKS,
+  DEATH_COLLAPSE_END,
+  DEATH_PRE_PAUSE,
+  initialState,
+  type GameState,
+} from "./types";
 import { COLS, ROWS, TILE, MAZE, tileAt } from "./maze";
 import { buildPelletMap, resetPacToSpawn, tickPac } from "./pacman";
 import { bindInput, type InputBinding } from "./input";
@@ -394,6 +400,35 @@ export class Engine {
       this.state.feedback.hitstopTicks -= 1;
       return;
     }
+    // Issue #171 — Pac death cinematic gate. While `deathTicks > 0` the
+    // whole sim is frozen (Pac + ghosts skip their tickers, collisions
+    // don't re-fire) — the renderer drives the spin-collapse off this
+    // counter. We advance the counter here so the renderer reads the
+    // post-increment value on the next frame; at DEATH_ANIM_TICKS the
+    // existing handlePacDeath() body finally runs (lives--, respawn,
+    // lost-check). Feedback decay is gated below so the red veil holds
+    // through the pre-pause and then fades through the collapse.
+    if (this.state.feedback.deathTicks > 0) {
+      this.state.feedback.deathTicks += 1;
+      // Skip flashAlpha decay during the pre-pause so the red veil holds
+      // visibly while Pac is frozen mid-stride; let other channels
+      // (sparkles, popups, pacSquash) fade normally so leftover juice
+      // from the prior tick doesn't freeze on screen for 1.2s.
+      const fb = this.state.feedback;
+      fb.pacSquash *= 0.78;
+      if (fb.pacSquash < 0.01) fb.pacSquash = 0;
+      if (fb.deathTicks > DEATH_PRE_PAUSE) {
+        fb.flashAlpha *= 0.82;
+        if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      }
+      if (this.state.feedback.deathTicks >= DEATH_ANIM_TICKS) {
+        this.state.feedback.deathTicks = 0;
+        this.state.feedback.flashTint = "cyan";
+        this.state.feedback.flashAlpha = 0;
+        this.handlePacDeath();
+      }
+      return;
+    }
     // Issue #138 — decay the feedback channel BEFORE tickPac runs.
     // Ordering rationale: the eat-event spec (#138 acceptance) requires
     // the snapshot at T+1 to show full-amplitude pop values (regular
@@ -543,7 +578,22 @@ export class Engine {
       // 'eaten' ghosts (eyes) pass through Pac harmlessly — no branch.
     }
     if (pacDied) {
-      this.handlePacDeath();
+      // Issue #171 — defer the lives--/respawn until AFTER the death
+      // cinematic plays. Sequence:
+      //   1. brief hitstop (4 ticks ~= 67ms) — the IMPACT freeze, so
+      //      the player FEELS the hit before the camera holds for the
+      //      cinematic.
+      //   2. when hitstop drains, the deathTicks gate above takes over
+      //      and ticks the 72-frame spin-collapse anim.
+      //   3. at deathTicks === DEATH_ANIM_TICKS the existing reset path
+      //      (handlePacDeath body) fires.
+      // Math.max so a hypothetical double-collision-this-tick can't
+      // compound and freeze the engine longer than intended.
+      const fb = this.state.feedback;
+      fb.hitstopTicks = Math.max(fb.hitstopTicks, 4);
+      fb.deathTicks = 1;
+      fb.flashAlpha = 0.35;
+      fb.flashTint = "red";
     }
     // Reuse the existing array (mutate length + indices) so consumers
     // holding a reference to state.ghosts still see updates.
@@ -669,10 +719,14 @@ export class Engine {
     }
 
     // 6. Issue #138 — power-pellet screen flash. Drawn LAST so it
-    //    veils Pac + ghosts + status overlays uniformly. Cyan-white;
-    //    alpha decays to 0 over ~14 ticks (engine update()).
+    //    veils Pac + ghosts + status overlays uniformly. Cyan-white
+    //    by default; alpha decays to 0 over ~14 ticks (engine update()).
+    //    Issue #171 — death uses the same channel but tints `'red'`
+    //    so the "impact" veil reads as a hit, not a power-up.
     if (state.feedback.flashAlpha > 0) {
-      ctx.fillStyle = `rgba(230, 248, 255, ${state.feedback.flashAlpha})`;
+      const rgb =
+        state.feedback.flashTint === "red" ? "255, 80, 80" : "230, 248, 255";
+      ctx.fillStyle = `rgba(${rgb}, ${state.feedback.flashAlpha})`;
       ctx.fillRect(0, 0, w, h);
     }
   }
@@ -848,6 +902,34 @@ export class Engine {
       mouth = Math.abs(Math.sin(phase * Math.PI)) * 0.35 * Math.PI; // 0..~63°
     }
 
+    // Issue #171 — spin-collapse death cinematic. While deathTicks is in
+    // the [PRE_PAUSE, COLLAPSE_END) window, override the wedge geometry:
+    // first the mouth opens from its current value out to a full π (the
+    // wedge has no remaining "slice" — Pac becomes a near-disc), then the
+    // radius shrinks toward 0. After COLLAPSE_END (post-pause) we don't
+    // draw Pac at all — the world holds black where he was.
+    const dt = state.feedback.deathTicks;
+    let drawR = r;
+    if (dt >= DEATH_PRE_PAUSE) {
+      if (dt >= DEATH_COLLAPSE_END) {
+        // Post-pause — leave the spot empty.
+        return;
+      }
+      // Collapse window. First half: mouth → π. Second half: radius → 0.
+      const COLLAPSE_LEN = DEATH_COLLAPSE_END - DEATH_PRE_PAUSE; // 48
+      const HALF = COLLAPSE_LEN / 2; // 24
+      const phase = dt - DEATH_PRE_PAUSE;
+      if (phase < HALF) {
+        const k = phase / HALF; // 0..1
+        mouth = mouth + (Math.PI - mouth) * k;
+      } else {
+        mouth = Math.PI;
+        const k = (phase - HALF) / HALF; // 0..1
+        drawR = r * (1 - k);
+      }
+      if (drawR <= 0) return;
+    }
+
     ctx.fillStyle = "#ffd76a";
     ctx.save();
     ctx.translate(cx, cy);
@@ -855,9 +937,15 @@ export class Engine {
     ctx.beginPath();
     // Wedge: arc from +mouth around to 2π-mouth, then line back to center
     // so the missing slice points along +x (the travel direction after
-    // rotation).
-    ctx.arc(0, 0, r, mouth, Math.PI * 2 - mouth);
-    ctx.lineTo(0, 0);
+    // rotation). When mouth === π the start and end angles meet, leaving
+    // no remaining wedge — the canvas arc collapses to a degenerate path,
+    // so we draw a full disc instead.
+    if (mouth >= Math.PI) {
+      ctx.arc(0, 0, drawR, 0, Math.PI * 2);
+    } else {
+      ctx.arc(0, 0, drawR, mouth, Math.PI * 2 - mouth);
+      ctx.lineTo(0, 0);
+    }
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -880,7 +968,14 @@ export class Engine {
    *  tile commits. In-house ghosts (`status !== "out"`) stay snapped to
    *  their spawn tile — they don't carry meaningful glide. */
   private renderGhosts(): void {
-    const { ctx, canvas } = this;
+    const { ctx, canvas, state } = this;
+    // Issue #171 — arcade-true: once the death anim's pre-pause ends, the
+    // ghosts disappear and only Pac stays on screen for the collapse. Up
+    // to and including the pre-pause they're still drawn (frozen in place
+    // — the sim is gated above), so the player reads the "oh no" beat.
+    if (state.feedback.deathTicks >= DEATH_PRE_PAUSE) {
+      return;
+    }
     const mazeW = COLS * TILE;
     const mazeH = ROWS * TILE;
     const ox = Math.floor((canvas.width - mazeW) / 2);

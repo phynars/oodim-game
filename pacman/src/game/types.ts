@@ -61,7 +61,32 @@ export interface FeedbackChannel {
    *  accumulate hitstop and freeze the engine. Decays by 1/tick in
    *  the gate at the top of update(). */
   hitstopTicks: number;
+  /** Issue #171 — Pac death-animation phase. Counts UP from 0 while
+   *  the spin-collapse cinematic plays. Set to 1 on fatal collision
+   *  (after a brief hitstop "impact"); engine gates the whole sim
+   *  while >0; renderer reads it to drive the wedge-opens-then-shrinks
+   *  curve. When it reaches DEATH_ANIM_TICKS the existing reset path
+   *  (lives--, respawn, lost-check) finally fires. */
+  deathTicks: number;
+  /** Issue #171 — colour override for the screen-flash veil. `'cyan'`
+   *  (default) keeps the power-pellet activation veil unchanged; `'red'`
+   *  tints the brief "impact" flash that lands on a fatal ghost touch.
+   *  Reset to `'cyan'` at the end of the death-anim window. */
+  flashTint: "cyan" | "red";
 }
+
+/** Issue #171 — total ticks of the Pac death cinematic. 72 ticks ≈ 1200ms
+ *  at the engine's 60Hz step. Broken into pre-pause (0..11) / collapse
+ *  (12..59) / post-pause (60..71). Exported so the renderer + tests can
+ *  read the same constants the engine writes. */
+export const DEATH_ANIM_TICKS = 72;
+/** End-exclusive: ticks [0, DEATH_PRE_PAUSE) hold the last frame — Pac
+ *  and ghosts frozen — for the "oh no" beat before the collapse starts. */
+export const DEATH_PRE_PAUSE = 12;
+/** End-exclusive: ticks [DEATH_PRE_PAUSE, DEATH_COLLAPSE_END) drive the
+ *  mouth-open-then-shrink animation. After this, the post-pause holds a
+ *  blank frame until DEATH_ANIM_TICKS triggers the reset. */
+export const DEATH_COLLAPSE_END = 60;
 
 export interface GameState {
   /** High-level lifecycle. Boots to 'ready'. */
@@ -120,6 +145,8 @@ export function initialState(): GameState {
       flashAlpha: 0,
       sparkles: [],
       hitstopTicks: 0,
+      deathTicks: 0,
+      flashTint: "cyan",
     },
   };
 }
