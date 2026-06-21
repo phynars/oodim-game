@@ -118,17 +118,35 @@
         border-radius: 12px;
         text-decoration: none;
         color: inherit;
+        /* Resting hairline shadow — gives the lift somewhere to lift FROM. */
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+        transform: translateY(0) scale(1);
         transition:
-          background-color 120ms ease,
-          border-color 120ms ease,
-          transform 120ms ease;
+          background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          box-shadow 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
       }
       .card:hover,
       .card:focus-visible {
         background: var(--surface-hover);
         border-color: var(--accent);
-        transform: translateY(-2px);
+        /* Gentle settle UP — eased ease-out so it floats into place. */
+        transform: translateY(-3px) scale(1);
+        box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.5);
         outline: none;
+      }
+      .card:active {
+        /* Press-down "thunk" — snappier ease-in so the compression lands
+           before the release. Stays slightly above rest so a press from
+           hover reads as a downward bite, not a return to baseline. */
+        transform: translateY(-1px) scale(0.985);
+        box-shadow: 0 3px 8px -4px rgba(0, 0, 0, 0.55);
+        transition:
+          background-color 80ms cubic-bezier(0.3, 0, 0.8, 0.4),
+          border-color 80ms cubic-bezier(0.3, 0, 0.8, 0.4),
+          transform 80ms cubic-bezier(0.3, 0, 0.8, 0.4),
+          box-shadow 80ms cubic-bezier(0.3, 0, 0.8, 0.4);
       }
       .card--wip:hover,
       .card--wip:focus-visible {
@@ -137,6 +155,21 @@
       .card--doom:hover,
       .card--doom:focus-visible {
         border-color: var(--accent-doom);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        /* Strip every transform + shadow so motion-sensitive users get the
+           color crossfade only. Border/background still animate (color is
+           safe under WCAG 2.3.3). */
+        .card,
+        .card:hover,
+        .card:focus-visible,
+        .card:active {
+          transform: none;
+          box-shadow: none;
+          transition:
+            background-color 120ms ease,
+            border-color 120ms ease;
+        }
       }
       .card__status {
         display: inline-block;
