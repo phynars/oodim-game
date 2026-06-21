@@ -6,9 +6,14 @@
 // the accumulator at a constant STEP_MS. This keeps `tick` deterministic
 // across machines — the Playwright harness counts on that.
 import {
+  CLEAR_ANIM_TICKS,
+  CLEAR_FLASH_END,
+  CLEAR_PRE_PAUSE,
+  CLEAR_TALLY_END,
   DEATH_ANIM_TICKS,
   DEATH_COLLAPSE_END,
   DEATH_PRE_PAUSE,
+  LEVEL_CLEAR_BONUS,
   initialState,
   type GameState,
 } from "./types";
@@ -45,6 +50,8 @@ const PLAYFIELD_BORDER = 2;
 // LAYOUT (what's at each tile); the engine owns the LOOK (how it's drawn).
 /** Arcade-blue wall stroke. */
 const WALL_COLOR = "#2121de";
+/** Issue #183 — alternate wall stroke during the level-clear maze flash. */
+const WALL_FLASH_COLOR = "#ffffff";
 const WALL_LINE_WIDTH = 1;
 /** Soft cream for the pellet dots. */
 const PELLET_COLOR = "#ffb8ae";
@@ -178,7 +185,8 @@ export class Engine {
       // dot path is too slow + race-prone to drive from an e2e (the ghost
       // AI would kill Pac mid-clear on slow CI). Instead we drop pellets
       // to 0 and clear the pellet map; the next update() observes the
-      // win condition and flips status to 'won' via handleLevelWon.
+      // win condition and starts the level-clear cinematic (#183), which
+      // eventually invokes handleLevelWon and flips status to 'won'.
       clearPellets: (): void => {
         this.state.pellets = 0;
         for (let r = 0; r < this.state.pelletMap.length; r += 1) {
@@ -429,6 +437,74 @@ export class Engine {
       }
       return;
     }
+    // Issue #183 — Pac level-clear cinematic gate. Mirrors the deathTicks
+    // shape above: while `clearTicks > 0` the whole sim is frozen (Pac +
+    // ghosts skip their tickers, collisions don't re-fire) — the renderer
+    // drives the maze-flash + bonus-tally off this counter. We advance
+    // the counter here so the renderer reads the post-increment value on
+    // the next frame; at CLEAR_FLASH_END we atomically add the bonus to
+    // state.score (single write — the displayed tally is purely cosmetic);
+    // at CLEAR_ANIM_TICKS the existing level-up reset path (handleLevelWon
+    // body) finally fires.
+    if (this.state.feedback.clearTicks > 0) {
+      const fb = this.state.feedback;
+      fb.clearTicks += 1;
+      // Fade the white opening veil through the pre-pause so the
+      // cycle-flash takes over the visual job at tick CLEAR_PRE_PAUSE.
+      // Other feedback channels (sparkles, popups, pacSquash) decay
+      // normally so leftover juice from the tick-of-the-final-pellet
+      // doesn't freeze on screen for 1.4s.
+      fb.pacSquash *= 0.78;
+      if (fb.pacSquash < 0.01) fb.pacSquash = 0;
+      fb.flashAlpha *= 0.82;
+      if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Advance + cull sparkles & popups so any leftover overlays from
+      // the tick-of-the-final-pellet don't freeze on screen for 1.4s.
+      const nextSparkles: typeof fb.sparkles = [];
+      for (const s of fb.sparkles) {
+        const age = s.ageTicks + 1;
+        if (age >= 24) continue;
+        nextSparkles.push({
+          x: s.x + s.vx,
+          y: s.y + s.vy,
+          vx: s.vx,
+          vy: s.vy,
+          ageTicks: age,
+        });
+      }
+      fb.sparkles = nextSparkles;
+      const nextPopups: typeof fb.popups = [];
+      for (const p of fb.popups) {
+        const age = p.ageTicks + 1;
+        if (age >= 24) continue;
+        nextPopups.push({ x: p.x, y: p.y, value: p.value, ageTicks: age });
+      }
+      fb.popups = nextPopups;
+      // Atomic score bump at the boundary into the tally window. The
+      // displayed count-up below is purely cosmetic — the authoritative
+      // score change lands here in one write.
+      if (fb.clearTicks === CLEAR_FLASH_END) {
+        this.state.score += LEVEL_CLEAR_BONUS;
+      }
+      // Tally count-up over [CLEAR_FLASH_END, CLEAR_TALLY_END). Linear
+      // lerp from 0 toward LEVEL_CLEAR_BONUS, rounded to the nearest 10
+      // so the rolling readout doesn't display single-pixel-flicker
+      // values like "+317".
+      if (fb.clearTicks >= CLEAR_FLASH_END && fb.clearTicks < CLEAR_TALLY_END) {
+        const span = CLEAR_TALLY_END - CLEAR_FLASH_END; // 24
+        const k = (fb.clearTicks - CLEAR_FLASH_END + 1) / span;
+        const raw = LEVEL_CLEAR_BONUS * Math.min(1, k);
+        fb.clearTallyShown = Math.round(raw / 10) * 10;
+      }
+      if (fb.clearTicks >= CLEAR_ANIM_TICKS) {
+        fb.clearTicks = 0;
+        fb.clearTallyShown = 0;
+        fb.flashTint = "cyan";
+        fb.flashAlpha = 0;
+        this.handleLevelWon();
+      }
+      return;
+    }
     // Issue #138 — decay the feedback channel BEFORE tickPac runs.
     // Ordering rationale: the eat-event spec (#138 acceptance) requires
     // the snapshot at T+1 to show full-amplitude pop values (regular
@@ -483,11 +559,20 @@ export class Engine {
       }
     }
     // Win check: if the last pellet has been eaten (or zeroed by the
-    // clearPellets test hook), flip to 'won' and reset for the next
-    // level. Return early so ghosts don't tick onto the freshly reset
-    // Pac (which would immediately drop a life).
+    // clearPellets test hook), kick off the level-clear cinematic
+    // (issue #183). The actual maze refill + level bump are DEFERRED
+    // to handleLevelWon, which fires from the clearTicks gate above
+    // at tick CLEAR_ANIM_TICKS. Return early so ghosts don't tick
+    // onto a half-cleared board.
     if (this.state.pellets <= 0) {
-      this.handleLevelWon();
+      const fb = this.state.feedback;
+      fb.clearTicks = 1;
+      fb.clearTallyShown = 0;
+      fb.flashTint = "white";
+      // White opening veil at 0.45 alpha — the 0.82/tick decay in the
+      // clearTicks gate brings it to ~0.05 by tick CLEAR_PRE_PAUSE,
+      // letting the cycle-flash take over the visual job.
+      fb.flashAlpha = 0.45;
       return;
     }
     // Ghosts: Inky needs Blinky's position as a pivot, so snapshot it
@@ -607,7 +692,12 @@ export class Engine {
    *  board for the next level, bump baseline ghost speed (slightly), and
    *  re-spawn Pac + ghosts to their starting tiles. Frightened state is
    *  cleared so a win mid-power-pellet doesn't carry residual blue
-   *  ghosts into the next level. */
+   *  ghosts into the next level.
+   *
+   *  Issue #183 — this body is now invoked DEFERRED, from the clearTicks
+   *  gate at tick CLEAR_ANIM_TICKS, rather than synchronously on the
+   *  final-pellet tick. The cinematic owns the held beat; this owns the
+   *  reset that follows. */
   private handleLevelWon(): void {
     this.state.status = "won";
     // Bump the level counter and republish the mirror so the HUD picks
@@ -694,6 +784,24 @@ export class Engine {
     //     popups in the maze coordinate frame, on top of Pac + ghosts.
     this.renderFeedbackOverlays();
 
+    // 4d. Issue #183 — level-clear bonus tally HUD. Drawn when the
+    //     clearTicks gate is in [CLEAR_FLASH_END, CLEAR_ANIM_TICKS).
+    //     Centered text on top of the empty maze — the "+1000 BONUS"
+    //     receipt for the cleared board.
+    if (state.feedback.clearTicks >= CLEAR_FLASH_END) {
+      ctx.save();
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        `BONUS  +${state.feedback.clearTallyShown}`,
+        w / 2,
+        h / 2,
+      );
+      ctx.restore();
+    }
+
     // 5. Status overlays:
     //    - 'ready' → READY! boot label, held until the loop starts.
     //    - 'won'   → "AGAIN, FASTER" — the maze refills, ghosts speed up ~10%.
@@ -723,9 +831,12 @@ export class Engine {
     //    by default; alpha decays to 0 over ~14 ticks (engine update()).
     //    Issue #171 — death uses the same channel but tints `'red'`
     //    so the "impact" veil reads as a hit, not a power-up.
+    //    Issue #183 — level-clear uses `'white'` for the opening veil.
     if (state.feedback.flashAlpha > 0) {
-      const rgb =
-        state.feedback.flashTint === "red" ? "255, 80, 80" : "230, 248, 255";
+      let rgb: string;
+      if (state.feedback.flashTint === "red") rgb = "255, 80, 80";
+      else if (state.feedback.flashTint === "white") rgb = "255, 255, 255";
+      else rgb = "230, 248, 255";
       ctx.fillStyle = `rgba(${rgb}, ${state.feedback.flashAlpha})`;
       ctx.fillRect(0, 0, w, h);
     }
@@ -779,9 +890,15 @@ export class Engine {
 
   /** Walls + pellets. Static for now — pellets will be eaten in a later slice
    *  by clearing tiles in a mutable pellet map, but the rendering loop won't
-   *  change shape. */
+   *  change shape.
+   *
+   *  Issue #183 — during the level-clear cinematic's flash window the wall
+   *  stroke alternates between WALL_COLOR (blue) and WALL_FLASH_COLOR
+   *  (white) on a 12-tick cycle. The maze layout / pellet draw is
+   *  unchanged; only the stroke colour swaps. Pellets are all gone in
+   *  this window so the pellet draw is a no-op anyway. */
   private renderMaze(): void {
-    const { ctx, canvas } = this;
+    const { ctx, canvas, state } = this;
     // Center the maze inside the canvas.
     const mazeW = COLS * TILE;
     const mazeH = ROWS * TILE;
@@ -791,7 +908,19 @@ export class Engine {
     // Walls: stroke a small rectangle inset inside each wall tile. It's a
     // serviceable readable approximation; arcade-true wall geometry (rounded
     // corner segments) is a future polish pass.
-    ctx.strokeStyle = WALL_COLOR;
+    //
+    // Issue #183 — level-clear flash override. While `clearTicks` is in
+    // [CLEAR_PRE_PAUSE, CLEAR_FLASH_END), pick the stroke colour off a
+    // 12-tick cycle: first half blue, second half white. 4 cycles total
+    // over 48 ticks = ~800ms at 60Hz.
+    const ct = state.feedback.clearTicks;
+    let wallStroke = WALL_COLOR;
+    if (ct >= CLEAR_PRE_PAUSE && ct < CLEAR_FLASH_END) {
+      const phase = ct - CLEAR_PRE_PAUSE; // 0..47
+      // Each 12-tick cycle: ticks 0-5 blue, 6-11 white.
+      wallStroke = phase % 12 >= 6 ? WALL_FLASH_COLOR : WALL_COLOR;
+    }
+    ctx.strokeStyle = wallStroke;
     ctx.lineWidth = WALL_LINE_WIDTH;
     ctx.fillStyle = PELLET_COLOR;
     for (let r = 0; r < ROWS; r += 1) {
@@ -849,6 +978,12 @@ export class Engine {
    *      air at a wall. */
   private renderPac(): void {
     const { ctx, canvas, state } = this;
+    // Issue #183 — during the level-clear flash + tally windows, skip
+    // drawing Pac entirely (arcade-true: the empty maze IS the
+    // celebration). Pre-pause still draws him frozen mid-stride.
+    if (state.feedback.clearTicks >= CLEAR_PRE_PAUSE) {
+      return;
+    }
     const mazeW = COLS * TILE;
     const mazeH = ROWS * TILE;
     const ox = Math.floor((canvas.width - mazeW) / 2);
@@ -974,6 +1109,13 @@ export class Engine {
     // to and including the pre-pause they're still drawn (frozen in place
     // — the sim is gated above), so the player reads the "oh no" beat.
     if (state.feedback.deathTicks >= DEATH_PRE_PAUSE) {
+      return;
+    }
+    // Issue #183 — same skip pattern for the level-clear cinematic. Up
+    // to and including the pre-pause the ghosts are still drawn (frozen
+    // in place); from the maze-flash onward they vanish so the pulsing
+    // empty maze owns the celebration.
+    if (state.feedback.clearTicks >= CLEAR_PRE_PAUSE) {
       return;
     }
     const mazeW = COLS * TILE;
