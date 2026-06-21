@@ -47,15 +47,23 @@ export function bindInput(
   target: Window = window,
   touchTarget?: HTMLElement | null,
   dpad?: HTMLElement | null,
+  onQueued?: (dir: Direction) => void,
 ): InputBinding {
   // Single shared path: every input source funnels through here.
   // Keeps the "first input kicks motion" behavior consistent across
   // keyboard, swipe, and d-pad.
+  //
+  // Issue #210 — fire `onQueued(dir)` AFTER the queue write so the
+  // engine can stamp `lastQueuedTick` for the dir-commit-latency probe.
+  // Fired on EVERY input event (not just none→dir transitions): a
+  // perpendicular press on a moving Pac is exactly the latency case
+  // the probe measures.
   const applyDir = (dir: Direction): void => {
     state.pac.queued = dir;
     if (state.pac.dir === "none") {
       state.pac.dir = dir;
     }
+    if (onQueued) onQueued(dir);
   };
 
   const onKeyDown = (ev: KeyboardEvent): void => {

@@ -110,17 +110,28 @@ function wrap(x: number, y: number): { x: number; y: number } {
 }
 
 /** Result of one Pac tick — surfaces events the engine needs to react to.
- *  Right now: did Pac eat a POWER pellet this tick? (Regular pellets are
- *  fully self-contained inside tickPac — score + pellet count update in
- *  place.) The engine watches `atePowerPellet` to arm frightened mode. */
+ *  - `atePowerPellet`: arm frightened mode (regular pellets are
+ *    fully self-contained inside tickPac).
+ *  - `committedQueued` (issue #210): step-1 honored a pending `pac.queued`
+ *    and flipped `pac.dir`. The engine uses this signal to stamp
+ *    `lastCommitTick` on the input-to-direction-commit probe without
+ *    re-deriving the transition from the public state. */
 export interface PacTickResult {
   atePowerPellet: boolean;
+  committedQueued: boolean;
 }
 
 /** One tick of Pac motion. Mutates `state.pac`, `state.pelletMap`,
  *  `state.pellets`, `state.score`. The engine calls this from `update()`. */
 export function tickPac(state: GameState): PacTickResult {
   const pac = state.pac;
+
+  // Default result; flipped below if a power pellet is eaten this tick,
+  // or if step-1 honored a pending queued direction.
+  const result: PacTickResult = {
+    atePowerPellet: false,
+    committedQueued: false,
+  };
 
   // 1. Try to honor the queued direction at the current tile. If the
   //    neighbor in that direction is walkable, commit the turn — the
@@ -131,11 +142,11 @@ export function tickPac(state: GameState): PacTickResult {
     if (isWalkable(wrapped.x, wrapped.y)) {
       pac.dir = pac.queued;
       pac.queued = "none";
+      // Issue #210 — surface the commit event so the engine can stamp
+      // `lastCommitTick` for the dir-commit-latency probe.
+      result.committedQueued = true;
     }
   }
-
-  // Default result; flipped below if a power pellet is eaten this tick.
-  const result: PacTickResult = { atePowerPellet: false };
 
   // 2. If we have an active direction, attempt the move. Tile-aligned
   //    only — we step exactly one tile per (1 / SPEED_PER_TICK) ticks

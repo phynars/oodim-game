@@ -102,6 +102,19 @@ export class Engine {
    *  the HUD slice); mirrored onto state via a runtime property so the
    *  HUD in main.ts can read it through `window.__pac`. */
   private level = 1;
+  /** Issue #210 — dir-commit-latency probe stamps.
+   *  `lastQueuedTick` is set inside the input `onQueued` callback to
+   *  `state.tick + 1` (the tick the NEXT update will see — keydown
+   *  always lands between update() calls, never inside one). That
+   *  framing makes `deltaTicks === 0` mean "committed on the very next
+   *  tick after the press", which is the boundary-aligned merge target.
+   *  `lastCommitTick` is set inside update() to `state.tick` whenever
+   *  `tickPac` returns `committedQueued: true` — `state.tick` was
+   *  already incremented at the top of update(), so it matches the
+   *  framing above. Both default to -1 (no measurement yet); the probe
+   *  surfaces -1/null until the first input + first commit have fired. */
+  private lastQueuedTick = -1;
+  private lastCommitTick = -1;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -316,6 +329,26 @@ export class Engine {
           g.lastDir = dx >= 0 ? "right" : "left";
         }
       },
+      // Issue #210 — input-to-direction-commit latency probe. Reports
+      // the most recent queued/commit stamps and their per-tick delta.
+      // Mirrors the shape of Galaga's `fireProbe()` (#168). Null/undefined-
+      // safe until the first commit: `deltaTicks` is `null` when either
+      // stamp is unset OR when the most recent queue post-dates the most
+      // recent commit (i.e. a press is in flight and hasn't been honored
+      // yet — the engine has nothing to report).
+      dirCommitProbe: () => {
+        const lq = this.lastQueuedTick;
+        const lc = this.lastCommitTick;
+        // No measurement: either no input ever, or no commit ever, or
+        // the most recent press is still pending (delta would be
+        // negative — an unfinished latency, not a recorded one).
+        const hasMeasurement = lq >= 0 && lc >= lq;
+        return {
+          lastQueuedTick: lq,
+          lastCommitTick: lc,
+          deltaTicks: hasMeasurement ? lc - lq : null,
+        };
+      },
     };
   }
 
@@ -337,6 +370,16 @@ export class Engine {
         window,
         this.canvas,
         dpad instanceof HTMLElement ? dpad : null,
+        // Issue #210 — stamp `lastQueuedTick` as the tick the NEXT
+        // update() will run on. Keydown is async wrt update() — it
+        // always lands between updates, never inside one — so the
+        // current `state.tick` is the LAST completed tick, and the
+        // next tickPac that can observe this queue runs on tick+1.
+        // This framing makes "boundary-aligned commit on the very
+        // next tick" register as deltaTicks === 0, the merge target.
+        () => {
+          this.lastQueuedTick = this.state.tick + 1;
+        },
       );
     }
     this.lastFrameMs = performance.now();
@@ -547,6 +590,15 @@ export class Engine {
     // Pac-Man movement + pellet eating. The result surfaces whether a
     // power pellet was eaten this tick; if so we (re)arm frightened mode.
     const pacResult = tickPac(this.state);
+    // Issue #210 — record the commit tick when tickPac honored a queued
+    // press at step 1. `state.tick` was incremented at the top of
+    // update(), so this matches the framing of `lastQueuedTick`
+    // (`state.tick + 1` at input time): a press that lands between
+    // tick T and the next update reads `lastQueuedTick = T + 1`, and
+    // if the next update commits, `lastCommitTick = T + 1` → delta=0.
+    if (pacResult.committedQueued) {
+      this.lastCommitTick = this.state.tick;
+    }
     if (pacResult.atePowerPellet) {
       this.frightenedTicksLeft = FRIGHTENED_TICKS;
       this.frightenedEatStreak = 0;
@@ -1204,6 +1256,11 @@ declare global {
       };
       forceFrightened: () => void;
       setGhostEaten: (name: GhostName) => void;
+      dirCommitProbe: () => {
+        lastQueuedTick: number;
+        lastCommitTick: number;
+        deltaTicks: number | null;
+      };
     };
   }
 }

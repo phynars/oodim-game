@@ -90,6 +90,28 @@ export interface FeedbackChannel {
   clearTallyShown: number;
 }
 
+/** Issue #210 — input-to-direction-commit latency probe shape. Returned
+ *  from `window.__pacInternals.dirCommitProbe()`. The probe reports the
+ *  per-tick gap between the most recent input event (`pac.queued`
+ *  written) and the most recent tick on which `tickPac` honored a
+ *  queued press and flipped `pac.dir`.
+ *
+ *  - `lastQueuedTick`: the tick on which the next `update()` would see
+ *    the queued direction (i.e. `state.tick + 1` at the moment of the
+ *    input event). -1 means no input has fired yet.
+ *  - `lastCommitTick`: the tick on which `tickPac` last committed a
+ *    queued direction. -1 until the first commit.
+ *  - `deltaTicks`: `lastCommitTick - lastQueuedTick` when both stamps
+ *    are present; `null` when either stamp is unset. Negative reads
+ *    (a press that arrived AFTER the most recent commit but before any
+ *    new commit can fire) are also reported as `null` — the spec uses
+ *    `null` as the "no measurement yet" signal and filters accordingly. */
+export interface DirCommitProbe {
+  lastQueuedTick: number;
+  lastCommitTick: number;
+  deltaTicks: number | null;
+}
+
 /** Issue #171 — total ticks of the Pac death cinematic. 72 ticks ≈ 1200ms
  *  at the engine's 60Hz step. Broken into pre-pause (0..11) / collapse
  *  (12..59) / post-pause (60..71). Exported so the renderer + tests can
