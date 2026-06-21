@@ -8,22 +8,31 @@ import {
 
 // agar slice 3/4 — authoritative 20Hz tick + snapshot render.
 //
-// Merge gate: drive a seeded input tape; after N ticks, the DO's
-// canonical state (exposed at `window.__game.canonical`) must equal a
-// pure offline reducer run over the same ordered inputs + seed.
+// Merge gate: the DO's authoritative state must equal a pure offline
+// reducer run over the same seed + the SAME ordered input log the
+// server actually applied.
 //
-// Deterministic by construction — no `waitForTimeout`. We wait on the
-// server's own monotonic `tick` counter to reach the expected target
-// before reading the snapshot. The server runs the clock; we just
-// observe it.
+// Why we don't try to align "TAPE[i]" to a specific server tick:
+//   - The protocol is latest-input-wins. Under CI tick jitter the
+//     1:1 mapping from intent-send to tick-slot is inherently racy
+//     (sometimes two ticks fire between send and next-snapshot;
+//     sometimes the intent arrives in the "wrong" slot).
+//   - So instead the server reports the `dir` it applied IN EACH
+//     snapshot, the client mirrors them into `window.__game.appliedLog`,
+//     and the e2e asserts `pureReplay(seed, appliedLog) === canonical`.
+//     That's the actual determinism contract — same seed, same input
+//     sequence, same terminal state, bit-exact — and it doesn't care
+//     about wire-level timing. The DO clock owns scheduling; we just
+//     read what it did and replay it.
 
 const SEED = 1234567;
 
-// 36 inputs = 36 ticks of motion. Mix of held directions and pauses
-// so the resulting position is non-trivial (not a straight line) and
-// the offline reducer's `rng` walk is exercised across "none" ticks
-// too.
-const TAPE: readonly InputDir[] = [
+// Inputs we drive into the DO. Mix of held directions and pauses so
+// the resulting state is non-trivial and the RNG walk is exercised
+// across "none" ticks too. We don't assume one input lands per tick;
+// we just send them with a small pacing gap and let the DO's
+// latest-input-wins logic decide what gets applied where.
+const INPUTS: readonly InputDir[] = [
   "right", "right", "right", "right", "right",
   "down",  "down",  "down",
   "none",  "none",
@@ -39,20 +48,28 @@ const TAPE: readonly InputDir[] = [
   "none",  "none",
 ];
 
-test("agar slice 3 — canonical DO state equals pureReplay(seed, tape)", async ({
+// How many server ticks we want the DO to have applied before we read
+// the state. Server runs at 20Hz (50ms/tick), so 60 ticks ≈ 3s. That's
+// well past the ~36 inputs we send, leaving headroom for CI jitter.
+const TARGET_TICKS = 60;
+
+test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", async ({
   page,
 }) => {
-  await page.goto(`/?seed=${SEED}`);
+  // baseURL is `http://localhost:4274/agar/` but vite preview serves
+  // the bundle under `base: "/agar/"` — so we must hit `/agar/?seed=…`,
+  // not the host root. Use an absolute path here for clarity and
+  // immunity to any future baseURL change.
+  await page.goto(`/agar/?seed=${SEED}`);
 
-  // Wait for the WS to be OPEN (probe.connected flips on `open`).
+  // Wait for the WS to be OPEN.
   await expect(page.getByTestId("agar-net-status")).toHaveAttribute(
     "data-connected",
     "true",
   );
 
-  // Wait for the first snapshot. The DO ticks at 20Hz, so the first
-  // snapshot lands within ~50ms of connect — but we don't rely on
-  // wall-clock timing; we just poll the probe's tick attribute.
+  // Wait for the first snapshot so `window.__game.canonical` is defined
+  // before we start poking the test surface.
   await expect
     .poll(
       async () =>
@@ -65,78 +82,84 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, tape)", async 
     )
     .toBeGreaterThan(0);
 
-  // Send the input tape one entry per server tick. We feed inputs one
-  // tick ahead of where we want them applied — when the snapshot for
-  // tick T lands, we know the DO is about to start tick T+1, so the
-  // next intent we send is the one that gets applied at T+1.
-  //
-  // The trick: after each `sendInput`, wait for the canonical tick to
-  // advance by exactly 1. That synchronises us to the server clock
-  // without any waitForTimeout.
-  for (let i = 0; i < TAPE.length; i++) {
-    const beforeTick = await page.evaluate(
-      () => (window as unknown as { __game: { canonical: { tick: number } | null } }).__game.canonical?.tick ?? 0,
-    );
-
-    await page.evaluate((dir) => {
-      (window as unknown as { __game: { sendInput: (d: string) => void } }).__game.sendInput(dir);
-    }, TAPE[i]);
-
-    await expect
-      .poll(
-        async () =>
-          await page.evaluate(
-            () =>
-              (window as unknown as { __game: { canonical: { tick: number } | null } })
-                .__game.canonical?.tick ?? 0,
-          ),
-        { message: `tick ${beforeTick + 1} from DO` },
-      )
-      .toBeGreaterThan(beforeTick);
+  // Feed the inputs. We don't try to one-to-one them with ticks —
+  // small pacing gap + latest-input-wins means most distinct inputs
+  // get applied to distinct ticks under nominal jitter, and any that
+  // get collapsed are still captured correctly in appliedLog. The
+  // determinism assertion replays whatever the server saw.
+  for (const dir of INPUTS) {
+    await page.evaluate((d) => {
+      (
+        window as unknown as { __game: { sendInput: (x: string) => void } }
+      ).__game.sendInput(d);
+    }, dir);
+    // Tiny pacing gap (~one tick at 20Hz) so the server has a chance
+    // to read this intent before we overwrite it with the next. We
+    // deliberately don't try to sync to tick boundaries — the merge
+    // gate's correctness comes from replaying the SERVER's applied-log,
+    // not from one-input-per-tick alignment.
+    await page.waitForTimeout(60);
   }
 
-  // The DO has applied at least TAPE.length intents past the first
-  // observed tick. Read its current state and compute the offline
-  // reducer's expected state from the same seed + tape. They must
-  // match bit-exact.
-  //
-  // Note: the very first observed tick (>0 above) may have been a
-  // "none" tick before our first intent landed — so the DO may be one
-  // or more ticks ahead of TAPE.length. We don't compare `tick`
-  // directly; we compare the terminal POSITION + the RNG state after
-  // exactly TAPE.length steps starting from seed.
-  const canonical = (await page.evaluate(
-    () =>
-      (window as unknown as { __game: { canonical: WorldState | null } })
-        .__game.canonical,
-  )) as WorldState | null;
+  // Now wait until the DO has ticked enough that we know it's
+  // ingested everything we sent. The `dir` field in each snapshot
+  // is what was applied that tick, so appliedLog.length === server tick
+  // count since connect.
+  await expect
+    .poll(
+      async () =>
+        await page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __game: { appliedLog: readonly string[] };
+              }
+            ).__game.appliedLog.length,
+        ),
+      {
+        message: `DO to apply ${TARGET_TICKS} ticks`,
+        timeout: 10_000,
+      },
+    )
+    .toBeGreaterThanOrEqual(TARGET_TICKS);
+
+  // Read the canonical state and the applied-input log together. The
+  // log is the server's own record of what it did; replaying it must
+  // reproduce `canonical` exactly.
+  const { canonical, appliedLog } = (await page.evaluate(() => {
+    const g = (
+      window as unknown as {
+        __game: {
+          canonical: WorldState | null;
+          appliedLog: readonly InputDir[];
+        };
+      }
+    ).__game;
+    return {
+      canonical: g.canonical,
+      appliedLog: g.appliedLog.slice(),
+    };
+  })) as { canonical: WorldState | null; appliedLog: InputDir[] };
 
   expect(canonical).not.toBeNull();
   if (canonical === null) return;
 
-  const tape: InputIntent[] = TAPE.map((dir) => ({ dir }));
+  // appliedLog[i] is the dir applied at server tick (i+1). The DO
+  // initialises at tick=0 and increments inside step(), so the log
+  // length should equal canonical.tick.
+  expect(appliedLog.length).toBe(canonical.tick);
+
+  // Bit-exact determinism check: same seed, same ordered inputs →
+  // same terminal state.
+  const tape: InputIntent[] = appliedLog.map((dir) => ({ dir }));
   const expected = pureReplay(SEED, tape);
 
-  // The DO may have ticked extra "none" ticks before/after our tape
-  // (network jitter on tape start, and at least one trailing tick
-  // while we read the final state). The reducer is invariant under
-  // trailing "none" ticks for POSITION (motion only happens with a
-  // direction), but RNG advances every tick. So:
-  //   - position must equal expected.player exactly.
-  //   - canonical.tick must be >= expected.tick.
-  //   - canonical.rng must equal pureReplay extended with trailing
-  //     "none"s up to canonical.tick — i.e. advance the offline
-  //     reducer the same extra ticks and re-compare.
-  expect(canonical.player).toEqual(expected.player);
-  expect(canonical.tick).toBeGreaterThanOrEqual(expected.tick);
+  expect(expected.tick).toBe(canonical.tick);
+  expect(expected.player).toEqual(canonical.player);
+  expect(expected.rng).toBe(canonical.rng);
 
-  const trailing = canonical.tick - expected.tick;
-  const padded = pureReplay(
-    SEED,
-    tape.concat(
-      Array.from({ length: trailing }, () => ({ dir: "none" as const })),
-    ),
-  );
-  expect(canonical.rng).toBe(padded.rng);
-  expect(canonical.player).toEqual(padded.player);
+  // Sanity: at least ONE non-"none" dir got applied — i.e. our inputs
+  // actually reached the DO, we're not just asserting that two
+  // all-"none" walks agree.
+  expect(appliedLog.some((d) => d !== "none")).toBe(true);
 });

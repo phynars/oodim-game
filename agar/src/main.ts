@@ -32,8 +32,19 @@ const ctx: CanvasRenderingContext2D = ctxOrNull;
 interface SnapshotMessage {
   type: "snapshot";
   tick: number;
+  dir: InputDir;
   player: { x: number; y: number };
   rng: number;
+}
+
+function isInputDir(value: unknown): value is InputDir {
+  return (
+    value === "none" ||
+    value === "up" ||
+    value === "down" ||
+    value === "left" ||
+    value === "right"
+  );
 }
 
 function isSnapshotMessage(value: unknown): value is SnapshotMessage {
@@ -42,6 +53,7 @@ function isSnapshotMessage(value: unknown): value is SnapshotMessage {
   if (v.type !== "snapshot") return false;
   if (typeof v.tick !== "number") return false;
   if (typeof v.rng !== "number") return false;
+  if (!isInputDir(v.dir)) return false;
   const p = v.player as Record<string, unknown> | undefined;
   return (
     typeof p === "object" &&
@@ -70,6 +82,14 @@ function wsUrl(seed: string): string {
 // directly; no smoothing.
 let latest: WorldState | null = null;
 let connected = false;
+
+// Server-side applied-input log: one entry per server tick, in tick
+// order, mirroring the `dir` field the DO reports in every snapshot.
+// The e2e replays this through `pureReplay(seed, log)` and asserts
+// bit-exact equality against `canonical`. This avoids any client-side
+// ordering / tick-alignment race — both sides agree on what the server
+// actually applied because the server told us, in order.
+const appliedLog: InputDir[] = [];
 
 function draw(): void {
   ctx.fillStyle = "#050505";
@@ -155,6 +175,12 @@ ws.addEventListener("message", (event) => {
     player: { x: parsed.player.x, y: parsed.player.y },
     rng: parsed.rng,
   };
+  // Append the dir the server APPLIED at this tick. Server tick numbers
+  // are monotonic from 1 (the first tick after connect), so
+  // appliedLog[i] === dir applied at tick i+1. If a snapshot is missed
+  // (it shouldn't be inside a single WS), the log would have a hole —
+  // we'd see it as a tick gap, and the e2e would catch the divergence.
+  appliedLog.push(parsed.dir);
   syncProbe();
   draw();
 });
@@ -203,6 +229,13 @@ interface AgarTestSurface {
   readonly canonical: WorldState | null;
   sendInput(dir: InputDir): void;
   readonly seed: string;
+  /**
+   * Full ordered list of `dir` values the server has APPLIED so far —
+   * one entry per server tick, in tick order. The e2e replays this
+   * through `pureReplay(seed, …)` to assert bit-exact equality with
+   * `canonical`, sidestepping any input-to-tick alignment race.
+   */
+  readonly appliedLog: readonly InputDir[];
 }
 
 const testSurface: AgarTestSurface = {
@@ -212,6 +245,10 @@ const testSurface: AgarTestSurface = {
   sendInput,
   get seed() {
     return readSeed();
+  },
+  get appliedLog() {
+    // Return a defensive copy so the e2e can't mutate the live log.
+    return appliedLog.slice();
   },
 };
 

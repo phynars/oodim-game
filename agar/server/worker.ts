@@ -75,9 +75,17 @@ export class EchoRoom implements DurableObject {
     this.pendingDir = "none";
     this.world = step(this.world, { dir });
 
+    // The snapshot carries `dir` — the EXACT intent the server applied
+    // this tick. The client mirrors these into an applied-input log so
+    // the e2e can replay them through `pureReplay` and assert bit-exact
+    // equality, without depending on which inputs landed in which tick
+    // slots. (Latest-input-wins makes that mapping inherently racy under
+    // CI jitter; the log removes the race because both sides agree on
+    // what was actually applied.)
     const snapshot = JSON.stringify({
       type: "snapshot",
       tick: this.world.tick,
+      dir,
       player: this.world.player,
       rng: this.world.rng,
     });

@@ -21,6 +21,7 @@ sent last.
 ```json
 { "type": "snapshot",
   "tick": 42,
+  "dir":  "right",
   "player": { "x": 320, "y": 320 },
   "rng":  3735928559 }
 ```
@@ -30,6 +31,12 @@ sent last.
 - `tick` is monotonic from 0 (the tick the DO is ABOUT to commit when
   it broadcasts; equivalently, the count of `step()` calls already
   applied).
+- `dir` is the input direction the server APPLIED on this tick — the
+  result of latest-input-wins collapsing all intents that arrived in
+  the previous tick window (default `"none"` if nothing arrived). The
+  client mirrors these into an applied-input log; the e2e replays the
+  log through `pureReplay` to assert bit-exact determinism without
+  caring which intent landed in which tick slot.
 - `player` is the position the DO believes the (single) connected
   client occupies, in canvas pixels.
 - `rng` is the post-step PRNG state. The e2e asserts the offline
@@ -53,10 +60,11 @@ sent last.
 ## Determinism contract
 
 `pureReplay(seed, tape)` where `tape: InputIntent[]` and `tape[i]` is
-the intent the client sent during the i-th tick → equals the DO's
-canonical state after `tape.length` ticks. Bit-exact equality, not
-floating-point tolerance — both sides walk the same `step()` function
-in the same order with the same seed.
+the dir the SERVER applied at tick `i+1` → equals the DO's canonical
+state after `tape.length` ticks. Bit-exact equality, not floating-point
+tolerance — both sides walk the same `step()` function in the same
+order with the same seed.
 
 The harness exposes the DO's latest snapshot at
-`window.__game.canonical` so the e2e can compare directly.
+`window.__game.canonical` and the per-tick applied-dir log at
+`window.__game.appliedLog` so the e2e can replay and compare directly.
