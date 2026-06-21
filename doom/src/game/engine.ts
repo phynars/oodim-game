@@ -15,6 +15,14 @@
 import * as THREE from "three";
 
 import {
+  BLOOD_DROP_COLOR,
+  BLOOD_DROP_COUNT,
+  BLOOD_DROP_GRAVITY,
+  BLOOD_DROP_LIFETIME,
+  BLOOD_DROP_SIZE,
+  BLOOD_DROP_SPEED,
+  CORPSE_FADE_START_TICK,
+  CORPSE_HOLD_TICKS,
   ENEMY_FLINCH_KNOCK,
   ENEMY_HIT_FLASH_TICKS,
   HIT_FLASH_TICKS,
@@ -25,6 +33,9 @@ import {
   IMPACT_SPARK_COUNT,
   IMPACT_SPARK_LIFETIME,
   initialState,
+  KILL_HITSTOP_TICKS,
+  KILL_SHAKE_AMPLITUDE_FACTOR,
+  KILL_SHAKE_TICKS,
   PLAYER_SHOT_DAMAGE,
   SCORE_BY_KIND,
   SHAKE_AMPLITUDE,
@@ -206,6 +217,14 @@ export class Engine {
    *  against the dim corridor, not fade into it. */
   private sparkGeometry: THREE.SphereGeometry | null = null;
   private sparkMaterial: THREE.MeshBasicMaterial | null = null;
+
+  /** Pool of blood-drop meshes (#194), parallel-indexed with
+   *  state.bloodDrops. Mirrors sparkMeshes — distinct pool because the
+   *  drops use a different (larger, dark-red) geometry/material and live
+   *  on a different lifetime curve. Hidden meshes are kept for reuse. */
+  private readonly bloodMeshes: THREE.Mesh[] = [];
+  private bloodGeometry: THREE.SphereGeometry | null = null;
+  private bloodMaterial: THREE.MeshBasicMaterial | null = null;
 
   /** First-person weapon viewmodel (#87). Built once at boot, parented to
    *  the camera so it inherits view transform automatically. The engine
@@ -1085,9 +1104,136 @@ export class Engine {
       const rig = this.enemyRigs.get(e.id);
       if (rig) setActiveClip(rig, "death");
       // Model removal also defers to the per-update cull so the death-clip
-      // pose is observable for one death-frame, matching how the engine
-      // already keeps the dead enemy on the roster for one tick before
-      // filtering it.
+      // pose is observable for the full corpse beat (#194), then alpha-
+      // fades over the last CORPSE_FADE frames before drop.
+
+      // --- KILL JUICE (#194) -------------------------------------------
+      // Doom = HEAVY. Stack a bigger beat ON TOP of the universal connect
+      // juice that already fired in applyHitJuice: heavier hitstop, a
+      // distinct kill-shake channel, blood spray, and a corpse hold
+      // counter. All clamped via Math.max — never `+=` — past Galaga
+      // learning that cumulative juice freezes the sim.
+      this.state.hitstopTicks = Math.max(
+        this.state.hitstopTicks,
+        KILL_HITSTOP_TICKS,
+      );
+      this.state.killShakeTicks = Math.max(
+        this.state.killShakeTicks,
+        KILL_SHAKE_TICKS,
+      );
+      // Blood spawns at the body center (the published enemy position).
+      this.spawnBloodSpray(new THREE.Vector3(e.x, e.y, e.z));
+      // Arm the corpse-beat counter; the cull block in update() increments
+      // this each tick and only frees the enemy when it crosses
+      // CORPSE_HOLD_TICKS.
+      e.deathTicks = 0;
+    }
+  }
+
+  /** Spawn BLOOD_DROP_COUNT drops at `point` (#194). Distinct from
+   *  spawnImpactSparks: different speed/gravity/size constants, no
+   *  surface-normal cone — the burst is hemispherical, biased UP+OUT, so
+   *  drops arc and fall under their own (heavier) gravity. Deterministic
+   *  jitter table — no Math.random. Each drop carries a small per-index
+   *  bias so the 14 don't read as a perfect ring. */
+  private spawnBloodSpray(point: THREE.Vector3): void {
+    // 14 fixed unit-ish directions on the upper hemisphere (no straight-
+    // down; gravity will pull them earthward anyway). XYZ tuples — vy is
+    // always > 0 so the spray throws UP first, then falls.
+    const JITTER: ReadonlyArray<readonly [number, number, number]> = [
+      [0.8, 0.6, 0.0],
+      [-0.8, 0.6, 0.0],
+      [0.0, 0.6, 0.8],
+      [0.0, 0.6, -0.8],
+      [0.6, 0.8, 0.6],
+      [-0.6, 0.8, -0.6],
+      [0.6, 0.8, -0.6],
+      [-0.6, 0.8, 0.6],
+      [0.9, 0.3, 0.3],
+      [-0.9, 0.3, -0.3],
+      [0.3, 0.3, 0.9],
+      [-0.3, 0.3, -0.9],
+      [0.4, 1.0, 0.0],
+      [-0.4, 1.0, 0.0],
+    ];
+    const n = Math.min(BLOOD_DROP_COUNT, JITTER.length);
+    for (let i = 0; i < n; i++) {
+      const j = JITTER[i];
+      // Per-drop bias so a tight burst doesn't look like a ring; the
+      // ratios are arbitrary but DETERMINISTIC (i-derived, not random).
+      const bias = (i % 3) * 0.01 - 0.01;
+      this.state.bloodDrops.push({
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        vx: j[0] * BLOOD_DROP_SPEED + bias,
+        vy: j[1] * BLOOD_DROP_SPEED,
+        vz: j[2] * BLOOD_DROP_SPEED - bias,
+        ticksLeft: BLOOD_DROP_LIFETIME,
+      });
+    }
+  }
+
+  /** Advance every live blood drop by one fixed-step (#194): integrate
+   *  position, apply the heavier blood gravity (vy -= BLOOD_DROP_GRAVITY),
+   *  and decrement ticksLeft. Drops with ticksLeft<=0 are pruned in-place
+   *  — same allocation-light pattern as stepImpactSparks. */
+  private stepBloodDrops(): void {
+    if (this.state.bloodDrops.length === 0) return;
+    const survivors: DoomState["bloodDrops"] = [];
+    let pruned = false;
+    for (const d of this.state.bloodDrops) {
+      d.x += d.vx;
+      d.y += d.vy;
+      d.z += d.vz;
+      d.vy -= BLOOD_DROP_GRAVITY;
+      d.ticksLeft -= 1;
+      if (d.ticksLeft <= 0) {
+        pruned = true;
+        continue;
+      }
+      survivors.push(d);
+    }
+    if (pruned) this.state.bloodDrops = survivors;
+  }
+
+  /** Sync the blood-drop mesh pool to `state.bloodDrops` (#194). Mirrors
+   *  syncImpactSparkMeshes — one visible mesh per live drop, extras
+   *  hidden. Scale shrinks toward 0 over the drop's lifetime so the spray
+   *  dissipates rather than snaps off when each drop expires. */
+  private syncBloodDropMeshes(): void {
+    const drops = this.state.bloodDrops;
+    if (drops.length > 0 && this.bloodGeometry === null) {
+      this.bloodGeometry = new THREE.SphereGeometry(BLOOD_DROP_SIZE, 6, 6);
+      this.bloodMaterial = new THREE.MeshBasicMaterial({
+        color: BLOOD_DROP_COLOR,
+        // Blood reads dark and grounded — keep it inside the fog so distant
+        // sprays don't read as bright dots, unlike sparks which intentionally
+        // pop full-bright.
+        fog: true,
+      });
+    }
+    while (
+      this.bloodMeshes.length < drops.length &&
+      this.bloodGeometry &&
+      this.bloodMaterial
+    ) {
+      const m = new THREE.Mesh(this.bloodGeometry, this.bloodMaterial);
+      m.visible = false;
+      this.scene.add(m);
+      this.bloodMeshes.push(m);
+    }
+    for (let i = 0; i < this.bloodMeshes.length; i++) {
+      const m = this.bloodMeshes[i];
+      const d = drops[i];
+      if (!d) {
+        m.visible = false;
+        continue;
+      }
+      m.visible = true;
+      m.position.set(d.x, d.y, d.z);
+      const k = Math.max(0, d.ticksLeft / BLOOD_DROP_LIFETIME);
+      m.scale.setScalar(k);
     }
   }
 
@@ -1260,6 +1406,7 @@ export class Engine {
         if (this.state.hitFlashTicks > 0) this.state.hitFlashTicks -= 1;
         if (this.state.shakeTicks > 0) this.state.shakeTicks -= 1;
         if (this.state.hitShakeTicks > 0) this.state.hitShakeTicks -= 1;
+        if (this.state.killShakeTicks > 0) this.state.killShakeTicks -= 1;
         for (const e of this.state.enemies) {
           if (e.hitFlashTicks > 0) e.hitFlashTicks -= 1;
         }
@@ -1269,7 +1416,12 @@ export class Engine {
       // freezing the spark step is what gives them the suspended-in-air
       // hang the rest of the world has. Same gate. Renderer still draws
       // them, but they don't move during the freeze.
-      if (!frozen) this.stepImpactSparks();
+      if (!frozen) {
+        this.stepImpactSparks();
+        // Blood drops freeze with the world too — #194's heavy hitstop
+        // hangs the spray mid-arc for max thunk before it falls.
+        this.stepBloodDrops();
+      }
 
       // The sim pass below is gated on `!frozen` (captured pre-decrement
       // above) so it skips for the FULL hitstop duration, not N-1 frames.
@@ -1410,20 +1562,36 @@ export class Engine {
       } // close `if (!frozen)` — sim pass gate (#166)
     }
 
-    // Cull enemies that finished their death frame. Keeping a 'dead' enemy
-    // for exactly the tick it died lets a consumer observe the transition;
-    // we drop it on the following tick — along with its model + animation
-    // rig (#86), which the death-handling path deliberately deferred so
-    // the harness could observe `activeClip === 'death'` in the same
-    // synchronous publish forceHit triggered.
+    // Corpse beat (#194) + cull. Dead enemies are held on the roster for
+    // CORPSE_HOLD_TICKS fixed-steps so the death pose READS for the full
+    // heavy-genre beat (Doom = HEAVY). Each non-frozen tick we increment
+    // `deathTicks` on every dead enemy; only the ones whose counter has
+    // crossed CORPSE_HOLD_TICKS get their mesh + rig disposed and pruned
+    // from the roster. The renderer reads `deathTicks` to fade material
+    // alpha over the last CORPSE_FADE_TICKS frames before drop.
     //
     // The cull runs OUTSIDE the `playing` gate so an enemy killed on the
     // same tick the player dies (status flips to 'lost' inside the block)
-    // still gets its mesh + rig disposed — otherwise the rig leaks for the
-    // page's lifetime, since `lost`/`gameover` never re-enter this path.
-    if (this.state.enemies.some((e) => e.state === "dead")) {
+    // still progresses through the corpse beat — otherwise a rig leaks
+    // for the page's lifetime, since `lost`/`gameover` never re-enter
+    // the playing path. We DO gate the deathTicks increment on hitstop
+    // freeze so the corpse beat hangs with the rest of the world during
+    // the kill freeze (consistent with sparks/blood/decays).
+    const cullFrozen = this.state.hitstopTicks > 0;
+    const hasDead = this.state.enemies.some((e) => e.state === "dead");
+    if (hasDead) {
+      if (!cullFrozen) {
+        for (const e of this.state.enemies) {
+          if (e.state !== "dead") continue;
+          // Arm on first sight (covers any death path that forgot to set
+          // it — defensive, not load-bearing for the current branch).
+          if (e.deathTicks === undefined) e.deathTicks = 0;
+          else e.deathTicks += 1;
+        }
+      }
       for (const e of this.state.enemies) {
         if (e.state !== "dead") continue;
+        if ((e.deathTicks ?? 0) < CORPSE_HOLD_TICKS) continue;
         const model = this.enemyMeshes.get(e.id);
         if (model) {
           this.scene.remove(model);
@@ -1438,7 +1606,7 @@ export class Engine {
         }
       }
       this.state.enemies = this.state.enemies.filter(
-        (e) => e.state !== "dead",
+        (e) => !(e.state === "dead" && (e.deathTicks ?? 0) >= CORPSE_HOLD_TICKS),
       );
     }
   }
@@ -1655,6 +1823,27 @@ export class Engine {
         HIT_SHAKE_AMPLITUDE_FACTOR *
         k2;
     }
+    // Kill-shake (#194): the third, biggest beat — fires only on a killing
+    // blow. Phase shift (1.3, 1.7) is distinct from damage (1.7/2.3) and
+    // connect (2.1/1.9) so summing three concurrent channels doesn't beat-
+    // frequency cancel into stillness. Envelope is k^2 — sharp punch up
+    // front, then settles fast (not a flat linear fade, which would feel
+    // mushy). Amplitude scales by KILL_SHAKE_AMPLITUDE_FACTOR (1.6).
+    if (this.state.killShakeTicks > 0) {
+      const k3 = this.state.killShakeTicks / KILL_SHAKE_TICKS;
+      const env = k3 * k3;
+      const phase3 = this.state.tick;
+      ox +=
+        Math.sin(phase3 * 1.3) *
+        SHAKE_AMPLITUDE *
+        KILL_SHAKE_AMPLITUDE_FACTOR *
+        env;
+      oy +=
+        Math.cos(phase3 * 1.7) *
+        SHAKE_AMPLITUDE *
+        KILL_SHAKE_AMPLITUDE_FACTOR *
+        env;
+    }
     this.camera.position.set(p.x + ox, p.y + oy, p.z);
     // Euler order 'YXZ' = yaw (about world-up Y) then pitch (about local X) —
     // the standard FPS look order that avoids roll.
@@ -1707,11 +1896,43 @@ export class Engine {
         if (rig.active !== want) setActiveClip(rig, want);
       }
       if (mesh) this.applyHitFlashEmissive(mesh, e.hitFlashTicks);
+      // Corpse alpha fade (#194). During the last CORPSE_FADE window of
+      // the dead beat, fade every standard material's opacity linearly
+      // from 1→0 so the body dissolves rather than snaps off when the
+      // cull fires. MeshStandardMaterial supports transparent+opacity;
+      // setting them late (only when fading) means the live render path
+      // for alive enemies is untouched.
+      if (mesh && e.state === "dead") {
+        const dt = e.deathTicks ?? 0;
+        if (dt > CORPSE_FADE_START_TICK) {
+          const fadeSpan = CORPSE_HOLD_TICKS - CORPSE_FADE_START_TICK;
+          const alpha = Math.max(0, 1 - (dt - CORPSE_FADE_START_TICK) / fadeSpan);
+          mesh.traverse((obj) => {
+            const m = (obj as THREE.Mesh).material as
+              | THREE.Material
+              | THREE.Material[]
+              | undefined;
+            if (!m) return;
+            const apply = (mat: THREE.Material): void => {
+              const std = mat as THREE.MeshStandardMaterial;
+              if (std.opacity === undefined) return;
+              std.transparent = true;
+              std.opacity = alpha;
+            };
+            if (Array.isArray(m)) m.forEach(apply);
+            else apply(m);
+          });
+        }
+      }
     }
     // Maintain the impact-spark mesh pool (#166). One mesh per live spark,
     // positioned at the simulation's world coords; extras hidden. Lazy-
     // builds geometry + material on first spawn so boot stays cheap.
     this.syncImpactSparkMeshes();
+    // Maintain the blood-drop mesh pool (#194). Same pattern as sparks
+    // but a separate pool because the geometry/material differ (larger,
+    // dark red, fog-affected).
+    this.syncBloodDropMeshes();
     // Advance every mixer by the wall-clock delta — animation is decoupled
     // from the fixed-step sim (no determinism contract on visual easing).
     // One shared THREE.Clock yields a delta that excludes time spent in

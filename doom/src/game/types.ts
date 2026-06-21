@@ -94,6 +94,15 @@ export interface Enemy {
    *  white with intensity `hitFlashTicks / ENEMY_HIT_FLASH_TICKS`. 0 at
    *  rest — only enemies with hitFlashTicks>0 get the emissive bump. */
   hitFlashTicks: number;
+  /** Fixed-step frames since this enemy died (#194). Set to 0 the tick
+   *  the killing blow lands (state flips to 'dead'); incremented each
+   *  fixed-step thereafter. The engine holds the corpse on the roster
+   *  until `deathTicks >= CORPSE_HOLD_TICKS` (so the death pose READS
+   *  for the full heavy-genre beat), and the renderer fades the body's
+   *  material alpha from 1→0 over the last CORPSE_FADE_TICKS frames so
+   *  the corpse dissolves rather than snaps. Undefined while alive —
+   *  only set on the lethal damage branch. */
+  deathTicks?: number;
 }
 
 /** A projectile in flight. `from` distinguishes the player's shots from enemy
@@ -232,6 +241,14 @@ export interface DoomState {
    *  the hitstop gate. syncCamera() sums this on top of shakeTicks at half
    *  amplitude so the two feedback beats stay semantically separate. */
   hitShakeTicks: number;
+  /** Fixed-step frames remaining on the current KILL-shake pulse (#194).
+   *  Third shake channel, parallel to shakeTicks (player damage) and
+   *  hitShakeTicks (connect). Set to KILL_SHAKE_TICKS when a player
+   *  shot proves lethal; bigger amplitude than the connect shake to sell
+   *  the "I killed it" weight Doom's heavy compact demands. Phase-shifted
+   *  in syncCamera() so the three channels don't beat-frequency cancel
+   *  when fired together. Clamped via Math.max — never `+=`. */
+  killShakeTicks: number;
   /** Live impact-spark particles (#166). Each entry is one short-lived
    *  world-space spark spawned at a hit point; the renderer maps these to
    *  a pool of THREE.Mesh sprites by index, the simulation advances them
@@ -239,6 +256,23 @@ export interface DoomState {
    *  pruned. Deterministic: spawn velocities come from a fixed offset
    *  table, never Math.random. */
   impactSparks: Array<{
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
+    ticksLeft: number;
+  }>;
+  /** Live blood-spray drops (#194). Distinct from impactSparks: blood is
+   *  KILL-ONLY (sparks fire on every connect), darker/larger/slower,
+   *  gravity-driven (heavy chunks that fall, not weightless chips). Same
+   *  shape + pool pattern as impactSparks — renderer mirrors entries to
+   *  THREE.Mesh by index; simulation advances per tick (gravity +
+   *  lifetime); entries with ticksLeft<=0 are pruned. Deterministic
+   *  spawn jitter (fixed table, no Math.random) per the game's
+   *  determinism contract. */
+  bloodDrops: Array<{
     x: number;
     y: number;
     z: number;
@@ -489,7 +523,9 @@ export function initialState(): DoomState {
     shakeTicks: 0,
     hitstopTicks: 0,
     hitShakeTicks: 0,
+    killShakeTicks: 0,
     impactSparks: [],
+    bloodDrops: [],
   };
 }
 
@@ -554,3 +590,65 @@ export const IMPACT_SPARK_LIFETIME = 18;
  *  `collidesAt` so it doesn't tunnel through walls. Skipped on lethal —
  *  the death clip owns that beat. */
 export const ENEMY_FLINCH_KNOCK = 0.08;
+
+// --- Enemy-death amplification (#194) --------------------------------------
+// Doom = HEAVY. Per Diego's tone rule (pacman=graceful, galaga=punchy,
+// doom=HEAVY), the killing blow needs its own bigger beat above and beyond
+// #166's universal connect juice: longer hitstop, a SECOND parallel shake
+// that's bigger than the connect one, a blood spray distinct from the orange
+// impact sparks, and a corpse beat that holds the body down before fade.
+
+/** Fixed-step frames hitstop holds on a KILL (#194). 6 ticks @ 60Hz = 100ms
+ *  — three times HITSTOP_TICKS_ON_HIT (2). The kill freeze re-uses the
+ *  existing hitstop gate in update() so no new wiring; we just clamp the
+ *  channel UP. Clamped via Math.max — never `+=` — past Galaga learning
+ *  that cumulative juice freezes the sim forever. */
+export const KILL_HITSTOP_TICKS = 6;
+
+/** Fixed-step frames the kill-shake channel holds (#194). 14 ticks @ 60Hz
+ *  = ~233ms — readably longer than HIT_SHAKE_TICKS (3). syncCamera()
+ *  applies a (k^2) envelope so the punch hits hard up front and settles
+ *  fast, NOT a flat decay that would feel mushy. */
+export const KILL_SHAKE_TICKS = 14;
+
+/** Camera-offset scale for the kill-shake, relative to SHAKE_AMPLITUDE.
+ *  1.6× — bigger than the player-damage shake's 1.0 and well above the
+ *  connect shake's 0.5. The killing blow is the loudest tactile beat. */
+export const KILL_SHAKE_AMPLITUDE_FACTOR = 1.6;
+
+/** Number of blood drops spawned on the killing blow (#194). 14 — more
+ *  than IMPACT_SPARK_COUNT (6) so the kill burst reads as denser/wetter.
+ *  Capped at the JITTER table length in spawnBloodSpray. */
+export const BLOOD_DROP_COUNT = 14;
+
+/** Fixed-step frames each blood drop lives (#194). 32 ticks @ 60Hz =
+ *  ~533ms — longer than sparks (18) so the drops have time to arc + fall. */
+export const BLOOD_DROP_LIFETIME = 32;
+
+/** Base velocity scale for a blood drop along the spawn jitter direction
+ *  (#194). ~62% of the spark base — heavier matter, slower throw. */
+export const BLOOD_DROP_SPEED = 0.05;
+
+/** Gravity applied per fixed-step to each blood drop's vy (#194). 2.4×
+ *  spark gravity (0.005) — blood is HEAVY and falls fast, not the
+ *  near-weightless drift of spark chips. */
+export const BLOOD_DROP_GRAVITY = 0.012;
+
+/** World-space sphere radius for a blood-drop mesh (#194). 50% larger
+ *  than a spark (0.04) so the drops read as chunks, not chips. */
+export const BLOOD_DROP_SIZE = 0.06;
+
+/** Tint for blood drops (#194) — dark blood red. Reads against the
+ *  corridor's dim warm palette without going cartoon-bright. */
+export const BLOOD_DROP_COLOR = 0x882222;
+
+/** Fixed-step frames a dead enemy stays on the roster before cull (#194).
+ *  24 ticks @ 60Hz = 400ms total. The death pose holds, then the renderer
+ *  fades alpha over the last CORPSE_FADE_TICKS frames before the engine
+ *  drops the model. Heavy genre = the body LANDS, not flickers and gone. */
+export const CORPSE_HOLD_TICKS = 24;
+
+/** Tick within the corpse beat at which alpha-fade begins (#194). Frames
+ *  CORPSE_FADE_START_TICK..CORPSE_HOLD_TICKS map to alpha 1→0 linearly.
+ *  The first 12 ticks hold full opacity (the LAND); the last 12 fade. */
+export const CORPSE_FADE_START_TICK = 12;
