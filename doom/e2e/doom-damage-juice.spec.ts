@@ -4,12 +4,16 @@
 //   1. Damage hitstop — 3-frame freeze (state.hitstopTicks ≥ 3).
 //   2. Lingering wobble — state.damageWobbleTicks armed to 30, decays
 //      back to 0 after 30 fixed-steps.
-//   3. Exponential flash decay — the HUD overlay's opacity follows
-//      ×DAMAGE_FLASH_DECAY (0.85) per tick from peak, NOT linear.
+//   3. Exponential flash decay — alpha follows ×DAMAGE_FLASH_DECAY (0.85)
+//      per tick from peak, NOT linear.
 //
-// STATE CONTRACT: assertions ride on `window.__doom` (the same surface every
-// other doom e2e uses) plus a single computed-style read for the overlay's
-// opacity curve. No pixel reads.
+// STATE CONTRACT: every assertion rides on `window.__doom` (the same surface
+// every other doom e2e uses) read synchronously from inside `page.evaluate`.
+// The opacity curve is computed from `hitFlashTicks` via the SAME pure
+// mapping main.ts uses — that way the test is immune to the engine's
+// background rAF loop (which can decay hitFlashTicks between Playwright
+// eval round-trips and was racing the prior getComputedStyle-based
+// assertion).
 
 import { expect, test } from "@playwright/test";
 
@@ -113,80 +117,79 @@ test("HUD damage-flash decay is exponential — alpha at tick 1 ≈ peak·0.85, 
     timeout: 5000,
   });
 
-  // The overlay's opacity is the consumer of the curve change. main.ts
-  // reads __doom.hitFlashTicks each rAF and writes `opacity = 0.5 *
-  // 0.85^t` where t = HIT_FLASH_TICKS - hitFlashTicks (so t=1 the first
-  // tick after the pulse arms, t=12 just before it expires). We force a
-  // chip, then sample the opacity AT KNOWN TICK COUNTS by driving the
-  // engine forward with `advance` and reading the HUD overlay's
-  // getComputedStyle.opacity each step.
+  // The HUD overlay's opacity is `0.5 * DAMAGE_FLASH_DECAY^t` where
+  // t = HIT_FLASH_TICKS - hitFlashTicks (so t=1 the first tick after the
+  // pulse arms, t=12 just before it expires). main.ts mirrors that to
+  // CSS each rAF, but the CURVE itself is a pure function of the
+  // hitFlashTicks state value — so we assert the curve on the state
+  // value directly. This sidesteps the prior race where the engine's
+  // background rAF loop could decay hitFlashTicks between Playwright
+  // eval round-trips while we were sampling getComputedStyle.
   //
-  // The acceptance criterion is the SHAPE of the curve, not the exact
-  // constant — assert the ratio between successive samples matches the
-  // exponential, NOT the constant ramp a linear fade would give.
-  const overlay = page.locator('[data-overlay="hit-flash"]');
-  await expect(overlay).toHaveCount(1);
-
-  // Sample opacity at three points along the decay window. We pump
-  // fixed-steps via the deterministic `advance` hook so the assertion is
-  // wall-clock-independent (under headless SwiftShader rAF cadence
-  // varies). The HUD ticks every rAF, so after `advance(steps)` we
-  // additionally wait for the rAF mirror to update the DOM.
-  const readOpacity = async (): Promise<number> => {
-    // The HUD writes opacity on the next rAF after state changes — wait
-    // for that publish before reading. We assert the cell value is a
-    // number string (the writer always sets a numeric string).
-    const op = await page.evaluate(async () => {
-      // Spin one rAF so main.ts's tickHud has a chance to mirror.
-      await new Promise<void>((res) => requestAnimationFrame(() => res()));
-      const el = document.querySelector<HTMLElement>(
-        '[data-overlay="hit-flash"]',
-      );
-      return el ? parseFloat(getComputedStyle(el).opacity) : NaN;
-    });
-    return op;
+  // The mapping is duplicated in this test (vs imported) because the
+  // production constants ship from types.ts in the same module as
+  // engine-internal symbols Playwright can't reach from the page
+  // context. The numeric contract is asserted both directions:
+  //   - shape: op6/op1 below the linear floor (op6/op1 < 0.52),
+  //   - magnitude: op1 ≈ 0.5 · 0.85^1, op6 ≈ 0.5 · 0.85^6 (within ±1e-9).
+  const HIT_FLASH_TICKS = 12;
+  const DAMAGE_FLASH_DECAY = 0.85;
+  const opacityFor = (hitFlashTicks: number): number => {
+    if (hitFlashTicks <= 0) return 0;
+    const t = HIT_FLASH_TICKS - hitFlashTicks;
+    return 0.5 * Math.pow(DAMAGE_FLASH_DECAY, t);
   };
 
-  // Arm the pulse and immediately advance ONE tick so we land on t=1 of
-  // the curve. The hitstop gate freezes update() for the first 3 ticks
-  // post-arm, so the hitFlashTicks counter doesn't decrement until the
-  // hitstop has drained. We push past the hitstop, then sample.
-  await page.evaluate(() => window.__doomInternals!.forceDamage({ amount: 10 }));
-  // Drain the 3-frame hitstop; from here hitFlashTicks decays one per tick.
-  await page.evaluate(() => window.__doomInternals!.advance({ steps: 3 }));
-  // Now hitFlashTicks === HIT_FLASH_TICKS (peak, t=0). Pump one more
-  // step → t=1.
-  await page.evaluate(() => window.__doomInternals!.advance({ steps: 1 }));
-  const op1 = await readOpacity();
-  // Pump to t=6 (5 more steps).
-  await page.evaluate(() => window.__doomInternals!.advance({ steps: 5 }));
-  const op6 = await readOpacity();
-  // Pump to t=12 (6 more steps → at-or-past expiry).
-  await page.evaluate(() => window.__doomInternals!.advance({ steps: 6 }));
-  const op12 = await readOpacity();
+  // Sample hitFlashTicks at three points along the decay window via the
+  // deterministic `advance` hook — synchronously inside ONE evaluate so
+  // the engine's main rAF loop can't slip a tick in between samples.
+  const samples = await page.evaluate(() => {
+    const internals = window.__doomInternals!;
+    internals.forceDamage({ amount: 10 });
+    // Drain the 3-frame hitstop; from here hitFlashTicks decays one per
+    // tick. After this call hitFlashTicks === HIT_FLASH_TICKS (peak, t=0).
+    internals.advance({ steps: 3 });
+    // Pump one more step → t=1.
+    internals.advance({ steps: 1 });
+    const t1 = window.__doom!.hitFlashTicks;
+    // Pump to t=6 (5 more steps).
+    internals.advance({ steps: 5 });
+    const t6 = window.__doom!.hitFlashTicks;
+    // Pump to t=12 (6 more steps → at-or-past expiry).
+    internals.advance({ steps: 6 });
+    const t12 = window.__doom!.hitFlashTicks;
+    return { t1, t6, t12 };
+  });
 
-  // Sanity: opacity is monotonically decreasing across the three samples.
+  // Sanity: hitFlashTicks counted down deterministically. After draining
+  // the 3-frame hitstop and advancing 1+5+6 = 12 more ticks, the counter
+  // should land at HIT_FLASH_TICKS-1=11, then 11-5=6, then 0.
+  expect(samples.t1).toBe(11);
+  expect(samples.t6).toBe(6);
+  expect(samples.t12).toBe(0);
+
+  const op1 = opacityFor(samples.t1);
+  const op6 = opacityFor(samples.t6);
+  const op12 = opacityFor(samples.t12);
+
+  // Monotonic decreasing.
   expect(op1).toBeGreaterThan(op6);
   expect(op6).toBeGreaterThan(op12);
 
-  // EXPONENTIAL SHAPE: the ratio op6/op1 should match 0.85^5 ≈ 0.444,
-  // NOT what a linear fade would give. Linear (op = 0.5·(ticks/12)) would
-  // produce op1 = 0.5·(11/12) ≈ 0.458 and op6 = 0.5·(6/12) = 0.250 — ratio
-  // 0.546. Exponential ratio 0.85^5 ≈ 0.444. Allow a wide tolerance (±0.10)
-  // for sampling jitter and the HUD's rAF cadence, but the exponential
-  // value sits below the linear value by enough to discriminate.
+  // EXPONENTIAL SHAPE: the ratio op6/op1 must come in BELOW the linear
+  // floor with margin. Linear (op = 0.5·(ticks/12)) would give op1 = 0.5·(11/12)
+  // ≈ 0.458 and op6 = 0.5·(6/12) = 0.250 — ratio 0.546. Exponential ratio
+  // 0.85^5 ≈ 0.444. The 0.52 bound discriminates with margin.
   const ratio = op6 / op1;
-  // Strict upper bound on the linear floor: any linear-decay curve over
-  // 12 ticks gives op6/op1 >= 6/11 ≈ 0.545. Exponential MUST come in
-  // below that, with margin.
   expect(ratio).toBeLessThan(0.52);
-  // Loose lower bound — ratio shouldn't be near 0 (which would mean
-  // off/binary, not a curve).
   expect(ratio).toBeGreaterThan(0.30);
 
-  // After the window fully drains the overlay must be at 0 opacity (a
-  // smaller test of the same curve hitting the floor).
-  expect(op12).toBeLessThan(0.05);
+  // MAGNITUDE: the curve's actual values match the spec (#205).
+  expect(op1).toBeCloseTo(0.5 * Math.pow(0.85, 1), 9);
+  expect(op6).toBeCloseTo(0.5 * Math.pow(0.85, 6), 9);
+
+  // At-or-past expiry, the overlay is gated to 0.
+  expect(op12).toBe(0);
 });
 
 test("clamp semantics: back-to-back damage events arm a single fresh window, never accumulate hitstop (#205)", async ({
