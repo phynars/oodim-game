@@ -4,31 +4,42 @@
 //
 // CONTRACT: this module consumes the 8 fields documented in
 // `./CLIENT-TEST-SURFACE.md` on `window.__game`:
-//   read:  canonical, tick, appliedLog, clientId
-//   drive: sendInput, tickTo, disconnectWs, reconnectWs
+//   read:  canonical, tick, appliedLog, clientId       (property OR () => T)
+//   drive: sendInput, tickTo, disconnectWs, reconnectWs (functions only)
 //
-// Any deviation in field names is REQUEST_CHANGES by the doc — this file
-// is the enforcement: a client that ships `state` instead of `canonical`
-// (or `applyOrder` instead of `appliedLog`) FAILS to bind, and the e2e
-// suite reports the missing field by name rather than a generic
-// "page.evaluate threw".
+// PROPERTY-OR-FUNCTION (read-surface dual access)
 //
-// WHY THIS FILE EXISTS BEFORE #180 LANDS
+// Slice 2 (#179) shipped `canonical` and `appliedLog` as ES5 getter
+// PROPERTIES on `window.__game`, not as zero-arg functions. The earlier
+// draft of this binding required `typeof === "function"` for all eight
+// fields, which immediately threw on agar with "missing canonical,
+// appliedLog" — false positives.
 //
-// #129's harness.ts ships TYPES only for the page-bound primitives
-// (DriveTape, ReadCanonical, ExpectConverge, Disconnect, Reconnect). The
-// types compile against the contract; the bindings exist to PROVE the
-// contract is bindable in a single deterministic shape — so the first
-// multiplayer consumer (agar-03 / #180) imports it instead of writing
-// page.evaluate spaghetti per spec.
+// Resolution: the harness binds against the OBSERVABLE shape. For the
+// four READ fields, the page may expose either a getter property or a
+// zero-arg function — the binding calls `v()` if it's callable, else
+// reads it as a value. Drive-surface fields stay function-only (they
+// take an argument or perform an action).
 //
-// WHY page.evaluate, NOT exposed window functions
+// This is not a contract softening: the field names are still normative
+// (renaming `canonical` to `state` still fails by name), and the read
+// types are unchanged. We just stop punishing clients for choosing
+// ergonomic getters over zero-arg call sites.
 //
-// Playwright's `page.evaluate(fn, arg)` serializes `arg` to JSON, ships
-// it across the CDP bridge, executes `fn` in the page context, and
-// returns its JSON-serialized result. That is the same wire shape the
-// harness already contracts state to (`structuralEquals` requires
-// JSON-ish state). One serialization model end-to-end → no schema drift.
+// APPLIEDLOG ELEMENT SHAPE
+//
+// `appliedLog` is the per-game "list of things applied in order". Its
+// element shape is game-specific:
+//   - agar slice 2 (single client, server pushes one `dir` per tick):
+//     `readonly InputDir[]` — e.g. ["up", "none", "left", ...].
+//   - multi-client products (the case `assertOrderingInvariant`
+//     targets): `readonly string[]` of `tick:clientId:seq` keys.
+//
+// `readAppliedLog` returns `readonly unknown[]` and leaves the element
+// type to the caller. `expectOrderingInvariant` REQUIRES the elements
+// to be `tick:clientId:seq` strings and throws a precise error if it
+// gets a non-string-shaped log — that's the contract for the ordering
+// invariant specifically, not for `appliedLog` in general.
 //
 // QUIESCE MODEL
 //
@@ -38,7 +49,8 @@
 // after every queued event up to the current tick has applied and the
 // ws is idle. This eliminates wallclock flake (`waitForTimeout` is
 // banned by #129's acceptance criteria) without exposing a separate
-// `quiesce()` field.
+// `quiesce()` field. When a client exposes `tick` as a getter, we read
+// the value instead of calling it.
 
 import type { Page } from "@playwright/test";
 import type {
@@ -59,11 +71,6 @@ import {
 
 // ---------------------------------------------------------------------------
 // PageLike bridge
-//
-// harness.ts declares PageLike as opaque so it has zero @playwright/test
-// dependency. Here we cross the boundary: bindings take real `Page` and
-// the harness types take `PageLike`. The cast is local to this module;
-// no other file imports Playwright.
 // ---------------------------------------------------------------------------
 
 function asPage(p: PageLike): Page {
@@ -73,16 +80,18 @@ function asPage(p: PageLike): Page {
 // ---------------------------------------------------------------------------
 // Field-presence guard
 //
-// Run once per page before the first read/drive call. Surfaces missing
-// fields by NAME — the doc's enforcement rule depends on this being a
-// readable failure, not "undefined is not a function" buried in a stack.
+// The read fields (canonical, tick, appliedLog, clientId) may be EITHER
+// a callable function OR a defined non-undefined property (getter).
+// The drive fields must be callable functions — they take arguments
+// or perform side effects.
+//
+// On failure we report the missing fields BY NAME so e2e debugging
+// reads "missing window.__game.{tickTo, disconnectWs}" instead of
+// "undefined is not a function" buried in a CDP stack.
 // ---------------------------------------------------------------------------
 
-const REQUIRED_FIELDS = [
-  "canonical",
-  "tick",
-  "appliedLog",
-  "clientId",
+const READ_FIELDS = ["canonical", "tick", "appliedLog", "clientId"] as const;
+const DRIVE_FIELDS = [
   "sendInput",
   "tickTo",
   "disconnectWs",
@@ -90,11 +99,30 @@ const REQUIRED_FIELDS = [
 ] as const;
 
 export async function assertClientSurface(page: PageLike): Promise<void> {
-  const missing = await asPage(page).evaluate((fields) => {
-    const w = window as unknown as { __game?: Record<string, unknown> };
-    if (!w.__game) return ["__game (entire object)"];
-    return fields.filter((f) => typeof w.__game?.[f] !== "function");
-  }, REQUIRED_FIELDS as unknown as string[]);
+  const missing = await asPage(page).evaluate(
+    ({ readFields, driveFields }) => {
+      const w = window as unknown as { __game?: Record<string, unknown> };
+      if (!w.__game) return ["__game (entire object)"];
+      const g = w.__game;
+      const miss: string[] = [];
+      // Read fields: present (function or any defined value).
+      for (const f of readFields) {
+        const v = g[f];
+        if (typeof v === "function") continue;
+        if (v !== undefined && v !== null) continue;
+        miss.push(f);
+      }
+      // Drive fields: must be functions.
+      for (const f of driveFields) {
+        if (typeof g[f] !== "function") miss.push(f);
+      }
+      return miss;
+    },
+    {
+      readFields: READ_FIELDS as unknown as string[],
+      driveFields: DRIVE_FIELDS as unknown as string[],
+    },
+  );
 
   if (missing.length > 0) {
     throw new Error(
@@ -106,19 +134,17 @@ export async function assertClientSurface(page: PageLike): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// In-page read helper: call-or-read on a window.__game field.
+//
+// Inlined via `page.evaluate` rather than a Node-side helper because the
+// field access has to happen in the page context. Each reader below
+// installs its own short evaluate fn that uses this same dual-access
+// pattern — the duplication is deliberate; a shared utility would force
+// every read to ship the same boilerplate through CDP.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // driveTape
-//
-// Apply a tape to N pages. The tape is split by clientId; each client
-// gets ONLY the events attributed to it, in canonical order. The DO
-// already handles cross-client ordering — driveTape does NOT inject one
-// client's events into another's page.
-//
-// `seed` is forwarded via __game.tickTo(0) convention: clients read seed
-// from URL/query at boot, so `seed` here is recorded for assertion
-// purposes (e.g. pureReplay) rather than re-injected per call. The
-// contract: pages MUST already be navigated with `?seed=N` matching
-// `opts.seed`. If you forget this, the ordering invariant will fail
-// loudly — that is the intended failure mode.
 // ---------------------------------------------------------------------------
 
 export const driveTape: DriveTape = async (pages, tape, _opts) => {
@@ -133,22 +159,23 @@ export const driveTape: DriveTape = async (pages, tape, _opts) => {
     else byClient.set(ev.clientId, [ev]);
   }
 
-  // Resolve each page's clientId, then ship that page's slice.
-  // Run pages in parallel — each one's tickTo waits on its own DO state.
+  // Resolve each page's clientId (dual access), then ship that page's
+  // slice. Run pages in parallel — each one's tickTo waits on its own
+  // DO state.
   await Promise.all(
     pages.map(async (pageLike) => {
       const page = asPage(pageLike);
       const myId = await page.evaluate(() => {
         const w = window as unknown as {
-          __game: { clientId: () => string };
+          __game: { clientId: unknown };
         };
-        return w.__game.clientId();
+        const v = w.__game.clientId;
+        return typeof v === "function" ? (v as () => string)() : (v as string);
       });
       const myEvents = byClient.get(myId) ?? [];
-      // Apply events strictly in ascending tick. For each event: advance
+      // Apply events strictly in tape order. For each event: advance
       // simulated time to its tick, then send the input. tickTo is a
-      // no-op when the page is already at or past the requested tick,
-      // so safe to call repeatedly.
+      // no-op when the page is already at or past the requested tick.
       for (const ev of myEvents) {
         await page.evaluate(
           ([t, input]) => {
@@ -172,10 +199,11 @@ export const driveTape: DriveTape = async (pages, tape, _opts) => {
 // ---------------------------------------------------------------------------
 // canonical
 //
-// Read window.__game.canonical() AFTER ws-quiescing on a tick boundary.
-// The quiesce-by-tickTo idiom: ask the page to advance to its own
-// current tick — by contract that promise resolves only when every
-// queued event up to that tick has applied and the ws is idle.
+// Read window.__game.canonical AFTER ws-quiescing on a tick boundary.
+// Quiesce idiom: ask the page to tickTo its own current tick — the
+// contract resolves only when every queued event up to that tick has
+// applied and the ws is idle. Both `tick` and `canonical` support the
+// property-or-function dual access.
 // ---------------------------------------------------------------------------
 
 export const canonical: ReadCanonical = async <TState>(pageLike: PageLike) => {
@@ -183,22 +211,25 @@ export const canonical: ReadCanonical = async <TState>(pageLike: PageLike) => {
   return page.evaluate(() => {
     const w = window as unknown as {
       __game: {
-        tick: () => number;
+        tick: unknown;
         tickTo: (n: number) => Promise<void>;
-        canonical: () => unknown;
+        canonical: unknown;
       };
     };
-    return w.__game.tickTo(w.__game.tick()).then(() => w.__game.canonical());
+    const tickField = w.__game.tick;
+    const curTick =
+      typeof tickField === "function"
+        ? (tickField as () => number)()
+        : (tickField as number);
+    return w.__game.tickTo(curTick).then(() => {
+      const c = w.__game.canonical;
+      return typeof c === "function" ? (c as () => unknown)() : c;
+    });
   }) as Promise<TState>;
 };
 
 // ---------------------------------------------------------------------------
 // expectConverge
-//
-// Read canonical from every page (in parallel, AFTER each page quiesces)
-// then assert structural equality pair-wise against pages[0]. Reports the
-// FIRST divergence with its page index so a 4-client suite tells you
-// "page 2 diverged" rather than "convergence failed".
 // ---------------------------------------------------------------------------
 
 export const expectConverge: ExpectConverge = async (pages, predicate) => {
@@ -245,36 +276,49 @@ export const reconnect: Reconnect = async (pageLike) => {
 };
 
 // ---------------------------------------------------------------------------
-// readAppliedLog — for the ordering invariant
+// readAppliedLog — for the ordering invariant.
 //
-// Pulled out as a named export rather than folded into `canonical`
-// because the ordering invariant asserts against this independent of
-// state — a DO that re-orders inputs but happens to produce the same
-// state by coincidence is still wrong.
+// Returns `readonly unknown[]` because the element shape is per-game:
+// agar slice 2 ships `InputDir[]`; multi-client products ship
+// `tick:clientId:seq` strings. Quiesces on a tick boundary, dual access
+// on `tick` and `appliedLog`.
 // ---------------------------------------------------------------------------
 
 export async function readAppliedLog(
   pageLike: PageLike,
-): Promise<readonly string[]> {
+): Promise<readonly unknown[]> {
   const page = asPage(pageLike);
   return page.evaluate(() => {
     const w = window as unknown as {
       __game: {
-        tick: () => number;
+        tick: unknown;
         tickTo: (n: number) => Promise<void>;
-        appliedLog: () => readonly string[];
+        appliedLog: unknown;
       };
     };
-    return w.__game.tickTo(w.__game.tick()).then(() => w.__game.appliedLog());
+    const tickField = w.__game.tick;
+    const curTick =
+      typeof tickField === "function"
+        ? (tickField as () => number)()
+        : (tickField as number);
+    return w.__game.tickTo(curTick).then(() => {
+      const a = w.__game.appliedLog;
+      return typeof a === "function"
+        ? (a as () => readonly unknown[])()
+        : (a as readonly unknown[]);
+    });
   });
 }
 
 // ---------------------------------------------------------------------------
 // expectOrderingInvariant
 //
-// Composes readAppliedLog + assertOrderingInvariant. Asserts the DO
-// applied events in canonical order (tick, clientId, seq). Throws on
-// violation with the reason string from the harness's pure assertion.
+// Composes readAppliedLog + assertOrderingInvariant. Requires the
+// applied-log elements to be `tick:clientId:seq` strings — the shape
+// `assertOrderingInvariant` is contracted against. Throws a clear,
+// shape-specific error when the log isn't string-shaped (e.g. a
+// single-client client like agar slice 2 that logs `InputDir` values
+// instead of canonical keys).
 // ---------------------------------------------------------------------------
 
 export async function expectOrderingInvariant<T>(
@@ -282,7 +326,27 @@ export async function expectOrderingInvariant<T>(
   tape: Tape<T>,
 ): Promise<void> {
   const log = await readAppliedLog(pageLike);
-  const result = assertOrderingInvariant(tape, log);
+
+  // The ordering invariant compares the DO's apply-order against the
+  // canonical order of the tape, keyed by `tick:clientId:seq`. The log
+  // MUST be a sequence of strings. If a client ships a per-tick payload
+  // log (agar slice 2 ships `InputDir[]`) the ordering invariant is not
+  // applicable to that game — fail loudly so the spec author switches
+  // to convergence assertion instead of getting a silent false-green.
+  if (
+    !Array.isArray(log) ||
+    !log.every((x) => typeof x === "string")
+  ) {
+    throw new Error(
+      "expectOrderingInvariant: appliedLog elements must be " +
+        '"tick:clientId:seq" strings. ' +
+        "This game's appliedLog ships a different element shape — use " +
+        "expectConverge for convergence, or extend the client to expose " +
+        "canonical-key strings.",
+    );
+  }
+
+  const result = assertOrderingInvariant(tape, log as readonly string[]);
   if (!result.ok) {
     throw new Error(`ordering invariant: ${result.reason}`);
   }
@@ -290,10 +354,6 @@ export async function expectOrderingInvariant<T>(
 
 // ---------------------------------------------------------------------------
 // Bundled harness surface
-//
-// One import for spec files: `import { harness } from "e2e-shared/multiplayer/playwright-binding"`.
-// Matches the MultiplayerHarness interface from ./harness so consumers
-// can typecheck against the contract.
 // ---------------------------------------------------------------------------
 
 export const harness: MultiplayerHarness = {
