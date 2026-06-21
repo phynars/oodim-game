@@ -223,14 +223,20 @@
       }
       .colophon a:hover { color: var(--text); }
 
-      /* PAGE-ENTRY STAGGER (Diego, juice).
-         The first thing you see should ARRIVE, not appear. The masthead
-         leads, then the four portfolio cards cascade in 40ms apart — a
-         confident-and-composed reveal, not an arcade bounce (UI tone:
-         landing/ ≠ galaga/). Easing is the house UI curve
+      /* LANDING PAGE-ENTRY REVEAL STAGGER (Diego, juice).
+         Scope: landing/index.html only — this PR does NOT touch doom/
+         (Doom enemy-death amplification, issue #194, was already shipped
+         in doom/engine.ts with KILL_HITSTOP_TICKS, killShakeTicks, and
+         bloodDrops).
+
+         Feel: the first thing you see should ARRIVE, not appear. The
+         masthead leads, then the four portfolio cards cascade in 40ms
+         apart — a confident-and-composed reveal, not an arcade bounce
+         (UI tone: landing/ ≠ galaga/). Easing is the house UI curve
          cubic-bezier(.2,.8,.2,1); duration 240ms; translateY 8px → 0.
          GPU-only properties (opacity, transform) so the reveal doesn't
-         repaint the layout. */
+         repaint the layout. Reduced-motion short-circuit is co-located
+         in the single @media block above. */
       @keyframes cardReveal {
         from { opacity: 0; transform: translateY(8px); }
         to   { opacity: 1; transform: translateY(0); }
