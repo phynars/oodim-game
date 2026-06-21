@@ -1,5 +1,8 @@
 // Multiplayer e2e harness primitives — the contract from #129.
 //
+// See `./CLIENT-TEST-SURFACE.md` for the 8-field `window.__game` shape
+// these primitives bind against. Field names are normative.
+//
 // SHARED LOCATION: this file is the canonical home for the multiplayer
 // harness primitives. Any game's e2e (doom/, agar/, future products) that
 // needs deterministic replay + canonical-state convergence imports from
