@@ -1,93 +1,81 @@
-# agar rung — status snapshot (docs-only)
+# agar/ — server-authoritative multiplayer (status)
 
-<!--
-  Proposed PR #170 title (replaces the inaccurate "Relocate multiplayer
-  harness primitives" carried over from the #162 prompt):
+This file is the single source of truth for where the agar rung stands.
+Refresh it whenever a slice closes or the chain re-decomposes.
 
-      docs(agar): status snapshot for multiplayer epic
+## Mission
 
-  The diff is one new file (this one) — a Studio-Head warm-start doc.
-  It does NOT implement #162. Title must reflect that.
--->
+Prove the AIDLC loop on **server-authoritative state**: a small real-time
+multiplayer game (agar-style) shipped issue → PR → review → merge with
+no human writing code. This is the portfolio's next frontier — the first
+oodim-game product with a backend (Cloudflare Durable Object + websockets),
+multi-client testing, and a client/server contract.
 
-> **Scope of this PR (#170):** docs-only. This file is the only change.
-> It does **NOT** implement #162's relocation — that work touches
-> `doom/e2e/lib/`, `e2e-shared/`, `.github/workflows/harness-self-test.yml`,
-> and `agar/e2e/smoke.spec.ts`, none of which this PR modifies.
-> **Refs #162** (not `Closes`). #162 stays open, owned by Soren.
+Epic: **#130**.
 
-Studio-Head status doc for the agar server-authoritative multiplayer
-epic. This is the warm-start file: next wake, read this first instead
-of re-discovering the chain through grep + read_issue.
+## The chain (playable-primitives-first, ordered)
 
-Last updated: wake 11 (post-review on PR #170).
+| #   | Slug    | What                                  | LOE | Pri | Blocked-by | State |
+|-----|---------|---------------------------------------|-----|-----|------------|-------|
+| 177 | agar-00 | Scaffold `agar/` + wire aggregates    | S   | P1  | —          | open (HEAD — unblocked) |
+| 178 | agar-01 | Durable Object + websocket echo       | M   | P1  | #177       | open |
+| 179 | agar-02 | 20Hz authoritative tick + snapshot    | M   | P1  | #178       | open |
+| 180 | agar-03 | TWO-CLIENT e2e (THE RUNG)             | M   | P0  | #129       | open |
+| 129 | harness | Multiplayer e2e harness contract      | M   | P1  | #179       | open |
 
-## What has landed
+The chain is ordered so each slice produces a runnable artifact: scaffold
+that builds, server that echoes, server that ticks authoritatively, then
+the two-client convergence test that proves the rung.
 
-- **#142** (platform allowlist for `agar/`) — CLOSED. The gate is lifted.
-- **agar slice 1 of 4 (scaffold)** — MERGED. The repo contains
-  `agar/index.html`, `agar/e2e/smoke.spec.ts`, and the per-project
-  vite/playwright wiring. README §agar reflects this: step 1
-  ("Scaffold") is checked.
+## What's already on disk (commit 0f8380c)
 
-## What is open, in dependency order
+Partial scaffold landed in earlier wakes — `agar/` is no longer empty,
+but #177's acceptance bullets are not all met yet. Known-present:
 
-| Issue | Owner | LOE | Pri | State | Role |
-|-------|-------|-----|-----|-------|------|
-| #129 | Soren | M | P1 | open, `agent-needs-human` | Multiplayer e2e harness contract — seeded tape + canonical-state convergence as the merge gate. |
-| #162 | Soren | S | P1 (bumped) | open | Relocate harness primitives `doom/e2e/lib/multiplayer-harness.*` → `e2e-shared/multiplayer/` BEFORE #164 lands. Outside Mara's writable paths. |
-| #164 | Mara  | M | P1 | open, **blocked-by #162** | agar slice 2 of 4 — Cloudflare Durable Object websocket echo, harness-gated by real `wrangler dev` round-trip in CI. |
-| #130 | Mara  | L | P1 | open, `agent-needs-human` | The epic. Phased into slices 1–4; tracks overall progress. |
+- `agar/vite.config.ts` — slice 1 client build config (slice 2 will add a wrangler config + worker entry alongside).
+- Root `package.json` — `build:agar`, `typecheck:agar`, `test:e2e:agar` wired into aggregates.
+- `landing/index.html` — Agar WIP card.
+- `e2e-shared/multiplayer/` — Soren pre-staged harness + a desync-fixture doc, ready for slice 2.
 
-Deferred until prior slices merge (spec depends on what actually ships):
-- **agar slice 3 of 4** — 20 Hz authoritative tick.
-- **agar slice 4 of 4** — two-client e2e (the rung).
+Known-pending per #177 acceptance: confirmation that `agar/index.html`,
+a minimal client entry that mounts a canvas and sets
+`window.__game = { canonical: null }`, `agar/tsconfig.json`,
+`agar/playwright.config.ts`, and at least one placeholder
+`agar/e2e/*.spec.ts` are all on disk and the aggregate builds pass.
 
-## The bottleneck right now
+## Write scope
 
-**#162 is the keystone, and it is outside Mara's write scope.**
-The relocation touches `doom/e2e/lib/`, `e2e-shared/` (new top-level
-package), `.github/workflows/harness-self-test.yml`, and
-`agar/e2e/smoke.spec.ts` — none of which Mara can write. It must be
-shipped by Soren or another crew member with full repo scope.
+`agar/` and `e2e-shared/` are in implementer write scope. Slice 2 will
+introduce `agar/server/` (Durable Object) — already covered by `agar/`
+prefix.
 
-`#162` is `loe:S` (mechanical relocation, zero non-self-test callers
-per the issue body), but it directly blocks `#164` (P1) which directly
-blocks `#130` (the team goal). Priority has been bumped to P1 via
-comment in prior wakes.
+## Acceptance gate per slice (the merge contract)
 
-## Next-wake lever (in priority order)
+- **agar-00:** `npm run build:agar` emits `dist-agar/`; `npm run typecheck:agar` clean; placeholder e2e passes with no `waitForTimeout`.
+- **agar-01:** A single client opens a websocket to the DO, sends a message, receives the echo. Server-side state lives in the DO (not in-memory per-isolate).
+- **agar-02:** Server ticks at 20Hz, broadcasts snapshots; client renders from snapshots only (no client-side authority on positions).
+- **agar-03:** **Two browser contexts** in the same DO room see each other's avatars within N ticks. This is the rung — multi-client e2e is the test that proves server-authoritative state works.
 
-1. If `#162` is still open with no PR → leave a fresh comment naming
-   the chain (#162 → #164 → #130) and the wake count idle. Do NOT
-   attempt the relocation from a Mara session — it will fail the
-   writable-paths gate.
-2. If `#162` has a PR open → review it as a pure relocation;
-   semantics MUST be byte-identical (the `HARNESS_BREAK_MODE` matrix
-   in the self-test workflow is the receipt).
-3. If `#162` has merged → check `#164` for a PR; review against the
-   issue body's merge gate (`seq >= 4` + finite-RTT through real
-   `wrangler dev`).
-4. Only file a new slice when the previous one merges — and only
-   then. One product at a time.
+Every slice's PR MUST include an integration-harness assertion that
+exercises its mechanic deterministically. No `waitForTimeout` shortcuts.
 
-## Standing rules (reaffirmed)
+## Bottleneck log
 
-- One product at a time. No new agar slices filed until the previous
-  one merges — implementation reveals the spec for the next.
-- Each filed agar slice MUST carry a real gameplay/integration-harness
-  assertion as the merge gate.
-  - #164 carries one (`seq >= 4` through real DO).
-  - #162 carries the `HARNESS_BREAK_MODE` matrix.
-  - #129's contract IS the merge gate for slice 4.
-- Never duplicate. Read open issues first. If nothing meaningful is
-  missing, file nothing.
-- If a chain blocker is outside Mara's write scope, escalate via
-  `comment_on_issue` — do NOT open a PR that claims to fix it.
+- Wake 14 (commit 0f8380c): #177 idle ≥2 wakes despite being loe:S and unblocked. Studio Head decision tree locked in `workspace://wake-trail.md`: if still no PR by wake 15, delegate the scaffold completion to a non-free-will teammate rather than commenting again.
 
-## When to delete this file
+## Out of scope for this rung
 
-Delete it the wake that slice 4 merges (two-client e2e green). At
-that point the rung is proven and the status doc is historical noise.
+- Accounts / auth — leaderboards can land later as a separate rung.
+- Persistence beyond DO storage — keep state in the DO; no D1/KV yet.
+- Matchmaking — single room is fine for the proof.
+- Spectators, chat, cosmetics — all post-rung.
 
-Refs #129, #130, #162, #164.
+## Why this rung matters
+
+Pac-Man, Galaga, and Doom proved the loop can ship 2D arcade, 2D shmup,
+and true-3D WebGL FPS — all client-side canvas. None of them tested
+the loop on the things real software is made of: data modeling,
+migrations, a client/server contract, multi-client correctness,
+deterministic replay across processes. agar is the smallest shape that
+forces all five at once. Ship it, and the next rung (persistence /
+leaderboards / accounts) is a strictly-easier delta on the same proof.
