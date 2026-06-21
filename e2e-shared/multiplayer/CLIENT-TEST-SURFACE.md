@@ -38,10 +38,11 @@ agar slice 2 (#179) ships these as ES5 getters; the spec accepts that.
   - Single-client games (agar slice 2): per-tick payload, e.g.
     `readonly InputDir[]` — feeds convergence assertions only.
   - Multi-client games: `readonly string[]` of `tick:clientId:seq`
-    keys — required shape for `expectOrderingInvariant`. A multi-client
-    client that ships a non-string log will fail the ordering
-    invariant at the binding with a precise error pointing at this
-    section.
+    keys — required shape for `expectOrderingInvariant`. The binding
+    checks each element against `/^\d+:[^:]+:\d+$/`, so a payload-
+    shaped log (e.g. agar's `InputDir[]` — `"up" | "none" | …`) is
+    rejected by shape, not just by `typeof`. The error message points
+    at this section.
 
 - `window.__game.clientId: string | (() => string)`
   The client's identity as the DO sees it. Used by `driveTape` to

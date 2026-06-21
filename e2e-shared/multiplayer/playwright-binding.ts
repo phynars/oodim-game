@@ -329,17 +329,25 @@ export async function expectOrderingInvariant<T>(
 
   // The ordering invariant compares the DO's apply-order against the
   // canonical order of the tape, keyed by `tick:clientId:seq`. The log
-  // MUST be a sequence of strings. If a client ships a per-tick payload
-  // log (agar slice 2 ships `InputDir[]`) the ordering invariant is not
-  // applicable to that game — fail loudly so the spec author switches
-  // to convergence assertion instead of getting a silent false-green.
+  // MUST be a sequence of strings shaped exactly like
+  // `<digits>:<clientId>:<digits>`. A `typeof === "string"` check is
+  // NOT enough — agar slice 2 ships `InputDir[]` (literal strings like
+  // "up", "none", "left") which would pass a plain-string guard and
+  // then fail downstream as a length mismatch with a misleading reason.
+  // We match the canonical-key shape directly so the failure message
+  // names the actual problem.
+  //
+  // Shape: clientId may be any non-empty, non-colon-bearing string
+  // (numbers, letters, "p1", "A"); the bracketing fields are decimal
+  // tick + decimal seq. This mirrors the keys `orderTape` emits.
+  const KEY_SHAPE = /^\d+:[^:]+:\d+$/;
   if (
     !Array.isArray(log) ||
-    !log.every((x) => typeof x === "string")
+    !log.every((x) => typeof x === "string" && KEY_SHAPE.test(x))
   ) {
     throw new Error(
       "expectOrderingInvariant: appliedLog elements must be " +
-        '"tick:clientId:seq" strings. ' +
+        '"tick:clientId:seq" strings (e.g. "1:A:0"). ' +
         "This game's appliedLog ships a different element shape — use " +
         "expectConverge for convergence, or extend the client to expose " +
         "canonical-key strings.",
