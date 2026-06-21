@@ -23,6 +23,10 @@ import {
   BLOOD_DROP_SPEED,
   CORPSE_FADE_START_TICK,
   CORPSE_HOLD_TICKS,
+  DAMAGE_HITSTOP_TICKS,
+  DAMAGE_WOBBLE_AMP_FACTOR,
+  DAMAGE_WOBBLE_FREQ,
+  DAMAGE_WOBBLE_TICKS,
   ENEMY_FLINCH_KNOCK,
   ENEMY_HIT_FLASH_TICKS,
   HIT_FLASH_TICKS,
@@ -1248,6 +1252,15 @@ export class Engine {
     const soaked = Math.min(p.armor, Math.floor(amount / 3));
     p.armor -= soaked;
     p.health -= amount - soaked;
+    // Damage hitstop (#205) — 3-frame freeze BEFORE the flash/shake writes.
+    // Half KILL_HITSTOP_TICKS (6): the kill is the player's victory thunk,
+    // a hit is the world's; the kill stays heavier. Math.max clamp so a
+    // future multi-hit (overlapping enemy + projectile on the same tick)
+    // can't accumulate into a frozen sim — same pattern as #166 + #194.
+    this.state.hitstopTicks = Math.max(
+      this.state.hitstopTicks,
+      DAMAGE_HITSTOP_TICKS,
+    );
     // Pulse the damage feedback (#91): red flash overlay + camera shake.
     // Both counters are decremented each fixed-step; the HUD overlay reads
     // hitFlashTicks > 0 and the render pass perturbs the camera while
@@ -1256,6 +1269,15 @@ export class Engine {
     // identically.
     this.state.hitFlashTicks = HIT_FLASH_TICKS;
     this.state.shakeTicks = SHAKE_TICKS;
+    // Lingering wobble (#205): slow horizontal sway that sells the daze
+    // after the initial THUNK. Decayed in update()'s !frozen block; summed
+    // into ox in syncCamera() at 0.3× SHAKE_AMPLITUDE. Math.max-clamped
+    // (NEVER `+=`) so back-to-back hits arm a single fresh window, not a
+    // stacking infinite wobble.
+    this.state.damageWobbleTicks = Math.max(
+      this.state.damageWobbleTicks,
+      DAMAGE_WOBBLE_TICKS,
+    );
     if (p.health <= 0) {
       p.health = 0;
       p.alive = false;
@@ -1407,6 +1429,11 @@ export class Engine {
         if (this.state.shakeTicks > 0) this.state.shakeTicks -= 1;
         if (this.state.hitShakeTicks > 0) this.state.hitShakeTicks -= 1;
         if (this.state.killShakeTicks > 0) this.state.killShakeTicks -= 1;
+        // #205: lingering damage wobble. Same gate as the other channels —
+        // freezes with the world during hitstop so the dazed sway doesn't
+        // age out during the freeze.
+        if (this.state.damageWobbleTicks > 0)
+          this.state.damageWobbleTicks -= 1;
         for (const e of this.state.enemies) {
           if (e.hitFlashTicks > 0) e.hitFlashTicks -= 1;
         }
@@ -1843,6 +1870,24 @@ export class Engine {
         SHAKE_AMPLITUDE *
         KILL_SHAKE_AMPLITUDE_FACTOR *
         env;
+    }
+    // Damage wobble (#205): slow horizontal sway that sells the daze AFTER
+    // the initial damage THUNK. Linear amp decay (kw) — the LINGER, not a
+    // second punch. Horizontal-only (no oy term): reads as "stumbled
+    // sideways", not "head bobbing". 0.0314 rad/tick ≈ 0.3 Hz at 60 ticks/s,
+    // distinct from the high-frequency phase rates of the three hard-shake
+    // channels (1.3/1.7, 1.7/2.3, 2.1/1.9) — the four can fire concurrently
+    // without beat-cancellation. Per #205, when damageWobbleTicks hits 0
+    // the offset summed from this channel is 0 (kw=0), so the camera
+    // returns to the player's eye exactly.
+    if (this.state.damageWobbleTicks > 0) {
+      const kw = this.state.damageWobbleTicks / DAMAGE_WOBBLE_TICKS;
+      const phaseW = this.state.tick;
+      ox +=
+        Math.sin(phaseW * DAMAGE_WOBBLE_FREQ) *
+        SHAKE_AMPLITUDE *
+        DAMAGE_WOBBLE_AMP_FACTOR *
+        kw;
     }
     this.camera.position.set(p.x + ox, p.y + oy, p.z);
     // Euler order 'YXZ' = yaw (about world-up Y) then pitch (about local X) —

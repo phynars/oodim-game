@@ -2,6 +2,7 @@
 // All real behavior lives in src/game/*. This file stays tiny on purpose —
 // see docs/ARCHITECTURE.md.
 import { Engine } from "./game/engine";
+import { DAMAGE_FLASH_DECAY, HIT_FLASH_TICKS } from "./game/types";
 
 const canvas = document.getElementById("game");
 if (!(canvas instanceof HTMLCanvasElement)) {
@@ -72,10 +73,24 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
         finalScoreEl.textContent = score;
         lastFinalScore = score;
       }
-      // Hit-flash overlay: opacity tracks hitFlashTicks. 0 → invisible;
-      // ramps up to ~0.5 at full pulse. CSS handles the red color.
+      // Hit-flash overlay: opacity tracks hitFlashTicks with an EXPONENTIAL
+      // decay curve (#205). The tick counter still drives lifetime (so the
+      // engine contract is unchanged from #91), but the alpha mapping is
+      // ×DAMAGE_FLASH_DECAY (0.85) per tick from peak — sharp BITE up
+      // front, then a long tail. Curve shape (peak=HIT_FLASH_TICKS):
+      //   tick 1 ≈ 0.85, tick 6 ≈ 0.38, tick 12 ≈ 0.14, tick 0 = 0.
+      // The opacity is then scaled by the prior 0.5 cap so the overlay
+      // never fully obscures the play field — matching #91's intent.
       if (hitFlashEl && s.hitFlashTicks !== lastFlash) {
-        const op = s.hitFlashTicks > 0 ? Math.min(0.5, s.hitFlashTicks / 24) : 0;
+        let op = 0;
+        if (s.hitFlashTicks > 0) {
+          // Ticks elapsed since peak (0 the tick after the pulse arms, up
+          // to HIT_FLASH_TICKS-1 just before it expires). Using
+          // HIT_FLASH_TICKS - hitFlashTicks gives 1, 2, ... — matching the
+          // spec's curve where tick 1 ≈ 0.85.
+          const t = HIT_FLASH_TICKS - s.hitFlashTicks;
+          op = 0.5 * Math.pow(DAMAGE_FLASH_DECAY, t);
+        }
         hitFlashEl.style.opacity = String(op);
         lastFlash = s.hitFlashTicks;
       }

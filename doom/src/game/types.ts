@@ -241,6 +241,15 @@ export interface DoomState {
    *  the hitstop gate. syncCamera() sums this on top of shakeTicks at half
    *  amplitude so the two feedback beats stay semantically separate. */
   hitShakeTicks: number;
+  /** Fixed-step frames remaining on the current damage-wobble pulse (#205).
+   *  Set to DAMAGE_WOBBLE_TICKS the tick the player takes damage; decayed
+   *  each fixed-step AFTER the hitstop gate (same place as the other
+   *  pulses). Parallel to shakeTicks (the hard damage shake), but slower
+   *  and lower-amplitude — sells the "stumbled / dazed" linger after the
+   *  initial THUNK. syncCamera() adds a horizontal sine sway whose
+   *  envelope scales with damageWobbleTicks / DAMAGE_WOBBLE_TICKS.
+   *  Clamped via Math.max — never `+=` — same as every other channel. */
+  damageWobbleTicks: number;
   /** Fixed-step frames remaining on the current KILL-shake pulse (#194).
    *  Third shake channel, parallel to shakeTicks (player damage) and
    *  hitShakeTicks (connect). Set to KILL_SHAKE_TICKS when a player
@@ -524,6 +533,7 @@ export function initialState(): DoomState {
     hitstopTicks: 0,
     hitShakeTicks: 0,
     killShakeTicks: 0,
+    damageWobbleTicks: 0,
     impactSparks: [],
     bloodDrops: [],
   };
@@ -652,3 +662,48 @@ export const CORPSE_HOLD_TICKS = 24;
  *  CORPSE_FADE_START_TICK..CORPSE_HOLD_TICKS map to alpha 1→0 linearly.
  *  The first 12 ticks hold full opacity (the LAND); the last 12 fade. */
 export const CORPSE_FADE_START_TICK = 12;
+
+// --- Player-damage feel polish (#205) -------------------------------------
+// Doom = HEAVY (per tone rule: pacman=graceful, galaga=punchy, doom=HEAVY).
+// Taking a hit should THUNK and LINGER — the inverse of #194's kill thunk.
+// Three concurrent additions on the damage edge, all additive on top of
+// #91's existing flash/shake:
+//   1. Damage hitstop — 3-frame freeze on every damage event.
+//   2. Exponential flash decay — replace the HUD's linear alpha with ×0.85
+//      per tick from peak (sharp bite up front, tail down to ~10%).
+//   3. Lingering wobble — slow horizontal sine sway (~0.3 Hz, 0.3× shake
+//      amplitude) over 30 ticks (~500ms) sells the daze.
+// Channel phase rates are chosen distinct from #91's damage shake (1.7/2.3),
+// #166's connect shake (2.1/1.9), and #194's kill shake (1.3/1.7), so all
+// four channels live together without beat-cancellation.
+
+/** Fixed-step frames hitstop holds on player damage (#205). 3 ticks @ 60Hz
+ *  = ~50ms — HALF the KILL_HITSTOP_TICKS (6) on purpose: a kill is the
+ *  player's victory thunk, a hit is the world's; the kill should be
+ *  heavier. Same Math.max clamp pattern as #194 (NEVER `+=`). */
+export const DAMAGE_HITSTOP_TICKS = 3;
+
+/** Fixed-step frames the damage-wobble channel holds (#205). 30 ticks @
+ *  60Hz = ~500ms — long enough that a single hit reads as "dazed for
+ *  half a second", short enough not to overstay. Linear amp decay (kw =
+ *  ticks / DAMAGE_WOBBLE_TICKS) — the LINGER, not the punch. */
+export const DAMAGE_WOBBLE_TICKS = 30;
+
+/** Per-tick phase step for the damage-wobble sine (#205). 0.0314 rad/tick
+ *  ≈ 0.3 Hz at 60 ticks/s — a slow horizontal sway, distinct from the
+ *  ~2-rad/tick high-frequency wiggle of the hard shakes. */
+export const DAMAGE_WOBBLE_FREQ = 0.0314;
+
+/** Camera-offset scale for the wobble, relative to SHAKE_AMPLITUDE (#205).
+ *  0.3 — gentle. The wobble is the LINGER after the THUNK, not a second
+ *  thunk; it should READ but not compete with the hard damage shake's
+ *  initial amplitude. Horizontal-only (no oy term) so it sells "stumbled
+ *  sideways", not "head-bobbing". */
+export const DAMAGE_WOBBLE_AMP_FACTOR = 0.3;
+
+/** Exponential flash decay base (#205). The HUD overlay's alpha at tick
+ *  `t` (where t = HIT_FLASH_TICKS - hitFlashTicks, i.e. ticks elapsed
+ *  since peak) is `DAMAGE_FLASH_DECAY ^ t`. At 0.85: tick 1 ≈ 0.85, tick
+ *  6 ≈ 0.38, tick 12 ≈ 0.14 — sharp bite up front, exponential tail.
+ *  Inverse envelope of the prior linear fade. */
+export const DAMAGE_FLASH_DECAY = 0.85;
