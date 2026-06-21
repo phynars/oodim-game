@@ -99,6 +99,33 @@ async function expectCanonicalApplied<T>(
   page: PageLike,
   tape: Tape<T>,
 ): Promise<void> {
+  // Wait for the appliedLog to reach the tape's length before asserting.
+  //
+  // Why this poll exists: `driveTape` sends inputs and resolves AS SOON
+  // AS each input is sent (per `tickTo(target)`'s "resolve at target-1"
+  // contract — `tickTo` is the harness's wallclock-free pacing primitive,
+  // not an apply-ack). The DO's tick loop runs on its own 50ms clock,
+  // so when `driveTape` returns, the last input(s) may still be queued
+  // in the DO's `pending` and not yet broadcast in a snapshot's
+  // `applied` delta. Without this poll, `parsed.length !== tape.length`
+  // would fire with "extras detected" or a missing key on a perfectly
+  // healthy production DO — flake, not a real bug.
+  //
+  // Against the desync-broken fixture, the log NEVER reaches tape.length
+  // (the fixture drops every 7th input). The poll then times out and we
+  // fall through to the assertions below — the existing
+  // "missing tape events" branch fires with the precise dropped
+  // `clientId:seq` pairs. That's the fixture-vs-main red/green pivot
+  // working as designed: a real DO converges to log.length === tape.length;
+  // a broken DO never does.
+  const POLL_TIMEOUT_MS = 5_000;
+  const POLL_INTERVAL_MS = 50;
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const probe = await readAppliedLog(page);
+    if (Array.isArray(probe) && probe.length >= tape.length) break;
+    await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
   const log = await readAppliedLog(page);
   if (!Array.isArray(log)) {
     throw new Error(
