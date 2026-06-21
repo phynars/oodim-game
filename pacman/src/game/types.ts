@@ -71,8 +71,23 @@ export interface FeedbackChannel {
   /** Issue #171 — colour override for the screen-flash veil. `'cyan'`
    *  (default) keeps the power-pellet activation veil unchanged; `'red'`
    *  tints the brief "impact" flash that lands on a fatal ghost touch.
-   *  Reset to `'cyan'` at the end of the death-anim window. */
-  flashTint: "cyan" | "red";
+   *  Issue #183 — extended to `'white'` for the level-clear opening veil
+   *  (the held beat before the maze starts pulsing). Reset to `'cyan'`
+   *  at the end of the death-anim / clear-anim window. */
+  flashTint: "cyan" | "red" | "white";
+  /** Issue #183 — Pac level-clear cinematic phase. Counts UP from 0
+   *  while the maze-flash + bonus-tally sequence plays. Set to 1 on
+   *  eating the final pellet; engine gates the whole sim while >0;
+   *  renderer reads it to drive the maze flash cycles and the bonus
+   *  tally HUD. When it reaches CLEAR_ANIM_TICKS the existing level-up
+   *  reset path (handleLevelWon body) finally fires. */
+  clearTicks: number;
+  /** Issue #183 — current count-up value of the level-clear bonus
+   *  shown in the tally HUD. Purely cosmetic — the actual score bump
+   *  lands in one atomic write at tick CLEAR_FLASH_END, so the live
+   *  `state.score` is authoritative. Reset to 0 at the end of the
+   *  clear-anim window. */
+  clearTallyShown: number;
 }
 
 /** Issue #171 — total ticks of the Pac death cinematic. 72 ticks ≈ 1200ms
@@ -87,6 +102,34 @@ export const DEATH_PRE_PAUSE = 12;
  *  mouth-open-then-shrink animation. After this, the post-pause holds a
  *  blank frame until DEATH_ANIM_TICKS triggers the reset. */
 export const DEATH_COLLAPSE_END = 60;
+
+/** Issue #183 — total ticks of the Pac level-clear cinematic. 84 ticks ≈
+ *  1400ms at the engine's 60Hz step. Slightly longer than the death
+ *  cinematic (#171: 72 ticks) — winning earns the longer beat. Broken
+ *  into pre-pause (0..11) / maze-flash (12..59) / bonus-tally (60..83).
+ *  Exported so the renderer + tests can read the same constants the
+ *  engine writes. */
+export const CLEAR_ANIM_TICKS = 84;
+/** End-exclusive: ticks [0, CLEAR_PRE_PAUSE) hold the last frame — Pac
+ *  frozen at the final pellet position, ghosts frozen in place — for
+ *  the "I did it" beat before the maze flash starts. Renderer still
+ *  draws Pac + ghosts during this window. */
+export const CLEAR_PRE_PAUSE = 12;
+/** End-exclusive: ticks [CLEAR_PRE_PAUSE, CLEAR_FLASH_END) drive the
+ *  blue→white maze-flash. 48 ticks = 4 cycles of 12 ticks each. During
+ *  this window the renderer SKIPS drawing Pac and the ghost roster —
+ *  the empty pulsing maze IS the celebration. */
+export const CLEAR_FLASH_END = 60;
+/** End-exclusive: ticks [CLEAR_FLASH_END, CLEAR_TALLY_END) drive the
+ *  bonus-tally count-up. After this, CLEAR_ANIM_TICKS triggers the
+ *  level-up reset path (maze refills, ghosts respawn, level += 1). */
+export const CLEAR_TALLY_END = 84;
+/** Issue #183 — score bonus added to `state.score` on level clear, in
+ *  one atomic write at the boundary tick CLEAR_FLASH_END. The displayed
+ *  `clearTallyShown` is a cosmetic count-up toward this value over the
+ *  tally window. Starting value chosen to read as a meaningful payoff
+ *  without dominating the per-pellet scoring economy. */
+export const LEVEL_CLEAR_BONUS = 1000;
 
 export interface GameState {
   /** High-level lifecycle. Boots to 'ready'. */
@@ -147,6 +190,8 @@ export function initialState(): GameState {
       hitstopTicks: 0,
       deathTicks: 0,
       flashTint: "cyan",
+      clearTicks: 0,
+      clearTallyShown: 0,
     },
   };
 }
