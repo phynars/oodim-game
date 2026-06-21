@@ -24,8 +24,8 @@ import {
   CORPSE_FADE_START_TICK,
   CORPSE_HOLD_TICKS,
   DAMAGE_HITSTOP_TICKS,
-  DAMAGE_WOBBLE_AMP_FACTOR,
-  DAMAGE_WOBBLE_FREQ,
+  DAMAGE_WOBBLE_AMPLITUDE_FACTOR,
+  DAMAGE_WOBBLE_PHASE_RATE,
   DAMAGE_WOBBLE_TICKS,
   ENEMY_FLINCH_KNOCK,
   ENEMY_HIT_FLASH_TICKS,
@@ -852,6 +852,20 @@ export class Engine {
         } finally {
           // Always restore live input, even if update() throws.
           this.forcedInput = null;
+          // Neutralize the engine's main rAF loop accumulator so the next
+          // wall-clock frame does NOT backfill catch-up update()s on top
+          // of the deterministic step pump we just ran. Without this, the
+          // HUD-opacity e2e (#205) races: between two `advance()` calls
+          // the test awaits one rAF, the main loop catches up ~1 step,
+          // hitFlashTicks decays an extra tick, the opacity ratio drifts
+          // and the curve assertion fails under headless SwiftShader.
+          // `lastTime = 0` re-triggers the loop's first-frame sentinel
+          // (it'll seed itself to `now` on the next rAF and add 0 to the
+          // accumulator), and `accumulator = 0` discards any stored time
+          // that built up while status was 'ready' or during the eval
+          // gap between forceDamage and the first advance().
+          this.lastTime = 0;
+          this.accumulator = 0;
         }
         this.publish();
       },
@@ -1884,9 +1898,9 @@ export class Engine {
       const kw = this.state.damageWobbleTicks / DAMAGE_WOBBLE_TICKS;
       const phaseW = this.state.tick;
       ox +=
-        Math.sin(phaseW * DAMAGE_WOBBLE_FREQ) *
+        Math.sin(phaseW * DAMAGE_WOBBLE_PHASE_RATE) *
         SHAKE_AMPLITUDE *
-        DAMAGE_WOBBLE_AMP_FACTOR *
+        DAMAGE_WOBBLE_AMPLITUDE_FACTOR *
         kw;
     }
     this.camera.position.set(p.x + ox, p.y + oy, p.z);

@@ -691,15 +691,18 @@ export const DAMAGE_WOBBLE_TICKS = 30;
 
 /** Per-tick phase step for the damage-wobble sine (#205). 0.0314 rad/tick
  *  ≈ 0.3 Hz at 60 ticks/s — a slow horizontal sway, distinct from the
- *  ~2-rad/tick high-frequency wiggle of the hard shakes. */
-export const DAMAGE_WOBBLE_FREQ = 0.0314;
+ *  ~2-rad/tick high-frequency wiggle of the hard shakes. Name mirrors the
+ *  spec doc (doom/docs/juice/player-damage-205.md) — code and contract
+ *  agree on `_PHASE_RATE`. */
+export const DAMAGE_WOBBLE_PHASE_RATE = 0.0314;
 
 /** Camera-offset scale for the wobble, relative to SHAKE_AMPLITUDE (#205).
  *  0.3 — gentle. The wobble is the LINGER after the THUNK, not a second
  *  thunk; it should READ but not compete with the hard damage shake's
  *  initial amplitude. Horizontal-only (no oy term) so it sells "stumbled
- *  sideways", not "head-bobbing". */
-export const DAMAGE_WOBBLE_AMP_FACTOR = 0.3;
+ *  sideways", not "head-bobbing". Name mirrors the spec doc — code and
+ *  contract agree on `_AMPLITUDE_FACTOR`. */
+export const DAMAGE_WOBBLE_AMPLITUDE_FACTOR = 0.3;
 
 /** Exponential flash decay base (#205). The HUD overlay's alpha at tick
  *  `t` (where t = HIT_FLASH_TICKS - hitFlashTicks, i.e. ticks elapsed
