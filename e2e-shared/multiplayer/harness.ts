@@ -15,6 +15,9 @@
 //
 // SHAPE OF THE CONTRACT
 //
+// See CLIENT-TEST-SURFACE.md (same dir) for the normative 8-field
+// `window.__game` shape these Playwright-bound primitives bind against.
+//
 // The four assertions (see #129) the harness exists to make cheap:
 //   1. Seeded input tape — both clients
 //   2. Canonical-state convergence (structural equality, NOT screenshot)
