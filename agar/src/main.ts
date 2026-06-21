@@ -83,9 +83,17 @@ function readClientIdParam(): string | null {
 function wsUrl(seed: string, clientId: string): string {
   const loc = window.location;
   const proto = loc.protocol === "https:" ? "wss:" : "ws:";
+  // Wrangler dev binds 127.0.0.1 explicitly (see agar/wrangler.toml's
+  // [dev] block). When the page is served from `localhost` (vite
+  // preview), force the ws hostname to `127.0.0.1` rather than passing
+  // `localhost` through verbatim — on Linux CI `localhost` can resolve
+  // to `::1` first, and workerd's listener is IPv4-only. The probe at
+  // `127.0.0.1:8787/` in playwright.config.ts uses the same address;
+  // pinning the ws here makes the client match the same single source
+  // of truth (the wrangler.toml ip), so a green probe ⇒ a working ws.
   const host =
     loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
-      ? `${loc.hostname}:8787`
+      ? "127.0.0.1:8787"
       : loc.host;
   return (
     `${proto}//${host}/ws` +
@@ -127,6 +135,17 @@ let appliedLog: string[] = [];
 // source of `seq` so the harness can pre-compute expected keys without
 // race conditions.
 let nextSeq = 0;
+
+// Outbox of inputs accepted while the ws was not OPEN. The harness's
+// disconnect/reconnect test drives the tape across BOTH clients while
+// one is dropped — the tape's `sendInput` calls for the disconnected
+// peer must not vanish, or the post-reconnect appliedLog will show a
+// length mismatch with the canonical tape (two-client.spec.ts's
+// `expectOrderingInvariant` against the full tape would then fail).
+// Each entry carries the already-allocated `seq` so flushing preserves
+// per-client monotonic order.
+interface OutboxEntry { dir: InputDir; seq: number; }
+let outbox: OutboxEntry[] = [];
 
 function draw(): void {
   ctx.fillStyle = "#050505";
@@ -215,6 +234,10 @@ function openWs(): WebSocket {
     connected = true;
     syncProbe();
     draw();
+    // Drain any inputs accepted while the ws was closed (the harness's
+    // disconnect/reconnect test relies on this — see the OutboxEntry
+    // comment).
+    flushOutbox();
   });
   next.addEventListener("close", () => {
     connected = false;
@@ -242,9 +265,38 @@ function openWs(): WebSocket {
 }
 
 function sendInput(dir: InputDir): void {
-  if (ws.readyState !== WebSocket.OPEN) return;
+  // Allocate the seq EAGERLY — even for outbox'd inputs — so per-client
+  // monotonic ordering is preserved across the disconnect boundary.
+  // The harness ascribes canonical keys to (tick, clientId, seq); if
+  // we skipped sequence allocation on disconnect, the post-reconnect
+  // flush would renumber from where we are now, but the gap between
+  // before-disconnect and after-reconnect seqs would still be canonical.
+  // Allocating eagerly keeps that interleaving stable.
   const seq = nextSeq++;
+  if (ws.readyState !== WebSocket.OPEN) {
+    outbox.push({ dir, seq });
+    return;
+  }
   ws.send(JSON.stringify({ type: "input", dir, seq }));
+}
+
+/** Flush queued inputs accepted while the ws was closed. Called after
+ *  the post-reconnect ws transitions to OPEN. Order is preserved so
+ *  the server sees the same seq sequence it would have if the inputs
+ *  had streamed through unbroken. */
+function flushOutbox(): void {
+  if (outbox.length === 0) return;
+  const toSend = outbox;
+  outbox = [];
+  for (const entry of toSend) {
+    if (ws.readyState !== WebSocket.OPEN) {
+      // ws closed again mid-flush — re-queue and bail. The next
+      // reconnect will retry.
+      outbox = toSend.slice(toSend.indexOf(entry));
+      return;
+    }
+    ws.send(JSON.stringify({ type: "input", dir: entry.dir, seq: entry.seq }));
+  }
 }
 
 // Keyboard → intent. Browsers fire keydown repeatedly while held; the
@@ -298,14 +350,39 @@ interface AgarTestSurface {
 }
 
 /**
- * Resolve once the latest snapshot's tick is at or past `target`.
- * No-op (resolves immediately) when already at or past `target`.
+ * Resolve once the next DO tick boundary will commit AT `target`.
+ *
+ * The harness's `driveTape` calls `tickTo(ev.tick).then(() => sendInput(...))`
+ * with the contract that the sent input lands in the canonical log keyed
+ * `${ev.tick}:${clientId}:${seq}`. The DO assigns the tick at drain time
+ * as `world.tick + 1`, so for our input to be drained AT `target` we must
+ * send while the DO is at `target - 1`. Concretely: resolve once
+ * `latest.tick >= target - 1`. If `latest.tick` already exceeds the
+ * window, we've missed it — resolve immediately so the harness's
+ * ordering-invariant check surfaces the divergence with a precise
+ * index/expected/actual diff rather than hanging on a tick that will
+ * never arrive.
+ *
+ * For `target <= 0` this is a no-op (resolves immediately) so reads at
+ * tick 0 (the initial replay snapshot) don't block.
  */
 function tickTo(target: number): Promise<void> {
-  if (latest !== null && latest.tick >= target) return Promise.resolve();
+  const threshold = target - 1;
+  if (threshold <= 0) return Promise.resolve();
+  if (latest !== null && latest.tick >= threshold) return Promise.resolve();
   return new Promise((resolve) => {
     const id = setInterval(() => {
-      if (latest !== null && latest.tick >= target) {
+      // While disconnected the snapshot stream is paused; resolving
+      // immediately lets the harness's `driveTape` push the input into
+      // the outbox without hanging. The seq ordering survives the
+      // disconnect; the resulting canonical tick will be whatever the
+      // DO assigns post-reconnect.
+      if (!connected) {
+        clearInterval(id);
+        resolve();
+        return;
+      }
+      if (latest !== null && latest.tick >= threshold) {
         clearInterval(id);
         resolve();
       }
