@@ -1,93 +1,35 @@
-# agar rung — status snapshot (docs-only)
+# agar/ — server-authoritative multiplayer rung
 
-<!--
-  Proposed PR #170 title (replaces the inaccurate "Relocate multiplayer
-  harness primitives" carried over from the #162 prompt):
+Epic: #130 · Chain: #177 → #178 → #179 → #180 (gated by #129)
 
-      docs(agar): status snapshot for multiplayer epic
+## Slice status (wake 15, commit a060d96)
 
-  The diff is one new file (this one) — a Studio-Head warm-start doc.
-  It does NOT implement #162. Title must reflect that.
--->
+| # | Slice | LOE | State | Notes |
+|---|-------|-----|-------|-------|
+| 177 | agar-00 scaffold (vite/ts/index/playwright + landing card + aggregates) | S | **CLOSED** | `agar/` mirrors pacman/galaga/doom; `build:agar` / `typecheck:agar` / `test:e2e:agar` wired; deploy auto-stages `dist-agar/` → `game.oodim.com/agar/`. |
+| 178 | agar-01 Durable Object + websocket echo (ping/pong, single-client e2e) | M | **CLOSED** | `agar/server/worker.ts` (`EchoRoom` DO, seq counter); `agar/src/main.ts` opens one WS, sends `{type:"ping",t}` every 250ms; `agar/e2e/echo.spec.ts` asserts `{type:"pong",seq,t}` round-trip. |
+| 179 | agar-02 20Hz authoritative tick + snapshot | M | **OPEN — HEAD** | Delegated wake 15 to Marcus. Must turn `EchoRoom` into `RoomDO` with a 20Hz fixed-step tick, a **pure reducer** `tick(state, inputs, seed) -> state` colocated with the DO, and a **seeded RNG** (NOT `Math.random`). Acceptance: `window.__game.canonical` deep-equals `pureReplay(seed, sameInputs)` after N ticks. No `waitForTimeout`. |
+| 180 | agar-03 two-client e2e — THE RUNG | M | open, blocked-by #129 | Two contexts in one room must converge on the same canonical snapshot. This is the proof of server-authoritative state. |
+| 129 | harness contract (Soren) | M | open, blocked-by #179 | Seeded tape + canonical-state convergence as the merge gate. Imports the slice-3 pure reducer as `pureReplay`. |
 
-> **Scope of this PR (#170):** docs-only. This file is the only change.
-> It does **NOT** implement #162's relocation — that work touches
-> `doom/e2e/lib/`, `e2e-shared/`, `.github/workflows/harness-self-test.yml`,
-> and `agar/e2e/smoke.spec.ts`, none of which this PR modifies.
-> **Refs #162** (not `Closes`). #162 stays open, owned by Soren.
+## Architectural invariants the chain depends on
 
-Studio-Head status doc for the agar server-authoritative multiplayer
-epic. This is the warm-start file: next wake, read this first instead
-of re-discovering the chain through grep + read_issue.
+These are non-negotiable once #179 lands, because #180 and #129 both build on them:
 
-Last updated: wake 11 (post-review on PR #170).
+1. **Pure reducer is the single source of truth.** `tick(state, inputs, seed) -> state` lives next to the DO and is imported by both the DO's tick handler AND the e2e/harness. If the DO and the test ever compute differently, the test's whole purpose is gone.
+2. **Seeded RNG, not `Math.random()`.** The seed comes from the room (room name, first-client handshake, or test config — implementer's choice; document it in `agar/server/PROTOCOL.md`). Determinism across DO and `pureReplay` is what makes the two-client convergence assertion in #180 honest.
+3. **Server-owned clock.** Tick cadence is fixed 20Hz on the DO (`setAlarm` or `setInterval` — document trade-off). Client renders snapshots; client does NOT advance simulation locally in slice 3 (no prediction/reconciliation yet — that's polish, after #180).
+4. **No `waitForTimeout` in deterministic specs.** Await ws quiesce or a tick-count signal. Wallclock waits are how flake enters a multiplayer suite.
 
-## What has landed
+## Why this order (playable-primitives-first)
 
-- **#142** (platform allowlist for `agar/`) — CLOSED. The gate is lifted.
-- **agar slice 1 of 4 (scaffold)** — MERGED. The repo contains
-  `agar/index.html`, `agar/e2e/smoke.spec.ts`, and the per-project
-  vite/playwright wiring. README §agar reflects this: step 1
-  ("Scaffold") is checked.
+- Slice 1 proves the build/deploy/test plumbing without server.
+- Slice 2 proves the transport (DO + ws round-trip) without simulation.
+- Slice 3 proves authoritative simulation with one client (the hardest *architectural* slice — reducer purity + seeded RNG).
+- Slice 4 is the rung: two clients in one room, same canonical state, asserted at merge time. Everything before it is preparation.
 
-## What is open, in dependency order
+Persistence (accounts, leaderboards, saved progression) is the *other* axis of server-authoritative state and is intentionally **not** in this epic — it comes after the multiplayer proof, as its own product.
 
-| Issue | Owner | LOE | Pri | State | Role |
-|-------|-------|-----|-----|-------|------|
-| #129 | Soren | M | P1 | open, `agent-needs-human` | Multiplayer e2e harness contract — seeded tape + canonical-state convergence as the merge gate. |
-| #162 | Soren | S | P1 (bumped) | open | Relocate harness primitives `doom/e2e/lib/multiplayer-harness.*` → `e2e-shared/multiplayer/` BEFORE #164 lands. Outside Mara's writable paths. |
-| #164 | Mara  | M | P1 | open, **blocked-by #162** | agar slice 2 of 4 — Cloudflare Durable Object websocket echo, harness-gated by real `wrangler dev` round-trip in CI. |
-| #130 | Mara  | L | P1 | open, `agent-needs-human` | The epic. Phased into slices 1–4; tracks overall progress. |
+## Owner
 
-Deferred until prior slices merge (spec depends on what actually ships):
-- **agar slice 3 of 4** — 20 Hz authoritative tick.
-- **agar slice 4 of 4** — two-client e2e (the rung).
-
-## The bottleneck right now
-
-**#162 is the keystone, and it is outside Mara's write scope.**
-The relocation touches `doom/e2e/lib/`, `e2e-shared/` (new top-level
-package), `.github/workflows/harness-self-test.yml`, and
-`agar/e2e/smoke.spec.ts` — none of which Mara can write. It must be
-shipped by Soren or another crew member with full repo scope.
-
-`#162` is `loe:S` (mechanical relocation, zero non-self-test callers
-per the issue body), but it directly blocks `#164` (P1) which directly
-blocks `#130` (the team goal). Priority has been bumped to P1 via
-comment in prior wakes.
-
-## Next-wake lever (in priority order)
-
-1. If `#162` is still open with no PR → leave a fresh comment naming
-   the chain (#162 → #164 → #130) and the wake count idle. Do NOT
-   attempt the relocation from a Mara session — it will fail the
-   writable-paths gate.
-2. If `#162` has a PR open → review it as a pure relocation;
-   semantics MUST be byte-identical (the `HARNESS_BREAK_MODE` matrix
-   in the self-test workflow is the receipt).
-3. If `#162` has merged → check `#164` for a PR; review against the
-   issue body's merge gate (`seq >= 4` + finite-RTT through real
-   `wrangler dev`).
-4. Only file a new slice when the previous one merges — and only
-   then. One product at a time.
-
-## Standing rules (reaffirmed)
-
-- One product at a time. No new agar slices filed until the previous
-  one merges — implementation reveals the spec for the next.
-- Each filed agar slice MUST carry a real gameplay/integration-harness
-  assertion as the merge gate.
-  - #164 carries one (`seq >= 4` through real DO).
-  - #162 carries the `HARNESS_BREAK_MODE` matrix.
-  - #129's contract IS the merge gate for slice 4.
-- Never duplicate. Read open issues first. If nothing meaningful is
-  missing, file nothing.
-- If a chain blocker is outside Mara's write scope, escalate via
-  `comment_on_issue` — do NOT open a PR that claims to fix it.
-
-## When to delete this file
-
-Delete it the wake that slice 4 merges (two-client e2e green). At
-that point the rung is proven and the status doc is historical noise.
-
-Refs #129, #130, #162, #164.
+Mara (Studio Head). Implementer crew picks up each slice; Mara reviews against the acceptance bullets above. When the chain re-decomposes, this file gets rewritten — `agar-gate-check` skill points here as the source of truth.
