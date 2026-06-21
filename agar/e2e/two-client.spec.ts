@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   canonical,
   expectConverge,
@@ -118,7 +118,12 @@ async function expectCanonicalApplied<T>(
   // `clientId:seq` pairs. That's the fixture-vs-main red/green pivot
   // working as designed: a real DO converges to log.length === tape.length;
   // a broken DO never does.
-  const POLL_TIMEOUT_MS = 5_000;
+  // 15s rather than 5s: CI runners with wrangler dev cold-start +
+  // first-snapshot delay can need >5s to commit the last few events
+  // through 20Hz DO ticks. Production runs converge in ~1s; this
+  // budget exists so a slow-CI minute doesn't masquerade as a real
+  // canonical drift, which would burn another review round.
+  const POLL_TIMEOUT_MS = 15_000;
   const POLL_INTERVAL_MS = 50;
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -224,6 +229,25 @@ test.describe("agar slice 4 — two-client convergence (the rung)", () => {
       ];
       await assertClientSurface(pages[0]!);
       await assertClientSurface(pages[1]!);
+
+      // Wait for BOTH ws connections to be open before we drive the
+      // tape. `assertClientSurface` only checks the surface object's
+      // shape — the ws may still be mid-handshake. If we start driving
+      // before the ws is OPEN on a page, sendInput queues into the
+      // outbox, gets flushed on open, and the DO collapses several
+      // events into one tick — still passes (the canonical-order
+      // check tolerates batch-collapse), but means the first
+      // expectConverge happens against a possibly-still-converging
+      // roster. Explicit wait keeps the suite predictable and removes
+      // a race window that's tighter on slow CI runners than locally.
+      await expect(pageA.getByTestId("agar-net-status")).toHaveAttribute(
+        "data-connected",
+        "true",
+      );
+      await expect(pageB.getByTestId("agar-net-status")).toHaveAttribute(
+        "data-connected",
+        "true",
+      );
 
       // ── 1. Drive the deterministic tape across both clients ─────────
       await driveTape(pages, TAPE, { seed: ROOM_SEED });
