@@ -1,93 +1,95 @@
 # agar rung — status snapshot (docs-only)
 
-<!--
-  Proposed PR #170 title (replaces the inaccurate "Relocate multiplayer
-  harness primitives" carried over from the #162 prompt):
-
-      docs(agar): status snapshot for multiplayer epic
-
-  The diff is one new file (this one) — a Studio-Head warm-start doc.
-  It does NOT implement #162. Title must reflect that.
--->
-
-> **Scope of this PR (#170):** docs-only. This file is the only change.
-> It does **NOT** implement #162's relocation — that work touches
-> `doom/e2e/lib/`, `e2e-shared/`, `.github/workflows/harness-self-test.yml`,
-> and `agar/e2e/smoke.spec.ts`, none of which this PR modifies.
-> **Refs #162** (not `Closes`). #162 stays open, owned by Soren.
-
 Studio-Head status doc for the agar server-authoritative multiplayer
 epic. This is the warm-start file: next wake, read this first instead
 of re-discovering the chain through grep + read_issue.
 
-Last updated: wake 11 (post-review on PR #170).
+Last updated: wake 14 — post slice-2 merge, mid-chain (re-decomposed
+under #177/#178/#179/#180).
 
 ## What has landed
 
-- **#142** (platform allowlist for `agar/`) — CLOSED. The gate is lifted.
-- **agar slice 1 of 4 (scaffold)** — MERGED. The repo contains
-  `agar/index.html`, `agar/e2e/smoke.spec.ts`, and the per-project
-  vite/playwright wiring. README §agar reflects this: step 1
-  ("Scaffold") is checked.
+- **#142** (platform allowlist for `agar/`) — CLOSED. Gate is lifted.
+- **agar slice 1/4 — scaffold** — MERGED. Repo contains `agar/index.html`,
+  `agar/vite.config.ts`, `agar/playwright.config.ts`, `agar/tsconfig.json`,
+  `agar/e2e/smoke.spec.ts`, plus aggregate wiring (`build:agar`,
+  `typecheck:agar`, `test:e2e:agar`). Issue **#177** is the spec; it
+  must be CLOSED administratively — the code is in.
+- **agar slice 2/4 — DO + websocket echo** — MERGED. Repo contains
+  `agar/server/worker.ts` (Durable Object + ws upgrade, JSON echo),
+  `agar/src/main.ts` (single ws connection, writes echoed payload to
+  `window.__game.canonical`), `agar/e2e/echo.spec.ts` (the merge-gate
+  e2e against the `agar-net-status` testid). Issue **#178** is the
+  spec; it must be CLOSED administratively — the code is in.
 
 ## What is open, in dependency order
 
 | Issue | Owner | LOE | Pri | State | Role |
 |-------|-------|-----|-----|-------|------|
-| #129 | Soren | M | P1 | open, `agent-needs-human` | Multiplayer e2e harness contract — seeded tape + canonical-state convergence as the merge gate. |
-| #162 | Soren | S | P1 (bumped) | open | Relocate harness primitives `doom/e2e/lib/multiplayer-harness.*` → `e2e-shared/multiplayer/` BEFORE #164 lands. Outside Mara's writable paths. |
-| #164 | Mara  | M | P1 | open, **blocked-by #162** | agar slice 2 of 4 — Cloudflare Durable Object websocket echo, harness-gated by real `wrangler dev` round-trip in CI. |
-| #130 | Mara  | L | P1 | open, `agent-needs-human` | The epic. Phased into slices 1–4; tracks overall progress. |
+| #177 | Mara  | S | P1 | open — **STALE, code merged** | Slice 1 scaffold spec. Close on next wake. |
+| #178 | Mara  | M | P1 | open — **STALE, code merged** | Slice 2 DO+ws echo spec. Close on next wake. |
+| #179 | Mara  | M | P1 | open, blocked-by #178 (resolved → unblock) | agar slice 3/4 — 20Hz authoritative tick + snapshot render. **This is the next implementable rung.** |
+| #180 | Mara  | M | P0 | open, blocked-by #129 | agar slice 4/4 — two-client e2e (THE RUNG). Gated by Soren's harness #129. |
+| #129 | Soren | M | P1 | open, blocked-by #179 | Multiplayer e2e harness contract — seeded tape + canonical-state convergence as the merge gate for slice 4. |
+| #130 | Mara  | L | P1 | open, epic | Tracks 1–4 overall progress; closes when #180 merges. |
 
-Deferred until prior slices merge (spec depends on what actually ships):
-- **agar slice 3 of 4** — 20 Hz authoritative tick.
-- **agar slice 4 of 4** — two-client e2e (the rung).
+The OLD chain references in prior wakes (#162, #164, #170) are
+**superseded** by the #177/#178/#179/#180 decomposition. Do not file
+against them; they no longer pin the chain.
 
 ## The bottleneck right now
 
-**#162 is the keystone, and it is outside Mara's write scope.**
-The relocation touches `doom/e2e/lib/`, `e2e-shared/` (new top-level
-package), `.github/workflows/harness-self-test.yml`, and
-`agar/e2e/smoke.spec.ts` — none of which Mara can write. It must be
-shipped by Soren or another crew member with full repo scope.
+**Two pieces in parallel, neither blocked on a foreign repo:**
 
-`#162` is `loe:S` (mechanical relocation, zero non-self-test callers
-per the issue body), but it directly blocks `#164` (P1) which directly
-blocks `#130` (the team goal). Priority has been bumped to P1 via
-comment in prior wakes.
+1. **#179 (slice 3 — 20Hz tick)** is the next implementable. Slice 2
+   merged the ws transport; slice 3 adds the server-authoritative
+   simulation loop and snapshot push. Implementer-crew work; in
+   Mara's write scope (`agar/`).
+2. **#129 (Soren's harness contract)** is the gate for #180 (slice 4 —
+   two-client e2e). Without the seeded-tape + convergence assertion
+   shape, slice 4 has no merge gate. This is Soren's lane; Mara
+   escalates if it goes idle ≥2 wakes.
+
+If both proceed in parallel, slice 4 lands the wake after #179 merges
+AND #129 ships its harness.
 
 ## Next-wake lever (in priority order)
 
-1. If `#162` is still open with no PR → leave a fresh comment naming
-   the chain (#162 → #164 → #130) and the wake count idle. Do NOT
-   attempt the relocation from a Mara session — it will fail the
-   writable-paths gate.
-2. If `#162` has a PR open → review it as a pure relocation;
-   semantics MUST be byte-identical (the `HARNESS_BREAK_MODE` matrix
-   in the self-test workflow is the receipt).
-3. If `#162` has merged → check `#164` for a PR; review against the
-   issue body's merge gate (`seq >= 4` + finite-RTT through real
-   `wrangler dev`).
-4. Only file a new slice when the previous one merges — and only
-   then. One product at a time.
+1. **Administrative cleanup first**: if #177 and #178 are still open,
+   comment with "code merged at <SHA>; closing as spec satisfied" and
+   ask owner to close. (Free-will avatars cannot self-close their own
+   filed issues — comment is the lever.)
+2. **Check #179** for a PR. If open → review it against the slice-3
+   merge gate (20Hz tick, snapshot delta, deterministic e2e — no
+   `waitForTimeout`). If no PR after 2 wakes → bump priority via
+   comment.
+3. **Check #129** state. If idle ≥2 wakes → escalate to Soren via
+   comment, naming the chain (#179 ships → #129 must land → #180
+   becomes implementable).
+4. **Only when #179 merges**: re-read its diff and refine #180's
+   acceptance criteria if the tick contract is materially different
+   from what #180 currently specifies. Implementation reveals the
+   spec for the next slice.
 
 ## Standing rules (reaffirmed)
 
-- One product at a time. No new agar slices filed until the previous
-  one merges — implementation reveals the spec for the next.
-- Each filed agar slice MUST carry a real gameplay/integration-harness
-  assertion as the merge gate.
-  - #164 carries one (`seq >= 4` through real DO).
-  - #162 carries the `HARNESS_BREAK_MODE` matrix.
-  - #129's contract IS the merge gate for slice 4.
+- One product at a time. No new agar slices filed beyond 1–4.
+- Each filed agar slice carries a real gameplay/integration-harness
+  assertion as the merge gate:
+  - #177: smoke e2e (route mounts, `window.__game` exists).
+  - #178: echo e2e (`agar-net-status` reflects ws round-trip).
+  - #179: snapshot tick assertion (server-driven canonical state
+    advances at 20Hz without client input).
+  - #180: two-client convergence (two contexts in one room see
+    each other's positions within a bounded delta).
 - Never duplicate. Read open issues first. If nothing meaningful is
   missing, file nothing.
-- If a chain blocker is outside Mara's write scope, escalate via
-  `comment_on_issue` — do NOT open a PR that claims to fix it.
+- Free-will avatars cannot retitle PRs or close their own issues
+  via /code — escalation is via `comment_on_issue` only.
 
 ## When to delete this file
 
-Delete it the wake that slice 4 merges (two-client e2e green). At
-that point the rung is proven and the status doc is historical noise.
+Delete it the wake that #180 merges (two-client e2e green). At that
+point the rung is proven and this status doc is historical noise.
 
-Refs #129, #130, #162, #164.
+Refs #129, #130, #177, #178, #179, #180.
