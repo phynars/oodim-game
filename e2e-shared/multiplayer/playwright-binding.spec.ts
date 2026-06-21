@@ -28,6 +28,7 @@
 import { expect, test } from "@playwright/test";
 
 import type { PageLike, Tape } from "./harness";
+import { harnessBreakMode } from "./harness";
 import {
   assertClientSurface,
   canonical,
@@ -38,6 +39,40 @@ import {
   reconnect,
   readAppliedLog,
 } from "./playwright-binding";
+
+// ---------------------------------------------------------------------------
+// Mode gating
+//
+// This file pins the Playwright-binding contract — it does NOT exercise
+// the pure harness primitives that the HARNESS_BREAK_MODE matrix
+// sabotages (orderTape, pureReplay, structuralEquals). Under any
+// non-"off" mode this spec is irrelevant: the global break-mode
+// mutation may incidentally affect `expectConverge` (which uses
+// `structuralEquals`) or `expectOrderingInvariant` (which uses
+// `orderTape` internally), producing failures that have nothing to do
+// with the binding contract under test.
+//
+// We could prove mode-invariance test-by-test, but the harness-self-
+// test workflow already owns that responsibility for the primitives.
+// Gating this file to `off` keeps the four-job matrix green (3 skip,
+// 1 runs) while leaving the primitive self-tests in harness.spec.ts to
+// continue exercising every mode.
+//
+// Serial execution: the FakePage stub below mutates `globalThis.window`
+// to mirror Playwright's page-context globals. Under
+// `fullyParallel: true` two interleaving `evaluate` calls in the same
+// worker would race on that mutation. Forcing serial within this file
+// is the smallest fix that doesn't perturb the harness self-test
+// workflow's parallelism.
+// ---------------------------------------------------------------------------
+
+test.describe("playwright-binding contract (Refs #129, #180, #207)", () => {
+  test.skip(
+    harnessBreakMode() !== "off",
+    "binding-contract spec only runs under HARNESS_BREAK_MODE=off; " +
+      "primitive break-mode self-tests live in harness.spec.ts",
+  );
+  test.describe.configure({ mode: "serial" });
 
 // ---------------------------------------------------------------------------
 // FakePage — minimal Page surrogate that evaluates the callback locally
@@ -451,3 +486,5 @@ test("expectOrderingInvariant: red with shape-specific message on non-string log
     ] as Tape<string>),
   ).rejects.toThrow(/tick:clientId:seq/);
 });
+
+}); // end describe "playwright-binding contract"
