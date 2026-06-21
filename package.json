@@ -26,6 +26,7 @@
     "typecheck:agar": "tsc --noEmit -p agar/tsconfig.json",
     "test:e2e:agar": "playwright test --config agar/playwright.config.ts",
     "dev:agar-server": "wrangler dev --config agar/wrangler.toml",
+    "dev:agar-server-fixture": "wrangler dev agar/server/fixture/desync-broken/worker.ts --config agar/wrangler.toml",
     "typecheck:agar-server": "tsc --noEmit -p agar/server/tsconfig.json",
     "build": "npm run build:pacman && npm run build:galaga && npm run build:doom && npm run build:agar",
     "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom && npm run typecheck:agar && npm run typecheck:agar-server",

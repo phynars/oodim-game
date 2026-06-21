@@ -1,22 +1,44 @@
-// agar — slice 3/4 (authoritative 20Hz tick + snapshot broadcast).
+// agar — slice 4/4 (multi-client authoritative 20Hz tick).
 //
-// Upgrade from the slice-2 echo server:
-//   - The DO owns world state via the pure reducer in ./reducer.ts.
-//   - A fixed-step 20Hz tick (50ms) integrates the latest queued input
-//     and broadcasts a canonical snapshot to all connected sockets.
-//   - The seed is taken from the `?seed=` query string at connect time
-//     so the e2e harness can drive a deterministic replay.
+// THE RUNG. Where slice 3 routed `match:${seed}` and modelled one player,
+// slice 4 routes the SAME DO key but accepts N concurrent sockets, each
+// identified by `?clientId=`. The DO:
 //
-// Why setInterval, not the DO alarm scheduler:
-//   - Slice 3 is single-client and short-lived (the e2e drives ~30
-//     ticks then disconnects). A 50ms setInterval inside the
-//     accept-handling fetch is sufficient and keeps the file readable.
-//   - The DO instance lives as long as the WS is open; when the last
-//     socket closes we clear the interval so the DO can hibernate.
-//   - Alarms come back in slice 4 when we need durability across
-//     restarts and 2-client rooms.
+//   - Tracks a roster (`Map<clientId, ClientCtx>`) of live sockets.
+//   - Queues per-client inputs as `{seq, dir}` since the last tick.
+//   - At each 50ms tick boundary, drains every client's queued events
+//     into a canonical (clientId-lex, seq) order, applies them through
+//     the pure reducer, advances tick, broadcasts a single snapshot
+//     containing the full `players` roster + the delta of newly-applied
+//     event keys (`tick:clientId:seq` strings).
+//   - On socket open, joins the roster (via `applyJoin`); on close,
+//     removes the entry so the next snapshot drops the player.
+//   - On reconnect (same `clientId`, same `?seed=`), the DO sends the
+//     full applied-key log up to the current tick, then a fresh
+//     snapshot — that's what makes `expectConverge` post-reconnect a
+//     real test instead of a vacuous one.
+//
+// Why this shape and not "the client owns seq":
+//   - The harness's ordering invariant is keyed by `tick:clientId:seq`.
+//     The client sends `seq` with each input; the DO chooses the `tick`
+//     when it drains. So the canonical key is co-authored: the client
+//     owns identity, the DO owns scheduling. That's the only split that
+//     keeps the test fixture's "drop every 7th input" detectable —
+//     if the client owned tick assignment, a dropped input would be
+//     invisible to the canonical log.
+//
+// Why setInterval, still:
+//   - 50ms ticks, lifecycle bound to socket lifetime — same reasoning
+//     as slice 3. The DO hibernates when the last socket leaves.
 
-import { initialState, step, type InputDir, type WorldState } from "./reducer";
+import {
+  applyJoin,
+  applyTickBatch,
+  initialState,
+  type InputDir,
+  type InputEvent,
+  type WorldState,
+} from "./reducer";
 
 export interface Env {
   ECHO_ROOM: DurableObjectNamespace;
@@ -27,6 +49,11 @@ const TICK_MS = 50; // 20Hz
 interface InputMessage {
   type: "input";
   dir: InputDir;
+  /** Per-client monotonic sequence number. Required in slice 4 — the
+   *  ordering invariant cannot be checked without it. Defensive default
+   *  to 0 if missing (lets the slice-3 client wire through unchanged
+   *  for `tick.spec.ts`). */
+  seq?: number;
 }
 
 function isInputMessage(value: unknown): value is InputMessage {
@@ -34,26 +61,45 @@ function isInputMessage(value: unknown): value is InputMessage {
   const v = value as Record<string, unknown>;
   if (v.type !== "input") return false;
   const d = v.dir;
-  return (
-    d === "none" || d === "up" || d === "down" || d === "left" || d === "right"
-  );
+  if (
+    d !== "none" &&
+    d !== "up" &&
+    d !== "down" &&
+    d !== "left" &&
+    d !== "right"
+  )
+    return false;
+  if (v.seq !== undefined && typeof v.seq !== "number") return false;
+  return true;
+}
+
+interface PendingEvent {
+  seq: number;
+  dir: InputDir;
+}
+
+interface ClientCtx {
+  socket: WebSocket;
+  pending: PendingEvent[];
+  /** Per-client seq counter the server uses when the client doesn't
+   *  send one (slice-3 compat). Increments on each accepted input. */
+  serverSeq: number;
 }
 
 export class EchoRoom implements DurableObject {
   private world: WorldState;
-  // Latest-input-wins queue. The reducer ticks with whatever's here at
-  // tick boundary; cleared each tick (default = "none").
-  private pendingDir: InputDir = "none";
-  private sockets = new Set<WebSocket>();
+  private clients = new Map<string, ClientCtx>();
+  /** Canonical applied-event keys in apply order. Each entry is
+   *  `tick:clientId:seq`. Per-socket cursors track how many of these
+   *  have been broadcast to each socket so the snapshot can include
+   *  only the DELTA, while reconnects can replay from offset 0. */
+  private appliedKeys: string[] = [];
+  private socketCursor = new WeakMap<WebSocket, number>();
   private interval: ReturnType<typeof setInterval> | null = null;
+  private seedInitialized = false;
 
-  constructor(
-    _state: DurableObjectState,
-    _env: Env,
-  ) {
-    // The seed is set when the first socket connects (it carries the
-    // ?seed= query). We init to seed=1 here so the DO has a valid
-    // shape even if a non-WS request lands first; reinit on connect.
+  constructor(_state: DurableObjectState, _env: Env) {
+    // Placeholder seed; real seed locks in on the first socket connect.
     this.world = initialState(1);
   }
 
@@ -63,38 +109,97 @@ export class EchoRoom implements DurableObject {
   }
 
   private stopTickLoopIfIdle(): void {
-    if (this.sockets.size > 0) return;
+    if (this.clients.size > 0) return;
     if (this.interval !== null) {
       clearInterval(this.interval);
       this.interval = null;
     }
   }
 
+  /** Drain queued inputs from every client, apply them in canonical
+   *  order, advance the tick, broadcast. The "tick" we assign to each
+   *  event is `world.tick + 1` (the tick the event will land IN). */
   private tick(): void {
-    const dir = this.pendingDir;
-    this.pendingDir = "none";
-    this.world = step(this.world, { dir });
+    const targetTick = this.world.tick + 1;
+    const events: InputEvent[] = [];
 
-    // The snapshot carries `dir` — the EXACT intent the server applied
-    // this tick. The client mirrors these into an applied-input log so
-    // the e2e can replay them through `pureReplay` and assert bit-exact
-    // equality, without depending on which inputs landed in which tick
-    // slots. (Latest-input-wins makes that mapping inherently racy under
-    // CI jitter; the log removes the race because both sides agree on
-    // what was actually applied.)
-    const snapshot = JSON.stringify({
-      type: "snapshot",
-      tick: this.world.tick,
-      dir,
-      player: this.world.player,
-      rng: this.world.rng,
-    });
-    for (const s of this.sockets) {
+    // Collect — clientId-lex order is enforced inside applyTickBatch,
+    // but iterating in lex order here keeps the appliedKeys append
+    // order match what applyTickBatch produces.
+    const ids = [...this.clients.keys()].sort();
+    for (const id of ids) {
+      const ctx = this.clients.get(id);
+      if (!ctx) continue;
+      // Drain pending. Each pending entry already has a seq from the
+      // client; the DO never invents seqs (those would be invisible to
+      // the harness's ordering invariant).
+      for (const ev of ctx.pending) {
+        events.push({ clientId: id, seq: ev.seq, dir: ev.dir });
+      }
+      ctx.pending = [];
+    }
+
+    // Apply through the pure reducer. The batch is internally re-sorted
+    // by (clientId-lex, seq) so server and offline reducers agree even
+    // if the DO collected events in some other order.
+    this.world = applyTickBatch(this.world, events);
+
+    // Append canonical keys in (clientId-lex, seq) order — matches the
+    // re-sort inside applyTickBatch.
+    const sortedKeys = [...events]
+      .sort((a, b) => {
+        if (a.clientId !== b.clientId)
+          return a.clientId < b.clientId ? -1 : 1;
+        return a.seq - b.seq;
+      })
+      .map((ev) => `${targetTick}:${ev.clientId}:${ev.seq}`);
+    for (const k of sortedKeys) this.appliedKeys.push(k);
+
+    this.broadcast();
+  }
+
+  /** Broadcast a snapshot to every connected client. Each snapshot
+   *  carries the FULL roster (so newcomers see everyone) and the
+   *  per-socket delta of applied keys since that socket's last
+   *  broadcast — letting the client append exactly the new keys to its
+   *  appliedLog without re-seeing past ones. */
+  private broadcast(): void {
+    for (const [, ctx] of this.clients) {
+      const cursor = this.socketCursor.get(ctx.socket) ?? 0;
+      const delta = this.appliedKeys.slice(cursor);
+      this.socketCursor.set(ctx.socket, this.appliedKeys.length);
+      const snapshot = JSON.stringify({
+        type: "snapshot",
+        tick: this.world.tick,
+        players: this.world.players,
+        rng: this.world.rng,
+        applied: delta,
+      });
       try {
-        s.send(snapshot);
+        ctx.socket.send(snapshot);
       } catch {
         // Socket dead; cleanup happens in close handler.
       }
+    }
+  }
+
+  /** On reconnect-replay, send the FULL applied-key log (so the client
+   *  can rebuild `appliedLog` from tick 1) plus a fresh snapshot. We
+   *  detect reconnect by clientId already being present in the roster
+   *  (this branch handles the join() call's caller side). */
+  private replayTo(socket: WebSocket): void {
+    this.socketCursor.set(socket, this.appliedKeys.length);
+    const snapshot = JSON.stringify({
+      type: "snapshot",
+      tick: this.world.tick,
+      players: this.world.players,
+      rng: this.world.rng,
+      applied: this.appliedKeys.slice(),
+    });
+    try {
+      socket.send(snapshot);
+    } catch {
+      /* socket died between accept and first send — ignore */
     }
   }
 
@@ -104,28 +209,42 @@ export class EchoRoom implements DurableObject {
       return new Response("Expected websocket upgrade", { status: 426 });
     }
 
-    // The seed for this match is read from the upgrade URL. The Worker
-    // entry below preserves the query string when proxying to the DO,
-    // so `?seed=N` lands here intact. Parse defensively: a missing or
-    // non-numeric seed falls back to 1 (still deterministic).
     const url = new URL(request.url);
     const seedParam = url.searchParams.get("seed");
     const seed = seedParam !== null ? Number.parseInt(seedParam, 10) : 1;
-    // If this is the first socket, initialize the world with this seed.
-    // Subsequent sockets join the existing match — slice 3 is
-    // single-client per spec, so this branch is exercised exactly once
-    // per DO lifetime in the e2e.
-    if (this.sockets.size === 0) {
+    const clientId =
+      url.searchParams.get("clientId") ??
+      // Slice-3 compat: a socket with no clientId gets a stable
+      // pseudo-id so single-client specs (tick.spec.ts) still wire
+      // through. Multi-client specs MUST pass clientId explicitly.
+      "_solo";
+
+    // First-ever socket locks in the seed. Subsequent sockets in the
+    // same DO inherit it.
+    if (!this.seedInitialized) {
       this.world = initialState(Number.isFinite(seed) ? seed : 1);
+      this.seedInitialized = true;
     }
+
+    // Roster join (idempotent — reconnect with the same id keeps the
+    // player at their last position).
+    this.world = applyJoin(this.world, clientId);
 
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
 
     server.accept();
-    this.sockets.add(server);
+    this.clients.set(clientId, {
+      socket: server,
+      pending: [],
+      serverSeq: 0,
+    });
     this.ensureTickLoop();
+
+    // Replay state to this socket BEFORE the next tick fires, so the
+    // client's first __game.canonical read sees the roster.
+    this.replayTo(server);
 
     server.addEventListener("message", (event: MessageEvent) => {
       let parsed: unknown;
@@ -136,19 +255,27 @@ export class EchoRoom implements DurableObject {
         parsed = null;
       }
       if (!isInputMessage(parsed)) return;
-      // Latest-input-wins: overwrite any prior intent in this tick window.
-      this.pendingDir = parsed.dir;
+      const ctx = this.clients.get(clientId);
+      if (!ctx) return;
+      const seq =
+        typeof parsed.seq === "number" ? parsed.seq : ctx.serverSeq;
+      ctx.serverSeq = Math.max(ctx.serverSeq, seq + 1);
+      ctx.pending.push({ seq, dir: parsed.dir });
     });
 
-    server.addEventListener("close", () => {
-      this.sockets.delete(server);
+    const cleanup = (): void => {
+      const ctx = this.clients.get(clientId);
+      // Only remove the entry if THIS socket is still the active one
+      // for that clientId. A reconnect can swap the socket under the
+      // same id before the old socket's close fires — don't evict the
+      // new context in that race.
+      if (ctx && ctx.socket === server) {
+        this.clients.delete(clientId);
+      }
       this.stopTickLoopIfIdle();
-    });
-
-    server.addEventListener("error", () => {
-      this.sockets.delete(server);
-      this.stopTickLoopIfIdle();
-    });
+    };
+    server.addEventListener("close", cleanup);
+    server.addEventListener("error", cleanup);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -169,10 +296,9 @@ const worker: ExportedHandler<Env> = {
       return new Response("Not found", { status: 404 });
     }
 
-    // Route by seed so two clients with the same seed share state.
-    // Slice 3 is still effectively single-client (the e2e drives one
-    // socket), but this keeps the routing key consistent with the
-    // protocol doc.
+    // Route by seed so all clients sharing a seed share a DO instance.
+    // Same shape as slice 3 — multi-client routing happens INSIDE the
+    // DO, not at the worker entry.
     const seedParam = url.searchParams.get("seed") ?? "1";
     const id = env.ECHO_ROOM.idFromName(`match:${seedParam}`);
     const stub = env.ECHO_ROOM.get(id);

@@ -1,19 +1,45 @@
 import { defineConfig, devices } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 
-// agar gameplay harness — slice 2/4 (DO echo). Two webServers run in
-// parallel under the merge gate:
+// agar gameplay harness — slice 4/4 (multi-client merge gate). Two
+// webServers run in parallel:
 //   1) vite preview at :4274 serving the built /agar/ static bundle, and
 //   2) wrangler dev at :8787 hosting the Worker + EchoRoom Durable Object.
-// The echo e2e opens one page at /agar/, which connects a WebSocket to
-// ws://localhost:8787/ws and asserts the round-trip lands. Playwright
-// waits on BOTH urls before running tests; if either fails to come up,
-// the suite fails before any spec runs.
+//
+// FIXTURE SWITCH (#180 requirement)
+//
+// `AGAR_SERVER_FIXTURE=desync-broken` boots the deliberately-broken DO
+// at `agar/server/fixture/desync-broken/worker.ts` instead of the
+// production one — same baseURL, same port, same spec. The fixture
+// drops every 7th input, so `agar/e2e/two-client.spec.ts`'s
+// `expectConverge`/`expectOrderingInvariant` go RED against it and
+// GREEN against `main`. This is the receipt that the rung is
+// falsifiable.
+//
+// We choose between two npm scripts (`dev:agar-server` and
+// `dev:agar-server-fixture`) rather than threading flags into a single
+// script — wrangler dev's `--main` override is the cleanest way to swap
+// the worker entry without forking wrangler.toml. The npm script keeps
+// the command shape identical to the other webServers in this repo.
 //
 // webServer.cwd is pinned to the repo root (npm scripts live in the
-// root package.json), since Playwright defaults webServer cwd to this
-// config's dir.
+// root package.json).
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+
+const fixture = process.env.AGAR_SERVER_FIXTURE ?? "";
+const useFixture = fixture === "desync-broken";
+if (fixture !== "" && !useFixture) {
+  // Fail fast on a typo'd fixture name — silently falling back to
+  // production would hide a broken merge gate.
+  throw new Error(
+    `agar/playwright.config.ts: unknown AGAR_SERVER_FIXTURE=${JSON.stringify(
+      fixture,
+    )}. Known values: "" (production), "desync-broken".`,
+  );
+}
+const serverScript = useFixture
+  ? "npm run dev:agar-server-fixture"
+  : "npm run dev:agar-server";
 
 export default defineConfig({
   testDir: "e2e",
@@ -42,21 +68,17 @@ export default defineConfig({
     },
     {
       cwd: repoRoot,
-      // `npm run dev:agar-server` boots the Worker locally with the DO
-      // binding from agar/wrangler.toml. The host + port live in
-      // wrangler.toml's [dev] block (ip=127.0.0.1, port=8787) — single
-      // source of truth — so the script stays a clean `wrangler dev
-      // --config …`. Routing through the npm script (same shape as the
-      // pacman/galaga/doom webServers) means npm resolves the wrangler
-      // binary from node_modules/.bin instead of relying on PATH.
-      command: "npm run dev:agar-server",
-      // Probe 127.0.0.1 — matches the wrangler [dev] ip exactly. We
-      // probe a 200 health endpoint (GET / in server/worker.ts) rather
-      // than relying on the previous 404 sentinel. A 200 is unambiguous
-      // proof the listener is up AND the worker module compiled AND the
-      // request loop is running — three things the 404 couldn't
-      // distinguish from "bound but module crashed". This was the
-      // round-7 reviewer ask: "verify the bind actually answers".
+      // `npm run dev:agar-server` boots the production Worker;
+      // `npm run dev:agar-server-fixture` boots the desync-broken
+      // fixture worker (same wrangler.toml, different --main). Host +
+      // port live in wrangler.toml's [dev] block (ip=127.0.0.1,
+      // port=8787) — single source of truth — so the script stays
+      // shape-identical to the pacman/galaga/doom webServers.
+      command: serverScript,
+      // Probe 127.0.0.1 — matches the wrangler [dev] ip exactly. The
+      // 200 health endpoint (GET / in both worker.ts files) is
+      // unambiguous proof the listener is up AND the worker module
+      // compiled AND the request loop is running.
       url: "http://127.0.0.1:8787/",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

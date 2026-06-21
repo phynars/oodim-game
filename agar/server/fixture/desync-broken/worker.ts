@@ -1,19 +1,22 @@
 // agar — `fixture/desync-broken` server, the failing-fixture receipt
 // for #180's merge gate. THE ONLY DIFFERENCE from the production
-// `agar/server/worker.ts` is the single `if` block in `tick()` that
-// drops every 7th input. Keep it that way — see ./README.md.
+// `agar/server/worker.ts` is the single `if` block in the message
+// handler that drops every 7th input across the room. Keep it that
+// way — see ./README.md.
 //
 // The whole point of this file is to be byte-equivalent to production
 // EXCEPT for the deliberate break. When the production worker changes
-// (new fields in snapshot, new reducer signature, etc.), update this
-// file in lockstep so the diff stays minimal. The smaller the diff,
-// the more credible the proof that the e2e is catching the BREAK and
-// not some incidental drift between the two code paths.
+// (snapshot fields, reducer signature, etc.), update this file in
+// lockstep so the diff stays minimal. The smaller the diff, the more
+// credible the proof that the e2e is catching the BREAK and not some
+// incidental drift between the two code paths.
 
 import {
+  applyJoin,
+  applyTickBatch,
   initialState,
-  step,
   type InputDir,
+  type InputEvent,
   type WorldState,
 } from "../../reducer";
 
@@ -26,6 +29,7 @@ const TICK_MS = 50; // 20Hz — identical to production.
 interface InputMessage {
   type: "input";
   dir: InputDir;
+  seq?: number;
 }
 
 function isInputMessage(value: unknown): value is InputMessage {
@@ -33,21 +37,42 @@ function isInputMessage(value: unknown): value is InputMessage {
   const v = value as Record<string, unknown>;
   if (v.type !== "input") return false;
   const d = v.dir;
-  return (
-    d === "none" || d === "up" || d === "down" || d === "left" || d === "right"
-  );
+  if (
+    d !== "none" &&
+    d !== "up" &&
+    d !== "down" &&
+    d !== "left" &&
+    d !== "right"
+  )
+    return false;
+  if (v.seq !== undefined && typeof v.seq !== "number") return false;
+  return true;
+}
+
+interface PendingEvent {
+  seq: number;
+  dir: InputDir;
+}
+
+interface ClientCtx {
+  socket: WebSocket;
+  pending: PendingEvent[];
+  serverSeq: number;
 }
 
 export class EchoRoom implements DurableObject {
   private world: WorldState;
-  private pendingDir: InputDir = "none";
-  private sockets = new Set<WebSocket>();
+  private clients = new Map<string, ClientCtx>();
+  private appliedKeys: string[] = [];
+  private socketCursor = new WeakMap<WebSocket, number>();
   private interval: ReturnType<typeof setInterval> | null = null;
+  private seedInitialized = false;
 
   // ── THE BREAK ────────────────────────────────────────────────────
-  // Count every input message we accept. Every 7th one is dropped on
-  // the floor (pendingDir not updated). Production has no such
-  // counter; the rest of this file is otherwise identical.
+  // Count every input message we accept across the whole room. Every
+  // 7th one is dropped on the floor (NOT enqueued for the next tick).
+  // Production has no such counter; the rest of this file is otherwise
+  // identical.
   private inputCount = 0;
   // ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +86,7 @@ export class EchoRoom implements DurableObject {
   }
 
   private stopTickLoopIfIdle(): void {
-    if (this.sockets.size > 0) return;
+    if (this.clients.size > 0) return;
     if (this.interval !== null) {
       clearInterval(this.interval);
       this.interval = null;
@@ -69,23 +94,66 @@ export class EchoRoom implements DurableObject {
   }
 
   private tick(): void {
-    const dir = this.pendingDir;
-    this.pendingDir = "none";
-    this.world = step(this.world, { dir });
+    const targetTick = this.world.tick + 1;
+    const events: InputEvent[] = [];
 
-    const snapshot = JSON.stringify({
-      type: "snapshot",
-      tick: this.world.tick,
-      dir,
-      player: this.world.player,
-      rng: this.world.rng,
-    });
-    for (const s of this.sockets) {
+    const ids = [...this.clients.keys()].sort();
+    for (const id of ids) {
+      const ctx = this.clients.get(id);
+      if (!ctx) continue;
+      for (const ev of ctx.pending) {
+        events.push({ clientId: id, seq: ev.seq, dir: ev.dir });
+      }
+      ctx.pending = [];
+    }
+
+    this.world = applyTickBatch(this.world, events);
+
+    const sortedKeys = [...events]
+      .sort((a, b) => {
+        if (a.clientId !== b.clientId)
+          return a.clientId < b.clientId ? -1 : 1;
+        return a.seq - b.seq;
+      })
+      .map((ev) => `${targetTick}:${ev.clientId}:${ev.seq}`);
+    for (const k of sortedKeys) this.appliedKeys.push(k);
+
+    this.broadcast();
+  }
+
+  private broadcast(): void {
+    for (const [, ctx] of this.clients) {
+      const cursor = this.socketCursor.get(ctx.socket) ?? 0;
+      const delta = this.appliedKeys.slice(cursor);
+      this.socketCursor.set(ctx.socket, this.appliedKeys.length);
+      const snapshot = JSON.stringify({
+        type: "snapshot",
+        tick: this.world.tick,
+        players: this.world.players,
+        rng: this.world.rng,
+        applied: delta,
+      });
       try {
-        s.send(snapshot);
+        ctx.socket.send(snapshot);
       } catch {
         // Socket dead; cleanup happens in close handler.
       }
+    }
+  }
+
+  private replayTo(socket: WebSocket): void {
+    this.socketCursor.set(socket, this.appliedKeys.length);
+    const snapshot = JSON.stringify({
+      type: "snapshot",
+      tick: this.world.tick,
+      players: this.world.players,
+      rng: this.world.rng,
+      applied: this.appliedKeys.slice(),
+    });
+    try {
+      socket.send(snapshot);
+    } catch {
+      /* socket died between accept and first send — ignore */
     }
   }
 
@@ -98,17 +166,28 @@ export class EchoRoom implements DurableObject {
     const url = new URL(request.url);
     const seedParam = url.searchParams.get("seed");
     const seed = seedParam !== null ? Number.parseInt(seedParam, 10) : 1;
-    if (this.sockets.size === 0) {
+    const clientId = url.searchParams.get("clientId") ?? "_solo";
+
+    if (!this.seedInitialized) {
       this.world = initialState(Number.isFinite(seed) ? seed : 1);
+      this.seedInitialized = true;
     }
+
+    this.world = applyJoin(this.world, clientId);
 
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
 
     server.accept();
-    this.sockets.add(server);
+    this.clients.set(clientId, {
+      socket: server,
+      pending: [],
+      serverSeq: 0,
+    });
     this.ensureTickLoop();
+
+    this.replayTo(server);
 
     server.addEventListener("message", (event: MessageEvent) => {
       let parsed: unknown;
@@ -119,32 +198,38 @@ export class EchoRoom implements DurableObject {
         parsed = null;
       }
       if (!isInputMessage(parsed)) return;
+      const ctx = this.clients.get(clientId);
+      if (!ctx) return;
 
       // ── THE BREAK ────────────────────────────────────────────────
-      // Drop every 7th input. The harness's `HARNESS_BREAK_MODE=
-      // drop-every-7th` mode exercises the SAME break in the pure
-      // reducer; this fixture exercises it on the server side of the
-      // wire so the e2e is the catching layer. 1-indexed so the FIRST
-      // input through is not the one we drop (else short tapes never
-      // see the bug fire).
+      // Drop every 7th input the DO accepts (1-indexed). The harness's
+      // `HARNESS_BREAK_MODE=drop-every-7th` exercises the same break
+      // in the pure reducer; this fixture exercises it on the SERVER
+      // side of the wire so the e2e is the catching layer. The dropped
+      // input is never enqueued — the canonical applied-key log won't
+      // contain its `tick:clientId:seq`, and `expectOrderingInvariant`
+      // catches the missing key.
       this.inputCount += 1;
       if (this.inputCount % 7 === 0) {
         return;
       }
       // ─────────────────────────────────────────────────────────────
 
-      this.pendingDir = parsed.dir;
+      const seq =
+        typeof parsed.seq === "number" ? parsed.seq : ctx.serverSeq;
+      ctx.serverSeq = Math.max(ctx.serverSeq, seq + 1);
+      ctx.pending.push({ seq, dir: parsed.dir });
     });
 
-    server.addEventListener("close", () => {
-      this.sockets.delete(server);
+    const cleanup = (): void => {
+      const ctx = this.clients.get(clientId);
+      if (ctx && ctx.socket === server) {
+        this.clients.delete(clientId);
+      }
       this.stopTickLoopIfIdle();
-    });
-
-    server.addEventListener("error", () => {
-      this.sockets.delete(server);
-      this.stopTickLoopIfIdle();
-    });
+    };
+    server.addEventListener("close", cleanup);
+    server.addEventListener("error", cleanup);
 
     return new Response(null, { status: 101, webSocket: client });
   }

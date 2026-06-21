@@ -1,37 +1,33 @@
 import { expect, test } from "@playwright/test";
 import {
-  pureReplay,
+  applyJoin,
+  applyTickBatch,
+  initialState,
   type InputDir,
-  type InputIntent,
+  type InputEvent,
   type WorldState,
 } from "../server/reducer";
 
-// agar slice 3/4 — authoritative 20Hz tick + snapshot render.
+// agar — single-client determinism smoke. Slice 4's multi-client DO
+// happens to be a strict superset of slice 3's behaviour for the
+// N=1 case, so this spec stays cheap merge-gate evidence: drive a
+// stream of inputs from one client, read the DO's canonical roster
+// + applied-key log, replay the same events through the pure reducer,
+// assert bit-exact equality.
 //
-// Merge gate: the DO's authoritative state must equal a pure offline
-// reducer run over the same seed + the SAME ordered input log the
-// server actually applied.
-//
-// Why we don't try to align "TAPE[i]" to a specific server tick:
-//   - The protocol is latest-input-wins. Under CI tick jitter the
-//     1:1 mapping from intent-send to tick-slot is inherently racy
-//     (sometimes two ticks fire between send and next-snapshot;
-//     sometimes the intent arrives in the "wrong" slot).
-//   - So instead the server reports the `dir` it applied IN EACH
-//     snapshot, the client mirrors them into `window.__game.appliedLog`,
-//     and the e2e asserts `pureReplay(seed, appliedLog) === canonical`.
-//     That's the actual determinism contract — same seed, same input
-//     sequence, same terminal state, bit-exact — and it doesn't care
-//     about wire-level timing. The DO clock owns scheduling; we just
-//     read what it did and replay it.
+// The applied-key log shape is normative since slice 4: each entry is
+// `${tick}:${clientId}:${seq}`. We use the keys' tick prefix to group
+// events into the same per-tick batches the DO drained, then replay
+// each batch via `applyTickBatch` — that's the exact path the DO's
+// `tick()` function takes, so server and offline necessarily agree.
 
 const SEED = 1234567;
 
-// Inputs we drive into the DO. Mix of held directions and pauses so
-// the resulting state is non-trivial and the RNG walk is exercised
-// across "none" ticks too. We don't assume one input lands per tick;
-// we just send them with a small pacing gap and let the DO's
-// latest-input-wins logic decide what gets applied where.
+// Single-client inputs. Sent in order; each one carries a monotonic
+// seq the client picks. The DO drains all pending per-client events
+// into each tick boundary, so under nominal CI jitter most inputs land
+// in distinct ticks but some batches will contain >1 event — and the
+// replay below is correct in either case.
 const INPUTS: readonly InputDir[] = [
   "right", "right", "right", "right", "right",
   "down",  "down",  "down",
@@ -48,28 +44,17 @@ const INPUTS: readonly InputDir[] = [
   "none",  "none",
 ];
 
-// How many server ticks we want the DO to have applied before we read
-// the state. Server runs at 20Hz (50ms/tick), so 60 ticks ≈ 3s. That's
-// well past the ~36 inputs we send, leaving headroom for CI jitter.
-const TARGET_TICKS = 60;
-
-test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", async ({
+test("agar slice 4 single-client — canonical roster equals pureReplay(seed, appliedLog)", async ({
   page,
 }) => {
-  // baseURL is `http://localhost:4274/agar/` but vite preview serves
-  // the bundle under `base: "/agar/"` — so we must hit `/agar/?seed=…`,
-  // not the host root. Use an absolute path here for clarity and
-  // immunity to any future baseURL change.
   await page.goto(`/agar/?seed=${SEED}`);
 
-  // Wait for the WS to be OPEN.
   await expect(page.getByTestId("agar-net-status")).toHaveAttribute(
     "data-connected",
     "true",
   );
 
-  // Wait for the first snapshot so `window.__game.canonical` is defined
-  // before we start poking the test surface.
+  // Wait for the first snapshot so `__game.canonical` is populated.
   await expect
     .poll(
       async () =>
@@ -82,29 +67,26 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", 
     )
     .toBeGreaterThan(0);
 
-  // Feed the inputs. We don't try to one-to-one them with ticks —
-  // small pacing gap + latest-input-wins means most distinct inputs
-  // get applied to distinct ticks under nominal jitter, and any that
-  // get collapsed are still captured correctly in appliedLog. The
-  // determinism assertion replays whatever the server saw.
+  // Read the clientId the page minted (no `?clientId=` in URL → UUID).
+  const myId = await page.evaluate(
+    () =>
+      (window as unknown as { __game: { clientId: string } }).__game.clientId,
+  );
+
+  // Feed inputs. Small pacing gap (~one tick at 20Hz) so each input
+  // gets a reasonable chance to land in its own tick boundary.
   for (const dir of INPUTS) {
     await page.evaluate((d) => {
       (
         window as unknown as { __game: { sendInput: (x: string) => void } }
       ).__game.sendInput(d);
     }, dir);
-    // Tiny pacing gap (~one tick at 20Hz) so the server has a chance
-    // to read this intent before we overwrite it with the next. We
-    // deliberately don't try to sync to tick boundaries — the merge
-    // gate's correctness comes from replaying the SERVER's applied-log,
-    // not from one-input-per-tick alignment.
     await page.waitForTimeout(60);
   }
 
-  // Now wait until the DO has ticked enough that we know it's
-  // ingested everything we sent. The `dir` field in each snapshot
-  // is what was applied that tick, so appliedLog.length === server tick
-  // count since connect.
+  // Wait until the DO has applied every input we sent. The applied-key
+  // log grows by exactly one entry per accepted input in single-client
+  // mode (no other clients are sending).
   await expect
     .poll(
       async () =>
@@ -117,21 +99,19 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", 
             ).__game.appliedLog.length,
         ),
       {
-        message: `DO to apply ${TARGET_TICKS} ticks`,
+        message: `DO to apply ${INPUTS.length} inputs`,
         timeout: 10_000,
       },
     )
-    .toBeGreaterThanOrEqual(TARGET_TICKS);
+    .toBeGreaterThanOrEqual(INPUTS.length);
 
-  // Read the canonical state and the applied-input log together. The
-  // log is the server's own record of what it did; replaying it must
-  // reproduce `canonical` exactly.
+  // Read canonical state + applied log together.
   const { canonical, appliedLog } = (await page.evaluate(() => {
     const g = (
       window as unknown as {
         __game: {
           canonical: WorldState | null;
-          appliedLog: readonly InputDir[];
+          appliedLog: readonly string[];
         };
       }
     ).__game;
@@ -139,27 +119,65 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", 
       canonical: g.canonical,
       appliedLog: g.appliedLog.slice(),
     };
-  })) as { canonical: WorldState | null; appliedLog: InputDir[] };
+  })) as { canonical: WorldState | null; appliedLog: string[] };
 
   expect(canonical).not.toBeNull();
   if (canonical === null) return;
 
-  // appliedLog[i] is the dir applied at server tick (i+1). The DO
-  // initialises at tick=0 and increments inside step(), so the log
-  // length should equal canonical.tick.
-  expect(appliedLog.length).toBe(canonical.tick);
+  // Sanity: the roster contains exactly our id, with a valid position.
+  expect(Object.keys(canonical.players)).toEqual([myId]);
+  const me = canonical.players[myId]!;
+  expect(typeof me.x).toBe("number");
+  expect(typeof me.y).toBe("number");
 
-  // Bit-exact determinism check: same seed, same ordered inputs →
-  // same terminal state.
-  const tape: InputIntent[] = appliedLog.map((dir) => ({ dir }));
-  const expected = pureReplay(SEED, tape);
+  // Applied-key shape conformance — every entry must match the
+  // canonical `tick:clientId:seq` regex documented in
+  // CLIENT-TEST-SURFACE.md.
+  const KEY = /^(\d+):([^:]+):(\d+)$/;
+  for (const k of appliedLog) {
+    expect(k, `applied key shape: ${k}`).toMatch(KEY);
+  }
 
-  expect(expected.tick).toBe(canonical.tick);
-  expect(expected.player).toEqual(canonical.player);
-  expect(expected.rng).toBe(canonical.rng);
+  // Bucket keys by tick to reconstruct the DO's per-tick batches.
+  // Single-client: each (seq) maps back to INPUTS[seq] because the
+  // client emits seqs 0..N-1 in INPUTS order.
+  const byTick = new Map<number, InputEvent[]>();
+  for (const k of appliedLog) {
+    const m = KEY.exec(k);
+    if (!m) throw new Error(`unparseable key ${k}`);
+    const t = Number(m[1]);
+    const cid = m[2]!;
+    const seq = Number(m[3]);
+    const dir = INPUTS[seq];
+    if (dir === undefined) {
+      throw new Error(
+        `applied key ${k} references seq ${seq} which is beyond INPUTS.length=${INPUTS.length}`,
+      );
+    }
+    const bucket = byTick.get(t);
+    if (bucket) bucket.push({ clientId: cid, seq, dir });
+    else byTick.set(t, [{ clientId: cid, seq, dir }]);
+  }
 
-  // Sanity: at least ONE non-"none" dir got applied — i.e. our inputs
-  // actually reached the DO, we're not just asserting that two
-  // all-"none" walks agree.
-  expect(appliedLog.some((d) => d !== "none")).toBe(true);
+  // Replay through the pure reducer in tick order. Auto-join the
+  // single client before any input runs (matches the DO, which joins
+  // on socket open). Fill the gaps between input-bearing ticks with
+  // empty batches so the offline reducer's tick counter tracks the
+  // server's exactly.
+  let state: WorldState = initialState(SEED);
+  state = applyJoin(state, myId);
+  const maxTick = canonical.tick;
+  for (let t = 1; t <= maxTick; t++) {
+    const events = byTick.get(t) ?? [];
+    state = applyTickBatch(state, events);
+  }
+
+  // Bit-exact determinism.
+  expect(state.tick).toBe(canonical.tick);
+  expect(state.players).toEqual(canonical.players);
+  expect(state.rng).toBe(canonical.rng);
+
+  // Sanity: at least one non-"none" dir actually got applied — i.e.
+  // our inputs reached the DO.
+  expect(INPUTS.some((d) => d !== "none")).toBe(true);
 });

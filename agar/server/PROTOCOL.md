@@ -1,70 +1,99 @@
-# agar wire protocol — slice 3/4
+# agar wire protocol — slice 4/4 (multi-client)
 
-Authoritative server, naive snapshot render. The client never owns
-position; it sends intents and renders whatever snapshot the server
-sent last.
+Authoritative server, naive snapshot render, N concurrent clients per
+room. The client never owns position; it sends intents (with a
+per-client `seq`) and renders whatever snapshot the server sent last.
 
 ## Connection
 
-`GET /ws?seed=<u32>` with `Upgrade: websocket`.
+`GET /ws?seed=<u32>&clientId=<string>` with `Upgrade: websocket`.
 
-- `seed` is REQUIRED in slice 3 — it picks the PRNG seed for the match.
-  The e2e harness passes a fixed seed so the offline reducer (`pureReplay`)
-  produces the same terminal state as the DO. If omitted, the DO uses
-  `1` (still deterministic, but not test-controlled).
-- One DO instance per `seed` value (`idFromName(String(seed))`). Two
-  clients with the same seed share state; with different seeds they
-  don't see each other. Slice 4 generalises to room ids.
+- `seed` picks the room AND the PRNG seed for that room. Two sockets
+  with the same `seed` land in the same Durable Object instance
+  (`idFromName('match:' + seed)`) and see each other's positions.
+- `clientId` names this socket inside the room. The DO uses it as the
+  player's key in the roster and as the `clientId` component of every
+  canonical event key (`tick:clientId:seq`). When omitted, the DO
+  assigns the stable pseudo-id `_solo` — fine for single-client smoke
+  tests, not for multi-client e2e.
+- The e2e harness passes both fields explicitly so the canonical
+  applied-key log is deterministic across runs.
 
 ## Server → client
 
 ```json
 { "type": "snapshot",
   "tick": 42,
-  "dir":  "right",
-  "player": { "x": 320, "y": 320 },
-  "rng":  3735928559 }
+  "players": {
+    "A": { "x": 320, "y": 320 },
+    "B": { "x": 332, "y": 320 }
+  },
+  "rng": 3735928559,
+  "applied": ["41:A:5", "41:B:5", "42:A:6"] }
 ```
 
 - Broadcast once per server tick (20Hz, fixed-step). The DO clock owns
   the cadence — the client's rAF does NOT pull ticks.
-- `tick` is monotonic from 0 (the tick the DO is ABOUT to commit when
-  it broadcasts; equivalently, the count of `step()` calls already
-  applied).
-- `dir` is the input direction the server APPLIED on this tick — the
-  result of latest-input-wins collapsing all intents that arrived in
-  the previous tick window (default `"none"` if nothing arrived). The
-  client mirrors these into an applied-input log; the e2e replays the
-  log through `pureReplay` to assert bit-exact determinism without
-  caring which intent landed in which tick slot.
-- `player` is the position the DO believes the (single) connected
-  client occupies, in canvas pixels.
-- `rng` is the post-step PRNG state. The e2e asserts the offline
-  reducer reproduces this exact number — that's how we prove the seed
-  is wired end-to-end (no `Math.random()` leaks in).
+- `tick` is monotonic from 0 (the tick the DO has just committed when
+  it broadcasts).
+- `players` is the FULL roster: `{ [clientId]: { x, y } }`. A newly-
+  joined socket's first snapshot already carries everyone in the room,
+  which is what makes `expectConverge` between two contexts a
+  meaningful structural-equality check.
+- `rng` is the post-tick PRNG state. The e2e asserts the offline
+  reducer reproduces this exact number — same end-to-end seed proof
+  as slice 3.
+- `applied` is the **per-socket delta** of canonical event keys
+  applied since this socket's last broadcast. Each key is
+  `${tick}:${clientId}:${seq}`. The client appends these to
+  `window.__game.appliedLog`; the e2e harness's
+  `expectOrderingInvariant` compares that log against the tape's
+  canonical order. On the first snapshot after (re)connect the
+  `applied` array carries the FULL log so the joining client rebuilds
+  its `appliedLog` from zero.
 
 ## Client → server
 
 ```json
-{ "type": "input", "dir": "left" }
+{ "type": "input", "dir": "left", "seq": 17 }
 ```
 
 - `dir` ∈ `"none" | "up" | "down" | "left" | "right"`.
-- The DO queues the latest intent and applies it on the NEXT tick.
-  More than one intent arriving between ticks is collapsed to the last
-  one — slice 3 is "latest-input wins", not an input queue with replay
-  semantics. (Slice 4 may revisit this for prediction.)
-- If the client sends nothing in a tick window, the DO ticks with
-  `{ dir: "none" }`. Position holds; `tick` and `rng` still advance.
+- `seq` is the client's monotonic per-client sequence number. It
+  pairs with the DO-assigned `tick` to form the canonical event key
+  `tick:clientId:seq`. Required for multi-client merge-gate runs;
+  optional (defaults to a server-assigned monotonic counter) for the
+  single-client smoke spec.
+- The DO queues every input it accepts and drains them all at the
+  next tick boundary, in canonical (clientId-lex, seq) order. No
+  latest-input-wins collapse — slice 4 needs every input to appear in
+  the canonical log so the ordering invariant is checkable.
+- An input arriving for a socket that closed before the next tick is
+  silently dropped on close (its pending queue goes with the
+  `ClientCtx`).
 
 ## Determinism contract
 
-`pureReplay(seed, tape)` where `tape: InputIntent[]` and `tape[i]` is
-the dir the SERVER applied at tick `i+1` → equals the DO's canonical
-state after `tape.length` ticks. Bit-exact equality, not floating-point
-tolerance — both sides walk the same `step()` function in the same
-order with the same seed.
+For multi-client e2e: every event the DO applies appears in
+`appliedLog` as `tick:clientId:seq`. Two contexts in the same room
+see the same `players` roster, the same `rng`, and the same
+`appliedLog` delta sequence — that's the convergence + ordering
+invariant the rung exists to prove.
+
+For single-client smoke: replay `appliedLog` through
+`applyTickBatch(initialState(seed), events)` in tick order; the
+terminal `players[clientId]` and `rng` match the DO's `canonical`
+exactly.
 
 The harness exposes the DO's latest snapshot at
-`window.__game.canonical` and the per-tick applied-dir log at
-`window.__game.appliedLog` so the e2e can replay and compare directly.
+`window.__game.canonical` and the canonical apply-order at
+`window.__game.appliedLog` so the e2e can read and compare directly.
+
+## Failing-fixture switch
+
+`agar/server/fixture/desync-broken/worker.ts` is a byte-equivalent
+copy of `agar/server/worker.ts` with a single `if` block that drops
+every 7th accepted input. The two-client e2e goes RED against it
+(missing canonical keys → ordering invariant fails) and GREEN against
+this protocol — that's the receipt that the merge gate is
+falsifiable. See `./fixture/desync-broken/README.md`.
