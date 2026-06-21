@@ -154,6 +154,18 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }
+      /* The aftermath line — one beat of voice between the GAME OVER
+         title (canon) and the final score (ledger). Slightly dimmer than
+         the score sub, italic for cadence — the swarm holds the sky,
+         your score is what it cost. */
+      #gameover-overlay .overlay-aftermath {
+        font-size: 11px;
+        color: #8ab;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-style: italic;
+        opacity: 0.85;
+      }
       /* Touch control pad — three buttons beneath the canvas. Wide enough
          to thumb comfortably one-handed in portrait; the LEFT/RIGHT pair
          sits on one side and FIRE opposite. We size to the same width box
@@ -257,6 +269,7 @@
         hidden
       >
         <div class="overlay-title">GAME OVER</div>
+        <div class="overlay-aftermath">They kept the sky.</div>
         <div class="overlay-sub">
           <span data-overlay-final-score>0</span>
         </div>
