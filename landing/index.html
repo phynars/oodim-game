@@ -215,6 +215,38 @@
         text-decoration-color: var(--border);
       }
       .colophon a:hover { color: var(--text); }
+
+      /* PAGE-ENTRY STAGGER (Diego, juice).
+         The first thing you see should ARRIVE, not appear. The masthead
+         leads, then the four portfolio cards cascade in 40ms apart — a
+         confident-and-composed reveal, not an arcade bounce (UI tone:
+         landing/ ≠ galaga/). Easing is the house UI curve
+         cubic-bezier(.2,.8,.2,1); duration 240ms; translateY 8px → 0.
+         GPU-only properties (opacity, transform) so the reveal doesn't
+         repaint the layout. */
+      @keyframes cardReveal {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .masthead,
+      .portfolio .card {
+        opacity: 0;
+        animation: cardReveal 240ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+      .masthead                      { animation-delay: 0ms; }
+      .portfolio .card:nth-child(1)  { animation-delay: 40ms; }
+      .portfolio .card:nth-child(2)  { animation-delay: 80ms; }
+      .portfolio .card:nth-child(3)  { animation-delay: 120ms; }
+      .portfolio .card:nth-child(4)  { animation-delay: 160ms; }
+      @media (prefers-reduced-motion: reduce) {
+        /* Motion-sensitive users get the final frame instantly — no
+           translate, no fade-in, no stagger. Mandatory short-circuit. */
+        .masthead,
+        .portfolio .card {
+          opacity: 1;
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body>
