@@ -18,21 +18,33 @@ any field is REQUEST_CHANGES.
 ## Read surface (4 fields — harness READS these)
 
 The harness reads these to assert convergence, ordering, and replay.
+Each read field may be exposed as **either a zero-arg function or a
+getter property**. The binding (`playwright-binding.ts`) reads both
+shapes via call-or-read; pick whichever is ergonomic in your client.
+agar slice 2 (#179) ships these as ES5 getters; the spec accepts that.
 
-- `window.__game.canonical: () => TState`
-  Returns the client's current canonical state snapshot. Plain JSON-ish
-  (no class instances, Maps, Sets — `structuralEquals` requires this).
-  Called by `ReadCanonical` after ws-quiesce on a tick boundary.
+- `window.__game.canonical: TState | (() => TState)`
+  The client's current canonical state snapshot. Plain JSON-ish (no
+  class instances, Maps, Sets — `structuralEquals` requires this).
+  Read by `ReadCanonical` after ws-quiesce on a tick boundary.
 
-- `window.__game.tick: () => number`
+- `window.__game.tick: number | (() => number)`
   Current simulated tick. Used to quiesce on tick boundaries (no
   wallclock). Monotonically non-decreasing.
 
-- `window.__game.appliedLog: () => readonly string[]`
-  The `tick:clientId:seq` keys this client has APPLIED, in apply order.
-  Feeds `assertOrderingInvariant`. Cleared only on full page reload.
+- `window.__game.appliedLog: readonly E[] | (() => readonly E[])`
+  The list of things this client has APPLIED, in apply order. Cleared
+  only on full page reload. The **element type `E` is game-specific**:
+  - Single-client games (agar slice 2): per-tick payload, e.g.
+    `readonly InputDir[]` — feeds convergence assertions only.
+  - Multi-client games: `readonly string[]` of `tick:clientId:seq`
+    keys — required shape for `expectOrderingInvariant`. The binding
+    checks each element against `/^\d+:[^:]+:\d+$/`, so a payload-
+    shaped log (e.g. agar's `InputDir[]` — `"up" | "none" | …`) is
+    rejected by shape, not just by `typeof`. The error message points
+    at this section.
 
-- `window.__game.clientId: () => string`
+- `window.__game.clientId: string | (() => string)`
   The client's identity as the DO sees it. Used by `driveTape` to
   attribute scripted inputs and by `appliedLog` consumers to filter by
   origin.
@@ -40,6 +52,8 @@ The harness reads these to assert convergence, ordering, and replay.
 ## Drive surface (4 fields — harness WRITES these)
 
 The harness writes these to inject input and control connection state.
+Drive fields are **always functions** (they take an argument or perform
+an action — there's no sensible getter shape).
 
 - `window.__game.sendInput: (input: unknown) => void`
   Inject a `TapeEvent.input` payload as if local. The client then sends
@@ -86,14 +100,17 @@ or new-product PR that adds a multiplayer client must install **all 8
 fields**, OR echo-only versions guarded by an explicit
 `import.meta.env.MODE === 'test'` check, or it is **REQUEST_CHANGES**.
 
-Field names are normative:
+Field names are normative; access shape (function vs getter) for the
+read surface is the author's choice:
 
 - A PR that ships `window.__game.state` instead of `canonical` is
-  rejected.
+  rejected (wrong NAME).
 - A PR that ships `applyOrder` instead of `appliedLog` is rejected
   (slice 2 already owns `appliedLog`).
 - A PR that ships `scriptInput` instead of `sendInput` is rejected
   (slice 2 already owns `sendInput`).
+- A PR that ships `canonical` as an ES5 getter property (agar
+  slice 2's shape) is **accepted**; the binding reads both forms.
 
 The eight normative names are:
 
