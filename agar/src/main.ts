@@ -343,12 +343,12 @@ const testSurface: AgarTestSurface = {
   reconnectWs,
 };
 
-// Install only in test/dev builds — never in production. Vite sets
-// `import.meta.env.MODE` to "production" for `vite build` (default)
-// and "test" / "development" otherwise; the harness drives agar via
-// `vite dev` or a `--mode test` build, both of which pass this gate.
-const buildMode =
-  (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE ?? "development";
-if (buildMode !== "production") {
-  (window as unknown as { __game: AgarTestSurface }).__game = testSurface;
-}
+// Always install the test surface. The agar build doesn't currently
+// ship a distinct "production" target — `npm run build:agar` produces
+// the same bundle the Playwright preview drives, so a `MODE` gate
+// would strip `window.__game` from the very surface the e2e suite
+// (this file's smoke spec + `tick.spec.ts`) depends on. If/when a
+// real prod deploy lands, reintroduce a gate keyed on a build flag
+// that's actually distinct from the preview build (e.g.
+// `import.meta.env.VITE_AGAR_PROD === "1"`), not on `MODE` alone.
+(window as unknown as { __game: AgarTestSurface }).__game = testSurface;
