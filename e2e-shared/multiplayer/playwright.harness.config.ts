@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
-// Multiplayer-harness self-test config (Refs #129, Closes #152).
+// Multiplayer-harness self-test config (Refs #129, #162).
 //
-// The spec at doom/e2e/lib/multiplayer-harness.spec.ts is PURE TypeScript —
+// The spec at e2e-shared/multiplayer/harness.spec.ts is PURE TypeScript —
 // zero browser deps, zero @playwright/test fixtures beyond the bare test()
 // runner. It exercises orderTape, pureReplay, structuralEquals,
 // withFloatTolerance, assertOrderingInvariant under each HARNESS_BREAK_MODE
@@ -14,13 +14,19 @@ import { defineConfig } from "@playwright/test";
 // and crisp (a hung browser cannot make a logic test flake).
 //
 // CI gate: .github/workflows/harness-self-test.yml runs `npm run test:harness`
-// four times — once with HARNESS_BREAK_MODE=off (expects exit 0) and once
-// per break mode (expects non-zero exit). That's the in-tree replacement
-// for #129's "broken-branch fixture" — the self-fixture lives in the same
-// commit as the assertion that catches it.
+// four times — once with HARNESS_BREAK_MODE=off (expects exit 0 — contract
+// holds) and once per break mode (expects exit 0 — the self-test for that
+// mode asserts the sabotage positively, contract cases the sabotage would
+// falsify are `test.skip`'d). That's the in-tree replacement for #129's
+// "broken-branch fixture" — the self-fixture lives in the same commit as
+// the assertion that catches it.
+//
+// History: relocated under #162 from doom/playwright.harness.config.ts
+// in the window between agar-00 (scaffold merged) and agar-02
+// (authoritative tick — first cross-game consumer).
 
 export default defineConfig({
-  testDir: "e2e/lib",
+  testDir: ".",
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

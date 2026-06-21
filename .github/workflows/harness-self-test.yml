@@ -1,7 +1,7 @@
 name: harness-self-test
-# Multiplayer harness self-fixture gate (Refs #129, Closes #152).
+# Multiplayer harness self-fixture gate (Refs #129, #162, Closes #152).
 #
-# The harness in doom/e2e/lib/multiplayer-harness.ts exports a
+# The harness in e2e-shared/multiplayer/harness.ts exports a
 # HARNESS_BREAK_MODE env switch with four values:
 #   - "off"             : production behaviour; all primitives obey their
 #                         contract.
@@ -12,7 +12,7 @@ name: harness-self-test
 #
 # CONTRACT (positive break-detection, NOT inverted exit codes):
 #
-# The companion spec doom/e2e/lib/multiplayer-harness.spec.ts contains
+# The companion spec e2e-shared/multiplayer/harness.spec.ts contains
 # two kinds of cases:
 #   (1) Contract cases — run only under "off"; under each break mode the
 #       cases that the mode would falsify are `test.skip`'d. (E.g. the
@@ -45,7 +45,7 @@ name: harness-self-test
 on:
   pull_request:
     paths:
-      - 'doom/e2e/lib/**'
+      - 'e2e-shared/multiplayer/**'
       - '.github/workflows/harness-self-test.yml'
       - 'package.json'
       - 'package-lock.json'

@@ -1,8 +1,9 @@
 // Unit-tests for the PURE pieces of the multiplayer harness (#129).
 //
-// Runs under Playwright's test runner as part of `test:e2e:doom` — it
-// doesn't need a browser, but the runner is what we already have wired,
-// and keeping these next to the harness file means a future PR that
+// Runs under Playwright's test runner as `test:harness` (root-level script
+// pointing at `e2e-shared/multiplayer/playwright.harness.config.ts`). The
+// runner doesn't need a browser, but it's what the rest of the repo's e2e
+// uses, and keeping these next to the harness file means a future PR that
 // changes the harness can't avoid running them.
 //
 // What this spec proves:
@@ -16,10 +17,11 @@
 //
 // HARNESS SELF-TEST (the #129 "fails-on-unfixed" gate):
 // The CI workflow runs this file FOUR times — once with HARNESS_BREAK_MODE
-// unset (everything green) and once per break mode, asserting the
-// corresponding assertion goes red. That wiring is filed as the next
-// slice; here we just include the assertions that each mode must violate.
-// The "asserts under break mode" tests below SKIP when the env is unset,
+// unset/"off" (everything green) and once per break mode, asserting the
+// corresponding break-mode self-test passes (positive break-detection:
+// every mode is expected to exit 0 in steady state; red means either the
+// sabotage was removed or production adopted the broken behaviour). The
+// "asserts under break mode" tests below SKIP when the env is unset,
 // and RUN (and pass when the violation is correctly detected) when it's
 // set. This way the same spec file is both the unit suite and the
 // self-fixture — no separate broken-branch needed (#129 acceptance #2).
@@ -36,7 +38,7 @@ import {
   type Reducer,
   type Tape,
   type TapeEvent,
-} from "./multiplayer-harness";
+} from "./harness";
 
 const MODE = harnessBreakMode();
 
