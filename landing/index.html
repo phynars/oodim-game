@@ -157,9 +157,11 @@
         border-color: var(--accent-doom);
       }
       @media (prefers-reduced-motion: reduce) {
-        /* Strip every transform + shadow so motion-sensitive users get the
-           color crossfade only. Border/background still animate (color is
-           safe under WCAG 2.3.3). */
+        /* Single short-circuit for motion-sensitive users. Strip every
+           transform + shadow on the cards (color crossfade only — border
+           and background still animate; color is safe under WCAG 2.3.3),
+           AND skip the page-entry stagger so the final frame is rendered
+           instantly (no fade-in, no translate). */
         .card,
         .card:hover,
         .card:focus-visible,
@@ -169,6 +171,11 @@
           transition:
             background-color 120ms ease,
             border-color 120ms ease;
+        }
+        .masthead,
+        .portfolio .card {
+          opacity: 1;
+          animation: none;
         }
       }
       .card__status {
@@ -238,15 +245,9 @@
       .portfolio .card:nth-child(2)  { animation-delay: 80ms; }
       .portfolio .card:nth-child(3)  { animation-delay: 120ms; }
       .portfolio .card:nth-child(4)  { animation-delay: 160ms; }
-      @media (prefers-reduced-motion: reduce) {
-        /* Motion-sensitive users get the final frame instantly — no
-           translate, no fade-in, no stagger. Mandatory short-circuit. */
-        .masthead,
-        .portfolio .card {
-          opacity: 1;
-          animation: none;
-        }
-      }
+      /* The prefers-reduced-motion short-circuit for this stagger lives in
+         the single @media block above (alongside the card hover/press
+         strip) so all motion-sensitive overrides are co-located. */
     </style>
   </head>
   <body>
