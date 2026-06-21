@@ -355,9 +355,17 @@
     <!-- Game-over screen (#91). Shown on any terminal status
          (lost / gameover / won). main.ts mirrors the final score; any input
          on the canvas (or pressing R) routes through Engine.restart() and
-         reloads stage 1 with full health. -->
+         reloads stage 1 with full health.
+
+         Copy note (June): the h1 below is written for the DEATH case
+         ('lost' / 'gameover'). The 'won' status currently shares this same
+         overlay (see main.ts wantGameover) — so on a win the player still
+         reads "It got you." That's a real bug, but it's an overlay-split
+         bug, not a copy bug; flagged for follow-up. Once main.ts grows a
+         separate [data-overlay="won"] surface, that one gets its own h1
+         (something like "You made the corridor."). -->
     <div class="overlay" data-overlay="gameover" aria-live="polite">
-      <h1>You died.</h1>
+      <h1>It got you.</h1>
       <p>Score: <span data-overlay="final-score">0</span></p>
       <p style="margin-top: 16px; opacity: 0.7">
         <span class="kbd">R</span> back to the corridor
