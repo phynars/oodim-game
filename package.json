@@ -25,8 +25,10 @@
     "preview:agar": "vite preview --config agar/vite.config.ts",
     "typecheck:agar": "tsc --noEmit -p agar/tsconfig.json",
     "test:e2e:agar": "playwright test --config agar/playwright.config.ts",
+    "dev:agar-server": "wrangler dev --config agar/wrangler.toml",
+    "typecheck:agar-server": "tsc --noEmit -p agar/server/tsconfig.json",
     "build": "npm run build:pacman && npm run build:galaga && npm run build:doom && npm run build:agar",
-    "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom && npm run typecheck:agar",
+    "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom && npm run typecheck:agar && npm run typecheck:agar-server",
     "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga && npm run test:e2e:doom && npm run test:e2e:agar",
     "test:harness": "playwright test --config doom/playwright.harness.config.ts"
   },
