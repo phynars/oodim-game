@@ -18,31 +18,29 @@
 // prior Pac-Man e2e spec attempts).
 
 import { expect, test } from "@playwright/test";
-
-interface FireProbe {
-  lastKeydownTick: number;
-  lastProjectileSpawnTick: number;
-  deltaTicks: number;
-}
-
-interface GalagaInternals {
-  fireProbe?: () => FireProbe | null;
-}
-
-interface GameStateLike {
-  status: string;
-}
+import type { GalagaInternals, GameState } from "../../src/game/types";
 
 declare global {
   interface Window {
-    __galaga?: GameStateLike;
+    __galaga?: GameState;
     __galagaInternals?: GalagaInternals;
   }
 }
 
 const FIRE_COUNT = 30;
-const FIRE_GAP_MS = 220; // > arcade-spec player cooldown so the gate measures input→spawn, not cooldown→spawn
-const PROBE_WAIT_MS = 2000;
+// Minimum gap between presses. Player bullets travel ~6 px/tick up a 408 px
+// field → ~70 ticks ≈ 1.17 s to clear from nose to top. The MAX_PLAYER_BULLETS
+// cap (2 in single-fighter mode) blocks a third press while two are in
+// flight, so the spec ALSO waits for `state.bullets` to drop below the cap
+// before each press (cap-clear is the deterministic gate; this gap is just
+// a debounce floor so we don't tight-loop on Playwright's evaluate cycle).
+const FIRE_GAP_MS = 50;
+const PROBE_WAIT_MS = 3000;
+// Player-bullet cap mirrors MAX_PLAYER_BULLETS in galaga/src/game/input.ts.
+const MAX_PLAYER_BULLETS = 2;
+// Max time we'll wait for the bullet cap to clear before a press. Sized to
+// cover one full bullet flight + render jitter under CI software-WebGL.
+const CAP_CLEAR_WAIT_MS = 2500;
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return Number.NaN;
@@ -79,20 +77,48 @@ test.describe("galaga input-to-fire latency (#168)", () => {
     const deltas: number[] = [];
 
     for (let i = 0; i < FIRE_COUNT; i++) {
-      // Capture lastKeydownTick BEFORE this press so we can wait for it to
-      // advance — that's the deterministic "this press was observed" signal.
+      // 1. Wait for the player-bullet cap to clear. Pressing Space while
+      //    `state.bullets` already holds MAX_PLAYER_BULLETS player bullets
+      //    consumes the press but spawns NO bullet — `lastKeydownTick`
+      //    advances while `lastProjectileSpawnTick` stays stale, producing
+      //    a misleading negative or huge delta. Waiting for the cap to
+      //    clear is the deterministic gate; it also matches the issue's
+      //    "spaced ≥ 200ms apart so cooldown can't gate the measurement".
+      await page.waitForFunction(
+        (cap: number) => {
+          const bullets = window.__galaga?.bullets ?? [];
+          let live = 0;
+          for (const b of bullets) {
+            if (b.from === "player") live++;
+          }
+          return live < cap;
+        },
+        MAX_PLAYER_BULLETS,
+        { timeout: CAP_CLEAR_WAIT_MS },
+      );
+
+      // 2. Capture lastKeydownTick BEFORE this press so we can wait for it
+      //    to advance — that's the deterministic "this press was observed"
+      //    signal. -1 sentinel on the first iteration (no probe yet).
       const before = await page.evaluate(
         () => window.__galagaInternals!.fireProbe?.()?.lastKeydownTick ?? -1,
       );
 
       await page.keyboard.press("Space");
 
-      // Wait until fireProbe reports a new spawn (lastProjectileSpawnTick
-      // distinct from before, and lastKeydownTick advanced).
+      // 3. Wait until fireProbe reports the press was observed AND a spawn
+      //    landed (lastProjectileSpawnTick at least caught up to the new
+      //    keydown tick — guards against the rare case where consumeFire
+      //    fires but the cap blocked the spawn anyway, e.g. a stray
+      //    in-flight bullet we missed).
       await page.waitForFunction(
         (prevKeydownTick: number) => {
           const probe = window.__galagaInternals?.fireProbe?.();
-          return probe !== null && probe !== undefined && probe.lastKeydownTick > prevKeydownTick;
+          if (!probe) return false;
+          return (
+            probe.lastKeydownTick > prevKeydownTick &&
+            probe.lastProjectileSpawnTick >= probe.lastKeydownTick
+          );
         },
         before,
         { timeout: PROBE_WAIT_MS },

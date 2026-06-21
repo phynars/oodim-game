@@ -216,6 +216,32 @@ export interface GameState {
   challenging: boolean;
 }
 
+/** Input-latency probe (#168). Returned by `__galagaInternals.fireProbe()` —
+ *  a read-only snapshot of the engine ticks at which the most recent fire
+ *  press was observed and the projectile actually entered the bullet array.
+ *  The merge gate at `galaga/e2e/feel/input-latency.spec.ts` asserts that
+ *  `deltaTicks <= 1` at p50/p99 across 30 fires.
+ *
+ *  - `lastKeydownTick`: the engine tick on which `consumeFire()` returned
+ *    true (i.e. the fixed-step update that observed the Space keydown
+ *    edge). Edge-triggered semantics mean each press surfaces on at most
+ *    one tick, so this strictly monotonically increases across presses.
+ *  - `lastProjectileSpawnTick`: the engine tick on which a player bullet
+ *    was actually pushed into `state.bullets`. A press denied by the
+ *    MAX_PLAYER_BULLETS cap (or fired while !canAct) does NOT advance
+ *    this — the probe reports the prior spawn tick paired with the new
+ *    keydown tick, and the spec is expected to wait for the cap to clear
+ *    before pressing again.
+ *  - `deltaTicks`: `lastProjectileSpawnTick - lastKeydownTick`. In the
+ *    arcade-correct world this is 0 (same tick that consumed the press
+ *    also pushed the bullet) or 1 if the spawn rolls to the next tick.
+ *    A median ≥ 2 signals a structural deferral and fails the gate. */
+export interface FireProbe {
+  lastKeydownTick: number;
+  lastProjectileSpawnTick: number;
+  deltaTicks: number;
+}
+
 /** Test-only escape hatch. The e2e harness can force a deterministic
  *  collision outcome (kill an enemy, or kill the player) without having to
  *  align bullet/enemy positions through the simulation. Exposed on `window`
@@ -265,6 +291,11 @@ export interface GalagaInternals {
    *  flip `player.dual` directly. No side effects on lives/enemies — purely
    *  a flag flip on the public contract. */
   forceDual(value: boolean): void;
+  /** Input-latency probe (#168). Returns the most recent
+   *  keydown→projectile-spawn delta in engine ticks, or `null` if no fire
+   *  press has been observed yet. Test-only — does not affect gameplay.
+   *  See `FireProbe` for the field semantics + how to read the result. */
+  fireProbe(): FireProbe | null;
 }
 
 declare global {

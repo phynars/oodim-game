@@ -141,6 +141,16 @@ export class Engine {
   private gameOverFrames = 0;
   private lastTime = 0;
   private accumulator = 0;
+  /** Input-latency probe (#168) — engine tick at which `consumeFire()` most
+   *  recently returned true (i.e. the fixed-step update that observed the
+   *  Space keydown edge). `-1` until the first fire press. Read by the
+   *  `fireProbe()` accessor wired in `exposeInternals`. */
+  private lastKeydownTick = -1;
+  /** Input-latency probe (#168) — engine tick at which a player bullet was
+   *  most recently pushed into `state.bullets`. `-1` until the first
+   *  successful spawn. A press denied by MAX_PLAYER_BULLETS / !canAct does
+   *  NOT advance this; see `FireProbe` jsdoc in types.ts for the contract. */
+  private lastProjectileSpawnTick = -1;
 
   constructor(canvas: HTMLCanvasElement, touchElements?: TouchInputElements) {
     this.canvas = canvas;
@@ -237,6 +247,23 @@ export class Engine {
         // flag through killEnemy's rescue path or demoteDual on death.
         this.state.player.dual = value;
         this.publish();
+      },
+      fireProbe: () => {
+        // Input-latency probe (#168). Returns null until the first fire
+        // press is observed AND a projectile spawn has been recorded —
+        // before that, `deltaTicks` has no meaningful value. After the
+        // first spawn, the snapshot pairs the most recent keydown tick
+        // with the most recent spawn tick; a press denied by the cap
+        // leaves the spawn tick stale, so the spec must wait for the
+        // cap to clear before the next press (see `FireProbe` jsdoc).
+        if (this.lastKeydownTick < 0 || this.lastProjectileSpawnTick < 0) {
+          return null;
+        }
+        return {
+          lastKeydownTick: this.lastKeydownTick,
+          lastProjectileSpawnTick: this.lastProjectileSpawnTick,
+          deltaTicks: this.lastProjectileSpawnTick - this.lastKeydownTick,
+        };
       },
     };
   }
@@ -848,6 +875,17 @@ export class Engine {
       // bump the per-press rate-of-fire is identical to single, and the
       // rescue's payoff feels invisible.
       const wantsFire = this.input.consumeFire();
+      // Input-latency probe (#168): stamp the keydown tick the moment we
+      // OBSERVE the consumed press, regardless of whether the press will
+      // result in a bullet (cap / !canAct may suppress the spawn). The
+      // spec asserts on deltaTicks for presses that DO spawn — it waits
+      // for the cap to clear before each next press — so stamping on
+      // every consumed press is safe and gives the e2e harness a
+      // deterministic edge to wait on (lastKeydownTick strictly advances
+      // across presses).
+      if (wantsFire) {
+        this.lastKeydownTick = this.state.tick;
+      }
       if (wantsFire && canAct) {
         let liveCount = 0;
         for (const b of this.state.bullets) {
@@ -894,6 +932,15 @@ export class Engine {
         // polluted. Only counted when at least one bullet actually fired.
         if (toSpawn > 0 && !this.state.challenging) {
           this.state.stageShotsFired += 1;
+        }
+        // Input-latency probe (#168): stamp the spawn tick the same tick
+        // a bullet actually entered `state.bullets`. Gated on toSpawn>0
+        // so a press denied by the cap (toSpawn===0 because liveCount===cap)
+        // leaves lastProjectileSpawnTick on its prior value — the spec is
+        // expected to wait for the cap to clear before the next press, so
+        // a denied press would otherwise produce a misleading large delta.
+        if (toSpawn > 0) {
+          this.lastProjectileSpawnTick = this.state.tick;
         }
       }
 
