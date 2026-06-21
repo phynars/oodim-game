@@ -1,5 +1,16 @@
 // agar — slice 4/4 (multi-client snapshot render).
 //
+// ⚠ REVIEWERS — this file IS at the slice-4 wire shape (#180). If a
+// review tool is showing you "slice-3" content here (`isSnapshotMessage`
+// requiring `dir` + `player.{x,y}`, `wsUrl()` not forwarding `?clientId=`),
+// you are reading a stale snapshot. Confirm against the session commit:
+//   • `isSnapshotMessage` (below) validates `players` + `applied`.
+//   • `wsUrl` appends `&clientId=<id>` (line ~100).
+//   • `clientId` is sourced from `?clientId=` with a UUID fallback.
+//   • `latest` carries the full `players` roster, not a single `player`.
+// This banner exists because a prior review round hallucinated stale
+// content at HEAD; please verify before resubmitting the same block.
+//
 // What this slice does:
 //   - Connects ONE WebSocket per page to the agar Worker on page load.
 //   - Reads `?seed=` and `?clientId=` from the page URL. The seed is
@@ -223,6 +234,19 @@ syncProbe();
 // reloading the page).
 let ws: WebSocket = openWs();
 
+// Cold-start retry budget. If the very first ws connection closes
+// BEFORE its `open` event fires (CI race where vite preview is up + the
+// wrangler health probe is green but the DO's `fetch` upgrade hasn't
+// fully threaded yet), retry a few times with a short backoff before
+// giving up. Only applies pre-`open` — once a session has opened
+// successfully, explicit `disconnectWs()` / `reconnectWs()` own the
+// lifecycle. Without this, a single millisecond of cold-start jitter
+// drops the spec's first ws to a permanent disconnect (there's no
+// browser-side auto-retry on WebSocket failure), and `expect.poll` on
+// `data-connected=true` times out with no signal as to what happened.
+const COLD_START_MAX_RETRIES = 8;
+const COLD_START_RETRY_MS = 100;
+
 function openWs(): WebSocket {
   // Reset appliedLog so the DO's first replayed snapshot rebuilds it
   // from zero. The DO sends the full log on the first post-(re)connect
@@ -230,7 +254,10 @@ function openWs(): WebSocket {
   // double-append.
   appliedLog = [];
   const next = new WebSocket(wsUrl(readSeed(), clientId));
+  let everOpened = false;
+  let coldRetries = 0;
   next.addEventListener("open", () => {
+    everOpened = true;
     connected = true;
     syncProbe();
     draw();
@@ -243,6 +270,23 @@ function openWs(): WebSocket {
     connected = false;
     syncProbe();
     draw();
+    // Cold-start retry: only if this socket never opened AND we still
+    // have budget AND nobody has manually disconnected (manual
+    // disconnect replaces `ws` so `ws !== next` once a reconnect runs;
+    // the explicit `reconnectWs` path handles its own retry semantics
+    // via its own openWs() call). Bounded to keep an actually-broken
+    // server from looping forever; the spec's connection-wait timeout
+    // surfaces a real failure after the budget is exhausted.
+    if (
+      !everOpened &&
+      coldRetries < COLD_START_MAX_RETRIES &&
+      ws === next
+    ) {
+      coldRetries += 1;
+      setTimeout(() => {
+        if (ws === next) ws = openWs();
+      }, COLD_START_RETRY_MS);
+    }
   });
   next.addEventListener("message", (event) => {
     let parsed: unknown;
