@@ -2,11 +2,11 @@ import { test } from "@playwright/test";
 import {
   canonical,
   expectConverge,
-  expectOrderingInvariant,
   driveTape,
   disconnect,
   reconnect,
   assertClientSurface,
+  readAppliedLog,
 } from "../../e2e-shared/multiplayer/playwright-binding";
 import type { PageLike, Tape } from "../../e2e-shared/multiplayer/harness";
 
@@ -30,9 +30,11 @@ import type { PageLike, Tape } from "../../e2e-shared/multiplayer/harness";
 //     The webServer in playwright.config.ts boots the sibling worker at
 //     `agar/server/fixture/desync-broken/worker.ts` instead of the
 //     production DO. The same spec runs RED against it (`expectConverge`
-//     and `expectOrderingInvariant` both throw) and GREEN against main.
-//     The fixture is in-repo (not a separate broken branch) per #180's
-//     "Required failing fixture" clause.
+//     and `expectCanonicalApplied` both throw — the fixture's dropped
+//     events make the per-peer canonical states diverge AND make the
+//     applied-log come up short by ~⅐ of the tape) and GREEN against
+//     main. The fixture is in-repo (not a separate broken branch) per
+//     #180's "Required failing fixture" clause.
 //
 // ROOM MODEL
 //   The DO routes by `match:${seedParam}`. Two contexts hitting the same
@@ -78,6 +80,93 @@ const TAPE_POST_RECONNECT: Tape<{
   { tick: 19, clientId: "B", seq: 9, input: { dir: "left"  } },
 ];
 
+/**
+ * Assert the page's appliedLog is canonical for `tape`. Two conditions:
+ *
+ *   1. Every tape event appears in the log exactly once, identified by
+ *      `clientId:seq`. A dropped event (the desync-broken fixture's
+ *      "drop every 7th input" break) trips this — the count mismatches
+ *      and the error names the missing `clientId:seq` pair.
+ *   2. The log is sorted in canonical (tick asc, clientId-lex asc, seq
+ *      asc) order. A DO that drains its per-client queues out of
+ *      clientId-lex order, or applies events out of per-client seq
+ *      order within a tick, trips this with the specific index.
+ *
+ * The absolute `tick` numbers in the log are NOT compared against the
+ * tape's `tick` field (see the call-site comment for why).
+ */
+async function expectCanonicalApplied<T>(
+  page: PageLike,
+  tape: Tape<T>,
+): Promise<void> {
+  const log = await readAppliedLog(page);
+  if (!Array.isArray(log)) {
+    throw new Error(
+      `expectCanonicalApplied: appliedLog is not an array (typeof=${typeof log})`,
+    );
+  }
+  const KEY = /^(\d+):([^:]+):(\d+)$/;
+  const parsed: Array<{ key: string; tick: number; clientId: string; seq: number }> = [];
+  for (const entry of log) {
+    if (typeof entry !== "string") {
+      throw new Error(
+        `expectCanonicalApplied: appliedLog entry is not a string: ${JSON.stringify(entry)}`,
+      );
+    }
+    const m = KEY.exec(entry);
+    if (!m) {
+      throw new Error(
+        `expectCanonicalApplied: appliedLog entry "${entry}" does not match "tick:clientId:seq" shape`,
+      );
+    }
+    parsed.push({
+      key: entry,
+      tick: Number(m[1]),
+      clientId: m[2]!,
+      seq: Number(m[3]),
+    });
+  }
+
+  // (1) Every tape event present, matched on (clientId, seq).
+  const logPairs = new Set(parsed.map((p) => `${p.clientId}:${p.seq}`));
+  const missing: string[] = [];
+  for (const ev of tape) {
+    const pair = `${ev.clientId}:${ev.seq}`;
+    if (!logPairs.has(pair)) missing.push(pair);
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `expectCanonicalApplied: appliedLog is missing tape events (clientId:seq): ${missing.join(
+        ", ",
+      )}. The DO dropped or never received these inputs.`,
+    );
+  }
+  if (parsed.length !== tape.length) {
+    throw new Error(
+      `expectCanonicalApplied: appliedLog length ${parsed.length} ≠ tape length ${tape.length} (every event present, but extras detected — duplicate apply?)`,
+    );
+  }
+
+  // (2) Log is in canonical (tick asc, clientId-lex asc, seq asc) order.
+  for (let i = 1; i < parsed.length; i++) {
+    const prev = parsed[i - 1]!;
+    const cur = parsed[i]!;
+    const order =
+      prev.tick !== cur.tick
+        ? prev.tick - cur.tick
+        : prev.clientId !== cur.clientId
+          ? prev.clientId < cur.clientId
+            ? -1
+            : 1
+          : prev.seq - cur.seq;
+    if (order > 0) {
+      throw new Error(
+        `expectCanonicalApplied: appliedLog out of canonical order at index ${i}: "${prev.key}" before "${cur.key}". Canonical order is (tick asc, clientId-lex asc, seq asc).`,
+      );
+    }
+  }
+}
+
 test.describe("agar slice 4 — two-client convergence (the rung)", () => {
   test("two contexts in one room see each other; ordering + reconnect-replay all converge", async ({
     browser,
@@ -119,15 +208,28 @@ test.describe("agar slice 4 — two-client convergence (the rung)", () => {
       await expectConverge(pages);
 
       // ── 3. Ordering invariant: DO apply-order == canonical order ────
-      // Each page's appliedLog must be the canonical
-      // `tick:clientId:seq` key sequence. If the DO applied events out
-      // of canonical order, this throws with the specific divergence
-      // index. If the appliedLog ships the single-client InputDir shape
-      // instead (slice-3 holdover), the harness throws a shape-specific
-      // error pointing at CLIENT-TEST-SURFACE.md — the explicit upgrade
-      // contract for slice 4.
-      await expectOrderingInvariant(pages[0]!, TAPE);
-      await expectOrderingInvariant(pages[1]!, TAPE);
+      // Each page's appliedLog must be in canonical
+      // (tick asc, clientId-lex, seq asc) order AND must contain
+      // exactly one `tick:clientId:seq` key per tape event (matched on
+      // `clientId:seq` — the DO assigns the absolute `tick`, the
+      // harness picks the relative order). This is the merge gate:
+      //
+      //   • dropped event   → entry count mismatch (catches the
+      //     desync-broken fixture's "drop every 7th input" break).
+      //   • re-ordered apply → canonical-sort check fails on the actual
+      //     log (catches a DO that drains pending out of clientId-lex
+      //     order, or out of per-client seq order).
+      //
+      // We don't compare against the tape's absolute `tick` values:
+      // the DO assigns tick at drain time (wall-clock 50ms), and the
+      // harness's `tickTo(target)` only guarantees the DO is at AT
+      // LEAST `target-1` before sending — never exactly `target-1`.
+      // A wall-clock-faster DO than the harness loop would still apply
+      // every event in canonical order, just at higher tick numbers.
+      // The merge gate is "canonical order + every event present",
+      // not "absolute ticks match the tape's wallclock estimate".
+      await expectCanonicalApplied(pages[0]!, TAPE);
+      await expectCanonicalApplied(pages[1]!, TAPE);
 
       // ── 4. Reconnect-replay equivalence ─────────────────────────────
       // Drop B mid-session, drive more inputs through both A and B
@@ -148,8 +250,8 @@ test.describe("agar slice 4 — two-client convergence (the rung)", () => {
       const fullTape: Tape<{
         dir: "up" | "down" | "left" | "right" | "none";
       }> = [...TAPE, ...TAPE_POST_RECONNECT];
-      await expectOrderingInvariant(pages[0]!, fullTape);
-      await expectOrderingInvariant(pages[1]!, fullTape);
+      await expectCanonicalApplied(pages[0]!, fullTape);
+      await expectCanonicalApplied(pages[1]!, fullTape);
 
       // Sanity belt-and-suspenders: read the canonical roster off A
       // and confirm BOTH players are present. A spec that "converges"
