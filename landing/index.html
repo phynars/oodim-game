@@ -119,6 +119,10 @@
         text-decoration: none;
         color: inherit;
         box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+        /* Promote to a compositor layer — the hover/press path animates
+           transform + box-shadow every frame, and the hint keeps the lift
+           on the GPU so it doesn't fight layout. */
+        will-change: transform, box-shadow;
         transition:
           background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
           border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -160,6 +164,7 @@
           transition: background-color 120ms ease, border-color 120ms ease;
           transform: none;
           box-shadow: none;
+          will-change: auto;
         }
       }
       .card__status {
