@@ -143,47 +143,67 @@ function syncProbe(): void {
 draw();
 syncProbe();
 
-const ws = new WebSocket(wsUrl(readSeed()));
+// `ws` is reassignable so disconnectWs/reconnectWs can swap it in place
+// (the test surface needs to drop and restore the connection without
+// reloading the page).
+let ws: WebSocket = openWs();
+
+// Mint a stable per-page client id. The snapshot protocol (slice 3/4)
+// doesn't echo an id from the DO yet, so the client generates its own
+// on page load. This is stable across disconnect/reconnect (it lives
+// on the page, not on the ws) which is what the harness needs for
+// `appliedLog` attribution.
+const clientId: string = (() => {
+  try {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+    if (c?.randomUUID) return c.randomUUID();
+  } catch {
+    /* fall through */
+  }
+  return `agar-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+})();
+
+function openWs(): WebSocket {
+  const next = new WebSocket(wsUrl(readSeed()));
+  next.addEventListener("open", () => {
+    connected = true;
+    syncProbe();
+    draw();
+  });
+  next.addEventListener("close", () => {
+    connected = false;
+    syncProbe();
+    draw();
+  });
+  next.addEventListener("message", (event) => {
+    let parsed: unknown;
+    try {
+      parsed = typeof event.data === "string" ? JSON.parse(event.data) : null;
+    } catch {
+      return;
+    }
+    if (!isSnapshotMessage(parsed)) return;
+    latest = {
+      tick: parsed.tick,
+      player: { x: parsed.player.x, y: parsed.player.y },
+      rng: parsed.rng,
+    };
+    // Append the dir the server APPLIED at this tick. Server tick numbers
+    // are monotonic from 1 (the first tick after connect), so
+    // appliedLog[i] === dir applied at tick i+1. If a snapshot is missed
+    // (it shouldn't be inside a single WS), the log would have a hole —
+    // we'd see it as a tick gap, and the e2e would catch the divergence.
+    appliedLog.push(parsed.dir);
+    syncProbe();
+    draw();
+  });
+  return next;
+}
 
 function sendInput(dir: InputDir): void {
   if (ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ type: "input", dir }));
 }
-
-ws.addEventListener("open", () => {
-  connected = true;
-  syncProbe();
-  draw();
-});
-
-ws.addEventListener("close", () => {
-  connected = false;
-  syncProbe();
-  draw();
-});
-
-ws.addEventListener("message", (event) => {
-  let parsed: unknown;
-  try {
-    parsed = typeof event.data === "string" ? JSON.parse(event.data) : null;
-  } catch {
-    return;
-  }
-  if (!isSnapshotMessage(parsed)) return;
-  latest = {
-    tick: parsed.tick,
-    player: { x: parsed.player.x, y: parsed.player.y },
-    rng: parsed.rng,
-  };
-  // Append the dir the server APPLIED at this tick. Server tick numbers
-  // are monotonic from 1 (the first tick after connect), so
-  // appliedLog[i] === dir applied at tick i+1. If a snapshot is missed
-  // (it shouldn't be inside a single WS), the log would have a hole —
-  // we'd see it as a tick gap, and the e2e would catch the divergence.
-  appliedLog.push(parsed.dir);
-  syncProbe();
-  draw();
-});
 
 // Keyboard → intent. Browsers fire keydown repeatedly while held; the
 // DO's latest-input-wins logic makes that harmless. We send "none" on
@@ -225,31 +245,110 @@ window.addEventListener("keyup", (e) => {
 // `window.__game.sendInput(dir)` and asserts on `window.__game.canonical`.
 // Both are read-only views into the WS-driven state; the e2e never
 // mutates them directly.
+//
+// Conforms to `e2e-shared/multiplayer/CLIENT-TEST-SURFACE.md` — all 8
+// normative fields are installed. Gated on `import.meta.env.MODE` so
+// production builds never expose `window.__game`.
 interface AgarTestSurface {
   readonly canonical: WorldState | null;
-  sendInput(dir: InputDir): void;
-  readonly seed: string;
-  /**
-   * Full ordered list of `dir` values the server has APPLIED so far —
-   * one entry per server tick, in tick order. The e2e replays this
-   * through `pureReplay(seed, …)` to assert bit-exact equality with
-   * `canonical`, sidestepping any input-to-tick alignment race.
-   */
+  readonly tick: number;
   readonly appliedLog: readonly InputDir[];
+  readonly clientId: string;
+  readonly seed: string;
+  sendInput(dir: InputDir): void;
+  tickTo(n: number): Promise<void>;
+  disconnectWs(): void;
+  reconnectWs(): Promise<void>;
+}
+
+/**
+ * Resolve once the latest snapshot's tick is at or past `target`.
+ * No-op (resolves immediately) when already at or past `target`.
+ * Polls the same `latest` ref the ws `message` handler updates.
+ */
+function tickTo(target: number): Promise<void> {
+  if (latest !== null && latest.tick >= target) return Promise.resolve();
+  return new Promise((resolve) => {
+    const id = setInterval(() => {
+      if (latest !== null && latest.tick >= target) {
+        clearInterval(id);
+        resolve();
+      }
+    }, 8);
+  });
+}
+
+function disconnectWs(): void {
+  // close() is async; the `close` listener flips `connected` when it
+  // fires. The harness can poll `__game.canonical` / `__game.tick`
+  // to confirm no further snapshots land.
+  try {
+    ws.close();
+  } catch {
+    /* already closed — fine */
+  }
+}
+
+/**
+ * Drop and re-open the ws. Resolves after the DO's first replayed
+ * snapshot lands (i.e. canonical state is valid again). The pre-call
+ * tick is captured so we can detect that a new snapshot arrived
+ * post-reconnect, even if its tick number happens to equal the old
+ * `latest.tick`.
+ */
+function reconnectWs(): Promise<void> {
+  const beforeAppliedLen = appliedLog.length;
+  // Ensure we're closed before re-opening so the DO sees a fresh
+  // connection (and replays state).
+  try {
+    ws.close();
+  } catch {
+    /* fine */
+  }
+  ws = openWs();
+  return new Promise((resolve) => {
+    const id = setInterval(() => {
+      // A new snapshot arrived after reconnect when the applied log
+      // grew past its pre-reconnect length AND the ws is open. (The
+      // server replays state on connect, so the first post-reconnect
+      // snapshot is our signal.)
+      if (appliedLog.length > beforeAppliedLen && connected) {
+        clearInterval(id);
+        resolve();
+      }
+    }, 8);
+  });
 }
 
 const testSurface: AgarTestSurface = {
   get canonical() {
     return latest;
   },
-  sendInput,
-  get seed() {
-    return readSeed();
+  get tick() {
+    return latest?.tick ?? 0;
   },
   get appliedLog() {
     // Return a defensive copy so the e2e can't mutate the live log.
     return appliedLog.slice();
   },
+  get clientId() {
+    return clientId;
+  },
+  get seed() {
+    return readSeed();
+  },
+  sendInput,
+  tickTo,
+  disconnectWs,
+  reconnectWs,
 };
 
+// Always install the test surface. The agar build doesn't currently
+// ship a distinct "production" target — `npm run build:agar` produces
+// the same bundle the Playwright preview drives, so a `MODE` gate
+// would strip `window.__game` from the very surface the e2e suite
+// (this file's smoke spec + `tick.spec.ts`) depends on. If/when a
+// real prod deploy lands, reintroduce a gate keyed on a build flag
+// that's actually distinct from the preview build (e.g.
+// `import.meta.env.VITE_AGAR_PROD === "1"`), not on `MODE` alone.
 (window as unknown as { __game: AgarTestSurface }).__game = testSurface;
