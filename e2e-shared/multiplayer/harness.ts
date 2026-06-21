@@ -1,10 +1,17 @@
 // Multiplayer e2e harness primitives — the contract from #129.
 //
-// LIVES IN doom/e2e/lib/ ONLY because `agar/` is not yet in this repo's
-// writable-paths allowlist (gated on #136). Same precedent Diego used for
-// `doom/e2e/feel/multiplayer-feel.ts`. The moment `agar/` opens, this file
-// moves verbatim to `agar/e2e/lib/multiplayer-harness.ts` — nothing here
-// depends on Doom; the doom/ path is squatting, not coupling.
+// SHARED LOCATION: this file is the canonical home for the multiplayer
+// harness primitives. Any game's e2e (doom/, agar/, future products) that
+// needs deterministic replay + canonical-state convergence imports from
+// `e2e-shared/multiplayer/harness`. Do NOT clone into per-game e2e/lib/
+// — the whole point of #129's "second multiplayer game must reuse them
+// as-is" clause is that there is one harness, not N.
+//
+// History: originally lived under `doom/e2e/lib/multiplayer-harness.ts`
+// because `agar/` wasn't writable when #129 landed. Relocated under #162
+// in the window between agar-00 (scaffold) and agar-02 (authoritative
+// tick — first real consumer). The HARNESS_BREAK_MODE self-fixture
+// matrix proves byte-for-byte semantic preservation across the move.
 //
 // SHAPE OF THE CONTRACT
 //
@@ -17,12 +24,12 @@
 // This file ships:
 //   - TYPE signatures for the Playwright-bound primitives (driveTape,
 //     canonical, expectConverge, disconnect, reconnect). The bindings are
-//     filed separately as the next slice (see workspace next-wake notes) —
-//     they cannot land until agar/ has a real DO + ws to talk to.
+//     filed separately as the next slice — they cannot land until agar/
+//     has a real DO + ws to talk to.
 //   - PURE implementations of the bits that don't need a browser:
 //     orderTape, pureReplay, structuralEquals, withFloatTolerance,
 //     assertOrderingInvariant. These are unit-testable today and ARE
-//     unit-tested in `multiplayer-harness.spec.ts` in the same dir.
+//     unit-tested in `harness.spec.ts` in the same dir.
 //   - HarnessBreakMode — the in-tree self-fixture switch. Sets a
 //     deliberately-broken behaviour the harness should detect. The
 //     harness-self-test job in CI runs the assertions under each mode and
@@ -33,7 +40,7 @@
 //   - A game. There is no agar-server, no DO, no websocket. Just shapes.
 //   - A Playwright dependency. The pure pieces below have zero imports so
 //     they can be unit-tested under any runner and reused server-side as
-//     the reducer-of-record (see open question in workspace notes).
+//     the reducer-of-record.
 
 // ---------------------------------------------------------------------------
 // Self-fixture: HARNESS_BREAK_MODE
@@ -124,8 +131,7 @@ export function orderTape<T>(tape: Tape<T>): TapeEvent<T>[] {
 //
 // The signature the agar-server's DO reducer must conform to. Shipping
 // it here (zero deps) means the same function can run in the DO AND in
-// the test harness — one reducer, two callers, no drift. See workspace
-// open question: we lean toward sharing rather than duplicating.
+// the test harness — one reducer, two callers, no drift.
 // ---------------------------------------------------------------------------
 
 export type Reducer<TState, TInput> = (
@@ -333,8 +339,7 @@ export type DriveTape = <TInput>(
 ) => Promise<void>;
 
 /** Read `window.__game.canonical` from a page AFTER quiescing on a
- *  deterministic tick boundary (NOT wallclock; that reintroduces flake).
- *  See workspace open question — decision: tick boundary. */
+ *  deterministic tick boundary (NOT wallclock; that reintroduces flake). */
 export type ReadCanonical = <TState>(page: PageLike) => Promise<TState>;
 
 /** Structural-equality assertion across N pages. Uses `structuralEquals`
