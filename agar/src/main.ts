@@ -1,22 +1,26 @@
-// agar — slice 2/4 (Durable Object websocket echo, client side).
+// agar — slice 3/4 (authoritative tick, naive snapshot render).
 //
-// Connects ONE WebSocket to the agar Worker on page load, sends
-// `{type:"ping", t: <client-ts>}` every 250ms, and renders the latest
-// `seq` and `rtt` (in ms) on the canvas. No gameplay yet — this slice
-// only proves the round-trip lands inside the CI merge gate.
-//
-// The WS URL is derived from window.location so both `wrangler dev`
-// (default port 8787) and a future prod origin work without code change.
-// In dev/preview the page is served from a different port than the Worker,
-// so we point explicitly at port 8787 when running on localhost.
+// What this slice does:
+//   - Connects ONE WebSocket to the agar Worker on page load.
+//   - Reads `?seed=` from the page URL and forwards it as `?seed=` to
+//     the WS (the DO uses it to seed its PRNG). Without a seed, the
+//     server falls back to seed=1.
+//   - Sends `{type:"input", dir}` intents when arrow keys are pressed
+//     and released. The DO collapses to latest-input-wins per tick.
+//   - Renders the latest snapshot the server pushed. Pure render — no
+//     client-side prediction, no interpolation. The cell sits exactly
+//     where the server last said it sits.
+//   - Exposes `window.__game.canonical` so the e2e can read the DO's
+//     authoritative state without parsing canvas pixels.
+//   - Exposes `window.__game.sendInput(dir)` so the e2e can drive a
+//     deterministic input tape without keyboard events.
+
+import type { InputDir, WorldState } from "../server/reducer";
 
 const canvasEl = document.getElementById("game");
 if (!(canvasEl instanceof HTMLCanvasElement)) {
   throw new Error("agar: #game canvas not found");
 }
-// Re-bind to a const of the narrowed type so every nested closure
-// (draw, event handlers, setInterval) sees `HTMLCanvasElement` without
-// relying on cross-closure narrowing inference.
 const canvas: HTMLCanvasElement = canvasEl;
 
 const ctxOrNull = canvas.getContext("2d");
@@ -25,91 +29,106 @@ if (!ctxOrNull) {
 }
 const ctx: CanvasRenderingContext2D = ctxOrNull;
 
-interface PongMessage {
-  type: "pong";
-  seq: number;
-  t: number;
+interface SnapshotMessage {
+  type: "snapshot";
+  tick: number;
+  player: { x: number; y: number };
+  rng: number;
 }
 
-function isPongMessage(value: unknown): value is PongMessage {
+function isSnapshotMessage(value: unknown): value is SnapshotMessage {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
+  if (v.type !== "snapshot") return false;
+  if (typeof v.tick !== "number") return false;
+  if (typeof v.rng !== "number") return false;
+  const p = v.player as Record<string, unknown> | undefined;
   return (
-    v.type === "pong" && typeof v.seq === "number" && typeof v.t === "number"
+    typeof p === "object" &&
+    p !== null &&
+    typeof p.x === "number" &&
+    typeof p.y === "number"
   );
 }
 
-function wsUrl(): string {
+function readSeed(): string {
+  const url = new URL(window.location.href);
+  return url.searchParams.get("seed") ?? "1";
+}
+
+function wsUrl(seed: string): string {
   const loc = window.location;
   const proto = loc.protocol === "https:" ? "wss:" : "ws:";
-  // In dev/preview (vite serves agar at :4274), the DO Worker runs on
-  // :8787 via `wrangler dev`. In prod the Worker is exposed under the
-  // same origin and the path /ws is routed by the platform.
   const host =
     loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
       ? `${loc.hostname}:8787`
       : loc.host;
-  return `${proto}//${host}/ws`;
+  return `${proto}//${host}/ws?seed=${encodeURIComponent(seed)}`;
 }
 
-// Latest values rendered by the draw loop. Updated on every pong.
-let lastSeq = 0;
-let lastRtt = 0;
+// The latest snapshot the server pushed. Slice 3 renders from this
+// directly; no smoothing.
+let latest: WorldState | null = null;
 let connected = false;
 
 function draw(): void {
   ctx.fillStyle = "#050505";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Placeholder cell — same visual cue as slice 1 so the canvas reads
-  // as "intentional placeholder, networking live" rather than blank.
-  ctx.fillStyle = "#80e6c1";
-  ctx.beginPath();
-  ctx.arc(canvas.width / 2, canvas.height / 2 - 40, 36, 0, Math.PI * 2);
-  ctx.fill();
+  if (latest !== null) {
+    ctx.fillStyle = "#80e6c1";
+    ctx.beginPath();
+    ctx.arc(latest.player.x, latest.player.y, 16, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Pre-snapshot: same placeholder pose as slice 1/2 so the canvas
+    // doesn't look broken before the first server tick lands.
+    ctx.fillStyle = "#80e6c1";
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, canvas.height / 2 - 40, 36, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.fillStyle = "#e8eaff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = "600 28px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("Agar", canvas.width / 2, canvas.height / 2 + 40);
+  ctx.fillText("Agar", canvas.width / 2, 40);
 
-  // The two numbers the e2e asserts on. Rendered as a single line so a
-  // Playwright text snapshot can match them with one regex.
   ctx.font = "500 14px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.fillStyle = connected ? "#9090a8" : "#a85050";
   ctx.fillText(
-    `seq=${lastSeq}  rtt=${lastRtt}ms`,
+    `tick=${latest?.tick ?? 0}`,
     canvas.width / 2,
-    canvas.height / 2 + 72,
+    canvas.height - 24,
   );
 }
 
-// The e2e reads the seq/rtt off the DOM, not the canvas pixels — canvas
-// text isn't queryable. We mirror the same string into a hidden element
-// with a data-testid so Playwright can wait on it deterministically.
 const probe = document.createElement("div");
 probe.setAttribute("data-testid", "agar-net-status");
 probe.style.position = "absolute";
 probe.style.left = "-9999px";
 probe.style.top = "-9999px";
-probe.dataset.seq = "0";
-probe.dataset.rtt = "0";
+probe.dataset.tick = "0";
 probe.dataset.connected = "false";
-probe.textContent = "seq=0 rtt=0";
+probe.textContent = "tick=0";
 document.body.appendChild(probe);
 
 function syncProbe(): void {
-  probe.dataset.seq = String(lastSeq);
-  probe.dataset.rtt = String(lastRtt);
+  probe.dataset.tick = String(latest?.tick ?? 0);
   probe.dataset.connected = String(connected);
-  probe.textContent = `seq=${lastSeq} rtt=${lastRtt}`;
+  probe.textContent = `tick=${latest?.tick ?? 0}`;
 }
 
 draw();
 syncProbe();
 
-const ws = new WebSocket(wsUrl());
+const ws = new WebSocket(wsUrl(readSeed()));
+
+function sendInput(dir: InputDir): void {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "input", dir }));
+}
 
 ws.addEventListener("open", () => {
   connected = true;
@@ -130,17 +149,70 @@ ws.addEventListener("message", (event) => {
   } catch {
     return;
   }
-  if (!isPongMessage(parsed)) return;
-  lastSeq = parsed.seq;
-  lastRtt = Math.max(0, Date.now() - parsed.t);
+  if (!isSnapshotMessage(parsed)) return;
+  latest = {
+    tick: parsed.tick,
+    player: { x: parsed.player.x, y: parsed.player.y },
+    rng: parsed.rng,
+  };
   syncProbe();
   draw();
 });
 
-// 250ms ping cadence. Only sends when the socket is OPEN — otherwise we'd
-// throw and tear down the interval. If the WS isn't connected yet, skip
-// this tick; the next one will try again once `open` fires.
-setInterval(() => {
-  if (ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "ping", t: Date.now() }));
-}, 250);
+// Keyboard → intent. Browsers fire keydown repeatedly while held; the
+// DO's latest-input-wins logic makes that harmless. We send "none" on
+// keyup so the player stops at the next tick boundary.
+function keyToDir(code: string): InputDir | null {
+  switch (code) {
+    case "ArrowUp":
+    case "KeyW":
+      return "up";
+    case "ArrowDown":
+    case "KeyS":
+      return "down";
+    case "ArrowLeft":
+    case "KeyA":
+      return "left";
+    case "ArrowRight":
+    case "KeyD":
+      return "right";
+    default:
+      return null;
+  }
+}
+
+window.addEventListener("keydown", (e) => {
+  const dir = keyToDir(e.code);
+  if (dir === null) return;
+  e.preventDefault();
+  sendInput(dir);
+});
+
+window.addEventListener("keyup", (e) => {
+  const dir = keyToDir(e.code);
+  if (dir === null) return;
+  e.preventDefault();
+  sendInput("none");
+});
+
+// Test surface: the e2e drives a deterministic input tape via
+// `window.__game.sendInput(dir)` and asserts on `window.__game.canonical`.
+// Both are read-only views into the WS-driven state; the e2e never
+// mutates them directly.
+interface AgarTestSurface {
+  readonly canonical: WorldState | null;
+  sendInput(dir: InputDir): void;
+  readonly seed: string;
+}
+
+const testSurface: AgarTestSurface = {
+  get canonical() {
+    return latest;
+  },
+  sendInput,
+  get seed() {
+    return readSeed();
+  },
+};
+
+(window as unknown as { __game: AgarTestSurface }).__game = testSurface;
