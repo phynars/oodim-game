@@ -396,9 +396,20 @@
          ('lost' / 'gameover'). The 'won' status currently shares this same
          overlay (see main.ts wantGameover) — so on a win the player still
          reads "It got you." That's a real bug, but it's an overlay-split
-         bug, not a copy bug; flagged for follow-up. Once main.ts grows a
-         separate [data-overlay="won"] surface, that one gets its own h1
-         (something like "You made the corridor."). -->
+         bug, not a copy bug; the implementer who splits the overlay should
+         use the win-case copy already decided below, NOT invent new lines.
+
+         WIN-CASE COPY (decided — ship these verbatim when the overlay splits):
+           h1: "You made it down."
+           sub: "Score: <span data-overlay="final-score">0</span>"
+           kbd: "R again, deeper"
+         The keeper-line for Doom is "studio learned 3D on the way down."
+         The descent is the stake; "made it down" earns its place because
+         going down IS the verb the corridor demanded. "Again, deeper" is
+         the dare — same shape as Pac-Man's "AGAIN. FASTER." (engine.ts),
+         which is the studio voice for "you cleared it, the room reopens
+         harder." Death keeps "It got you." — indefinite pronoun is the
+         threat. Win names the act in second person — that's the contract. -->
     <div class="overlay" data-overlay="gameover" aria-live="polite">
       <h1>It got you.</h1>
       <p>Score: <span data-overlay="final-score">0</span></p>
