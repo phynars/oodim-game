@@ -344,10 +344,36 @@ export interface DoomState {
  *     pose, going through the same path Space does (consume ammo, raycast,
  *     damage + score on hit, append to `hits`). Test-only; bypasses the input
  *     edge-trigger so the harness doesn't depend on rAF for ammo/hit timing. */
+/** One row in the per-frame render-time ring buffer (#237). Captured once
+ *  per rAF in the `start()` loop: `renderMs` is `performance.now()` around
+ *  the `render()` call only (not update + render — sim cost is decoupled);
+ *  the four scalar snapshots are the load characteristics the test reads to
+ *  diagnose a spike. */
+export interface FrameProbeSample {
+  /** Wall-clock ms spent in render() for this frame. */
+  renderMs: number;
+  /** Live enemy count at capture (`state.enemies.length`). */
+  enemies: number;
+  /** Live impact-spark count at capture (`state.impactSparks.length`). */
+  sparks: number;
+  /** Live blood-drop count at capture (`state.bloodDrops.length`). */
+  blood: number;
+  /** `state.tick` at capture — lets the test align a sample to sim events. */
+  tick: number;
+}
+
 export interface DoomInternals {
   forceHit(opts?: { enemyId?: number }): void;
   forceDamage(opts?: { amount?: number }): void;
   forcePickup(opts?: { id?: number }): void;
+  /** Read the per-frame render-time ring buffer (#237). Returns a snapshot
+   *  copy of the most-recent ≤240 samples ordered oldest→newest so the
+   *  test can assert percentile bounds without racing the live ring.
+   *  Allocation-free PER FRAME on the engine side — the ring is
+   *  preallocated and written in place; the alloc cost lives on this read
+   *  (test path only). Returns `{ samples: [] }` until the first rAF
+   *  callback has run. Test-only; gameplay code must never read it. */
+  frameProbe(): { samples: ReadonlyArray<FrameProbeSample> };
   /** Step the fixed-step sim exactly `steps` times with the given movement
    *  keys forced held for the duration, then restore live input. `forward`/
    *  `back`/`left`/`right` map to the same forward/backward/strafe intents the
