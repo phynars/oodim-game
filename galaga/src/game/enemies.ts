@@ -60,23 +60,6 @@ const BREATHE_AMPLITUDE = 12;
 /** Angular speed of the breathing oscillation (radians/tick). 2π/240 ≈ 4s
  *  cycle, the same languid sway the arcade has. */
 const BREATHE_OMEGA = (2 * Math.PI) / 240;
-/** Per-row phase lag in ticks (#241). Each row trails the one above by this
- *  many ticks, so a soft horizontal wave ripples top-down through the grid
- *  every breath cycle. 2 ticks (~33ms @60Hz) is below the per-adjacent-row
- *  visibility threshold (≈0.63px between rows) but the 4-row span between
- *  the top and bottom of the grid resolves to ~2.51px peak — felt as a
- *  living flock, not a rigid slab. See #241 for the derivation. */
-const BREATHE_ROW_PHASE_LAG_TICKS = 2;
-
-/** Sway offset for an enemy at `row` at the given tick. Row 0 (top) gets the
- *  unlagged sine; deeper rows trail by `row * BREATHE_ROW_PHASE_LAG_TICKS`
- *  ticks of phase. Centralizing this here means the three breathing sites
- *  (formation-settled, dive-launch P0 capture, dive-complete return) all
- *  agree — no risk of one site drifting from the others. */
-function breathingSway(currentTick: number, row: number): number {
-  const lagged = currentTick - row * BREATHE_ROW_PHASE_LAG_TICKS;
-  return Math.sin(lagged * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
-}
 
 // --- Diving choreography -----------------------------------------------------
 //
@@ -545,7 +528,8 @@ export function createEnemyController(): EnemyController {
             // Capture the current rendered position as P0 so the curve starts
             // exactly where the breathing sprite is — no visual snap.
             const home = formationSlot(candidate.col, candidate.row);
-            const sway = breathingSway(currentTick, candidate.row);
+            const sway =
+              Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
             candidate.diveP0x = home.x + sway;
             candidate.diveP0y = home.y;
             // Control point: pull the curve down to the lower playfield and
@@ -658,7 +642,8 @@ export function createEnemyController(): EnemyController {
             // in this slice; revisiting is a follow-up backlog item).
             e.diveStartTick = null;
             e.state = "formation";
-            const sway = breathingSway(currentTick, e.row);
+            const sway =
+              Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
             e.x = home.x + sway;
             e.y = home.y;
           } else {
@@ -677,11 +662,9 @@ export function createEnemyController(): EnemyController {
             e.y = pos.y;
           }
         } else if (ticksAlive >= ENTRANCE_TICKS) {
-          // Settled — breathe as one body, with a small per-row phase lag
-          // (#241) so the formation reads as a living flock rather than a
-          // rigid sliding slab.
+          // Settled — breathe as one body.
           e.state = "formation";
-          const sway = breathingSway(currentTick, e.row);
+          const sway = Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
           e.x = home.x + sway;
           e.y = home.y;
         } else {
