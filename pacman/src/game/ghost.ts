@@ -259,6 +259,10 @@ export function spawnGhosts(): GhostInternal[] {
     // publishes as 1 immediately (1 - 0/EMERGE_TICKS = 1); the other
     // three arm this only when their dot-counter threshold crosses.
     _emergeTicks: 0,
+    // GhostState requires emergeProgress on construction; mirror the
+    // _emergeTicks=0 boot intent. publicGhostView() recomputes this
+    // each publish from _emergeTicks, so it's only the typecheck seed.
+    emergeProgress: 1,
   });
   return [
     make("blinky", "out", "left"),
