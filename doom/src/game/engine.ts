@@ -40,6 +40,7 @@ import {
   KILL_HITSTOP_TICKS,
   KILL_SHAKE_AMPLITUDE_FACTOR,
   KILL_SHAKE_TICKS,
+  PICKUP_FLASH_TICKS,
   PLAYER_SHOT_DAMAGE,
   SCORE_BY_KIND,
   SHAKE_AMPLITUDE,
@@ -1323,6 +1324,18 @@ export class Engine {
         this.state.weapon.ammo += 20;
         break;
     }
+    // PICKUP JUICE (#230). Arm the affirmative flash. CLOBBER both fields
+    // (NOT Math.max on the counter): if a player walks over health while
+    // an armor flash is still alive, the kind cue MUST switch to the new
+    // kind — otherwise the blue vignette would lie about the green grant.
+    // Counter is single-channel by `pickupKindFlash`'s design, so
+    // clobbering can't compound into a frozen window the way an additive
+    // hitstop could (past Galaga learning re Math.max on anonymous
+    // channels). No hitstop arm — a gift shouldn't interrupt the world's
+    // beat; this is the HEAVY-AFFIRMATIVE counterpart to #194's HEAVY
+    // punishment.
+    this.state.pickupFlashTicks = PICKUP_FLASH_TICKS;
+    this.state.pickupKindFlash = pk.kind;
   }
 
   /** First input leaves the READY state; once playing, the loop ticks.
@@ -1448,6 +1461,15 @@ export class Engine {
         // age out during the freeze.
         if (this.state.damageWobbleTicks > 0)
           this.state.damageWobbleTicks -= 1;
+        // #230 — pickup flash. Decays alongside the other channels; the
+        // kind cue clears in lockstep with the counter hitting 0 so a
+        // resting (post-decay) snapshot reads `pickupFlashTicks === 0 &&
+        // pickupKindFlash === null` (the HUD vignette gate).
+        if (this.state.pickupFlashTicks > 0) {
+          this.state.pickupFlashTicks -= 1;
+          if (this.state.pickupFlashTicks === 0)
+            this.state.pickupKindFlash = null;
+        }
         for (const e of this.state.enemies) {
           if (e.hitFlashTicks > 0) e.hitFlashTicks -= 1;
         }

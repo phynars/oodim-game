@@ -258,6 +258,35 @@
         z-index: 1;
         transition: opacity 80ms linear;
       }
+      /* Pickup-flash vignette (#230). Radial gradient tinted by the
+         picked-up kind: transparent center → tinted edges, so the corridor
+         stays readable through the gift's afterglow. The --pickup-tint CSS
+         variable is written by main.ts each frame the flash is active. The
+         vignette sits BELOW the hit-flash (z-index:1 both) so concurrent
+         damage still blots over it — damage trumps gift, narratively. */
+      #pickup-flash {
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(
+          ellipse at center,
+          transparent 30%,
+          var(--pickup-tint, transparent) 100%
+        );
+        opacity: 0;
+        pointer-events: none;
+        z-index: 1;
+        transition: opacity 60ms linear;
+      }
+      /* Stat-pop transition. main.ts writes inline `transform: scale(...)`
+         when a pickup of that kind arms; CSS transition smooths the rest
+         of the curve between rAF samples (which are coarser than the
+         60Hz tick the scale is computed at — eg. monitor refresh at 144Hz
+         still only writes scale ~once per ~16ms gap). */
+      #hud .hud-value {
+        transform-origin: center;
+        will-change: transform;
+        transition: transform 30ms ease-out;
+      }
       /* Crosshair. A tiny plus pinned dead-center over the canvas, drawn in
          pure DOM (no WebGL) so headless e2e can assert its existence via a
          selector without touching pixels. It's a visual sight only —
@@ -336,6 +365,12 @@
          __doom.hitFlashTicks > 0. Pure cosmetic; the engine state is the
          source of truth. -->
     <div id="hit-flash" data-overlay="hit-flash" aria-hidden="true"></div>
+
+    <!-- Pickup-flash vignette (#230). main.ts ramps its opacity + sets the
+         --pickup-tint CSS variable to the kind's color while
+         __doom.pickupFlashTicks > 0. Radial gradient (transparent center →
+         tinted edges) keeps the corridor readable through the afterglow. -->
+    <div id="pickup-flash" data-overlay="pickup-flash" aria-hidden="true"></div>
 
     <!-- Title screen (#91). Shown on __doom.status === 'ready'; hidden once
          the first input flips the engine to 'playing'. Click / keypress

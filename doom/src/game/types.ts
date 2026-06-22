@@ -273,6 +273,25 @@ export interface DoomState {
     vz: number;
     ticksLeft: number;
   }>;
+  /** Fixed-step frames remaining on the current PICKUP-flash pulse (#230).
+   *  Set to PICKUP_FLASH_TICKS the tick `applyPickup()` grants a pickup;
+   *  decayed each fixed-step AFTER the hitstop gate (same place as every
+   *  other channel — pickups don't arm hitstop themselves, but they must
+   *  hang with the world if a concurrent damage/kill hitstop is alive).
+   *  >0 means the HUD vignette is showing this tick and the matching stat
+   *  readout is mid-scale-pop — the harness reads this rather than CSS.
+   *  CLOBBERED on arm (NOT Math.max — kind cue is single-channel, see
+   *  `pickupKindFlash`); a fresh grant always overrides residual flash. */
+  pickupFlashTicks: number;
+  /** Which pickup kind armed the current flash (#230). Read alongside
+   *  `pickupFlashTicks` so the HUD knows which tint + which stat readout to
+   *  scale. `null` whenever `pickupFlashTicks === 0`. Single-channel by
+   *  design: if a health pickup arms the green vignette and the player
+   *  immediately walks onto armor before the flash decays, the kind flips
+   *  to 'armor' (the green vignette WOULD lie about the new grant). Math.max
+   *  on the counter would compound durations across kinds; clobbering both
+   *  counter + kind together keeps the cue truthful. */
+  pickupKindFlash: "health" | "armor" | "ammo" | null;
   /** Live blood-spray drops (#194). Distinct from impactSparks: blood is
    *  KILL-ONLY (sparks fire on every connect), darker/larger/slower,
    *  gravity-driven (heavy chunks that fall, not weightless chips). Same
@@ -536,6 +555,8 @@ export function initialState(): DoomState {
     damageWobbleTicks: 0,
     impactSparks: [],
     bloodDrops: [],
+    pickupFlashTicks: 0,
+    pickupKindFlash: null,
   };
 }
 
@@ -710,3 +731,53 @@ export const DAMAGE_WOBBLE_AMPLITUDE_FACTOR = 0.3;
  *  6 ≈ 0.38, tick 12 ≈ 0.14 — sharp bite up front, exponential tail.
  *  Inverse envelope of the prior linear fade. */
 export const DAMAGE_FLASH_DECAY = 0.85;
+
+// --- Pickup feel (#230) ---------------------------------------------------
+// The AFFIRMATIVE beat in Doom's emotional set. #166 = connect, #194 = kill,
+// #205 = take-damage; pickup is the corridor's gift — HEAVY-AFFIRMATIVE, not
+// punchy. Generous window (slower than damage flash), tinted vignette
+// distinguishing kind, and a confident scale-pop on the matching stat
+// readout. No hitstop (a gift shouldn't interrupt the world's beat).
+
+/** Fixed-step frames a pickup-flash pulse holds. 24 ticks @ 60Hz = 400ms —
+ *  longer than HIT_FLASH_TICKS (12) so the affirmative beat OUTLASTS the
+ *  damage beat. The HUD reads `pickupFlashTicks / PICKUP_FLASH_TICKS` as
+ *  a [0..1] envelope for both the vignette alpha and the stat-pop scale. */
+export const PICKUP_FLASH_TICKS = 24;
+
+/** Exponential decay base for the pickup vignette's alpha (#230). At
+ *  0.88: tick 1 ≈ 0.88, tick 12 ≈ 0.22 — slower decay than the damage
+ *  flash (0.85) so the gift's afterglow lingers. The HUD overlay's
+ *  alpha at tick `t` (where t = PICKUP_FLASH_TICKS - pickupFlashTicks)
+ *  is `PICKUP_FLASH_DECAY_PER_TICK ^ t * 0.35` — 0.35 keeps the vignette
+ *  generous-but-readable; the corridor isn't obscured. */
+export const PICKUP_FLASH_DECAY_PER_TICK = 0.88;
+
+/** Apex of the matching stat readout's scale-pop (#230). 1.18 — a small
+ *  confident bump, not a wobble. Linear ramp UP from 1.0 to this value
+ *  over PICKUP_STAT_POP_PEAK_TICK ticks, then exponential return to 1.0
+ *  over the remaining ticks. Reads as "this number just MATTERED". */
+export const PICKUP_STAT_POP_PEAK = 1.18;
+
+/** Tick within the flash window where the stat-pop reaches peak (#230).
+ *  6 ticks @ 60Hz = 100ms — the THUNK; the remaining 18 ticks are the
+ *  exponential glide back to 1.0. */
+export const PICKUP_STAT_POP_PEAK_TICK = 6;
+
+/** Per-tick decay base for the stat-pop's POST-PEAK glide (#230). 0.82
+ *  per tick — over the 18 post-peak ticks the bump glides smoothly back
+ *  to ~1.0 (0.82^18 ≈ 0.029, multiplied by the 0.18 peak amplitude). */
+export const PICKUP_STAT_POP_DECAY = 0.82;
+
+/** Per-kind vignette tint (#230). Each pickup kind gets its own color so
+ *  the player reads the GIFT at a glance:
+ *    health = green (restore)
+ *    armor  = cool blue (protect)
+ *    ammo   = amber (power)
+ *  Hex strings to match the rest of the HUD's color choices (index.html
+ *  uses #ff6a6a / #6ab0ff / #f0c674 for the matching cells). */
+export const PICKUP_KIND_TINT: Record<"health" | "armor" | "ammo", string> = {
+  health: "#3aff7a",
+  armor: "#6ab4ff",
+  ammo: "#ffd24a",
+};
