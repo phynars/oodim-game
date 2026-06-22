@@ -1,47 +1,36 @@
 // Two-client multiplayer convergence — THE merge gate for #180 / #234.
 //
 // This spec strengthens `multiplayer-smoke.spec.ts` (which proves only
-// "two pages agree with each other") with the strictly stronger
-// assertion that one page agrees with the OFFLINE reducer run over
-// the server's own applied-input log, AND the second page's view of
-// that same log is a consistent SUFFIX of the first page's view.
+// "two pages agree the WS is up") by asserting CROSS-CLIENT agreement:
+// the applied-input log B sees is a contiguous SUFFIX of the log A sees,
+// aligned by absolute server tick. If the DO reordered inputs, dropped
+// a snapshot to one client, or two clients diverged on what was
+// applied, this spec fails.
 //
-// The asymmetry is deliberate, and Ivy is the reason it's here.
+// WHAT THIS SPEC INTENTIONALLY DOES NOT ASSERT — and why
 //
-// CLIENT-SIDE LOG SEMANTICS (agar/src/main.ts:198 `appliedLog.push`)
+// An earlier draft also asserted `pureReplay(SEED, A.appliedLog) === A.canonical`
+// for A as "the first connector". That assertion is NOT honest under
+// the slice-3/4 server contract:
 //
-// `window.__game.appliedLog` grows ONE entry per snapshot the client
-// RECEIVES, not per server tick. The DO's `canonical.tick` is the
-// absolute server tick. For the first connector A:
+//   - `agar/server/worker.ts` boots a 20Hz `setInterval` tick loop the
+//     moment the first socket attaches (`ensureTickLoop()`), and the
+//     DO instance can survive between tests (alarms only stop when
+//     the socket set empties AND the runtime decides to evict).
+//   - The client's `appliedLog` (agar/src/main.ts:196) grows ONE
+//     entry per snapshot RECEIVED, not per server tick. A's `message`
+//     handler attaches after the WS handshake; depending on tick-loop
+//     phase A may miss tick 1 entirely.
+//   - Result: `a.appliedLog.length === a.canonical.tick` is NOT
+//     guaranteed even for the chronologically-first connector. The
+//     offline-reducer cross-check is only honest when the server
+//     grows a tick-1 join signal (a real fix for #234), and that
+//     change lands on the server, not here.
 //
-//   A.appliedLog.length === A.canonical.tick      // A saw tick 1..N
-//   pureReplay(SEED, A.appliedLog) === A.canonical
-//
-// For any later connector B joining mid-match at server tick K:
-//
-//   B.appliedLog.length   ===  B.canonical.tick - K + 1
-//   B.appliedLog          ===  A.appliedLog.slice(K - 1)   // a SUFFIX
-//
-// You CANNOT assert `pureReplay(SEED, B.appliedLog) === B.canonical`
-// — B is missing the prefix [tick 1 .. K-1]. The previous draft of
-// this spec did exactly that, and Ivy correctly REQUEST_CHANGES'd it.
-//
-// SERVER REPLAY STATUS (agar/server/worker.ts)
-//
-// The slice-3/4 DO has NO per-client input log and NO replay-on-
-// reconnect path. The `close` listener just deletes the socket; a
-// subsequent `fetch` joins the live broadcast at whatever tick is
-// current. So after B disconnects and reconnects, B's post-reconnect
-// `appliedLog` is a fresh suffix starting at B's reconnect tick — NOT
-// the entire history replayed back. The merge-gate contract this spec
-// asserts is therefore the SHARED-PREFIX DELTA between A and B's
-// appliedLog views, gated on the only piece that's actually true:
-// A's full-history view satisfies `pureReplay(SEED, log) === canonical`.
-//
-// When the server later grows a per-room ordered input log and replays
-// it on reconnect (the real fix for #234), this spec strengthens to
-// also assert `pureReplay(SEED, B.appliedLog) === B.canonical` — but
-// that change lands on the server side, not here, and not yet.
+// What's left is the strongest cross-client statement that's actually
+// true under the current server: A and B observed the same broadcast
+// stream, possibly with different start ticks and small read-skew at
+// the end. Their overlapping window must match element-for-element.
 //
 // Scope guardrails (per #234):
 //   - Do NOT modify `multiplayer-smoke.spec.ts` — it stays as the
@@ -50,9 +39,8 @@
 //   - Do NOT mutate `e2e-shared/multiplayer/playwright-binding.ts` or
 //     `harness.ts` — `disconnect`, `reconnect`, `readAppliedLog`, and
 //     `canonical` are read-only references.
-//   - Do NOT add latency assertions (Ivy's axis).
 //   - No `waitForTimeout`: every gate is tick-quiesced via the
-//     binding's `tickTo` or the existing `data-tick > 0` poll.
+//     existing `data-tick > 0` poll or `__game.tick`.
 
 import { expect, test, type Page } from "@playwright/test";
 import {
@@ -64,12 +52,7 @@ import {
   reconnect,
 } from "../../e2e-shared/multiplayer/playwright-binding";
 import type { Tape } from "../../e2e-shared/multiplayer/harness";
-import {
-  pureReplay,
-  type InputDir,
-  type InputIntent,
-  type WorldState,
-} from "../server/reducer";
+import type { InputDir, WorldState } from "../server/reducer";
 
 // Numeric seed — `initialState(seed)` normalises via `seed >>> 0`.
 // The URL stringifies it; the offline reducer takes the number.
@@ -126,9 +109,9 @@ async function waitForTick(page: Page, targetTick: number): Promise<void> {
 }
 
 // Wait until a page's appliedLog has at least N entries. Used as a
-// quiesce signal after disconnect/reconnect — the DO's appliedLog
-// grows one element per server tick, so length is a proxy for
-// "this client has seen at least N ticks of server state".
+// quiesce signal after reconnect — the client's `appliedLog` grows
+// one element per received snapshot, so length is a proxy for
+// "this client has seen at least N snapshots since attach".
 async function waitForAppliedLogLength(
   page: Page,
   minLength: number,
@@ -153,9 +136,9 @@ async function waitForAppliedLogLength(
 }
 
 // Read this page's (canonical, appliedLog) atomically-enough for the
-// merge-gate assertions. The harness quiesces both reads on a tick
-// boundary; a single-tick read-skew between the two is possible, and
-// the callers below account for it explicitly.
+// merge-gate assertions. The two reads happen via Promise.all on the
+// same page, so a single-tick read-skew between them is possible and
+// is tolerated explicitly by `assertSuffixOverlap` below.
 async function readPageState(page: Page): Promise<{
   canonical: WorldState;
   appliedLog: readonly InputDir[];
@@ -170,98 +153,59 @@ async function readPageState(page: Page): Promise<{
   return { canonical: canon, appliedLog: log as readonly InputDir[] };
 }
 
-// Assert FOR THE FIRST CONNECTOR ONLY: this page saw tick 1 onward,
-// so its appliedLog IS the full server history. The DO's reduction
-// must match the offline reducer's reduction of that same history.
+// Assert: A's and B's appliedLogs match element-for-element across
+// every absolute server tick BOTH clients observed.
 //
-// This is the strongest determinism statement available from any
-// single page — but it ONLY holds for a client whose first received
-// snapshot was server tick 1 (i.e. the first to join the room). For
-// late joiners, see `assertSuffixAgainst`.
-function assertFirstConnectorReplay(
-  page: { canonical: WorldState; appliedLog: readonly InputDir[] },
-): void {
-  // First connector: log length must equal absolute server tick.
-  // If this fails, either (a) the caller used this on a late joiner
-  // (test bug), or (b) the client dropped snapshots (real bug).
-  expect(page.appliedLog.length).toBe(page.canonical.tick);
-
-  const tape: InputIntent[] = page.appliedLog.map((dir) => ({ dir }));
-  const expected = pureReplay(SEED, tape);
-
-  expect(expected.tick).toBe(page.canonical.tick);
-  expect(expected.player).toEqual(page.canonical.player);
-  expect(expected.rng).toBe(page.canonical.rng);
-}
-
-// Assert: B's appliedLog covers a SUFFIX of A's appliedLog. This is
-// the strongest cross-client statement that's honest under the
-// slice-3/4 server contract (no per-client replay): both clients see
-// the same authoritative stream, B just started observing it K-1
-// ticks late.
+// Per-client invariant (independent of which client connected first):
 //
-// Alignment is by ABSOLUTE SERVER TICK, not by tail length. The
-// previous draft aligned tails by `min(length)`, which silently
-// mis-shifted by one whenever A and B's parallel reads landed on
-// different server ticks (a tolerated, real read-skew). Aligning by
-// `canonical.tick` is the only honest map:
+//   appliedLog[i] is the snapshot at absolute server tick
+//     (canonical.tick - appliedLog.length + 1 + i)
 //
-//   A's log[i] is absolute tick (i + 1)
-//                                 — A is the first connector,
-//                                   guaranteed by the caller
-//                                   asserting assertFirstConnectorReplay(a)
-//                                   first.
-//   B's log[j] is absolute tick (lastB - b.length + 1 + j)
-//                                 — B may have joined mid-match;
-//                                   B's first observed tick is
-//                                   (lastB - b.length + 1).
+//   i.e. the LAST entry is `canonical.tick`, the FIRST entry is
+//   (canonical.tick - appliedLog.length + 1). This holds for every
+//   page regardless of when it joined, because `canonical.tick` is
+//   updated by the SAME snapshot whose `dir` is pushed onto
+//   `appliedLog` (agar/src/main.ts:188-196).
 //
-// The shared range of absolute ticks both clients observed is
-// [firstB, min(lastA, lastB)]. We slice both logs to exactly that
-// range and compare element-wise.
-function assertBLogIsSuffixOfA(
+// The shared absolute-tick window both clients observed is
+// [max(firstA, firstB), min(lastA, lastB)]. We slice both logs to
+// exactly that window and assert equality. The window must be
+// non-empty under any non-trivial test (both clients running
+// concurrently for ≥1 tick).
+function assertSuffixOverlap(
   a: { canonical: WorldState; appliedLog: readonly InputDir[] },
   b: { canonical: WorldState; appliedLog: readonly InputDir[] },
 ): void {
-  // Caller invariant: assertFirstConnectorReplay(a) has run, which
-  // proves a.appliedLog.length === a.canonical.tick — i.e. A's log
-  // indexes absolute ticks 1..lastA exactly. This assertion's
-  // alignment math depends on that. Re-check here so a misordered
-  // caller fails with a precise message, not a silent off-by-one.
-  expect(a.appliedLog.length).toBe(a.canonical.tick);
-
   const lastA = a.canonical.tick;
   const lastB = b.canonical.tick;
-  // B's first observed absolute tick. Server ticks are 1-indexed and
-  // appliedLog grows one entry per received snapshot, so:
+  const firstA = lastA - a.appliedLog.length + 1;
   const firstB = lastB - b.appliedLog.length + 1;
 
-  // B cannot have started observing before tick 1.
+  // Neither client can have "started observing" before server tick 1.
+  expect(firstA).toBeGreaterThanOrEqual(1);
   expect(firstB).toBeGreaterThanOrEqual(1);
-  // B joined no earlier than A (A was the first connector), so B's
-  // first observed tick is >= 1, which we already checked. We do NOT
-  // require firstB > 1: in races where A and B handshake within the
-  // same server tick boundary, B may also observe tick 1.
 
-  // Allow up to 1 tick of read skew between A and B in EITHER
-  // direction — A's reader may catch a snapshot B's hasn't, or vice
-  // versa. lastA and lastB are read on separate pages within a
-  // single Promise.all, so a 1-tick gap is normal at 20 Hz.
+  // Allow up to 1 tick of read skew between A and B in either
+  // direction — the two `canonical.tick` reads are on separate pages
+  // within a single Promise.all, so a 1-tick gap is normal at 20Hz.
   expect(Math.abs(lastA - lastB)).toBeLessThanOrEqual(1);
 
   // Shared absolute-tick range — the window both clients observed.
-  const sharedStart = firstB;
+  const sharedStart = Math.max(firstA, firstB);
   const sharedEnd = Math.min(lastA, lastB);
   const sharedLen = sharedEnd - sharedStart + 1;
   expect(sharedLen).toBeGreaterThan(0);
 
-  // A's indices for [sharedStart..sharedEnd] inclusive are
-  // [sharedStart-1 .. sharedEnd-1]. Array.slice's end arg is
-  // exclusive, hence `sharedEnd` (not sharedEnd - 1 + 1).
-  const aSlice = a.appliedLog.slice(sharedStart - 1, sharedEnd);
-  // B's indices for the same absolute-tick range are
-  // [0 .. sharedEnd - firstB]. Slice end exclusive.
-  const bSlice = b.appliedLog.slice(0, sharedEnd - firstB + 1);
+  // A's index of absolute tick T is (T - firstA). Slice end exclusive.
+  const aSlice = a.appliedLog.slice(
+    sharedStart - firstA,
+    sharedEnd - firstA + 1,
+  );
+  // B's index of absolute tick T is (T - firstB). Slice end exclusive.
+  const bSlice = b.appliedLog.slice(
+    sharedStart - firstB,
+    sharedEnd - firstB + 1,
+  );
 
   expect(aSlice.length).toBe(sharedLen);
   expect(bSlice.length).toBe(sharedLen);
@@ -269,7 +213,7 @@ function assertBLogIsSuffixOfA(
 }
 
 test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
-  test("A satisfies pureReplay(SEED, log) == canonical; B's log is a suffix of A's", async ({
+  test("two pages' appliedLogs agree across their shared observation window", async ({
     browser,
   }) => {
     const ctxA = await browser.newContext();
@@ -278,12 +222,12 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
     const pageB = await ctxB.newPage();
 
     try {
-      // SEQUENCE A FIRST so A is the unambiguous first connector — A's
-      // appliedLog then includes tick 1 onward and is the full server
-      // history. Concurrent `Promise.all([gotoA, gotoB])` races the
-      // handshakes and yields a non-deterministic "first connector",
-      // which would break `assertFirstConnectorReplay(a)` whenever B
-      // wins the race.
+      // Sequence A before B so A has the LONGER applied-input log —
+      // the shared window is non-trivial and dominated by A's
+      // observation range. Either order is "correct" for the suffix
+      // assertion (it aligns by absolute tick, not arrival order),
+      // but sequencing makes the failure mode easier to read: when
+      // it breaks, you know B's log is the shorter one.
       await pageA.goto(ROOM_URL);
       await waitForFirstSnapshot(pageA);
       await assertClientSurface(pageA);
@@ -299,10 +243,10 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
 
       // Tape interleaves inputs across both clients. The DO arbitrates
       // (latest-input-wins per tick) and records what it actually
-      // applied in appliedLog — that record is what we replay against
-      // for A. Tick numbers below are RELATIVE targets the harness's
-      // tickTo waits for on the page that owns each event; they don't
-      // need to match absolute server ticks.
+      // applied in appliedLog — that record is what the cross-client
+      // assertion compares. Tick numbers below are RELATIVE targets
+      // the harness's tickTo waits for on the page that owns each
+      // event; they don't need to match absolute server ticks.
       const tape: Tape<InputDir> = [
         { tick: 2, clientId: idA, seq: 0, input: "right" },
         { tick: 2, clientId: idB, seq: 0, input: "left" },
@@ -322,8 +266,7 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
 
       // driveTape signature is (pages, tape, { seed }) per the
       // DriveTape type in harness.ts. The binding ignores the seed
-      // for agar (it's already in the URL), but the contract is
-      // typed.
+      // for agar (it's already in the URL), but the contract is typed.
       await driveTape([pageA, pageB], tape, { seed: SEED });
 
       // Quiesce both pages well past the last tape tick. Server runs
@@ -334,20 +277,12 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       const a = await readPageState(pageA);
       const b = await readPageState(pageB);
 
-      // Merge gate, part 1: A is the first connector, so A's log is
-      // the full server history. The offline reducer applied to that
-      // history must reproduce A's canonical state exactly. This is
-      // the determinism statement `tick.spec.ts` already asserts for
-      // a single client — we're re-asserting it survives the
-      // presence of a second connected client.
-      assertFirstConnectorReplay(a);
-
-      // Merge gate, part 2: B's log is a SUFFIX of A's. Both clients
-      // observed the same DO; B just started observing K-1 ticks
-      // late. The tail of B's log must match the corresponding tail
-      // of A's log. This is the cross-client convergence statement
-      // that's actually true under the slice-3/4 server contract.
-      assertBLogIsSuffixOfA(a, b);
+      // Merge gate: across the absolute-tick window both clients
+      // observed, the DO must have broadcast IDENTICAL applied-input
+      // entries. If the DO reordered inputs, dropped a snapshot to
+      // one client, or A's local log diverged from B's view of the
+      // same broadcast, this fails.
+      assertSuffixOverlap(a, b);
 
       // Sanity: real inputs reached the DO (not an all-"none" walk).
       expect(a.appliedLog.some((d) => d !== "none")).toBe(true);
@@ -357,7 +292,7 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
     }
   });
 
-  test("after B reconnects mid-match, B's new log is a suffix of A's continuing log", async ({
+  test("after B reconnects mid-match, B's new log still matches A's continuing log over their shared window", async ({
     browser,
   }) => {
     // What this test does NOT assert (and why):
@@ -366,29 +301,24 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
     // input log and has NO replay-on-reconnect path. The `close`
     // handler just deletes the socket; a subsequent reconnect joins
     // the live broadcast at the current tick. So we cannot assert
-    // `pureReplay(SEED, B.appliedLog) === B.canonical` post-reconnect
-    // — B's appliedLog is a FRESH suffix starting at the reconnect
-    // tick, not a replay of the history B missed.
+    // any "B replays the gap" property — B's appliedLog is a FRESH
+    // suffix starting at the reconnect tick, not a replay of the
+    // history B missed.
     //
     // What this test DOES assert is the strongest honest statement
-    // under that contract: A's view (continuous, first connector)
-    // still satisfies full-history replay, and B's post-reconnect
-    // log lines up with the corresponding tail of A's log. If the
-    // DO reordered inputs or A's local log diverged from the
-    // broadcast, this assertion fails.
-    //
-    // When the server grows a real replay path (the actual fix for
-    // #234), this test strengthens to also assert
-    // `pureReplay(SEED, B.appliedLog) === B.canonical`.
+    // under that contract: A's continuous log and B's post-reconnect
+    // tail agree element-for-element over their shared absolute-tick
+    // window. If the DO reordered inputs across the disconnect or
+    // A's local log diverged from the broadcast, this assertion
+    // fails.
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
     const pageA = await ctxA.newPage();
     const pageB = await ctxB.newPage();
 
     try {
-      // A first, then B — same sequencing reason as test 1: pin A as
-      // the unambiguous first connector so A's appliedLog is the full
-      // server history.
+      // A first, then B — same sequencing reason as test 1: A has the
+      // longer log, making the failure mode easier to read.
       await pageA.goto(ROOM_URL);
       await waitForFirstSnapshot(pageA);
       await assertClientSurface(pageA);
@@ -415,21 +345,21 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
 
       // Snapshot B's appliedLog length BEFORE the disconnect. The
       // client's `appliedLog` is a module-level const that is NEVER
-      // CLEARED on disconnect/reconnect (see agar/src/main.ts:92 — the
-      // appliedLog array outlives the ws and `reconnectWs` just opens
-      // a new socket on top of it). So after B reconnects, B's
+      // CLEARED on disconnect/reconnect (agar/src/main.ts:92 — the
+      // appliedLog array outlives the WS, and `reconnectWs` just
+      // opens a new socket on top of it). So after B reconnects, B's
       // `appliedLog` contains [pre-disconnect entries] + [missed
-      // ticks GAP] + [post-reconnect entries]. The contiguous-suffix
-      // invariant assertBLogIsSuffixOfA depends on does NOT hold over
-      // that gap.
+      // ticks GAP] + [post-reconnect entries]. The shared-window
+      // assertion `assertSuffixOverlap` aligns by
+      // `lastTick - length + 1`, which is WRONG across that gap —
+      // it would treat B's log as if it covered a contiguous run
+      // ending at the current tick, which it doesn't.
       //
-      // To make the suffix comparison honest in this test, we record
-      // B's appliedLog length at the moment of disconnect; after
-      // reconnect, we slice off the pre-disconnect prefix and assert
-      // only on the post-reconnect tail. That tail IS a contiguous
-      // run of absolute ticks starting at B's first post-reconnect
-      // snapshot — which is exactly the shape assertBLogIsSuffixOfA
-      // is contracted against.
+      // To make the comparison honest, we record B's appliedLog
+      // length at the moment of disconnect; after reconnect, we
+      // slice off the pre-disconnect prefix and pass only the
+      // post-reconnect tail (which IS a contiguous run ending at
+      // B's current tick) to assertSuffixOverlap.
       const bAppliedLogLenAtDisconnect = (await readPageState(pageB))
         .appliedLog.length;
 
@@ -438,27 +368,26 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       // A's local appliedLog).
       await disconnect(pageB);
 
-      const phase2_AOnly: Tape<InputDir> = [
+      const phase2AOnly: Tape<InputDir> = [
         { tick: 8, clientId: idA, seq: 2, input: "up" },
         { tick: 10, clientId: idA, seq: 3, input: "right" },
         { tick: 12, clientId: idA, seq: 4, input: "down" },
         { tick: 14, clientId: idA, seq: 5, input: "left" },
       ];
-      await driveTape([pageA], phase2_AOnly, { seed: SEED });
+      await driveTape([pageA], phase2AOnly, { seed: SEED });
       await waitForTick(pageA, 16);
 
-      // B reconnects. Under the slice-3/4 contract, B will start
+      // B reconnects. Under the slice-3/4 contract, B starts
       // receiving NEW snapshots at the current server tick — there's
-      // no replay. We wait for B's appliedLog to grow at least one
-      // entry (proving the new ws is healthy and snapshots are
-      // flowing), then a small further quiesce so B and A's reads
-      // sit close in wallclock.
+      // no replay. Wait for B's appliedLog to grow past its
+      // pre-disconnect length (proving the new WS is healthy and
+      // post-reconnect snapshots are flowing).
       await reconnect(pageB);
       await waitForFirstSnapshot(pageB);
-      await waitForAppliedLogLength(pageB, 1);
+      await waitForAppliedLogLength(pageB, bAppliedLogLenAtDisconnect + 1);
 
       // Let a few more snapshots flow so B's post-reconnect tail has
-      // enough length to make the suffix assertion non-trivial.
+      // enough length to make the shared-window assertion non-trivial.
       const bTickAfterReconnect = await pageB.evaluate(() => {
         const g = (window as unknown as { __game: { tick: unknown } }).__game;
         const v = g.tick;
@@ -472,32 +401,23 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       const a = await readPageState(pageA);
       const bFull = await readPageState(pageB);
 
-      // A is still the first connector and was never disconnected —
-      // A's log remains the full server history and must still
-      // satisfy the offline-reducer determinism contract.
-      assertFirstConnectorReplay(a);
-
       // Slice off B's pre-disconnect entries. The remaining tail is a
-      // contiguous run of absolute ticks starting at B's first
-      // post-reconnect snapshot — the shape assertBLogIsSuffixOfA
-      // expects. The synthetic `canonical.tick` we pass through is
-      // B's current real tick (the post-reconnect tail ends at that
-      // tick), and the synthetic appliedLog length matches that
-      // tail's length so the (firstB = lastB - length + 1) formula
-      // inside the assertion points at the right absolute tick.
+      // contiguous run of absolute ticks ending at B's current tick —
+      // the shape `assertSuffixOverlap` expects.
       const bPostReconnectLog = bFull.appliedLog.slice(
         bAppliedLogLenAtDisconnect,
       );
       expect(bPostReconnectLog.length).toBeGreaterThan(0);
-      const bForSuffix = {
+      const bForOverlap = {
         canonical: bFull.canonical,
         appliedLog: bPostReconnectLog,
       };
 
-      // B's post-reconnect log MUST be a suffix of A's log. If the
-      // DO reordered or A's recv-order doesn't match the broadcast
-      // order, the tails diverge and this fails.
-      assertBLogIsSuffixOfA(a, bForSuffix);
+      // Merge gate: B's post-reconnect tail and A's continuing log
+      // must agree across their shared absolute-tick window. If the
+      // DO reordered or A's local log diverged from the broadcast,
+      // the windows mismatch and this fails.
+      assertSuffixOverlap(a, bForOverlap);
 
       // Sanity: B was actually disconnected during phase 2 — its
       // post-reconnect tail must be strictly shorter than A's full
