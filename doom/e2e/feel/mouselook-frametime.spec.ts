@@ -73,6 +73,7 @@
 // measured is render() — independent of which input source drives yaw.
 
 import { expect, test } from "@playwright/test";
+import { gotoGameRoot, waitForVisibleCanvas } from "../../../e2e-shared/feel/feel-harness";
 
 interface FrameSample {
   renderMs: number;
@@ -128,12 +129,11 @@ function summarize(samples: ReadonlyArray<number>): Distribution {
 test("Doom: render() frame-time stays under budget across a mouselook sweep with combat load", async ({
   page,
 }) => {
-  await page.goto("/"); // baseURL is .../doom/ — goto("/doom") resolved to the wrong path (no canvas); match the other doom specs.
+  // feel-harness (#261): relative goto (baseURL is .../doom/) + cold-start-safe
+  // canvas wait. See e2e-shared/FEEL-HARNESS-CONVENTION.md.
+  await gotoGameRoot(page);
   const canvas = page.locator("canvas");
-  // 30s, not the 5s default: under CI SwiftShader the first WebGL context +
-  // shader compile for the Doom scene can take >5s to produce a visible canvas
-  // (cold-start). This is the same cold-start budget the other heavy specs use.
-  await expect(canvas).toBeVisible({ timeout: 30_000 });
+  await waitForVisibleCanvas(page);
 
   // Body focus eats key events in Playwright unless the canvas is clicked
   // first — same gotcha pattern shared across the pacman/galaga feel specs.
