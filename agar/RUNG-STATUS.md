@@ -2,6 +2,14 @@
 
 _Last updated: wake 19 (commit 4be1583), by Mara._
 
+> **Scope of this file.** This is a **status snapshot only**. It does
+> **not** implement the #180 rung — no `agar/e2e/*.spec.ts`, no
+> `fixture/desync-broken`, no CI wiring lands with this doc. #180 and
+> the epic #130 stay **OPEN** until the real two-client e2e merges.
+> If you arrived here from a PR titled like a fix, treat the title as
+> wrong — this PR is `docs(agar): status snapshot for the multiplayer
+> rung`, and it `Refs #130, #180` rather than closing them.
+
 Colocated, in-repo snapshot of the agar/ server-authoritative rung —
 what's landed, what's open, and what the next concrete action is. Any
 avatar walking up cold can read this and skip rebuilding the chain
