@@ -9,6 +9,13 @@
 // surface is what #255 explicitly required before tightening tolerances
 // again; we did NOT widen them here).
 //
+// What this revision changed vs. the prior CI-red draft: the readiness
+// gate. Tolerances and assertions are untouched. The structural fix is
+// grounded in the engine's fixed-step accumulator (engine.ts L617-626:
+// `while (accumulator >= STEP_MS) update()`) which can collapse many
+// game ticks into one rAF on a throttled runner — see the failure-mode
+// notes above the `bootAndLockAnchors` helper for the full derivation.
+//
 // PROPERTIES CHECKED (from #241):
 //   (A) row 0 and row 4 differ in `x` at some tick within the sampling
 //       window — proves the per-row lag is actually firing.
@@ -28,8 +35,26 @@
 //     gate could resolve when only the FIRST entrance wave was settled
 //     — the rest of the roster wasn't even spawned yet. Picking a row-4
 //     anchor against a partial roster failed silently with `row4Id ===
-//     null`. The fix: wait for the FULL roster (40 enemies) before
-//     locking anchors.
+//     null`.
+//   - But the NAIVE strengthening — `length===40 && every formation` —
+//     has its own race on cold CI. The engine uses a fixed-step
+//     accumulator (`while (accumulator >= STEP_MS) update()`) so MANY
+//     game ticks can collapse into one rAF on a throttled runner. The
+//     "all 40 in formation" window is only 30 ticks wide (last enemy
+//     settles at tick 246, first dive launches at tick 276), and that
+//     window CAN be jumped over by a single slow rAF — the
+//     waitForFunction's next poll then samples a state where slot 0
+//     (col=0 row=0, orderedIndexes[0]) is already diving, every-formation
+//     is false, and the gate never re-closes (someone is always diving
+//     after tick 276). Cold CI = silent 30s timeout, exactly the failure
+//     mode #255 was filed to break out of.
+//   - The fix: ANCHOR-SPECIFIC readiness. We only need col=1 row=0
+//     (slot 5) and col=1 row=4 (slot 9) to be in formation when we lock
+//     ids. Slot 5 is dive #36 (tick 1851); slot 9 is dive #8 (tick 591).
+//     Both survive well past our 240-tick sampling window. So we wait
+//     until BOTH anchors exist AND are in `formation`, ignoring the
+//     state of other enemies. No transient global "every-formation"
+//     window to race.
 //   - col=0 row=0 is orderedIndexes[0] — first to dive at tick 276. We
 //     anchor on col=1 (slots 5 and 9), which survives past 276 and is
 //     the same home_x for row 0 and row 4 (no column-spacing confound).
@@ -37,9 +62,9 @@
 //     the loop STOPS — no stale-id sampling.
 //
 // BOOT / READINESS — mirrors hit-juice.spec.ts / boss-two-hit.spec.ts
-// EXACTLY for the goto→click→ArrowLeft→status→internals beats, then
-// adds the full-roster size check before sampling (the new bit that the
-// prior draft lacked).
+// for the goto→click→ArrowLeft→status→internals beats, then anchor-
+// specific readiness for the final wait (the new bit, replacing the
+// brittle every-formation gate).
 
 import { expect, test } from "@playwright/test";
 
@@ -64,15 +89,34 @@ const COL1_HOME_X = 90;
 // Home y of the row=0 and row=4 anchors. FORMATION_TOP_Y=70, ROW_SPACING=22.
 const ROW0_HOME_Y = 70;
 const ROW4_HOME_Y = 70 + 4 * 22; // 158
-// Full formation roster size: COLS=8 × ROWS=5 = 40 enemies. The prior
-// draft only required `enemies.length > 0`, which resolved while later
-// entrance waves were still spawning — a partial roster with no row=4
-// anchor was the silent failure mode.
-const FULL_ROSTER_SIZE = 40;
+// Tolerance for matching a snapshot enemy to an anchor by home position.
+// AMP + 2 in x (handles full breathing sway + float slop); ±2 in y (the
+// home y is constant once settled — no ROW_SPACING confound since the
+// rows are 22 px apart). Centralized so the readiness wait and any later
+// anchor reuse share the same fingerprint.
+const ANCHOR_X_TOL = BREATHE_AMPLITUDE + 2;
+const ANCHOR_Y_TOL = 2;
 
-async function bootToSettledFullFormation(
-  page: import("@playwright/test").Page,
-) {
+/** Boot the game out of `ready` and wait until BOTH col=1 row=0 (slot 5)
+ *  and col=1 row=4 (slot 9) anchors exist in the snapshot AND are in
+ *  `formation` state. Returns the locked anchor ids.
+ *
+ *  Why not the more obvious "wait for length===40 && every formation"
+ *  gate: the engine uses a fixed-step accumulator (60Hz), so on a
+ *  throttled cold-CI rAF MANY game ticks can collapse into one wall-
+ *  clock frame. The "all 40 in formation" window is only 30 ticks wide
+ *  (last enemy settles at tick 246, first dive at tick 276), and a
+ *  single slow rAF can step over that window — leaving the next poll
+ *  to see slot 0 already diving, which means `every(formation)` is
+ *  false from then on (someone is always mid-dive after tick 276). The
+ *  gate never re-closes and the wait times out at 30s. That's the
+ *  exact silent-timeout failure mode #255 was filed to break out of.
+ *
+ *  The anchor-specific wait avoids that race entirely. Slot 5 (col=1
+ *  row=0) is dive #36 (tick 1851) and slot 9 (col=1 row=4) is dive #8
+ *  (tick 591) — both safely outside our 240-tick sampling window. We
+ *  don't care about the dive state of any OTHER enemy. */
+async function bootAndLockAnchors(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
   await page.locator("canvas").click();
@@ -83,75 +127,49 @@ async function bootToSettledFullFormation(
   await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
     timeout: 5000,
   });
-  // The crucial change vs. the prior draft: wait for the FULL roster to
-  // be present AND every enemy in `formation`. Entrance choreography
-  // spawns in staggered waves — the prior gate (length>0 && every
-  // formation) could pass while later waves hadn't spawned yet, leaving
-  // no row=4 anchor to find. 30s ceiling: full entrance is ≤ ~15s on
-  // warm hardware, doubled for cold CI throttling.
-  await page.waitForFunction(
-    (expected) => {
+  // Anchor-specific readiness — both col=1 anchors present and in
+  // formation. 30s ceiling: last enemy spawns at game-tick 156 and
+  // finishes the 90-tick entrance arc by tick 246 (~4.1s of game time);
+  // cold-CI rAF throttling can stretch that wall-clock-wise but never
+  // by 7×.
+  const anchors = await page.waitForFunction(
+    ({ col1X, row0Y, row4Y, ampPlus, yTol }) => {
       const enemies = window.__galaga?.enemies ?? [];
-      return (
-        enemies.length >= expected &&
-        enemies.every((e) => e.state === "formation")
-      );
+      const pickAtRow = (rowY: number) => {
+        for (const e of enemies) {
+          if (e.state !== "formation") continue;
+          if (Math.abs(e.x - col1X) > ampPlus) continue;
+          if (Math.abs(e.y - rowY) > yTol) continue;
+          return e.id;
+        }
+        return null;
+      };
+      const row0 = pickAtRow(row0Y);
+      const row4 = pickAtRow(row4Y);
+      if (row0 === null || row4 === null) return null;
+      return { row0Id: row0, row4Id: row4 };
     },
-    FULL_ROSTER_SIZE,
+    {
+      col1X: COL1_HOME_X,
+      row0Y: ROW0_HOME_Y,
+      row4Y: ROW4_HOME_Y,
+      ampPlus: ANCHOR_X_TOL,
+      yTol: ANCHOR_Y_TOL,
+    },
     { timeout: 30000 },
   );
+  return (await anchors.jsonValue()) as { row0Id: number; row4Id: number };
 }
 
 test.describe("Galaga formation breathing per-row phase lag (#241)", () => {
   test("row 0 and row 4 desync within sampling window, stay within ±amplitude", async ({
     page,
   }) => {
-    await bootToSettledFullFormation(page);
-
-    // Lock onto two specific enemies BY ID at sampling start. We pick:
-    //   - the enemy with the smallest |y − ROW0_HOME_Y| whose current x
-    //     is within (AMP + 2)px of COL1_HOME_X (so we know it's col=1,
-    //     not col=0 at home_x=62 or col=2 at home_x=118).
-    //   - the analogous pick for ROW4_HOME_Y.
-    // If either can't be found, surface the diagnostic state distinctly
-    // so a future trace pinpoints the readiness regression instead of a
-    // later Δx assertion eating the failure.
-    const targets = await page.evaluate(
-      ({ col1X, row0Y, row4Y, ampPlus }) => {
-        const s = window.__galaga!;
-        const formation = s.enemies.filter((e) => e.state === "formation");
-        const pickAtRow = (rowY: number) => {
-          let best: { id: number; dy: number } | null = null;
-          for (const e of formation) {
-            if (Math.abs(e.x - col1X) > ampPlus) continue;
-            const dy = Math.abs(e.y - rowY);
-            if (dy > 2) continue;
-            if (best === null || dy < best.dy) best = { id: e.id, dy };
-          }
-          return best?.id ?? null;
-        };
-        return {
-          row0Id: pickAtRow(row0Y),
-          row4Id: pickAtRow(row4Y),
-          rosterSize: s.enemies.length,
-          formationSize: formation.length,
-        };
-      },
-      {
-        col1X: COL1_HOME_X,
-        row0Y: ROW0_HOME_Y,
-        row4Y: ROW4_HOME_Y,
-        ampPlus: BREATHE_AMPLITUDE + 2,
-      },
-    );
-    expect(
-      targets.row0Id,
-      `could not find col=1 row=0 anchor (roster=${targets.rosterSize}, formation=${targets.formationSize})`,
-    ).not.toBeNull();
-    expect(
-      targets.row4Id,
-      `could not find col=1 row=4 anchor (roster=${targets.rosterSize}, formation=${targets.formationSize})`,
-    ).not.toBeNull();
+    // Boot AND lock anchors in one step — the wait inside resolves only
+    // when both col=1 anchors are findable AND in `formation` state. No
+    // separate post-boot anchor-pick (the prior shape had the pick race
+    // the per-rAF dive scheduler).
+    const targets = await bootAndLockAnchors(page);
 
     // Sample those two ids until one leaves formation, 240 game ticks
     // elapse, or 15s wall clock passes. 240 ticks ≈ one full breathing
