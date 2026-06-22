@@ -101,6 +101,46 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Diagnostic-only lane for #255 — runs the formation-breathing-lag spec
+  # gated behind GALAGA_DIAG=1 so the prior 5-commit cold-CI failure mode
+  # is captured as a trace artifact WITHOUT jamming the per-product merge
+  # gate. `continue-on-error: true` means a red run here does NOT fail the
+  # PR (the spec is on a known-flaky footing; the goal is to see WHICH
+  # expect() line fails on cold CI, not to gate on it). Once the failure
+  # mode is in hand from the uploaded trace, a follow-up PR will either
+  # tune the spec assertions or fold it into the main `galaga` lane and
+  # remove this diagnostic job.
+  galaga-diag-breathing:
+    needs: changes
+    if: ${{ needs.changes.outputs.galaga == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      GALAGA_DIAG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build:galaga
+      - run: npx playwright install --with-deps chromium
+      # `--reporter=list` is already the default in galaga/playwright.config.ts,
+      # but we set it explicitly here so the per-test pass/fail lines appear
+      # in the workflow log (the artifact uploaded below is the trace; the
+      # log is the human-readable summary). `--grep` narrows to just the
+      # breathing-lag spec so this lane is fast.
+      - run: npx playwright test --config=galaga/playwright.config.ts --reporter=list --grep "formation breathing"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: galaga-diag-breathing-trace
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
   doom:
     needs: changes
     if: ${{ needs.changes.outputs.doom == 'true' || needs.changes.outputs.shared == 'true' }}
