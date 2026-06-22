@@ -48,6 +48,7 @@ import {
   type DoomState,
   type Enemy,
   type EnemyKind,
+  type FrameProbeSample,
   type Projectile,
 } from "./types";
 // Note: EnemyKind kept above for the SEED_ENEMIES literal type.
@@ -108,6 +109,14 @@ import { DoomAudio } from "./audio";
  *  simulation advances in whole STEP_MS chunks via an accumulator so game
  *  logic is deterministic regardless of display refresh rate. */
 const STEP_MS = 1000 / 60;
+
+/** Ring-buffer capacity for the render-time probe (#237). 240 samples =
+ *  4 s @ 60 Hz — long enough for the merge-gate spec (2 s sweep + warmup)
+ *  to read a steady-state window without the front of the ring rolling
+ *  off, short enough that the snapshot copy on `frameProbe()` is cheap.
+ *  Preallocated in the engine ctor so the per-frame write is in-place
+ *  (no GC pressure on the render path). */
+const FRAME_PROBE_CAPACITY = 240;
 
 /** Fixed-step frames the engine holds in the 'lost' state before advancing to
  *  'gameover'. ~0.5s at 60Hz — long enough that the death beat reads, short
@@ -254,6 +263,23 @@ export class Engine {
    *  routes fire / hit / death / pickup events through this so audio sits
    *  on the same edge the published state contract already does. */
   private readonly audio: DoomAudio = new DoomAudio();
+
+  /** Preallocated render-time ring buffer (#237). FRAME_PROBE_CAPACITY
+   *  entries, all mutable objects — the rAF loop writes into
+   *  `frameProbeBuffer[frameProbeWrite % CAPACITY]` and increments. The
+   *  per-frame cost is five number writes; nothing is allocated on the
+   *  render path. `frameProbeWrite` is the MONOTONIC count of frames
+   *  captured (not the ring index) — `frameProbe()` snapshots oldest→newest
+   *  by walking from `max(0, write - CAPACITY)` forward. Test-only;
+   *  gameplay reads nothing here. */
+  private readonly frameProbeBuffer: FrameProbeSample[] = (() => {
+    const out: FrameProbeSample[] = new Array(FRAME_PROBE_CAPACITY);
+    for (let i = 0; i < FRAME_PROBE_CAPACITY; i++) {
+      out[i] = { renderMs: 0, enemies: 0, sparks: 0, blood: 0, tick: 0 };
+    }
+    return out;
+  })();
+  private frameProbeWrite = 0;
 
   /** Stable id counter for projectiles (#81). Stamped onto each new
    *  Projectile and incremented — same monotonic scheme as enemies/pickups,
@@ -877,6 +903,34 @@ export class Engine {
         this.fireShot();
         this.publish();
       },
+      frameProbe: () => {
+        // Snapshot copy of the ring buffer, ordered oldest→newest. Until
+        // FRAME_PROBE_CAPACITY frames have been captured the ring is
+        // partially filled — we expose only the populated prefix so the
+        // test never sees a zeroed slot from preallocation. Allocates on
+        // the test path only; the per-frame WRITE in start()'s loop stays
+        // in-place (#237 alloc-free crit). 
+        const write = this.frameProbeWrite;
+        const count = Math.min(write, FRAME_PROBE_CAPACITY);
+        const samples: FrameProbeSample[] = new Array(count);
+        // When the ring has wrapped, the oldest entry is at index
+        // (write % CAPACITY); pre-wrap it's at index 0. Walking forward
+        // `count` steps modulo CAPACITY gives oldest→newest order in both
+        // regimes.
+        const start =
+          write < FRAME_PROBE_CAPACITY ? 0 : write % FRAME_PROBE_CAPACITY;
+        for (let i = 0; i < count; i++) {
+          const src = this.frameProbeBuffer[(start + i) % FRAME_PROBE_CAPACITY];
+          samples[i] = {
+            renderMs: src.renderMs,
+            enemies: src.enemies,
+            sparks: src.sparks,
+            blood: src.blood,
+            tick: src.tick,
+          };
+        }
+        return { samples };
+      },
       restart: () => {
         this.restart();
         this.publish();
@@ -1400,7 +1454,23 @@ export class Engine {
         this.update();
         this.accumulator -= STEP_MS;
       }
+      // Frame-time probe (#237). Time JUST render() — update() cost lives on
+      // the decoupled sim path and shouldn't bias the per-frame budget the
+      // player feels. The merge-gate spec reads `__doomInternals.frameProbe()`
+      // and asserts p99 ≤ 16.7 ms across a steady-state window.
+      const t0 = performance.now();
       this.render();
+      const renderMs = performance.now() - t0;
+      // Write in place at ring-index; mutating preallocated entry fields so
+      // the render path stays allocation-free per frame (acceptance crit).
+      const slot =
+        this.frameProbeBuffer[this.frameProbeWrite % FRAME_PROBE_CAPACITY];
+      slot.renderMs = renderMs;
+      slot.enemies = this.state.enemies.length;
+      slot.sparks = this.state.impactSparks.length;
+      slot.blood = this.state.bloodDrops.length;
+      slot.tick = this.state.tick;
+      this.frameProbeWrite += 1;
       this.publish();
       requestAnimationFrame(loop);
     };
