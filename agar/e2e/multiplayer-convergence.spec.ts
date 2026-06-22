@@ -56,8 +56,12 @@ import type { InputDir, WorldState } from "../server/reducer";
 
 // Numeric seed — `initialState(seed)` normalises via `seed >>> 0`.
 // The URL stringifies it; the offline reducer takes the number.
-const SEED = 42;
-const ROOM_URL = `/agar/?seed=${SEED}`;
+// Unique seed per TEST so each gets a fresh Durable Object (match:${seed}
+// persists for the wrangler-dev process; a shared seed lets sibling tests
+// contaminate each other's appliedLog → flaky convergence). Reassigned in
+// beforeEach. Mirrors production: every match is its own room.
+let SEED = 42;
+let ROOM_URL = `/agar/?seed=${SEED}`;
 
 // Gate every `goto` on (a) WS handshake complete, (b) at least one
 // snapshot from the DO. Mirrors `waitForFirstSnapshot` in the smoke
@@ -213,6 +217,10 @@ function assertSuffixOverlap(
 }
 
 test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
+  test.beforeEach(() => {
+    SEED = Math.floor(Math.random() * 1_000_000) + 1;
+    ROOM_URL = `/agar/?seed=${SEED}`;
+  });
   test("two pages' appliedLogs agree across their shared observation window", async ({
     browser,
   }) => {

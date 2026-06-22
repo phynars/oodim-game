@@ -32,12 +32,13 @@ import {
 } from "../../e2e-shared/multiplayer/playwright-binding";
 import type { Tape } from "../../e2e-shared/multiplayer/harness";
 
-const SEED = "42";
+// Unique seed per test → fresh DO (see multiplayer-convergence for the why).
+let SEED = "42";
 // baseURL is `http://localhost:4274/agar/` but vite preview serves the
 // bundle under `base: "/agar/"` — so we must hit `/agar/?seed=…`, not
 // the host root (the root 404s and `__game` never installs). Mirrors
 // the same trap called out in `agar/e2e/tick.spec.ts`.
-const ROOM_URL = `/agar/?seed=${SEED}`;
+let ROOM_URL = `/agar/?seed=${SEED}`;
 
 // Wait until the page has:
 //   1. completed the WS handshake (data-connected="true")
@@ -68,6 +69,10 @@ async function waitForFirstSnapshot(page: Page): Promise<void> {
 }
 
 test.describe("agar · multiplayer smoke (test-surface binding)", () => {
+  test.beforeEach(() => {
+    SEED = String(Math.floor(Math.random() * 1_000_000) + 1);
+    ROOM_URL = `/agar/?seed=${SEED}`;
+  });
   test("assertClientSurface passes on a fresh page load", async ({ page }) => {
     await page.goto(ROOM_URL);
     // Gate on the WS handshake + first snapshot before reading the

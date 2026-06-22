@@ -278,6 +278,9 @@ interface AgarTestSurface {
  * Polls the same `latest` ref the ws `message` handler updates.
  */
 function tickTo(target: number): Promise<void> {
+  // target <= 0 means "no wait" (e.g. reads at the pre-tick replay snapshot);
+  // resolve immediately even before the first snapshot lands (latest === null).
+  if (target <= 0) return Promise.resolve();
   if (latest !== null && latest.tick >= target) return Promise.resolve();
   return new Promise((resolve) => {
     const id = setInterval(() => {
