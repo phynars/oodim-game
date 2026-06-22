@@ -130,7 +130,10 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
 }) => {
   await page.goto("/doom");
   const canvas = page.locator("canvas");
-  await expect(canvas).toBeVisible();
+  // 30s, not the 5s default: under CI SwiftShader the first WebGL context +
+  // shader compile for the Doom scene can take >5s to produce a visible canvas
+  // (cold-start). This is the same cold-start budget the other heavy specs use.
+  await expect(canvas).toBeVisible({ timeout: 30_000 });
 
   // Body focus eats key events in Playwright unless the canvas is clicked
   // first — same gotcha pattern shared across the pacman/galaga feel specs.
@@ -234,38 +237,23 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // Past Pac-Man learning: software-WebGL inflates per-frame work several-
   // fold vs target — gating absolute target ms here would gate on the
   // CI runner, not the code.
-  expect
-    .soft(dist.p99, `[target] p99 ≤ 16.7 ms — ${distStr} — ${worstStr}`)
-    .toBeLessThanOrEqual(16.7);
-  expect
-    .soft(dist.max, `[target] max ≤ 33.3 ms — ${distStr} — ${worstStr}`)
-    .toBeLessThanOrEqual(33.3);
-  expect
-    .soft(dist.mean, `[target] mean ≤ 8 ms — ${distStr} — ${worstStr}`)
-    .toBeLessThanOrEqual(8);
+  // DIAGNOSTIC ONLY — NOT assertions. These absolute target bars are
+  // unmeetable under CI software-WebGL, and gating them via expect.soft()
+  // STILL fails the test (Playwright soft failures mark the test failed; they
+  // only avoid halting mid-test). Log the numbers so a real-GPU run / render
+  // optimization can read them; never gate CI on the runner's clock.
+  console.log(`[target] p99 ${dist.p99.toFixed(2)}ms (≤16.7 on hardware) — ${distStr} — ${worstStr}`);
+  console.log(`[target] max ${dist.max.toFixed(2)}ms (≤33.3 on hardware)`);
+  console.log(`[target] mean ${dist.mean.toFixed(2)}ms (≤8 on hardware)`);
 
   // Distribution shape (soft diagnostics — see header). The tail-vs-body
   // ratios are still printed into the failure surface so a regression is
   // diagnosable from CI logs alone, but they do NOT gate: SwiftShader's
   // natural GC jitter inflates them even on unregressed code.
-  if (dist.p50 > 0) {
-    const tailRatio = dist.p99 / dist.p50;
-    expect
-      .soft(
-        tailRatio,
-        `[shape] p99/p50 ≤ 2.5 — got ${tailRatio.toFixed(2)} — ${distStr} — ${worstStr}`,
-      )
-      .toBeLessThanOrEqual(2.5);
-  }
-  if (dist.p99 > 0) {
-    const spikeRatio = dist.max / dist.p99;
-    expect
-      .soft(
-        spikeRatio,
-        `[shape] max/p99 ≤ 2.0 — got ${spikeRatio.toFixed(2)} — ${distStr} — ${worstStr}`,
-      )
-      .toBeLessThanOrEqual(2.0);
-  }
+  // DIAGNOSTIC ONLY (see [target] note) — shape ratios are inflated by
+  // SwiftShader GC jitter even on unregressed code, so they cannot gate CI.
+  if (dist.p50 > 0) console.log(`[shape] p99/p50 ${(dist.p99 / dist.p50).toFixed(2)} (≤2.5 target) — ${distStr}`);
+  if (dist.p99 > 0) console.log(`[shape] max/p99 ${(dist.max / dist.p99).toFixed(2)} (≤2.0 target) — ${worstStr}`);
 
   // ======================================================================
   // MERGE GATE (hard, renderer-stable). See header ROOT CAUSE: an absolute
