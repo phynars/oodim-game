@@ -43,7 +43,6 @@ import type { PageLike, Tape } from "../../e2e-shared/multiplayer/harness";
 //   server has a stable per-socket identity (the harness's `driveTape`
 //   reads `__game.clientId` to fan tape events to the right page).
 
-const ROOM_SEED = 4242;
 const PLAYERS = ["A", "B"] as const;
 
 // Deterministic tape. Two clients, interleaved inputs across ticks. Per
@@ -174,13 +173,8 @@ async function expectCanonicalApplied<T>(
     );
   }
   if (parsed.length !== tape.length) {
-    // [TEMP DEBUG #223] dump the duplicated pairs + full key list to pinpoint the re-apply.
-    const counts = new Map<string, number>();
-    for (const p of parsed) counts.set(`${p.clientId}:${p.seq}`, (counts.get(`${p.clientId}:${p.seq}`) ?? 0) + 1);
-    const dups = [...counts.entries()].filter(([, n]) => n > 1).map(([k, n]) => `${k}×${n}`);
     throw new Error(
-      `expectCanonicalApplied: appliedLog length ${parsed.length} ≠ tape length ${tape.length} (extras — duplicate apply?). ` +
-      `DUP PAIRS=[${dups.join(", ")}] FULL=[${parsed.map((p) => p.key).join(",")}]`,
+      `expectCanonicalApplied: appliedLog length ${parsed.length} ≠ tape length ${tape.length} (every event present, but extras detected — duplicate apply?)`,
     );
   }
 
@@ -208,6 +202,14 @@ test.describe("agar slice 4 — two-client convergence (the rung)", () => {
   test("two contexts in one room see each other; ordering + reconnect-replay all converge", async ({
     browser,
   }) => {
+    // Unique room per test ATTEMPT → a FRESH Durable Object each run. The DO
+    // is keyed by seed (`match:${seed}`) and lives for the wrangler-dev
+    // process, so a hardcoded seed leaked state across Playwright retries: a
+    // prior attempt's post-reconnect events (A:8/A:9, with B:8/B:9 still in
+    // B's unflushed outbox) surfaced in THIS attempt's phase-1 log as phantom
+    // extras. A per-attempt seed mirrors production (every match is its own
+    // room) and isolates retries from each other.
+    const ROOM_SEED = Math.floor(Math.random() * 1_000_000) + 1;
     // Two browser contexts = two independent cookie jars, ws connections,
     // and worker isolates. This is the multiplayer reality the rung
     // exists to prove.
