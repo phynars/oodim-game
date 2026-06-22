@@ -151,6 +151,12 @@ export class Engine {
    *  successful spawn. A press denied by MAX_PLAYER_BULLETS / !canAct does
    *  NOT advance this; see `FireProbe` jsdoc in types.ts for the contract. */
   private lastProjectileSpawnTick = -1;
+  /** Test-only invulnerability (#260). When true, killPlayer() and boss capture
+   *  are no-ops, so a stationary player survives a measurement sweep (e.g. the
+   *  input-latency feel spec firing 30x) without a diving enemy killing it
+   *  mid-test — which would drop canAct and stall the spec's spawn wait. Set via
+   *  __galagaInternals.setInvulnerable; default false (zero gameplay effect). */
+  private invulnerable = false;
 
   constructor(canvas: HTMLCanvasElement, touchElements?: TouchInputElements) {
     this.canvas = canvas;
@@ -264,6 +270,9 @@ export class Engine {
           lastProjectileSpawnTick: this.lastProjectileSpawnTick,
           deltaTicks: this.lastProjectileSpawnTick - this.lastKeydownTick,
         };
+      },
+      setInvulnerable: (value: boolean) => {
+        this.invulnerable = value;
       },
     };
   }
@@ -553,6 +562,7 @@ export class Engine {
   /** Mark the fighter dead, decrement lives, arm the respawn timer. At zero
    *  lives the contract's terminal lifecycle is 'lost' — we don't respawn. */
   private killPlayer(): void {
+    if (this.invulnerable) return; // test-only invulnerability (#260)
     if (!this.state.player.alive) return; // already dead, no double-tap
     // Player-death juice (#160) — write BEFORE flipping `alive=false` so
     // the death position is the fighter's current (x,y), and BEFORE the
@@ -820,6 +830,7 @@ export class Engine {
           // its y is below the beam's top (the beam runs downward from
           // the boss to the bottom of the field).
           if (
+            !this.invulnerable && // test-only invulnerability (#260) — no capture
             Math.abs(this.state.player.x - beamX) <= halfW + 7 &&
             this.state.player.y >= beamTop
           ) {

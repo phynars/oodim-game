@@ -296,6 +296,11 @@ export interface GalagaInternals {
    *  press has been observed yet. Test-only — does not affect gameplay.
    *  See `FireProbe` for the field semantics + how to read the result. */
   fireProbe(): FireProbe | null;
+  /** Test-only invulnerability (#260). When true, killPlayer() + boss capture
+   *  are no-ops so a stationary player survives a measurement sweep. Default
+   *  false; zero gameplay effect — feel specs that fire many times from a fixed
+   *  position enable it so a diving enemy can't kill the player mid-measurement. */
+  setInvulnerable(value: boolean): void;
 }
 
 declare global {
