@@ -1,39 +1,19 @@
-// Formation breathing per-row phase lag spec (#241, gated for #255).
+// Formation breathing per-row phase lag spec (#241, gated by #255).
 //
-// PURPOSE — DIAGNOSTIC, NOT GATING.
-// This spec is a re-introduction of the 241-line draft that turned the
-// `galaga` cold-CI red on five consecutive commits during #242's review
-// loop. Tolerance tuning never identified WHICH expect() line was failing
-// on cold CI (the agent reviewers couldn't read the workflow logs — 401).
-//
-// To break that cycle, this file is gated behind the GALAGA_DIAG env var
-// and ONLY executed by the dedicated `galaga-diag-breathing` workflow job
-// in .github/workflows/ci.yml — a job that runs with `continue-on-error:
-// true` and uploads the full Playwright trace + report on every run (pass
-// or fail). The main `galaga` lane skips this spec entirely, so a red
-// breathing-lag run does NOT jam the per-product merge gate (the very
-// cross-product CI jam class the per-product lanes were created to
-// prevent).
-//
-// ACCEPTANCE FROM #255:
-//   - Before re-introducing the spec [for gating], one CI commit captures
-//     the previous spec's actual failure mode — either `--reporter=list`
-//     step output in the workflow log, or a Playwright trace artifact
-//     uploaded on failure.  THIS COMMIT IS THAT COMMIT.
-//
-// FOLLOW-UP (a separate PR, once the trace is in hand):
-//   - Read the uploaded `galaga-diag-breathing-trace` artifact, identify
-//     which expect() line fails on cold CI and what the actual value was.
-//   - Either tune the failing assertion against the observed data, or
-//     fold a corrected version into the main `galaga` lane and delete the
-//     GALAGA_DIAG gate + the diagnostic job.
+// Asserts the three properties from #241 against the row-lagged
+// `breathingSway(currentTick, row)` helper in galaga/src/game/enemies.ts.
+// Runs in the main `galaga` lane — no env gate, no `continue-on-error`
+// diagnostic job. Cold-CI traces (already enabled via
+// `trace: 'retain-on-failure'` in galaga/playwright.config.ts) surface the
+// failing expect() line if this ever flakes.
 //
 // PROPERTIES CHECKED (from #241):
 //   (A) row 0 and row 4 differ in `x` at some tick within the sampling
 //       window — proves the per-row lag is actually firing.
-//   (B) max |Δx_row0_vs_row4| ≤ ~3 px — matches the theoretical
+//   (B) max |Δx_row0_vs_row4| ≤ generous envelope around the theoretical
 //       2·AMP·sin(4·LAG·ω/2) ≈ 2.51 px at LAG_TICKS=2 (AMP=12,
-//       ω=2π/240).
+//       ω=2π/240) — catches an accidental amplification (e.g. someone
+//       raises LAG_TICKS or AMP without updating this constant).
 //   (C) every formation enemy stays within ±BREATHE_AMPLITUDE of its
 //       home x — the lag is a phase offset, not an amplitude bump.
 //
@@ -60,22 +40,14 @@ declare global {
   }
 }
 
-// Diagnostic gate. The spec is SKIPPED entirely unless GALAGA_DIAG=1 is
-// set in the environment — meaning it never runs in the main `galaga`
-// merge-gate lane, only in the dedicated diagnostic job. This is the
-// non-negotiable protection against the prior cold-CI red streak: the
-// spec's still on a probationary footing, and a flake here cannot block
-// a galaga PR's merge.
-const RUN_DIAG = process.env.GALAGA_DIAG === "1";
-
 // Constants must match galaga/src/game/enemies.ts. Duplicated here (not
 // imported) so the spec reads as a contract — if someone tightens
 // BREATHE_AMPLITUDE without updating this number, the spec catches it.
 const BREATHE_AMPLITUDE = 12;
 const BREATHE_OMEGA = (2 * Math.PI) / 240;
 // Expected per-row lag (ticks). The #241 fix makes deeper rows lag the
-// top row by `row * LAG_TICKS` ticks. 2 ticks/row matches the original
-// draft's modelled value.
+// top row by `row * LAG_TICKS` ticks. 2 ticks/row matches the engine's
+// BREATHE_ROW_PHASE_LAG_TICKS.
 const LAG_TICKS = 2;
 
 /** Boot the game out of READY and wait for the full enemy formation to
@@ -104,12 +76,7 @@ async function bootToSettledFormation(page: import("@playwright/test").Page) {
   );
 }
 
-test.describe("Galaga formation breathing per-row phase lag (#241 — DIAGNOSTIC, #255)", () => {
-  test.skip(
-    !RUN_DIAG,
-    "Diagnostic spec — runs only in the galaga-diag-breathing CI job (set GALAGA_DIAG=1). See #255.",
-  );
-
+test.describe("Galaga formation breathing per-row phase lag (#241)", () => {
   test("row 0 and row 4 desync visibly within sampling window (lag is firing)", async ({
     page,
   }) => {
@@ -126,7 +93,6 @@ test.describe("Galaga formation breathing per-row phase lag (#241 — DIAGNOSTIC
     // amplitude / desync assertions below).
     const samples = await page.evaluate(async () => {
       const out: Array<{ tick: number; x0: number; x4: number; homeX: number }> = [];
-      const targetCol = 1;
       const startTick = window.__galaga!.tick;
       const deadline = performance.now() + 8000;
       let lastSampledTick = -1;
@@ -182,8 +148,6 @@ test.describe("Galaga formation breathing per-row phase lag (#241 — DIAGNOSTIC
         }
         await new Promise((r) => requestAnimationFrame(() => r(null)));
       }
-      // Silence unused-targetCol lint — kept as documentation of intent.
-      void targetCol;
       return out;
     });
 
