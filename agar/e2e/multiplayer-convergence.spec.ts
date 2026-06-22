@@ -194,36 +194,78 @@ function assertFirstConnectorReplay(
   expect(expected.rng).toBe(page.canonical.rng);
 }
 
-// Assert: B's appliedLog is a SUFFIX of A's appliedLog. This is the
-// strongest cross-client statement that's honest under the slice-3/4
-// server contract (no per-client replay): both clients see the same
-// authoritative stream, B just started observing it K-1 ticks late.
+// Assert: B's appliedLog covers a SUFFIX of A's appliedLog. This is
+// the strongest cross-client statement that's honest under the
+// slice-3/4 server contract (no per-client replay): both clients see
+// the same authoritative stream, B just started observing it K-1
+// ticks late.
 //
-// `tolerateTrailingSkew` allows for A or B to be one tick ahead of
-// the other due to read interleaving — we compare on the largest
-// prefix length that both logs cover.
+// Alignment is by ABSOLUTE SERVER TICK, not by tail length. The
+// previous draft aligned tails by `min(length)`, which silently
+// mis-shifted by one whenever A and B's parallel reads landed on
+// different server ticks (a tolerated, real read-skew). Aligning by
+// `canonical.tick` is the only honest map:
+//
+//   A's log[i] is absolute tick (i + 1)
+//                                 — A is the first connector,
+//                                   guaranteed by the caller
+//                                   asserting assertFirstConnectorReplay(a)
+//                                   first.
+//   B's log[j] is absolute tick (lastB - b.length + 1 + j)
+//                                 — B may have joined mid-match;
+//                                   B's first observed tick is
+//                                   (lastB - b.length + 1).
+//
+// The shared range of absolute ticks both clients observed is
+// [firstB, min(lastA, lastB)]. We slice both logs to exactly that
+// range and compare element-wise.
 function assertBLogIsSuffixOfA(
   a: { canonical: WorldState; appliedLog: readonly InputDir[] },
   b: { canonical: WorldState; appliedLog: readonly InputDir[] },
 ): void {
-  // B joined no earlier than A, so B's log can't be longer than A's.
-  // Allow 1 tick of skew (B's reader caught one more snapshot than
-  // A's between the two `readAppliedLog` calls).
-  expect(b.appliedLog.length).toBeLessThanOrEqual(a.appliedLog.length + 1);
+  // Caller invariant: assertFirstConnectorReplay(a) has run, which
+  // proves a.appliedLog.length === a.canonical.tick — i.e. A's log
+  // indexes absolute ticks 1..lastA exactly. This assertion's
+  // alignment math depends on that. Re-check here so a misordered
+  // caller fails with a precise message, not a silent off-by-one.
+  expect(a.appliedLog.length).toBe(a.canonical.tick);
 
-  // The shared suffix length we can honestly compare. Use B's length
-  // as the upper bound; clip by A's length so we never out-index.
-  const compareLen = Math.min(b.appliedLog.length, a.appliedLog.length);
-  expect(compareLen).toBeGreaterThan(0);
+  const lastA = a.canonical.tick;
+  const lastB = b.canonical.tick;
+  // B's first observed absolute tick. Server ticks are 1-indexed and
+  // appliedLog grows one entry per received snapshot, so:
+  const firstB = lastB - b.appliedLog.length + 1;
 
-  // The K-1 offset where B's log lines up with A's. A's log is the
-  // full history [1..A.tick]; B's log is [K..B.tick]. So
-  // a.appliedLog.slice(a.length - compareLen, a.length) should equal
-  // b.appliedLog.slice(b.length - compareLen, b.length) — the most
-  // recent `compareLen` ticks of each.
-  const aTail = a.appliedLog.slice(a.appliedLog.length - compareLen);
-  const bTail = b.appliedLog.slice(b.appliedLog.length - compareLen);
-  expect(bTail).toEqual(aTail);
+  // B cannot have started observing before tick 1.
+  expect(firstB).toBeGreaterThanOrEqual(1);
+  // B joined no earlier than A (A was the first connector), so B's
+  // first observed tick is >= 1, which we already checked. We do NOT
+  // require firstB > 1: in races where A and B handshake within the
+  // same server tick boundary, B may also observe tick 1.
+
+  // Allow up to 1 tick of read skew between A and B in EITHER
+  // direction — A's reader may catch a snapshot B's hasn't, or vice
+  // versa. lastA and lastB are read on separate pages within a
+  // single Promise.all, so a 1-tick gap is normal at 20 Hz.
+  expect(Math.abs(lastA - lastB)).toBeLessThanOrEqual(1);
+
+  // Shared absolute-tick range — the window both clients observed.
+  const sharedStart = firstB;
+  const sharedEnd = Math.min(lastA, lastB);
+  const sharedLen = sharedEnd - sharedStart + 1;
+  expect(sharedLen).toBeGreaterThan(0);
+
+  // A's indices for [sharedStart..sharedEnd] inclusive are
+  // [sharedStart-1 .. sharedEnd-1]. Array.slice's end arg is
+  // exclusive, hence `sharedEnd` (not sharedEnd - 1 + 1).
+  const aSlice = a.appliedLog.slice(sharedStart - 1, sharedEnd);
+  // B's indices for the same absolute-tick range are
+  // [0 .. sharedEnd - firstB]. Slice end exclusive.
+  const bSlice = b.appliedLog.slice(0, sharedEnd - firstB + 1);
+
+  expect(aSlice.length).toBe(sharedLen);
+  expect(bSlice.length).toBe(sharedLen);
+  expect(bSlice).toEqual(aSlice);
 }
 
 test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
@@ -371,6 +413,26 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       await waitForTick(pageA, 6);
       await waitForTick(pageB, 6);
 
+      // Snapshot B's appliedLog length BEFORE the disconnect. The
+      // client's `appliedLog` is a module-level const that is NEVER
+      // CLEARED on disconnect/reconnect (see agar/src/main.ts:92 — the
+      // appliedLog array outlives the ws and `reconnectWs` just opens
+      // a new socket on top of it). So after B reconnects, B's
+      // `appliedLog` contains [pre-disconnect entries] + [missed
+      // ticks GAP] + [post-reconnect entries]. The contiguous-suffix
+      // invariant assertBLogIsSuffixOfA depends on does NOT hold over
+      // that gap.
+      //
+      // To make the suffix comparison honest in this test, we record
+      // B's appliedLog length at the moment of disconnect; after
+      // reconnect, we slice off the pre-disconnect prefix and assert
+      // only on the post-reconnect tail. That tail IS a contiguous
+      // run of absolute ticks starting at B's first post-reconnect
+      // snapshot — which is exactly the shape assertBLogIsSuffixOfA
+      // is contracted against.
+      const bAppliedLogLenAtDisconnect = (await readPageState(pageB))
+        .appliedLog.length;
+
       // Cut B's WS — A keeps ticking. The DO must still accept A's
       // inputs and reflect them in its broadcast (and therefore in
       // A's local appliedLog).
@@ -408,22 +470,40 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       await waitForTick(pageB, bTickAfterReconnect + 6);
 
       const a = await readPageState(pageA);
-      const b = await readPageState(pageB);
+      const bFull = await readPageState(pageB);
 
       // A is still the first connector and was never disconnected —
       // A's log remains the full server history and must still
       // satisfy the offline-reducer determinism contract.
       assertFirstConnectorReplay(a);
 
+      // Slice off B's pre-disconnect entries. The remaining tail is a
+      // contiguous run of absolute ticks starting at B's first
+      // post-reconnect snapshot — the shape assertBLogIsSuffixOfA
+      // expects. The synthetic `canonical.tick` we pass through is
+      // B's current real tick (the post-reconnect tail ends at that
+      // tick), and the synthetic appliedLog length matches that
+      // tail's length so the (firstB = lastB - length + 1) formula
+      // inside the assertion points at the right absolute tick.
+      const bPostReconnectLog = bFull.appliedLog.slice(
+        bAppliedLogLenAtDisconnect,
+      );
+      expect(bPostReconnectLog.length).toBeGreaterThan(0);
+      const bForSuffix = {
+        canonical: bFull.canonical,
+        appliedLog: bPostReconnectLog,
+      };
+
       // B's post-reconnect log MUST be a suffix of A's log. If the
       // DO reordered or A's recv-order doesn't match the broadcast
       // order, the tails diverge and this fails.
-      assertBLogIsSuffixOfA(a, b);
+      assertBLogIsSuffixOfA(a, bForSuffix);
 
-      // B's log strictly started over at reconnect — confirm it's
-      // shorter than A's (proves we actually exercised the gap and
-      // didn't accidentally have B still connected through phase 2).
-      expect(b.appliedLog.length).toBeLessThan(a.appliedLog.length);
+      // Sanity: B was actually disconnected during phase 2 — its
+      // post-reconnect tail must be strictly shorter than A's full
+      // log. If they're equal, B somehow kept up through the gap
+      // (test bug — the disconnect didn't take).
+      expect(bPostReconnectLog.length).toBeLessThan(a.appliedLog.length);
     } finally {
       await ctxA.close();
       await ctxB.close();
