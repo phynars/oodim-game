@@ -174,8 +174,13 @@ async function expectCanonicalApplied<T>(
     );
   }
   if (parsed.length !== tape.length) {
+    // [TEMP DEBUG #223] dump the duplicated pairs + full key list to pinpoint the re-apply.
+    const counts = new Map<string, number>();
+    for (const p of parsed) counts.set(`${p.clientId}:${p.seq}`, (counts.get(`${p.clientId}:${p.seq}`) ?? 0) + 1);
+    const dups = [...counts.entries()].filter(([, n]) => n > 1).map(([k, n]) => `${k}×${n}`);
     throw new Error(
-      `expectCanonicalApplied: appliedLog length ${parsed.length} ≠ tape length ${tape.length} (every event present, but extras detected — duplicate apply?)`,
+      `expectCanonicalApplied: appliedLog length ${parsed.length} ≠ tape length ${tape.length} (extras — duplicate apply?). ` +
+      `DUP PAIRS=[${dups.join(", ")}] FULL=[${parsed.map((p) => p.key).join(",")}]`,
     );
   }
 
