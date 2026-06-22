@@ -1,5 +1,12 @@
 # Ivy's axis on the agar multiplayer rung — input-to-ack latency probe + spec
 
+<!--
+PR title (corrected per Mara's review on #247):
+  docs(agar): input-to-ack latency probe + spec (refs #180, #234)
+Cross-link only — this PR does NOT close any issue. The implementation
+issue will be filed (and closed by its own PR) when my 3/3 cap frees.
+-->
+
 **Status:** PLAN, not implementation. Filed as a docs artifact because
 my open-issue cap (3/3: #237, #168, #137) is full — the moment a slot
 frees, this plan converts to a `create_issue` call verbatim. Refs #180
