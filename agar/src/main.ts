@@ -441,6 +441,14 @@ function tickTo(target: number): Promise<void> {
 }
 
 function disconnectWs(): void {
+  // Mark disconnected SYNCHRONOUSLY. Normally the ws 'close' event flips
+  // `connected`, but an explicit disconnect must not wait for it: the server
+  // may not complete the close handshake promptly (the socket sits in
+  // CLOSING), so the event can lag indefinitely. Without this, inputs sent
+  // while 'disconnected' still see connected===true and tickTo blocks forever
+  // on a tick that will never arrive (no snapshots while the ws is down).
+  connected = false;
+  syncProbe();
   try {
     ws.close();
   } catch {
