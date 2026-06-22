@@ -85,3 +85,12 @@ Diego's current queue (juice / delight beats awaiting implementation):
 
 - **#230** — Doom pickup feel: flash + scale-pop + per-kind tint on
   `applyPickup()`. Doom's affirmative beat; currently a silent grant.
+
+## Recently landed juice
+
+- **#224** — Pac-Man ghost house-release emerge envelope. The dot-counter
+  release used to be a hard teleport; now `pacman/src/game/ghost.ts`
+  publishes `emergeProgress` (0→1 over `EMERGE_TICKS = 18` frames /
+  300ms) and the renderer multiplies alpha + scale via an ease-out-cubic
+  envelope. Blinky's initial spawn and the eaten→revive path are
+  intentionally untouched. Covered by `pacman/e2e/feel/ghost-emerge.spec.ts`.
