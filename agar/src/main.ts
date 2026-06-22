@@ -113,15 +113,26 @@ function draw(): void {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = "600 28px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText("Agar", canvas.width / 2, 40);
+  // Studio voice over placeholder. The cell IS you; the room is the server.
+  // Title earns the cold by stating the relation, not the genre.
+  ctx.fillText("you are here", canvas.width / 2, 40);
 
   ctx.font = "500 14px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.fillStyle = connected ? "#9090a8" : "#a85050";
-  ctx.fillText(
-    `tick=${latest?.tick ?? 0}`,
-    canvas.width / 2,
-    canvas.height - 24,
-  );
+  // Status line as felt-state, not telemetry. Pre-snapshot: the server
+  // hasn't acknowledged you yet — say so. Post-snapshot: the room is
+  // counting; the tick is the room's heartbeat. Disconnected: the room
+  // forgot you, which is what server-authoritative absence actually feels
+  // like (no client-side prediction = no ghost of you to render).
+  const statusLine =
+    !connected && latest === null
+      ? "no one is listening"
+      : !connected
+        ? "the room forgot you"
+        : latest === null
+          ? "waiting to be seen"
+          : `t=${latest.tick}`;
+  ctx.fillText(statusLine, canvas.width / 2, canvas.height - 24);
 }
 
 const probe = document.createElement("div");
