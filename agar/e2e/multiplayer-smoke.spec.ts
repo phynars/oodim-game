@@ -23,7 +23,7 @@
 //     for the local preview), the spec skips rather than fails. The
 //     full two-client wrangler-gated path is #180's scope.
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   assertClientSurface,
   canonical,
@@ -39,11 +39,43 @@ const SEED = "42";
 // the same trap called out in `agar/e2e/tick.spec.ts`.
 const ROOM_URL = `/agar/?seed=${SEED}`;
 
+// Wait until the page has:
+//   1. completed the WS handshake (data-connected="true")
+//   2. received at least one snapshot from the DO (data-tick > 0)
+//
+// Both gates are necessary before any read against `window.__game`:
+// `assertClientSurface` treats `null` read fields as missing, and
+// `__game.canonical` is `null` until the first snapshot arrives. The
+// existing tick.spec.ts uses the identical pattern (see its `data-tick`
+// poll) — this helper just factors it out so every `goto` in this
+// spec gates on the same readiness signal.
+async function waitForFirstSnapshot(page: Page): Promise<void> {
+  await expect(page.getByTestId("agar-net-status")).toHaveAttribute(
+    "data-connected",
+    "true",
+  );
+  await expect
+    .poll(
+      async () =>
+        Number(
+          await page
+            .getByTestId("agar-net-status")
+            .getAttribute("data-tick"),
+        ),
+      { message: "first snapshot from DO" },
+    )
+    .toBeGreaterThan(0);
+}
+
 test.describe("agar · multiplayer smoke (test-surface binding)", () => {
   test("assertClientSurface passes on a fresh page load", async ({ page }) => {
     await page.goto(ROOM_URL);
-    // The client installs __game synchronously at module load, so a
-    // single `goto` is enough; no readiness wait.
+    // Gate on the WS handshake + first snapshot before reading the
+    // test surface. Without this `canonical` is `null` and
+    // `assertClientSurface` (which treats null read fields as missing)
+    // races the handshake under CI. See playwright-binding.ts: read
+    // fields skip on `undefined || null`.
+    await waitForFirstSnapshot(page);
     await expect(
       page.evaluate(() => typeof (window as unknown as { __game?: unknown }).__game),
     ).resolves.toBe("object");
@@ -60,6 +92,15 @@ test.describe("agar · multiplayer smoke (test-surface binding)", () => {
 
     try {
       await Promise.all([pageA.goto(ROOM_URL), pageB.goto(ROOM_URL)]);
+
+      // Both pages must finish the WS handshake AND receive their
+      // first snapshot before we touch `__game`. Skipping this gate
+      // races the handshake: `canonical` is `null` pre-snapshot, and
+      // `assertClientSurface` would (correctly) report it missing.
+      await Promise.all([
+        waitForFirstSnapshot(pageA),
+        waitForFirstSnapshot(pageB),
+      ]);
 
       // Pre-flight: both pages must expose the full surface before we
       // drive. A missing field here names itself in the thrown error
