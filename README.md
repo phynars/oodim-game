@@ -1,96 +1,96 @@
-# oodim-game
+# oodim Game
 
-Autonomous game studio. Each subdirectory is one shipped game; the
-studio itself is run by a roster of avatar NPCs who file issues, write
-code, review PRs, and ship without humans writing the diff.
+**oodim Game** is the game division of [oodim](https://oodim.com) — a small,
+autonomous game studio in **West Los Angeles**. Like every part of oodim, it's
+staffed entirely by AI avatars who design, build, and ship through oodim's
+autonomous **AI Development Life Cycle (AIDLC)**: they file their own issues,
+implement them, review each other's pull requests, gate on CI, and merge to
+`main` — end to end, with no human writing the code.
 
-| Game | Genre | Engine | Status |
-|------|-------|--------|--------|
-| `pacman/` | 2D maze | canvas | shipped |
-| `galaga/` | 2D shmup | canvas | shipped |
-| `doom/` | true-3D FPS | three.js / WebGL | shipped |
-| `agar/` | server-authoritative multiplayer | Cloudflare DOs (planned) | in design |
-| `landing/` | portfolio index | static HTML/CSS | shipped |
+This repo is the studio's workshop. It's driven by a dedicated **"oodim Game"
+dimension** in oodim, the first time the AIDLC loop is pointed at a *separate
+repo* and a *greenfield product* — the proof that the workflow generalizes
+beyond oodim building itself.
 
-See each game's `docs/` for its architecture.
+## The studio
 
-## How the studio works
+Five avatars, one per craft, plus a cast of NPCs who are the first to play what
+ships and the first to complain about it:
 
-Every contributor is an **NPC** — a persistent avatar with a voice, a
-goal, and a memory that carries between wakes. Avatars wake on their
-own cadence (free-will sessions) or in response to events (issue filed,
-PR opened, review requested). Each wake, an avatar picks ONE concrete
-action that advances its standing goal and ships it via the `/code`
-loop.
+| Role | Owns |
+|------|------|
+| **Product Manager** | what to build and why — scope, milestones, the player experience |
+| **Architect** | how it's built — engine structure, build/CI, the gameplay-verification harness |
+| **Developer** | the implementation — game loop, rendering, input, ghost AI |
+| **Designer** | look & feel — maze, sprites, color, motion, touch UX |
+| **Story** | the world — characters, tone, why anyone should care |
+| **NPCs** | first players — playtest, file bugs, react to what's shipped |
 
-The roles are complementary, not redundant:
+## Portfolio
 
-- **Diego (juice / delight)** — owns the affirmative feedback layer
-  across the portfolio: screen-shake amplitude & decay, hitstop frames,
-  squash/stretch, easing curves, audio-visual coupling. Specs in ms /
-  px / frames; acceptance checks are measurable.
-- **Ivy (frame-budget / feel correctness)** — owns the engine-level
-  guarantees that make the juice land: tick determinism, rAF discipline,
-  GC pressure, e2e harness invariants.
-- **Mara (review / craft)** — gates merges. Reviewer-first; calls out
-  scope drift, lies in PR titles, deleted context, and missing tests.
-- Plus the rotating cast that files specs, refactors, and ships features.
+The studio ships multiple products from this one repo — each a self-contained
+build (its own vite config, tsconfig, and gameplay harness), published to its
+own subpath behind the same "CI for gameplay" gate.
 
-Issues are filed against `phynars/oodim-game`. The AIDLC loop turns
-them into PRs — backlog tick picks an issue, an avatar runs `/code`,
-the diff stages, the PR opens, CI runs, a reviewer NPC approves or
-requests changes. No human writes the code; humans pick the goals.
+Each product is a self-contained subdirectory — `pacman/`, `galaga/`, `doom/`,
+`agar/` — with its own vite config, tsconfig, and Playwright harness. Per-project
+scripts are `build:<project>` / `typecheck:<project>` / `test:e2e:<project>`;
+the bare `build` / `typecheck` / `test:e2e` aggregate across all products.
 
-## Per-game notes
+### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
+A static index page listing the studio's shipped games and linking into
+each subpath build. Plain HTML/CSS, no framework — the front door is two
+cards and a tagline.
 
-### `doom/` — WebGL in CI
+### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
+A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
+maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
+score, lives, win/lose, and touch controls. See `pacman/docs/ARCHITECTURE.md`.
 
-Doom is the only true-3D game in the studio (three.js + WebGL). That
-choice has a real cost: WebGL doesn't work in headless Chromium by
-default, so the e2e harness exposes `__doom` and `__doomInternals`
-hooks for tests to drive the simulation **without rendering**. Engine
-state (hit counters, hitstop, kill shake, pickup flash) publishes onto
-those handles every tick; e2e specs read state values directly rather
-than poking at pixels. Renderer-side concerns (shaders, materials,
-post) are exercised by a small set of WebGL-enabled smoke runs gated
-behind a separate workflow, not the per-PR check.
+### Galaga — `galaga/` → `game.oodim.com/galaga/` *(complete)*
+The studio's second project, harder than Pac-Man: enemy **formations** + entrance
+choreography, **diving attacks**, enemy fire, scoring + stages, and the signature
+boss-Galaga **tractor-beam capture → rescue → dual-fighter** mechanic. Built slice
+by slice from a human-seeded scaffold against an ordered `blocked-by` backlog. See
+`galaga/docs/ARCHITECTURE.md`.
 
-This split is what lets `doom/`'s juice work ship the same way the
-2D games' does — assert on `STATE`, not `getComputedStyle`.
+### Doom — `doom/` → `game.oodim.com/doom/` *(complete)*
+The studio's first **true-3D** game — a first-person shooter on **three.js +
+WebGL**. The leap here is the verification gate: the gameplay harness runs over
+**WebGL in headless Chromium** (SwiftShader), asserting the `window.__doom` *state*
+contract (player pose, enemies, projectiles, pickups, doors, weapon) — never
+pixels — with a deterministic fixed-timestep simulation decoupled from rendering.
+Built slice by slice against an ordered `blocked-by` backlog: playable core on
+primitives first, then **procedurally-generated** assets (code-built textures,
+models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
+`doom/docs/ARCHITECTURE.md`.
 
-### `agar/` — rollout phases
+### agar — `agar/` → `game.oodim.com/agar/` *(in development — multiplayer prototype)*
+The studio's first **server-authoritative multiplayer** game. The frontier the
+portfolio hasn't crossed yet: networked state, a client/server contract, and a
+merge gate that asserts a real round-trip — not just "does it render". Slice 1
+(scaffold) is in; the rollout continues playable-primitives-first:
 
-Agar is server-authoritative multiplayer on Cloudflare Durable Objects.
-It's intentionally being rolled out in phases so the studio doesn't
-ship a half-working real-time game:
+1. ✅ **Scaffold** — `agar/` slot with `index.html`, vite config, Playwright harness, "in development" placeholder.
+2. ✅ **Durable Object websocket echo** — one client, one DO, `seq`/`rtt` rendered on canvas; e2e times out red if the round-trip doesn't happen. Real WS through `wrangler dev` inside the merge gate.
+3. ⏳ **20 Hz authoritative tick** — server holds the canonical state; clients send input, render what the server says.
+4. **Two-client gameplay e2e** — two browser contexts converge on the same authoritative snapshot; the merge gate.
 
-1. **Phase 0 — design** *(current)*: DO schema, tick rate, lag-comp
-   strategy, the authority contract between client and DO. No
-   playable build.
-2. **Phase 1 — single-cell local sim**: client-side simulation only,
-   no DO, no other players. Validates the feel layer (eat → grow,
-   split, recombine timers) before any networking exists.
-3. **Phase 2 — single-DO room**: one DO authoritative, ≤8 players,
-   no cross-room migration. Establishes the input → broadcast loop
-   and the client-side prediction reconciliation.
-4. **Phase 3 — multi-DO world**: rooms hand off players at world
-   boundaries; matchmaking front-door. Production rollout gate.
+The proof that the AIDLC loop can ship a networked game — not just a
+single-player canvas — through the same issue → PR → CI → merge pipeline.
 
-Each phase ships its own issues; juice work doesn't start until
-Phase 1 (no point amplifying feedback that doesn't yet exist).
+## How it's built
 
-## Open feel work
+Work flows the same way it does in the main oodim repo — issue →
+implementation → review → CI → merge — only here the pipeline targets *this*
+repo via the oodim Game dimension. Because a game's correctness is interactive
+(not just "does it compile"), gameplay is gated by an automated **play-test
+harness** — canvas state assertions that drive the game and check pellet counts,
+ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
+code review.
 
-Diego's current queue (juice / delight beats awaiting implementation):
+Roadmap and rationale live in the oodim repo:
+`docs/plan/multi-repo-greenfield-experiment.md`.
 
-- **#230** — Doom pickup feel: flash + scale-pop + per-kind tint on
-  `applyPickup()`. Doom's affirmative beat; currently a silent grant.
-
-## Recently landed juice
-
-- **#224** — Pac-Man ghost house-release emerge envelope. The dot-counter
-  release used to be a hard teleport; now `pacman/src/game/ghost.ts`
-  publishes `emergeProgress` (0→1 over `EMERGE_TICKS = 18` frames /
-  300ms) and the renderer multiplies alpha + scale via an ease-out-cubic
-  envelope. Blinky's initial spawn and the eaten→revive path are
-  intentionally untouched. Covered by `pacman/e2e/feel/ghost-emerge.spec.ts`.
+---
+*Built by AI avatars. A division of oodim — infinite dimensions (∞dim).*

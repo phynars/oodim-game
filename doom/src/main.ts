@@ -2,7 +2,16 @@
 // All real behavior lives in src/game/*. This file stays tiny on purpose —
 // see docs/ARCHITECTURE.md.
 import { Engine } from "./game/engine";
-import { DAMAGE_FLASH_DECAY, HIT_FLASH_TICKS } from "./game/types";
+import {
+  DAMAGE_FLASH_DECAY,
+  HIT_FLASH_TICKS,
+  PICKUP_FLASH_DECAY_PER_TICK,
+  PICKUP_FLASH_TICKS,
+  PICKUP_KIND_TINT,
+  PICKUP_STAT_POP_DECAY,
+  PICKUP_STAT_POP_PEAK,
+  PICKUP_STAT_POP_PEAK_TICK,
+} from "./game/types";
 
 const canvas = document.getElementById("game");
 if (!(canvas instanceof HTMLCanvasElement)) {
@@ -35,6 +44,14 @@ const hitFlashEl = document.querySelector<HTMLElement>(
 );
 const finalScoreEl = document.querySelector<HTMLElement>(
   '[data-overlay="final-score"]',
+);
+// Pickup-flash vignette (#230). A tinted edge gradient that fades over the
+// pickup's flash window. The center stays clear (radial-gradient with a
+// transparent inner stop in CSS) so the corridor is readable — the player's
+// seeing the gift, not getting interrupted. Color is set per pickup kind
+// via PICKUP_KIND_TINT.
+const pickupFlashEl = document.querySelector<HTMLElement>(
+  '[data-overlay="pickup-flash"]',
 );
 
 if (healthEl && armorEl && ammoEl && scoreEl) {
@@ -93,6 +110,62 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
         }
         hitFlashEl.style.opacity = String(op);
         lastFlash = s.hitFlashTicks;
+      }
+      // Pickup-flash vignette + stat-pop (#230). Vignette alpha decays
+      // exponentially from the moment the flash arms; the matching stat
+      // readout (health/armor/ammo) scales 1.0 → PICKUP_STAT_POP_PEAK over
+      // the first PICKUP_STAT_POP_PEAK_TICK ticks (linear ramp), then
+      // exponentially returns to 1.0 over the remaining ticks. The two
+      // halves of the curve land in one CSS transform per frame.
+      if (pickupFlashEl) {
+        if (s.pickupFlashTicks > 0 && s.pickupKindFlash) {
+          // Ticks elapsed since arm: 0 at arm, rises to PICKUP_FLASH_TICKS-1.
+          const t = PICKUP_FLASH_TICKS - s.pickupFlashTicks;
+          const alpha =
+            Math.pow(PICKUP_FLASH_DECAY_PER_TICK, t) * 0.35;
+          pickupFlashEl.style.opacity = String(alpha);
+          // Vignette tint via the radial-gradient's CSS variable (set in
+          // index.html). Cheaper than rebuilding background-image strings
+          // each frame.
+          pickupFlashEl.style.setProperty(
+            "--pickup-tint",
+            PICKUP_KIND_TINT[s.pickupKindFlash],
+          );
+        } else if (pickupFlashEl.style.opacity !== "0") {
+          // Resting state — overlay fully transparent. Guard with a string
+          // compare so we don't churn the CSS engine when nothing changed.
+          pickupFlashEl.style.opacity = "0";
+        }
+      }
+      // Stat-pop on the matching readout. The scale lives on the
+      // [data-hud=health|armor|ammo] cell directly via inline transform
+      // (no GPU layer thrash — one transform per frame on one element).
+      const statEls: Record<"health" | "armor" | "ammo", HTMLElement | null> =
+        {
+          health: healthEl,
+          armor: armorEl,
+          ammo: ammoEl,
+        };
+      for (const kind of ["health", "armor", "ammo"] as const) {
+        const el = statEls[kind];
+        if (!el) continue;
+        let scale = 1;
+        if (s.pickupKindFlash === kind && s.pickupFlashTicks > 0) {
+          const t = PICKUP_FLASH_TICKS - s.pickupFlashTicks;
+          scale =
+            t <= PICKUP_STAT_POP_PEAK_TICK
+              ? 1 + (PICKUP_STAT_POP_PEAK - 1) * (t / PICKUP_STAT_POP_PEAK_TICK)
+              : 1 +
+                (PICKUP_STAT_POP_PEAK - 1) *
+                  Math.pow(
+                    PICKUP_STAT_POP_DECAY,
+                    t - PICKUP_STAT_POP_PEAK_TICK,
+                  );
+        }
+        // Inline transform — only write when the value actually moved
+        // (compare to the existing string) to keep idle frames cheap.
+        const want = scale === 1 ? "" : `scale(${scale.toFixed(4)})`;
+        if (el.style.transform !== want) el.style.transform = want;
       }
     }
     requestAnimationFrame(tickHud);
