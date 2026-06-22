@@ -95,6 +95,13 @@ export class EchoRoom implements DurableObject {
    *  only the DELTA, while reconnects can replay from offset 0. */
   private appliedKeys: string[] = [];
   private socketCursor = new WeakMap<WebSocket, number>();
+  /** Per-client highest-applied input seq — the idempotency watermark.
+   *  Inputs are per-client monotonic; a reconnect can re-deliver an input
+   *  the server already applied (outbox flush + roster-swap races), and
+   *  re-applying it would emit a SECOND canonical key (new tick, same
+   *  clientId:seq) — the "duplicate apply" the two-client rung catches.
+   *  Skipping any seq <= the watermark makes canonical application idempotent. */
+  private appliedSeq = new Map<string, number>();
   private interval: ReturnType<typeof setInterval> | null = null;
   private seedInitialized = false;
 
@@ -130,11 +137,22 @@ export class EchoRoom implements DurableObject {
     for (const id of ids) {
       const ctx = this.clients.get(id);
       if (!ctx) continue;
-      // Drain pending. Each pending entry already has a seq from the
-      // client; the DO never invents seqs (those would be invisible to
-      // the harness's ordering invariant).
+      // Drain pending IDEMPOTENTLY. Each entry already has a per-client
+      // monotonic seq; the DO never invents seqs. A reconnect can re-deliver
+      // an input the server already applied — skipping any seq at/below the
+      // watermark (and de-duping exact re-sends within this batch) keeps a
+      // (clientId, seq) from being applied twice, which would emit a second
+      // canonical key at a new tick (the two-client rung's 'duplicate apply').
+      const seen = this.appliedSeq.get(id) ?? -1;
+      const fresh = new Map<number, InputDir>(); // seq -> dir; drops prior-tick + in-batch dups
       for (const ev of ctx.pending) {
-        events.push({ clientId: id, seq: ev.seq, dir: ev.dir });
+        if (ev.seq > seen) fresh.set(ev.seq, ev.dir);
+      }
+      for (const seq of [...fresh.keys()].sort((a, b) => a - b)) {
+        events.push({ clientId: id, seq, dir: fresh.get(seq)! });
+      }
+      if (fresh.size > 0) {
+        this.appliedSeq.set(id, Math.max(seen, ...fresh.keys()));
       }
       ctx.pending = [];
     }
