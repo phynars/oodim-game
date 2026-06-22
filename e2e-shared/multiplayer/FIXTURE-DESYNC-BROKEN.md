@@ -42,8 +42,27 @@ red on each.
 |---|---|---|
 | `off` | Nothing — correct DO. | All four PASS. (Baseline; this is `main`.) |
 | `drop-every-7th` | Server-side: silently discard every 7th client input message. | **Convergence** fails: client A predicts the input applied, server canonical never reflects it, structural equality on `window.__game.canonical` across the two contexts diverges. |
-| `reorder-under-load` | When 2+ inputs arrive in the same tick, apply them in arrival order instead of `(tick, clientId, seq)` canonical order. | **Ordering invariant** fails: `pureReplay(tape, seed)` over the canonical order produces state ≠ DO's emitted snapshot. |
-| `reconnect-amnesia` | On client reconnect, replay missed state from `lastAckTick + 2` instead of `lastAckTick + 1` (off-by-one in replay). | **Reconnect-replay equivalence** fails: the reconnected client's final canonical ≠ the never-disconnected client's. |
+| `reorder-under-load` | When 2+ inputs arrive in the same tick, apply them in arrival order instead of `(tick, clientId, seq)` canonical order. | **Ordering invariant** fails: `clientA.appliedLog` ≠ `clientB.appliedLog` — the two clients observe different orderings of the same input set. Terminal `canonical` could spuriously match under some break instances; the `appliedLog` comparison is the assertion that must go red. |
+| `reconnect-amnesia` | On client reconnect, replay missed state from `lastAckTick + 2` instead of `lastAckTick + 1` (off-by-one in replay). | **Reconnect-replay equivalence** fails: the reconnected client's final `canonical` ≠ the never-disconnected client's, and its `appliedLog` is short by one entry. |
+
+### A note on `pureReplay` and `appliedLog` — read before you write the spec
+
+`agar/server/reducer.ts` exports `pureReplay(seed, tape)` which advances the
+world **one input per tick** (one `step()` call per tape entry). That is
+deterministic only when `tape` is the **applied log** (the inputs the DO
+actually committed, one per tick), NOT the raw stream of input intents the
+client emitted.
+
+Why this matters: agar's tick is latest-input-wins under collapse. A client
+can emit `up,up,up` faster than the tick rate; only one of those reaches
+`appliedLog`. Therefore `pureReplay(SEED, clientInputIntents)` ≠ `canonical`
+in general. The correct invariants to assert are:
+
+- **Single-page determinism** (per client): `pureReplay(SEED, page.appliedLog) === page.canonical`. This is the gate `agar/e2e/tick.spec.ts` already ships; the multiplayer spec restates it per page so a regression there doesn't hide behind two-client noise.
+- **Cross-client convergence**: `clientA.canonical` deep-equals `clientB.canonical` after WS quiesces.
+- **Cross-client ordering** (the genuinely new invariant for the multiplayer rung): `clientA.appliedLog` deep-equals `clientB.appliedLog`. Two clients watching the same DO must observe the same ordered apply-stream. A buggy DO that broadcasts stale snapshots to a late joiner, or per-connection input streams, passes convergence on terminal state but fails this. This is what `reorder-under-load` breaks.
+
+Spec writers: never compare `canonical` against `pureReplay(SEED, rawClientInputTape)`. Always compare against `pureReplay(SEED, appliedLog)`, and use cross-client `appliedLog` equality as the multiplayer ordering gate.
 
 Note that `off` is what every other CI job runs. The fixture is NOT a
 separate branch — it is the same code with the env var set. This means:
@@ -84,11 +103,18 @@ The two-client spec at `agar/e2e/<name>.spec.ts` must:
 2. Drive both from one deterministic tape via `driveTape(tape, { seed })`
    — zero `page.waitForTimeout` calls in the spec.
 3. After ws-quiesce, call `expectConverge([pageA, pageB])` on
-   `window.__game.canonical`.
-4. Call `pureReplay(tape, seed)` over the same tape with the agar reducer
-   and `structuralEquals` its output to the DO's emitted canonical.
-5. Disconnect pageA mid-tape via `harness.disconnect(pageA)`, reconnect,
-   then assert its final canonical equals pageB's.
+   `window.__game.canonical` (convergence on terminal state).
+4. Assert per-page determinism: for each page,
+   `structuralEquals(pureReplay(SEED, page.appliedLog), page.canonical)` —
+   this is the gate `agar/e2e/tick.spec.ts` already ships, repeated here
+   per page. Do NOT pass the raw client input tape to `pureReplay`; the
+   tick collapses inputs latest-wins, so `pureReplay(SEED, rawTape) ≠ canonical`
+   in general.
+5. Assert cross-client ordering (the new invariant): `structuralEquals(pageA.appliedLog, pageB.appliedLog)`.
+   This is what `reorder-under-load` must break.
+6. Disconnect pageA mid-tape via `harness.disconnect(pageA)`, reconnect,
+   then assert its final `canonical` equals pageB's AND its `appliedLog`
+   equals pageB's after WS quiesces.
 
 The DO at `agar/<wherever>/do.ts` (or equivalent) must:
 1. Honor `AGAR_DO_BREAK_MODE` env at construction.
