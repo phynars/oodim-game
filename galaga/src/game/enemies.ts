@@ -60,6 +60,30 @@ const BREATHE_AMPLITUDE = 12;
 /** Angular speed of the breathing oscillation (radians/tick). 2π/240 ≈ 4s
  *  cycle, the same languid sway the arcade has. */
 const BREATHE_OMEGA = (2 * Math.PI) / 240;
+/** Per-row phase lag for the breathing sway (#241). Each row trails the one
+ *  above by this many ticks, so the formation reads as a soft wave rippling
+ *  top-down through the flock rather than a rigid sliding rectangle.
+ *
+ *  Numbers (juice spec):
+ *  - 2 ticks @60Hz = ~33ms between adjacent rows.
+ *  - Total top→bottom lag: (ROWS-1) × 2 = 8 ticks ≈ 133ms ≈ 1/30 of the 4s
+ *    cycle. Small enough to read as ORGANIC, large enough to be felt.
+ *  - Max inter-row Δx at any instant ≈ AMPLITUDE × |sin(φ) − sin(φ+ωΔt)|.
+ *    With ω·2 ≈ 0.0524 rad, |Δx_max| ≈ 12 × 0.0524 ≈ 0.63px between
+ *    ADJACENT rows. Sub-pixel — never reads as misalignment, only as wave.
+ *  - Top-vs-bottom (4-row gap) max Δx ≈ 12 × |sin(0) − sin(0.21)| ≈ 2.5px,
+ *    still well under BREATHE_AMPLITUDE, so the squad never breaks its
+ *    rigid-body footprint. No galaga/e2e/ spec asserts on enemy.x, so this
+ *    sub-pixel inter-row delta is not reachable from the test surface. */
+const BREATHE_ROW_PHASE_LAG_TICKS = 2;
+
+/** Compute the breathing sway (px) for an enemy in `row`, at the given
+ *  `currentTick`. Centralized so the three call sites (dive launch, dive
+ *  complete, formation-settled) stay in lockstep on the lag formula. */
+function breathingSway(currentTick: number, row: number): number {
+  const lagged = currentTick - row * BREATHE_ROW_PHASE_LAG_TICKS;
+  return Math.sin(lagged * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
+}
 
 // --- Diving choreography -----------------------------------------------------
 //
@@ -526,10 +550,11 @@ export function createEnemyController(): EnemyController {
             candidate.diveStartTick === null
           ) {
             // Capture the current rendered position as P0 so the curve starts
-            // exactly where the breathing sprite is — no visual snap.
+            // exactly where the breathing sprite is — no visual snap. Use
+            // the per-row laggy sway so the dive launches from the sprite's
+            // ACTUAL pixel position, not the lockstep one.
             const home = formationSlot(candidate.col, candidate.row);
-            const sway =
-              Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
+            const sway = breathingSway(currentTick, candidate.row);
             candidate.diveP0x = home.x + sway;
             candidate.diveP0y = home.y;
             // Control point: pull the curve down to the lower playfield and
@@ -642,9 +667,7 @@ export function createEnemyController(): EnemyController {
             // in this slice; revisiting is a follow-up backlog item).
             e.diveStartTick = null;
             e.state = "formation";
-            const sway =
-              Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
-            e.x = home.x + sway;
+            e.x = home.x + breathingSway(currentTick, e.row);
             e.y = home.y;
           } else {
             // Dive keeps the symmetric ease — the dive is a CLOSED LOOP
@@ -662,10 +685,11 @@ export function createEnemyController(): EnemyController {
             e.y = pos.y;
           }
         } else if (ticksAlive >= ENTRANCE_TICKS) {
-          // Settled — breathe as one body.
+          // Settled — breathe as one body, with a per-row phase lag so the
+          // formation reads as a soft top-down wave (a flock), not a rigid
+          // sliding rectangle (a billboard). See BREATHE_ROW_PHASE_LAG_TICKS.
           e.state = "formation";
-          const sway = Math.sin(currentTick * BREATHE_OMEGA) * BREATHE_AMPLITUDE;
-          e.x = home.x + sway;
+          e.x = home.x + breathingSway(currentTick, e.row);
           e.y = home.y;
         } else {
           // Flying the entrance arc. `t` runs 0→1 over ENTRANCE_TICKS.
