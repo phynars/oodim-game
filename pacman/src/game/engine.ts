@@ -836,10 +836,12 @@ export class Engine {
     //     popups in the maze coordinate frame, on top of Pac + ghosts.
     this.renderFeedbackOverlays();
 
-    // 4d. Issue #183 — level-clear bonus tally HUD. Drawn when the
+    // 4d. Issue #183 — level-clear tally HUD. Drawn when the
     //     clearTicks gate is in [CLEAR_FLASH_END, CLEAR_ANIM_TICKS).
-    //     Centered text on top of the empty maze — the "+1000 BONUS"
-    //     receipt for the cleared board.
+    //     Centered text on top of the empty maze. The label is the
+    //     receipt: the maze IS clean (every pellet eaten), the +N is
+    //     the audit. "CLEAN" earns its word; "BONUS" was system text
+    //     explaining what the cleared board already said.
     if (state.feedback.clearTicks >= CLEAR_FLASH_END) {
       ctx.save();
       ctx.fillStyle = "#ffd76a";
@@ -847,7 +849,7 @@ export class Engine {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
-        `BONUS  +${state.feedback.clearTallyShown}`,
+        `CLEAN  +${state.feedback.clearTallyShown}`,
         w / 2,
         h / 2,
       );
