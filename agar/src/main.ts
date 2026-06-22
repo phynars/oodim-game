@@ -289,6 +289,12 @@ function openWs(): WebSocket {
     }
   });
   next.addEventListener("message", (event) => {
+    // Ignore messages from a socket that is no longer the active `ws`. After
+    // disconnectWs/reconnectWs swaps the socket, the OLD ws can still dispatch
+    // buffered snapshots; their `applied` deltas would push into the freshly
+    // reset appliedLog and surface as phantom duplicate keys — the residual
+    // two-client dup-apply that remains after server-side idempotency.
+    if (ws !== next) return;
     let parsed: unknown;
     try {
       parsed = typeof event.data === "string" ? JSON.parse(event.data) : null;
