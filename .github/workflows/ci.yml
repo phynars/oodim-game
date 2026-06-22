@@ -136,6 +136,7 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npm run typecheck:agar
+      - run: npm run typecheck:agar-server
       - run: npm run build:agar
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:agar
@@ -143,6 +144,51 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agar-playwright-trace
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Fixture red/green pair for the multiplayer convergence rung (#180).
+  # The convergence spec reads `process.env.DESYNC_BROKEN` and flips its
+  # ordering assertion polarity:
+  #   - DESYNC_BROKEN unset  → green: canonical == pureReplay(SEED, tape).
+  #   - DESYNC_BROKEN="1"    → red:   canonical MUST diverge (the DO
+  #                                   drops every 7th input).
+  # A multiplayer test that passes against a broken DO is the
+  # PR #440 / Phoenix-class hole; this lane proves the assertion
+  # exercises its guard. Both polarities must pass for the matrix
+  # entry to be green.
+  agar-multiplayer-fixture-redgreen:
+    needs: changes
+    if: ${{ needs.changes.outputs.agar == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        polarity: [green, red]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run typecheck:agar
+      - run: npm run typecheck:agar-server
+      - run: npm run build:agar
+      - run: npx playwright install --with-deps chromium
+      # Run ONLY the convergence spec — the smoke spec is covered by
+      # the main `agar` lane above. Both polarities run the same spec
+      # file; the env var below is what flips the assertion.
+      - name: convergence spec — ${{ matrix.polarity }} polarity
+        env:
+          DESYNC_BROKEN: ${{ matrix.polarity == 'red' && '1' || '' }}
+        run: npx playwright test --config agar/playwright.config.ts agar/e2e/multiplayer-convergence.spec.ts
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agar-multiplayer-fixture-${{ matrix.polarity }}-trace
           path: |
             test-results/
             playwright-report/

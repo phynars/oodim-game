@@ -66,6 +66,13 @@ export default defineConfig({
         // webServer never reports "up". Belt-and-suspenders.
         WRANGLER_SEND_METRICS: "false",
         CI: "true",
+        // Forward the harness-only DESYNC_BROKEN flag through to
+        // wrangler dev so the DO sees it on `env.DESYNC_BROKEN`. Unset
+        // in production CI; set to "1" only by the fixture-redgreen
+        // CI lane that asserts the multiplayer-convergence spec goes
+        // RED against the broken DO. The convergence spec itself
+        // reads `process.env.DESYNC_BROKEN` to flip its assertions.
+        DESYNC_BROKEN: process.env.DESYNC_BROKEN ?? "",
       },
       ignoreHTTPSErrors: true,
     },

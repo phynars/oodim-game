@@ -22,6 +22,16 @@ compatibility_date = "2024-11-01"
 name = "ECHO_ROOM"
 class_name = "EchoRoom"
 
+# Harness-only fixture flag. Empty in production; the playwright
+# webServer overrides this via `env: { DESYNC_BROKEN: "1" }` only in
+# the fixture-redgreen CI lane that asserts the convergence spec goes
+# RED against the deliberately-broken DO. The Worker reads
+# `env.DESYNC_BROKEN === "1"` in server/worker.ts; an unset or "" value
+# is the production path. Declared here so wrangler dev's env shape
+# matches the Env interface at type-check time.
+[vars]
+DESYNC_BROKEN = ""
+
 [[migrations]]
 tag = "v1"
 new_classes = ["EchoRoom"]

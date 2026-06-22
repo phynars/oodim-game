@@ -20,6 +20,15 @@ import { initialState, step, type InputDir, type WorldState } from "./reducer";
 
 export interface Env {
   ECHO_ROOM: DurableObjectNamespace;
+  // Harness-only fixture flag. When set to "1", the DO drops every
+  // 7th input message before applying it — turning the rung's ordering
+  // invariant red. Production deploys MUST leave this unset; the agar
+  // wrangler.toml ships it absent, and only the e2e webServer config
+  // forwards it (gated on `DESYNC_BROKEN=1` in the test runner env).
+  // The cadence "every 7th" is fixture-DESYNC-BROKEN.md mode 1; the
+  // count is per-DO-instance, not per-socket, because the reducer's
+  // notion of "an input" is one applied intent in the room timeline.
+  DESYNC_BROKEN?: string;
 }
 
 const TICK_MS = 50; // 20Hz
@@ -46,15 +55,22 @@ export class EchoRoom implements DurableObject {
   private pendingDir: InputDir = "none";
   private sockets = new Set<WebSocket>();
   private interval: ReturnType<typeof setInterval> | null = null;
+  // Harness-only counter — number of input messages received since the
+  // DO booted. Used by the DESYNC_BROKEN fixture path to drop every
+  // 7th input deterministically. Untouched in production (the env
+  // flag stays unset).
+  private inputCount = 0;
+  private readonly desyncBroken: boolean;
 
   constructor(
     _state: DurableObjectState,
-    _env: Env,
+    env: Env,
   ) {
     // The seed is set when the first socket connects (it carries the
     // ?seed= query). We init to seed=1 here so the DO has a valid
     // shape even if a non-WS request lands first; reinit on connect.
     this.world = initialState(1);
+    this.desyncBroken = env.DESYNC_BROKEN === "1";
   }
 
   private ensureTickLoop(): void {
@@ -136,6 +152,14 @@ export class EchoRoom implements DurableObject {
         parsed = null;
       }
       if (!isInputMessage(parsed)) return;
+      // DESYNC_BROKEN fixture (harness-only): drop every 7th input
+      // before it lands in the tick queue. The 1-based modulo means
+      // inputs #7, #14, #21 … are silently swallowed — the canonical
+      // state then diverges from `pureReplay(seed, tape)`, which is
+      // exactly what the multiplayer-convergence spec asserts goes
+      // red. Production never enters this branch (env flag unset).
+      this.inputCount += 1;
+      if (this.desyncBroken && this.inputCount % 7 === 0) return;
       // Latest-input-wins: overwrite any prior intent in this tick window.
       this.pendingDir = parsed.dir;
     });
