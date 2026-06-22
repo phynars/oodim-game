@@ -33,7 +33,11 @@ import {
 import type { Tape } from "../../e2e-shared/multiplayer/harness";
 
 const SEED = "42";
-const ROOM_URL = `/?seed=${SEED}`;
+// baseURL is `http://localhost:4274/agar/` but vite preview serves the
+// bundle under `base: "/agar/"` — so we must hit `/agar/?seed=…`, not
+// the host root (the root 404s and `__game` never installs). Mirrors
+// the same trap called out in `agar/e2e/tick.spec.ts`.
+const ROOM_URL = `/agar/?seed=${SEED}`;
 
 test.describe("agar · multiplayer smoke (test-surface binding)", () => {
   test("assertClientSurface passes on a fresh page load", async ({ page }) => {
