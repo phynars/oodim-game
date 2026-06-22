@@ -74,6 +74,12 @@ test.describe("galaga input-to-fire latency (#168)", () => {
     );
     expect(probeExists, "window.__galagaInternals.fireProbe must exist").toBe(true);
 
+    // Survive the whole 30-fire sweep: a stationary player gets killed/captured
+    // by diving enemies ~10 fires in, dropping canAct so presses stop spawning
+    // and the spawn wait times out (#260). Invulnerability isolates the
+    // input→spawn latency measurement from live combat attrition.
+    await page.evaluate(() => window.__galagaInternals!.setInvulnerable(true));
+
     const deltas: number[] = [];
 
     for (let i = 0; i < FIRE_COUNT; i++) {
