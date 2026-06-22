@@ -1363,6 +1363,30 @@ export class Engine {
       ctx.fillText("CHALLENGING STAGE", WIDTH / 2, 28);
     }
 
+    // CAPTURE banner — the keeper line for this whole game lives at
+    // landing: "the first oodim game where the tractor beam can take
+    // something from you." When the beam is armed AND the fighter is
+    // already in its grip, surface ONE word at the top of the field so
+    // the moment SPEAKS instead of going by in silence. Painted only
+    // while `player.captured===true`; once the captor dies (rescue) or
+    // the player respawns, the banner is gone. One word, top of field,
+    // matching CHALLENGING's slot — the room already knows where to
+    // look for state-keyed copy.
+    //
+    // Voice: "TAKEN" is the verb the landing line names. Not "CAPTURED"
+    // (system text, what a flag reads), not "ABDUCTED" (cartoon). Past
+    // tense + indefinite — done to you, undecided whether you get it
+    // back. Player owns the rescue, the word names the loss.
+    //
+    // NOT a contract change: the boolean `player.captured` is already
+    // the truth. This is paint only.
+    if (this.state.player.captured) {
+      ctx.fillStyle = "#ff7ab0";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("TAKEN", WIDTH / 2, 28);
+    }
+
     // PERFECT! banner — painted briefly after a perfect challenging clear.
     if (
       this.perfectBannerUntil !== null &&
