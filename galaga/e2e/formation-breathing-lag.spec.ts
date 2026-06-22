@@ -3,31 +3,52 @@
 // Asserts the three properties from #241 against the row-lagged
 // `breathingSway(currentTick, row)` helper in galaga/src/game/enemies.ts.
 // Runs in the main `galaga` lane — no env gate, no `continue-on-error`
-// diagnostic job. Cold-CI traces (already enabled via
-// `trace: 'retain-on-failure'` in galaga/playwright.config.ts) surface the
-// failing expect() line if this ever flakes.
+// diagnostic job. Cold-CI traces (`trace: 'retain-on-failure'` in
+// galaga/playwright.config.ts) surface the failing expect() line if this
+// ever flakes — that artifact is what #255 explicitly told us to produce
+// before tightening tolerances again.
 //
 // PROPERTIES CHECKED (from #241):
 //   (A) row 0 and row 4 differ in `x` at some tick within the sampling
 //       window — proves the per-row lag is actually firing.
 //   (B) max |Δx_row0_vs_row4| ≤ generous envelope around the theoretical
-//       2·AMP·sin(4·LAG·ω/2) ≈ 2.51 px at LAG_TICKS=2 (AMP=12,
-//       ω=2π/240) — catches an accidental amplification (e.g. someone
-//       raises LAG_TICKS or AMP without updating this constant).
-//   (C) every formation enemy stays within ±BREATHE_AMPLITUDE of its
-//       home x — the lag is a phase offset, not an amplitude bump.
+//       2·AMP·sin(rows·LAG·ω/2) ≈ 2.51 px at LAG_TICKS=2 — catches an
+//       accidental amplification (e.g. someone bumps LAG_TICKS or AMP).
+//   (C) every sampled formation-anchor stays within ±BREATHE_AMPLITUDE of
+//       its home x — the lag is a phase offset, not an amplitude bump.
 //
-// SAMPLING:
-//   - Anchor on col=1 (not col=0): col=0 row=0 is the first scheduled
-//     diver (roster idx 0 fires at firstDiveTick), and it peels off
-//     before the sampling window can characterize the wave.
-//   - Both col=1 anchors share home_x so recovered Δx is pure row-lag
-//     with no column-spacing confound.
-//   - Sampling window between formation-settle (~tick 246) and col=1
-//     row=4's first dive — ~345 ticks ≈ 5.75s ≈ 1.44 breathing cycles.
+// FAILURE-MODE NOTES (the previous draft's collapse, distilled):
+//   - The public `Enemy` snapshot is just `{id,kind,state,x,y,damaged}`.
+//     No `col`/`row` field. Earlier drafts tried to re-derive the
+//     column by clustering x values per tick — that heuristic flips
+//     mid-window when a diver peels off (`firstDiveTick` = 276; the
+//     sampling window starts around tick 246 + a few rAFs, so dives
+//     FIRE during sampling). When the picked column changes, the
+//     `homeX` estimate (mean of the two x's) jumps, and assertion (C)
+//     pops on the residual offset.
+//   - The fix: lock onto two SPECIFIC enemy ids ONCE at sampling
+//     start, picked by their home-position fingerprint (col=1 row=0
+//     and col=1 row=4 both sit at home_x ≈ 90 — boss kind at y≈70,
+//     bee kind at y≈158). Track those ids only. If either leaves
+//     `state==='formation'` (got picked for a dive), the test STOPS
+//     sampling — we don't try to keep going with a stale id.
+//   - Assertion (C) anchors on the known constant home_x (90), not a
+//     per-tick estimate. The number is derived from the engine's
+//     `formationSlot()` math: (WIDTH=320 − (COLS=8 − 1)·COL_SPACING=28)/2
+//     + col·28 = 62 + col·28. col=1 ⇒ 90.
 //
-// BOOT / READINESS — mirrors hit-juice.spec.ts exactly; this is the only
-// sequence proven stable on cold CI.
+// SAMPLING WINDOW:
+//   - From whatever tick sampling starts (just after formation-settled)
+//     until either anchor leaves `formation`, or 8s wall clock, or 200
+//     game ticks elapse. col=0 row=0 is orderedIndexes[0] = roster slot
+//     0, so it dives FIRST (at tick 276) — col=1's row 0 and row 4
+//     are NOT slot 0 (they're slots 5 and 9), so they survive past the
+//     first dive trigger.
+//   - At LAG_TICKS=2 and ω=2π/240, Δx peaks every (240/2 =) 120 ticks
+//     — well within 200. (A) is satisfied with ≥1 cycle of sampling.
+//
+// BOOT / READINESS — mirrors hit-juice.spec.ts / boss-two-hit.spec.ts
+// EXACTLY; the only sequence proven stable on cold CI.
 
 import { expect, test } from "@playwright/test";
 
@@ -40,19 +61,19 @@ declare global {
   }
 }
 
-// Constants must match galaga/src/game/enemies.ts. Duplicated here (not
-// imported) so the spec reads as a contract — if someone tightens
-// BREATHE_AMPLITUDE without updating this number, the spec catches it.
+// Engine constants duplicated here (not imported) so the spec reads as a
+// contract. If someone changes BREATHE_AMPLITUDE or LAG_TICKS without
+// updating these, the spec catches the drift.
 const BREATHE_AMPLITUDE = 12;
 const BREATHE_OMEGA = (2 * Math.PI) / 240;
-// Expected per-row lag (ticks). The #241 fix makes deeper rows lag the
-// top row by `row * LAG_TICKS` ticks. 2 ticks/row matches the engine's
-// BREATHE_ROW_PHASE_LAG_TICKS.
 const LAG_TICKS = 2;
+// Home x of the col=1 anchors. Derived from formationSlot(): startX =
+// (WIDTH=320 − (COLS=8 − 1)·COL_SPACING=28)/2 = 62; col=1 ⇒ 62 + 28 = 90.
+const COL1_HOME_X = 90;
+// Home y of the row=0 and row=4 anchors. FORMATION_TOP_Y=70, ROW_SPACING=22.
+const ROW0_HOME_Y = 70;
+const ROW4_HOME_Y = 70 + 4 * 22; // 158
 
-/** Boot the game out of READY and wait for the full enemy formation to
- *  settle.  Copied (intentionally) from hit-juice.spec.ts / boss-two-hit
- *  .spec.ts — the only readiness sequence proven stable on cold CI. */
 async function bootToSettledFormation(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.waitForFunction(() => Boolean(window.__galaga));
@@ -77,111 +98,124 @@ async function bootToSettledFormation(page: import("@playwright/test").Page) {
 }
 
 test.describe("Galaga formation breathing per-row phase lag (#241)", () => {
-  test("row 0 and row 4 desync visibly within sampling window (lag is firing)", async ({
+  test("row 0 and row 4 desync within sampling window, stay within ±amplitude", async ({
     page,
   }) => {
     await bootToSettledFormation(page);
 
-    // Sample the col=1 anchors over ~1.5 breathing cycles (~360 ticks).
-    // We collect (tickGame, x_row0, x_row4) tuples by reading
-    // window.__galaga.enemies between rAF yields. Both anchors share
-    // `home_x` so Δx is pure phase lag.
-    //
-    // We give the sampler up to 8s of wall clock (cold CI is slow); the
-    // sampling LOOP exits as soon as we have ≥ 60 distinct game-tick
-    // samples spanning ≥ 200 game ticks (enough resolution for the
-    // amplitude / desync assertions below).
-    const samples = await page.evaluate(async () => {
-      const out: Array<{ tick: number; x0: number; x4: number; homeX: number }> = [];
-      const startTick = window.__galaga!.tick;
-      const deadline = performance.now() + 8000;
-      let lastSampledTick = -1;
-      while (performance.now() < deadline) {
+    // Lock onto two specific enemies BY ID at sampling start. We pick:
+    //   - the formation enemy whose y is closest to ROW0_HOME_Y AND
+    //     whose home-x sits closest to COL1_HOME_X (estimated by
+    //     stripping the current sway — but since we just saw the
+    //     formation settle, the breathing offset can be up to ±AMP, so
+    //     we accept any enemy whose x is within AMP+2 of COL1_HOME_X).
+    //   - the formation enemy whose y is closest to ROW4_HOME_Y under
+    //     the same x window.
+    // If either can't be found, the readiness gate is broken — surface
+    // that distinctly rather than failing later on a Δx assertion.
+    const targets = await page.evaluate(
+      ({ col1X, row0Y, row4Y, ampPlus }) => {
         const s = window.__galaga!;
-        if (s.tick !== lastSampledTick) {
-          // We don't have a public "give me the col=1 row=N formation enemy"
-          // API — instead, find any two formation enemies whose home_x is
-          // identical (column match) and whose y ordering reveals their
-          // rows.  Across the spec's lifecycle, col=1 row=0 + col=1 row=4
-          // are the two formation enemies sharing the smallest x AND
-          // having the largest y delta.  Diving / non-formation enemies
-          // are excluded.
-          const formation = s.enemies.filter((e) => e.state === "formation");
-          // Bucket by rounded home-x to find a column.  Column x's are
-          // 28px apart, so rounding to the nearest 4 collapses them
-          // robustly without confusing adjacent columns.
-          const byCol = new Map<number, typeof formation>();
-          for (const e of formation) {
-            const key = Math.round(e.x / 4) * 4;
-            const arr = byCol.get(key) ?? [];
-            arr.push(e);
-            byCol.set(key, arr);
-          }
-          // Pick the column with at least 2 members whose y span is
-          // widest — that's our target (most likely col=1 if it still has
-          // both row 0 and row 4).
-          let bestCol: typeof formation | null = null;
-          let bestSpan = -1;
-          for (const arr of byCol.values()) {
-            if (arr.length < 2) continue;
-            const ys = arr.map((e) => e.y);
-            const span = Math.max(...ys) - Math.min(...ys);
-            if (span > bestSpan) {
-              bestSpan = span;
-              bestCol = arr;
+        const formation = s.enemies.filter((e) => e.state === "formation");
+        const inCol1 = formation.filter(
+          (e) => Math.abs(e.x - col1X) <= ampPlus,
+        );
+        const row0 = inCol1.find((e) => Math.abs(e.y - row0Y) <= 2);
+        const row4 = inCol1.find((e) => Math.abs(e.y - row4Y) <= 2);
+        return {
+          row0Id: row0?.id ?? null,
+          row4Id: row4?.id ?? null,
+          inCol1Count: inCol1.length,
+        };
+      },
+      {
+        col1X: COL1_HOME_X,
+        row0Y: ROW0_HOME_Y,
+        row4Y: ROW4_HOME_Y,
+        ampPlus: BREATHE_AMPLITUDE + 2,
+      },
+    );
+    expect(
+      targets.row0Id,
+      `could not find col=1 row=0 anchor (inCol1Count=${targets.inCol1Count})`,
+    ).not.toBeNull();
+    expect(
+      targets.row4Id,
+      `could not find col=1 row=4 anchor (inCol1Count=${targets.inCol1Count})`,
+    ).not.toBeNull();
+
+    // Sample those two ids until one leaves formation, 200 game ticks
+    // pass, or 8s wall clock elapses (cold-CI safety).
+    const samples = await page.evaluate(
+      async ({ row0Id, row4Id }) => {
+        const out: Array<{ tick: number; x0: number; x4: number }> = [];
+        const startTick = window.__galaga!.tick;
+        const deadline = performance.now() + 8000;
+        let lastSampledTick = -1;
+        let bailReason: string | null = null;
+        while (performance.now() < deadline) {
+          const s = window.__galaga!;
+          if (s.tick !== lastSampledTick) {
+            const r0 = s.enemies.find((e) => e.id === row0Id);
+            const r4 = s.enemies.find((e) => e.id === row4Id);
+            if (!r0 || !r4) {
+              bailReason = "anchor removed from roster";
+              break;
             }
-          }
-          if (bestCol && bestCol.length >= 2) {
-            bestCol.sort((a, b) => a.y - b.y);
-            const top = bestCol[0]!;
-            const bot = bestCol[bestCol.length - 1]!;
-            // home_x derived as the AVERAGE of the two x's — under pure
-            // phase lag of equal amplitude, top.x + bot.x is centered on
-            // 2·home_x ± small. (For diagnostic purposes we just need a
-            // working estimate; the precise value isn't asserted.)
-            const homeX = (top.x + bot.x) / 2;
-            out.push({ tick: s.tick, x0: top.x, x4: bot.x, homeX });
+            if (r0.state !== "formation" || r4.state !== "formation") {
+              // One of our anchors started diving — stop. We sampled
+              // until the moment it left formation, which is exactly
+              // what we want.
+              bailReason = `anchor left formation: row0=${r0.state}, row4=${r4.state}`;
+              break;
+            }
+            out.push({ tick: s.tick, x0: r0.x, x4: r4.x });
             lastSampledTick = s.tick;
+            if (s.tick - startTick >= 200) break;
           }
-          // Exit once we have enough samples to characterize the wave.
-          if (out.length >= 60 && s.tick - startTick >= 200) break;
+          await new Promise((r) => requestAnimationFrame(() => r(null)));
         }
-        await new Promise((r) => requestAnimationFrame(() => r(null)));
-      }
-      return out;
-    });
+        return { samples: out, bailReason };
+      },
+      { row0Id: targets.row0Id, row4Id: targets.row4Id },
+    );
 
-    // Sanity floor — if we didn't sample anything, the readiness gate
-    // is broken, not the engine.  Surface that distinctly.
-    expect(samples.length).toBeGreaterThanOrEqual(20);
+    // Sanity floor — fewer than 30 distinct-tick samples means the loop
+    // wasn't ticking, not that the engine is wrong.
+    expect(
+      samples.samples.length,
+      `not enough samples (bail=${samples.bailReason ?? "none"})`,
+    ).toBeGreaterThanOrEqual(30);
 
-    // (A) row 0 and row 4 differ in `x` at some tick.  If the per-row
-    // lag isn't firing, both rows compute identical sway and Δx ≡ 0 for
-    // every sample.  We require at least one sample with |Δx| > 0.1 px
-    // (well under the theoretical 2.51 px peak; this is purely a
-    // "lag is non-zero" signal, not a magnitude check).
-    const deltas = samples.map((s) => Math.abs(s.x0 - s.x4));
+    const deltas = samples.samples.map((s) => Math.abs(s.x0 - s.x4));
     const maxDelta = Math.max(...deltas);
+
+    // (A) The two rows desync at some point. If LAG_TICKS were 0, every
+    // sample would have Δx ≡ 0. 0.1 px is well under the ~2.51 px peak.
     expect(maxDelta).toBeGreaterThan(0.1);
 
-    // (B) max |Δx| stays under a generous envelope around the theoretical
-    // peak.  Theory: 2·AMP·sin(rows·LAG·ω/2) with rows=4, LAG=LAG_TICKS,
-    // ω=BREATHE_OMEGA.  Adding ~25% headroom for sample-time jitter and
-    // floating-point gives the cap.  If the engine raises LAG_TICKS or
-    // AMP without updating these constants, this catches it.
+    // (B) Δx stays inside a generous envelope around the theoretical
+    // peak: 2·AMP·sin(rows · LAG · ω / 2), rows=4. 1.25× headroom for
+    // floating-point and tick rounding.
     const theoreticalPeak =
       2 * BREATHE_AMPLITUDE * Math.sin((4 * LAG_TICKS * BREATHE_OMEGA) / 2);
     const cap = theoreticalPeak * 1.25;
     expect(maxDelta).toBeLessThanOrEqual(cap);
 
-    // (C) every sample's row-0 and row-4 x stays within ±AMP of home_x.
-    // Lag is a phase offset, not an amplitude bump — neither row should
-    // ever swing further than the breathing amplitude.  Tolerance: +1 px
-    // for the home_x estimate noise.
-    const ampCap = BREATHE_AMPLITUDE + 1;
-    for (const s of samples) {
-      expect(Math.abs(s.x0 - s.homeX)).toBeLessThanOrEqual(ampCap);
-      expect(Math.abs(s.x4 - s.homeX)).toBeLessThanOrEqual(ampCap);
+    // (C) Each anchor stays within ±AMP of its known home_x. The lag is
+    // a PHASE offset, not an amplitude bump. Tolerance: +0.5px for
+    // floating-point. Anchor on the constant COL1_HOME_X (90), NOT a
+    // per-tick estimate — that's the trap the prior draft fell into.
+    const ampCap = BREATHE_AMPLITUDE + 0.5;
+    for (const s of samples.samples) {
+      expect(
+        Math.abs(s.x0 - COL1_HOME_X),
+        `row0 swung beyond ±amp at tick ${s.tick}`,
+      ).toBeLessThanOrEqual(ampCap);
+      expect(
+        Math.abs(s.x4 - COL1_HOME_X),
+        `row4 swung beyond ±amp at tick ${s.tick}`,
+      ).toBeLessThanOrEqual(ampCap);
     }
   });
 });
