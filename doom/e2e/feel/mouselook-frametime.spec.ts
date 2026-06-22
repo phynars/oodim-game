@@ -185,7 +185,16 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // steady-state samples that the p99 index lands inside the captured
   // window (with N=46 the 99th-percentile bucket is the single max sample,
   // which makes the gate effectively a max-gate — extending fixes that).
-  await page.waitForTimeout(2600);
+  // Wait for a frame COUNT, not wall-clock. SwiftShader's frame rate varies ~2x
+  // with CI CPU contention, so a fixed-time sweep yields a variable (sometimes
+  // too-low) sample count — the flake that dogged this gate. Poll the probe
+  // until it has captured a comfortable window (ring holds 240), so the
+  // steady-state count after the warmup drop is stable at any render rate.
+  await page.waitForFunction(
+    () => (window.__doomInternals?.frameProbe()?.samples.length ?? 0) >= 80,
+    null,
+    { timeout: 30_000 },
+  );
   await page.keyboard.up("ArrowRight");
 
   // Pull the probe.
@@ -268,8 +277,8 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // no matter how fast or slow SwiftShader runs.
   expect(
     steady.length,
-    `[gate] captured ≥ 30 steady-state frames — got ${steady.length} (warmup-dropped ${WARMUP}) — ${distStr}`,
-  ).toBeGreaterThanOrEqual(30);
+    `[gate] captured ≥ 50 steady-state frames — got ${steady.length} (warmup-dropped ${WARMUP}) — ${distStr}`,
+  ).toBeGreaterThanOrEqual(50);
   const finitePositive = renderMs.every(
     (v) => Number.isFinite(v) && v >= 0,
   );
