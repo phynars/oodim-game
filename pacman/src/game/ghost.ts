@@ -33,6 +33,12 @@ export type GhostName = "blinky" | "pinky" | "inky" | "clyde";
 /** Duration of a single frightened activation, in ticks. Arcade-canonical
  *  ~6s at 60 Hz. Eating another power pellet RE-arms it (resets to this). */
 export const FRIGHTENED_TICKS = 360;
+/** Issue #224 — house-release emerge envelope length, in ticks. 18 ticks
+ *  @ 60Hz = 300ms. Fits the pacman "graceful, not punchy" house tone
+ *  (contrast with galaga formation entry's bezier overshoot in #126).
+ *  Renderer reads emergeProgress = 1 - _emergeTicks/EMERGE_TICKS and
+ *  applies an ease-out-cubic alpha + scale envelope. */
+export const EMERGE_TICKS = 18;
 /** Ghost-house revive tile — where an 'eaten' ghost respawns and re-enters
  *  the roster. Matches the Pinky/Inky/Clyde house anchor row. */
 export const REVIVE_TILE = { x: 13, y: 14 } as const;
@@ -46,6 +52,13 @@ export interface GhostState {
   /** Tile row. */
   y: number;
   mode: GhostMode;
+  /** Issue #224 — 0 → 1 over EMERGE_TICKS frames after a dot-counter
+   *  house release. 1 = settled (no envelope active). Renderer uses
+   *  this for the fade-in + scale-up envelope on the gate snap.
+   *  Blinky boots with emergeProgress=1 (no fade on initial roster
+   *  spawn); eaten→revive does NOT re-arm (eyes glide is already
+   *  smooth). */
+  emergeProgress: number;
 }
 
 /** Where a ghost is in its lifecycle. "house" = waiting inside the
@@ -64,6 +77,11 @@ export interface GhostInternal extends GhostState {
   status: GhostStatus;
   /** Dot-counter threshold for leaving the house. Blinky = 0. */
   releaseAtPellets: number;
+  /** Issue #224 — ticks remaining in the house-release emerge animation.
+   *  Set to EMERGE_TICKS the tick a ghost is promoted from "house"→"out";
+   *  decays linearly to 0. Renderer reads
+   *  emergeProgress = 1 - _emergeTicks/EMERGE_TICKS as a 0→1 phase. */
+  _emergeTicks: number;
 }
 
 type Dir = "up" | "down" | "left" | "right";
@@ -237,6 +255,10 @@ export function spawnGhosts(): GhostInternal[] {
     _progress: 0,
     status,
     releaseAtPellets: RELEASE_THRESHOLDS[name],
+    // Issue #224 — no emerge envelope on boot. Blinky's emergeProgress
+    // publishes as 1 immediately (1 - 0/EMERGE_TICKS = 1); the other
+    // three arm this only when their dot-counter threshold crosses.
+    _emergeTicks: 0,
   });
   return [
     make("blinky", "out", "left"),
@@ -371,9 +393,22 @@ export function tickGhost(
       g.status = "out";
       g.lastDir = "left";
       g._progress = 0;
+      // Issue #224 — arm the emerge envelope. The very same tick this
+      // ghost flips to "out", publicGhostView publishes
+      // emergeProgress = 1 - EMERGE_TICKS/EMERGE_TICKS = 0 — the
+      // renderer reads "nearly invisible, small" and the next
+      // EMERGE_TICKS frames decay this to "fully present".
+      g._emergeTicks = EMERGE_TICKS;
     }
     return;
   }
+
+  // Issue #224 — decay the emerge envelope once per tick the ghost is
+  // out. Linear count-down (same shape as clearTicks #183 / deathTicks
+  // #171). Eaten→revive intentionally does NOT re-arm this (the eyes
+  // glide is already smooth at EATEN_SPEED_PER_TICK; re-fading on
+  // revive would regress that).
+  if (g._emergeTicks > 0) g._emergeTicks -= 1;
 
   // 3. Advance sub-tile progress at the mode-appropriate speed.
   //    `speedMultiplier` lets the engine bump baseline ghost speed
@@ -430,7 +465,16 @@ export function tickGhost(
 
 /** Strip a GhostInternal down to the public contract shape. */
 export function publicGhostView(g: GhostInternal): GhostState {
-  return { name: g.name, x: g.x, y: g.y, mode: g.mode };
+  return {
+    name: g.name,
+    x: g.x,
+    y: g.y,
+    mode: g.mode,
+    // Issue #224 — 0 the tick of release (1 - 18/18), 1 after the
+    // envelope settles (1 - 0/18). Blinky boots with _emergeTicks=0
+    // so this is 1 from the first publish.
+    emergeProgress: 1 - g._emergeTicks / EMERGE_TICKS,
+  };
 }
 
 /** Back-compat alias — older code paths still importing `spawnBlinky`. */

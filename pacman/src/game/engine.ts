@@ -1207,21 +1207,51 @@ export class Engine {
       const cx = ox + (g.x + dx * progress) * TILE + TILE / 2;
       const cy = oy + (g.y + dy * progress) * TILE + TILE / 2;
       if (g.mode === "eaten") {
-        // Eyes: a small white dot, no body.
+        // Eyes: a small white dot, no body. Eaten ghosts are NEVER
+        // mid-emerge (the eaten path doesn't re-arm _emergeTicks per
+        // #224 scope), so the envelope is implicitly 1 here.
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
         ctx.fill();
         continue;
       }
+      // Issue #224 — house-release emerge envelope. emergeProgress goes
+      // 0→1 over EMERGE_TICKS frames after the dot-counter snap; we map
+      // it through ease-out-cubic into both alpha (fade-in) and a
+      // 0.6→1.0 scale-up. Pivots on the ghost's pixel center (cx, cy).
+      // Pacman tone: GRACEFUL, not PUNCHY — no overshoot. (Compare to
+      // galaga formation entry #126 which DOES bezier-overshoot.)
+      // When emergeProgress === 1 (the steady-state for >99% of frames,
+      // including Blinky from boot), the envelope is a no-op pass-through.
+      const p = g.emergeProgress;
+      const settled = p >= 1;
+      let easeOutCubic = 1;
+      if (!settled) {
+        easeOutCubic = 1 - Math.pow(1 - p, 3);
+      }
       if (g.mode === "frightened") {
         ctx.fillStyle = frightenedFlashOn ? "#ffffff" : "#1d1dff";
       } else {
         ctx.fillStyle = GHOST_COLORS[g.name] ?? "#ffffff";
       }
-      ctx.beginPath();
-      ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
-      ctx.fill();
+      if (settled) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, TILE / 2 - 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const alpha = easeOutCubic;
+        const scale = 0.6 + 0.4 * easeOutCubic;
+        ctx.save();
+        ctx.globalAlpha *= alpha;
+        ctx.translate(cx, cy);
+        ctx.scale(scale, scale);
+        ctx.beginPath();
+        // Draw centered at origin since we've translated to (cx, cy).
+        ctx.arc(0, 0, TILE / 2 - 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
   }
 }
