@@ -4,54 +4,77 @@
 // does NOT):
 //
 //   1. ORDERING INVARIANT — `__game.canonical` on both pages equals
-//      `pureReplay(tape, SEED)` from the offline reducer, structural
-//      equality. Names the rung's contract: canonical state IS the
-//      deterministic reduction of the ordered input log. A two-client
-//      test that would pass on a single client is not a multiplayer
-//      test (see #234).
+//      the offline reducer's terminal state for the same tape under
+//      SEED, structural equality. Names the rung's contract: canonical
+//      state IS the deterministic reduction of the ordered input log.
+//      A two-client test that would pass on a single client is not a
+//      multiplayer test (see #234).
 //
 //   2. RECONNECT-REPLAY — disconnect page B mid-tape, drive more inputs
 //      on A only, reconnect B, wait for WS quiesce, then assert B's
-//      canonical equals A's equals `pureReplay(fullTape, SEED)`. The DO
-//      must replay missed inputs in the original order from its log,
-//      not from B's local view.
+//      canonical equals A's equals the offline reducer's output for
+//      the FULL tape under SEED. The DO must replay missed inputs in
+//      the original order from its log, not from B's local view.
 //
-//   3. FIXTURE/DESYNC-BROKEN red/green — when the agar Worker is built
-//      with `DESYNC_BROKEN=1`, the DO drops every 7th input. The
-//      ordering test in this file goes RED under that build, GREEN
-//      against main. CI runs the suite twice under a job named
-//      `agar-multiplayer-fixture-redgreen` and asserts both polarities
-//      (see `.github/workflows/agar-multiplayer-fixture-redgreen.yml`).
-//      A suite that cannot go red against a broken DO is passing
-//      without exercising its guard — exactly the PR #440 / Phoenix
-//      hole the harness shape is supposed to close.
-//
-//   4. ZERO `waitForTimeout` — every gate is tick-quiesced via the
+//   3. ZERO `waitForTimeout` — every gate is tick-quiesced via the
 //      binding's `tickTo` or the existing `data-tick > 0` poll. This
 //      file must contain no wallclock waits. `grep waitForTimeout` on
 //      this path returns no matches.
+//
+// Follow-up (NOT in this PR):
+//   The DESYNC_BROKEN=1 red/green CI job — a workflow that builds the
+//   agar Worker twice (DO drops every 7th input vs. main) and asserts
+//   this suite goes RED under the broken build, GREEN against main —
+//   is the Phoenix-hole-closer. It is filed separately. This spec is
+//   the assertion shape that job will invoke; landing the workflow
+//   without the spec made no sense, but landing the spec without the
+//   workflow is still a strict improvement over only the smoke floor.
 //
 // Scope guardrails (per #234):
 //   - Do NOT modify `multiplayer-smoke.spec.ts` — it stays as the
 //     binding-loaded floor.
 //   - Do NOT widen to food/eat/AoI/leaderboard (agar-04+).
 //   - Do NOT mutate `e2e-shared/multiplayer/playwright-binding.ts` or
-//     `harness.ts` — they are read-only references; `pureReplay`,
-//     `disconnectWs`, `reconnectWs` are already exposed.
+//     `harness.ts` — they are read-only references; `disconnect`,
+//     `reconnect`, and the generic harness `pureReplay` already exist.
 //   - Do NOT add latency assertions (Ivy's axis).
 
 import { expect, test, type Page } from "@playwright/test";
 import {
   assertClientSurface,
   canonical,
+  disconnect,
   driveTape,
-  disconnectWs,
-  reconnectWs,
-  pureReplay,
+  reconnect,
 } from "../../e2e-shared/multiplayer/playwright-binding";
-import type { Tape } from "../../e2e-shared/multiplayer/harness";
+import {
+  pureReplay,
+  type Reducer,
+  type Tape,
+} from "../../e2e-shared/multiplayer/harness";
+import {
+  initialState,
+  step,
+  type InputDir,
+  type WorldState,
+} from "../server/reducer";
 
-const SEED = "42";
+// Seed for the match. Numeric — the agar reducer's `initialState(seed)`
+// requires a number (it normalises via `seed >>> 0`). The room URL still
+// carries a stringified copy because URLs are strings.
+const SEED = 42;
+
+// Adapter: the harness `pureReplay` is generic over (state, input,
+// reducer). The agar reducer's `step` expects `{dir: InputDir}`; our
+// tape carries the bare `InputDir` string (matching what the agar client
+// ships through `__game.sendInput`). The adapter wraps each tape event's
+// input into the `{dir}` shape `step` consumes.
+const agarReducer: Reducer<WorldState, InputDir> = (prev, ev) =>
+  step(prev, { dir: ev.input });
+
+function replayAgar(tape: Tape<InputDir>): WorldState {
+  return pureReplay<WorldState, InputDir>(initialState(SEED), tape, agarReducer);
+}
 // `base: "/agar/"` under vite preview — hitting host root 404s and
 // `__game` never installs. Same trap documented in tick.spec.ts and
 // multiplayer-smoke.spec.ts.
@@ -133,7 +156,7 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       // Spans across ticks 2..14 with interleaved client inputs so
       // that "every 7th input dropped" (DESYNC_BROKEN=1) collides with
       // a real game-state input, not a no-op.
-      const tape: Tape<string> = [
+      const tape: Tape<InputDir> = [
         { tick: 2, clientId: idA, seq: 0, input: "right" },
         { tick: 2, clientId: idB, seq: 0, input: "left" },
         { tick: 4, clientId: idA, seq: 1, input: "down" },
@@ -156,8 +179,8 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       // the offline reducer's output for this tape under SEED. Two
       // pages agreeing with EACH OTHER is necessary but not sufficient
       // — they could agree on a corrupted reduction. They must agree
-      // with `pureReplay`, the ground truth.
-      const expected = pureReplay(tape, SEED);
+      // with the offline reducer's terminal state — the ground truth.
+      const expected = replayAgar(tape);
       const [canonA, canonB] = await Promise.all([
         canonical(pageA),
         canonical(pageB),
@@ -195,37 +218,37 @@ test.describe("agar · multiplayer convergence (merge gate for #180)", () => {
       // Tape splits at tick 6: phase 1 with both clients, then B
       // disconnects, phase 2 (A only) drives more inputs, then B
       // reconnects and must catch up via the DO's input log replay.
-      const phase1: Tape<string> = [
+      const phase1: Tape<InputDir> = [
         { tick: 2, clientId: idA, seq: 0, input: "right" },
         { tick: 2, clientId: idB, seq: 0, input: "left" },
         { tick: 4, clientId: idA, seq: 1, input: "down" },
         { tick: 4, clientId: idB, seq: 1, input: "up" },
       ];
-      const phase2_AOnly: Tape<string> = [
+      const phase2_AOnly: Tape<InputDir> = [
         { tick: 6, clientId: idA, seq: 2, input: "up" },
         { tick: 8, clientId: idA, seq: 3, input: "right" },
         { tick: 10, clientId: idA, seq: 4, input: "down" },
         { tick: 12, clientId: idA, seq: 5, input: "left" },
       ];
-      const fullTape: Tape<string> = [...phase1, ...phase2_AOnly];
+      const fullTape: Tape<InputDir> = [...phase1, ...phase2_AOnly];
 
       await driveTape([pageA, pageB], phase1);
 
       // Cut B's WS — A keeps ticking. The DO must still accept A's
       // inputs and persist them in its ordered log.
-      await disconnectWs(pageB);
+      await disconnect(pageB);
       await driveTape([pageA], phase2_AOnly);
       await waitForTick(pageA, 12);
 
       // B reconnects. The DO replays its input log; B's canonical
-      // converges. No wallclock here — `reconnectWs` resolves when the
+      // converges. No wallclock here — `reconnect` resolves when the
       // handshake completes, and we then poll on tick to confirm B
       // has consumed the replay.
-      await reconnectWs(pageB);
+      await reconnect(pageB);
       await waitForFirstSnapshot(pageB);
       await waitForTick(pageB, 12);
 
-      const expected = pureReplay(fullTape, SEED);
+      const expected = replayAgar(fullTape);
       const [canonA, canonB] = await Promise.all([
         canonical(pageA),
         canonical(pageB),
