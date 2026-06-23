@@ -163,6 +163,89 @@ export const EXTRA_LIFE_SCORE = 10000;
  *  beat. Reuses the READY!/GAME OVER status-overlay slot. */
 export const EXTRA_BANNER_TICKS = 90;
 
+/** Issue #305 — arcade canon's mid-level give-to-player beat. The fruit
+ *  appears in the slot under the ghost house at two dot-count thresholds
+ *  per level (70 dots eaten, 170 dots eaten), lingers for a window, then
+ *  vanishes. Eating it pops the canon score for the current level. The
+ *  ONLY mid-level give in a game otherwise about take.
+ *
+ *  Companion to #295 (EXTRA at 10k). Together they restore the full
+ *  give-to-player vocabulary the canon assumes. */
+export const FRUIT_FIRST_DOTS = 70;
+export const FRUIT_SECOND_DOTS = 170;
+/** Fruit on-screen window: ~120 ticks ≈ 2s at 60Hz. The sprite IS the
+ *  timer — no separate countdown UI. */
+export const FRUIT_LIFETIME_TICKS = 120;
+/** Fruit spawn tile — under the ghost house, on the open corridor row
+ *  between the house door and Pac's spawn. Single canonical tile;
+ *  player walks onto it to claim the score. */
+export const FRUIT_SPAWN_X = 13;
+export const FRUIT_SPAWN_Y = 17;
+/** Per-level canon fruit score table. Level 1 → 100 (cherry), level 2 →
+ *  300 (strawberry), then 500/700/1000/2000/3000/5000 — arcade values.
+ *  Beyond level 8 holds at 5000 (canon "key" plateau). The sprite/skin
+ *  is implicit in the level; the player-facing word stays FRUIT either
+ *  way (per the rejected-options table in #305). */
+export const FRUIT_SCORES: ReadonlyArray<number> = [
+  100, 300, 500, 500, 700, 700, 1000, 1000, 2000, 2000, 3000, 3000, 5000,
+];
+/** Fruit kind for a given 1-indexed level — cosmetic only (the banner
+ *  word is always `FRUIT`). Clamped to the final tier. */
+export type FruitKind =
+  | "cherry"
+  | "strawberry"
+  | "orange"
+  | "apple"
+  | "melon"
+  | "galaxian"
+  | "bell"
+  | "key";
+export const FRUIT_KINDS: ReadonlyArray<FruitKind> = [
+  "cherry",
+  "strawberry",
+  "orange",
+  "orange",
+  "apple",
+  "apple",
+  "melon",
+  "melon",
+  "galaxian",
+  "galaxian",
+  "bell",
+  "bell",
+  "key",
+];
+/** Banner hold duration after fruit spawns. Matches the on-screen window
+ *  so the word and the sprite share a heartbeat. Reuses the
+ *  READY!/EXTRA/GAME OVER status-overlay slot. */
+export const FRUIT_BANNER_TICKS = FRUIT_LIFETIME_TICKS;
+
+/** Issue #305 — the four canon banner strings, exported so a future
+ *  taste-pass updates one place. Loss has many words; reward has one.
+ *  All four ride the same yellow status-overlay slot in render. */
+export const BANNER_READY = "READY!";
+export const BANNER_EXTRA = "EXTRA";
+export const BANNER_FRUIT = "FRUIT";
+export const BANNER_GAME_OVER = "GAME OVER";
+
+/** Issue #305 — fruit state on the board. `null` when no fruit is active;
+ *  populated when the dot-count threshold trips. The sprite IS the timer:
+ *  `ticksRemaining` counts down each `update()`; at 0 the fruit disarms
+ *  (back to `null`) without any banner-of-vanish. Eating disarms early
+ *  via the same `null` write, plus a score-pop popup (no banner-of-eat). */
+export interface FruitState {
+  /** Tile column (always FRUIT_SPAWN_X in this slice). */
+  x: number;
+  /** Tile row (always FRUIT_SPAWN_Y in this slice). */
+  y: number;
+  /** Cosmetic sprite identity for this level. Banner word stays FRUIT. */
+  kind: FruitKind;
+  /** Canon score the player claims by walking onto the fruit tile. */
+  value: number;
+  /** Ticks remaining until auto-disarm. Decrements once per `update()`. */
+  ticksRemaining: number;
+}
+
 export interface GameState {
   /** High-level lifecycle. Boots to 'ready'. */
   status: GameStatus;
@@ -200,6 +283,30 @@ export interface GameState {
    *  decrements once per `update()`. Renderer paints the EXTRA string
    *  in the existing READY!/GAME OVER slot while > 0. */
   extraLifeBanner: number;
+  /** Issue #305 — total pellets eaten this level. Increments on every
+   *  pellet / power-pellet eat in tickPac. Drives the two canon fruit
+   *  spawn thresholds (FRUIT_FIRST_DOTS = 70, FRUIT_SECOND_DOTS = 170).
+   *  Resets to 0 in handleLevelWon() — each level gets its own pair of
+   *  fruit appearances, per arcade canon. */
+  dotsEaten: number;
+  /** Issue #305 — how many fruit spawns have already armed THIS level
+   *  (0, 1, or 2). Prevents a re-trip if the player crosses the same
+   *  threshold backwards somehow, and gates the second spawn so it
+   *  fires exactly once. Resets to 0 in handleLevelWon(). */
+  fruitSpawnsThisLevel: number;
+  /** Issue #305 — active fruit on the board, or `null` if none. The
+   *  sprite IS the timer: `ticksRemaining` counts down; renderer reads
+   *  it to draw the sprite + the FRUIT banner; engine clears to `null`
+   *  on player overlap (with a score pop) OR on ticksRemaining === 0. */
+  fruit: FruitState | null;
+  /** Issue #305 — remaining ticks of the FRUIT banner overlay. Set to
+   *  `FRUIT_BANNER_TICKS` (120 ≈ 2s) the tick fruit arms; decrements
+   *  once per `update()`. Renderer paints `FRUIT` in the existing
+   *  READY!/EXTRA/GAME OVER slot while > 0. Note this can outlive the
+   *  fruit itself by zero ticks (we tie them to the same window) — and
+   *  in the eat case the banner ALSO clears immediately, because the
+   *  score-pop is the new player-facing signal, not the word. */
+  fruitBanner: number;
 }
 
 declare global {
@@ -238,5 +345,9 @@ export function initialState(): GameState {
     },
     extraLifeAwarded: false,
     extraLifeBanner: 0,
+    dotsEaten: 0,
+    fruitSpawnsThisLevel: 0,
+    fruit: null,
+    fruitBanner: 0,
   };
 }

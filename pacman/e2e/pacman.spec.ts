@@ -840,3 +840,122 @@ test("frightened-ghost eat writes hitstop + big squash + popup + 16 sparkles", a
   expect(snap.popupCount).toBeGreaterThanOrEqual(1);
   expect(snap.popup0.value).toBe(200);
 });
+
+// Issue #305 — arcade-canon mid-level give-to-player beat.
+//
+// Pac-Man's only mid-level give beat: a fruit appears under the ghost
+// house when the dot-counter crosses 70 (then again at 170), lingers
+// for ~2s, and pays a per-level canon score on overlap.
+//
+// We warp `__pac.dotsEaten = 69` directly (the field is a writable
+// runtime mirror — same shape the EXTRA test uses for `score`),
+// drive Pac east through one pellet, and assert:
+//   • `state.fruit.active`-equivalent: `state.fruit !== null` after the
+//     crossing tick, at (FRUIT_SPAWN_X, FRUIT_SPAWN_Y) with a finite
+//     `ticksRemaining` and the canon level-1 value (100 = cherry).
+//   • The banner countdown `fruitBanner` is > 0 (the FRUIT banner is
+//     armed). The literal string is owned by the render layer; the
+//     state contract is the load-bearing signal that the engine wants
+//     to paint it.
+//   • A second pellet does NOT re-arm fruit (the per-level latch holds).
+//
+// FAILS on the pre-change code (no `fruit`, `dotsEaten`, or
+// `fruitBanner` fields). PASSES once tickPac/engine wire the threshold.
+test("fruit arms on the 70-dot cross with banner countdown (one-shot per threshold)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+
+  await page.locator("canvas").click();
+
+  // Warp dotsEaten to 69. The very next pellet eat lands the counter
+  // at 70 — the canon first fruit threshold. We also clear any
+  // residual fruit state (defensive — initialState() seeds it null
+  // but a future change in boot ordering shouldn't break this test).
+  await page.evaluate(() => {
+    const s = window.__pac!;
+    s.dotsEaten = 69;
+    s.fruit = null;
+    s.fruitBanner = 0;
+    s.fruitSpawnsThisLevel = 0;
+  });
+
+  const before = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      dotsEaten: s.dotsEaten,
+      fruit: s.fruit,
+      banner: s.fruitBanner,
+    };
+  });
+  expect(before.dotsEaten).toBe(69);
+  expect(before.fruit).toBeNull();
+  expect(before.banner).toBe(0);
+
+  // Drive Pac east — from spawn (13, 23) the next pellet sits two
+  // tiles east. Eating it crosses the 70-dot threshold and arms the
+  // fruit on the same synchronous tick.
+  await page.keyboard.press("ArrowRight");
+
+  // Wait for the engine to arm the fruit. The load-bearing single
+  // signal is `state.fruit !== null` — the engine writes fruit +
+  // fruitBanner + fruitSpawnsThisLevel atomically in tickPac.
+  await page.waitForFunction(
+    () => window.__pac?.fruit !== null,
+    null,
+    { timeout: 5000 },
+  );
+
+  const after = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      dotsEaten: s.dotsEaten,
+      fruit: s.fruit,
+      banner: s.fruitBanner,
+      spawnsThisLevel: s.fruitSpawnsThisLevel,
+    };
+  });
+  expect(after.dotsEaten).toBeGreaterThanOrEqual(70);
+  expect(after.fruit).not.toBeNull();
+  // Sprite sits on the canon spawn tile.
+  expect(after.fruit!.x).toBe(13);
+  expect(after.fruit!.y).toBe(17);
+  // Level 1 canon value: 100 (cherry).
+  expect(after.fruit!.value).toBe(100);
+  expect(after.fruit!.kind).toBe("cherry");
+  // Lifetime arms to a positive countdown.
+  expect(after.fruit!.ticksRemaining).toBeGreaterThan(0);
+  // Banner arms (the engine wants to paint FRUIT in the slot).
+  expect(after.banner).toBeGreaterThan(0);
+  // First spawn this level.
+  expect(after.spawnsThisLevel).toBe(1);
+
+  // One-shot per threshold: eat another pellet (still well below 170)
+  // and confirm the fruit state isn't re-armed. We snapshot the
+  // current fruit reference (compare by ticksRemaining: it must
+  // decrease, not reset to FRUIT_LIFETIME_TICKS).
+  const beforeSecond = after.fruit!.ticksRemaining;
+  // Continue east so we eat another pellet (dotsEaten goes 70 → 71).
+  await page.waitForFunction(
+    (b) => (window.__pac?.dotsEaten ?? 0) > b,
+    after.dotsEaten,
+    { timeout: 5000 },
+  );
+  const afterSecond = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      dotsEaten: s.dotsEaten,
+      fruit: s.fruit,
+      spawnsThisLevel: s.fruitSpawnsThisLevel,
+    };
+  });
+  expect(afterSecond.dotsEaten).toBeGreaterThan(after.dotsEaten);
+  // Still exactly one spawn — the latch holds for this threshold.
+  expect(afterSecond.spawnsThisLevel).toBe(1);
+  // Fruit is still on the board (or was eaten — but it wasn't
+  // re-armed). If non-null, ticksRemaining must have only decreased.
+  if (afterSecond.fruit) {
+    expect(afterSecond.fruit.ticksRemaining).toBeLessThanOrEqual(beforeSecond);
+  }
+});

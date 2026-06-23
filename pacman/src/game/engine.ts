@@ -6,6 +6,10 @@
 // the accumulator at a constant STEP_MS. This keeps `tick` deterministic
 // across machines — the Playwright harness counts on that.
 import {
+  BANNER_EXTRA,
+  BANNER_FRUIT,
+  BANNER_GAME_OVER,
+  BANNER_READY,
   CLEAR_ANIM_TICKS,
   CLEAR_FLASH_END,
   CLEAR_PRE_PAUSE,
@@ -671,6 +675,23 @@ export class Engine {
       if (this.state.extraLifeBanner > 0) {
         this.state.extraLifeBanner -= 1;
       }
+      // Issue #305 — bleed the FRUIT banner + active fruit lifetime in
+      // lockstep. Same gating rationale as the EXTRA bleed: only ticks
+      // in steady play so death/clear cinematics don't race the slot.
+      // When `ticksRemaining` hits 0 the fruit disarms back to null —
+      // the sprite IS the timer; no separate "vanish" beat. The banner
+      // tracks the same window so the word and the sprite share a
+      // heartbeat (and clear together on a player-eat in tickPac).
+      if (this.state.fruitBanner > 0) {
+        this.state.fruitBanner -= 1;
+      }
+      if (this.state.fruit) {
+        this.state.fruit.ticksRemaining -= 1;
+        if (this.state.fruit.ticksRemaining <= 0) {
+          this.state.fruit = null;
+          this.state.fruitBanner = 0;
+        }
+      }
       // Advance + cull sparkles (24-tick max lifetime — power-pellet
       // ceiling; regular sparkles fade visually via the alpha curve in
       // the renderer at the 12-tick mark).
@@ -876,6 +897,13 @@ export class Engine {
     // Clear any active power-pellet window.
     this.frightenedTicksLeft = 0;
     this.frightenedEatStreak = 0;
+    // Issue #305 — each level gets its own pair of canon fruit
+    // appearances. Reset the per-level counters and clear any fruit
+    // still on the board so it doesn't carry across the cinematic.
+    this.state.dotsEaten = 0;
+    this.state.fruitSpawnsThisLevel = 0;
+    this.state.fruit = null;
+    this.state.fruitBanner = 0;
     // Re-spawn the full roster and Pac.
     this.ghosts = spawnGhosts();
     resetPacToSpawn(this.state);
@@ -952,6 +980,11 @@ export class Engine {
     // 3. Maze: center the 28×31 grid inside the playfield.
     this.renderMaze();
 
+    // 3b. Issue #305 — fruit sprite on top of the maze, below Pac so a
+    //     player walking onto it visibly claims it (Pac draws over the
+    //     fruit one tick before the eat-clear fires).
+    this.renderFruit();
+
     // 4. Pac on top of the maze.
     this.renderPac();
 
@@ -992,7 +1025,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("READY!", w / 2, h / 2);
+      ctx.fillText(BANNER_READY, w / 2, h / 2);
     } else if (state.extraLifeBanner > 0) {
       // Issue #295 — arcade canon's one celebratory threshold. Same
       // slot, same yellow as READY!/GAME OVER. One word: EXTRA.
@@ -1007,7 +1040,21 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("EXTRA", w / 2, h / 2);
+      ctx.fillText(BANNER_EXTRA, w / 2, h / 2);
+    } else if (state.fruitBanner > 0) {
+      // Issue #305 — arcade canon's mid-level give-to-player beat.
+      // Same slot, same yellow as READY!/EXTRA/GAME OVER. One word:
+      // FRUIT. The slot is the noun — the sprite carries the skin
+      // (cherry/strawberry/...); the player-facing word never couples
+      // to it. The score-pop on eat already speaks; no banner-of-eat.
+      // Sits BELOW the EXTRA branch so a fruit-eat that crosses 10k
+      // (level 10+ values do) honors EXTRA's hold first — the rarer,
+      // canon-defining beat wins the slot.
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(BANNER_FRUIT, w / 2, h / 2);
     } else if (state.status === "won") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
@@ -1019,7 +1066,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("GAME OVER", w / 2, h / 2);
+      ctx.fillText(BANNER_GAME_OVER, w / 2, h / 2);
     }
 
     // 6. Issue #138 — power-pellet screen flash. Drawn LAST so it
@@ -1108,6 +1155,40 @@ export class Engine {
     }
     this.ghostDeltaPrev = positions;
     this.ghostDeltaPrevTick = currTick;
+  }
+
+  /** Issue #305 — fruit sprite. One disc per kind, color-coded by level.
+   *  Mirrors the maze coordinate transform used everywhere else. The
+   *  sprite IS the timer; we don't draw a countdown. Hidden during the
+   *  death + clear cinematics so the slot belongs to those beats. */
+  private renderFruit(): void {
+    const { ctx, canvas, state } = this;
+    if (!state.fruit) return;
+    if (state.feedback.deathTicks >= DEATH_PRE_PAUSE) return;
+    if (state.feedback.clearTicks >= CLEAR_PRE_PAUSE) return;
+    const mazeW = COLS * TILE;
+    const mazeH = ROWS * TILE;
+    const ox = Math.floor((canvas.width - mazeW) / 2);
+    const oy = Math.floor((canvas.height - mazeH) / 2);
+    // Per-kind color. Cosmetic; canon-adjacent without copying sprite art.
+    const kindColors: Record<string, string> = {
+      cherry: "#ff3030",
+      strawberry: "#ff5d8a",
+      orange: "#ffa030",
+      apple: "#ff2020",
+      melon: "#5ad26a",
+      galaxian: "#5ad2ff",
+      bell: "#ffd700",
+      key: "#c0a060",
+    };
+    const cx = ox + state.fruit.x * TILE + TILE / 2;
+    const cy = oy + state.fruit.y * TILE + TILE / 2;
+    ctx.save();
+    ctx.fillStyle = kindColors[state.fruit.kind] ?? "#ff3030";
+    ctx.beginPath();
+    ctx.arc(cx, cy, TILE / 2 - 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   /** Issue #138 — sparkles + score popups. Maze coordinate frame
