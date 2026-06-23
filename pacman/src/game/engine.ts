@@ -116,6 +116,28 @@ export class Engine {
   private lastQueuedTick = -1;
   private lastCommitTick = -1;
 
+  // ---- Ghost-delta probe (frightened-mode snap merge-gate; Ivy's feel-axis).
+  // Captures per-render-frame max ghost-position delta on the renderer's
+  // own scale (px). When `ghostDeltaActive` is true, the renderer (after
+  // running its normal draw) reads back the same per-ghost positions it
+  // just drew, diffs them against the previous frame's snapshot, and
+  // pushes one `GhostDeltaSample`. `flipTick` is stamped the moment
+  // `driveFlipScript` calls forceFrightened — any sample whose tick
+  // crosses that boundary is tagged `isFlipFrame: true`.
+  private ghostDeltaActive = false;
+  private ghostDeltaPrev: Map<GhostName, { x: number; y: number }> | null =
+    null;
+  private ghostDeltaSamples: Array<{
+    frame: number;
+    isFlipFrame: boolean;
+    maxGhostDelta: number;
+  }> = [];
+  private ghostDeltaFrameIdx = 0;
+  private ghostDeltaFlipTick: number | null = null;
+  // Previous-render-frame tick stamp; lets us tag a frame as
+  // straddling the flip when (prevTick < flipTick <= currTick).
+  private ghostDeltaPrevTick = -1;
+
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
     if (!ctx) {
@@ -348,6 +370,82 @@ export class Engine {
           lastCommitTick: lc,
           deltaTicks: hasMeasurement ? lc - lq : null,
         };
+      },
+      // Frightened-mode snap merge-gate probe (Ivy's feel-axis). Captures
+      // per-render-frame max ghost render-position delta on the same px
+      // scale the renderer just drew, with the rAF frame that straddles
+      // the frightened-mode flip tagged `isFlipFrame: true`. The hypothesis
+      // the spec polices: when forceFrightened() arms frightened mode,
+      // the only thing that changes on the flip tick is the ghost speed
+      // tier (chase 0.10/tick → frightened 0.05/tick); the integer (x,y)
+      // and `_progress` are unchanged, so the per-frame render delta on
+      // the flip frame stays at sub-tile magnitude — NOT a one-tile
+      // teleport. The probe lets the spec measure that.
+      //
+      // Driving via forceFrightened() (already present for #145) means
+      // we don't need to route Pac through a power pellet — eliminates
+      // the route-finding / pellet-path flake risk Mara called out.
+      ghostDeltaProbe: {
+        reset: (): void => {
+          this.ghostDeltaSamples = [];
+          this.ghostDeltaPrev = null;
+          this.ghostDeltaFrameIdx = 0;
+          this.ghostDeltaFlipTick = null;
+          this.ghostDeltaPrevTick = -1;
+          this.ghostDeltaActive = true;
+        },
+        // Run the deterministic flip script:
+        //   1. collect ~30 pre-flip frames of steady-state chase deltas;
+        //   2. stamp `flipTick = state.tick + 1` (next update tick) and
+        //      call forceFrightened() — same atomic arming the engine
+        //      does on a power-pellet pickup;
+        //   3. collect ~100 post-flip frames so the steady-state window
+        //      has enough samples for a meaningful p99.
+        // Resolves when the probe has collected enough frames.
+        driveFlipScript: (): Promise<void> => {
+          return new Promise<void>((resolve) => {
+            const PRE_FLIP_FRAMES = 30;
+            const POST_FLIP_FRAMES = 100;
+            const TOTAL = PRE_FLIP_FRAMES + POST_FLIP_FRAMES;
+            let armed = false;
+            const tick = (): void => {
+              const collected = this.ghostDeltaSamples.length;
+              if (!armed && collected >= PRE_FLIP_FRAMES) {
+                // Arm frightened mode on the NEXT update. state.tick
+                // is the last completed tick; the rAF that follows
+                // will drain at least one update(), so the flip lands
+                // on tick+1 or later. The probe tags the FIRST frame
+                // whose post-render tick is >= flipTick.
+                this.ghostDeltaFlipTick = this.state.tick + 1;
+                // Mirror the engine's atePowerPellet branch: arm the
+                // frightened timer, reset the eat streak, flip all
+                // out-roaming ghosts to frightened. forceFrightened
+                // (above) does exactly that.
+                this.frightenedTicksLeft = FRIGHTENED_TICKS;
+                this.frightenedEatStreak = 0;
+                for (const g of this.ghosts) {
+                  if (g.status !== "out") continue;
+                  if (g.mode === "scatter" || g.mode === "chase") {
+                    g.mode = "frightened";
+                  }
+                }
+                armed = true;
+              }
+              if (collected >= TOTAL) {
+                this.ghostDeltaActive = false;
+                resolve();
+                return;
+              }
+              requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          });
+        },
+        samples: (): ReadonlyArray<{
+          frame: number;
+          isFlipFrame: boolean;
+          maxGhostDelta: number;
+        }> => this.ghostDeltaSamples,
       },
     };
   }
@@ -894,6 +992,78 @@ export class Engine {
       ctx.fillStyle = `rgba(${rgb}, ${state.feedback.flashAlpha})`;
       ctx.fillRect(0, 0, w, h);
     }
+
+    // 7. Ghost-delta probe (frightened-mode snap merge-gate). After the
+    //    frame is fully drawn, snapshot per-ghost render positions on
+    //    the px scale the renderer just used. If a previous-frame
+    //    snapshot exists, push a sample with the max euclidean delta
+    //    across ghosts. The `isFlipFrame` flag is true iff this frame
+    //    straddles the recorded `flipTick` (prevTick < flipTick <=
+    //    currTick) — i.e. this is the rAF frame whose update() drained
+    //    over the tick at which forceFrightened() armed frightened mode.
+    if (this.ghostDeltaActive) {
+      this.captureGhostDeltaSample();
+    }
+  }
+
+  /** Snapshot per-ghost render positions on the SAME math the renderer
+   *  uses (sub-tile glide along `lastDir`), diff against the prior
+   *  frame, and push one GhostDeltaSample. Owned here so the probe
+   *  stays bit-identical to what the player sees, not what the engine
+   *  state happens to expose. */
+  private captureGhostDeltaSample(): void {
+    const mazeW = COLS * TILE;
+    const mazeH = ROWS * TILE;
+    const ox = Math.floor((this.canvas.width - mazeW) / 2);
+    const oy = Math.floor((this.canvas.height - mazeH) / 2);
+    const positions = new Map<GhostName, { x: number; y: number }>();
+    for (const g of this.ghosts) {
+      const progress = g.status !== "out" ? 0 : g._progress;
+      let dx = 0;
+      let dy = 0;
+      switch (g.lastDir) {
+        case "right":
+          dx = 1;
+          break;
+        case "left":
+          dx = -1;
+          break;
+        case "down":
+          dy = 1;
+          break;
+        case "up":
+          dy = -1;
+          break;
+      }
+      const cx = ox + (g.x + dx * progress) * TILE + TILE / 2;
+      const cy = oy + (g.y + dy * progress) * TILE + TILE / 2;
+      positions.set(g.name, { x: cx, y: cy });
+    }
+    const currTick = this.state.tick;
+    if (this.ghostDeltaPrev !== null) {
+      let maxDelta = 0;
+      for (const [name, prev] of this.ghostDeltaPrev.entries()) {
+        const curr = positions.get(name);
+        if (!curr) continue;
+        const ddx = curr.x - prev.x;
+        const ddy = curr.y - prev.y;
+        const d = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (d > maxDelta) maxDelta = d;
+      }
+      const flipTick = this.ghostDeltaFlipTick;
+      const isFlipFrame =
+        flipTick !== null &&
+        this.ghostDeltaPrevTick < flipTick &&
+        flipTick <= currTick;
+      this.ghostDeltaSamples.push({
+        frame: this.ghostDeltaFrameIdx,
+        isFlipFrame,
+        maxGhostDelta: maxDelta,
+      });
+      this.ghostDeltaFrameIdx += 1;
+    }
+    this.ghostDeltaPrev = positions;
+    this.ghostDeltaPrevTick = currTick;
   }
 
   /** Issue #138 — sparkles + score popups. Maze coordinate frame
@@ -1292,6 +1462,15 @@ declare global {
         lastQueuedTick: number;
         lastCommitTick: number;
         deltaTicks: number | null;
+      };
+      ghostDeltaProbe: {
+        reset: () => void;
+        driveFlipScript: () => Promise<void>;
+        samples: () => ReadonlyArray<{
+          frame: number;
+          isFlipFrame: boolean;
+          maxGhostDelta: number;
+        }>;
       };
     };
   }
