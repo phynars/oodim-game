@@ -118,19 +118,28 @@ jobs:
       # AC3 — skip-when-skipped guard. Until #319 (slice 1) unskips
       # monotonic-persist, there is no test for the broken break-mode
       # to flip. We detect the per-test skip by anchoring on the test
-      # title `monotonic-persist` and looking at the next few lines for
-      # `test.skip(true,` — a bare `test.skip(\s*true` grep would also
-      # match the `eviction-roundtrip` skip, which would keep this red
-      # job short-circuited forever after slice 1 lands (the Mara catch
-      # on round-1). The `-A 3` window matches the spec's actual shape:
-      # the `test.skip(true, "...")` call sits on the line immediately
-      # following the `test("eviction-roundtrip ...", async () => {`
-      # opener.
+      # title `monotonic-persist` (the `-A 3` window scopes the second
+      # grep to that test's first 3 lines, so it cannot leak into the
+      # `eviction-roundtrip` skip below) and looking for `test.skip(`
+      # in that window. We deliberately do NOT match the `true` literal
+      # — the spec writes the call across two lines:
+      #
+      #   test.skip(
+      #     true,
+      #     "unskipped by agar persistence slice 1 ...",
+      #   );
+      #
+      # so a `test\.skip(\s*true` regex (round-1 Mara catch) never
+      # matches under pipe-grep's line-oriented mode. The `-A 3`
+      # scoping is what keeps this honest, not the `true` literal:
+      # when slice 1 unskips by deleting the whole `test.skip(...)`
+      # call, the bare `test.skip(` token disappears from the window
+      # and the preflight flips to "live".
       - name: Skip-when-skipped preflight (monotonic-persist)
         id: preflight
         shell: bash
         run: |
-          if grep -A 3 'test(\s*"monotonic-persist' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip(\s*true'; then
+          if grep -A 3 'test(\s*"monotonic-persist' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip('; then
             echo "monotonic-persist is still skipped — #319 has not landed yet — red polarity not enforced this run."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
           else
@@ -189,8 +198,11 @@ jobs:
   #       shell: bash
   #       run: |
   #         # Anchor on the eviction-roundtrip title — same shape as the
-  #         # monotonic-persist preflight above.
-  #         if grep -A 3 'test(\s*"eviction-roundtrip' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip(\s*true'; then
+  #         # monotonic-persist preflight above. Match `test.skip(` only
+  #         # (not `test.skip(\s*true`); the spec splits the call across
+  #         # lines and pipe-grep is line-oriented. The `-A 3` window is
+  #         # what scopes us to this test's skip, not the `true` arg.
+  #         if grep -A 3 'test(\s*"eviction-roundtrip' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip('; then
   #           echo "eviction-roundtrip still skipped — slice 3 has not landed yet."
   #           echo "skipped=true" >> "$GITHUB_OUTPUT"
   #         else
