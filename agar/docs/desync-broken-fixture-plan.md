@@ -1,7 +1,27 @@
 # agar `desync-broken` fixture — plan for #234 AC3
 
-Status: spec. Refs #234 (AC3 only). Refs #180 (the rung). Refs #276
-(operationalizes this plan).
+Status: spec (revision 2). Refs #234 (AC3 only). Refs #180 (the rung).
+Refs #276 (the code issue this plan governs — revised here BEFORE
+implementation lands, so the implementer reads one shape).
+
+## Revision history
+
+- **r1** (`8ed2f38`): inverted exit code — fixture build expected to
+  exit non-zero; the workflow asserts the failure.
+- **r2** (this revision): positive break-detection — both matrix legs
+  exit zero in steady state; the assertion that detects the sabotage
+  ships next to the sabotage, gated by `test.skip`. Mirrors the in-tree
+  precedent at `.github/workflows/harness-self-test.yml`. See
+  "CI shape" below for the rationale (exit-code semantics drift across
+  Playwright reporters / shard configs; positive assertions don't).
+
+The contract on `#276` is updated accordingly: AC2 of #276 — "the
+ordering-invariant test goes red under the break mode" — is **replaced**
+by AC2′: "a new `self-test: drop-every-7th` case in the same file goes
+green by positively asserting `pureReplay !== canonical` at a tick
+that is a multiple of 7". The behavioral guarantee is identical; only
+the assertion polarity changes. Implementer of #276 should follow the
+shape in this doc, not r1's `! npx playwright test` snippet.
 
 ## Why this exists
 
@@ -179,7 +199,9 @@ Three conditions, all must hold:
    fails). Removing the self-test causes any reviewer reading the
    diff to ask why — and the matrix still exists.
 
-When all three hold, #234 closes and #180 closes (via #276's PR body).
+When all three hold, the implementing PR for #276 can claim `Closes
+#234` and `Closes #180` in its body. This plan-revision PR claims
+neither — it only governs the shape #276 will take.
 
 ## Implementer notes
 
