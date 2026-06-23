@@ -187,12 +187,25 @@ export class EchoRoom implements DurableObject {
       // The monotone guard is the ONLY thing that protects topScore
       // in that arc — dropping it flips the test RED.
       this.cachedTopScore = current;
-      void this.state.storage.put("topScore", current);
+      // allowUnconfirmed:true keeps the output gate from holding
+      // outbound WS snapshot sends behind this pending write. The
+      // tick loop broadcasts canonical state every 50ms; gating
+      // sends on storage commit serializes the broadcast and
+      // regresses multiplayer-convergence's pure-replay assertion
+      // (PR #320 review — suspect 1). A lost write under DO
+      // eviction is acceptable here: the value can only grow, so
+      // the very next score-up tick re-writes it.
+      void this.state.storage.put("topScore", current, {
+        allowUnconfirmed: true,
+      });
       return;
     }
     if (current > this.cachedTopScore) {
       this.cachedTopScore = current;
-      void this.state.storage.put("topScore", current);
+      // See allowUnconfirmed rationale above.
+      void this.state.storage.put("topScore", current, {
+        allowUnconfirmed: true,
+      });
     }
   }
 
@@ -269,25 +282,6 @@ export class EchoRoom implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const url0 = new URL(request.url);
-
-    // TEMPORARY test-only read path (issue #319 AC4).
-    //
-    // The persistence-harness `monotonic-persist` spec needs to read
-    // the persisted topScore back to assert the lower-write didn't
-    // land. The proper GET endpoint (#319 scope explicitly defers it
-    // to slice 2) doesn't exist yet, so slice 1 exposes the storage
-    // value via a non-WS sub-path that the worker top-level routes
-    // here directly. When slice 2's `/high-score` endpoint merges,
-    // this branch should be removed and the test rewired to it.
-    if (url0.pathname === "/__test/top-score") {
-      await this.loadTopScoreOnce();
-      return new Response(JSON.stringify({ topScore: this.cachedTopScore }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader !== "websocket") {
       return new Response("Expected websocket upgrade", { status: 426 });
@@ -400,11 +394,7 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
-    // /ws — main WS upgrade. /__test/top-score — TEMPORARY test-only
-    // read path (issue #319 slice 1; removed when slice 2's
-    // /high-score endpoint lands). Both route by seed so the harness
-    // hits the same DO instance the WS connection was talking to.
-    if (url.pathname !== "/ws" && url.pathname !== "/__test/top-score") {
+    if (url.pathname !== "/ws") {
       return new Response("Not found", { status: 404 });
     }
 
