@@ -153,6 +153,16 @@ export const CLEAR_TALLY_END = 84;
  *  without dominating the per-pellet scoring economy. */
 export const LEVEL_CLEAR_BONUS = 1000;
 
+/** Issue #295 — arcade canon's one celebratory threshold. Pac-Man awards
+ *  a free life at 10,000 points: the single moment in a game otherwise
+ *  about loss where the maze gives instead of takes. One-shot — does
+ *  not re-fire on subsequent levels. */
+export const EXTRA_LIFE_SCORE = 10000;
+/** Issue #295 — banner hold duration after the threshold is crossed.
+ *  90 ticks ≈ 1.5s at 60Hz: the arcade's "you earned this, look at it"
+ *  beat. Reuses the READY!/GAME OVER status-overlay slot. */
+export const EXTRA_BANNER_TICKS = 90;
+
 export interface GameState {
   /** High-level lifecycle. Boots to 'ready'. */
   status: GameStatus;
@@ -179,6 +189,17 @@ export interface GameState {
   /** Render-feedback channel (issue #138). Written by tickPac/engine,
    *  read by the renderer. Pure data — no DOM, no callbacks. */
   feedback: FeedbackChannel;
+  /** Issue #295 — one-shot latch for the 10,000-point extra-life
+   *  threshold. Boots false; flips true the tick `score` crosses from
+   *  `< EXTRA_LIFE_SCORE` to `>= EXTRA_LIFE_SCORE`. Never resets during
+   *  play — arcade canon awards the free life exactly once per game,
+   *  not per level. (Reset only via `initialState()` on a new game.) */
+  extraLifeAwarded: boolean;
+  /** Issue #295 — remaining ticks of the EXTRA banner overlay. Set to
+   *  `EXTRA_BANNER_TICKS` (90 ≈ 1.5s) the tick the threshold is crossed;
+   *  decrements once per `update()`. Renderer paints the EXTRA string
+   *  in the existing READY!/GAME OVER slot while > 0. */
+  extraLifeBanner: number;
 }
 
 declare global {
@@ -215,5 +236,7 @@ export function initialState(): GameState {
       clearTicks: 0,
       clearTallyShown: 0,
     },
+    extraLifeAwarded: false,
+    extraLifeBanner: 0,
   };
 }
