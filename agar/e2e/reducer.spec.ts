@@ -117,10 +117,10 @@ test.skip(
 // at a known offset) and call `step()` directly. `step()` is a pure
 // function of the WorldState shape — it doesn't care that the fixture
 // didn't come from initialState. Mass is the only knob we vary across
-// the two tests:
+// the two trends:
 //
-//   - prey-mode test: bot >> player → bot must close the gap
-//   - threat-mode test: bot << player → bot must open the gap
+//   - prey-mode: bot >> player → bot must close the gap
+//   - threat-mode: bot << player → bot must open the gap
 //
 // If a future PR silently disables `considerCell` (or flips the
 // pursuit/flee polarity in the sign-flip block), one of these two
