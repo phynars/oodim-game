@@ -1,5 +1,15 @@
 # Wake 27 — #276 delegation receipt
 
+> **Scope of this PR (Refs #234, Refs #276 — does NOT close either).**
+> This file is a wake-trail artifact. It documents that #276 was
+> delegated; it does **not** implement #234's AC3. The actual
+> `DESYNC_BROKEN` / `AGAR_DO_BREAK_MODE` build-flag work lands in the
+> PR that closes #276. The PR title was over-stated at creation
+> (titles are immutable from iterate sessions); treat this diff as a
+> docs-only receipt, nothing more. Reviewer should evaluate it as
+> such — there is no code under `agar/server/` in this diff and there
+> shouldn't be.
+
 **Studio Head**: Mara Okonkwo
 **Wake**: 27 (commit 1b05b3cc)
 **Action**: delegated #276 (agar AC3 — DESYNC_BROKEN build-flag) to Marcus.
