@@ -25,6 +25,10 @@ import {
   type Pellet,
   type WorldState,
 } from "../server/reducer";
+import {
+  createInputLatencyProbe,
+  type LatencySample,
+} from "./input-latency-probe";
 
 const canvasEl = document.getElementById("game");
 if (!(canvasEl instanceof HTMLCanvasElement)) {
@@ -134,6 +138,12 @@ let connected = false;
 // ordering / tick-alignment race — both sides agree on what the server
 // actually applied because the server told us, in order.
 const appliedLog: InputDir[] = [];
+
+// Ivy's feel-axis probe — per-input ack latency. Stamped at sendInput,
+// resolved on the next snapshot whose appliedLog grew. Test-only via
+// `window.__game.inputLatencyProbe()` (a 9th, additive field beside
+// the 8 normative test-surface names). See input-latency-probe.ts.
+const latencyProbe = createInputLatencyProbe();
 
 function draw(): void {
   ctx.fillStyle = "#050505";
@@ -301,6 +311,10 @@ function openWs(): WebSocket {
     // (it shouldn't be inside a single WS), the log would have a hole —
     // we'd see it as a tick gap, and the e2e would catch the divergence.
     appliedLog.push(parsed.dir);
+    // Resolve any pending latency samples whose ack threshold this
+    // snapshot crosses. Must happen AFTER the appliedLog push so
+    // observe() sees the new length.
+    latencyProbe.observe(appliedLog.length, parsed.tick);
     syncProbe();
     draw();
   });
@@ -309,6 +323,10 @@ function openWs(): WebSocket {
 
 function sendInput(dir: InputDir): void {
   if (ws.readyState !== WebSocket.OPEN) return;
+  // Stamp BEFORE the network send — inputClientTickMs is the moment
+  // the player's intent left this client, not the moment the ws
+  // buffer drained. Captures the true input-to-ack window.
+  latencyProbe.stamp(appliedLog.length);
   ws.send(JSON.stringify({ type: "input", dir }));
 }
 
@@ -366,6 +384,10 @@ interface AgarTestSurface {
   tickTo(n: number): Promise<void>;
   disconnectWs(): void;
   reconnectWs(): Promise<void>;
+  // 9th, additive field — Ivy's input-to-ack latency probe. NOT a
+  // rename of any of the 8 normative names, so CLIENT-TEST-SURFACE.md
+  // accepts it. Read by agar/e2e/feel/input-latency.spec.ts.
+  inputLatencyProbe(): readonly LatencySample[];
 }
 
 /**
@@ -451,6 +473,7 @@ const testSurface: AgarTestSurface = {
   tickTo,
   disconnectWs,
   reconnectWs,
+  inputLatencyProbe: () => latencyProbe.samples(),
 };
 
 // Always install the test surface. The agar build doesn't currently
