@@ -17,98 +17,141 @@
 # test (guard not honest) becomes CI failure; a failing test (guard
 # honest) becomes CI success.
 #
-# AC4 hook: when slice 3 unskips eviction-roundtrip, add the third job
-# below by un-commenting the marked block. Keep this as ONE workflow
-# file — do not split per slice.
+# WIRING — mirrors #276 literally:
+#
+#   - Deps install at REPO ROOT (`npm ci`). There is no agar/package.json;
+#     scripts live in the root package.json (build:agar, dev:agar-server,
+#     test:e2e:agar, etc).
+#   - Playwright is invoked via the `npm run test:e2e:agar:persistence*`
+#     scripts (added in this PR alongside the workflow), which bake in
+#     `--config agar/playwright.config.ts` / the broken sibling configs.
+#     Invoking `npx playwright test e2e/foo.spec.ts` directly skips the
+#     config — and with it the vite preview + wrangler dev webServers —
+#     so the green job would never reach a running stack.
+#   - The break-mode env must reach the WORKER (the Durable Object reads
+#     it once at construction), NOT the test runner. The precedent does
+#     this in package.json:
+#         dev:agar-server:broken =
+#           wrangler dev --config agar/wrangler.toml --var AGAR_DO_BREAK_MODE:drop-every-7th
+#     The persistence epic mirrors that pattern with per-mode scripts:
+#         dev:agar-server:broken-non-monotone-persist  → --var AGAR_DO_BREAK_MODE:non-monotone-persist
+#         dev:agar-server:broken-lossy-persist         → --var AGAR_DO_BREAK_MODE:lossy-persist
+#     and matching playwright.broken-*.config.ts files that point their
+#     wrangler webServer at the right script. The red job runs
+#     `npm run test:e2e:agar:persistence:broken-non-monotone` and lets
+#     those configs thread the env through `wrangler dev --var`.
+#
+#     Setting `AGAR_DO_BREAK_MODE` as a step-level `env:` does nothing —
+#     it lands on the GitHub runner shell, not on the wrangler subprocess.
+#     The runner-env approach was the round-1 wiring bug; do not regress.
+#
+# AC4 hook: when slice 3 unskips eviction-roundtrip, un-comment the
+# marked block below. Keep this as ONE workflow file — do not split per
+# slice.
 
 name: agar-persistence-redgreen
 
 on:
   pull_request:
     paths:
-      - "agar/server/worker.ts"
-      - "agar/e2e/persistence-harness.spec.ts"
+      - "agar/**"
+      - "e2e-shared/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/agar-persistence-redgreen.yml"
   push:
     branches: [main]
     paths:
-      - "agar/server/worker.ts"
-      - "agar/e2e/persistence-harness.spec.ts"
+      - "agar/**"
+      - "e2e-shared/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/agar-persistence-redgreen.yml"
 
 jobs:
   green-polarity:
     name: persistence-harness (green — default mode)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
 
-      - name: Install agar deps
-        working-directory: agar
+      - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright browsers
-        working-directory: agar
         run: npx playwright install --with-deps chromium
 
+      # Routes through the `test:e2e:agar:persistence` npm script (added
+      # in this PR) which is `playwright test --config
+      # agar/playwright.config.ts e2e/persistence-harness.spec.ts`. The
+      # config brings up vite preview + wrangler dev — without it, the
+      # spec runs against nothing and the file-time `break-mode-parse`
+      # test passes vacuously while the slice-1/3 tests can't ever
+      # genuinely run when unskipped.
       - name: Run agar persistence-harness spec (green polarity)
-        working-directory: agar
-        run: npx playwright test e2e/persistence-harness.spec.ts
+        run: npm run test:e2e:agar:persistence
 
   red-polarity-monotonic:
     name: persistence-harness (red — non-monotone-persist MUST fail monotonic-persist)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
 
-      - name: Install agar deps
-        working-directory: agar
+      - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright browsers
-        working-directory: agar
         run: npx playwright install --with-deps chromium
 
       # AC3 — skip-when-skipped guard. Until #319 (slice 1) unskips
       # monotonic-persist, there is no test for the broken break-mode
-      # to flip. The whole file matching "monotonic-persist" still
-      # contains a `test.skip(true,` immediately under the test name,
-      # so we detect that and short-circuit with exit 0.
+      # to flip. We detect the per-test skip by anchoring on the test
+      # title `monotonic-persist` and looking at the next few lines for
+      # `test.skip(true,` — a bare `test.skip(\s*true` grep would also
+      # match the `eviction-roundtrip` skip, which would keep this red
+      # job short-circuited forever after slice 1 lands (the Mara catch
+      # on round-1). The `-A 3` window matches the spec's actual shape:
+      # the `test.skip(true, "...")` call sits on the line immediately
+      # following the `test("eviction-roundtrip ...", async () => {`
+      # opener.
       - name: Skip-when-skipped preflight (monotonic-persist)
         id: preflight
-        working-directory: agar
+        shell: bash
         run: |
-          if grep -q 'test\.skip(\s*true' e2e/persistence-harness.spec.ts; then
+          if grep -A 3 'test(\s*"monotonic-persist' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip(\s*true'; then
             echo "monotonic-persist is still skipped — #319 has not landed yet — red polarity not enforced this run."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
           else
+            echo "monotonic-persist is live — enforcing red polarity under AGAR_DO_BREAK_MODE=non-monotone-persist."
             echo "skipped=false" >> "$GITHUB_OUTPUT"
           fi
 
       # Red polarity: invert the Playwright exit code. The spec is
-      # expected to FAIL under AGAR_DO_BREAK_MODE=non-monotone-persist.
-      # A passing exit code here means the guard is dishonest — we
-      # convert that to a CI failure. A non-zero exit means the guard
-      # caught the broken break-mode as designed — we convert that
-      # to a CI pass.
+      # expected to FAIL under AGAR_DO_BREAK_MODE=non-monotone-persist,
+      # which the `test:e2e:agar:persistence:broken-non-monotone` script
+      # threads into the Worker via `wrangler dev --var` (NOT via runner
+      # env — see WIRING note at top). A passing exit code here means
+      # the guard is dishonest — we convert that to a CI failure. A
+      # non-zero exit means the guard caught the broken break-mode as
+      # designed — we convert that to a CI pass.
       - name: Run agar persistence-harness monotonic-persist (red polarity — MUST fail)
         if: steps.preflight.outputs.skipped == 'false'
-        working-directory: agar
-        env:
-          AGAR_DO_BREAK_MODE: non-monotone-persist
+        shell: bash
         run: |
           set +e
-          npx playwright test e2e/persistence-harness.spec.ts -g "monotonic-persist"
+          npm run test:e2e:agar:persistence:broken-non-monotone
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
@@ -121,34 +164,33 @@ jobs:
 
   # AC4 — un-comment when slice 3 lands and eviction-roundtrip
   # unskips. Same shape as red-polarity-monotonic above, but filtered
-  # to "eviction-roundtrip" and with AGAR_DO_BREAK_MODE=lossy-persist.
+  # to "eviction-roundtrip" and with AGAR_DO_BREAK_MODE=lossy-persist
+  # threaded through `wrangler dev --var` via the
+  # `test:e2e:agar:persistence:broken-lossy` script.
   # Keep this in the SAME workflow file — do not create a second one
   # per slice.
   #
   # red-polarity-eviction:
   #   name: persistence-harness (red — lossy-persist MUST fail eviction-roundtrip)
   #   runs-on: ubuntu-latest
-  #   timeout-minutes: 10
+  #   timeout-minutes: 15
   #   steps:
   #     - uses: actions/checkout@v4
   #     - uses: actions/setup-node@v4
   #       with:
   #         node-version: "20"
-  #     - name: Install agar deps
-  #       working-directory: agar
+  #         cache: npm
+  #     - name: Install dependencies
   #       run: npm ci
   #     - name: Install Playwright browsers
-  #       working-directory: agar
   #       run: npx playwright install --with-deps chromium
   #     - name: Skip-when-skipped preflight (eviction-roundtrip)
   #       id: preflight
-  #       working-directory: agar
+  #       shell: bash
   #       run: |
-  #         # When ONLY eviction-roundtrip is still skipped (monotonic
-  #         # has landed), this grep needs to be tighter — match the
-  #         # eviction-roundtrip block specifically. Slice 3 owns the
-  #         # exact grep when it un-comments this job.
-  #         if grep -A2 'eviction-roundtrip' e2e/persistence-harness.spec.ts | grep -q 'test\.skip(\s*true'; then
+  #         # Anchor on the eviction-roundtrip title — same shape as the
+  #         # monotonic-persist preflight above.
+  #         if grep -A 3 'test(\s*"eviction-roundtrip' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip(\s*true'; then
   #           echo "eviction-roundtrip still skipped — slice 3 has not landed yet."
   #           echo "skipped=true" >> "$GITHUB_OUTPUT"
   #         else
@@ -156,12 +198,10 @@ jobs:
   #         fi
   #     - name: Run agar persistence-harness eviction-roundtrip (red polarity — MUST fail)
   #       if: steps.preflight.outputs.skipped == 'false'
-  #       working-directory: agar
-  #       env:
-  #         AGAR_DO_BREAK_MODE: lossy-persist
+  #       shell: bash
   #       run: |
   #         set +e
-  #         npx playwright test e2e/persistence-harness.spec.ts -g "eviction-roundtrip"
+  #         npm run test:e2e:agar:persistence:broken-lossy
   #         rc=$?
   #         set -e
   #         if [ "$rc" -eq 0 ]; then
