@@ -104,6 +104,58 @@ export const PLAYER_MASS_START = 16;
 export const BOT_COUNT = 6;
 export const BOT_SPEED = Math.floor((SPEED * 3) / 4);
 
+// Mass balance (#297, balance slice 1/4) — agar.io's "you can't become
+// the whole field" primitive. Two coupled levers:
+//
+//   MAX_MASS — hard ceiling, applied after every grow (pellet, cell-eats-
+//     cell, bot growth). Mass is clamped, never silently dropped. 1024
+//     is ~64× the start mass (16): the field is 640×640, radius at
+//     mass=1024 is sqrt(1024)*4 = 128px = 1/5 of the field width, which
+//     still leaves room to move and to be eaten. The play-test that hit
+//     64k mass had no ceiling at all; 1024 is well below "fills the map"
+//     while still feeling like a meaningful long-term goal.
+//
+//   DECAY_NUMER / DECAY_DENOM — fractional per-tick shrink, applied to
+//     anyone above PLAYER_MASS_START. Bigger cells lose more (it's a
+//     fraction of current mass), so growth plateaus where intake equals
+//     decay. With 1/2048 per tick at 20Hz that's ~1%/sec of current
+//     mass; a cell sitting still at mass 1024 loses ~10/sec, a cell at
+//     mass 64 loses <1/sec — small cells barely feel it, big cells
+//     bleed. Deterministic: integer arithmetic only, no RNG, no float
+//     drift. Floor of PLAYER_MASS_START so a cell can never decay below
+//     its starting size (the floor is the spawn mass, not zero).
+//
+// Tuning rationale (plateau math): a player eating ~1 pellet/tick gains
+// +1 mass/tick. At mass M, decay loss is floor(M * 1 / 2048). Plateau
+// where gain ≈ loss: M ≈ 2048. Real eating rate is much lower than
+// 1/tick once the cell is huge (pellets are sparse relative to a 128px
+// radius's sweep area), so the actual plateau lands well below MAX_MASS
+// — exactly the "skilled eater PLATEAUS rather than fills the map"
+// acceptance the issue asks for.
+export const MAX_MASS = 1024;
+export const DECAY_NUMER = 1;
+export const DECAY_DENOM = 2048;
+
+// Integer-only decay step. Pure: `applyDecay(m)` returns m if m is at
+// or below the floor; otherwise subtracts floor(m * NUMER / DENOM) and
+// clamps to the floor. Determinism: integer ops only — no Math.floor on
+// a float division, the `(m * NUMER) / DENOM | 0` is bit-exact across
+// V8 / JSC / SpiderMonkey for the input range we operate in (m ≤
+// MAX_MASS = 1024, so m * NUMER ≤ 1024, well inside int32).
+function applyDecay(m: number): number {
+  if (m <= PLAYER_MASS_START) return m;
+  const loss = ((m * DECAY_NUMER) / DECAY_DENOM) | 0;
+  const next = m - loss;
+  return next < PLAYER_MASS_START ? PLAYER_MASS_START : next;
+}
+
+// Saturating mass add — clamps to MAX_MASS. Used at every grow site
+// (pellet, cell-eats-cell, bot pellet). Pure.
+function addMass(m: number, delta: number): number {
+  const next = m + delta;
+  return next > MAX_MASS ? MAX_MASS : next;
+}
+
 // Eat ratio — A absorbs B when A.mass >= EAT_RATIO * B.mass AND their
 // centers overlap (distance < A's radius). 1.10 means "10% bigger
 // wins"; small enough that a few pellets tip the balance, large enough
@@ -233,7 +285,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
     const ddy = p.y - ny;
     const reach = radiusForMass(mass) + FOOD_R;
     if (ddx * ddx + ddy * ddy <= reach * reach) {
-      mass += 1;
+      mass = addMass(mass, 1);
       const out = spawnPellet(rng);
       rng = out.rng;
       food[i] = out.pellet;
@@ -303,7 +355,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
       const ddy = p.y - by;
       const reach = radiusForMass(bmass) + FOOD_R;
       if (ddx * ddx + ddy * ddy <= reach * reach) {
-        bmass += 1;
+        bmass = addMass(bmass, 1);
         const out = spawnPellet(rng);
         rng = out.rng;
         food[fi] = out.pellet;
@@ -362,7 +414,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
       const pr = radiusForMass(pmass);
       if (d2 < pr * pr) {
         // Player absorbs bot.
-        pmass += bot.mass;
+        pmass = addMass(pmass, bot.mass);
         const r = respawnBot(bot);
         bots[bi] = r.bot;
         respawned[bi] = true;
@@ -373,7 +425,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
       const br = radiusForMass(bot.mass);
       if (d2 < br * br) {
         // Bot absorbs player — player respawns small at center.
-        bots[bi] = { id: bot.id, x: bot.x, y: bot.y, mass: bot.mass + pmass };
+        bots[bi] = { id: bot.id, x: bot.x, y: bot.y, mass: addMass(bot.mass, pmass) };
         pmass = PLAYER_MASS_START;
         px = WORLD_W / 2;
         py = WORLD_H / 2;
@@ -400,7 +452,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
       if (a.mass >= b.mass * EAT_RATIO) {
         const ar = radiusForMass(a.mass);
         if (d2 < ar * ar) {
-          const grown: BotState = { id: a.id, x: a.x, y: a.y, mass: a.mass + b.mass };
+          const grown: BotState = { id: a.id, x: a.x, y: a.y, mass: addMass(a.mass, b.mass) };
           bots[i] = grown;
           const r = respawnBot(b);
           bots[j] = r.bot;
@@ -411,7 +463,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
       if (b.mass >= a.mass * EAT_RATIO) {
         const br = radiusForMass(b.mass);
         if (d2 < br * br) {
-          const grown: BotState = { id: b.id, x: b.x, y: b.y, mass: b.mass + a.mass };
+          const grown: BotState = { id: b.id, x: b.x, y: b.y, mass: addMass(b.mass, a.mass) };
           bots[j] = grown;
           const r = respawnBot(a);
           bots[i] = r.bot;
@@ -419,6 +471,24 @@ export function step(state: WorldState, input: InputIntent): WorldState {
           break;
         }
       }
+    }
+  }
+
+  // Mass decay (#297, balance slice 1/4) — agar.io's "big shrinks fast"
+  // primitive. Applied to player + every bot AFTER all eats so the
+  // tick's grow events are visible before they bleed. Deterministic:
+  // applyDecay is integer-only and floors at PLAYER_MASS_START, so a
+  // freshly-respawned cell (mass = PLAYER_MASS_START) is untouched —
+  // the floor is the spawn mass, not zero. Cells at or below the floor
+  // are no-ops, so the no-eat / small-cell paths are identical to the
+  // pre-#297 reducer for those masses.
+  const pmassDecayed = applyDecay(pmass);
+  for (let bi = 0; bi < bots.length; bi++) {
+    const b = bots[bi];
+    if (!b) continue;
+    const decayed = applyDecay(b.mass);
+    if (decayed !== b.mass) {
+      bots[bi] = { id: b.id, x: b.x, y: b.y, mass: decayed };
     }
   }
 
@@ -430,7 +500,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
 
   return {
     tick: state.tick + 1,
-    player: { x: px, y: py, mass: pmass },
+    player: { x: px, y: py, mass: pmassDecayed },
     food,
     bots,
     rng,
