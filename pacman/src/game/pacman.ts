@@ -21,6 +21,14 @@ import { COLS, MAZE } from "./maze";
 import {
   EXTRA_BANNER_TICKS,
   EXTRA_LIFE_SCORE,
+  FRUIT_BANNER_TICKS,
+  FRUIT_FIRST_DOTS,
+  FRUIT_KINDS,
+  FRUIT_LIFETIME_TICKS,
+  FRUIT_SCORES,
+  FRUIT_SECOND_DOTS,
+  FRUIT_SPAWN_X,
+  FRUIT_SPAWN_Y,
   type Direction,
   type GameState,
   type PacState,
@@ -188,6 +196,38 @@ export function tickPac(state: GameState): PacTickResult {
   pac.y = wrapped.y;
   internal._progress = prog - 1;
 
+  // 4a. Issue #305 — fruit pickup on tile overlap. Check BEFORE the
+  //     pellet eat so the spawn tile (which has no pellet) still
+  //     resolves correctly when fruit and Pac coincide. The score-pop
+  //     popup IS the player-facing signal — no banner-of-eat. The
+  //     `FRUIT` banner clears immediately (the canon give-beat ends
+  //     when the player claims it; the maze speaks via score now).
+  if (state.fruit && pac.x === state.fruit.x && pac.y === state.fruit.y) {
+    const value = state.fruit.value;
+    const scoreBeforeFruit = state.score;
+    state.score += value;
+    // Score popup at the fruit tile — same 24-tick lifetime as pellets.
+    state.feedback.popups.push({
+      x: pac.x,
+      y: pac.y,
+      value,
+      ageTicks: 0,
+    });
+    state.fruit = null;
+    state.fruitBanner = 0;
+    // Fruit score can cross the 10k extra-life threshold — keep that
+    // one-shot promise from #295 honest on the fruit path too.
+    if (
+      !state.extraLifeAwarded &&
+      scoreBeforeFruit < EXTRA_LIFE_SCORE &&
+      state.score >= EXTRA_LIFE_SCORE
+    ) {
+      state.lives += 1;
+      state.extraLifeAwarded = true;
+      state.extraLifeBanner = EXTRA_BANNER_TICKS;
+    }
+  }
+
   // 4. Eat pellet if one lives on this tile. Power pellets ('o' in the
   //    static MAZE) and regular pellets ('.') share the same boolean
   //    pelletMap, so we re-check the static tile to distinguish them
@@ -196,6 +236,40 @@ export function tickPac(state: GameState): PacTickResult {
   if (row && row[pac.x]) {
     row[pac.x] = false;
     state.pellets -= 1;
+    const dotsBefore = state.dotsEaten;
+    state.dotsEaten = dotsBefore + 1;
+    const dotsAfter = state.dotsEaten;
+    // Issue #305 — arcade-canon fruit triggers: cross 70 dots → spawn 1,
+    // cross 170 dots → spawn 2. Same tick as the pellet that crossed.
+    // Guarded by `fruitSpawnsThisLevel` so a hypothetical re-trip can't
+    // re-arm. The fruit slot is single — a fresh trip overwrites the
+    // first (in canon the first vanishes well before 170 dots anyway,
+    // but be defensive). One word, one slot: BANNER_FRUIT.
+    const crossedFirst =
+      dotsBefore < FRUIT_FIRST_DOTS && dotsAfter >= FRUIT_FIRST_DOTS;
+    const crossedSecond =
+      dotsBefore < FRUIT_SECOND_DOTS && dotsAfter >= FRUIT_SECOND_DOTS;
+    if (
+      (crossedFirst && state.fruitSpawnsThisLevel < 1) ||
+      (crossedSecond && state.fruitSpawnsThisLevel < 2)
+    ) {
+      // Read the runtime `level` mirror the engine attaches to state.
+      // 1-indexed; clamp into the FRUIT_SCORES / FRUIT_KINDS table.
+      const lvlRaw =
+        (state as GameState & { level?: number }).level ?? 1;
+      const lvl = Math.max(1, Math.min(lvlRaw, FRUIT_SCORES.length));
+      const value = FRUIT_SCORES[lvl - 1] ?? 100;
+      const kind = FRUIT_KINDS[lvl - 1] ?? "cherry";
+      state.fruit = {
+        x: FRUIT_SPAWN_X,
+        y: FRUIT_SPAWN_Y,
+        kind,
+        value,
+        ticksRemaining: FRUIT_LIFETIME_TICKS,
+      };
+      state.fruitBanner = FRUIT_BANNER_TICKS;
+      state.fruitSpawnsThisLevel += 1;
+    }
     const staticTile = MAZE[pac.y]?.[pac.x];
     const isPower = staticTile === "o";
     const scoreBefore = state.score;
