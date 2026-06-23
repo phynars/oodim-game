@@ -121,6 +121,14 @@ export class Engine {
   /** Tick until which the "PERFECT! +N" banner is painted after a perfect
    *  challenging clear. Null = no banner. */
   private perfectBannerUntil: number | null = null;
+  /** Tick until which the "BACK" banner is painted at the rescue dock —
+   *  the inverse beat to the state-keyed "TAKEN" banner. Set inside
+   *  `killEnemy`'s rescue path; the renderer reads it each frame. Null = no
+   *  banner. ~0.75s lifetime (45 ticks @ 60Hz) — briefer than STAGE because
+   *  the dual sprite already carries the visual moment; the word just
+   *  closes the keeper line's promise ("the tractor beam can take something
+   *  from you" → and you can take it back). One syllable, mirror to TAKEN. */
+  private backBannerUntil: number | null = null;
   /** Hit-miss accuracy snapshot for the just-cleared normal stage (#65).
    *  Captured at `maybeAdvanceStage` BEFORE counters reset so the renderer
    *  can paint "SHOTS FIRED / HITS / RATIO / BONUS" lines under the
@@ -471,6 +479,11 @@ export class Engine {
         // the next tick; mirror that on this tick for a consistent snap.
         this.state.player.captured = false;
         this.state.captureBeamActive = false;
+        // Voice the rescue (mirror to the TAKEN capture banner). The dual
+        // sprite is the mechanic-speaking-itself; the word just closes the
+        // keeper line's promise. ~0.75s — read it, then let the two ships
+        // carry the rest.
+        this.backBannerUntil = this.state.tick + 45;
         // Adjust the splice index if the escort sat before the captor
         // in the public roster — filter() may have shifted it.
         const newIdx = this.state.enemies.findIndex((en) => en.id === e.id);
@@ -1396,6 +1409,34 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.fillText("TAKEN", WIDTH / 2, 28);
+    }
+
+    // BACK banner — the inverse beat to TAKEN. Painted briefly at the
+    // rescue dock: the captor died, the escort flew down, the player now
+    // owns a dual fighter. The dual sprite carries the mechanical payoff
+    // (two ships where there was one); this word closes the keeper line.
+    //
+    // Voice: "BACK" mirrors TAKEN — one syllable, past-effect, indefinite.
+    // Same slot (y=28), same captor color (#ff7ab0) — capture and rescue
+    // are one mechanic with two charges; the palette honors that. Briefer
+    // window than STAGE (45 vs 90 ticks) because the visual reads first.
+    //
+    // Painted OUTSIDE the captured branch above — by design these never
+    // co-paint: captured flips false in the same tick the rescue banner
+    // is armed.
+    if (
+      this.backBannerUntil !== null &&
+      this.state.tick <= this.backBannerUntil
+    ) {
+      ctx.fillStyle = "#ff7ab0";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("BACK", WIDTH / 2, 28);
+    } else if (
+      this.backBannerUntil !== null &&
+      this.state.tick > this.backBannerUntil
+    ) {
+      this.backBannerUntil = null;
     }
 
     // PERFECT! banner — painted briefly after a perfect challenging clear.
