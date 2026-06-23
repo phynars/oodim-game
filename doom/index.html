@@ -277,6 +277,30 @@
         z-index: 1;
         transition: opacity 60ms linear;
       }
+      /* Pickup MESSAGE slot (#281). One short line ("Patched up.", "Plate.
+         Strap it on.", "More rounds.") pinned just above the HUD cells, in
+         the same monospace stack as HEALTH/ARMOR/AMMO labels — industrial-
+         grim consistency, NOT a new font or a callout balloon. main.ts
+         mirrors `__doom.pickupMessage` into `textContent` each rAF and
+         fades alpha while `pickupMessageTicks > 0`. The world that took
+         from you in red (#91 flash) now speaks when it gives, in the same
+         readable face. */
+      #pickup-message {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: calc(72px + env(safe-area-inset-bottom));
+        text-align: center;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 16px;
+        letter-spacing: 0.08em;
+        color: #e8eaff;
+        text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 2;
+        transition: opacity 60ms linear;
+      }
       /* Stat-pop transition. main.ts writes inline `transform: scale(...)`
          when a pickup of that kind arms; CSS transition smooths the rest
          of the curve between rAF samples (which are coarser than the
@@ -365,6 +389,13 @@
          __doom.hitFlashTicks > 0. Pure cosmetic; the engine state is the
          source of truth. -->
     <div id="hit-flash" data-overlay="hit-flash" aria-hidden="true"></div>
+
+    <!-- Pickup MESSAGE slot (#281). One line ("Patched up.", "Plate. Strap
+         it on.", "More rounds.") pinned above the HUD; main.ts writes
+         `textContent` from `__doom.pickupMessage` and fades alpha while
+         `pickupMessageTicks > 0`. Same monospace face as the HUD labels —
+         the corridor speaks in its own voice. -->
+    <div id="pickup-message" data-hud="pickup-message" aria-live="polite"></div>
 
     <!-- Pickup-flash vignette (#230). main.ts ramps its opacity + sets the
          --pickup-tint CSS variable to the kind's color while

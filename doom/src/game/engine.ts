@@ -41,6 +41,7 @@ import {
   KILL_SHAKE_AMPLITUDE_FACTOR,
   KILL_SHAKE_TICKS,
   PICKUP_FLASH_TICKS,
+  PICKUP_MESSAGES,
   PLAYER_SHOT_DAMAGE,
   SCORE_BY_KIND,
   SHAKE_AMPLITUDE,
@@ -1398,6 +1399,16 @@ export class Engine {
     // punishment.
     this.state.pickupFlashTicks = PICKUP_FLASH_TICKS;
     this.state.pickupKindFlash = pk.kind;
+    // PICKUP MESSAGE (#281). The world that takes from the player (damage
+    // wobble #205, blood spray #194, kill-shake #194) now SPEAKS when it
+    // gives — same posture, opposite charge. CLOBBER both fields (NOT
+    // Math.max — the message is a single-channel identity cue, same shape
+    // as pickupKindFlash): a fresh grant mid-flash MUST replace the line
+    // so a health-then-armor sequence reads the armor line, not the stale
+    // health one. Counter lives in lockstep with pickupFlashTicks so the
+    // tint + line enter and exit together — one beat, one voice.
+    this.state.pickupMessage = PICKUP_MESSAGES[pk.kind];
+    this.state.pickupMessageTicks = PICKUP_FLASH_TICKS;
   }
 
   /** First input leaves the READY state; once playing, the loop ticks.
@@ -1547,6 +1558,17 @@ export class Engine {
           this.state.pickupFlashTicks -= 1;
           if (this.state.pickupFlashTicks === 0)
             this.state.pickupKindFlash = null;
+        }
+        // #281 — pickup MESSAGE. Lockstep with pickupFlashTicks: decayed in
+        // the same `!frozen` gate; cleared to null when the counter hits 0.
+        // Kept as a separate counter (rather than reading pickupFlashTicks
+        // directly) so the contract stays surface-additive — future taste
+        // passes could untether the line from the tint window without
+        // touching the existing #230 gate.
+        if (this.state.pickupMessageTicks > 0) {
+          this.state.pickupMessageTicks -= 1;
+          if (this.state.pickupMessageTicks === 0)
+            this.state.pickupMessage = null;
         }
         for (const e of this.state.enemies) {
           if (e.hitFlashTicks > 0) e.hitFlashTicks -= 1;

@@ -62,6 +62,8 @@ test("forcePickup() arms pickupFlashTicks AND pickupKindFlash in the SAME synchr
       kind: target.kind,
       pickupFlashTicks: s.pickupFlashTicks,
       pickupKindFlash: s.pickupKindFlash,
+      pickupMessage: s.pickupMessage,
+      pickupMessageTicks: s.pickupMessageTicks,
       taken: s.pickups.find((p) => p.id === target.id)!.taken,
     };
   });
@@ -71,6 +73,10 @@ test("forcePickup() arms pickupFlashTicks AND pickupKindFlash in the SAME synchr
   // #230 — both fields armed in the same publish.
   expect(armed.pickupFlashTicks).toBe(24); // PICKUP_FLASH_TICKS
   expect(armed.pickupKindFlash).toBe(armed.kind);
+  // #281 — message + counter armed in the SAME synchronous publish as the
+  // flash. First seeded pickup is 'health' → "Patched up." (locked copy).
+  expect(armed.pickupMessage).toBe("Patched up.");
+  expect(armed.pickupMessageTicks).toBe(24);
 });
 
 test("pickupFlashTicks decays to 0 within PICKUP_FLASH_TICKS+1 ticks and pickupKindFlash clears to null (#230)", async ({
@@ -102,10 +108,16 @@ test("pickupFlashTicks decays to 0 within PICKUP_FLASH_TICKS+1 ticks and pickupK
     return {
       pickupFlashTicks: s.pickupFlashTicks,
       pickupKindFlash: s.pickupKindFlash,
+      pickupMessage: s.pickupMessage,
+      pickupMessageTicks: s.pickupMessageTicks,
     };
   });
   expect(decayed.pickupFlashTicks).toBe(0);
   expect(decayed.pickupKindFlash).toBeNull();
+  // #281 — message decays in the same `!frozen` block, clears to null
+  // when its counter hits 0 (mirrors the kind cue's contract at L65/L73).
+  expect(decayed.pickupMessageTicks).toBe(0);
+  expect(decayed.pickupMessage).toBeNull();
 });
 
 test("clobber semantics: a second pickup mid-flash REPLACES the kind cue (NOT Math.max) (#230)", async ({
@@ -134,20 +146,31 @@ test("clobber semantics: a second pickup mid-flash REPLACES the kind cue (NOT Ma
     const afterFirst = {
       ticks: window.__doom!.pickupFlashTicks,
       kind: window.__doom!.pickupKindFlash,
+      message: window.__doom!.pickupMessage,
+      messageTicks: window.__doom!.pickupMessageTicks,
     };
     // Second pickup BEFORE the first's flash decays — clobber path.
     window.__doomInternals!.forcePickup({ id: armor.id });
     const afterSecond = {
       ticks: window.__doom!.pickupFlashTicks,
       kind: window.__doom!.pickupKindFlash,
+      message: window.__doom!.pickupMessage,
+      messageTicks: window.__doom!.pickupMessageTicks,
     };
     return { afterFirst, afterSecond };
   });
   expect(result.afterFirst.kind).toBe("health");
   expect(result.afterFirst.ticks).toBe(24);
+  expect(result.afterFirst.message).toBe("Patched up.");
+  expect(result.afterFirst.messageTicks).toBe(24);
   // Clobbered: kind switched, counter re-armed to the full window.
   expect(result.afterSecond.kind).toBe("armor");
   expect(result.afterSecond.ticks).toBe(24);
+  // #281 — message CLOBBERS too (NOT Math.max). The armor line must
+  // replace the stale health line; otherwise the HUD would lie about
+  // the new grant — same posture as pickupKindFlash.
+  expect(result.afterSecond.message).toBe("Plate. Strap it on.");
+  expect(result.afterSecond.messageTicks).toBe(24);
 });
 
 test("pickupFlashTicks does NOT decay while hitstop is frozen (same gate as every other channel) (#230)", async ({
@@ -186,6 +209,8 @@ test("pickupFlashTicks does NOT decay while hitstop is frozen (same gate as ever
     return {
       pickupFlashTicks: window.__doom!.pickupFlashTicks,
       pickupKindFlash: window.__doom!.pickupKindFlash,
+      pickupMessage: window.__doom!.pickupMessage,
+      pickupMessageTicks: window.__doom!.pickupMessageTicks,
       hitstopTicks: window.__doom!.hitstopTicks,
     };
   });
@@ -194,4 +219,8 @@ test("pickupFlashTicks does NOT decay while hitstop is frozen (same gate as ever
   // Pickup counter held at peak because every tick was frozen.
   expect(sample.pickupFlashTicks).toBe(24);
   expect(sample.pickupKindFlash).toBe("health");
+  // #281 — message holds too. Same `!frozen` gate; the line hangs with
+  // the rest of the world during the kill/damage hitstop.
+  expect(sample.pickupMessageTicks).toBe(24);
+  expect(sample.pickupMessage).toBe("Patched up.");
 });
