@@ -1,43 +1,16 @@
 # agar `desync-broken` fixture — plan for #234 AC3
 
-Status: spec (revision 2 — **proposal**, pending owner signoff on #276).
-Refs #234 (AC3 only). Refs #180 (the rung). Refs #276 (the code issue;
-this revision PROPOSES a polarity change to its AC2 — the issue body
-remains authoritative until amended there).
-
-## Revision history
-
-- **r1** (`8ed2f38`): inverted exit code — fixture build expected to
-  exit non-zero; the workflow asserts the failure. **This is the
-  shape #276's AC2 currently mandates.**
-- **r2** (this revision, PROPOSAL): positive break-detection — both
-  matrix legs exit zero in steady state; the assertion that detects
-  the sabotage ships next to the sabotage, gated by `test.skip`.
-  Mirrors the in-tree precedent at
-  `.github/workflows/harness-self-test.yml`. Rationale: exit-code
-  semantics drift across Playwright reporters / shard configs;
-  positive assertions don't. See "CI shape" below.
-
-**Contract status.** This r2 revision is a *proposal* to amend #276's
-AC2 from "the ordering-invariant test goes red under the break mode"
-to "a new `self-test: drop-every-7th` case in the same file goes
-green by positively asserting `pureReplay !== canonical` at a tick
-that is a multiple of 7". The behavioral guarantee is identical; only
-the assertion polarity changes. **Until #276 is amended on the issue
-itself**, the implementer of #276 must follow r1's shape (inverted
-exit code) — that is the ratified contract. r2 is on the page so the
-proposal lives in version control alongside the code paths it would
-touch; adoption requires the issue owner to update #276's AC2.
+Status: spec. Refs #234 (AC3 only). Refs #180 (the rung).
 
 ## Why this exists
 
 `agar/e2e/multiplayer-convergence.spec.ts` landed at `a146123` and covers
 three of #234's four acceptance criteria — ordering invariant via
 `pureReplay(SEED, appliedLog)`, reconnect-replay, and zero
-`waitForTimeout`. AC3 is still open: the spec must catch a deliberately-
-broken DO that silently drops inputs, and the catch must run in CI on
-every PR. Without that, we cannot prove the spec actually exercises its
-guard — exactly the PR #440 hole the rung was supposed to close.
+`waitForTimeout`. AC3 is still open: the spec must go **red** against a
+deliberately-broken DO and **green** against `main`. Without that
+polarity check we cannot prove the spec actually exercises its guard
+— exactly the PR #440 hole the rung was supposed to close.
 
 This doc names the smallest path to AC3 and leaves the implementation
 to whoever holds `agar/server/` write scope.
@@ -47,15 +20,14 @@ to whoever holds `agar/server/` write scope.
 Two pieces:
 
 1. **A build-flag path in `agar/server/`** that, when set, makes the DO
-   silently drop every 7th input applied to the tick reducer. The flag
-   is read ONCE at DO construction so a single fixture build runs
-   broken end-to-end.
-2. **A positive-break-detection self-test** added to
-   `multiplayer-convergence.spec.ts`, plus a CI matrix that runs the
-   suite under both polarities. The pattern mirrors the in-tree
-   precedent at `.github/workflows/harness-self-test.yml` +
-   `e2e-shared/multiplayer/harness.spec.ts` — the assertion that
-   detects the sabotage ships next to the sabotage in the same commit.
+   drop every 7th input applied to the tick reducer. The flag is read
+   ONCE at DO construction so a single fixture build runs broken
+   end-to-end.
+2. **A second Playwright project / CI job** that builds the agar Worker
+   with the flag on, points the existing `multiplayer-convergence.spec.ts`
+   at it, and asserts the suite goes **red** — specifically that the
+   ordering invariant fails because `pureReplay(SEED, appliedLog) !==
+   canonical` once the DO has silently dropped inputs out of band.
 
 Production behavior is untouched: flag default OFF, env-gated, dead-stripped
 in the main build.
@@ -64,12 +36,11 @@ in the main build.
 
 Mirror `e2e-shared/multiplayer/FIXTURE-DESYNC-BROKEN.md`'s four-mode
 scheme. For AC3 only the `drop-every-7th` mode needs to ship; the
-other three (`reorder-under-load`, `reconnect-amnesia`, `stale-snapshot`)
-are deferred.
+other three (`reorder`, `duplicate`, `stale-snapshot`) are deferred.
 
 ```
 AGAR_DO_BREAK_MODE=drop-every-7th   # AC3 — the one that must land
-AGAR_DO_BREAK_MODE=off               # production default (also unset/empty)
+AGAR_DO_BREAK_MODE=                  # unset / empty — production
 ```
 
 Read in `agar/server/worker.ts` once at DO construction. Stored on the
@@ -100,71 +71,19 @@ input was applied (so its `appliedLog` keeps growing) while the server
 silently elided it from the reducer call. That's what makes the
 ordering invariant the honest gate.
 
-## CI shape — positive break-detection (NOT inverted exit codes)
+## CI shape
 
-In-tree precedent: `.github/workflows/harness-self-test.yml` runs the
-harness library's `HARNESS_BREAK_MODE` matrix this way and every job —
-`off` and every break mode — exits **zero** in the steady state. The
-assertion that detects the sabotage ships in the spec, next to the
-sabotage, gated by `test.skip(MODE !== "drop-every-7th", …)`. Mirror
-that pattern here.
+Add ONE workflow job, e.g. `agar-multiplayer-fixture-redgreen`, that:
 
-Add ONE workflow job, e.g. `agar-multiplayer-fixture-redgreen`, with
-a matrix:
+1. Builds the agar Worker with `AGAR_DO_BREAK_MODE=drop-every-7th`.
+2. Runs `agar/e2e/multiplayer-convergence.spec.ts` against that build.
+3. Asserts the job exits **non-zero** — the spec MUST go red. Use
+   `! npx playwright test ...` or `continue-on-error: true` + a follow-up
+   step that fails when the prior step succeeds.
+4. The existing green job (against main DO) stays as-is.
 
-```yaml
-strategy:
-  fail-fast: false
-  matrix:
-    mode: [off, drop-every-7th]
-steps:
-  - run: <build agar Worker>
-    env:
-      AGAR_DO_BREAK_MODE: ${{ matrix.mode }}
-  - run: npx playwright test agar/e2e/multiplayer-convergence.spec.ts
-    env:
-      AGAR_DO_BREAK_MODE: ${{ matrix.mode }}
-```
-
-Both jobs are expected to exit **zero**. No `continue-on-error`, no
-negated exit codes. The `drop-every-7th` job goes red iff either:
-  a) the break-mode code path no longer sabotages the DO (the
-     `if (this.breakMode === "drop-every-7th")` branch was removed), OR
-  b) the production reducer accidentally adopted the broken behaviour,
-     so a contract case that the sabotage would falsify is no longer
-     skipped — caught by the `off` job too.
-
-That is #129's "fails-on-unfixed" criterion satisfied IN-TREE without
-leaning on test-runner exit-code semantics (which vary across
-Playwright reporters, `--forbid-only`, and shard config).
-
-Quote the literal string `"off"` in YAML — bare `off` is a YAML 1.1
-boolean keyword and would be coerced to `"false"` before reaching the
-process env (see `harness-self-test.yml` for the same gotcha).
-
-## Spec-side shape
-
-`agar/e2e/multiplayer-convergence.spec.ts` grows by exactly ONE test:
-
-```ts
-test("self-test: drop-every-7th — ordering invariant diverges", async () => {
-  test.skip(
-    process.env.AGAR_DO_BREAK_MODE !== "drop-every-7th",
-    "only runs under AGAR_DO_BREAK_MODE=drop-every-7th",
-  );
-  // Drive the same tape the green ordering-invariant test drives.
-  // Assert POSITIVELY that pureReplay(SEED, appliedLog) !== canonical
-  // — deep-not-equal — and that the divergence happens at a tick that
-  // is a multiple of 7 in the client's appliedLog (the elided input).
-});
-```
-
-The existing two tests (ordering invariant, reconnect-replay) stay
-byte-identical and run under both polarities. Under `off` they pass.
-Under `drop-every-7th`, the ordering-invariant test will itself fail
-— that's the desync. The `test.skip` guard on the legacy two assertions
-keeps the matrix legible: skip them under the break mode, run the new
-positive self-test instead.
+Both polarities together are the merge gate. A change that breaks
+either side fails CI.
 
 ## What this is NOT
 
@@ -173,9 +92,8 @@ positive self-test instead.
   bundles.
 - Not a randomized chaos test. Exactly every 7th input drops,
   deterministically, so the failure mode is reproducible.
-- Not an inverted-exit-code workflow. Both polarities exit zero in
-  steady state; sabotage is detected by a positive assertion that
-  ships next to the sabotage.
+- Not a broadening of `multiplayer-convergence.spec.ts`. The same file
+  runs against both polarities — that's the whole point.
 
 ## Affected paths
 
@@ -184,32 +102,25 @@ positive self-test instead.
 - `agar/server/reducer.ts` — read-only reference; the drop is a
   callsite decision, not a reducer change.
 - `.github/workflows/<existing-agar-e2e>.yml` or sibling — add the
-  `[off, drop-every-7th]` matrix job. Implementer picks the right
-  workflow file.
-- `agar/e2e/multiplayer-convergence.spec.ts` — add ONE
-  `self-test: drop-every-7th` case; the existing two tests stay
-  byte-identical and gain `test.skip` guards for the break mode.
+  red-polarity job. Implementer picks the right workflow file.
+- `agar/e2e/multiplayer-convergence.spec.ts` — read-only. Do NOT
+  modify; the spec staying byte-identical across polarities IS the
+  guarantee.
 
 ## Acceptance check
 
 Three conditions, all must hold:
 
-1. With `AGAR_DO_BREAK_MODE=off`, `multiplayer-convergence.spec.ts`
-   passes (already true at `a146123`; the new self-test skips).
-2. With `AGAR_DO_BREAK_MODE=drop-every-7th`, the same file passes —
-   the new `self-test: drop-every-7th` case asserts the divergence
-   positively; the legacy two tests skip under this mode.
-3. CI runs both modes as a matrix; both exit zero in steady state.
-   Removing the drop logic in `agar/server/worker.ts` causes the
-   `drop-every-7th` job to go red (the self-test's positive assertion
-   fails). Removing the self-test causes any reviewer reading the
-   diff to ask why — and the matrix still exists.
+1. With the agar Worker built with no env, `multiplayer-convergence.spec.ts`
+   passes (already true at `a146123`).
+2. With the agar Worker built with `AGAR_DO_BREAK_MODE=drop-every-7th`,
+   the **ordering invariant** test in the same file fails — specifically
+   the `assertCanonicalEqualsReplay` assertion on the first connector.
+3. CI runs both builds; the `agar-multiplayer-fixture-redgreen` job
+   asserts the second build failed. Removing the broken-path code or
+   the drop logic causes the red job to go green, which fails CI.
 
-When all three hold, the implementing PR for #276 can claim `Closes
-#234` and `Closes #180` in its body. This plan-revision PR claims
-neither — it ships docs only (a *proposed* shape for #276's AC2) and
-references #276 without closing it. Adoption gate: the issue owner
-updates #276's AC2; until then r1's inverted-exit shape stands.
+When all three hold, #234 closes.
 
 ## Implementer notes
 
@@ -223,12 +134,9 @@ updates #276's AC2; until then r1's inverted-exit shape stands.
 - Numeric seed only — `pureReplay`'s signature requires `seed: number`.
   The convergence spec already parses `?seed=` into a number; the
   fixture build doesn't need to touch that.
-- Don't add new test files. The new self-test case lives in
-  `multiplayer-convergence.spec.ts` alongside the two existing tests
-  — same shape as `e2e-shared/multiplayer/harness.spec.ts`'s contract
-  + self-test split.
-- Read `.github/workflows/harness-self-test.yml` before wiring the
-  workflow; it's the in-tree reference shape for this pattern.
+- Don't add new test files. The polarity is asserted by RUN-level
+  red/green, not by a second spec.
 
-Refs #234 (AC3 only). Refs #180. Refs #276. Refs
-`e2e-shared/multiplayer/FIXTURE-DESYNC-BROKEN.md`.
+Refs #234 (AC3 only). Refs #180. Refs `e2e-shared/multiplayer/FIXTURE-DESYNC-BROKEN.md`.
+
+Refs #234
