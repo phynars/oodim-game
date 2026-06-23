@@ -20,8 +20,12 @@
 // RECOIL/BOB: a tiny per-shot kick on local z (the gun pops back toward
 // the camera) decays on a timer; the engine drives the timer from the
 // fixed-step loop so determinism stays intact (no wall-clock easing in
-// the simulation path). A slow idle bob on local y reads as the hands
-// breathing.
+// the simulation path). The idle/walk bob (Diego audit, juice ceiling
+// #21) couples bob FREQUENCY and AMPLITUDE to player speed: at rest the
+// gun breathes slow + tiny Y-only; in motion it swaggers at footstep
+// cadence with a figure-eight (sin on Y, cos on X) so the body's actual
+// state EARNS the feedback. Phase accumulates continuously across the
+// transition so resumption is graceful (no snap on start/stop).
 
 import * as THREE from "three";
 
@@ -39,9 +43,28 @@ export const RECOIL_DECAY_TICKS = 10;
  *  Small — the muzzle stays visible — but enough to read as a kick. */
 const RECOIL_KICK = 0.04;
 
-/** Idle bob amplitude on local-y. The engine advances a phase counter per
- *  fixed-step and writes y = base + sin(phase) * IDLE_BOB_AMPLITUDE. */
-const IDLE_BOB_AMPLITUDE = 0.005;
+// --- Bob coupling (Diego audit, juice ceiling #21) -------------------
+//
+// The bob is a SUM of two channels lerped on speedFrac = vel/maxVel:
+//   - At rest (speedFrac=0): slow breath, Y-only, tiny amplitude.
+//   - At full motion (speedFrac=1): footstep cadence on Y + lateral
+//     figure-8 on X (scaled directly by speedFrac so it's zero at rest
+//     — no spurious idle wiggle).
+//
+// Phase ADVANCES at the BLENDED FREQUENCY each tick — never resets on
+// motion start/stop, so the cadence resumes gracefully.
+/** Bob phase advance per tick at rest. ~2.9× slower than the previous
+ *  flat 0.08 — reads as a breath, not a stride. */
+const IDLE_BOB_FREQ = 0.03;
+/** Bob phase advance per tick at full speed. Footstep cadence. */
+const WALK_BOB_FREQ = 0.16;
+/** Bob amplitude on local-y at rest. Subtle breath. */
+const IDLE_BOB_AMP_Y = 0.003;
+/** Bob amplitude on local-y at full speed. Visible weight shift. */
+const WALK_BOB_AMP_Y = 0.012;
+/** Bob amplitude on local-x at full speed (lateral sway).
+ *  Scales DIRECTLY by speedFrac — zero at rest. */
+const WALK_BOB_AMP_X = 0.008;
 
 /** Base local-space anchor for the viewmodel in camera-local coords. The
  *  gun sits to the right of the screen, below the eye, just in front of
@@ -68,8 +91,9 @@ export interface Viewmodel {
   /** Fixed-step frames remaining on the current recoil kick. Decays the
    *  local-z offset from RECOIL_KICK→0 linearly. */
   recoilTicks: number;
-  /** Idle-bob phase accumulator. Advances one step per fixed update; the
-   *  render pass takes sin(phase) for the local-y offset. */
+  /** Bob phase accumulator. Advances by a SPEED-BLENDED frequency each
+   *  fixed update; render pass takes sin(phase) for local-y and
+   *  cos(phase/2) for the lateral channel. */
   bobPhase: number;
 }
 
@@ -193,11 +217,27 @@ export function pulseMuzzleFlash(vm: Viewmodel): void {
   vm.flashSprite.rotation.z = Math.floor(Math.random() * 4) * (Math.PI / 2);
 }
 
-/** Advance the viewmodel's per-tick state — recoil decay, idle bob phase,
+/** Linear interpolation. */
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Advance the viewmodel's per-tick state — recoil decay, bob phase,
  *  flash countdown. Called once per fixed-step from Engine.update(), so
- *  all easing is deterministic (no wall-clock reads). */
-export function stepViewmodel(vm: Viewmodel): void {
-  vm.bobPhase += 0.08;
+ *  all easing is deterministic (no wall-clock reads).
+ *
+ *  @param speedFrac player speed normalized to [0,1] (vel/maxVel). The
+ *    engine passes this from its move state; bob frequency and amplitude
+ *    lerp on this fraction. Defaults to 0 (idle) so older callers that
+ *    haven't been updated keep the breath-at-rest behavior. */
+export function stepViewmodel(vm: Viewmodel, speedFrac: number = 0): void {
+  // Clamp defensively — out-of-range speedFrac would distort the lerp.
+  const s = speedFrac < 0 ? 0 : speedFrac > 1 ? 1 : speedFrac;
+
+  // Phase advances at the BLENDED frequency. Continuous across motion
+  // start/stop — no reset — so cadence resumes gracefully.
+  const freq = lerp(IDLE_BOB_FREQ, WALK_BOB_FREQ, s);
+  vm.bobPhase += freq;
 
   if (vm.flashTicks > 0) {
     vm.flashTicks -= 1;
@@ -214,9 +254,13 @@ export function stepViewmodel(vm: Viewmodel): void {
 
   // Apply transform: recoil kicks the gun toward the camera on local +z
   // (positive z = back toward viewer in our basis), decaying linearly.
-  // Idle bob writes a tiny sin wave onto local-y.
+  // Bob is a speed-blended Y channel + a lateral X channel that's zero
+  // at rest (figure-eight feel: full Y cycle, half-rate X cycle).
   const recoilFrac = vm.recoilTicks / RECOIL_DECAY_TICKS;
   const recoilOffset = RECOIL_KICK * recoilFrac;
-  const bobOffset = Math.sin(vm.bobPhase) * IDLE_BOB_AMPLITUDE;
-  vm.group.position.set(BASE_X, BASE_Y + bobOffset, BASE_Z + recoilOffset);
+  const ampY = lerp(IDLE_BOB_AMP_Y, WALK_BOB_AMP_Y, s);
+  const ampX = WALK_BOB_AMP_X * s;
+  const bobY = Math.sin(vm.bobPhase) * ampY;
+  const bobX = Math.cos(vm.bobPhase * 0.5) * ampX;
+  vm.group.position.set(BASE_X + bobX, BASE_Y + bobY, BASE_Z + recoilOffset);
 }
