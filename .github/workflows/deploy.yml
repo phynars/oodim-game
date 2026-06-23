@@ -63,6 +63,21 @@ jobs:
           # wrangler 3.x predates assets-only Workers (errors "Missing
           # entry-point"); pin 4.x to match the local deploy.
           wranglerVersion: "4.100.0"
+      # PROD-REACHABILITY PLAY-SMOKE (2026-06-23). After publishing, load the LIVE
+      # site in a real browser and assert each game is actually PLAYABLE — not just
+      # 200. This is the gate that would have caught the agar WS-404 incident
+      # (multiplayer server unrouted in prod → "no one is listening" while every
+      # code/CI/deploy signal was green). A red here means "prod is broken for
+      # players" — investigate immediately. Post-deploy (the site is already live),
+      # so it's a verification alarm, not a pre-gate; staging mirror is a follow-up.
+      - name: Prod play-smoke — games actually playable
+        if: ${{ env.CF_TOKEN != '' }}
+        run: |
+          # Let the Worker + custom-domain route + DO migration propagate before
+          # we hit the live URL as a player (the smoke also retries x2 internally).
+          sleep 30
+          npx playwright install --with-deps chromium
+          SMOKE_BASE_URL=https://game.oodim.com npm run test:smoke
       - name: Note if deploy skipped
         if: ${{ env.CF_TOKEN == '' }}
         run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."
