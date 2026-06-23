@@ -6,9 +6,12 @@ import {
   WORLD_W,
   step,
   type BotState,
-  type InputIntent,
+  type PlayerState,
+  type ReplayFrame,
   type WorldState,
 } from "../server/reducer";
+
+const PLAYER_ID = "p0";
 
 // agar balance slice 2/4 (#298) — distance-trend assertion for the
 // bot hunt/flee mechanic. Pursuit + flee are the entire point of this
@@ -71,22 +74,19 @@ function makeFixture(botMass: number): WorldState {
     y: PLAYER_Y,
     mass: botMass,
   };
-  return {
-    tick: 0,
-    player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_MASS_START },
-    // #299 — death counter + best-mass start at the natural defaults
-    // a fresh initialState() would produce. This spec doesn't exercise
-    // death; the fields are required by the WorldState shape and the
-    // step() pass-through preserves them.
+  const player: PlayerState = {
+    id: PLAYER_ID,
+    x: PLAYER_X,
+    y: PLAYER_Y,
+    mass: PLAYER_MASS_START,
     deaths: 0,
     bestMass: PLAYER_MASS_START,
-    // Empty food pool — no pellet draws, no growth noise, no rng
-    // movement. The step() loop iterates food.length so length-0 is
-    // a clean no-op.
+  };
+  return {
+    tick: 0,
+    players: [player],
     food: [],
     bots: [bot],
-    // Any non-zero rng is fine; this spec doesn't depend on
-    // randomness — the bot's seek decision is purely geometric.
     rng: 1,
   };
 }
@@ -94,12 +94,14 @@ function makeFixture(botMass: number): WorldState {
 function botDist2(s: WorldState): number {
   const b = s.bots[0];
   if (!b) throw new Error("bot vanished");
-  const dx = b.x - s.player.x;
-  const dy = b.y - s.player.y;
+  const p = s.players.find((q) => q.id === PLAYER_ID);
+  if (!p) throw new Error("player vanished");
+  const dx = b.x - p.x;
+  const dy = b.y - p.y;
   return dx * dx + dy * dy;
 }
 
-const HOLD: InputIntent = { dir: "none" };
+const HOLD: ReplayFrame = { inputs: { [PLAYER_ID]: { dir: "none" } } };
 
 test("agar #298 — heavier bot pursues player (distance decreases)", () => {
   // Sanity: the fixture's mass ratio actually triggers prey-mode in

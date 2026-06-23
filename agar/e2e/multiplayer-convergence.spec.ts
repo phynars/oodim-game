@@ -57,7 +57,7 @@ import type { Tape } from "../../e2e-shared/multiplayer/harness";
 import {
   pureReplay,
   type InputDir,
-  type InputIntent,
+  type ReplayFrame,
   type WorldState,
 } from "../server/reducer";
 
@@ -98,7 +98,11 @@ async function waitForFirstSnapshot(page: Page): Promise<void> {
 // with the log that produced it.
 async function readState(
   page: Page,
-): Promise<{ canonical: WorldState | null; appliedLog: InputDir[] }> {
+): Promise<{
+  canonical: WorldState | null;
+  appliedLog: InputDir[];
+  appliedFrames: ReplayFrame[];
+}> {
   return page.evaluate(() => {
     const w = window as unknown as {
       __game: {
@@ -106,6 +110,7 @@ async function readState(
         tickTo: (n: number) => Promise<void>;
         canonical: WorldState | null;
         appliedLog: readonly InputDir[];
+        appliedFrames: readonly ReplayFrame[];
       };
     };
     const tickField = w.__game.tick;
@@ -116,6 +121,7 @@ async function readState(
     return w.__game.tickTo(curTick).then(() => ({
       canonical: w.__game.canonical,
       appliedLog: w.__game.appliedLog.slice() as InputDir[],
+      appliedFrames: w.__game.appliedFrames.slice() as ReplayFrame[],
     }));
   });
 }
@@ -150,27 +156,30 @@ async function readState(
 function assertCanonicalEqualsReplay(
   label: string,
   seed: number,
-  state: { canonical: WorldState | null; appliedLog: InputDir[] },
+  state: {
+    canonical: WorldState | null;
+    appliedLog: InputDir[];
+    appliedFrames: ReplayFrame[];
+  },
 ): boolean {
   expect(state.canonical, `${label}: canonical present`).not.toBeNull();
   if (state.canonical === null) return false;
 
-  // Late joiner: appliedLog is a suffix of the full history. The
-  // determinism check via `pureReplay` is NOT honest here — replaying
-  // a suffix from seed yields a state at tick `appliedLog.length`, not
-  // at `canonical.tick`. Skip the assertion for this page; convergence
-  // with the first connector (via expectConverge) is the rung-level
-  // gate that covers it.
-  if (state.appliedLog.length !== state.canonical.tick) return false;
+  // Late joiner: appliedFrames is a suffix of the full history.
+  // Replaying a suffix from seed yields a state at tick
+  // `appliedFrames.length`, not at `canonical.tick`. Skip the
+  // assertion for this page; convergence with the first connector
+  // (via expectConverge) is the rung-level gate that covers it.
+  if (state.appliedFrames.length !== state.canonical.tick) return false;
 
   // This page covered the full history → the bit-exact determinism
-  // contract holds. Same shape as tick.spec.ts's single-client check.
-  const tape: InputIntent[] = state.appliedLog.map((dir) => ({ dir }));
-  const expected = pureReplay(seed, tape);
+  // contract holds. Slice 4: the tape is the per-tick ReplayFrame
+  // (joins / leaves / inputs keyed by id), not a single dir.
+  const expected = pureReplay(seed, state.appliedFrames);
 
   expect(expected.tick, `${label}: replayed tick`).toBe(state.canonical.tick);
-  expect(expected.player, `${label}: replayed player`).toEqual(
-    state.canonical.player,
+  expect(expected.players, `${label}: replayed players`).toEqual(
+    state.canonical.players,
   );
   expect(expected.rng, `${label}: replayed rng`).toBe(state.canonical.rng);
   return true;

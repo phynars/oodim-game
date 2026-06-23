@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   pureReplay,
   type InputDir,
-  type InputIntent,
+  type ReplayFrame,
   type WorldState,
 } from "../server/reducer";
 
@@ -123,39 +123,45 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", 
     )
     .toBeGreaterThanOrEqual(TARGET_TICKS);
 
-  // Read the canonical state and the applied-input log together. The
-  // log is the server's own record of what it did; replaying it must
-  // reproduce `canonical` exactly.
-  const { canonical, appliedLog } = (await page.evaluate(() => {
+  // Read the canonical state and the per-tick replay frame log
+  // together. The frame log is the server's own record of what it
+  // did each tick (joins / leaves / per-id inputs); replaying it
+  // must reproduce `canonical` exactly.
+  const { canonical, appliedLog, appliedFrames } = (await page.evaluate(() => {
     const g = (
       window as unknown as {
         __game: {
           canonical: WorldState | null;
           appliedLog: readonly InputDir[];
+          appliedFrames: readonly ReplayFrame[];
         };
       }
     ).__game;
     return {
       canonical: g.canonical,
       appliedLog: g.appliedLog.slice(),
+      appliedFrames: g.appliedFrames.slice(),
     };
-  })) as { canonical: WorldState | null; appliedLog: InputDir[] };
+  })) as {
+    canonical: WorldState | null;
+    appliedLog: InputDir[];
+    appliedFrames: ReplayFrame[];
+  };
 
   expect(canonical).not.toBeNull();
   if (canonical === null) return;
 
-  // appliedLog[i] is the dir applied at server tick (i+1). The DO
-  // initialises at tick=0 and increments inside step(), so the log
-  // length should equal canonical.tick.
-  expect(appliedLog.length).toBe(canonical.tick);
+  // appliedFrames[i] is the ReplayFrame applied at server tick (i+1).
+  // The DO initialises at tick=0 and increments inside step(), so the
+  // frames length should equal canonical.tick.
+  expect(appliedFrames.length).toBe(canonical.tick);
 
-  // Bit-exact determinism check: same seed, same ordered inputs →
+  // Bit-exact determinism check: same seed, same ordered frames →
   // same terminal state.
-  const tape: InputIntent[] = appliedLog.map((dir) => ({ dir }));
-  const expected = pureReplay(SEED, tape);
+  const expected = pureReplay(SEED, appliedFrames);
 
   expect(expected.tick).toBe(canonical.tick);
-  expect(expected.player).toEqual(canonical.player);
+  expect(expected.players).toEqual(canonical.players);
   expect(expected.rng).toBe(canonical.rng);
 
   // Sanity: at least ONE non-"none" dir got applied — i.e. our inputs

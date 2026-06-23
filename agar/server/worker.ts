@@ -1,37 +1,34 @@
-// agar — slice 3/4 (authoritative 20Hz tick + snapshot broadcast).
+// agar — slice 4/4 (true multiplayer DO).
 //
-// Upgrade from the slice-2 echo server:
-//   - The DO owns world state via the pure reducer in ./reducer.ts.
-//   - A fixed-step 20Hz tick (50ms) integrates the latest queued input
-//     and broadcasts a canonical snapshot to all connected sockets.
-//   - The seed is taken from the `?seed=` query string at connect time
-//     so the e2e harness can drive a deterministic replay.
+// What changed from slice 3:
+//   - The world tracks N players keyed by client id. Each WS connection
+//     announces its id via `?cid=` on the upgrade URL; the DO uses it as
+//     the player key. On accept, the DO emits a `joins` frame next tick
+//     so the new cell exists in canonical state. On close, the DO emits
+//     a `leaves` frame and removes the cell.
+//   - Inputs are tracked per-player: `pendingDirs: Map<id, InputDir>`.
+//     The tick fold builds an `inputs` record keyed by the connected
+//     ids and feeds it to `step(state, frame)`. Latest-input-wins
+//     within a tick window, per player.
+//   - The snapshot carries `players: PlayerState[]` (id-sorted, same
+//     as `state.players`) and the per-tick `frame` ({joins, leaves,
+//     inputs}) so clients can rebuild the canonical replay tape and
+//     `pureReplay(seed, tape)` reproduces canonical bit-exact.
 //
-// Why setInterval, not the DO alarm scheduler:
-//   - Slice 3 is single-client and short-lived (the e2e drives ~30
-//     ticks then disconnects). A 50ms setInterval inside the
-//     accept-handling fetch is sufficient and keeps the file readable.
-//   - The DO instance lives as long as the WS is open; when the last
-//     socket closes we clear the interval so the DO can hibernate.
-//   - Alarms come back in slice 4 when we need durability across
-//     restarts and 2-client rooms.
-//
-// AC3 desync-broken fixture (issue #276):
-//   - `AGAR_DO_BREAK_MODE` is read ONCE at DO construction. The only
-//     supported non-empty value is `"drop-every-7th"`; anything else
-//     is a typecheck failure at the assignment, so unknown env values
-//     can't silently no-op.
-//   - When the flag is on, every 7th input that reaches `tick()` is
-//     silently elided from the reducer fold — the snapshot still
-//     carries `dir` (so the client mirrors it into `appliedLog`) but
-//     `step()` is skipped, so canonical state diverges from
-//     `pureReplay(SEED, appliedLog)`. That divergence is what the
-//     `multiplayer-convergence.spec.ts` ordering invariant catches.
-//   - Default (unset / empty): zero behavior change. The branch is a
-//     single literal comparison off a constant set at ctor; the prod
-//     bundle pays one boolean check per tick.
+// AC3 desync-broken fixture (issue #276) — unchanged semantics:
+//   - `AGAR_DO_BREAK_MODE=drop-every-7th` makes every 7th tick skip the
+//     reducer fold while STILL broadcasting the frame. The client's
+//     reconstructed tape diverges from canonical, which the
+//     `multiplayer-convergence` spec catches.
 
-import { initialState, step, type InputDir, type WorldState } from "./reducer";
+import {
+  initialState,
+  step,
+  type InputDir,
+  type PlayerJoin,
+  type ReplayFrame,
+  type WorldState,
+} from "./reducer";
 
 export interface Env {
   ECHO_ROOM: DurableObjectNamespace;
@@ -40,16 +37,6 @@ export interface Env {
 
 const TICK_MS = 50; // 20Hz
 
-// Type-narrowed literal union of supported break modes. Adding a new
-// mode here is the one-line touch that lights it up; an unknown env
-// value falls through to `null` (production behavior).
-// `lossy-persist` and `non-monotone-persist` are reserved for the
-// agar persistence epic (issue #307 harness contract). They parse to
-// non-null at file time but trigger no behavior — the slice-1 and
-// slice-3 implementers wire the actual break paths against the
-// DO storage layer when those slices land. Keeping them parseable
-// here means the persistence-harness break-mode-parse test can ship
-// as the file-time merge gate without dragging in storage code.
 export type BreakMode =
   | "drop-every-7th"
   | "lossy-persist"
@@ -61,14 +48,7 @@ export const BREAK_MODES: ReadonlySet<BreakMode> = new Set<BreakMode>([
 ]);
 
 export function parseBreakMode(raw: string | undefined): BreakMode | null {
-  // Default: env unset OR explicitly empty — production behavior, no
-  // branch taken at runtime.
   if (raw === undefined || raw === "") return null;
-  // Any other value MUST be a known mode. Per #276 AC4, an unknown
-  // env value is a hard failure at DO construction (not a silent
-  // fallback to off) — that's the only way a typo in CI config can't
-  // accidentally ship a worker that pretends to be broken but isn't,
-  // or vice versa.
   if (!BREAK_MODES.has(raw as BreakMode)) {
     throw new Error(
       `agar: unknown AGAR_DO_BREAK_MODE=${JSON.stringify(raw)}; expected one of ${JSON.stringify([...BREAK_MODES])} or empty/unset`,
@@ -92,27 +72,27 @@ function isInputMessage(value: unknown): value is InputMessage {
   );
 }
 
+// Stable, monotonic id generator used when a connecting client omits
+// `?cid=`. Strictly a fallback for non-harness clients; the agar
+// frontend always supplies its minted clientId.
+let fallbackIdCounter = 0;
+
 export class EchoRoom implements DurableObject {
   private world: WorldState;
-  // Latest-input-wins queue. The reducer ticks with whatever's here at
-  // tick boundary; cleared each tick (default = "none").
-  private pendingDir: InputDir = "none";
-  private sockets = new Set<WebSocket>();
+  // socket → playerId routing. The pendingDirs map carries the
+  // latest-input-wins intent for each connected id; it is cleared at
+  // tick boundary. Pending joins and leaves accumulate until the next
+  // tick, where they're folded into the ReplayFrame.
+  private socketToId = new Map<WebSocket, string>();
+  private pendingDirs = new Map<string, InputDir>();
+  private pendingJoins: PlayerJoin[] = [];
+  private pendingLeaves: string[] = [];
   private interval: ReturnType<typeof setInterval> | null = null;
 
-  // AC3 fixture state. `breakMode` is set once at construction and
-  // never re-read; `appliedCount` increments on every tick to drive
-  // the every-7th drop cadence deterministically.
   private readonly breakMode: BreakMode | null;
   private appliedCount = 0;
 
-  constructor(
-    _state: DurableObjectState,
-    env: Env,
-  ) {
-    // The seed is set when the first socket connects (it carries the
-    // ?seed= query). We init to seed=1 here so the DO has a valid
-    // shape even if a non-WS request lands first; reinit on connect.
+  constructor(_state: DurableObjectState, env: Env) {
     this.world = initialState(1);
     this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
   }
@@ -123,7 +103,7 @@ export class EchoRoom implements DurableObject {
   }
 
   private stopTickLoopIfIdle(): void {
-    if (this.sockets.size > 0) return;
+    if (this.socketToId.size > 0) return;
     if (this.interval !== null) {
       clearInterval(this.interval);
       this.interval = null;
@@ -131,51 +111,51 @@ export class EchoRoom implements DurableObject {
   }
 
   private tick(): void {
-    const dir = this.pendingDir;
-    this.pendingDir = "none";
+    // Build the frame for this tick. Joins come from sockets accepted
+    // since the last tick; leaves from sockets that closed. Inputs
+    // are the latest dir per still-connected id; we clear pendingDirs
+    // after copying. A player that joined this tick has no input yet,
+    // so they step with dir="none" (handled by step()).
+    const joins = this.pendingJoins;
+    const leaves = this.pendingLeaves;
+    this.pendingJoins = [];
+    this.pendingLeaves = [];
 
-    // AC3 drop point (issue #276). The plan demands the drop happen
-    // AFTER the client-visible log advances but BEFORE the reducer
-    // fold — so the client thinks the input was applied (its
-    // `appliedLog` mirrors `dir` from the snapshot) while canonical
-    // state silently diverges. Concretely: bump `appliedCount`, then
-    // SKIP `step()` on every 7th tick, then still broadcast a
-    // snapshot carrying `dir` so the client log grows.
+    const inputs: Record<string, { dir: InputDir }> = {};
+    for (const [id, dir] of this.pendingDirs) {
+      inputs[id] = { dir };
+    }
+    this.pendingDirs.clear();
+
+    const frame: ReplayFrame = {
+      ...(joins.length > 0 ? { joins } : {}),
+      ...(leaves.length > 0 ? { leaves } : {}),
+      ...(Object.keys(inputs).length > 0 ? { inputs } : {}),
+    };
+
+    // AC3 drop point (issue #276) — bump count, then skip step on
+    // every 7th tick while STILL broadcasting the frame.
     this.appliedCount += 1;
     const drop =
       this.breakMode === "drop-every-7th" && this.appliedCount % 7 === 0;
     if (!drop) {
-      this.world = step(this.world, { dir });
+      this.world = step(this.world, frame);
     }
 
-    // The snapshot carries `dir` — the EXACT intent the server
-    // (claims to have) applied this tick. The client mirrors these
-    // into an applied-input log so the e2e can replay them through
-    // `pureReplay` and assert bit-exact equality, without depending
-    // on which inputs landed in which tick slots. (Latest-input-wins
-    // makes that mapping inherently racy under CI jitter; the log
-    // removes the race because both sides agree on what was actually
-    // applied.) Under the AC3 fixture this is exactly the lie the
-    // server tells the client — `dir` rides the snapshot even when
-    // `step` was skipped, which is what makes the ordering invariant
-    // honest.
     const snapshot = JSON.stringify({
       type: "snapshot",
       tick: this.world.tick,
-      dir,
-      player: this.world.player,
-      // Death + best-mass scoreboard (#299, balance slice 3/4). Carried
-      // in every snapshot so a freshly-connected or reconnected client
-      // reads the same record both clients see — the run's stake is
-      // server-authoritative, not inferred client-side from a mass
-      // drop.
-      deaths: this.world.deaths,
-      bestMass: this.world.bestMass,
+      // Per-tick replay frame — clients append this verbatim into a
+      // shared tape and assert `pureReplay(seed, tape) === canonical`.
+      // The harness no longer needs to know which dir belonged to
+      // which client; the frame carries the full per-id record.
+      frame,
+      players: this.world.players,
       food: this.world.food,
       bots: this.world.bots,
       rng: this.world.rng,
     });
-    for (const s of this.sockets) {
+    for (const s of this.socketToId.keys()) {
       try {
         s.send(snapshot);
       } catch {
@@ -190,19 +170,25 @@ export class EchoRoom implements DurableObject {
       return new Response("Expected websocket upgrade", { status: 426 });
     }
 
-    // The seed for this match is read from the upgrade URL. The Worker
-    // entry below preserves the query string when proxying to the DO,
-    // so `?seed=N` lands here intact. Parse defensively: a missing or
-    // non-numeric seed falls back to 1 (still deterministic).
     const url = new URL(request.url);
     const seedParam = url.searchParams.get("seed");
     const seed = seedParam !== null ? Number.parseInt(seedParam, 10) : 1;
+
+    // Read the client-minted id. Falls back to a server-generated
+    // id if missing (non-harness clients), with a per-DO counter so
+    // the id is stable within the room's lifetime.
+    const cidParam = url.searchParams.get("cid");
+    fallbackIdCounter += 1;
+    const clientId =
+      cidParam !== null && cidParam !== ""
+        ? cidParam
+        : `srv-${fallbackIdCounter}`;
+
     // If this is the first socket, initialize the world with this seed.
-    // Subsequent sockets join the existing match — slice 3 is
-    // single-client per spec, so this branch is exercised exactly once
-    // per DO lifetime in the e2e.
-    if (this.sockets.size === 0) {
+    // Subsequent sockets join the existing match.
+    if (this.socketToId.size === 0) {
       this.world = initialState(Number.isFinite(seed) ? seed : 1);
+      this.appliedCount = 0;
     }
 
     const pair = new WebSocketPair();
@@ -210,31 +196,64 @@ export class EchoRoom implements DurableObject {
     const server = pair[1];
 
     server.accept();
-    this.sockets.add(server);
+    this.socketToId.set(server, clientId);
+
+    // Queue the join for the NEXT tick. The join is only applied via
+    // step() so the offline reducer reproduces it from the broadcast
+    // frame. A reconnect under an existing id is a no-op join inside
+    // applyJoins (the existing cell carries on), which is the right
+    // behavior for the convergence harness's disconnect/reconnect arc.
+    //
+    // Avoid double-queueing: if this same id already has a pending
+    // join (rare but possible if connect+disconnect+reconnect happens
+    // inside a single tick window), the array would have one entry
+    // and applyJoins would idempotently skip; if there's a pending
+    // leave for this id, cancel it instead so the player resumes.
+    const leaveIdx = this.pendingLeaves.indexOf(clientId);
+    if (leaveIdx >= 0) this.pendingLeaves.splice(leaveIdx, 1);
+    if (!this.pendingJoins.some((j) => j.id === clientId)) {
+      this.pendingJoins.push({ id: clientId });
+    }
+
     this.ensureTickLoop();
 
     server.addEventListener("message", (event: MessageEvent) => {
       let parsed: unknown;
       try {
-        parsed =
-          typeof event.data === "string" ? JSON.parse(event.data) : null;
+        parsed = typeof event.data === "string" ? JSON.parse(event.data) : null;
       } catch {
         parsed = null;
       }
       if (!isInputMessage(parsed)) return;
-      // Latest-input-wins: overwrite any prior intent in this tick window.
-      this.pendingDir = parsed.dir;
+      this.pendingDirs.set(clientId, parsed.dir);
     });
 
-    server.addEventListener("close", () => {
-      this.sockets.delete(server);
+    const onGone = () => {
+      this.socketToId.delete(server);
+      this.pendingDirs.delete(clientId);
+      // If this id is still in the roster (i.e. the join already
+      // landed), schedule a leave. If the join is still pending
+      // (same-tick connect+disconnect), cancel it instead.
+      const joinIdx = this.pendingJoins.findIndex((j) => j.id === clientId);
+      if (joinIdx >= 0) {
+        this.pendingJoins.splice(joinIdx, 1);
+      } else if (!this.pendingLeaves.includes(clientId)) {
+        // Only queue a leave if no OTHER socket still claims this
+        // clientId — duplicate connections under the same id (the
+        // reconnect arc) shouldn't leave when the first socket closes.
+        let stillConnected = false;
+        for (const id of this.socketToId.values()) {
+          if (id === clientId) {
+            stillConnected = true;
+            break;
+          }
+        }
+        if (!stillConnected) this.pendingLeaves.push(clientId);
+      }
       this.stopTickLoopIfIdle();
-    });
-
-    server.addEventListener("error", () => {
-      this.sockets.delete(server);
-      this.stopTickLoopIfIdle();
-    });
+    };
+    server.addEventListener("close", onGone);
+    server.addEventListener("error", onGone);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -256,9 +275,6 @@ const worker: ExportedHandler<Env> = {
     }
 
     // Route by seed so two clients with the same seed share state.
-    // Slice 3 is still effectively single-client (the e2e drives one
-    // socket), but this keeps the routing key consistent with the
-    // protocol doc.
     const seedParam = url.searchParams.get("seed") ?? "1";
     const id = env.ECHO_ROOM.idFromName(`match:${seedParam}`);
     const stub = env.ECHO_ROOM.get(id);
