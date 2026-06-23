@@ -20,6 +20,12 @@
 
 import { test, expect } from "@playwright/test";
 import { parseBreakMode, BREAK_MODES } from "../server/worker";
+import { PLAYER_MASS_START } from "../server/reducer";
+
+// Worker dev host — agar's DO + WS endpoint runs on a separate
+// process from the Vite preview that hosts the page. Same host the
+// agar client connects to (see `agar/src/main.ts` wsUrl).
+const WORKER_BASE = "http://localhost:8787";
 
 test.describe("agar persistence harness contract (#307)", () => {
   test("break-mode-parse — worker accepts the two persistence break modes", () => {
@@ -45,45 +51,181 @@ test.describe("agar persistence harness contract (#307)", () => {
     expect(parseBreakMode("")).toBeNull();
   });
 
-  test("monotonic-persist — a lower score never overwrites a higher one", async () => {
-    test.skip(
-      true,
-      "deferred to a follow-up of #319 — the food-driving e2e mechanic " +
-        "(sweeping bestMass above PLAYER_MASS_START on a random seed) is " +
-        "timing-sensitive against the 30s Playwright test timeout and " +
-        "needs its own scoped iteration. Slice-1 worker.ts changes " +
-        "(monotone storage.put on the canonical tick path, lossy + " +
-        "non-monotone break modes wired) land independently in PR #320; " +
-        "this test re-unskips when the follow-up issue closes.",
-    );
+  test("monotonic-persist — a lower score never overwrites a higher one", async ({
+    browser,
+  }) => {
+    // Fixed seed (not a random-per-test seed). Persistence is keyed
+    // by seed → DO id, and we need the SAME DO to see A's high write
+    // and then B's lower-score attempt. A random seed would still
+    // work in a single test run, but a fixed seed keeps the failure
+    // trail reproducible if this ever flakes.
+    const SEED = 7319;
+    const ROOM_URL = `/agar/?seed=${SEED}`;
+    const TOP_SCORE_URL = `${WORKER_BASE}/__test/top-score?seed=${SEED}`;
 
-    // Contract for the follow-up implementer (mirrors the original
-    // slice-1 plan, kept verbatim for the next session):
+    // --- Phase 1: drive playerA, sweep bestMass above PLAYER_MASS_START.
     //
-    //   1. Connect to /ws?seed=S, drive bestMass up to some HIGH
-    //      value via WS input, capture max(canonical.players[].bestMass)
-    //      as `high`.
-    //   2. Force a LOWER score to attempt to land. Two viable
-    //      mechanisms (the follow-up picks one and notes it in the
-    //      PR):
-    //        (a) AGAR_DO_BREAK_MODE=non-monotone-persist, which
-    //            drops the `>` guard in worker.ts so the DO writes
-    //            whatever the reducer emits even when it's lower
-    //            than the currently-persisted value.
-    //        (b) Disconnect, then reconnect under a FRESH cid. The
-    //            fresh player joins with bestMass=PLAYER_MASS_START,
-    //            the old player is folded out via the leaves frame,
-    //            and max(bestMass) drops below `high`.
-    //   3. Read storage via a TEMPORARY worker hook (e.g.
-    //      `/__test/top-score?seed=S`) OR the slice-2 endpoint
-    //      `/high-score?seed=S` if slice 2 has merged first.
-    //   4. Assert the returned value equals `high`, NOT the lower
-    //      one.
-    //
-    // Polarity: with AGAR_DO_BREAK_MODE=non-monotone-persist this
-    // test MUST go RED. The default mode keeps it GREEN — mirrors
-    // #276's discipline.
-    expect(true).toBe(true);
+    // The agar reducer grows bestMass via pellet eats (each eaten
+    // pellet adds 1 to mass; bestMass tracks the max). FOOD_COUNT=40
+    // pellets sit in a 640×640 world; the player moves at SPEED=4
+    // px/tick with PLAYER_R≈16. Driving directional motion for ~80
+    // ticks (4s at 20Hz) sweeps a long enough path to hit several
+    // pellets across the random spawn position — the assertion below
+    // is `bestMass > PLAYER_MASS_START`, which only needs ONE eat.
+    const ctxA = await browser.newContext();
+    const pageA = await ctxA.newPage();
+
+    let high = 0;
+    try {
+      await pageA.goto(ROOM_URL);
+      await expect(pageA.getByTestId("agar-net-status")).toHaveAttribute(
+        "data-connected",
+        "true",
+      );
+      await expect
+        .poll(
+          async () =>
+            Number(
+              await pageA
+                .getByTestId("agar-net-status")
+                .getAttribute("data-tick"),
+            ),
+          { message: "first snapshot from DO (pageA)" },
+        )
+        .toBeGreaterThan(0);
+
+      // Drive a varied input pattern so the player crosses pellet
+      // bands in both axes. Walking 20 ticks each in two directions
+      // sweeps ~80 px per direction — comfortably wider than the
+      // ~80px-spaced pellet grid means an eat is statistically
+      // overdetermined within the test window.
+      const dirs: Array<"right" | "down" | "left" | "up"> = [
+        "right",
+        "down",
+        "left",
+        "up",
+      ];
+      for (const dir of dirs) {
+        await pageA.evaluate((d: string) => {
+          const w = window as unknown as {
+            __game: { sendInput: (i: string) => void };
+          };
+          w.__game.sendInput(d);
+        }, dir);
+        // Tick to current+20 — pure tick advance, no wallclock.
+        await pageA.evaluate(() => {
+          const w = window as unknown as {
+            __game: {
+              tick: number | (() => number);
+              tickTo: (n: number) => Promise<void>;
+            };
+          };
+          const tf = w.__game.tick;
+          const cur = typeof tf === "function" ? tf() : tf;
+          return w.__game.tickTo(cur + 20);
+        });
+      }
+
+      // Capture the high-water mark: max bestMass across the roster.
+      // With one player (A) connected, this equals A's bestMass.
+      high = await pageA.evaluate(() => {
+        const w = window as unknown as {
+          __game: {
+            canonical: {
+              players: Array<{ bestMass: number }>;
+            } | null;
+          };
+        };
+        const c = w.__game.canonical;
+        if (c === null) return 0;
+        let max = 0;
+        for (const p of c.players) {
+          if (p.bestMass > max) max = p.bestMass;
+        }
+        return max;
+      });
+
+      // Gate the test honestly: the polarity assertion is only
+      // meaningful if A actually grew bestMass above the floor. If
+      // this fires, the food-eat sweep didn't land — that's a real
+      // problem (spawn-pellet geometry regression OR a ticking
+      // regression), not a flake to retry.
+      expect(
+        high,
+        "playerA bestMass swept above PLAYER_MASS_START (pellet eats landed)",
+      ).toBeGreaterThan(PLAYER_MASS_START);
+    } finally {
+      // Close pageA's context — drops the WS, fires the leaves frame
+      // on the DO. After the leaves frame is applied next tick, the
+      // roster is empty and currentTopScore() drops to 0. The
+      // monotone guard in persistTopScore is the ONLY thing
+      // protecting the persisted `topScore` from being overwritten
+      // when a fresh player joins with bestMass=PLAYER_MASS_START.
+      await ctxA.close();
+    }
+
+    // --- Phase 2: open playerB with a FRESH browser context (fresh
+    // cid). B joins with bestMass=PLAYER_MASS_START, which is BELOW
+    // `high`. Drive B for a moment so persistTopScore() runs on the
+    // canonical tick path with B's lower roster max.
+    const ctxB = await browser.newContext();
+    const pageB = await ctxB.newPage();
+
+    try {
+      await pageB.goto(ROOM_URL);
+      await expect(pageB.getByTestId("agar-net-status")).toHaveAttribute(
+        "data-connected",
+        "true",
+      );
+      await expect
+        .poll(
+          async () =>
+            Number(
+              await pageB
+                .getByTestId("agar-net-status")
+                .getAttribute("data-tick"),
+            ),
+          { message: "first snapshot from DO (pageB)" },
+        )
+        .toBeGreaterThan(0);
+
+      // Tick B forward enough that the canonical path runs the
+      // persistence write several times with the lower roster max.
+      // In non-monotone mode this is when the broken put overwrites
+      // `high`; in default mode the monotone guard suppresses every
+      // one of these attempts.
+      await pageB.evaluate(() => {
+        const w = window as unknown as {
+          __game: {
+            tick: number | (() => number);
+            tickTo: (n: number) => Promise<void>;
+          };
+        };
+        const tf = w.__game.tick;
+        const cur = typeof tf === "function" ? tf() : tf;
+        return w.__game.tickTo(cur + 20);
+      });
+
+      // --- Phase 3: read the persisted topScore via the test hook.
+      // The hook awaits storage.get (no cache), so what we read is
+      // exactly what's on disk after every write so far this match.
+      const res = await pageB.request.get(TOP_SCORE_URL);
+      expect(res.ok(), `GET ${TOP_SCORE_URL} → ${res.status()}`).toBe(true);
+      const body = (await res.json()) as { topScore: number };
+
+      // --- Phase 4: assert monotonicity held.
+      // Default mode: persisted topScore equals `high`, NOT B's
+      // lower roster max. With AGAR_DO_BREAK_MODE=non-monotone-persist
+      // this assertion goes RED (the broken put overwrites with
+      // PLAYER_MASS_START < high). That is the AC5 polarity contract.
+      expect(
+        body.topScore,
+        `persisted topScore preserved A's high (=${high}), not B's lower roster max (=${PLAYER_MASS_START}). ` +
+          `With AGAR_DO_BREAK_MODE=non-monotone-persist this assertion MUST go RED.`,
+      ).toBe(high);
+    } finally {
+      await ctxB.close();
+    }
   });
 
   test("eviction-roundtrip — post-eviction read equals pre-eviction canonical", async () => {

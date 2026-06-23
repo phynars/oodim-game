@@ -282,6 +282,35 @@ export class EchoRoom implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // Test-only persistence read hook (issue #319, AC4). The
+    // `monotonic-persist` e2e drives bestMass up, then needs to read
+    // back what the DO actually persisted to `state.storage`. The
+    // slice-2 GET endpoint is the production surface for this, but
+    // slice 2 hasn't shipped yet — so this hook exposes the value
+    // directly off `this.state.storage.get("topScore")`. It's
+    // namespaced under `/__test/` so an accidental production
+    // request can't mistake it for a real endpoint, and it returns
+    // the same JSON shape slice 2 is contracted to ship
+    // (`{topScore: number}`) so the test won't need a rewrite when
+    // slice 2 supersedes the hook.
+    //
+    // Awaited here (not on the WS hot path) because the test caller
+    // wants the exact persisted value — a cache read with no
+    // guarantee that the eager constructor load resolved would be
+    // a lie. The hook is not on any tick / broadcast path.
+    const testUrl = new URL(request.url);
+    if (testUrl.pathname === "/__test/top-score") {
+      await this.loadTopScoreOnce();
+      const stored = await this.state.storage.get<number>("topScore");
+      const topScore = typeof stored === "number" && Number.isFinite(stored)
+        ? stored
+        : 0;
+      return new Response(JSON.stringify({ topScore }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader !== "websocket") {
       return new Response("Expected websocket upgrade", { status: 426 });
@@ -394,11 +423,13 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
-    if (url.pathname !== "/ws") {
+    if (url.pathname !== "/ws" && url.pathname !== "/__test/top-score") {
       return new Response("Not found", { status: 404 });
     }
 
     // Route by seed so two clients with the same seed share state.
+    // The same seed→DO routing applies to /__test/top-score so the
+    // test hook reads the DO that owns the room the test drove.
     const seedParam = url.searchParams.get("seed") ?? "1";
     const id = env.ECHO_ROOM.idFromName(`match:${seedParam}`);
     const stub = env.ECHO_ROOM.get(id);
