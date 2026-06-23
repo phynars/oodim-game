@@ -43,12 +43,24 @@ const TICK_MS = 50; // 20Hz
 // Type-narrowed literal union of supported break modes. Adding a new
 // mode here is the one-line touch that lights it up; an unknown env
 // value falls through to `null` (production behavior).
-type BreakMode = "drop-every-7th";
-const BREAK_MODES: ReadonlySet<BreakMode> = new Set<BreakMode>([
+// `lossy-persist` and `non-monotone-persist` are reserved for the
+// agar persistence epic (issue #307 harness contract). They parse to
+// non-null at file time but trigger no behavior — the slice-1 and
+// slice-3 implementers wire the actual break paths against the
+// DO storage layer when those slices land. Keeping them parseable
+// here means the persistence-harness break-mode-parse test can ship
+// as the file-time merge gate without dragging in storage code.
+export type BreakMode =
+  | "drop-every-7th"
+  | "lossy-persist"
+  | "non-monotone-persist";
+export const BREAK_MODES: ReadonlySet<BreakMode> = new Set<BreakMode>([
   "drop-every-7th",
+  "lossy-persist",
+  "non-monotone-persist",
 ]);
 
-function parseBreakMode(raw: string | undefined): BreakMode | null {
+export function parseBreakMode(raw: string | undefined): BreakMode | null {
   // Default: env unset OR explicitly empty — production behavior, no
   // branch taken at runtime.
   if (raw === undefined || raw === "") return null;
