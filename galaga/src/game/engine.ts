@@ -121,6 +121,15 @@ export class Engine {
   /** Tick until which the "PERFECT! +N" banner is painted after a perfect
    *  challenging clear. Null = no banner. */
   private perfectBannerUntil: number | null = null;
+  /** Tick until which the "HIT —N" banner is painted after a NON-perfect
+   *  challenging exit (#310). Inverse charge to PERFECT! — same slot, same
+   *  duration, mutually exclusive. Null = no banner. */
+  private missedBannerUntil: number | null = null;
+  /** Count of challenging-stage enemies that escaped on the most recent
+   *  non-perfect exit (#310). Painted next to the HIT banner as "HIT —N";
+   *  also exposed via __galagaInternals so the e2e harness can assert it
+   *  deterministically without canvas pixel reads. */
+  private missedBannerCount = 0;
   /** Tick until which the "BACK" banner is painted at the rescue dock —
    *  the inverse beat to the state-keyed "TAKEN" banner. Set inside
    *  `killEnemy`'s rescue path; the renderer reads it each frame. Null = no
@@ -281,6 +290,19 @@ export class Engine {
       },
       setInvulnerable: (value: boolean) => {
         this.invulnerable = value;
+      },
+      getMissBanner: () => {
+        // #310 read-only window into the miss-banner state. Returns null
+        // when the banner isn't currently armed (either never armed, or
+        // already expired — the render block clears `missedBannerUntil`
+        // once `state.tick` passes it). Engine.tick is the truth; we
+        // re-check here so a stale snapshot through rAF can't mislead.
+        if (this.missedBannerUntil === null) return null;
+        if (this.state.tick > this.missedBannerUntil) return null;
+        return {
+          until: this.missedBannerUntil,
+          count: this.missedBannerCount,
+        };
       },
     };
   }
@@ -532,6 +554,16 @@ export class Engine {
       if (total > 0 && this.challengingKills >= total) {
         this.state.score += CHALLENGING_PERFECT_BONUS;
         this.perfectBannerUntil = this.state.tick + 90;
+      } else if (total > 0 && this.challengingKills < total) {
+        // Non-perfect exit (#310) — voice the miss. Mirror to PERFECT!:
+        // same slot (HEIGHT/2 + 30), same 18px monospace, same 90-tick
+        // duration. Mutually exclusive with the perfect branch above —
+        // one or the other fires per challenging exit. Score is NOT
+        // touched: the negative is rhetorical (deficit-against-the-
+        // ceiling), not a points penalty. Skipped when total === 0 so
+        // the degenerate "no enemies spawned" case stays silent.
+        this.missedBannerCount = total - this.challengingKills;
+        this.missedBannerUntil = this.state.tick + 90;
       }
       this.state.challenging = false;
       this.challengingKills = 0;
@@ -1457,6 +1489,33 @@ export class Engine {
       this.state.tick > this.perfectBannerUntil
     ) {
       this.perfectBannerUntil = null;
+    }
+
+    // HIT —N banner (#310) — the mirror to PERFECT!. Same slot, same 18px
+    // monospace, same 90-tick window — opposite charge. Captor/rescue pink
+    // (#ff7ab0) because the bonus stage's "you lost something" beat shares
+    // the studio's loss color, NOT the green of the win. The minus sign +
+    // count names the count of bees that escaped (no score penalty — the
+    // number is rhetorical deficit, not deducted points). Mutually
+    // exclusive with PERFECT! by construction: maybeAdvanceStage arms one
+    // or the other, never both.
+    if (
+      this.missedBannerUntil !== null &&
+      this.state.tick <= this.missedBannerUntil
+    ) {
+      ctx.fillStyle = "#ff7ab0";
+      ctx.font = "18px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        `HIT —${this.missedBannerCount}`,
+        WIDTH / 2,
+        HEIGHT / 2 + 30,
+      );
+    } else if (
+      this.missedBannerUntil !== null &&
+      this.state.tick > this.missedBannerUntil
+    ) {
+      this.missedBannerUntil = null;
     }
   }
 

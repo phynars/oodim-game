@@ -301,6 +301,14 @@ export interface GalagaInternals {
    *  false; zero gameplay effect — feel specs that fire many times from a fixed
    *  position enable it so a diving enemy can't kill the player mid-measurement. */
   setInvulnerable(value: boolean): void;
+  /** Read the "HIT —N" miss-banner state (#310). Returns null when the
+   *  banner is not currently armed (no challenging stage has ended on a
+   *  non-perfect exit yet, or the banner has expired). The `until` field is
+   *  the engine tick through which the banner is painted; `count` is the
+   *  number of challenging-stage enemies that escaped (total - kills).
+   *  Test-only — gameplay code reads neither field; renderer reads the
+   *  engine's private mirror. */
+  getMissBanner(): { until: number; count: number } | null;
 }
 
 declare global {
