@@ -302,6 +302,14 @@ export class Engine {
    *  'playing' (it's the in-game clock, not real time). */
   private gameOverFrames = 0;
 
+  /** Player movement intent normalized to [0,1] (Diego juice ceiling #21).
+   *  Set each tick in update()'s move block — 1 when any movement key is
+   *  held, 0 when idle — and read by stepViewmodel() to couple weapon bob
+   *  frequency + amplitude to motion. Reset to 0 whenever the sim isn't
+   *  advancing (hitstop freeze, not 'playing') so the gun doesn't keep
+   *  swaggering while the world is frozen. */
+  private moveSpeedFrac = 0;
+
   // Fixed-step accumulator state (see start()).
   private lastTime = 0;
   private accumulator = 0;
@@ -1613,6 +1621,13 @@ export class Engine {
       if (snap.backward) mz += 1;
       if (snap.left) mx -= 1;
       if (snap.right) mx += 1;
+      // Track whether the player intends to move THIS tick — fed into the
+      // weapon viewmodel's bob coupling so the gun's cadence syncs with
+      // motion (Diego juice ceiling #21). Binary today (input is binary);
+      // when an analog stick lands this becomes the normalized magnitude.
+      // Persisted on the instance so the stepViewmodel call further down
+      // (outside this block) can read it without restructuring the scope.
+      this.moveSpeedFrac = mx !== 0 || mz !== 0 ? 1 : 0;
       if (mx !== 0 || mz !== 0) {
         // Normalize so diagonal movement isn't √2 faster than cardinal.
         const len = Math.hypot(mx, mz);
@@ -1689,7 +1704,12 @@ export class Engine {
       // state.weapon lets the e2e harness + HUD observe the pulse without
       // reaching into three.js.
       if (this.viewmodel) {
-        stepViewmodel(this.viewmodel);
+        // Speed-couple the weapon bob (Diego juice ceiling #21): at rest
+        // the gun breathes slow + tiny; in motion it swaggers at footstep
+        // cadence with a lateral figure-eight. `moveSpeedFrac` was set
+        // above in the move block (0 when no input, 1 when any direction
+        // key is held).
+        stepViewmodel(this.viewmodel, this.moveSpeedFrac);
         this.state.weapon.muzzleFlashTicks = this.viewmodel.flashTicks;
       }
       } // close `if (!frozen)` — sim pass gate (#166)
