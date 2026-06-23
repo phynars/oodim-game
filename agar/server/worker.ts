@@ -104,26 +104,41 @@ export class EchoRoom implements DurableObject {
   // path (bestMass only ever grows within step()), so it's the
   // natural high-score proxy.
   //
-  // `cachedTopScore` mirrors what's in storage. We seed it lazily on
-  // the first WS fetch (so a re-hydrated DO doesn't downgrade) and
-  // update it whenever we successfully commit a new high.
+  // `cachedTopScore` mirrors what's in storage. The load is kicked
+  // off EAGERLY in the constructor (unawaited) so it never sits on
+  // the WS upgrade hot path — gating the upgrade response on a
+  // storage round-trip regressed multiplayer-convergence (see
+  // PR #320 review). `persistTopScore()` checks `topScoreLoaded`
+  // and SKIPS writes until the load has resolved: skipping the
+  // first ~1 tick of writes is safe (the value can only grow);
+  // writing before the load would downgrade a re-hydrated DO from
+  // its true persisted high to whatever the fresh roster computes.
   private state: DurableObjectState;
   private cachedTopScore = 0;
   private topScoreLoaded = false;
+  private loadPromise: Promise<void> | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.world = initialState(1);
     this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
+    // Fire-and-forget eager load. Resolves in <1 tick on Workers
+    // storage; until it resolves, persistTopScore() is a no-op
+    // (see comment above). Never awaited on any request path.
+    this.loadPromise = this.loadTopScoreOnce();
   }
 
-  private async loadTopScoreOnce(): Promise<void> {
-    if (this.topScoreLoaded) return;
-    this.topScoreLoaded = true;
-    const stored = await this.state.storage.get<number>("topScore");
-    if (typeof stored === "number" && Number.isFinite(stored)) {
-      this.cachedTopScore = stored;
-    }
+  private loadTopScoreOnce(): Promise<void> {
+    if (this.topScoreLoaded) return Promise.resolve();
+    if (this.loadPromise !== null) return this.loadPromise;
+    this.loadPromise = (async () => {
+      const stored = await this.state.storage.get<number>("topScore");
+      if (typeof stored === "number" && Number.isFinite(stored)) {
+        this.cachedTopScore = stored;
+      }
+      this.topScoreLoaded = true;
+    })();
+    return this.loadPromise;
   }
 
   // Compute the current canonical high score from the reducer's
@@ -146,6 +161,13 @@ export class EchoRoom implements DurableObject {
   //                              (drops the monotonic > guard).
   // Default: write only if current > cached.
   private persistTopScore(): void {
+    // Skip writes until the eager constructor load has resolved.
+    // Writing before we know the persisted ceiling could downgrade
+    // a re-hydrated DO (cachedTopScore=0 lets any positive land).
+    // The load completes in <1 tick on Workers storage; we lose at
+    // most a tick or two of `bestMass` writes, which the very next
+    // tick will recover (bestMass only grows).
+    if (!this.topScoreLoaded) return;
     const current = this.currentTopScore();
     if (this.breakMode === "lossy-persist") {
       // Storage layer never commits; cache also stays put so the
@@ -271,14 +293,12 @@ export class EchoRoom implements DurableObject {
       return new Response("Expected websocket upgrade", { status: 426 });
     }
 
-    // Seed cachedTopScore from storage before the first tick of this
-    // DO instance. Without this, a re-hydrated DO would compute
-    // current=0 (no players yet) and on the first score-up the
-    // `> cachedTopScore` guard would let any positive value land,
-    // which is correct, BUT on a non-monotone arc (lower bestMass
-    // after a re-join) we need the persisted high to remain the
-    // ceiling — so we load it once, lazily, before the tick loop.
-    await this.loadTopScoreOnce();
+    // NOTE: the storage load that seeds `cachedTopScore` is kicked
+    // off EAGERLY in the constructor — NOT awaited here. Gating the
+    // WS upgrade response on a storage round-trip regressed the
+    // multiplayer-convergence spec (PR #320 review). `persistTopScore`
+    // is a no-op until the load resolves, so a re-hydrated DO can't
+    // downgrade its persisted high before the load completes.
 
     const url = new URL(request.url);
     const seedParam = url.searchParams.get("seed");
