@@ -1,0 +1,173 @@
+# agar persistence harness — red/green polarity gate (issue #323).
+#
+# Mirror of .github/workflows/agar-multiplayer-redgreen.yml (#276) for
+# the persistence rung. The persistence-harness.spec.ts (#307) declares
+# two polarity inverses:
+#
+#   - monotonic-persist  MUST go RED when AGAR_DO_BREAK_MODE=non-monotone-persist
+#   - eviction-roundtrip MUST go RED when AGAR_DO_BREAK_MODE=lossy-persist
+#
+# This workflow enforces both. Until #319 (slice 1) unskips
+# monotonic-persist, the red-polarity job hits the skip-when-skipped
+# guard and exits 0 with a clear log line — that's intentional preflight
+# behaviour per AC3.
+#
+# When #319 lands and unskips the test, the red job genuinely runs the
+# spec under the broken break-mode and inverts the exit code: a passing
+# test (guard not honest) becomes CI failure; a failing test (guard
+# honest) becomes CI success.
+#
+# AC4 hook: when slice 3 unskips eviction-roundtrip, add the third job
+# below by un-commenting the marked block. Keep this as ONE workflow
+# file — do not split per slice.
+
+name: agar-persistence-redgreen
+
+on:
+  pull_request:
+    paths:
+      - "agar/server/worker.ts"
+      - "agar/e2e/persistence-harness.spec.ts"
+      - ".github/workflows/agar-persistence-redgreen.yml"
+  push:
+    branches: [main]
+    paths:
+      - "agar/server/worker.ts"
+      - "agar/e2e/persistence-harness.spec.ts"
+      - ".github/workflows/agar-persistence-redgreen.yml"
+
+jobs:
+  green-polarity:
+    name: persistence-harness (green — default mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install agar deps
+        working-directory: agar
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: agar
+        run: npx playwright install --with-deps chromium
+
+      - name: Run agar persistence-harness spec (green polarity)
+        working-directory: agar
+        run: npx playwright test e2e/persistence-harness.spec.ts
+
+  red-polarity-monotonic:
+    name: persistence-harness (red — non-monotone-persist MUST fail monotonic-persist)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install agar deps
+        working-directory: agar
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: agar
+        run: npx playwright install --with-deps chromium
+
+      # AC3 — skip-when-skipped guard. Until #319 (slice 1) unskips
+      # monotonic-persist, there is no test for the broken break-mode
+      # to flip. The whole file matching "monotonic-persist" still
+      # contains a `test.skip(true,` immediately under the test name,
+      # so we detect that and short-circuit with exit 0.
+      - name: Skip-when-skipped preflight (monotonic-persist)
+        id: preflight
+        working-directory: agar
+        run: |
+          if grep -q 'test\.skip(\s*true' e2e/persistence-harness.spec.ts; then
+            echo "monotonic-persist is still skipped — #319 has not landed yet — red polarity not enforced this run."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Red polarity: invert the Playwright exit code. The spec is
+      # expected to FAIL under AGAR_DO_BREAK_MODE=non-monotone-persist.
+      # A passing exit code here means the guard is dishonest — we
+      # convert that to a CI failure. A non-zero exit means the guard
+      # caught the broken break-mode as designed — we convert that
+      # to a CI pass.
+      - name: Run agar persistence-harness monotonic-persist (red polarity — MUST fail)
+        if: steps.preflight.outputs.skipped == 'false'
+        working-directory: agar
+        env:
+          AGAR_DO_BREAK_MODE: non-monotone-persist
+        run: |
+          set +e
+          npx playwright test e2e/persistence-harness.spec.ts -g "monotonic-persist"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — monotonic-persist did NOT catch the non-monotone-persist break mode. Did slice 1's break-mode wiring regress, or is the test asserting a weaker property than the harness contract?"
+            exit 1
+          else
+            echo "Broken-polarity spec failed as expected (exit $rc) — monotonic-persist guard is honest."
+            exit 0
+          fi
+
+  # AC4 — un-comment when slice 3 lands and eviction-roundtrip
+  # unskips. Same shape as red-polarity-monotonic above, but filtered
+  # to "eviction-roundtrip" and with AGAR_DO_BREAK_MODE=lossy-persist.
+  # Keep this in the SAME workflow file — do not create a second one
+  # per slice.
+  #
+  # red-polarity-eviction:
+  #   name: persistence-harness (red — lossy-persist MUST fail eviction-roundtrip)
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "20"
+  #     - name: Install agar deps
+  #       working-directory: agar
+  #       run: npm ci
+  #     - name: Install Playwright browsers
+  #       working-directory: agar
+  #       run: npx playwright install --with-deps chromium
+  #     - name: Skip-when-skipped preflight (eviction-roundtrip)
+  #       id: preflight
+  #       working-directory: agar
+  #       run: |
+  #         # When ONLY eviction-roundtrip is still skipped (monotonic
+  #         # has landed), this grep needs to be tighter — match the
+  #         # eviction-roundtrip block specifically. Slice 3 owns the
+  #         # exact grep when it un-comments this job.
+  #         if grep -A2 'eviction-roundtrip' e2e/persistence-harness.spec.ts | grep -q 'test\.skip(\s*true'; then
+  #           echo "eviction-roundtrip still skipped — slice 3 has not landed yet."
+  #           echo "skipped=true" >> "$GITHUB_OUTPUT"
+  #         else
+  #           echo "skipped=false" >> "$GITHUB_OUTPUT"
+  #         fi
+  #     - name: Run agar persistence-harness eviction-roundtrip (red polarity — MUST fail)
+  #       if: steps.preflight.outputs.skipped == 'false'
+  #       working-directory: agar
+  #       env:
+  #         AGAR_DO_BREAK_MODE: lossy-persist
+  #       run: |
+  #         set +e
+  #         npx playwright test e2e/persistence-harness.spec.ts -g "eviction-roundtrip"
+  #         rc=$?
+  #         set -e
+  #         if [ "$rc" -eq 0 ]; then
+  #           echo "::error::Broken-polarity spec passed (exit 0) — eviction-roundtrip did NOT catch the lossy-persist break mode."
+  #           exit 1
+  #         else
+  #           echo "Broken-polarity spec failed as expected (exit $rc) — eviction-roundtrip guard is honest."
+  #           exit 0
+  #         fi
