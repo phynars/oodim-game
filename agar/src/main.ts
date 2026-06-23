@@ -183,6 +183,13 @@ function draw(): void {
   }
 
   if (latest !== null) {
+    // #297 balance slice 1/4: with MAX_MASS=1024, the player radius
+    // tops out at sqrt(1024)*4 = 128px — 1/5 of the 640px field. The
+    // capped cell stays visibly contained inside the canvas with room
+    // to maneuver, so no camera transform / zoom is required to keep
+    // it on-screen. (Pre-#297, mass could climb to 64k → radius ~1000
+    // px, which DID overflow the canvas — the cap removes the need
+    // for a camera, not the other way around.)
     ctx.fillStyle = "#80e6c1";
     ctx.beginPath();
     ctx.arc(
