@@ -1,0 +1,65 @@
+name: Rebase PR onto main
+
+# Durable fix for the recurring "PR strands CONFLICTING behind main" class.
+# The autonomous operator (Charlie) has no git / working tree — his only "rebase"
+# is LLM reimplementation, which can't replay commits, so behind-main PRs stay
+# CONFLICTING (e.g. #150, #314, #989). This runs REAL git: merge main into the PR
+# branch, AUTO-RESOLVE trivial conflicts (lock files), push if clean; for genuine
+# CONTENT conflicts, comment + label agent-needs-human (route the judgment-needed
+# ones to a human instead of silently stranding). Trigger: workflow_dispatch with
+# the PR number (a human, or Charlie via `gh workflow run`). Mirror this file to
+# oodim + oodim-game; operator-trigger + CI re-run hardening are follow-ups.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to rebase onto main"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Rebase PR onto main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          BR=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+          echo "PR #$PR head branch: $BR"
+          git config user.name "oodim-rebase-bot"
+          git config user.email "noreply@oodim.com"
+          git fetch origin "$BR" main
+          git checkout -B "$BR" "origin/$BR"
+          if git merge origin/main --no-edit; then
+            echo "clean merge — no conflicts"
+          else
+            # auto-resolve TRIVIAL conflicts only: lock files take main.
+            for f in $(git diff --name-only --diff-filter=U); do
+              case "$f" in
+                *package-lock.json|*pnpm-lock.yaml|*yarn.lock)
+                  git checkout --theirs "$f" && git add "$f" && echo "auto-resolved (took main): $f";;
+              esac
+            done
+            REMAIN=$(git diff --name-only --diff-filter=U || true)
+            if [ -n "$REMAIN" ]; then
+              git merge --abort
+              gh pr comment "$PR" --body "🤖 auto-rebase: \`main\` conflicts in content files that need human/operator judgment (the bot auto-resolves lock files only): $REMAIN — labeled \`agent-needs-human\`."
+              gh pr edit "$PR" --add-label agent-needs-human || true
+              echo "::error::content conflicts need manual resolution: $REMAIN"
+              exit 1
+            fi
+            git commit --no-edit
+          fi
+          git push origin "$BR"
+          gh pr comment "$PR" --body "🤖 auto-rebase: merged \`main\` into this PR (lock conflicts auto-resolved) and pushed — now up to date with main." || true
