@@ -20,6 +20,9 @@ import {
   EXTRA_BANNER_TICKS,
   EXTRA_LIFE_SCORE,
   LEVEL_CLEAR_BONUS,
+  POWER_PELLET_HITSTOP_TICKS,
+  POWER_PELLET_PULSE_TICKS,
+  POWER_PELLET_SHAKE_AMP,
   initialState,
   type GameState,
 } from "./types";
@@ -58,6 +61,31 @@ const PLAYFIELD_BORDER = 2;
 const WALL_COLOR = "#2121de";
 /** Issue #183 — alternate wall stroke during the level-clear maze flash. */
 const WALL_FLASH_COLOR = "#ffffff";
+
+/** Issue #296 — lerp between two `#rrggbb` hex strings. Used by the
+ *  power-pellet maze-tint pulse to fade the wall stroke from arcade blue
+ *  toward white as the pulse progresses. Defensive: silently falls back
+ *  to `a` on malformed input so a renderer parse failure can't crash the
+ *  frame. */
+function lerpHex(a: string, b: string, t: number): string {
+  if (a.length !== 7 || b.length !== 7) return a;
+  const ar = parseInt(a.slice(1, 3), 16);
+  const ag = parseInt(a.slice(3, 5), 16);
+  const ab = parseInt(a.slice(5, 7), 16);
+  const br = parseInt(b.slice(1, 3), 16);
+  const bg = parseInt(b.slice(3, 5), 16);
+  const bb = parseInt(b.slice(5, 7), 16);
+  if (
+    !Number.isFinite(ar) || !Number.isFinite(ag) || !Number.isFinite(ab) ||
+    !Number.isFinite(br) || !Number.isFinite(bg) || !Number.isFinite(bb)
+  ) return a;
+  const k = Math.max(0, Math.min(1, t));
+  const r = Math.round(ar + (br - ar) * k);
+  const g = Math.round(ag + (bg - ag) * k);
+  const bl = Math.round(ab + (bb - ab) * k);
+  const hex = (n: number): string => n.toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(bl)}`;
+}
 const WALL_LINE_WIDTH = 1;
 /** Soft cream for the pellet dots. */
 const PELLET_COLOR = "#ffb8ae";
@@ -326,6 +354,21 @@ export class Engine {
           }
         }
       },
+      // Issue #296 probe — arm the power-pellet ceremonial juice channels
+      // (hitstop + maze tint pulse + screen-shake) in isolation, without
+      // routing Pac through a power-pellet tile. Mirrors the additive
+      // arms inside the engine's atePowerPellet branch at update(), so
+      // the feel-spec can sample the channels without depending on Pac
+      // path-finding through the spawn corridor to the nearest 'o' tile.
+      // Does NOT touch frightened mode / score / combo counter — this
+      // probe tests the JUICE shape independently of the GHOST-FLIP
+      // shape (which #145 already covers via forceFrightened).
+      armPowerPelletJuice: (): void => {
+        const fb = this.state.feedback;
+        fb.hitstopTicks = Math.max(fb.hitstopTicks, POWER_PELLET_HITSTOP_TICKS);
+        fb.powerPelletPulse = POWER_PELLET_PULSE_TICKS;
+        fb.powerPelletShake = POWER_PELLET_SHAKE_AMP;
+      },
       // Issue #145 probe — warp the named ghost into eaten/eyes mode.
       // Forces status='out' (in case it was still in the house) so the
       // eyes-return motion is observable on the render channel. ALSO
@@ -576,6 +619,12 @@ export class Engine {
         fb.flashAlpha *= 0.82;
         if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
       }
+      // Issue #296 — bleed the power-pellet pulse + shake through the
+      // death cinematic too, so leftover juice from a same-tick power
+      // pellet + ghost-kill doesn't freeze on screen for 1.2s.
+      if (fb.powerPelletPulse > 0) fb.powerPelletPulse -= 1;
+      fb.powerPelletShake *= 0.85;
+      if (fb.powerPelletShake < 0.01) fb.powerPelletShake = 0;
       if (this.state.feedback.deathTicks >= DEATH_ANIM_TICKS) {
         this.state.feedback.deathTicks = 0;
         this.state.feedback.flashTint = "cyan";
@@ -605,6 +654,12 @@ export class Engine {
       if (fb.pacSquash < 0.01) fb.pacSquash = 0;
       fb.flashAlpha *= 0.82;
       if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Issue #296 — same bleed in the clear cinematic gate as in the
+      // death gate above. Final-pellet on top of an active pulse is
+      // rare but the channel must drain rather than freeze.
+      if (fb.powerPelletPulse > 0) fb.powerPelletPulse -= 1;
+      fb.powerPelletShake *= 0.85;
+      if (fb.powerPelletShake < 0.01) fb.powerPelletShake = 0;
       // Advance + cull sparkles & popups so any leftover overlays from
       // the tick-of-the-final-pellet don't freeze on screen for 1.4s.
       const nextSparkles: typeof fb.sparkles = [];
@@ -668,6 +723,16 @@ export class Engine {
       if (fb.pacSquash < 0.01) fb.pacSquash = 0;
       fb.flashAlpha *= 0.82;
       if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Issue #296 — decay the power-pellet ceremonial channels. Pulse
+      // counts DOWN linearly so the renderer reads a clean
+      // `1 - n/POWER_PELLET_PULSE_TICKS` progress curve for the wall
+      // tint; shake decays multiplicatively (×0.85) so the buzz dies
+      // off smoothly. Both gate on the hitstop check above — frozen
+      // frames already early-return before we get here, so the pulse
+      // doesn't bleed during the freeze.
+      if (fb.powerPelletPulse > 0) fb.powerPelletPulse -= 1;
+      fb.powerPelletShake *= 0.85;
+      if (fb.powerPelletShake < 0.01) fb.powerPelletShake = 0;
       // Issue #295 — bleed the EXTRA banner one tick per active update.
       // Only ticks here (not in the death/clear cinematic gates) — those
       // beats own the screen-overlay slot exclusively, so we hold the
@@ -732,6 +797,22 @@ export class Engine {
     if (pacResult.atePowerPellet) {
       this.frightenedTicksLeft = FRIGHTENED_TICKS;
       this.frightenedEatStreak = 0;
+      // Issue #296 — arm the power-pellet ceremonial juice channels.
+      // Layers ADDITIVELY on top of #138 (which already wrote pacSquash
+      // = 0.25, a +50 popup, and flashAlpha inside tickPac). #138 owns
+      // the per-pellet "you ate something" beat; this owns the
+      // RULE-INVERSION beat — the predator/prey flip across all four
+      // ghosts. The ceremony reads through (a) hitstop, (b) the maze-
+      // wide wall tint pulse, (c) a small graceful screen-shake — NOT
+      // through louder versions of channels #138 already owns.
+      //
+      // Math.max on hitstop so re-eating a pellet during an active
+      // freeze can't double-decrement (defensive — same pattern as
+      // Galaga's mass-kill clamp from the death-spec doc).
+      const fb = this.state.feedback;
+      fb.hitstopTicks = Math.max(fb.hitstopTicks, POWER_PELLET_HITSTOP_TICKS);
+      fb.powerPelletPulse = POWER_PELLET_PULSE_TICKS;
+      fb.powerPelletShake = POWER_PELLET_SHAKE_AMP;
     } else if (this.frightenedTicksLeft > 0) {
       this.frightenedTicksLeft -= 1;
       if (this.frightenedTicksLeft === 0) {
@@ -1268,6 +1349,18 @@ export class Engine {
       const phase = ct - CLEAR_PRE_PAUSE; // 0..47
       // Each 12-tick cycle: ticks 0-5 blue, 6-11 white.
       wallStroke = phase % 12 >= 6 ? WALL_FLASH_COLOR : WALL_COLOR;
+    } else if (state.feedback.powerPelletPulse > 0) {
+      // Issue #296 — maze-wide tint pulse toward white on power-pellet
+      // pickup. The CEREMONIAL channel: a soft cyan→white→cyan breath
+      // that telegraphs "the rules just inverted" without the harsh
+      // strobe of the level-clear flash. Eased: tint = peak amplitude
+      // 0.7 (capped — not full white, to keep the cyan identity) times
+      // an exp-decay shape mapped from pulse progress, so the pulse
+      // reads as a quick bright snap and a graceful decay rather than
+      // a linear fade.
+      const k = state.feedback.powerPelletPulse / POWER_PELLET_PULSE_TICKS; // 1→0
+      const t = Math.max(0, Math.min(1, k * 0.7));
+      wallStroke = lerpHex(WALL_COLOR, WALL_FLASH_COLOR, t);
     }
     ctx.strokeStyle = wallStroke;
     ctx.lineWidth = WALL_LINE_WIDTH;
@@ -1369,8 +1462,20 @@ export class Engine {
         break;
     }
 
-    const cx = ox + (pac.x + dx * progress) * TILE + TILE / 2;
-    const cy = oy + (pac.y + dy * progress) * TILE + TILE / 2;
+    let cx = ox + (pac.x + dx * progress) * TILE + TILE / 2;
+    let cy = oy + (pac.y + dy * progress) * TILE + TILE / 2;
+    // Issue #296 — power-pellet screen-shake. Soft 1.2px buzz that
+    // decays ×0.85/tick (engine.update()). Phase derived from
+    // state.tick so a fresh poll after N steps lands deterministically
+    // — the e2e probe can sample without timing flakes. Pac-Man tone:
+    // graceful, small amplitude, no rotation, just a horizontal
+    // shimmy. Renderer-only: read-and-offset, no state mutation here.
+    if (state.feedback.powerPelletShake > 0.01) {
+      // 1.9 Hz from issue spec ≈ ω·tick / 60 ≈ 0.199 rad/tick.
+      const phase = state.tick * 0.199;
+      cx += Math.sin(phase) * state.feedback.powerPelletShake;
+      cy += Math.cos(phase * 1.3) * state.feedback.powerPelletShake * 0.6;
+    }
     // Issue #138 — pellet-pickup squash. Scale Pac's draw radius by
     // (1 + pacSquash) so a fresh eat-event pops the sprite outward.
     // Geometry-only; no transform stack tricks. Decays in update().
@@ -1582,6 +1687,7 @@ declare global {
         }>;
       };
       forceFrightened: () => void;
+      armPowerPelletJuice: () => void;
       setGhostEaten: (name: GhostName) => void;
       dirCommitProbe: () => {
         lastQueuedTick: number;

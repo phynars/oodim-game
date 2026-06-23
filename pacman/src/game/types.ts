@@ -31,11 +31,52 @@ export interface PacState {
   queued: Direction;
 }
 
+/** Issue #296 — power-pellet pickup is the ceremonial RULE-INVERSION
+ *  beat (all four ghosts flip predator→prey). The juice spec is
+ *  graceful, not violent: tone-adapted per the issue.
+ *
+ *  PULSE_TICKS: count-down counter armed on the eat. Renderer derives
+ *  `progress = 1 - n/PULSE_TICKS` for the maze tint cycle + Pac stat-pop.
+ *  18 ticks ≈ 300ms at 60Hz.
+ *
+ *  SHAKE_AMP: peak screen-shake amplitude in CSS pixels. Decays
+ *  ×0.85/tick at a phase of ~1.9Hz. 1.2px is small — Pac-Man is GRACEFUL
+ *  (compare to Galaga's larger amplitudes). Falls below the visible
+ *  floor (0.01) around tick 14.
+ *
+ *  HITSTOP_TICKS: 4 frames ≈ 67ms — between Pac death (#171 = 4f) and
+ *  Galaga clear (6f). The CEREMONIAL weight comes from this + the maze
+ *  tint pulse, not from violent shake.
+ *
+ *  POPUP_VALUE: the score-pop label written at Pac position on pickup.
+ *  Matches canon score for a power pellet (50).
+ *
+ *  PAC_POP_PEAK: peak Pac stat-pop scale on the eat: `1 + 0.22` = 1.22×.
+ *  Linear ramp to peak over PAC_POP_RAMP ticks (5), then exp decay over
+ *  the remaining (PULSE_TICKS - PAC_POP_RAMP) = 13 ticks. Layered
+ *  ADDITIVELY on top of #138's existing squash via `Math.max` so the
+ *  regular-pellet squash channel isn't downgraded. */
+export const POWER_PELLET_PULSE_TICKS = 18;
+export const POWER_PELLET_SHAKE_AMP = 1.2;
+export const POWER_PELLET_HITSTOP_TICKS = 4;
+export const POWER_PELLET_POPUP_VALUE = 50;
+/** Per-tick shake decay. ×0.85 brings 1.2 to <0.1 by ~16t. */
+export const POWER_PELLET_SHAKE_DECAY = 0.85;
+/** Pac stat-pop amplitude on power-pellet eat. With the existing pacSquash
+ *  ×0.78/tick decay, 0.22 → <0.01 by tick 17. */
+export const POWER_PELLET_SQUASH_AMP = 0.22;
+/** Peak Pac stat-pop scale on the eat: `1 + 0.22` = 1.22×. Linear ramp to
+ *  peak over PAC_POP_RAMP ticks (5), then exp decay over the remaining
+ *  (PULSE_TICKS - PAC_POP_RAMP) = 13 ticks. */
+export const POWER_PELLET_PAC_POP_PEAK = 0.22;
+export const POWER_PELLET_PAC_POP_RAMP = 5;
+
 /** Issue #138 — pellet-pickup juice channel. Pure data on GameState:
  *  the engine writes it on the eat-event + decays it each tick, the
  *  renderer reads it. Mirrors the Galaga shape (#133) so cross-game
  *  feedback handling stays consistent. Pac-Man intentionally omits
- *  screen-shake (graceful, not punchy). */
+ *  screen-shake (graceful, not punchy) — EXCEPT for the power-pellet
+ *  ceremonial beat (#296), which arms a small bounded shake. */
 export interface FeedbackChannel {
   /** Brief scale-pop on Pac when a pellet lands. Renderer multiplies
    *  Pac's draw radius by (1 + amp). Decays toward 0 each tick. */
@@ -82,6 +123,22 @@ export interface FeedbackChannel {
    *  tally HUD. When it reaches CLEAR_ANIM_TICKS the existing level-up
    *  reset path (handleLevelWon body) finally fires. */
   clearTicks: number;
+  /** Issue #296 — power-pellet ceremonial pulse counter. Counts DOWN
+   *  from POWER_PELLET_PULSE_TICKS (18) to 0; renderer reads
+   *  `1 - n/N` as maze-tint progress so walls flash white→base over
+   *  ~300ms. Decrements once per `update()` (only while NOT in
+   *  hitstop / death / clear gates). Floor 0. Only the atePowerPellet
+   *  branch arms this. */
+  powerPelletPulse: number;
+  /** Issue #296 — power-pellet screen-shake magnitude (px). Armed to
+   *  POWER_PELLET_SHAKE_AMP (1.2); decays ×0.85/tick (only while NOT
+   *  in hitstop / death / clear gates) until it falls below 0.01,
+   *  then floored to 0. Small on purpose — Pac-Man is GRACEFUL;
+   *  ceremonial weight comes from the maze tint + hitstop, not from
+   *  violence. Renderer translates the whole canvas by
+   *  `(amp * cos(phase), amp * sin(phase))` — phase advances at 1.9Hz
+   *  off `state.tick`. */
+  powerPelletShake: number;
   /** Issue #183 — current count-up value of the level-clear bonus
    *  shown in the tally HUD. Purely cosmetic — the actual score bump
    *  lands in one atomic write at tick CLEAR_FLASH_END, so the live
@@ -341,6 +398,8 @@ export function initialState(): GameState {
       deathTicks: 0,
       flashTint: "cyan",
       clearTicks: 0,
+      powerPelletPulse: 0,
+      powerPelletShake: 0,
       clearTallyShown: 0,
     },
     extraLifeAwarded: false,
