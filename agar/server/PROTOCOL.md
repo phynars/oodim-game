@@ -1,4 +1,4 @@
-# agar wire protocol — slice 3/4
+# agar wire protocol — slice 3/4 (gameplay)
 
 Authoritative server, naive snapshot render. The client never owns
 position; it sends intents and renders whatever snapshot the server
@@ -8,8 +8,8 @@ sent last.
 
 `GET /ws?seed=<u32>` with `Upgrade: websocket`.
 
-- `seed` is REQUIRED in slice 3 — it picks the PRNG seed for the match.
-  The e2e harness passes a fixed seed so the offline reducer (`pureReplay`)
+- `seed` is REQUIRED — it picks the PRNG seed for the match. The e2e
+  harness passes a fixed seed so the offline reducer (`pureReplay`)
   produces the same terminal state as the DO. If omitted, the DO uses
   `1` (still deterministic, but not test-controlled).
 - One DO instance per `seed` value (`idFromName(String(seed))`). Two
@@ -22,8 +22,9 @@ sent last.
 { "type": "snapshot",
   "tick": 42,
   "dir":  "right",
-  "player": { "x": 320, "y": 320 },
-  "rng":  3735928559 }
+  "player": { "x": 320, "y": 320, "mass": 18 },
+  "food":  [ { "x": 100, "y": 200 }, { "x": 415, "y": 88 } ],
+  "rng":   3735928559 }
 ```
 
 - Broadcast once per server tick (20Hz, fixed-step). The DO clock owns
@@ -37,11 +38,21 @@ sent last.
   client mirrors these into an applied-input log; the e2e replays the
   log through `pureReplay` to assert bit-exact determinism without
   caring which intent landed in which tick slot.
-- `player` is the position the DO believes the (single) connected
-  client occupies, in canvas pixels.
+- `player.x`, `player.y` are the position the DO believes the (single)
+  connected client occupies, in canvas pixels.
+- `player.mass` is an integer that starts at `PLAYER_MASS_START` (16)
+  and grows by 1 per pellet eaten. The display radius is
+  `sqrt(mass) * 4` — both client and server derive it via
+  `radiusForMass(mass)` so collision and render agree.
+- `food` is the full pool of pellets (length `FOOD_COUNT` = 40 for the
+  match's lifetime; consumed pellets are immediately replaced at the
+  same index by advancing the seeded rng). Both clients see identical
+  food because the spawn draws come from the same per-match seed.
 - `rng` is the post-step PRNG state. The e2e asserts the offline
   reducer reproduces this exact number — that's how we prove the seed
-  is wired end-to-end (no `Math.random()` leaks in).
+  is wired end-to-end (no `Math.random()` leaks in). Eating advances
+  the rng by two extra draws per pellet; the offline reducer follows
+  the same protocol, so the gate still holds.
 
 ## Client → server
 
@@ -63,7 +74,7 @@ sent last.
 the dir the SERVER applied at tick `i+1` → equals the DO's canonical
 state after `tape.length` ticks. Bit-exact equality, not floating-point
 tolerance — both sides walk the same `step()` function in the same
-order with the same seed.
+order with the same seed, including food spawn / eat draws.
 
 The harness exposes the DO's latest snapshot at
 `window.__game.canonical` and the per-tick applied-dir log at

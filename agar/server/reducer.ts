@@ -17,19 +17,20 @@
 //     — the DO trusts it'd never see malformed intents in this slice,
 //     but the reducer is the contract, not the wire format).
 //
-// What the world looks like in slice 3:
+// What the world looks like in slice 3 (gameplay 3/4):
 //   - ONE player (the single connected client). Slice 4 generalises to N.
 //   - Position is a {x, y} pair in canvas pixels (640x640, matches the
 //     `<canvas>` in agar/index.html). Walls at the edges clamp motion.
 //   - Speed is 4 px / tick (= 80 px / s at 20Hz). Big enough for the
 //     e2e to see motion in a handful of ticks, small enough that a
 //     tape of ~30 inputs stays inside the canvas.
-//
-// The RNG isn't actually CONSUMED by motion in this slice — motion is
-// deterministic from inputs alone. The seeded RNG exists so the
-// state shape already carries the determinism scaffolding that
-// agar-04 (food spawn) will need. We advance it once per tick anyway,
-// so the e2e proves the seed is wired end-to-end.
+//   - A fixed pool of `FOOD_COUNT` pellets at deterministic positions.
+//     On overlap with the player the pellet is consumed (mass + 1) and
+//     a new pellet is spawned by advancing the seeded RNG. Because the
+//     RNG state lives in `WorldState.rng` and is advanced through the
+//     same `advance()` both server and offline reducer call, the food
+//     field is bit-exact reproducible — required for the two-client
+//     convergence gate (#180/#257) to hold.
 
 export type InputDir = "none" | "up" | "down" | "left" | "right";
 
@@ -40,21 +41,50 @@ export interface InputIntent {
 export interface PlayerState {
   x: number;
   y: number;
+  // Player size, in "mass units". Starts at PLAYER_MASS_START; each
+  // pellet adds 1. Derived radius = radiusForMass(mass).
+  mass: number;
+}
+
+export interface Pellet {
+  x: number;
+  y: number;
 }
 
 export interface WorldState {
   tick: number;
   player: PlayerState;
-  // 32-bit unsigned RNG state, advanced once per tick. Exposed so the
-  // offline reducer can assert the DO is using the same seed.
+  // Fixed-size pool of food pellets. Length is FOOD_COUNT for the
+  // lifetime of the match: when one is consumed, a replacement is
+  // spawned at the same index from the next two RNG draws. The pool
+  // is positional, but the protocol broadcasts the same array shape
+  // every tick — both clients see identical food because both run
+  // the same reducer from the same seed.
+  food: Pellet[];
+  // 32-bit unsigned RNG state, advanced once per tick.
   rng: number;
 }
 
 // Canvas extent — must stay in sync with agar/index.html `<canvas>`.
 export const WORLD_W = 640;
 export const WORLD_H = 640;
-export const PLAYER_R = 16;
 export const SPEED = 4;
+export const FOOD_COUNT = 40;
+export const FOOD_R = 5;
+export const PLAYER_MASS_START = 16;
+
+// Display radius for a given mass. sqrt() gives area-proportional growth
+// (eating two pellets visibly increases the cell, but you don't fill
+// the canvas after 10 bites). The constant tunes the starting size to
+// match the slice-1/2 placeholder (mass=16 → r=16).
+export function radiusForMass(mass: number): number {
+  return Math.sqrt(Math.max(mass, 1)) * 4;
+}
+
+// Legacy export — some call sites referenced PLAYER_R in slice 1/2.
+// Kept as the starting radius so anything still importing it gets the
+// initial pose, not a stale constant.
+export const PLAYER_R = radiusForMass(PLAYER_MASS_START);
 
 // Mulberry32 — a tiny 32-bit PRNG. Pure: advance(s) → next s, no
 // global state. The DO and the offline reducer both call advance() once
@@ -67,14 +97,38 @@ export function advance(s: number): number {
   return (t ^ (t >>> 14)) >>> 0;
 }
 
+// Convert a raw 32-bit rng state into a float in [0, 1). Used only to
+// translate the rng into pellet coordinates; the rng itself is what
+// the determinism gate compares.
+function unitFromRng(s: number): number {
+  return (s >>> 0) / 0x1_0000_0000;
+}
+
+// Spawn a single pellet by advancing the rng twice (one draw per axis).
+// Returns the new rng state and the pellet position. Pure.
+function spawnPellet(rng: number): { rng: number; pellet: Pellet } {
+  const rx = advance(rng);
+  const ry = advance(rx);
+  const x = FOOD_R + unitFromRng(rx) * (WORLD_W - 2 * FOOD_R);
+  const y = FOOD_R + unitFromRng(ry) * (WORLD_H - 2 * FOOD_R);
+  return { rng: ry, pellet: { x, y } };
+}
+
 export function initialState(seed: number): WorldState {
   // Seed is normalised to a 32-bit unsigned int so callers can pass any
   // number (including the test harness's `parseInt` outputs) without
   // worrying about float coercion.
-  const rng = (seed >>> 0) || 1;
+  let rng = (seed >>> 0) || 1;
+  const food: Pellet[] = [];
+  for (let i = 0; i < FOOD_COUNT; i++) {
+    const out = spawnPellet(rng);
+    rng = out.rng;
+    food.push(out.pellet);
+  }
   return {
     tick: 0,
-    player: { x: WORLD_W / 2, y: WORLD_H / 2 },
+    player: { x: WORLD_W / 2, y: WORLD_H / 2, mass: PLAYER_MASS_START },
+    food,
     rng,
   };
 }
@@ -104,13 +158,44 @@ export function step(state: WorldState, input: InputIntent): WorldState {
   else if (dir === "up") dy = -SPEED;
   else if (dir === "down") dy = SPEED;
 
-  const nx = clamp(state.player.x + dx, PLAYER_R, WORLD_W - PLAYER_R);
-  const ny = clamp(state.player.y + dy, PLAYER_R, WORLD_H - PLAYER_R);
+  const r = radiusForMass(state.player.mass);
+  const nx = clamp(state.player.x + dx, r, WORLD_W - r);
+  const ny = clamp(state.player.y + dy, r, WORLD_H - r);
+
+  // Eat-and-grow pass. Walk the food pool once; any pellet whose center
+  // sits inside (player radius + pellet radius) is consumed. Mass grows
+  // by 1 per pellet; the consumed slot is refilled by advancing the rng
+  // (two draws per replacement, just like initial spawn). Doing
+  // collision after motion lets the player "scoop" a pellet by moving
+  // onto it in one tick.
+  let mass = state.player.mass;
+  let rng = state.rng;
+  const food = state.food.slice();
+  for (let i = 0; i < food.length; i++) {
+    const p = food[i];
+    if (!p) continue;
+    const ddx = p.x - nx;
+    const ddy = p.y - ny;
+    const reach = radiusForMass(mass) + FOOD_R;
+    if (ddx * ddx + ddy * ddy <= reach * reach) {
+      mass += 1;
+      const out = spawnPellet(rng);
+      rng = out.rng;
+      food[i] = out.pellet;
+    }
+  }
+
+  // Always advance rng once per tick (in addition to any food draws)
+  // so the determinism gate's per-tick rng equality still holds in the
+  // no-eat case. Slice 1/2 advanced rng once per tick unconditionally;
+  // we preserve that property by advancing once more here.
+  rng = advance(rng);
 
   return {
     tick: state.tick + 1,
-    player: { x: nx, y: ny },
-    rng: advance(state.rng),
+    player: { x: nx, y: ny, mass },
+    food,
+    rng,
   };
 }
 

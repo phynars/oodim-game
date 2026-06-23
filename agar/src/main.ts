@@ -1,4 +1,4 @@
-// agar — slice 3/4 (authoritative tick, naive snapshot render).
+// agar — slice 3/4 gameplay (authoritative tick, naive snapshot render).
 //
 // What this slice does:
 //   - Connects ONE WebSocket to the agar Worker on page load.
@@ -9,13 +9,21 @@
 //     and released. The DO collapses to latest-input-wins per tick.
 //   - Renders the latest snapshot the server pushed. Pure render — no
 //     client-side prediction, no interpolation. The cell sits exactly
-//     where the server last said it sits.
+//     where the server last said it sits, scaled by mass.
+//   - Renders the deterministic food pool from the snapshot. Both
+//     clients see identical pellets because both came from the same
+//     seeded server.
 //   - Exposes `window.__game.canonical` so the e2e can read the DO's
 //     authoritative state without parsing canvas pixels.
 //   - Exposes `window.__game.sendInput(dir)` so the e2e can drive a
 //     deterministic input tape without keyboard events.
 
-import type { InputDir, WorldState } from "../server/reducer";
+import {
+  radiusForMass,
+  type InputDir,
+  type Pellet,
+  type WorldState,
+} from "../server/reducer";
 
 const canvasEl = document.getElementById("game");
 if (!(canvasEl instanceof HTMLCanvasElement)) {
@@ -33,7 +41,8 @@ interface SnapshotMessage {
   type: "snapshot";
   tick: number;
   dir: InputDir;
-  player: { x: number; y: number };
+  player: { x: number; y: number; mass: number };
+  food: Pellet[];
   rng: number;
 }
 
@@ -47,6 +56,16 @@ function isInputDir(value: unknown): value is InputDir {
   );
 }
 
+function isPelletArray(value: unknown): value is Pellet[] {
+  if (!Array.isArray(value)) return false;
+  for (const p of value) {
+    if (typeof p !== "object" || p === null) return false;
+    const o = p as Record<string, unknown>;
+    if (typeof o.x !== "number" || typeof o.y !== "number") return false;
+  }
+  return true;
+}
+
 function isSnapshotMessage(value: unknown): value is SnapshotMessage {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -55,12 +74,17 @@ function isSnapshotMessage(value: unknown): value is SnapshotMessage {
   if (typeof v.rng !== "number") return false;
   if (!isInputDir(v.dir)) return false;
   const p = v.player as Record<string, unknown> | undefined;
-  return (
-    typeof p === "object" &&
-    p !== null &&
-    typeof p.x === "number" &&
-    typeof p.y === "number"
-  );
+  if (
+    typeof p !== "object" ||
+    p === null ||
+    typeof p.x !== "number" ||
+    typeof p.y !== "number" ||
+    typeof p.mass !== "number"
+  ) {
+    return false;
+  }
+  if (!isPelletArray(v.food)) return false;
+  return true;
 }
 
 function readSeed(): string {
@@ -95,10 +119,26 @@ function draw(): void {
   ctx.fillStyle = "#050505";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Food first, so the cell renders over it.
+  if (latest !== null) {
+    ctx.fillStyle = "#e8c46b";
+    for (const pellet of latest.food) {
+      ctx.beginPath();
+      ctx.arc(pellet.x, pellet.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   if (latest !== null) {
     ctx.fillStyle = "#80e6c1";
     ctx.beginPath();
-    ctx.arc(latest.player.x, latest.player.y, 16, 0, Math.PI * 2);
+    ctx.arc(
+      latest.player.x,
+      latest.player.y,
+      radiusForMass(latest.player.mass),
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   } else {
     // Pre-snapshot: same placeholder pose as slice 1/2 so the canvas
@@ -116,6 +156,17 @@ function draw(): void {
   // Studio voice over placeholder. The cell IS you; the room is the server.
   // Title earns the cold by stating the relation, not the genre.
   ctx.fillText("you are here", canvas.width / 2, 40);
+
+  // Mass readout — the "score". Big enough to feel like stakes, small
+  // enough to stay out of the play field. Reads as your weight in the
+  // room, not as telemetry.
+  if (latest !== null) {
+    ctx.font = "600 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillStyle = "#e8c46b";
+    ctx.textAlign = "left";
+    ctx.fillText(`mass ${latest.player.mass}`, 16, canvas.height - 24);
+    ctx.textAlign = "center";
+  }
 
   ctx.font = "500 14px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.fillStyle = connected ? "#9090a8" : "#a85050";
@@ -196,7 +247,12 @@ function openWs(): WebSocket {
     if (!isSnapshotMessage(parsed)) return;
     latest = {
       tick: parsed.tick,
-      player: { x: parsed.player.x, y: parsed.player.y },
+      player: {
+        x: parsed.player.x,
+        y: parsed.player.y,
+        mass: parsed.player.mass,
+      },
+      food: parsed.food.map((p) => ({ x: p.x, y: p.y })),
       rng: parsed.rng,
     };
     // Append the dir the server APPLIED at this tick. Server tick numbers
