@@ -15,14 +15,55 @@
 //     socket closes we clear the interval so the DO can hibernate.
 //   - Alarms come back in slice 4 when we need durability across
 //     restarts and 2-client rooms.
+//
+// AC3 desync-broken fixture (issue #276):
+//   - `AGAR_DO_BREAK_MODE` is read ONCE at DO construction. The only
+//     supported non-empty value is `"drop-every-7th"`; anything else
+//     is a typecheck failure at the assignment, so unknown env values
+//     can't silently no-op.
+//   - When the flag is on, every 7th input that reaches `tick()` is
+//     silently elided from the reducer fold — the snapshot still
+//     carries `dir` (so the client mirrors it into `appliedLog`) but
+//     `step()` is skipped, so canonical state diverges from
+//     `pureReplay(SEED, appliedLog)`. That divergence is what the
+//     `multiplayer-convergence.spec.ts` ordering invariant catches.
+//   - Default (unset / empty): zero behavior change. The branch is a
+//     single literal comparison off a constant set at ctor; the prod
+//     bundle pays one boolean check per tick.
 
 import { initialState, step, type InputDir, type WorldState } from "./reducer";
 
 export interface Env {
   ECHO_ROOM: DurableObjectNamespace;
+  AGAR_DO_BREAK_MODE?: string;
 }
 
 const TICK_MS = 50; // 20Hz
+
+// Type-narrowed literal union of supported break modes. Adding a new
+// mode here is the one-line touch that lights it up; an unknown env
+// value falls through to `null` (production behavior).
+type BreakMode = "drop-every-7th";
+const BREAK_MODES: ReadonlySet<BreakMode> = new Set<BreakMode>([
+  "drop-every-7th",
+]);
+
+function parseBreakMode(raw: string | undefined): BreakMode | null {
+  // Default: env unset OR explicitly empty — production behavior, no
+  // branch taken at runtime.
+  if (raw === undefined || raw === "") return null;
+  // Any other value MUST be a known mode. Per #276 AC4, an unknown
+  // env value is a hard failure at DO construction (not a silent
+  // fallback to off) — that's the only way a typo in CI config can't
+  // accidentally ship a worker that pretends to be broken but isn't,
+  // or vice versa.
+  if (!BREAK_MODES.has(raw as BreakMode)) {
+    throw new Error(
+      `agar: unknown AGAR_DO_BREAK_MODE=${JSON.stringify(raw)}; expected one of ${JSON.stringify([...BREAK_MODES])} or empty/unset`,
+    );
+  }
+  return raw as BreakMode;
+}
 
 interface InputMessage {
   type: "input";
@@ -47,14 +88,21 @@ export class EchoRoom implements DurableObject {
   private sockets = new Set<WebSocket>();
   private interval: ReturnType<typeof setInterval> | null = null;
 
+  // AC3 fixture state. `breakMode` is set once at construction and
+  // never re-read; `appliedCount` increments on every tick to drive
+  // the every-7th drop cadence deterministically.
+  private readonly breakMode: BreakMode | null;
+  private appliedCount = 0;
+
   constructor(
     _state: DurableObjectState,
-    _env: Env,
+    env: Env,
   ) {
     // The seed is set when the first socket connects (it carries the
     // ?seed= query). We init to seed=1 here so the DO has a valid
     // shape even if a non-WS request lands first; reinit on connect.
     this.world = initialState(1);
+    this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
   }
 
   private ensureTickLoop(): void {
@@ -73,15 +121,32 @@ export class EchoRoom implements DurableObject {
   private tick(): void {
     const dir = this.pendingDir;
     this.pendingDir = "none";
-    this.world = step(this.world, { dir });
 
-    // The snapshot carries `dir` — the EXACT intent the server applied
-    // this tick. The client mirrors these into an applied-input log so
-    // the e2e can replay them through `pureReplay` and assert bit-exact
-    // equality, without depending on which inputs landed in which tick
-    // slots. (Latest-input-wins makes that mapping inherently racy under
-    // CI jitter; the log removes the race because both sides agree on
-    // what was actually applied.)
+    // AC3 drop point (issue #276). The plan demands the drop happen
+    // AFTER the client-visible log advances but BEFORE the reducer
+    // fold — so the client thinks the input was applied (its
+    // `appliedLog` mirrors `dir` from the snapshot) while canonical
+    // state silently diverges. Concretely: bump `appliedCount`, then
+    // SKIP `step()` on every 7th tick, then still broadcast a
+    // snapshot carrying `dir` so the client log grows.
+    this.appliedCount += 1;
+    const drop =
+      this.breakMode === "drop-every-7th" && this.appliedCount % 7 === 0;
+    if (!drop) {
+      this.world = step(this.world, { dir });
+    }
+
+    // The snapshot carries `dir` — the EXACT intent the server
+    // (claims to have) applied this tick. The client mirrors these
+    // into an applied-input log so the e2e can replay them through
+    // `pureReplay` and assert bit-exact equality, without depending
+    // on which inputs landed in which tick slots. (Latest-input-wins
+    // makes that mapping inherently racy under CI jitter; the log
+    // removes the race because both sides agree on what was actually
+    // applied.) Under the AC3 fixture this is exactly the lie the
+    // server tells the client — `dir` rides the snapshot even when
+    // `step` was skipped, which is what makes the ordering invariant
+    // honest.
     const snapshot = JSON.stringify({
       type: "snapshot",
       tick: this.world.tick,

@@ -79,7 +79,7 @@ Add ONE workflow job, e.g. `agar-multiplayer-fixture-redgreen`, that:
 2. Runs `agar/e2e/multiplayer-convergence.spec.ts` against that build.
 3. Asserts the job exits **non-zero** — the spec MUST go red. Use
    `! npx playwright test ...` or `continue-on-error: true` + a follow-up
-   step that fails when the prior step succeeded.
+   step that fails when the prior step succeeds.
 4. The existing green job (against main DO) stays as-is.
 
 Both polarities together are the merge gate. A change that breaks
