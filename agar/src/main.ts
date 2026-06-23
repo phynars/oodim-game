@@ -127,6 +127,15 @@ function wsUrl(seed: string): string {
 let latest: WorldState | null = null;
 let connected = false;
 
+// Respawn flash — when the player's mass collapses tick-over-tick
+// (a bigger bot ate them, the server reset mass + position), we hold
+// a brief "eaten" banner so the death isn't silent. The banner fades
+// over RESPAWN_FLASH_TICKS server ticks; once it expires the screen
+// quiets and the room continues as if you'd always been small.
+// Stored as the tick on which the next death banner should clear.
+let respawnFlashUntilTick = 0;
+const RESPAWN_FLASH_TICKS = 24;
+
 // Server-side applied-input log: one entry per server tick, in tick
 // order, mirroring the `dir` field the DO reports in every snapshot.
 // The e2e replays this through `pureReplay(seed, log)` and asserts
@@ -200,6 +209,18 @@ function draw(): void {
     ctx.textAlign = "left";
     ctx.fillText(`mass ${latest.player.mass}`, 16, canvas.height - 24);
     ctx.textAlign = "center";
+  }
+
+  // Respawn banner — held over the play field for RESPAWN_FLASH_TICKS
+  // ticks after a death. The word lands the stake: you were eaten, you
+  // are small again, the room kept going. No exclamation, no respawn
+  // dialogue — the room doesn't pause for you.
+  if (latest !== null && latest.tick < respawnFlashUntilTick) {
+    ctx.fillStyle = "#a85050";
+    ctx.font = "700 32px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("eaten", canvas.width / 2, canvas.height / 2);
   }
 
   ctx.font = "500 14px ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -279,6 +300,12 @@ function openWs(): WebSocket {
       return;
     }
     if (!isSnapshotMessage(parsed)) return;
+    // Detect a death: mass strictly drops tick-over-tick. The reducer
+    // only resets player mass when a bigger bot has eaten them — pellet
+    // consumption only grows. Trigger the banner.
+    if (latest !== null && parsed.player.mass < latest.player.mass) {
+      respawnFlashUntilTick = parsed.tick + RESPAWN_FLASH_TICKS;
+    }
     latest = {
       tick: parsed.tick,
       player: {

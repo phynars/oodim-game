@@ -104,6 +104,14 @@ export const PLAYER_MASS_START = 16;
 export const BOT_COUNT = 6;
 export const BOT_SPEED = Math.floor((SPEED * 3) / 4);
 
+// Eat ratio — A absorbs B when A.mass >= EAT_RATIO * B.mass AND their
+// centers overlap (distance < A's radius). 1.10 means "10% bigger
+// wins"; small enough that a few pellets tip the balance, large enough
+// that two roughly-equal cells can brush past each other without
+// instant death. Mirrors agar.io's classic 1.25× but tuned looser for
+// a 640px field with mass-16 starts.
+export const EAT_RATIO = 1.1;
+
 // Display radius for a given mass. sqrt() gives area-proportional growth
 // (eating two pellets visibly increases the cell, but you don't fill
 // the canvas after 10 bites). The constant tunes the starting size to
@@ -305,6 +313,115 @@ export function step(state: WorldState, input: InputIntent): WorldState {
     bots[bi] = { id: bot.id, x: bx, y: by, mass: bmass };
   }
 
+  // Cell-eats-cell pass (#268, slice 4/4). Closes agar's core loop:
+  // a bigger cell whose center is inside a smaller cell's radius
+  // absorbs it. The eaten cell respawns small at a fresh position
+  // (two rng draws, mirroring pellet spawn). Mass transfers in full —
+  // the eater grows by the eaten's mass.
+  //
+  // Determinism: the pairs are walked in a fixed order — player vs
+  // each bot (index 0..n-1), then bot[i] vs bot[j] for i<j. Each pair
+  // is resolved at most once per tick. A cell that's already been
+  // eaten this tick (marked by `respawned[bi]`) cannot be involved
+  // again until the next tick, so simultaneous-overlap chains can't
+  // re-trigger or crash.
+  //
+  // RNG: respawns thread the rng in the same fixed order, so two
+  // clients replaying the same input tape from the same seed land on
+  // bit-exact identical state.
+  //
+  // Overlap test: distance(A,B) < radius(A) — i.e. A's center has
+  // crossed inside B's body OR B's center has crossed inside A's body.
+  // Asymmetric is intentional: only the bigger cell's reach matters
+  // for the absorption call.
+  let pmass = mass;
+  let px = nx;
+  let py = ny;
+  const respawned = new Array<boolean>(bots.length).fill(false);
+
+  // Helper — respawn a bot at a fresh deterministic position with
+  // starting mass. Threads rng. Pure.
+  function respawnBot(bot: BotState): { rng: number; bot: BotState } {
+    const out = spawnPellet(rng);
+    rng = out.rng;
+    return {
+      rng,
+      bot: { id: bot.id, x: out.pellet.x, y: out.pellet.y, mass: PLAYER_MASS_START },
+    };
+  }
+
+  // Player vs each bot.
+  for (let bi = 0; bi < bots.length; bi++) {
+    if (respawned[bi]) continue;
+    const bot = bots[bi];
+    if (!bot) continue;
+    const ddx = bot.x - px;
+    const ddy = bot.y - py;
+    const d2 = ddx * ddx + ddy * ddy;
+    if (pmass >= bot.mass * EAT_RATIO) {
+      const pr = radiusForMass(pmass);
+      if (d2 < pr * pr) {
+        // Player absorbs bot.
+        pmass += bot.mass;
+        const r = respawnBot(bot);
+        bots[bi] = r.bot;
+        respawned[bi] = true;
+        continue;
+      }
+    }
+    if (bot.mass >= pmass * EAT_RATIO) {
+      const br = radiusForMass(bot.mass);
+      if (d2 < br * br) {
+        // Bot absorbs player — player respawns small at center.
+        bots[bi] = { id: bot.id, x: bot.x, y: bot.y, mass: bot.mass + pmass };
+        pmass = PLAYER_MASS_START;
+        px = WORLD_W / 2;
+        py = WORLD_H / 2;
+        // Player respawned; continue checking remaining bots against
+        // the fresh small player (it could overlap another bot at
+        // center, though unlikely with bot spawn distribution).
+      }
+    }
+  }
+
+  // Bot vs bot, stable (i,j) index order with i<j.
+  for (let i = 0; i < bots.length; i++) {
+    if (respawned[i]) continue;
+    const a = bots[i];
+    if (!a) continue;
+    for (let j = i + 1; j < bots.length; j++) {
+      if (respawned[i]) break;
+      if (respawned[j]) continue;
+      const b = bots[j];
+      if (!b) continue;
+      const ddx = b.x - a.x;
+      const ddy = b.y - a.y;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (a.mass >= b.mass * EAT_RATIO) {
+        const ar = radiusForMass(a.mass);
+        if (d2 < ar * ar) {
+          const grown: BotState = { id: a.id, x: a.x, y: a.y, mass: a.mass + b.mass };
+          bots[i] = grown;
+          const r = respawnBot(b);
+          bots[j] = r.bot;
+          respawned[j] = true;
+          continue;
+        }
+      }
+      if (b.mass >= a.mass * EAT_RATIO) {
+        const br = radiusForMass(b.mass);
+        if (d2 < br * br) {
+          const grown: BotState = { id: b.id, x: b.x, y: b.y, mass: b.mass + a.mass };
+          bots[j] = grown;
+          const r = respawnBot(a);
+          bots[i] = r.bot;
+          respawned[i] = true;
+          break;
+        }
+      }
+    }
+  }
+
   // Always advance rng once per tick (in addition to any food draws)
   // so the determinism gate's per-tick rng equality still holds in the
   // no-eat case. Slice 1/2 advanced rng once per tick unconditionally;
@@ -313,7 +430,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
 
   return {
     tick: state.tick + 1,
-    player: { x: nx, y: ny, mass },
+    player: { x: px, y: py, mass: pmass },
     food,
     bots,
     rng,
