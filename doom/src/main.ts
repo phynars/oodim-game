@@ -53,12 +53,24 @@ const finalScoreEl = document.querySelector<HTMLElement>(
 const pickupFlashEl = document.querySelector<HTMLElement>(
   '[data-overlay="pickup-flash"]',
 );
+// Pickup MESSAGE slot (#281). One HUD line — "Patched up." / "Plate. Strap
+// it on." / "More rounds." — written from `__doom.pickupMessage` and faded
+// over the flash window. Same read-only consumer pattern as every other
+// HUD element: state is truth, this just mirrors it.
+const pickupMessageEl = document.querySelector<HTMLElement>(
+  '[data-hud="pickup-message"]',
+);
 
 if (healthEl && armorEl && ammoEl && scoreEl) {
   let lastTitleVisible: boolean | null = null;
   let lastGameoverVisible: boolean | null = null;
   let lastFlash = -1;
   let lastFinalScore = "";
+  // Cache the last-written pickup message so we don't churn textContent /
+  // opacity each rAF when nothing moved (idle frames are common — the
+  // message holds for ~24 ticks then sits null forever).
+  let lastPickupMessage: string | null = "";
+  let lastPickupMessageTicks = -1;
   const tickHud = (): void => {
     const s = window.__doom;
     if (s) {
@@ -135,6 +147,27 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
           // Resting state — overlay fully transparent. Guard with a string
           // compare so we don't churn the CSS engine when nothing changed.
           pickupFlashEl.style.opacity = "0";
+        }
+      }
+      // Pickup MESSAGE slot (#281). Mirror `__doom.pickupMessage` into the
+       // slot's textContent and fade opacity over the flash window. Same
+       // exponential decay shape as the vignette (#230) so line and tint
+       // breathe together — one beat, one voice. When the counter is at 0
+       // we clear textContent (the line is GONE, not just transparent) so
+       // the slot's aria-live region doesn't re-announce a stale line.
+      if (pickupMessageEl) {
+        if (s.pickupMessage !== lastPickupMessage) {
+          pickupMessageEl.textContent = s.pickupMessage ?? "";
+          lastPickupMessage = s.pickupMessage;
+        }
+        if (s.pickupMessageTicks !== lastPickupMessageTicks) {
+          let op = 0;
+          if (s.pickupMessageTicks > 0) {
+            const t = PICKUP_FLASH_TICKS - s.pickupMessageTicks;
+            op = Math.pow(PICKUP_FLASH_DECAY_PER_TICK, t);
+          }
+          pickupMessageEl.style.opacity = String(op);
+          lastPickupMessageTicks = s.pickupMessageTicks;
         }
       }
       // Stat-pop on the matching readout. The scale lives on the

@@ -292,6 +292,24 @@ export interface DoomState {
    *  on the counter would compound durations across kinds; clobbering both
    *  counter + kind together keeps the cue truthful. */
   pickupKindFlash: "health" | "armor" | "ammo" | null;
+  /** HUD message shown alongside the pickup flash (#281). Industrial-grim
+   *  line keyed by pickup kind (see PICKUP_MESSAGES) — armed by applyPickup
+   *  in the SAME synchronous publish as `pickupFlashTicks` + `pickupKindFlash`,
+   *  cleared to `null` when `pickupMessageTicks` reaches 0. CLOBBERED on a
+   *  second pickup mid-flash (NOT Math.max — single-channel identity cue,
+   *  same posture as `pickupKindFlash`): a health flash followed by armor
+   *  mid-window reads the armor line, not the health one. The world that
+   *  takes from the player (damage wobble #205, blood spray #194, kill-shake
+   *  #194) now also SPEAKS when it gives — same posture, opposite charge. */
+  pickupMessage: string | null;
+  /** Fixed-step frames remaining on the pickup-message display (#281). In
+   *  lockstep with `pickupFlashTicks` — armed to PICKUP_FLASH_TICKS in the
+   *  same synchronous publish, decayed in the same `!frozen` block (so the
+   *  message hangs with the world during hitstop), cleared to 0 alongside
+   *  the flash counter. Sharing the FLASH window means the line and the
+   *  tint enter+exit together — the corridor's voice is the same beat as
+   *  its color. */
+  pickupMessageTicks: number;
   /** Live blood-spray drops (#194). Distinct from impactSparks: blood is
    *  KILL-ONLY (sparks fire on every connect), darker/larger/slower,
    *  gravity-driven (heavy chunks that fall, not weightless chips). Same
@@ -583,6 +601,8 @@ export function initialState(): DoomState {
     bloodDrops: [],
     pickupFlashTicks: 0,
     pickupKindFlash: null,
+    pickupMessage: null,
+    pickupMessageTicks: 0,
   };
 }
 
@@ -806,4 +826,22 @@ export const PICKUP_KIND_TINT: Record<"health" | "armor" | "ammo", string> = {
   health: "#3aff7a",
   armor: "#6ab4ff",
   ammo: "#ffd24a",
+};
+
+/** Per-kind HUD message shown alongside the pickup flash (#281). Three lines,
+ *  studio voice — industrial-grim, no exclamation, period-terminal pacing.
+ *  Genre-canon would say "Picked up a stimpack."; these are tighter and in
+ *  Doom's voice (audited against the keeper "the studio learned 3D on the way
+ *  down" and the death h1 "It got you."):
+ *    health → "Patched up."         — past-tense, single beat
+ *    armor  → "Plate. Strap it on." — present-tense imperative, two beats
+ *    ammo   → "More rounds."        — bare; the number went up, name what kind
+ *  Single place for a future taste-pass. Mirrors PICKUP_KIND_TINT's shape.
+ *  Lives in lockstep with the flash window: armed by applyPickup() AND
+ *  CLOBBERED on second-grant mid-flash (NOT Math.max — the message is a
+ *  single-channel identity cue like pickupKindFlash, not a magnitude). */
+export const PICKUP_MESSAGES: Record<"health" | "armor" | "ammo", string> = {
+  health: "Patched up.",
+  armor: "Plate. Strap it on.",
+  ammo: "More rounds.",
 };
