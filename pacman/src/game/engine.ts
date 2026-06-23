@@ -6,6 +6,10 @@
 // the accumulator at a constant STEP_MS. This keeps `tick` deterministic
 // across machines — the Playwright harness counts on that.
 import {
+  BANNER_EXTRA,
+  BANNER_FRUIT,
+  BANNER_GAME_OVER,
+  BANNER_READY,
   CLEAR_ANIM_TICKS,
   CLEAR_FLASH_END,
   CLEAR_PRE_PAUSE,
@@ -752,8 +756,6 @@ export class Engine {
       // mirroring the EXTRA banner. Independent of `state.fruit` because
       // the eat path clears the fruit but leaves the banner countdown
       // running (banner is the spawn announcement, sprite is the timer).
-      // Wait — actually pacman.ts's eat path also zeroes fruitBanner.
-      // Either way, this is the canonical decay channel.
       if (this.state.fruitBanner > 0) {
         this.state.fruitBanner -= 1;
       }
@@ -1105,7 +1107,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("READY!", w / 2, h / 2);
+      ctx.fillText(BANNER_READY, w / 2, h / 2);
     } else if (state.extraLifeBanner > 0) {
       // Issue #295 — arcade canon's one celebratory threshold. Same
       // slot, same yellow as READY!/GAME OVER. One word: EXTRA.
@@ -1120,7 +1122,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("EXTRA", w / 2, h / 2);
+      ctx.fillText(BANNER_EXTRA, w / 2, h / 2);
     } else if (state.fruitBanner > 0) {
       // Issue #305 — arcade canon's mid-level give-to-player beat. The
       // ONE word, in the same yellow slot as READY!/EXTRA. The sprite
@@ -1130,7 +1132,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("FRUIT", w / 2, h / 2);
+      ctx.fillText(BANNER_FRUIT, w / 2, h / 2);
     } else if (state.status === "won") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
@@ -1142,7 +1144,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("GAME OVER", w / 2, h / 2);
+      ctx.fillText(BANNER_GAME_OVER, w / 2, h / 2);
     }
 
     // 6. Issue #138 — power-pellet screen flash. Drawn LAST so it
