@@ -161,6 +161,11 @@ test("agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [#
     return {
       tick: 0,
       player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_MASS_START },
+      // #299 — required WorldState fields. Death counter + best-mass
+      // start at the natural defaults so a hand-built fixture matches
+      // what initialState() would produce on tick 0.
+      deaths: 0,
+      bestMass: PLAYER_MASS_START,
       // Empty food pool — no pellet draws / growth noise. step()'s
       // food loop is length-driven, so [] is a clean no-op.
       food: [],
@@ -218,23 +223,71 @@ test("agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [#
 // ────────────────────────────────────────────────────────────────────
 // #299 — player death + respawn
 // ────────────────────────────────────────────────────────────────────
-test.skip(
-  "agar reducer: death + respawn — absorbed player resets mass + position [unskip when #299 lands]",
-  () => {
-    // The #299 PR picks a seed + tape where a larger bot absorbs the
-    // player at a known tick T. Three assertions:
-    //   1. state at tick T-1: player.mass is the accumulated (large) mass
-    //   2. state at tick T+1: player.mass === START_MASS (genuine reset)
-    //   3. state at tick T+1: player.position !== state at T-1's position
-    //      (genuine respawn, not freeze-in-place)
-    const stateBefore: WorldState = pureReplay(SEED, emptyTape(50));
-    const stateAfter: WorldState = pureReplay(SEED, emptyTape(60));
-    expect(stateBefore).toBeDefined();
-    expect(stateAfter).toBeDefined();
+//
+// Same fixture-driven approach as the #298 test: pin a bigger bot on
+// top of the player and step() the reducer directly. Removes the
+// seed-luck dependency (we don't have to hope initialState happens to
+// spawn an overlapping threat). On tick 1 the cell-eats-cell pass
+// fires and the player is absorbed — the test asserts the FOUR
+// observable consequences of #299:
+//
+//   1. mass resets to PLAYER_MASS_START (genuine reset, not freeze).
+//   2. position changes (NOT center, NOT the previous position —
+//      respawn uses a fresh deterministic spawnPellet draw).
+//   3. state.deaths increments (the scoreboard tick that drives the
+//      client's "eaten" banner).
+//   4. state.bestMass preserves the pre-death record (so the
+//      high-water mark survives the death — that's what makes the
+//      score-line cost real).
+//
+// Polarity: if a future PR collapses respawn back to center, the
+// position assertion against (WORLD_W/2, WORLD_H/2) fires. If the
+// death increment is removed, the deaths assertion fires. If mass
+// reset is silently disabled, the start-mass equality fires. Three
+// failure modes, one test, no seed brittleness.
+test("agar reducer: death + respawn — absorbed player resets mass + position, deaths increments [#299]", () => {
+  const PLAYER_X = WORLD_W / 2;
+  const PLAYER_Y = WORLD_H / 2;
+  // Big-enough mass that bot.mass >= player.mass * EAT_RATIO holds
+  // sharply. Player carries an above-START mass so we can also assert
+  // the reset is genuine (not just "mass was already START").
+  const PLAYER_PRE_MASS = 30;
+  const KILLER_MASS = 80;
+  expect(KILLER_MASS).toBeGreaterThanOrEqual(PLAYER_PRE_MASS * EAT_RATIO);
 
-    // Polarity guard: this fails on unskip until the body is rewritten.
-    expect("placeholder").toBe(
-      "unskip-and-rewrite-#299-with-mass-reset-and-position-change-assertions",
-    );
-  },
-);
+  // Place the killer bot directly on top of the player so the
+  // cell-eats-cell pass fires on tick 1 (no AI seek needed). The
+  // overlap test is d2 < killer.radius^2; at d2=0 it trivially holds.
+  const fixture: WorldState = {
+    tick: 0,
+    player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_PRE_MASS },
+    deaths: 0,
+    bestMass: PLAYER_PRE_MASS,
+    food: [],
+    bots: [{ id: 0, x: PLAYER_X, y: PLAYER_Y, mass: KILLER_MASS }],
+    // rng=1 → spawnPellet's first call lands at a deterministic in-
+    // bounds point. We don't need to predict the coords; we just need
+    // them to be != (PLAYER_X, PLAYER_Y) and != center, which the
+    // assertions below verify directly.
+    rng: 1,
+  };
+
+  const HOLD: InputIntent = { dir: "none" };
+  const after = step(fixture, HOLD);
+
+  // 1. mass reset.
+  expect(after.player.mass).toBe(PLAYER_MASS_START);
+
+  // 2. position changed AND not stuck-at-center. The cell-eats-cell
+  // pass respawns at a fresh spawnPellet draw, not at the canvas
+  // center.
+  const samePos =
+    after.player.x === PLAYER_X && after.player.y === PLAYER_Y;
+  expect(samePos).toBe(false);
+
+  // 3. death counter ticked up.
+  expect(after.deaths).toBe(1);
+
+  // 4. best-mass survives the death (the high-water mark is sticky).
+  expect(after.bestMass).toBeGreaterThanOrEqual(PLAYER_PRE_MASS);
+});

@@ -164,6 +164,13 @@ export class EchoRoom implements DurableObject {
       tick: this.world.tick,
       dir,
       player: this.world.player,
+      // Death + best-mass scoreboard (#299, balance slice 3/4). Carried
+      // in every snapshot so a freshly-connected or reconnected client
+      // reads the same record both clients see — the run's stake is
+      // server-authoritative, not inferred client-side from a mass
+      // drop.
+      deaths: this.world.deaths,
+      bestMass: this.world.bestMass,
       food: this.world.food,
       bots: this.world.bots,
       rng: this.world.rng,

@@ -47,6 +47,12 @@ interface SnapshotMessage {
   tick: number;
   dir: InputDir;
   player: { x: number; y: number; mass: number };
+  // #299 balance slice 3/4 — server-authoritative scoreboard. `deaths`
+  // increments each time a bigger cell absorbs the player; `bestMass`
+  // tracks peak mass this match. Both ride every snapshot so a
+  // reconnecting client reads the same record the other client sees.
+  deaths: number;
+  bestMass: number;
   food: Pellet[];
   bots: BotState[];
   rng: number;
@@ -95,6 +101,8 @@ function isSnapshotMessage(value: unknown): value is SnapshotMessage {
   if (v.type !== "snapshot") return false;
   if (typeof v.tick !== "number") return false;
   if (typeof v.rng !== "number") return false;
+  if (typeof v.deaths !== "number") return false;
+  if (typeof v.bestMass !== "number") return false;
   if (!isInputDir(v.dir)) return false;
   const p = v.player as Record<string, unknown> | undefined;
   if (
@@ -220,11 +228,25 @@ function draw(): void {
   // Mass readout — the "score". Big enough to feel like stakes, small
   // enough to stay out of the play field. Reads as your weight in the
   // room, not as telemetry.
+  //
+  // Three lines, bottom-left, stacked. `mass` is what you weigh right
+  // now; `best` is the high-water mark this match (#299) — the record
+  // bites because decay (#297) and bots (#298) keep pulling you back
+  // down, so the peak is hard-won; `lost` is the death tally (#299),
+  // shown only after the first absorption so the field reads quiet on
+  // a clean run. The room doesn't apologise for the cost.
   if (latest !== null) {
     ctx.font = "600 16px ui-monospace, SFMono-Regular, Menlo, monospace";
     ctx.fillStyle = "#e8c46b";
     ctx.textAlign = "left";
-    ctx.fillText(`mass ${latest.player.mass}`, 16, canvas.height - 24);
+    const baseY = canvas.height - 24;
+    ctx.fillText(`mass ${latest.player.mass}`, 16, baseY);
+    ctx.fillStyle = "#9a7adf";
+    ctx.fillText(`best ${latest.bestMass}`, 16, baseY - 20);
+    if (latest.deaths > 0) {
+      ctx.fillStyle = "#a85050";
+      ctx.fillText(`lost ${latest.deaths}`, 16, baseY - 40);
+    }
     ctx.textAlign = "center";
   }
 
@@ -317,10 +339,13 @@ function openWs(): WebSocket {
       return;
     }
     if (!isSnapshotMessage(parsed)) return;
-    // Detect a death: mass strictly drops tick-over-tick. The reducer
-    // only resets player mass when a bigger bot has eaten them — pellet
-    // consumption only grows. Trigger the banner.
-    if (latest !== null && parsed.player.mass < latest.player.mass) {
+    // Detect a death from the server's own counter (#299). Pre-#299
+    // we inferred death from a tick-over-tick mass drop, but mass also
+    // drops on decay (#297) — small bleed each tick once you're big.
+    // Reading `deaths` directly turns a mushy heuristic into a sharp
+    // event: the banner fires exactly when the reducer credited an
+    // absorption, never on the slow shrink.
+    if (latest !== null && parsed.deaths > latest.deaths) {
       respawnFlashUntilTick = parsed.tick + RESPAWN_FLASH_TICKS;
     }
     latest = {
@@ -330,6 +355,8 @@ function openWs(): WebSocket {
         y: parsed.player.y,
         mass: parsed.player.mass,
       },
+      deaths: parsed.deaths,
+      bestMass: parsed.bestMass,
       food: parsed.food.map((p) => ({ x: p.x, y: p.y })),
       bots: parsed.bots.map((b) => ({
         id: b.id,

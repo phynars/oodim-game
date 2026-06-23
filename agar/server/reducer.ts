@@ -69,6 +69,21 @@ export interface BotState {
 export interface WorldState {
   tick: number;
   player: PlayerState;
+  // Death counter (#299, balance slice 3/4) — monotonic count of how
+  // many times the player has been absorbed by a bigger cell this
+  // match. Incremented in the cell-eats-cell pass at the moment of
+  // respawn; never decremented. Surfaced in snapshots so the renderer
+  // can read it without inferring death from a mass drop (mass drops
+  // also happen via decay, just less sharply). Determinism: integer
+  // increment, no rng involvement.
+  deaths: number;
+  // Best mass (#299) — highest mass the player has held this match.
+  // Tracked server-side so a reconnecting client sees the same record
+  // the other client sees. Updated every tick after the eat pass and
+  // before decay so the peak captures the moment of growth, not the
+  // post-decay value. Floor of PLAYER_MASS_START so it's well-defined
+  // from tick 0.
+  bestMass: number;
   // Fixed-size pool of food pellets. Length is FOOD_COUNT for the
   // lifetime of the match: when one is consumed, a replacement is
   // spawned at the same index from the next two RNG draws. The pool
@@ -266,6 +281,8 @@ export function initialState(seed: number): WorldState {
   return {
     tick: 0,
     player: { x: WORLD_W / 2, y: WORLD_H / 2, mass: PLAYER_MASS_START },
+    deaths: 0,
+    bestMass: PLAYER_MASS_START,
     food,
     bots,
     rng,
@@ -491,6 +508,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
   let pmass = mass;
   let px = nx;
   let py = ny;
+  let deaths = state.deaths;
   const respawned = new Array<boolean>(bots.length).fill(false);
 
   // Helper — respawn a bot at a fresh deterministic position with
@@ -526,14 +544,28 @@ export function step(state: WorldState, input: InputIntent): WorldState {
     if (bot.mass >= pmass * EAT_RATIO) {
       const br = radiusForMass(bot.mass);
       if (d2 < br * br) {
-        // Bot absorbs player — player respawns small at center.
+        // Bot absorbs player — player respawns small at a FRESH
+        // deterministic position (#299, balance slice 3/4). Center-
+        // spawning is hostile in this slice: bots cluster mid-field
+        // and would re-eat a center-respawned player on the next
+        // tick, so the loss never actually resets the run. Reusing
+        // spawnPellet's two rng draws places the player at a random
+        // in-bounds point, threading rng so the determinism gate
+        // still holds bit-exact. Mass resets to PLAYER_MASS_START.
+        // Death counter ticks up — the stake of the run is now
+        // visible in state, not inferred from a mass drop (which
+        // also happens, less sharply, via decay).
         bots[bi] = { id: bot.id, x: bot.x, y: bot.y, mass: addMass(bot.mass, pmass) };
+        const respawn = spawnPellet(rng);
+        rng = respawn.rng;
         pmass = PLAYER_MASS_START;
-        px = WORLD_W / 2;
-        py = WORLD_H / 2;
+        px = respawn.pellet.x;
+        py = respawn.pellet.y;
+        deaths += 1;
         // Player respawned; continue checking remaining bots against
         // the fresh small player (it could overlap another bot at
-        // center, though unlikely with bot spawn distribution).
+        // the new position, though the random respawn makes it
+        // unlikely on any given tick).
       }
     }
   }
@@ -600,9 +632,20 @@ export function step(state: WorldState, input: InputIntent): WorldState {
   // we preserve that property by advancing once more here.
   rng = advance(rng);
 
+  // Best-mass (#299) tracks the PEAK mass the player held this match.
+  // Computed against pmass (post-eat, pre-decay) so a fleeting big
+  // moment counts as the record even if the next tick bleeds it back
+  // down. Reset to PLAYER_MASS_START on death is intentional via
+  // Math.max: a respawn drops pmass to the floor, so the running max
+  // simply carries the prior record forward — the score-line stays
+  // a true high-water mark across the whole match.
+  const bestMass = state.bestMass > pmass ? state.bestMass : pmass;
+
   return {
     tick: state.tick + 1,
     player: { x: px, y: py, mass: pmassDecayed },
+    deaths,
+    bestMass,
     food,
     bots,
     rng,

@@ -74,6 +74,12 @@ function makeFixture(botMass: number): WorldState {
   return {
     tick: 0,
     player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_MASS_START },
+    // #299 — death counter + best-mass start at the natural defaults
+    // a fresh initialState() would produce. This spec doesn't exercise
+    // death; the fields are required by the WorldState shape and the
+    // step() pass-through preserves them.
+    deaths: 0,
+    bestMass: PLAYER_MASS_START,
     // Empty food pool — no pellet draws, no growth noise, no rng
     // movement. The step() loop iterates food.length so length-0 is
     // a clean no-op.
