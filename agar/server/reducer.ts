@@ -104,6 +104,28 @@ export const PLAYER_MASS_START = 16;
 export const BOT_COUNT = 6;
 export const BOT_SPEED = Math.floor((SPEED * 3) / 4);
 
+// Bot spawn-mass range (#298, balance slice 2/4). Bots used to all
+// start at PLAYER_MASS_START (=16), so a player two pellets in was
+// already uneatable. Now bots roll a mass in
+// [BOT_SPAWN_MASS_MIN .. BOT_SPAWN_MASS_MAX] inclusive, deterministic
+// from the seeded rng. The upper end is 3× the player start so at
+// least one or two bots on a fresh map are bigger than the player —
+// they ARE the threat the issue asks for. Lower bound is half the
+// start mass so the field also has clear prey. Integer arithmetic
+// (mass is always int) keeps the determinism gate bit-exact.
+export const BOT_SPAWN_MASS_MIN = PLAYER_MASS_START >> 1; // 8
+export const BOT_SPAWN_MASS_MAX = PLAYER_MASS_START * 3; // 48
+
+// Hunt/flee tuning. Bots prefer eating cells over pellets when a
+// catchable cell is in sight; flee when a threat is in sight. The
+// "sight" radius is a multiple of the bot's own radius so big bots
+// scan more of the field (their size already makes pellet-eating
+// inefficient relative to cell-eating). 12× r is enough to span ~half
+// the 640px field at mass 16 (r=16 → 192px), shrinking proportionally
+// for bigger bots, which keeps the per-tick scan O(N) and the steering
+// feel reactive rather than omniscient.
+export const BOT_SIGHT_MULT = 12;
+
 // Mass balance (#297, balance slice 1/4) — agar.io's "you can't become
 // the whole field" primitive. Two coupled levers:
 //
@@ -218,17 +240,27 @@ export function initialState(seed: number): WorldState {
   }
   // Bots spawn AFTER food so the rng advancement order is stable: any
   // future change to BOT_COUNT shifts the post-spawn rng but never
-  // perturbs the food field. Each bot consumes two rng draws (one per
-  // axis), reusing spawnPellet because the position math is identical.
+  // perturbs the food field. Each bot consumes THREE rng draws (#298,
+  // balance 2/4): two for position (reusing spawnPellet), then one
+  // more for spawn mass in [BOT_SPAWN_MASS_MIN..BOT_SPAWN_MASS_MAX].
+  // The mass draw is the LAST step per bot so the existing two-draw
+  // position layout still seeds the same coordinates per index — only
+  // a fresh draw is added on top. unitFromRng → floor maps the rng
+  // word to an integer in the inclusive range with no float drift.
   const bots: BotState[] = [];
+  const spawnRange = BOT_SPAWN_MASS_MAX - BOT_SPAWN_MASS_MIN + 1;
   for (let i = 0; i < BOT_COUNT; i++) {
     const out = spawnPellet(rng);
     rng = out.rng;
+    const rngMass = advance(rng);
+    rng = rngMass;
+    const spawnMass =
+      BOT_SPAWN_MASS_MIN + ((unitFromRng(rngMass) * spawnRange) | 0);
     bots.push({
       id: i,
       x: out.pellet.x,
       y: out.pellet.y,
-      mass: PLAYER_MASS_START,
+      mass: spawnMass,
     });
   }
   return {
@@ -293,13 +325,21 @@ export function step(state: WorldState, input: InputIntent): WorldState {
   }
 
   // Bot pass. For each bot, in stable index order:
-  //   1. Pick the nearest pellet by squared distance (index-stable on
-  //      ties: the lower-index pellet wins, because we only replace
-  //      `best` on a strictly-smaller distance).
+  //   1. HUNT/FLEE priority (#298, balance 2/4). Scan all OTHER cells
+  //      (the player + every other bot) within the bot's sight radius:
+  //        - if any catchable prey (mass*EAT_RATIO ≤ bot.mass) is in
+  //          sight, pick the NEAREST one and steer toward it;
+  //        - else if any threat (bot.mass*EAT_RATIO ≤ other.mass) is
+  //          in sight, pick the NEAREST one and steer AWAY (flee);
+  //        - else fall back to nearest pellet (the slice-4 behaviour).
+  //      Selection is index-stable: we only replace `best` on a
+  //      strictly-smaller distance, so equidistant ties resolve to the
+  //      lower-index candidate. Two clients walking the same tape from
+  //      the same seed pick the same target.
   //   2. Step BOT_SPEED pixels along whichever axis (x or y) has the
-  //      larger absolute delta to that pellet — gives a Manhattan-ish
-  //      seek that's cheap, integer-clean, and matches the player's
-  //      "one axis at a time" feel.
+  //      larger absolute delta — toward when hunting/pellet-seeking,
+  //      AWAY when fleeing (sign flipped on both axes' choice). Cheap,
+  //      integer-clean, and matches the player's "one axis at a time".
   //   3. Eat any pellet now overlapping the bot. Same overlap test,
   //      same respawn draw as the player: rng threads through every
   //      consumption in index-order so the resulting state is
@@ -309,26 +349,89 @@ export function step(state: WorldState, input: InputIntent): WorldState {
     const bot = bots[bi];
     if (!bot) continue;
 
-    // 1. Nearest-pellet selection.
+    const botR = radiusForMass(bot.mass);
+    const sight = botR * BOT_SIGHT_MULT;
+    const sight2 = sight * sight;
+
+    // 1a. Scan other cells (player + bots) for prey or threat.
+    let preyDx = 0;
+    let preyDy = 0;
+    let preyD2 = Number.POSITIVE_INFINITY;
+    let threatDx = 0;
+    let threatDy = 0;
+    let threatD2 = Number.POSITIVE_INFINITY;
+
+    // Helper-inline: consider one other cell at (ox, oy, omass).
+    // Index-stable because we only update on strictly-smaller d2.
+    const considerCell = (ox: number, oy: number, omass: number) => {
+      const ex = ox - bot.x;
+      const ey = oy - bot.y;
+      const d2 = ex * ex + ey * ey;
+      if (d2 > sight2) return;
+      if (bot.mass >= omass * EAT_RATIO) {
+        if (d2 < preyD2) {
+          preyD2 = d2;
+          preyDx = ex;
+          preyDy = ey;
+        }
+      } else if (omass >= bot.mass * EAT_RATIO) {
+        if (d2 < threatD2) {
+          threatD2 = d2;
+          threatDx = ex;
+          threatDy = ey;
+        }
+      }
+    };
+
+    // Player first (fixed order: player before bots, then bot index
+    // ascending — keeps tie-breaking stable across clients).
+    considerCell(state.player.x, state.player.y, state.player.mass);
+    for (let oi = 0; oi < bots.length; oi++) {
+      if (oi === bi) continue;
+      const other = bots[oi];
+      if (!other) continue;
+      considerCell(other.x, other.y, other.mass);
+    }
+
+    // 1b. If no prey/threat in sight, fall back to nearest pellet.
     let bestIdx = -1;
     let bestD2 = Number.POSITIVE_INFINITY;
-    for (let fi = 0; fi < food.length; fi++) {
-      const p = food[fi];
-      if (!p) continue;
-      const ex = p.x - bot.x;
-      const ey = p.y - bot.y;
-      const d2 = ex * ex + ey * ey;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        bestIdx = fi;
+    if (preyD2 === Number.POSITIVE_INFINITY && threatD2 === Number.POSITIVE_INFINITY) {
+      for (let fi = 0; fi < food.length; fi++) {
+        const p = food[fi];
+        if (!p) continue;
+        const ex = p.x - bot.x;
+        const ey = p.y - bot.y;
+        const d2 = ex * ex + ey * ey;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          bestIdx = fi;
+        }
       }
     }
 
-    // 2. Seek step. If no pellet (shouldn't happen — pool is fixed-
-    // size, refilled on eat) the bot holds position.
+    // 2. Seek step.
     let bx = bot.x;
     let by = bot.y;
-    if (bestIdx !== -1) {
+    if (preyD2 !== Number.POSITIVE_INFINITY) {
+      // Hunt: step toward prey.
+      const adx = Math.abs(preyDx);
+      const ady = Math.abs(preyDy);
+      if (adx >= ady) {
+        bx += preyDx >= 0 ? BOT_SPEED : -BOT_SPEED;
+      } else {
+        by += preyDy >= 0 ? BOT_SPEED : -BOT_SPEED;
+      }
+    } else if (threatD2 !== Number.POSITIVE_INFINITY) {
+      // Flee: step AWAY from threat (sign flipped on chosen axis).
+      const adx = Math.abs(threatDx);
+      const ady = Math.abs(threatDy);
+      if (adx >= ady) {
+        bx += threatDx >= 0 ? -BOT_SPEED : BOT_SPEED;
+      } else {
+        by += threatDy >= 0 ? -BOT_SPEED : BOT_SPEED;
+      }
+    } else if (bestIdx !== -1) {
       const target = food[bestIdx];
       if (target) {
         const ex = target.x - bot.x;
@@ -340,11 +443,10 @@ export function step(state: WorldState, input: InputIntent): WorldState {
         } else {
           by += ey >= 0 ? BOT_SPEED : -BOT_SPEED;
         }
-        const br = radiusForMass(bot.mass);
-        bx = clamp(bx, br, WORLD_W - br);
-        by = clamp(by, br, WORLD_H - br);
       }
     }
+    bx = clamp(bx, botR, WORLD_W - botR);
+    by = clamp(by, botR, WORLD_H - botR);
 
     // 3. Eat-and-grow pass for this bot. Mirrors the player's loop.
     let bmass = bot.mass;
