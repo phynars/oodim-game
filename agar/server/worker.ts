@@ -92,9 +92,86 @@ export class EchoRoom implements DurableObject {
   private readonly breakMode: BreakMode | null;
   private appliedCount = 0;
 
-  constructor(_state: DurableObjectState, env: Env) {
+  // Persistence (issue #319, slice 1 of #130). The DO writes a
+  // high-score to its own state.storage on every score-up tick, so
+  // the value survives the DO process boundary (eviction / restart).
+  //
+  // What counts as "score"? The reducer doesn't carry a literal
+  // `player.score` — instead each PlayerState tracks `bestMass`
+  // (highest mass that player has held this match). The match-wide
+  // topScore is the MAX bestMass across all connected players. That
+  // value is monotonically non-decreasing on the reducer's canonical
+  // path (bestMass only ever grows within step()), so it's the
+  // natural high-score proxy.
+  //
+  // `cachedTopScore` mirrors what's in storage. We seed it lazily on
+  // the first WS fetch (so a re-hydrated DO doesn't downgrade) and
+  // update it whenever we successfully commit a new high.
+  private state: DurableObjectState;
+  private cachedTopScore = 0;
+  private topScoreLoaded = false;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
     this.world = initialState(1);
     this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
+  }
+
+  private async loadTopScoreOnce(): Promise<void> {
+    if (this.topScoreLoaded) return;
+    this.topScoreLoaded = true;
+    const stored = await this.state.storage.get<number>("topScore");
+    if (typeof stored === "number" && Number.isFinite(stored)) {
+      this.cachedTopScore = stored;
+    }
+  }
+
+  // Compute the current canonical high score from the reducer's
+  // per-player bestMass. Pure read against `this.world`. Returns 0
+  // when no players are present (empty room / pre-first-join).
+  private currentTopScore(): number {
+    let max = 0;
+    for (const p of this.world.players) {
+      if (p.bestMass > max) max = p.bestMass;
+    }
+    return max;
+  }
+
+  // Persistence side-effect. Called on the canonical reducer path
+  // ONLY (i.e. after a successful `world = step(...)`, never on a
+  // dropped tick — see #319 AC6). Honors the two persistence break
+  // modes per #319 AC3:
+  //   - "lossy-persist":         silently skip the put (no error).
+  //   - "non-monotone-persist":  write current unconditionally
+  //                              (drops the monotonic > guard).
+  // Default: write only if current > cached.
+  private persistTopScore(): void {
+    const current = this.currentTopScore();
+    if (this.breakMode === "lossy-persist") {
+      // Storage layer never commits; cache also stays put so the
+      // in-memory view matches what we claimed to persist. This
+      // powers the slice-3 eviction-roundtrip polarity (lossy →
+      // post-eviction read returns < expected → test RED).
+      return;
+    }
+    if (this.breakMode === "non-monotone-persist") {
+      // Deliberately broken: write whatever the reducer emits, even
+      // when it's lower than what we've already persisted. There's
+      // no actual lower value with the bestMass proxy on the
+      // canonical path, but the slice-1 monotonic-persist spec
+      // engineers a lower value by reconnecting under a fresh
+      // playerId after a high score was set (bestMass restarts at
+      // PLAYER_MASS_START for the new id; max across roster drops).
+      // The monotone guard is the ONLY thing that protects topScore
+      // in that arc — dropping it flips the test RED.
+      this.cachedTopScore = current;
+      void this.state.storage.put("topScore", current);
+      return;
+    }
+    if (current > this.cachedTopScore) {
+      this.cachedTopScore = current;
+      void this.state.storage.put("topScore", current);
+    }
   }
 
   private ensureTickLoop(): void {
@@ -140,6 +217,11 @@ export class EchoRoom implements DurableObject {
       this.breakMode === "drop-every-7th" && this.appliedCount % 7 === 0;
     if (!drop) {
       this.world = step(this.world, frame);
+      // Persistence write — canonical path ONLY (issue #319 AC6).
+      // Goes BEFORE any outbound broadcast gate so a drop branch
+      // (the deliberate desync lie) can never trigger a persisted
+      // side effect.
+      this.persistTopScore();
     }
 
     const snapshot = JSON.stringify({
@@ -165,10 +247,38 @@ export class EchoRoom implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url0 = new URL(request.url);
+
+    // TEMPORARY test-only read path (issue #319 AC4).
+    //
+    // The persistence-harness `monotonic-persist` spec needs to read
+    // the persisted topScore back to assert the lower-write didn't
+    // land. The proper GET endpoint (#319 scope explicitly defers it
+    // to slice 2) doesn't exist yet, so slice 1 exposes the storage
+    // value via a non-WS sub-path that the worker top-level routes
+    // here directly. When slice 2's `/high-score` endpoint merges,
+    // this branch should be removed and the test rewired to it.
+    if (url0.pathname === "/__test/top-score") {
+      await this.loadTopScoreOnce();
+      return new Response(JSON.stringify({ topScore: this.cachedTopScore }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader !== "websocket") {
       return new Response("Expected websocket upgrade", { status: 426 });
     }
+
+    // Seed cachedTopScore from storage before the first tick of this
+    // DO instance. Without this, a re-hydrated DO would compute
+    // current=0 (no players yet) and on the first score-up the
+    // `> cachedTopScore` guard would let any positive value land,
+    // which is correct, BUT on a non-monotone arc (lower bestMass
+    // after a re-join) we need the persisted high to remain the
+    // ceiling — so we load it once, lazily, before the tick loop.
+    await this.loadTopScoreOnce();
 
     const url = new URL(request.url);
     const seedParam = url.searchParams.get("seed");
@@ -270,7 +380,11 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
-    if (url.pathname !== "/ws") {
+    // /ws — main WS upgrade. /__test/top-score — TEMPORARY test-only
+    // read path (issue #319 slice 1; removed when slice 2's
+    // /high-score endpoint lands). Both route by seed so the harness
+    // hits the same DO instance the WS connection was talking to.
+    if (url.pathname !== "/ws" && url.pathname !== "/__test/top-score") {
       return new Response("Not found", { status: 404 });
     }
 
