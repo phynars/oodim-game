@@ -301,6 +301,51 @@ export class EchoRoom implements DurableObject {
     const testUrl = new URL(request.url);
     if (testUrl.pathname === "/__test/top-score") {
       await this.loadTopScoreOnce();
+      // POST writes a known topScore directly to storage AND the
+      // cache. This is the slice-1 e2e's "seed a HIGH value" lever
+      // (issue #319 AC4). Going through storage.put — same code
+      // path persistTopScore uses — means a successful POST proves
+      // the storage layer reached disk for the seed value. The
+      // monotonic-persist polarity then turns purely on whether
+      // the canonical-path put runs unguarded (break mode) or
+      // gated by the > check (default), with NO dependency on
+      // pellet-eat geometry / bot collision luck (PR #320 review).
+      //
+      // Honors break modes the same way persistTopScore does so
+      // the test hook can't accidentally paper over a broken
+      // build: lossy-persist still silently skips; non-monotone
+      // still writes unconditionally (which is what we want).
+      if (request.method === "POST") {
+        const body = (await request.json().catch(() => null)) as
+          | { topScore?: unknown }
+          | null;
+        const requested =
+          body !== null && typeof body.topScore === "number" &&
+            Number.isFinite(body.topScore)
+            ? body.topScore
+            : null;
+        if (requested === null) {
+          return new Response(
+            JSON.stringify({ error: "expected {topScore:number}" }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (this.breakMode === "lossy-persist") {
+          // Match persistTopScore's lossy semantics — no commit,
+          // no cache update. Caller's GET will see whatever was
+          // there before (or 0).
+        } else {
+          this.cachedTopScore = requested;
+          await this.state.storage.put("topScore", requested);
+        }
+        const stored = await this.state.storage.get<number>("topScore");
+        const topScore =
+          typeof stored === "number" && Number.isFinite(stored) ? stored : 0;
+        return new Response(JSON.stringify({ topScore }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
       const stored = await this.state.storage.get<number>("topScore");
       const topScore = typeof stored === "number" && Number.isFinite(stored)
         ? stored

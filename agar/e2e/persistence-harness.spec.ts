@@ -53,6 +53,7 @@ test.describe("agar persistence harness contract (#307)", () => {
 
   test("monotonic-persist — a lower score never overwrites a higher one", async ({
     browser,
+    request,
   }) => {
     // Fixed seed (not a random-per-test seed). Persistence is keyed
     // by seed → DO id, and we need the SAME DO to see A's high write
@@ -63,108 +64,41 @@ test.describe("agar persistence harness contract (#307)", () => {
     const ROOM_URL = `/agar/?seed=${SEED}`;
     const TOP_SCORE_URL = `${WORKER_BASE}/__test/top-score?seed=${SEED}`;
 
-    // --- Phase 1: drive playerA, sweep bestMass above PLAYER_MASS_START.
+    // --- Phase 1: seed a HIGH value directly via the slice-1 test
+    // hook (POST /__test/top-score).
     //
-    // The agar reducer grows bestMass via pellet eats (each eaten
-    // pellet adds 1 to mass; bestMass tracks the max). FOOD_COUNT=40
-    // pellets sit in a 640×640 world; the player moves at SPEED=4
-    // px/tick with PLAYER_R≈16. Driving directional motion for ~80
-    // ticks (4s at 20Hz) sweeps a long enough path to hit several
-    // pellets across the random spawn position — the assertion below
-    // is `bestMass > PLAYER_MASS_START`, which only needs ONE eat.
-    const ctxA = await browser.newContext();
-    const pageA = await ctxA.newPage();
+    // Earlier drafts of this spec drove pageA through a 4-direction
+    // sweep to grow bestMass via pellet eats. That coupled the
+    // polarity gate (`high > PLAYER_MASS_START`) to spawn-pellet
+    // geometry AND bot collision luck — at SEED=7319 the sweep can
+    // plausibly meet a mass-48 bot before a pellet, killing the
+    // gate without any persistence regression (PR #320 review).
+    //
+    // The persistence contract is decoupled from how `high` got
+    // there: AC2 is "current > cached → put"; AC3 is "break mode
+    // drops the > guard". POSTing a known value through the SAME
+    // storage.put path (see worker.ts /__test/top-score POST
+    // handler) proves the storage layer reached disk for the seed
+    // value. Phase 2 then opens a real WS session — which is the
+    // ONLY way to exercise persistTopScore on the canonical tick
+    // path — so the polarity assertion still tests the production
+    // code, not just the hook.
+    const HIGH = PLAYER_MASS_START + 100; // any value > the floor
+    const seedRes = await request.post(TOP_SCORE_URL, {
+      data: { topScore: HIGH },
+    });
+    expect(
+      seedRes.ok(),
+      `POST ${TOP_SCORE_URL} seeding HIGH=${HIGH} → ${seedRes.status()}`,
+    ).toBe(true);
+    const seedBody = (await seedRes.json()) as { topScore: number };
+    expect(
+      seedBody.topScore,
+      "POST hook readback echoes the seeded HIGH",
+    ).toBe(HIGH);
+    const high = HIGH;
 
-    let high = 0;
-    try {
-      await pageA.goto(ROOM_URL);
-      await expect(pageA.getByTestId("agar-net-status")).toHaveAttribute(
-        "data-connected",
-        "true",
-      );
-      await expect
-        .poll(
-          async () =>
-            Number(
-              await pageA
-                .getByTestId("agar-net-status")
-                .getAttribute("data-tick"),
-            ),
-          { message: "first snapshot from DO (pageA)" },
-        )
-        .toBeGreaterThan(0);
-
-      // Drive a varied input pattern so the player crosses pellet
-      // bands in both axes. Walking 20 ticks each in two directions
-      // sweeps ~80 px per direction — comfortably wider than the
-      // ~80px-spaced pellet grid means an eat is statistically
-      // overdetermined within the test window.
-      const dirs: Array<"right" | "down" | "left" | "up"> = [
-        "right",
-        "down",
-        "left",
-        "up",
-      ];
-      for (const dir of dirs) {
-        await pageA.evaluate((d: string) => {
-          const w = window as unknown as {
-            __game: { sendInput: (i: string) => void };
-          };
-          w.__game.sendInput(d);
-        }, dir);
-        // Tick to current+20 — pure tick advance, no wallclock.
-        await pageA.evaluate(() => {
-          const w = window as unknown as {
-            __game: {
-              tick: number | (() => number);
-              tickTo: (n: number) => Promise<void>;
-            };
-          };
-          const tf = w.__game.tick;
-          const cur = typeof tf === "function" ? tf() : tf;
-          return w.__game.tickTo(cur + 20);
-        });
-      }
-
-      // Capture the high-water mark: max bestMass across the roster.
-      // With one player (A) connected, this equals A's bestMass.
-      high = await pageA.evaluate(() => {
-        const w = window as unknown as {
-          __game: {
-            canonical: {
-              players: Array<{ bestMass: number }>;
-            } | null;
-          };
-        };
-        const c = w.__game.canonical;
-        if (c === null) return 0;
-        let max = 0;
-        for (const p of c.players) {
-          if (p.bestMass > max) max = p.bestMass;
-        }
-        return max;
-      });
-
-      // Gate the test honestly: the polarity assertion is only
-      // meaningful if A actually grew bestMass above the floor. If
-      // this fires, the food-eat sweep didn't land — that's a real
-      // problem (spawn-pellet geometry regression OR a ticking
-      // regression), not a flake to retry.
-      expect(
-        high,
-        "playerA bestMass swept above PLAYER_MASS_START (pellet eats landed)",
-      ).toBeGreaterThan(PLAYER_MASS_START);
-    } finally {
-      // Close pageA's context — drops the WS, fires the leaves frame
-      // on the DO. After the leaves frame is applied next tick, the
-      // roster is empty and currentTopScore() drops to 0. The
-      // monotone guard in persistTopScore is the ONLY thing
-      // protecting the persisted `topScore` from being overwritten
-      // when a fresh player joins with bestMass=PLAYER_MASS_START.
-      await ctxA.close();
-    }
-
-    // --- Phase 2: open playerB with a FRESH browser context (fresh
+    // --- Phase 2: open playerB with a fresh browser context (fresh
     // cid). B joins with bestMass=PLAYER_MASS_START, which is BELOW
     // `high`. Drive B for a moment so persistTopScore() runs on the
     // canonical tick path with B's lower roster max.
