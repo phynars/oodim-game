@@ -23,6 +23,8 @@ sent last.
   "tick": 42,
   "dir":  "right",
   "player": { "x": 320, "y": 320, "mass": 18 },
+  "deaths": 0,
+  "bestMass": 18,
   "food":  [ { "x": 100, "y": 200 }, { "x": 415, "y": 88 } ],
   "rng":   3735928559 }
 ```
@@ -44,6 +46,14 @@ sent last.
   and grows by 1 per pellet eaten. The display radius is
   `sqrt(mass) * 4` — both client and server derive it via
   `radiusForMass(mass)` so collision and render agree.
+- `deaths` is a monotonic count of how many times this match the
+  player has been absorbed by a bigger cell (slice 3/4 — #299). Each
+  death also respawns the player at a fresh deterministic position
+  (two rng draws) with `mass = PLAYER_MASS_START`. The counter resets
+  to 0 only on a new match (new DO instance / new seed).
+- `bestMass` is the peak `player.mass` recorded this match — the
+  high-water mark across all ticks, computed post-eat / pre-decay so a
+  fleeting big moment counts. Carries forward across deaths.
 - `food` is the full pool of pellets (length `FOOD_COUNT` = 40 for the
   match's lifetime; consumed pellets are immediately replaced at the
   same index by advancing the seeded rng). Both clients see identical
