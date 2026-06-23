@@ -1168,6 +1168,84 @@ test("challenging stage: no enemy bullets spawn during it and a perfect clear aw
   expect(result.stage).toBeGreaterThan(before.stage);
 });
 
+test("challenging stage non-perfect exit fires the HIT —N banner (#310)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  const before = await page.evaluate(() => ({
+    score: window.__galaga!.score,
+    stage: window.__galaga!.stage,
+    missBanner: window.__galagaInternals!.getMissBanner(),
+  }));
+  // No challenging stage has ended yet — banner must be null at baseline.
+  expect(before.missBanner).toBeNull();
+
+  // Force a challenging stage and let the enemies fly off the bottom WITHOUT
+  // killing any. The controller reaps off-screen flythroughs, so the stage
+  // exits naturally with `kills (0) < total (>0)` — the miss-banner path.
+  await page.evaluate(() =>
+    window.__galagaInternals!.startChallengingStage(),
+  );
+  await page.waitForFunction(
+    () => window.__galaga?.challenging === true,
+    null,
+    { timeout: 3000 },
+  );
+
+  // Wait until the challenging stage ends (controller drains its roster
+  // by flying enemies off-bottom) — i.e. stage has advanced past the start
+  // AND challenging flag has cleared. We DO NOT call forceHit — letting
+  // every enemy escape is the whole point of this test path.
+  const result = await page.evaluate(async () => {
+    const stageAtStart = window.__galaga!.stage;
+    // Generous bound: each challenging flythrough takes a few seconds at
+    // 60Hz; 30s of wall time is comfortable headroom. We sample the miss
+    // banner each rAF tick and keep the snapshot taken at any tick where
+    // it was non-null (it's armed for 90 ticks then auto-clears, so we
+    // could miss it if we only sample at the very end).
+    let captured: { until: number; count: number } | null = null;
+    for (let i = 0; i < 1800; i++) {
+      const banner = window.__galagaInternals!.getMissBanner();
+      if (banner && captured === null) {
+        captured = banner;
+      }
+      const s = window.__galaga!;
+      if (s.stage > stageAtStart && s.challenging === false) break;
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    return {
+      captured,
+      score: window.__galaga!.score,
+      stage: window.__galaga!.stage,
+      challenging: window.__galaga!.challenging,
+    };
+  });
+
+  // AC #1: the miss banner fired — `until > 0` and `count > 0` (every
+  // enemy escaped so N === total === CHALLENGING_WAVE_COUNT).
+  expect(result.captured).not.toBeNull();
+  expect(result.captured!.count).toBeGreaterThan(0);
+  expect(result.captured!.until).toBeGreaterThan(0);
+
+  // AC #4: score is unchanged on the miss path — no perfect bonus added.
+  expect(result.score).toBe(before.score);
+
+  // The challenging flag cleared and the stage advanced (challenging
+  // counts as a stage).
+  expect(result.challenging).toBe(false);
+  expect(result.stage).toBeGreaterThan(before.stage);
+});
+
 test("dual fighter fires two parallel shots straddling player.x; single still fires one (#63)", async ({
   page,
 }) => {
