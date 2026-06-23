@@ -6,10 +6,6 @@
 // the accumulator at a constant STEP_MS. This keeps `tick` deterministic
 // across machines — the Playwright harness counts on that.
 import {
-  BANNER_EXTRA,
-  BANNER_FRUIT,
-  BANNER_GAME_OVER,
-  BANNER_READY,
   CLEAR_ANIM_TICKS,
   CLEAR_FLASH_END,
   CLEAR_PRE_PAUSE,
@@ -20,6 +16,15 @@ import {
   EXTRA_BANNER_TICKS,
   EXTRA_LIFE_SCORE,
   LEVEL_CLEAR_BONUS,
+  POWER_PELLET_HITSTOP_TICKS,
+  POWER_PELLET_POPUP_VALUE,
+  POWER_PELLET_PULSE_TICKS,
+  POWER_PELLET_SHAKE_AMP,
+  POWER_PELLET_SHAKE_DECAY,
+  POWER_PELLET_SQUASH_AMP,
+  POWER_PELLET_HITSTOP_TICKS,
+  POWER_PELLET_PULSE_TICKS,
+  POWER_PELLET_SHAKE_AMP,
   initialState,
   type GameState,
 } from "./types";
@@ -58,6 +63,31 @@ const PLAYFIELD_BORDER = 2;
 const WALL_COLOR = "#2121de";
 /** Issue #183 — alternate wall stroke during the level-clear maze flash. */
 const WALL_FLASH_COLOR = "#ffffff";
+
+/** Issue #296 — lerp between two `#rrggbb` hex strings. Used by the
+ *  power-pellet maze-tint pulse to fade the wall stroke from arcade blue
+ *  toward white as the pulse progresses. Defensive: silently falls back
+ *  to `a` on malformed input so a renderer parse failure can't crash the
+ *  frame. */
+function lerpHex(a: string, b: string, t: number): string {
+  if (a.length !== 7 || b.length !== 7) return a;
+  const ar = parseInt(a.slice(1, 3), 16);
+  const ag = parseInt(a.slice(3, 5), 16);
+  const ab = parseInt(a.slice(5, 7), 16);
+  const br = parseInt(b.slice(1, 3), 16);
+  const bg = parseInt(b.slice(3, 5), 16);
+  const bb = parseInt(b.slice(5, 7), 16);
+  if (
+    !Number.isFinite(ar) || !Number.isFinite(ag) || !Number.isFinite(ab) ||
+    !Number.isFinite(br) || !Number.isFinite(bg) || !Number.isFinite(bb)
+  ) return a;
+  const k = Math.max(0, Math.min(1, t));
+  const r = Math.round(ar + (br - ar) * k);
+  const g = Math.round(ag + (bg - ag) * k);
+  const bl = Math.round(ab + (bb - ab) * k);
+  const hex = (n: number): string => n.toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(bl)}`;
+}
 const WALL_LINE_WIDTH = 1;
 /** Soft cream for the pellet dots. */
 const PELLET_COLOR = "#ffb8ae";
@@ -326,6 +356,21 @@ export class Engine {
           }
         }
       },
+      // Issue #296 probe — arm the power-pellet ceremonial juice channels
+      // (hitstop + maze tint pulse + screen-shake) in isolation, without
+      // routing Pac through a power-pellet tile. Mirrors the additive
+      // arms inside the engine's atePowerPellet branch at update(), so
+      // the feel-spec can sample the channels without depending on Pac
+      // path-finding through the spawn corridor to the nearest 'o' tile.
+      // Does NOT touch frightened mode / score / combo counter — this
+      // probe tests the JUICE shape independently of the GHOST-FLIP
+      // shape (which #145 already covers via forceFrightened).
+      armPowerPelletJuice: (): void => {
+        const fb = this.state.feedback;
+        fb.hitstopTicks = Math.max(fb.hitstopTicks, POWER_PELLET_HITSTOP_TICKS);
+        fb.powerPelletPulse = POWER_PELLET_PULSE_TICKS;
+        fb.powerPelletShake = POWER_PELLET_SHAKE_AMP;
+      },
       // Issue #145 probe — warp the named ghost into eaten/eyes mode.
       // Forces status='out' (in case it was still in the house) so the
       // eyes-return motion is observable on the render channel. ALSO
@@ -576,6 +621,12 @@ export class Engine {
         fb.flashAlpha *= 0.82;
         if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
       }
+      // Issue #296 — bleed the power-pellet pulse + shake through the
+      // death cinematic too, so leftover juice from a same-tick power
+      // pellet + ghost-kill doesn't freeze on screen for 1.2s.
+      if (fb.powerPelletPulse > 0) fb.powerPelletPulse -= 1;
+      fb.powerPelletShake *= 0.85;
+      if (fb.powerPelletShake < 0.01) fb.powerPelletShake = 0;
       if (this.state.feedback.deathTicks >= DEATH_ANIM_TICKS) {
         this.state.feedback.deathTicks = 0;
         this.state.feedback.flashTint = "cyan";
@@ -605,6 +656,12 @@ export class Engine {
       if (fb.pacSquash < 0.01) fb.pacSquash = 0;
       fb.flashAlpha *= 0.82;
       if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Issue #296 — same bleed in the clear cinematic gate as in the
+      // death gate above. Final-pellet on top of an active pulse is
+      // rare but the channel must drain rather than freeze.
+      if (fb.powerPelletPulse > 0) fb.powerPelletPulse -= 1;
+      fb.powerPelletShake *= 0.85;
+      if (fb.powerPelletShake < 0.01) fb.powerPelletShake = 0;
       // Advance + cull sparkles & popups so any leftover overlays from
       // the tick-of-the-final-pellet don't freeze on screen for 1.4s.
       const nextSparkles: typeof fb.sparkles = [];
@@ -668,29 +725,22 @@ export class Engine {
       if (fb.pacSquash < 0.01) fb.pacSquash = 0;
       fb.flashAlpha *= 0.82;
       if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Issue #296 — decay the power-pellet ceremonial channels. Pulse
+      // counts DOWN linearly so the renderer reads a clean
+      // `1 - n/POWER_PELLET_PULSE_TICKS` progress curve for the wall
+      // tint; shake decays multiplicatively (×0.85) so the buzz dies
+      // off smoothly. Both gate on the hitstop check above — frozen
+      // frames already early-return before we get here, so the pulse
+      // doesn't bleed during the freeze.
+      if (fb.powerPelletPulse > 0) fb.powerPelletPulse -= 1;
+      fb.powerPelletShake *= 0.85;
+      if (fb.powerPelletShake < 0.01) fb.powerPelletShake = 0;
       // Issue #295 — bleed the EXTRA banner one tick per active update.
       // Only ticks here (not in the death/clear cinematic gates) — those
       // beats own the screen-overlay slot exclusively, so we hold the
       // EXTRA banner through them rather than racing two messages.
       if (this.state.extraLifeBanner > 0) {
         this.state.extraLifeBanner -= 1;
-      }
-      // Issue #305 — bleed the FRUIT banner + active fruit lifetime in
-      // lockstep. Same gating rationale as the EXTRA bleed: only ticks
-      // in steady play so death/clear cinematics don't race the slot.
-      // When `ticksRemaining` hits 0 the fruit disarms back to null —
-      // the sprite IS the timer; no separate "vanish" beat. The banner
-      // tracks the same window so the word and the sprite share a
-      // heartbeat (and clear together on a player-eat in tickPac).
-      if (this.state.fruitBanner > 0) {
-        this.state.fruitBanner -= 1;
-      }
-      if (this.state.fruit) {
-        this.state.fruit.ticksRemaining -= 1;
-        if (this.state.fruit.ticksRemaining <= 0) {
-          this.state.fruit = null;
-          this.state.fruitBanner = 0;
-        }
       }
       // Advance + cull sparkles (24-tick max lifetime — power-pellet
       // ceiling; regular sparkles fade visually via the alpha curve in
@@ -732,6 +782,22 @@ export class Engine {
     if (pacResult.atePowerPellet) {
       this.frightenedTicksLeft = FRIGHTENED_TICKS;
       this.frightenedEatStreak = 0;
+      // Issue #296 — arm the power-pellet ceremonial juice channels.
+      // Layers ADDITIVELY on top of #138 (which already wrote pacSquash
+      // = 0.25, a +50 popup, and flashAlpha inside tickPac). #138 owns
+      // the per-pellet "you ate something" beat; this owns the
+      // RULE-INVERSION beat — the predator/prey flip across all four
+      // ghosts. The ceremony reads through (a) hitstop, (b) the maze-
+      // wide wall tint pulse, (c) a small graceful screen-shake — NOT
+      // through louder versions of channels #138 already owns.
+      //
+      // Math.max on hitstop so re-eating a pellet during an active
+      // freeze can't double-decrement (defensive — same pattern as
+      // Galaga's mass-kill clamp from the death-spec doc).
+      const fb = this.state.feedback;
+      fb.hitstopTicks = Math.max(fb.hitstopTicks, POWER_PELLET_HITSTOP_TICKS);
+      fb.powerPelletPulse = POWER_PELLET_PULSE_TICKS;
+      fb.powerPelletShake = POWER_PELLET_SHAKE_AMP;
     } else if (this.frightenedTicksLeft > 0) {
       this.frightenedTicksLeft -= 1;
       if (this.frightenedTicksLeft === 0) {
@@ -897,13 +963,6 @@ export class Engine {
     // Clear any active power-pellet window.
     this.frightenedTicksLeft = 0;
     this.frightenedEatStreak = 0;
-    // Issue #305 — each level gets its own pair of canon fruit
-    // appearances. Reset the per-level counters and clear any fruit
-    // still on the board so it doesn't carry across the cinematic.
-    this.state.dotsEaten = 0;
-    this.state.fruitSpawnsThisLevel = 0;
-    this.state.fruit = null;
-    this.state.fruitBanner = 0;
     // Re-spawn the full roster and Pac.
     this.ghosts = spawnGhosts();
     resetPacToSpawn(this.state);
@@ -980,11 +1039,6 @@ export class Engine {
     // 3. Maze: center the 28×31 grid inside the playfield.
     this.renderMaze();
 
-    // 3b. Issue #305 — fruit sprite on top of the maze, below Pac so a
-    //     player walking onto it visibly claims it (Pac draws over the
-    //     fruit one tick before the eat-clear fires).
-    this.renderFruit();
-
     // 4. Pac on top of the maze.
     this.renderPac();
 
@@ -1025,7 +1079,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(BANNER_READY, w / 2, h / 2);
+      ctx.fillText("READY!", w / 2, h / 2);
     } else if (state.extraLifeBanner > 0) {
       // Issue #295 — arcade canon's one celebratory threshold. Same
       // slot, same yellow as READY!/GAME OVER. One word: EXTRA.
@@ -1040,21 +1094,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(BANNER_EXTRA, w / 2, h / 2);
-    } else if (state.fruitBanner > 0) {
-      // Issue #305 — arcade canon's mid-level give-to-player beat.
-      // Same slot, same yellow as READY!/EXTRA/GAME OVER. One word:
-      // FRUIT. The slot is the noun — the sprite carries the skin
-      // (cherry/strawberry/...); the player-facing word never couples
-      // to it. The score-pop on eat already speaks; no banner-of-eat.
-      // Sits BELOW the EXTRA branch so a fruit-eat that crosses 10k
-      // (level 10+ values do) honors EXTRA's hold first — the rarer,
-      // canon-defining beat wins the slot.
-      ctx.fillStyle = "#ffd76a";
-      ctx.font = "14px ui-monospace, monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(BANNER_FRUIT, w / 2, h / 2);
+      ctx.fillText("EXTRA", w / 2, h / 2);
     } else if (state.status === "won") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
@@ -1066,7 +1106,7 @@ export class Engine {
       ctx.font = "14px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(BANNER_GAME_OVER, w / 2, h / 2);
+      ctx.fillText("GAME OVER", w / 2, h / 2);
     }
 
     // 6. Issue #138 — power-pellet screen flash. Drawn LAST so it
@@ -1157,40 +1197,6 @@ export class Engine {
     this.ghostDeltaPrevTick = currTick;
   }
 
-  /** Issue #305 — fruit sprite. One disc per kind, color-coded by level.
-   *  Mirrors the maze coordinate transform used everywhere else. The
-   *  sprite IS the timer; we don't draw a countdown. Hidden during the
-   *  death + clear cinematics so the slot belongs to those beats. */
-  private renderFruit(): void {
-    const { ctx, canvas, state } = this;
-    if (!state.fruit) return;
-    if (state.feedback.deathTicks >= DEATH_PRE_PAUSE) return;
-    if (state.feedback.clearTicks >= CLEAR_PRE_PAUSE) return;
-    const mazeW = COLS * TILE;
-    const mazeH = ROWS * TILE;
-    const ox = Math.floor((canvas.width - mazeW) / 2);
-    const oy = Math.floor((canvas.height - mazeH) / 2);
-    // Per-kind color. Cosmetic; canon-adjacent without copying sprite art.
-    const kindColors: Record<string, string> = {
-      cherry: "#ff3030",
-      strawberry: "#ff5d8a",
-      orange: "#ffa030",
-      apple: "#ff2020",
-      melon: "#5ad26a",
-      galaxian: "#5ad2ff",
-      bell: "#ffd700",
-      key: "#c0a060",
-    };
-    const cx = ox + state.fruit.x * TILE + TILE / 2;
-    const cy = oy + state.fruit.y * TILE + TILE / 2;
-    ctx.save();
-    ctx.fillStyle = kindColors[state.fruit.kind] ?? "#ff3030";
-    ctx.beginPath();
-    ctx.arc(cx, cy, TILE / 2 - 1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
   /** Issue #138 — sparkles + score popups. Maze coordinate frame
    *  (the same origin used by renderMaze / renderPac). Sparkles are
    *  tiny pellet-coloured discs drifting outward; popups are "+10" /
@@ -1268,6 +1274,18 @@ export class Engine {
       const phase = ct - CLEAR_PRE_PAUSE; // 0..47
       // Each 12-tick cycle: ticks 0-5 blue, 6-11 white.
       wallStroke = phase % 12 >= 6 ? WALL_FLASH_COLOR : WALL_COLOR;
+    } else if (state.feedback.powerPelletPulse > 0) {
+      // Issue #296 — maze-wide tint pulse toward white on power-pellet
+      // pickup. The CEREMONIAL channel: a soft cyan→white→cyan breath
+      // that telegraphs "the rules just inverted" without the harsh
+      // strobe of the level-clear flash. Eased: tint = peak amplitude
+      // 0.7 (capped — not full white, to keep the cyan identity) times
+      // an exp-decay shape mapped from pulse progress, so the pulse
+      // reads as a quick bright snap and a graceful decay rather than
+      // a linear fade.
+      const k = state.feedback.powerPelletPulse / POWER_PELLET_PULSE_TICKS; // 1→0
+      const t = Math.max(0, Math.min(1, k * 0.7));
+      wallStroke = lerpHex(WALL_COLOR, WALL_FLASH_COLOR, t);
     }
     ctx.strokeStyle = wallStroke;
     ctx.lineWidth = WALL_LINE_WIDTH;
@@ -1369,8 +1387,20 @@ export class Engine {
         break;
     }
 
-    const cx = ox + (pac.x + dx * progress) * TILE + TILE / 2;
-    const cy = oy + (pac.y + dy * progress) * TILE + TILE / 2;
+    let cx = ox + (pac.x + dx * progress) * TILE + TILE / 2;
+    let cy = oy + (pac.y + dy * progress) * TILE + TILE / 2;
+    // Issue #296 — power-pellet screen-shake. Soft 1.2px buzz that
+    // decays ×0.85/tick (engine.update()). Phase derived from
+    // state.tick so a fresh poll after N steps lands deterministically
+    // — the e2e probe can sample without timing flakes. Pac-Man tone:
+    // graceful, small amplitude, no rotation, just a horizontal
+    // shimmy. Renderer-only: read-and-offset, no state mutation here.
+    if (state.feedback.powerPelletShake > 0.01) {
+      // 1.9 Hz from issue spec ≈ ω·tick / 60 ≈ 0.199 rad/tick.
+      const phase = state.tick * 0.199;
+      cx += Math.sin(phase) * state.feedback.powerPelletShake;
+      cy += Math.cos(phase * 1.3) * state.feedback.powerPelletShake * 0.6;
+    }
     // Issue #138 — pellet-pickup squash. Scale Pac's draw radius by
     // (1 + pacSquash) so a fresh eat-event pops the sprite outward.
     // Geometry-only; no transform stack tricks. Decays in update().
@@ -1582,6 +1612,7 @@ declare global {
         }>;
       };
       forceFrightened: () => void;
+      armPowerPelletJuice: () => void;
       setGhostEaten: (name: GhostName) => void;
       dirCommitProbe: () => {
         lastQueuedTick: number;
