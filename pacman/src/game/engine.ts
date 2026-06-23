@@ -17,12 +17,6 @@ import {
   EXTRA_LIFE_SCORE,
   LEVEL_CLEAR_BONUS,
   POWER_PELLET_HITSTOP_TICKS,
-  POWER_PELLET_POPUP_VALUE,
-  POWER_PELLET_PULSE_TICKS,
-  POWER_PELLET_SHAKE_AMP,
-  POWER_PELLET_SHAKE_DECAY,
-  POWER_PELLET_SQUASH_AMP,
-  POWER_PELLET_HITSTOP_TICKS,
   POWER_PELLET_PULSE_TICKS,
   POWER_PELLET_SHAKE_AMP,
   initialState,
@@ -742,6 +736,27 @@ export class Engine {
       if (this.state.extraLifeBanner > 0) {
         this.state.extraLifeBanner -= 1;
       }
+      // Issue #305 — fruit lifetime decay. The sprite IS the timer:
+      // ticksRemaining counts down per active update(); at 0 the fruit
+      // auto-disarms (back to `null`) without any banner-of-vanish.
+      // Same gate as the EXTRA banner above — frozen frames (hitstop,
+      // death, clear) preserve the fruit window rather than burning it
+      // during a cinematic the player can't interact with.
+      if (this.state.fruit) {
+        this.state.fruit.ticksRemaining -= 1;
+        if (this.state.fruit.ticksRemaining <= 0) {
+          this.state.fruit = null;
+        }
+      }
+      // Issue #305 — bleed the FRUIT banner one tick per active update,
+      // mirroring the EXTRA banner. Independent of `state.fruit` because
+      // the eat path clears the fruit but leaves the banner countdown
+      // running (banner is the spawn announcement, sprite is the timer).
+      // Wait — actually pacman.ts's eat path also zeroes fruitBanner.
+      // Either way, this is the canonical decay channel.
+      if (this.state.fruitBanner > 0) {
+        this.state.fruitBanner -= 1;
+      }
       // Advance + cull sparkles (24-tick max lifetime — power-pellet
       // ceiling; regular sparkles fade visually via the alpha curve in
       // the renderer at the 12-tick mark).
@@ -963,6 +978,14 @@ export class Engine {
     // Clear any active power-pellet window.
     this.frightenedTicksLeft = 0;
     this.frightenedEatStreak = 0;
+    // Issue #305 — fresh per-level fruit window. dotsEaten + spawn count
+    // reset so the new level gets its own pair of fruit appearances
+    // (canon: 70 + 170 dots per level). Any leftover fruit on the board
+    // is cleared so the new level doesn't inherit a stale sprite.
+    this.state.dotsEaten = 0;
+    this.state.fruitSpawnsThisLevel = 0;
+    this.state.fruit = null;
+    this.state.fruitBanner = 0;
     // Re-spawn the full roster and Pac.
     this.ghosts = spawnGhosts();
     resetPacToSpawn(this.state);
@@ -1039,6 +1062,9 @@ export class Engine {
     // 3. Maze: center the 28×31 grid inside the playfield.
     this.renderMaze();
 
+    // 3b. Issue #305 — fruit on the maze, beneath Pac/ghosts.
+    this.renderFruit();
+
     // 4. Pac on top of the maze.
     this.renderPac();
 
@@ -1095,6 +1121,16 @@ export class Engine {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("EXTRA", w / 2, h / 2);
+    } else if (state.fruitBanner > 0) {
+      // Issue #305 — arcade canon's mid-level give-to-player beat. The
+      // ONE word, in the same yellow slot as READY!/EXTRA. The sprite
+      // IS the timer — no countdown number. Banner clears on eat OR
+      // on auto-disarm (handled by the engine's fruit decay above).
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("FRUIT", w / 2, h / 2);
     } else if (state.status === "won") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
@@ -1329,6 +1365,45 @@ export class Engine {
     // Silence the lint if tileAt isn't otherwise referenced; it's exported
     // for upcoming AI slices and we don't want tree-shake to drop it.
     void tileAt;
+  }
+
+  /** Issue #305 — fruit sprite at the canon spawn tile (under the ghost
+   *  house). Cosmetic-only colour pick per kind so cherry/strawberry
+   *  read differently across levels, but the banner word stays FRUIT.
+   *  Skipped during death + level-clear cinematics so the ceremonial
+   *  overlays own their slot (matches renderPac/renderGhosts policy). */
+  private renderFruit(): void {
+    const { ctx, canvas, state } = this;
+    if (!state.fruit) return;
+    if (state.feedback.deathTicks >= DEATH_PRE_PAUSE) return;
+    if (state.feedback.clearTicks >= CLEAR_PRE_PAUSE) return;
+    const mazeW = COLS * TILE;
+    const mazeH = ROWS * TILE;
+    const ox = Math.floor((canvas.width - mazeW) / 2);
+    const oy = Math.floor((canvas.height - mazeH) / 2);
+    const cx = ox + state.fruit.x * TILE + TILE / 2;
+    const cy = oy + state.fruit.y * TILE + TILE / 2;
+    // Per-kind cosmetic colour. The PLAYER-FACING word is FRUIT
+    // regardless (see #305 banner); the colour is just texture so
+    // levels feel distinct. Defensive fallback to cherry red.
+    const FRUIT_COLORS: Record<string, string> = {
+      cherry: "#ff1d1d",
+      strawberry: "#ff5d8f",
+      orange: "#ffb847",
+      apple: "#ff3d3d",
+      melon: "#9bff5d",
+      galaxian: "#5dc6ff",
+      bell: "#ffd76a",
+      key: "#dedede",
+    };
+    ctx.fillStyle = FRUIT_COLORS[state.fruit.kind] ?? "#ff1d1d";
+    ctx.beginPath();
+    ctx.arc(cx, cy, TILE / 2 - 1, 0, Math.PI * 2);
+    ctx.fill();
+    // Stem: a small dark cap, so the sprite reads as a piece of fruit
+    // and not "just another ghost". Pure cosmetic.
+    ctx.fillStyle = "#2d8a2d";
+    ctx.fillRect(cx - 1, cy - TILE / 2 + 1, 2, 2);
   }
 
   /** Pac as a yellow chomping wedge, gliding between tiles.
