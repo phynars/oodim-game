@@ -28,7 +28,8 @@ test("agar: multiplayer is live — WS connects, world ticks, food + bots render
       const c = (g && g.canonical) || {};
       const food = Array.isArray(c.food) ? c.food.length : 0;
       const bots = Array.isArray(c.bots) ? c.bots.length : 0;
-      return !!g && g.tick > 5 && !!c.player && food > 0 && bots > 0;
+      const players = Array.isArray(c.players) ? c.players.length : 0;
+      return !!g && g.tick > 5 && players > 0 && food > 0 && bots > 0;
     },
     null,
     { timeout: 45_000 },
@@ -39,18 +40,25 @@ test("agar: multiplayer is live — WS connects, world ticks, food + bots render
       tick: window.__game.tick,
       food: Array.isArray(c.food) ? c.food.length : 0,
       bots: Array.isArray(c.bots) ? c.bots.length : 0,
-      hasPlayer: !!c.player,
+      players: Array.isArray(c.players) ? c.players.length : 0,
     };
   });
   expect(state.tick, "agar sim must tick (WS connected, not 404)").toBeGreaterThan(5);
   expect(state.food, "food pellets must spawn").toBeGreaterThan(0);
   expect(state.bots, "AI bots must spawn").toBeGreaterThan(0);
-  expect(state.hasPlayer, "player cell must exist").toBe(true);
+  expect(state.players, "player cell must exist for this client").toBeGreaterThan(0);
 });
 
-// Minimal ambient typing for window.__game (the agar slice-3 test surface).
+// Minimal ambient typing for window.__game (the agar slice-4 test surface).
 declare global {
   interface Window {
-    __game: { tick: number; canonical?: { player?: unknown; food?: unknown[]; bots?: unknown[] } };
+    __game: {
+      tick: number;
+      canonical?: {
+        players?: unknown[];
+        food?: unknown[];
+        bots?: unknown[];
+      };
+    };
   }
 }

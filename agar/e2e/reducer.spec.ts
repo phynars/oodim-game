@@ -53,24 +53,28 @@ import {
   pureReplay,
   step,
   type BotState,
-  type InputIntent,
+  type PlayerState,
+  type ReplayFrame,
   type WorldState,
 } from "../server/reducer";
 
 const SEED = 1;
 
-/**
- * Build a tape of N empty/no-op input intents — enough ticks for bot AI,
- * decay, and absorption to play out without any player command.
- *
- * The exact `InputIntent` shape is owned by reducer.ts; if a no-op
- * intent needs an explicit value, the unskipping PR adjusts this helper.
- */
-function emptyTape(_n: number): readonly InputIntent[] {
-  // Intentionally empty: pureReplay tolerates a zero-input tape and just
-  // ticks the world forward via reducer-internal mechanics (bots, decay,
-  // absorption). The unskipping PR may swap this for a per-mechanic tape.
+const PLAYER_ID = "p0";
+
+function emptyTape(_n: number): readonly ReplayFrame[] {
   return [] as const;
+}
+
+// Hold-still input frame for a single hand-built player. Slice 4
+// inputs are keyed by id; emit a per-tick `{p0: {dir:"none"}}` so the
+// reducer's id-keyed routing matches the fixture.
+const HOLD_FRAME: ReplayFrame = { inputs: { [PLAYER_ID]: { dir: "none" } } };
+
+function self(s: WorldState): PlayerState {
+  const p = s.players.find((q) => q.id === PLAYER_ID);
+  if (!p) throw new Error("self vanished from roster");
+  return p;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -158,16 +162,17 @@ test("agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [#
       y: PLAYER_Y,
       mass: botMass,
     };
-    return {
-      tick: 0,
-      player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_MASS_START },
-      // #299 — required WorldState fields. Death counter + best-mass
-      // start at the natural defaults so a hand-built fixture matches
-      // what initialState() would produce on tick 0.
+    const player: PlayerState = {
+      id: PLAYER_ID,
+      x: PLAYER_X,
+      y: PLAYER_Y,
+      mass: PLAYER_MASS_START,
       deaths: 0,
       bestMass: PLAYER_MASS_START,
-      // Empty food pool — no pellet draws / growth noise. step()'s
-      // food loop is length-driven, so [] is a clean no-op.
+    };
+    return {
+      tick: 0,
+      players: [player],
       food: [],
       bots: [bot],
       rng: 1,
@@ -177,25 +182,21 @@ test("agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [#
   function botDist2(s: WorldState): number {
     const b = s.bots[0];
     if (!b) throw new Error("bot vanished");
-    const dx = b.x - s.player.x;
-    const dy = b.y - s.player.y;
+    const p = self(s);
+    const dx = b.x - p.x;
+    const dy = b.y - p.y;
     return dx * dx + dy * dy;
   }
 
-  const HOLD: InputIntent = { dir: "none" };
-
   // Pursuit: HUNTER bot, player standing still → distance must
-  // DECREASE monotonically (greedy one-axis seek toward the player).
+  // DECREASE monotonically.
   {
     let s = makeFixture(HUNTER_MASS);
     const initial = botDist2(s);
     let prev = initial;
     for (let t = 0; t < WINDOW; t++) {
-      s = step(s, HOLD);
+      s = step(s, HOLD_FRAME);
       const d2 = botDist2(s);
-      // `<=` not `<`: a wall-clamped seek tick could repeat the same
-      // distance. The strict initial-vs-final check below catches
-      // "bot never moved" regressions.
       expect(d2).toBeLessThanOrEqual(prev);
       prev = d2;
     }
@@ -203,16 +204,14 @@ test("agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [#
   }
 
   // Flee: PREY bot, player standing still → distance must INCREASE
-  // monotonically (sign flipped on the chosen axis).
+  // monotonically.
   {
     let s = makeFixture(PREY_MASS);
     const initial = botDist2(s);
     let prev = initial;
     for (let t = 0; t < WINDOW; t++) {
-      s = step(s, HOLD);
+      s = step(s, HOLD_FRAME);
       const d2 = botDist2(s);
-      // `>=` not `>`: wall-bound flee tick could no-op without
-      // inverting the trend. Initial-vs-final strict check below.
       expect(d2).toBeGreaterThanOrEqual(prev);
       prev = d2;
     }
@@ -255,39 +254,36 @@ test("agar reducer: death + respawn — absorbed player resets mass + position, 
   const KILLER_MASS = 80;
   expect(KILLER_MASS).toBeGreaterThanOrEqual(PLAYER_PRE_MASS * EAT_RATIO);
 
-  // Place the killer bot directly on top of the player so the
-  // cell-eats-cell pass fires on tick 1 (no AI seek needed). The
-  // overlap test is d2 < killer.radius^2; at d2=0 it trivially holds.
   const fixture: WorldState = {
     tick: 0,
-    player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_PRE_MASS },
-    deaths: 0,
-    bestMass: PLAYER_PRE_MASS,
+    players: [
+      {
+        id: PLAYER_ID,
+        x: PLAYER_X,
+        y: PLAYER_Y,
+        mass: PLAYER_PRE_MASS,
+        deaths: 0,
+        bestMass: PLAYER_PRE_MASS,
+      },
+    ],
     food: [],
     bots: [{ id: 0, x: PLAYER_X, y: PLAYER_Y, mass: KILLER_MASS }],
-    // rng=1 → spawnPellet's first call lands at a deterministic in-
-    // bounds point. We don't need to predict the coords; we just need
-    // them to be != (PLAYER_X, PLAYER_Y) and != center, which the
-    // assertions below verify directly.
     rng: 1,
   };
 
-  const HOLD: InputIntent = { dir: "none" };
-  const after = step(fixture, HOLD);
+  const after = step(fixture, HOLD_FRAME);
+  const survivor = self(after);
 
   // 1. mass reset.
-  expect(after.player.mass).toBe(PLAYER_MASS_START);
+  expect(survivor.mass).toBe(PLAYER_MASS_START);
 
-  // 2. position changed AND not stuck-at-center. The cell-eats-cell
-  // pass respawns at a fresh spawnPellet draw, not at the canvas
-  // center.
-  const samePos =
-    after.player.x === PLAYER_X && after.player.y === PLAYER_Y;
+  // 2. position changed AND not stuck-at-center.
+  const samePos = survivor.x === PLAYER_X && survivor.y === PLAYER_Y;
   expect(samePos).toBe(false);
 
-  // 3. death counter ticked up.
-  expect(after.deaths).toBe(1);
+  // 3. per-player death counter ticked up.
+  expect(survivor.deaths).toBe(1);
 
-  // 4. best-mass survives the death (the high-water mark is sticky).
-  expect(after.bestMass).toBeGreaterThanOrEqual(PLAYER_PRE_MASS);
+  // 4. per-player best-mass survives the death.
+  expect(survivor.bestMass).toBeGreaterThanOrEqual(PLAYER_PRE_MASS);
 });
