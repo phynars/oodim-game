@@ -46,7 +46,13 @@
 
 import { test, expect } from "@playwright/test";
 import {
+  EAT_RATIO,
+  PLAYER_MASS_START,
+  WORLD_H,
+  WORLD_W,
   pureReplay,
+  step,
+  type BotState,
   type InputIntent,
   type WorldState,
 } from "../server/reducer";
@@ -95,30 +101,119 @@ test.skip(
 // ────────────────────────────────────────────────────────────────────
 // #298 — bot pursuit + flee
 // ────────────────────────────────────────────────────────────────────
-test.skip(
-  "agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [unskip when #298 lands]",
-  () => {
-    // Run the world forward with NO player input so only bot AI moves
-    // the world. The #298 PR will pick a seed where the initial bot
-    // configuration includes at least one smaller-than-player bot and
-    // at least one larger-than-player bot.
-    const K = 200;
-    const start: WorldState = pureReplay(SEED, emptyTape(0));
-    const end: WorldState = pureReplay(SEED, emptyTape(K));
-    expect(start).toBeDefined();
-    expect(end).toBeDefined();
+//
+// Unskipped 2026-06-23 alongside the reducer change that landed #298.
+//
+// The skipped placeholder above used `pureReplay(SEED, emptyTape(K))`
+// to walk the world forward and then "resolve the bot/player accessors
+// from the WorldState shape #298 ships". That sketch is too soft for a
+// real polarity guard: it relies on the seeded initialState happening
+// to spawn one prey-mass bot AND one threat-mass bot in clean line of
+// sight of the player, which is fragile against any future tweak to
+// BOT_COUNT, BOT_SPAWN_MASS_*, or sight radius. A determinism gate
+// shouldn't have a seed-luck dependency.
+//
+// Instead we build a pinned fixture by hand (player at center, ONE bot
+// at a known offset) and call `step()` directly. `step()` is a pure
+// function of the WorldState shape — it doesn't care that the fixture
+// didn't come from initialState. Mass is the only knob we vary across
+// the two trends:
+//
+//   - prey-mode: bot >> player → bot must close the gap
+//   - threat-mode: bot << player → bot must open the gap
+//
+// If a future PR silently disables `considerCell` (or flips the
+// pursuit/flee polarity in the sign-flip block), one of these two
+// trends inverts and the corresponding `toBeLessThan` /
+// `toBeGreaterThan` fires red. That's the polarity guard #303 asked
+// for, scaled down to the unit-suite cost #303 promised.
+//
+// We intentionally don't import the full bot-hunt-flee.spec.ts
+// fixture: that spec lives in the SAME testDir and Playwright would
+// run it again. Duplicating the small fixture here keeps the two
+// specs independently rewritable and avoids a cross-file coupling
+// that would make the polarity slot brittle.
+test("agar reducer: bot AI — bots pursue smaller cells and flee bigger ones [#298]", () => {
+  // Mass ratios — same logic as bot-hunt-flee.spec.ts. HUNTER > player
+  // by >EAT_RATIO so the bot sees the player as prey; PREY is small
+  // enough that the bot sees the player as a threat.
+  const HUNTER_MASS = 20;
+  const PREY_MASS = 8;
+  expect(HUNTER_MASS).toBeGreaterThanOrEqual(PLAYER_MASS_START * EAT_RATIO);
+  expect(PLAYER_MASS_START).toBeGreaterThanOrEqual(PREY_MASS * EAT_RATIO);
 
-    // Coarse monotonicity: over K ticks, distance(smaller_bot, player)
-    // should DECREASE (pursuit) and distance(larger_bot, player) should
-    // INCREASE (flee). The unskipping PR resolves the bot/player
-    // accessors from the WorldState shape #298 ships.
-    //
-    // Polarity guard: this fails on unskip until the body is rewritten.
-    expect("placeholder").toBe(
-      "unskip-and-rewrite-#298-with-pursuit-and-flee-distance-trends",
-    );
-  },
-);
+  // Geometry: player center, bot 100px on +x. Sight radius at these
+  // masses is ~136–215px, so the bot sees the player on tick 1.
+  const PLAYER_X = WORLD_W / 2;
+  const PLAYER_Y = WORLD_H / 2;
+  const BOT_OFFSET_X = 100;
+  // 10 ticks: bot moves ~30px at BOT_SPEED=3/tick — enough trend to
+  // see, well clear of the eats-cell collision radius.
+  const WINDOW = 10;
+
+  function makeFixture(botMass: number): WorldState {
+    const bot: BotState = {
+      id: 0,
+      x: PLAYER_X + BOT_OFFSET_X,
+      y: PLAYER_Y,
+      mass: botMass,
+    };
+    return {
+      tick: 0,
+      player: { x: PLAYER_X, y: PLAYER_Y, mass: PLAYER_MASS_START },
+      // Empty food pool — no pellet draws / growth noise. step()'s
+      // food loop is length-driven, so [] is a clean no-op.
+      food: [],
+      bots: [bot],
+      rng: 1,
+    };
+  }
+
+  function botDist2(s: WorldState): number {
+    const b = s.bots[0];
+    if (!b) throw new Error("bot vanished");
+    const dx = b.x - s.player.x;
+    const dy = b.y - s.player.y;
+    return dx * dx + dy * dy;
+  }
+
+  const HOLD: InputIntent = { dir: "none" };
+
+  // Pursuit: HUNTER bot, player standing still → distance must
+  // DECREASE monotonically (greedy one-axis seek toward the player).
+  {
+    let s = makeFixture(HUNTER_MASS);
+    const initial = botDist2(s);
+    let prev = initial;
+    for (let t = 0; t < WINDOW; t++) {
+      s = step(s, HOLD);
+      const d2 = botDist2(s);
+      // `<=` not `<`: a wall-clamped seek tick could repeat the same
+      // distance. The strict initial-vs-final check below catches
+      // "bot never moved" regressions.
+      expect(d2).toBeLessThanOrEqual(prev);
+      prev = d2;
+    }
+    expect(botDist2(s)).toBeLessThan(initial);
+  }
+
+  // Flee: PREY bot, player standing still → distance must INCREASE
+  // monotonically (sign flipped on the chosen axis).
+  {
+    let s = makeFixture(PREY_MASS);
+    const initial = botDist2(s);
+    let prev = initial;
+    for (let t = 0; t < WINDOW; t++) {
+      s = step(s, HOLD);
+      const d2 = botDist2(s);
+      // `>=` not `>`: wall-bound flee tick could no-op without
+      // inverting the trend. Initial-vs-final strict check below.
+      expect(d2).toBeGreaterThanOrEqual(prev);
+      prev = d2;
+    }
+    expect(botDist2(s)).toBeGreaterThan(initial);
+  }
+});
 
 // ────────────────────────────────────────────────────────────────────
 // #299 — player death + respawn
