@@ -18,7 +18,13 @@
 // the right edge → 0. Pellets do not exist on tunnel rows by layout.
 
 import { COLS, MAZE } from "./maze";
-import type { Direction, GameState, PacState } from "./types";
+import {
+  EXTRA_BANNER_TICKS,
+  EXTRA_LIFE_SCORE,
+  type Direction,
+  type GameState,
+  type PacState,
+} from "./types";
 
 /** Tiles per tick. 60 ticks/sec * 0.12 ≈ 7.2 tiles/sec — feels close to
  *  arcade Pac (which is ~75 tiles/sec at the original scale, then visually
@@ -192,11 +198,27 @@ export function tickPac(state: GameState): PacTickResult {
     state.pellets -= 1;
     const staticTile = MAZE[pac.y]?.[pac.x];
     const isPower = staticTile === "o";
+    const scoreBefore = state.score;
     if (isPower) {
       state.score += 50;
       result.atePowerPellet = true;
     } else {
       state.score += 10;
+    }
+    // Issue #295 — arcade canon: free life at 10,000. One-shot — the
+    // `extraLifeAwarded` latch on GameState ensures the threshold fires
+    // exactly once per game (not per level, not per crossing-back-up).
+    // The threshold check lives here, on the score-bump path, so it
+    // catches the SAME tick the score crosses 10000 — no off-by-one
+    // where the player sees 10010 on the HUD before lives bump.
+    if (
+      !state.extraLifeAwarded &&
+      scoreBefore < EXTRA_LIFE_SCORE &&
+      state.score >= EXTRA_LIFE_SCORE
+    ) {
+      state.lives += 1;
+      state.extraLifeAwarded = true;
+      state.extraLifeBanner = EXTRA_BANNER_TICKS;
     }
     // Issue #138 — pellet-pickup juice. Pure data: engine decays per
     // tick (before this write), renderer reads. Power pellet gets a

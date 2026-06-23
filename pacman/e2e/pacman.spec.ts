@@ -77,6 +77,101 @@ test("ArrowRight moves Pac, eats a pellet, and scores", async ({ page }) => {
   expect(after.score).toBeGreaterThanOrEqual(before.score + 10);
 });
 
+// Issue #295 — arcade canon: free life at 10,000 points.
+//
+// Score climbs past 10k on the pellet-eat path. The threshold fires ONCE
+// per game: `lives` goes 3→4, `extraLifeAwarded` latches true, the EXTRA
+// banner countdown arms. A second pellet at score 10010 does NOT
+// re-trigger — the latch holds.
+//
+// We warp `__pac.score = 9990` directly (it's a live mutable reference)
+// rather than driving 999 real pellet eats. Then queue ArrowRight; the
+// next pellet eat lands on the threshold-crossing tick.
+//
+// FAILS on the pre-change code (no `extraLifeAwarded` field, no lives
+// bump path). PASSES once tickPac wires the threshold check.
+test("score crossing 10,000 awards a free life and fires the EXTRA banner (one-shot)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__pac));
+
+  await page.locator("canvas").click();
+
+  // Reset Pac to a known east-facing pellet-rich slice. Spawn (13, 23)
+  // has a pellet two tiles east. Warp the score to 9990 BEFORE the
+  // first ArrowRight commit so the very next pellet (worth 10) lands
+  // the score at exactly 10000.
+  await page.evaluate(() => {
+    const s = window.__pac!;
+    s.score = 9990;
+  });
+
+  const before = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      score: s.score,
+      lives: s.lives,
+      awarded: s.extraLifeAwarded,
+      banner: s.extraLifeBanner,
+    };
+  });
+  expect(before.score).toBe(9990);
+  expect(before.lives).toBe(3);
+  expect(before.awarded).toBe(false);
+  expect(before.banner).toBe(0);
+
+  // Drive Pac east — the threshold-crossing pellet sits just ahead.
+  await page.keyboard.press("ArrowRight");
+
+  // Wait for the threshold to fire. We poll on the latch flipping true,
+  // which is the load-bearing single signal — the engine writes lives++
+  // and banner=90 in the SAME tick, so observing `awarded === true`
+  // means all three writes have landed.
+  await page.waitForFunction(
+    () => Boolean(window.__pac?.extraLifeAwarded),
+    null,
+    { timeout: 5000 },
+  );
+
+  const after = await page.evaluate(() => {
+    const s = window.__pac!;
+    return {
+      score: s.score,
+      lives: s.lives,
+      awarded: s.extraLifeAwarded,
+      banner: s.extraLifeBanner,
+    };
+  });
+  expect(after.score).toBeGreaterThanOrEqual(10000);
+  expect(after.lives).toBe(4);
+  expect(after.awarded).toBe(true);
+  // Banner is armed (90 at the crossing tick; may have decayed a few
+  // ticks by the time we poll, but must still be > 0 well inside 5s).
+  expect(after.banner).toBeGreaterThan(0);
+
+  // HUD mirrors the bumped lives.
+  await expect(page.locator('[data-hud="lives"]')).toHaveText("4");
+
+  // One-shot: eat a second pellet past 10000 and confirm `lives` does
+  // NOT bump again. We snapshot the lives + awarded state, let Pac
+  // continue east through the next pellet, and re-read. Lives must
+  // stay at 4 and the latch must stay true.
+  const livesAtLatch = after.lives;
+  const scoreAtLatch = after.score;
+  await page.waitForFunction(
+    (s) => (window.__pac?.score ?? 0) > s,
+    scoreAtLatch,
+    { timeout: 5000 },
+  );
+  const afterSecondEat = await page.evaluate(() => {
+    const s = window.__pac!;
+    return { lives: s.lives, awarded: s.extraLifeAwarded };
+  });
+  expect(afterSecondEat.lives).toBe(livesAtLatch);
+  expect(afterSecondEat.awarded).toBe(true);
+});
+
 // Issue #138 — pellet-pickup juice surfaces via the `feedback` channel.
 //
 // We drive Pac east from spawn until a pellet is eaten, then snapshot

@@ -13,6 +13,8 @@ import {
   DEATH_ANIM_TICKS,
   DEATH_COLLAPSE_END,
   DEATH_PRE_PAUSE,
+  EXTRA_BANNER_TICKS,
+  EXTRA_LIFE_SCORE,
   LEVEL_CLEAR_BONUS,
   initialState,
   type GameState,
@@ -625,7 +627,9 @@ export class Engine {
       // displayed count-up below is purely cosmetic — the authoritative
       // score change lands here in one write.
       if (fb.clearTicks === CLEAR_FLASH_END) {
+        const before = this.state.score;
         this.state.score += LEVEL_CLEAR_BONUS;
+        this.maybeAwardExtraLife(before);
       }
       // Tally count-up over [CLEAR_FLASH_END, CLEAR_TALLY_END). Linear
       // lerp from 0 toward LEVEL_CLEAR_BONUS, rounded to the nearest 10
@@ -660,6 +664,13 @@ export class Engine {
       if (fb.pacSquash < 0.01) fb.pacSquash = 0;
       fb.flashAlpha *= 0.82;
       if (fb.flashAlpha < 0.01) fb.flashAlpha = 0;
+      // Issue #295 — bleed the EXTRA banner one tick per active update.
+      // Only ticks here (not in the death/clear cinematic gates) — those
+      // beats own the screen-overlay slot exclusively, so we hold the
+      // EXTRA banner through them rather than racing two messages.
+      if (this.state.extraLifeBanner > 0) {
+        this.state.extraLifeBanner -= 1;
+      }
       // Advance + cull sparkles (24-tick max lifetime — power-pellet
       // ceiling; regular sparkles fade visually via the alpha curve in
       // the renderer at the 12-tick mark).
@@ -760,7 +771,9 @@ export class Engine {
         // (impossible in practice — only 4 ghosts) wouldn't run away.
         const idx = Math.min(this.frightenedEatStreak - 1, 3);
         const value = 200 * (1 << idx);
+        const scoreBeforeGhostEat = this.state.score;
         this.state.score += value;
+        this.maybeAwardExtraLife(scoreBeforeGhostEat);
         g.mode = "eaten";
         g._progress = 0;
         // Issue #150 — frightened-ghost-eat juice. The single biggest
@@ -874,6 +887,22 @@ export class Engine {
     }
   }
 
+  /** Issue #295 — arcade-canon extra life at 10,000 points. Call AFTER
+   *  any score-bump, passing the score BEFORE the bump. Idempotent and
+   *  one-shot: the `extraLifeAwarded` latch on state ensures it fires
+   *  exactly once per game, no matter which path crosses the threshold
+   *  (pellet eat in tickPac, frightened-ghost eat above, level-clear
+   *  bonus). Writes lives++, latches the flag, and arms the EXTRA
+   *  banner countdown that the renderer reads. */
+  private maybeAwardExtraLife(scoreBefore: number): void {
+    if (this.state.extraLifeAwarded) return;
+    if (scoreBefore >= EXTRA_LIFE_SCORE) return;
+    if (this.state.score < EXTRA_LIFE_SCORE) return;
+    this.state.lives += 1;
+    this.state.extraLifeAwarded = true;
+    this.state.extraLifeBanner = EXTRA_BANNER_TICKS;
+  }
+
   /** A chase/scatter ghost touched Pac. Decrement lives; on >0, reset Pac
    *  and the full ghost roster to spawn positions and resume play. On
    *  zero, flip status to 'lost' — the loop still runs (so the render
@@ -964,6 +993,21 @@ export class Engine {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("READY!", w / 2, h / 2);
+    } else if (state.extraLifeBanner > 0) {
+      // Issue #295 — arcade canon's one celebratory threshold. Same
+      // slot, same yellow as READY!/GAME OVER. One word: EXTRA.
+      // Branch ordering: 'ready' takes precedence (overlay holds until
+      // first input — banner can't fire then anyway, score is 0).
+      // 'won' / 'lost' branches sit below, so during the level-clear
+      // cinematic the EXTRA hold is honored — `update()` is gated on
+      // status during 'won', so the banner counter won't tick during
+      // a clear; the moment the next level resumes, the remaining
+      // countdown bleeds out naturally.
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("EXTRA", w / 2, h / 2);
     } else if (state.status === "won") {
       ctx.fillStyle = "#ffd76a";
       ctx.font = "14px ui-monospace, monospace";
