@@ -555,4 +555,5 @@ test.describe("ghost-glide feel parity (#137 + #145)", () => {
       GHOST_SPEED_PER_TICK * FRAME_BOUND_MULT,
     );
   });
+
 });
