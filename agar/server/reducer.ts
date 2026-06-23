@@ -51,6 +51,21 @@ export interface Pellet {
   y: number;
 }
 
+// A bot cell — same shape as PlayerState plus a stable identity.
+// Slice 4 ai-bots (#267): give solo play company by populating the
+// field with greedy seekers. The bot is server-authoritative just
+// like the player; it has no client-side logic of any kind. Position
+// is in canvas pixels; mass starts at PLAYER_MASS_START and grows by
+// 1 per pellet eaten, identical to the player. `id` lets the renderer
+// stable-sort and keeps a future protocol able to address individual
+// bots without index ambiguity.
+export interface BotState {
+  id: number;
+  x: number;
+  y: number;
+  mass: number;
+}
+
 export interface WorldState {
   tick: number;
   player: PlayerState;
@@ -61,6 +76,14 @@ export interface WorldState {
   // every tick — both clients see identical food because both run
   // the same reducer from the same seed.
   food: Pellet[];
+  // Fixed-size pool of AI bot cells. Length is BOT_COUNT for the
+  // lifetime of the match. Each bot greedily steers toward its nearest
+  // pellet; movement is bit-exact deterministic because nearest-pellet
+  // selection is index-stable and motion is integer-clamped against
+  // the world bounds. Bots eat pellets the same way the player does
+  // (same overlap test, same respawn draw). Order matters: the loop
+  // walks bots in index order so RNG consumption is reproducible.
+  bots: BotState[];
   // 32-bit unsigned RNG state, advanced once per tick.
   rng: number;
 }
@@ -72,6 +95,14 @@ export const SPEED = 4;
 export const FOOD_COUNT = 40;
 export const FOOD_R = 5;
 export const PLAYER_MASS_START = 16;
+
+// AI bot tuning. K=6 fills the 640x640 field enough that a solo player
+// always has a neighbour cell on screen without the canvas turning into
+// a swarm. Bots move at 3/4 player speed so a human can outrun them —
+// the field feels populated, not contested. Math.floor keeps the per-
+// tick step an integer so all motion stays bit-exact across machines.
+export const BOT_COUNT = 6;
+export const BOT_SPEED = Math.floor((SPEED * 3) / 4);
 
 // Display radius for a given mass. sqrt() gives area-proportional growth
 // (eating two pellets visibly increases the cell, but you don't fill
@@ -125,10 +156,26 @@ export function initialState(seed: number): WorldState {
     rng = out.rng;
     food.push(out.pellet);
   }
+  // Bots spawn AFTER food so the rng advancement order is stable: any
+  // future change to BOT_COUNT shifts the post-spawn rng but never
+  // perturbs the food field. Each bot consumes two rng draws (one per
+  // axis), reusing spawnPellet because the position math is identical.
+  const bots: BotState[] = [];
+  for (let i = 0; i < BOT_COUNT; i++) {
+    const out = spawnPellet(rng);
+    rng = out.rng;
+    bots.push({
+      id: i,
+      x: out.pellet.x,
+      y: out.pellet.y,
+      mass: PLAYER_MASS_START,
+    });
+  }
   return {
     tick: 0,
     player: { x: WORLD_W / 2, y: WORLD_H / 2, mass: PLAYER_MASS_START },
     food,
+    bots,
     rng,
   };
 }
@@ -185,6 +232,79 @@ export function step(state: WorldState, input: InputIntent): WorldState {
     }
   }
 
+  // Bot pass. For each bot, in stable index order:
+  //   1. Pick the nearest pellet by squared distance (index-stable on
+  //      ties: the lower-index pellet wins, because we only replace
+  //      `best` on a strictly-smaller distance).
+  //   2. Step BOT_SPEED pixels along whichever axis (x or y) has the
+  //      larger absolute delta to that pellet — gives a Manhattan-ish
+  //      seek that's cheap, integer-clean, and matches the player's
+  //      "one axis at a time" feel.
+  //   3. Eat any pellet now overlapping the bot. Same overlap test,
+  //      same respawn draw as the player: rng threads through every
+  //      consumption in index-order so the resulting state is
+  //      bit-exact reproducible from (seed, input-tape).
+  const bots: BotState[] = state.bots.map((b) => ({ ...b }));
+  for (let bi = 0; bi < bots.length; bi++) {
+    const bot = bots[bi];
+    if (!bot) continue;
+
+    // 1. Nearest-pellet selection.
+    let bestIdx = -1;
+    let bestD2 = Number.POSITIVE_INFINITY;
+    for (let fi = 0; fi < food.length; fi++) {
+      const p = food[fi];
+      if (!p) continue;
+      const ex = p.x - bot.x;
+      const ey = p.y - bot.y;
+      const d2 = ex * ex + ey * ey;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestIdx = fi;
+      }
+    }
+
+    // 2. Seek step. If no pellet (shouldn't happen — pool is fixed-
+    // size, refilled on eat) the bot holds position.
+    let bx = bot.x;
+    let by = bot.y;
+    if (bestIdx !== -1) {
+      const target = food[bestIdx];
+      if (target) {
+        const ex = target.x - bot.x;
+        const ey = target.y - bot.y;
+        const adx = Math.abs(ex);
+        const ady = Math.abs(ey);
+        if (adx >= ady) {
+          bx += ex >= 0 ? BOT_SPEED : -BOT_SPEED;
+        } else {
+          by += ey >= 0 ? BOT_SPEED : -BOT_SPEED;
+        }
+        const br = radiusForMass(bot.mass);
+        bx = clamp(bx, br, WORLD_W - br);
+        by = clamp(by, br, WORLD_H - br);
+      }
+    }
+
+    // 3. Eat-and-grow pass for this bot. Mirrors the player's loop.
+    let bmass = bot.mass;
+    for (let fi = 0; fi < food.length; fi++) {
+      const p = food[fi];
+      if (!p) continue;
+      const ddx = p.x - bx;
+      const ddy = p.y - by;
+      const reach = radiusForMass(bmass) + FOOD_R;
+      if (ddx * ddx + ddy * ddy <= reach * reach) {
+        bmass += 1;
+        const out = spawnPellet(rng);
+        rng = out.rng;
+        food[fi] = out.pellet;
+      }
+    }
+
+    bots[bi] = { id: bot.id, x: bx, y: by, mass: bmass };
+  }
+
   // Always advance rng once per tick (in addition to any food draws)
   // so the determinism gate's per-tick rng equality still holds in the
   // no-eat case. Slice 1/2 advanced rng once per tick unconditionally;
@@ -195,6 +315,7 @@ export function step(state: WorldState, input: InputIntent): WorldState {
     tick: state.tick + 1,
     player: { x: nx, y: ny, mass },
     food,
+    bots,
     rng,
   };
 }

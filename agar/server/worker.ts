@@ -88,6 +88,7 @@ export class EchoRoom implements DurableObject {
       dir,
       player: this.world.player,
       food: this.world.food,
+      bots: this.world.bots,
       rng: this.world.rng,
     });
     for (const s of this.sockets) {

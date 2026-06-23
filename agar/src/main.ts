@@ -20,6 +20,7 @@
 
 import {
   radiusForMass,
+  type BotState,
   type InputDir,
   type Pellet,
   type WorldState,
@@ -43,6 +44,7 @@ interface SnapshotMessage {
   dir: InputDir;
   player: { x: number; y: number; mass: number };
   food: Pellet[];
+  bots: BotState[];
   rng: number;
 }
 
@@ -66,6 +68,23 @@ function isPelletArray(value: unknown): value is Pellet[] {
   return true;
 }
 
+function isBotArray(value: unknown): value is BotState[] {
+  if (!Array.isArray(value)) return false;
+  for (const b of value) {
+    if (typeof b !== "object" || b === null) return false;
+    const o = b as Record<string, unknown>;
+    if (
+      typeof o.id !== "number" ||
+      typeof o.x !== "number" ||
+      typeof o.y !== "number" ||
+      typeof o.mass !== "number"
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isSnapshotMessage(value: unknown): value is SnapshotMessage {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -84,6 +103,7 @@ function isSnapshotMessage(value: unknown): value is SnapshotMessage {
     return false;
   }
   if (!isPelletArray(v.food)) return false;
+  if (!isBotArray(v.bots)) return false;
   return true;
 }
 
@@ -125,6 +145,20 @@ function draw(): void {
     for (const pellet of latest.food) {
       ctx.beginPath();
       ctx.arc(pellet.x, pellet.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Bot cells next: same eat-to-grow loop as the player, drawn in a
+  // distinct muted purple so the player can tell "me" from "not me"
+  // at a glance. The room is no longer empty — that's the whole #267
+  // beat. They render under the player so a collision with one still
+  // shows your cell as foreground.
+  if (latest !== null) {
+    ctx.fillStyle = "#9a7adf";
+    for (const bot of latest.bots) {
+      ctx.beginPath();
+      ctx.arc(bot.x, bot.y, radiusForMass(bot.mass), 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -253,6 +287,12 @@ function openWs(): WebSocket {
         mass: parsed.player.mass,
       },
       food: parsed.food.map((p) => ({ x: p.x, y: p.y })),
+      bots: parsed.bots.map((b) => ({
+        id: b.id,
+        x: b.x,
+        y: b.y,
+        mass: b.mass,
+      })),
       rng: parsed.rng,
     };
     // Append the dir the server APPLIED at this tick. Server tick numbers
