@@ -145,6 +145,9 @@ async function driveTapeAndCollect(
         window as unknown as { __game: { sendInput: (x: string) => void } }
       ).__game.sendInput(d);
     }, dir);
+    // pacing, not state — human cadence between sendInput calls
+    // (see e2e-shared/no-wall-clock-waits/README.md). State-quiescence
+    // is asserted below via expect.poll on inputLatencyProbe acks.
     await page.waitForTimeout(PACE_MS);
   }
 
