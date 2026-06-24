@@ -304,6 +304,19 @@ export class Engine {
           count: this.missedBannerCount,
         };
       },
+      getStageBanner: () => {
+        // #329 read-only window into the STAGE-banner state. Mirrors
+        // getMissBanner — returns null when no banner is currently armed
+        // (either never armed, or already expired). The `stage` field
+        // mirrors `state.stage` at the time of the read so the harness
+        // can assert "STAGE 1 banner is up" without a canvas pixel read.
+        if (this.stageBannerUntil === null) return null;
+        if (this.state.tick > this.stageBannerUntil) return null;
+        return {
+          until: this.stageBannerUntil,
+          stage: this.state.stage,
+        };
+      },
     };
   }
 
@@ -662,7 +675,21 @@ export class Engine {
    *  click on the READY screen. */
   private bindInput(): void {
     const start = (): void => {
-      if (this.state.status === "ready") this.state.status = "playing";
+      if (this.state.status === "ready") {
+        this.state.status = "playing";
+        // Arcade canon (#329): the first formation entrance announces
+        // itself with the STAGE banner, same beat that fires on every
+        // subsequent stage flip inside maybeAdvanceStage. Without this
+        // arm, stage 1 is the only stage that arrives silent — the
+        // player goes from READY straight into "things flying at me"
+        // with no acknowledgment that this IS stage 1 of N. Same 90-tick
+        // duration, same #ffd76a color, same HEIGHT/2 slot, same word
+        // ("STAGE 1" comes from state.stage which is already 1 at boot)
+        // as the stage 2+ banner. `lastHitMiss` is null here so the
+        // SHOTS FIRED / HITS / RATIO lines under the banner don't paint
+        // — correct: there's nothing to score yet.
+        this.stageBannerUntil = this.state.tick + 90;
+      }
     };
     this.input.onFirstInput(start);
     this.canvas.addEventListener("pointerdown", start);

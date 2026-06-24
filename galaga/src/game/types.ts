@@ -309,6 +309,13 @@ export interface GalagaInternals {
    *  Test-only — gameplay code reads neither field; renderer reads the
    *  engine's private mirror. */
   getMissBanner(): { until: number; count: number } | null;
+  /** Read the "STAGE N" banner state (#329). Returns null when the banner
+   *  is not currently armed (no stage flip has happened yet, or the banner
+   *  has expired). `until` is the engine tick through which the banner is
+   *  painted; `stage` mirrors `state.stage` at read time. Used by the e2e
+   *  harness to assert the first-stage banner fires on the READY→playing
+   *  flip without a canvas pixel read. */
+  getStageBanner(): { until: number; stage: number } | null;
 }
 
 declare global {

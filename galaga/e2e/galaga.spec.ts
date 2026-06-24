@@ -1469,3 +1469,72 @@ test("diving enemies score more than formation enemies (per-state bonus) (#71)",
   expect(deltas.bossForm).toBe(150);
   expect(deltas.bossDive).toBe(400);
 });
+
+test("first input arms the STAGE 1 banner on READY→playing (#329)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  // AC #1: fresh boot — status ready, stage 1, NO stage banner armed yet.
+  const before = await page.evaluate(() => ({
+    status: window.__galaga!.status,
+    stage: window.__galaga!.stage,
+    banner: window.__galagaInternals!.getStageBanner(),
+  }));
+  expect(before.status).toBe("ready");
+  expect(before.stage).toBe(1);
+  expect(before.banner).toBeNull();
+
+  // Leave READY.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(
+    () => window.__galaga?.status === "playing",
+    null,
+    { timeout: 5000 },
+  );
+
+  // AC #2: within a handful of ticks of the flip, the STAGE banner is
+  // armed and reports stage 1. Poll on the getter — the banner is set in
+  // the same JS turn as the status flip, so once status==='playing' the
+  // banner must already be visible (until = tick + 90).
+  await page.waitForFunction(
+    () => {
+      const b = window.__galagaInternals!.getStageBanner();
+      return b !== null && b.stage === 1;
+    },
+    null,
+    { timeout: 2000 },
+  );
+
+  const armed = await page.evaluate(() => ({
+    banner: window.__galagaInternals!.getStageBanner(),
+    tick: window.__galaga!.tick,
+  }));
+  expect(armed.banner).not.toBeNull();
+  expect(armed.banner!.stage).toBe(1);
+  // The banner's `until` tick must be ahead of the engine tick at read
+  // time — it was armed for 90 ticks from the flip.
+  expect(armed.banner!.until).toBeGreaterThan(armed.tick);
+
+  // AC #4: after the 90-tick window elapses, the banner clears and does
+  // NOT re-arm on its own (no stage clear has fired). Wait for the
+  // getter to flip back to null.
+  await page.waitForFunction(
+    () => window.__galagaInternals!.getStageBanner() === null,
+    null,
+    { timeout: 5000 },
+  );
+
+  const afterExpiry = await page.evaluate(() => ({
+    banner: window.__galagaInternals!.getStageBanner(),
+    stage: window.__galaga!.stage,
+  }));
+  expect(afterExpiry.banner).toBeNull();
+  // Stage hasn't advanced — we haven't cleared the formation.
+  expect(afterExpiry.stage).toBe(1);
+});
