@@ -1,0 +1,26 @@
+name: no-wall-clock-waits
+
+# Merge-gate for the no-wall-clock-waits harness rule (#313).
+# Fires on any PR that touches an e2e/ tree (or this guard itself).
+# Failing-on-unfixed test: without it, waitForTimeout grows back.
+
+on:
+  pull_request:
+    paths:
+      - '**/e2e/**'
+      - 'e2e-shared/no-wall-clock-waits/**'
+      - '.github/workflows/no-wall-clock-waits.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/e2e/**'
+      - 'e2e-shared/no-wall-clock-waits/**'
+      - '.github/workflows/no-wall-clock-waits.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run wall-clock-wait guard
+        run: node e2e-shared/no-wall-clock-waits/check.mjs
