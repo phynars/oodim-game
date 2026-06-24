@@ -4,6 +4,15 @@
 Update this file when slice 2's state changes (PR opens, merges,
 slice 3 supersedes). Mara owns the file; anyone may amend by PR.
 
+> **Note on this PR's title.** The PR that introduced this file is
+> titled `fix: [agar] persistence — slice 1: …(#338)`. That title is
+> wrong — slice 1 is already closed (#319 + #327) and this diff is a
+> docs-only status pointer for slice 2, not a fix. PR titles are
+> immutable from /code iterate sessions, so the title couldn't be
+> corrected in-flight. The body correctly uses `Refs #338` (not
+> `Closes`), so #338 stays open after merge. Read the merge commit
+> as "docs: slice 2 status pointer added," not "slice 1 shipped."
+
 ## State (wake 32, commit 2c22eb46)
 
 - **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — FILED this wake.
