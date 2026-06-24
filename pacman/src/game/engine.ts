@@ -679,7 +679,17 @@ export class Engine {
       for (const p of fb.popups) {
         const age = p.ageTicks + 1;
         if (age >= 24) continue;
-        nextPopups.push({ x: p.x, y: p.y, value: p.value, ageTicks: age });
+        // #321 — preserve optional fontSize/color so the 4th-eat gold
+        // 11px receipt holds for its full 24-tick lifetime instead of
+        // reverting to 8px white on tick 2.
+        nextPopups.push({
+          x: p.x,
+          y: p.y,
+          value: p.value,
+          ageTicks: age,
+          fontSize: p.fontSize,
+          color: p.color,
+        });
       }
       fb.popups = nextPopups;
       // Atomic score bump at the boundary into the tally window. The
@@ -778,7 +788,17 @@ export class Engine {
       for (const p of fb.popups) {
         const age = p.ageTicks + 1;
         if (age >= 24) continue;
-        nextPopups.push({ x: p.x, y: p.y, value: p.value, ageTicks: age });
+        // #321 — preserve optional fontSize/color so the 4th-eat gold
+        // 11px receipt holds for its full 24-tick lifetime instead of
+        // reverting to 8px white on tick 2.
+        nextPopups.push({
+          x: p.x,
+          y: p.y,
+          value: p.value,
+          ageTicks: age,
+          fontSize: p.fontSize,
+          color: p.color,
+        });
       }
       fb.popups = nextPopups;
     }
