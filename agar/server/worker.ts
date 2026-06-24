@@ -92,9 +92,121 @@ export class EchoRoom implements DurableObject {
   private readonly breakMode: BreakMode | null;
   private appliedCount = 0;
 
-  constructor(_state: DurableObjectState, env: Env) {
+  // Persistence (issue #319, slice 1 of #130). The DO writes a
+  // high-score to its own state.storage on every score-up tick, so
+  // the value survives the DO process boundary (eviction / restart).
+  //
+  // What counts as "score"? The reducer doesn't carry a literal
+  // `player.score` — instead each PlayerState tracks `bestMass`
+  // (highest mass that player has held this match). The match-wide
+  // topScore is the MAX bestMass across all connected players. That
+  // value is monotonically non-decreasing on the reducer's canonical
+  // path (bestMass only ever grows within step()), so it's the
+  // natural high-score proxy.
+  //
+  // `cachedTopScore` mirrors what's in storage. The load is kicked
+  // off EAGERLY in the constructor (unawaited) so it never sits on
+  // the WS upgrade hot path — gating the upgrade response on a
+  // storage round-trip regressed multiplayer-convergence (see
+  // PR #320 review). `persistTopScore()` checks `topScoreLoaded`
+  // and SKIPS writes until the load has resolved: skipping the
+  // first ~1 tick of writes is safe (the value can only grow);
+  // writing before the load would downgrade a re-hydrated DO from
+  // its true persisted high to whatever the fresh roster computes.
+  private state: DurableObjectState;
+  private cachedTopScore = 0;
+  private topScoreLoaded = false;
+  private loadPromise: Promise<void> | null = null;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
     this.world = initialState(1);
     this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
+    // Fire-and-forget eager load. Resolves in <1 tick on Workers
+    // storage; until it resolves, persistTopScore() is a no-op
+    // (see comment above). Never awaited on any request path.
+    this.loadPromise = this.loadTopScoreOnce();
+  }
+
+  private loadTopScoreOnce(): Promise<void> {
+    if (this.topScoreLoaded) return Promise.resolve();
+    if (this.loadPromise !== null) return this.loadPromise;
+    this.loadPromise = (async () => {
+      const stored = await this.state.storage.get<number>("topScore");
+      if (typeof stored === "number" && Number.isFinite(stored)) {
+        this.cachedTopScore = stored;
+      }
+      this.topScoreLoaded = true;
+    })();
+    return this.loadPromise;
+  }
+
+  // Compute the current canonical high score from the reducer's
+  // per-player bestMass. Pure read against `this.world`. Returns 0
+  // when no players are present (empty room / pre-first-join).
+  private currentTopScore(): number {
+    let max = 0;
+    for (const p of this.world.players) {
+      if (p.bestMass > max) max = p.bestMass;
+    }
+    return max;
+  }
+
+  // Persistence side-effect. Called on the canonical reducer path
+  // ONLY (i.e. after a successful `world = step(...)`, never on a
+  // dropped tick — see #319 AC6). Honors the two persistence break
+  // modes per #319 AC3:
+  //   - "lossy-persist":         silently skip the put (no error).
+  //   - "non-monotone-persist":  write current unconditionally
+  //                              (drops the monotonic > guard).
+  // Default: write only if current > cached.
+  private persistTopScore(): void {
+    // Skip writes until the eager constructor load has resolved.
+    // Writing before we know the persisted ceiling could downgrade
+    // a re-hydrated DO (cachedTopScore=0 lets any positive land).
+    // The load completes in <1 tick on Workers storage; we lose at
+    // most a tick or two of `bestMass` writes, which the very next
+    // tick will recover (bestMass only grows).
+    if (!this.topScoreLoaded) return;
+    const current = this.currentTopScore();
+    if (this.breakMode === "lossy-persist") {
+      // Storage layer never commits; cache also stays put so the
+      // in-memory view matches what we claimed to persist. This
+      // powers the slice-3 eviction-roundtrip polarity (lossy →
+      // post-eviction read returns < expected → test RED).
+      return;
+    }
+    if (this.breakMode === "non-monotone-persist") {
+      // Deliberately broken: write whatever the reducer emits, even
+      // when it's lower than what we've already persisted. There's
+      // no actual lower value with the bestMass proxy on the
+      // canonical path, but the slice-1 monotonic-persist spec
+      // engineers a lower value by reconnecting under a fresh
+      // playerId after a high score was set (bestMass restarts at
+      // PLAYER_MASS_START for the new id; max across roster drops).
+      // The monotone guard is the ONLY thing that protects topScore
+      // in that arc — dropping it flips the test RED.
+      this.cachedTopScore = current;
+      // allowUnconfirmed:true keeps the output gate from holding
+      // outbound WS snapshot sends behind this pending write. The
+      // tick loop broadcasts canonical state every 50ms; gating
+      // sends on storage commit serializes the broadcast and
+      // regresses multiplayer-convergence's pure-replay assertion
+      // (PR #320 review — suspect 1). A lost write under DO
+      // eviction is acceptable here: the value can only grow, so
+      // the very next score-up tick re-writes it.
+      void this.state.storage.put("topScore", current, {
+        allowUnconfirmed: true,
+      });
+      return;
+    }
+    if (current > this.cachedTopScore) {
+      this.cachedTopScore = current;
+      // See allowUnconfirmed rationale above.
+      void this.state.storage.put("topScore", current, {
+        allowUnconfirmed: true,
+      });
+    }
   }
 
   private ensureTickLoop(): void {
@@ -140,6 +252,11 @@ export class EchoRoom implements DurableObject {
       this.breakMode === "drop-every-7th" && this.appliedCount % 7 === 0;
     if (!drop) {
       this.world = step(this.world, frame);
+      // Persistence write — canonical path ONLY (issue #319 AC6).
+      // Goes BEFORE any outbound broadcast gate so a drop branch
+      // (the deliberate desync lie) can never trigger a persisted
+      // side effect.
+      this.persistTopScore();
     }
 
     const snapshot = JSON.stringify({
@@ -165,10 +282,91 @@ export class EchoRoom implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // Test-only persistence read hook (issue #319, AC4). The
+    // `monotonic-persist` e2e drives bestMass up, then needs to read
+    // back what the DO actually persisted to `state.storage`. The
+    // slice-2 GET endpoint is the production surface for this, but
+    // slice 2 hasn't shipped yet — so this hook exposes the value
+    // directly off `this.state.storage.get("topScore")`. It's
+    // namespaced under `/__test/` so an accidental production
+    // request can't mistake it for a real endpoint, and it returns
+    // the same JSON shape slice 2 is contracted to ship
+    // (`{topScore: number}`) so the test won't need a rewrite when
+    // slice 2 supersedes the hook.
+    //
+    // Awaited here (not on the WS hot path) because the test caller
+    // wants the exact persisted value — a cache read with no
+    // guarantee that the eager constructor load resolved would be
+    // a lie. The hook is not on any tick / broadcast path.
+    const testUrl = new URL(request.url);
+    if (testUrl.pathname === "/__test/top-score") {
+      await this.loadTopScoreOnce();
+      // POST writes a known topScore directly to storage AND the
+      // cache. This is the slice-1 e2e's "seed a HIGH value" lever
+      // (issue #319 AC4). Going through storage.put — same code
+      // path persistTopScore uses — means a successful POST proves
+      // the storage layer reached disk for the seed value. The
+      // monotonic-persist polarity then turns purely on whether
+      // the canonical-path put runs unguarded (break mode) or
+      // gated by the > check (default), with NO dependency on
+      // pellet-eat geometry / bot collision luck (PR #320 review).
+      //
+      // Honors break modes the same way persistTopScore does so
+      // the test hook can't accidentally paper over a broken
+      // build: lossy-persist still silently skips; non-monotone
+      // still writes unconditionally (which is what we want).
+      if (request.method === "POST") {
+        const body = (await request.json().catch(() => null)) as
+          | { topScore?: unknown }
+          | null;
+        const requested =
+          body !== null && typeof body.topScore === "number" &&
+            Number.isFinite(body.topScore)
+            ? body.topScore
+            : null;
+        if (requested === null) {
+          return new Response(
+            JSON.stringify({ error: "expected {topScore:number}" }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (this.breakMode === "lossy-persist") {
+          // Match persistTopScore's lossy semantics — no commit,
+          // no cache update. Caller's GET will see whatever was
+          // there before (or 0).
+        } else {
+          this.cachedTopScore = requested;
+          await this.state.storage.put("topScore", requested);
+        }
+        const stored = await this.state.storage.get<number>("topScore");
+        const topScore =
+          typeof stored === "number" && Number.isFinite(stored) ? stored : 0;
+        return new Response(JSON.stringify({ topScore }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const stored = await this.state.storage.get<number>("topScore");
+      const topScore = typeof stored === "number" && Number.isFinite(stored)
+        ? stored
+        : 0;
+      return new Response(JSON.stringify({ topScore }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader !== "websocket") {
       return new Response("Expected websocket upgrade", { status: 426 });
     }
+
+    // NOTE: the storage load that seeds `cachedTopScore` is kicked
+    // off EAGERLY in the constructor — NOT awaited here. Gating the
+    // WS upgrade response on a storage round-trip regressed the
+    // multiplayer-convergence spec (PR #320 review). `persistTopScore`
+    // is a no-op until the load resolves, so a re-hydrated DO can't
+    // downgrade its persisted high before the load completes.
 
     const url = new URL(request.url);
     const seedParam = url.searchParams.get("seed");
@@ -270,11 +468,13 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
-    if (url.pathname !== "/ws") {
+    if (url.pathname !== "/ws" && url.pathname !== "/__test/top-score") {
       return new Response("Not found", { status: 404 });
     }
 
     // Route by seed so two clients with the same seed share state.
+    // The same seed→DO routing applies to /__test/top-score so the
+    // test hook reads the DO that owns the room the test drove.
     const seedParam = url.searchParams.get("seed") ?? "1";
     const id = env.ECHO_ROOM.idFromName(`match:${seedParam}`);
     const stub = env.ECHO_ROOM.get(id);
