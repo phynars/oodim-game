@@ -135,6 +135,12 @@ test.describe("galaga input-to-fire latency (#168)", () => {
       expect(sample, `fire ${i}: probe returned undefined`).toBeDefined();
       deltas.push(sample!.deltaTicks);
 
+      // Debounce floor between presses so we don't tight-loop on
+      // Playwright's evaluate cycle. The deterministic gate
+      // (bullet-cap clear + lastKeydownTick advance + spawn observed)
+      // is above; this is human cadence. See
+      // e2e-shared/no-wall-clock-waits/README.md.
+      // pacing — floor between presses, not a state wait.
       await page.waitForTimeout(FIRE_GAP_MS);
     }
 
