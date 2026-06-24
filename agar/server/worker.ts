@@ -92,9 +92,60 @@ export class EchoRoom implements DurableObject {
   private readonly breakMode: BreakMode | null;
   private appliedCount = 0;
 
-  constructor(_state: DurableObjectState, env: Env) {
+  // Persistence (slice 1, #319). The DO writes a monotonic topScore
+  // to its own storage on the canonical reducer path. `cachedTopScore`
+  // is the source of truth in memory and is seeded from storage on
+  // first construction so a re-hydrated DO never downgrades.
+  //   - canonical:           writes ONLY when world.player.score > cache
+  //   - lossy-persist:       storage.put is a silent no-op (cache still updates? NO —
+  //                          we leave both the cache and storage untouched so a
+  //                          subsequent read sees the stale persisted value.)
+  //   - non-monotone-persist: writes whatever the reducer emits, unconditionally
+  //                          (drops the `>` guard; cache follows the write).
+  // The seed read from storage happens once, opportunistically, before
+  // the FIRST score-up check — we use the DO's blockConcurrencyWhile
+  // primitive in the constructor so subsequent calls observe the
+  // hydrated cache. cachedTopScore starts at 0 and is overwritten
+  // when the storage read resolves.
+  private readonly storage: DurableObjectStorage;
+  private cachedTopScore = 0;
+  private topScoreHydrated = false;
+
+  constructor(state: DurableObjectState, env: Env) {
     this.world = initialState(1);
     this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
+    this.storage = state.storage;
+    // Hydrate cachedTopScore from storage before any tick can write.
+    // blockConcurrencyWhile guarantees no fetch() lands while we read.
+    state.blockConcurrencyWhile(async () => {
+      const stored = await this.storage.get<number>("topScore");
+      this.cachedTopScore = typeof stored === "number" ? stored : 0;
+      this.topScoreHydrated = true;
+    });
+  }
+
+  // Called from the canonical tick path AFTER step() folds the frame.
+  // Honors break modes per the contract in #307/#319:
+  //   - default:               write only when current > cache
+  //   - non-monotone-persist:  write unconditionally (drops guard)
+  //   - lossy-persist:         skip the put entirely (no-op)
+  // Returns silently; storage errors are swallowed to keep the tick
+  // loop alive (correctness is "the value can only grow, so a lost
+  // write recovers on the next score-up tick").
+  private persistTopScore(currentScore: number): void {
+    if (!this.topScoreHydrated) return;
+    if (this.breakMode === "lossy-persist") return;
+    const shouldWrite =
+      this.breakMode === "non-monotone-persist"
+        ? true
+        : currentScore > this.cachedTopScore;
+    if (!shouldWrite) return;
+    this.cachedTopScore = currentScore;
+    // Fire-and-forget; allowUnconfirmed keeps the output gate from
+    // holding WS sends behind the put's ack. Any rejection is swallowed.
+    this.storage
+      .put("topScore", currentScore, { allowUnconfirmed: true })
+      .catch(() => {});
   }
 
   private ensureTickLoop(): void {
@@ -141,6 +192,26 @@ export class EchoRoom implements DurableObject {
     if (!drop) {
       this.world = step(this.world, frame);
     }
+
+    // Persistence (slice 1, #319). MUST run on the canonical reducer
+    // path — i.e. BEFORE the snapshot is built and broadcast, and
+    // OUTSIDE any AGAR_DO_BREAK_MODE=drop-* desync branch. Persistence
+    // is an authoritative fact about what the server believes the
+    // score reached; the desync fixture is a deliberate lie to clients
+    // and must not contaminate storage. Note `drop-every-7th` skips
+    // the reducer fold, so on those ticks player masses carry the
+    // prior values — we still call persistTopScore but the monotonic
+    // guard makes it a no-op (current === cache).
+    //
+    // The "score" in the multiplayer model is `max(p.bestMass)` across
+    // all players in the room. bestMass is the canonical never-decreasing
+    // per-player measure (reducer.ts:73), so the max is also non-decreasing
+    // for the room as a whole.
+    let currentTop = 0;
+    for (const p of this.world.players) {
+      if (p.bestMass > currentTop) currentTop = p.bestMass;
+    }
+    this.persistTopScore(currentTop);
 
     const snapshot = JSON.stringify({
       type: "snapshot",

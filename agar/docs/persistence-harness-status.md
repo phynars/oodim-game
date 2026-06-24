@@ -8,18 +8,33 @@ unskips next.
 Source of truth for the harness shape: `agar/docs/persistence-harness-contract.md`.
 Source of truth for the runtime behavior: `agar/server/worker.ts`.
 
-## Current state (as of 2026-07-02, commit 51f49cf)
+## Current state (as of slice 1 PR, #319)
 
 | Item                                     | State    | Owner    | Notes                                                                 |
 | ---------------------------------------- | -------- | -------- | --------------------------------------------------------------------- |
 | `BREAK_MODES` union extended             | ✅ LANDED | #307     | `lossy-persist`, `non-monotone-persist` in `agar/server/worker.ts`    |
 | `parseBreakMode` rejects unknown modes   | ✅ LANDED | #276     | Throws on unknown; returns null on undefined/empty                    |
 | `break-mode-parse` test (file-time gate) | ✅ ACTIVE | #307     | Unskipped; runs on every push                                         |
-| `monotonic-persist` test                 | ⏸ SKIPPED | **#319** | Unskip reason: `"unskipped by agar persistence slice 1 …"`            |
+| `state.storage.put` of `topScore`        | ✅ LANDED | **#319** | `EchoRoom.persistTopScore` writes `max(p.bestMass)` on canonical tick |
+| `lossy-persist` runtime behavior         | ✅ LANDED | **#319** | put is a no-op; cache untouched so reads see prior persisted value    |
+| `non-monotone-persist` runtime behavior  | ✅ LANDED | **#319** | put writes unconditionally; drops `>` guard                           |
+| Storage hydration on construct           | ✅ LANDED | **#319** | `blockConcurrencyWhile` seeds `cachedTopScore` before first tick      |
+| `monotonic-persist` test                 | ⏸ SKIPPED | **#327** | Slice 1b — e2e drive + readback hook isolated to avoid convergence flake |
 | `eviction-roundtrip` test                | ⏸ SKIPPED | slice 3  | Unskip reason: `"unskipped by agar persistence slice 3 …"`            |
-| `state.storage.put` of `topScore`        | ❌ PENDING | **#319** | `agar/server/worker.ts:95` still `_state` (param discarded)           |
 | `GET /high-score?seed=S` endpoint        | ❌ PENDING | slice 2  | Not in worker yet                                                     |
-| Polarity CI workflow (red/green)         | ❌ PENDING | **#323** | Blocked on #319 — polarity needs a non-skipped test to invert         |
+| Polarity CI workflow (red/green)         | ❌ PENDING | **#323** | Unblocked by slice 1b unskipping `monotonic-persist`                  |
+
+### Slice 1 deviation from #319's AC4 (transparently noted)
+
+The #319 issue body's AC4 asked slice 1 to also unskip the `monotonic-persist`
+e2e. Slice 1 ships the **worker runtime** (ACs 1, 2, 3, 6) but keeps the
+e2e skipped — its unskip is delegated to **#327 (slice 1b)**. Rationale:
+the e2e drive needs a temporary `/__test/top-score` readback hook (slice 2's
+proper endpoint isn't here yet) and a chosen low-write mechanism; bundling
+that into slice 1 risks destabilizing `multiplayer-convergence` under
+`fullyParallel: true`. Splitting keeps the worker diff reviewable in
+isolation and the e2e tractable as its own PR. AC5's polarity proof
+necessarily moves with the e2e to slice 1b.
 
 ## How the slices interlock
 

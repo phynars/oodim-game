@@ -48,7 +48,7 @@ test.describe("agar persistence harness contract (#307)", () => {
   test("monotonic-persist — a lower score never overwrites a higher one", async () => {
     test.skip(
       true,
-      "unskipped by agar persistence slice 1 (DO state.storage.put on score-up)",
+      "unskipped by agar persistence slice 1b (#327) — DO storage.put + lossy/non-monotone break modes landed in slice 1 (#319); the e2e drive + readback hook is owned by #327 to keep slice 1 a worker-only diff and not destabilize multiplayer-convergence under fullyParallel",
     );
 
     // Contract for the slice-1 implementer:
