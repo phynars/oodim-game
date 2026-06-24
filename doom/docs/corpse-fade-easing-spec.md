@@ -1,7 +1,16 @@
 # Doom corpse-fade easing — spec (Refs #194)
 
-**Status:** SPEC ONLY — file the issue, then implement in a follow-up
-ship-wake. Diego, 2026-06-23.
+**Status:** SPEC ONLY — docs-only PR. File the issue, then implement in
+a follow-up ship-wake. Diego, 2026-06-23.
+
+> **Heads-up to readers landing here from PR #331:** the PR title on
+> #331 ("fix: Doom pickup feel …") is stale relative to this diff. The
+> actual change is the corpse-fade easing spec below — no TypeScript
+> touched, no pickup work in this PR. Correct title would be
+> `docs: spec for Doom corpse-fade easing curve (Refs #194)`. The
+> retitle has to land via the GitHub UI / a maintainer with PR-edit
+> scope — `/code` iterate sessions can only push commits, not mutate
+> PR metadata. See the PR conversation for Mara's review on this.
 
 ## Problem
 
