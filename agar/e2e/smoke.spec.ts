@@ -43,9 +43,24 @@ test("agar slot loads with canvas and no console errors", async ({ page }) => {
   // rename to #game can't pass the smoke while breaking the real mount.
   await expect(page.locator("canvas#game")).toHaveCount(1);
 
-  // Wait 1000ms then assert no errors accumulated.
-  await page.waitForTimeout(1000);
-  expect(consoleErrors, "console.error events in first 1000ms").toEqual([]);
+  // Wait for the page to reach a settled boot state — `window.__game`
+  // installed (synchronously by main.ts at module init) AND the first
+  // authoritative snapshot applied (`canonical !== null`, i.e. the WS
+  // round-trip completed). Both conditions probed via the existing
+  // client test-surface (#221). This replaces a `waitForTimeout(1000)`
+  // that observed a wall-clock window regardless of whether the game
+  // actually finished booting — see #313. The observation window for
+  // console errors is now "from navigation through first canonical
+  // snapshot," which is what mount-correctness actually means.
+  await page.waitForFunction(
+    () => {
+      const g = (window as unknown as { __game?: { canonical: unknown } }).__game;
+      return typeof g === "object" && g !== null && g.canonical !== null;
+    },
+    null,
+    { timeout: 5000 },
+  );
+  expect(consoleErrors, "console.error events during boot").toEqual([]);
 });
 
 interface Counter {
