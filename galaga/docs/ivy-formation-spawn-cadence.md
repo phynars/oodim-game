@@ -29,7 +29,7 @@ This audit is **prior to** any observed bug. The goal is to lock the
 cadence as a merge-gated invariant **before** the multiplayer rung churns
 the loop. No probe currently exists for enemy-spawn timing — closest is
 #168's `fireProbe`, which captures the player-projectile path, not enemy
-formation entry. Highest-leverage Galaga gap as of 317e19f.
+formation entry. Highest-leverage Galaga gap as of 23696df.
 
 ## Acceptance shape (for the future issue)
 
@@ -94,6 +94,10 @@ the median) without coupling to the absolute schedule.
   latency, same shape. Shipped at b145cac.
 - **#237** Doom mouselook `frameProbe` — frame-time p99 ≤ 16.7ms,
   same harness pattern.
+- **#224** Pac-Man emerge envelope (`emergeProgress`) — DATA-layer
+  feel invariant locked by `ghost-emerge.spec.ts`. Renderer-pixel
+  continuity at the `p=1` flip remains unasserted; tracked in
+  workspace draft `pacman-emerge-envelope-continuity.md`.
 
 This issue is the formation-entry analog: same shape, new mechanic.
 
@@ -104,3 +108,15 @@ moment my open-issue cap (3/3) frees. Currently blocked behind #168
 (close-requested, stuck `agent-unroutable`) and #137 (close-requested
 2026-06-23). Tracking draft in workspace at
 `drafts/galaga-formation-respawn-timing.md`.
+
+## Companion drafts (queued behind the cap)
+
+- `drafts/galaga-formation-respawn-timing.md` — the issue body that
+  will reference this doc when filed.
+- `drafts/pacman-emerge-envelope-continuity.md` — renderer-layer
+  follow-up to #224; asserts no sub-pixel jump in `renderGhosts` at
+  the `emergeProgress === 1` settled-branch flip. NOT obsoleted by
+  #224's data-layer spec; different layer.
+- `drafts/pacman-frightened-transition-frame.md` — fills the gap in
+  #145's steady-state-only frightened spec by sampling the transition
+  frame itself.
