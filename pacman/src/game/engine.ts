@@ -112,6 +112,13 @@ export class Engine {
   private accumulatorMs = 0;
   private running = false;
   private inputBinding: InputBinding | null = null;
+  /** Issue #348 — pause-resume latch. When status flips to "paused" we
+   *  remember the status we came from ("playing" only — the toggle is
+   *  ignored from "ready"/"won"/"lost") so resume restores cleanly.
+   *  Engine step short-circuits when status === "paused": no ghost AI,
+   *  no pellet timer, no power-pellet decay. The world resumes from
+   *  the exact same tick. */
+  private statusBeforePause: GameState["status"] | null = null;
   /** Internal ghost roster — full AI state. Public projections live on
    *  `state.ghosts` (the test contract). Source of truth is here. */
   private ghosts: GhostInternal[] = [];
@@ -499,6 +506,30 @@ export class Engine {
     };
   }
 
+  /** Issue #348 — toggle pause. `P` and `Esc` route through here via the
+   *  input binding. Locked out during the death + clear pre-pause
+   *  windows (those frames already own the stillness — see #171 / #183).
+   *  Only togglable from "playing" ↔ "paused"; "ready" / "won" / "lost"
+   *  are no-ops (the READY!/AGAIN/GAME OVER overlays already own the
+   *  screen). Returns true iff the toggle was honored. */
+  togglePause(): boolean {
+    const fb = this.state.feedback;
+    // Death + clear pre-pause windows own the stillness; respect them.
+    if (fb.deathTicks > 0 && fb.deathTicks < DEATH_PRE_PAUSE) return false;
+    if (fb.clearTicks > 0 && fb.clearTicks < CLEAR_PRE_PAUSE) return false;
+    if (this.state.status === "playing") {
+      this.statusBeforePause = "playing";
+      this.state.status = "paused";
+      return true;
+    }
+    if (this.state.status === "paused") {
+      this.state.status = this.statusBeforePause ?? "playing";
+      this.statusBeforePause = null;
+      return true;
+    }
+    return false;
+  }
+
   /** Begin the loop. Idempotent — calling twice is a no-op. */
   start(): void {
     if (this.running) return;
@@ -526,6 +557,11 @@ export class Engine {
         // next tick" register as deltaTicks === 0, the merge target.
         () => {
           this.lastQueuedTick = this.state.tick + 1;
+        },
+        // Issue #348 — P / Esc → pause toggle. Engine owns the
+        // status flip + death/clear lockout policy.
+        () => {
+          this.togglePause();
         },
       );
     }
@@ -571,6 +607,17 @@ export class Engine {
     // don't tick Pac or ghosts, don't run collisions, don't re-fire the
     // win check.
     if (this.state.status === "won" || this.state.status === "lost") {
+      return;
+    }
+    // Issue #348 — pause gate. World holds: no ghost AI, no pellet
+    // timer, no power-pellet decay, no feedback decay. The tick
+    // counter was already bumped at the top of update() — we undo it
+    // here so resume continues from the exact same tick (criterion:
+    // "world resumes from the exact same tick"). Renderer still draws
+    // every rAF (render() is per-frame, not per-update), which lets
+    // the HOLD. overlay paint.
+    if (this.state.status === "paused") {
+      this.state.tick -= 1;
       return;
     }
     // First-input gate (issue #8): hold the READY! overlay until the
@@ -1149,6 +1196,25 @@ export class Engine {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(BANNER_READY, w / 2, h / 2);
+    } else if (state.status === "paused") {
+      // Issue #348 — `HOLD.` overlay. Keeper-line slot, same yellow as
+      // READY!/EXTRA/FRUIT/GAME OVER, centered on the maze. One word,
+      // one syllable, imperative, period. The resume hint sits beneath
+      // in lowercase at half-alpha — the game whispers the way back.
+      // Branch sits above EXTRA / FRUIT / won / lost so a paused frame
+      // unambiguously reads "the world is held" — those banners can
+      // bleed in the same slot but never DURING a pause, because the
+      // engine's pause gate freezes their counters too.
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "14px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("HOLD.", w / 2, h / 2);
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.font = "8px ui-monospace, monospace";
+      ctx.fillText("press p", w / 2, h / 2 + 12);
+      ctx.restore();
     } else if (state.extraLifeBanner > 0) {
       // Issue #295 — arcade canon's one celebratory threshold. Same
       // slot, same yellow as READY!/GAME OVER. One word: EXTRA.
