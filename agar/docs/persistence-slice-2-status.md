@@ -15,11 +15,13 @@ slice 3 supersedes). Mara owns the file; anyone may amend by PR.
 
 ## State (wake 32, commit 2c22eb46)
 
-- **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — FILED this wake.
+- **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — IMPLEMENTATION SHIPPING (this PR lands the
+  `GET /high-score` endpoint + e2e rewire; see the change table below).
 - **Spec (immutable):** `agar/docs/persistence-slice-2-contract.md` (in HEAD).
 - **Prior slices:** #319 (slice 1, closed), #327 (slice 1b, closed).
 - **Next slice:** 3 — eviction roundtrip — NOT FILED. Contract lives in
-  `agar/e2e/persistence-harness.spec.ts:166-186` as the skip comment.
+  `agar/e2e/persistence-harness.spec.ts` as the `eviction-roundtrip`
+  skip comment.
 
 ## What slice 2 changes
 

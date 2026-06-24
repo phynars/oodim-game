@@ -51,6 +51,53 @@ test.describe("agar persistence harness contract (#307)", () => {
     expect(parseBreakMode("")).toBeNull();
   });
 
+  test("high-score-shape — GET /high-score wire contract (#338)", async ({
+    request,
+  }) => {
+    // File-time test (no browser): the wire-shape contract should
+    // fail at the cheapest possible level. A browser-driven test is
+    // overkill for status-code checks, and a flake at that layer
+    // would mask wire-shape regressions behind player-input timing.
+    //
+    // Production read surface contract (agar/docs/persistence-slice-2-
+    // contract.md §"Wire contract"):
+    //   - never-played seed → 200 + { topScore: 0 }
+    //   - missing seed param → 400
+    //   - non-GET method     → 405
+
+    // Never-played seed: a fresh random seed routes to a DO that has
+    // never persisted a value → zero default (callers treat absence
+    // as 0; invariant topScore >= 0).
+    const neverPlayed = `neverplayed-${Math.random().toString(36).slice(2)}`;
+    const zeroRes = await request.get(
+      `${WORKER_BASE}/high-score?seed=${neverPlayed}`,
+    );
+    expect(
+      zeroRes.status(),
+      `GET /high-score?seed=${neverPlayed} (never played) → 200`,
+    ).toBe(200);
+    const zeroBody = (await zeroRes.json()) as { topScore: number };
+    expect(zeroBody.topScore, "never-played seed defaults to 0").toBe(0);
+
+    // Missing seed param → 400.
+    const noSeedRes = await request.get(`${WORKER_BASE}/high-score`);
+    expect(
+      noSeedRes.status(),
+      "GET /high-score with no seed param → 400",
+    ).toBe(400);
+
+    // Non-GET method → 405 (public endpoint is read-only; the POST
+    // seam lives on /__test/top-score).
+    const postRes = await request.post(
+      `${WORKER_BASE}/high-score?seed=anything`,
+      { data: { topScore: 999 } },
+    );
+    expect(
+      postRes.status(),
+      "POST /high-score → 405 (read-only public endpoint)",
+    ).toBe(405);
+  });
+
   test("monotonic-persist — a lower score never overwrites a higher one", async ({
     browser,
     request,
@@ -62,7 +109,17 @@ test.describe("agar persistence harness contract (#307)", () => {
     // trail reproducible if this ever flakes.
     const SEED = 7319;
     const ROOM_URL = `/agar/?seed=${SEED}`;
-    const TOP_SCORE_URL = `${WORKER_BASE}/__test/top-score?seed=${SEED}`;
+    // Seed phase still POSTs the known HIGH through the test-only
+    // write seam (the only way to inject a high without a 60s pellet
+    // sweep — see phase 1). Slice 2 (#338) rewired the readback to
+    // the production GET endpoint below.
+    const SEED_URL = `${WORKER_BASE}/__test/top-score?seed=${SEED}`;
+    // Phase-3 readback now hits the PRODUCTION read surface
+    // (GET /high-score) instead of the test GET hook, which slice 2
+    // removed. Both read the same storage.get('topScore') off the
+    // same seed→DO, so the non-monotone-persist polarity still bites
+    // through this surface (slice-2 contract §3).
+    const HIGH_SCORE_URL = `${WORKER_BASE}/high-score?seed=${SEED}`;
 
     // --- Phase 1: seed a HIGH value directly via the slice-1 test
     // hook (POST /__test/top-score).
@@ -84,12 +141,12 @@ test.describe("agar persistence harness contract (#307)", () => {
     // path — so the polarity assertion still tests the production
     // code, not just the hook.
     const HIGH = PLAYER_MASS_START + 100; // any value > the floor
-    const seedRes = await request.post(TOP_SCORE_URL, {
+    const seedRes = await request.post(SEED_URL, {
       data: { topScore: HIGH },
     });
     expect(
       seedRes.ok(),
-      `POST ${TOP_SCORE_URL} seeding HIGH=${HIGH} → ${seedRes.status()}`,
+      `POST ${SEED_URL} seeding HIGH=${HIGH} → ${seedRes.status()}`,
     ).toBe(true);
     const seedBody = (await seedRes.json()) as { topScore: number };
     expect(
@@ -140,11 +197,13 @@ test.describe("agar persistence harness contract (#307)", () => {
         return w.__game.tickTo(cur + 20);
       });
 
-      // --- Phase 3: read the persisted topScore via the test hook.
-      // The hook awaits storage.get (no cache), so what we read is
-      // exactly what's on disk after every write so far this match.
-      const res = await pageB.request.get(TOP_SCORE_URL);
-      expect(res.ok(), `GET ${TOP_SCORE_URL} → ${res.status()}`).toBe(true);
+      // --- Phase 3: read the persisted topScore via the PRODUCTION
+      // endpoint (slice 2, #338). GET /high-score awaits storage.get
+      // (no cache), so what we read is exactly what's on disk after
+      // every write so far this match — same source the removed test
+      // GET hook read, just through the real product surface.
+      const res = await pageB.request.get(HIGH_SCORE_URL);
+      expect(res.ok(), `GET ${HIGH_SCORE_URL} → ${res.status()}`).toBe(true);
       const body = (await res.json()) as { topScore: number };
 
       // --- Phase 4: assert monotonicity held.

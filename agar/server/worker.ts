@@ -282,74 +282,104 @@ export class EchoRoom implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    // Test-only persistence read hook (issue #319, AC4). The
-    // `monotonic-persist` e2e drives bestMass up, then needs to read
-    // back what the DO actually persisted to `state.storage`. The
-    // slice-2 GET endpoint is the production surface for this, but
-    // slice 2 hasn't shipped yet — so this hook exposes the value
-    // directly off `this.state.storage.get("topScore")`. It's
-    // namespaced under `/__test/` so an accidental production
-    // request can't mistake it for a real endpoint, and it returns
-    // the same JSON shape slice 2 is contracted to ship
-    // (`{topScore: number}`) so the test won't need a rewrite when
-    // slice 2 supersedes the hook.
+    const reqUrl = new URL(request.url);
+
+    // Production persistence read surface (issue #338, slice 2 of
+    // #130). `GET /high-score?seed=S` is the read path a future
+    // leaderboard UI consumes — a real product endpoint, not a test
+    // hook. It reads the persisted value straight off
+    // `state.storage.get("topScore")` (no in-memory shortcut: disk
+    // is the source of truth here, so a cache that diverges from
+    // storage is observable as a regression — see slice-2 contract).
     //
-    // Awaited here (not on the WS hot path) because the test caller
-    // wants the exact persisted value — a cache read with no
-    // guarantee that the eager constructor load resolved would be
-    // a lie. The hook is not on any tick / broadcast path.
-    const testUrl = new URL(request.url);
-    if (testUrl.pathname === "/__test/top-score") {
-      await this.loadTopScoreOnce();
-      // POST writes a known topScore directly to storage AND the
-      // cache. This is the slice-1 e2e's "seed a HIGH value" lever
-      // (issue #319 AC4). Going through storage.put — same code
-      // path persistTopScore uses — means a successful POST proves
-      // the storage layer reached disk for the seed value. The
-      // monotonic-persist polarity then turns purely on whether
-      // the canonical-path put runs unguarded (break mode) or
-      // gated by the > check (default), with NO dependency on
-      // pellet-eat geometry / bot collision luck (PR #320 review).
-      //
-      // Honors break modes the same way persistTopScore does so
-      // the test hook can't accidentally paper over a broken
-      // build: lossy-persist still silently skips; non-monotone
-      // still writes unconditionally (which is what we want).
-      if (request.method === "POST") {
-        const body = (await request.json().catch(() => null)) as
-          | { topScore?: unknown }
-          | null;
-        const requested =
-          body !== null && typeof body.topScore === "number" &&
-            Number.isFinite(body.topScore)
-            ? body.topScore
-            : null;
-        if (requested === null) {
-          return new Response(
-            JSON.stringify({ error: "expected {topScore:number}" }),
-            { status: 400, headers: { "content-type": "application/json" } },
-          );
-        }
-        if (this.breakMode === "lossy-persist") {
-          // Match persistTopScore's lossy semantics — no commit,
-          // no cache update. Caller's GET will see whatever was
-          // there before (or 0).
-        } else {
-          this.cachedTopScore = requested;
-          await this.state.storage.put("topScore", requested);
-        }
-        const stored = await this.state.storage.get<number>("topScore");
-        const topScore =
-          typeof stored === "number" && Number.isFinite(stored) ? stored : 0;
-        return new Response(JSON.stringify({ topScore }), {
-          status: 200,
+    // Routing mirrors `/ws` and `/__test/top-score`: same
+    // `idFromName('match:' + seed)` DO instance at the top-level
+    // worker, so this reads the DO that owns the room the WS
+    // session drove. The branch sits BEFORE the upgrade-header
+    // check but is gated on the exact pathname, so the WS hot path
+    // stays byte-identical for `/ws`.
+    if (reqUrl.pathname === "/high-score") {
+      if (request.method !== "GET") {
+        // Public endpoint is read-only. The POST seam lives on
+        // /__test/top-score (test-only) and stays there until
+        // slice 3 owns its own seeding path.
+        return new Response(JSON.stringify({ error: "method not allowed" }), {
+          status: 405,
+          headers: {
+            "content-type": "application/json",
+            allow: "GET",
+          },
+        });
+      }
+      if (reqUrl.searchParams.get("seed") === null) {
+        return new Response(JSON.stringify({ error: "missing seed" }), {
+          status: 400,
           headers: { "content-type": "application/json" },
         });
       }
+      // Read disk directly (awaited, off the tick/broadcast path).
+      // A never-played seed has no stored value → default 0, so
+      // callers can treat absence as zero (invariant topScore >= 0)
+      // rather than branching on a 404.
       const stored = await this.state.storage.get<number>("topScore");
-      const topScore = typeof stored === "number" && Number.isFinite(stored)
-        ? stored
-        : 0;
+      const topScore =
+        typeof stored === "number" && Number.isFinite(stored) ? stored : 0;
+      return new Response(JSON.stringify({ topScore }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    // Test-only persistence WRITE seam (issue #319, AC4). The
+    // `monotonic-persist` e2e seeds a known HIGH value directly via
+    // POST so the polarity gate doesn't depend on pellet-eat
+    // geometry / bot collision luck (PR #320 review). The GET side
+    // of this hook was removed in slice 2 (#338) — readers now use
+    // the production `GET /high-score` endpoint above. The POST side
+    // stays until slice 3 owns its own programmatic seed path
+    // (eviction tests need it even more than slice 1b did).
+    if (reqUrl.pathname === "/__test/top-score") {
+      if (request.method !== "POST") {
+        return new Response(
+          JSON.stringify({ error: "method not allowed" }),
+          {
+            status: 405,
+            headers: { "content-type": "application/json", allow: "POST" },
+          },
+        );
+      }
+      await this.loadTopScoreOnce();
+      // Going through storage.put — the same code path
+      // persistTopScore uses — means a successful POST proves the
+      // storage layer reached disk for the seed value. Honors break
+      // modes the same way persistTopScore does so the seam can't
+      // accidentally paper over a broken build: lossy-persist
+      // silently skips the commit.
+      const body = (await request.json().catch(() => null)) as
+        | { topScore?: unknown }
+        | null;
+      const requested =
+        body !== null && typeof body.topScore === "number" &&
+          Number.isFinite(body.topScore)
+          ? body.topScore
+          : null;
+      if (requested === null) {
+        return new Response(
+          JSON.stringify({ error: "expected {topScore:number}" }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (this.breakMode === "lossy-persist") {
+        // Match persistTopScore's lossy semantics — no commit,
+        // no cache update. Caller's GET will see whatever was
+        // there before (or 0).
+      } else {
+        this.cachedTopScore = requested;
+        await this.state.storage.put("topScore", requested);
+      }
+      const stored = await this.state.storage.get<number>("topScore");
+      const topScore =
+        typeof stored === "number" && Number.isFinite(stored) ? stored : 0;
       return new Response(JSON.stringify({ topScore }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -468,13 +498,18 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
-    if (url.pathname !== "/ws" && url.pathname !== "/__test/top-score") {
+    if (
+      url.pathname !== "/ws" &&
+      url.pathname !== "/__test/top-score" &&
+      url.pathname !== "/high-score"
+    ) {
       return new Response("Not found", { status: 404 });
     }
 
     // Route by seed so two clients with the same seed share state.
-    // The same seed→DO routing applies to /__test/top-score so the
-    // test hook reads the DO that owns the room the test drove.
+    // The same seed→DO routing applies to /__test/top-score and the
+    // production /high-score endpoint so both read the DO that owns
+    // the room the WS session drove.
     const seedParam = url.searchParams.get("seed") ?? "1";
     const id = env.ECHO_ROOM.idFromName(`match:${seedParam}`);
     const stub = env.ECHO_ROOM.get(id);
