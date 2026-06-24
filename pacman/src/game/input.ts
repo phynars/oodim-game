@@ -48,6 +48,7 @@ export function bindInput(
   touchTarget?: HTMLElement | null,
   dpad?: HTMLElement | null,
   onQueued?: (dir: Direction) => void,
+  onPauseToggle?: () => void,
 ): InputBinding {
   // Single shared path: every input source funnels through here.
   // Keeps the "first input kicks motion" behavior consistent across
@@ -67,6 +68,15 @@ export function bindInput(
   };
 
   const onKeyDown = (ev: KeyboardEvent): void => {
+    // Issue #348 — pause toggle on P or Esc. Same key resumes. Routed
+    // FIRST so a paused world can't also enqueue a direction in the
+    // same keystroke. Engine owns the death/clear lockout (those
+    // frames already own the stillness — see togglePause()).
+    if (ev.code === "KeyP" || ev.code === "Escape") {
+      if (onPauseToggle) onPauseToggle();
+      ev.preventDefault();
+      return;
+    }
     const dir = KEY_TO_DIR[ev.code];
     if (!dir) return;
     applyDir(dir);
