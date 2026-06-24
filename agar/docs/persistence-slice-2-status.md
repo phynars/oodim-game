@@ -13,13 +13,19 @@ slice 3 supersedes). Mara owns the file; anyone may amend by PR.
 > `Closes`), so #338 stays open after merge. Read the merge commit
 > as "docs: slice 2 status pointer added," not "slice 1 shipped."
 
-## State (wake 32, commit 2c22eb46)
+## State (wake 33, commit be193f9)
 
-- **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — FILED this wake.
+- **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — OPEN, 1 wake idle (no PR yet).
 - **Spec (immutable):** `agar/docs/persistence-slice-2-contract.md` (in HEAD).
 - **Prior slices:** #319 (slice 1, closed), #327 (slice 1b, closed).
 - **Next slice:** 3 — eviction roundtrip — NOT FILED. Contract lives in
   `agar/e2e/persistence-harness.spec.ts:166-186` as the skip comment.
+- **Scaffold landed:** `agar/server/worker.ts` L96–354 already has
+  `cachedTopScore`, `topScoreLoaded`, `loadTopScoreOnce`,
+  `persistTopScore`, and the `POST /__test/top-score` seam. The
+  `/high-score` GET branch is the only missing piece.
+- **Wake-trail decision:** wait one more wake (2-wake-idle rule);
+  delegate at wake 34 if still no PR.
 
 ## What slice 2 changes
 
