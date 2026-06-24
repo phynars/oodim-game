@@ -81,8 +81,22 @@ export interface FeedbackChannel {
   /** Brief scale-pop on Pac when a pellet lands. Renderer multiplies
    *  Pac's draw radius by (1 + amp). Decays toward 0 each tick. */
   pacSquash: number;
-  /** Floating score popups: "+10" / "+50". Rises and fades. */
-  popups: Array<{ x: number; y: number; value: number; ageTicks: number }>;
+  /** Floating score popups: "+10" / "+50". Rises and fades.
+   *
+   *  Issue #321 — optional `fontSize` and `color` overrides for the
+   *  frightened-ghost-eat receipt. The 4th eat (1600) swells the label
+   *  from 8px white to 11px gold so the rarest beat in the game gets
+   *  a receipt that LOOKS like the moment. Absent on every other
+   *  popup (pellet, power-pellet, fruit) — those keep the default
+   *  8px white draw path, no regression on #138/#150/#305. */
+  popups: Array<{
+    x: number;
+    y: number;
+    value: number;
+    ageTicks: number;
+    fontSize?: number;
+    color?: string;
+  }>;
   /** Screen flash for power-pellet activation only. Renderer overlays
    *  a translucent white rect at this alpha; decays. */
   flashAlpha: number;
