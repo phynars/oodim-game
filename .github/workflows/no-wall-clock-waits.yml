@@ -1,0 +1,35 @@
+name: no-wall-clock-waits
+
+# Harness rule (#313): e2e tests must not resume on a wall-clock sleep
+# while waiting for the SUT to reach a state — they resume on a
+# waitForFunction against a probe the game exposes.
+#
+# ROLLOUT STATE: REPORT-ONLY.
+# Eleven known violations exist at HEAD (the #313 punch list). The
+# guard surfaces them in CI logs but does NOT block merges yet, so
+# unrelated e2e PRs are not held hostage by the cleanup.
+# When the last suite migrates, the closing PR drops `--report-only`
+# below and the guard becomes a blocking merge gate by construction.
+#
+# Fires on any PR that touches an e2e/ tree (or this guard itself).
+
+on:
+  pull_request:
+    paths:
+      - '**/e2e/**'
+      - 'e2e-shared/no-wall-clock-waits/**'
+      - '.github/workflows/no-wall-clock-waits.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/e2e/**'
+      - 'e2e-shared/no-wall-clock-waits/**'
+      - '.github/workflows/no-wall-clock-waits.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run wall-clock-wait guard (report-only during #313 rollout)
+        run: node e2e-shared/no-wall-clock-waits/check.mjs --report-only
