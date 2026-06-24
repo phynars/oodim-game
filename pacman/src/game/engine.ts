@@ -679,7 +679,17 @@ export class Engine {
       for (const p of fb.popups) {
         const age = p.ageTicks + 1;
         if (age >= 24) continue;
-        nextPopups.push({ x: p.x, y: p.y, value: p.value, ageTicks: age });
+        // #321 — preserve optional fontSize/color so the 4th-eat gold
+        // 11px receipt holds for its full 24-tick lifetime instead of
+        // reverting to 8px white on tick 2.
+        nextPopups.push({
+          x: p.x,
+          y: p.y,
+          value: p.value,
+          ageTicks: age,
+          fontSize: p.fontSize,
+          color: p.color,
+        });
       }
       fb.popups = nextPopups;
       // Atomic score bump at the boundary into the tally window. The
@@ -778,7 +788,17 @@ export class Engine {
       for (const p of fb.popups) {
         const age = p.ageTicks + 1;
         if (age >= 24) continue;
-        nextPopups.push({ x: p.x, y: p.y, value: p.value, ageTicks: age });
+        // #321 — preserve optional fontSize/color so the 4th-eat gold
+        // 11px receipt holds for its full 24-tick lifetime instead of
+        // reverting to 8px white on tick 2.
+        nextPopups.push({
+          x: p.x,
+          y: p.y,
+          value: p.value,
+          ageTicks: age,
+          fontSize: p.fontSize,
+          color: p.color,
+        });
       }
       fb.popups = nextPopups;
     }
@@ -878,34 +898,56 @@ export class Engine {
         this.maybeAwardExtraLife(scoreBeforeGhostEat);
         g.mode = "eaten";
         g._progress = 0;
-        // Issue #150 — frightened-ghost-eat juice. The single biggest
-        // payoff moment in Pac-Man: brief hitstop (the thump), big
-        // squash (louder than power-pellet's 0.25), escalating popup
-        // (the receipt), and a radial sparkle burst. NO screen flash —
-        // the flash belongs to the power-pellet activation, this is
-        // what that activation earned.
+        // Issue #150 / #321 — frightened-ghost-eat juice. The single
+        // biggest payoff moment in Pac-Man: brief hitstop (the thump),
+        // big squash (louder than power-pellet's 0.25), escalating
+        // popup (the receipt), and a radial sparkle burst. NO screen
+        // flash — the flash belongs to the power-pellet activation,
+        // this is what that activation earned.
+        //
+        // #321: every magnitude channel SCALES by `idx` (the same
+        // 0..3 clamp the score uses) so the 4th eat — the rarest
+        // beat in the entire game — is unmistakably HEAVIER than the
+        // 1st. Score goes 200→1600 (8×); juice answers geometrically.
+        // The `Math.max` clamp on hitstop stays (rule #16: anonymous
+        // magnitude channels clamp, defensive against a hypothetical
+        // double-eat-this-tick).
         const fb = this.state.feedback;
-        // Hitstop: 3 frames (~50ms @ 60Hz). Math.max so a hypothetical
-        // double-eat-this-tick can't compound a freeze (galaga lesson
-        // from #133). Pac-Man can't actually double-eat in one tick
-        // (collisions iterate one ghost at a time + Pac moves once per
-        // tile), but the defensive shape stays consistent.
-        fb.hitstopTicks = Math.max(fb.hitstopTicks, 3);
-        // Squash: 0.30 — bigger than power-pellet (0.25). Direct
-        // assignment (matches pellet-pickup convention in pacman.ts).
-        fb.pacSquash = 0.30;
-        // Score popup at the eaten tile. Reuses the existing 24-tick
-        // popup lifetime (decayed by the feedback decay block above).
-        fb.popups.push({ x: g.x, y: g.y, value, ageTicks: 0 });
-        // Sparkle burst: 16 sparkles, radial at 0.5 tile/tick, 20-tick
-        // lifetime. Deterministic — angle table seeded by the eat
-        // streak so each ghost in a 4-combo gets a distinct rotation
-        // and the e2e can assert sparkles.length === 16 without flake.
-        // (Existing sparkle decay loop culls at age >= 24, which is
-        // already past our 20-tick visual budget — alpha curve in the
-        // renderer fades them out earlier.)
-        const SPARKLE_COUNT = 16;
-        const SPARKLE_SPEED = 0.5;
+        // Hitstop: 3, 4, 5, 7 — linear, with a +1 KINK at idx 3 (the
+        // "you did the thing" freeze that punctuates the 4-combo).
+        const hitstopTicks = 3 + idx + (idx === 3 ? 1 : 0);
+        fb.hitstopTicks = Math.max(fb.hitstopTicks, hitstopTicks);
+        // Squash: 0.30 * 1.22^idx → 0.30, 0.366, 0.447, 0.546.
+        // Geometric, mirroring the score curve.
+        fb.pacSquash = 0.30 * Math.pow(1.22, idx);
+        // Score popup at the eaten tile. Popup font + color escalate
+        // on the receipt itself at idx ≥ 2 — the label swells from
+        // 8px white to 11px gold, with a 1.5px glow at idx 3.
+        // Default (idx 0/1) writes nothing extra — renderer falls
+        // back to the 8px white draw path. No regression for #150's
+        // 1st-eat spec.
+        let popupFontSize: number | undefined;
+        let popupColor: string | undefined;
+        if (idx >= 2) {
+          popupFontSize = 8 + (idx - 1) * 2; // idx 2 → 9, idx 3 → 11
+          popupColor = "#ffd76a";
+        }
+        fb.popups.push({
+          x: g.x,
+          y: g.y,
+          value,
+          ageTicks: 0,
+          fontSize: popupFontSize,
+          color: popupColor,
+        });
+        // Sparkle burst: 16/20/24/32 — linear with a +4 KINK at idx 3
+        // (mirrors the hitstop kink — the 4th eat widens the moment
+        // visibly). Radial speed: 0.5 * 1.16^idx → the outward burst
+        // accelerates with the combo so the 4th eat reads as the
+        // widest crater. 20-tick visual lifetime via the renderer's
+        // alpha curve; engine culls at age >= 24.
+        const SPARKLE_COUNT = 16 + 4 * idx + (idx === 3 ? 4 : 0);
+        const SPARKLE_SPEED = 0.5 * Math.pow(1.16, idx);
         // Per-eat rotation offset so a 4-ghost combo doesn't stack
         // identical bursts on the same angles.
         const rot = (this.frightenedEatStreak - 1) * (Math.PI / 16);
@@ -1299,7 +1341,6 @@ export class Engine {
     // Score popups.
     if (state.feedback.popups.length > 0) {
       ctx.save();
-      ctx.font = "8px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       for (const p of state.feedback.popups) {
@@ -1310,8 +1351,21 @@ export class Engine {
         const lift = (1 - (1 - t) ** 3) * 8;
         const px = ox + p.x * TILE + TILE / 2;
         const py = oy + p.y * TILE + TILE / 2 - lift;
+        // Issue #321 — per-popup font + color overrides. The 4th
+        // frightened-ghost-eat (1600) swells the label to 11px gold
+        // with a 1.5px glow; default path stays 8px white so
+        // pellet/power-pellet/fruit popups are unchanged.
+        const fontSize = p.fontSize ?? 8;
+        const color = p.color ?? "#ffffff";
+        ctx.font = `${fontSize}px ui-monospace, monospace`;
+        ctx.fillStyle = color;
+        if (color === "#ffd76a" && fontSize >= 11) {
+          ctx.shadowColor = "#ffd76a";
+          ctx.shadowBlur = 1.5;
+        } else {
+          ctx.shadowBlur = 0;
+        }
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = "#ffffff";
         ctx.fillText(`+${p.value}`, px, py);
       }
       ctx.restore();
