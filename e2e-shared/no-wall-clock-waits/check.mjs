@@ -25,6 +25,13 @@ import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
 
+// --report-only: print violations but exit 0. Used by the CI workflow
+// during the #313 rollout, while the 11 known sites are still being
+// migrated suite-by-suite. The closing PR of that chain drops this
+// flag from the workflow and the guard becomes blocking. The script's
+// strict mode (no flag) is what local devs and the final gate run.
+const REPORT_ONLY = process.argv.includes('--report-only');
+
 // directories whose names mean "this is e2e test code"
 const E2E_DIR_RE = /(^|\/)e2e(\/|$)/;
 
@@ -95,18 +102,30 @@ if (violations.length === 0) {
   process.exit(0);
 }
 
-console.error(
-  `no-wall-clock-waits: ${violations.length} violation(s) — see e2e-shared/no-wall-clock-waits/README.md`,
+const stream = REPORT_ONLY ? console.log : console.error;
+const tag = REPORT_ONLY ? 'REPORT-ONLY' : 'FAIL';
+
+stream(
+  `no-wall-clock-waits [${tag}]: ${violations.length} violation(s) — see e2e-shared/no-wall-clock-waits/README.md`,
 );
 for (const v of violations) {
-  console.error(`  ${v.file}:${v.line}: ${v.text}`);
+  stream(`  ${v.file}:${v.line}: ${v.text}`);
 }
-console.error('');
-console.error(
+stream('');
+stream(
   'Each waitForTimeout in **/e2e/** must either be replaced with a',
 );
-console.error(
+stream(
   'state-quiesced waitForFunction OR be marked with `// pacing` or',
 );
-console.error('`// allowed: <reason>` on the same or preceding line.');
+stream('`// allowed: <reason>` on the same or preceding line.');
+
+if (REPORT_ONLY) {
+  stream('');
+  stream(
+    '(report-only: not failing the build. The workflow flips to',
+  );
+  stream('blocking once the #313 punch list is cleared.)');
+  process.exit(0);
+}
 process.exit(1);

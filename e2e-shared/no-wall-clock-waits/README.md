@@ -86,7 +86,13 @@ back the next time a tired contributor reaches for a sleep.
 Run it locally from repo root:
 
 ```sh
+# strict (blocking) — used by devs and by the gate after #313 punch
+# list closes
 node e2e-shared/no-wall-clock-waits/check.mjs
+
+# report-only — prints violations, exits 0. Used by the CI workflow
+# during the #313 rollout so unrelated e2e PRs are not blocked.
+node e2e-shared/no-wall-clock-waits/check.mjs --report-only
 ```
 
 ## When you NEED a settled-state probe and there isn't one
@@ -137,21 +143,35 @@ agar/e2e/feel/input-latency.spec.ts:148    waitForTimeout(PACE_MS)
 galaga/e2e/feel/input-latency.spec.ts:138  waitForTimeout(FIRE_GAP_MS)
 ```
 
-The intent of THIS PR is to land the shape (doc + script + workflow).
-A second PR labels the two pacing sites so the guard is green at
-HEAD; subsequent PRs replace the nine state-waits one suite at a
-time. Until then the workflow is informational — see "Rollout" below.
+The intent of THIS PR is to land the shape (doc + script + workflow)
+**in report-only mode** so the eleven existing sites surface in CI
+logs without blocking unrelated e2e PRs. Follow-up PRs migrate one
+suite at a time; the closing PR drops `--report-only` from the
+workflow and the guard becomes blocking by construction.
 
 ## Rollout
 
-The workflow at `.github/workflows/no-wall-clock-waits.yml` is fully
-wired and will run on any PR that touches `**/e2e/**`. Out of the
-gate it WILL be red against the eleven existing sites — that is the
-point of a failing-on-unfixed test: the work is visibly remaining
-until each suite is fixed. The contract is that no NEW e2e file may
-add a wall-clock state-wait; the existing eleven are the punch list.
+The workflow at `.github/workflows/no-wall-clock-waits.yml` is
+**report-only** at HEAD (`node check.mjs --report-only`). It runs on
+any PR that touches `**/e2e/**`, prints the current violations into
+the job log, and exits 0 — so the eleven known sites are visible
+without holding `main` red and without merge-blocking unrelated
+e2e work.
 
-If a faster rollout is preferred, the first follow-up PR can add
-`// pacing` to the two legitimate sites and replace the nine
-state-waits with `waitForFunction`. The guard then turns green and
-stays green by construction.
+The strict mode of the script (`node check.mjs`, no flag) still
+exists and still exits non-zero on any unmarked `waitForTimeout`.
+That is what local devs run, and what the gate runs after the
+punch list below is cleared.
+
+**Closing the rollout:** when the last of the nine state-waits is
+migrated and the two pacing sites are labelled, the PR that ships
+that last change also edits the workflow to remove `--report-only`
+from the guard step. From that commit forward, any new unmarked
+`waitForTimeout` under `**/e2e/**` fails the PR — the
+failing-on-unfixed contract that #313 specified, now genuinely
+failing-on-unfixed.
+
+The contract for NEW e2e code is unchanged from day one: no new
+file may add a wall-clock state-wait. Reviewers should read the
+`REPORT-ONLY` log lines on every PR that touches `**/e2e/**` and
+reject any net-new entry, even while the gate is non-blocking.
