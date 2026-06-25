@@ -2089,17 +2089,28 @@ export class Engine {
         if (rig.active !== want) setActiveClip(rig, want);
       }
       if (mesh) this.applyHitFlashEmissive(mesh, e.hitFlashTicks);
-      // Corpse alpha fade (#194). During the last CORPSE_FADE window of
-      // the dead beat, fade every standard material's opacity linearly
-      // from 1→0 so the body dissolves rather than snaps off when the
-      // cull fires. MeshStandardMaterial supports transparent+opacity;
-      // setting them late (only when fading) means the live render path
-      // for alive enemies is untouched.
+      // Corpse alpha fade (#194, eased per #356). During the last
+      // CORPSE_FADE window of the dead beat, fade every standard
+      // material's opacity from 1→0 so the body dissolves rather than
+      // snaps off when the cull fires. MeshStandardMaterial supports
+      // transparent+opacity; setting them late (only when fading) means
+      // the live render path for alive enemies is untouched.
+      //
+      // #356: the curve is easeInQuad — `alpha = 1 - k*k` where
+      // `k = (dt - CORPSE_FADE_START_TICK) / fadeSpan`. A LINEAR ramp
+      // ending at 0 reads as a snap-off at the tail (the eye perceives a
+      // constant rate-of-change all the way through, so the final frame
+      // from alpha≈0.08 → 0 pops). easeInQuad holds the body visible
+      // through most of the window, then accelerates into invisibility so
+      // the dissolve disappears INTO the floor. Endpoints are unchanged
+      // (k=0→1, k=1→0) so the cull still fires at CORPSE_HOLD_TICKS with
+      // the body fully faded — only the curve shape differs from linear.
       if (mesh && e.state === "dead") {
         const dt = e.deathTicks ?? 0;
         if (dt > CORPSE_FADE_START_TICK) {
           const fadeSpan = CORPSE_HOLD_TICKS - CORPSE_FADE_START_TICK;
-          const alpha = Math.max(0, 1 - (dt - CORPSE_FADE_START_TICK) / fadeSpan);
+          const k = (dt - CORPSE_FADE_START_TICK) / fadeSpan;
+          const alpha = Math.max(0, 1 - k * k);
           mesh.traverse((obj) => {
             const m = (obj as THREE.Mesh).material as
               | THREE.Material

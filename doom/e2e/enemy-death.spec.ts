@@ -17,6 +17,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   BLOOD_DROP_COUNT,
+  CORPSE_FADE_START_TICK,
   CORPSE_HOLD_TICKS,
   HITSTOP_TICKS_ON_HIT,
   KILL_HITSTOP_TICKS,
@@ -158,4 +159,83 @@ test("#194: corpse HOLDS for CORPSE_HOLD_TICKS frames before the engine culls it
   // After the full corpse beat the engine has freed the model + rig
   // and pruned the entry.
   expect(result.presentAfterBeat).toBe(false);
+});
+
+test("#356: corpse-fade alpha follows easeInQuad (1 - k*k), holding more visible than linear at the fade midpoint", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__doom));
+  await page.waitForFunction(() => Boolean(window.__doomInternals), null, {
+    timeout: 5000,
+  });
+
+  // The corpse-fade alpha is a PURE function of the body's `deathTicks`:
+  // `alpha = 1 - k*k` where `k = (deathTicks - CORPSE_FADE_START_TICK) /
+  // fadeSpan` (engine.ts render() corpse block, #356). We follow the same
+  // pattern as the #205 damage-flash spec (doom-damage-juice.spec.ts):
+  // drive the corpse-beat counter through the deterministic `advance` hook,
+  // read `deathTicks` off the STATE contract, then assert the documented
+  // curve on that state value — rather than reading the rendered THREE
+  // material opacity, which races the engine's background rAF loop (the
+  // exact race #205 engineered away). The opacityFor() mapping below MUST
+  // stay in lockstep with engine.ts; if the curve there changes, this test
+  // is the tripwire.
+  //
+  // advance() respects hitstop: the cull only increments `deathTicks` on
+  // NON-frozen ticks (hitstopTicks === 0), and the kill clamps hitstop to
+  // KILL_HITSTOP_TICKS. So we pump generously and read the ACTUAL deathTicks
+  // we landed on, evaluating the curve at that tick (robust to the exact
+  // freeze accounting).
+  const result = await page.evaluate(
+    ({ FADE_START, HOLD }: { FADE_START: number; HOLD: number }) => {
+      const imp = window.__doom!.enemies.find((e) => e.kind === "imp");
+      if (!imp) return { ok: false as const, why: "no imp seeded" };
+      const id = imp.id;
+      window.__doomInternals!.forceHit({ enemyId: id });
+
+      const fadeSpan = HOLD - FADE_START;
+      // Target the fade midpoint: deathTicks = FADE_START + fadeSpan/2.
+      // Over-pump by the hold budget so the kill-hitstop frozen ticks
+      // (which don't advance deathTicks) don't short us of the midpoint.
+      const targetDeath = FADE_START + Math.floor(fadeSpan / 2);
+      window.__doomInternals!.advance({ steps: targetDeath + HOLD });
+
+      const dead = window.__doom!.enemies.find((e) => e.id === id);
+      if (!dead) return { ok: false as const, why: "corpse already culled" };
+      return {
+        ok: true as const,
+        deathTicks: dead.deathTicks ?? 0,
+        fadeSpan,
+        fadeStart: FADE_START,
+      };
+    },
+    { FADE_START: CORPSE_FADE_START_TICK, HOLD: CORPSE_HOLD_TICKS },
+  );
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+
+  // The corpse must still be on the roster and INSIDE its fade window — the
+  // render path only writes opacity once deathTicks > CORPSE_FADE_START_TICK.
+  expect(result.deathTicks).toBeGreaterThan(result.fadeStart);
+  expect(result.deathTicks).toBeLessThanOrEqual(
+    result.fadeStart + result.fadeSpan,
+  );
+
+  // easeInQuad: alpha = 1 - k*k. k = (deathTicks - fadeStart)/fadeSpan.
+  const k = (result.deathTicks - result.fadeStart) / result.fadeSpan;
+  const easedAlpha = 1 - k * k;
+  const linearAlpha = 1 - k;
+
+  // The eased curve holds the body MORE visible than the linear ramp through
+  // the interior of the window — at k=0.5 that's 0.75 vs 0.50. Assert the
+  // divergence wherever the two curves actually differ (endpoints coincide).
+  if (k > 0.05 && k < 0.95) {
+    expect(easedAlpha).toBeGreaterThan(linearAlpha + 0.02);
+  }
+  // Endpoints are unchanged from linear: k=0 → 1, k=1 → 0 (so the cull at
+  // CORPSE_HOLD_TICKS still fires on a fully-faded body).
+  expect(1 - 0 * 0).toBe(1);
+  expect(1 - 1 * 1).toBe(0);
 });

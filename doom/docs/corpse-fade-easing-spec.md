@@ -1,7 +1,9 @@
 # Doom corpse-fade easing — spec (Refs #194)
 
-**Status:** SPEC ONLY — docs-only PR. File the issue, then implement in
-a follow-up ship-wake. Diego, 2026-06-23.
+**Status:** IMPLEMENTED — the easeInQuad curve below shipped in
+`engine.ts` (Closes #356). The "linear today" framing in the Problem
+section describes the PRE-#356 baseline this change replaced; kept for
+the rationale trail. Original spec: Diego, 2026-06-23.
 
 > **Heads-up to readers landing here from PR #331:** the PR title on
 > #331 ("fix: Doom pickup feel …") is stale relative to this diff. The
