@@ -329,5 +329,25 @@ export function startSolo(): void {
     self(): PlayerState | null {
       return self();
     },
+    // Deterministic test seam: drop `count` food pellets at an exact
+    // world position by overwriting the first `count` slots of the fixed
+    // food pool. The solo grow-by-food spec stacks several pellets
+    // directly on the player so a single `step()` provably eats them all
+    // — removing the old flaky "wander until you bump into a pellet"
+    // dependency on CI speed.
+    //
+    // Why several at once: the reducer applies a -1 mass DECAY every tick
+    // to any above-start cell (server/reducer.ts applyDecay), so eating a
+    // SINGLE pellet (+1) nets to zero that tick and the cell never grows.
+    // Eating N pellets in one tick nets +(N-1), a real, deterministic
+    // gain. (This mirrors why the line-146 eat-a-cell test grows: a whole
+    // cell adds >=8 at once, dwarfing the -1 decay.)
+    //
+    // Mutating in place keeps the pool length at FOOD_COUNT; the reducer
+    // respawns each eaten slot deterministically afterward.
+    seedFoodAt(x: number, y: number, count = 1): void {
+      const n = Math.min(count, state.food.length);
+      for (let i = 0; i < n; i++) state.food[i] = { x, y };
+    },
   };
 }

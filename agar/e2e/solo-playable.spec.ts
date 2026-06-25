@@ -79,68 +79,78 @@ test("solo: the player GROWS by eating food — mass rises above the start", asy
     { timeout: 5000 },
   );
 
-  // Steer toward the nearest food pellet each step so the player
-  // reliably crosses pellets and grows (a blind straight-line sweep can
-  // thread between the 40 scattered pellets). Stepping is synchronous;
-  // we wait on the resulting STATE (mass), never on the clock.
-  const grew = await page.waitForFunction(
-    () => {
-      type Pellet = { x: number; y: number };
+  // DETERMINISTIC by construction (was flaky on slow CI): the old test
+  // drove the player around HOPING it wandered onto one of the 40
+  // scattered pellets within a 20s window. On a slow headless CI box it
+  // could thread between them → mass never rose → timeout/fail (passed
+  // only on faster machines). Instead, mirror the line-146 eat-a-cell
+  // test: seed pellets at a KNOWN location the player provably reaches,
+  // then step a fixed number of ticks. No clock dependence, no
+  // reachability gamble.
+  //
+  // Mechanics (server/reducer.ts step()): with dir "none" the player
+  // doesn't move (nx=x, ny=y) and then eats every pellet within
+  // radiusForMass(mass)+FOOD_R of its center; each adds +1. BUT every
+  // tick also applies a -1 DECAY to any above-start cell (applyDecay),
+  // so eating a single pellet nets to zero. We therefore stack a BATCH
+  // of pellets on the player in one tick: eating BATCH of them gives
+  // +BATCH, minus the -1 decay = a net, deterministic +(BATCH-1) gain
+  // per step. Repeating this over several steps grows the cell well
+  // above the start. (This is the same reason the line-146 eat-a-cell
+  // test grows: a whole cell adds >=8 in one tick, dwarfing decay.)
+  const BATCH = 6; // pellets eaten per tick → net +(BATCH-1) after decay
+  const STEPS = 4; // repeat for unambiguous, monotonic growth
+  const result = await page.evaluate(
+    ({ batch, steps }) => {
       type Solo = {
         mass: () => number;
         setDir: (d: string) => void;
         step: (n: number) => void;
-        self: () => { x: number; y: number } | null;
+        self: () => { x: number; y: number; mass: number } | null;
+        seedFoodAt: (x: number, y: number, count?: number) => void;
       };
-      const w = window as unknown as {
-        __agarSolo: Solo;
-        __game: { canonical: { food: Pellet[] } };
-      };
-      const s = w.__agarSolo;
-      for (let i = 0; i < 80; i++) {
+      const s = (window as unknown as { __agarSolo: Solo }).__agarSolo;
+
+      // Park the player (no drift) so the seeded pellets stay in reach.
+      s.setDir("none");
+      const startMass = s.mass();
+
+      let grewEveryStep = true;
+      for (let i = 0; i < steps; i++) {
         const me = s.self();
         if (!me) {
           s.step(1);
           continue;
         }
-        const food = w.__game.canonical.food;
-        let best: Pellet | null = null;
-        let bestD2 = Infinity;
-        for (const f of food) {
-          const dx = f.x - me.x;
-          const dy = f.y - me.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < bestD2) {
-            bestD2 = d2;
-            best = f;
-          }
-        }
-        if (best) {
-          const dx = best.x - me.x;
-          const dy = best.y - me.y;
-          s.setDir(
-            Math.abs(dx) >= Math.abs(dy)
-              ? dx >= 0
-                ? "right"
-                : "left"
-              : dy >= 0
-                ? "down"
-                : "up",
-          );
-        }
+        const before = s.mass();
+        // Stack a batch of pellets exactly on the player.
+        s.seedFoodAt(me.x, me.y, batch);
         s.step(1);
+        const after = s.mass();
+        // Net of +batch eats and the -1 decay this tick.
+        if (after - before < batch - 1) grewEveryStep = false;
       }
-      return s.mass() > 16; // PLAYER_MASS_START
+
+      return { startMass, finalMass: s.mass(), grewEveryStep };
     },
-    null,
-    { timeout: 20_000, polling: 50 },
+    { batch: BATCH, steps: STEPS },
   );
 
-  expect(grew, "mass increased above PLAYER_MASS_START via food").toBeTruthy();
-  const finalMass = await page.evaluate(() =>
-    (window as unknown as { __agarSolo: { mass: () => number } }).__agarSolo.mass(),
-  );
-  expect(finalMass).toBeGreaterThan(PLAYER_MASS_START);
+  // The player GROWS by eating food: every step's eaten batch out-paced
+  // decay, and the final mass is well above the start.
+  expect(
+    result.grewEveryStep,
+    "each step's pellet batch grew mass by >=(BATCH-1) after decay",
+  ).toBe(true);
+  expect(
+    result.finalMass,
+    "mass increased above PLAYER_MASS_START via food",
+  ).toBeGreaterThan(PLAYER_MASS_START);
+  // STEPS batches of BATCH pellets each net at least (BATCH-1) per step.
+  expect(
+    result.finalMass - result.startMass,
+    "cumulative growth matches net food intake minus decay",
+  ).toBeGreaterThanOrEqual(STEPS * (BATCH - 1));
 });
 
 test("solo: the player EATS a smaller cell — mass jumps by more than a food pellet", async ({
