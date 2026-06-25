@@ -2099,7 +2099,16 @@ export class Engine {
         const dt = e.deathTicks ?? 0;
         if (dt > CORPSE_FADE_START_TICK) {
           const fadeSpan = CORPSE_HOLD_TICKS - CORPSE_FADE_START_TICK;
-          const alpha = Math.max(0, 1 - (dt - CORPSE_FADE_START_TICK) / fadeSpan);
+          // #356: easeInQuad (alpha = 1 - k²) instead of linear. Linear
+          // opacity 1→0 reads as a snap-off at the tail — constant
+          // rate-of-change looks like a sprite-deletion frame to the eye.
+          // easeInQuad holds the body visible through the mid-window
+          // (k=0.5 → α≈0.75 vs linear 0.50) and accelerates INTO 0,
+          // killing the pop. Endpoints (k=0 → α=1, k=1 → α=0) and
+          // duration (CORPSE_HOLD_TICKS - CORPSE_FADE_START_TICK = 12
+          // ticks) are unchanged.
+          const k = (dt - CORPSE_FADE_START_TICK) / fadeSpan;
+          const alpha = Math.max(0, 1 - k * k);
           mesh.traverse((obj) => {
             const m = (obj as THREE.Mesh).material as
               | THREE.Material
