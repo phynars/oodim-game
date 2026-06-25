@@ -495,6 +495,21 @@ test("chase-mode ghost collision drops a life and resets Pac", async ({
   expect(after.pac).toEqual({ x: 13, y: 23, dir: "none" });
   // Still playable — not 'lost' yet.
   expect(after.status).not.toBe("lost");
+
+  // Issue #288: every life starts on READY! (arcade canon). The respawn
+  // holds on the first-input gate (issue #8) and shows the overlay rather
+  // than dropping the player straight back into the chase.
+  expect(after.status).toBe("ready");
+
+  // First post-respawn input flips back to 'playing' — the existing
+  // issue #8 gate at the top of update() handles this; no new path.
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowUp");
+  await page.waitForFunction(
+    () => window.__pac?.status === "playing",
+    undefined,
+    { timeout: 3000 },
+  );
 });
 
 // Issue #9 — touch controls in a mobile viewport.
@@ -661,6 +676,23 @@ test("game-over overlay fires after lives reach zero and HUD reflects it", async
       targetLives,
       { timeout: 5000 },
     );
+    // Issue #288: a respawn that still has lives enters the READY hold —
+    // update() is frozen until a direction is pressed. Resume so the next
+    // forced collision actually lands. The final death (lives → 0) flips to
+    // 'lost' instead of 'ready', so it needs no resume.
+    if (targetLives > 0) {
+      await page.waitForFunction(
+        () => window.__pac?.status === "ready",
+        undefined,
+        { timeout: 3000 },
+      );
+      await page.keyboard.press("ArrowUp");
+      await page.waitForFunction(
+        () => window.__pac?.status === "playing",
+        undefined,
+        { timeout: 3000 },
+      );
+    }
   }
 
   // After the third death, status flips to 'lost' and the engine paints
