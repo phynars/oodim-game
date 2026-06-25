@@ -150,6 +150,55 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
     { timeout: 5000 },
   );
 
+  // --- RENDERER DETECTION (#237 GPU gate) --------------------------------
+  // Read the WebGL unmasked renderer string in-page. WHY: the absolute-ms
+  // feel bars (p99 ≤ 16.7ms, max ≤ 33.3ms, mean ≤ 8ms) are a wall-clock
+  // commitment that only a real GPU can meet. CI renders through SwiftShader
+  // (software raster) — it physically cannot hit those bars and its tail is
+  // governed by host CPU contention, not our code (this is exactly what
+  // forced the six prior red runs onto the renderer-stable ratio gate). So
+  // we detect the renderer and ONLY promote the absolute-ms bars to hard
+  // assertions on a real GPU; on software the ratio gate remains the sole
+  // hard gate and the bars stay diagnostic. The load-sensitivity ratio gate
+  // below is renderer-stable and runs on BOTH paths.
+  const rendererString = await page.evaluate(() => {
+    try {
+      const c = document.createElement("canvas");
+      const gl = (c.getContext("webgl2") ||
+        c.getContext("webgl")) as WebGLRenderingContext | null;
+      if (!gl) return "";
+      const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+      if (!dbg) return "";
+      return String(
+        gl.getParameter(
+          (dbg as { UNMASKED_RENDERER_WEBGL: number }).UNMASKED_RENDERER_WEBGL,
+        ) ?? "",
+      );
+    } catch {
+      return "";
+    }
+  });
+  // Empty string (no debug ext / no GL) is treated as SOFTWARE — fail safe to
+  // the renderer-stable gate rather than asserting wall-clock ms blind.
+  const isSoftwareRenderer =
+    rendererString === "" ||
+    /swiftshader|llvmpipe|software|mesa|microsoft basic render/i.test(
+      rendererString,
+    );
+  console.log(
+    `[renderer] "${rendererString}" → ${
+      isSoftwareRenderer ? "SOFTWARE (ratio gate only)" : "REAL GPU (absolute-ms gate ON)"
+    }`,
+  );
+  test
+    .info()
+    .annotations.push({
+      type: "renderer",
+      description: `${rendererString || "(unknown)"} — absolute-ms bars ${
+        isSoftwareRenderer ? "SKIPPED (software)" : "ASSERTED (real GPU)"
+      }`,
+    });
+
   // First input flipped ready→playing via canvas.click() above. Now drive
   // sustained yaw for ~2 s: hold ArrowRight, fire two non-lethal hits mid-
   // window to overlap the FX channels (sparks + blood + hit-flash +
@@ -280,6 +329,31 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   console.log(`[target] p99 ${dist.p99.toFixed(2)}ms (≤16.7 on hardware) — ${distStr} — ${worstStr}`);
   console.log(`[target] max ${dist.max.toFixed(2)}ms (≤33.3 on hardware)`);
   console.log(`[target] mean ${dist.mean.toFixed(2)}ms (≤8 on hardware)`);
+
+  // --- ABSOLUTE-MS GATE (hard ONLY on a real GPU — #237 GPU gate) --------
+  // On a real GPU these wall-clock bars are meetable and ARE the #237
+  // acceptance criteria, so promote them to hard assertions there. On
+  // SwiftShader/software (CI, and most likely this local run) they're
+  // unmeetable for reasons that have nothing to do with our render code —
+  // software raster inflates per-frame work several-fold and the tail is
+  // pure host CPU contention — so we keep them as the [target] diagnostics
+  // above and let the renderer-stable load-sensitivity gate below hold the
+  // line. Same percentile/mean math (`summarize`) used for the diagnostics
+  // is reused here — one source of truth for the numbers.
+  if (!isSoftwareRenderer) {
+    expect(
+      dist.p99,
+      `[gate] real-GPU absolute frame-time p99 ≤ 16.7 ms — ${distStr} — ${worstStr}`,
+    ).toBeLessThanOrEqual(16.7);
+    expect(
+      dist.max,
+      `[gate] real-GPU absolute frame-time max ≤ 33.3 ms — ${distStr} — ${worstStr}`,
+    ).toBeLessThanOrEqual(33.3);
+    expect(
+      dist.mean,
+      `[gate] real-GPU absolute frame-time mean ≤ 8 ms (after warmup) — ${distStr}`,
+    ).toBeLessThanOrEqual(8);
+  }
 
   // Distribution shape (soft diagnostics — see header). The tail-vs-body
   // ratios are still printed into the failure surface so a regression is
