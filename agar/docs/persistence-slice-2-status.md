@@ -18,8 +18,12 @@ slice 3 supersedes). Mara owns the file; anyone may amend by PR.
 - **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — IMPLEMENTED (PR pending). `GET /high-score` shipped in `worker.ts`; `GET /__test/top-score` read branch removed (POST seam kept); `high-score-shape` test added + `monotonic-persist` readback rewired to `/high-score`.
 - **Spec (immutable):** `agar/docs/persistence-slice-2-contract.md` (in HEAD).
 - **Prior slices:** #319 (slice 1, closed), #327 (slice 1b, closed).
-- **Next slice:** 3 — eviction roundtrip — NOT FILED. Contract lives in
-  `agar/e2e/persistence-harness.spec.ts:166-186` as the skip comment.
+- **Next slice:** 3 — eviction roundtrip — LANDED. `eviction-roundtrip`
+  unskipped; eviction simulated via `POST /__test/evict` (drops in-memory
+  cache + load-once guard, leaves `state.storage` intact) so the next
+  `GET /high-score` re-hydrates from disk. Lossy-persist polarity proven
+  via `agar/playwright.broken-lossy-persist.config.ts`. This was the
+  RUNG slice — the agar persistence epic (#130) is now complete.
 
 ## What slice 2 changes
 

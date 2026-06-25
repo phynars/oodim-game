@@ -211,33 +211,142 @@ test.describe("agar persistence harness contract (#307)", () => {
     }
   });
 
-  test("eviction-roundtrip — post-eviction read equals pre-eviction canonical", async () => {
-    test.skip(
-      true,
-      "unskipped by agar persistence slice 3 (e2e proves topScore survives DO eviction)",
-    );
+  test("eviction-roundtrip — post-eviction read equals pre-eviction canonical", async ({
+    browser,
+  }) => {
+    // Slice 3 — THE RUNG (issue #347). Unskipped per the unskip
+    // ledger: "unskipped by agar persistence slice 3 (e2e proves
+    // topScore survives DO eviction)".
+    //
+    // This test is INTENTIONALLY DISTINCT from a happy-path
+    // "some value > 0 after eviction" spec. It asserts the
+    // post-eviction read EQUALS the pre-eviction in-memory canonical
+    // topScore (max bestMass across the roster — the reducer carries
+    // no literal `player.score`; topScore is the MAX bestMass, see
+    // worker.ts currentTopScore()). A lossy storage layer can return
+    // a stale-but-positive value and pass a weaker assertion; only
+    // the equality form catches it.
+    //
+    // Eviction mechanism: `POST /__test/evict` drops the DO's
+    // in-memory persistence cache + resets the load-once guard, so
+    // the next read re-hydrates from `state.storage` through the same
+    // `loadTopScoreOnce()` path a freshly-evicted DO uses. The
+    // epic-plan "spike" (force real miniflare eviction) has no stable
+    // public API; this hook exercises the genuine reload-from-disk
+    // code path without faking storage (the evict hook deliberately
+    // never touches state.storage). See worker.ts /__test/evict.
+    // A unique per-run seed. `wrangler dev` persists DO storage to a
+    // local sqlite under `.wrangler/state` BETWEEN runs, so a fixed
+    // seed would let a prior run's persisted topScore leak in — that
+    // stale-but-positive value is exactly the failure the contract
+    // warns about, and it would also un-RED the lossy polarity (the
+    // broken run would read a value the green run committed earlier).
+    // A fresh seed per run guarantees storage starts empty for this
+    // DO, the same discipline `high-score-shape` uses with its
+    // `neverplayed-${random}` seed. The randomness lives only in the
+    // seed string → DO id; the in-DO behavior is fully deterministic.
+    const SEED = `evict-${Math.random().toString(36).slice(2)}`;
+    const ROOM_URL = `/agar/?seed=${SEED}`;
+    const EVICT_URL = `${WORKER_BASE}/__test/evict?seed=${SEED}`;
+    const HIGH_SCORE_URL = `${WORKER_BASE}/high-score?seed=${SEED}`;
 
-    // Contract for the slice-3 implementer:
-    //
-    //   This test is INTENTIONALLY DISTINCT from slice-3's own
-    //   `persistence-survives-eviction.spec.ts`. That spec asserts
-    //   "some persisted value > 0 after eviction". This spec asserts
-    //   "the persisted value EQUALS the pre-eviction in-memory
-    //   canonical.player.score". The gap matters: a lossy storage
-    //   layer can return a stale-but-positive value and pass the
-    //   weaker assertion. Catching that requires the equality form.
-    //
-    //   Shape:
-    //     1. Connect to /ws?seed=S, drive score up. Capture
-    //        window.__game.canonical.player.score as `expected`.
-    //     2. Trigger DO eviction (mechanism owned by slice-3 — likely
-    //        via a long idle window or a test-only force-evict hook).
-    //     3. Reconnect / re-fetch GET /high-score?seed=S.
-    //     4. Assert returned topScore === expected.
-    //
-    // Polarity: with AGAR_DO_BREAK_MODE=lossy-persist, this test
-    // MUST go RED. Slice-1 wires that mode to drop the put silently
-    // (no error to the caller, but the storage layer never commits).
-    expect(true).toBe(true);
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+
+    try {
+      // --- Phase 1: open a real WS session and drive ticks so the
+      // canonical persistTopScore() path commits the current top
+      // (max bestMass) to state.storage. bestMass floors at
+      // PLAYER_MASS_START (>0), so a connected roster always yields a
+      // positive topScore — no dependency on pellet-eat geometry.
+      await page.goto(ROOM_URL);
+      await expect(page.getByTestId("agar-net-status")).toHaveAttribute(
+        "data-connected",
+        "true",
+      );
+      await expect
+        .poll(
+          async () =>
+            Number(
+              await page
+                .getByTestId("agar-net-status")
+                .getAttribute("data-tick"),
+            ),
+          { message: "first snapshot from DO" },
+        )
+        .toBeGreaterThan(0);
+
+      // Tick forward so persistTopScore runs the canonical write
+      // several times.
+      await page.evaluate(() => {
+        const w = window as unknown as {
+          __game: {
+            tick: number | (() => number);
+            tickTo: (n: number) => Promise<void>;
+          };
+        };
+        const tf = w.__game.tick;
+        const cur = typeof tf === "function" ? tf() : tf;
+        return w.__game.tickTo(cur + 20);
+      });
+
+      // Capture the pre-eviction in-memory canonical topScore: the
+      // MAX bestMass across the roster (mirrors worker.ts
+      // currentTopScore()). This is the value the canonical path
+      // persisted — and the value the post-eviction read must equal.
+      const expected = await page.evaluate(() => {
+        const w = window as unknown as {
+          __game: {
+            canonical: {
+              players: { bestMass: number }[];
+            } | null;
+          };
+        };
+        const c = w.__game.canonical;
+        if (c === null) return 0;
+        let max = 0;
+        for (const p of c.players) {
+          if (p.bestMass > max) max = p.bestMass;
+        }
+        return max;
+      });
+      expect(
+        expected,
+        "pre-eviction canonical topScore (max bestMass) is positive",
+      ).toBeGreaterThan(0);
+
+      // --- Phase 2: simulate DO eviction. POST /__test/evict drops
+      // the in-memory cachedTopScore + resets the load-once guard.
+      // After this, the DO has no in-memory memory of the high score;
+      // the only place it survives is state.storage.
+      const evictRes = await page.request.post(EVICT_URL);
+      expect(
+        evictRes.ok(),
+        `POST ${EVICT_URL} → ${evictRes.status()}`,
+      ).toBe(true);
+
+      // --- Phase 3: read the persisted topScore back through the
+      // production /high-score endpoint. It awaits loadTopScoreOnce()
+      // then reads state.storage directly — so a value here proves it
+      // came from DISK, not the (now-wiped) in-memory cache.
+      const res = await page.request.get(HIGH_SCORE_URL);
+      expect(res.ok(), `GET ${HIGH_SCORE_URL} → ${res.status()}`).toBe(true);
+      const body = (await res.json()) as { topScore: number };
+
+      // --- Phase 4: equality assertion. The post-eviction read must
+      // EQUAL the pre-eviction canonical, proving a lossless reload
+      // from storage. With AGAR_DO_BREAK_MODE=lossy-persist the
+      // canonical put never commits, so storage stays 0 while
+      // `expected` is positive — this assertion goes RED. That is the
+      // contract's polarity (lossy → stale/zero → mismatch).
+      expect(
+        body.topScore,
+        `post-eviction topScore reloaded from storage equals pre-eviction ` +
+          `canonical (=${expected}). With AGAR_DO_BREAK_MODE=lossy-persist ` +
+          `this assertion MUST go RED (storage never committed → 0 !== ${expected}).`,
+      ).toBe(expected);
+    } finally {
+      await ctx.close();
+    }
   });
 });

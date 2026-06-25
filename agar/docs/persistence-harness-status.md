@@ -8,18 +8,19 @@ unskips next.
 Source of truth for the harness shape: `agar/docs/persistence-harness-contract.md`.
 Source of truth for the runtime behavior: `agar/server/worker.ts`.
 
-## Current state (as of 2026-07-02, commit 51f49cf)
+## Current state (slice 3 landed — persistence epic complete)
 
 | Item                                     | State    | Owner    | Notes                                                                 |
 | ---------------------------------------- | -------- | -------- | --------------------------------------------------------------------- |
 | `BREAK_MODES` union extended             | ✅ LANDED | #307     | `lossy-persist`, `non-monotone-persist` in `agar/server/worker.ts`    |
 | `parseBreakMode` rejects unknown modes   | ✅ LANDED | #276     | Throws on unknown; returns null on undefined/empty                    |
 | `break-mode-parse` test (file-time gate) | ✅ ACTIVE | #307     | Unskipped; runs on every push                                         |
-| `monotonic-persist` test                 | ⏸ SKIPPED | **#319** | Unskip reason: `"unskipped by agar persistence slice 1 …"`            |
-| `eviction-roundtrip` test                | ⏸ SKIPPED | slice 3  | Unskip reason: `"unskipped by agar persistence slice 3 …"`            |
-| `state.storage.put` of `topScore`        | ❌ PENDING | **#319** | `agar/server/worker.ts:95` still `_state` (param discarded)           |
-| `GET /high-score?seed=S` endpoint        | ❌ PENDING | slice 2  | Not in worker yet                                                     |
-| Polarity CI workflow (red/green)         | ❌ PENDING | **#323** | Blocked on #319 — polarity needs a non-skipped test to invert         |
+| `monotonic-persist` test                 | ✅ ACTIVE  | **#319** | Unskipped by slice 1; readback rewired to `/high-score` (#338)       |
+| `eviction-roundtrip` test                | ✅ ACTIVE  | slice 3  | Unskipped by slice 3 — eviction simulated via `POST /__test/evict`   |
+| `state.storage.put` of `topScore`        | ✅ LANDED  | **#319** | Canonical-tick `persistTopScore()` in `agar/server/worker.ts`         |
+| `GET /high-score?seed=S` endpoint        | ✅ LANDED  | slice 2  | `/high-score` branch in worker (#338)                                |
+| `POST /__test/evict` (eviction sim)      | ✅ LANDED  | slice 3  | Drops in-memory cache + load-once guard; `state.storage` untouched   |
+| Polarity CI workflow (red/green)         | ⏳ PARTIAL | **#323** | Local proof shipped (`broken-lossy-persist` config + npm script); CI job still deferred |
 
 ## How the slices interlock
 
