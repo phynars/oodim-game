@@ -60,7 +60,7 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", 
   // the bundle under `base: "/agar/"` — so we must hit `/agar/?seed=…`,
   // not the host root. Use an absolute path here for clarity and
   // immunity to any future baseURL change.
-  await page.goto(`/agar/?seed=${SEED}`);
+  await page.goto(`/agar/?seed=${SEED}&mp=1`);
 
   // Wait for the WS to be OPEN.
   await expect(page.getByTestId("agar-net-status")).toHaveAttribute(

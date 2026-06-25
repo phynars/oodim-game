@@ -15,11 +15,14 @@ for (const game of ["pacman", "galaga", "doom"]) {
   });
 }
 
-// agar: server-authoritative multiplayer. The decisive check is that the world
-// SIM ADVANCES — which only happens if the WebSocket to the EchoRoom DO actually
-// upgrades. If /ws 404s (the incident), no snapshot arrives, tick stays 0, and
-// this fails with a clear message instead of a silently-dead "playable" game.
-test("agar: multiplayer is live — WS connects, world ticks, food + bots render", async ({ page }) => {
+// agar: the decisive check is that the world SIM ADVANCES and renders a
+// populated world (player + food + bots). The default /agar/ page now runs
+// the reducer LOCALLY (single-player) — no server required — which is what
+// makes the live game playable and ticking. (Previously the only client was
+// the WS multiplayer renderer fed by a DO that is never deployed, so /ws 404'd,
+// no snapshot arrived, tick stayed 0, and the "playable" game was silently
+// dead. The solo default fixes both the gameplay and this alarm.)
+test("agar: world is live — sim ticks locally, player + food + bots render", async ({ page }) => {
   await page.goto("/agar/");
   await page.waitForFunction(() => !!window.__game, null, { timeout: 30_000 });
   await page.waitForFunction(

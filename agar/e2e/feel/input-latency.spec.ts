@@ -119,7 +119,7 @@ async function driveTapeAndCollect(
   page: import("@playwright/test").Page,
   tape: readonly InputDir[],
 ): Promise<readonly LatencySample[]> {
-  await page.goto(`/agar/?seed=${SEED}`);
+  await page.goto(`/agar/?seed=${SEED}&mp=1`);
 
   await expect(page.getByTestId("agar-net-status")).toHaveAttribute(
     "data-connected",

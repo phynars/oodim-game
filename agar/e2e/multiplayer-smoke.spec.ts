@@ -38,7 +38,7 @@ let SEED = "42";
 // bundle under `base: "/agar/"` — so we must hit `/agar/?seed=…`, not
 // the host root (the root 404s and `__game` never installs). Mirrors
 // the same trap called out in `agar/e2e/tick.spec.ts`.
-let ROOM_URL = `/agar/?seed=${SEED}`;
+let ROOM_URL = `/agar/?seed=${SEED}&mp=1`;
 
 // Wait until the page has:
 //   1. completed the WS handshake (data-connected="true")
@@ -71,7 +71,7 @@ async function waitForFirstSnapshot(page: Page): Promise<void> {
 test.describe("agar · multiplayer smoke (test-surface binding)", () => {
   test.beforeEach(() => {
     SEED = String(Math.floor(Math.random() * 1_000_000) + 1);
-    ROOM_URL = `/agar/?seed=${SEED}`;
+    ROOM_URL = `/agar/?seed=${SEED}&mp=1`;
   });
   test("assertClientSurface passes on a fresh page load", async ({ page }) => {
     await page.goto(ROOM_URL);
