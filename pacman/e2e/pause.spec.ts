@@ -96,6 +96,11 @@ test("P toggles pause: status flips, world holds, resume returns to the same tic
   // Hold for enough real time that, were the engine still ticking,
   // ghosts would have moved at least one tile (>= 10 ticks @ 60Hz at
   // chase speed). 500ms ≈ 30 frames — generous on any CI host.
+  // This is the rare case where the wall-clock IS the test — we let
+  // real frames pass and then assert the engine did NOT tick. There is
+  // no "settled state" to quiesce on (the assertion is that tick/
+  // positions stay UNCHANGED), so a waitForFunction would be circular.
+  // allowed: negative-assertion dwell — must pass real time to prove the engine froze.
   await page.waitForTimeout(500);
 
   const duringPause = await page.evaluate(() => {
@@ -180,6 +185,12 @@ test("P from 'ready' is a no-op (the READY! overlay owns the slot)", async ({
 
   await page.keyboard.press("KeyP");
   // Hold briefly so the engine has rAF tick(s) to observe the press.
+  // We assert P from 'ready' is a NO-OP — the state must stay 'ready'.
+  // There's no positive state to quiesce on (a waitForFunction for
+  // "still ready" would resolve instantly and prove nothing); we must
+  // let real frames pass so the engine has had the chance to (wrongly)
+  // flip, then assert it didn't.
+  // allowed: negative-assertion dwell — let frames pass to prove P is a no-op from 'ready'.
   await page.waitForTimeout(200);
 
   const after = await page.evaluate(() => window.__pac!.status);

@@ -86,12 +86,12 @@ back the next time a tired contributor reaches for a sleep.
 Run it locally from repo root:
 
 ```sh
-# strict (blocking) — used by devs and by the gate after #313 punch
-# list closes
+# strict (blocking) — what devs run and what the CI gate runs.
 node e2e-shared/no-wall-clock-waits/check.mjs
 
-# report-only — prints violations, exits 0. Used by the CI workflow
-# during the #313 rollout so unrelated e2e PRs are not blocked.
+# report-only — prints violations, exits 0. Retained for ad-hoc
+# surveys; the CI workflow no longer uses it (the #313 rollout is
+# closed and the gate is blocking).
 node e2e-shared/no-wall-clock-waits/check.mjs --report-only
 ```
 
@@ -117,61 +117,48 @@ node e2e-shared/no-wall-clock-waits/check.mjs --report-only
 
 Same shape, different surfaces. Adopt it, don't sleep.
 
-## Open call sites this guard catches today (as of #313)
+## Rollout — CLOSED (#313)
 
-These are real `waitForTimeout` state-waits flagged for replacement;
-follow-up PRs will close them one suite at a time and the guard
-prevents regression in the meantime:
+The migration is complete and the gate is **blocking**. The original
+state-waits were converted to state-quiesced waits and the legitimate
+exceptions labelled:
 
-```
-agar/e2e/smoke.spec.ts:47                       waitForTimeout(1000)
-agar/e2e/tick.spec.ts:101                       waitForTimeout(60)
-doom/e2e/feel/mouselook-frametime.spec.ts:163   waitForTimeout(600)
-doom/e2e/feel/mouselook-frametime.spec.ts:173   waitForTimeout(600)
-galaga/e2e/galaga.spec.ts:91                    waitForTimeout(2000)
-galaga/e2e/galaga.spec.ts:107                   waitForTimeout(2000)
-pacman/e2e/feel/dir-commit-latency.spec.ts:116  waitForTimeout(16)
-pacman/e2e/feel/dir-commit-latency.spec.ts:135  waitForTimeout(220)
-pacman/e2e/feel/frightened-mode-snap.spec.ts:106 waitForTimeout(500)
-```
-
-Two pacing sites (legitimately time-based, simulating human cadence)
-already need the `// pacing` marker added so this guard accepts them:
+Converted to `waitForFunction` / `expect.poll`:
 
 ```
-agar/e2e/feel/input-latency.spec.ts:148    waitForTimeout(PACE_MS)
-galaga/e2e/feel/input-latency.spec.ts:138  waitForTimeout(FIRE_GAP_MS)
+agar/e2e/smoke.spec.ts                          → __game settled-boot probe (canonical snapshot)
+doom/e2e/feel/mouselook-frametime.spec.ts:163   → frameProbe().samples.length ≥ 20
+doom/e2e/feel/mouselook-frametime.spec.ts:173   → frameProbe().samples.length ≥ firstHit+20
+galaga/e2e/galaga.spec.ts (left wall)           → __galaga.player.x <= 0 (clamp reached)
+galaga/e2e/galaga.spec.ts (right wall)          → __galaga.player.x >= field.width (clamp reached)
+pacman/e2e/feel/dir-commit-latency.spec.ts      → waitForFunction on dirCommitProbe() fresh commit
+pacman/e2e/feel/frightened-mode-snap.spec.ts    → __pac.tick advanced ≥ 30 ticks
 ```
 
-The intent of THIS PR is to land the shape (doc + script + workflow)
-**in report-only mode** so the eleven existing sites surface in CI
-logs without blocking unrelated e2e PRs. Follow-up PRs migrate one
-suite at a time; the closing PR drops `--report-only` from the
-workflow and the guard becomes blocking by construction.
+Labelled `// pacing` (human cadence between actions):
 
-## Rollout
+```
+agar/e2e/feel/input-latency.spec.ts        waitForTimeout(PACE_MS)
+agar/e2e/tick.spec.ts                      waitForTimeout(60)
+galaga/e2e/feel/input-latency.spec.ts      waitForTimeout(FIRE_GAP_MS)
+pacman/e2e/feel/dir-commit-latency.spec.ts waitForTimeout(220)
+```
 
-The workflow at `.github/workflows/no-wall-clock-waits.yml` is
-**report-only** at HEAD (`node check.mjs --report-only`). It runs on
-any PR that touches `**/e2e/**`, prints the current violations into
-the job log, and exits 0 — so the eleven known sites are visible
-without holding `main` red and without merge-blocking unrelated
-e2e work.
+Labelled `// allowed:` (negative-assertion dwell — the wall-clock IS
+the test; we let real time pass and assert state did NOT change):
 
-The strict mode of the script (`node check.mjs`, no flag) still
-exists and still exits non-zero on any unmarked `waitForTimeout`.
-That is what local devs run, and what the gate runs after the
-punch list below is cleared.
+```
+pacman/e2e/pause.spec.ts (engine-froze proof)
+pacman/e2e/pause.spec.ts (P-is-no-op-from-ready proof)
+```
 
-**Closing the rollout:** when the last of the nine state-waits is
-migrated and the two pacing sites are labelled, the PR that ships
-that last change also edits the workflow to remove `--report-only`
-from the guard step. From that commit forward, any new unmarked
-`waitForTimeout` under `**/e2e/**` fails the PR — the
-failing-on-unfixed contract that #313 specified, now genuinely
+`.github/workflows/no-wall-clock-waits.yml` now runs
+`node check.mjs` (strict, no `--report-only`). From this commit
+forward, any new unmarked `waitForTimeout` under `**/e2e/**` fails the
+PR — the failing-on-unfixed contract #313 specified, now genuinely
 failing-on-unfixed.
 
-The contract for NEW e2e code is unchanged from day one: no new
-file may add a wall-clock state-wait. Reviewers should read the
-`REPORT-ONLY` log lines on every PR that touches `**/e2e/**` and
-reject any net-new entry, even while the gate is non-blocking.
+> CRLF note: the guard strips a trailing `\r` before removing line
+> comments. Without that, on CRLF-checked-out trees a pure-comment
+> line that merely *mentions* `waitForTimeout(...)` (the ban text,
+> this doc) read as a real call and produced false positives.

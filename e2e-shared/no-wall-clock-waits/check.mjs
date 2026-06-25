@@ -72,7 +72,13 @@ function isTestLine(line) {
   // strip line comments before deciding whether the call is real.
   // good enough for our test files; no template-string edge cases
   // actually use waitForTimeout in this repo.
-  const codeOnly = line.replace(/\/\/.*$/, '');
+  //
+  // NOTE: strip a trailing CR first. On CRLF-checked-out trees the line
+  // still ends with `\r`, and JS `.` does NOT match `\r`, so `//.*$`
+  // fails to anchor at `$` and the comment is left intact — which made
+  // pure-comment lines that merely MENTION `waitForTimeout(...)` (the
+  // ban text, this doc) read as real calls. Normalize CRLF → LF first.
+  const codeOnly = line.replace(/\r$/, '').replace(/\/\/.*$/, '');
   return CALL_RE.test(codeOnly);
 }
 

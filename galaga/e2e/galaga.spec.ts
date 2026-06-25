@@ -87,8 +87,14 @@ test("player ship moves left then right under keyboard input, clamped to the fie
     start.x,
     { timeout: 5000 },
   );
-  // Keep pressing past the wall so the clamp is exercised.
-  await page.waitForTimeout(2000);
+  // Keep pressing until the ship is pinned to the left wall so the
+  // clamp is genuinely exercised. The engine clamps `player.x` to 0
+  // at the left edge (engine.ts: `x < 0 ? 0 : ...`), so x === 0 is the
+  // observable "reached and held by the clamp" state — wait on that
+  // instead of guessing a wall-clock duration.
+  await page.waitForFunction(() => (window.__galaga?.player.x ?? 1) <= 0, null, {
+    timeout: 5000,
+  });
   await page.keyboard.up("ArrowLeft");
 
   const afterLeft = await page.evaluate(() => window.__galaga!.player);
@@ -104,7 +110,15 @@ test("player ship moves left then right under keyboard input, clamped to the fie
     afterLeft.x,
     { timeout: 5000 },
   );
-  await page.waitForTimeout(2000);
+  // Drive until the ship is pinned to the RIGHT wall. The engine clamps
+  // `player.x` to `field.width` at the right edge (engine.ts:
+  // `... : x > w ? w : x`), so x === field.width is the observable
+  // clamp-reached state.
+  await page.waitForFunction(
+    (w) => (window.__galaga?.player.x ?? -1) >= w,
+    start.width,
+    { timeout: 5000 },
+  );
   await page.keyboard.up("ArrowRight");
 
   const afterRight = await page.evaluate(() => window.__galaga!.player);

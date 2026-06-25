@@ -97,7 +97,9 @@ test("agar slice 3 — canonical DO state equals pureReplay(seed, appliedLog)", 
     // to read this intent before we overwrite it with the next. We
     // deliberately don't try to sync to tick boundaries — the merge
     // gate's correctness comes from replaying the SERVER's applied-log,
-    // not from one-input-per-tick alignment.
+    // not from one-input-per-tick alignment. State-quiescence is
+    // asserted below via expect.poll on appliedLog.length.
+    // pacing — human-cadence gap between sendInput calls, not a state wait.
     await page.waitForTimeout(60);
   }
 
