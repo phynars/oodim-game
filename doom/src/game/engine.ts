@@ -21,8 +21,8 @@ import {
   BLOOD_DROP_LIFETIME,
   BLOOD_DROP_SIZE,
   BLOOD_DROP_SPEED,
-  CORPSE_FADE_START_TICK,
   CORPSE_HOLD_TICKS,
+  corpseFadeAlpha,
   DAMAGE_HITSTOP_TICKS,
   DAMAGE_WOBBLE_AMPLITUDE_FACTOR,
   DAMAGE_WOBBLE_PHASE_RATE,
@@ -943,6 +943,17 @@ export class Engine {
       restart: () => {
         this.restart();
         this.publish();
+      },
+      corpseAlpha: (opts) => {
+        const dead =
+          opts?.enemyId === undefined
+            ? this.state.enemies.find((e) => e.state === "dead")
+            : this.state.enemies.find(
+                (e) => e.id === opts.enemyId && e.state === "dead",
+              );
+        if (!dead) return null;
+        // Same source of truth the render path reads — see corpseFadeAlpha.
+        return corpseFadeAlpha(dead.deathTicks ?? 0);
       },
     };
   }
@@ -2089,17 +2100,24 @@ export class Engine {
         if (rig.active !== want) setActiveClip(rig, want);
       }
       if (mesh) this.applyHitFlashEmissive(mesh, e.hitFlashTicks);
-      // Corpse alpha fade (#194). During the last CORPSE_FADE window of
-      // the dead beat, fade every standard material's opacity linearly
-      // from 1→0 so the body dissolves rather than snaps off when the
-      // cull fires. MeshStandardMaterial supports transparent+opacity;
-      // setting them late (only when fading) means the live render path
-      // for alive enemies is untouched.
+      // Corpse alpha fade (#194, eased #356). During the last CORPSE_FADE
+      // window of the dead beat, fade every standard material's opacity
+      // from 1→0 so the body dissolves rather than snaps off when the cull
+      // fires. The curve is easeInQuad (alpha = 1 - k²): the body holds
+      // longer mid-window then accelerates into invisibility, so the final
+      // transition dissolves INTO the floor instead of popping off it — a
+      // linear ramp reads as a sprite-deletion frame at the tail. Endpoints
+      // are identical to linear (k=0→1, k=1→0); timing is unchanged.
+      // MeshStandardMaterial supports transparent+opacity; setting them late
+      // (only when fading) means the live render path for alive enemies is
+      // untouched.
       if (mesh && e.state === "dead") {
         const dt = e.deathTicks ?? 0;
-        if (dt > CORPSE_FADE_START_TICK) {
-          const fadeSpan = CORPSE_HOLD_TICKS - CORPSE_FADE_START_TICK;
-          const alpha = Math.max(0, 1 - (dt - CORPSE_FADE_START_TICK) / fadeSpan);
+        const alpha = corpseFadeAlpha(dt);
+        // Only touch materials once the fade window has opened (alpha < 1).
+        // Before that the corpse holds full opacity and the live render path
+        // for the dead pose stays exactly as the model builder left it.
+        if (alpha < 1) {
           mesh.traverse((obj) => {
             const m = (obj as THREE.Mesh).material as
               | THREE.Material
