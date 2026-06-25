@@ -676,6 +676,23 @@ test("game-over overlay fires after lives reach zero and HUD reflects it", async
       targetLives,
       { timeout: 5000 },
     );
+    // Issue #288: a respawn that still has lives enters the READY hold —
+    // update() is frozen until a direction is pressed. Resume so the next
+    // forced collision actually lands. The final death (lives → 0) flips to
+    // 'lost' instead of 'ready', so it needs no resume.
+    if (targetLives > 0) {
+      await page.waitForFunction(
+        () => window.__pac?.status === "ready",
+        undefined,
+        { timeout: 3000 },
+      );
+      await page.keyboard.press("ArrowUp");
+      await page.waitForFunction(
+        () => window.__pac?.status === "playing",
+        undefined,
+        { timeout: 3000 },
+      );
+    }
   }
 
   // After the third death, status flips to 'lost' and the engine paints
