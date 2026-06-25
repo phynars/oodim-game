@@ -498,10 +498,20 @@ test("clearing the formation advances the stage, respawns a fresh non-empty form
   const stage2 = await page.evaluate(() => window.__galaga!.enemies);
   expect(stage2.length).toBeGreaterThan(0);
 
-  // And score keeps growing into stage 2 — kill one and confirm. Target a
-  // NON-boss so a single forceHit scores (bosses take two hits, #68); fall
-  // back to enemies[0] if (somehow) only bosses are on stage.
+  // And score keeps growing into stage 2 — kill one and confirm. We need a
+  // NON-boss target so a single forceHit scores (bosses take two hits, #68).
+  // The stage-clear bonus tally (#273) holds the field through a 6-frame
+  // hitstop + 24-tick count-up before the next formation enters, and the
+  // FIRST enemy to emit is the lead boss in its `entering` arc — so the
+  // instant `enemies.length > 0` becomes true the only target may be a boss.
+  // Wait for a non-boss to actually be on stage before killing (mirrors how
+  // #288 waited THROUGH a between-state transient rather than racing it).
   const scoreBeforeStage2Kill = afterClear.score;
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies ?? []).some((e) => e.kind !== "boss"),
+    null,
+    { timeout: 15000 },
+  );
   await page.evaluate(() => {
     const enemies = window.__galaga?.enemies ?? [];
     const target = enemies.find((e) => e.kind !== "boss") ?? enemies[0];
