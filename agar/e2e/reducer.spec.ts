@@ -105,14 +105,19 @@ test("agar reducer: growth cap + mass decay [#297]", () => {
     }
   }
 
-  // DECAY — an above-start player that eats nothing strictly loses mass every
-  // tick, flooring at PLAYER_MASS_START. Pre-#297 the decay was INERT:
-  // `floor(m * DECAY_NUMER / DECAY_DENOM)` === 0 for every reachable mass
-  // (m < 2048, and mass is capped at 1024), so an idle cell never shrank.
-  // Polarity: revert applyDecay's floor-at-1 and this strictly-decreasing
+  // DECAY — decay is PROPORTIONAL (floor(m/256)/tick), so it only fires for
+  // LARGE cells; small cells don't decay (that's what lets the early game
+  // grow from +1 food pellets). We seed a LARGE idle player (600 →
+  // floor(600/256)=2/tick) that eats nothing, and assert it strictly loses
+  // mass every tick, flooring at PLAYER_MASS_START.
+  // History: DENOM=2048 made decay INERT (floor(m/2048)=0 for every reachable
+  // mass ≤ MAX_MASS=1024); the over-correction (flat loss-floor-of-1 for any
+  // above-start cell) cancelled +1 food at every mass so the player could
+  // never grow. Proportional decay fixes both.
+  // Polarity: neuter applyDecay (make loss 0) and this strictly-decreasing
   // assertion fires on tick 1.
   {
-    const START = 100;
+    const START = 600;
     const player: PlayerState = {
       id: PLAYER_ID,
       x: PX,

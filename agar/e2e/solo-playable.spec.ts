@@ -90,15 +90,15 @@ test("solo: the player GROWS by eating food — mass rises above the start", asy
   //
   // Mechanics (server/reducer.ts step()): with dir "none" the player
   // doesn't move (nx=x, ny=y) and then eats every pellet within
-  // radiusForMass(mass)+FOOD_R of its center; each adds +1. BUT every
-  // tick also applies a -1 DECAY to any above-start cell (applyDecay),
-  // so eating a single pellet nets to zero. We therefore stack a BATCH
-  // of pellets on the player in one tick: eating BATCH of them gives
-  // +BATCH, minus the -1 decay = a net, deterministic +(BATCH-1) gain
-  // per step. Repeating this over several steps grows the cell well
-  // above the start. (This is the same reason the line-146 eat-a-cell
-  // test grows: a whole cell adds >=8 in one tick, dwarfing decay.)
-  const BATCH = 6; // pellets eaten per tick → net +(BATCH-1) after decay
+  // radiusForMass(mass)+FOOD_R of its center; each adds +1. Decay is now
+  // PROPORTIONAL (floor(m/256)/tick), so a small early-game cell loses 0 —
+  // eating a single pellet is a clean +1. We stack a BATCH of pellets on
+  // the player to make growth large, fast, and unambiguous: eating BATCH in
+  // one tick gives +BATCH (no decay at this small mass), so net >= BATCH-1
+  // holds with margin to spare. (The companion "EMERGENT growth" test above
+  // proves single-pellet grazing alone now grows the cell; this test keeps
+  // the deterministic, hook-seeded variant as a sharp polarity guard.)
+  const BATCH = 6; // pellets eaten per tick → net +BATCH (no decay this small)
   const STEPS = 4; // repeat for unambiguous, monotonic growth
   const result = await page.evaluate(
     ({ batch, steps }) => {
@@ -151,6 +151,107 @@ test("solo: the player GROWS by eating food — mass rises above the start", asy
     result.finalMass - result.startMass,
     "cumulative growth matches net food intake minus decay",
   ).toBeGreaterThanOrEqual(STEPS * (BATCH - 1));
+});
+
+test("solo: EMERGENT growth — driving toward food pellets grows the player (no batch seeding)", async ({
+  page,
+}) => {
+  await page.goto(SOLO_URL, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(
+    () => !!(window as unknown as { __agarSolo?: unknown }).__agarSolo,
+    null,
+    { timeout: 5000 },
+  );
+
+  // The REAL played experience: the player roams the world and grazes the
+  // 40 scattered pellets — ONE pellet at a time, no hook-seeded batch. With
+  // the proportional-decay fix, mass below 256 doesn't decay, so a single
+  // +1 pellet is a net +1 gain (the old flat -1 decay cancelled it exactly,
+  // which is why the player "couldn't eat"). This drives the player toward
+  // the nearest pellet read from the canonical world each step and asserts
+  // the player ends STRICTLY ABOVE the start mass and never dips below it —
+  // i.e. ordinary food-eating grows you.
+  //
+  // Deterministic, no clock: a fixed seed pins the food layout, stepping is
+  // synchronous (no rAF / waitForTimeout), and the player provably reaches a
+  // pellet by steering down the dominant axis toward the nearest one. We cap
+  // the search at a generous step budget and stop early once growth is
+  // proven, so it stays fast.
+  const result = await page.evaluate(() => {
+    type Cell = { x: number; y: number };
+    type Solo = {
+      mass: () => number;
+      setDir: (d: string) => void;
+      step: (n: number) => void;
+      self: () => { x: number; y: number; mass: number } | null;
+    };
+    const w = window as unknown as {
+      __agarSolo: Solo;
+      __game: { canonical: { food: Cell[] } };
+    };
+    const s = w.__agarSolo;
+
+    const startMass = s.mass();
+    let minMass = startMass;
+    const MAX_STEPS = 400;
+    // Stop once we've clearly grown from ordinary grazing.
+    const GROWTH_TARGET = startMass + 5;
+
+    for (let i = 0; i < MAX_STEPS; i++) {
+      const me = s.self();
+      if (!me) {
+        s.step(1);
+        continue;
+      }
+      // Steer toward the nearest food pellet along the dominant axis.
+      const food = w.__game.canonical.food;
+      let best: Cell | null = null;
+      let bestD2 = Infinity;
+      for (const f of food) {
+        const dx = f.x - me.x;
+        const dy = f.y - me.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          best = f;
+        }
+      }
+      if (best) {
+        const dx = best.x - me.x;
+        const dy = best.y - me.y;
+        s.setDir(
+          Math.abs(dx) >= Math.abs(dy)
+            ? dx >= 0
+              ? "right"
+              : "left"
+            : dy >= 0
+              ? "down"
+              : "up",
+        );
+      }
+      s.step(1);
+      const m = s.mass();
+      if (m < minMass) minMass = m;
+      if (m >= GROWTH_TARGET) break;
+    }
+
+    return { startMass, finalMass: s.mass(), minMass };
+  });
+
+  // Ordinary single-pellet grazing nets positive: the player ends strictly
+  // above the start mass and never decayed below it (small cells don't
+  // decay under the proportional rule).
+  expect(result.startMass, "player starts at PLAYER_MASS_START").toBe(
+    PLAYER_MASS_START,
+  );
+  expect(
+    result.finalMass,
+    "emergent food-eating grew the player above the start mass",
+  ).toBeGreaterThan(PLAYER_MASS_START);
+  expect(
+    result.minMass,
+    "small cell never decays below the start mass while grazing",
+  ).toBeGreaterThanOrEqual(PLAYER_MASS_START);
 });
 
 test("solo: the player EATS a smaller cell — mass jumps by more than a food pellet", async ({

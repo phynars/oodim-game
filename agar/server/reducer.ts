@@ -140,21 +140,28 @@ export const BOT_SPAWN_MASS_MAX = PLAYER_MASS_START * 3; // 48
 export const BOT_SIGHT_MULT = 12;
 
 // Mass balance (#297, balance slice 1/4) — see slice-1 commit for
-// tuning rationale. MAX_MASS=1024, DECAY 1/2048 per tick at 20Hz.
+// tuning rationale. MAX_MASS=1024, DECAY proportional at floor(m/256) per
+// tick at 20Hz.
 export const MAX_MASS = 1024;
 export const DECAY_NUMER = 1;
-export const DECAY_DENOM = 2048;
+export const DECAY_DENOM = 256;
 
 function applyDecay(m: number): number {
   if (m <= PLAYER_MASS_START) return m;
-  // Proportional decay — bigger cells shrink faster (agar canon). The raw
-  // term `floor(m * NUMER / DENOM)` rounds to 0 for every *reachable* mass
-  // (m < DECAY_DENOM = 2048, but MAX_MASS caps mass at 1024), which made the
-  // mechanic INERT — an idle cell never shrank (#297/#303). Floor the loss at
-  // 1 for any above-start cell so decay always fires; it never drops a cell
-  // below PLAYER_MASS_START.
-  const proportional = ((m * DECAY_NUMER) / DECAY_DENOM) | 0;
-  const loss = proportional < 1 ? 1 : proportional;
+  // Proportional decay — bigger cells shrink faster (agar canon), purely
+  // `floor(m * NUMER / DENOM)`. With DENOM=256 (< MAX_MASS=1024 so it
+  // actually fires for big cells):
+  //   - cells below 256 lose 0 → they DON'T decay, so the playable early
+  //     game grows freely from food (+1/pellet beats a 0 decay).
+  //   - large cells bleed: 256→-1/tick, 512→-2, 1024→-4 — idle big cells
+  //     slowly shrink and the cap holds (the #297 intent).
+  // History: the original DENOM=2048 was INERT (floor(m/2048)=0 for every
+  // reachable mass ≤ MAX_MASS=1024 — the original #297 bug). The over-
+  // correction was a flat loss-floor-of-1 for ANY above-start cell, which
+  // exactly cancelled a +1 food pellet at every mass → the player could
+  // NEVER grow by eating. Proportional decay with no floor fixes both: the
+  // early game grows, only large cells decay.
+  const loss = ((m * DECAY_NUMER) / DECAY_DENOM) | 0;
   const next = m - loss;
   return next < PLAYER_MASS_START ? PLAYER_MASS_START : next;
 }
