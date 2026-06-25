@@ -30,6 +30,10 @@ import {
   SPARK_LIFETIME_DAMAGE_TICKS,
   SPARK_LIFETIME_DEATH_TICKS,
   SPARK_LIFETIME_KILL_TICKS,
+  STAGE_BONUS,
+  STAGE_BONUS_TALLY_DURATION,
+  STAGE_CLEAR_HITSTOP_TICKS,
+  stageClearDisplayScore,
   WIDTH,
   HEIGHT,
   ENEMY_HIT_RADIUS,
@@ -317,6 +321,13 @@ export class Engine {
           stage: this.state.stage,
         };
       },
+      displayScore: () => {
+        // #273 read-only window into the stage-clear count-up. Mirrors the
+        // renderer's HUD math exactly (shared `stageClearDisplayScore`), so a
+        // spec can assert the pre-clear → hitstop-hold → mid-tally → final
+        // sequence without a canvas pixel read.
+        return stageClearDisplayScore(this.state);
+      },
     };
   }
 
@@ -600,6 +611,34 @@ export class Engine {
           age: 0,
         });
       }
+      // Stage-clear bonus tally count-up (#273). Snapshot the pre-bonus
+      // baseline, commit the FLAT STAGE_BONUS (on top of the hit-miss bonus
+      // above), then arm the celebratory beat: a 6-frame hitstop followed by
+      // a 24-tick linear tally window during which the HUD animates the score
+      // up to the now-committed total. The score change is ATOMIC here — the
+      // tally is purely a display animation (see `stageClearDisplayScore`);
+      // `state.score` is already final the moment this returns, so the #65
+      // test (which reads score synchronously after the final forceHit) still
+      // sees the full committed delta. The tally is gated to normal stages —
+      // the challenging branch above arms its own PERFECT!/HIT beats instead.
+      //
+      // `scoreBeforeBonus` is the baseline BEFORE either bonus; the tally
+      // animates `scoreBeforeBonus → scoreBeforeBonus + total` where total =
+      // hit-miss bonus + STAGE_BONUS = the full delta just committed.
+      const tallyTotal = bonus + STAGE_BONUS;
+      this.state.score += STAGE_BONUS;
+      this.state.stageBonusTallyTotal = tallyTotal;
+      // Baseline = committed score minus the full animated delta, so the
+      // count-up runs `scoreBeforeBonus → state.score`.
+      this.state.scoreBeforeBonus = this.state.score - tallyTotal;
+      this.state.stageBonusTallyTicks = STAGE_BONUS_TALLY_DURATION;
+      // Punchy clear hitstop FIRST — the tally counter only counts down once
+      // this releases (see the tally gate in update()). Clamp (max) so a
+      // tail of kill-hitstop from the final shot doesn't shorten the beat.
+      this.state.feedback.hitstopTicks = Math.max(
+        this.state.feedback.hitstopTicks,
+        STAGE_CLEAR_HITSTOP_TICKS,
+      );
     }
     // Reset per-stage accuracy counters for the next stage (both branches —
     // a fresh normal stage starts with a clean tally regardless of whether
@@ -810,6 +849,21 @@ export class Engine {
       // first non-frozen tick below.
       if (this.state.feedback.hitstopTicks > 0) {
         this.state.feedback.hitstopTicks -= 1;
+        return;
+      }
+      // Stage-clear bonus tally count-up (#273) — TALLY GATE. After the
+      // 6-frame clear hitstop releases, hold the field for the tally window:
+      // the next formation does NOT start entering until the count-up
+      // finishes. Like the hitstop gate, we SKIP the simulation pass below
+      // (enemies, bullets, fire, capture, collisions, input) so the moment
+      // is a victory POSE — but `state.tick` already advanced and the
+      // starfield already scrolled above, so the field still breathes (it's
+      // a celebration, not a death freeze). The HUD reads
+      // `stageClearDisplayScore(state)` to animate the score across this
+      // window. When it hits 0 the tally is over and the next stage's
+      // formation begins entering on the following tick.
+      if (this.state.stageBonusTallyTicks > 0) {
+        this.state.stageBonusTallyTicks -= 1;
         return;
       }
       // Anchor the formation choreography to the first playing tick so the
@@ -1435,6 +1489,25 @@ export class Engine {
       this.state.tick > this.stageBannerUntil
     ) {
       this.stageBannerUntil = null;
+    }
+
+    // Stage-clear bonus tally count-up (#273) — the animated SCORE readout.
+    // Painted at the top of the field ONLY while the tally window is open
+    // (ticks > 0), so the digits visibly tick up from `scoreBeforeBonus`
+    // toward the committed total during the held beat. Pure-state: reads the
+    // same `stageClearDisplayScore` math the e2e probe observes — no extra
+    // draw bookkeeping beyond this one HUD line. Outside the window there is
+    // no persistent SCORE HUD (Galaga's scaffold only shows score on
+    // gameover), so this is the count-up's only on-screen surface.
+    if (this.state.stageBonusTallyTicks > 0) {
+      ctx.fillStyle = "#ffd76a";
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        `SCORE ${stageClearDisplayScore(this.state)}`,
+        WIDTH / 2,
+        16,
+      );
     }
 
     // CHALLENGING banner — painted while the bonus stage is in flight so

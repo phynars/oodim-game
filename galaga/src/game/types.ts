@@ -214,6 +214,29 @@ export interface GameState {
    *  ends — and the flag flips back to false — once every wave has flown off
    *  the bottom of the field (or been destroyed). */
   challenging: boolean;
+  /** Stage-clear bonus tally count-up (#273). Counts DOWN from
+   *  `STAGE_BONUS_TALLY_DURATION` to 0 after a NON-challenging stage clear.
+   *  While > 0 the engine FREEZES the field (enemy sim/firing/collisions are
+   *  skipped — a victory pose, not a death) and the HUD animates the score
+   *  display from `scoreBeforeBonus` up to the committed `state.score`. The
+   *  authoritative `state.score` is bumped ONCE, synchronously, at stage clear
+   *  (before the tally arms) — the tally is purely a display animation. The
+   *  6-frame stage-clear hitstop (`feedback.hitstopTicks`) fires first; this
+   *  counter only begins ticking down once the hitstop releases. Zero outside
+   *  a tally window (the default + the challenging-clear path, which has no
+   *  tally by design). */
+  stageBonusTallyTicks: number;
+  /** The full bonus delta animated by THIS tally (#273) — the hit-miss
+   *  accuracy bonus (#65) plus the flat `STAGE_BONUS`, snapshotted at stage
+   *  clear. The displayed count-up lerps `scoreBeforeBonus → scoreBeforeBonus
+   *  + stageBonusTallyTotal` (which equals the now-committed `state.score`).
+   *  Zero outside a tally window. */
+  stageBonusTallyTotal: number;
+  /** Score baseline BEFORE the stage-clear bonus was committed (#273). The
+   *  HUD reads `scoreBeforeBonus + floor(stageBonusTallyTotal * progress)`
+   *  while the tally runs so the digits visibly tick up. Equal to the live
+   *  `state.score` outside a tally window. */
+  scoreBeforeBonus: number;
 }
 
 /** Input-latency probe (#168). Returned by `__galagaInternals.fireProbe()` —
@@ -316,6 +339,13 @@ export interface GalagaInternals {
    *  harness to assert the first-stage banner fires on the READY→playing
    *  flip without a canvas pixel read. */
   getStageBanner(): { until: number; stage: number } | null;
+  /** Stage-clear bonus tally probe (#273). Returns the score the HUD should
+   *  display THIS tick: the animated count-up value while a tally window is
+   *  open (`scoreBeforeBonus + floor(total * progress)`), or the authoritative
+   *  `state.score` once the tally is over. Lets the e2e harness observe the
+   *  count-up sequence (pre-clear → hitstop hold → mid-tally between → final)
+   *  without a canvas pixel read. */
+  displayScore(): number;
 }
 
 declare global {
@@ -400,6 +430,9 @@ export function initialState(): GameState {
     bullets: [],
     captureBeamActive: false,
     challenging: false,
+    stageBonusTallyTicks: 0,
+    stageBonusTallyTotal: 0,
+    scoreBeforeBonus: 0,
     stageShotsFired: 0,
     stageHits: 0,
     explosions: [],
@@ -512,6 +545,42 @@ export const HIT_MISS_BONUS_TIERS: ReadonlyArray<HitMissTier> = [
   { minRatio: 0.1, bonus: 500 },
   { minRatio: 0, bonus: 100 },
 ] as const;
+
+// ---- Stage-clear bonus tally count-up constants (#273) -------------------
+//
+// The celebratory beat between NON-challenging stages — the smallest correct
+// "stage cleared!" juice (mirrors Pac-Man's level-clear cinematic #183). On a
+// normal stage clear the engine commits the bonus to `state.score` ONCE, then
+// holds the field for a brief hitstop + a linear tally window during which the
+// HUD animates the displayed score up to the committed total. The mechanic is
+// pure-data: a count-down counter on `GameState`, progress = 1 - n/N.
+
+/** Flat stage-clear bonus (#273) awarded on every NON-challenging stage clear,
+ *  ON TOP of the hit-miss accuracy bonus (#65). 1000 per the spec — a round
+ *  number that always gives the tally something to count up even at 0%
+ *  accuracy (where `hitMissBonus` is 0). Challenging stages award no
+ *  STAGE_BONUS and run no tally (they have their own PERFECT!/HIT beats). */
+export const STAGE_BONUS = 1000;
+/** Stage-clear tally duration in ticks (#273). 24 ticks ≈ 400ms at 60Hz —
+ *  below the input-patience floor, so we never auto-skip; the count-up just
+ *  plays. The HUD lerps the displayed score linearly across this window. */
+export const STAGE_BONUS_TALLY_DURATION = 24;
+/** Hitstop frames before the stage-clear tally begins (#273). 6 frames ≈
+ *  100ms — Galaga is punchy; the freeze lands the "clear!" impact, then the
+ *  tally animates. Set on `feedback.hitstopTicks` at stage clear; the tally
+ *  counter only ticks down once this releases. */
+export const STAGE_CLEAR_HITSTOP_TICKS = 6;
+
+/** Displayed stage-clear score for the count-up (#273). During the tally
+ *  window the HUD shows `scoreBeforeBonus + floor(total * progress)` where
+ *  `progress = 1 - ticks/N`; outside the window (ticks === 0) it shows the
+ *  authoritative `state.score`. Centralized so the engine's `displayScore()`
+ *  probe and the renderer agree on the math. */
+export function stageClearDisplayScore(state: GameState): number {
+  if (state.stageBonusTallyTicks <= 0) return state.score;
+  const progress = 1 - state.stageBonusTallyTicks / STAGE_BONUS_TALLY_DURATION;
+  return state.scoreBeforeBonus + Math.floor(state.stageBonusTallyTotal * progress);
+}
 
 /** Look up the hit-miss bonus for a given shots/hits pair. Returns 0 when
  *  no shots were fired (you can't earn a bonus by holding fire). Centralized
