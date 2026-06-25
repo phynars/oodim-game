@@ -414,6 +414,14 @@ export interface DoomInternals {
    *  the run, so the title-screen "press any key" path and the game-over
    *  "press R to restart" path share the same wire. Synchronous publish. */
   restart(): void;
+  /** Read the live corpse-fade opacity the renderer is applying to a dead
+   *  enemy's mesh (#356). Returns the engine's own `corpseFadeAlpha(deathTicks)`
+   *  for the enemy with `enemyId` (or the first dead enemy when omitted),
+   *  reading the SAME `deathTicks` the render path reads — so the e2e curve
+   *  assertion binds to the actual engine curve, not a re-derived copy. Returns
+   *  `null` when there is no matching dead enemy. Test-only; gameplay code must
+   *  never read it. */
+  corpseAlpha(opts?: { enemyId?: number }): number | null;
 }
 
 /** Test-only texture contract (issue #84). The engine paints procedural
@@ -726,9 +734,27 @@ export const BLOOD_DROP_COLOR = 0x882222;
 export const CORPSE_HOLD_TICKS = 24;
 
 /** Tick within the corpse beat at which alpha-fade begins (#194). Frames
- *  CORPSE_FADE_START_TICK..CORPSE_HOLD_TICKS map to alpha 1→0 linearly.
- *  The first 12 ticks hold full opacity (the LAND); the last 12 fade. */
+ *  CORPSE_FADE_START_TICK..CORPSE_HOLD_TICKS map to alpha 1→0 via the eased
+ *  curve below (#356). The first 12 ticks hold full opacity (the LAND); the
+ *  last 12 fade. */
 export const CORPSE_FADE_START_TICK = 12;
+
+/** Corpse-fade opacity for a given `deathTicks` (#194, eased #356). Pure
+ *  function of the tick counter — the single source of truth for the curve,
+ *  shared by the renderer (engine.ts applies this to every corpse material)
+ *  and the e2e probe (so the spec binds to the ACTUAL engine curve, not a
+ *  re-derived copy). Before the fade window opens the body is fully opaque;
+ *  inside it the alpha follows **easeInQuad** `1 - k²` where
+ *  `k = (deathTicks - CORPSE_FADE_START_TICK) / fadeSpan` ramps 0→1. Endpoints
+ *  match the old linear ramp (k=0→1, k=1→0); the curve holds the body longer
+ *  mid-window then accelerates into invisibility so the tail dissolves INTO
+ *  the floor instead of popping off it. Clamped to [0,1]. */
+export function corpseFadeAlpha(deathTicks: number): number {
+  if (deathTicks <= CORPSE_FADE_START_TICK) return 1;
+  const fadeSpan = CORPSE_HOLD_TICKS - CORPSE_FADE_START_TICK;
+  const k = (deathTicks - CORPSE_FADE_START_TICK) / fadeSpan;
+  return Math.max(0, 1 - k * k);
+}
 
 // --- Player-damage feel polish (#205) -------------------------------------
 // Doom = HEAVY (per tone rule: pacman=graceful, galaga=punchy, doom=HEAVY).
