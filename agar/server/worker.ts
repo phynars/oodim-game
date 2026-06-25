@@ -353,6 +353,48 @@ export class EchoRoom implements DurableObject {
       // falls through to the upgrade check and gets a 426.
     }
 
+    // Test-only eviction-simulation hook (issue #347, slice 3 of #130).
+    // A real DO eviction = a fresh instance whose in-memory state is
+    // gone, repopulated from `state.storage` on first read via
+    // `loadTopScoreOnce()`. miniflare / `wrangler dev` does not expose
+    // a stable API to force that boundary on demand inside a single
+    // test run (the epic plan's "spike risk" — DO eviction is not a
+    // public test API; hibernation timeouts are too slow/flaky for a
+    // deterministic gate). So we simulate the property the eviction
+    // actually exercises: drop ALL in-memory persistence cache and
+    // reset the load-once guard, so the NEXT read MUST go to disk
+    // through the exact same `loadTopScoreOnce()` path a re-hydrated
+    // DO uses. This is a faithful proxy — it exercises the real
+    // reload-from-storage code, not a stub — without depending on the
+    // runtime's eviction scheduler.
+    //
+    // Strictly a test seam: same `/__test/` namespacing + gating
+    // posture as `/__test/top-score`, never on the WS/tick hot path.
+    // It does NOT touch `state.storage` — wiping storage here would
+    // be faking persistence, the exact anti-pattern (#303) this rung
+    // guards against. It only forgets the in-memory mirror.
+    if (testUrl.pathname === "/__test/evict") {
+      if (request.method !== "POST") {
+        return new Response(
+          JSON.stringify({ error: "method not allowed" }),
+          { status: 405, headers: { "content-type": "application/json" } },
+        );
+      }
+      // Forget the in-memory persistence mirror + reset the load-once
+      // guard. `cachedTopScore` returns to its constructor default and
+      // `topScoreLoaded`/`loadPromise` are reset so the next
+      // `loadTopScoreOnce()` re-reads `state.storage.get("topScore")`
+      // from disk — exactly what a fresh (evicted-then-rehydrated) DO
+      // instance does. Storage is left untouched on purpose.
+      this.cachedTopScore = 0;
+      this.topScoreLoaded = false;
+      this.loadPromise = null;
+      return new Response(JSON.stringify({ evicted: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     // Production read endpoint (issue #338, slice 2 of #130). The
     // read path for any future leaderboard UI. Mirrors the
     // /__test/top-score placement — BEFORE the websocket upgrade
@@ -501,6 +543,7 @@ const worker: ExportedHandler<Env> = {
     if (
       url.pathname !== "/ws" &&
       url.pathname !== "/__test/top-score" &&
+      url.pathname !== "/__test/evict" &&
       url.pathname !== "/high-score"
     ) {
       return new Response("Not found", { status: 404 });
