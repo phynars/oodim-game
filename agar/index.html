@@ -16,10 +16,8 @@
     <meta name="theme-color" content="#000000" />
     <!-- Open Graph / Twitter share metadata. og.png lives at the site root
          (the deploy workflow copies landing/og.png alongside per-game pages)
-         so a link share of /agar/ inherits the studio card art until the
-         multiplayer slice ships its own. The description is the page's
-         voice, not the dev-status; what gets previewed is the game, not
-         the calendar. -->
+         so a link share of /agar/ inherits the studio card art. The
+         description is the page's voice; what gets previewed is the game. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="oodim Game" />
     <meta property="og:title" content="Agar · you are here" />
@@ -61,10 +59,11 @@
         justify-content: center;
         height: 100dvh;
       }
-      /* Canvas is the slot subsequent slices fill. For now it just renders
-         a single centered "in development" frame from main.ts — no game
-         logic, no DO, no websocket. The 640x640 square is a placeholder
-         aspect; the multiplayer slice will set the real world size. */
+      /* The 640x640 play surface (the reducer's WORLD_W/H). main.ts renders
+         the live game here: by default a single-player session driven by
+         the local reducer (move with WASD/arrows or pointer — eat smaller
+         cells and food to grow, avoid bigger ones); `?mp=1` switches to the
+         server-authoritative multiplayer client (Durable Object + websocket). */
       #game {
         background: #050505;
         image-rendering: pixelated;
@@ -77,7 +76,7 @@
     </style>
   </head>
   <body>
-    <canvas id="game" width="640" height="640" aria-label="Agar — multiplayer arena"></canvas>
+    <canvas id="game" width="640" height="640" aria-label="Agar — play surface"></canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
