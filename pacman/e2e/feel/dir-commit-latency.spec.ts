@@ -90,30 +90,38 @@ test.describe("Pac-Man dir-commit latency (issue #210)", () => {
       // keyboard.press() reuses the focused canvas.
       await page.keyboard.press(key);
 
-      // Poll for a FRESH measurement. A fresh read is signalled by:
+      // Wait for a FRESH measurement — state-quiesced on the probe,
+      // not a wall-clock poll. A fresh read is signalled by:
       //   (a) lastQueuedTick > beforeQueuedTick — input listener saw
       //       our press, AND
       //   (b) deltaTicks !== null — tickPac has since committed
       //       (i.e. lastCommitTick >= lastQueuedTick).
-      // 500ms per-press budget — way more than needed (commit lands
-      // within ~16ms / 1 tick on a happy path) but generous for CI
-      // software-WebGL rAF jitter.
+      // 500ms budget — way more than needed (commit lands within ~16ms
+      // / 1 tick on a happy path) but generous for CI software-WebGL
+      // rAF jitter. waitForFunction polls the probe on the rAF cadence
+      // and resolves the instant the commit lands, instead of resuming
+      // on a fixed sleep regardless of whether the tick applied.
       let fresh: Probe | null = null;
-      const deadline = Date.now() + 500;
-      while (Date.now() < deadline) {
-        const cur = (await page.evaluate(
+      try {
+        await page.waitForFunction(
+          (prevQueued) => {
+            const cur = window.__pacInternals?.dirCommitProbe() ?? null;
+            return Boolean(
+              cur &&
+                cur.lastQueuedTick > prevQueued &&
+                cur.deltaTicks !== null &&
+                cur.deltaTicks >= 0,
+            );
+          },
+          beforeQueuedTick,
+          { timeout: 500 },
+        );
+        fresh = (await page.evaluate(
           () => window.__pacInternals?.dirCommitProbe() ?? null,
         )) as Probe | null;
-        if (
-          cur &&
-          cur.lastQueuedTick > beforeQueuedTick &&
-          cur.deltaTicks !== null &&
-          cur.deltaTicks >= 0
-        ) {
-          fresh = cur;
-          break;
-        }
-        await page.waitForTimeout(16);
+      } catch {
+        // waitForFunction timed out — no fresh commit observed.
+        fresh = null;
       }
 
       if (!fresh) {
@@ -132,6 +140,7 @@ test.describe("Pac-Man dir-commit latency (issue #210)", () => {
       // a touch of headroom so Pac advances a tile between reversals
       // (Pac speed = 0.12 tile/tick × 60Hz ≈ 7.2 tiles/sec → ~140ms
       // per tile). 220ms guarantees we cross a tile boundary.
+      // pacing — human cadence between reversal presses, not a state wait.
       await page.waitForTimeout(220);
     }
 

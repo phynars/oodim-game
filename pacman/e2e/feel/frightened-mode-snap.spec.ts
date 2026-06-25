@@ -103,7 +103,16 @@ test.describe("pacman · frightened-mode speed-switch snap (Ivy's feel-axis)", (
     // before we start sampling, so the pre-flip baseline isn't
     // contaminated by the boot-second of staggered house releases.
     // Blinky's out from boot; ~30 ticks @ 0.10/tick = 3 tiles.
-    await page.waitForTimeout(500);
+    // State-quiesced: wait until the engine has actually advanced 30
+    // ticks rather than sleeping 500ms — under a slow CI runner 500ms
+    // may not BE 30 ticks, which is exactly the boot-contamination this
+    // guards against.
+    const flipBaselineTick = await page.evaluate(() => window.__pac?.tick ?? 0);
+    await page.waitForFunction(
+      (start) => (window.__pac?.tick ?? 0) >= start + 30,
+      flipBaselineTick,
+      { timeout: 5_000 },
+    );
 
     // Arm the probe + drive the flip script.
     await page.evaluate(() => {

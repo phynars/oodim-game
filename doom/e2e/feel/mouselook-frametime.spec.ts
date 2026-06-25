@@ -156,11 +156,23 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // connect-shake) on top of the render pass.
   await page.keyboard.down("ArrowRight");
 
-  // ~600 ms into the sweep: first forced hit. The seeded baron at z=-7
+  // A little into the sweep: first forced hit. The seeded baron at z=-7
   // has higher HP than PLAYER_SHOT_DAMAGE so this is non-lethal and leaves
   // sparks + connect-shake active. Pick by enemyId so we don't depend on
   // roster ordering.
-  await page.waitForTimeout(600);
+  //
+  // State-quiesced: wait until the probe has captured ≥ 20 frames since
+  // the sweep started, rather than sleeping a wall-clock 600ms. The
+  // point is to have a body of pre-FX render frames on the books before
+  // we load the scene — a frame COUNT is what we actually need, and it's
+  // stable regardless of SwiftShader's variable render rate (the exact
+  // flake this gate already learned to avoid for its sample-count wait
+  // below). 20 frames ≈ the old 600ms at SwiftShader's ~30Hz.
+  await page.waitForFunction(
+    () => (window.__doomInternals?.frameProbe()?.samples.length ?? 0) >= 20,
+    null,
+    { timeout: 10_000 },
+  );
   await page.evaluate(() => {
     // baron's id depends on SEED_ENEMIES order (engine.ts ~98) — try the
     // 3rd seeded enemy first, fall back to the first live non-imp.
@@ -168,9 +180,23 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
     internals.forceHit({ enemyId: 3 });
   });
 
-  // ~600 ms later: second forced hit, this time the demon (id 2) so a
+  // Snapshot the sample count at the first hit so the second hit lands a
+  // bounded number of frames later (not a wall-clock 600ms) — keeps the
+  // two FX bursts overlapping at any render rate.
+  const samplesAtFirstHit = await page.evaluate(
+    () => window.__doomInternals?.frameProbe()?.samples.length ?? 0,
+  );
+
+  // A little later: second forced hit, this time the demon (id 2) so a
   // distinct enemy's hit-flash overlaps the first one's lingering sparks.
-  await page.waitForTimeout(600);
+  // State-quiesced on a +20-frame delta from the first hit (≈ the old
+  // 600ms at SwiftShader's ~30Hz).
+  await page.waitForFunction(
+    (since) =>
+      (window.__doomInternals?.frameProbe()?.samples.length ?? 0) >= since + 20,
+    samplesAtFirstHit,
+    { timeout: 10_000 },
+  );
   await page.evaluate(() => {
     const internals = window.__doomInternals!;
     internals.forceHit({ enemyId: 2 });

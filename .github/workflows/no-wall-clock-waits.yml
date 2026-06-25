@@ -4,12 +4,12 @@ name: no-wall-clock-waits
 # while waiting for the SUT to reach a state — they resume on a
 # waitForFunction against a probe the game exposes.
 #
-# ROLLOUT STATE: REPORT-ONLY.
-# Eleven known violations exist at HEAD (the #313 punch list). The
-# guard surfaces them in CI logs but does NOT block merges yet, so
-# unrelated e2e PRs are not held hostage by the cleanup.
-# When the last suite migrates, the closing PR drops `--report-only`
-# below and the guard becomes a blocking merge gate by construction.
+# ROLLOUT STATE: BLOCKING (rollout closed by #313's final PR).
+# All known state-waits have been migrated to state-quiesced waits and
+# the legitimate pacing / negative-assertion dwells are labelled with
+# `// pacing` or `// allowed: <reason>`. The guard now runs in strict
+# mode: any new unmarked `waitForTimeout` under **/e2e/** FAILS the PR.
+# This is the failing-on-unfixed contract #313 specified.
 #
 # Fires on any PR that touches an e2e/ tree (or this guard itself).
 
@@ -31,5 +31,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run wall-clock-wait guard (report-only during #313 rollout)
-        run: node e2e-shared/no-wall-clock-waits/check.mjs --report-only
+      - name: Run wall-clock-wait guard (blocking)
+        run: node e2e-shared/no-wall-clock-waits/check.mjs
