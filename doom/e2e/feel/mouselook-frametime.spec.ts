@@ -161,9 +161,28 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // assertions on a real GPU; on software the ratio gate remains the sole
   // hard gate and the bars stay diagnostic. The load-sensitivity ratio gate
   // below is renderer-stable and runs on BOTH paths.
+  //
+  // CRITICAL — query the GAME'S existing context, never a throwaway one.
+  // Calling getContext() with the SAME type ("webgl2") on the game canvas
+  // returns the live context three.js already created (WebGL spec: a second
+  // getContext of the same type yields the existing context, it does NOT
+  // allocate a second one). Creating a throwaway `document.createElement
+  // ("canvas")` + getContext here was a context LEAK: SwiftShader/Chromium
+  // caps simultaneous WebGL contexts (~16), and when the cap is hit a NEW
+  // context EVICTS the oldest — the game's. That fires `webglcontextlost`
+  // on the game canvas, three.js silently stops drawing (the engine has no
+  // context-restore handler), the rAF probe stops accumulating frames, and
+  // the sample-count waitForFunction below times out (30s) — the exact CI
+  // stall this spec was hitting under combat load. Reusing the live context
+  // reads the same renderer string with zero extra GL allocation. The game
+  // canvas requests webgl2; fall back to "webgl" only if that's somehow the
+  // live type, and never create a fresh canvas.
   const rendererString = await page.evaluate(() => {
     try {
-      const c = document.createElement("canvas");
+      const c = document.querySelector("canvas");
+      if (!c) return "";
+      // Re-fetching the SAME context type returns the game's existing
+      // context (no new allocation, no eviction of the game's context).
       const gl = (c.getContext("webgl2") ||
         c.getContext("webgl")) as WebGLRenderingContext | null;
       if (!gl) return "";
