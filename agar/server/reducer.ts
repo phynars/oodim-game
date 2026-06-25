@@ -147,7 +147,14 @@ export const DECAY_DENOM = 2048;
 
 function applyDecay(m: number): number {
   if (m <= PLAYER_MASS_START) return m;
-  const loss = ((m * DECAY_NUMER) / DECAY_DENOM) | 0;
+  // Proportional decay — bigger cells shrink faster (agar canon). The raw
+  // term `floor(m * NUMER / DENOM)` rounds to 0 for every *reachable* mass
+  // (m < DECAY_DENOM = 2048, but MAX_MASS caps mass at 1024), which made the
+  // mechanic INERT — an idle cell never shrank (#297/#303). Floor the loss at
+  // 1 for any above-start cell so decay always fires; it never drops a cell
+  // below PLAYER_MASS_START.
+  const proportional = ((m * DECAY_NUMER) / DECAY_DENOM) | 0;
+  const loss = proportional < 1 ? 1 : proportional;
   const next = m - loss;
   return next < PLAYER_MASS_START ? PLAYER_MASS_START : next;
 }

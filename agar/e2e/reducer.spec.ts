@@ -47,10 +47,10 @@
 import { test, expect } from "@playwright/test";
 import {
   EAT_RATIO,
+  MAX_MASS,
   PLAYER_MASS_START,
   WORLD_H,
   WORLD_W,
-  pureReplay,
   step,
   type BotState,
   type PlayerState,
@@ -58,13 +58,7 @@ import {
   type WorldState,
 } from "../server/reducer";
 
-const SEED = 1;
-
 const PLAYER_ID = "p0";
-
-function emptyTape(_n: number): readonly ReplayFrame[] {
-  return [] as const;
-}
 
 // Hold-still input frame for a single hand-built player. Slice 4
 // inputs are keyed by id; emit a per-tick `{p0: {dir:"none"}}` so the
@@ -80,27 +74,65 @@ function self(s: WorldState): PlayerState {
 // ────────────────────────────────────────────────────────────────────
 // #297 — growth cap + mass decay
 // ────────────────────────────────────────────────────────────────────
-test.skip(
-  "agar reducer: growth cap — eating cell plateaus, idle cell decays [unskip when #297 lands]",
-  () => {
-    // Tape designed to feed the player aggressively in the pre-#297
-    // reducer (so without the cap, player mass would exceed the field).
-    const tape = emptyTape(2000);
-    const state: WorldState = pureReplay(SEED, tape);
-    expect(state).toBeDefined();
+//
+// Same fixture-driven approach as the #298/#299 tests below: hand-build a
+// WorldState and step() the reducer directly rather than driving pureReplay
+// from initialState. "Feed the player past the field" via a tape would depend
+// on seed-luck steering the player into randomly-spawned food; a pinned
+// fixture is a sharper polarity guard for the two mechanics this gates —
+// the growth CAP and the mass DECAY.
+test("agar reducer: growth cap + mass decay [#297]", () => {
+  const PX = WORLD_W / 2;
+  const PY = WORLD_H / 2;
 
-    // The unskipping PR (which implements #297) imports the actual
-    // MAX_MASS / decay constants from reducer.ts and asserts:
-    //   1. state.player.mass <= MAX_MASS  (cap holds)
-    //   2. a second pureReplay with the player isolated for K ticks
-    //      shows strictly-decreasing mass (decay holds).
-    //
-    // Polarity guard: this fails on unskip until the body is rewritten.
-    expect("placeholder").toBe(
-      "unskip-and-rewrite-#297-with-MAX_MASS-and-decay-assertions",
-    );
-  },
-);
+  // CAP — a player already at MAX_MASS, sitting in a dense food field, never
+  // exceeds MAX_MASS however much it eats. Polarity: if addMass stops
+  // saturating, mass climbs past the cap and this `<=` fires.
+  {
+    const player: PlayerState = {
+      id: PLAYER_ID,
+      x: PX,
+      y: PY,
+      mass: MAX_MASS,
+      deaths: 0,
+      bestMass: MAX_MASS,
+    };
+    const food = Array.from({ length: 32 }, () => ({ x: PX, y: PY }));
+    let s: WorldState = { tick: 0, players: [player], food, bots: [], rng: 1 };
+    for (let t = 0; t < 10; t++) {
+      s = step(s, HOLD_FRAME);
+      expect(self(s).mass).toBeLessThanOrEqual(MAX_MASS);
+    }
+  }
+
+  // DECAY — an above-start player that eats nothing strictly loses mass every
+  // tick, flooring at PLAYER_MASS_START. Pre-#297 the decay was INERT:
+  // `floor(m * DECAY_NUMER / DECAY_DENOM)` === 0 for every reachable mass
+  // (m < 2048, and mass is capped at 1024), so an idle cell never shrank.
+  // Polarity: revert applyDecay's floor-at-1 and this strictly-decreasing
+  // assertion fires on tick 1.
+  {
+    const START = 100;
+    const player: PlayerState = {
+      id: PLAYER_ID,
+      x: PX,
+      y: PY,
+      mass: START,
+      deaths: 0,
+      bestMass: START,
+    };
+    let s: WorldState = { tick: 0, players: [player], food: [], bots: [], rng: 1 };
+    let prev = self(s).mass;
+    for (let t = 0; t < 10; t++) {
+      s = step(s, HOLD_FRAME);
+      const m = self(s).mass;
+      expect(m).toBeLessThan(prev);
+      expect(m).toBeGreaterThanOrEqual(PLAYER_MASS_START);
+      prev = m;
+    }
+    expect(self(s).mass).toBeLessThan(START);
+  }
+});
 
 // ────────────────────────────────────────────────────────────────────
 // #298 — bot pursuit + flee
