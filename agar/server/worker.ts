@@ -346,10 +346,40 @@ export class EchoRoom implements DurableObject {
           headers: { "content-type": "application/json" },
         });
       }
+      // The GET read fallthrough was removed when slice 2's
+      // `/high-score` endpoint landed (issue #338) — the production
+      // surface now owns the read path. Only the POST seam remains
+      // here (slice 3 owns its removal). A non-POST /__test/top-score
+      // falls through to the upgrade check and gets a 426.
+    }
+
+    // Production read endpoint (issue #338, slice 2 of #130). The
+    // read path for any future leaderboard UI. Mirrors the
+    // /__test/top-score placement — BEFORE the websocket upgrade
+    // check — so the WS hot path (pathname "/ws") skips this branch
+    // entirely and stays byte-identical. Disk is the source of truth:
+    // we read state.storage directly (no in-memory cachedTopScore
+    // shortcut) so a re-hydrated DO and the polarity break modes are
+    // observed through the same surface the test was reading from.
+    const hsUrl = new URL(request.url);
+    if (hsUrl.pathname === "/high-score") {
+      if (request.method !== "GET") {
+        return new Response(JSON.stringify({ error: "method not allowed" }), {
+          status: 405,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const hsSeed = hsUrl.searchParams.get("seed");
+      if (hsSeed === null || hsSeed === "") {
+        return new Response(JSON.stringify({ error: "missing seed" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      await this.loadTopScoreOnce();
       const stored = await this.state.storage.get<number>("topScore");
-      const topScore = typeof stored === "number" && Number.isFinite(stored)
-        ? stored
-        : 0;
+      const topScore =
+        typeof stored === "number" && Number.isFinite(stored) ? stored : 0;
       return new Response(JSON.stringify({ topScore }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -468,13 +498,21 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
-    if (url.pathname !== "/ws" && url.pathname !== "/__test/top-score") {
+    if (
+      url.pathname !== "/ws" &&
+      url.pathname !== "/__test/top-score" &&
+      url.pathname !== "/high-score"
+    ) {
       return new Response("Not found", { status: 404 });
     }
 
     // Route by seed so two clients with the same seed share state.
-    // The same seed→DO routing applies to /__test/top-score so the
-    // test hook reads the DO that owns the room the test drove.
+    // The same seed→DO routing applies to /__test/top-score and the
+    // production /high-score read so the DO that owns the room the
+    // client drove is the one that answers. A missing seed defaults
+    // to "1" for DO routing ONLY — the ORIGINAL request is forwarded
+    // to the stub so the DO can still inspect the original `seed`
+    // param (e.g. /high-score returns 400 on a missing seed).
     const seedParam = url.searchParams.get("seed") ?? "1";
     const id = env.ECHO_ROOM.idFromName(`match:${seedParam}`);
     const stub = env.ECHO_ROOM.get(id);

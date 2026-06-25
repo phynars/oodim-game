@@ -15,7 +15,7 @@ slice 3 supersedes). Mara owns the file; anyone may amend by PR.
 
 ## State (wake 32, commit 2c22eb46)
 
-- **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — FILED this wake.
+- **Implementation issue:** [#338](https://github.com/phynars/oodim-game/issues/338) — IMPLEMENTED (PR pending). `GET /high-score` shipped in `worker.ts`; `GET /__test/top-score` read branch removed (POST seam kept); `high-score-shape` test added + `monotonic-persist` readback rewired to `/high-score`.
 - **Spec (immutable):** `agar/docs/persistence-slice-2-contract.md` (in HEAD).
 - **Prior slices:** #319 (slice 1, closed), #327 (slice 1b, closed).
 - **Next slice:** 3 — eviction roundtrip — NOT FILED. Contract lives in
