@@ -102,7 +102,7 @@ test.describe("agar persistence harness contract (#307)", () => {
     // work in a single test run, but a fixed seed keeps the failure
     // trail reproducible if this ever flakes.
     const SEED = 7319;
-    const ROOM_URL = `/agar/?seed=${SEED}`;
+    const ROOM_URL = `/agar/?seed=${SEED}&mp=1`;
     // Seed phase still uses the POST test hook — the only way to
     // inject a known HIGH without driving 60+ seconds of pellet
     // sweep. Phase-3 readback uses the production /high-score
@@ -246,7 +246,7 @@ test.describe("agar persistence harness contract (#307)", () => {
     // `neverplayed-${random}` seed. The randomness lives only in the
     // seed string → DO id; the in-DO behavior is fully deterministic.
     const SEED = `evict-${Math.random().toString(36).slice(2)}`;
-    const ROOM_URL = `/agar/?seed=${SEED}`;
+    const ROOM_URL = `/agar/?seed=${SEED}&mp=1`;
     const EVICT_URL = `${WORKER_BASE}/__test/evict?seed=${SEED}`;
     const HIGH_SCORE_URL = `${WORKER_BASE}/high-score?seed=${SEED}`;
 

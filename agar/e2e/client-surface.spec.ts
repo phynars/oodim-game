@@ -19,7 +19,9 @@ import { expect, test } from "@playwright/test";
 // invocation.
 
 test("agar window.__game exposes all 8 normative fields", async ({ page }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // `?mp=1` → the WebSocket client, whose window.__game carries the 8
+  // normative fields this spec asserts. Default page is single-player.
+  await page.goto("/?mp=1", { waitUntil: "domcontentloaded" });
 
   // Wait for the page to install __game. main.ts installs it
   // synchronously at module init, so this should resolve immediately

@@ -66,7 +66,7 @@ import {
 // accepts `?seed=` as a string and parses it server-side; we use a
 // fresh numeric seed per test so each test gets a clean DO.
 let SEED = 1234567;
-let ROOM_URL = `/agar/?seed=${SEED}`;
+let ROOM_URL = `/agar/?seed=${SEED}&mp=1`;
 
 // Gate every `page.goto` on (1) WS handshake complete, (2) at least
 // one snapshot received. Identical pattern to multiplayer-smoke.spec
@@ -188,7 +188,7 @@ function assertCanonicalEqualsReplay(
 test.describe("agar · multiplayer CONVERGENCE (rung merge gate)", () => {
   test.beforeEach(() => {
     SEED = Math.floor(Math.random() * 1_000_000) + 1;
-    ROOM_URL = `/agar/?seed=${SEED}`;
+    ROOM_URL = `/agar/?seed=${SEED}&mp=1`;
   });
 
   test("ordering invariant: each client's canonical == pureReplay(SEED, its appliedLog)", async ({

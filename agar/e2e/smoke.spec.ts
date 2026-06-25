@@ -35,7 +35,11 @@ test("agar slot loads with canvas and no console errors", async ({ page }) => {
 
   // Navigation returns 200. We use `domcontentloaded` so the response
   // status is checked before main.ts has finished its single frame draw.
-  const response = await page.goto("/", { waitUntil: "domcontentloaded" });
+  // `?mp=1` selects the WebSocket multiplayer client — the path this
+  // smoke validates (it waits for a canonical snapshot from the DO).
+  // The default (no param) page is now single-player (local reducer),
+  // covered by solo-playable.spec.ts.
+  const response = await page.goto("/?mp=1", { waitUntil: "domcontentloaded" });
   expect(response, "navigation response").not.toBeNull();
   expect(response!.status(), "GET /agar/ status").toBe(200);
 
