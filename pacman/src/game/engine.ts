@@ -1122,6 +1122,12 @@ export class Engine {
     if (this.state.lives <= 0) {
       this.state.lives = 0;
       this.state.status = "lost";
+    } else {
+      // Arcade canon: every life starts on READY!, not only the boot.
+      // The existing first-input gate (issue #8) at the top of update()
+      // holds the maze frozen and shows the overlay until the player
+      // commits a direction. No new fields; no new render branch.
+      this.state.status = "ready";
     }
     // Republish the slim ghost view immediately so a test polling on the
     // very next tick sees the reset roster.
