@@ -92,6 +92,45 @@ test.describe("agar persistence harness contract (#307)", () => {
     ).toBe(405);
   });
 
+  test("leaderboard-shape — GET /leaderboard returns sorted capped top scores", async ({
+    request,
+  }) => {
+    const prefix = `leaderboard-${Math.random().toString(36).slice(2)}`;
+    const scores = [
+      { seed: `${prefix}-a`, topScore: PLAYER_MASS_START + 10 },
+      { seed: `${prefix}-b`, topScore: PLAYER_MASS_START + 30 },
+      { seed: `${prefix}-c`, topScore: PLAYER_MASS_START + 20 },
+    ];
+
+    for (const score of scores) {
+      const res = await request.post(
+        `${WORKER_BASE}/__test/top-score?seed=${score.seed}`,
+        { data: { topScore: score.topScore } },
+      );
+      expect(
+        res.ok(),
+        `POST top-score for ${score.seed} → ${res.status()}`,
+      ).toBe(true);
+    }
+
+    const res = await request.get(`${WORKER_BASE}/leaderboard`);
+    expect(res.ok(), `GET /leaderboard → ${res.status()}`).toBe(true);
+    const body = (await res.json()) as {
+      topScores: { seed: string; topScore: number }[];
+    };
+
+    expect(Array.isArray(body.topScores)).toBe(true);
+    expect(body.topScores.length).toBeLessThanOrEqual(10);
+    const seeded = body.topScores.filter((entry) =>
+      entry.seed.startsWith(prefix),
+    );
+    expect(seeded).toEqual([
+      { seed: scores[1].seed, topScore: scores[1].topScore },
+      { seed: scores[2].seed, topScore: scores[2].topScore },
+      { seed: scores[0].seed, topScore: scores[0].topScore },
+    ]);
+  });
+
   test("monotonic-persist — a lower score never overwrites a higher one", async ({
     browser,
     request,

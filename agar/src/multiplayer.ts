@@ -54,6 +54,15 @@ if (!ctxOrNull) {
 }
 const ctx: CanvasRenderingContext2D = ctxOrNull;
 
+interface LeaderboardEntry {
+  seed: string;
+  topScore: number;
+}
+
+interface LeaderboardResponse {
+  topScores: LeaderboardEntry[];
+}
+
 interface SnapshotMessage {
   type: "snapshot";
   tick: number;
@@ -178,6 +187,43 @@ const clientId: string = (() => {
   return `agar-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 })();
 
+function workerBaseUrl(): string {
+  const loc = window.location;
+  const proto = loc.protocol === "https:" ? "https:" : "http:";
+  const host =
+    loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
+      ? `${loc.hostname}:8787`
+      : loc.host;
+  return `${proto}//${host}`;
+}
+
+function isLeaderboardResponse(value: unknown): value is LeaderboardResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const topScores = (value as Record<string, unknown>).topScores;
+  if (!Array.isArray(topScores)) return false;
+  for (const entry of topScores) {
+    if (typeof entry !== "object" || entry === null) return false;
+    const o = entry as Record<string, unknown>;
+    if (typeof o.seed !== "string" || typeof o.topScore !== "number") {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function refreshLeaderboard(): Promise<void> {
+  try {
+    const response = await fetch(`${workerBaseUrl()}/leaderboard`);
+    if (!response.ok) return;
+    const body: unknown = await response.json();
+    if (!isLeaderboardResponse(body)) return;
+    leaderboardTop = body.topScores[0] ?? null;
+    draw();
+  } catch {
+    // Leaderboard is garnish, not connection-critical. Play stays live.
+  }
+}
+
 function wsUrl(seed: string): string {
   const loc = window.location;
   const proto = loc.protocol === "https:" ? "wss:" : "ws:";
@@ -190,6 +236,8 @@ function wsUrl(seed: string): string {
 
 let latest: WorldState | null = null;
 let connected = false;
+let leaderboardTop: LeaderboardEntry | null = null;
+let leaderboardFetchStarted = false;
 
 let respawnFlashUntilTick = 0;
 const RESPAWN_FLASH_TICKS = 24;
@@ -282,6 +330,14 @@ function draw(): void {
       ctx.fillStyle = "#a85050";
       ctx.fillText(`lost ${self.deaths}`, 16, baseY - 40);
     }
+    if (leaderboardTop !== null) {
+      ctx.fillStyle = "#e8eaff";
+      ctx.fillText(
+        `room best ${leaderboardTop.topScore} @ ${leaderboardTop.seed}`,
+        16,
+        baseY - (self.deaths > 0 ? 60 : 40),
+      );
+    }
     ctx.textAlign = "center";
   }
 
@@ -331,6 +387,10 @@ function openWs(): WebSocket {
   const next = new WebSocket(wsUrl(readSeed()));
   next.addEventListener("open", () => {
     connected = true;
+    if (!leaderboardFetchStarted) {
+      leaderboardFetchStarted = true;
+      void refreshLeaderboard();
+    }
     syncProbe();
     draw();
   });

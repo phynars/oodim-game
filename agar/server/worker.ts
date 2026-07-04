@@ -57,6 +57,14 @@ export function parseBreakMode(raw: string | undefined): BreakMode | null {
   return raw as BreakMode;
 }
 
+interface LeaderboardEntry {
+  seed: string;
+  topScore: number;
+}
+
+const LEADERBOARD_KEY = "leaderboardTopScores";
+const LEADERBOARD_LIMIT = 10;
+
 interface InputMessage {
   type: "input";
   dir: InputDir;
@@ -114,12 +122,15 @@ export class EchoRoom implements DurableObject {
   // writing before the load would downgrade a re-hydrated DO from
   // its true persisted high to whatever the fresh roster computes.
   private state: DurableObjectState;
+  private readonly env: Env;
   private cachedTopScore = 0;
   private topScoreLoaded = false;
   private loadPromise: Promise<void> | null = null;
+  private matchSeedName = "1";
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
+    this.env = env;
     this.world = initialState(1);
     this.breakMode = parseBreakMode(env.AGAR_DO_BREAK_MODE);
     // Fire-and-forget eager load. Resolves in <1 tick on Workers
@@ -198,6 +209,7 @@ export class EchoRoom implements DurableObject {
       void this.state.storage.put("topScore", current, {
         allowUnconfirmed: true,
       });
+      void this.persistLeaderboardEntry(current);
       return;
     }
     if (current > this.cachedTopScore) {
@@ -206,7 +218,50 @@ export class EchoRoom implements DurableObject {
       void this.state.storage.put("topScore", current, {
         allowUnconfirmed: true,
       });
+      void this.persistLeaderboardEntry(current);
     }
+  }
+
+  private async persistLeaderboardEntry(topScore: number): Promise<void> {
+    const id = this.env.ECHO_ROOM.idFromName("leaderboard:global");
+    const stub = this.env.ECHO_ROOM.get(id);
+    await stub.fetch("http://internal/__internal/leaderboard-entry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ seed: this.matchSeedName, topScore }),
+    });
+  }
+
+  private async readLeaderboard(): Promise<LeaderboardEntry[]> {
+    const stored = await this.state.storage.get<LeaderboardEntry[]>(
+      LEADERBOARD_KEY,
+    );
+    if (!Array.isArray(stored)) return [];
+    return stored.filter(
+      (entry): entry is LeaderboardEntry =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof entry.seed === "string" &&
+        typeof entry.topScore === "number" &&
+        Number.isFinite(entry.topScore),
+    );
+  }
+
+  private async upsertLeaderboardEntry(
+    seed: string,
+    topScore: number,
+  ): Promise<LeaderboardEntry[]> {
+    const existing = await this.readLeaderboard();
+    const prior = existing.find((entry) => entry.seed === seed);
+    const nextScore = prior ? Math.max(prior.topScore, topScore) : topScore;
+    const next = [
+      ...existing.filter((entry) => entry.seed !== seed),
+      { seed, topScore: nextScore },
+    ]
+      .sort((a, b) => b.topScore - a.topScore || a.seed.localeCompare(b.seed))
+      .slice(0, LEADERBOARD_LIMIT);
+    await this.state.storage.put(LEADERBOARD_KEY, next);
+    return next;
   }
 
   private ensureTickLoop(): void {
@@ -299,6 +354,57 @@ export class EchoRoom implements DurableObject {
     // guarantee that the eager constructor load resolved would be
     // a lie. The hook is not on any tick / broadcast path.
     const testUrl = new URL(request.url);
+    const requestSeed = testUrl.searchParams.get("seed");
+    if (requestSeed !== null && requestSeed !== "") {
+      this.matchSeedName = requestSeed;
+    }
+
+    if (testUrl.pathname === "/leaderboard") {
+      if (request.method !== "GET") {
+        return new Response(JSON.stringify({ error: "method not allowed" }), {
+          status: 405,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const topScores = await this.readLeaderboard();
+      return new Response(JSON.stringify({ topScores }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (testUrl.pathname === "/__internal/leaderboard-entry") {
+      if (request.method !== "POST") {
+        return new Response(JSON.stringify({ error: "method not allowed" }), {
+          status: 405,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const body = (await request.json().catch(() => null)) as
+        | { seed?: unknown; topScore?: unknown }
+        | null;
+      if (
+        body === null ||
+        typeof body.seed !== "string" ||
+        body.seed === "" ||
+        typeof body.topScore !== "number" ||
+        !Number.isFinite(body.topScore)
+      ) {
+        return new Response(
+          JSON.stringify({ error: "expected {seed:string,topScore:number}" }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      const topScores = await this.upsertLeaderboardEntry(
+        body.seed,
+        body.topScore,
+      );
+      return new Response(JSON.stringify({ topScores }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     if (testUrl.pathname === "/__test/top-score") {
       await this.loadTopScoreOnce();
       // POST writes a known topScore directly to storage AND the
@@ -337,6 +443,7 @@ export class EchoRoom implements DurableObject {
         } else {
           this.cachedTopScore = requested;
           await this.state.storage.put("topScore", requested);
+          await this.persistLeaderboardEntry(requested);
         }
         const stored = await this.state.storage.get<number>("topScore");
         const topScore =
@@ -544,9 +651,16 @@ const worker: ExportedHandler<Env> = {
       url.pathname !== "/ws" &&
       url.pathname !== "/__test/top-score" &&
       url.pathname !== "/__test/evict" &&
-      url.pathname !== "/high-score"
+      url.pathname !== "/high-score" &&
+      url.pathname !== "/leaderboard"
     ) {
       return new Response("Not found", { status: 404 });
+    }
+
+    if (url.pathname === "/leaderboard") {
+      const id = env.ECHO_ROOM.idFromName("leaderboard:global");
+      const stub = env.ECHO_ROOM.get(id);
+      return stub.fetch(request);
     }
 
     // Route by seed so two clients with the same seed share state.
