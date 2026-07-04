@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: npm install
       - name: Run harness spec with HARNESS_BREAK_MODE="off"
         env:
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: npm install
       - name: Run harness spec with HARNESS_BREAK_MODE=${{ matrix.mode }}
         env:
