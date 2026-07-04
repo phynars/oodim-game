@@ -171,55 +171,57 @@ jobs:
             exit 0
           fi
 
-  # AC4 — un-comment when slice 3 lands and eviction-roundtrip
-  # unskips. Same shape as red-polarity-monotonic above, but filtered
-  # to "eviction-roundtrip" and with AGAR_DO_BREAK_MODE=lossy-persist
-  # threaded through `wrangler dev --var` via the
-  # `test:e2e:agar:persistence:broken-lossy` script.
-  # Keep this in the SAME workflow file — do not create a second one
-  # per slice.
-  #
-  # red-polarity-eviction:
-  #   name: persistence-harness (red — lossy-persist MUST fail eviction-roundtrip)
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: "20"
-  #         cache: npm
-  #     - name: Install dependencies
-  #       run: npm ci
-  #     - name: Install Playwright browsers
-  #       run: npx playwright install --with-deps chromium
-  #     - name: Skip-when-skipped preflight (eviction-roundtrip)
-  #       id: preflight
-  #       shell: bash
-  #       run: |
-  #         # Anchor on the eviction-roundtrip title — same shape as the
-  #         # monotonic-persist preflight above. Match `test.skip(` only
-  #         # (not `test.skip(\s*true`); the spec splits the call across
-  #         # lines and pipe-grep is line-oriented. The `-A 3` window is
-  #         # what scopes us to this test's skip, not the `true` arg.
-  #         if grep -A 3 'test(\s*"eviction-roundtrip' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip('; then
-  #           echo "eviction-roundtrip still skipped — slice 3 has not landed yet."
-  #           echo "skipped=true" >> "$GITHUB_OUTPUT"
-  #         else
-  #           echo "skipped=false" >> "$GITHUB_OUTPUT"
-  #         fi
-  #     - name: Run agar persistence-harness eviction-roundtrip (red polarity — MUST fail)
-  #       if: steps.preflight.outputs.skipped == 'false'
-  #       shell: bash
-  #       run: |
-  #         set +e
-  #         npm run test:e2e:agar:persistence:broken-lossy
-  #         rc=$?
-  #         set -e
-  #         if [ "$rc" -eq 0 ]; then
-  #           echo "::error::Broken-polarity spec passed (exit 0) — eviction-roundtrip did NOT catch the lossy-persist break mode."
-  #           exit 1
-  #         else
-  #           echo "Broken-polarity spec failed as expected (exit $rc) — eviction-roundtrip guard is honest."
-  #           exit 0
-  #         fi
+  red-polarity-eviction:
+    name: persistence-harness (red — lossy-persist MUST fail eviction-roundtrip)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Slice 3 has landed and eviction-roundtrip is live. Keep the
+      # preflight anyway: if a future refactor accidentally re-skips
+      # the test, this job exits with an explicit log instead of
+      # pretending the lossy-persist polarity was exercised.
+      - name: Skip-when-skipped preflight (eviction-roundtrip)
+        id: preflight
+        shell: bash
+        run: |
+          # Anchor on the eviction-roundtrip title — same shape as the
+          # monotonic-persist preflight above. Match `test.skip(` only
+          # (not `test.skip(\s*true`); the spec splits the call across
+          # lines and pipe-grep is line-oriented. The `-A 3` window is
+          # what scopes us to this test's skip, not the `true` arg.
+          if grep -A 3 'test(\s*"eviction-roundtrip' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip('; then
+            echo "eviction-roundtrip is skipped — red polarity not enforced this run."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eviction-roundtrip is live — enforcing red polarity under AGAR_DO_BREAK_MODE=lossy-persist."
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run agar persistence-harness eviction-roundtrip (red polarity — MUST fail)
+        if: steps.preflight.outputs.skipped == 'false'
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:agar:persistence:broken-lossy
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — eviction-roundtrip did NOT catch the lossy-persist break mode."
+            exit 1
+          else
+            echo "Broken-polarity spec failed as expected (exit $rc) — eviction-roundtrip guard is honest."
+            exit 0
+          fi
