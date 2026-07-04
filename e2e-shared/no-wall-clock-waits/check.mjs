@@ -16,8 +16,15 @@
  *
  * Exits 1 on any violation, prints each offender with file:line.
  *
+ * Rollout state: BLOCKING. The #313 migration is closed — CI runs this
+ * guard strict (see .github/workflows/no-wall-clock-waits.yml), so any
+ * unmarked waitForTimeout under **\/e2e/** fails the PR. See
+ * docs/harness/no-wall-clock-waits.md for the rule and the two allowed
+ * exceptions (// pacing, // allowed:).
+ *
  * Usage (from repo root):
- *   node e2e-shared/no-wall-clock-waits/check.mjs
+ *   node e2e-shared/no-wall-clock-waits/check.mjs              # strict (CI + local)
+ *   node e2e-shared/no-wall-clock-waits/check.mjs --report-only # local audit, always exit 0
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
