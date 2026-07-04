@@ -8,6 +8,12 @@ name: CI
 # typecheck/build/gameplay-harness; a shared/root change runs all three.
 # The auto-merge gate reads the workflow RUN conclusion (skipped lanes don't
 # fail it), so no branch-protection change is needed.
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
+# These workflows read the repo; deploys auth to Cloudflare via secrets, not
+# the GITHUB_TOKEN. Jobs needing more declare their own block.
+permissions:
+  contents: read
+
 on:
   pull_request:
 
@@ -50,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: node scripts/check-product-wiring.mjs
 
   pacman:
@@ -61,7 +67,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: npm install
       - run: npm run typecheck:pacman
       - run: npm run build:pacman
@@ -85,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: npm install
       - run: npm run typecheck:galaga
       - run: npm run build:galaga
@@ -109,7 +115,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: npm install
       - run: npm run typecheck:doom
       - run: npm run build:doom
@@ -133,7 +139,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
       - run: npm install
       - run: npm run typecheck:agar
       - run: npm run build:agar
