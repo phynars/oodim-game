@@ -295,6 +295,19 @@ export class Engine {
       setInvulnerable: (value: boolean) => {
         this.invulnerable = value;
       },
+      getPerfectBanner: () => {
+        // Read-only window into the perfect-banner state. Mirrors
+        // getMissBanner: returns null when no banner is currently armed
+        // (either never armed, or already expired). The bonus is included so
+        // the harness can assert the banner's awarded value without canvas
+        // pixel reads.
+        if (this.perfectBannerUntil === null) return null;
+        if (this.state.tick > this.perfectBannerUntil) return null;
+        return {
+          until: this.perfectBannerUntil,
+          bonus: CHALLENGING_PERFECT_BONUS,
+        };
+      },
       getMissBanner: () => {
         // #310 read-only window into the miss-banner state. Returns null
         // when the banner isn't currently armed (either never armed, or
@@ -578,6 +591,14 @@ export class Engine {
       if (total > 0 && this.challengingKills >= total) {
         this.state.score += CHALLENGING_PERFECT_BONUS;
         this.perfectBannerUntil = this.state.tick + 90;
+        this.state.feedback.hitstopTicks = Math.max(
+          this.state.feedback.hitstopTicks,
+          STAGE_CLEAR_HITSTOP_TICKS,
+        );
+        this.state.feedback.shakeAmplitude = Math.max(
+          this.state.feedback.shakeAmplitude,
+          SHAKE_AMPLITUDE_KILL,
+        );
       } else if (total > 0 && this.challengingKills < total) {
         // Non-perfect exit (#310) — voice the miss. Mirror to PERFECT!:
         // same slot (HEIGHT/2 + 30), same 18px monospace, same 90-tick
