@@ -1192,6 +1192,66 @@ test("challenging stage: no enemy bullets spawn during it and a perfect clear aw
   expect(result.stage).toBeGreaterThan(before.stage);
 });
 
+test("perfect challenging clear punches the feedback channel and exposes its banner", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+  await page.waitForFunction(() => Boolean(window.__galagaInternals), null, {
+    timeout: 5000,
+  });
+
+  expect(
+    await page.evaluate(() => window.__galagaInternals!.getPerfectBanner()),
+  ).toBeNull();
+
+  await page.evaluate(() => window.__galagaInternals!.startChallengingStage());
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies.length ?? 0) > 0,
+    null,
+    { timeout: 5000 },
+  );
+
+  const result = await page.evaluate(async () => {
+    let banner: { until: number; bonus: number } | null = null;
+    for (let guard = 0; guard < 400; guard++) {
+      while (window.__galaga!.enemies.length > 0) {
+        window.__galagaInternals!.forceHit({ target: "enemy" });
+      }
+      const b = window.__galagaInternals!.getPerfectBanner();
+      if (b && banner === null) banner = b;
+      const s = window.__galaga!;
+      if (s.challenging === false && banner !== null) {
+        return {
+          banner,
+          hitstopTicks: s.feedback.hitstopTicks,
+          shakeAmplitude: s.feedback.shakeAmplitude,
+          stage: s.stage,
+        };
+      }
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    return {
+      banner,
+      hitstopTicks: window.__galaga!.feedback.hitstopTicks,
+      shakeAmplitude: window.__galaga!.feedback.shakeAmplitude,
+      stage: window.__galaga!.stage,
+    };
+  });
+
+  expect(result.banner).not.toBeNull();
+  expect(result.banner!.bonus).toBe(10000);
+  expect(result.banner!.until).toBeGreaterThan(0);
+  expect(result.hitstopTicks).toBeGreaterThanOrEqual(5);
+  expect(result.shakeAmplitude).toBeGreaterThanOrEqual(3);
+  expect(result.stage).toBeGreaterThan(1);
+});
+
 test("challenging stage non-perfect exit fires the HIT —N banner (#310)", async ({
   page,
 }) => {

@@ -324,6 +324,12 @@ export interface GalagaInternals {
    *  false; zero gameplay effect — feel specs that fire many times from a fixed
    *  position enable it so a diving enemy can't kill the player mid-measurement. */
   setInvulnerable(value: boolean): void;
+  /** Read the "PERFECT!" banner state. Returns null when no perfect
+   *  challenging clear banner is armed (or once it has expired). The `until`
+   *  field is the engine tick through which the banner is painted; `bonus`
+   *  is the awarded challenging-clear bonus. Test-only — gameplay code reads
+   *  neither field; renderer reads the engine's private mirror. */
+  getPerfectBanner(): { until: number; bonus: number } | null;
   /** Read the "HIT —N" miss-banner state (#310). Returns null when the
    *  banner is not currently armed (no challenging stage has ended on a
    *  non-perfect exit yet, or the banner has expired). The `until` field is
