@@ -25,11 +25,12 @@ import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
 
-// --report-only: print violations but exit 0. Used by the CI workflow
-// during the #313 rollout, while the 11 known sites are still being
-// migrated suite-by-suite. The closing PR of that chain drops this
-// flag from the workflow and the guard becomes blocking. The script's
-// strict mode (no flag) is what local devs and the final gate run.
+// --report-only: print violations but exit 0. This was used by the CI
+// workflow during the #313 rollout, while the 11 known sites were being
+// migrated suite-by-suite. That rollout is now CLOSED: the workflow
+// (.github/workflows/no-wall-clock-waits.yml) runs strict (no flag), so
+// the guard is blocking on every PR. The flag is retained only for
+// local `--report-only` audits of the surviving annotated exceptions.
 const REPORT_ONLY = process.argv.includes('--report-only');
 
 // directories whose names mean "this is e2e test code"
@@ -129,9 +130,9 @@ stream('`// allowed: <reason>` on the same or preceding line.');
 if (REPORT_ONLY) {
   stream('');
   stream(
-    '(report-only: not failing the build. The workflow flips to',
+    '(report-only: not failing the build. NOTE: the CI workflow runs',
   );
-  stream('blocking once the #313 punch list is cleared.)');
+  stream('strict/blocking — this mode is for local audits only.)');
   process.exit(0);
 }
 process.exit(1);
