@@ -10,7 +10,13 @@
 // on — add fields as mechanics land, deprecate by leaving them stable.
 
 /** High-level lifecycle. Boots to 'ready'; first input flips to 'playing'. */
-export type GameStatus = "ready" | "playing" | "won" | "lost" | "gameover";
+export type GameStatus =
+  | "ready"
+  | "playing"
+  | "paused"
+  | "won"
+  | "lost"
+  | "gameover";
 
 /** The player's fighter. Galaga uses pixel coords (not a tile grid like
  *  Pac-Man) — the ship glides horizontally along the bottom. */

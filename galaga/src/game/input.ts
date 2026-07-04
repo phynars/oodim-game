@@ -30,6 +30,8 @@ export interface InputSource {
    *  The engine polls this each fixed-step; one keydown = one bullet
    *  request (the per-2-shots cap is enforced inside the engine). */
   consumeFire(): boolean;
+  /** Edge-triggered pause: returns true ONCE per P/Esc keydown, then resets. */
+  consumePause(): boolean;
   /** Detach listeners. Useful for teardown in tests / hot reload. */
   dispose(): void;
   /** Subscribe to "any input happened" — used to flip ready→playing on
@@ -52,6 +54,9 @@ function isRightKey(key: string): boolean {
 function isFireKey(key: string): boolean {
   return key === " " || key === "Spacebar";
 }
+function isPauseKey(key: string): boolean {
+  return key === "p" || key === "P" || key === "Escape";
+}
 
 /** Wire keyboard listeners to a shared target (defaults to `window`). The
  *  returned source is the only thing the engine touches — listeners are
@@ -65,6 +70,7 @@ export function createKeyboardInput(
   // the next tick can consume the next press. That matches arcade feel
   // (you can't double-fire within a single 16.6ms window).
   let firePending = false;
+  let pausePending = false;
   const firstInputCbs: Array<() => void> = [];
   let firedFirstInput = false;
 
@@ -93,6 +99,15 @@ export function createKeyboardInput(
       }
       firePending = true;
       fireFirstInput();
+    } else if (isPauseKey(e.key)) {
+      if (typeof (e as KeyboardEvent).preventDefault === "function") {
+        try {
+          (e as KeyboardEvent).preventDefault();
+        } catch {
+          // jsdom / synthetic events may not allow preventDefault; ignore.
+        }
+      }
+      pausePending = true;
     } else {
       // Any other key still counts as "first input" so the READY screen
       // can be dismissed by tapping anything.
@@ -126,6 +141,11 @@ export function createKeyboardInput(
     consumeFire(): boolean {
       if (!firePending) return false;
       firePending = false;
+      return true;
+    },
+    consumePause(): boolean {
+      if (!pausePending) return false;
+      pausePending = false;
       return true;
     },
     dispose(): void {
@@ -249,6 +269,9 @@ export function createTouchInput(elements: TouchInputElements): InputSource {
       firePending = false;
       return true;
     },
+    consumePause(): boolean {
+      return false;
+    },
     dispose(): void {
       for (const [el, type, handler] of bindings) {
         el.removeEventListener(type, handler);
@@ -303,6 +326,13 @@ export function combineInputs(sources: InputSource[]): InputSource {
         if (src.consumeFire()) fired = true;
       }
       return fired;
+    },
+    consumePause(): boolean {
+      let paused = false;
+      for (const src of sources) {
+        if (src.consumePause()) paused = true;
+      }
+      return paused;
     },
     dispose(): void {
       for (const src of sources) src.dispose();
