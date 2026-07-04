@@ -597,8 +597,39 @@ export class Engine {
         );
         this.state.feedback.shakeAmplitude = Math.max(
           this.state.feedback.shakeAmplitude,
-          SHAKE_AMPLITUDE_KILL,
+          SHAKE_AMPLITUDE_DEATH * 0.6,
         );
+        this.state.scorePopups.push({
+          x: WIDTH / 2,
+          y: HEIGHT / 2 + 54,
+          value: CHALLENGING_PERFECT_BONUS,
+          age: 0,
+        });
+        const centerX = WIDTH / 2;
+        const centerY = HEIGHT / 2 + 30;
+        for (let i = 0; i < 16; i++) {
+          const pair = Math.floor(i / 2);
+          const lane = i % 2 === 0 ? -1 : 1;
+          const spread = pair / 7;
+          const jitter =
+            (((Math.sin(this.state.tick * 53.171 + i * 19.19) * 43758.5453) %
+              1) +
+              1) %
+            1;
+          const angle =
+            -Math.PI / 2 +
+            lane * (0.2 + spread * 0.9) +
+            (jitter - 0.5) * 0.16;
+          const speed = 1.2 + jitter * 1.6;
+          this.state.feedback.sparks.push({
+            x: centerX,
+            y: centerY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            ageTicks: 0,
+            lifetimeTicks: SPARK_LIFETIME_KILL_TICKS,
+          });
+        }
       } else if (total > 0 && this.challengingKills < total) {
         // Non-perfect exit (#310) — voice the miss. Mirror to PERFECT!:
         // same slot (HEIGHT/2 + 30), same 18px monospace, same 90-tick
