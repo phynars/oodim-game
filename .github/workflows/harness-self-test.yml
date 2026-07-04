@@ -42,6 +42,12 @@ name: harness-self-test
 # auto-merge gate reads workflow-run conclusion, so a skipped lane is
 # not a failure.
 
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
+# These workflows read the repo; deploys auth to Cloudflare via secrets, not
+# the GITHUB_TOKEN. Jobs needing more declare their own block.
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:

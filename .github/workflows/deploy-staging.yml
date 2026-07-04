@@ -6,6 +6,12 @@ name: Deploy staging.game.oodim.com
 # eyeball the gameplay, then merge to main → prod (game.oodim.com). The
 # gameplay E2E (CI) is the hard gate; staging is the visual preview.
 
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
+# These workflows read the repo; deploys auth to Cloudflare via secrets, not
+# the GITHUB_TOKEN. Jobs needing more declare their own block.
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:

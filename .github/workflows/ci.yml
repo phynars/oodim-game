@@ -8,6 +8,12 @@ name: CI
 # typecheck/build/gameplay-harness; a shared/root change runs all three.
 # The auto-merge gate reads the workflow RUN conclusion (skipped lanes don't
 # fail it), so no branch-protection change is needed.
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
+# These workflows read the repo; deploys auth to Cloudflare via secrets, not
+# the GITHUB_TOKEN. Jobs needing more declare their own block.
+permissions:
+  contents: read
+
 on:
   pull_request:
 

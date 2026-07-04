@@ -5,6 +5,12 @@ name: Deploy game.oodim.com
 # merges) and on manual dispatch. CI (ci.yml) is the quality gate; this is
 # the publish step.
 
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
+# These workflows read the repo; deploys auth to Cloudflare via secrets, not
+# the GITHUB_TOKEN. Jobs needing more declare their own block.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
