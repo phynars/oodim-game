@@ -794,6 +794,13 @@ export class Engine {
         this.lostTick = null;
       }
     }
+    const pausePressed = this.input.consumePause();
+    if (
+      pausePressed &&
+      (this.state.status === "playing" || this.state.status === "paused")
+    ) {
+      this.state.status = this.state.status === "playing" ? "paused" : "playing";
+    }
     if (this.state.status === "playing") {
       this.state.tick += 1;
       // Bullet→enemy hit juice (#133) — per-tick DECAY of the feedback
@@ -1449,6 +1456,18 @@ export class Engine {
       ctx.font = "9px ui-monospace, monospace";
       ctx.fillStyle = "#9aa";
       ctx.fillText("press / tap to start", WIDTH / 2, HEIGHT / 2 + 18);
+    }
+
+    if (this.state.status === "paused") {
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = "#ff7ab0";
+      ctx.font = "22px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("HELD.", WIDTH / 2, HEIGHT / 2);
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.fillStyle = "#cdd";
+      ctx.fillText("press p", WIDTH / 2, HEIGHT / 2 + 22);
     }
 
     // GAME OVER overlay — painted while status is 'lost' (the brief hold

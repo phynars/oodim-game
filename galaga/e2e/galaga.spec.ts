@@ -62,6 +62,91 @@ test("first input flips ready→playing and the fixed-step loop advances tick", 
   expect(t2).toBeGreaterThan(t1);
 });
 
+test("P pauses Galaga as HELD. and freezes gameplay until P resumes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  await page.waitForFunction(
+    () => (window.__galaga?.enemies?.length ?? 0) > 0,
+    null,
+    { timeout: 5000 },
+  );
+
+  await page.keyboard.press("p");
+  await page.waitForFunction(() => window.__galaga?.status === "paused", null, {
+    timeout: 3000,
+  });
+
+  const frozen = await page.evaluate(async () => {
+    const before = JSON.parse(JSON.stringify(window.__galaga!)) as GameState;
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const after = JSON.parse(JSON.stringify(window.__galaga!)) as GameState;
+    return { before, after };
+  });
+
+  expect(frozen.after.tick).toBe(frozen.before.tick);
+  expect(frozen.after.player.x).toBe(frozen.before.player.x);
+  expect(frozen.after.enemies).toEqual(frozen.before.enemies);
+  expect(frozen.after.bullets).toEqual(frozen.before.bullets);
+  expect(frozen.after.captureBeamActive).toBe(
+    frozen.before.captureBeamActive,
+  );
+
+  await page.keyboard.press("p");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 3000,
+  });
+  const resumedTick = await page.evaluate(() => window.__galaga!.tick);
+  await page.waitForFunction((t) => (window.__galaga?.tick ?? 0) > t, resumedTick, {
+    timeout: 3000,
+  });
+});
+
+test("Esc toggles the same Galaga pause contract", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+
+  await page.locator("canvas").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 5000,
+  });
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__galaga?.status === "paused", null, {
+    timeout: 3000,
+  });
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__galaga?.status === "playing", null, {
+    timeout: 3000,
+  });
+});
+
+test("pause input is ignored before Galaga starts", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(window.__galaga));
+  expect(await page.evaluate(() => window.__galaga!.status)).toBe("ready");
+
+  await page.keyboard.press("p");
+  await page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+  });
+
+  expect(await page.evaluate(() => window.__galaga!.status)).toBe("ready");
+});
+
 test("player ship moves left then right under keyboard input, clamped to the field", async ({
   page,
 }) => {
