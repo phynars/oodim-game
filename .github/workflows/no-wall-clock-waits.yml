@@ -13,6 +13,12 @@ name: no-wall-clock-waits
 #
 # Fires on any PR that touches an e2e/ tree (or this guard itself).
 
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
+# These workflows only read the repo; deploys auth to Cloudflare via secrets,
+# not the GITHUB_TOKEN. Jobs needing more declare their own block.
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
