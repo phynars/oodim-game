@@ -42,6 +42,7 @@ import {
   scoreFor,
   type Bullet,
   type FeedbackSpark,
+  type FormationSpawnProbeEntry,
   type GameState,
 } from "./types";
 import {
@@ -87,6 +88,12 @@ const STAR_SPEEDS = [0.35, 0.7, 1.15] as const;
  *  to 'gameover'. ~0.5s at 60Hz — long enough that the death frame reads,
  *  short enough that the overlay doesn't feel delayed. */
 const GAMEOVER_HOLD_FRAMES = 30;
+/** Formation-spawn cadence probe (spec:
+ *  galaga/docs/formation-spawn-cadence-probe-spec.md) ring buffer capacity.
+ *  Sized above one full normal wave (COLS*ROWS = 40) so the whole first
+ *  stage fits without wraparound while still bounding memory across long
+ *  test sessions. If we ever raise the wave count, bump this. */
+const FORMATION_SPAWN_PROBE_CAPACITY = 128;
 
 export class Engine {
   private readonly canvas: HTMLCanvasElement;
@@ -178,6 +185,18 @@ export class Engine {
    *  mid-test — which would drop canAct and stall the spec's spawn wait. Set via
    *  __galagaInternals.setInvulnerable; default false (zero gameplay effect). */
   private invulnerable = false;
+  /** Formation-spawn cadence probe. Set of enemy ids we've already
+   *  recorded during the current stage window. Cleared alongside
+   *  `formationSpawnLog` on stage-advance / challenging start so each
+   *  stage's cadence is measured independently. Bounded implicitly by the
+   *  wave size (≤ COLS*ROWS = 40 per normal stage; ≤ CHALLENGING_WAVE_COUNT
+   *  per challenging stage). */
+  private seenFormationEnemyIds: Set<number> = new Set();
+  /** Formation-spawn cadence probe ring buffer. One entry pushed the FIRST
+   *  tick an enemy id appears in the public roster. Kept to the last
+   *  `FORMATION_SPAWN_PROBE_CAPACITY` entries so long test runs don't grow
+   *  memory. Read via `__galagaInternals.formationSpawnProbe()`. */
+  private formationSpawnLog: FormationSpawnProbeEntry[] = [];
 
   constructor(canvas: HTMLCanvasElement, touchElements?: TouchInputElements) {
     this.canvas = canvas;
@@ -251,6 +270,10 @@ export class Engine {
         this.state.challenging = true;
         this.challengingKills = 0;
         this.formationStartTick = null;
+        // Reset the cadence probe so the challenging wave's spawn schedule
+        // is measured from t=0 without residue from the prior formation.
+        this.seenFormationEnemyIds.clear();
+        this.formationSpawnLog = [];
         this.publish();
       },
       triggerBossCapture: (opts) => {
@@ -340,6 +363,16 @@ export class Engine {
         // spec can assert the pre-clear → hitstop-hold → mid-tally → final
         // sequence without a canvas pixel read.
         return stageClearDisplayScore(this.state);
+      },
+      formationSpawnProbe: () => {
+        // Formation-spawn cadence probe (spec:
+        // galaga/docs/formation-spawn-cadence-probe-spec.md). Return a
+        // SHALLOW COPY of the ring buffer so the caller can't mutate our
+        // internal state — the buffer keeps growing as more spawns land,
+        // but the returned array is a snapshot at read time. Entries are
+        // in arrival order; consumers compute `tick` deltas to measure
+        // cadence. Entry objects are cheap POD; a shallow copy is fine.
+        return this.formationSpawnLog.slice();
       },
     };
   }
@@ -671,6 +704,11 @@ export class Engine {
     // Re-anchor so `formationTick` restarts at 0 next update — entrance arcs
     // for stage N+1 play exactly like stage 1's did.
     this.formationStartTick = null;
+    // Reset the formation-spawn cadence probe so the next stage measures
+    // its OWN cadence from t=0 — otherwise the buffer would concatenate
+    // stages and consumers would read misleading cross-stage deltas.
+    this.seenFormationEnemyIds.clear();
+    this.formationSpawnLog = [];
     // Flash the "STAGE N" banner for ~1.5s. The renderer paints from this
     // (we don't add a new GameState field — the banner is purely visual,
     // not part of the contract any test asserts on).
@@ -897,6 +935,46 @@ export class Engine {
       }
       const formationTick = this.state.tick - this.formationStartTick;
       this.state.enemies = this.enemies.tick(formationTick);
+      // Formation-spawn cadence probe (spec:
+      // galaga/docs/formation-spawn-cadence-probe-spec.md). Roster-DIFF the
+      // returned snapshot: for each enemy id we haven't yet seen this stage,
+      // push one entry into the ring buffer stamped with the CURRENT engine
+      // tick + the choreography-local formationTick. Because two enemies
+      // that share a spawnTick both appear on the same engine tick, their
+      // entries carry identical `tick`/`formationTick` values — the
+      // consumer measures cadence as `tick` DELTAS between consecutive
+      // entries, so a 4-tick controller schedule produces deltas of exactly
+      // 4 with no polling-rate artifact (unlike a page.evaluate poll, which
+      // would batch multiple ticks into a single sample). Runs BEFORE
+      // collisions so a bullet that kills an enemy on its spawn tick still
+      // gets recorded first — the buffer's job is "when did this id
+      // appear", not "did it survive".
+      for (const e of this.state.enemies) {
+        if (this.seenFormationEnemyIds.has(e.id)) continue;
+        // Skip 'escort' arrivals — those are captured-fighter dock-ins
+        // from the rescue path, not formation-entry spawns. They'd
+        // corrupt cadence measurements taken after a capture/rescue
+        // beat. 'capturing' is a state transition of an EXISTING boss
+        // (already seen); id-dedupe handles that case for free.
+        if (e.state === "escort") continue;
+        this.seenFormationEnemyIds.add(e.id);
+        this.formationSpawnLog.push({
+          tick: this.state.tick,
+          formationTick,
+          enemyId: e.id,
+          slotIndex: this.formationSpawnLog.length,
+          x: e.x,
+          y: e.y,
+        });
+        // Bounded ring: drop the oldest once we exceed capacity. Normal
+        // stages produce 40 entries; challenging stages produce
+        // CHALLENGING_WAVE_COUNT (8); resets clear the buffer, so this
+        // guard only fires if a caller reads across many stages without
+        // resetting — defensive.
+        if (this.formationSpawnLog.length > FORMATION_SPAWN_PROBE_CAPACITY) {
+          this.formationSpawnLog.shift();
+        }
+      }
       // Mirror the challenging flag onto the public contract every tick.
       // The controller is the source of truth (the stage ends when it
       // declares the wave empty); we just publish it.

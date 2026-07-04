@@ -239,6 +239,37 @@ export interface GameState {
   scoreBeforeBonus: number;
 }
 
+/** Formation-spawn cadence probe entry (see
+ *  `galaga/docs/formation-spawn-cadence-probe-spec.md`). One entry is
+ *  pushed onto the ring buffer the FIRST tick an enemy id appears in the
+ *  public roster returned by the enemy controller. The engine derives the
+ *  entries from a roster-diff — no changes to the controller's schedule.
+ *
+ *  - `tick`: engine `state.tick` when the id was first observed.
+ *  - `formationTick`: `tick - formationStartTick` — the choreography-local
+ *    clock the controller consumes. Two entries with the same
+ *    `formationTick` mean two enemies spawned on the same fixed-step; the
+ *    e2e feel spec asserts on `tick` deltas either way.
+ *  - `enemyId`: stable id from the controller (never reused across stages).
+ *  - `slotIndex`: 0-based index of the entry within the current probe
+ *    window — i.e. its arrival order. Not tied to the controller's
+ *    formation grid (col/row); the spec allows a better slot mapping
+ *    later without surgery.
+ *  - `x`,`y`: canvas-px center at first appearance (the entrance arc's t≈0
+ *    position, off-screen or just entering).
+ *
+ *  The buffer holds the LAST N entries (bounded so long test runs don't
+ *  grow memory). The engine clears it on stage-advance / challenging
+ *  stage start so each stage's cadence is measured independently. */
+export interface FormationSpawnProbeEntry {
+  tick: number;
+  formationTick: number;
+  enemyId: number;
+  slotIndex: number;
+  x: number;
+  y: number;
+}
+
 /** Input-latency probe (#168). Returned by `__galagaInternals.fireProbe()` —
  *  a read-only snapshot of the engine ticks at which the most recent fire
  *  press was observed and the projectile actually entered the bullet array.
@@ -345,6 +376,14 @@ export interface GalagaInternals {
    *  harness to assert the first-stage banner fires on the READY→playing
    *  flip without a canvas pixel read. */
   getStageBanner(): { until: number; stage: number } | null;
+  /** Formation-spawn cadence probe. Returns the ring buffer of entries
+   *  recorded since the last stage reset — one entry per NEW enemy id
+   *  first observed in the public roster after `enemies.tick()`. See
+   *  `FormationSpawnProbeEntry` for field semantics + the spec at
+   *  `galaga/docs/formation-spawn-cadence-probe-spec.md` for the design.
+   *  Test-only, read-only — returns a fresh array snapshot each call so
+   *  the caller can't mutate the engine's buffer. */
+  formationSpawnProbe(): FormationSpawnProbeEntry[];
   /** Stage-clear bonus tally probe (#273). Returns the score the HUD should
    *  display THIS tick: the animated count-up value while a tally window is
    *  open (`scoreBeforeBonus + floor(total * progress)`), or the authoritative
