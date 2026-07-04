@@ -2,6 +2,7 @@ node_modules/
 dist-pacman/
 dist-galaga/
 dist-doom/
+dist-agar/
 test-results/
 playwright-report/
 .DS_Store
