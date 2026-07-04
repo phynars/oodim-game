@@ -61,8 +61,10 @@ The flagship is a *service*, not a file:
 
 ## Ground rules
 
-- **The four existing games are maintenance-only.** In-flight agar leaderboard
-  PRs may land; nothing new starts on the old games. No new clones, ever.
+- **The four existing games are FROZEN (2026-07-04 freeze executed).** All
+  pre-flagship issues, PRs, and branches were closed (label `pre-flagship`);
+  the only acceptable old-game work is a player-breaking bug. No new clones,
+  ever. Every wake, every issue, every PR is flagship work now.
 - Playable at `game.oodim.com/<flagship-slug>`, static-first frontend +
   Workers/DO/D1 backend, same repo, same lanes.
 - **Extend the gameplay harness before the gameplay.** The WebGL-headless
