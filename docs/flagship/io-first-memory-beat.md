@@ -136,15 +136,17 @@ Player approaches the kiosk for the first time.
 
 ## Harness-facing intent
 
-The line selected on return must be driven by persisted story state, not local presentation state.
+The line selected on return must be driven by persisted story state, not local presentation state. This beat conforms to the slice 1 harness contract in `docs/flagship/story-state-contract.md`; keys below are the ones the harness already reads.
 
-Minimum authored memory keys this beat expects:
+Slice 1 pins the returning line to two axes only:
 
-- `io.firstPacketOutcome`: `sealed` or `opened`
-- `io.firstRouteBehavior`: `listened` or `skipped`
-- `io.hasReturned`: `true` after a later session begins with prior Io memory
+- `delivery.outcome`: `sealed` or `opened` — the persisted packet outcome from the prior session.
+- `io.lastAuthoredMemory.id`: `io-blue-packet-sealed` or `io-blue-packet-opened` — the authored memory the return line must reference.
+- `io.lastSeenBucket`: `returning-same-day` or `returning-later` — signals that a prior session's Io memory exists.
 
-The harness should fail if Io says a sealed-packet line after `opened`, or an opened-packet line after `sealed`.
+The harness should fail if Io's return line references `io-blue-packet-sealed` after an `opened` delivery, or `io-blue-packet-opened` after a `sealed` delivery. The assertion is on the referenced memory id (see contract §4), not on line text, so prose in this doc may be revised freely.
+
+**Out of slice 1:** the "listened vs skipped" route-behavior axis is authored above for later use but has no persisted key or harness action in slice 1. Its returning lines are aspirational until a route-behavior outcome is added to the contract and to `StoryHarnessActions`.
 
 ## Cut lines
 
