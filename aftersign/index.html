@@ -121,6 +121,12 @@
       import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+      import {
+        IO_PACKET_CONFIRM_CUE,
+        sampleIoPacketConfirmCue,
+        isIoPacketConfirmInputLocked,
+        assertIoPacketConfirmCueShape,
+      } from "./src/juice/ioPacketConfirmPulse.mjs";
 
       const SAVE_KEY = "aftersign.kioskSlice.v1";
       const canvas = document.querySelector("#scene");
@@ -187,6 +193,11 @@
           getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
           deliverPacket: () => deliverPacket(),
           resetSliceSave: () => resetSliceSave(),
+          juice: {
+            ioPacketConfirmCue: IO_PACKET_CONFIRM_CUE,
+            sampleIoPacketConfirmCue,
+            selfTest: cueSelfTest,
+          },
         };
       };
 
@@ -331,7 +342,51 @@
         bloomPass.setSize(width, height);
       };
 
+      // --- IO packet-confirm cue runtime driver -----------------------------
+      // Boot-time assertion: throws if sampler drifts from cue shape.
+      const cueSelfTest = assertIoPacketConfirmCueShape();
+      const BLOOM_BASE_STRENGTH = 0.52;
+      const CAMERA_BASE_X = camera.position.x;
+      const SHAKE_PX_TO_WORLD = 1 / 260; // ~5px shake reads as ~0.019 world units at this framing.
+      let cueStartMs = null; // null = idle
+
+      const startIoPacketConfirmCue = () => {
+        cueStartMs = performance.now();
+      };
+
+      const updateIoPacketConfirmCue = (nowMs) => {
+        if (cueStartMs === null) {
+          // Ensure we return to base whenever idle.
+          camera.position.x = CAMERA_BASE_X;
+          bloomPass.strength = BLOOM_BASE_STRENGTH;
+          kiosk.scale.setScalar(1);
+          return;
+        }
+        const elapsed = nowMs - cueStartMs;
+        if (elapsed >= IO_PACKET_CONFIRM_CUE.durationMs) {
+          cueStartMs = null;
+          camera.position.x = CAMERA_BASE_X;
+          bloomPass.strength = BLOOM_BASE_STRENGTH;
+          kiosk.scale.setScalar(1);
+          return;
+        }
+        const sample = sampleIoPacketConfirmCue(elapsed);
+        // Camera shake: sign flips per-frame for a jitter without needing extra state.
+        const jitterSign = (Math.floor(elapsed / 16) & 1) === 0 ? 1 : -1;
+        camera.position.x = CAMERA_BASE_X + sample.cameraShakePx * SHAKE_PX_TO_WORLD * jitterSign;
+        bloomPass.strength = BLOOM_BASE_STRENGTH + sample.bloomBoost;
+        kiosk.scale.setScalar(sample.kioskScale);
+        // Packet-glow rides on the screen emissive; multiplied on top of the idle sine.
+        screen.material.emissiveIntensity = 1.55 + sample.packetGlow * 1.2;
+      };
+      // ---------------------------------------------------------------------
+
       const deliverPacket = () => {
+        // Input-lock the button for the first 180ms so mash-taps don't re-fire.
+        if (cueStartMs !== null && isIoPacketConfirmInputLocked(performance.now() - cueStartMs)) {
+          return;
+        }
+        startIoPacketConfirmCue();
         const save = writeSave({
           version: 1,
           playerId: state.player.id,
@@ -375,8 +430,12 @@
 
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025;
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25;
+        // Idle screen glow — the confirm cue overrides emissiveIntensity while running.
+        if (cueStartMs === null) {
+          screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25;
+        }
         signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8;
+        updateIoPacketConfirmCue(now);
         rain.children.forEach((drop, index) => {
           drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
           if (drop.position.y < -2) {
