@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>AFTERSIGN — memory beat prototype</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #071019;
+        color: #eef7ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #stage {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        touch-action: none;
+      }
+
+      body {
+        background:
+          radial-gradient(circle at 50% 20%, rgba(99, 226, 255, 0.2), transparent 30%),
+          linear-gradient(180deg, #101c2d 0%, #05070a 100%);
+      }
+
+      #hud {
+        position: fixed;
+        inset: env(safe-area-inset-top) 16px auto 16px;
+        display: grid;
+        gap: 10px;
+        pointer-events: none;
+      }
+
+      #chapter {
+        width: fit-content;
+        max-width: min(420px, calc(100vw - 32px));
+        padding: 8px 11px;
+        border: 1px solid rgba(157, 220, 255, 0.35);
+        border-radius: 999px;
+        background: rgba(6, 15, 26, 0.72);
+        color: #9ddcff;
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        backdrop-filter: blur(12px);
+        transform-origin: left center;
+      }
+
+      #line {
+        width: min(520px, calc(100vw - 32px));
+        min-height: 76px;
+        padding: 15px 16px 17px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 18px;
+        background: rgba(5, 10, 18, 0.76);
+        box-shadow: 0 18px 70px rgba(0, 0, 0, 0.42), inset 0 0 28px rgba(73, 197, 255, 0.08);
+        backdrop-filter: blur(18px);
+        font-size: clamp(15px, 3.8vw, 18px);
+        line-height: 1.42;
+        opacity: 0;
+        transform: translateY(14px) scale(0.98);
+      }
+
+      #tap {
+        position: fixed;
+        right: 16px;
+        bottom: calc(env(safe-area-inset-bottom) + 16px);
+        padding: 11px 14px;
+        border: 1px solid rgba(137, 225, 255, 0.28);
+        border-radius: 999px;
+        background: rgba(5, 10, 18, 0.62);
+        color: rgba(238, 247, 255, 0.78);
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        backdrop-filter: blur(12px);
+      }
+
+      .pop {
+        animation: pop 420ms cubic-bezier(0.2, 1.28, 0.22, 1) both;
+      }
+
+      .line-in {
+        animation: line-in 540ms cubic-bezier(0.18, 0.96, 0.22, 1) both;
+      }
+
+      .pulse {
+        animation: pulse 760ms cubic-bezier(0.2, 0.9, 0.1, 1) both;
+      }
+
+      @keyframes pop {
+        0% { transform: scale(0.88); opacity: 0; }
+        62% { transform: scale(1.045); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+
+      @keyframes line-in {
+        0% { transform: translateY(14px) scale(0.98); opacity: 0; filter: blur(3px); }
+        68% { transform: translateY(-2px) scale(1.012); opacity: 1; filter: blur(0); }
+        100% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+      }
+
+      @keyframes pulse {
+        0% { transform: scale(1); box-shadow: 0 0 0 rgba(99, 226, 255, 0); }
+        38% { transform: scale(1.022); box-shadow: 0 0 34px rgba(99, 226, 255, 0.34); }
+        100% { transform: scale(1); box-shadow: 0 0 0 rgba(99, 226, 255, 0); }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="stage" aria-label="AFTERSIGN memory beat prototype"></main>
+    <section id="hud" aria-live="polite">
+      <div id="chapter">AfterSign // closed platform</div>
+      <div id="line">Tap the lit kiosk. Io should remember this on the next session.</div>
+    </section>
+    <div id="tap">tap kiosk</div>
+
+    <script type="module">
+      import * as THREE from "https://unpkg.com/three@0.166.1/build/three.module.js";
+
+      const stage = document.querySelector("#stage");
+      const chapter = document.querySelector("#chapter");
+      const line = document.querySelector("#line");
+      const tap = document.querySelector("#tap");
+
+      const MEMORY_KEY = "aftersign:first-kiosk-memory";
+      const FEEL = Object.freeze({
+        introCameraMs: 1450,
+        introCameraRisePx: 42,
+        kioskConfirmMs: 180,
+        kioskConfirmScale: 1.08,
+        recognitionHoldMs: 620,
+        recognitionCameraDegrees: 6,
+        shakePx: 3,
+        shakeMs: 150,
+        lineEase: "cubic-bezier(0.18, 0.96, 0.22, 1)",
+      });
+
+      const state = {
+        scene: "closed-platform",
+        beat: "approach-kiosk",
+        player: {
+          id: "local-prototype-player",
+        },
+        npc: {
+          id: "io",
+          name: "Io",
+          remembersPlayer: localStorage.getItem(MEMORY_KEY) === "lit-kiosk",
+          lastLine: "Tap the lit kiosk. Io should remember this on the next session.",
+        },
+        memory: {
+          key: MEMORY_KEY,
+          value: localStorage.getItem(MEMORY_KEY),
+          savedThisSession: false,
+        },
+        feel: FEEL,
+      };
+
+      window.__game = {
+        getState: () => structuredClone(state),
+        resetMemory: () => {
+          localStorage.removeItem(MEMORY_KEY);
+          state.npc.remembersPlayer = false;
+          state.memory.value = null;
+          state.memory.savedThisSession = false;
+          setLine("Tap the lit kiosk. Io should remember this on the next session.", "approach-kiosk");
+        },
+        triggerKiosk: () => triggerMemoryBeat(),
+      };
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x071019, 0.035);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 2.2, 8.8);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
+      stage.appendChild(renderer.domElement);
+
+      const hemi = new THREE.HemisphereLight(0x9ddcff, 0x132033, 1.9);
+      scene.add(hemi);
+
+      const key = new THREE.SpotLight(0x63e2ff, 180, 28, Math.PI / 6, 0.45, 1.7);
+      key.position.set(-3.2, 6.3, 4.4);
+      key.castShadow = true;
+      scene.add(key);
+
+      const ember = new THREE.PointLight(0xff8a5c, 28, 8, 1.5);
+      ember.position.set(3.1, 1.4, -1.4);
+      scene.add(ember);
+
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(18, 22),
+        new THREE.MeshStandardMaterial({ color: 0x111a24, roughness: 0.78, metalness: 0.08 })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -1;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      const kioskGroup = new THREE.Group();
+      kioskGroup.position.set(0, 0, 0);
+      scene.add(kioskGroup);
+
+      const kioskBase = new THREE.Mesh(
+        new THREE.BoxGeometry(1.25, 2.2, 0.42),
+        new THREE.MeshStandardMaterial({ color: 0x16243a, roughness: 0.38, metalness: 0.45 })
+      );
+      kioskBase.position.y = 0.12;
+      kioskBase.castShadow = true;
+      kioskGroup.add(kioskBase);
+
+      const kioskFace = new THREE.Mesh(
+        new THREE.BoxGeometry(0.95, 0.7, 0.045),
+        new THREE.MeshStandardMaterial({ color: 0x63e2ff, emissive: 0x37c8ff, emissiveIntensity: 1.9, roughness: 0.2 })
+      );
+      kioskFace.position.set(0, 0.55, 0.235);
+      kioskGroup.add(kioskFace);
+
+      const npc = new THREE.Group();
+      npc.position.set(-2.25, -0.05, -0.8);
+      scene.add(npc);
+
+      const coat = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.34, 1.22, 8, 16),
+        new THREE.MeshStandardMaterial({ color: 0x263554, roughness: 0.58, metalness: 0.12 })
+      );
+      coat.position.y = 0.12;
+      coat.castShadow = true;
+      npc.add(coat);
+
+      const face = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 24, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffd3b3, roughness: 0.5 })
+      );
+      face.position.y = 0.92;
+      face.castShadow = true;
+      npc.add(face);
+
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(0.38, 0.018, 8, 36),
+        new THREE.MeshStandardMaterial({ color: 0x9ddcff, emissive: 0x63e2ff, emissiveIntensity: 1.4 })
+      );
+      halo.position.y = 1.15;
+      halo.rotation.x = Math.PI / 2.7;
+      npc.add(halo);
+
+      const clock = new THREE.Clock();
+      let cameraKick = 0;
+      let confirmKick = 0;
+      let introStart = performance.now();
+
+      function setLine(text, beat) {
+        state.beat = beat;
+        state.npc.lastLine = text;
+        line.textContent = text;
+        line.classList.remove("line-in");
+        void line.offsetWidth;
+        line.classList.add("line-in");
+      }
+
+      function triggerMemoryBeat() {
+        if (state.memory.savedThisSession) return;
+
+        localStorage.setItem(MEMORY_KEY, "lit-kiosk");
+        state.memory.value = "lit-kiosk";
+        state.memory.savedThisSession = true;
+        state.npc.remembersPlayer = true;
+
+        confirmKick = 1;
+        cameraKick = 1;
+        kioskFace.material.emissiveIntensity = 4.2;
+        chapter.classList.remove("pop");
+        tap.classList.remove("pulse");
+        void chapter.offsetWidth;
+        chapter.classList.add("pop");
+        tap.classList.add("pulse");
+        setLine("Io: You chose the blue kiosk. Good. I can find you by that glow next time.", "io-recognizes-kiosk-choice");
+      }
+
+      if (state.npc.remembersPlayer) {
+        setLine("Io: You came back. The blue kiosk kept your shape in the glass.", "io-remembers-returning-player");
+        chapter.classList.add("pop");
+      } else {
+        line.classList.add("line-in");
+      }
+
+      stage.addEventListener("pointerdown", triggerMemoryBeat);
+      tap.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+        triggerMemoryBeat();
+      });
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      function animate(now) {
+        const dt = clock.getDelta();
+        const t = clock.elapsedTime;
+        const intro = Math.min(1, (now - introStart) / FEEL.introCameraMs);
+        const introEase = 1 - Math.pow(1 - intro, 3);
+
+        confirmKick = Math.max(0, confirmKick - dt * (1000 / FEEL.kioskConfirmMs));
+        cameraKick = Math.max(0, cameraKick - dt * (1000 / FEEL.shakeMs));
+
+        const breathe = Math.sin(t * 2.2) * 0.018;
+        const confirmScale = 1 + confirmKick * (FEEL.kioskConfirmScale - 1);
+        kioskGroup.scale.setScalar(confirmScale + breathe);
+        kioskFace.material.emissiveIntensity += (1.9 - kioskFace.material.emissiveIntensity) * Math.min(1, dt * 5.8);
+
+        npc.rotation.y = Math.sin(t * 0.9) * 0.08 + (state.npc.remembersPlayer ? 0.18 : 0);
+        halo.rotation.z += dt * 0.85;
+
+        const shake = Math.sin(t * 92) * cameraKick * (FEEL.shakePx / 100);
+        const recognitionYaw = state.npc.remembersPlayer
+          ? THREE.MathUtils.degToRad(FEEL.recognitionCameraDegrees) * (1 - cameraKick)
+          : 0;
+        camera.position.x = THREE.MathUtils.lerp(-0.38, 0, introEase) + shake;
+        camera.position.y = 2.2 + (1 - introEase) * (FEEL.introCameraRisePx / 100);
+        camera.position.z = THREE.MathUtils.lerp(8.8, 6.85, introEase);
+        camera.rotation.y = recognitionYaw + shake * 0.38;
+        camera.lookAt(0, 0.25, 0);
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>
