@@ -64,6 +64,17 @@ Feel notes:
 - Camera target lands **0.08m** lower and **2deg** more side-on than sealed, as if Io is checking the ledger before the face.
 - Audio sting adds a muted wooden click **45ms** after the bell transient.
 
+### Branch-effective camera math
+
+The sealed values are the base; opened adds the "more side-on, slightly lower" offset. Both are authored feel targets — the harness bounds below are widened to a ±0.5° / ±0.04m tolerance around them so implementations can breathe without drifting between branches.
+
+| Branch | Effective `cameraDeltaMeters` | Effective `cameraYawDegrees` | Vertical offset from sealed eyeline |
+| --- | ---: | ---: | ---: |
+| `sealed` | 0.32m (base) | 4deg (base) | 0m |
+| `opened` | 0.32m (base) | 4deg + 2deg = **6deg** | -0.08m |
+
+The `openedCameraLowerMeters` and `openedCameraSideYawDegrees` constants encode the *deltas*, not absolute values. The snapshot below reports the *branch-effective* result of applying them, so the two branches produce distinguishable numbers.
+
 ## Implementation constants
 
 Use one named beat profile so gameplay, rendering, audio, and the harness share the same contract instead of copying timing numbers into separate systems.
@@ -102,6 +113,8 @@ export const IO_PACKET_RETURN_BEAT = {
 ## `window.__game` story-state contract
 
 During and after the beat, expose a compact, serializable memory-beat record for the story harness. This is not renderer debug sludge; it is the public proof that the recognition moment matched durable story state.
+
+**Snapshot semantics — branch-effective, not base.** `cameraDeltaMeters` and `cameraYawDegrees` in the snapshot always report the *final applied* values for the branch that ran, after `openedCameraLowerMeters` / `openedCameraSideYawDegrees` have been folded in. For a `sealed` outcome the snapshot yaw is `4`; for an `opened` outcome the snapshot yaw is `6` and the delta reflects any opened-branch vertical offset. This is what makes the two branches distinguishable to the harness — a snapshot that always echoed the base constants would erase the opened branch's camera cue.
 
 ```ts
 type IoPacketReturnBeatSnapshot = {
@@ -150,8 +163,11 @@ The slice harness should be able to assert the beat without testing pixels exact
 - `window.__game.story.memoryBeat.kind === "io_packet_return"`.
 - `window.__game.story.memoryBeat.outcome` is `"sealed"` or `"opened"` and matches the durable server-backed memory record.
 - `window.__game.story.memoryBeat.startedAt` and `endedAt` show a duration between **1,100ms and 1,350ms**.
-- `window.__game.story.memoryBeat.cameraDeltaMeters` is between **0.24m and 0.36m** when reduced motion is off.
-- `window.__game.story.memoryBeat.cameraYawDegrees` is between **3deg and 5deg** when reduced motion is off.
+- `window.__game.story.memoryBeat.cameraDeltaMeters` is between **0.28m and 0.36m** when reduced motion is off (both branches share the base dolly).
+- `window.__game.story.memoryBeat.cameraYawDegrees` is branch-conditional when reduced motion is off:
+  - `sealed` outcome: between **3.5deg and 4.5deg** (base 4deg ± 0.5deg tolerance).
+  - `opened` outcome: between **5.5deg and 6.5deg** (base 4deg + 2deg side-on offset, ± 0.5deg tolerance).
+- The opened branch's snapshot yaw must be strictly greater than the sealed branch's — i.e. `openedYaw - sealedYaw >= 1.5deg` — so the branch-effective difference is provable from the snapshot alone.
 - `window.__game.story.memoryBeat.inputLockMs <= 1,220`.
 - `window.__game.story.memoryBeat.lookSensitivityScale === 0.35` while movement is soft-locked.
 - `window.__game.story.memoryBeat.lineId` is one of:
