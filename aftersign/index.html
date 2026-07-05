@@ -111,6 +111,7 @@
         <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
         <div class="controls">
           <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>
       </div>
@@ -128,6 +129,7 @@
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
       const deliverButton = document.querySelector("#deliverButton");
+      const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
 
       const loadSave = () => {
@@ -165,7 +167,107 @@
             line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
           },
         },
+        audio: {
+          unlocked: false,
+          ambientStarted: false,
+          lastCue: null,
+        },
         save: loadSave(),
+      };
+
+      let audioContext;
+      let ambientGain;
+      let rainNoise;
+      let rainFilter;
+      let kioskHum;
+      let kioskHumGain;
+
+      const makeRainBuffer = (context) => {
+        const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i += 1) {
+          data[i] = (Math.random() * 2 - 1) * 0.38;
+        }
+        return buffer;
+      };
+
+      const startAmbientAudio = () => {
+        if (!audioContext || state.audio.ambientStarted) {
+          return;
+        }
+
+        ambientGain = audioContext.createGain();
+        ambientGain.gain.value = 0.045;
+        ambientGain.connect(audioContext.destination);
+
+        rainNoise = audioContext.createBufferSource();
+        rainNoise.buffer = makeRainBuffer(audioContext);
+        rainNoise.loop = true;
+
+        rainFilter = audioContext.createBiquadFilter();
+        rainFilter.type = "bandpass";
+        rainFilter.frequency.value = 1350;
+        rainFilter.Q.value = 0.72;
+        rainNoise.connect(rainFilter).connect(ambientGain);
+        rainNoise.start();
+
+        kioskHum = audioContext.createOscillator();
+        kioskHum.type = "sine";
+        kioskHum.frequency.value = 91;
+        kioskHumGain = audioContext.createGain();
+        kioskHumGain.gain.value = 0.018;
+        kioskHum.connect(kioskHumGain).connect(ambientGain);
+        kioskHum.start();
+
+        state.audio.ambientStarted = true;
+      };
+
+      const enableAudio = async () => {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) {
+          state.audio.lastCue = "unsupported";
+          publishState();
+          return false;
+        }
+
+        audioContext ||= new AudioContext();
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
+
+        state.audio.unlocked = audioContext.state === "running";
+        if (state.audio.unlocked) {
+          startAmbientAudio();
+          state.audio.lastCue = "ambient-rainline";
+        }
+        publishState();
+        return state.audio.unlocked;
+      };
+
+      const playKioskConfirm = async () => {
+        const unlocked = await enableAudio();
+        if (!unlocked || !audioContext) {
+          return;
+        }
+
+        const now = audioContext.currentTime;
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+        gain.connect(audioContext.destination);
+
+        [523.25, 659.25, 987.77].forEach((frequency, index) => {
+          const tone = audioContext.createOscillator();
+          tone.type = index === 2 ? "triangle" : "sine";
+          tone.frequency.setValueAtTime(frequency, now + index * 0.035);
+          tone.connect(gain);
+          tone.start(now + index * 0.035);
+          tone.stop(now + 0.36);
+        });
+
+        state.audio.lastCue = "packet-confirmed";
+        publishState();
       };
 
       const applySave = () => {
@@ -186,6 +288,7 @@
           save: loadSave(),
           getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
           deliverPacket: () => deliverPacket(),
+          enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
         };
       };
@@ -345,6 +448,7 @@
         applySave();
         renderText();
         publishState();
+        playKioskConfirm();
       };
 
       const resetSliceSave = () => {
@@ -359,6 +463,7 @@
       };
 
       deliverButton.addEventListener("click", deliverPacket);
+      soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
 
@@ -377,6 +482,12 @@
         io.position.y = Math.sin(t * 1.7) * 0.025;
         screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25;
         signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8;
+        if (rainFilter) {
+          rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
+        }
+        if (kioskHum) {
+          kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
+        }
         rain.children.forEach((drop, index) => {
           drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
           if (drop.position.y < -2) {
