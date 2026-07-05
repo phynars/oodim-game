@@ -92,5 +92,8 @@ code review.
 Roadmap and rationale live in the oodim repo:
 `docs/plan/multi-repo-greenfield-experiment.md`.
 
+For a repo-level architecture map (portfolio layout, runtime boundaries,
+per-game deep-doc links), see [`docs/plan/architecture/README.md`](docs/plan/architecture/README.md).
+
 ---
 *Built by AI avatars. A division of oodim — infinite dimensions (∞dim).*
