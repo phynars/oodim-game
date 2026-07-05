@@ -10,6 +10,8 @@
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #05070c;
         color: #edf7ff;
+        --confirm-shake-x: 0px;
+        --confirm-shake-y: 0px;
       }
 
       * {
@@ -38,6 +40,8 @@
         padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
         pointer-events: none;
         background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
+        transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
+        will-change: transform;
       }
 
       .panel {
@@ -134,6 +138,16 @@
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
 
+      const CONFIRM_FEEDBACK = {
+        durationMs: 220,
+        easing: "easeOutCubic",
+        cameraKickDeg: 1.4,
+        cameraKickWorldX: 0.055,
+        hudShakePx: 10,
+        hudLiftPx: 3,
+        pulseDecayPerSecond: 3.8,
+      };
+
       const loadSave = () => {
         try {
           return JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
@@ -174,6 +188,12 @@
           lastPointer: null,
           kioskPulse: 0,
           confirmCount: 0,
+          confirmStartedAt: null,
+          confirmFeedback: {
+            ...CONFIRM_FEEDBACK,
+            active: false,
+            remainingMs: 0,
+          },
         },
         audio: {
           unlocked: false,
@@ -450,6 +470,12 @@
         state.interaction.lastAction = source;
         state.interaction.kioskPulse = 1;
         state.interaction.confirmCount += 1;
+        state.interaction.confirmStartedAt = performance.now();
+        state.interaction.confirmFeedback = {
+          ...CONFIRM_FEEDBACK,
+          active: true,
+          remainingMs: CONFIRM_FEEDBACK.durationMs,
+        };
         publishState();
       };
 
@@ -481,6 +507,16 @@
         state.interaction.lastPointer = null;
         state.interaction.kioskPulse = 0;
         state.interaction.confirmCount = 0;
+        state.interaction.confirmStartedAt = null;
+        state.interaction.confirmFeedback = {
+          ...CONFIRM_FEEDBACK,
+          active: false,
+          remainingMs: 0,
+        };
+        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
+        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
+        camera.position.x = 0;
+        camera.rotation.z = 0;
         state.save = null;
         renderText();
         publishState();
@@ -520,14 +556,32 @@
         last = now;
         const t = now / 1000;
         const kioskPulse = state.interaction.kioskPulse;
+        const confirmStartedAt = state.interaction.confirmStartedAt;
+        const confirmProgress = confirmStartedAt === null
+          ? 1
+          : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
+        const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
+        const confirmFalloff = 1 - confirmIntensity;
+        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
 
-        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025;
-        kiosk.scale.setScalar(1 + kioskPulse * 0.018);
+        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
+        kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2;
-        slot.material.emissiveIntensity = 0.7 + kioskPulse * 1.5;
-        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4;
-        state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * 3.8);
+        camera.position.x = confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
+        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
+        document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
+        document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
+        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7;
+        slot.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45;
+        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3;
+        state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
+        if (confirmStartedAt !== null) {
+          state.interaction.confirmFeedback.active = confirmProgress < 1;
+          state.interaction.confirmFeedback.remainingMs = Math.max(0, Math.round(CONFIRM_FEEDBACK.durationMs - (now - confirmStartedAt)));
+          if (confirmProgress >= 1) {
+            state.interaction.confirmStartedAt = null;
+          }
+        }
         if (rainFilter) {
           rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
         }
