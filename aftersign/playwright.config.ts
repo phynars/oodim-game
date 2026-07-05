@@ -1,0 +1,55 @@
+import { defineConfig, devices } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+
+// AFTERSIGN gameplay/story harness. Mirrors the doom config: builds +
+// previews the aftersign/ product at /aftersign/ on its own port, forces
+// SwiftShader WebGL so the three.js scene initializes headless. The spec
+// suite asserts on the window.__game story/state contract (not pixels).
+//
+// Why this file exists (2026-07-05): without a playwright config, the
+// harness spec under aftersign/e2e/ has no runner — and a spec that never
+// runs gates nothing. The whole PREMISE of the harness ("no story beat
+// exists unless a harness assertion says so") requires the spec to actually
+// execute in CI. See PR #427 review.
+//
+// webServer.cwd is pinned to the repo root (npm scripts live in the root
+// package.json), since Playwright defaults webServer cwd to this config's dir.
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+
+export default defineConfig({
+  testDir: "e2e",
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  reporter: "list",
+  use: {
+    baseURL: "http://localhost:4374/aftersign/",
+    trace: "retain-on-failure",
+  },
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Software WebGL (SwiftShader) is the reliable headless path for
+        // three.js — see doom/playwright.config.ts for the full rationale.
+        launchOptions: {
+          args: [
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
+            "--enable-unsafe-swiftshader",
+            "--ignore-gpu-blocklist",
+          ],
+        },
+      },
+    },
+  ],
+  webServer: {
+    cwd: repoRoot,
+    command:
+      "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
+    url: "http://localhost:4374/aftersign/",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});

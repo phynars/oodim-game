@@ -25,6 +25,7 @@ jobs:
       galaga: ${{ steps.filter.outputs.galaga }}
       doom: ${{ steps.filter.outputs.doom }}
       agar: ${{ steps.filter.outputs.agar }}
+      aftersign: ${{ steps.filter.outputs.aftersign }}
       shared: ${{ steps.filter.outputs.shared }}
     steps:
       - uses: actions/checkout@v4
