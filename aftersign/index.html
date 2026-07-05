@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>AFTERSIGN — Kiosk Slice</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #05070c;
+        color: #edf7ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 20%, #182033 0%, #05070c 65%);
+        touch-action: manipulation;
+      }
+
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .hud {
+        position: fixed;
+        inset: auto 0 0 0;
+        padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+        pointer-events: none;
+        background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
+      }
+
+      .panel {
+        width: min(680px, 100%);
+        border: 1px solid rgba(119, 232, 255, 0.34);
+        border-radius: 18px;
+        padding: 16px;
+        background: rgba(5, 10, 19, 0.72);
+        box-shadow: 0 0 40px rgba(0, 204, 255, 0.12), inset 0 0 30px rgba(22, 89, 130, 0.14);
+        backdrop-filter: blur(12px);
+      }
+
+      .speaker {
+        margin: 0 0 8px;
+        color: #78e9ff;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .line {
+        margin: 0;
+        font-size: clamp(17px, 3.6vw, 24px);
+        line-height: 1.32;
+        text-wrap: balance;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+        pointer-events: auto;
+      }
+
+      button {
+        border: 1px solid rgba(173, 242, 255, 0.4);
+        border-radius: 999px;
+        padding: 11px 14px;
+        color: #edf7ff;
+        background: rgba(8, 28, 43, 0.85);
+        box-shadow: 0 0 20px rgba(0, 204, 255, 0.1);
+        font: inherit;
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      button:active {
+        transform: translateY(1px) scale(0.99);
+      }
+
+      .state-readout {
+        position: fixed;
+        top: max(14px, env(safe-area-inset-top));
+        left: max(14px, env(safe-area-inset-left));
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: 999px;
+        color: rgba(237, 247, 255, 0.74);
+        background: rgba(3, 7, 13, 0.58);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
+    <p class="state-readout" id="stateReadout">story: arrive-at-kiosk</p>
+    <section class="hud" aria-live="polite">
+      <div class="panel">
+        <p class="speaker" id="speaker">Io</p>
+        <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
+        <div class="controls">
+          <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="resetButton" type="button">Reset slice save</button>
+        </div>
+      </div>
+    </section>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.165.0";
+      import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
+      import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+
+      const SAVE_KEY = "aftersign.kioskSlice.v1";
+      const canvas = document.querySelector("#scene");
+      const line = document.querySelector("#line");
+      const speaker = document.querySelector("#speaker");
+      const stateReadout = document.querySelector("#stateReadout");
+      const deliverButton = document.querySelector("#deliverButton");
+      const resetButton = document.querySelector("#resetButton");
+
+      const loadSave = () => {
+        try {
+          return JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+        } catch (_error) {
+          return null;
+        }
+      };
+
+      const writeSave = (save) => {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+        return save;
+      };
+
+      const clearSave = () => {
+        localStorage.removeItem(SAVE_KEY);
+      };
+
+      const state = {
+        slug: "aftersign",
+        scene: "io-kiosk-rainline",
+        storyBeat: "arrive-at-kiosk",
+        player: {
+          id: "local-slice-player",
+        },
+        packet: {
+          delivered: false,
+          route: null,
+          deliveredAt: null,
+        },
+        npcMemory: {
+          io: {
+            remembersPriorPacket: false,
+            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
+          },
+        },
+        save: loadSave(),
+      };
+
+      const applySave = () => {
+        const save = state.save;
+        if (!save?.packet?.delivered) {
+          return;
+        }
+
+        state.storyBeat = "io-remembers-packet";
+        state.packet = { ...state.packet, ...save.packet };
+        state.npcMemory.io.remembersPriorPacket = true;
+        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
+      };
+
+      const publishState = () => {
+        window.__game = {
+          ...state,
+          save: loadSave(),
+          getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
+          deliverPacket: () => deliverPacket(),
+          resetSliceSave: () => resetSliceSave(),
+        };
+      };
+
+      const renderText = () => {
+        speaker.textContent = "Io";
+        line.textContent = state.npcMemory.io.line;
+        stateReadout.textContent = `story: ${state.storyBeat}`;
+      };
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x07111d, 0.045);
+
+      const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
+      camera.position.set(0, 2.25, 7.6);
+
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
+
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.52, 0.55, 0.18);
+      composer.addPass(bloomPass);
+
+      const hemi = new THREE.HemisphereLight(0x8ccfff, 0x09111d, 1.4);
+      scene.add(hemi);
+
+      const key = new THREE.DirectionalLight(0xc4f4ff, 2.2);
+      key.position.set(-4, 6, 5);
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024);
+      scene.add(key);
+
+      const signLight = new THREE.PointLight(0x33ddff, 8, 9, 1.8);
+      signLight.position.set(0, 2.15, -1.1);
+      scene.add(signLight);
+
+      const wetGround = new THREE.Mesh(
+        new THREE.PlaneGeometry(16, 18),
+        new THREE.MeshStandardMaterial({ color: 0x07111a, roughness: 0.18, metalness: 0.2 })
+      );
+      wetGround.rotation.x = -Math.PI / 2;
+      wetGround.receiveShadow = true;
+      scene.add(wetGround);
+
+      const kiosk = new THREE.Group();
+      const kioskBody = new THREE.Mesh(
+        new THREE.BoxGeometry(1.35, 2.45, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x102134, roughness: 0.42, metalness: 0.25 })
+      );
+      kioskBody.position.y = 1.23;
+      kioskBody.castShadow = true;
+      kiosk.add(kioskBody);
+
+      const screen = new THREE.Mesh(
+        new THREE.BoxGeometry(1.08, 0.66, 0.04),
+        new THREE.MeshStandardMaterial({ color: 0x67eaff, emissive: 0x25cfff, emissiveIntensity: 1.8, roughness: 0.08 })
+      );
+      screen.position.set(0, 1.65, 0.28);
+      kiosk.add(screen);
+
+      const slot = new THREE.Mesh(
+        new THREE.BoxGeometry(0.76, 0.08, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0x07111a, emissive: 0x0b6a82, emissiveIntensity: 0.7 })
+      );
+      slot.position.set(0, 0.92, 0.3);
+      kiosk.add(slot);
+      scene.add(kiosk);
+
+      const io = new THREE.Group();
+      const coat = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.34, 1.08, 6, 12),
+        new THREE.MeshStandardMaterial({ color: 0x1d2738, roughness: 0.64, metalness: 0.05 })
+      );
+      coat.position.y = 1.1;
+      coat.castShadow = true;
+      io.add(coat);
+
+      const face = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 24, 16),
+        new THREE.MeshStandardMaterial({ color: 0xd7b99c, roughness: 0.5 })
+      );
+      face.position.y = 1.92;
+      face.castShadow = true;
+      io.add(face);
+
+      const visor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.08, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x8af2ff, emissive: 0x5bdfff, emissiveIntensity: 1.1 })
+      );
+      visor.position.set(0, 1.95, 0.17);
+      io.add(visor);
+      io.position.set(-1.55, 0, 0.7);
+      io.rotation.y = 0.35;
+      scene.add(io);
+
+      const makeTower = (x, z, height, color) => {
+        const tower = new THREE.Mesh(
+          new THREE.BoxGeometry(0.72, height, 0.72),
+          new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.08 })
+        );
+        tower.position.set(x, height / 2, z);
+        tower.castShadow = true;
+        tower.receiveShadow = true;
+        scene.add(tower);
+
+        const windowStrip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, 0.06, 0.04),
+          new THREE.MeshStandardMaterial({ color: 0xffca75, emissive: 0xff9d2e, emissiveIntensity: 0.45 })
+        );
+        windowStrip.position.set(x, height * 0.72, z + 0.39);
+        scene.add(windowStrip);
+      };
+
+      makeTower(-4.6, -3.8, 4.4, 0x0c1724);
+      makeTower(3.8, -3.4, 5.8, 0x101b2a);
+      makeTower(-3.1, -6.1, 7.1, 0x0a1420);
+      makeTower(4.9, -6.4, 6.3, 0x0d1722);
+
+      const rain = new THREE.Group();
+      const rainMaterial = new THREE.LineBasicMaterial({ color: 0x8edfff, transparent: true, opacity: 0.38 });
+      for (let i = 0; i < 90; i += 1) {
+        const x = THREE.MathUtils.randFloatSpread(13);
+        const y = THREE.MathUtils.randFloat(1.5, 8.5);
+        const z = THREE.MathUtils.randFloat(-8, 4);
+        const points = [new THREE.Vector3(x, y, z), new THREE.Vector3(x - 0.08, y - 0.55, z)];
+        const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rainMaterial);
+        rain.add(drop);
+      }
+      scene.add(rain);
+
+      const resize = () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height, false);
+        composer.setSize(width, height);
+        bloomPass.setSize(width, height);
+      };
+
+      const deliverPacket = () => {
+        const save = writeSave({
+          version: 1,
+          playerId: state.player.id,
+          packet: {
+            delivered: true,
+            route: "blue rainline",
+            deliveredAt: new Date().toISOString(),
+          },
+        });
+        state.save = save;
+        applySave();
+        renderText();
+        publishState();
+      };
+
+      const resetSliceSave = () => {
+        clearSave();
+        state.storyBeat = "arrive-at-kiosk";
+        state.packet = { delivered: false, route: null, deliveredAt: null };
+        state.npcMemory.io.remembersPriorPacket = false;
+        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
+        state.save = null;
+        renderText();
+        publishState();
+      };
+
+      deliverButton.addEventListener("click", deliverPacket);
+      resetButton.addEventListener("click", resetSliceSave);
+      window.addEventListener("resize", resize, { passive: true });
+
+      applySave();
+      renderText();
+      publishState();
+      resize();
+
+      let last = performance.now();
+      const tick = (now) => {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        const t = now / 1000;
+
+        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025;
+        io.position.y = Math.sin(t * 1.7) * 0.025;
+        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25;
+        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8;
+        rain.children.forEach((drop, index) => {
+          drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
+          if (drop.position.y < -2) {
+            drop.position.y = 7.5;
+          }
+        });
+
+        composer.render();
+        requestAnimationFrame(tick);
+      };
+
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>
