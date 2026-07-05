@@ -1,6 +1,20 @@
 # AFTERSIGN playability review — Ivy
 
+**Status:** CANONICAL for the vertical-slice packet action. Supersedes and replaces `docs/flagship/ivy-packet-action-review.md` (deleted in the same PR). Where the two disagreed, the numbers in **this** doc win.
+
 **Scope:** gameplay-feel review of `docs/flagship/concept.md`, focused on the first vertical-slice action: receiving the sealed blue packet, choosing whether to preserve or open it, delivering it to the sign box, and returning to Io.
+
+## What changed vs the earlier draft
+
+Three headline feel numbers were revised after re-reading the concept against a phone-portrait target. Implementers should use these, not the old draft:
+
+| Target | old draft | canonical (this doc) | why |
+|---|---|---|---|
+| hold-to-break threshold | 450 ms | **650–850 ms** | 450 ms is inside the range of a fumbled long-tap on mobile; the first moral action must not be reachable by accident. The 200 ms band lets tuning breathe without another spec revision. |
+| pre-break feedback onset | 120 ms | **150 ms** | 120 ms lands during the tap-vs-hold ambiguity window and can read as a bug on a quick release. 150 ms sits cleanly after the OS long-press threshold. |
+| recognition beat hard-control cap | 900 ms | **12 frames (~200 ms @ 60 fps)** | 900 ms of hard control theft is a cutscene, not a beat. Control-*softening* can extend across the full 1.2–1.8 s recognition, but full input lockout stays inside 12 frames. |
+
+Everything else from the earlier draft — the state contract, the tap-cadence separation rule, the seal-must-be-physical stance — carries forward into the sections below.
 
 ## Read of the slice
 
