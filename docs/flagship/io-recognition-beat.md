@@ -1,7 +1,7 @@
 # AFTERSIGN — Io recognition beat feel spec
 
 **Owner:** Diego Salcedo  
-**Status:** Draft feel contract for vertical slice 1  
+**Status:** Implementation-ready feel contract for vertical slice 1  
 **Touchpoint:** Returning-session NPC recognition beat at Io's Night Post kiosk
 
 ## Purpose
@@ -64,6 +64,76 @@ Feel notes:
 - Camera target lands **0.08m** lower and **2deg** more side-on than sealed, as if Io is checking the ledger before the face.
 - Audio sting adds a muted wooden click **45ms** after the bell transient.
 
+## Implementation constants
+
+Use one named beat profile so gameplay, rendering, audio, and the harness share the same contract instead of copying timing numbers into separate systems.
+
+```ts
+export const IO_PACKET_RETURN_BEAT = {
+  kind: "io_packet_return",
+  totalMs: 1220,
+  movementSoftLockMs: 1220,
+  lookSensitivityScale: 0.35,
+  cameraInMs: 120,
+  cameraReturnMs: 300,
+  cameraReturnStartsAtMs: 920,
+  cameraDeltaMeters: 0.32,
+  cameraYawDegrees: 4,
+  openedCameraLowerMeters: 0.08,
+  openedCameraSideYawDegrees: 2,
+  signGlowStartsAtMs: 80,
+  signGlowMs: 140,
+  signGlowFrom: 0.8,
+  signGlowTo: 1.35,
+  audioStartsAtMs: 120,
+  audioTailMs: 180,
+  audioRelativeDb: -9,
+  openedClickDelayMs: 45,
+  packetEchoStartsAtMs: 160,
+  packetEchoMs: 100,
+  dialogueStartsAtMs: 260,
+  dialogueAdvanceLockAfterLineStartMs: 500,
+  handheldDriftMaxMeters: 0.015,
+  handheldDriftMaxYawDegrees: 0.18,
+  reducedMotionSignPulseMs: 160,
+} as const;
+```
+
+## `window.__game` story-state contract
+
+During and after the beat, expose a compact, serializable memory-beat record for the story harness. This is not renderer debug sludge; it is the public proof that the recognition moment matched durable story state.
+
+```ts
+type IoPacketReturnBeatSnapshot = {
+  kind: "io_packet_return";
+  currentNpcId: "io";
+  outcome: "sealed" | "opened";
+  durableMemoryId: string;
+  lineId: "io_return_packet_sealed" | "io_return_packet_opened";
+  startedAt: number;
+  endedAt: number | null;
+  inputLockMs: number;
+  lookSensitivityScale: number;
+  cameraDeltaMeters: number;
+  cameraYawDegrees: number;
+  reducedMotion: boolean;
+  signGlowColor: "warm_moth" | "moth_to_red";
+  packetEcho: "whole_wax_flash" | "torn_edge_red_glint";
+  audioCueId: "io_return_sealed_bell" | "io_return_opened_bell_click";
+};
+```
+
+### Branch mapping
+
+The branch mapping is deliberately tiny and hard-edged:
+
+| Durable packet outcome | Line id | Sign glow | Packet echo | Audio cue |
+| --- | --- | --- | --- | --- |
+| `sealed` | `io_return_packet_sealed` | `warm_moth` | `whole_wax_flash` | `io_return_sealed_bell` |
+| `opened` | `io_return_packet_opened` | `moth_to_red` | `torn_edge_red_glint` | `io_return_opened_bell_click` |
+
+If any row is crossed — for example, `opened` with `io_return_packet_sealed` — the harness should fail even if the dialogue text itself is present.
+
 ## Interaction rules
 
 - No full-screen modal, achievement toast, or HUD banner during this beat.
@@ -83,10 +153,13 @@ The slice harness should be able to assert the beat without testing pixels exact
 - `window.__game.story.memoryBeat.cameraDeltaMeters` is between **0.24m and 0.36m** when reduced motion is off.
 - `window.__game.story.memoryBeat.cameraYawDegrees` is between **3deg and 5deg** when reduced motion is off.
 - `window.__game.story.memoryBeat.inputLockMs <= 1,220`.
+- `window.__game.story.memoryBeat.lookSensitivityScale === 0.35` while movement is soft-locked.
 - `window.__game.story.memoryBeat.lineId` is one of:
   - `io_return_packet_sealed`
   - `io_return_packet_opened`
 - The line id must correspond to the same packet outcome; the harness should fail if Io says the sealed line after an opened-packet record or vice versa.
+- The branch-specific cue ids must match the branch mapping table above.
+- With reduced motion on, `cameraDeltaMeters === 0`, `cameraYawDegrees === 0`, and the sign/audio cues still fire.
 
 ## Implementation boundaries
 
