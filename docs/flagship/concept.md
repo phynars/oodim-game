@@ -85,9 +85,11 @@ The story loop is the gameplay loop: carrying information through a city where i
 
 **Role:** The player's anchor and first remembering NPC. Io runs the Night Post from a kiosk built into a broken tram car above the Silt Stair.
 
-**Surface:** Calm, dry humor, never wastes words. Keeps a kettle on even when there is no tea left.
+**Surface:** Calm, dry humor, never wastes words. Notices everything and only names what matters. Keeps a kettle on even when there is no tea left.
 
 **Need:** Io wants proof that the player can be trusted with things that are not theirs.
+
+**Voice lock:** Io does not explain the memory system. Io speaks like a dispatcher keeping a city alive by refusing sentiment until the exact second sentiment becomes useful. Their remembered lines should be short, concrete, and edged with ledger logic: the action is noticed, weighed, and put to work.
 
 **What Io remembers about the player:**
 
@@ -96,13 +98,23 @@ The story loop is the gameplay loop: carrying information through a city where i
 - whether the player listened to the route instructions or skipped away;
 - whether the player chose a kind, evasive, or blunt answer when asked why they came back.
 
-**Example returning-session line:**
+**Returning-session lines:**
 
-> “You came back. Good. And before you ask — yes, I noticed the blue seal was still whole.”
+If the player delivered the packet sealed:
+
+> “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”
 
 If the player opened it:
 
-> “You came back. That is worth something. The broken seal is also worth something. We will talk about both.”
+> “You came back. The seal did not. I can use one of those facts.”
+
+If the player skipped Io's route instructions:
+
+> “You found the box anyway. Next time, let me finish saving your life.”
+
+If the player listened before leaving:
+
+> “You listened before you ran. Rare habit. Keep it.”
 
 ### Saint Orra — the sign over the old pharmacy
 
