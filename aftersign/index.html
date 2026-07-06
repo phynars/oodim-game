@@ -117,6 +117,7 @@
         <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
         <div class="controls">
           <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="niaButton" type="button">Check the awning</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>
@@ -135,6 +136,7 @@
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
       const deliverButton = document.querySelector("#deliverButton");
+      const niaButton = document.querySelector("#niaButton");
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
 
@@ -147,6 +149,24 @@
         hudLiftPx: 3,
         pulseDecayPerSecond: 3.8,
       };
+
+      const NPC_COPY = {
+        io: {
+          name: "Io",
+          firstLine: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
+          returningLine: (route) => `I remember you. Last time you trusted the ${route} and left the packet before the rain erased your steps.`,
+        },
+        nia: {
+          name: "Nia",
+          firstLine: "Your cuffs are wet. Blue rainline, then. Io keeps ledgers; I keep faces.",
+          returningLine: (route) => `Blue rainline. I saw you come back lighter after the ${route}. Don't tell Io I said that.`,
+        },
+      };
+
+      const makeNpcMemory = (npcId) => ({
+        remembersPriorPacket: false,
+        line: NPC_COPY[npcId].firstLine,
+      });
 
       const loadSave = () => {
         try {
@@ -169,6 +189,7 @@
         slug: "aftersign",
         scene: "io-kiosk-rainline",
         storyBeat: "arrive-at-kiosk",
+        currentNpc: "io",
         player: {
           id: "local-slice-player",
         },
@@ -178,10 +199,8 @@
           deliveredAt: null,
         },
         npcMemory: {
-          io: {
-            remembersPriorPacket: false,
-            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
-          },
+          io: makeNpcMemory("io"),
+          nia: makeNpcMemory("nia"),
         },
         interaction: {
           lastAction: null,
@@ -306,8 +325,10 @@
 
         state.storyBeat = "io-remembers-packet";
         state.packet = { ...state.packet, ...save.packet };
-        state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
+        Object.keys(state.npcMemory).forEach((npcId) => {
+          state.npcMemory[npcId].remembersPriorPacket = true;
+          state.npcMemory[npcId].line = NPC_COPY[npcId].returningLine(save.packet.route);
+        });
       };
 
       const publishState = () => {
@@ -316,15 +337,27 @@
           save: loadSave(),
           getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
           deliverPacket: () => deliverPacket(),
+          speakToNpc: (npcId) => speakToNpc(npcId),
           enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
         };
       };
 
       const renderText = () => {
-        speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
+        const currentNpc = NPC_COPY[state.currentNpc] || NPC_COPY.io;
+        speaker.textContent = currentNpc.name;
+        line.textContent = state.npcMemory[state.currentNpc]?.line || currentNpc.firstLine;
         stateReadout.textContent = `story: ${state.storyBeat}`;
+      };
+
+      const speakToNpc = (npcId) => {
+        if (!state.npcMemory[npcId]) {
+          return;
+        }
+
+        state.currentNpc = npcId;
+        renderText();
+        publishState();
       };
 
       const scene = new THREE.Scene();
@@ -491,6 +524,7 @@
           },
         });
         state.save = save;
+        state.currentNpc = "io";
         applySave();
         renderText();
         publishState();
@@ -500,9 +534,10 @@
       const resetSliceSave = () => {
         clearSave();
         state.storyBeat = "arrive-at-kiosk";
+        state.currentNpc = "io";
         state.packet = { delivered: false, route: null, deliveredAt: null };
-        state.npcMemory.io.remembersPriorPacket = false;
-        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
+        state.npcMemory.io = makeNpcMemory("io");
+        state.npcMemory.nia = makeNpcMemory("nia");
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
         state.interaction.kioskPulse = 0;
@@ -540,6 +575,7 @@
       };
 
       deliverButton.addEventListener("click", () => deliverPacket("hud-button"));
+      niaButton.addEventListener("click", () => speakToNpc("nia"));
       canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
       soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
