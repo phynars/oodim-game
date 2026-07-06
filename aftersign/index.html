@@ -104,13 +104,16 @@
   </head>
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
-    <p class="state-readout" id="stateReadout">story: arrive-at-kiosk</p>
+    <p class="state-readout" id="stateReadout" data-testid="aftersign-beat">scene: arrival</p>
     <section class="hud" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
-        <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
+        <p class="line" id="line" data-testid="aftersign-io-line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
         <div class="controls">
-          <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="keepSealedButton" type="button" data-choice="keep-sealed">Keep the packet sealed</button>
+          <button id="openPacketButton" type="button" data-choice="open-packet">Open the packet</button>
+          <button id="deliverButton" type="button" data-choice="deliver-packet">Deliver the packet</button>
+          <button id="returnButton" type="button" data-choice="return-to-io">Return to Io</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>
@@ -122,58 +125,32 @@
       import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+      import {
+        installFlagshipGameSurface,
+        createLocalStorageLocalStore,
+        readBreakModeFromLocation,
+      } from "./src/story-state.js";
 
-      const SAVE_KEY = "aftersign.kioskSlice.v1";
+      // ---- Story-state contract ------------------------------------------------
+      // Publishes window.__game per docs/flagship/story-state-contract.md.  The
+      // buttons below feed input.choose(); the HUD reads scene.beat + npcs.io.
+      const breakMode = readBreakModeFromLocation(window.location);
+      const surface = installFlagshipGameSurface(window, {
+        mode: "dev",
+        breakMode,
+        localStore: createLocalStorageLocalStore(window.localStorage),
+        onBeatChange: (beat) => {
+          stateReadout.textContent = `scene: ${beat}`;
+        },
+      });
+
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
-      const deliverButton = document.querySelector("#deliverButton");
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
-
-      const loadSave = () => {
-        try {
-          return JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
-        } catch (_error) {
-          return null;
-        }
-      };
-
-      const writeSave = (save) => {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-        return save;
-      };
-
-      const clearSave = () => {
-        localStorage.removeItem(SAVE_KEY);
-      };
-
-      const state = {
-        slug: "aftersign",
-        scene: "io-kiosk-rainline",
-        storyBeat: "arrive-at-kiosk",
-        player: {
-          id: "local-slice-player",
-        },
-        packet: {
-          delivered: false,
-          route: null,
-          deliveredAt: null,
-        },
-        npcMemory: {
-          io: {
-            remembersPriorPacket: false,
-            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
-          },
-        },
-        audio: {
-          unlocked: false,
-          ambientStarted: false,
-          lastCue: null,
-        },
-        save: loadSave(),
-      };
+      const choiceButtons = Array.from(document.querySelectorAll("button[data-choice]"));
 
       let audioContext;
       let ambientGain;
@@ -181,6 +158,7 @@
       let rainFilter;
       let kioskHum;
       let kioskHumGain;
+      let ambientStarted = false;
 
       const makeRainBuffer = (context) => {
         const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
@@ -192,9 +170,7 @@
       };
 
       const startAmbientAudio = () => {
-        if (!audioContext || state.audio.ambientStarted) {
-          return;
-        }
+        if (!audioContext || ambientStarted) return;
 
         ambientGain = audioContext.createGain();
         ambientGain.gain.value = 0.045;
@@ -219,44 +195,32 @@
         kioskHum.connect(kioskHumGain).connect(ambientGain);
         kioskHum.start();
 
-        state.audio.ambientStarted = true;
+        ambientStarted = true;
       };
 
       const enableAudio = async () => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) {
-          state.audio.lastCue = "unsupported";
-          publishState();
-          return false;
-        }
-
+        if (!AudioContext) return false;
         audioContext ||= new AudioContext();
         if (audioContext.state === "suspended") {
           await audioContext.resume();
         }
-
-        state.audio.unlocked = audioContext.state === "running";
-        if (state.audio.unlocked) {
+        if (audioContext.state === "running") {
           startAmbientAudio();
-          state.audio.lastCue = "ambient-rainline";
+          return true;
         }
-        publishState();
-        return state.audio.unlocked;
+        return false;
       };
 
       const playKioskConfirm = async () => {
         const unlocked = await enableAudio();
-        if (!unlocked || !audioContext) {
-          return;
-        }
-
+        if (!unlocked || !audioContext) return;
         const now = audioContext.currentTime;
         const gain = audioContext.createGain();
         gain.gain.setValueAtTime(0.0001, now);
         gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
         gain.connect(audioContext.destination);
-
         [523.25, 659.25, 987.77].forEach((frequency, index) => {
           const tone = audioContext.createOscillator();
           tone.type = index === 2 ? "triangle" : "sine";
@@ -265,40 +229,15 @@
           tone.start(now + index * 0.035);
           tone.stop(now + 0.36);
         });
-
-        state.audio.lastCue = "packet-confirmed";
-        publishState();
-      };
-
-      const applySave = () => {
-        const save = state.save;
-        if (!save?.packet?.delivered) {
-          return;
-        }
-
-        state.storyBeat = "io-remembers-packet";
-        state.packet = { ...state.packet, ...save.packet };
-        state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
-      };
-
-      const publishState = () => {
-        window.__game = {
-          ...state,
-          save: loadSave(),
-          getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
-          deliverPacket: () => deliverPacket(),
-          enableAudio: () => enableAudio(),
-          resetSliceSave: () => resetSliceSave(),
-        };
       };
 
       const renderText = () => {
         speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
-        stateReadout.textContent = `story: ${state.storyBeat}`;
+        line.textContent = surface.npcs.io.lastLine ?? "";
+        stateReadout.textContent = `scene: ${surface.scene.beat}`;
       };
 
+      // ---- Scene ------------------------------------------------------------
       const scene = new THREE.Scene();
       scene.fog = new THREE.FogExp2(0x07111d, 0.045);
 
@@ -434,42 +373,29 @@
         bloomPass.setSize(width, height);
       };
 
-      const deliverPacket = () => {
-        const save = writeSave({
-          version: 1,
-          playerId: state.player.id,
-          packet: {
-            delivered: true,
-            route: "blue rainline",
-            deliveredAt: new Date().toISOString(),
-          },
+      // ---- Wire buttons to input.choose ------------------------------------
+      for (const button of choiceButtons) {
+        button.addEventListener("click", async () => {
+          const choiceId = button.dataset.choice;
+          if (!choiceId) return;
+          await surface.input.choose(choiceId);
+          if (choiceId === "deliver-packet") {
+            await surface.input.forceSave();
+            playKioskConfirm();
+          }
+          renderText();
         });
-        state.save = save;
-        applySave();
-        renderText();
-        publishState();
-        playKioskConfirm();
-      };
+      }
 
-      const resetSliceSave = () => {
-        clearSave();
-        state.storyBeat = "arrive-at-kiosk";
-        state.packet = { delivered: false, route: null, deliveredAt: null };
-        state.npcMemory.io.remembersPriorPacket = false;
-        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
-        state.save = null;
-        renderText();
-        publishState();
-      };
-
-      deliverButton.addEventListener("click", deliverPacket);
       soundButton.addEventListener("click", enableAudio);
-      resetButton.addEventListener("click", resetSliceSave);
+      resetButton.addEventListener("click", async () => {
+        window.localStorage.removeItem(`aftersign.slice1.save.${surface.player.id}`);
+        await surface.input.forceReload({ clearLocalState: true });
+        renderText();
+      });
       window.addEventListener("resize", resize, { passive: true });
 
-      applySave();
       renderText();
-      publishState();
       resize();
 
       let last = performance.now();

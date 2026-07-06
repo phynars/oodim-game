@@ -38,7 +38,8 @@
     "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom && npm run typecheck:agar && npm run typecheck:agar-server",
     "test:e2e": "npm run test:e2e:pacman && npm run test:e2e:galaga && npm run test:e2e:doom && npm run test:e2e:agar",
     "test:harness": "playwright test --config e2e-shared/multiplayer/playwright.harness.config.ts",
-    "test:smoke": "playwright test --config e2e-shared/prod-smoke/playwright.config.ts"
+    "test:smoke": "playwright test --config e2e-shared/prod-smoke/playwright.config.ts",
+    "test:aftersign": "node --test aftersign/tests/"
   },
   "dependencies": {
     "three": "^0.184.0"
