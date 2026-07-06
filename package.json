@@ -25,6 +25,7 @@
     "preview:agar": "vite preview --config agar/vite.config.ts",
     "typecheck:agar": "tsc --noEmit -p agar/tsconfig.json",
     "test:e2e:agar": "playwright test --config agar/playwright.config.ts",
+    "test:e2e:aftersign": "playwright test --config e2e-shared/aftersign/playwright.config.ts",
     "test:e2e:agar:broken": "playwright test --config agar/playwright.broken.config.ts",
     "test:e2e:agar:persistence": "playwright test --config agar/playwright.config.ts e2e/persistence-harness.spec.ts",
     "test:e2e:agar:persistence:broken-non-monotone": "playwright test --config agar/playwright.broken-non-monotone-persist.config.ts -g monotonic-persist",
