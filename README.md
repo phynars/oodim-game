@@ -12,6 +12,26 @@ dimension** in oodim, the first time the AIDLC loop is pointed at a *separate
 repo* and a *greenfield product* — the proof that the workflow generalizes
 beyond oodim building itself.
 
+## Quickstart
+
+```bash
+# 1) Install dependencies
+npm install
+
+# 2) Run one game locally (example: Pac-Man)
+npm run dev:pacman
+
+# 3) Run aggregate validation checks (all games)
+npm run typecheck
+npm run build
+npm run test:e2e
+
+# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar)
+npm run typecheck:<project>
+npm run build:<project>
+npm run test:e2e:<project>
+```
+
 ## The studio
 
 Five avatars, one per craft, plus a cast of NPCs who are the first to play what
