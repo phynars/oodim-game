@@ -4,10 +4,10 @@
 //   samples[] described a 48ms attack (0 → peak) then decay to rest.
 //   sampleIoPacketConfirmCue() did pure peak-at-t=0 decay.
 // This module now has ONE source of truth: the sampler models
-//   attack: 0 → peakMs, easing outBack(1.55) on the punch channels.
+//   attack: 0 → peakMs, easing inCubic on the punch channels.
 //   decay:  peakMs → durationMs, easing outCubic back to rest.
 // samples[] is generated FROM the sampler at fixed keyframe times, and
-// a runtime assertion (`assertCueMatchesSamples`) verifies they agree
+// a runtime assertion (`assertIoPacketConfirmCueShape`) verifies they agree
 // so future drift throws immediately.
 //
 // Feel numbers reviewed by Mara Okonkwo on PR #426.
@@ -16,10 +16,7 @@ const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 const outCubic = (t) => 1 - Math.pow(1 - clamp01(t), 3);
 
-const outBack = (t, overshoot = 1.55) => {
-  const x = clamp01(t) - 1;
-  return 1 + (overshoot + 1) * x * x * x + overshoot * x * x;
-};
+const outCubicAttack = (t) => Math.pow(clamp01(t), 3);
 
 const lerp = (from, to, t) => from + (to - from) * clamp01(t);
 
@@ -31,7 +28,7 @@ export const IO_PACKET_CONFIRM_CUE = {
   id: "io-packet-confirm",
   durationMs: 420,
   peakMs: PEAK_MS,
-  easing: "outBack(1.55) attack -> outCubic decay",
+  easing: "inCubic attack -> outCubic decay",
   inputLockMs: 180,
   cameraShake: {
     peakPx: 5,
@@ -60,9 +57,9 @@ export const IO_PACKET_CONFIRM_CUE = {
   },
 };
 
-// Attack phase [0, PEAK_MS] uses outBack for the anticipation-then-punch
-// overshoot on shake/bloom/glow. Decay phase [PEAK_MS, ...] uses outCubic
-// back to rest.
+// Attack phase [0, PEAK_MS] uses inCubic so every punch channel
+// starts at rest, climbs monotonically, and lands exactly on its authored
+// peak. Decay phase [PEAK_MS, ...] uses outCubic back to rest.
 export function sampleIoPacketConfirmCue(timeMs) {
   const cue = IO_PACKET_CONFIRM_CUE;
   const t = Math.max(0, Math.min(cue.durationMs, timeMs));
@@ -70,7 +67,7 @@ export function sampleIoPacketConfirmCue(timeMs) {
   // Kiosk scale: pop up during attack, settle after.
   let kioskScale;
   if (t <= cue.peakMs) {
-    kioskScale = lerp(cue.kioskScale.rest, cue.kioskScale.peak, outBack(t / cue.peakMs));
+    kioskScale = lerp(cue.kioskScale.rest, cue.kioskScale.peak, outCubicAttack(t / cue.peakMs));
   } else {
     const settleT = (t - cue.peakMs) / cue.kioskScale.settleMs;
     kioskScale = lerp(cue.kioskScale.peak, cue.kioskScale.settle, outCubic(settleT));
@@ -79,7 +76,7 @@ export function sampleIoPacketConfirmCue(timeMs) {
   // Camera shake: ramp 0 → peak during attack, then decay to 0 over decayMs.
   let cameraShakePx;
   if (t <= cue.peakMs) {
-    cameraShakePx = lerp(0, cue.cameraShake.peakPx, outBack(t / cue.peakMs));
+    cameraShakePx = lerp(0, cue.cameraShake.peakPx, outCubicAttack(t / cue.peakMs));
   } else {
     const decayT = (t - cue.peakMs) / cue.cameraShake.decayMs;
     cameraShakePx = lerp(cue.cameraShake.peakPx, 0, outCubic(decayT));
@@ -88,7 +85,7 @@ export function sampleIoPacketConfirmCue(timeMs) {
   // Bloom boost: same shape as shake but its own decay window.
   let bloomBoost;
   if (t <= cue.peakMs) {
-    bloomBoost = lerp(0, cue.bloomBoost.peak, outBack(t / cue.peakMs));
+    bloomBoost = lerp(0, cue.bloomBoost.peak, outCubicAttack(t / cue.peakMs));
   } else {
     const decayT = (t - cue.peakMs) / cue.bloomBoost.decayMs;
     bloomBoost = lerp(cue.bloomBoost.peak, 0, outCubic(decayT));
@@ -97,7 +94,7 @@ export function sampleIoPacketConfirmCue(timeMs) {
   // Packet glow: rest → peak during attack, then ease back toward rest.
   let packetGlow;
   if (t <= cue.peakMs) {
-    packetGlow = lerp(cue.packetGlow.rest, cue.packetGlow.peak, outBack(t / cue.peakMs));
+    packetGlow = lerp(cue.packetGlow.rest, cue.packetGlow.peak, outCubicAttack(t / cue.peakMs));
   } else {
     const decayT = (t - cue.peakMs) / (cue.durationMs - cue.peakMs);
     packetGlow = lerp(cue.packetGlow.peak, cue.packetGlow.rest, outCubic(decayT));
