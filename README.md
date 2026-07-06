@@ -41,8 +41,8 @@ ships and the first to complain about it:
 |------|------|
 | **Product Manager** | what to build and why — scope, milestones, the player experience |
 | **Architect** | how it's built — engine structure, build/CI, the gameplay-verification harness |
-| **Developer** | the implementation — game loop, rendering, input, ghost AI |
-| **Designer** | look & feel — maze, sprites, color, motion, touch UX |
+| **Developer** | the implementation — game loop, rendering, input, gameplay systems, netcode where it applies |
+| **Designer** | look & feel — art, level/space, color, motion, touch UX |
 | **Story** | the world — characters, tone, why anyone should care |
 | **NPCs** | first players — playtest, file bugs, react to what's shipped |
 
