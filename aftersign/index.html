@@ -10,6 +10,8 @@
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #05070c;
         color: #edf7ff;
+        --confirm-shake-x: 0px;
+        --confirm-shake-y: 0px;
       }
 
       * {
@@ -28,6 +30,8 @@
         display: block;
         width: 100vw;
         height: 100vh;
+        cursor: pointer;
+        touch-action: none;
       }
 
       .hud {
@@ -36,6 +40,8 @@
         padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
         pointer-events: none;
         background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
+        transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
+        will-change: transform;
       }
 
       .panel {
@@ -111,6 +117,7 @@
         <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
         <div class="controls">
           <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>
       </div>
@@ -134,7 +141,21 @@
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
       const deliverButton = document.querySelector("#deliverButton");
+      const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
+
+      // Boot-time assertion: throws if the authored cue and sampler drift apart.
+      const cueSelfTest = assertIoPacketConfirmCueShape();
+      const CONFIRM_FEEDBACK = {
+        durationMs: IO_PACKET_CONFIRM_CUE.durationMs,
+        easing: IO_PACKET_CONFIRM_CUE.easing,
+        cameraKickDeg: 1.4,
+        cameraKickWorldX: IO_PACKET_CONFIRM_CUE.cameraShake.peakPx / 260,
+        hudShakePx: IO_PACKET_CONFIRM_CUE.cameraShake.peakPx * 2,
+        hudLiftPx: 3,
+        inputLockMs: IO_PACKET_CONFIRM_CUE.inputLockMs,
+        pulseDecayPerSecond: 1000 / IO_PACKET_CONFIRM_CUE.cameraShake.decayMs,
+      };
 
       const loadSave = () => {
         try {
@@ -171,7 +192,119 @@
             line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
           },
         },
+        interaction: {
+          lastAction: null,
+          lastPointer: null,
+          kioskPulse: 0,
+          confirmCount: 0,
+          confirmStartedAt: null,
+          confirmFeedback: {
+            ...CONFIRM_FEEDBACK,
+            active: false,
+            remainingMs: 0,
+          },
+        },
+        audio: {
+          unlocked: false,
+          ambientStarted: false,
+          lastCue: null,
+        },
         save: loadSave(),
+      };
+
+      let audioContext;
+      let ambientGain;
+      let rainNoise;
+      let rainFilter;
+      let kioskHum;
+      let kioskHumGain;
+
+      const makeRainBuffer = (context) => {
+        const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i += 1) {
+          data[i] = (Math.random() * 2 - 1) * 0.38;
+        }
+        return buffer;
+      };
+
+      const startAmbientAudio = () => {
+        if (!audioContext || state.audio.ambientStarted) {
+          return;
+        }
+
+        ambientGain = audioContext.createGain();
+        ambientGain.gain.value = 0.045;
+        ambientGain.connect(audioContext.destination);
+
+        rainNoise = audioContext.createBufferSource();
+        rainNoise.buffer = makeRainBuffer(audioContext);
+        rainNoise.loop = true;
+
+        rainFilter = audioContext.createBiquadFilter();
+        rainFilter.type = "bandpass";
+        rainFilter.frequency.value = 1350;
+        rainFilter.Q.value = 0.72;
+        rainNoise.connect(rainFilter).connect(ambientGain);
+        rainNoise.start();
+
+        kioskHum = audioContext.createOscillator();
+        kioskHum.type = "sine";
+        kioskHum.frequency.value = 91;
+        kioskHumGain = audioContext.createGain();
+        kioskHumGain.gain.value = 0.018;
+        kioskHum.connect(kioskHumGain).connect(ambientGain);
+        kioskHum.start();
+
+        state.audio.ambientStarted = true;
+      };
+
+      const enableAudio = async () => {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) {
+          state.audio.lastCue = "unsupported";
+          publishState();
+          return false;
+        }
+
+        audioContext ||= new AudioContext();
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
+
+        state.audio.unlocked = audioContext.state === "running";
+        if (state.audio.unlocked) {
+          startAmbientAudio();
+          state.audio.lastCue = "ambient-rainline";
+        }
+        publishState();
+        return state.audio.unlocked;
+      };
+
+      const playKioskConfirm = async () => {
+        const unlocked = await enableAudio();
+        if (!unlocked || !audioContext) {
+          return;
+        }
+
+        const now = audioContext.currentTime;
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+        gain.connect(audioContext.destination);
+
+        [523.25, 659.25, 987.77].forEach((frequency, index) => {
+          const tone = audioContext.createOscillator();
+          tone.type = index === 2 ? "triangle" : "sine";
+          tone.frequency.setValueAtTime(frequency, now + index * 0.035);
+          tone.connect(gain);
+          tone.start(now + index * 0.035);
+          tone.stop(now + 0.36);
+        });
+
+        state.audio.lastCue = "packet-confirmed";
+        publishState();
       };
 
       const applySave = () => {
@@ -192,6 +325,7 @@
           save: loadSave(),
           getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
           deliverPacket: () => deliverPacket(),
+          enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
           juice: {
             ioPacketConfirmCue: IO_PACKET_CONFIRM_CUE,
@@ -213,6 +347,9 @@
       const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
       camera.position.set(0, 2.25, 7.6);
 
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.shadowMap.enabled = true;
@@ -224,6 +361,9 @@
       composer.addPass(new RenderPass(scene, camera));
       const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.52, 0.55, 0.18);
       composer.addPass(bloomPass);
+      const BLOOM_BASE_STRENGTH = 0.52;
+      const CAMERA_BASE_X = camera.position.x;
+      const SHAKE_PX_TO_WORLD = 1 / 260; // 5px authored shake reads as ~0.019 world units at this framing.
 
       const hemi = new THREE.HemisphereLight(0x8ccfff, 0x09111d, 1.4);
       scene.add(hemi);
@@ -269,6 +409,7 @@
       slot.position.set(0, 0.92, 0.3);
       kiosk.add(slot);
       scene.add(kiosk);
+      const kioskHitTargets = [kioskBody, screen, slot];
 
       const io = new THREE.Group();
       const coat = new THREE.Mesh(
@@ -342,51 +483,25 @@
         bloomPass.setSize(width, height);
       };
 
-      // --- IO packet-confirm cue runtime driver -----------------------------
-      // Boot-time assertion: throws if sampler drifts from cue shape.
-      const cueSelfTest = assertIoPacketConfirmCueShape();
-      const BLOOM_BASE_STRENGTH = 0.52;
-      const CAMERA_BASE_X = camera.position.x;
-      const SHAKE_PX_TO_WORLD = 1 / 260; // ~5px shake reads as ~0.019 world units at this framing.
-      let cueStartMs = null; // null = idle
-
-      const startIoPacketConfirmCue = () => {
-        cueStartMs = performance.now();
+      const triggerKioskFeedback = (source) => {
+        state.interaction.lastAction = source;
+        state.interaction.kioskPulse = 1;
+        state.interaction.confirmCount += 1;
+        state.interaction.confirmStartedAt = performance.now();
+        state.interaction.confirmFeedback = {
+          ...CONFIRM_FEEDBACK,
+          active: true,
+          remainingMs: IO_PACKET_CONFIRM_CUE.durationMs,
+        };
+        publishState();
       };
 
-      const updateIoPacketConfirmCue = (nowMs) => {
-        if (cueStartMs === null) {
-          // Ensure we return to base whenever idle.
-          camera.position.x = CAMERA_BASE_X;
-          bloomPass.strength = BLOOM_BASE_STRENGTH;
-          kiosk.scale.setScalar(1);
+      const deliverPacket = (source = "hud-button") => {
+        const confirmStartedAt = state.interaction.confirmStartedAt;
+        if (confirmStartedAt !== null && isIoPacketConfirmInputLocked(performance.now() - confirmStartedAt)) {
           return;
         }
-        const elapsed = nowMs - cueStartMs;
-        if (elapsed >= IO_PACKET_CONFIRM_CUE.durationMs) {
-          cueStartMs = null;
-          camera.position.x = CAMERA_BASE_X;
-          bloomPass.strength = BLOOM_BASE_STRENGTH;
-          kiosk.scale.setScalar(1);
-          return;
-        }
-        const sample = sampleIoPacketConfirmCue(elapsed);
-        // Camera shake: sign flips per-frame for a jitter without needing extra state.
-        const jitterSign = (Math.floor(elapsed / 16) & 1) === 0 ? 1 : -1;
-        camera.position.x = CAMERA_BASE_X + sample.cameraShakePx * SHAKE_PX_TO_WORLD * jitterSign;
-        bloomPass.strength = BLOOM_BASE_STRENGTH + sample.bloomBoost;
-        kiosk.scale.setScalar(sample.kioskScale);
-        // Packet-glow rides on the screen emissive; multiplied on top of the idle sine.
-        screen.material.emissiveIntensity = 1.55 + sample.packetGlow * 1.2;
-      };
-      // ---------------------------------------------------------------------
-
-      const deliverPacket = () => {
-        // Input-lock the button for the first 180ms so mash-taps don't re-fire.
-        if (cueStartMs !== null && isIoPacketConfirmInputLocked(performance.now() - cueStartMs)) {
-          return;
-        }
-        startIoPacketConfirmCue();
+        triggerKioskFeedback(source);
         const save = writeSave({
           version: 1,
           playerId: state.player.id,
@@ -400,6 +515,7 @@
         applySave();
         renderText();
         publishState();
+        playKioskConfirm();
       };
 
       const resetSliceSave = () => {
@@ -408,12 +524,46 @@
         state.packet = { delivered: false, route: null, deliveredAt: null };
         state.npcMemory.io.remembersPriorPacket = false;
         state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
+        state.interaction.lastAction = null;
+        state.interaction.lastPointer = null;
+        state.interaction.kioskPulse = 0;
+        state.interaction.confirmCount = 0;
+        state.interaction.confirmStartedAt = null;
+        state.interaction.confirmFeedback = {
+          ...CONFIRM_FEEDBACK,
+          active: false,
+          remainingMs: 0,
+        };
+        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
+        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
+        camera.position.x = CAMERA_BASE_X;
+        camera.rotation.z = 0;
+        bloomPass.strength = BLOOM_BASE_STRENGTH;
         state.save = null;
         renderText();
         publishState();
       };
 
-      deliverButton.addEventListener("click", deliverPacket);
+      const handleScenePointer = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        state.interaction.lastPointer = {
+          x: Math.round(event.clientX - rect.left),
+          y: Math.round(event.clientY - rect.top),
+        };
+        raycaster.setFromCamera(pointer, camera);
+        if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
+          event.preventDefault();
+          deliverPacket("scene-kiosk-pointer");
+        } else {
+          publishState();
+        }
+      };
+
+      deliverButton.addEventListener("click", () => deliverPacket("hud-button"));
+      canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
+      soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
 
@@ -427,15 +577,46 @@
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
         const t = now / 1000;
+        const kioskPulse = state.interaction.kioskPulse;
+        const confirmStartedAt = state.interaction.confirmStartedAt;
+        const confirmElapsed = confirmStartedAt === null
+          ? IO_PACKET_CONFIRM_CUE.durationMs
+          : Math.min(Math.max(now - confirmStartedAt, 0), IO_PACKET_CONFIRM_CUE.durationMs);
+        const confirmProgress = confirmElapsed / IO_PACKET_CONFIRM_CUE.durationMs;
+        const confirmSample = sampleIoPacketConfirmCue(confirmElapsed);
+        const confirmActive = confirmStartedAt !== null && confirmProgress < 1;
+        const shakeDirection = confirmActive ? Math.sin(confirmProgress * Math.PI * 10) : 0;
+        const shakeEnvelope = confirmActive ? confirmSample.cameraShakePx / IO_PACKET_CONFIRM_CUE.cameraShake.peakPx : 0;
+        const glowLift = confirmActive ? Math.max(0, confirmSample.packetGlow - IO_PACKET_CONFIRM_CUE.packetGlow.rest) : 0;
+        const scaleLift = confirmActive
+          ? Math.max(0, (confirmSample.kioskScale - IO_PACKET_CONFIRM_CUE.kioskScale.rest) / (IO_PACKET_CONFIRM_CUE.kioskScale.peak - IO_PACKET_CONFIRM_CUE.kioskScale.rest))
+          : 0;
 
-        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025;
+        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + shakeDirection * shakeEnvelope * 0.045;
+        kiosk.scale.setScalar(confirmSample.kioskScale + kioskPulse * 0.018);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        // Idle screen glow — the confirm cue overrides emissiveIntensity while running.
-        if (cueStartMs === null) {
-          screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25;
+        camera.position.x = CAMERA_BASE_X + confirmSample.cameraShakePx * SHAKE_PX_TO_WORLD * shakeDirection;
+        camera.rotation.z = THREE.MathUtils.degToRad(shakeEnvelope * shakeDirection * CONFIRM_FEEDBACK.cameraKickDeg);
+        document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmSample.cameraShakePx * 2 * shakeDirection)}px`);
+        document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-scaleLift * CONFIRM_FEEDBACK.hudLiftPx)}px`);
+        bloomPass.strength = BLOOM_BASE_STRENGTH + confirmSample.bloomBoost;
+        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + glowLift * 1.8;
+        slot.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + glowLift * 0.9;
+        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmSample.bloomBoost * 4.1;
+        state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
+        if (confirmStartedAt !== null) {
+          state.interaction.confirmFeedback.active = confirmActive;
+          state.interaction.confirmFeedback.remainingMs = Math.max(0, Math.round(IO_PACKET_CONFIRM_CUE.durationMs - confirmElapsed));
+          if (!confirmActive) {
+            state.interaction.confirmStartedAt = null;
+          }
         }
-        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8;
-        updateIoPacketConfirmCue(now);
+        if (rainFilter) {
+          rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
+        }
+        if (kioskHum) {
+          kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
+        }
         rain.children.forEach((drop, index) => {
           drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
           if (drop.position.y < -2) {
