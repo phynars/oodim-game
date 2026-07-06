@@ -6,8 +6,12 @@
  * input into this controller and expose the resulting state through window.__game.
  */
 
+// Timings match docs/flagship/ivy-packet-action-review.md:
+// - 450 ms hold threshold ("long enough to reject accidents, short enough to avoid drag")
+// - pre-break feedback begins by 120 ms into hold
+// Anything under 180 ms of hold-and-release is treated as a tap that preserves the seal.
 export const PACKET_INTENT = Object.freeze({
-  HOLD_TO_OPEN_MS: 550,
+  HOLD_TO_OPEN_MS: 450,
   TAP_TO_PRESERVE_MAX_MS: 180,
   DRIFT_CANCEL_PX: 14,
   PROGRESS_DEADBAND_MS: 80,
@@ -76,12 +80,28 @@ export class PacketIntentController {
       return this.snapshot();
     }
 
+    this.advanceProgress(timeMs);
+    return this.snapshot();
+  }
+
+  /**
+   * Advance the hold clock without any pointer movement. This is the primary
+   * open path on mouse and touch: the player presses and holds without wiggling,
+   * and the packet must still open at HOLD_TO_OPEN_MS. Scene tick / rAF loop
+   * should call this every frame while `active` is true.
+   */
+  tick(timeMs) {
+    if (!this.active || this.outcome) return this.snapshot();
+    this.advanceProgress(timeMs);
+    return this.snapshot();
+  }
+
+  advanceProgress(timeMs) {
     this.progress = this.openProgressAt(timeMs);
     if (this.progress >= 1) {
       this.outcome = PACKET_OUTCOME.OPENED;
       this.active = false;
     }
-    return this.snapshot();
   }
 
   release({ timeMs, x, y }) {
@@ -136,6 +156,7 @@ export function createPacketIntentHarness() {
     state,
     press(input) { return sync(controller.press(input)); },
     move(input) { return sync(controller.move(input)); },
+    tick(timeMs) { return sync(controller.tick(timeMs)); },
     release(input) { return sync(controller.release(input)); },
     reset() { return sync(controller.reset()); },
   };
