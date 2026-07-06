@@ -117,6 +117,7 @@
         <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
         <div class="controls">
           <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="valeButton" type="button">Check in with Vale</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>
@@ -135,6 +136,7 @@
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
       const deliverButton = document.querySelector("#deliverButton");
+      const valeButton = document.querySelector("#valeButton");
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
 
@@ -182,7 +184,12 @@
             remembersPriorPacket: false,
             line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
           },
+          vale: {
+            remembersPriorPacket: false,
+            line: "I count the rain because it lies less than people do. Bring the packet through clean and I will count you too.",
+          },
         },
+        activeSpeaker: "io",
         interaction: {
           lastAction: null,
           lastPointer: null,
@@ -308,6 +315,8 @@
         state.packet = { ...state.packet, ...save.packet };
         state.npcMemory.io.remembersPriorPacket = true;
         state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
+        state.npcMemory.vale.remembersPriorPacket = true;
+        state.npcMemory.vale.line = `You came back with ${save.packet.route} still on your shoes. Good. The city keeps names for people who return.`;
       };
 
       const publishState = () => {
@@ -322,8 +331,9 @@
       };
 
       const renderText = () => {
-        speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
+        const activeNpc = state.npcMemory[state.activeSpeaker] || state.npcMemory.io;
+        speaker.textContent = state.activeSpeaker;
+        line.textContent = activeNpc.line;
         stateReadout.textContent = `story: ${state.storyBeat}`;
       };
 
@@ -491,10 +501,18 @@
           },
         });
         state.save = save;
+        state.activeSpeaker = "io";
         applySave();
         renderText();
         publishState();
         playKioskConfirm();
+      };
+
+      const checkInWithVale = () => {
+        state.activeSpeaker = "vale";
+        state.interaction.lastAction = "vale-check-in";
+        renderText();
+        publishState();
       };
 
       const resetSliceSave = () => {
@@ -503,6 +521,9 @@
         state.packet = { delivered: false, route: null, deliveredAt: null };
         state.npcMemory.io.remembersPriorPacket = false;
         state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
+        state.npcMemory.vale.remembersPriorPacket = false;
+        state.npcMemory.vale.line = "I count the rain because it lies less than people do. Bring the packet through clean and I will count you too.";
+        state.activeSpeaker = "io";
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
         state.interaction.kioskPulse = 0;
@@ -540,6 +561,7 @@
       };
 
       deliverButton.addEventListener("click", () => deliverPacket("hud-button"));
+      valeButton.addEventListener("click", checkInWithVale);
       canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
       soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
