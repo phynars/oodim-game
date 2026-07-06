@@ -194,6 +194,13 @@
             active: false,
             remainingMs: 0,
           },
+          cameraFeel: {
+            frames: [],
+            maxFramePositionDelta: 0,
+            maxFrameRotationDeltaDeg: 0,
+            lastPositionX: 0,
+            lastRotationZDeg: 0,
+          },
         },
         audio: {
           unlocked: false,
@@ -513,6 +520,13 @@
           active: false,
           remainingMs: 0,
         };
+        state.interaction.cameraFeel = {
+          frames: [],
+          maxFramePositionDelta: 0,
+          maxFrameRotationDeltaDeg: 0,
+          lastPositionX: 0,
+          lastRotationZDeg: 0,
+        };
         document.documentElement.style.setProperty("--confirm-shake-x", "0px");
         document.documentElement.style.setProperty("--confirm-shake-y", "0px");
         camera.position.x = 0;
@@ -567,8 +581,27 @@
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
-        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
+        const previousCameraX = state.interaction.cameraFeel.lastPositionX;
+        const previousCameraRotationZDeg = state.interaction.cameraFeel.lastRotationZDeg;
+        camera.position.x = THREE.MathUtils.lerp(camera.position.x, confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX, 0.28);
+        camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg), 0.28);
+        const cameraRotationZDeg = THREE.MathUtils.radToDeg(camera.rotation.z);
+        const cameraFrame = {
+          timeMs: Math.round(now),
+          positionX: Number(camera.position.x.toFixed(5)),
+          rotationZDeg: Number(cameraRotationZDeg.toFixed(4)),
+        };
+        state.interaction.cameraFeel.maxFramePositionDelta = Math.max(
+          state.interaction.cameraFeel.maxFramePositionDelta,
+          Math.abs(camera.position.x - previousCameraX)
+        );
+        state.interaction.cameraFeel.maxFrameRotationDeltaDeg = Math.max(
+          state.interaction.cameraFeel.maxFrameRotationDeltaDeg,
+          Math.abs(cameraRotationZDeg - previousCameraRotationZDeg)
+        );
+        state.interaction.cameraFeel.lastPositionX = camera.position.x;
+        state.interaction.cameraFeel.lastRotationZDeg = cameraRotationZDeg;
+        state.interaction.cameraFeel.frames = [...state.interaction.cameraFeel.frames.slice(-23), cameraFrame];
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
         screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7;
