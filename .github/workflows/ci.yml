@@ -41,6 +41,8 @@ jobs:
               - 'doom/**'
             agar:
               - 'agar/**'
+            aftersign:
+              - 'aftersign/**'
             shared:
               - 'package.json'
               - 'package-lock.json'
