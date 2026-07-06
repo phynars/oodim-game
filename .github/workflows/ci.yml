@@ -25,6 +25,7 @@ jobs:
       galaga: ${{ steps.filter.outputs.galaga }}
       doom: ${{ steps.filter.outputs.doom }}
       agar: ${{ steps.filter.outputs.agar }}
+      aftersign: ${{ steps.filter.outputs.aftersign }}
       shared: ${{ steps.filter.outputs.shared }}
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +41,8 @@ jobs:
               - 'doom/**'
             agar:
               - 'agar/**'
+            aftersign:
+              - 'aftersign/**'
             shared:
               - 'package.json'
               - 'package-lock.json'
@@ -149,6 +152,30 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agar-playwright-trace
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  aftersign:
+    needs: changes
+    if: ${{ needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npm run typecheck:aftersign
+      - run: npm run build:aftersign
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:aftersign
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aftersign-playwright-trace
           path: |
             test-results/
             playwright-report/
