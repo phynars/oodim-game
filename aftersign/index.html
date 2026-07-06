@@ -108,7 +108,7 @@
     <section class="hud" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
-        <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
+        <p class="line" id="line">You made it before the rain learned your name. Good. Take the blue packet. Do not make it interesting.</p>
         <div class="controls">
           <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
@@ -123,7 +123,91 @@
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
 
-      const SAVE_KEY = "aftersign.kioskSlice.v1";
+      // ------------------------------------------------------------------
+      // Story-state contract wiring (docs/flagship/story-state-contract.md).
+      //
+      // aftersign/src/story/ioFirstBeat.ts is the canonical typed source for
+      // Io's lines + memory ids. That module is consumed by the WebGL-headless
+      // harness. This inline mirror is what the static page runtime uses at
+      // game.oodim.com/aftersign, kept byte-identical for the strings and ids
+      // the harness pins on.
+      // ------------------------------------------------------------------
+
+      const IO_MEMORY_ID = Object.freeze({
+        bluePacketSealed: "io-remembers-blue-packet-sealed",
+        bluePacketOpened: "io-remembers-blue-packet-opened",
+      });
+
+      const IO_FIRST_SESSION_LINES = Object.freeze({
+        arrival: {
+          text:
+            "You made it before the rain learned your name. Good. Take the blue packet. Do not make it interesting.",
+          memoryRefs: Object.freeze([]),
+        },
+        packetOffered: {
+          text:
+            "Blue wax, brass hook, no return address. Deliver it whole or deliver it broken — either way I want to know which.",
+          memoryRefs: Object.freeze([]),
+        },
+        packetKeptSealed: {
+          text:
+            "Seal is clean. Box has it. That is how a city stays standing: one small refusal at a time.",
+          memoryRefs: Object.freeze([]),
+        },
+        packetOpened: {
+          text:
+            "Wax is broken. So is the easy version of this job. Bring me what is left.",
+          memoryRefs: Object.freeze([]),
+        },
+      });
+
+      const IO_RETURNING_PACKET_LINES = Object.freeze({
+        // fragment target: "blue seal, unbroken"
+        sealed: {
+          text:
+            "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+          memoryRefs: Object.freeze([IO_MEMORY_ID.bluePacketSealed]),
+        },
+        // fragment target: "The seal did not"
+        opened: {
+          text:
+            "You came back. The seal did not. I can use one of those facts.",
+          memoryRefs: Object.freeze([IO_MEMORY_ID.bluePacketOpened]),
+        },
+      });
+
+      const buildDeliveryOutcomeMemory = ({ outcome, sessionId, source }) => ({
+        id:
+          outcome === "sealed"
+            ? IO_MEMORY_ID.bluePacketSealed
+            : IO_MEMORY_ID.bluePacketOpened,
+        kind: "delivery-outcome",
+        subject: "player",
+        predicate: "delivered",
+        object:
+          outcome === "sealed" ? "blue-packet-sealed" : "blue-packet-opened",
+        deliveryId: "blue-packet",
+        sessionId,
+        source,
+      });
+
+      const ioReturningLine = (memories) => {
+        const delivery = memories.find((m) => m.kind === "delivery-outcome");
+        if (delivery?.id === IO_MEMORY_ID.bluePacketSealed)
+          return IO_RETURNING_PACKET_LINES.sealed;
+        if (delivery?.id === IO_MEMORY_ID.bluePacketOpened)
+          return IO_RETURNING_PACKET_LINES.opened;
+        return {
+          text:
+            "You came back. That is not nothing. Stand where I can see what the rain changed.",
+          memoryRefs: [],
+        };
+      };
+
+      // ------------------------------------------------------------------
+
+      const SAVE_KEY = "aftersign.kioskSlice.v2";
+      const PLAYER_ID_KEY = "aftersign.playerId";
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
       const speaker = document.querySelector("#speaker");
@@ -131,6 +215,39 @@
       const deliverButton = document.querySelector("#deliverButton");
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
+
+      const buildMode = (() => {
+        const params = new URLSearchParams(window.location.search);
+        const explicit = params.get("mode");
+        if (explicit === "test" || explicit === "dev" || explicit === "prod") return explicit;
+        return "prod";
+      })();
+
+      const readBreakMode = () => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("break") || null;
+      };
+
+      const readOrCreatePlayerId = () => {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const forced = params.get("playerId");
+          if (forced) {
+            localStorage.setItem(PLAYER_ID_KEY, forced);
+            return forced;
+          }
+          const existing = localStorage.getItem(PLAYER_ID_KEY);
+          if (existing) return existing;
+          const created =
+            "local-" +
+            Math.random().toString(36).slice(2, 10) +
+            Date.now().toString(36);
+          localStorage.setItem(PLAYER_ID_KEY, created);
+          return created;
+        } catch (_error) {
+          return "local-anon";
+        }
+      };
 
       const loadSave = () => {
         try {
@@ -149,30 +266,73 @@
         localStorage.removeItem(SAVE_KEY);
       };
 
+      const newSessionId = () =>
+        "sess-" +
+        Math.random().toString(36).slice(2, 10) +
+        Date.now().toString(36);
+
+      // Contract-shaped state. Field names track FlagshipGameSurface exactly.
       const state = {
-        slug: "aftersign",
-        scene: "io-kiosk-rainline",
-        storyBeat: "arrive-at-kiosk",
+        version: 1,
+        build: {
+          slug: "aftersign",
+          mode: buildMode,
+        },
+        scene: {
+          id: "io-night-post-kiosk",
+          act: "act-1-seal",
+          beat: "arrival",
+          ready: false,
+        },
         player: {
-          id: "local-slice-player",
-        },
-        packet: {
-          delivered: false,
-          route: null,
-          deliveredAt: null,
-        },
-        npcMemory: {
-          io: {
-            remembersPriorPacket: false,
-            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
+          id: readOrCreatePlayerId(),
+          name: null,
+          flags: {
+            io_intro_seen: false,
+            io_route_listened: false,
+            returned_after_first_session: false,
+            answer_tone: "unset",
           },
         },
-        audio: {
-          unlocked: false,
-          ambientStarted: false,
-          lastCue: null,
+        delivery: {
+          id: "blue-packet",
+          outcome: "unknown",
         },
-        save: loadSave(),
+        npcs: {
+          io: {
+            id: "io",
+            displayName: "Io Vale",
+            present: true,
+            trustPosture: "untested",
+            memories: [],
+            lastLine: null,
+            lastLineMemoryRefs: [],
+          },
+        },
+        save: {
+          slot: "default",
+          revision: 0,
+          lastPersistedAt: null,
+          dirty: false,
+          // This slice runs against localStorage only; a durable server-backed
+          // save is a follow-up. The contract explicitly allows this degraded
+          // mode and requires the durable harness to fail against it.
+          authority: "local-fallback",
+          lastLoadProof: {
+            source: null,
+            revision: null,
+            playerId: null,
+          },
+        },
+        // Non-contract runtime bookkeeping — kept off the FlagshipGameSurface
+        // read-side; harness never reads these.
+        _runtime: {
+          audio: { unlocked: false, ambientStarted: false, lastCue: null },
+          sessionId: newSessionId(),
+          storyIdle: true,
+          storyIdleResolvers: [],
+          breakMode: readBreakMode(),
+        },
       };
 
       let audioContext;
@@ -270,33 +430,120 @@
         publishState();
       };
 
-      const applySave = () => {
-        const save = state.save;
-        if (!save?.packet?.delivered) {
+      const markStoryBusy = () => {
+        state._runtime.storyIdle = false;
+      };
+
+      const markStoryIdle = () => {
+        state._runtime.storyIdle = true;
+        const resolvers = state._runtime.storyIdleResolvers.splice(0);
+        resolvers.forEach((resolve) => resolve());
+      };
+
+      const waitForStoryIdle = () =>
+        new Promise((resolve) => {
+          if (state._runtime.storyIdle) {
+            resolve();
+            return;
+          }
+          state._runtime.storyIdleResolvers.push(resolve);
+        });
+
+      const setIoLine = (ioLine) => {
+        state.npcs.io.lastLine = ioLine.text;
+        state.npcs.io.lastLineMemoryRefs = Array.from(ioLine.memoryRefs);
+      };
+
+      const applySaveOnLoad = () => {
+        const save = loadSave();
+        if (!save) {
+          state.save.lastLoadProof = {
+            source: null,
+            revision: null,
+            playerId: null,
+          };
+          setIoLine(IO_FIRST_SESSION_LINES.arrival);
           return;
         }
 
-        state.storyBeat = "io-remembers-packet";
-        state.packet = { ...state.packet, ...save.packet };
-        state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
+        // Break-mode: local-only-save survives normal reload, but if the
+        // harness clears localStorage before this fires there's nothing to
+        // load — which is the whole point of the break mode.
+        state.save.revision = save.revision ?? 0;
+        state.save.lastPersistedAt = save.lastPersistedAt ?? null;
+        state.save.dirty = false;
+        state.save.lastLoadProof = {
+          source: "local-fallback",
+          revision: save.revision ?? 0,
+          playerId: save.playerId ?? null,
+        };
+
+        if (save.playerId) state.player.id = save.playerId;
+        if (save.flags) state.player.flags = { ...state.player.flags, ...save.flags };
+
+        state.player.flags.returned_after_first_session = true;
+
+        if (save.delivery?.outcome === "sealed" || save.delivery?.outcome === "opened") {
+          state.delivery.outcome = save.delivery.outcome;
+          state.npcs.io.trustPosture =
+            save.delivery.outcome === "sealed" ? "trusted-seal" : "useful-breach";
+
+          const breakMode = state._runtime.breakMode;
+
+          if (breakMode !== "drop-memory") {
+            const memory = buildDeliveryOutcomeMemory({
+              outcome: save.delivery.outcome,
+              sessionId: save.sessionId ?? state._runtime.sessionId,
+              source: "local-fallback",
+            });
+            state.npcs.io.memories = [memory];
+          }
+          state.scene.beat = "arrival";
+        }
       };
 
       const publishState = () => {
         window.__game = {
-          ...state,
-          save: loadSave(),
-          getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
-          deliverPacket: () => deliverPacket(),
-          enableAudio: () => enableAudio(),
-          resetSliceSave: () => resetSliceSave(),
+          version: state.version,
+          build: state.build,
+          scene: state.scene,
+          player: state.player,
+          delivery: state.delivery,
+          npcs: state.npcs,
+          save: state.save,
+          input: {
+            choose: (choiceId) => runChoice(choiceId),
+            advance: () => runAdvance(),
+            forceSave: () => runForceSave(),
+            forceReload: (options) => runForceReload(options),
+            waitForStoryIdle,
+          },
+          // Convenience escape hatch for the manual page (buttons); harness
+          // never reads these.
+          _test: {
+            snapshot: () =>
+              JSON.parse(
+                JSON.stringify({
+                  version: state.version,
+                  build: state.build,
+                  scene: state.scene,
+                  player: state.player,
+                  delivery: state.delivery,
+                  npcs: state.npcs,
+                  save: state.save,
+                }),
+              ),
+            enableAudio: () => enableAudio(),
+            resetSliceSave: () => resetSliceSave(),
+          },
         };
       };
 
       const renderText = () => {
         speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
-        stateReadout.textContent = `story: ${state.storyBeat}`;
+        line.textContent =
+          state.npcs.io.lastLine ?? IO_FIRST_SESSION_LINES.arrival.text;
+        stateReadout.textContent = "story: " + state.scene.beat;
       };
 
       const scene = new THREE.Scene();
@@ -434,41 +681,152 @@
         bloomPass.setSize(width, height);
       };
 
-      const deliverPacket = () => {
-        const save = writeSave({
-          version: 1,
-          playerId: state.player.id,
-          packet: {
-            delivered: true,
-            route: "blue rainline",
-            deliveredAt: new Date().toISOString(),
-          },
-        });
-        state.save = save;
-        applySave();
-        renderText();
-        publishState();
-        playKioskConfirm();
+      // Player intent is one of the four contract choices. The runtime turns
+      // authored intent into scene beats, delivery outcome, and (on reload)
+      // Io's returning line + memory refs.
+      const runChoice = async (choiceId) => {
+        markStoryBusy();
+        try {
+          if (choiceId === "keep-sealed") {
+            state.player.flags.io_intro_seen = true;
+            state.scene.beat = "packet-choice";
+            state.delivery.outcome = "sealed";
+            setIoLine(IO_FIRST_SESSION_LINES.packetKeptSealed);
+          } else if (choiceId === "open-packet") {
+            state.player.flags.io_intro_seen = true;
+            state.scene.beat = "packet-choice";
+            state.delivery.outcome = "opened";
+            setIoLine(IO_FIRST_SESSION_LINES.packetOpened);
+          } else if (choiceId === "deliver-packet") {
+            if (state.delivery.outcome === "unknown") {
+              // The contract says the harness may skip through packet-offered
+              // → packet-choice, but delivery without a stated seal choice is
+              // a bug: pin it as sealed so the scene stays coherent.
+              state.delivery.outcome = "sealed";
+            }
+            state.scene.beat = "packet-delivered";
+            state.npcs.io.trustPosture =
+              state.delivery.outcome === "sealed"
+                ? "trusted-seal"
+                : "useful-breach";
+            const memory = buildDeliveryOutcomeMemory({
+              outcome: state.delivery.outcome,
+              sessionId: state._runtime.sessionId,
+              source: "local-fallback",
+            });
+            state.npcs.io.memories = [memory];
+            state.save.dirty = true;
+            await runForceSave();
+            playKioskConfirm();
+          } else if (choiceId === "return-to-io") {
+            state.scene.beat = "io-return-recognition";
+            state.player.flags.returned_after_first_session = true;
+            let memories = state.npcs.io.memories;
+            if (state._runtime.breakMode === "wrong-io-line" && memories[0]) {
+              // Deliberately mis-select so the returning line contradicts the
+              // saved outcome — proves the harness catches drift.
+              const flipped = memories[0].id === IO_MEMORY_ID.bluePacketSealed
+                ? { ...memories[0], id: IO_MEMORY_ID.bluePacketOpened }
+                : { ...memories[0], id: IO_MEMORY_ID.bluePacketSealed };
+              memories = [flipped];
+            }
+            setIoLine(ioReturningLine(memories));
+          } else {
+            throw new Error("unknown choice id: " + String(choiceId));
+          }
+          renderText();
+          publishState();
+        } finally {
+          markStoryIdle();
+        }
       };
 
-      const resetSliceSave = () => {
-        clearSave();
-        state.storyBeat = "arrive-at-kiosk";
-        state.packet = { delivered: false, route: null, deliveredAt: null };
-        state.npcMemory.io.remembersPriorPacket = false;
-        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
-        state.save = null;
-        renderText();
-        publishState();
+      const runAdvance = async () => {
+        markStoryBusy();
+        try {
+          if (state.scene.beat === "arrival") state.scene.beat = "packet-offered";
+          else if (state.scene.beat === "packet-offered") state.scene.beat = "packet-choice";
+          renderText();
+          publishState();
+        } finally {
+          markStoryIdle();
+        }
       };
 
-      deliverButton.addEventListener("click", deliverPacket);
+      const runForceSave = async () => {
+        markStoryBusy();
+        try {
+          const next = {
+            version: 2,
+            playerId: state.player.id,
+            sessionId: state._runtime.sessionId,
+            delivery: { outcome: state.delivery.outcome },
+            flags: state.player.flags,
+            revision: state.save.revision + 1,
+            lastPersistedAt: new Date().toISOString(),
+          };
+          // Break-mode: local-only-save is the default authority already, but
+          // we still emit the write so a normal reload passes.
+          writeSave(next);
+          state.save.revision = next.revision;
+          state.save.lastPersistedAt = next.lastPersistedAt;
+          state.save.dirty = false;
+          publishState();
+        } finally {
+          markStoryIdle();
+        }
+      };
+
+      const runForceReload = async (options) => {
+        markStoryBusy();
+        try {
+          if (options?.clearLocalState) {
+            clearSave();
+            // A durable save would survive this; local-fallback does not.
+            // That's the point — the durable harness must fail here.
+          }
+          // Fresh session id on reload.
+          state._runtime.sessionId = newSessionId();
+          state.npcs.io.memories = [];
+          state.npcs.io.lastLine = null;
+          state.npcs.io.lastLineMemoryRefs = [];
+          state.npcs.io.trustPosture = "untested";
+          state.delivery.outcome = "unknown";
+          state.scene.beat = "arrival";
+          state.player.flags.returned_after_first_session = false;
+          state.save.revision = 0;
+          state.save.lastPersistedAt = null;
+          applySaveOnLoad();
+          renderText();
+          publishState();
+        } finally {
+          markStoryIdle();
+        }
+      };
+
+      // Manual-page shims: buttons drive the same input surface the harness
+      // uses. Keeps one path through the code.
+      const deliverPacket = async () => {
+        if (state.delivery.outcome === "unknown") {
+          await runChoice("keep-sealed");
+        }
+        await runChoice("deliver-packet");
+      };
+
+      const resetSliceSave = () => runForceReload({ clearLocalState: true });
+
+      deliverButton.addEventListener("click", () => {
+        deliverPacket().catch((error) => console.error(error));
+      });
       soundButton.addEventListener("click", enableAudio);
-      resetButton.addEventListener("click", resetSliceSave);
+      resetButton.addEventListener("click", () => {
+        resetSliceSave().catch((error) => console.error(error));
+      });
       window.addEventListener("resize", resize, { passive: true });
 
-      applySave();
+      applySaveOnLoad();
       renderText();
+      state.scene.ready = true;
       publishState();
       resize();
 
