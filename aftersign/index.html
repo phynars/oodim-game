@@ -292,7 +292,7 @@
         state.storyBeat = "packet-delivered";
         state.packet = { ...state.packet, ...save.packet };
         state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
+        state.npcMemory.io.line = `I remember you — you left the ${save.packet.route} packet last time, blue seal, unbroken. The rain didn't touch it.`;
       };
 
       const publishState = () => {
@@ -336,6 +336,12 @@
               }
             },
             forceSave: async () => {
+              if (state.packet.delivered) {
+                state.save = writeSave({
+                  playerId: state.player.id,
+                  packet: { ...state.packet },
+                });
+              }
               publishState();
             },
             forceReload: async () => forceReload(),
