@@ -1,5 +1,11 @@
 import { test, expect, Page } from "@playwright/test";
 
+// Cold-start budget: SwiftShader init + first WebGL context can exceed
+// Playwright's default timeout in CI even when story/state logic is correct.
+const COLD_START_MS = 90_000;
+// Per-wait budget for any single window.__game observation.
+const WAIT_MS = 60_000;
+
 type Beat =
   | "arrival"
   | "packet-offered"
@@ -44,19 +50,38 @@ async function waitForBeat(page: Page, beat: Beat): Promise<void> {
   await page.waitForFunction(
     (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
     beat,
+    { timeout: WAIT_MS },
   );
 }
 
 async function game(page: Page): Promise<GameSurface> {
-  await page.waitForFunction(() => window.__game?.version === 1);
+  await page.waitForFunction(() => window.__game?.version === 1, undefined, {
+    timeout: WAIT_MS,
+  });
   return page.evaluate(() => window.__game as GameSurface);
+}
+
+function watchPageErrors(page: Page, label: string): void {
+  page.on("pageerror", (err) => {
+    // eslint-disable-next-line no-console
+    console.error(`[aftersign ${label}] pageerror:`, err.message);
+  });
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      // eslint-disable-next-line no-console
+      console.error(`[aftersign ${label}] console.error:`, msg.text());
+    }
+  });
 }
 
 test.describe("AFTERSIGN prior-session memory contract", () => {
   test("Io's recognition line is backed by a saved fact from the previous session", async ({
     page,
   }) => {
-    await page.goto(`/aftersign/?slot=prior-session-${Date.now()}`);
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "prior-session");
+
+    await page.goto(`/aftersign/?slot=prior-session-${Date.now()}`, { waitUntil: "load" });
 
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
@@ -72,7 +97,9 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     expect(savedFact?.sessionId).toBeTruthy();
 
     await page.evaluate(() => window.__game!.input.forceSave());
-    await page.waitForFunction(() => window.__game?.save.dirty === false);
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
+    });
     await page.evaluate(() => window.__game!.input.forceReload());
     await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-returning-recognition");
