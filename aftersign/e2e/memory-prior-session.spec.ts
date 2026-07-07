@@ -93,6 +93,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     const savedFact = beforeSave.npcs.io.memory.find(
       (fact) => fact.predicate === "delivered-blue-packet",
     );
+    const revisionBeforeSave = beforeSave.save.revision;
     expect(savedFact?.object).toBe("sealed");
     expect(savedFact?.sessionId).toBeTruthy();
 
@@ -100,6 +101,11 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
       timeout: WAIT_MS,
     });
+
+    const afterSave = await game(page);
+    expect(afterSave.save.revision).toBeGreaterThanOrEqual(revisionBeforeSave);
+    expect(afterSave.save.dirty).toBe(false);
+
     await page.evaluate(() => window.__game!.input.forceReload());
     await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-returning-recognition");
@@ -109,6 +115,8 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
       (fact) => fact.predicate === "delivered-blue-packet",
     );
 
+    expect(returning.save.revision).toBe(afterSave.save.revision);
+    expect(returning.save.dirty).toBe(false);
     expect(recalledFact).toEqual(savedFact);
     expect(returning.npcs.io.lastLineMemoryRefs).toEqual([savedFact!.id]);
 
