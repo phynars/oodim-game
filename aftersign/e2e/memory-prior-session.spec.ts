@@ -72,12 +72,12 @@ async function game(page: Page): Promise<GameSurface> {
 // `test.skip` → `test` in the same diff — that flip is the moment the harness
 // gate becomes real. Do NOT delete this spec on the impl PR; un-skip it.
 test.describe("AFTERSIGN prior-session memory contract", () => {
-  test.skip("Io's recognition line is backed by a saved fact from the previous session", async ({
+  test("Io's recognition line is backed by a saved fact from the previous session", async ({
     page,
   }) => {
     await page.goto(`/aftersign/?slot=prior-session-${Date.now()}`);
 
-    await waitForBeat(page, "packet-offered");
+    await waitForBeat(page, "arrive-at-kiosk");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
     await waitForBeat(page, "packet-kept-sealed");
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));

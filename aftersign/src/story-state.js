@@ -1,4 +1,4 @@
-const SAVE_KEY = "aftersign.kioskSlice.v1";
+const SAVE_KEY_PREFIX = "aftersign.kioskSlice.v1";
 
 const defaultServerStore = {
   packet: {
@@ -17,9 +17,19 @@ const defaultServerStore = {
 
 const safeClone = (value) => JSON.parse(JSON.stringify(value));
 
+const getSlot = () => {
+  try {
+    return new URLSearchParams(window.location.search).get("slot") || "default";
+  } catch (_error) {
+    return "default";
+  }
+};
+
+export const getSaveKey = () => `${SAVE_KEY_PREFIX}.${getSlot()}`;
+
 export const loadSave = () => {
   try {
-    return JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+    return JSON.parse(localStorage.getItem(getSaveKey()) || "null");
   } catch (_error) {
     return null;
   }
@@ -30,9 +40,10 @@ export const writeSave = ({ playerId, packet }) => {
   const save = {
     version: 1,
     playerId,
+    slot: getSlot(),
     packet: { ...defaultServerStore.packet },
   };
-  localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+  localStorage.setItem(getSaveKey(), JSON.stringify(save));
   return save;
 };
 
@@ -42,7 +53,7 @@ export const resetDefaultServerStore = () => {
 
 export const forceReload = ({ clearLocalState = false } = {}) => {
   if (clearLocalState) {
-    localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem(getSaveKey());
   }
   window.location.reload();
 };

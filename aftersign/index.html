@@ -289,16 +289,57 @@
           return;
         }
 
-        state.storyBeat = "io-remembers-packet";
+        state.storyBeat = "packet-delivered";
         state.packet = { ...state.packet, ...save.packet };
         state.npcMemory.io.remembersPriorPacket = true;
         state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
       };
 
       const publishState = () => {
+        const memoryFact = state.packet.delivered
+          ? {
+              id: `io-${state.packet.route?.replaceAll(" ", "-") || "packet"}`,
+              predicate: "delivered-blue-packet",
+              object: "sealed",
+              sessionId: state.save?.slot || "default",
+            }
+          : null;
         window.__game = {
+          version: 1,
           ...state,
-          save: loadSave(),
+          scene: { beat: state.storyBeat },
+          npcs: {
+            io: {
+              memory: memoryFact ? [memoryFact] : [],
+              lastLine: state.npcMemory.io.line,
+              lastLineMemoryRefs: state.npcMemory.io.remembersPriorPacket && memoryFact ? [memoryFact.id] : [],
+            },
+          },
+          save: { revision: state.save ? 1 : 0, dirty: false, data: loadSave() },
+          input: {
+            choose: async (choiceId) => {
+              if (choiceId === "deliver-packet") {
+                deliverPacket("contract-input");
+              } else if (choiceId === "keep-packet-sealed") {
+                state.storyBeat = "packet-kept-sealed";
+                publishState();
+              } else if (choiceId === "open-packet") {
+                state.storyBeat = "packet-opened";
+                publishState();
+              }
+            },
+            advance: async () => {
+              if (state.npcMemory.io.remembersPriorPacket) {
+                state.storyBeat = "io-returning-recognition";
+                renderText();
+                publishState();
+              }
+            },
+            forceSave: async () => {
+              publishState();
+            },
+            forceReload: async () => forceReload(),
+          },
           getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
           deliverPacket: () => deliverPacket(),
           enableAudio: () => enableAudio(),
