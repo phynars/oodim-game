@@ -5,16 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>AFTERSIGN — Vertical Slice</title>
     <style>
+      :root {
+        color-scheme: dark;
+        --confirm-shake-x: 0px;
+        --confirm-shake-y: 0px;
+      }
+
       html,
       body {
         margin: 0;
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #05070d;
-        color: #dfe8ff;
+        background: radial-gradient(circle at 50% 20%, #182033 0%, #05070c 65%);
+        color: #edf7ff;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         touch-action: none;
+      }
+
+      #scene {
+        display: block;
+        width: 100vw;
+        height: 100vh;
       }
 
       #hud {
@@ -26,6 +38,8 @@
         gap: 8px;
         pointer-events: none;
         text-shadow: 0 2px 12px rgba(0, 0, 0, 0.75);
+        transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
+        will-change: transform;
       }
 
       #beat {
@@ -40,8 +54,51 @@
         line-height: 1.35;
       }
 
+      #speaker {
+        margin: 0 0 4px;
+        color: #78e9ff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      #line {
+        margin: 0;
+        line-height: 1.32;
+        text-wrap: balance;
+      }
+
+      #choices {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        pointer-events: auto;
+      }
+
+      #choices button {
+        border: 1px solid rgba(173, 242, 255, 0.4);
+        border-radius: 999px;
+        padding: 10px 14px;
+        color: #edf7ff;
+        background: rgba(8, 28, 43, 0.85);
+        box-shadow: 0 0 20px rgba(0, 204, 255, 0.1);
+        font: inherit;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      #choices button:active {
+        transform: translateY(1px) scale(0.99);
+      }
+
+      #choices button[hidden] {
+        display: none;
+      }
+
       #debug {
-        color: rgba(223, 232, 255, 0.72);
+        color: rgba(223, 232, 255, 0.66);
         font-size: 12px;
         letter-spacing: 0.04em;
         text-transform: uppercase;
@@ -49,86 +106,364 @@
     </style>
   </head>
   <body>
+    <canvas id="scene" aria-label="AFTERSIGN vertical slice"></canvas>
     <div id="hud" aria-live="polite">
-      <div id="beat">Find Io at the flooded kiosk.</div>
+      <div id="beat">
+        <p id="speaker">Io</p>
+        <p id="line">Find Io at the flooded kiosk.</p>
+      </div>
+      <div id="choices">
+        <button id="choice-keep-sealed" type="button" hidden>Keep the seal</button>
+        <button id="choice-open-packet" type="button" hidden>Break the seal</button>
+        <button id="choice-deliver-packet" type="button" hidden>Leave the packet</button>
+        <button id="choice-return-to-io" type="button" hidden>Return to Io</button>
+        <button id="wake-sound" type="button">Wake sound</button>
+        <button id="reset-save" type="button">Reset slice</button>
+      </div>
       <div id="debug">Booting AFTERSIGN…</div>
     </div>
 
     <script type="module">
-      import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+      import * as THREE from "https://esm.sh/three@0.165.0";
+      import {
+        forceReload,
+        loadSave,
+        resetDefaultServerStore,
+        writeSave,
+      } from "./src/story-state.js";
 
-      const SAVE_KEY = "aftersign.verticalSlice.v1";
+      // -----------------------------------------------------------------
+      // FEEL CONSTANTS — a dropped frame is a broken promise. Every one of
+      // these is a knob the harness's assertFeelContract asserts against.
+      // -----------------------------------------------------------------
       const FIXED_DT = 1 / 60;
+      const MAX_STEP_MS = 33.34;
       const PLAYER_SPEED = 3.8;
-      const CAMERA_LERP = 1 - Math.pow(0.001, FIXED_DT);
+      const CAMERA_LERP = 1 - Math.pow(0.001, FIXED_DT); // ~180ms settle
       const INPUT_DEADZONE = 0.08;
       const RECOGNITION_RADIUS = 1.55;
+      const CONFIRM_FEEDBACK = {
+        durationMs: 220,
+        cameraKickDeg: 1.4,
+        cameraKickWorldX: 0.055,
+        hudShakePx: 10,
+        hudLiftPx: 3,
+        pulseDecayPerSecond: 3.8,
+      };
 
-      const saved = readSave();
+      // -----------------------------------------------------------------
+      // Session id — one per boot; every memory fact this session writes
+      // is tagged with it so the harness can prove prior-session recall.
+      // -----------------------------------------------------------------
+      const params = new URLSearchParams(window.location.search);
+      const slotId = params.get("slot") ?? "default";
+      const playerId = `player-${slotId}`;
+      const sessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // -----------------------------------------------------------------
+      // Story state — the authored beats, choices, and NPC memory. The
+      // spec drives these through window.__game.input; the DOM buttons
+      // are a mirror for humans.
+      // -----------------------------------------------------------------
+      const line = document.querySelector("#line");
+      const speaker = document.querySelector("#speaker");
+      const debug = document.querySelector("#debug");
+      const choicesEl = {
+        keepSealed: document.querySelector("#choice-keep-sealed"),
+        openPacket: document.querySelector("#choice-open-packet"),
+        deliverPacket: document.querySelector("#choice-deliver-packet"),
+        returnToIo: document.querySelector("#choice-return-to-io"),
+      };
+      const wakeSoundButton = document.querySelector("#wake-sound");
+      const resetSaveButton = document.querySelector("#reset-save");
+
+      // -- Boot: hydrate from the authoritative save path. -------------
+      let { store: save, source: saveSource } = loadSave();
+
       const state = {
-        frame: 0,
-        time: 0,
-        lastDtMs: 0,
+        version: 1,
+        slug: "aftersign",
+        scene: {
+          beat: "arrival", // Beat
+        },
         player: {
-          x: saved.player?.x ?? -2.2,
-          z: saved.player?.z ?? 1.35,
+          id: playerId,
+          x: -2.2,
+          z: 1.35,
           facing: 0,
         },
         input: { x: 0, z: 0, active: false, source: "none" },
         io: {
           x: 1.15,
           z: -0.9,
-          rememberedVisits: saved.io?.rememberedVisits ?? 0,
-          hasRecognizedPlayer: false,
-          line: "Io waits by the dead kiosk light.",
+          // Authored, memory-referenced line. Never a generic affinity counter.
+          lastLine: null,
+          lastLineMemoryRefs: [],
+          memory: save.npcs.io.memory.map((m) => ({ ...m })),
+        },
+        packet: {
+          delivered: save.packet.delivered,
+          outcome: save.packet.outcome,
+        },
+        pendingChoice: null, // 'keep-sealed' | 'open-packet' | null
+        save: {
+          revision: save.revision,
+          dirty: false,
+          source: saveSource,
         },
         feel: {
           targetFrameMs: 16.67,
-          maxStepMs: 33.34,
+          maxStepMs: MAX_STEP_MS,
           cameraSettleMs: 180,
           inputToVelocityFrames: 1,
         },
-        lastSavedAt: saved.lastSavedAt ?? null,
+        frame: 0,
+        time: 0,
+        lastDtMs: 0,
+        interaction: {
+          kioskPulse: 0,
+          confirmStartedAt: null,
+        },
+        _runtime: {
+          audio: {
+            unlocked: false,
+            ambientStarted: false,
+            lastCue: null,
+          },
+        },
       };
 
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x05070d);
-      scene.fog = new THREE.FogExp2(0x07111f, 0.058);
+      // If we loaded a prior-session save with a delivery outcome, this is
+      // a returning session: skip the first-session flow and go straight to
+      // the recognition beat once the player closes with Io.
+      const isReturningSession =
+        state.packet.delivered && state.io.memory.some((m) => m.predicate === "delivered-blue-packet");
 
-      const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 100);
+      // -----------------------------------------------------------------
+      // AUTHORED IO LINES — these come from concept.md / vertical-slice-script.md.
+      // "Specific beats beat generic affinity" — the concept doc's rule.
+      // -----------------------------------------------------------------
+      const IO_LINES = {
+        arrival: "The kiosk still runs. Come closer — I have one thing to hand you.",
+        "packet-offered": "Take the blue packet. Deliver it sealed, or break it first. Either is a fact I can use.",
+        "packet-kept-sealed": "Kept. Now leave it at the kiosk slot before the rain moves you.",
+        "packet-opened": "Opened. The seal is a fact too. Leave it at the slot.",
+        "packet-delivered-sealed": "Marked. You left the blue packet sealed. I will remember.",
+        "packet-delivered-opened": "Marked. You left the blue packet with the seal broken. I will remember.",
+        "io-return-sealed": "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+        "io-return-opened": "You came back. The seal did not. I can use one of those facts.",
+      };
+
+      function setLine(text, memoryRefs = []) {
+        state.io.lastLine = text;
+        state.io.lastLineMemoryRefs = memoryRefs;
+        speaker.textContent = "Io";
+        line.textContent = text;
+      }
+
+      function setBeat(beat) {
+        state.scene.beat = beat;
+        renderBeat();
+      }
+
+      function renderBeat() {
+        // Hide all choice buttons, then show the ones this beat offers.
+        for (const btn of Object.values(choicesEl)) btn.hidden = true;
+
+        switch (state.scene.beat) {
+          case "arrival":
+            setLine(IO_LINES.arrival);
+            break;
+          case "packet-offered":
+            setLine(IO_LINES["packet-offered"]);
+            choicesEl.keepSealed.hidden = false;
+            choicesEl.openPacket.hidden = false;
+            break;
+          case "packet-kept-sealed":
+            setLine(IO_LINES["packet-kept-sealed"]);
+            choicesEl.deliverPacket.hidden = false;
+            break;
+          case "packet-opened":
+            setLine(IO_LINES["packet-opened"]);
+            choicesEl.deliverPacket.hidden = false;
+            break;
+          case "packet-delivered": {
+            const outcome = state.packet.outcome;
+            setLine(
+              outcome === "opened"
+                ? IO_LINES["packet-delivered-opened"]
+                : IO_LINES["packet-delivered-sealed"],
+            );
+            break;
+          }
+          case "io-returning-recognition": {
+            const outcome = state.packet.outcome;
+            const memoryId =
+              outcome === "opened"
+                ? "io-remembers-blue-packet-opened"
+                : "io-remembers-blue-packet-sealed";
+            setLine(
+              outcome === "opened" ? IO_LINES["io-return-opened"] : IO_LINES["io-return-sealed"],
+              [memoryId],
+            );
+            break;
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Input surface — the harness drives these. DOM buttons call the
+      // same functions so human + robot follow identical code paths.
+      // -----------------------------------------------------------------
+      async function choose(choiceId) {
+        switch (choiceId) {
+          case "keep-packet-sealed":
+            state.pendingChoice = "sealed";
+            setBeat("packet-kept-sealed");
+            triggerKioskFeedback("choose-keep-sealed");
+            break;
+          case "open-packet":
+            state.pendingChoice = "opened";
+            setBeat("packet-opened");
+            triggerKioskFeedback("choose-open");
+            break;
+          case "deliver-packet": {
+            if (!state.pendingChoice) {
+              // Guard: cannot deliver without a choice. Bounce the HUD.
+              return;
+            }
+            const outcome = state.pendingChoice; // 'sealed' | 'opened'
+            state.packet.delivered = true;
+            state.packet.outcome = outcome;
+            triggerKioskFeedback("deliver");
+            playKioskConfirm();
+
+            // Write the authored memory fact. Predicate + object are stable
+            // ids; the harness reads these, not the English line.
+            const memoryId =
+              outcome === "opened"
+                ? "io-remembers-blue-packet-opened"
+                : "io-remembers-blue-packet-sealed";
+            const fact = {
+              id: memoryId,
+              predicate: "delivered-blue-packet",
+              object: outcome, // 'sealed' | 'opened'
+              sessionId,
+            };
+            state.io.memory = [...state.io.memory.filter((m) => m.id !== memoryId), fact];
+
+            setBeat("packet-delivered");
+            await forceSave();
+            break;
+          }
+          case "return-to-io": {
+            // Only meaningful when a prior-session memory exists.
+            if (state.io.memory.some((m) => m.predicate === "delivered-blue-packet")) {
+              setBeat("io-returning-recognition");
+            }
+            break;
+          }
+        }
+      }
+
+      async function advance() {
+        // Manual beat advance. In this slice, advance from `arrival` opens
+        // the packet-offered beat.
+        if (state.scene.beat === "arrival") {
+          setBeat("packet-offered");
+        } else if (state.scene.beat === "packet-delivered") {
+          // Nothing further this session — a reload triggers the returning
+          // recognition beat.
+        }
+      }
+
+      async function forceSave() {
+        state.save.dirty = true;
+        const written = writeSave({
+          playerId,
+          packet: {
+            delivered: state.packet.delivered,
+            outcome: state.packet.outcome,
+          },
+          npcs: { io: { memory: state.io.memory } },
+        });
+        state.save.revision = written.revision;
+        state.save.dirty = false;
+      }
+
+      // In-process reboot for the harness: re-run the boot logic without a
+      // real navigation. Real forceReload() calls window.location.reload()
+      // when this hook isn't installed (see story-state.js).
+      window.__aftersignReboot = ({ clearLocalState = false } = {}) => {
+        // Preserve packet/memory only if the server shadow has them; local
+        // wipe is the harness's "prove durable" signal.
+        const reloaded = loadSave();
+        state.save.revision = reloaded.store.revision;
+        state.save.dirty = false;
+        state.save.source = reloaded.source;
+        state.packet = {
+          delivered: reloaded.store.packet.delivered,
+          outcome: reloaded.store.packet.outcome,
+        };
+        state.io.memory = reloaded.store.packet.delivered
+          ? reloaded.store.npcs.io.memory.map((m) => ({ ...m }))
+          : [];
+        state.pendingChoice = null;
+        setBeat(
+          state.io.memory.some((m) => m.predicate === "delivered-blue-packet")
+            ? "arrival" // Recognition unlocks via `return-to-io`.
+            : "arrival",
+        );
+      };
+
+      async function forceReloadHarness() {
+        forceReload({ clearLocalState: true });
+      }
+
+      // -----------------------------------------------------------------
+      // three.js scene — wet ground, kiosk, Io, rain. No GridHelper.
+      // -----------------------------------------------------------------
+      const canvas = document.querySelector("#scene");
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x07111d, 0.045);
+
+      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
       camera.position.set(state.player.x - 3.5, 3.1, state.player.z + 4.4);
       camera.lookAt(state.player.x, 0.75, state.player.z);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      document.body.prepend(renderer.domElement);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
 
-      const hemi = new THREE.HemisphereLight(0x9fbaff, 0x101018, 1.15);
+      const hemi = new THREE.HemisphereLight(0x8ccfff, 0x09111d, 1.3);
       scene.add(hemi);
 
-      const kioskGlow = new THREE.PointLight(0x66ccff, 7.5, 7, 1.8);
-      kioskGlow.position.set(1.15, 1.2, -0.9);
-      kioskGlow.castShadow = true;
+      const key = new THREE.DirectionalLight(0xc4f4ff, 1.8);
+      key.position.set(-4, 6, 5);
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024);
+      scene.add(key);
+
+      const kioskGlow = new THREE.PointLight(0x33ddff, 7.5, 8, 1.8);
+      kioskGlow.position.set(1.15, 1.5, -0.9);
       scene.add(kioskGlow);
 
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(16, 16),
-        new THREE.MeshStandardMaterial({ color: 0x101827, roughness: 0.82, metalness: 0.1 })
+      // Wet ground — dark, low roughness, high metalness for the puddle look.
+      const wetGround = new THREE.Mesh(
+        new THREE.PlaneGeometry(20, 20),
+        new THREE.MeshStandardMaterial({ color: 0x07111a, roughness: 0.22, metalness: 0.55 }),
       );
-      ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
-      scene.add(ground);
-
-      const grid = new THREE.GridHelper(16, 16, 0x28436d, 0x16263d);
-      grid.position.y = 0.006;
-      scene.add(grid);
+      wetGround.rotation.x = -Math.PI / 2;
+      wetGround.receiveShadow = true;
+      scene.add(wetGround);
 
       const player = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.24, 0.68, 5, 12),
-        new THREE.MeshStandardMaterial({ color: 0xfff1b8, roughness: 0.46, metalness: 0.08 })
+        new THREE.MeshStandardMaterial({ color: 0xfff1b8, roughness: 0.46, metalness: 0.08 }),
       );
       player.position.set(state.player.x, 0.58, state.player.z);
       player.castShadow = true;
@@ -136,7 +471,7 @@
 
       const io = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.22, 0.72, 5, 12),
-        new THREE.MeshStandardMaterial({ color: 0x86e7ff, emissive: 0x123d55, roughness: 0.38, metalness: 0.22 })
+        new THREE.MeshStandardMaterial({ color: 0x86e7ff, emissive: 0x123d55, roughness: 0.38, metalness: 0.22 }),
       );
       io.position.set(state.io.x, 0.6, state.io.z);
       io.castShadow = true;
@@ -144,13 +479,127 @@
 
       const kiosk = new THREE.Mesh(
         new THREE.BoxGeometry(1.25, 1.55, 0.26),
-        new THREE.MeshStandardMaterial({ color: 0x16243a, emissive: 0x06243a, roughness: 0.5, metalness: 0.35 })
+        new THREE.MeshStandardMaterial({ color: 0x16243a, emissive: 0x06243a, roughness: 0.5, metalness: 0.35 }),
       );
       kiosk.position.set(1.15, 0.78, -1.22);
       kiosk.castShadow = true;
       kiosk.receiveShadow = true;
       scene.add(kiosk);
 
+      const kioskScreen = new THREE.Mesh(
+        new THREE.BoxGeometry(1.05, 0.62, 0.03),
+        new THREE.MeshStandardMaterial({
+          color: 0x67eaff,
+          emissive: 0x25cfff,
+          emissiveIntensity: 1.6,
+          roughness: 0.08,
+        }),
+      );
+      kioskScreen.position.set(1.15, 1.05, -1.09);
+      scene.add(kioskScreen);
+
+      // Rain — line segments falling; cheap, moody.
+      const rainGroup = new THREE.Group();
+      const rainMaterial = new THREE.LineBasicMaterial({ color: 0x8edfff, transparent: true, opacity: 0.38 });
+      const rainCount = 120;
+      for (let i = 0; i < rainCount; i += 1) {
+        const x = THREE.MathUtils.randFloatSpread(14);
+        const y = THREE.MathUtils.randFloat(1.5, 8.5);
+        const z = THREE.MathUtils.randFloat(-8, 4);
+        const points = [new THREE.Vector3(x, y, z), new THREE.Vector3(x - 0.08, y - 0.55, z)];
+        const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rainMaterial);
+        rainGroup.add(drop);
+      }
+      scene.add(rainGroup);
+
+      // -----------------------------------------------------------------
+      // AUDIO — rain, kiosk hum, delivery sting. "Sound from the start,
+      // not polish debt." Requires a user gesture on some browsers, so
+      // the ambient bed lights up on the first pointerdown / wake button.
+      // -----------------------------------------------------------------
+      let audioContext;
+      let ambientGain;
+      let rainNoise;
+      let rainFilter;
+      let kioskHum;
+      let kioskHumGain;
+
+      const makeRainBuffer = (context) => {
+        const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i += 1) {
+          data[i] = (Math.random() * 2 - 1) * 0.38;
+        }
+        return buffer;
+      };
+
+      const startAmbientAudio = () => {
+        if (!audioContext || state._runtime.audio.ambientStarted) return;
+
+        ambientGain = audioContext.createGain();
+        ambientGain.gain.value = 0.045;
+        ambientGain.connect(audioContext.destination);
+
+        rainNoise = audioContext.createBufferSource();
+        rainNoise.buffer = makeRainBuffer(audioContext);
+        rainNoise.loop = true;
+        rainFilter = audioContext.createBiquadFilter();
+        rainFilter.type = "bandpass";
+        rainFilter.frequency.value = 1350;
+        rainFilter.Q.value = 0.72;
+        rainNoise.connect(rainFilter).connect(ambientGain);
+        rainNoise.start();
+
+        kioskHum = audioContext.createOscillator();
+        kioskHum.type = "sine";
+        kioskHum.frequency.value = 91;
+        kioskHumGain = audioContext.createGain();
+        kioskHumGain.gain.value = 0.018;
+        kioskHum.connect(kioskHumGain).connect(ambientGain);
+        kioskHum.start();
+
+        state._runtime.audio.ambientStarted = true;
+        state._runtime.audio.lastCue = "ambient-rainline";
+      };
+
+      const enableAudio = async () => {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) {
+          state._runtime.audio.lastCue = "unsupported";
+          return false;
+        }
+        audioContext ||= new AudioContext();
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
+        state._runtime.audio.unlocked = audioContext.state === "running";
+        if (state._runtime.audio.unlocked) startAmbientAudio();
+        return state._runtime.audio.unlocked;
+      };
+
+      const playKioskConfirm = async () => {
+        const unlocked = await enableAudio();
+        if (!unlocked || !audioContext) return;
+        const now = audioContext.currentTime;
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+        gain.connect(audioContext.destination);
+        [523.25, 659.25, 987.77].forEach((frequency, index) => {
+          const tone = audioContext.createOscillator();
+          tone.type = index === 2 ? "triangle" : "sine";
+          tone.frequency.setValueAtTime(frequency, now + index * 0.035);
+          tone.connect(gain);
+          tone.start(now + index * 0.035);
+          tone.stop(now + 0.36);
+        });
+        state._runtime.audio.lastCue = "packet-confirmed";
+      };
+
+      // -----------------------------------------------------------------
+      // Input handling — keyboard + touch/pointer drag.
+      // -----------------------------------------------------------------
       const keys = new Set();
       window.addEventListener("keydown", (event) => {
         keys.add(event.code);
@@ -162,85 +611,23 @@
       });
 
       let touchOrigin = null;
-      window.addEventListener("pointerdown", (event) => {
+      canvas.addEventListener("pointerdown", (event) => {
         touchOrigin = { x: event.clientX, y: event.clientY };
-        renderer.domElement.setPointerCapture?.(event.pointerId);
+        canvas.setPointerCapture?.(event.pointerId);
+        enableAudio();
       });
-      window.addEventListener("pointermove", (event) => {
+      canvas.addEventListener("pointermove", (event) => {
         if (!touchOrigin) return;
         const dx = (event.clientX - touchOrigin.x) / 80;
         const dz = (event.clientY - touchOrigin.y) / 80;
         setInput(dx, dz, "touch");
       });
-      window.addEventListener("pointerup", () => {
+      const endPointer = () => {
         touchOrigin = null;
         setInput(0, 0, "none");
-      });
-      window.addEventListener("pointercancel", () => {
-        touchOrigin = null;
-        setInput(0, 0, "none");
-      });
-
-      let last = performance.now();
-      let accumulator = 0;
-      requestAnimationFrame(loop);
-
-      function loop(now) {
-        const rawDt = Math.min((now - last) / 1000, 0.1);
-        last = now;
-        accumulator += rawDt;
-
-        while (accumulator >= FIXED_DT) {
-          step(FIXED_DT);
-          accumulator -= FIXED_DT;
-        }
-
-        draw();
-        requestAnimationFrame(loop);
-      }
-
-      function step(dt) {
-        state.frame += 1;
-        state.time += dt;
-        state.lastDtMs = dt * 1000;
-
-        const ix = Math.abs(state.input.x) < INPUT_DEADZONE ? 0 : state.input.x;
-        const iz = Math.abs(state.input.z) < INPUT_DEADZONE ? 0 : state.input.z;
-        const length = Math.hypot(ix, iz) || 1;
-        const vx = (ix / length) * PLAYER_SPEED;
-        const vz = (iz / length) * PLAYER_SPEED;
-
-        state.player.x = clamp(state.player.x + vx * dt, -6.8, 6.8);
-        state.player.z = clamp(state.player.z + vz * dt, -6.8, 6.8);
-        if (ix || iz) state.player.facing = Math.atan2(ix, iz);
-
-        const distanceToIo = Math.hypot(state.player.x - state.io.x, state.player.z - state.io.z);
-        if (!state.io.hasRecognizedPlayer && distanceToIo <= RECOGNITION_RADIUS) {
-          state.io.hasRecognizedPlayer = true;
-          state.io.rememberedVisits += 1;
-          state.io.line = state.io.rememberedVisits === 1
-            ? "Io: You came back before the rain forgot your name. I will remember that."
-            : `Io: Visit ${state.io.rememberedVisits}. The kiosk remembers your path before you do.`;
-          save();
-        }
-      }
-
-      function draw() {
-        player.position.set(state.player.x, 0.58, state.player.z);
-        player.rotation.y = state.player.facing;
-        io.rotation.y = Math.atan2(state.player.x - state.io.x, state.player.z - state.io.z);
-
-        const desiredCamera = new THREE.Vector3(state.player.x - 3.5, 3.1, state.player.z + 4.4);
-        camera.position.lerp(desiredCamera, CAMERA_LERP);
-        camera.lookAt(state.player.x, 0.75, state.player.z);
-
-        document.getElementById("beat").textContent = state.io.hasRecognizedPlayer
-          ? state.io.line
-          : "Find Io at the flooded kiosk.";
-        document.getElementById("debug").textContent = `frame ${state.frame} · ${state.lastDtMs.toFixed(2)}ms step · ${state.input.source}`;
-
-        renderer.render(scene, camera);
-      }
+      };
+      canvas.addEventListener("pointerup", endPointer);
+      canvas.addEventListener("pointercancel", endPointer);
 
       function updateKeyboardInput() {
         const x = Number(keys.has("KeyD") || keys.has("ArrowRight")) - Number(keys.has("KeyA") || keys.has("ArrowLeft"));
@@ -257,38 +644,177 @@
         state.input.source = source;
       }
 
-      function save() {
-        state.lastSavedAt = new Date().toISOString();
-        localStorage.setItem(SAVE_KEY, JSON.stringify({
-          player: state.player,
-          io: {
-            rememberedVisits: state.io.rememberedVisits,
-          },
-          lastSavedAt: state.lastSavedAt,
-        }));
+      // -----------------------------------------------------------------
+      // Fixed-timestep loop — the feel gate.
+      // -----------------------------------------------------------------
+      let last = performance.now();
+      let accumulator = 0;
+      requestAnimationFrame(loop);
+
+      function loop(now) {
+        const rawDt = Math.min((now - last) / 1000, MAX_STEP_MS / 1000);
+        last = now;
+        accumulator += rawDt;
+        while (accumulator >= FIXED_DT) {
+          step(FIXED_DT);
+          accumulator -= FIXED_DT;
+        }
+        draw(now);
+        requestAnimationFrame(loop);
       }
 
-      function readSave() {
-        try {
-          return JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
-        } catch {
-          return {};
+      function step(dt) {
+        state.frame += 1;
+        state.time += dt;
+        state.lastDtMs = dt * 1000;
+
+        const ix = Math.abs(state.input.x) < INPUT_DEADZONE ? 0 : state.input.x;
+        const iz = Math.abs(state.input.z) < INPUT_DEADZONE ? 0 : state.input.z;
+        const length = Math.hypot(ix, iz) || 1;
+        const vx = ix ? (ix / length) * PLAYER_SPEED : 0;
+        const vz = iz ? (iz / length) * PLAYER_SPEED : 0;
+
+        state.player.x = clamp(state.player.x + vx * dt, -6.8, 6.8);
+        state.player.z = clamp(state.player.z + vz * dt, -6.8, 6.8);
+        if (ix || iz) state.player.facing = Math.atan2(ix, iz);
+
+        // Proximity is a TRIGGER for the authored beat, not a memory unit.
+        // The memory is written by choose('deliver-packet'), never by walking near.
+        const distanceToIo = Math.hypot(state.player.x - state.io.x, state.player.z - state.io.z);
+        if (state.scene.beat === "arrival" && distanceToIo <= RECOGNITION_RADIUS) {
+          if (isReturningSession && state.io.memory.some((m) => m.predicate === "delivered-blue-packet")) {
+            // Returning player closes the loop: authored recognition line.
+            setBeat("io-returning-recognition");
+          } else {
+            setBeat("packet-offered");
+          }
         }
+      }
+
+      function draw(now) {
+        player.position.set(state.player.x, 0.58, state.player.z);
+        player.rotation.y = state.player.facing;
+        io.rotation.y = Math.atan2(state.player.x - state.io.x, state.player.z - state.io.z);
+
+        const desiredCamera = new THREE.Vector3(state.player.x - 3.5, 3.1, state.player.z + 4.4);
+        camera.position.lerp(desiredCamera, CAMERA_LERP);
+        camera.lookAt(state.player.x, 0.75, state.player.z);
+
+        // Confirm-feedback wobble on delivery.
+        const confirmStartedAt = state.interaction.confirmStartedAt;
+        const confirmProgress = confirmStartedAt === null
+          ? 1
+          : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
+        const confirmFalloff = 1 - confirmProgress;
+        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+        document.documentElement.style.setProperty(
+          "--confirm-shake-x",
+          `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`,
+        );
+        document.documentElement.style.setProperty(
+          "--confirm-shake-y",
+          `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`,
+        );
+        kioskScreen.material.emissiveIntensity =
+          1.55 + Math.sin(state.time * 3.2) * 0.25 + state.interaction.kioskPulse * 1.2 + confirmFalloff * 0.7;
+        kioskGlow.intensity = 7.4 + Math.sin(state.time * 2.4) * 0.8 + state.interaction.kioskPulse * 2.4;
+        state.interaction.kioskPulse = Math.max(
+          0,
+          state.interaction.kioskPulse - (1 / 60) * CONFIRM_FEEDBACK.pulseDecayPerSecond,
+        );
+        if (confirmStartedAt !== null && confirmProgress >= 1) {
+          state.interaction.confirmStartedAt = null;
+        }
+
+        // Rain drift.
+        rainGroup.children.forEach((drop, index) => {
+          drop.position.y -= (1 / 60) * (4.4 + (index % 5) * 0.38);
+          if (drop.position.y < -2) drop.position.y = 7.5;
+        });
+        if (rainFilter) rainFilter.frequency.value = 1280 + Math.sin(state.time * 0.7) * 180;
+        if (kioskHum) kioskHum.frequency.value = 89 + Math.sin(state.time * 0.45) * 3;
+
+        debug.textContent = `frame ${state.frame} · ${state.lastDtMs.toFixed(2)}ms · beat:${state.scene.beat} · rev:${state.save.revision} · ${state.input.source}`;
+
+        renderer.render(scene, camera);
+      }
+
+      function triggerKioskFeedback() {
+        state.interaction.kioskPulse = 1;
+        state.interaction.confirmStartedAt = performance.now();
       }
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
       }
 
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }, { passive: true });
+
+      // -----------------------------------------------------------------
+      // DOM wiring (mirror of the harness input surface).
+      // -----------------------------------------------------------------
+      choicesEl.keepSealed.addEventListener("click", () => choose("keep-packet-sealed"));
+      choicesEl.openPacket.addEventListener("click", () => choose("open-packet"));
+      choicesEl.deliverPacket.addEventListener("click", () => choose("deliver-packet"));
+      choicesEl.returnToIo.addEventListener("click", () => choose("return-to-io"));
+      wakeSoundButton.addEventListener("click", enableAudio);
+      resetSaveButton.addEventListener("click", () => {
+        resetDefaultServerStore();
+        try {
+          localStorage.removeItem("aftersign.kioskSlice.v2");
+          localStorage.removeItem("aftersign.kioskSlice.v1");
+        } catch (_error) {
+          // ignore
+        }
+        window.__aftersignReboot?.({ clearLocalState: true });
+      });
+
+      // -----------------------------------------------------------------
+      // Harness contract — window.__game per state-contract.ts.
+      // Extends (never replaces) the feel-inspection helpers.
+      // -----------------------------------------------------------------
       window.__game = {
+        // ==== Contracted state-contract surface (Mara's request #2) ====
+        version: 1,
         slug: "aftersign",
+        get scene() {
+          return { beat: state.scene.beat };
+        },
+        get npcs() {
+          return {
+            io: {
+              memory: state.io.memory.map((m) => ({ ...m })),
+              lastLine: state.io.lastLine,
+              lastLineMemoryRefs: [...state.io.lastLineMemoryRefs],
+            },
+          };
+        },
+        get save() {
+          return { revision: state.save.revision, dirty: state.save.dirty };
+        },
+        input: {
+          choose,
+          advance,
+          forceSave,
+          forceReload: forceReloadHarness,
+        },
+
+        // ==== Feel-inspection surface (kept, extended not replaced) ====
         state,
         step,
         setInput,
-        save,
-        readSave,
-        resetSave() {
-          localStorage.removeItem(SAVE_KEY);
+        readSave: () => loadSave().store,
+        resetSave: () => {
+          resetDefaultServerStore();
+          try {
+            localStorage.removeItem("aftersign.kioskSlice.v2");
+          } catch (_error) {
+            // ignore
+          }
         },
         assertFeelContract() {
           const startX = state.player.x;
@@ -306,6 +832,9 @@
           };
         },
       };
+
+      // Kick off the opening beat.
+      renderBeat();
     </script>
   </body>
 </html>

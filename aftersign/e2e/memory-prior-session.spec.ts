@@ -27,7 +27,7 @@ type GameSurface = {
   };
   save: { revision: number; dirty: boolean };
   input: {
-    choose(choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet"): Promise<void>;
+    choose(choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet" | "return-to-io"): Promise<void>;
     advance(): Promise<void>;
     forceSave(): Promise<void>;
     forceReload(): Promise<void>;
@@ -52,34 +52,23 @@ async function game(page: Page): Promise<GameSurface> {
   return page.evaluate(() => window.__game as GameSurface);
 }
 
-// SKIP CONTRACT (see PR #427 review):
-//
-// The assertions below target the `window.__game` surface described in
-// `aftersign/src/state-contract.ts`. The current `aftersign/index.html` is a
-// preview shell that does NOT yet publish that surface — no `version: 1`, no
-// `input.choose/advance/forceSave/forceReload`, no `scene.beat`, no
-// `npcs.io.memory`. Running this spec today times out on the very first
-// `waitForBeat(page, "packet-offered")` call.
-//
-// The failing-first discipline this harness enforces ("no story beat exists
-// unless a harness assertion asserts it") is intact — the spec, types, and
-// wiring are here and reviewed. But this PR also lands the mandatory
-// `aftersign` CI lane, which means an un-skipped red spec would gate the lane
-// (and every subsequent aftersign PR) permanently until the scene ships.
-//
-// Resolution: land the spec as `test.skip` so the wiring merges green. The
-// impl PR that publishes `window.__game` per the state contract MUST flip
-// `test.skip` → `test` in the same diff — that flip is the moment the harness
-// gate becomes real. Do NOT delete this spec on the impl PR; un-skip it.
+// Un-skipped in the impl PR that ships the window.__game contract
+// (version: 1, scene.beat, npcs.io.memory, input.choose/forceSave/forceReload).
+// See docs/flagship/story-state-contract.md.
 test.describe("AFTERSIGN prior-session memory contract", () => {
-  test.skip("Io's recognition line is backed by a saved fact from the previous session", async ({
+  test("Io's recognition line is backed by a saved fact from the previous session", async ({
     page,
   }) => {
     await page.goto(`/aftersign/?slot=prior-session-${Date.now()}`);
 
+    await page.waitForFunction(() => window.__game?.version === 1);
+    // Boot beat is `arrival`; advance opens the packet.
+    await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "packet-offered");
+
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
     await waitForBeat(page, "packet-kept-sealed");
+
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
 
@@ -89,11 +78,14 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     );
     expect(savedFact?.object).toBe("sealed");
     expect(savedFact?.sessionId).toBeTruthy();
+    expect(savedFact?.id).toBe("io-remembers-blue-packet-sealed");
 
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false);
     await page.evaluate(() => window.__game!.input.forceReload());
-    await page.evaluate(() => window.__game!.input.advance());
+    // After reload the beat is `arrival` again; return-to-io triggers recognition.
+    await page.waitForFunction(() => window.__game?.version === 1);
+    await page.evaluate(() => window.__game!.input.choose("return-to-io"));
     await waitForBeat(page, "io-returning-recognition");
 
     const returning = await game(page);
