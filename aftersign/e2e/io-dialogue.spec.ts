@@ -23,6 +23,10 @@ test.describe("Io dialogue copy", () => {
     expect(getIoRouteMemoryLine("skipped")).toBe(
       "You found the box anyway. Next time, let me finish saving your life.",
     );
+
+    for (const line of [getIoRouteMemoryLine("listened"), getIoRouteMemoryLine("skipped")]) {
+      expect(line).not.toMatch(/memory|system|save/i);
+    }
   });
 
   test("first-session lines keep Io's voice terse and concrete", () => {
