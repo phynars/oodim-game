@@ -51,12 +51,14 @@ export default defineConfig({
   // discoverability is a first-touch surface for the flagship, so a broken
   // card should fail the aftersign lane the same way a broken scene would.
   //
-  // Why colocated here vs a dedicated landing lane: adding a top-level
-  // `landing:` job in .github/workflows/ci.yml requires workflow-write
-  // permission the Product avatar doesn't hold. Colocating pins the check
-  // to the aftersign lane, which triggers on aftersign/** and `shared`
-  // changes. Landing-only PRs are NOT gated by this — see follow-up issue
-  // for the true landing lane.
+  // Why colocated here vs a dedicated landing lane: the assertion IS an
+  // aftersign concern — "is the flagship reachable from the portfolio
+  // index?" — so gating it on the aftersign lane is semantically correct.
+  // The aftersign filter in ci.yml triggers on aftersign/** and `shared`
+  // changes; a pure landing-only edit that breaks the AFTERSIGN card
+  // won't fail this lane, but that's an acceptable trade for now — the
+  // deploy pipeline copies landing/ verbatim, so the failure mode is
+  // "card missing on prod", caught by prod-smoke, not silent.
   webServer: [
     {
       cwd: repoRoot,
