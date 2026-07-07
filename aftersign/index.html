@@ -12,6 +12,7 @@
         color: #edf7ff;
         --confirm-shake-x: 0px;
         --confirm-shake-y: 0px;
+        --packet-progress: 0;
       }
 
       * {
@@ -94,6 +95,26 @@
         transform: translateY(1px) scale(0.99);
       }
 
+      .packet-button {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .packet-button::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: calc(var(--packet-progress) * 100%);
+        background: linear-gradient(90deg, rgba(120, 233, 255, 0.2), rgba(255, 184, 107, 0.28));
+        pointer-events: none;
+        transition: width 40ms linear;
+      }
+
+      .packet-button span {
+        position: relative;
+        z-index: 1;
+      }
+
       .state-readout {
         position: fixed;
         top: max(14px, env(safe-area-inset-top));
@@ -116,7 +137,7 @@
         <p class="speaker" id="speaker">Io</p>
         <p class="line" id="line">Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.</p>
         <div class="controls">
-          <button id="keepButton" type="button">Keep packet sealed</button>
+          <button id="packetButton" class="packet-button" type="button" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
           <button id="deliverButton" type="button">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
@@ -129,12 +150,13 @@
       import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+      import { PacketIntentController, PACKET_OUTCOME } from "./packet-intent.js";
 
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
-      const keepButton = document.querySelector("#keepButton");
+      const packetButton = document.querySelector("#packetButton");
       const deliverButton = document.querySelector("#deliverButton");
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
@@ -182,12 +204,13 @@
 
       const emptySave = () => ({ revision: 0, dirty: false });
       const stored = readStored();
+      const packetIntent = new PacketIntentController();
 
       const state = {
         slug: "aftersign",
         scene: {
           id: "io-kiosk-rainline",
-          beat: stored?.beat === "io-returning-recognition" ? "io-returning-recognition" : "packet-offered",
+          beat: stored?.beat ?? "packet-offered",
         },
         player: {
           id: "local-slice-player",
@@ -226,6 +249,7 @@
             active: false,
             remainingMs: 0,
           },
+          packetIntent: packetIntent.snapshot(),
         },
         _runtime: {
           audio: {
@@ -234,6 +258,19 @@
             lastCue: null,
           },
         },
+      };
+
+      let statePublishVersion = 0;
+      let publishedStateVersion = -1;
+
+      const markStateDirty = () => {
+        statePublishVersion += 1;
+      };
+
+      const setTextContentIfChanged = (node, value) => {
+        if (node.textContent !== value) {
+          node.textContent = value;
+        }
       };
 
       let audioContext;
@@ -248,12 +285,18 @@
           return "Good. Some doors only open for people who can carry a secret without looking inside.";
         }
 
+        if (state.scene.beat === "packet-opened") {
+          return "You opened it. The route still glows, but now the city knows curiosity got there first.";
+        }
+
         if (state.scene.beat === "packet-delivered") {
           return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
         }
 
         if (state.scene.beat === "io-returning-recognition") {
-          return "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
+          return state.packet.sealed
+            ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
+            : "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
         }
 
         return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
@@ -278,14 +321,44 @@
           },
         };
         writeStored(payload);
-        state.save.dirty = dirty;
+        if (state.save.dirty !== dirty) {
+          state.save.dirty = dirty;
+          markStateDirty();
+        }
       };
 
       const syncIoLine = () => {
-        state.npcs.io.lastLine = lineForBeat();
-        state.npcs.io.lastLineMemoryRefs = state.scene.beat === "io-returning-recognition"
+        const nextLine = lineForBeat();
+        const nextMemoryRefs = state.scene.beat === "io-returning-recognition"
           ? state.npcs.io.memory.map((fact) => fact.id)
           : [];
+        if (
+          state.npcs.io.lastLine !== nextLine
+          || state.npcs.io.lastLineMemoryRefs.length !== nextMemoryRefs.length
+          || state.npcs.io.lastLineMemoryRefs.some((ref, index) => ref !== nextMemoryRefs[index])
+        ) {
+          state.npcs.io.lastLine = nextLine;
+          state.npcs.io.lastLineMemoryRefs = nextMemoryRefs;
+          markStateDirty();
+        }
+      };
+
+      const syncPacketIntent = (snapshot = packetIntent.snapshot()) => {
+        const progressValue = snapshot.progress.toFixed(3);
+        if (document.documentElement.style.getPropertyValue("--packet-progress") !== progressValue) {
+          document.documentElement.style.setProperty("--packet-progress", progressValue);
+        }
+        const ariaValue = Math.round(snapshot.progress * 100).toString();
+        if (packetButton.getAttribute("aria-valuenow") !== ariaValue) {
+          packetButton.setAttribute("aria-valuenow", ariaValue);
+        }
+
+        const currentIntent = JSON.stringify(state.interaction.packetIntent);
+        const nextIntent = JSON.stringify(snapshot);
+        if (currentIntent !== nextIntent) {
+          state.interaction.packetIntent = clone(snapshot);
+          markStateDirty();
+        }
       };
 
       const setMoveInput = (x, z, source = "script") => {
@@ -348,6 +421,11 @@
 
       const publishState = () => {
         syncIoLine();
+        syncPacketIntent();
+        if (publishedStateVersion === statePublishVersion && window.__game) {
+          return window.__game;
+        }
+
         window.__game = {
           version: 1,
           slug: state.slug,
@@ -376,36 +454,100 @@
             forceReload: reloadFromSave,
             setMoveInput,
             stepMovement,
+            packetPress,
+            packetMove,
+            packetRelease,
+            packetTick,
           },
           assertFeelContract,
           deliverPacket: () => choose("deliver-packet"),
           enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
         };
+        publishedStateVersion = statePublishVersion;
+        return window.__game;
       };
 
       const renderText = () => {
         syncIoLine();
-        speaker.textContent = "Io";
-        line.textContent = state.npcs.io.lastLine;
-        stateReadout.textContent = `story: ${state.scene.beat} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`;
+        setTextContentIfChanged(speaker, "Io");
+        setTextContentIfChanged(line, state.npcs.io.lastLine);
+        setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
       };
 
       const setBeat = (beat) => {
-        state.scene.beat = beat;
+        if (state.scene.beat !== beat) {
+          state.scene.beat = beat;
+          markStateDirty();
+        }
         renderText();
         publishState();
       };
 
+      const commitPacketOutcome = (outcome) => {
+        if (outcome === PACKET_OUTCOME.SEALED) {
+          if (!state.packet.sealed) {
+            state.packet.sealed = true;
+            markStateDirty();
+          }
+          setBeat("packet-kept-sealed");
+        }
+
+        if (outcome === PACKET_OUTCOME.OPENED) {
+          if (state.packet.sealed) {
+            state.packet.sealed = false;
+            markStateDirty();
+          }
+          setBeat("packet-opened");
+        }
+      };
+
+      const packetPress = (input) => {
+        const snapshot = packetIntent.press(input);
+        syncPacketIntent(snapshot);
+        publishState();
+        return state.interaction.packetIntent;
+      };
+
+      const packetMove = (input) => {
+        const snapshot = packetIntent.move(input);
+        syncPacketIntent(snapshot);
+        if (snapshot.outcome) commitPacketOutcome(snapshot.outcome);
+        publishState();
+        return state.interaction.packetIntent;
+      };
+
+      const packetTick = (timeMs) => {
+        const snapshot = packetIntent.tick(timeMs);
+        syncPacketIntent(snapshot);
+        if (snapshot.outcome) commitPacketOutcome(snapshot.outcome);
+        publishState();
+        return state.interaction.packetIntent;
+      };
+
+      const packetRelease = (input) => {
+        const snapshot = packetIntent.release(input);
+        syncPacketIntent(snapshot);
+        if (snapshot.outcome) commitPacketOutcome(snapshot.outcome);
+        publishState();
+        return state.interaction.packetIntent;
+      };
+
       const choose = async (choiceId) => {
         if (choiceId === "open-packet") {
-          state.packet.sealed = false;
+          if (state.packet.sealed) {
+            state.packet.sealed = false;
+            markStateDirty();
+          }
           setBeat("packet-opened");
           return;
         }
 
         if (choiceId === "keep-packet-sealed") {
-          state.packet.sealed = true;
+          if (!state.packet.sealed) {
+            state.packet.sealed = true;
+            markStateDirty();
+          }
           setBeat("packet-kept-sealed");
           return;
         }
@@ -440,6 +582,7 @@
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = state.packet.delivered ? "packet-delivered" : "packet-offered";
+        markStateDirty();
         renderText();
         publishState();
       };
@@ -482,12 +625,14 @@
         kioskHum.start();
 
         state._runtime.audio.ambientStarted = true;
+        markStateDirty();
       };
 
       const enableAudio = async () => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) {
           state._runtime.audio.lastCue = "unsupported";
+          markStateDirty();
           publishState();
           return false;
         }
@@ -502,6 +647,7 @@
           startAmbientAudio();
           state._runtime.audio.lastCue = "ambient-rainline";
         }
+        markStateDirty();
         publishState();
         return state._runtime.audio.unlocked;
       };
@@ -529,6 +675,7 @@
         });
 
         state._runtime.audio.lastCue = "packet-confirmed";
+        markStateDirty();
         publishState();
       };
 
@@ -542,6 +689,7 @@
           active: true,
           remainingMs: CONFIRM_FEEDBACK.durationMs,
         };
+        markStateDirty();
         publishState();
       };
 
@@ -554,6 +702,7 @@
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
         state.save.dirty = true;
+        markStateDirty();
         setBeat("packet-delivered");
         persist({ dirty: true });
         playKioskConfirm();
@@ -561,6 +710,7 @@
 
       const resetSliceSave = () => {
         window.localStorage.removeItem(storageKey);
+        packetIntent.reset();
         state.scene.beat = "packet-offered";
         state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
@@ -580,6 +730,8 @@
           active: false,
           remainingMs: 0,
         };
+        markStateDirty();
+        syncPacketIntent();
         document.documentElement.style.setProperty("--confirm-shake-x", "0px");
         document.documentElement.style.setProperty("--confirm-shake-y", "0px");
         camera.position.x = 0;
@@ -751,6 +903,7 @@
           x: Math.round(event.clientX - rect.left),
           y: Math.round(event.clientY - rect.top),
         };
+        markStateDirty();
         raycaster.setFromCamera(pointer, camera);
         if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
           event.preventDefault();
@@ -767,7 +920,31 @@
         setMoveInput(x, z, x || z ? "keyboard" : "none");
       };
 
-      keepButton.addEventListener("click", () => choose("keep-packet-sealed"));
+      const packetPointFromEvent = (event) => ({
+        timeMs: performance.now(),
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      packetButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        packetButton.setPointerCapture(event.pointerId);
+        packetPress(packetPointFromEvent(event));
+      });
+      packetButton.addEventListener("pointermove", (event) => {
+        if (state.interaction.packetIntent.active) {
+          event.preventDefault();
+          packetMove(packetPointFromEvent(event));
+        }
+      });
+      packetButton.addEventListener("pointerup", (event) => {
+        event.preventDefault();
+        packetRelease(packetPointFromEvent(event));
+      });
+      packetButton.addEventListener("pointercancel", (event) => {
+        event.preventDefault();
+        packetMove({ ...packetPointFromEvent(event), x: state.interaction.packetIntent.config.DRIFT_CANCEL_PX + event.clientX + 1 });
+      });
       deliverButton.addEventListener("click", () => choose("deliver-packet"));
       canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
       window.addEventListener("keydown", (event) => {
@@ -799,6 +976,8 @@
         const t = now / 1000;
         const kioskPulse = state.interaction.kioskPulse;
         const confirmStartedAt = state.interaction.confirmStartedAt;
+        const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
+        const packetProgress = packetIntentSnapshot.progress;
         const confirmProgress = confirmStartedAt === null
           ? 1
           : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
@@ -816,9 +995,9 @@
         camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
-        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7;
-        slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45;
-        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3;
+        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
+        slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45 + packetProgress * 0.4;
+        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3 + packetProgress * 1.1;
         state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
         if (confirmStartedAt !== null) {
           state.interaction.confirmFeedback.active = confirmProgress < 1;
