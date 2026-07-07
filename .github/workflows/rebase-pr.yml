@@ -56,8 +56,12 @@ jobs:
               git merge --abort
               gh pr comment "$PR" --body "🤖 auto-rebase: \`main\` conflicts in content files that need human/operator judgment (the bot auto-resolves lock files only): $REMAIN — labeled \`agent-needs-human\`."
               gh pr edit "$PR" --add-label agent-needs-human || true
-              echo "::error::content conflicts need manual resolution: $REMAIN"
-              exit 1
+              # GREEN, not red (2026-07-07): escalating a content conflict via
+              # comment + label IS this bot working as designed. Red runs for
+              # designed behavior train alarm fatigue — five reds in one day
+              # read as "rebase is broken" when every one was a correct handoff.
+              echo "::notice::content conflicts escalated (comment + agent-needs-human label): $REMAIN"
+              exit 0
             fi
             git commit --no-edit
           fi
