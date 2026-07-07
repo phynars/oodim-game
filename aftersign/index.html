@@ -110,13 +110,14 @@
   </head>
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
-    <p class="state-readout" id="stateReadout">story: arrive-at-kiosk</p>
+    <p class="state-readout" id="stateReadout">story: packet-offered</p>
     <section class="hud" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
-        <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
+        <p class="line" id="line">Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.</p>
         <div class="controls">
-          <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
+          <button id="keepButton" type="button">Keep packet sealed</button>
+          <button id="deliverButton" type="button">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>
@@ -128,11 +129,12 @@
       import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-      import { forceReload, loadSave, resetDefaultServerStore, writeSave } from "./src/story-state.js";
+
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
       const speaker = document.querySelector("#speaker");
       const stateReadout = document.querySelector("#stateReadout");
+      const keepButton = document.querySelector("#keepButton");
       const deliverButton = document.querySelector("#deliverButton");
       const soundButton = document.querySelector("#soundButton");
       const resetButton = document.querySelector("#resetButton");
@@ -147,25 +149,51 @@
         pulseDecayPerSecond: 3.8,
       };
 
+      const params = new URLSearchParams(window.location.search);
+      const slot = params.get("slot") || "local";
+      const storageKey = `aftersign:kiosk-slice:${slot}`;
+      const sessionId = `session-${slot}`;
+
+      const clone = (value) => JSON.parse(JSON.stringify(value));
+      const readStored = () => {
+        try {
+          const raw = window.localStorage.getItem(storageKey);
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      };
+
+      const writeStored = (payload) => {
+        window.localStorage.setItem(storageKey, JSON.stringify(payload));
+      };
+
+      const emptySave = () => ({ revision: 0, dirty: false });
+      const stored = readStored();
 
       const state = {
         slug: "aftersign",
-        scene: "io-kiosk-rainline",
-        storyBeat: "arrive-at-kiosk",
+        scene: {
+          id: "io-kiosk-rainline",
+          beat: stored?.beat === "io-returning-recognition" ? "io-returning-recognition" : "packet-offered",
+        },
         player: {
           id: "local-slice-player",
         },
         packet: {
-          delivered: false,
-          route: null,
-          deliveredAt: null,
+          delivered: Boolean(stored?.packet?.delivered),
+          route: stored?.packet?.route || null,
+          sealed: stored?.packet?.sealed ?? true,
+          deliveredAt: stored?.packet?.deliveredAt || null,
         },
-        npcMemory: {
+        npcs: {
           io: {
-            remembersPriorPacket: false,
-            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
+            memory: stored?.memory ? clone(stored.memory) : [],
+            lastLine: null,
+            lastLineMemoryRefs: [],
           },
         },
+        save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
         interaction: {
           lastAction: null,
           lastPointer: null,
@@ -185,7 +213,6 @@
             lastCue: null,
           },
         },
-        save: loadSave(),
       };
 
       let audioContext;
@@ -194,6 +221,142 @@
       let rainFilter;
       let kioskHum;
       let kioskHumGain;
+
+      const lineForBeat = () => {
+        if (state.scene.beat === "packet-kept-sealed") {
+          return "Good. Some doors only open for people who can carry a secret without looking inside.";
+        }
+
+        if (state.scene.beat === "packet-delivered") {
+          return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+        }
+
+        if (state.scene.beat === "io-returning-recognition") {
+          return "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
+        }
+
+        return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
+      };
+
+      const memoryFact = () => ({
+        id: `io:${slot}:delivered-blue-packet`,
+        predicate: "delivered-blue-packet",
+        object: state.packet.sealed ? "sealed" : "opened",
+        sessionId,
+      });
+
+      const persist = ({ dirty = false } = {}) => {
+        const payload = {
+          beat: state.scene.beat,
+          packet: clone(state.packet),
+          memory: clone(state.npcs.io.memory),
+          save: {
+            revision: state.save.revision,
+            dirty,
+          },
+        };
+        writeStored(payload);
+        state.save.dirty = dirty;
+      };
+
+      const syncIoLine = () => {
+        state.npcs.io.lastLine = lineForBeat();
+        state.npcs.io.lastLineMemoryRefs = state.scene.beat === "io-returning-recognition"
+          ? state.npcs.io.memory.map((fact) => fact.id)
+          : [];
+      };
+
+      const publishState = () => {
+        syncIoLine();
+        window.__game = {
+          version: 1,
+          slug: state.slug,
+          scene: { ...state.scene },
+          player: clone(state.player),
+          packet: clone(state.packet),
+          npcs: clone(state.npcs),
+          save: { ...state.save },
+          interaction: clone(state.interaction),
+          getSnapshot: () => clone({
+            version: 1,
+            slug: state.slug,
+            scene: state.scene,
+            player: state.player,
+            packet: state.packet,
+            npcs: state.npcs,
+            save: state.save,
+            interaction: state.interaction,
+          }),
+          input: {
+            choose,
+            advance,
+            forceSave,
+            forceReload: reloadFromSave,
+          },
+          deliverPacket: () => choose("deliver-packet"),
+          enableAudio: () => enableAudio(),
+          resetSliceSave: () => resetSliceSave(),
+        };
+      };
+
+      const renderText = () => {
+        syncIoLine();
+        speaker.textContent = "Io";
+        line.textContent = state.npcs.io.lastLine;
+        stateReadout.textContent = `story: ${state.scene.beat}`;
+      };
+
+      const setBeat = (beat) => {
+        state.scene.beat = beat;
+        renderText();
+        publishState();
+      };
+
+      const choose = async (choiceId) => {
+        if (choiceId === "open-packet") {
+          state.packet.sealed = false;
+          setBeat("packet-opened");
+          return;
+        }
+
+        if (choiceId === "keep-packet-sealed") {
+          state.packet.sealed = true;
+          setBeat("packet-kept-sealed");
+          return;
+        }
+
+        if (choiceId === "deliver-packet") {
+          deliverPacket("contract-input");
+          return;
+        }
+
+        throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
+      };
+
+      const advance = async () => {
+        if (state.packet.delivered && state.npcs.io.memory.length > 0) {
+          setBeat("io-returning-recognition");
+        }
+      };
+
+      const forceSave = async () => {
+        persist({ dirty: false });
+        publishState();
+      };
+
+      const reloadFromSave = async () => {
+        const saved = readStored();
+        if (!saved) {
+          return;
+        }
+
+        state.packet = { ...state.packet, ...saved.packet };
+        state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
+        state.save = { ...emptySave(), ...saved.save, dirty: false };
+        state.scene.beat = state.packet.delivered ? "packet-delivered" : "packet-offered";
+        renderText();
+        publishState();
+      };
 
       const makeRainBuffer = (context) => {
         const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
@@ -283,33 +446,56 @@
         publishState();
       };
 
-      const applySave = () => {
-        const save = state.save;
-        if (!save?.packet?.delivered) {
-          return;
-        }
-
-        state.storyBeat = "io-remembers-packet";
-        state.packet = { ...state.packet, ...save.packet };
-        state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
-      };
-
-      const publishState = () => {
-        window.__game = {
-          ...state,
-          save: loadSave(),
-          getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
-          deliverPacket: () => deliverPacket(),
-          enableAudio: () => enableAudio(),
-          resetSliceSave: () => resetSliceSave(),
+      const triggerKioskFeedback = (source) => {
+        state.interaction.lastAction = source;
+        state.interaction.kioskPulse = 1;
+        state.interaction.confirmCount += 1;
+        state.interaction.confirmStartedAt = performance.now();
+        state.interaction.confirmFeedback = {
+          ...CONFIRM_FEEDBACK,
+          active: true,
+          remainingMs: CONFIRM_FEEDBACK.durationMs,
         };
+        publishState();
       };
 
-      const renderText = () => {
-        speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
-        stateReadout.textContent = `story: ${state.storyBeat}`;
+      const deliverPacket = (source = "hud-button") => {
+        triggerKioskFeedback(source);
+        state.packet.delivered = true;
+        state.packet.route = "blue rainline";
+        state.packet.deliveredAt = new Date().toISOString();
+        const fact = memoryFact();
+        state.npcs.io.memory = [fact];
+        state.save.revision += 1;
+        state.save.dirty = true;
+        setBeat("packet-delivered");
+        persist({ dirty: true });
+        playKioskConfirm();
+      };
+
+      const resetSliceSave = () => {
+        window.localStorage.removeItem(storageKey);
+        state.scene.beat = "packet-offered";
+        state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
+        state.npcs.io.memory = [];
+        state.npcs.io.lastLineMemoryRefs = [];
+        state.save = emptySave();
+        state.interaction.lastAction = null;
+        state.interaction.lastPointer = null;
+        state.interaction.kioskPulse = 0;
+        state.interaction.confirmCount = 0;
+        state.interaction.confirmStartedAt = null;
+        state.interaction.confirmFeedback = {
+          ...CONFIRM_FEEDBACK,
+          active: false,
+          remainingMs: 0,
+        };
+        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
+        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
+        camera.position.x = 0;
+        camera.rotation.z = 0;
+        renderText();
+        publishState();
       };
 
       const scene = new THREE.Scene();
@@ -370,14 +556,14 @@
       screen.position.set(0, 1.65, 0.28);
       kiosk.add(screen);
 
-      const slot = new THREE.Mesh(
+      const slotMesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.76, 0.08, 0.05),
         new THREE.MeshStandardMaterial({ color: 0x07111a, emissive: 0x0b6a82, emissiveIntensity: 0.7 })
       );
-      slot.position.set(0, 0.92, 0.3);
-      kiosk.add(slot);
+      slotMesh.position.set(0, 0.92, 0.3);
+      kiosk.add(slotMesh);
       scene.add(kiosk);
-      const kioskHitTargets = [kioskBody, screen, slot];
+      const kioskHitTargets = [kioskBody, screen, slotMesh];
 
       const io = new THREE.Group();
       const coat = new THREE.Mesh(
@@ -451,62 +637,6 @@
         bloomPass.setSize(width, height);
       };
 
-      const triggerKioskFeedback = (source) => {
-        state.interaction.lastAction = source;
-        state.interaction.kioskPulse = 1;
-        state.interaction.confirmCount += 1;
-        state.interaction.confirmStartedAt = performance.now();
-        state.interaction.confirmFeedback = {
-          ...CONFIRM_FEEDBACK,
-          active: true,
-          remainingMs: CONFIRM_FEEDBACK.durationMs,
-        };
-        publishState();
-      };
-
-      const deliverPacket = (source = "hud-button") => {
-        triggerKioskFeedback(source);
-        const save = writeSave({
-          playerId: state.player.id,
-          packet: {
-            delivered: true,
-            route: "blue rainline",
-            deliveredAt: new Date().toISOString(),
-          },
-        });
-        state.save = save;
-        applySave();
-        renderText();
-        publishState();
-        playKioskConfirm();
-      };
-
-      const resetSliceSave = () => {
-        resetDefaultServerStore();
-        forceReload({ clearLocalState: true });
-        state.storyBeat = "arrive-at-kiosk";
-        state.packet = { delivered: false, route: null, deliveredAt: null };
-        state.npcMemory.io.remembersPriorPacket = false;
-        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
-        state.interaction.lastAction = null;
-        state.interaction.lastPointer = null;
-        state.interaction.kioskPulse = 0;
-        state.interaction.confirmCount = 0;
-        state.interaction.confirmStartedAt = null;
-        state.interaction.confirmFeedback = {
-          ...CONFIRM_FEEDBACK,
-          active: false,
-          remainingMs: 0,
-        };
-        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
-        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
-        camera.position.x = 0;
-        camera.rotation.z = 0;
-        state.save = null;
-        renderText();
-        publishState();
-      };
-
       const handleScenePointer = (event) => {
         const rect = canvas.getBoundingClientRect();
         pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -524,13 +654,13 @@
         }
       };
 
-      deliverButton.addEventListener("click", () => deliverPacket("hud-button"));
+      keepButton.addEventListener("click", () => choose("keep-packet-sealed"));
+      deliverButton.addEventListener("click", () => choose("deliver-packet"));
       canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
       soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
 
-      applySave();
       renderText();
       publishState();
       resize();
@@ -557,7 +687,7 @@
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
         screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7;
-        slot.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45;
+        slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45;
         signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3;
         state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
         if (confirmStartedAt !== null) {
