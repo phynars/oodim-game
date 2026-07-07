@@ -63,41 +63,26 @@ each subpath build. Plain HTML/CSS, no framework — the front door is two
 cards and a tagline.
 
 ### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
-A faithful, playable **Pac-Man**, built from scratch for web + mobile: classic
-maze + power pellets, the four-ghost AI quartet (chase / scatter / frightened),
-score, lives, win/lose, and touch controls. See `pacman/docs/ARCHITECTURE.md`.
+A faithful, playable **Pac-Man** for web + mobile: maze, power pellets, the
+four-ghost AI quartet, score/lives, win/lose, touch controls. Deep dive:
+[`pacman/docs/ARCHITECTURE.md`](pacman/docs/ARCHITECTURE.md).
 
 ### Galaga — `galaga/` → `game.oodim.com/galaga/` *(complete)*
-The studio's second project, harder than Pac-Man: enemy **formations** + entrance
-choreography, **diving attacks**, enemy fire, scoring + stages, and the signature
-boss-Galaga **tractor-beam capture → rescue → dual-fighter** mechanic. Built slice
-by slice from a human-seeded scaffold against an ordered `blocked-by` backlog. See
-`galaga/docs/ARCHITECTURE.md`.
+The studio's second project — enemy formations, diving attacks, and the
+signature boss-Galaga tractor-beam capture → rescue → dual-fighter mechanic.
+Deep dive: [`galaga/docs/ARCHITECTURE.md`](galaga/docs/ARCHITECTURE.md).
 
 ### Doom — `doom/` → `game.oodim.com/doom/` *(complete)*
-The studio's first **true-3D** game — a first-person shooter on **three.js +
-WebGL**. The leap here is the verification gate: the gameplay harness runs over
-**WebGL in headless Chromium** (SwiftShader), asserting the `window.__doom` *state*
-contract (player pose, enemies, projectiles, pickups, doors, weapon) — never
-pixels — with a deterministic fixed-timestep simulation decoupled from rendering.
-Built slice by slice against an ordered `blocked-by` backlog: playable core on
-primitives first, then **procedurally-generated** assets (code-built textures,
-models, animations, and WebAudio SFX — so the studio stays asset-autonomous). See
-`doom/docs/ARCHITECTURE.md`.
+The studio's first **true-3D** game — a first-person shooter on three.js +
+WebGL, verified in headless Chromium against a state contract (never pixels)
+with procedurally-generated assets so the studio stays asset-autonomous.
+Deep dive: [`doom/docs/ARCHITECTURE.md`](doom/docs/ARCHITECTURE.md).
 
 ### agar — `agar/` → `game.oodim.com/agar/` *(in development — multiplayer prototype)*
-The studio's first **server-authoritative multiplayer** game. The frontier the
-portfolio hasn't crossed yet: networked state, a client/server contract, and a
-merge gate that asserts a real round-trip — not just "does it render". Slice 1
-(scaffold) is in; the rollout continues playable-primitives-first:
-
-1. ✅ **Scaffold** — `agar/` slot with `index.html`, vite config, Playwright harness, "in development" placeholder.
-2. ✅ **Durable Object websocket echo** — one client, one DO, `seq`/`rtt` rendered on canvas; e2e times out red if the round-trip doesn't happen. Real WS through `wrangler dev` inside the merge gate.
-3. ⏳ **20 Hz authoritative tick** — server holds the canonical state; clients send input, render what the server says.
-4. **Two-client gameplay e2e** — two browser contexts converge on the same authoritative snapshot; the merge gate.
-
-The proof that the AIDLC loop can ship a networked game — not just a
-single-player canvas — through the same issue → PR → CI → merge pipeline.
+The studio's first **server-authoritative multiplayer** game — networked
+state, a client/server contract, and a merge gate that asserts a real
+round-trip through `wrangler dev`. The frontier the portfolio hasn't crossed
+yet. Rollout slices, contracts, and status live under [`agar/docs/`](agar/docs/).
 
 ## How it's built
 
