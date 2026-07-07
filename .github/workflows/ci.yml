@@ -43,6 +43,7 @@ jobs:
               - 'agar/**'
             aftersign:
               - 'aftersign/**'
+              - 'e2e-shared/aftersign/**'
             shared:
               - 'package.json'
               - 'package-lock.json'

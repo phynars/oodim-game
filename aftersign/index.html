@@ -195,10 +195,12 @@
             remainingMs: 0,
           },
         },
-        audio: {
-          unlocked: false,
-          ambientStarted: false,
-          lastCue: null,
+        _runtime: {
+          audio: {
+            unlocked: false,
+            ambientStarted: false,
+            lastCue: null,
+          },
         },
         save: loadSave(),
       };
@@ -220,7 +222,7 @@
       };
 
       const startAmbientAudio = () => {
-        if (!audioContext || state.audio.ambientStarted) {
+        if (!audioContext || state._runtime.audio.ambientStarted) {
           return;
         }
 
@@ -247,13 +249,13 @@
         kioskHum.connect(kioskHumGain).connect(ambientGain);
         kioskHum.start();
 
-        state.audio.ambientStarted = true;
+        state._runtime.audio.ambientStarted = true;
       };
 
       const enableAudio = async () => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) {
-          state.audio.lastCue = "unsupported";
+          state._runtime.audio.lastCue = "unsupported";
           publishState();
           return false;
         }
@@ -263,13 +265,13 @@
           await audioContext.resume();
         }
 
-        state.audio.unlocked = audioContext.state === "running";
-        if (state.audio.unlocked) {
+        state._runtime.audio.unlocked = audioContext.state === "running";
+        if (state._runtime.audio.unlocked) {
           startAmbientAudio();
-          state.audio.lastCue = "ambient-rainline";
+          state._runtime.audio.lastCue = "ambient-rainline";
         }
         publishState();
-        return state.audio.unlocked;
+        return state._runtime.audio.unlocked;
       };
 
       const playKioskConfirm = async () => {
@@ -294,7 +296,7 @@
           tone.stop(now + 0.36);
         });
 
-        state.audio.lastCue = "packet-confirmed";
+        state._runtime.audio.lastCue = "packet-confirmed";
         publishState();
       };
 
