@@ -26,6 +26,10 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
     const t0 = 2_000;
     window.__game.input.packetPress({ timeMs: t0, x: 24, y: 24 });
     window.__game.input.packetTick(t0 + 450);
+    // Simulate lift AFTER the outcome already latched. The controller's
+    // snapshot still carries outcome:'opened' on release; commitPacketOutcome
+    // must NOT re-fire the failure sting for the same latched outcome.
+    window.__game.input.packetRelease({ timeMs: t0 + 470, x: 24, y: 24 });
     return window.__game.getSnapshot();
   });
 
@@ -33,4 +37,8 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
   expect(holdSnapshot.scene.beat).toBe('packet-opened');
   expect(holdSnapshot.interaction.packetIntent.outcome).toBe('opened');
   expect(holdSnapshot.interaction.packetIntent.progress).toBe(1);
+  // Regression guard for the double-fire: tick commits 'opened', release
+  // arrives with the same latched outcome, sting must fire exactly once.
+  expect(holdSnapshot.interaction.failureSting.triggerCount).toBe(1);
+  expect(holdSnapshot.interaction.failureSting.source).toBe('packet-opened');
 });

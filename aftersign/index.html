@@ -528,7 +528,20 @@
         publishState();
       };
 
+      // Idempotency guard: PacketIntentController.tick/release/move short-circuit
+      // once an outcome is latched, so the same snapshot.outcome value rides
+      // along on every subsequent call in the gesture. Without this guard the
+      // hold-to-open path double-fires triggerFailureSting (packetTick commits
+      // 'opened', then packetRelease commits 'opened' again on lift), snapping
+      // the 360ms decay back to full intensity. We remember the last committed
+      // outcome and no-op on repeats until a fresh gesture (press) or reset.
+      let lastCommittedPacketOutcome = null;
       const commitPacketOutcome = (outcome) => {
+        if (!outcome || outcome === lastCommittedPacketOutcome) {
+          return;
+        }
+        lastCommittedPacketOutcome = outcome;
+
         if (outcome === PACKET_OUTCOME.SEALED) {
           if (!state.packet.sealed) {
             state.packet.sealed = true;
@@ -548,6 +561,7 @@
       };
 
       const packetPress = (input) => {
+        lastCommittedPacketOutcome = null;
         const snapshot = packetIntent.press(input);
         syncPacketIntent(snapshot);
         publishState();
@@ -757,6 +771,7 @@
       const resetSliceSave = () => {
         window.localStorage.removeItem(storageKey);
         packetIntent.reset();
+        lastCommittedPacketOutcome = null;
         state.scene.beat = "packet-offered";
         state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
