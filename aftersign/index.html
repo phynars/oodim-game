@@ -175,7 +175,7 @@
         slug: "aftersign",
         scene: {
           id: "io-kiosk-rainline",
-          beat: stored?.beat === "io-returning-recognition" ? "io-returning-recognition" : "packet-offered",
+          beat: stored?.beat ?? "packet-offered",
         },
         player: {
           id: "local-slice-player",
