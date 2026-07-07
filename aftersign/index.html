@@ -509,10 +509,13 @@
         return state.interaction.packetIntent;
       };
 
+      const isCommittedOutcome = (outcome) =>
+        outcome !== null && outcome !== undefined && outcome !== PACKET_OUTCOME.UNKNOWN;
+
       const packetMove = (input) => {
         const snapshot = packetIntent.move(input);
         syncPacketIntent(snapshot);
-        if (snapshot.outcome) commitPacketOutcome(snapshot.outcome);
+        if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
         publishState();
         return state.interaction.packetIntent;
       };
@@ -520,7 +523,7 @@
       const packetTick = (timeMs) => {
         const snapshot = packetIntent.tick(timeMs);
         syncPacketIntent(snapshot);
-        if (snapshot.outcome) commitPacketOutcome(snapshot.outcome);
+        if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
         publishState();
         return state.interaction.packetIntent;
       };
@@ -528,7 +531,7 @@
       const packetRelease = (input) => {
         const snapshot = packetIntent.release(input);
         syncPacketIntent(snapshot);
-        if (snapshot.outcome) commitPacketOutcome(snapshot.outcome);
+        if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
         publishState();
         return state.interaction.packetIntent;
       };

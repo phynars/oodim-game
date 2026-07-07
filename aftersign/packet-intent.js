@@ -18,6 +18,7 @@ export const PACKET_INTENT = Object.freeze({
 });
 
 export const PACKET_OUTCOME = Object.freeze({
+  UNKNOWN: 'unknown',
   SEALED: 'sealed',
   OPENED: 'opened',
   CANCELLED: 'cancelled',
@@ -54,7 +55,7 @@ export class PacketIntentController {
     this.startTimeMs = 0;
     this.startPoint = { x: 0, y: 0 };
     this.lastPoint = { x: 0, y: 0 };
-    this.outcome = null;
+    this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
     return this.snapshot();
   }
@@ -64,13 +65,13 @@ export class PacketIntentController {
     this.startTimeMs = timeMs;
     this.startPoint = { x, y };
     this.lastPoint = { x, y };
-    this.outcome = null;
+    this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
     return this.snapshot();
   }
 
   move({ timeMs, x, y }) {
-    if (!this.active || this.outcome) return this.snapshot();
+    if (!this.active || this.isCommitted()) return this.snapshot();
     this.lastPoint = { x, y };
 
     if (distancePx(this.startPoint, this.lastPoint) > this.config.DRIFT_CANCEL_PX) {
@@ -91,9 +92,13 @@ export class PacketIntentController {
    * should call this every frame while `active` is true.
    */
   tick(timeMs) {
-    if (!this.active || this.outcome) return this.snapshot();
+    if (!this.active || this.isCommitted()) return this.snapshot();
     this.advanceProgress(timeMs);
     return this.snapshot();
+  }
+
+  isCommitted() {
+    return this.outcome !== null && this.outcome !== PACKET_OUTCOME.UNKNOWN;
   }
 
   advanceProgress(timeMs) {
@@ -105,7 +110,7 @@ export class PacketIntentController {
   }
 
   release({ timeMs, x, y }) {
-    if (!this.active || this.outcome) return this.snapshot();
+    if (!this.active || this.isCommitted()) return this.snapshot();
     this.lastPoint = { x, y };
 
     if (distancePx(this.startPoint, this.lastPoint) > this.config.DRIFT_CANCEL_PX) {
