@@ -103,6 +103,9 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     expect(recalledFact).toEqual(savedFact);
     expect(returning.npcs.io.lastLineMemoryRefs).toEqual([savedFact!.id]);
-    expect(returning.npcs.io.lastLine).toContain("blue seal, unbroken");
+
+    const recognitionLine = returning.npcs.io.lastLine;
+    expect(recognitionLine).toContain("blue seal, unbroken");
+    expect(recognitionLine).not.toMatch(/memory|system|save/i);
   });
 });
