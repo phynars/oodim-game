@@ -9,15 +9,15 @@
 //   2. When the slice's TypeScript scene lands, it can `import type` these
 //      names — one source of truth for the harness contract.
 //
-// The current aftersign/index.html is a standalone ES-module preview and does
-// NOT yet expose window.__game.version === 1 or the input helpers below. That
-// gap is intentional: the failing-first e2e spec (memory-prior-session.spec.ts)
-// asserts against this shape and MUST go red in CI until the scene code is
-// wired up. See docs/flagship/story-state-contract.md.
+// aftersign/index.html publishes this surface (window.__game.version === 1,
+// scene.beat, npcs.io, save, input helpers) and the e2e spec
+// (memory-prior-session.spec.ts) is un-skipped and gates the aftersign CI
+// lane. See docs/flagship/story-state-contract.md.
 
 /** Story beats a scene can be paused at. Extend as the slice grows. */
 export type Beat =
   | "arrival"
+  | "arrive-at-kiosk"
   | "packet-offered"
   | "packet-opened"
   | "packet-kept-sealed"

@@ -2,6 +2,7 @@ import { test, expect, Page } from "@playwright/test";
 
 type Beat =
   | "arrival"
+  | "arrive-at-kiosk"
   | "packet-offered"
   | "packet-opened"
   | "packet-kept-sealed"
@@ -52,25 +53,13 @@ async function game(page: Page): Promise<GameSurface> {
   return page.evaluate(() => window.__game as GameSurface);
 }
 
-// SKIP CONTRACT (see PR #427 review):
+// HARNESS GATE — LIVE (see PR #427 review for the original skip contract):
 //
-// The assertions below target the `window.__game` surface described in
-// `aftersign/src/state-contract.ts`. The current `aftersign/index.html` is a
-// preview shell that does NOT yet publish that surface — no `version: 1`, no
-// `input.choose/advance/forceSave/forceReload`, no `scene.beat`, no
-// `npcs.io.memory`. Running this spec today times out on the very first
-// `waitForBeat(page, "packet-offered")` call.
-//
-// The failing-first discipline this harness enforces ("no story beat exists
-// unless a harness assertion asserts it") is intact — the spec, types, and
-// wiring are here and reviewed. But this PR also lands the mandatory
-// `aftersign` CI lane, which means an un-skipped red spec would gate the lane
-// (and every subsequent aftersign PR) permanently until the scene ships.
-//
-// Resolution: land the spec as `test.skip` so the wiring merges green. The
-// impl PR that publishes `window.__game` per the state contract MUST flip
-// `test.skip` → `test` in the same diff — that flip is the moment the harness
-// gate becomes real. Do NOT delete this spec on the impl PR; un-skip it.
+// `aftersign/index.html` now publishes the `window.__game` surface described
+// in `aftersign/src/state-contract.ts` (version 1, scene.beat, npcs.io.memory,
+// input.choose/advance/forceSave/forceReload). The `test.skip` → `test` flip
+// landed in the same diff as the surface, per the contract in #427. This spec
+// is the gate: no story beat exists unless a harness assertion asserts it.
 test.describe("AFTERSIGN prior-session memory contract", () => {
   test("Io's recognition line is backed by a saved fact from the previous session", async ({
     page,
@@ -92,7 +81,21 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false);
-    await page.evaluate(() => window.__game!.input.forceReload());
+    // Mark the pre-reload context, trigger the reload, then wait until BOTH
+    // the marker is gone (we're in the fresh context) AND the fresh page has
+    // republished window.__game. Calling advance() immediately after
+    // forceReload() races the navigation: it either lands in the doomed old
+    // context (beat change wiped) or in the new one before the module script
+    // publishes the surface (TypeError on the non-null assertion).
+    await page.evaluate(() => {
+      (window as unknown as { __preReloadMarker?: boolean }).__preReloadMarker = true;
+      return window.__game!.input.forceReload();
+    });
+    await page.waitForFunction(
+      () =>
+        !(window as unknown as { __preReloadMarker?: boolean }).__preReloadMarker &&
+        window.__game?.version === 1,
+    );
     await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-returning-recognition");
 

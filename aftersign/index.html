@@ -344,7 +344,13 @@
               }
               publishState();
             },
-            forceReload: async () => forceReload(),
+            forceReload: async () => {
+              // Defer the actual reload one tick so the harness evaluate
+              // resolves BEFORE navigation tears down the execution context.
+              // A synchronous location.reload() races the driver response and
+              // intermittently throws "Execution context was destroyed" in CI.
+              setTimeout(() => forceReload(), 0);
+            },
           },
           getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
           deliverPacket: () => deliverPacket(),
