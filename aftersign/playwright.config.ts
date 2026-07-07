@@ -70,11 +70,13 @@ export default defineConfig({
     },
     {
       cwd: repoRoot,
-      // `serve` is a small, well-known static file server. `-s` is omitted so
-      // missing paths return honest 404s (no SPA fallback rewrite to index).
-      // `--no-clipboard` avoids a headless-CI clipboard-daemon stall.
-      command:
-        "npx --yes serve@14 landing -l 4375 --no-clipboard --no-request-logging",
+      // Static-serve landing/ via a tiny Node script (no external deps, no
+      // registry fetch at test-time). See scripts/serve-landing.mjs for the
+      // full rationale — the earlier `npx --yes serve@14 …` variant was
+      // fragile in CI because it downloaded `serve` at run-time and any
+      // transient npm-registry hiccup surfaced as an aftersign-lane failure
+      // with no signal about the actual spec.
+      command: "node scripts/serve-landing.mjs 4375",
       url: "http://localhost:4375/",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
