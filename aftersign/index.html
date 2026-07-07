@@ -239,6 +239,19 @@
         },
       };
 
+      let statePublishVersion = 0;
+      let publishedStateVersion = -1;
+
+      const markStateDirty = () => {
+        statePublishVersion += 1;
+      };
+
+      const setTextContentIfChanged = (node, value) => {
+        if (node.textContent !== value) {
+          node.textContent = value;
+        }
+      };
+
       let audioContext;
       let ambientGain;
       let rainNoise;
@@ -286,25 +299,53 @@
           },
         };
         writeStored(payload);
-        state.save.dirty = dirty;
+        if (state.save.dirty !== dirty) {
+          state.save.dirty = dirty;
+          markStateDirty();
+        }
       };
 
       const syncIoLine = () => {
-        state.npcs.io.lastLine = lineForBeat();
-        state.npcs.io.lastLineMemoryRefs = state.scene.beat === "io-returning-recognition"
+        const nextLine = lineForBeat();
+        const nextMemoryRefs = state.scene.beat === "io-returning-recognition"
           ? state.npcs.io.memory.map((fact) => fact.id)
           : [];
+        if (
+          state.npcs.io.lastLine !== nextLine
+          || state.npcs.io.lastLineMemoryRefs.length !== nextMemoryRefs.length
+          || state.npcs.io.lastLineMemoryRefs.some((ref, index) => ref !== nextMemoryRefs[index])
+        ) {
+          state.npcs.io.lastLine = nextLine;
+          state.npcs.io.lastLineMemoryRefs = nextMemoryRefs;
+          markStateDirty();
+        }
       };
 
       const syncPacketIntent = (snapshot = packetIntent.snapshot()) => {
-        state.interaction.packetIntent = clone(snapshot);
-        document.documentElement.style.setProperty("--packet-progress", snapshot.progress.toFixed(3));
-        packetButton.setAttribute("aria-valuenow", Math.round(snapshot.progress * 100).toString());
+        const progressValue = snapshot.progress.toFixed(3);
+        if (document.documentElement.style.getPropertyValue("--packet-progress") !== progressValue) {
+          document.documentElement.style.setProperty("--packet-progress", progressValue);
+        }
+        const ariaValue = Math.round(snapshot.progress * 100).toString();
+        if (packetButton.getAttribute("aria-valuenow") !== ariaValue) {
+          packetButton.setAttribute("aria-valuenow", ariaValue);
+        }
+
+        const currentIntent = JSON.stringify(state.interaction.packetIntent);
+        const nextIntent = JSON.stringify(snapshot);
+        if (currentIntent !== nextIntent) {
+          state.interaction.packetIntent = clone(snapshot);
+          markStateDirty();
+        }
       };
 
       const publishState = () => {
         syncIoLine();
         syncPacketIntent();
+        if (publishedStateVersion === statePublishVersion && window.__game) {
+          return window.__game;
+        }
+
         window.__game = {
           version: 1,
           slug: state.slug,
@@ -338,29 +379,40 @@
           enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
         };
+        publishedStateVersion = statePublishVersion;
+        return window.__game;
       };
 
       const renderText = () => {
         syncIoLine();
-        speaker.textContent = "Io";
-        line.textContent = state.npcs.io.lastLine;
-        stateReadout.textContent = `story: ${state.scene.beat}`;
+        setTextContentIfChanged(speaker, "Io");
+        setTextContentIfChanged(line, state.npcs.io.lastLine);
+        setTextContentIfChanged(stateReadout, `story: ${state.scene.beat}`);
       };
 
       const setBeat = (beat) => {
-        state.scene.beat = beat;
+        if (state.scene.beat !== beat) {
+          state.scene.beat = beat;
+          markStateDirty();
+        }
         renderText();
         publishState();
       };
 
       const commitPacketOutcome = (outcome) => {
         if (outcome === PACKET_OUTCOME.SEALED) {
-          state.packet.sealed = true;
+          if (!state.packet.sealed) {
+            state.packet.sealed = true;
+            markStateDirty();
+          }
           setBeat("packet-kept-sealed");
         }
 
         if (outcome === PACKET_OUTCOME.OPENED) {
-          state.packet.sealed = false;
+          if (state.packet.sealed) {
+            state.packet.sealed = false;
+            markStateDirty();
+          }
           setBeat("packet-opened");
         }
       };
@@ -398,13 +450,19 @@
 
       const choose = async (choiceId) => {
         if (choiceId === "open-packet") {
-          state.packet.sealed = false;
+          if (state.packet.sealed) {
+            state.packet.sealed = false;
+            markStateDirty();
+          }
           setBeat("packet-opened");
           return;
         }
 
         if (choiceId === "keep-packet-sealed") {
-          state.packet.sealed = true;
+          if (!state.packet.sealed) {
+            state.packet.sealed = true;
+            markStateDirty();
+          }
           setBeat("packet-kept-sealed");
           return;
         }
@@ -438,6 +496,7 @@
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = state.packet.delivered ? "packet-delivered" : "packet-offered";
+        markStateDirty();
         renderText();
         publishState();
       };
@@ -480,12 +539,14 @@
         kioskHum.start();
 
         state._runtime.audio.ambientStarted = true;
+        markStateDirty();
       };
 
       const enableAudio = async () => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) {
           state._runtime.audio.lastCue = "unsupported";
+          markStateDirty();
           publishState();
           return false;
         }
@@ -500,6 +561,7 @@
           startAmbientAudio();
           state._runtime.audio.lastCue = "ambient-rainline";
         }
+        markStateDirty();
         publishState();
         return state._runtime.audio.unlocked;
       };
@@ -527,6 +589,7 @@
         });
 
         state._runtime.audio.lastCue = "packet-confirmed";
+        markStateDirty();
         publishState();
       };
 
@@ -540,6 +603,7 @@
           active: true,
           remainingMs: CONFIRM_FEEDBACK.durationMs,
         };
+        markStateDirty();
         publishState();
       };
 
@@ -552,6 +616,7 @@
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
         state.save.dirty = true;
+        markStateDirty();
         setBeat("packet-delivered");
         persist({ dirty: true });
         playKioskConfirm();
@@ -575,6 +640,7 @@
           active: false,
           remainingMs: 0,
         };
+        markStateDirty();
         syncPacketIntent();
         document.documentElement.style.setProperty("--confirm-shake-x", "0px");
         document.documentElement.style.setProperty("--confirm-shake-y", "0px");
@@ -731,6 +797,7 @@
           x: Math.round(event.clientX - rect.left),
           y: Math.round(event.clientY - rect.top),
         };
+        markStateDirty();
         raycaster.setFromCamera(pointer, camera);
         if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
           event.preventDefault();
