@@ -10,6 +10,8 @@
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #05070c;
         color: #edf7ff;
+        --confirm-shake-x: 0px;
+        --confirm-shake-y: 0px;
       }
 
       * {
@@ -28,6 +30,8 @@
         display: block;
         width: 100vw;
         height: 100vh;
+        cursor: pointer;
+        touch-action: none;
       }
 
       .hud {
@@ -36,6 +40,8 @@
         padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
         pointer-events: none;
         background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
+        transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
+        will-change: transform;
       }
 
       .panel {
@@ -129,6 +135,7 @@
         installFlagshipGameSurface,
         createLocalStorageLocalStore,
         readBreakModeFromLocation,
+        resetDefaultServerStore,
       } from "./src/story-state.js";
 
       // ---- Story-state contract ------------------------------------------------
@@ -152,6 +159,19 @@
       const resetButton = document.querySelector("#resetButton");
       const choiceButtons = Array.from(document.querySelectorAll("button[data-choice]"));
 
+      // Confirm-feedback juice (ported from PR #432).  Page-local ONLY —
+      // window.__game surface is closed per docs/flagship/story-state-contract.md,
+      // so this HUD/camera shake state lives here, not on the contract surface.
+      const CONFIRM_FEEDBACK = {
+        durationMs: 220,
+        easing: "easeOutCubic",
+        cameraKickDeg: 1.4,
+        cameraKickWorldX: 0.055,
+        hudShakePx: 10,
+        hudLiftPx: 3,
+        pulseDecayPerSecond: 3.8,
+      };
+
       let audioContext;
       let ambientGain;
       let rainNoise;
@@ -159,6 +179,8 @@
       let kioskHum;
       let kioskHumGain;
       let ambientStarted = false;
+      let kioskPulse = 0;
+      let confirmStartedAt = null;
 
       const makeRainBuffer = (context) => {
         const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
@@ -244,6 +266,10 @@
       const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
       camera.position.set(0, 2.25, 7.6);
 
+      // Raycaster for tap-to-deliver (ported from PR #428).
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.shadowMap.enabled = true;
@@ -300,6 +326,7 @@
       slot.position.set(0, 0.92, 0.3);
       kiosk.add(slot);
       scene.add(kiosk);
+      const kioskHitTargets = [kioskBody, screen, slot];
 
       const io = new THREE.Group();
       const coat = new THREE.Mesh(
@@ -373,24 +400,66 @@
         bloomPass.setSize(width, height);
       };
 
+      // Confirm-feedback trigger — starts the tick-loop shake/pulse animation
+      // and plays the audio confirm cue.  Kept local per contract-surface rule.
+      const triggerKioskFeedback = () => {
+        kioskPulse = 1;
+        confirmStartedAt = performance.now();
+        playKioskConfirm();
+      };
+
       // ---- Wire buttons to input.choose ------------------------------------
+      const runDeliver = async () => {
+        await surface.input.choose("deliver-packet");
+        await surface.input.forceSave();
+        triggerKioskFeedback();
+        renderText();
+      };
+
       for (const button of choiceButtons) {
         button.addEventListener("click", async () => {
           const choiceId = button.dataset.choice;
           if (!choiceId) return;
-          await surface.input.choose(choiceId);
           if (choiceId === "deliver-packet") {
-            await surface.input.forceSave();
-            playKioskConfirm();
+            await runDeliver();
+            return;
           }
+          await surface.input.choose(choiceId);
           renderText();
         });
       }
 
+      // Tap-to-deliver on the kiosk mesh (ported from PR #428).  Pointer events
+      // that hit body/screen/slot fire a delivery; other taps are ignored so
+      // players can still gesture around the scene without triggering saves.
+      const handleScenePointer = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
+          event.preventDefault();
+          runDeliver();
+        }
+      };
+      canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
+
       soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", async () => {
+        // Real reset: clear localStorage AND wipe the module-level in-memory
+        // server store — otherwise forceReload({clearLocalState:true})
+        // faithfully restores from that same in-memory store and the button
+        // is a no-op (issue #439).
         window.localStorage.removeItem(`aftersign.slice1.save.${surface.player.id}`);
+        resetDefaultServerStore();
         await surface.input.forceReload({ clearLocalState: true });
+        // Clear any in-flight confirm feedback so the reset visual is quiet.
+        kioskPulse = 0;
+        confirmStartedAt = null;
+        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
+        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
+        camera.position.x = 0;
+        camera.rotation.z = 0;
         renderText();
       });
       window.addEventListener("resize", resize, { passive: true });
@@ -404,10 +473,38 @@
         last = now;
         const t = now / 1000;
 
-        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025;
+        // Confirm-feedback wobble (ported from PR #432).  easeOutCubic on
+        // progress, sin*6π wobble on falloff, applied to kiosk rotation,
+        // camera kick, and HUD CSS shake vars.
+        const confirmProgress = confirmStartedAt === null
+          ? 1
+          : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
+        const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
+        const confirmFalloff = 1 - confirmIntensity;
+        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+
+        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
+        kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25;
-        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8;
+        camera.position.x = confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
+        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
+        document.documentElement.style.setProperty(
+          "--confirm-shake-x",
+          `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`
+        );
+        document.documentElement.style.setProperty(
+          "--confirm-shake-y",
+          `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`
+        );
+        screen.material.emissiveIntensity =
+          1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7;
+        slot.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45;
+        signLight.intensity =
+          7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3;
+        kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
+        if (confirmStartedAt !== null && confirmProgress >= 1) {
+          confirmStartedAt = null;
+        }
         if (rainFilter) {
           rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
         }

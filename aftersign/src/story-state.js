@@ -70,7 +70,19 @@ const DELIVERED_OPENED_LINE = "You read it before the drop. That, too, I saw.";
 // when no real backend is wired.  The store persists across a soft reload
 // (forceReload) but is process-local — a real page navigation blows it away,
 // which is the correct semantics for "not yet the durable DO/D1 backend".
-const defaultServerStore = createInMemoryServerStore();
+let defaultServerStore = createInMemoryServerStore();
+
+/**
+ * Wipe the module-level default server store.  Needed by the page "Reset
+ * slice save" button: clearing localStorage alone is a no-op because
+ * forceReload({clearLocalState:true}) faithfully restores state from the
+ * in-memory server store that outlives the reload (issue #439).  Callers
+ * that inject their own serverStore should reset that store themselves;
+ * this function only touches the module singleton.
+ */
+export function resetDefaultServerStore() {
+  defaultServerStore._reset();
+}
 
 /** @typedef {"arrival"|"packet-offered"|"packet-choice"|"packet-delivered"|"io-return-recognition"} Beat */
 /** @typedef {"unknown"|"sealed"|"opened"|"withheld"|"returned"} DeliveryOutcome */
