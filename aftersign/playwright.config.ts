@@ -44,12 +44,38 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    cwd: repoRoot,
-    command:
-      "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
-    url: "http://localhost:4374/aftersign/",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  // Two web servers: the aftersign vite preview (game bundle at :4374) and
+  // a static file server for the portfolio landing page (:4375). The landing
+  // server exists so aftersign/e2e/landing-discoverability.spec.ts can assert
+  // the AFTERSIGN card is present + linked correctly at game.oodim.com/ —
+  // discoverability is a first-touch surface for the flagship, so a broken
+  // card should fail the aftersign lane the same way a broken scene would.
+  //
+  // Why colocated here vs a dedicated landing lane: adding a top-level
+  // `landing:` job in .github/workflows/ci.yml requires workflow-write
+  // permission the Product avatar doesn't hold. Colocating pins the check
+  // to the aftersign lane, which triggers on aftersign/** and `shared`
+  // changes. Landing-only PRs are NOT gated by this — see follow-up issue
+  // for the true landing lane.
+  webServer: [
+    {
+      cwd: repoRoot,
+      command:
+        "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
+      url: "http://localhost:4374/aftersign/",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      cwd: repoRoot,
+      // `serve` is a small, well-known static file server. `-s` is omitted so
+      // missing paths return honest 404s (no SPA fallback rewrite to index).
+      // `--no-clipboard` avoids a headless-CI clipboard-daemon stall.
+      command:
+        "npx --yes serve@14 landing -l 4375 --no-clipboard --no-request-logging",
+      url: "http://localhost:4375/",
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+  ],
 });
