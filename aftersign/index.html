@@ -191,6 +191,17 @@
       };
 
       const emptySave = () => ({ revision: 0, dirty: false });
+
+      // Boot-time beat hydration mirrors reloadFromSave(): a delivered save
+      // must cold-boot back into "packet-delivered", never regress to
+      // "packet-offered" while packet.delivered is still true.
+      // Asserted by e2e/durable-save-load.spec.ts (page.reload() block).
+      const bootBeat = (saved) => {
+        if (saved?.beat === "io-returning-recognition") return "io-returning-recognition";
+        if (saved?.packet?.delivered) return "packet-delivered";
+        return "packet-offered";
+      };
+
       const stored = readStored();
       const packetIntent = new PacketIntentController();
 
@@ -198,7 +209,7 @@
         slug: "aftersign",
         scene: {
           id: "io-kiosk-rainline",
-          beat: stored?.beat === "io-returning-recognition" ? "io-returning-recognition" : "packet-offered",
+          beat: bootBeat(stored),
         },
         player: {
           id: "local-slice-player",

@@ -97,6 +97,19 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     expect(reloaded.npcs.io.memory).toEqual(saved.npcs.io.memory);
     expect(reloaded.save).toEqual(saved.save);
 
+    // True durability: a COLD BOOT (full page reload, same slot) must
+    // rehydrate beat, packet, and memory from storage — not just the
+    // in-memory forceReload path. This is the assertion that catches
+    // boot-time hydration regressions (e.g. beat silently resetting to
+    // "packet-offered" while packet.delivered stays true).
+    await page.reload();
+    await waitForBeat(page, "packet-delivered");
+    const coldBoot = await snapshot(page);
+
+    expect(coldBoot.packet).toEqual(saved.packet);
+    expect(coldBoot.npcs.io.memory).toEqual(saved.npcs.io.memory);
+    expect(coldBoot.save).toEqual(saved.save);
+
     await page.evaluate(() => window.__game!.resetSliceSave());
     await waitForBeat(page, "packet-offered");
     const reset = await snapshot(page);
