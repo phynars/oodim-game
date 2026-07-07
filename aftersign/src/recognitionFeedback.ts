@@ -57,11 +57,21 @@ const easeInOutCubic = (t: number): number => {
   return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
 };
 
+function resolveRecognitionPhase(elapsedMs: number): RecognitionFeedbackPhase {
+  let phase = RECOGNITION_FEEDBACK_PHASES[0];
+  for (let index = 1; index < RECOGNITION_FEEDBACK_PHASES.length; index += 1) {
+    const candidate = RECOGNITION_FEEDBACK_PHASES[index];
+    if (elapsedMs < candidate.startMs) {
+      break;
+    }
+    phase = candidate;
+  }
+  return phase;
+}
+
 export function recognitionFeedbackAt(elapsedMs: number): RecognitionFeedbackState {
   const safeElapsedMs = Math.max(0, elapsedMs);
-  const phase = [...RECOGNITION_FEEDBACK_PHASES]
-    .reverse()
-    .find((candidate) => safeElapsedMs >= candidate.startMs) ?? RECOGNITION_FEEDBACK_PHASES[0];
+  const phase = resolveRecognitionPhase(safeElapsedMs);
   const localT = clamp01((safeElapsedMs - phase.startMs) / phase.durationMs);
 
   if (phase.name === 'catch') {
