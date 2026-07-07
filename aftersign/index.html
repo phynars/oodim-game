@@ -110,7 +110,7 @@
   </head>
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
-    <p class="state-readout" id="stateReadout">story: arrive-at-kiosk</p>
+    <p class="state-readout" id="stateReadout">story: packet-offered</p>
     <section class="hud" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
@@ -147,11 +147,23 @@
         pulseDecayPerSecond: 3.8,
       };
 
+      const makeSessionId = () => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("slot") || "local-slice-session";
+      };
+
+      const makePacketMemoryFact = () => ({
+        id: `io-delivered-blue-packet-${state.sessionId}`,
+        predicate: "delivered-blue-packet",
+        object: state.packet.route === "blue rainline" ? "sealed" : state.packet.route || "sealed",
+        sessionId: state.sessionId,
+      });
 
       const state = {
         slug: "aftersign",
         scene: "io-kiosk-rainline",
-        storyBeat: "arrive-at-kiosk",
+        beat: "packet-offered",
+        sessionId: makeSessionId(),
         player: {
           id: "local-slice-player",
         },
@@ -162,8 +174,9 @@
         },
         npcMemory: {
           io: {
-            remembersPriorPacket: false,
-            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
+            memory: [],
+            lastLine: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
+            lastLineMemoryRefs: [],
           },
         },
         interaction: {
@@ -185,6 +198,8 @@
             lastCue: null,
           },
         },
+        saveRevision: 0,
+        saveDirty: false,
         save: loadSave(),
       };
 
@@ -283,33 +298,123 @@
         publishState();
       };
 
+      const syncMemoryFromPacket = () => {
+        if (!state.packet.delivered) {
+          state.npcMemory.io.memory = [];
+          return null;
+        }
+
+        const fact = makePacketMemoryFact();
+        state.npcMemory.io.memory = [fact];
+        return fact;
+      };
+
       const applySave = () => {
         const save = state.save;
         if (!save?.packet?.delivered) {
           return;
         }
 
-        state.storyBeat = "io-remembers-packet";
         state.packet = { ...state.packet, ...save.packet };
-        state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
+        syncMemoryFromPacket();
       };
 
+      const makeGameSurface = () => ({
+        version: 1,
+        scene: { beat: state.beat },
+        npcs: {
+          io: {
+            memory: JSON.parse(JSON.stringify(state.npcMemory.io.memory)),
+            lastLine: state.npcMemory.io.lastLine,
+            lastLineMemoryRefs: [...state.npcMemory.io.lastLineMemoryRefs],
+          },
+        },
+        save: { revision: state.saveRevision, dirty: state.saveDirty },
+        input: {
+          choose: async (choiceId) => choose(choiceId),
+          advance: async () => advanceStory(),
+          forceSave: async () => flushSave(),
+          forceReload: async () => reloadSave(),
+        },
+        getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
+        deliverPacket: () => deliverPacket(),
+        enableAudio: () => enableAudio(),
+        resetSliceSave: () => resetSliceSave(),
+      });
+
       const publishState = () => {
-        window.__game = {
-          ...state,
-          save: loadSave(),
-          getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
-          deliverPacket: () => deliverPacket(),
-          enableAudio: () => enableAudio(),
-          resetSliceSave: () => resetSliceSave(),
-        };
+        window.__game = makeGameSurface();
       };
 
       const renderText = () => {
         speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
-        stateReadout.textContent = `story: ${state.storyBeat}`;
+        line.textContent = state.npcMemory.io.lastLine;
+        stateReadout.textContent = `story: ${state.beat}`;
+      };
+
+      const flushSave = async () => {
+        if (state.packet.delivered) {
+          state.saveDirty = true;
+          publishState();
+          state.save = writeSave({
+            playerId: state.player.id,
+            packet: {
+              delivered: true,
+              route: state.packet.route,
+              deliveredAt: state.packet.deliveredAt,
+            },
+          });
+          state.saveRevision += 1;
+        }
+        state.saveDirty = false;
+        publishState();
+      };
+
+      const reloadSave = async () => {
+        forceReload();
+        state.save = loadSave();
+        applySave();
+        renderText();
+        publishState();
+      };
+
+      const advanceStory = async () => {
+        if (state.packet.delivered) {
+          const fact = syncMemoryFromPacket();
+          state.beat = "io-returning-recognition";
+          state.npcMemory.io.lastLine = "I remember the blue seal, unbroken. You left it with me before the rain could blur the route.";
+          state.npcMemory.io.lastLineMemoryRefs = fact ? [fact.id] : [];
+        } else if (state.beat === "arrival") {
+          state.beat = "packet-offered";
+        }
+        renderText();
+        publishState();
+      };
+
+      const choose = async (choiceId) => {
+        if (choiceId === "open-packet") {
+          state.beat = "packet-opened";
+          state.packet.route = "opened";
+          state.npcMemory.io.lastLine = "The packet opens like a little weather system. Io watches the blue light leak out.";
+          state.npcMemory.io.lastLineMemoryRefs = [];
+          renderText();
+          publishState();
+          return;
+        }
+
+        if (choiceId === "keep-packet-sealed") {
+          state.beat = "packet-kept-sealed";
+          state.packet.route = "sealed";
+          state.npcMemory.io.lastLine = "Good. A closed packet keeps its promise longer than either of us can.";
+          state.npcMemory.io.lastLineMemoryRefs = [];
+          renderText();
+          publishState();
+          return;
+        }
+
+        if (choiceId === "deliver-packet") {
+          deliverPacket("harness-input");
+        }
       };
 
       const scene = new THREE.Scene();
@@ -466,16 +571,15 @@
 
       const deliverPacket = (source = "hud-button") => {
         triggerKioskFeedback(source);
-        const save = writeSave({
-          playerId: state.player.id,
-          packet: {
-            delivered: true,
-            route: "blue rainline",
-            deliveredAt: new Date().toISOString(),
-          },
-        });
-        state.save = save;
-        applySave();
+        state.beat = "packet-delivered";
+        state.packet = {
+          delivered: true,
+          route: "blue rainline",
+          deliveredAt: state.packet.deliveredAt || new Date().toISOString(),
+        };
+        state.npcMemory.io.lastLine = "Io takes the sealed packet and slots it into the blue kiosk. The rainline answers once.";
+        state.npcMemory.io.lastLineMemoryRefs = [];
+        syncMemoryFromPacket();
         renderText();
         publishState();
         playKioskConfirm();
@@ -484,10 +588,11 @@
       const resetSliceSave = () => {
         resetDefaultServerStore();
         forceReload({ clearLocalState: true });
-        state.storyBeat = "arrive-at-kiosk";
+        state.beat = "packet-offered";
         state.packet = { delivered: false, route: null, deliveredAt: null };
-        state.npcMemory.io.remembersPriorPacket = false;
-        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
+        state.npcMemory.io.memory = [];
+        state.npcMemory.io.lastLine = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
+        state.npcMemory.io.lastLineMemoryRefs = [];
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
         state.interaction.kioskPulse = 0;
@@ -503,6 +608,8 @@
         camera.position.x = 0;
         camera.rotation.z = 0;
         state.save = null;
+        state.saveRevision += 1;
+        state.saveDirty = false;
         renderText();
         publishState();
       };
