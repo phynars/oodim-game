@@ -158,7 +158,9 @@
       const params = new URLSearchParams(window.location.search);
       const slotId = params.get("slot") ?? "default";
       const playerId = `player-${slotId}`;
-      const sessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // crypto.randomUUID (not Math.random) — the session id tags memory facts
+      // the harness treats as proof, so it must not be predictable/forgeable.
+      const sessionId = `session-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 
       // -----------------------------------------------------------------
       // Story state — the authored beats, choices, and NPC memory. The
