@@ -152,10 +152,18 @@
         return params.get("slot") || "local-slice-session";
       };
 
+      // Route domain per the harness contract: "opened" | "sealed".
+      // Legacy saves (pre-choice contract) stored route="blue rainline";
+      // an undelivered/unset route means the packet was never opened.
+      // Both normalize to the sealed disposition at the edges, so no
+      // downstream code ever special-cases the legacy value.
+      const normalizeRoute = (route) =>
+        !route || route === "blue rainline" ? "sealed" : route;
+
       const makePacketMemoryFact = () => ({
         id: `io-delivered-blue-packet-${state.sessionId}`,
         predicate: "delivered-blue-packet",
-        object: state.packet.route === "blue rainline" ? "sealed" : state.packet.route || "sealed",
+        object: normalizeRoute(state.packet.route),
         sessionId: state.sessionId,
       });
 
@@ -316,6 +324,7 @@
         }
 
         state.packet = { ...state.packet, ...save.packet };
+        state.packet.route = normalizeRoute(state.packet.route);
         syncMemoryFromPacket();
       };
 
@@ -371,18 +380,24 @@
       };
 
       const reloadSave = async () => {
+        // Tear down the surface BEFORE navigating so the harness's
+        // post-reload `waitForFunction(() => window.__game?.version === 1)`
+        // cannot be satisfied by this dying document's stale surface.
+        // The fresh document republishes __game at module-boot after
+        // applySave(), which is the surface the guard must observe.
+        // Do NOT republish or mutate state past this point.
+        delete window.__game;
         forceReload();
-        state.save = loadSave();
-        applySave();
-        renderText();
-        publishState();
       };
 
       const advanceStory = async () => {
         if (state.packet.delivered) {
           const fact = syncMemoryFromPacket();
           state.beat = "io-returning-recognition";
-          state.npcMemory.io.lastLine = "I remember the blue seal, unbroken. You left it with me before the rain could blur the route.";
+          state.npcMemory.io.lastLine =
+            fact && fact.object === "opened"
+              ? "I remember the blue light you let out. You still brought it to me before the rain could blur the route."
+              : "I remember the blue seal, unbroken. You left it with me before the rain could blur the route.";
           state.npcMemory.io.lastLineMemoryRefs = fact ? [fact.id] : [];
         } else if (state.beat === "arrival") {
           state.beat = "packet-offered";
@@ -574,12 +589,16 @@
         state.beat = "packet-delivered";
         state.packet = {
           delivered: true,
-          // Preserve a route chosen via choose("open-packet") / choose("keep-packet-sealed").
-          // The "blue rainline" default is only the HUD-button path that skips `choose`.
-          route: state.packet.route || "blue rainline",
+          // Preserve the route choose() set ("opened" / "sealed"). The
+          // HUD-button path that skips choose() has route=null, which
+          // normalizes to "sealed" — the packet was never opened.
+          route: normalizeRoute(state.packet.route),
           deliveredAt: state.packet.deliveredAt || new Date().toISOString(),
         };
-        state.npcMemory.io.lastLine = "Io takes the sealed packet and slots it into the blue kiosk. The rainline answers once.";
+        state.npcMemory.io.lastLine =
+          state.packet.route === "opened"
+            ? "Io takes the opened packet, folds its light closed, and slots it into the blue kiosk. The rainline answers once."
+            : "Io takes the sealed packet and slots it into the blue kiosk. The rainline answers once.";
         state.npcMemory.io.lastLineMemoryRefs = [];
         syncMemoryFromPacket();
         renderText();

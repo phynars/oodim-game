@@ -73,10 +73,18 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false);
-    await page.evaluate(() => window.__game!.input.forceReload());
-    // forceReload() tears down + republishes window.__game; wait for the
-    // fresh surface (version === 1) before driving advance(), otherwise
-    // advance() can race against the stale reference.
+    await page
+      .evaluate(() => window.__game!.input.forceReload())
+      .catch(() => {
+        // forceReload() triggers window.location.reload(); if navigation
+        // commits before the evaluate round-trip resolves, Playwright throws
+        // "Execution context was destroyed" — expected, not a failure.
+      });
+    // forceReload() deletes window.__game on the dying document BEFORE
+    // navigating (see reloadSave in index.html), so this guard can only be
+    // satisfied by the fresh document's surface — never a stale pre-reload
+    // one. Without the teardown, the old page's version===1 surface would
+    // satisfy this instantly and advance() would race the navigation.
     await page.waitForFunction(() => window.__game?.version === 1);
     await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-returning-recognition");
