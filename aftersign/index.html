@@ -128,8 +128,7 @@
       import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-
-      const SAVE_KEY = "aftersign.kioskSlice.v1";
+      import { forceReload, loadSave, resetDefaultServerStore, writeSave } from "./src/story-state.js";
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
       const speaker = document.querySelector("#speaker");
@@ -148,22 +147,6 @@
         pulseDecayPerSecond: 3.8,
       };
 
-      const loadSave = () => {
-        try {
-          return JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
-        } catch (_error) {
-          return null;
-        }
-      };
-
-      const writeSave = (save) => {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-        return save;
-      };
-
-      const clearSave = () => {
-        localStorage.removeItem(SAVE_KEY);
-      };
 
       const state = {
         slug: "aftersign",
@@ -482,7 +465,6 @@
       const deliverPacket = (source = "hud-button") => {
         triggerKioskFeedback(source);
         const save = writeSave({
-          version: 1,
           playerId: state.player.id,
           packet: {
             delivered: true,
@@ -498,7 +480,8 @@
       };
 
       const resetSliceSave = () => {
-        clearSave();
+        resetDefaultServerStore();
+        forceReload({ clearLocalState: true });
         state.storyBeat = "arrive-at-kiosk";
         state.packet = { delivered: false, route: null, deliveredAt: null };
         state.npcMemory.io.remembersPriorPacket = false;
