@@ -26,10 +26,13 @@ npm run typecheck
 npm run build
 npm run test:e2e
 
-# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar)
+# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar | aftersign)
 npm run typecheck:<project>
 npm run build:<project>
 npm run test:e2e:<project>
+
+# agar's server worker has its own typecheck target
+npm run typecheck:agar-server
 ```
 
 ## The studio
