@@ -23,7 +23,7 @@ const read = (p) => readFileSync(path.join(repoRoot, p), "utf8");
 
 const products = readdirSync(repoRoot, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules")
-  .filter((e) => existsSync(path.join(repoRoot, e.name, "vite.config.ts")))
+  .filter((e) => existsSync(path.join(repoRoot, e.name, "vite.config.ts")) || e.name === "aftersign")
   .map((e) => e.name)
   .sort();
 
