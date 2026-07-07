@@ -3,588 +3,309 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>AFTERSIGN — Kiosk Slice</title>
+    <title>AFTERSIGN — Vertical Slice</title>
     <style>
-      :root {
-        color-scheme: dark;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #05070c;
-        color: #edf7ff;
-        --confirm-shake-x: 0px;
-        --confirm-shake-y: 0px;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
+      html,
       body {
         margin: 0;
-        min-height: 100vh;
+        width: 100%;
+        height: 100%;
         overflow: hidden;
-        background: radial-gradient(circle at 50% 20%, #182033 0%, #05070c 65%);
-        touch-action: manipulation;
-      }
-
-      canvas {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-        cursor: pointer;
+        background: #05070d;
+        color: #dfe8ff;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         touch-action: none;
       }
 
-      .hud {
+      #hud {
         position: fixed;
-        inset: auto 0 0 0;
-        padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+        left: max(16px, env(safe-area-inset-left));
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        display: grid;
+        gap: 8px;
         pointer-events: none;
-        background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
-        transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
-        will-change: transform;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.75);
       }
 
-      .panel {
-        width: min(680px, 100%);
-        border: 1px solid rgba(119, 232, 255, 0.34);
-        border-radius: 18px;
-        padding: 16px;
-        background: rgba(5, 10, 19, 0.72);
-        box-shadow: 0 0 40px rgba(0, 204, 255, 0.12), inset 0 0 30px rgba(22, 89, 130, 0.14);
-        backdrop-filter: blur(12px);
+      #beat {
+        max-width: 680px;
+        padding: 14px 16px;
+        border: 1px solid rgba(143, 183, 255, 0.36);
+        border-radius: 16px;
+        background: rgba(6, 11, 23, 0.72);
+        box-shadow: 0 18px 60px rgba(33, 77, 148, 0.2);
+        backdrop-filter: blur(14px);
+        font-size: clamp(15px, 2.6vw, 18px);
+        line-height: 1.35;
       }
 
-      .speaker {
-        margin: 0 0 8px;
-        color: #78e9ff;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      }
-
-      .line {
-        margin: 0;
-        font-size: clamp(17px, 3.6vw, 24px);
-        line-height: 1.32;
-        text-wrap: balance;
-      }
-
-      .controls {
-        display: flex;
-        gap: 10px;
-        margin-top: 12px;
-        flex-wrap: wrap;
-        pointer-events: auto;
-      }
-
-      button {
-        border: 1px solid rgba(173, 242, 255, 0.4);
-        border-radius: 999px;
-        padding: 11px 14px;
-        color: #edf7ff;
-        background: rgba(8, 28, 43, 0.85);
-        box-shadow: 0 0 20px rgba(0, 204, 255, 0.1);
-        font: inherit;
-        font-weight: 750;
-        cursor: pointer;
-      }
-
-      button:active {
-        transform: translateY(1px) scale(0.99);
-      }
-
-      .state-readout {
-        position: fixed;
-        top: max(14px, env(safe-area-inset-top));
-        left: max(14px, env(safe-area-inset-left));
-        margin: 0;
-        padding: 8px 10px;
-        border-radius: 999px;
-        color: rgba(237, 247, 255, 0.74);
-        background: rgba(3, 7, 13, 0.58);
+      #debug {
+        color: rgba(223, 232, 255, 0.72);
         font-size: 12px;
         letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
     </style>
   </head>
   <body>
-    <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
-    <p class="state-readout" id="stateReadout">story: arrive-at-kiosk</p>
-    <section class="hud" aria-live="polite">
-      <div class="panel">
-        <p class="speaker" id="speaker">Io</p>
-        <p class="line" id="line">You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.</p>
-        <div class="controls">
-          <button id="deliverButton" type="button">Leave packet at the blue kiosk</button>
-          <button id="soundButton" type="button">Wake kiosk sound</button>
-          <button id="resetButton" type="button">Reset slice save</button>
-        </div>
-      </div>
-    </section>
+    <div id="hud" aria-live="polite">
+      <div id="beat">Find Io at the flooded kiosk.</div>
+      <div id="debug">Booting AFTERSIGN…</div>
+    </div>
 
     <script type="module">
-      import * as THREE from "https://esm.sh/three@0.165.0";
-      import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
-      import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
-      import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-      import { forceReload, loadSave, resetDefaultServerStore, writeSave } from "./src/story-state.js";
-      const canvas = document.querySelector("#scene");
-      const line = document.querySelector("#line");
-      const speaker = document.querySelector("#speaker");
-      const stateReadout = document.querySelector("#stateReadout");
-      const deliverButton = document.querySelector("#deliverButton");
-      const soundButton = document.querySelector("#soundButton");
-      const resetButton = document.querySelector("#resetButton");
+      import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
-      const CONFIRM_FEEDBACK = {
-        durationMs: 220,
-        easing: "easeOutCubic",
-        cameraKickDeg: 1.4,
-        cameraKickWorldX: 0.055,
-        hudShakePx: 10,
-        hudLiftPx: 3,
-        pulseDecayPerSecond: 3.8,
-      };
+      const SAVE_KEY = "aftersign.verticalSlice.v1";
+      const FIXED_DT = 1 / 60;
+      const PLAYER_SPEED = 3.8;
+      const CAMERA_LERP = 1 - Math.pow(0.001, FIXED_DT);
+      const INPUT_DEADZONE = 0.08;
+      const RECOGNITION_RADIUS = 1.55;
 
-
+      const saved = readSave();
       const state = {
-        slug: "aftersign",
-        scene: "io-kiosk-rainline",
-        storyBeat: "arrive-at-kiosk",
+        frame: 0,
+        time: 0,
+        lastDtMs: 0,
         player: {
-          id: "local-slice-player",
+          x: saved.player?.x ?? -2.2,
+          z: saved.player?.z ?? 1.35,
+          facing: 0,
         },
-        packet: {
-          delivered: false,
-          route: null,
-          deliveredAt: null,
+        input: { x: 0, z: 0, active: false, source: "none" },
+        io: {
+          x: 1.15,
+          z: -0.9,
+          rememberedVisits: saved.io?.rememberedVisits ?? 0,
+          hasRecognizedPlayer: false,
+          line: "Io waits by the dead kiosk light.",
         },
-        npcMemory: {
-          io: {
-            remembersPriorPacket: false,
-            line: "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.",
-          },
+        feel: {
+          targetFrameMs: 16.67,
+          maxStepMs: 33.34,
+          cameraSettleMs: 180,
+          inputToVelocityFrames: 1,
         },
-        interaction: {
-          lastAction: null,
-          lastPointer: null,
-          kioskPulse: 0,
-          confirmCount: 0,
-          confirmStartedAt: null,
-          confirmFeedback: {
-            ...CONFIRM_FEEDBACK,
-            active: false,
-            remainingMs: 0,
-          },
-        },
-        _runtime: {
-          audio: {
-            unlocked: false,
-            ambientStarted: false,
-            lastCue: null,
-          },
-        },
-        save: loadSave(),
-      };
-
-      let audioContext;
-      let ambientGain;
-      let rainNoise;
-      let rainFilter;
-      let kioskHum;
-      let kioskHumGain;
-
-      const makeRainBuffer = (context) => {
-        const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < data.length; i += 1) {
-          data[i] = (Math.random() * 2 - 1) * 0.38;
-        }
-        return buffer;
-      };
-
-      const startAmbientAudio = () => {
-        if (!audioContext || state._runtime.audio.ambientStarted) {
-          return;
-        }
-
-        ambientGain = audioContext.createGain();
-        ambientGain.gain.value = 0.045;
-        ambientGain.connect(audioContext.destination);
-
-        rainNoise = audioContext.createBufferSource();
-        rainNoise.buffer = makeRainBuffer(audioContext);
-        rainNoise.loop = true;
-
-        rainFilter = audioContext.createBiquadFilter();
-        rainFilter.type = "bandpass";
-        rainFilter.frequency.value = 1350;
-        rainFilter.Q.value = 0.72;
-        rainNoise.connect(rainFilter).connect(ambientGain);
-        rainNoise.start();
-
-        kioskHum = audioContext.createOscillator();
-        kioskHum.type = "sine";
-        kioskHum.frequency.value = 91;
-        kioskHumGain = audioContext.createGain();
-        kioskHumGain.gain.value = 0.018;
-        kioskHum.connect(kioskHumGain).connect(ambientGain);
-        kioskHum.start();
-
-        state._runtime.audio.ambientStarted = true;
-      };
-
-      const enableAudio = async () => {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) {
-          state._runtime.audio.lastCue = "unsupported";
-          publishState();
-          return false;
-        }
-
-        audioContext ||= new AudioContext();
-        if (audioContext.state === "suspended") {
-          await audioContext.resume();
-        }
-
-        state._runtime.audio.unlocked = audioContext.state === "running";
-        if (state._runtime.audio.unlocked) {
-          startAmbientAudio();
-          state._runtime.audio.lastCue = "ambient-rainline";
-        }
-        publishState();
-        return state._runtime.audio.unlocked;
-      };
-
-      const playKioskConfirm = async () => {
-        const unlocked = await enableAudio();
-        if (!unlocked || !audioContext) {
-          return;
-        }
-
-        const now = audioContext.currentTime;
-        const gain = audioContext.createGain();
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
-        gain.connect(audioContext.destination);
-
-        [523.25, 659.25, 987.77].forEach((frequency, index) => {
-          const tone = audioContext.createOscillator();
-          tone.type = index === 2 ? "triangle" : "sine";
-          tone.frequency.setValueAtTime(frequency, now + index * 0.035);
-          tone.connect(gain);
-          tone.start(now + index * 0.035);
-          tone.stop(now + 0.36);
-        });
-
-        state._runtime.audio.lastCue = "packet-confirmed";
-        publishState();
-      };
-
-      const applySave = () => {
-        const save = state.save;
-        if (!save?.packet?.delivered) {
-          return;
-        }
-
-        state.storyBeat = "io-remembers-packet";
-        state.packet = { ...state.packet, ...save.packet };
-        state.npcMemory.io.remembersPriorPacket = true;
-        state.npcMemory.io.line = `I remember you. Last time you trusted the ${save.packet.route} and left the packet before the rain erased your steps.`;
-      };
-
-      const publishState = () => {
-        window.__game = {
-          ...state,
-          save: loadSave(),
-          getSnapshot: () => JSON.parse(JSON.stringify({ ...state, save: loadSave() })),
-          deliverPacket: () => deliverPacket(),
-          enableAudio: () => enableAudio(),
-          resetSliceSave: () => resetSliceSave(),
-        };
-      };
-
-      const renderText = () => {
-        speaker.textContent = "Io";
-        line.textContent = state.npcMemory.io.line;
-        stateReadout.textContent = `story: ${state.storyBeat}`;
+        lastSavedAt: saved.lastSavedAt ?? null,
       };
 
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0x07111d, 0.045);
+      scene.background = new THREE.Color(0x05070d);
+      scene.fog = new THREE.FogExp2(0x07111f, 0.058);
 
-      const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
-      camera.position.set(0, 2.25, 7.6);
+      const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(state.player.x - 3.5, 3.1, state.player.z + 4.4);
+      camera.lookAt(state.player.x, 0.75, state.player.z);
 
-      const raycaster = new THREE.Raycaster();
-      const pointer = new THREE.Vector2();
-
-      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+      renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.08;
+      document.body.prepend(renderer.domElement);
 
-      const composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.52, 0.55, 0.18);
-      composer.addPass(bloomPass);
-
-      const hemi = new THREE.HemisphereLight(0x8ccfff, 0x09111d, 1.4);
+      const hemi = new THREE.HemisphereLight(0x9fbaff, 0x101018, 1.15);
       scene.add(hemi);
 
-      const key = new THREE.DirectionalLight(0xc4f4ff, 2.2);
-      key.position.set(-4, 6, 5);
-      key.castShadow = true;
-      key.shadow.mapSize.set(1024, 1024);
-      scene.add(key);
+      const kioskGlow = new THREE.PointLight(0x66ccff, 7.5, 7, 1.8);
+      kioskGlow.position.set(1.15, 1.2, -0.9);
+      kioskGlow.castShadow = true;
+      scene.add(kioskGlow);
 
-      const signLight = new THREE.PointLight(0x33ddff, 8, 9, 1.8);
-      signLight.position.set(0, 2.15, -1.1);
-      scene.add(signLight);
-
-      const wetGround = new THREE.Mesh(
-        new THREE.PlaneGeometry(16, 18),
-        new THREE.MeshStandardMaterial({ color: 0x07111a, roughness: 0.18, metalness: 0.2 })
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x101827, roughness: 0.82, metalness: 0.1 })
       );
-      wetGround.rotation.x = -Math.PI / 2;
-      wetGround.receiveShadow = true;
-      scene.add(wetGround);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
 
-      const kiosk = new THREE.Group();
-      const kioskBody = new THREE.Mesh(
-        new THREE.BoxGeometry(1.35, 2.45, 0.5),
-        new THREE.MeshStandardMaterial({ color: 0x102134, roughness: 0.42, metalness: 0.25 })
-      );
-      kioskBody.position.y = 1.23;
-      kioskBody.castShadow = true;
-      kiosk.add(kioskBody);
+      const grid = new THREE.GridHelper(16, 16, 0x28436d, 0x16263d);
+      grid.position.y = 0.006;
+      scene.add(grid);
 
-      const screen = new THREE.Mesh(
-        new THREE.BoxGeometry(1.08, 0.66, 0.04),
-        new THREE.MeshStandardMaterial({ color: 0x67eaff, emissive: 0x25cfff, emissiveIntensity: 1.8, roughness: 0.08 })
+      const player = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.24, 0.68, 5, 12),
+        new THREE.MeshStandardMaterial({ color: 0xfff1b8, roughness: 0.46, metalness: 0.08 })
       );
-      screen.position.set(0, 1.65, 0.28);
-      kiosk.add(screen);
+      player.position.set(state.player.x, 0.58, state.player.z);
+      player.castShadow = true;
+      scene.add(player);
 
-      const slot = new THREE.Mesh(
-        new THREE.BoxGeometry(0.76, 0.08, 0.05),
-        new THREE.MeshStandardMaterial({ color: 0x07111a, emissive: 0x0b6a82, emissiveIntensity: 0.7 })
+      const io = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.22, 0.72, 5, 12),
+        new THREE.MeshStandardMaterial({ color: 0x86e7ff, emissive: 0x123d55, roughness: 0.38, metalness: 0.22 })
       );
-      slot.position.set(0, 0.92, 0.3);
-      kiosk.add(slot);
-      scene.add(kiosk);
-      const kioskHitTargets = [kioskBody, screen, slot];
-
-      const io = new THREE.Group();
-      const coat = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.34, 1.08, 6, 12),
-        new THREE.MeshStandardMaterial({ color: 0x1d2738, roughness: 0.64, metalness: 0.05 })
-      );
-      coat.position.y = 1.1;
-      coat.castShadow = true;
-      io.add(coat);
-
-      const face = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 24, 16),
-        new THREE.MeshStandardMaterial({ color: 0xd7b99c, roughness: 0.5 })
-      );
-      face.position.y = 1.92;
-      face.castShadow = true;
-      io.add(face);
-
-      const visor = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.08, 0.08),
-        new THREE.MeshStandardMaterial({ color: 0x8af2ff, emissive: 0x5bdfff, emissiveIntensity: 1.1 })
-      );
-      visor.position.set(0, 1.95, 0.17);
-      io.add(visor);
-      io.position.set(-1.55, 0, 0.7);
-      io.rotation.y = 0.35;
+      io.position.set(state.io.x, 0.6, state.io.z);
+      io.castShadow = true;
       scene.add(io);
 
-      const makeTower = (x, z, height, color) => {
-        const tower = new THREE.Mesh(
-          new THREE.BoxGeometry(0.72, height, 0.72),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.08 })
-        );
-        tower.position.set(x, height / 2, z);
-        tower.castShadow = true;
-        tower.receiveShadow = true;
-        scene.add(tower);
+      const kiosk = new THREE.Mesh(
+        new THREE.BoxGeometry(1.25, 1.55, 0.26),
+        new THREE.MeshStandardMaterial({ color: 0x16243a, emissive: 0x06243a, roughness: 0.5, metalness: 0.35 })
+      );
+      kiosk.position.set(1.15, 0.78, -1.22);
+      kiosk.castShadow = true;
+      kiosk.receiveShadow = true;
+      scene.add(kiosk);
 
-        const windowStrip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, 0.06, 0.04),
-          new THREE.MeshStandardMaterial({ color: 0xffca75, emissive: 0xff9d2e, emissiveIntensity: 0.45 })
-        );
-        windowStrip.position.set(x, height * 0.72, z + 0.39);
-        scene.add(windowStrip);
-      };
+      const keys = new Set();
+      window.addEventListener("keydown", (event) => {
+        keys.add(event.code);
+        updateKeyboardInput();
+      });
+      window.addEventListener("keyup", (event) => {
+        keys.delete(event.code);
+        updateKeyboardInput();
+      });
 
-      makeTower(-4.6, -3.8, 4.4, 0x0c1724);
-      makeTower(3.8, -3.4, 5.8, 0x101b2a);
-      makeTower(-3.1, -6.1, 7.1, 0x0a1420);
-      makeTower(4.9, -6.4, 6.3, 0x0d1722);
-
-      const rain = new THREE.Group();
-      const rainMaterial = new THREE.LineBasicMaterial({ color: 0x8edfff, transparent: true, opacity: 0.38 });
-      for (let i = 0; i < 90; i += 1) {
-        const x = THREE.MathUtils.randFloatSpread(13);
-        const y = THREE.MathUtils.randFloat(1.5, 8.5);
-        const z = THREE.MathUtils.randFloat(-8, 4);
-        const points = [new THREE.Vector3(x, y, z), new THREE.Vector3(x - 0.08, y - 0.55, z)];
-        const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rainMaterial);
-        rain.add(drop);
-      }
-      scene.add(rain);
-
-      const resize = () => {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height, false);
-        composer.setSize(width, height);
-        bloomPass.setSize(width, height);
-      };
-
-      const triggerKioskFeedback = (source) => {
-        state.interaction.lastAction = source;
-        state.interaction.kioskPulse = 1;
-        state.interaction.confirmCount += 1;
-        state.interaction.confirmStartedAt = performance.now();
-        state.interaction.confirmFeedback = {
-          ...CONFIRM_FEEDBACK,
-          active: true,
-          remainingMs: CONFIRM_FEEDBACK.durationMs,
-        };
-        publishState();
-      };
-
-      const deliverPacket = (source = "hud-button") => {
-        triggerKioskFeedback(source);
-        const save = writeSave({
-          playerId: state.player.id,
-          packet: {
-            delivered: true,
-            route: "blue rainline",
-            deliveredAt: new Date().toISOString(),
-          },
-        });
-        state.save = save;
-        applySave();
-        renderText();
-        publishState();
-        playKioskConfirm();
-      };
-
-      const resetSliceSave = () => {
-        resetDefaultServerStore();
-        forceReload({ clearLocalState: true });
-        state.storyBeat = "arrive-at-kiosk";
-        state.packet = { delivered: false, route: null, deliveredAt: null };
-        state.npcMemory.io.remembersPriorPacket = false;
-        state.npcMemory.io.line = "You made it. Touch the kiosk; leave one clean mark and I will remember which route you chose.";
-        state.interaction.lastAction = null;
-        state.interaction.lastPointer = null;
-        state.interaction.kioskPulse = 0;
-        state.interaction.confirmCount = 0;
-        state.interaction.confirmStartedAt = null;
-        state.interaction.confirmFeedback = {
-          ...CONFIRM_FEEDBACK,
-          active: false,
-          remainingMs: 0,
-        };
-        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
-        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
-        camera.position.x = 0;
-        camera.rotation.z = 0;
-        state.save = null;
-        renderText();
-        publishState();
-      };
-
-      const handleScenePointer = (event) => {
-        const rect = canvas.getBoundingClientRect();
-        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        state.interaction.lastPointer = {
-          x: Math.round(event.clientX - rect.left),
-          y: Math.round(event.clientY - rect.top),
-        };
-        raycaster.setFromCamera(pointer, camera);
-        if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
-          event.preventDefault();
-          deliverPacket("scene-kiosk-pointer");
-        } else {
-          publishState();
-        }
-      };
-
-      deliverButton.addEventListener("click", () => deliverPacket("hud-button"));
-      canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
-      soundButton.addEventListener("click", enableAudio);
-      resetButton.addEventListener("click", resetSliceSave);
-      window.addEventListener("resize", resize, { passive: true });
-
-      applySave();
-      renderText();
-      publishState();
-      resize();
+      let touchOrigin = null;
+      window.addEventListener("pointerdown", (event) => {
+        touchOrigin = { x: event.clientX, y: event.clientY };
+        renderer.domElement.setPointerCapture?.(event.pointerId);
+      });
+      window.addEventListener("pointermove", (event) => {
+        if (!touchOrigin) return;
+        const dx = (event.clientX - touchOrigin.x) / 80;
+        const dz = (event.clientY - touchOrigin.y) / 80;
+        setInput(dx, dz, "touch");
+      });
+      window.addEventListener("pointerup", () => {
+        touchOrigin = null;
+        setInput(0, 0, "none");
+      });
+      window.addEventListener("pointercancel", () => {
+        touchOrigin = null;
+        setInput(0, 0, "none");
+      });
 
       let last = performance.now();
-      const tick = (now) => {
-        const dt = Math.min((now - last) / 1000, 0.05);
+      let accumulator = 0;
+      requestAnimationFrame(loop);
+
+      function loop(now) {
+        const rawDt = Math.min((now - last) / 1000, 0.1);
         last = now;
-        const t = now / 1000;
-        const kioskPulse = state.interaction.kioskPulse;
-        const confirmStartedAt = state.interaction.confirmStartedAt;
-        const confirmProgress = confirmStartedAt === null
-          ? 1
-          : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
-        const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
-        const confirmFalloff = 1 - confirmIntensity;
-        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+        accumulator += rawDt;
 
-        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
-        kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
-        io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
-        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
-        document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
-        document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
-        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7;
-        slot.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45;
-        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3;
-        state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
-        if (confirmStartedAt !== null) {
-          state.interaction.confirmFeedback.active = confirmProgress < 1;
-          state.interaction.confirmFeedback.remainingMs = Math.max(0, Math.round(CONFIRM_FEEDBACK.durationMs - (now - confirmStartedAt)));
-          if (confirmProgress >= 1) {
-            state.interaction.confirmStartedAt = null;
-          }
+        while (accumulator >= FIXED_DT) {
+          step(FIXED_DT);
+          accumulator -= FIXED_DT;
         }
-        if (rainFilter) {
-          rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
-        }
-        if (kioskHum) {
-          kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
-        }
-        rain.children.forEach((drop, index) => {
-          drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
-          if (drop.position.y < -2) {
-            drop.position.y = 7.5;
-          }
-        });
 
-        composer.render();
-        requestAnimationFrame(tick);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      function step(dt) {
+        state.frame += 1;
+        state.time += dt;
+        state.lastDtMs = dt * 1000;
+
+        const ix = Math.abs(state.input.x) < INPUT_DEADZONE ? 0 : state.input.x;
+        const iz = Math.abs(state.input.z) < INPUT_DEADZONE ? 0 : state.input.z;
+        const length = Math.hypot(ix, iz) || 1;
+        const vx = (ix / length) * PLAYER_SPEED;
+        const vz = (iz / length) * PLAYER_SPEED;
+
+        state.player.x = clamp(state.player.x + vx * dt, -6.8, 6.8);
+        state.player.z = clamp(state.player.z + vz * dt, -6.8, 6.8);
+        if (ix || iz) state.player.facing = Math.atan2(ix, iz);
+
+        const distanceToIo = Math.hypot(state.player.x - state.io.x, state.player.z - state.io.z);
+        if (!state.io.hasRecognizedPlayer && distanceToIo <= RECOGNITION_RADIUS) {
+          state.io.hasRecognizedPlayer = true;
+          state.io.rememberedVisits += 1;
+          state.io.line = state.io.rememberedVisits === 1
+            ? "Io: You came back before the rain forgot your name. I will remember that."
+            : `Io: Visit ${state.io.rememberedVisits}. The kiosk remembers your path before you do.`;
+          save();
+        }
+      }
+
+      function draw() {
+        player.position.set(state.player.x, 0.58, state.player.z);
+        player.rotation.y = state.player.facing;
+        io.rotation.y = Math.atan2(state.player.x - state.io.x, state.player.z - state.io.z);
+
+        const desiredCamera = new THREE.Vector3(state.player.x - 3.5, 3.1, state.player.z + 4.4);
+        camera.position.lerp(desiredCamera, CAMERA_LERP);
+        camera.lookAt(state.player.x, 0.75, state.player.z);
+
+        document.getElementById("beat").textContent = state.io.hasRecognizedPlayer
+          ? state.io.line
+          : "Find Io at the flooded kiosk.";
+        document.getElementById("debug").textContent = `frame ${state.frame} · ${state.lastDtMs.toFixed(2)}ms step · ${state.input.source}`;
+
+        renderer.render(scene, camera);
+      }
+
+      function updateKeyboardInput() {
+        const x = Number(keys.has("KeyD") || keys.has("ArrowRight")) - Number(keys.has("KeyA") || keys.has("ArrowLeft"));
+        const z = Number(keys.has("KeyS") || keys.has("ArrowDown")) - Number(keys.has("KeyW") || keys.has("ArrowUp"));
+        setInput(x, z, x || z ? "keyboard" : "none");
+      }
+
+      function setInput(x, z, source = "script") {
+        const length = Math.hypot(x, z);
+        const scale = length > 1 ? 1 / length : 1;
+        state.input.x = x * scale;
+        state.input.z = z * scale;
+        state.input.active = Math.hypot(state.input.x, state.input.z) >= INPUT_DEADZONE;
+        state.input.source = source;
+      }
+
+      function save() {
+        state.lastSavedAt = new Date().toISOString();
+        localStorage.setItem(SAVE_KEY, JSON.stringify({
+          player: state.player,
+          io: {
+            rememberedVisits: state.io.rememberedVisits,
+          },
+          lastSavedAt: state.lastSavedAt,
+        }));
+      }
+
+      function readSave() {
+        try {
+          return JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
+        } catch {
+          return {};
+        }
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      window.__game = {
+        slug: "aftersign",
+        state,
+        step,
+        setInput,
+        save,
+        readSave,
+        resetSave() {
+          localStorage.removeItem(SAVE_KEY);
+        },
+        assertFeelContract() {
+          const startX = state.player.x;
+          setInput(1, 0, "harness");
+          step(FIXED_DT);
+          setInput(0, 0, "harness");
+          const movedThisFrame = state.player.x > startX;
+          const fixedStepInsideBudget = state.lastDtMs <= state.feel.targetFrameMs + 0.01;
+          return {
+            passed: movedThisFrame && fixedStepInsideBudget,
+            movedThisFrame,
+            fixedStepInsideBudget,
+            lastDtMs: state.lastDtMs,
+            targetFrameMs: state.feel.targetFrameMs,
+          };
+        },
       };
-
-      requestAnimationFrame(tick);
     </script>
   </body>
 </html>
