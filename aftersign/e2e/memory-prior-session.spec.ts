@@ -74,6 +74,10 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false);
     await page.evaluate(() => window.__game!.input.forceReload());
+    // forceReload() tears down + republishes window.__game; wait for the
+    // fresh surface (version === 1) before driving advance(), otherwise
+    // advance() can race against the stale reference.
+    await page.waitForFunction(() => window.__game?.version === 1);
     await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-returning-recognition");
 

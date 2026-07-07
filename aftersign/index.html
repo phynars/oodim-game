@@ -574,7 +574,9 @@
         state.beat = "packet-delivered";
         state.packet = {
           delivered: true,
-          route: "blue rainline",
+          // Preserve a route chosen via choose("open-packet") / choose("keep-packet-sealed").
+          // The "blue rainline" default is only the HUD-button path that skips `choose`.
+          route: state.packet.route || "blue rainline",
           deliveredAt: state.packet.deliveredAt || new Date().toISOString(),
         };
         state.npcMemory.io.lastLine = "Io takes the sealed packet and slots it into the blue kiosk. The rainline answers once.";
