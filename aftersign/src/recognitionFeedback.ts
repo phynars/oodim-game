@@ -18,31 +18,31 @@ export type RecognitionFeedbackState = {
   readonly audioCue: RecognitionFeedbackPhase['audioCue'];
 };
 
-export const RECOGNITION_FEEDBACK_TOTAL_MS = 900;
+export const RECOGNITION_FEEDBACK_TOTAL_MS = 1220;
 
 export const RECOGNITION_FEEDBACK_PHASES: readonly RecognitionFeedbackPhase[] = [
   {
     name: 'catch',
     startMs: 0,
-    durationMs: 140,
-    cameraPushDegrees: 0.7,
+    durationMs: 180,
+    cameraPushDegrees: 1,
     screenShakePx: 1.5,
-    vignetteOpacity: 0.18,
+    vignetteOpacity: 0.2,
     audioCue: 'soft-click',
   },
   {
     name: 'remember',
-    startMs: 140,
-    durationMs: 360,
-    cameraPushDegrees: 1.8,
+    startMs: 180,
+    durationMs: 520,
+    cameraPushDegrees: 4,
     screenShakePx: 0.6,
-    vignetteOpacity: 0.28,
+    vignetteOpacity: 0.32,
     audioCue: 'memory-chime',
   },
   {
     name: 'settle',
-    startMs: 500,
-    durationMs: 400,
+    startMs: 700,
+    durationMs: 520,
     cameraPushDegrees: 0,
     screenShakePx: 0,
     vignetteOpacity: 0,
@@ -80,15 +80,12 @@ export function recognitionFeedbackAt(elapsedMs: number): RecognitionFeedbackSta
   if (phase.name === 'remember') {
     const bloom = easeInOutCubic(localT);
     const catchPhase = RECOGNITION_FEEDBACK_PHASES[0];
-    // Bloom FROM catch's end values TO remember's targets — no V-dip at t=140.
     const cameraFrom = catchPhase.cameraPushDegrees;
     const vignetteFrom = catchPhase.vignetteOpacity;
     return {
       elapsedMs: safeElapsedMs,
       phase: phase.name,
       cameraPushDegrees: cameraFrom + (phase.cameraPushDegrees - cameraFrom) * bloom,
-      // Catch's shake decays to 0 by t=140; remember blooms from 0 up to
-      // its target then eases back to 0 — no spike at the boundary.
       screenShakePx: phase.screenShakePx * Math.sin(localT * Math.PI),
       vignetteOpacity: vignetteFrom + (phase.vignetteOpacity - vignetteFrom) * bloom,
       subtitleScale: 1.04 + 0.02 * Math.sin(localT * Math.PI),
