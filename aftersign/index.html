@@ -148,6 +148,17 @@
         hudLiftPx: 3,
         pulseDecayPerSecond: 3.8,
       };
+      const MOVEMENT = {
+        fixedStepSeconds: 1 / 60,
+        targetFrameMs: 16.67,
+        speedMetersPerSecond: 3.6,
+        deadzone: 0.08,
+        minX: -5.2,
+        maxX: 5.2,
+        minZ: -6.4,
+        maxZ: 2.2,
+        inputToVelocityFrames: 1,
+      };
 
       const params = new URLSearchParams(window.location.search);
       const slot = params.get("slot") || "local";
@@ -155,6 +166,7 @@
       const sessionId = `session-${slot}`;
 
       const clone = (value) => JSON.parse(JSON.stringify(value));
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
       const readStored = () => {
         try {
           const raw = window.localStorage.getItem(storageKey);
@@ -179,6 +191,9 @@
         },
         player: {
           id: "local-slice-player",
+          x: stored?.player?.x ?? -1.8,
+          z: stored?.player?.z ?? 1.15,
+          facingRadians: stored?.player?.facingRadians ?? 0,
         },
         packet: {
           delivered: Boolean(stored?.packet?.delivered),
@@ -194,6 +209,12 @@
           },
         },
         save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
+        movement: {
+          input: { x: 0, z: 0, source: "none", active: false },
+          lastStepMs: 0,
+          lastVelocityMetersPerSecond: 0,
+          contract: { ...MOVEMENT },
+        },
         interaction: {
           lastAction: null,
           lastPointer: null,
@@ -248,6 +269,7 @@
       const persist = ({ dirty = false } = {}) => {
         const payload = {
           beat: state.scene.beat,
+          player: clone(state.player),
           packet: clone(state.packet),
           memory: clone(state.npcs.io.memory),
           save: {
@@ -266,6 +288,51 @@
           : [];
       };
 
+      const setMoveInput = (x, z, source = "script") => {
+        const length = Math.hypot(x, z);
+        const scale = length > 1 ? 1 / length : 1;
+        const nextX = x * scale;
+        const nextZ = z * scale;
+        state.movement.input = {
+          x: Math.abs(nextX) < MOVEMENT.deadzone ? 0 : nextX,
+          z: Math.abs(nextZ) < MOVEMENT.deadzone ? 0 : nextZ,
+          source,
+          active: Math.hypot(nextX, nextZ) >= MOVEMENT.deadzone,
+        };
+        publishState();
+      };
+
+      const stepMovement = (dt = MOVEMENT.fixedStepSeconds) => {
+        const input = state.movement.input;
+        const vx = input.x * MOVEMENT.speedMetersPerSecond;
+        const vz = input.z * MOVEMENT.speedMetersPerSecond;
+        state.player.x = clamp(state.player.x + vx * dt, MOVEMENT.minX, MOVEMENT.maxX);
+        state.player.z = clamp(state.player.z + vz * dt, MOVEMENT.minZ, MOVEMENT.maxZ);
+        if (input.x || input.z) {
+          state.player.facingRadians = Math.atan2(input.x, input.z);
+        }
+        state.movement.lastStepMs = dt * 1000;
+        state.movement.lastVelocityMetersPerSecond = Math.hypot(vx, vz);
+      };
+
+      const assertFeelContract = () => {
+        const startX = state.player.x;
+        const startZ = state.player.z;
+        setMoveInput(1, 0, "harness");
+        stepMovement(MOVEMENT.fixedStepSeconds);
+        setMoveInput(0, 0, "harness");
+        const movedThisFrame = state.player.x > startX && state.player.z === startZ;
+        const fixedStepInsideBudget = state.movement.lastStepMs <= MOVEMENT.targetFrameMs + 0.01;
+        return {
+          passed: movedThisFrame && fixedStepInsideBudget,
+          movedThisFrame,
+          fixedStepInsideBudget,
+          lastStepMs: state.movement.lastStepMs,
+          targetFrameMs: MOVEMENT.targetFrameMs,
+          inputToVelocityFrames: MOVEMENT.inputToVelocityFrames,
+        };
+      };
+
       const publishState = () => {
         syncIoLine();
         window.__game = {
@@ -276,6 +343,7 @@
           packet: clone(state.packet),
           npcs: clone(state.npcs),
           save: { ...state.save },
+          movement: clone(state.movement),
           interaction: clone(state.interaction),
           getSnapshot: () => clone({
             version: 1,
@@ -285,6 +353,7 @@
             packet: state.packet,
             npcs: state.npcs,
             save: state.save,
+            movement: state.movement,
             interaction: state.interaction,
           }),
           input: {
@@ -292,7 +361,10 @@
             advance,
             forceSave,
             forceReload: reloadFromSave,
+            setMoveInput,
+            stepMovement,
           },
+          assertFeelContract,
           deliverPacket: () => choose("deliver-packet"),
           enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
@@ -303,7 +375,7 @@
         syncIoLine();
         speaker.textContent = "Io";
         line.textContent = state.npcs.io.lastLine;
-        stateReadout.textContent = `story: ${state.scene.beat}`;
+        stateReadout.textContent = `story: ${state.scene.beat} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`;
       };
 
       const setBeat = (beat) => {
@@ -350,6 +422,7 @@
           return;
         }
 
+        state.player = { ...state.player, ...saved.player };
         state.packet = { ...state.packet, ...saved.packet };
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
@@ -476,10 +549,14 @@
       const resetSliceSave = () => {
         window.localStorage.removeItem(storageKey);
         state.scene.beat = "packet-offered";
+        state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
         state.npcs.io.memory = [];
         state.npcs.io.lastLineMemoryRefs = [];
         state.save = emptySave();
+        state.movement.input = { x: 0, z: 0, source: "none", active: false };
+        state.movement.lastStepMs = 0;
+        state.movement.lastVelocityMetersPerSecond = 0;
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
         state.interaction.kioskPulse = 0;
@@ -539,6 +616,22 @@
       wetGround.rotation.x = -Math.PI / 2;
       wetGround.receiveShadow = true;
       scene.add(wetGround);
+
+      const playerMesh = new THREE.Group();
+      const playerBody = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.22, 0.74, 6, 12),
+        new THREE.MeshStandardMaterial({ color: 0xf4dfb1, roughness: 0.48, metalness: 0.08 })
+      );
+      playerBody.position.y = 0.76;
+      playerBody.castShadow = true;
+      playerMesh.add(playerBody);
+      const playerFacing = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.08, 0.28),
+        new THREE.MeshStandardMaterial({ color: 0x79e8ff, emissive: 0x17677b, emissiveIntensity: 0.7 })
+      );
+      playerFacing.position.set(0, 1.02, 0.18);
+      playerMesh.add(playerFacing);
+      scene.add(playerMesh);
 
       const kiosk = new THREE.Group();
       const kioskBody = new THREE.Mesh(
@@ -654,9 +747,24 @@
         }
       };
 
+      const pressedKeys = new Set();
+      const syncKeyboardInput = () => {
+        const x = Number(pressedKeys.has("KeyD") || pressedKeys.has("ArrowRight")) - Number(pressedKeys.has("KeyA") || pressedKeys.has("ArrowLeft"));
+        const z = Number(pressedKeys.has("KeyS") || pressedKeys.has("ArrowDown")) - Number(pressedKeys.has("KeyW") || pressedKeys.has("ArrowUp"));
+        setMoveInput(x, z, x || z ? "keyboard" : "none");
+      };
+
       keepButton.addEventListener("click", () => choose("keep-packet-sealed"));
       deliverButton.addEventListener("click", () => choose("deliver-packet"));
       canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
+      window.addEventListener("keydown", (event) => {
+        pressedKeys.add(event.code);
+        syncKeyboardInput();
+      });
+      window.addEventListener("keyup", (event) => {
+        pressedKeys.delete(event.code);
+        syncKeyboardInput();
+      });
       soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
@@ -666,9 +774,15 @@
       resize();
 
       let last = performance.now();
+      let movementAccumulator = 0;
       const tick = (now) => {
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
+        movementAccumulator += dt;
+        while (movementAccumulator >= MOVEMENT.fixedStepSeconds) {
+          stepMovement(MOVEMENT.fixedStepSeconds);
+          movementAccumulator -= MOVEMENT.fixedStepSeconds;
+        }
         const t = now / 1000;
         const kioskPulse = state.interaction.kioskPulse;
         const confirmStartedAt = state.interaction.confirmStartedAt;
@@ -679,10 +793,12 @@
         const confirmFalloff = 1 - confirmIntensity;
         const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
 
+        playerMesh.position.set(state.player.x, 0, state.player.z);
+        playerMesh.rotation.y = state.player.facingRadians;
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
+        camera.position.x = state.player.x * 0.12 + confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
         camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
@@ -710,6 +826,8 @@
           }
         });
 
+        renderText();
+        publishState();
         composer.render();
         requestAnimationFrame(tick);
       };
