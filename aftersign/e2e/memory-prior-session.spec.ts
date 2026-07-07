@@ -26,6 +26,8 @@ type GameSurface = {
     };
   };
   save: { revision: number; dirty: boolean };
+  getSnapshot(): unknown;
+  reset(snapshot?: unknown): Promise<void> | void;
   input: {
     choose(choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet"): Promise<void>;
     advance(): Promise<void>;
@@ -88,5 +90,24 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     const recognitionLine = returning.npcs.io.lastLine;
     expect(recognitionLine).toContain("blue seal, unbroken");
     expect(recognitionLine).not.toMatch(/memory|system|save/i);
+  });
+
+  test("window.__game snapshot/reset restores the exact story beat", async ({ page }) => {
+    await page.goto(`/aftersign/?slot=snapshot-reset-${Date.now()}`);
+
+    await waitForBeat(page, "packet-offered");
+    await page.evaluate(() => window.__game!.input.choose("open-packet"));
+    await waitForBeat(page, "packet-opened");
+
+    const snapshot = await page.evaluate(() => window.__game!.getSnapshot());
+
+    await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+    await waitForBeat(page, "packet-delivered");
+
+    await page.evaluate((saved) => window.__game!.reset(saved), snapshot);
+    await waitForBeat(page, "packet-opened");
+
+    const restored = await game(page);
+    expect(restored.scene.beat).toBe("packet-opened");
   });
 });
