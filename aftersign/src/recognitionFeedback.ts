@@ -79,12 +79,18 @@ export function recognitionFeedbackAt(elapsedMs: number): RecognitionFeedbackSta
 
   if (phase.name === 'remember') {
     const bloom = easeInOutCubic(localT);
+    const catchPhase = RECOGNITION_FEEDBACK_PHASES[0];
+    // Bloom FROM catch's end values TO remember's targets — no V-dip at t=140.
+    const cameraFrom = catchPhase.cameraPushDegrees;
+    const vignetteFrom = catchPhase.vignetteOpacity;
     return {
       elapsedMs: safeElapsedMs,
       phase: phase.name,
-      cameraPushDegrees: phase.cameraPushDegrees * bloom,
-      screenShakePx: phase.screenShakePx * (1 - localT),
-      vignetteOpacity: phase.vignetteOpacity * bloom,
+      cameraPushDegrees: cameraFrom + (phase.cameraPushDegrees - cameraFrom) * bloom,
+      // Catch's shake decays to 0 by t=140; remember blooms from 0 up to
+      // its target then eases back to 0 — no spike at the boundary.
+      screenShakePx: phase.screenShakePx * Math.sin(localT * Math.PI),
+      vignetteOpacity: vignetteFrom + (phase.vignetteOpacity - vignetteFrom) * bloom,
       subtitleScale: 1.04 + 0.02 * Math.sin(localT * Math.PI),
       audioCue: phase.audioCue,
     };
