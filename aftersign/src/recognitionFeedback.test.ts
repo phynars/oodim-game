@@ -29,29 +29,31 @@ export function checkCatchBeatOpensRecognition(): void {
   assertClose(start.cameraPushDegrees, 0, 0.01, 't=0 cameraPushDegrees');
   assertClose(start.subtitleScale, 1, 0.01, 't=0 subtitleScale');
 
-  // At t=140 we cross into the remember bloom; the chime should be on.
-  const peak = recognitionFeedbackAt(140);
-  assert(peak.phase === 'remember', `t=140 phase: expected 'remember', got '${peak.phase}'`);
+  const rememberStart = recognitionFeedbackAt(180);
   assert(
-    peak.audioCue === 'memory-chime',
-    `t=140 audioCue: expected 'memory-chime', got '${peak.audioCue}'`,
+    rememberStart.phase === 'remember',
+    `t=180 phase: expected 'remember', got '${rememberStart.phase}'`,
+  );
+  assert(
+    rememberStart.audioCue === 'memory-chime',
+    `t=180 audioCue: expected 'memory-chime', got '${rememberStart.audioCue}'`,
   );
 }
 
 export function checkRememberBloomThenSettle(): void {
-  const bloom = recognitionFeedbackAt(320);
-  assert(bloom.phase === 'remember', `t=320 phase: expected 'remember', got '${bloom.phase}'`);
+  const bloom = recognitionFeedbackAt(520);
+  assert(bloom.phase === 'remember', `t=520 phase: expected 'remember', got '${bloom.phase}'`);
   assert(
-    bloom.cameraPushDegrees > 0.8,
-    `t=320 cameraPushDegrees: expected > 0.8, got ${bloom.cameraPushDegrees}`,
+    bloom.cameraPushDegrees > 2.5,
+    `t=520 cameraPushDegrees: expected > 2.5, got ${bloom.cameraPushDegrees}`,
   );
   assert(
-    bloom.vignetteOpacity > 0.1,
-    `t=320 vignetteOpacity: expected > 0.1, got ${bloom.vignetteOpacity}`,
+    bloom.vignetteOpacity > 0.24,
+    `t=520 vignetteOpacity: expected > 0.24, got ${bloom.vignetteOpacity}`,
   );
   assert(
     bloom.subtitleScale > 1.04,
-    `t=320 subtitleScale: expected > 1.04, got ${bloom.subtitleScale}`,
+    `t=520 subtitleScale: expected > 1.04, got ${bloom.subtitleScale}`,
   );
 
   const done = recognitionFeedbackAt(RECOGNITION_FEEDBACK_TOTAL_MS);
@@ -66,40 +68,52 @@ export function checkRememberBloomThenSettle(): void {
 
 // Boundary-continuity checks — the whole point of PR #453's feel-curve work.
 export function checkPhaseBoundariesAreContinuous(): void {
-  const epsilon = 0.02;
-  const beforeCatchEnd = recognitionFeedbackAt(139);
-  const atRememberStart = recognitionFeedbackAt(140);
+  const epsilon = 0.03;
+  const beforeCatchEnd = recognitionFeedbackAt(179);
+  const atRememberStart = recognitionFeedbackAt(180);
   assertClose(
     beforeCatchEnd.cameraPushDegrees,
     atRememberStart.cameraPushDegrees,
     epsilon,
-    't=140 cameraPushDegrees continuity',
+    't=180 cameraPushDegrees continuity',
   );
   assertClose(
     beforeCatchEnd.vignetteOpacity,
     atRememberStart.vignetteOpacity,
     epsilon,
-    't=140 vignetteOpacity continuity',
+    't=180 vignetteOpacity continuity',
   );
 
-  const beforeRememberEnd = recognitionFeedbackAt(499);
-  const atSettleStart = recognitionFeedbackAt(500);
+  const beforeRememberEnd = recognitionFeedbackAt(699);
+  const atSettleStart = recognitionFeedbackAt(700);
   assertClose(
     beforeRememberEnd.cameraPushDegrees,
     atSettleStart.cameraPushDegrees,
     epsilon,
-    't=500 cameraPushDegrees continuity',
+    't=700 cameraPushDegrees continuity',
   );
   assertClose(
     beforeRememberEnd.vignetteOpacity,
     atSettleStart.vignetteOpacity,
     epsilon,
-    't=500 vignetteOpacity continuity',
+    't=700 vignetteOpacity continuity',
   );
+}
+
+export function checkRecognitionProfileContract(): void {
+  assert(
+    RECOGNITION_FEEDBACK_TOTAL_MS === 1220,
+    `total duration: expected 1220ms, got ${RECOGNITION_FEEDBACK_TOTAL_MS}ms`,
+  );
+
+  const peak = recognitionFeedbackAt(700);
+  assertClose(peak.cameraPushDegrees, 4, 0.01, 't=700 cameraPushDegrees peak');
+  assertClose(peak.vignetteOpacity, 0.32, 0.01, 't=700 vignette peak');
 }
 
 export function runRecognitionFeedbackChecks(): void {
   checkCatchBeatOpensRecognition();
   checkRememberBloomThenSettle();
   checkPhaseBoundariesAreContinuous();
+  checkRecognitionProfileContract();
 }
