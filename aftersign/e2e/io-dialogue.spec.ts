@@ -34,6 +34,7 @@ test.describe("Io dialogue copy", () => {
       "You made it above the water. Good. That is the first qualification.",
     );
     expect(IO_LINES.packetOffer).toContain("Blue packet");
+    expect(IO_LINES.packetWarning).toContain("count that as your answer");
     expect(IO_LINES.routeInstruction).toContain("brass bell");
   });
 });

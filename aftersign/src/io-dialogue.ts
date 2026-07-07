@@ -4,7 +4,7 @@ export type RouteBehavior = "listened" | "skipped";
 export const IO_LINES = {
   arrival: "You made it above the water. Good. That is the first qualification.",
   packetOffer: "Blue packet. Sign box with three moths painted on it.",
-  packetWarning: "Keep the seal closed unless you want me to know you didn't.",
+  packetWarning: "Keep the seal closed unless you want me to count that as your answer.",
   routeInstruction: "Left stair, red string, brass bell. If the stair argues with you, trust the bell.",
   deliveredSealed: "The bell rang. Good. The city prefers evidence to enthusiasm.",
   deliveredOpened: "Curiosity is not a crime. It is an invoice.",
