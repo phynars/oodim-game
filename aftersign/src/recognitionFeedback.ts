@@ -76,11 +76,12 @@ export function recognitionFeedbackAt(elapsedMs: number): RecognitionFeedbackSta
 
   if (phase.name === 'catch') {
     const pop = easeOutCubic(localT);
+    const shakePulse = 1 + 0.2 * Math.abs(Math.sin(localT * Math.PI * 3));
     return {
       elapsedMs: safeElapsedMs,
       phase: phase.name,
       cameraPushDegrees: phase.cameraPushDegrees * pop,
-      screenShakePx: phase.screenShakePx * (1 - localT),
+      screenShakePx: phase.screenShakePx * (1 - localT) * shakePulse,
       vignetteOpacity: phase.vignetteOpacity * pop,
       subtitleScale: 1 + 0.04 * pop,
       audioCue: phase.audioCue,
