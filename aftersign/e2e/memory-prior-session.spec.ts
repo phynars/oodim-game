@@ -76,6 +76,13 @@ function watchPageErrors(page: Page, label: string): void {
   });
 }
 
+function expectMemoryRefsToResolve(surface: GameSurface): void {
+  const ids = new Set(surface.npcs.io.memory.map((fact) => fact.id));
+  for (const ref of surface.npcs.io.lastLineMemoryRefs) {
+    expect(ids.has(ref)).toBe(true);
+  }
+}
+
 test.describe("AFTERSIGN prior-session memory contract", () => {
   test("Io's recognition line is backed by a saved fact from the previous session", async ({
     page,
@@ -121,6 +128,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     expect(returning.save.dirty).toBe(false);
     expect(recalledFact).toEqual(savedFact);
     expect(returning.npcs.io.lastLineMemoryRefs).toEqual([savedFact!.id]);
+    expectMemoryRefsToResolve(returning);
 
     const recognitionLine = returning.npcs.io.lastLine;
     expect(recognitionLine).toContain("blue seal, unbroken");
@@ -144,6 +152,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     const restored = await game(page);
     expect(restored.scene.beat).toBe("packet-opened");
+    expectMemoryRefsToResolve(restored);
   });
 
   test("prior-session memory stays slot-scoped across save/reload", async ({ page }) => {
@@ -167,6 +176,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await waitForBeat(page, "io-returning-recognition");
 
     const slotAState = await game(page);
+    expectMemoryRefsToResolve(slotAState);
     expect(
       slotAState.npcs.io.memory.some((fact) => fact.predicate === "delivered-blue-packet"),
     ).toBe(true);
@@ -175,6 +185,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await waitForBeat(page, "packet-offered");
 
     const slotBState = await game(page);
+    expectMemoryRefsToResolve(slotBState);
     const leakedFacts = slotBState.npcs.io.memory.filter(
       (fact) => fact.predicate === "delivered-blue-packet",
     );
@@ -197,10 +208,12 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     });
 
     const beforeReload = await game(page);
+    expectMemoryRefsToResolve(beforeReload);
 
     await page.reload({ waitUntil: "load" });
 
     const afterReload = await game(page);
+    expectMemoryRefsToResolve(afterReload);
 
     expect(afterReload.scene.beat).toBe(beforeReload.scene.beat);
     expect(afterReload.save.revision).toBe(beforeReload.save.revision);
