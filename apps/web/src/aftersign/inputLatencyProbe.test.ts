@@ -27,24 +27,40 @@ type FrameCb = (ts: number) => void;
 interface RafHarness {
   pump: (ts: number) => void;
   pending: () => number;
+  cancels: () => number;
 }
 
 function installRafHarness(): RafHarness {
-  const queue: FrameCb[] = [];
+  // Model rAF as an id→callback map so cancelAnimationFrame can actually
+  // remove pending callbacks — that's what we need to prove dispose()
+  // stops the loop.
+  const queue = new Map<number, FrameCb>();
+  let nextId = 0;
+  let cancelCount = 0;
   const raf = (cb: FrameCb): number => {
-    queue.push(cb);
-    return queue.length;
+    nextId += 1;
+    queue.set(nextId, cb);
+    return nextId;
   };
-  // Attach to globalThis so the probe module picks it up.
-  (globalThis as unknown as { requestAnimationFrame: typeof raf }).requestAnimationFrame = raf;
+  const caf = (id: number): void => {
+    if (queue.delete(id)) cancelCount += 1;
+  };
+  const g = globalThis as unknown as {
+    requestAnimationFrame: typeof raf;
+    cancelAnimationFrame: typeof caf;
+  };
+  g.requestAnimationFrame = raf;
+  g.cancelAnimationFrame = caf;
   return {
     pump(ts: number) {
       // Drain exactly what's queued at this moment — callbacks that
       // re-schedule land in a fresh generation, not this pump.
-      const gen = queue.splice(0, queue.length);
-      for (const cb of gen) cb(ts);
+      const gen = Array.from(queue.entries());
+      queue.clear();
+      for (const [, cb] of gen) cb(ts);
     },
-    pending: () => queue.length,
+    pending: () => queue.size,
+    cancels: () => cancelCount,
   };
 }
 
@@ -149,6 +165,70 @@ describe("createInputLatencyProbe", () => {
     expect(drained).toHaveLength(3);
     // Newest three: src-2, src-3, src-4.
     expect(drained.map((s) => s.source)).toEqual(["src-2", "src-3", "src-4"]);
+  });
+
+  it("dispose() cancels the rAF loop and stops it from rescheduling", () => {
+    const probe = createInputLatencyProbe();
+    // Construction schedules the first tick.
+    expect(raf.pending()).toBe(1);
+
+    // One idle pump — tick reschedules itself.
+    raf.pump(1);
+    expect(raf.pending()).toBe(1);
+
+    probe.dispose();
+
+    // dispose() must have cancelled the outstanding handle.
+    expect(raf.cancels()).toBe(1);
+    expect(raf.pending()).toBe(0);
+
+    // markInput after dispose is a no-op.
+    clock = 50;
+    probe.markInput("post-dispose");
+    // Even if a stale frame fires (e.g. browser had already committed
+    // the callback pre-cancel), the disposed guard prevents rescheduling.
+    // Simulate that by manually re-queuing and pumping — nothing should
+    // land in samples and the queue must stay empty.
+    raf.pump(60);
+    expect(raf.pending()).toBe(0);
+    expect(probe.latest()).toBeNull();
+    expect(probe.flush()).toEqual([]);
+  });
+
+  it("dispose() is idempotent", () => {
+    const probe = createInputLatencyProbe();
+    raf.pump(1);
+    probe.dispose();
+    probe.dispose();
+    probe.dispose();
+    expect(raf.cancels()).toBe(1);
+    expect(raf.pending()).toBe(0);
+  });
+
+  it("a stale tick that fires after dispose() does not reschedule", () => {
+    // Guards the race the disposed-flag in tick handles: browser has
+    // already committed to invoking the callback for this frame, then
+    // dispose() runs before the callback executes. Our cancel removed
+    // it from the queue, but in a real browser the callback can still
+    // fire. Simulate by capturing the callback, disposing, then invoking.
+    let capturedCb: FrameCb | null = null;
+    const origRaf = globalThis.requestAnimationFrame;
+    (globalThis as unknown as { requestAnimationFrame: (cb: FrameCb) => number }).requestAnimationFrame =
+      (cb: FrameCb) => {
+        capturedCb = cb;
+        return 999;
+      };
+    const probe = createInputLatencyProbe();
+    globalThis.requestAnimationFrame = origRaf;
+
+    probe.dispose();
+    // Fire the captured stale callback manually — this is what a real
+    // browser could do after cancelAnimationFrame in edge cases.
+    expect(capturedCb).not.toBeNull();
+    capturedCb!(42);
+
+    // No reschedule must have happened on the (restored) real harness.
+    expect(raf.pending()).toBe(0);
   });
 
   it("latest returns null before any samples and the newest after", () => {

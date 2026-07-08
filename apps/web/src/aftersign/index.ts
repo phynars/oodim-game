@@ -5,6 +5,10 @@
 // input entry point (pointerdown / keydown) and expose the probe on
 // `window.__game.inputLatencyProbe` so the e2e feel lane can read it.
 //
+// LIFECYCLE: the probe owns an internal rAF loop. On unmount or HMR
+// teardown you MUST call `probe.dispose()` — otherwise every reload
+// stacks another orphaned loop that keeps ticking against a dead scope.
+//
 // See `inputLatencyProbe.test.ts` for the semantic contract.
 
 export {
