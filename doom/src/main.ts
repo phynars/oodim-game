@@ -36,7 +36,6 @@ const scoreEl = document.querySelector<HTMLElement>('[data-hud="score"]');
 // state.hitFlashTicks > 0. All read-only consumers of window.__doom — same
 // shape as the HUD.
 const titleEl = document.querySelector<HTMLElement>('[data-overlay="title"]');
-const pausedEl = document.querySelector<HTMLElement>('[data-overlay="paused"]');
 const gameoverEl = document.querySelector<HTMLElement>(
   '[data-overlay="gameover"]',
 );
@@ -64,7 +63,6 @@ const pickupMessageEl = document.querySelector<HTMLElement>(
 
 if (healthEl && armorEl && ammoEl && scoreEl) {
   let lastTitleVisible: boolean | null = null;
-  let lastPausedVisible: boolean | null = null;
   let lastGameoverVisible: boolean | null = null;
   let lastFlash = -1;
   let lastFinalScore = "";
@@ -92,13 +90,6 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
       if (titleEl && lastTitleVisible !== wantTitle) {
         titleEl.style.display = wantTitle ? "flex" : "none";
         lastTitleVisible = wantTitle;
-      }
-      // Pause overlay: shown only when paused. Strict read-only mirror of the
-      // engine status, same as title/game-over.
-      const wantPaused = s.status === "paused";
-      if (pausedEl && lastPausedVisible !== wantPaused) {
-        pausedEl.style.display = wantPaused ? "flex" : "none";
-        lastPausedVisible = wantPaused;
       }
       // Game-over overlay: shown on any terminal state.
       const wantGameover =
