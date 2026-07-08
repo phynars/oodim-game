@@ -50,6 +50,24 @@ function triangularPulse(t) {
   return p < 0.5 ? p * 2 : (1 - p) * 2;
 }
 
+function isMonotonicNonIncreasing(values, tolerance = 0.0001) {
+  for (let i = 1; i < values.length; i += 1) {
+    if (values[i] > values[i - 1] + tolerance) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isMonotonicNonDecreasing(values, tolerance = 0.0001) {
+  for (let i = 1; i < values.length; i += 1) {
+    if (values[i] + tolerance < values[i - 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function sampleInteractionConfirm(tMs, profile = CONFIRM_FEEL_PROFILE) {
   const t = Math.max(0, Math.min(profile.totalMs, tMs));
   const pressT = clamp01(t / profile.pressDipMs);
@@ -105,6 +123,10 @@ function validateInteractionConfirmFeel(profile = CONFIRM_FEEL_PROFILE) {
   const end = sampleInteractionConfirm(profile.totalMs, profile);
   const timeline = makeInteractionConfirmTimeline(FRAME_MS_60FPS, profile);
 
+  const shakeAbs = timeline.map((sample) => Math.abs(sample.cameraShakePx));
+  const ringOpacityTimeline = timeline.map((sample) => sample.ringOpacity);
+  const ringRadiusTimeline = timeline.map((sample) => sample.ringRadiusPx);
+
   return Object.freeze({
     totalDurationMatches: profile.totalMs === CONFIRM_FEEL_MS,
     pressDipHitsTarget: Math.abs(press.scale - profile.minScale) < 0.001,
@@ -112,8 +134,11 @@ function validateInteractionConfirmFeel(profile = CONFIRM_FEEL_PROFILE) {
     settlesToOne: Math.abs(end.scale - profile.finalScale) < 0.001,
     shakeStartsAtImpulse: Math.abs(Math.abs(start.cameraShakePx) - profile.cameraImpulsePx) < 0.001,
     shakeSettles: Math.abs(end.cameraShakePx) < 0.001,
+    shakeEnvelopeMonotonic: isMonotonicNonIncreasing(shakeAbs),
     ringExpands: end.ringRadiusPx > start.ringRadiusPx,
     ringFades: end.ringOpacity < 0.001,
+    ringOpacityMonotonic: isMonotonicNonIncreasing(ringOpacityTimeline),
+    ringRadiusMonotonic: isMonotonicNonDecreasing(ringRadiusTimeline),
     bloomReturnsToZero: end.bloom < 0.001,
     timelineStaysPhoneSized: timeline.length <= 15,
   });
