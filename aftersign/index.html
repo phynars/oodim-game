@@ -613,7 +613,8 @@
 
       const advance = async () => {
         if (state.packet.delivered && state.npcs.io.memory.length > 0) {
-          setBeat("io-returning-recognition");
+          markStateDirty();
+    setBeat("io-returning-recognition");
         }
       };
 
