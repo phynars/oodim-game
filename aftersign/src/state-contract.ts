@@ -106,6 +106,9 @@ export interface GameSurface {
     io: NpcState;
   };
   save: SaveState;
+  /** Story-level surface (currentNpcId + memoryBeat). The harness reads
+   * `story.memoryBeat` to assert the Io recognition contract fired. */
+  story: StoryState;
   input: InputSurface;
   /** Deep-clone snapshot of the current story/state surface. Round-trips
    * through `reset(snapshot)` to restore the exact beat + memory. */
