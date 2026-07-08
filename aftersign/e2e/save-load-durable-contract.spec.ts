@@ -108,15 +108,23 @@ test.describe("AFTERSIGN durable save/load contract", () => {
   //      the same store the impl currently persists to, so a reload
   //      that reconstructs state must do so from an authoritative
   //      source other than local storage.
-  //   4. forceReload() — after the wipe.
+  //   4. Cold restart via `page.goto(sameSlotUrl)` — NOT the in-page
+  //      `forceReload()`, which does `readStored(); if (!saved) return`
+  //      after a wipe and leaves the pre-wipe in-memory `state`
+  //      untouched (a no-op that would let every assertion below pass
+  //      trivially). Cold restart re-runs the module and rebuilds
+  //      `state` from scratch, so anything not durably persisted is
+  //      genuinely gone.
   //   5. Assert the saved memory + revision came back.
   //
-  // Against the current localStorage-only impl, step 5 FAILS: the
-  // memory is gone, revision resets to 0. That is the RED for the
-  // right reason — the durable path does not exist yet, and the
-  // harness now says so. When the impl gains a server-authoritative
-  // save path (or any store that outlives `localStorage.clear()`),
-  // this test flips to green without any assertion changes.
+  // Against the current localStorage-only impl, step 5 FAILS: after
+  // the cold restart, `readStored()` returns null → state rebuilds
+  // with `packet.delivered=false`, `memory=[]`, `save.revision=0`.
+  // That is the RED for the right reason — the durable path does not
+  // exist yet, and the harness now says so. When the impl gains a
+  // server-authoritative save path (or any store that outlives
+  // `localStorage.clear()`), this test flips to green without any
+  // assertion changes.
   //
   // Differentiator vs `memory-prior-session.spec.ts`: that test does
   // forceSave → forceReload with local state INTACT. This one wipes
@@ -133,7 +141,8 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     // no cross-test contamination and the wipe below is total for THIS
     // test's data.
     const slot = `durable-contract-${Date.now()}`;
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    const url = `/aftersign/?slot=${slot}`;
+    await page.goto(url, { waitUntil: "load" });
 
     // 1. Author the Io delivery-outcome memory via the impl's real
     //    choice ids ("keep-packet-sealed", "deliver-packet"). Any
@@ -174,22 +183,40 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     expect(afterSave.save.dirty).toBe(false);
     const revisionAfterSave = afterSave.save.revision;
 
-    // 3. Wipe local state. This is the harness-side stand-in for
-    //    `forceReload({ clearLocalState: true })` while the impl
-    //    doesn't yet honor that argument. Wiping BOTH keys guards
-    //    against a future impl that stores auxiliary data alongside
-    //    the main slice payload.
+    // 3. Wipe local state, then COLD RESTART. This is the harness-side
+    //    stand-in for `forceReload({ clearLocalState: true })` while the
+    //    impl doesn't yet honor that argument.
+    //
+    //    Why cold restart and not in-page forceReload():
+    //    forceReload() calls readStored() and early-returns on null
+    //    (index.html reloadFromSave) — after localStorage.clear() there
+    //    is nothing to read, so the in-memory `state` is never disturbed
+    //    and every downstream assertion trivially passes against the
+    //    pre-wipe object. That's a no-op test with zero durability
+    //    signal. A page.goto reload rebuilds `state` from scratch via
+    //    the module's top-level `stored = readStored()` on cold load —
+    //    so anything that isn't durably persisted is genuinely lost.
+    //
+    //    Same slot URL: any future authoritative store keyed by slot
+    //    (server-side, IndexedDB, etc.) still gets its chance to
+    //    rehydrate. Only the localStorage bucket is wiped.
     await page.evaluate(() => {
       window.localStorage.clear();
     });
+    await page.goto(url, { waitUntil: "load" });
 
-    // 4. Reload from whatever authoritative store the impl has.
-    //    Against today's localStorage-only impl there is nothing left
-    //    to reload from → the assertions below fail as required by
-    //    the spec's `local-only-save` red polarity.
-    await page.evaluate(() => window.__game!.input.forceReload());
+    // 4. Wait for the cold-loaded module to publish its surface, then
+    //    drive advance() so the recognition beat can be reached IF the
+    //    durable path restored `packet.delivered` and memory. Against
+    //    today's localStorage-only impl, cold reload rebuilds with
+    //    `packet.delivered === false` and `memory === []`, so
+    //    advance()'s guard fails and the beat stays `packet-offered` —
+    //    which drives every assertion below to fail as required by the
+    //    spec's `local-only-save` red polarity.
+    await page.waitForFunction(() => window.__game?.version === 1, undefined, {
+      timeout: WAIT_MS,
+    });
     await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-returning-recognition");
 
     const afterReload = await game(page);
 
