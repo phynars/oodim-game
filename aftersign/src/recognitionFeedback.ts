@@ -50,6 +50,40 @@ export const RECOGNITION_FEEDBACK_PHASES: readonly RecognitionFeedbackPhase[] = 
   },
 ];
 
+export const IO_RECOGNITION_DIALOGUE_BEATS_MS = [440, 880, 1220] as const;
+
+export type IoRecognitionDialogueBeatMs = (typeof IO_RECOGNITION_DIALOGUE_BEATS_MS)[number];
+
+export type IoRecognitionDialogueLine = {
+  readonly beatMs: IoRecognitionDialogueBeatMs;
+  readonly text: string;
+};
+
+export const IO_RECOGNITION_DIALOGUE_LINES: readonly IoRecognitionDialogueLine[] = [
+  {
+    beatMs: 440,
+    text: "Io: Wait. I know that rhythm — it's you.",
+  },
+  {
+    beatMs: 880,
+    text: 'Io: Last time, you chose the quiet door. I kept it unlatched.',
+  },
+  {
+    beatMs: 1220,
+    text: 'Io: Say my name and we keep going. Leave, and I remember that too.',
+  },
+] as const;
+
+export function ioRecognitionDialogueAtBeatIndex(beatIndex: number): IoRecognitionDialogueLine {
+  const line = IO_RECOGNITION_DIALOGUE_LINES[beatIndex];
+  if (!line) {
+    throw new RangeError(
+      `Io recognition dialogue beat index out of range: ${beatIndex} (expected 0-${IO_RECOGNITION_DIALOGUE_LINES.length - 1})`,
+    );
+  }
+  return line;
+}
+
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - clamp01(t), 3);
 const easeInOutCubic = (t: number): number => {
