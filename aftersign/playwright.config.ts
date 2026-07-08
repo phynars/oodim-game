@@ -39,6 +39,14 @@ export default defineConfig({
             "--use-angle=swiftshader",
             "--enable-unsafe-swiftshader",
             "--ignore-gpu-blocklist",
+            // Allow AudioContext.resume() to complete without a user gesture
+            // in headless CI, so the phone-ready look/sound contract spec
+            // (io-phone-ready-look-sound-contract.spec.ts) can measure real
+            // A/V coupling drift after game.enableAudio(). Without this the
+            // context stays suspended and the "packet-confirmed" cue never
+            // fires — the spec would have to fall back to a static check,
+            // which is exactly what #544 asks us not to do.
+            "--autoplay-policy=no-user-gesture-required",
           ],
         },
       },
