@@ -793,6 +793,7 @@
               ? "io-returning-recognition-sealed"
               : "io-returning-recognition-opened",
           };
+          markStateDirty();
           setBeat("io-returning-recognition");
         }, 1180);
         persist({ dirty: true });
