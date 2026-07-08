@@ -137,10 +137,33 @@ export function checkCameraPushEnvelopeMonotonic(): void {
   }
 }
 
+// Subtitle feel guardrail: scale should stay in a tight readability band
+// through the full recognition beat and return to 1.0 at the end.
+export function checkSubtitleScaleEnvelopeBounds(): void {
+  const stepMs = 20;
+  const epsilon = 0.0001;
+
+  for (let t = 0; t <= RECOGNITION_FEEDBACK_TOTAL_MS; t += stepMs) {
+    const state = recognitionFeedbackAt(t);
+    assert(
+      state.subtitleScale >= 1 - epsilon,
+      `subtitleScale should never dip below 1.0 (t=${t}): got ${state.subtitleScale}`,
+    );
+    assert(
+      state.subtitleScale <= 1.06 + epsilon,
+      `subtitleScale should stay within readability cap (t=${t}): got ${state.subtitleScale}`,
+    );
+  }
+
+  const endState = recognitionFeedbackAt(RECOGNITION_FEEDBACK_TOTAL_MS);
+  assertClose(endState.subtitleScale, 1, 0.01, 't=end subtitleScale reset');
+}
+
 export function runRecognitionFeedbackChecks(): void {
   checkCatchBeatOpensRecognition();
   checkRememberBloomThenSettle();
   checkPhaseBoundariesAreContinuous();
   checkRecognitionProfileContract();
   checkCameraPushEnvelopeMonotonic();
+  checkSubtitleScaleEnvelopeBounds();
 }
