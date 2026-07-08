@@ -34,6 +34,7 @@ type GameSnapshot = {
   scene: { beat: Beat };
   packet: { sealed: boolean };
   interaction: {
+    failureStartedAt: number | null;
     packetIntent: {
       outcome: PacketOutcome;
       progress: number;
@@ -139,6 +140,25 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   expect(cancelledSnapshot.interaction.failureFeedback.remainingMs).toBeLessThanOrEqual(180);
   expect(cancelledSnapshot.interaction.failureFeedback.durationMs).toBe(180);
   expect(cancelledSnapshot.interaction.failureFeedback.flashAlpha).toBe(0.34);
+  expect(cancelledSnapshot.interaction.failureStartedAt).not.toBeNull();
+
+  // --- Regression guard: drift-cancel THEN pointerup on the same gesture must
+  // NOT re-trigger the failure sting. Before the transition guard, the release
+  // path saw the stale CANCELLED snapshot from the controller and fired the
+  // 180ms sting a second time — the player would see the flash replay. Assert
+  // failureStartedAt is stable across the release (i.e. no new trigger).
+  const cancelStartedAt = cancelledSnapshot.interaction.failureStartedAt;
+  const afterReleaseSnapshot = await page.evaluate((prev) => {
+    // Small sleep so a re-trigger would produce a strictly-later performance.now().
+    const before = performance.now();
+    while (performance.now() - before < 20) { /* spin ~20ms */ }
+    window.__game?.input.packetRelease({ timeMs: 8_000 + 90, x: 122, y: 100 });
+    return { snapshot: window.__game?.getSnapshot(), prevStartedAt: prev };
+  }, cancelStartedAt);
+
+  expect(afterReleaseSnapshot.snapshot.interaction.packetIntent.outcome).toBe("cancelled");
+  expect(afterReleaseSnapshot.snapshot.interaction.failureStartedAt)
+    .toBe(afterReleaseSnapshot.prevStartedAt);
 
   // --- Past-threshold: continue the same hold to start + 2000ms ---
   const heldSnapshot = await page.evaluate(() => {
