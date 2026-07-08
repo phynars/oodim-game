@@ -182,4 +182,30 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     expect(leakedFacts).toEqual([]);
     expect(slotBState.npcs.io.lastLineMemoryRefs).toEqual([]);
   });
+
+  test("saved state survives a full page reload for the same slot", async ({ page }) => {
+    const slot = `hard-reload-${Date.now()}`;
+
+    await page.goto(`/aftersign/?slot=${slot}`);
+    await waitForBeat(page, "packet-offered");
+    await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+    await waitForBeat(page, "packet-kept-sealed");
+
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
+    });
+
+    const beforeReload = await game(page);
+
+    await page.reload({ waitUntil: "load" });
+
+    const afterReload = await game(page);
+
+    expect(afterReload.scene.beat).toBe(beforeReload.scene.beat);
+    expect(afterReload.save.revision).toBe(beforeReload.save.revision);
+    expect(afterReload.save.dirty).toBe(false);
+    expect(afterReload.npcs.io.memory).toEqual(beforeReload.npcs.io.memory);
+    expect(afterReload.npcs.io.lastLineMemoryRefs).toEqual(beforeReload.npcs.io.lastLineMemoryRefs);
+  });
 });
