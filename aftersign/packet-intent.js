@@ -86,7 +86,7 @@ export class PacketIntentController {
   }
 
   /**
-   * Advance the hold clock without any pointer movement. This is the primary
+   * Advance the hold clock without any pointer move. This is the primary
    * open path on mouse and touch: the player presses and holds without wiggling,
    * and the packet must still open at HOLD_TO_OPEN_MS. Scene tick / rAF loop
    * should call this every frame while `active` is true.
@@ -117,9 +117,12 @@ export class PacketIntentController {
       this.outcome = PACKET_OUTCOME.CANCELLED;
     } else {
       const heldMs = timeMs - this.startTimeMs;
-      this.outcome = heldMs <= this.config.TAP_TO_PRESERVE_MAX_MS
+      // Releasing before full commit keeps the packet sealed.
+      // This removes the punitive 181-449 ms dead zone where intent used to be
+      // interpreted as cancel despite in-bounds input.
+      this.outcome = heldMs < this.config.HOLD_TO_OPEN_MS
         ? PACKET_OUTCOME.SEALED
-        : PACKET_OUTCOME.CANCELLED;
+        : PACKET_OUTCOME.OPENED;
     }
 
     this.active = false;
