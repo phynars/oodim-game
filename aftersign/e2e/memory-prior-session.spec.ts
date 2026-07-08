@@ -208,4 +208,29 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     expect(afterReload.npcs.io.memory).toEqual(beforeReload.npcs.io.memory);
     expect(afterReload.npcs.io.lastLineMemoryRefs).toEqual(beforeReload.npcs.io.lastLineMemoryRefs);
   });
+
+  test("forceReload preserves saved beat, memory, and revision exactly", async ({ page }) => {
+    const slot = `reload-exact-${Date.now()}`;
+
+    await page.goto(`/aftersign/?slot=${slot}`);
+    await waitForBeat(page, "packet-offered");
+    await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+    await waitForBeat(page, "packet-kept-sealed");
+
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
+    });
+
+    const saved = await game(page);
+
+    await page.evaluate(() => window.__game!.input.forceReload());
+    const reloaded = await game(page);
+
+    expect(reloaded.scene.beat).toBe(saved.scene.beat);
+    expect(reloaded.save.revision).toBe(saved.save.revision);
+    expect(reloaded.save.dirty).toBe(false);
+    expect(reloaded.npcs.io.memory).toEqual(saved.npcs.io.memory);
+    expect(reloaded.npcs.io.lastLineMemoryRefs).toEqual(saved.npcs.io.lastLineMemoryRefs);
+  });
 });
