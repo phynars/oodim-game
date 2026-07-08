@@ -36,6 +36,7 @@ const scoreEl = document.querySelector<HTMLElement>('[data-hud="score"]');
 // state.hitFlashTicks > 0. All read-only consumers of window.__doom — same
 // shape as the HUD.
 const titleEl = document.querySelector<HTMLElement>('[data-overlay="title"]');
+const pausedEl = document.querySelector<HTMLElement>('[data-overlay="paused"]');
 const gameoverEl = document.querySelector<HTMLElement>(
   '[data-overlay="gameover"]',
 );
@@ -63,6 +64,7 @@ const pickupMessageEl = document.querySelector<HTMLElement>(
 
 if (healthEl && armorEl && ammoEl && scoreEl) {
   let lastTitleVisible: boolean | null = null;
+  let lastPausedVisible: boolean | null = null;
   let lastGameoverVisible: boolean | null = null;
   let lastFlash = -1;
   let lastFinalScore = "";
@@ -90,6 +92,13 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
       if (titleEl && lastTitleVisible !== wantTitle) {
         titleEl.style.display = wantTitle ? "flex" : "none";
         lastTitleVisible = wantTitle;
+      }
+      // Pause overlay: shown only when paused. Strict read-only mirror of the
+      // engine status, same as title/game-over.
+      const wantPaused = s.status === "paused";
+      if (pausedEl && lastPausedVisible !== wantPaused) {
+        pausedEl.style.display = wantPaused ? "flex" : "none";
+        lastPausedVisible = wantPaused;
       }
       // Game-over overlay: shown on any terminal state.
       const wantGameover =
@@ -133,8 +142,7 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
         if (s.pickupFlashTicks > 0 && s.pickupKindFlash) {
           // Ticks elapsed since arm: 0 at arm, rises to PICKUP_FLASH_TICKS-1.
           const t = PICKUP_FLASH_TICKS - s.pickupFlashTicks;
-          const alpha =
-            Math.pow(PICKUP_FLASH_DECAY_PER_TICK, t) * 0.35;
+          const alpha = Math.pow(PICKUP_FLASH_DECAY_PER_TICK, t) * 0.35;
           pickupFlashEl.style.opacity = String(alpha);
           // Vignette tint via the radial-gradient's CSS variable (set in
           // index.html). Cheaper than rebuilding background-image strings
@@ -150,11 +158,11 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
         }
       }
       // Pickup MESSAGE slot (#281). Mirror `__doom.pickupMessage` into the
-       // slot's textContent and fade opacity over the flash window. Same
-       // exponential decay shape as the vignette (#230) so line and tint
-       // breathe together — one beat, one voice. When the counter is at 0
-       // we clear textContent (the line is GONE, not just transparent) so
-       // the slot's aria-live region doesn't re-announce a stale line.
+      // slot's textContent and fade opacity over the flash window. Same
+      // exponential decay shape as the vignette (#230) so line and tint
+      // breathe together — one beat, one voice. When the counter is at 0
+      // we clear textContent (the line is GONE, not just transparent) so
+      // the slot's aria-live region doesn't re-announce a stale line.
       if (pickupMessageEl) {
         if (s.pickupMessage !== lastPickupMessage) {
           pickupMessageEl.textContent = s.pickupMessage ?? "";
@@ -173,12 +181,11 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
       // Stat-pop on the matching readout. The scale lives on the
       // [data-hud=health|armor|ammo] cell directly via inline transform
       // (no GPU layer thrash — one transform per frame on one element).
-      const statEls: Record<"health" | "armor" | "ammo", HTMLElement | null> =
-        {
-          health: healthEl,
-          armor: armorEl,
-          ammo: ammoEl,
-        };
+      const statEls: Record<"health" | "armor" | "ammo", HTMLElement | null> = {
+        health: healthEl,
+        armor: armorEl,
+        ammo: ammoEl,
+      };
       for (const kind of ["health", "armor", "ammo"] as const) {
         const el = statEls[kind];
         if (!el) continue;
@@ -190,10 +197,7 @@ if (healthEl && armorEl && ammoEl && scoreEl) {
               ? 1 + (PICKUP_STAT_POP_PEAK - 1) * (t / PICKUP_STAT_POP_PEAK_TICK)
               : 1 +
                 (PICKUP_STAT_POP_PEAK - 1) *
-                  Math.pow(
-                    PICKUP_STAT_POP_DECAY,
-                    t - PICKUP_STAT_POP_PEAK_TICK,
-                  );
+                  Math.pow(PICKUP_STAT_POP_DECAY, t - PICKUP_STAT_POP_PEAK_TICK);
         }
         // Inline transform — only write when the value actually moved
         // (compare to the existing string) to keep idle frames cheap.
