@@ -37,6 +37,10 @@ export const FAILURE_STING_FEEL_CONTRACT = Object.freeze({
   maxAttackFrames: 2,
   couplingWindowMs: 16.67,
   maxRecoveryMs: 360,
+  minFirstFrameTintAlpha: 0.08,
+  minFirstFrameShakePx: 0.45,
+  minPeakShakePx: 4.5,
+  maxSettleShakePx: 0.2,
 });
 
 export const FAILURE_STING_REST_SAMPLE = Object.freeze({
@@ -133,10 +137,11 @@ export const createFailureStingController = () => {
 
 export const assertFailureStingCueShape = () => {
   const start = sampleFailureSting(0);
+  const firstFrame = sampleFailureSting(FAILURE_STING_FEEL_CONTRACT.couplingWindowMs);
   const attack = sampleFailureSting(FAILURE_STING.attackMs);
   const heldPeak = sampleFailureSting(FAILURE_STING.attackMs + FAILURE_STING.peakHoldMs);
+  const lateSettle = sampleFailureSting(FAILURE_STING.durationMs - FAILURE_STING_FEEL_CONTRACT.couplingWindowMs);
   const recovered = sampleFailureSting(FAILURE_STING.recoveryMs);
-  const firstFrame = sampleFailureSting(FAILURE_STING_FEEL_CONTRACT.couplingWindowMs);
 
   if (start.tintAlpha !== 0 || !start.toneQueued) {
     throw new Error('failure sting must start visually clean while queuing its one-shot tone');
@@ -162,8 +167,26 @@ export const assertFailureStingCueShape = () => {
     throw new Error(`failure sting recovery must stay at or below ${FAILURE_STING_FEEL_CONTRACT.maxRecoveryMs}ms`);
   }
 
-  if (firstFrame.tintAlpha <= 0) {
-    throw new Error(`failure sting must show visible tint by ${FAILURE_STING_FEEL_CONTRACT.couplingWindowMs}ms for audio-visual coupling`);
+  const firstFrameShake = Math.hypot(firstFrame.cameraShakeX, firstFrame.cameraShakeY);
+  if (firstFrame.tintAlpha < FAILURE_STING_FEEL_CONTRACT.minFirstFrameTintAlpha) {
+    throw new Error(`failure sting tint must reach at least ${FAILURE_STING_FEEL_CONTRACT.minFirstFrameTintAlpha} alpha by ${FAILURE_STING_FEEL_CONTRACT.couplingWindowMs}ms`);
+  }
+
+  if (firstFrameShake < FAILURE_STING_FEEL_CONTRACT.minFirstFrameShakePx) {
+    throw new Error(`failure sting camera shake must be >= ${FAILURE_STING_FEEL_CONTRACT.minFirstFrameShakePx}px by ${FAILURE_STING_FEEL_CONTRACT.couplingWindowMs}ms`);
+  }
+
+  const peakShake = Math.max(
+    Math.hypot(attack.cameraShakeX, attack.cameraShakeY),
+    Math.hypot(heldPeak.cameraShakeX, heldPeak.cameraShakeY),
+  );
+  if (peakShake < FAILURE_STING_FEEL_CONTRACT.minPeakShakePx) {
+    throw new Error(`failure sting peak shake must reach at least ${FAILURE_STING_FEEL_CONTRACT.minPeakShakePx}px`);
+  }
+
+  const settleShake = Math.hypot(lateSettle.cameraShakeX, lateSettle.cameraShakeY);
+  if (settleShake > FAILURE_STING_FEEL_CONTRACT.maxSettleShakePx) {
+    throw new Error(`failure sting must settle below ${FAILURE_STING_FEEL_CONTRACT.maxSettleShakePx}px shake before recovery`);
   }
 
   return true;
