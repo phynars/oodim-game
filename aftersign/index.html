@@ -233,6 +233,10 @@
           id: "io-kiosk-rainline",
           beat: stored?.beat ?? "packet-offered",
         },
+        story: {
+          currentNpcId: null,
+          memoryBeat: null,
+        },
         player: {
           id: "local-slice-player",
           x: stored?.player?.x ?? -1.8,
@@ -457,6 +461,7 @@
           version: 1,
           slug: state.slug,
           scene: { ...state.scene },
+          story: clone(state.story),
           player: clone(state.player),
           packet: clone(state.packet),
           npcs: clone(state.npcs),
@@ -467,6 +472,7 @@
             version: 1,
             slug: state.slug,
             scene: state.scene,
+            story: state.story,
             player: state.player,
             packet: state.packet,
             npcs: state.npcs,
@@ -506,6 +512,11 @@
       const setBeat = (beat) => {
         if (state.scene.beat !== beat) {
           state.scene.beat = beat;
+          markStateDirty();
+        }
+        const nextNpcId = beat === "io-returning-recognition" ? "io" : null;
+        if (state.story.currentNpcId !== nextNpcId) {
+          state.story.currentNpcId = nextNpcId;
           markStateDirty();
         }
         renderText();
@@ -765,8 +776,25 @@
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
         state.save.dirty = true;
+        const beatStartedAt = performance.now();
         markStateDirty();
         setBeat("packet-delivered");
+        setTimeout(() => {
+          const beatEndedAt = performance.now();
+          state.story.memoryBeat = {
+            kind: "io_packet_return",
+            outcome: state.packet.sealed ? "sealed" : "opened",
+            startedAt: beatStartedAt,
+            endedAt: beatEndedAt,
+            cameraDeltaMeters: 0.3,
+            cameraYawDegrees: 4,
+            inputLockMs: Math.min(1220, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
+            lineId: state.packet.sealed
+              ? "io-returning-recognition-sealed"
+              : "io-returning-recognition-opened",
+          };
+          setBeat("io-returning-recognition");
+        }, 1180);
         persist({ dirty: true });
         playKioskConfirm();
       };
@@ -775,6 +803,8 @@
         window.localStorage.removeItem(storageKey);
         packetIntent.reset();
         state.scene.beat = "packet-offered";
+        state.story.currentNpcId = null;
+        state.story.memoryBeat = null;
         state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
         state.npcs.io.memory = [];
@@ -827,6 +857,10 @@
         const restored = clone(snapshot);
         if (restored.scene && typeof restored.scene.beat === "string") {
           state.scene.beat = restored.scene.beat;
+        }
+        if (restored.story && typeof restored.story === "object") {
+          state.story.currentNpcId = restored.story.currentNpcId ?? null;
+          state.story.memoryBeat = restored.story.memoryBeat ?? null;
         }
         if (restored.player && typeof restored.player === "object") {
           state.player = { ...state.player, ...restored.player };
