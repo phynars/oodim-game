@@ -151,6 +151,7 @@
       import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./packet-intent.js";
+      import { createFirstCameraMoveController, assertFirstCameraMoveFeelContract } from "./first-camera-move-feel.js";
 
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
@@ -205,6 +206,7 @@
       const emptySave = () => ({ revision: 0, dirty: false });
       const stored = readStored();
       const packetIntent = new PacketIntentController();
+      const firstCameraMove = createFirstCameraMoveController();
 
       const state = {
         slug: "aftersign",
@@ -461,6 +463,7 @@
             packetTick,
           },
           assertFeelContract,
+          assertFirstCameraMoveFeelContract,
           deliverPacket: () => choose("deliver-packet"),
           enableAudio: () => enableAudio(),
           resetSliceSave: () => resetSliceSave(),
@@ -738,8 +741,8 @@
         syncPacketIntent();
         document.documentElement.style.setProperty("--confirm-shake-x", "0px");
         document.documentElement.style.setProperty("--confirm-shake-y", "0px");
-        camera.position.x = 0;
-        camera.rotation.z = 0;
+        firstCameraMove.reset();
+        firstCameraMove.start(performance.now());
         renderText();
         publishState();
       };
@@ -786,7 +789,8 @@
       scene.fog = new THREE.FogExp2(0x07111d, 0.045);
 
       const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
-      camera.position.set(0, 2.25, 7.6);
+      camera.position.set(0, 2.58, 9.2);
+      camera.rotation.z = THREE.MathUtils.degToRad(-0.85);
 
       const raycaster = new THREE.Raycaster();
       const pointer = new THREE.Vector2();
@@ -1005,7 +1009,10 @@
       publishState();
       resize();
 
-      let last = performance.now();
+      const firstCameraMoveStartedAt = performance.now();
+      firstCameraMove.start(firstCameraMoveStartedAt);
+
+      let last = firstCameraMoveStartedAt;
       let movementAccumulator = 0;
       const tick = (now) => {
         const dt = Math.min((now - last) / 1000, 0.05);
@@ -1032,9 +1039,13 @@
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = state.player.x * 0.12 + confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
-        camera.position.z = 7.6 + state.player.z * 0.12;
-        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
+        const firstCameraSample = firstCameraMove.sample(now);
+        const cameraTrackX = state.player.x * firstCameraMove.profile.parallax.playerTrackX;
+        const cameraTrackZ = state.player.z * firstCameraMove.profile.parallax.playerTrackZ;
+        camera.position.x = firstCameraSample.x + cameraTrackX + confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
+        camera.position.y = firstCameraSample.y;
+        camera.position.z = firstCameraSample.z + cameraTrackZ;
+        camera.rotation.z = firstCameraSample.rollRadians + THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx)}px`);
         screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
