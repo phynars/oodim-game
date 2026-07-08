@@ -26,6 +26,7 @@ jobs:
       doom: ${{ steps.filter.outputs.doom }}
       agar: ${{ steps.filter.outputs.agar }}
       aftersign: ${{ steps.filter.outputs.aftersign }}
+      landing: ${{ steps.filter.outputs.landing }}
       shared: ${{ steps.filter.outputs.shared }}
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +45,8 @@ jobs:
             aftersign:
               - 'aftersign/**'
               - 'e2e-shared/aftersign/**'
+            landing:
+              - 'landing/**'
             shared:
               - 'package.json'
               - 'package-lock.json'
@@ -177,6 +180,28 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aftersign-playwright-trace
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  landing:
+    needs: changes
+    if: ${{ needs.changes.outputs.landing == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:landing
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-playwright-trace
           path: |
             test-results/
             playwright-report/
