@@ -125,3 +125,55 @@ test("Io recognition line lands within the feel budget after a returning advance
   // The feel assertion: the transition finishes within the budget.
   expect(result.dt).toBeLessThanOrEqual(RECOGNITION_FEEDBACK_BUDGET_MS);
 });
+
+test("full page reload keeps packet-delivered state and memory before recognition advances", async ({
+  page,
+}) => {
+  test.setTimeout(COLD_START_MS);
+
+  const slot = `io-recognition-full-reload-${Date.now()}`;
+  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+
+  await waitForBeat(page, "packet-offered");
+  await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+  await waitForBeat(page, "packet-kept-sealed");
+  await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+  await waitForBeat(page, "packet-delivered");
+
+  await page.evaluate(() => window.__game!.input.forceSave());
+  await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+    timeout: WAIT_MS,
+  });
+
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction(() => window.__game?.version === 1, undefined, {
+    timeout: WAIT_MS,
+  });
+
+  const afterReload = await page.evaluate(() => {
+    const snapshot = window.__game!;
+    return {
+      beat: snapshot.scene.beat,
+      memoryCount: snapshot.npcs.io.memory.length,
+      hasDeliveredFact: snapshot.npcs.io.memory.some(
+        (fact) => fact.predicate === "delivered-blue-packet" && fact.object === "sealed",
+      ),
+    };
+  });
+
+  expect(afterReload.beat).toBe("packet-delivered");
+  expect(afterReload.memoryCount).toBeGreaterThan(0);
+  expect(afterReload.hasDeliveredFact).toBe(true);
+
+  await page.evaluate(() => window.__game!.input.advance());
+  await waitForBeat(page, "io-returning-recognition");
+
+  const recognition = await page.evaluate(() => {
+    const snapshot = window.__game!;
+    return {
+      memoryRefs: snapshot.npcs.io.lastLineMemoryRefs,
+    };
+  });
+
+  expect(recognition.memoryRefs.length).toBeGreaterThan(0);
+});
