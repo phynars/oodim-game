@@ -53,6 +53,12 @@ export interface InputSurface {
   forceReload(): Promise<void>;
 }
 
+/** Opaque snapshot of the harness surface — the exact shape returned by
+ * `getSnapshot()` and accepted by `reset()`. Kept as `unknown` at the contract
+ * boundary so specs can round-trip the value without depending on internal
+ * fields the scene may extend over time. */
+export type GameSnapshot = unknown;
+
 /** Save metadata — revision monotonically increments on each persist; `dirty`
  * clears once the write has flushed. The harness awaits `dirty === false`
  * before triggering a reload to prove durability. */
@@ -71,6 +77,12 @@ export interface GameSurface {
   };
   save: SaveState;
   input: InputSurface;
+  /** Deep-clone snapshot of the current story/state surface. Round-trips
+   * through `reset(snapshot)` to restore the exact beat + memory. */
+  getSnapshot(): GameSnapshot;
+  /** Restore the scene from a snapshot produced by `getSnapshot()`. With no
+   * argument, resets the slice save to first-run defaults. */
+  reset(snapshot?: GameSnapshot): Promise<void> | void;
 }
 
 declare global {
