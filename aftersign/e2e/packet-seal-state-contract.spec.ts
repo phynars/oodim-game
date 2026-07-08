@@ -1,76 +1,77 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-type PacketSealState = "sealed" | "opened";
+// The real game surface exposes `packet.sealed: boolean` and `scene.beat`
+// via publishState() in aftersign/index.html. This spec asserts the
+// packet-seal invariants through THAT surface — no fabricated keys.
 
-type GameApi = {
-  state?: {
-    currentBeat?: string;
-    beat?: string;
-    story?: {
-      packetSealState?: PacketSealState;
-    };
-    packetSealState?: PacketSealState;
-  };
-  story?: {
-    packetSealState?: PacketSealState;
-  };
+type Beat =
+  | "arrival"
+  | "packet-offered"
+  | "packet-opened"
+  | "packet-kept-sealed"
+  | "packet-delivered"
+  | "io-returning-recognition";
+
+type GameSurface = {
+  version: 1;
+  scene: { beat: Beat };
+  packet: { sealed: boolean };
+  save: { revision: number; dirty: boolean };
   input: {
     choose(choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet"): Promise<void>;
     advance(): Promise<void>;
     forceSave(): Promise<void>;
+    forceReload(): Promise<void>;
   };
 };
 
 declare global {
   interface Window {
-    __game?: GameApi;
+    __game?: GameSurface;
   }
 }
 
-async function waitForBeat(page: Parameters<typeof test>[0]["page"], beat: string): Promise<void> {
+const COLD_START_MS = 90_000;
+const WAIT_MS = 60_000;
+
+async function waitForBeat(page: Page, beat: Beat): Promise<void> {
   await page.waitForFunction(
-    (expectedBeat) => {
-      const game = window.__game;
-      const current = game?.state?.currentBeat ?? game?.state?.beat;
-      return current === expectedBeat;
-    },
+    (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
     beat,
-    { timeout: 10_000 },
+    { timeout: WAIT_MS },
   );
 }
 
-async function readPacketSealState(page: Parameters<typeof test>[0]["page"]): Promise<PacketSealState | null> {
-  return page.evaluate(() => {
-    const game = window.__game;
-    return (
-      game?.state?.story?.packetSealState ??
-      game?.state?.packetSealState ??
-      game?.story?.packetSealState ??
-      null
-    );
-  });
+async function readSealed(page: Page): Promise<boolean | null> {
+  return page.evaluate(() => window.__game?.packet.sealed ?? null);
 }
 
 test.describe("packet seal state contract", () => {
   test("starts sealed", async ({ page }) => {
-    await page.goto("/aftersign/?slot=packet-seal-contract-start");
+    test.setTimeout(COLD_START_MS);
+
+    await page.goto(`/aftersign/?slot=packet-seal-contract-start-${Date.now()}`);
     await waitForBeat(page, "packet-offered");
 
-    await expect.poll(() => readPacketSealState(page)).toBe("sealed");
+    expect(await readSealed(page)).toBe(true);
   });
 
   test("open choice flips packet to opened", async ({ page }) => {
-    await page.goto("/aftersign/?slot=packet-seal-contract-open");
+    test.setTimeout(COLD_START_MS);
+
+    await page.goto(`/aftersign/?slot=packet-seal-contract-open-${Date.now()}`);
     await waitForBeat(page, "packet-offered");
 
     await page.evaluate(() => window.__game!.input.choose("open-packet"));
     await waitForBeat(page, "packet-opened");
 
-    await expect.poll(() => readPacketSealState(page)).toBe("opened");
+    expect(await readSealed(page)).toBe(false);
   });
 
   test("keep sealed + deliver preserves sealed on return", async ({ page }) => {
-    const slot = "packet-seal-contract-sealed-return";
+    test.setTimeout(COLD_START_MS);
+
+    const slot = `packet-seal-contract-sealed-return-${Date.now()}`;
 
     await page.goto(`/aftersign/?slot=${slot}`);
     await waitForBeat(page, "packet-offered");
@@ -81,14 +82,20 @@ test.describe("packet seal state contract", () => {
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
 
-    await page.evaluate(async () => {
-      await window.__game!.input.forceSave();
-      await window.__game!.input.advance();
+    // Persist the delivered state, then reload so we start from the save.
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
     });
 
     await page.goto(`/aftersign/?slot=${slot}`);
+    await waitForBeat(page, "packet-delivered");
+
+    // AFTER the reload, advance into the returning recognition beat.
+    // Doing this before the reload would be dropped by the save restore.
+    await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-returning-recognition");
 
-    await expect.poll(() => readPacketSealState(page)).toBe("sealed");
+    expect(await readSealed(page)).toBe(true);
   });
 });
