@@ -16,6 +16,11 @@ import { expect, test } from "@playwright/test";
  *   4. Every measurement is polled off runtime state (rAF-driven game
  *      clock + engine bookkeeping), never off wall-clock timeouts — so
  *      CI can't flake on a slow runner.
+ *
+ * IMPORTANT: publishState() in index.html reassigns window.__game to a
+ * fresh object on every markStateDirty() tick. A `const game = window.__game`
+ * captured once inside page.evaluate is a STALE CLONE — its fields never
+ * update. Every observation below re-reads window.__game per frame.
  */
 
 // Phone envelope. iPhone 12 / 13 / 14 base viewport (390x844) is the
@@ -59,9 +64,23 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
 
   // Wait for the game surface + the recognition beat runtime (deliver /
   // enableAudio) to be published. This is polling on state, not clock time.
+  // Also require the published `audio` surface — it's the observable
+  // handle for the "packet-confirmed" cue this spec measures against.
   await page.waitForFunction(() => {
-    const game = (window as unknown as { __game?: { input?: { advance?: unknown }; enableAudio?: unknown; deliverPacket?: unknown } }).__game;
-    return Boolean(game?.input?.advance && game.enableAudio && game.deliverPacket);
+    const game = (window as unknown as {
+      __game?: {
+        input?: { advance?: unknown };
+        enableAudio?: unknown;
+        deliverPacket?: unknown;
+        audio?: { lastCue?: unknown; unlocked?: unknown };
+      };
+    }).__game;
+    return Boolean(
+      game?.input?.advance
+        && game.enableAudio
+        && game.deliverPacket
+        && game.audio,
+    );
   });
 
   // Reset to a known slot state (packet-offered, sealed) so we drive the
@@ -71,37 +90,39 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
   });
 
   const measurement = await page.evaluate(async ({ maxUiSettleMs }) => {
-    type GameRuntime = {
+    // Every observation MUST re-read window.__game. publishState() replaces
+    // window.__game with a fresh clone on every markStateDirty(); a captured
+    // reference would freeze at whatever the world looked like the moment
+    // it was captured — confirmStartedAt would stay null forever.
+    type GameSurface = {
       scene: { beat: string };
       interaction: {
         confirmStartedAt: number | null;
         confirmFeedback: { active: boolean; remainingMs: number };
       };
-      _runtime?: { audio?: { unlocked: boolean; lastCue: string | null } };
+      audio: { unlocked: boolean; lastCue: string | null };
       input: { advance: () => Promise<void> };
       enableAudio: () => Promise<boolean>;
       deliverPacket: () => Promise<void>;
-      getSnapshot: () => {
-        scene: { beat: string };
-        interaction: { confirmStartedAt: number | null; confirmFeedback: { active: boolean; remainingMs: number } };
-      };
     };
-    const game = (window as unknown as { __game: GameRuntime }).__game;
+    const getGame = () =>
+      (window as unknown as { __game: GameSurface }).__game;
 
     // 1. Unlock audio BEFORE delivery so the packet-confirmed cue can fire.
     //    In CI Chromium this succeeds because playwright.config.ts passes
     //    --autoplay-policy=no-user-gesture-required.
-    const audioUnlocked = await game.enableAudio();
+    const audioUnlocked = await getGame().enableAudio();
 
-    // 2. Sample the runtime clock for the audio-cue transition via rAF —
-    //    we watch state._runtime.audio.lastCue flipping to "packet-confirmed".
-    //    Kick off the observer BEFORE deliverPacket so we don't miss the
-    //    transition (deliverPacket calls playKioskConfirm synchronously; the
-    //    audio scheduling awaits enableAudio which resolves next microtask).
+    // 2. Kick off an rAF observer that watches the *published* audio surface
+    //    (game.audio.lastCue) flip to "packet-confirmed". Fresh read per
+    //    frame — no captured reference. Start BEFORE deliverPacket so we
+    //    don't miss the transition (playKioskConfirm is scheduled inside
+    //    deliverPacket and resolves in a microtask chain).
     let audioCueAt: number | null = null;
     const watchAudioCue = () => {
-      const cue = game._runtime?.audio?.lastCue;
-      if (cue === "packet-confirmed" && audioCueAt === null) {
+      if (audioCueAt !== null) return;
+      const cue = getGame().audio?.lastCue;
+      if (cue === "packet-confirmed") {
         audioCueAt = performance.now();
         return;
       }
@@ -110,33 +131,28 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
     requestAnimationFrame(watchAudioCue);
 
     // 3. Trigger the recognition beat.
-    await game.deliverPacket();
+    await getGame().deliverPacket();
 
-    // 4. Wait for BOTH the audio cue AND the visual settle to finish, and
-    //    record when they happened relative to confirmStartedAt. This uses
-    //    the RAF loop only — no page.waitForTimeout, no wall-clock polling —
-    //    so a slow CI runner shifts the whole timeline together and doesn't
-    //    corrupt measured deltas. We cap the wait by (a) frame-count budget
-    //    for the visual (settle duration is <=220ms per CONFIRM_FEEDBACK, we
-    //    give ~2x headroom) and (b) audio-cue arrival (must occur; if the
-    //    autoplay policy isn't wired we intentionally fail here rather than
-    //    fall back to a tautology).
-    const startWaitAt = performance.now();
+    // 4. Capture the confirmStartedAt timestamp as soon as it first appears.
+    //    The tick loop in index.html sets confirmStartedAt when the confirm
+    //    pulse begins AND RESETS IT TO NULL when the pulse finishes
+    //    (confirmProgress >= 1). We must latch it BEFORE it gets nulled,
+    //    otherwise uiSettleMs is unmeasurable.
+    let capturedConfirmStartedAt: number | null = null;
     await new Promise<void>((resolve, reject) => {
-      const settleDeadline = maxUiSettleMs * 4; // ms cap by frames, generous
+      const captureDeadline = maxUiSettleMs * 2;
+      const startedAt = performance.now();
       const tick = () => {
-        const now = performance.now();
-        const feedback = game.interaction.confirmFeedback;
-        const visualDone = feedback.active === false && feedback.remainingMs === 0
-          && game.interaction.confirmStartedAt !== null;
-        const audioDone = audioCueAt !== null;
-        if (visualDone && audioDone) {
+        const started = getGame().interaction.confirmStartedAt;
+        if (typeof started === "number") {
+          capturedConfirmStartedAt = started;
           resolve();
           return;
         }
-        if (now - startWaitAt > settleDeadline) {
+        if (performance.now() - startedAt > captureDeadline) {
           reject(new Error(
-            `phone-ready wait exceeded ${settleDeadline}ms — visualDone=${visualDone} audioDone=${audioDone} lastCue=${String(game._runtime?.audio?.lastCue)}`,
+            `confirmStartedAt never became non-null within ${captureDeadline}ms after deliverPacket — ` +
+              `triggerKioskFeedback may not be running`,
           ));
           return;
         }
@@ -145,16 +161,48 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
       requestAnimationFrame(tick);
     });
 
-    const confirmStartedAt = game.interaction.confirmStartedAt as number;
+    // 5. Wait for BOTH the audio cue AND the visual settle to finish. Visual
+    //    settle is "confirmFeedback.active === false && remainingMs === 0"
+    //    — we DO NOT gate on confirmStartedAt because the tick nulls it on
+    //    completion. RAF loop only; no page.waitForTimeout, no wall-clock
+    //    polling — a slow CI runner shifts the whole timeline together.
+    const startWaitAt = performance.now();
+    await new Promise<void>((resolve, reject) => {
+      const settleDeadline = maxUiSettleMs * 4; // ms cap by frames, generous
+      const tick = () => {
+        const now = performance.now();
+        const game = getGame();
+        const feedback = game.interaction.confirmFeedback;
+        const visualDone = feedback.active === false && feedback.remainingMs === 0;
+        const audioDone = audioCueAt !== null;
+        if (visualDone && audioDone) {
+          resolve();
+          return;
+        }
+        if (now - startWaitAt > settleDeadline) {
+          reject(new Error(
+            `phone-ready wait exceeded ${settleDeadline}ms — ` +
+              `visualDone=${visualDone} audioDone=${audioDone} ` +
+              `lastCue=${String(game.audio?.lastCue)} ` +
+              `feedback.active=${feedback.active} feedback.remainingMs=${feedback.remainingMs}`,
+          ));
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    const confirmStartedAt = capturedConfirmStartedAt as number;
     const uiSettleMs = performance.now() - confirmStartedAt;
     const avDriftMs = Math.abs((audioCueAt as number) - confirmStartedAt);
 
-    // 5. Advance to the returning-recognition beat so we can inspect Io's
+    // 6. Advance to the returning-recognition beat so we can inspect Io's
     //    sealed-packet line in the actual DOM at phone width.
-    await game.input.advance();
+    await getGame().input.advance();
     await new Promise<void>((resolve) => {
       const tick = () => {
-        if (game.scene.beat === "io-returning-recognition") {
+        if (getGame().scene.beat === "io-returning-recognition") {
           resolve();
           return;
         }
@@ -167,6 +215,7 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
     if (!line) throw new Error("recognition line element (#line) is missing");
     const rect = line.getBoundingClientRect();
 
+    const finalGame = getGame();
     return {
       line: {
         text: (line.textContent ?? "").trim(),
@@ -183,10 +232,10 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
       uiSettleMs,
       avDriftMs,
       audioUnlocked,
-      lastAudioCue: game._runtime?.audio?.lastCue ?? null,
+      lastAudioCue: finalGame.audio?.lastCue ?? null,
       confirmStartedAt,
       audioCueAt: audioCueAt as number,
-      beat: game.scene.beat,
+      beat: finalGame.scene.beat,
     } satisfies PhoneMeasurement;
   }, { maxUiSettleMs: MAX_UI_SETTLE_MS });
 

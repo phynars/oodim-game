@@ -468,6 +468,13 @@
           save: { ...state.save },
           movement: clone(state.movement),
           interaction: clone(state.interaction),
+          // Audio surface for the phone-ready look/sound contract harness.
+          // `_runtime` intentionally stays private (transient engine bookkeeping),
+          // but the audio unlock state + last-fired cue label ARE part of the
+          // observable contract: a Playwright spec needs to see the AudioContext
+          // unlock and the "packet-confirmed" cue to measure A/V coupling drift.
+          // Cloned so consumers can't reach in and mutate live runtime state.
+          audio: { ...state._runtime.audio },
           getSnapshot: () => clone({
             version: 1,
             slug: state.slug,
