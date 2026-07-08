@@ -24,6 +24,24 @@ export type Beat =
   | "packet-delivered"
   | "io-returning-recognition";
 
+/** Story runtime payload for Io's first memory beat. */
+export interface MemoryBeat {
+  kind: "io_packet_return";
+  outcome: "sealed" | "opened";
+  startedAt: number;
+  endedAt: number;
+  cameraDeltaMeters: number;
+  cameraYawDegrees: number;
+  inputLockMs: number;
+  lineId: string;
+}
+
+/** Story state exposed for harness assertions. */
+export interface StoryState {
+  currentNpcId: string | null;
+  memoryBeat: MemoryBeat | null;
+}
+
 /** A single fact remembered by an NPC. `sessionId` scopes prior-session recall. */
 export interface MemoryFact {
   id: string;
@@ -72,6 +90,7 @@ export interface SaveState {
 export interface GameSurface {
   version: 1;
   scene: { beat: Beat };
+  story: StoryState;
   npcs: {
     io: NpcState;
   };
