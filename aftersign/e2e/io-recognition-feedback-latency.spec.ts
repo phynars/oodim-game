@@ -156,7 +156,7 @@ test("full page reload keeps packet-delivered state and memory before recognitio
       beat: snapshot.scene.beat,
       memoryCount: snapshot.npcs.io.memory.length,
       hasDeliveredFact: snapshot.npcs.io.memory.some(
-        (fact) => fact.predicate === "player.delivered_packet" && fact.object === "sealed",
+        (fact) => fact.predicate === "delivered-blue-packet" && fact.object === "sealed",
       ),
     };
   });
