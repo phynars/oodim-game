@@ -18,6 +18,11 @@ export interface PacketIntentWindow {
   keepSealedHoldMinMs: number;
 }
 
+/**
+ * Playtest-tuned for slice 1. The 160ms deadzone (220 -> 380) is wide
+ * enough that a hesitant press reads as "keep-sealed" — that's the
+ * intentional trust-preserving default, not a final tuning.
+ */
 export const DEFAULT_PACKET_INTENT_WINDOW: PacketIntentWindow = {
   openTapMaxMs: 220,
   keepSealedHoldMinMs: 380,
@@ -52,14 +57,4 @@ export function decidePacketOutcome(
   // Deadzone: protect against jitter around thresholds.
   // Default to keep-sealed so accidental opens do not erode trust readability.
   return "keep-sealed";
-}
-
-export function assertPacketIntentWindowMonotonic(
-  window: PacketIntentWindow,
-): void {
-  if (window.openTapMaxMs >= window.keepSealedHoldMinMs) {
-    throw new Error(
-      `Non-monotonic packet intent window: openTapMaxMs (${window.openTapMaxMs}) must be < keepSealedHoldMinMs (${window.keepSealedHoldMinMs})`,
-    );
-  }
 }
