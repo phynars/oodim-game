@@ -18,7 +18,35 @@ export type RecognitionFeedbackState = {
   readonly audioCue: RecognitionFeedbackPhase['audioCue'];
 };
 
+export type IoRecognitionOutcome = 'sealed' | 'opened';
+
+export type IoRecognitionLineId = 'io_return_packet_sealed' | 'io_return_packet_opened';
+
+export type IoRecognitionBeatIndex = 0 | 1 | 2;
+
+export type IoRecognitionBeatLine = {
+  readonly beatIndex: IoRecognitionBeatIndex;
+  readonly triggerMs: number;
+  readonly lineId: IoRecognitionLineId;
+  readonly text: string;
+};
+
 export const RECOGNITION_FEEDBACK_TOTAL_MS = 1220;
+
+export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
+
+const IO_RECOGNITION_LINES: Record<IoRecognitionOutcome, readonly [string, string, string]> = {
+  sealed: [
+    'You brought it back sealed.',
+    'You still leave edges untouched.',
+    'I remember that kind of care.',
+  ],
+  opened: [
+    'You opened it before you came.',
+    'You still choose truth over tidy.',
+    'I remember that kind of courage.',
+  ],
+};
 
 export const RECOGNITION_FEEDBACK_PHASES: readonly RecognitionFeedbackPhase[] = [
   {
@@ -67,6 +95,39 @@ function resolveRecognitionPhase(elapsedMs: number): RecognitionFeedbackPhase {
     phase = candidate;
   }
   return phase;
+}
+
+function resolveDialogueBeatIndex(elapsedMs: number): IoRecognitionBeatIndex | null {
+  const safeElapsedMs = Math.max(0, elapsedMs);
+  if (safeElapsedMs < IO_RECOGNITION_BEAT_MS[0]) return null;
+  if (safeElapsedMs < IO_RECOGNITION_BEAT_MS[1]) return 0;
+  if (safeElapsedMs < IO_RECOGNITION_BEAT_MS[2]) return 1;
+  return 2;
+}
+
+export function recognitionDialogueForBeat(
+  outcome: IoRecognitionOutcome,
+  beatIndex: IoRecognitionBeatIndex,
+): IoRecognitionBeatLine {
+  const text = IO_RECOGNITION_LINES[outcome][beatIndex];
+  const lineId: IoRecognitionLineId =
+    outcome === 'sealed' ? 'io_return_packet_sealed' : 'io_return_packet_opened';
+
+  return {
+    beatIndex,
+    triggerMs: IO_RECOGNITION_BEAT_MS[beatIndex],
+    lineId,
+    text,
+  };
+}
+
+export function recognitionDialogueAt(
+  elapsedMs: number,
+  outcome: IoRecognitionOutcome,
+): IoRecognitionBeatLine | null {
+  const beatIndex = resolveDialogueBeatIndex(elapsedMs);
+  if (beatIndex === null) return null;
+  return recognitionDialogueForBeat(outcome, beatIndex);
 }
 
 export function recognitionFeedbackAt(elapsedMs: number): RecognitionFeedbackState {

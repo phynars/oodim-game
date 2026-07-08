@@ -6,7 +6,10 @@
 // assertions to execute, but at typecheck time it's just a module with
 // exported check functions and no external imports.
 import {
+  IO_RECOGNITION_BEAT_MS,
   RECOGNITION_FEEDBACK_TOTAL_MS,
+  recognitionDialogueAt,
+  recognitionDialogueForBeat,
   recognitionFeedbackAt,
 } from './recognitionFeedback';
 
@@ -159,6 +162,57 @@ export function checkSubtitleScaleEnvelopeBounds(): void {
   assertClose(endState.subtitleScale, 1, 0.01, 't=end subtitleScale reset');
 }
 
+export function checkRecognitionDialogueTimeline(): void {
+  assert(recognitionDialogueAt(0, 'sealed') === null, 'dialogue should be null before first beat');
+
+  const sealedBeat0 = recognitionDialogueAt(440, 'sealed');
+  assert(sealedBeat0 !== null, 'sealed beat 0 should exist at 440ms');
+  assert(
+    sealedBeat0?.lineId === 'io_return_packet_sealed',
+    `sealed beat lineId mismatch: got '${sealedBeat0?.lineId}'`,
+  );
+  assert(
+    sealedBeat0?.text === 'You brought it back sealed.',
+    `sealed beat 0 text mismatch: got '${sealedBeat0?.text}'`,
+  );
+
+  const openedBeat1 = recognitionDialogueAt(880, 'opened');
+  assert(openedBeat1 !== null, 'opened beat 1 should exist at 880ms');
+  assert(
+    openedBeat1?.text === 'You still choose truth over tidy.',
+    `opened beat 1 text mismatch: got '${openedBeat1?.text}'`,
+  );
+
+  const openedBeat2 = recognitionDialogueAt(RECOGNITION_FEEDBACK_TOTAL_MS, 'opened');
+  assert(openedBeat2 !== null, 'opened beat 2 should exist at end of beat');
+  assert(
+    openedBeat2?.text === 'I remember that kind of courage.',
+    `opened beat 2 text mismatch: got '${openedBeat2?.text}'`,
+  );
+  assertClose(
+    openedBeat2?.triggerMs ?? -1,
+    IO_RECOGNITION_BEAT_MS[2],
+    0,
+    'beat 2 trigger time should match constant',
+  );
+}
+
+export function checkRecognitionDialogueForBeatContract(): void {
+  const sealed = recognitionDialogueForBeat('sealed', 2);
+  assert(
+    sealed.text === 'I remember that kind of care.',
+    `sealed beat 2 text mismatch: got '${sealed.text}'`,
+  );
+  assert(sealed.lineId === 'io_return_packet_sealed', `sealed lineId mismatch: got '${sealed.lineId}'`);
+
+  const opened = recognitionDialogueForBeat('opened', 0);
+  assert(
+    opened.text === 'You opened it before you came.',
+    `opened beat 0 text mismatch: got '${opened.text}'`,
+  );
+  assert(opened.lineId === 'io_return_packet_opened', `opened lineId mismatch: got '${opened.lineId}'`);
+}
+
 export function runRecognitionFeedbackChecks(): void {
   checkCatchBeatOpensRecognition();
   checkRememberBloomThenSettle();
@@ -166,4 +220,6 @@ export function runRecognitionFeedbackChecks(): void {
   checkRecognitionProfileContract();
   checkCameraPushEnvelopeMonotonic();
   checkSubtitleScaleEnvelopeBounds();
+  checkRecognitionDialogueTimeline();
+  checkRecognitionDialogueForBeatContract();
 }
