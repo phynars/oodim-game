@@ -447,6 +447,7 @@
             movement: state.movement,
             interaction: state.interaction,
           }),
+          reset,
           input: {
             choose,
             advance,
@@ -739,6 +740,44 @@
         document.documentElement.style.setProperty("--confirm-shake-y", "0px");
         camera.position.x = 0;
         camera.rotation.z = 0;
+        renderText();
+        publishState();
+      };
+
+      // Harness-only: restore state from a snapshot produced by getSnapshot(),
+      // OR (no arg) fall back to resetSliceSave(). Restores the same fields
+      // getSnapshot() exposes — scene, player, packet, npcs, save — via a
+      // deep clone so the caller's snapshot is not aliased into live state.
+      // Runtime-only concerns (audio, transient interaction feedback) are
+      // intentionally left as-is; they aren't part of the story-state contract.
+      const reset = (snapshot) => {
+        if (!snapshot || typeof snapshot !== "object") {
+          resetSliceSave();
+          return;
+        }
+        const restored = clone(snapshot);
+        if (restored.scene && typeof restored.scene.beat === "string") {
+          state.scene.beat = restored.scene.beat;
+        }
+        if (restored.player && typeof restored.player === "object") {
+          state.player = { ...state.player, ...restored.player };
+        }
+        if (restored.packet && typeof restored.packet === "object") {
+          state.packet = { ...state.packet, ...restored.packet };
+        }
+        if (restored.npcs && restored.npcs.io) {
+          state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
+            ? clone(restored.npcs.io.memory)
+            : [];
+          state.npcs.io.lastLine = restored.npcs.io.lastLine ?? null;
+          state.npcs.io.lastLineMemoryRefs = Array.isArray(restored.npcs.io.lastLineMemoryRefs)
+            ? clone(restored.npcs.io.lastLineMemoryRefs)
+            : [];
+        }
+        if (restored.save && typeof restored.save === "object") {
+          state.save = { ...emptySave(), ...restored.save };
+        }
+        markStateDirty();
         renderText();
         publishState();
       };
