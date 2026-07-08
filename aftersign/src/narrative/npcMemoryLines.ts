@@ -33,11 +33,11 @@ export type RememberingLineInput = {
 };
 
 const cueTemplates: Record<MemoryCue, (playerName: string) => string> = {
-  'first-meeting': (playerName) => `We haven’t done this before, ${playerName}. So I’m listening closely.`,
-  'kept-promise': (playerName) => `You said you’d come back, ${playerName}. You did. That matters here.`,
-  'broke-promise': (playerName) => `You said you’d come back, ${playerName}. You didn’t. I kept the light on anyway.`,
-  'left-mid-conversation': (playerName) => `You vanished in the middle of a sentence, ${playerName}. I heard the silence finish it.`,
-  'returned-after-absence': (playerName) => `Long time gone, ${playerName}. I remember the shape you left in this room.`,
+  'first-meeting': (playerName) => `We haven't done this before, ${playerName}. Speak plain and I'll do the same.`,
+  'kept-promise': (playerName) => `You said you'd come back, ${playerName}. You did. That's worth more than charm.`,
+  'broke-promise': (playerName) => `You said you'd come back, ${playerName}. You didn't. I left the lamp on anyway.`,
+  'left-mid-conversation': (playerName) => `You left mid-sentence, ${playerName}. The silence finished it for me.`,
+  'returned-after-absence': (playerName) => `Long time gone, ${playerName}. Your outline never left this room.`,
 };
 
 export function buildRememberingLine(input: RememberingLineInput): string {
