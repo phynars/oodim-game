@@ -6,7 +6,9 @@
 // assertions to execute, but at typecheck time it's just a module with
 // exported check functions and no external imports.
 import {
+  RECOGNITION_FEEDBACK_REDUCED_MOTION_TOTAL_MS,
   RECOGNITION_FEEDBACK_TOTAL_MS,
+  publishRecognitionMemoryBeat,
   recognitionFeedbackAt,
 } from './recognitionFeedback';
 
@@ -22,125 +24,95 @@ function assertClose(actual: number, expected: number, epsilon: number, label: s
   }
 }
 
-export function checkCatchBeatOpensRecognition(): void {
-  const start = recognitionFeedbackAt(0);
-  assert(start.phase === 'catch', `t=0 phase: expected 'catch', got '${start.phase}'`);
-  assertClose(start.screenShakePx, 1.5, 0.01, 't=0 screenShakePx');
-  assertClose(start.cameraPushDegrees, 0, 0.01, 't=0 cameraPushDegrees');
-  assertClose(start.subtitleScale, 1, 0.01, 't=0 subtitleScale');
-
-  const rememberStart = recognitionFeedbackAt(180);
+export function checkDurationAndPeakContract(): void {
   assert(
-    rememberStart.phase === 'remember',
-    `t=180 phase: expected 'remember', got '${rememberStart.phase}'`,
+    RECOGNITION_FEEDBACK_TOTAL_MS >= 1100 && RECOGNITION_FEEDBACK_TOTAL_MS <= 1350,
+    `total duration: expected 1100-1350ms, got ${RECOGNITION_FEEDBACK_TOTAL_MS}ms`,
+  );
+
+  const peak = recognitionFeedbackAt(700, { outcome: 'sealed' });
+  assert(
+    peak.cameraDeltaMeters >= 0.24 && peak.cameraDeltaMeters <= 0.36,
+    `t=700 cameraDeltaMeters: expected 0.24-0.36, got ${peak.cameraDeltaMeters}`,
   );
   assert(
-    rememberStart.audioCue === 'memory-chime',
-    `t=180 audioCue: expected 'memory-chime', got '${rememberStart.audioCue}'`,
+    peak.cameraYawDegrees >= 3 && peak.cameraYawDegrees <= 5,
+    `t=700 cameraYawDegrees: expected 3-5, got ${peak.cameraYawDegrees}`,
   );
 }
 
-export function checkRememberBloomThenSettle(): void {
-  const bloom = recognitionFeedbackAt(520);
-  assert(bloom.phase === 'remember', `t=520 phase: expected 'remember', got '${bloom.phase}'`);
-  assert(
-    bloom.cameraPushDegrees > 2.5,
-    `t=520 cameraPushDegrees: expected > 2.5, got ${bloom.cameraPushDegrees}`,
-  );
-  assert(
-    bloom.vignetteOpacity > 0.24,
-    `t=520 vignetteOpacity: expected > 0.24, got ${bloom.vignetteOpacity}`,
-  );
-  assert(
-    bloom.subtitleScale > 1.04,
-    `t=520 subtitleScale: expected > 1.04, got ${bloom.subtitleScale}`,
-  );
+export function checkOutcomeBranchDeltas(): void {
+  const sealed = recognitionFeedbackAt(260, { outcome: 'sealed' });
+  const opened = recognitionFeedbackAt(260, { outcome: 'opened' });
 
-  const done = recognitionFeedbackAt(RECOGNITION_FEEDBACK_TOTAL_MS);
-  assert(done.phase === 'settle', `t=end phase: expected 'settle', got '${done.phase}'`);
-  assertClose(done.cameraPushDegrees, 0, 0.01, 't=end cameraPushDegrees');
-  assertClose(done.vignetteOpacity, 0, 0.01, 't=end vignetteOpacity');
+  assert(sealed.outcome === 'sealed', `sealed outcome mismatch: got ${sealed.outcome}`);
+  assert(opened.outcome === 'opened', `opened outcome mismatch: got ${opened.outcome}`);
   assert(
-    done.audioCue === 'room-tone',
-    `t=end audioCue: expected 'room-tone', got '${done.audioCue}'`,
+    sealed.colorGrade !== opened.colorGrade,
+    `color grade should differ by outcome, got '${sealed.colorGrade}' and '${opened.colorGrade}'`,
   );
+  assert(
+    sealed.cameraTargetOffsetY !== opened.cameraTargetOffsetY,
+    `camera target offset should differ by outcome, got ${sealed.cameraTargetOffsetY} and ${opened.cameraTargetOffsetY}`,
+  );
+  assert(sealed.woodClickAtMs === null, `sealed woodClickAtMs: expected null, got ${sealed.woodClickAtMs}`);
+  assertClose(opened.woodClickAtMs ?? -1, 165, 0.01, 'opened woodClickAtMs');
 }
 
-// Boundary-continuity checks — the whole point of PR #453's feel-curve work.
-export function checkPhaseBoundariesAreContinuous(): void {
-  const epsilon = 0.03;
-  const beforeCatchEnd = recognitionFeedbackAt(179);
-  const atRememberStart = recognitionFeedbackAt(180);
-  assertClose(
-    beforeCatchEnd.cameraPushDegrees,
-    atRememberStart.cameraPushDegrees,
-    epsilon,
-    't=180 cameraPushDegrees continuity',
-  );
-  assertClose(
-    beforeCatchEnd.vignetteOpacity,
-    atRememberStart.vignetteOpacity,
-    epsilon,
-    't=180 vignetteOpacity continuity',
-  );
+export function checkGlowAndStingTiming(): void {
+  const preGlow = recognitionFeedbackAt(79, { outcome: 'sealed' });
+  const postGlow = recognitionFeedbackAt(220, { outcome: 'sealed' });
+  assertClose(preGlow.signGlowScale, 0.8, 0.01, 'pre-glow signGlowScale');
+  assertClose(postGlow.signGlowScale, 1.35, 0.01, 'post-glow signGlowScale');
 
-  const beforeRememberEnd = recognitionFeedbackAt(699);
-  const atSettleStart = recognitionFeedbackAt(700);
-  assertClose(
-    beforeRememberEnd.cameraPushDegrees,
-    atSettleStart.cameraPushDegrees,
-    epsilon,
-    't=700 cameraPushDegrees continuity',
-  );
-  assertClose(
-    beforeRememberEnd.vignetteOpacity,
-    atSettleStart.vignetteOpacity,
-    epsilon,
-    't=700 vignetteOpacity continuity',
-  );
+  const stingStart = recognitionFeedbackAt(120, { outcome: 'sealed' });
+  const stingEnd = recognitionFeedbackAt(300, { outcome: 'sealed' });
+  const stingAfter = recognitionFeedbackAt(301, { outcome: 'sealed' });
+  assert(stingStart.stingActive, 'sting should start at 120ms');
+  assert(stingEnd.stingActive, 'sting should be active through 300ms');
+  assert(!stingAfter.stingActive, 'sting should end after 300ms');
+  assertClose(stingStart.stingGainDb, -9, 0.01, 'sting gain dB');
 }
 
-export function checkRecognitionProfileContract(): void {
+export function checkReducedMotionFallback(): void {
   assert(
-    RECOGNITION_FEEDBACK_TOTAL_MS === 1220,
-    `total duration: expected 1220ms, got ${RECOGNITION_FEEDBACK_TOTAL_MS}ms`,
+    RECOGNITION_FEEDBACK_REDUCED_MOTION_TOTAL_MS === 160,
+    `reduced-motion duration: expected 160ms, got ${RECOGNITION_FEEDBACK_REDUCED_MOTION_TOTAL_MS}ms`,
   );
 
-  const peak = recognitionFeedbackAt(700);
-  assertClose(peak.cameraPushDegrees, 4, 0.01, 't=700 cameraPushDegrees peak');
-  assertClose(peak.vignetteOpacity, 0.32, 0.01, 't=700 vignette peak');
+  const reduced = recognitionFeedbackAt(120, { outcome: 'opened', reducedMotion: true });
+  assert(reduced.totalMs === 160, `reduced-motion totalMs: expected 160, got ${reduced.totalMs}`);
+  assertClose(reduced.cameraDeltaMeters, 0, 0.0001, 'reduced-motion cameraDeltaMeters');
+  assertClose(reduced.cameraYawDegrees, 0, 0.0001, 'reduced-motion cameraYawDegrees');
+  assert(reduced.stingActive, 'reduced-motion should still include sting');
 }
 
-// Envelope guardrail for feel regressions: push-in should only ramp up
-// until the remember peak, then only decay through settle.
-export function checkCameraPushEnvelopeMonotonic(): void {
-  const stepMs = 20;
-  const epsilon = 0.0001;
+export function checkMemoryBeatPublishingContract(): void {
+  const state = recognitionFeedbackAt(340, {
+    outcome: 'opened',
+    startedAt: 1_000,
+  });
 
-  let previous = recognitionFeedbackAt(0).cameraPushDegrees;
-  for (let t = stepMs; t <= 700; t += stepMs) {
-    const current = recognitionFeedbackAt(t).cameraPushDegrees;
-    assert(
-      current + epsilon >= previous,
-      `cameraPushDegrees should be non-decreasing to peak (t=${t}): prev=${previous}, current=${current}`,
-    );
-    previous = current;
-  }
+  const windowStub = {} as Window & typeof globalThis;
+  const memoryBeat = publishRecognitionMemoryBeat(windowStub, state);
+  const published = (windowStub as any).__game?.story?.memoryBeat;
 
-  for (let t = 700 + stepMs; t <= RECOGNITION_FEEDBACK_TOTAL_MS; t += stepMs) {
-    const current = recognitionFeedbackAt(t).cameraPushDegrees;
-    assert(
-      current <= previous + epsilon,
-      `cameraPushDegrees should be non-increasing after peak (t=${t}): prev=${previous}, current=${current}`,
-    );
-    previous = current;
-  }
+  assert((windowStub as any).__game?.story?.currentNpcId === 'io', 'currentNpcId should be io');
+  assert(published === memoryBeat, 'publish should return same memoryBeat object it writes');
+  assert(memoryBeat.kind === 'io_packet_return', `kind mismatch: got ${memoryBeat.kind}`);
+  assert(memoryBeat.outcome === 'opened', `outcome mismatch: got ${memoryBeat.outcome}`);
+  assert(memoryBeat.startedAt === 1_000, `startedAt mismatch: got ${memoryBeat.startedAt}`);
+  assert(memoryBeat.endedAt === 2_220, `endedAt mismatch: got ${memoryBeat.endedAt}`);
+  assertClose(memoryBeat.cameraDeltaMeters, 0.32, 0.0001, 'memoryBeat cameraDeltaMeters');
+  assertClose(memoryBeat.cameraYawDegrees, 4, 0.0001, 'memoryBeat cameraYawDegrees');
+  assert(memoryBeat.inputLockMs === 1220, `inputLockMs mismatch: got ${memoryBeat.inputLockMs}`);
+  assert(memoryBeat.lineId === 'io_return_packet_opened', `lineId mismatch: got ${memoryBeat.lineId}`);
 }
 
 export function runRecognitionFeedbackChecks(): void {
-  checkCatchBeatOpensRecognition();
-  checkRememberBloomThenSettle();
-  checkPhaseBoundariesAreContinuous();
-  checkRecognitionProfileContract();
-  checkCameraPushEnvelopeMonotonic();
+  checkDurationAndPeakContract();
+  checkOutcomeBranchDeltas();
+  checkGlowAndStingTiming();
+  checkReducedMotionFallback();
+  checkMemoryBeatPublishingContract();
 }
