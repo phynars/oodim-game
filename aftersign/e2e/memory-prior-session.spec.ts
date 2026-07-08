@@ -145,4 +145,41 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     const restored = await game(page);
     expect(restored.scene.beat).toBe("packet-opened");
   });
+
+  test("prior-session memory stays slot-scoped across save/reload", async ({ page }) => {
+    const slotA = `memory-isolation-a-${Date.now()}`;
+    const slotB = `memory-isolation-b-${Date.now()}`;
+
+    await page.goto(`/aftersign/?slot=${slotA}`);
+    await waitForBeat(page, "packet-offered");
+    await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+    await waitForBeat(page, "packet-kept-sealed");
+    await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+    await waitForBeat(page, "packet-delivered");
+
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
+    });
+
+    await page.evaluate(() => window.__game!.input.forceReload());
+    await page.evaluate(() => window.__game!.input.advance());
+    await waitForBeat(page, "io-returning-recognition");
+
+    const slotAState = await game(page);
+    expect(
+      slotAState.npcs.io.memory.some((fact) => fact.predicate === "delivered-blue-packet"),
+    ).toBe(true);
+
+    await page.goto(`/aftersign/?slot=${slotB}`);
+    await waitForBeat(page, "packet-offered");
+
+    const slotBState = await game(page);
+    const leakedFacts = slotBState.npcs.io.memory.filter(
+      (fact) => fact.predicate === "delivered-blue-packet",
+    );
+
+    expect(leakedFacts).toEqual([]);
+    expect(slotBState.npcs.io.lastLineMemoryRefs).toEqual([]);
+  });
 });
