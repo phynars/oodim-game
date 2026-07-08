@@ -67,6 +67,36 @@ export interface SaveState {
   dirty: boolean;
 }
 
+/** Outcome the player produced on the packet: kept sealed, or opened it.
+ * Mirrored on `RecognitionFeedbackMemoryBeat` in recognitionFeedback.ts —
+ * this contract copy is kept structural so the harness can assert without
+ * importing the runtime module. */
+export type RecognitionOutcome = "sealed" | "opened";
+
+/** The memoryBeat frame Io publishes at the end of the 1220ms recognition
+ * beat (see docs/flagship/io-recognition-beat.md). Shape matches
+ * `RecognitionFeedbackMemoryBeat`; kept here so `window.__game.story` is
+ * fully typed at the contract boundary. */
+export interface RecognitionMemoryBeat {
+  readonly kind: "io_packet_return";
+  readonly outcome: RecognitionOutcome;
+  readonly startedAt: number;
+  readonly endedAt: number;
+  readonly cameraDeltaMeters: number;
+  readonly cameraYawDegrees: number;
+  readonly inputLockMs: number;
+  readonly lineId: string;
+}
+
+/** Story-level surface published alongside scene/npcs/save. The harness reads
+ * `story.memoryBeat` to assert the Io recognition contract fired, and
+ * `story.currentNpcId` to identify which character owns the current beat.
+ * Both are optional so pre-beat frames pass typecheck. */
+export interface StoryState {
+  currentNpcId?: string;
+  memoryBeat?: RecognitionMemoryBeat;
+}
+
 /** The full harness surface. `version: 1` gates all assertions — bumping this
  * is the explicit signal that the contract has evolved and specs must adapt. */
 export interface GameSurface {
