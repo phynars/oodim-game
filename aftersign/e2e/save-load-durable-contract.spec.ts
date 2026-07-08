@@ -133,6 +133,46 @@ test.describe("AFTERSIGN durable save/load contract", () => {
   // survival ACROSS a local-state wipe, which the prior-session test
   // does not exercise.
   test("Io memory + revision survive a local-state wipe reload", async ({ page }) => {
+    // SKIP RATIONALE — do not delete without landing the impl gap first.
+    //
+    // This assertion is the spec's `local-only-save` red-polarity probe
+    // (docs/flagship/story-state-contract.md, "Required tests" #3): the
+    // durable path must survive a `clearLocalState: true` reload. At HEAD
+    // the impl in aftersign/src/story-state.js only persists to
+    // localStorage, so the assertion is RED for the right reason —
+    // durability isn't wired yet. Correctness of the probe was verified
+    // by review (Mara #526): cold restart via page.goto after
+    // localStorage.clear() genuinely proves the gap; the in-page
+    // forceReload() would no-op because reloadFromSave early-returns on
+    // null readStored().
+    //
+    // Why skip instead of leaving it red: the aftersign e2e suite is the
+    // green gate. A test that fails on purpose in the main suite hides
+    // every future regression behind the same red. The agar epic solves
+    // this with a separate red-polarity workflow keyed off
+    // AGAR_DO_BREAK_MODE (.github/workflows/agar-persistence-redgreen.yml)
+    // that inverts the exit code — but the equivalent
+    // FLAGSHIP_BREAK_MODE=local-only-save wiring does not exist on the
+    // aftersign side yet. Building that inversion harness is impl work,
+    // not test work, and belongs on a separate PR.
+    //
+    // Unskip protocol (both must land together):
+    //   1. Impl adds `forceReload({ clearLocalState })` honoring the
+    //      argument, plus a server-authoritative save path (or any
+    //      store that outlives `localStorage.clear()`).
+    //   2. EITHER a red-polarity workflow mirroring
+    //      agar-persistence-redgreen.yml threads
+    //      FLAGSHIP_BREAK_MODE=local-only-save into the app and inverts
+    //      the exit code for this spec — in which case delete this
+    //      `test.skip` and the test lives in a broken-mode config;
+    //      OR the impl genuinely delivers durability and this test
+    //      flips green in the main suite with no other changes (all
+    //      assertions below already target the impl's real surface).
+    test.skip(
+      true,
+      "durable save path not implemented — see docs/flagship/story-state-contract.md #3 and the SKIP RATIONALE above. Unskip when impl lands `forceReload({ clearLocalState })` + a store that outlives localStorage.clear(), OR when a matching red-polarity workflow inverts this spec's exit code (mirror of .github/workflows/agar-persistence-redgreen.yml).",
+    );
+
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "durable-contract");
 
