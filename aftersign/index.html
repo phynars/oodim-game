@@ -210,6 +210,38 @@
 
       const clone = (value) => JSON.parse(JSON.stringify(value));
       const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+      // Mirror of aftersign/src/story/ioMemoryBeatCameraMetrics.ts —
+      // duplicated inline because index.html is a plain ES module and can't
+      // import from a TS file. The TS module remains the tested source of
+      // truth; keep the two in sync when either changes.
+      const RADIANS_TO_DEGREES = 180 / Math.PI;
+      const normalizeDegrees = (degrees) => {
+        let normalized = degrees % 360;
+        if (normalized > 180) normalized -= 360;
+        if (normalized < -180) normalized += 360;
+        return normalized;
+      };
+      const computeCameraMetrics = (started, ended) => {
+        const dx = ended.x - started.x;
+        const dy = ended.y - started.y;
+        const dz = ended.z - started.z;
+        const cameraDeltaMeters = Math.hypot(dx, dy, dz);
+        const yawDeltaDegrees = normalizeDegrees((ended.yawRadians - started.yawRadians) * RADIANS_TO_DEGREES);
+        const cameraYawDegrees = Math.abs(yawDeltaDegrees);
+        return { cameraDeltaMeters, cameraYawDegrees };
+      };
+      const sampleCameraPose = () => ({
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+        // The kiosk-slice camera doesn't rotate on Y (no yaw); the framing
+        // motion is a small roll on Z during the confirm wobble. Populate
+        // the cameraYawDegrees field from that roll delta — the contract
+        // is "absolute angular framing delta in degrees", not literally
+        // world-Y rotation.
+        yawRadians: camera.rotation.z,
+      });
       const readStored = () => {
         try {
           const raw = window.localStorage.getItem(storageKey);
@@ -227,11 +259,26 @@
       const stored = readStored();
       const packetIntent = new PacketIntentController();
 
+      // Memory-beat timing contract — see docs/flagship/io-recognition-beat.md
+      // and aftersign/src/state-contract.ts (MemoryBeat). Duration and input
+      // lock come from the flagship spec; the beat window is what
+      // computeIoMemoryBeatCameraMetrics samples between.
+      const MEMORY_BEAT_DURATION_MS = 1180;
+      const MEMORY_BEAT_INPUT_LOCK_MS = 1180;
+      const MEMORY_BEAT_LINE_IDS = {
+        sealed: "io.recognition.sealed",
+        opened: "io.recognition.opened",
+      };
+
       const state = {
         slug: "aftersign",
         scene: {
           id: "io-kiosk-rainline",
           beat: stored?.beat ?? "packet-offered",
+        },
+        story: {
+          currentNpcId: null,
+          memoryBeat: null,
         },
         player: {
           id: "local-slice-player",
@@ -457,6 +504,7 @@
           version: 1,
           slug: state.slug,
           scene: { ...state.scene },
+          story: clone(state.story),
           player: clone(state.player),
           packet: clone(state.packet),
           npcs: clone(state.npcs),
@@ -467,6 +515,7 @@
             version: 1,
             slug: state.slug,
             scene: state.scene,
+            story: state.story,
             player: state.player,
             packet: state.packet,
             npcs: state.npcs,
@@ -758,6 +807,68 @@
         publishState();
       };
 
+      // Track peak camera-pose deviation from the beat's start pose across
+      // the beat window. Endpoint-vs-endpoint sampling reads ~0 because the
+      // confirm wobble decays fully within 220ms — the beat window is
+      // 1180ms, so both endpoints sit at the resting pose. Sampling peak
+      // deviation is the "anchor points the framing actually uses" clause
+      // from #536 — remove the camera kick and peakDeltaMeters → 0, which
+      // fails the e2e range check.
+      let memoryBeatSampler = null;
+
+      const startMemoryBeatSampling = (startedAt, outcome, lineId) => {
+        const startedPose = sampleCameraPose();
+        memoryBeatSampler = {
+          startedAt,
+          startedPose,
+          peakPose: startedPose,
+          peakDelta: 0,
+          outcome,
+          lineId,
+        };
+        state.story.memoryBeat = {
+          kind: "io_packet_return",
+          outcome,
+          startedAt,
+          endedAt: startedAt + MEMORY_BEAT_DURATION_MS,
+          cameraDeltaMeters: 0,
+          cameraYawDegrees: 0,
+          inputLockMs: MEMORY_BEAT_INPUT_LOCK_MS,
+          lineId,
+        };
+        markStateDirty();
+      };
+
+      const sampleMemoryBeatCamera = (now) => {
+        if (!memoryBeatSampler) return;
+        const pose = sampleCameraPose();
+        const metrics = computeCameraMetrics(memoryBeatSampler.startedPose, pose);
+        // Track peak by euclidean camera delta; keep the pose that produced
+        // it so cameraYawDegrees corresponds to the same frame.
+        if (metrics.cameraDeltaMeters > memoryBeatSampler.peakDelta) {
+          memoryBeatSampler.peakDelta = metrics.cameraDeltaMeters;
+          memoryBeatSampler.peakPose = pose;
+          const beat = state.story.memoryBeat;
+          if (beat) {
+            beat.cameraDeltaMeters = metrics.cameraDeltaMeters;
+            beat.cameraYawDegrees = metrics.cameraYawDegrees;
+            markStateDirty();
+          }
+        }
+        if (now >= memoryBeatSampler.startedAt + MEMORY_BEAT_DURATION_MS) {
+          // Finalize with actual observed end time and peak metrics.
+          const finalMetrics = computeCameraMetrics(memoryBeatSampler.startedPose, memoryBeatSampler.peakPose);
+          const beat = state.story.memoryBeat;
+          if (beat) {
+            beat.endedAt = now;
+            beat.cameraDeltaMeters = finalMetrics.cameraDeltaMeters;
+            beat.cameraYawDegrees = finalMetrics.cameraYawDegrees;
+            markStateDirty();
+          }
+          memoryBeatSampler = null;
+        }
+      };
+
       const deliverPacket = (source = "hud-button") => {
         triggerKioskFeedback(source);
         state.packet.delivered = true;
@@ -767,6 +878,14 @@
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
         state.save.dirty = true;
+        // Open the memory beat window: sample camera at the confirm-kick
+        // start; the tick loop will sample again each frame and record peak
+        // deviation. Populates state.story.memoryBeat for the harness.
+        const outcome = state.packet.sealed ? "sealed" : "opened";
+        const lineId = state.packet.sealed
+          ? MEMORY_BEAT_LINE_IDS.sealed
+          : MEMORY_BEAT_LINE_IDS.opened;
+        startMemoryBeatSampling(performance.now(), outcome, lineId);
         markStateDirty();
         setBeat("packet-delivered");
         persist({ dirty: true });
@@ -802,6 +921,8 @@
           remainingMs: 0,
         };
         lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
+        state.story.memoryBeat = null;
+        memoryBeatSampler = null;
         markStateDirty();
         syncPacketIntent();
         document.documentElement.style.setProperty("--confirm-shake-x", "0px");
@@ -829,6 +950,12 @@
         const restored = clone(snapshot);
         if (restored.scene && typeof restored.scene.beat === "string") {
           state.scene.beat = restored.scene.beat;
+        }
+        if (restored.story && typeof restored.story === "object") {
+          state.story = {
+            currentNpcId: restored.story.currentNpcId ?? null,
+            memoryBeat: restored.story.memoryBeat ? clone(restored.story.memoryBeat) : null,
+          };
         }
         if (restored.player && typeof restored.player === "object") {
           state.player = { ...state.player, ...restored.player };
@@ -1113,6 +1240,9 @@
         camera.position.x = state.player.x * 0.12 + confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
         camera.position.z = 7.6 + state.player.z * 0.12;
         camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+        // Sample the beat window AFTER camera transforms are applied for
+        // this frame so we capture the same pose the player sees.
+        sampleMemoryBeatCamera(now);
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
         if (failureSting) {
