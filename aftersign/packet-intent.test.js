@@ -72,13 +72,36 @@ test('HOLD_TO_OPEN_MS matches the 450ms spec in ivy-packet-action-review.md', ()
   assert.equal(PACKET_INTENT.HOLD_TO_OPEN_MS, 450);
 });
 
-test('mid-length press cancels instead of accidentally opening or preserving', () => {
+test('mid-length release inside the deadzone preserves the seal (no punitive cancel)', () => {
+  // Feel contract: releasing at 181–449 ms — a hesitant, in-bounds press —
+  // used to CANCEL, which felt punitive: the player made an in-bounds choice
+  // and got no outcome. New behavior: any in-bounds release before
+  // HOLD_TO_OPEN_MS defaults to SEALED. A false-sealed is recoverable
+  // (press again); a false-opened is not (trust is spent). This test pins
+  // the deadzone default so it can't silently regress back to CANCELLED.
   const packet = new PacketIntentController();
 
   packet.press({ timeMs: 3000, x: 60, y: 60 });
   const result = packet.release({ timeMs: 3000 + PACKET_INTENT.TAP_TO_PRESERVE_MAX_MS + 1, x: 60, y: 60 });
 
-  assert.equal(result.outcome, PACKET_OUTCOME.CANCELLED);
+  assert.equal(result.outcome, PACKET_OUTCOME.SEALED);
+  assert.equal(result.active, false);
+  assert.equal(result.progress, 0);
+});
+
+test('release one tick before HOLD_TO_OPEN_MS still preserves the seal', () => {
+  // Upper boundary of the deadzone: releasing at HOLD_TO_OPEN_MS − 1 must
+  // stay SEALED. The open commit only fires at or past the full hold window.
+  const packet = new PacketIntentController();
+
+  packet.press({ timeMs: 6000, x: 70, y: 70 });
+  const result = packet.release({
+    timeMs: 6000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1,
+    x: 70,
+    y: 70,
+  });
+
+  assert.equal(result.outcome, PACKET_OUTCOME.SEALED);
   assert.equal(result.active, false);
   assert.equal(result.progress, 0);
 });

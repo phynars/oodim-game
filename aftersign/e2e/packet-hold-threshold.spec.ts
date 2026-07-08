@@ -172,3 +172,44 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   expect(heldSnapshot.interaction.packetIntent.outcome).toBe("opened");
   expect(heldSnapshot.interaction.packetIntent.progress).toBe(1);
 });
+
+test("deadzone release (181–449 ms) preserves the seal instead of cancelling", async ({
+  page,
+}) => {
+  // Feel contract, pinned through window.__game: a hesitant in-bounds
+  // release inside the 181–449 ms deadzone is not a punitive CANCEL — it
+  // defaults to SEALED. A false-sealed is recoverable (press again);
+  // a false-opened spends trust. If this regresses to "cancelled" or
+  // "opened", the flagship slice's Act I trust readability breaks.
+  await page.goto("/?slot=packet-hold-threshold");
+  await waitForGame(page);
+  await page.evaluate(() => window.__game.resetSliceSave());
+
+  // Release at start + 300ms: past TAP_TO_PRESERVE_MAX_MS (180) and well
+  // under HOLD_TO_OPEN_MS (450) — the middle of the deadzone.
+  const deadzoneSnapshot = await page.evaluate(() => {
+    const t0 = 8_000;
+    window.__game.input.packetPress({ timeMs: t0, x: 32, y: 32 });
+    window.__game.input.packetRelease({ timeMs: t0 + 300, x: 32, y: 32 });
+    return window.__game.getSnapshot();
+  });
+
+  expect(deadzoneSnapshot.packet.sealed).toBe(true);
+  expect(deadzoneSnapshot.scene.beat).not.toBe("packet-opened");
+  expect(deadzoneSnapshot.interaction.packetIntent.outcome).toBe("sealed");
+  expect(deadzoneSnapshot.interaction.packetIntent.progress).toBe(0);
+
+  await page.evaluate(() => window.__game.resetSliceSave());
+
+  // Upper deadzone boundary: release at HOLD_TO_OPEN_MS − 1 must still be SEALED.
+  const nearMissSnapshot = await page.evaluate(() => {
+    const t0 = 12_000;
+    window.__game.input.packetPress({ timeMs: t0, x: 48, y: 48 });
+    window.__game.input.packetRelease({ timeMs: t0 + 449, x: 48, y: 48 });
+    return window.__game.getSnapshot();
+  });
+
+  expect(nearMissSnapshot.packet.sealed).toBe(true);
+  expect(nearMissSnapshot.scene.beat).not.toBe("packet-opened");
+  expect(nearMissSnapshot.interaction.packetIntent.outcome).toBe("sealed");
+});
