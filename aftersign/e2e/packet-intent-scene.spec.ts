@@ -48,6 +48,19 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
   expect(holdThenReleaseSnapshot.interaction.packetIntent.outcome).toBe('opened');
   expect(holdThenReleaseSnapshot.interaction.packetIntent.progress).toBe(1);
 
+  const inBetweenHoldSnapshot = await page.evaluate(async () => {
+    await window.__game.resetSliceSave();
+    const t0 = 4_000;
+    window.__game.input.packetPress({ timeMs: t0, x: 24, y: 24 });
+    window.__game.input.packetRelease({ timeMs: t0 + 300, x: 24, y: 24 });
+    return window.__game.getSnapshot();
+  });
+
+  expect(inBetweenHoldSnapshot.packet.sealed).toBe(true);
+  expect(inBetweenHoldSnapshot.scene.beat).toBe('packet-kept-sealed');
+  expect(inBetweenHoldSnapshot.interaction.packetIntent.outcome).toBe('sealed');
+  expect(inBetweenHoldSnapshot.interaction.packetIntent.progress).toBe(0);
+
   const resetSnapshot = await page.evaluate(async () => {
     await window.__game.resetSliceSave();
     return window.__game.getSnapshot();
