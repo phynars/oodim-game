@@ -586,8 +586,8 @@
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = typeof saved.beat === "string"
-      ? saved.beat
-      : state.packet.delivered ? "packet-delivered" : "packet-offered";
+          ? saved.beat
+          : state.packet.delivered ? "packet-delivered" : "packet-offered";
         markStateDirty();
         renderText();
         publishState();
