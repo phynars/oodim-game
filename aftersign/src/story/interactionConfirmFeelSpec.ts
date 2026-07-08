@@ -5,6 +5,8 @@ export type InteractionConfirmFeelSpec = {
   cameraNodDeg: number;
   /** Peak world-space screen shake in CSS pixels at 1x scale. */
   shakePx: number;
+  /** Time from shake peak until amplitude returns to 0 (fully settled). */
+  shakeSettleMs: number;
   /** Total visual envelope length from onset to settle. */
   envelopeMs: number;
   /** Primary easing curve for the pop in phase. */
@@ -29,6 +31,7 @@ export const INTERACTION_CONFIRM_FEEL_SPEC: InteractionConfirmFeelSpec = {
   onsetMs: 90,
   cameraNodDeg: 0.9,
   shakePx: 3,
+  shakeSettleMs: 260,
   envelopeMs: 280,
   // Snappy pop: cubic-bezier(0.22, 1, 0.36, 1)
   easeOut: [0.22, 1, 0.36, 1],
@@ -41,6 +44,7 @@ export function withinConfirmFeelTolerance(measured: {
   onsetMs: number;
   cameraNodDeg: number;
   shakePx: number;
+  shakeSettleMs: number;
   envelopeMs: number;
   avOffsetMs: number;
 }): boolean {
@@ -50,6 +54,7 @@ export function withinConfirmFeelTolerance(measured: {
     measured.cameraNodDeg <= INTERACTION_CONFIRM_FEEL_SPEC.cameraNodDeg + 0.1 &&
     measured.shakePx >= INTERACTION_CONFIRM_FEEL_SPEC.shakePx - 0.5 &&
     measured.shakePx <= INTERACTION_CONFIRM_FEEL_SPEC.shakePx + 0.5 &&
+    measured.shakeSettleMs <= INTERACTION_CONFIRM_FEEL_SPEC.shakeSettleMs &&
     measured.envelopeMs <= INTERACTION_CONFIRM_FEEL_SPEC.envelopeMs &&
     Math.abs(measured.avOffsetMs - INTERACTION_CONFIRM_FEEL_SPEC.avOffsetMs) <= 16
   );
