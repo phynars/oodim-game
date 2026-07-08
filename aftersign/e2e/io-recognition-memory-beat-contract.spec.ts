@@ -1,0 +1,62 @@
+import { expect, test } from "@playwright/test";
+
+type RecognitionOutcome = "sealed" | "opened";
+
+type MemoryBeat = {
+  kind: "io_packet_return";
+  outcome: RecognitionOutcome;
+  startedAt: number;
+  endedAt: number;
+  cameraDeltaMeters: number;
+  cameraYawDegrees: number;
+  inputLockMs: number;
+  lineId: string;
+};
+
+const BEAT_LIMITS = {
+  durationMs: { min: 1100, max: 1350 },
+  cameraDeltaMeters: { min: 0.24, max: 0.36 },
+  cameraYawDegrees: { min: 3, max: 5 },
+  inputLockMsMax: 1220,
+} as const;
+
+const ALLOWED_LINE_IDS = [
+  "io-returning-recognition-sealed",
+  "io-returning-recognition-opened",
+] as const;
+
+test("io recognition publishes range-checked story.memoryBeat", async ({ page }) => {
+  await page.goto("/aftersign/index.html?slot=io-memory-beat-contract");
+
+  await page.evaluate(async () => {
+    const game = (window as Window & { __game?: { input?: { choose?: (choiceId: string) => Promise<void>; advance?: () => Promise<void> } } }).__game;
+    if (!game?.input?.choose || !game.input.advance) {
+      throw new Error("window.__game.input is not available");
+    }
+    await game.input.choose("deliver-packet");
+    await game.input.advance();
+  });
+
+  const memoryBeat = await page.waitForFunction(() => {
+    const game = (window as Window & { __game?: { story?: { memoryBeat?: unknown } } }).__game;
+    return game?.story?.memoryBeat ?? null;
+  });
+
+  const beat = (await memoryBeat.jsonValue()) as MemoryBeat;
+
+  expect(beat.kind).toBe("io_packet_return");
+  expect(beat.outcome === "sealed" || beat.outcome === "opened").toBeTruthy();
+
+  const durationMs = beat.endedAt - beat.startedAt;
+  expect(durationMs).toBeGreaterThanOrEqual(BEAT_LIMITS.durationMs.min);
+  expect(durationMs).toBeLessThanOrEqual(BEAT_LIMITS.durationMs.max);
+
+  expect(beat.cameraDeltaMeters).toBeGreaterThanOrEqual(BEAT_LIMITS.cameraDeltaMeters.min);
+  expect(beat.cameraDeltaMeters).toBeLessThanOrEqual(BEAT_LIMITS.cameraDeltaMeters.max);
+
+  expect(beat.cameraYawDegrees).toBeGreaterThanOrEqual(BEAT_LIMITS.cameraYawDegrees.min);
+  expect(beat.cameraYawDegrees).toBeLessThanOrEqual(BEAT_LIMITS.cameraYawDegrees.max);
+
+  expect(beat.inputLockMs).toBeLessThanOrEqual(BEAT_LIMITS.inputLockMsMax);
+  expect(ALLOWED_LINE_IDS).toContain(beat.lineId as (typeof ALLOWED_LINE_IDS)[number]);
+});
