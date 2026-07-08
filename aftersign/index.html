@@ -1042,8 +1042,14 @@
         const firstCameraSample = firstCameraMove.sample(now);
         const cameraTrackX = state.player.x * firstCameraMove.profile.parallax.playerTrackX;
         const cameraTrackZ = state.player.z * firstCameraMove.profile.parallax.playerTrackZ;
+        // settleOffsetPx: a small vertical micro-bounce at the tail of the
+        // ease-in — the "settle" of the camera landing. Convert px→world-y
+        // via the same 0.001 factor the confirm kick uses (visually calibrated
+        // so 6px feels like a fingertip nudge, not a jolt). Feeds camera.y so
+        // the contract's settleBouncePx is actually observable in-scene.
+        const settleWorldY = firstCameraSample.settleOffsetPx * 0.001;
         camera.position.x = firstCameraSample.x + cameraTrackX + confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX;
-        camera.position.y = firstCameraSample.y;
+        camera.position.y = firstCameraSample.y + settleWorldY;
         camera.position.z = firstCameraSample.z + cameraTrackZ;
         camera.rotation.z = firstCameraSample.rollRadians + THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg);
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx)}px`);

@@ -88,16 +88,37 @@ export const assertFirstCameraMoveFeelContract = (profile = FIRST_CAMERA_MOVE) =
   const firstFrame = sampleFirstCameraMove(0, profile);
   const halfBeat = sampleFirstCameraMove(profile.durationMs / 2, profile);
   const finalFrame = sampleFirstCameraMove(profile.durationMs, profile);
+  // Sample the middle of the settle window — where sin(π·0.5) = 1, so the
+  // offset should be exactly profile.settle.bouncePx (rounded). If the tick
+  // in index.html is wired to settleOffsetPx, this value is what the camera
+  // actually gets nudged by.
+  const settleFrameMs = 1000 / 60;
+  const settleWindowStart = Math.max(0, profile.durationMs - profile.settle.bounceFrames * settleFrameMs);
+  const settleMidMs = settleWindowStart + (profile.durationMs - settleWindowStart) / 2;
+  const settleMid = sampleFirstCameraMove(settleMidMs, profile);
 
   const startsWide = firstFrame.z > profile.end.z && firstFrame.y > profile.end.y;
   const convergesByHalf = halfBeat.progress >= 0.49 && halfBeat.progress <= 0.51;
   const easesIntoSettle = finalFrame.done && Math.abs(finalFrame.rollDeg - profile.end.rollDeg) <= 0.05;
+  // Guards against the "declared bounce is dead code" failure mode: settle
+  // must be zero at t=0 and t=duration, and non-zero and reach bouncePx in
+  // between. If the tick ever stops reading settleOffsetPx, this still
+  // passes — but see also the tick assertion in index.html that consumes it.
+  const settleAtStartIsZero = firstFrame.settleOffsetPx === 0;
+  const settleAtEndIsZero = finalFrame.settleOffsetPx === 0;
+  const settleMidHitsBounce = settleMid.settleOffsetPx === profile.settle.bouncePx;
+  const settleIsAlive = settleAtStartIsZero && settleAtEndIsZero && settleMidHitsBounce;
 
   return Object.freeze({
-    passed: startsWide && convergesByHalf && easesIntoSettle,
+    passed: startsWide && convergesByHalf && easesIntoSettle && settleIsAlive,
     startsWide,
     convergesByHalf,
     easesIntoSettle,
+    settleIsAlive,
+    settleAtStartIsZero,
+    settleAtEndIsZero,
+    settleMidHitsBounce,
+    settleMidOffsetPx: settleMid.settleOffsetPx,
     durationMs: profile.durationMs,
     startZ: profile.start.z,
     endZ: profile.end.z,
