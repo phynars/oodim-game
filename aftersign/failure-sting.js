@@ -32,6 +32,13 @@ export const FAILURE_STING = Object.freeze({
   },
 });
 
+export const FAILURE_STING_FEEL_CONTRACT = Object.freeze({
+  targetFps: 60,
+  maxAttackFrames: 2,
+  couplingWindowMs: 16.67,
+  maxRecoveryMs: 360,
+});
+
 export const FAILURE_STING_REST_SAMPLE = Object.freeze({
   active: false,
   elapsedMs: FAILURE_STING.durationMs,
@@ -129,6 +136,7 @@ export const assertFailureStingCueShape = () => {
   const attack = sampleFailureSting(FAILURE_STING.attackMs);
   const heldPeak = sampleFailureSting(FAILURE_STING.attackMs + FAILURE_STING.peakHoldMs);
   const recovered = sampleFailureSting(FAILURE_STING.recoveryMs);
+  const firstFrame = sampleFailureSting(FAILURE_STING_FEEL_CONTRACT.couplingWindowMs);
 
   if (start.tintAlpha !== 0 || !start.toneQueued) {
     throw new Error('failure sting must start visually clean while queuing its one-shot tone');
@@ -144,6 +152,18 @@ export const assertFailureStingCueShape = () => {
 
   if (recovered.active || recovered.tintAlpha !== 0 || recovered.cameraShakeX !== 0 || recovered.cameraRollDeg !== 0) {
     throw new Error(`failure sting must fully recover by ${FAILURE_STING.recoveryMs}ms`);
+  }
+
+  if (FAILURE_STING.attackMs > FAILURE_STING_FEEL_CONTRACT.maxAttackFrames * (1000 / FAILURE_STING_FEEL_CONTRACT.targetFps)) {
+    throw new Error(`failure sting attack must stay within ${FAILURE_STING_FEEL_CONTRACT.maxAttackFrames} frames at ${FAILURE_STING_FEEL_CONTRACT.targetFps}fps`);
+  }
+
+  if (FAILURE_STING.recoveryMs > FAILURE_STING_FEEL_CONTRACT.maxRecoveryMs) {
+    throw new Error(`failure sting recovery must stay at or below ${FAILURE_STING_FEEL_CONTRACT.maxRecoveryMs}ms`);
+  }
+
+  if (firstFrame.tintAlpha <= 0) {
+    throw new Error(`failure sting must show visible tint by ${FAILURE_STING_FEEL_CONTRACT.couplingWindowMs}ms for audio-visual coupling`);
   }
 
   return true;
