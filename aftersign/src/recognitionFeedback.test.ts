@@ -111,9 +111,36 @@ export function checkRecognitionProfileContract(): void {
   assertClose(peak.vignetteOpacity, 0.32, 0.01, 't=700 vignette peak');
 }
 
+// Envelope guardrail for feel regressions: push-in should only ramp up
+// until the remember peak, then only decay through settle.
+export function checkCameraPushEnvelopeMonotonic(): void {
+  const stepMs = 20;
+  const epsilon = 0.0001;
+
+  let previous = recognitionFeedbackAt(0).cameraPushDegrees;
+  for (let t = stepMs; t <= 700; t += stepMs) {
+    const current = recognitionFeedbackAt(t).cameraPushDegrees;
+    assert(
+      current + epsilon >= previous,
+      `cameraPushDegrees should be non-decreasing to peak (t=${t}): prev=${previous}, current=${current}`,
+    );
+    previous = current;
+  }
+
+  for (let t = 700 + stepMs; t <= RECOGNITION_FEEDBACK_TOTAL_MS; t += stepMs) {
+    const current = recognitionFeedbackAt(t).cameraPushDegrees;
+    assert(
+      current <= previous + epsilon,
+      `cameraPushDegrees should be non-increasing after peak (t=${t}): prev=${previous}, current=${current}`,
+    );
+    previous = current;
+  }
+}
+
 export function runRecognitionFeedbackChecks(): void {
   checkCatchBeatOpensRecognition();
   checkRememberBloomThenSettle();
   checkPhaseBoundariesAreContinuous();
   checkRecognitionProfileContract();
+  checkCameraPushEnvelopeMonotonic();
 }
