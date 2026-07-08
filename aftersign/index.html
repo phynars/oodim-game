@@ -206,6 +206,19 @@
       const stored = readStored();
       const packetIntent = new PacketIntentController();
 
+      // Recognition-beat contract (see docs/flagship/io-recognition-beat.md and
+      // aftersign/src/recognitionFeedback.ts). Mirrored here as constants
+      // because index.html is a plain-JS ES module bundle and cannot import
+      // the TS module directly at runtime — the src module is the source of
+      // truth for the shape; if you change one, change both.
+      const RECOGNITION_BEAT = {
+        totalMs: 1220,
+        cameraDeltaMeters: 0.32,
+        cameraYawDegrees: 4,
+      };
+      const lineIdForOutcome = (outcome) =>
+        outcome === "sealed" ? "io_return_packet_sealed" : "io_return_packet_opened";
+
       const state = {
         slug: "aftersign",
         scene: {
@@ -232,6 +245,13 @@
           },
         },
         save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
+        // Story-level surface — published on window.__game.story. Populated
+        // when the returning-session recognition beat fires; empty otherwise.
+        // See docs/flagship/io-recognition-beat.md for the memoryBeat shape.
+        story: {
+          currentNpcId: null,
+          memoryBeat: null,
+        },
         movement: {
           input: { x: 0, z: 0, source: "none", active: false },
           lastStepMs: 0,
@@ -434,6 +454,7 @@
           packet: clone(state.packet),
           npcs: clone(state.npcs),
           save: { ...state.save },
+          story: clone(state.story),
           movement: clone(state.movement),
           interaction: clone(state.interaction),
           getSnapshot: () => clone({
@@ -444,6 +465,7 @@
             packet: state.packet,
             npcs: state.npcs,
             save: state.save,
+            story: state.story,
             movement: state.movement,
             interaction: state.interaction,
           }),
@@ -476,10 +498,35 @@
         setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
       };
 
+      // Publish the Io recognition-beat frame onto state.story so the harness
+      // can assert the 1220ms contract fired with the right outcome + line.
+      // Only fires on transition INTO io-returning-recognition; idempotent
+      // once memoryBeat is set for the current beat.
+      const firePacketReturnRecognition = () => {
+        const outcome = state.packet.sealed ? "sealed" : "opened";
+        const startedAt = performance.now();
+        state.story.currentNpcId = "io";
+        state.story.memoryBeat = {
+          kind: "io_packet_return",
+          outcome,
+          startedAt,
+          endedAt: startedAt + RECOGNITION_BEAT.totalMs,
+          cameraDeltaMeters: RECOGNITION_BEAT.cameraDeltaMeters,
+          cameraYawDegrees: RECOGNITION_BEAT.cameraYawDegrees,
+          inputLockMs: RECOGNITION_BEAT.totalMs,
+          lineId: lineIdForOutcome(outcome),
+        };
+        markStateDirty();
+      };
+
       const setBeat = (beat) => {
+        const previous = state.scene.beat;
         if (state.scene.beat !== beat) {
           state.scene.beat = beat;
           markStateDirty();
+        }
+        if (beat === "io-returning-recognition" && previous !== "io-returning-recognition") {
+          firePacketReturnRecognition();
         }
         renderText();
         publishState();
@@ -734,6 +781,8 @@
           active: false,
           remainingMs: 0,
         };
+        state.story.currentNpcId = null;
+        state.story.memoryBeat = null;
         markStateDirty();
         syncPacketIntent();
         document.documentElement.style.setProperty("--confirm-shake-x", "0px");
@@ -776,6 +825,15 @@
         }
         if (restored.save && typeof restored.save === "object") {
           state.save = { ...emptySave(), ...restored.save };
+        }
+        if (restored.story && typeof restored.story === "object") {
+          state.story.currentNpcId = restored.story.currentNpcId ?? null;
+          state.story.memoryBeat = restored.story.memoryBeat
+            ? clone(restored.story.memoryBeat)
+            : null;
+        } else {
+          state.story.currentNpcId = null;
+          state.story.memoryBeat = null;
         }
         markStateDirty();
         renderText();
