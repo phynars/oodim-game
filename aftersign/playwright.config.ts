@@ -44,12 +44,42 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    cwd: repoRoot,
-    command:
-      "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
-    url: "http://localhost:4374/aftersign/",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  // Two web servers: the aftersign vite preview (game bundle at :4374) and
+  // a static file server for the portfolio landing page (:4375). The landing
+  // server exists so aftersign/e2e/landing-discoverability.spec.ts can assert
+  // the AFTERSIGN card is present + linked correctly at game.oodim.com/ —
+  // discoverability is a first-touch surface for the flagship, so a broken
+  // card should fail the aftersign lane the same way a broken scene would.
+  //
+  // Why colocated here vs a dedicated landing lane: the assertion IS an
+  // aftersign concern — "is the flagship reachable from the portfolio
+  // index?" — so gating it on the aftersign lane is semantically correct.
+  // The aftersign filter in ci.yml triggers on aftersign/** and `shared`
+  // changes; a pure landing-only edit that breaks the AFTERSIGN card
+  // won't fail this lane, but that's an acceptable trade for now — the
+  // deploy pipeline copies landing/ verbatim, so the failure mode is
+  // "card missing on prod", caught by prod-smoke, not silent.
+  webServer: [
+    {
+      cwd: repoRoot,
+      command:
+        "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
+      url: "http://localhost:4374/aftersign/",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      cwd: repoRoot,
+      // Static-serve landing/ via a tiny Node script (no external deps, no
+      // registry fetch at test-time). See scripts/serve-landing.mjs for the
+      // full rationale — the earlier `npx --yes serve@14 …` variant was
+      // fragile in CI because it downloaded `serve` at run-time and any
+      // transient npm-registry hiccup surfaced as an aftersign-lane failure
+      // with no signal about the actual spec.
+      command: "node scripts/serve-landing.mjs 4375",
+      url: "http://localhost:4375/",
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+  ],
 });
