@@ -1,107 +1,71 @@
-import { test, expect, Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const COLD_START_MS = 90_000;
-const WAIT_MS = 60_000;
+// Contract: PacketIntentController maps time-held into an outcome via three
+// constants in aftersign/packet-intent.js — TAP_TO_PRESERVE_MAX_MS=180,
+// HOLD_TO_OPEN_MS=450, PROGRESS_DEADBAND_MS=80. This spec pins the boundary
+// end-to-end (scene beat + packet state + intent outcome) so a regression in
+// the wiring between the controller, the scene beat machine, and the
+// window.__game surface fails CI — not just the unit test in isolation.
+//
+// Assertions:
+//   1. A 120ms tap (< 180ms ceiling) → outcome=sealed, sealed=true, beat
+//      does NOT flip to packet-opened.
+//   2. Mid-hold at start+180ms: held time after the 80ms deadband is 100ms;
+//      progress ≈ 0.27 (100 / (450 − 80)) — still below threshold, so
+//      outcome stays "unknown" and the packet stays sealed.
+//   3. Past-threshold at start+2000ms: held time is way beyond the 450ms
+//      threshold — outcome flips to "opened", packet.sealed=false, and the
+//      scene beat becomes packet-opened.
 
-type Beat = "packet-offered" | "packet-kept-sealed" | "packet-opened";
-
-type GameSurface = {
-  version: 1;
-  scene: { beat: Beat };
-  packet: { sealed: boolean };
-  interaction: {
-    packetIntent: {
-      active: boolean;
-      outcome: "unknown" | "sealed" | "opened";
-      progress: number;
-    };
-  };
-  input: {
-    packetPress(input: { timeMs: number; x: number; y: number }): Promise<void>;
-    packetTick(timeMs: number): Promise<void>;
-    packetRelease(input: { timeMs: number; x: number; y: number }): Promise<void>;
-    forceReload(): Promise<void>;
-  };
+const waitForGame = async (page) => {
+  await page.waitForFunction(() => Boolean(window.__game?.input?.packetPress));
 };
 
-declare global {
-  interface Window {
-    __game?: GameSurface;
-  }
-}
+test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_MS", async ({
+  page,
+}) => {
+  await page.goto("/?slot=packet-hold-threshold");
+  await waitForGame(page);
+  await page.evaluate(() => window.__game.resetSliceSave());
 
-async function waitForGame(page: Page): Promise<void> {
-  await page.waitForFunction(() => window.__game?.version === 1, undefined, {
-    timeout: WAIT_MS,
+  // --- Short tap: 120ms, well under the 180ms ceiling ---
+  const tapSnapshot = await page.evaluate(() => {
+    const t0 = 1_000;
+    window.__game.input.packetPress({ timeMs: t0, x: 24, y: 24 });
+    window.__game.input.packetRelease({ timeMs: t0 + 120, x: 24, y: 24 });
+    return window.__game.getSnapshot();
   });
-}
 
-function watchPageErrors(page: Page, label: string): void {
-  page.on("pageerror", (err) => {
-    // eslint-disable-next-line no-console
-    console.error(`[aftersign ${label}] pageerror:`, err.message);
+  expect(tapSnapshot.packet.sealed).toBe(true);
+  expect(tapSnapshot.scene.beat).not.toBe("packet-opened");
+  expect(tapSnapshot.interaction.packetIntent.outcome).toBe("sealed");
+
+  // Reset the slice so the next press starts from a clean sealed offer.
+  await page.evaluate(() => window.__game.resetSliceSave());
+
+  // --- Mid-hold: tick at start + 180ms (100ms of usable hold, below 450ms) ---
+  const midHoldSnapshot = await page.evaluate(() => {
+    const t0 = 4_000;
+    window.__game.input.packetPress({ timeMs: t0, x: 40, y: 40 });
+    window.__game.input.packetTick(t0 + 180);
+    return window.__game.getSnapshot();
   });
-  page.on("console", (msg) => {
-    if (msg.type() === "error") {
-      // eslint-disable-next-line no-console
-      console.error(`[aftersign ${label}] console.error:`, msg.text());
-    }
+
+  expect(midHoldSnapshot.packet.sealed).toBe(true);
+  expect(midHoldSnapshot.scene.beat).not.toBe("packet-opened");
+  expect(midHoldSnapshot.interaction.packetIntent.outcome).toBe("unknown");
+  expect(midHoldSnapshot.interaction.packetIntent.progress).toBeGreaterThan(0);
+  expect(midHoldSnapshot.interaction.packetIntent.progress).toBeLessThan(1);
+
+  // --- Past-threshold: continue the same hold to start + 2000ms ---
+  const heldSnapshot = await page.evaluate(() => {
+    // No press here — we're still holding from the previous evaluate.
+    window.__game.input.packetTick(4_000 + 2_000);
+    return window.__game.getSnapshot();
   });
-}
 
-test.describe("AFTERSIGN packet hold-to-open contract", () => {
-  test("short tap stays sealed; sustained hold flips to opened while held", async ({ page }) => {
-    test.setTimeout(COLD_START_MS);
-    watchPageErrors(page, "packet-hold-threshold");
-
-    await page.goto(`/aftersign/?slot=packet-hold-${Date.now()}`, { waitUntil: "load" });
-    await waitForGame(page);
-
-    const shortTap = await page.evaluate(() => {
-      const g = window.__game!;
-      const start = 1_000;
-      g.input.packetPress({ timeMs: start, x: 120, y: 120 });
-      g.input.packetRelease({ timeMs: start + 120, x: 120, y: 120 });
-      return {
-        beat: g.scene.beat,
-        sealed: g.packet.sealed,
-        outcome: g.interaction.packetIntent.outcome,
-      };
-    });
-
-    expect(shortTap.sealed).toBe(true);
-    expect(shortTap.beat).not.toBe("packet-opened");
-    expect(shortTap.outcome).toBe("sealed");
-
-    const hold = await page.evaluate(() => {
-      const g = window.__game!;
-      const start = 4_000;
-      g.input.packetPress({ timeMs: start, x: 140, y: 140 });
-
-      g.input.packetTick(start + 180);
-      const beforeThreshold = {
-        beat: g.scene.beat,
-        sealed: g.packet.sealed,
-        outcome: g.interaction.packetIntent.outcome,
-      };
-
-      g.input.packetTick(start + 2_000);
-      const afterThreshold = {
-        beat: g.scene.beat,
-        sealed: g.packet.sealed,
-        outcome: g.interaction.packetIntent.outcome,
-      };
-
-      g.input.packetRelease({ timeMs: start + 2_020, x: 140, y: 140 });
-      return { beforeThreshold, afterThreshold };
-    });
-
-    expect(hold.beforeThreshold.sealed).toBe(true);
-    expect(hold.beforeThreshold.beat).not.toBe("packet-opened");
-    expect(hold.beforeThreshold.outcome).toBe("unknown");
-
-    expect(hold.afterThreshold.sealed).toBe(false);
-    expect(hold.afterThreshold.beat).toBe("packet-opened");
-    expect(hold.afterThreshold.outcome).toBe("opened");
-  });
+  expect(heldSnapshot.packet.sealed).toBe(false);
+  expect(heldSnapshot.scene.beat).toBe("packet-opened");
+  expect(heldSnapshot.interaction.packetIntent.outcome).toBe("opened");
+  expect(heldSnapshot.interaction.packetIntent.progress).toBe(1);
 });
