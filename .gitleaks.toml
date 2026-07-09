@@ -14,6 +14,11 @@ regexes = [
   # GitHub Actions secret EXPANSIONS — the real value lives in the Actions
   # secret store, never in the file (e.g. ${{ secrets.CLOUDFLARE_API_TOKEN }}).
   '''\$\{\{\s*secrets\.''',
+  # Game localStorage save-slot keys (e.g. "aftersign.kioskSlice.v1") — plain
+  # client-side storage identifiers, not credentials. High entropy trips the
+  # generic-api-key rule (verified 2026-07-09: aftersign/src/story-state.js +
+  # index.html, used only with localStorage.getItem/setItem/removeItem).
+  '''[a-z]+\.[A-Za-z]+\.v\d+''',
 ]
 
 paths = [
