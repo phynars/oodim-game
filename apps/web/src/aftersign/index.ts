@@ -33,3 +33,15 @@ export {
   type IoRecognitionLine,
   type IoRouteAttention,
 } from "./ioVoice";
+
+export {
+  getRecognitionFeedbackDuration,
+  recognitionFeedbackContract,
+  sampleRecognitionFeedbackBeat,
+  toRecognitionMemoryBeatSnapshot,
+  type RecognitionBeatKind,
+  type RecognitionFeedbackOptions,
+  type RecognitionFeedbackSample,
+  type RecognitionMemoryBeatSnapshot,
+  type RecognitionOutcome,
+} from "./recognitionFeedback";
