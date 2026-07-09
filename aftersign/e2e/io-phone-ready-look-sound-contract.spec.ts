@@ -4,14 +4,16 @@ import { expect, test } from "@playwright/test";
  * AFTERSIGN phone-ready look/sound envelope for Io's first memory beat.
  *
  * This is a RUNTIME-BOUND contract harness (not a static-envelope check):
- * it loads /aftersign/index.html at a phone viewport, drives the same
- * deliverPacket() code path a player would, and measures real behavior
- * against #544's four budgets:
+ * it loads /aftersign/ at a phone viewport, drives the same story path a
+ * returning player takes (offer → keep sealed → deliver → save → reload →
+ * advance → recognition), and measures real behavior against #544's four
+ * budgets:
  *
  *   1. The Io sealed-packet recognition line fits inside the phone HUD
  *      (no horizontal overflow, no off-screen clipping).
  *   2. UI settle (visual confirm pulse) completes <= 360ms from the
- *      recognition trigger.
+ *      recognition trigger (the deliver-packet choose that fires
+ *      triggerKioskFeedback + playKioskConfirm).
  *   3. Audio/visual coupling drift for the paired confirm cue is <= 50ms.
  *   4. Every measurement is polled off runtime state (rAF-driven game
  *      clock + engine bookkeeping), never off wall-clock timeouts — so
@@ -21,6 +23,12 @@ import { expect, test } from "@playwright/test";
  * fresh object on every markStateDirty() tick. A `const game = window.__game`
  * captured once inside page.evaluate is a STALE CLONE — its fields never
  * update. Every observation below re-reads window.__game per frame.
+ *
+ * Story-flow parity: this spec mirrors io-recognition-feedback-latency.spec.ts
+ * for the sequence that reaches io-returning-recognition. That path is the
+ * ONLY one shipped code exposes — there is no top-level deliverPacket() on
+ * window.__game, only input.choose("deliver-packet"). An earlier revision of
+ * this spec called a non-existent __game.deliverPacket and always timed out.
  */
 
 // Phone envelope. iPhone 12 / 13 / 14 base viewport (390x844) is the
@@ -33,8 +41,7 @@ const MAX_AV_DRIFT_MS = 50;
 // AFTERSIGN cold-start allowance. SwiftShader + esm.sh three.js on the CI
 // runner routinely need >30s (Playwright's default) just to reach the point
 // where window.__game is published. Every sibling spec in this directory
-// carries the same 90s / 60s pair — see PR #463 review + the recognition-
-// feedback-latency spec for the SwiftShader details.
+// carries the same 90s / 60s pair — see io-recognition-feedback-latency.spec.ts.
 const COLD_START_MS = 90_000;
 // Per-wait budget for any single window.__game observation.
 const WAIT_MS = 60_000;
@@ -45,6 +52,44 @@ test.use({
   isMobile: true,
   deviceScaleFactor: 3,
 });
+
+type Beat =
+  | "arrival"
+  | "packet-offered"
+  | "packet-opened"
+  | "packet-kept-sealed"
+  | "packet-delivered"
+  | "io-returning-recognition";
+
+type GameSurface = {
+  version: 1;
+  scene: { beat: Beat };
+  interaction: {
+    confirmStartedAt: number | null;
+    confirmFeedback: { active: boolean; remainingMs: number };
+  };
+  audio: {
+    unlocked: boolean;
+    lastCue: string | null;
+    lastCueAt: number | null;
+  };
+  save: { revision: number; dirty: boolean };
+  input: {
+    choose(
+      choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet",
+    ): Promise<void>;
+    advance(): Promise<void>;
+    forceSave(): Promise<void>;
+    forceReload(): Promise<void>;
+  };
+  enableAudio: () => Promise<boolean>;
+};
+
+declare global {
+  interface Window {
+    __game?: GameSurface;
+  }
+}
 
 type PhoneMeasurement = {
   line: {
@@ -65,7 +110,7 @@ type PhoneMeasurement = {
   lastAudioCue: string | null;
   confirmStartedAt: number;
   audioCueAt: number;
-  beat: string;
+  beat: Beat;
 };
 
 test("phone-ready recognition beat fits its layout and A/V budget", async ({ page }) => {
@@ -74,77 +119,67 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
   // SwiftShader + esm.sh three.js reliably overshoot on CI.
   test.setTimeout(COLD_START_MS);
 
-  await page.goto("/aftersign/index.html?slot=phone-ready-contract");
+  const slot = `io-phone-ready-contract-${Date.now()}`;
+  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
-  // Wait for the game surface + the recognition beat runtime (deliver /
-  // enableAudio) to be published. This is polling on state, not clock time.
-  // Also require the published `audio` surface — it's the observable
-  // handle for the "packet-confirmed" cue this spec measures against.
-  // `{ timeout: WAIT_MS }` gives this observation the same 60s cold-start
-  // budget every sibling spec passes to waitForFunction.
+  // Wait for the full surface we need. Includes `audio` and `enableAudio` —
+  // the observable handles for the A/V drift measurement. `{ timeout: WAIT_MS }`
+  // gives this observation the same 60s cold-start budget every sibling spec
+  // passes to waitForFunction.
   await page.waitForFunction(() => {
-    const game = (window as unknown as {
-      __game?: {
-        input?: { advance?: unknown };
-        enableAudio?: unknown;
-        deliverPacket?: unknown;
-        audio?: { lastCue?: unknown; unlocked?: unknown };
-      };
-    }).__game;
+    const game = window.__game;
     return Boolean(
-      game?.input?.advance
+      game
+        && game.version === 1
+        && game.input?.choose
+        && game.input?.advance
+        && game.input?.forceSave
+        && game.input?.forceReload
         && game.enableAudio
-        && game.deliverPacket
         && game.audio,
     );
-  }, { timeout: WAIT_MS });
+  }, undefined, { timeout: WAIT_MS });
 
-  // Reset to a known slot state (packet-offered, sealed) so we drive the
-  // sealed branch of Io's returning-recognition line deterministically.
-  await page.evaluate(() => {
-    (window as unknown as { __game: { resetSliceSave: () => void } }).__game.resetSliceSave();
-  });
+  // Wait until we're at packet-offered — the story's first branch point.
+  await page.waitForFunction(
+    () => window.__game?.scene.beat === "packet-offered",
+    undefined,
+    { timeout: WAIT_MS },
+  );
 
-  const measurement = await page.evaluate(async ({ maxUiSettleMs }) => {
-    // Every observation MUST re-read window.__game. publishState() replaces
-    // window.__game with a fresh clone on every markStateDirty(); a captured
-    // reference would freeze at whatever the world looked like the moment
-    // it was captured — confirmStartedAt would stay null forever.
-    type GameSurface = {
-      scene: { beat: string };
-      interaction: {
-        confirmStartedAt: number | null;
-        confirmFeedback: { active: boolean; remainingMs: number };
-      };
-      audio: { unlocked: boolean; lastCue: string | null; lastCueAt: number | null };
-      input: { advance: () => Promise<void> };
-      enableAudio: () => Promise<boolean>;
-      deliverPacket: () => Promise<void>;
-    };
-    const getGame = () =>
-      (window as unknown as { __game: GameSurface }).__game;
+  // Unlock audio BEFORE we drive the story. In CI Chromium this succeeds
+  // because playwright.config.ts passes --autoplay-policy=no-user-gesture-required.
+  // Doing it here (before the deliver choose) means the "packet-confirmed"
+  // cue that fires inside deliverPacket will complete synchronously with
+  // the visual confirm pulse — otherwise its `await enableAudio()` would
+  // race the confirm animation.
+  const audioUnlocked = await page.evaluate(() => window.__game!.enableAudio());
 
-    // 1. Unlock audio BEFORE delivery so the packet-confirmed cue can fire.
-    //    In CI Chromium this succeeds because playwright.config.ts passes
-    //    --autoplay-policy=no-user-gesture-required.
-    const audioUnlocked = await getGame().enableAudio();
+  // Keep the packet sealed, then measure the confirm feedback timing that
+  // fires when the player chooses "deliver-packet". That choose is what
+  // calls triggerKioskFeedback() (sets confirmStartedAt) and playKioskConfirm()
+  // (sets audio.lastCue = "packet-confirmed" + lastCueAt in the same
+  // synchronous mutation). Both timestamps are what we measure against.
+  await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+  await page.waitForFunction(
+    () => window.__game?.scene.beat === "packet-kept-sealed",
+    undefined,
+    { timeout: WAIT_MS },
+  );
 
-    // 2. Trigger the recognition beat. `playKioskConfirm` is fired inside
-    //    deliverPacket (unawaited) — it awaits `enableAudio()` then flips
-    //    `state._runtime.audio.lastCue = "packet-confirmed"` and records
-    //    `lastCueAt = performance.now()` in the SAME synchronous mutation.
-    //    We measure drift off that runtime-recorded `lastCueAt`, not off
-    //    an rAF-polled DOM observation. rAF polling introduced up to a
-    //    frame of jitter (~16ms on the CI runner, sometimes worse under
-    //    load) that was pushing sub-millisecond real drift over the 50ms
-    //    budget as a MEASUREMENT artifact.
-    await getGame().deliverPacket();
+  // Drive the delivery + measure confirm feedback timing inside the page,
+  // so no Playwright RPC hop lands between the trigger and the observation.
+  const feedbackTiming = await page.evaluate(async ({ maxUiSettleMs }) => {
+    const getGame = () => window.__game!;
 
-    // 4. Capture the confirmStartedAt timestamp as soon as it first appears.
-    //    The tick loop in index.html sets confirmStartedAt when the confirm
-    //    pulse begins AND RESETS IT TO NULL when the pulse finishes
-    //    (confirmProgress >= 1). We must latch it BEFORE it gets nulled,
-    //    otherwise uiSettleMs is unmeasurable.
+    // Fire the deliver choose UNAWAITED so we can catch confirmStartedAt
+    // the moment it flips non-null. deliverPacket() awaits enableAudio()
+    // and does its own bookkeeping — if we awaited its promise first, the
+    // confirmStartedAt→null reset could beat our first observation.
+    const deliverPromise = getGame().input.choose("deliver-packet");
+
+    // Latch confirmStartedAt as soon as it appears. The tick loop nulls
+    // it once confirmProgress reaches 1, so this MUST be captured first.
     let capturedConfirmStartedAt: number | null = null;
     await new Promise<void>((resolve, reject) => {
       const captureDeadline = maxUiSettleMs * 2;
@@ -158,7 +193,7 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
         }
         if (performance.now() - startedAt > captureDeadline) {
           reject(new Error(
-            `confirmStartedAt never became non-null within ${captureDeadline}ms after deliverPacket — ` +
+            `confirmStartedAt never became non-null within ${captureDeadline}ms after deliver-packet choose — ` +
               `triggerKioskFeedback may not be running`,
           ));
           return;
@@ -168,17 +203,16 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
       requestAnimationFrame(tick);
     });
 
-    // 5. Wait for BOTH the audio cue AND the visual settle to finish. Visual
-    //    settle is "confirmFeedback.active === false && remainingMs === 0"
-    //    — we DO NOT gate on confirmStartedAt because the tick nulls it on
-    //    completion. Audio done is "game.audio.lastCue === 'packet-confirmed'"
-    //    — read fresh per frame off the republished snapshot. RAF loop only;
-    //    no page.waitForTimeout, no wall-clock polling — a slow CI runner
-    //    shifts the whole timeline together.
+    // Wait for BOTH the audio cue AND the visual settle to finish. Visual
+    // settle is "confirmFeedback.active === false && remainingMs === 0" —
+    // we do NOT gate on confirmStartedAt because the tick nulls it on
+    // completion. Audio done is "audio.lastCue === 'packet-confirmed'
+    // && typeof lastCueAt === 'number'", read fresh per frame off the
+    // republished snapshot. RAF loop only; no wall-clock waits.
     const startWaitAt = performance.now();
     let capturedAudioCueAt: number | null = null;
     await new Promise<void>((resolve, reject) => {
-      const settleDeadline = maxUiSettleMs * 4; // ms cap by frames, generous
+      const settleDeadline = maxUiSettleMs * 4;
       const tick = () => {
         const now = performance.now();
         const game = getGame();
@@ -188,9 +222,6 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
         const audioDone = audio?.lastCue === "packet-confirmed"
           && typeof audio?.lastCueAt === "number";
         if (audioDone && capturedAudioCueAt === null) {
-          // Latch the runtime-recorded timestamp the FIRST frame we see it.
-          // publishState() may re-clone later (e.g. ambient markStateDirty),
-          // but `lastCueAt` won't move backward — still, latching is safer.
           capturedAudioCueAt = audio.lastCueAt as number;
         }
         if (visualDone && audioDone) {
@@ -211,30 +242,53 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
       requestAnimationFrame(tick);
     });
 
+    // Now let the deliver choose finish so downstream steps see stable state.
+    await deliverPromise;
+
     const confirmStartedAt = capturedConfirmStartedAt as number;
     const audioCueAt = capturedAudioCueAt as number;
-    const uiSettleMs = performance.now() - confirmStartedAt;
-    const avDriftMs = Math.abs(audioCueAt - confirmStartedAt);
+    return {
+      confirmStartedAt,
+      audioCueAt,
+      uiSettleMs: performance.now() - confirmStartedAt,
+      avDriftMs: Math.abs(audioCueAt - confirmStartedAt),
+      lastAudioCue: getGame().audio.lastCue,
+    };
+  }, { maxUiSettleMs: MAX_UI_SETTLE_MS });
 
-    // 6. Advance to the returning-recognition beat so we can inspect Io's
-    //    sealed-packet line in the actual DOM at phone width.
-    await getGame().input.advance();
-    await new Promise<void>((resolve) => {
-      const tick = () => {
-        if (getGame().scene.beat === "io-returning-recognition") {
-          resolve();
-          return;
-        }
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
+  // Reach packet-delivered, then persist + reload to enter the returning
+  // session where advance() lands on io-returning-recognition. This is the
+  // proven story flow from io-recognition-feedback-latency.spec.ts.
+  await page.waitForFunction(
+    () => window.__game?.scene.beat === "packet-delivered",
+    undefined,
+    { timeout: WAIT_MS },
+  );
+  await page.evaluate(() => window.__game!.input.forceSave());
+  await page.waitForFunction(
+    () => window.__game?.save.dirty === false,
+    undefined,
+    { timeout: WAIT_MS },
+  );
+  await page.evaluate(() => window.__game!.input.forceReload());
 
+  // After reload the audio surface may be reset; re-unlock so downstream
+  // code paths behave the same for the returning-session player.
+  await page.evaluate(() => window.__game!.enableAudio());
+
+  // Advance into the recognition beat.
+  await page.evaluate(() => window.__game!.input.advance());
+  await page.waitForFunction(
+    () => window.__game?.scene.beat === "io-returning-recognition",
+    undefined,
+    { timeout: WAIT_MS },
+  );
+
+  // Inspect Io's sealed-packet line in the actual DOM at phone width.
+  const layout = await page.evaluate(() => {
     const line = document.querySelector<HTMLElement>("#line");
     if (!line) throw new Error("recognition line element (#line) is missing");
     const rect = line.getBoundingClientRect();
-
-    const finalGame = getGame();
     return {
       line: {
         text: (line.textContent ?? "").trim(),
@@ -248,15 +302,21 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
         clientHeight: line.clientHeight,
       },
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      uiSettleMs,
-      avDriftMs,
-      audioUnlocked,
-      lastAudioCue: finalGame.audio?.lastCue ?? null,
-      confirmStartedAt,
-      audioCueAt: audioCueAt as number,
-      beat: finalGame.scene.beat,
-    } satisfies PhoneMeasurement;
-  }, { maxUiSettleMs: MAX_UI_SETTLE_MS });
+      beat: window.__game!.scene.beat,
+    };
+  });
+
+  const measurement: PhoneMeasurement = {
+    line: layout.line,
+    viewport: layout.viewport,
+    uiSettleMs: feedbackTiming.uiSettleMs,
+    avDriftMs: feedbackTiming.avDriftMs,
+    audioUnlocked,
+    lastAudioCue: feedbackTiming.lastAudioCue,
+    confirmStartedAt: feedbackTiming.confirmStartedAt,
+    audioCueAt: feedbackTiming.audioCueAt,
+    beat: layout.beat as Beat,
+  };
 
   // ---- Assertions on real measurements ---------------------------------
 
