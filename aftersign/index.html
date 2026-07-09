@@ -718,9 +718,18 @@
         }
       };
 
+      // Two rAF ticks + a microtask so the harness observes a fully
+      // published surface after any `setBeat`/`persist` chain: setBeat
+      // publishes synchronously, but downstream tests that check
+      // `save.dirty === false` need the publish flush to include the
+      // dirty-clear from the paired persist call. One rAF is enough
+      // in practice, but two costs ~16ms and closes the race on slow
+      // CI runners (SwiftShader can stall a single frame).
       const waitForStoryIdle = async () => {
         await new Promise((resolve) => {
-          window.requestAnimationFrame(() => resolve());
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => resolve());
+          });
         });
       };
 
