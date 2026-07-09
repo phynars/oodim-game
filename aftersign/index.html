@@ -237,6 +237,9 @@
           currentNpcId: null,
           memoryBeat: null,
         },
+        delivery: {
+          outcome: stored?.delivery?.outcome || "unknown",
+        },
         player: {
           id: "local-slice-player",
           x: stored?.player?.x ?? -1.8,
@@ -345,6 +348,7 @@
           beat: state.scene.beat,
           player: clone(state.player),
           packet: clone(state.packet),
+          delivery: clone(state.delivery),
           memory: clone(state.npcs.io.memory),
           save: {
             revision: state.save.revision,
@@ -464,6 +468,7 @@
           story: clone(state.story),
           player: clone(state.player),
           packet: clone(state.packet),
+          delivery: clone(state.delivery),
           npcs: clone(state.npcs),
           save: { ...state.save },
           movement: clone(state.movement),
@@ -475,6 +480,7 @@
             story: state.story,
             player: state.player,
             packet: state.packet,
+            delivery: state.delivery,
             npcs: state.npcs,
             save: state.save,
             movement: state.movement,
@@ -484,6 +490,7 @@
           input: {
             choose,
             advance,
+            waitForStoryIdle,
             forceSave,
             forceReload: reloadFromSave,
             setMoveInput,
@@ -605,7 +612,7 @@
           return;
         }
 
-        if (choiceId === "keep-packet-sealed") {
+        if (choiceId === "keep-packet-sealed" || choiceId === "keep-sealed") {
           if (!state.packet.sealed) {
             state.packet.sealed = true;
             markStateDirty();
@@ -629,6 +636,11 @@
         }
       };
 
+      const waitForStoryIdle = async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        publishState();
+      };
+
       const forceSave = async () => {
         persist({ dirty: false });
         publishState();
@@ -642,6 +654,7 @@
 
         state.player = { ...state.player, ...saved.player };
         state.packet = { ...state.packet, ...saved.packet };
+        state.delivery = { outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown") };
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = typeof saved.beat === "string"
@@ -775,6 +788,7 @@
         state.packet.delivered = true;
         state.packet.route = "blue rainline";
         state.packet.deliveredAt = new Date().toISOString();
+        state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
         const fact = memoryFact();
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
@@ -812,6 +826,7 @@
         state.story.memoryBeat = null;
         state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
+        state.delivery = { outcome: "unknown" };
         state.npcs.io.memory = [];
         state.npcs.io.lastLineMemoryRefs = [];
         state.save = emptySave();
@@ -872,6 +887,9 @@
         }
         if (restored.packet && typeof restored.packet === "object") {
           state.packet = { ...state.packet, ...restored.packet };
+        }
+        if (restored.delivery && typeof restored.delivery === "object") {
+          state.delivery = { outcome: restored.delivery.outcome || "unknown" };
         }
         if (restored.npcs && restored.npcs.io) {
           state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
