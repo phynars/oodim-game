@@ -21,6 +21,12 @@
       { "name": "ECHO_ROOM", "class_name": "EchoRoom" }
     ]
   },
+  // Per-IP throttle on the unauthenticated /ws upgrade (2026-07-09 hardening):
+  // 20 connections / 60s / client IP. Free-plan-friendly (runs in the Worker,
+  // not a WAF rule). period must be 10 or 60.
+  "ratelimits": [
+    { "name": "WS_RATELIMIT", "namespace_id": "1101", "simple": { "limit": 20, "period": 60 } }
+  ],
   "migrations": [
     { "tag": "v1", "new_classes": ["EchoRoom"] }
   ],

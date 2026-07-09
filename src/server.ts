@@ -12,8 +12,11 @@
 // game's own pages (game.oodim.com / staging.game.oodim.com) and local dev/
 // test origins may open a socket, which blunts drive-by embedding of the
 // socket from other sites. An ABSENT Origin passes (non-browser clients,
-// wrangler dev), and Origin is client-spoofable, so a Cloudflare WAF
-// rate-limit rule on /ws remains the real throttle — this is defense-in-depth.
+// wrangler dev), and Origin is client-spoofable — so the REAL throttle is a
+// per-IP rate limit on the /ws upgrade via the Workers Rate Limiting binding
+// (WS_RATELIMIT, wrangler.jsonc): 20 upgrades / 60s / client IP. That runs in
+// code (no WAF-rule slot / no plan upgrade needed) and a spoofed Origin can't
+// bypass it. Origin allowlist + rate limit are layered defense-in-depth.
 // Routing mirrors agar/server/worker.ts (room keyed by ?seed=).
 
 export { EchoRoom } from "../agar/server/worker";
@@ -40,6 +43,10 @@ interface Env {
     idFromName: (name: string) => unknown;
     get: (id: unknown) => { fetch: (request: Request) => Promise<Response> };
   };
+  // Workers Rate Limiting binding (wrangler.jsonc [[ratelimits]]). Best-effort
+  // per-key limiter enforced at the edge; a no-op in `wrangler dev`. Optional
+  // so a config without it (or local dev) still routes.
+  WS_RATELIMIT?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
 }
 
 export default {
@@ -49,6 +56,17 @@ export default {
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedWsOrigin(origin)) {
         return new Response("forbidden origin", { status: 403 });
+      }
+      // Per-IP rate limit on the upgrade — caps connection-flood / DO-cost
+      // abuse that a spoofed Origin would otherwise sail through. CF-Connecting-IP
+      // is set by Cloudflare (trusted). Best-effort; skipped where the binding
+      // is absent (local dev).
+      if (env.WS_RATELIMIT) {
+        const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+        const { success } = await env.WS_RATELIMIT.limit({ key: ip });
+        if (!success) {
+          return new Response("rate limited", { status: 429 });
+        }
       }
       const seed = url.searchParams.get("seed") ?? "1";
       const id = env.ECHO_ROOM.idFromName(`match:${seed}`);
