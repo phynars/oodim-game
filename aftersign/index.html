@@ -224,7 +224,9 @@
       };
 
       const emptySave = () => ({
+        slot: "default",
         revision: 0,
+        lastPersistedAt: null,
         dirty: false,
         authority: "server",
         lastLoadProof: {
@@ -368,13 +370,17 @@
       });
 
       const persist = ({ dirty = false } = {}) => {
+        const persistedAt = new Date().toISOString();
+        state.save.lastPersistedAt = persistedAt;
         const payload = {
           beat: state.scene.beat,
           player: clone(state.player),
           packet: clone(state.packet),
           memory: clone(state.npcs.io.memory),
           save: {
+            slot: "default",
             revision: state.save.revision,
+            lastPersistedAt: persistedAt,
             dirty,
             authority: state.save.authority,
             lastLoadProof: clone(state.save.lastLoadProof),
