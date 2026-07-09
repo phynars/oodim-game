@@ -8,17 +8,34 @@ export type RecognitionFeedbackPhase = {
   readonly audioCue: 'soft-click' | 'memory-chime' | 'room-tone';
 };
 
+export type IoRecognitionOutcome = 'sealed' | 'opened';
+
+export type RecognitionFeedbackOptions = {
+  readonly outcome?: IoRecognitionOutcome;
+  readonly reducedMotion?: boolean;
+};
+
 export type RecognitionFeedbackState = {
   readonly elapsedMs: number;
   readonly phase: RecognitionFeedbackPhase['name'];
+  readonly outcome: IoRecognitionOutcome;
+  readonly reducedMotion: boolean;
+  readonly cameraDeltaMeters: number;
+  readonly cameraYawDegrees: number;
+  /** Back-compat alias for older harness checks; yaw is the visible camera push. */
   readonly cameraPushDegrees: number;
+  readonly cameraTargetOffsetMeters: number;
   readonly screenShakePx: number;
   readonly vignetteOpacity: number;
   readonly subtitleScale: number;
-  readonly audioCue: RecognitionFeedbackPhase['audioCue'];
+  readonly signEmissiveScale: number;
+  readonly signGlowProgress: number;
+  readonly audioCue: RecognitionFeedbackPhase['audioCue'] | 'bell-glass-sting' | 'wooden-click';
+  readonly audioCueStarted: boolean;
+  readonly audioCueDurationMs: number;
+  readonly audioCueGainDb: number;
+  readonly branchTint: 'blue' | 'amber';
 };
-
-export type IoRecognitionOutcome = 'sealed' | 'opened';
 
 export type IoRecognitionLineId = 'io_return_packet_sealed' | 'io_return_packet_opened';
 
@@ -32,6 +49,18 @@ export type IoRecognitionBeatLine = {
 };
 
 export const RECOGNITION_FEEDBACK_TOTAL_MS = 1220;
+export const RECOGNITION_FEEDBACK_REDUCED_MOTION_MS = 160;
+export const RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS = 0.32;
+export const RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES = 4;
+export const RECOGNITION_FEEDBACK_STING_START_MS = 120;
+export const RECOGNITION_FEEDBACK_STING_DURATION_MS = 180;
+export const RECOGNITION_FEEDBACK_STING_GAIN_DB = -9;
+export const RECOGNITION_FEEDBACK_GLOW_START_MS = 80;
+export const RECOGNITION_FEEDBACK_GLOW_DURATION_MS = 140;
+export const RECOGNITION_FEEDBACK_GLOW_FROM = 0.8;
+export const RECOGNITION_FEEDBACK_GLOW_TO = 1.35;
+export const RECOGNITION_FEEDBACK_OPENED_TARGET_OFFSET_METERS = 0.06;
+export const RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS = 45;
 
 export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
@@ -62,7 +91,7 @@ export const RECOGNITION_FEEDBACK_PHASES: readonly RecognitionFeedbackPhase[] = 
     name: 'remember',
     startMs: 180,
     durationMs: 520,
-    cameraPushDegrees: 4,
+    cameraPushDegrees: RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES,
     screenShakePx: 0.6,
     vignetteOpacity: 0.32,
     audioCue: 'memory-chime',
@@ -105,6 +134,39 @@ function resolveDialogueBeatIndex(elapsedMs: number): IoRecognitionBeatIndex | n
   return 2;
 }
 
+function resolveSignEmissiveScale(elapsedMs: number, reducedMotion: boolean): number {
+  const glowWindowMs = reducedMotion
+    ? RECOGNITION_FEEDBACK_REDUCED_MOTION_MS
+    : RECOGNITION_FEEDBACK_GLOW_DURATION_MS;
+  const glowStartMs = reducedMotion ? 0 : RECOGNITION_FEEDBACK_GLOW_START_MS;
+  const glowT = clamp01((elapsedMs - glowStartMs) / glowWindowMs);
+  const glow = easeOutCubic(glowT);
+  return RECOGNITION_FEEDBACK_GLOW_FROM + (RECOGNITION_FEEDBACK_GLOW_TO - RECOGNITION_FEEDBACK_GLOW_FROM) * glow;
+}
+
+function resolveAudioCue(
+  elapsedMs: number,
+  phase: RecognitionFeedbackPhase,
+  outcome: IoRecognitionOutcome,
+): RecognitionFeedbackState['audioCue'] {
+  if (
+    outcome === 'opened' &&
+    elapsedMs >= RECOGNITION_FEEDBACK_STING_START_MS + RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS &&
+    elapsedMs < RECOGNITION_FEEDBACK_STING_START_MS + RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS + RECOGNITION_FEEDBACK_STING_DURATION_MS
+  ) {
+    return 'wooden-click';
+  }
+
+  if (
+    elapsedMs >= RECOGNITION_FEEDBACK_STING_START_MS &&
+    elapsedMs < RECOGNITION_FEEDBACK_STING_START_MS + RECOGNITION_FEEDBACK_STING_DURATION_MS
+  ) {
+    return 'bell-glass-sting';
+  }
+
+  return phase.audioCue;
+}
+
 export function recognitionDialogueForBeat(
   outcome: IoRecognitionOutcome,
   beatIndex: IoRecognitionBeatIndex,
@@ -130,49 +192,100 @@ export function recognitionDialogueAt(
   return recognitionDialogueForBeat(outcome, beatIndex);
 }
 
-export function recognitionFeedbackAt(elapsedMs: number): RecognitionFeedbackState {
+export function recognitionFeedbackAt(
+  elapsedMs: number,
+  options: RecognitionFeedbackOptions = {},
+): RecognitionFeedbackState {
+  const outcome = options.outcome ?? 'sealed';
+  const reducedMotion = options.reducedMotion ?? false;
   const safeElapsedMs = Math.max(0, elapsedMs);
+
+  if (reducedMotion) {
+    const pulse = easeOutCubic(safeElapsedMs / RECOGNITION_FEEDBACK_REDUCED_MOTION_MS);
+    const audioCue = safeElapsedMs >= RECOGNITION_FEEDBACK_STING_START_MS && safeElapsedMs < RECOGNITION_FEEDBACK_STING_START_MS + RECOGNITION_FEEDBACK_STING_DURATION_MS
+      ? 'bell-glass-sting'
+      : 'room-tone';
+    return {
+      elapsedMs: safeElapsedMs,
+      phase: safeElapsedMs < RECOGNITION_FEEDBACK_REDUCED_MOTION_MS ? 'remember' : 'settle',
+      outcome,
+      reducedMotion: true,
+      cameraDeltaMeters: 0,
+      cameraYawDegrees: 0,
+      cameraPushDegrees: 0,
+      cameraTargetOffsetMeters: 0,
+      screenShakePx: 0,
+      vignetteOpacity: 0,
+      subtitleScale: 1,
+      signEmissiveScale: RECOGNITION_FEEDBACK_GLOW_FROM + (RECOGNITION_FEEDBACK_GLOW_TO - RECOGNITION_FEEDBACK_GLOW_FROM) * pulse,
+      signGlowProgress: pulse,
+      audioCue,
+      audioCueStarted: audioCue === 'bell-glass-sting',
+      audioCueDurationMs: audioCue === 'bell-glass-sting' ? RECOGNITION_FEEDBACK_STING_DURATION_MS : 0,
+      audioCueGainDb: audioCue === 'bell-glass-sting' ? RECOGNITION_FEEDBACK_STING_GAIN_DB : 0,
+      branchTint: outcome === 'sealed' ? 'blue' : 'amber',
+    };
+  }
+
   const phase = resolveRecognitionPhase(safeElapsedMs);
   const localT = clamp01((safeElapsedMs - phase.startMs) / phase.durationMs);
+
+  let cameraYawDegrees: number;
+  let screenShakePx: number;
+  let vignetteOpacity: number;
+  let subtitleScale: number;
 
   if (phase.name === 'catch') {
     const pop = easeOutCubic(localT);
     const shakePulse = 1 + 0.2 * Math.abs(Math.sin(localT * Math.PI * 3));
-    return {
-      elapsedMs: safeElapsedMs,
-      phase: phase.name,
-      cameraPushDegrees: phase.cameraPushDegrees * pop,
-      screenShakePx: phase.screenShakePx * (1 - localT) * shakePulse,
-      vignetteOpacity: phase.vignetteOpacity * pop,
-      subtitleScale: 1 + 0.04 * pop,
-      audioCue: phase.audioCue,
-    };
-  }
-
-  if (phase.name === 'remember') {
+    cameraYawDegrees = phase.cameraPushDegrees * pop;
+    screenShakePx = phase.screenShakePx * (1 - localT) * shakePulse;
+    vignetteOpacity = phase.vignetteOpacity * pop;
+    subtitleScale = 1 + 0.04 * pop;
+  } else if (phase.name === 'remember') {
     const bloom = easeInOutCubic(localT);
     const catchPhase = RECOGNITION_FEEDBACK_PHASES[0];
     const cameraFrom = catchPhase.cameraPushDegrees;
     const vignetteFrom = catchPhase.vignetteOpacity;
-    return {
-      elapsedMs: safeElapsedMs,
-      phase: phase.name,
-      cameraPushDegrees: cameraFrom + (phase.cameraPushDegrees - cameraFrom) * bloom,
-      screenShakePx: phase.screenShakePx * Math.sin(localT * Math.PI),
-      vignetteOpacity: vignetteFrom + (phase.vignetteOpacity - vignetteFrom) * bloom,
-      subtitleScale: 1.04 + 0.02 * Math.sin(localT * Math.PI),
-      audioCue: phase.audioCue,
-    };
+    cameraYawDegrees = cameraFrom + (phase.cameraPushDegrees - cameraFrom) * bloom;
+    screenShakePx = phase.screenShakePx * Math.sin(localT * Math.PI);
+    vignetteOpacity = vignetteFrom + (phase.vignetteOpacity - vignetteFrom) * bloom;
+    subtitleScale = 1.04 + 0.02 * Math.sin(localT * Math.PI);
+  } else {
+    const settle = 1 - easeOutCubic(localT);
+    cameraYawDegrees = RECOGNITION_FEEDBACK_PHASES[1].cameraPushDegrees * settle;
+    screenShakePx = 0;
+    vignetteOpacity = RECOGNITION_FEEDBACK_PHASES[1].vignetteOpacity * settle;
+    subtitleScale = 1 + 0.04 * settle;
   }
 
-  const settle = 1 - easeOutCubic(localT);
+  const normalizedYaw = cameraYawDegrees / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
+  const audioCue = resolveAudioCue(safeElapsedMs, phase, outcome);
+
   return {
     elapsedMs: safeElapsedMs,
     phase: phase.name,
-    cameraPushDegrees: RECOGNITION_FEEDBACK_PHASES[1].cameraPushDegrees * settle,
-    screenShakePx: 0,
-    vignetteOpacity: RECOGNITION_FEEDBACK_PHASES[1].vignetteOpacity * settle,
-    subtitleScale: 1 + 0.04 * settle,
-    audioCue: phase.audioCue,
+    outcome,
+    reducedMotion: false,
+    cameraDeltaMeters: RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS * normalizedYaw,
+    cameraYawDegrees,
+    cameraPushDegrees: cameraYawDegrees,
+    cameraTargetOffsetMeters: outcome === 'opened'
+      ? RECOGNITION_FEEDBACK_OPENED_TARGET_OFFSET_METERS * normalizedYaw
+      : 0,
+    screenShakePx,
+    vignetteOpacity,
+    subtitleScale,
+    signEmissiveScale: resolveSignEmissiveScale(safeElapsedMs, false),
+    signGlowProgress: clamp01((safeElapsedMs - RECOGNITION_FEEDBACK_GLOW_START_MS) / RECOGNITION_FEEDBACK_GLOW_DURATION_MS),
+    audioCue,
+    audioCueStarted: audioCue === 'bell-glass-sting' || audioCue === 'wooden-click',
+    audioCueDurationMs: audioCue === 'bell-glass-sting' || audioCue === 'wooden-click'
+      ? RECOGNITION_FEEDBACK_STING_DURATION_MS
+      : 0,
+    audioCueGainDb: audioCue === 'bell-glass-sting' || audioCue === 'wooden-click'
+      ? RECOGNITION_FEEDBACK_STING_GAIN_DB
+      : 0,
+    branchTint: outcome === 'sealed' ? 'blue' : 'amber',
   };
 }
