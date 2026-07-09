@@ -1,158 +1,106 @@
-export type PacketIntentChoice = 'sealed' | 'opened'
-export type PacketIntentPhase = 'idle' | 'pressing' | 'committed' | 'cancelled'
+export type PacketSealState = 'sealed' | 'opened';
+export type PacketIntentAction = 'keep-sealed' | 'open';
+export type PacketIntentEvent =
+  | { type: 'press-start'; t: number; x: number; y: number }
+  | { type: 'move'; t: number; x: number; y: number }
+  | { type: 'press-end'; t: number; x: number; y: number }
+  | { type: 'cancel'; t: number };
 
 export interface PacketIntentConfig {
-  /** Minimum hold time before opening the packet is accepted. */
-  openHoldMs: number
-  /** Maximum pointer drift before the hold cancels, tuned for thumb jitter. */
-  cancelRadiusPx: number
-  /** Smallest progress value that should show UI feedback. */
-  visibleProgressFloor: number
+  /** Minimum deliberate hold before opening the seal. Keeps open from feeling like menu trivia. */
+  openHoldMs: number;
+  /** Movement beyond this radius cancels the open hold so thumb drift does not break trust. */
+  cancelRadiusPx: number;
 }
 
-export interface PacketIntentState {
-  phase: PacketIntentPhase
-  choice: PacketIntentChoice
-  startedAtMs: number | null
-  pointerId: number | null
-  originX: number
-  originY: number
-  progress: number
-}
-
-export interface PacketIntentSnapshot extends PacketIntentState {
-  canCommitOpen: boolean
-  shouldShowFeedback: boolean
+export interface PacketIntentResult {
+  action: PacketIntentAction;
+  sealState: PacketSealState;
+  elapsedMs: number;
+  cancelled: boolean;
 }
 
 export const DEFAULT_PACKET_INTENT_CONFIG: PacketIntentConfig = {
-  openHoldMs: 620,
-  cancelRadiusPx: 34,
-  visibleProgressFloor: 0.08,
+  openHoldMs: 520,
+  cancelRadiusPx: 18,
+};
+
+interface Point {
+  x: number;
+  y: number;
 }
 
-export const PACKET_INTENT_HARNESS_CONTRACT = {
-  sealedTapMaxMs: 180,
-  openHoldMs: DEFAULT_PACKET_INTENT_CONFIG.openHoldMs,
-  cancelRadiusPx: DEFAULT_PACKET_INTENT_CONFIG.cancelRadiusPx,
-} as const
-
-export function createPacketIntentState(choice: PacketIntentChoice = 'sealed'): PacketIntentState {
-  return {
-    phase: 'idle',
-    choice,
-    startedAtMs: null,
-    pointerId: null,
-    originX: 0,
-    originY: 0,
-    progress: 0,
-  }
+function distance(a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return Math.hypot(dx, dy);
 }
 
-export function beginPacketOpenIntent(
-  state: PacketIntentState,
-  pointerId: number,
-  x: number,
-  y: number,
-  nowMs: number,
-): PacketIntentState {
-  if (state.phase === 'committed') return state
-
-  return {
-    ...state,
-    phase: 'pressing',
-    startedAtMs: nowMs,
-    pointerId,
-    originX: x,
-    originY: y,
-    progress: 0,
-  }
-}
-
-export function updatePacketOpenIntent(
-  state: PacketIntentState,
-  pointerId: number,
-  x: number,
-  y: number,
-  nowMs: number,
+export function resolvePacketIntent(
+  events: PacketIntentEvent[],
   config: PacketIntentConfig = DEFAULT_PACKET_INTENT_CONFIG,
-): PacketIntentState {
-  if (state.phase !== 'pressing' || state.pointerId !== pointerId || state.startedAtMs === null) {
-    return state
+): PacketIntentResult {
+  const start = events.find((event): event is Extract<PacketIntentEvent, { type: 'press-start' }> => event.type === 'press-start');
+
+  if (!start) {
+    return { action: 'keep-sealed', sealState: 'sealed', elapsedMs: 0, cancelled: true };
   }
 
-  const drift = Math.hypot(x - state.originX, y - state.originY)
-  if (drift > config.cancelRadiusPx) {
-    return {
-      ...state,
-      phase: 'cancelled',
-      pointerId: null,
-      startedAtMs: null,
-      progress: 0,
+  let cancelled = false;
+  let lastT = start.t;
+  const startPoint = { x: start.x, y: start.y };
+
+  for (const event of events) {
+    lastT = Math.max(lastT, event.t);
+
+    if (event.type === 'cancel') {
+      cancelled = true;
+      continue;
+    }
+
+    if (event.type === 'move' || event.type === 'press-end') {
+      if (distance(startPoint, event) > config.cancelRadiusPx) {
+        cancelled = true;
+      }
     }
   }
 
-  const heldMs = Math.max(0, nowMs - state.startedAtMs)
-  const progress = clamp01(heldMs / config.openHoldMs)
+  const elapsedMs = Math.max(0, lastT - start.t);
 
-  if (progress >= 1) {
-    return {
-      ...state,
-      phase: 'committed',
-      choice: 'opened',
-      pointerId: null,
-      startedAtMs: null,
-      progress: 1,
-    }
+  if (!cancelled && elapsedMs >= config.openHoldMs) {
+    return { action: 'open', sealState: 'opened', elapsedMs, cancelled: false };
   }
 
-  return {
-    ...state,
-    progress,
-  }
+  return { action: 'keep-sealed', sealState: 'sealed', elapsedMs, cancelled };
 }
 
-export function endPacketOpenIntent(
-  state: PacketIntentState,
-  pointerId: number,
-): PacketIntentState {
-  if (state.phase !== 'pressing' || state.pointerId !== pointerId) return state
+export function assertPacketIntentFeelContract(): void {
+  const tap = resolvePacketIntent([
+    { type: 'press-start', t: 0, x: 120, y: 160 },
+    { type: 'press-end', t: 120, x: 122, y: 161 },
+  ]);
 
-  return {
-    ...state,
-    phase: 'idle',
-    pointerId: null,
-    startedAtMs: null,
-    progress: 0,
+  if (tap.action !== 'keep-sealed' || tap.sealState !== 'sealed') {
+    throw new Error('Packet feel contract failed: quick tap must preserve the seal.');
   }
-}
 
-export function keepPacketSealed(state: PacketIntentState): PacketIntentState {
-  if (state.phase === 'committed') return state
+  const deliberateHold = resolvePacketIntent([
+    { type: 'press-start', t: 0, x: 120, y: 160 },
+    { type: 'move', t: 260, x: 121, y: 160 },
+    { type: 'press-end', t: 540, x: 121, y: 162 },
+  ]);
 
-  return {
-    ...state,
-    phase: 'committed',
-    choice: 'sealed',
-    pointerId: null,
-    startedAtMs: null,
-    progress: 0,
+  if (deliberateHold.action !== 'open' || deliberateHold.sealState !== 'opened') {
+    throw new Error('Packet feel contract failed: deliberate hold must open the seal.');
   }
-}
 
-export function snapshotPacketIntent(
-  state: PacketIntentState,
-  config: PacketIntentConfig = DEFAULT_PACKET_INTENT_CONFIG,
-): PacketIntentSnapshot {
-  return {
-    ...state,
-    canCommitOpen: state.phase === 'pressing' && state.progress >= 1,
-    shouldShowFeedback: state.phase === 'pressing' && state.progress >= config.visibleProgressFloor,
+  const thumbDrift = resolvePacketIntent([
+    { type: 'press-start', t: 0, x: 120, y: 160 },
+    { type: 'move', t: 300, x: 151, y: 160 },
+    { type: 'press-end', t: 620, x: 151, y: 160 },
+  ]);
+
+  if (thumbDrift.action !== 'keep-sealed' || thumbDrift.sealState !== 'sealed' || !thumbDrift.cancelled) {
+    throw new Error('Packet feel contract failed: thumb drift must cancel opening and preserve the seal.');
   }
-}
-
-function clamp01(value: number): number {
-  if (value <= 0) return 0
-  if (value >= 1) return 1
-  return value
 }
