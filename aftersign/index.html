@@ -156,10 +156,10 @@
     </section>
 
     <script type="module">
-      import * as THREE from "https://esm.sh/three@0.165.0";
-      import { EffectComposer } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
-      import { RenderPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
-      import { UnrealBloomPass } from "https://esm.sh/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+      import * as THREE from "three";
+      import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./packet-intent.js";
 
       const canvas = document.querySelector("#scene");
@@ -625,7 +625,7 @@
       const advance = async () => {
         if (state.packet.delivered && state.npcs.io.memory.length > 0) {
           markStateDirty();
-    setBeat("io-returning-recognition");
+          setBeat("io-returning-recognition");
         }
       };
 
