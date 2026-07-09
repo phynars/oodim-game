@@ -1,11 +1,9 @@
 export type IoPacketOutcome = "sealed" | "opened";
 export type IoRouteAttention = "listened" | "skipped";
-export type IoReturnTone = "kind" | "evasive" | "blunt";
 
 export interface IoRecognitionFacts {
   packetOutcome?: IoPacketOutcome;
   routeAttention?: IoRouteAttention;
-  returnTone?: IoReturnTone;
 }
 
 export interface IoRecognitionLine {
