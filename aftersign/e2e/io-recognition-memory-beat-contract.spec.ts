@@ -28,11 +28,10 @@ const ALLOWED_LINE_IDS = [
 test("io recognition publishes range-checked story.memoryBeat", async ({ page }) => {
   await page.goto("/aftersign/index.html?slot=io-memory-beat-contract");
 
-  const sealed = await page.evaluate(async () => {
+  await page.evaluate(async () => {
     const game = (window as Window & {
       __game?: {
         input?: { choose?: (choiceId: string) => Promise<void>; advance?: () => Promise<void> };
-        story?: { memoryBeat?: unknown };
       };
     }).__game;
     if (!game?.input?.choose || !game.input.advance) {
@@ -41,10 +40,15 @@ test("io recognition publishes range-checked story.memoryBeat", async ({ page })
     await game.input.choose("keep-packet-sealed");
     await game.input.choose("deliver-packet");
     await game.input.advance();
-    return game.story?.memoryBeat ?? null;
   });
 
-  const opened = await page.evaluate(async () => {
+  const sealedHandle = await page.waitForFunction(() => {
+    const game = (window as Window & { __game?: { story?: { memoryBeat?: unknown } } }).__game;
+    return game?.story?.memoryBeat ?? null;
+  });
+  const sealed = (await sealedHandle.jsonValue()) as MemoryBeat;
+
+  await page.evaluate(async () => {
     const game = (window as Window & {
       __game?: {
         input?: {
@@ -59,16 +63,26 @@ test("io recognition publishes range-checked story.memoryBeat", async ({ page })
       throw new Error("window.__game.input is not available");
     }
     await game.input.forceReload();
+    // forceReload restores from persisted save; ensure memoryBeat is cleared
+    // so waitForFunction below observes only the freshly published opened beat.
+    if (game.story) {
+      game.story.memoryBeat = null;
+    }
     await game.input.choose("open-packet");
     await game.input.choose("deliver-packet");
     await game.input.advance();
-    return game.story?.memoryBeat ?? null;
   });
 
-  const beats = [sealed, opened].filter((value): value is MemoryBeat => value !== null);
-  if (beats.length !== 2) {
-    throw new Error("Expected sealed and opened memory beats to be published");
-  }
+  const openedHandle = await page.waitForFunction(() => {
+    const game = (window as Window & { __game?: { story?: { memoryBeat?: { outcome?: string } | null } } }).__game;
+    const beat = game?.story?.memoryBeat ?? null;
+    // Only accept the freshly-published opened beat (guards against a stale
+    // sealed beat that survived forceReload's save restoration).
+    return beat && beat.outcome === "opened" ? beat : null;
+  });
+  const opened = (await openedHandle.jsonValue()) as MemoryBeat;
+
+  const beats: MemoryBeat[] = [sealed, opened];
 
   for (const beat of beats) {
 
