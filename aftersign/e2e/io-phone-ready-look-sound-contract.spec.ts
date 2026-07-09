@@ -30,6 +30,15 @@ const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const MAX_UI_SETTLE_MS = 360;
 const MAX_AV_DRIFT_MS = 50;
 
+// AFTERSIGN cold-start allowance. SwiftShader + esm.sh three.js on the CI
+// runner routinely need >30s (Playwright's default) just to reach the point
+// where window.__game is published. Every sibling spec in this directory
+// carries the same 90s / 60s pair — see PR #463 review + the recognition-
+// feedback-latency spec for the SwiftShader details.
+const COLD_START_MS = 90_000;
+// Per-wait budget for any single window.__game observation.
+const WAIT_MS = 60_000;
+
 test.use({
   viewport: PHONE_VIEWPORT,
   hasTouch: true,
@@ -60,12 +69,19 @@ type PhoneMeasurement = {
 };
 
 test("phone-ready recognition beat fits its layout and A/V budget", async ({ page }) => {
+  // Cold-start allowance — matches every sibling spec in this directory.
+  // Without this the whole test runs under Playwright's default 30s, which
+  // SwiftShader + esm.sh three.js reliably overshoot on CI.
+  test.setTimeout(COLD_START_MS);
+
   await page.goto("/aftersign/index.html?slot=phone-ready-contract");
 
   // Wait for the game surface + the recognition beat runtime (deliver /
   // enableAudio) to be published. This is polling on state, not clock time.
   // Also require the published `audio` surface — it's the observable
   // handle for the "packet-confirmed" cue this spec measures against.
+  // `{ timeout: WAIT_MS }` gives this observation the same 60s cold-start
+  // budget every sibling spec passes to waitForFunction.
   await page.waitForFunction(() => {
     const game = (window as unknown as {
       __game?: {
@@ -81,7 +97,7 @@ test("phone-ready recognition beat fits its layout and A/V budget", async ({ pag
         && game.deliverPacket
         && game.audio,
     );
-  });
+  }, { timeout: WAIT_MS });
 
   // Reset to a known slot state (packet-offered, sealed) so we drive the
   // sealed branch of Io's returning-recognition line deterministically.
