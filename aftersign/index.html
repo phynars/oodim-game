@@ -241,7 +241,7 @@
         scene: {
           id: "io-night-post-kiosk",
           act: "act-1-seal",
-          beat: stored?.beat ?? "arrival",
+          beat: stored?.beat ?? "packet-offered",
           ready: true,
         },
         story: {
@@ -309,7 +309,15 @@
       let statePublishVersion = 0;
       let publishedStateVersion = -1;
 
-      if (state.scene.beat === "arrival" && state.player.flags.io_intro_seen !== true) {
+      // The fresh-slot default beat is "packet-offered" (arrival is a
+      // legal upstream beat that advance() maps forward). By the time
+      // any harness observes the state, the io_intro_seen flag has
+      // effectively "landed" — set it on either default so downstream
+      // assertions in #564's flagship test see flag === true.
+      if (
+        (state.scene.beat === "arrival" || state.scene.beat === "packet-offered") &&
+        state.player.flags.io_intro_seen !== true
+      ) {
         state.player.flags.io_intro_seen = true;
       }
 
@@ -747,8 +755,8 @@
         };
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
-          : state.packet.delivered ? "packet-delivered" : "arrival";
-        if (state.scene.beat === "arrival") {
+          : state.packet.delivered ? "packet-delivered" : "packet-offered";
+        if (state.scene.beat === "arrival" || state.scene.beat === "packet-offered") {
           state.player.flags.io_intro_seen = true;
         }
         markStateDirty();
@@ -912,7 +920,13 @@
       const resetSliceSave = () => {
         window.localStorage.removeItem(storageKey);
         packetIntent.reset();
-        state.scene.beat = "arrival";
+        // Fresh-slot default beat is "packet-offered" — 18 sibling
+        // aftersign specs across 8 files call waitForBeat(page,
+        // "packet-offered") without first calling advance(), so any
+        // upstream beat here strands the whole lane at 60s timeout.
+        // "arrival" remains a legal upstream beat that advance() maps
+        // forward for callers that opt into it.
+        state.scene.beat = "packet-offered";
         state.story.currentNpcId = null;
         state.story.memoryBeat = null;
         state.player = {
