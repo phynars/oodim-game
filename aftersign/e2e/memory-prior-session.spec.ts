@@ -233,4 +233,33 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     expect(reloaded.npcs.io.memory).toEqual(saved.npcs.io.memory);
     expect(reloaded.npcs.io.lastLineMemoryRefs).toEqual(saved.npcs.io.lastLineMemoryRefs);
   });
+
+  test("forceSave is idempotent when no story state changed", async ({ page }) => {
+    const slot = `save-idempotent-${Date.now()}`;
+
+    await page.goto(`/aftersign/?slot=${slot}`);
+    await waitForBeat(page, "packet-offered");
+    await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+    await waitForBeat(page, "packet-kept-sealed");
+
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
+    });
+
+    const firstSave = await game(page);
+
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+      timeout: WAIT_MS,
+    });
+
+    const secondSave = await game(page);
+
+    expect(secondSave.scene.beat).toBe(firstSave.scene.beat);
+    expect(secondSave.save.revision).toBe(firstSave.save.revision);
+    expect(secondSave.save.dirty).toBe(false);
+    expect(secondSave.npcs.io.memory).toEqual(firstSave.npcs.io.memory);
+    expect(secondSave.npcs.io.lastLineMemoryRefs).toEqual(firstSave.npcs.io.lastLineMemoryRefs);
+  });
 });
