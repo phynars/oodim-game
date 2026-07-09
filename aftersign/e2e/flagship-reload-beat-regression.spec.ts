@@ -12,7 +12,7 @@ declare global {
       };
       getSnapshot: () => {
         scene: { beat: string };
-        npcs: { io: { lastLine?: string | null; memories?: Array<{ id?: string }> } };
+        npcs: { io: { lastLine?: string | null; memory: Array<{ id?: string }> } };
         delivery: { outcome: string };
       };
     };
@@ -53,9 +53,15 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
     const afterReload = await page.evaluate(() => window.__game!.getSnapshot());
 
+    // Live impl (aftersign/index.html):
+    //   • deliverPacket() persists with beat="packet-delivered" synchronously,
+    //     then advances to "io-returning-recognition" ~1180ms later. The saved
+    //     beat we reload from is "packet-delivered".
+    //   • npcs.io.memory is the singular array field. There is no plural
+    //     `memories` — asserting on it would always be undefined.
     expect(afterReload.delivery.outcome).toBe("sealed");
-    expect(afterReload.scene.beat).toBe("packet-choice");
-    expect(afterReload.npcs.io.memories?.length).toBeGreaterThan(0);
+    expect(afterReload.scene.beat).toBe("packet-delivered");
+    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
     expect(afterReload.npcs.io.lastLine ?? "").not.toContain(
       "Touch the blue kiosk when you're ready",
     );
