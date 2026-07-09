@@ -108,10 +108,12 @@ function watchPageErrors(page: Page, label: string): void {
 test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   test.describe.configure({ mode: "serial" });
 
-  // Unfixme in Phase 1 (#564) once scene.act, scene.ready, and the
-  // player block exist. Phase 2 (#565) then makes the delivery.outcome
-  // and input-helper assertions non-crashing.
-  test.fixme("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
+  // Unfixmed in Phase 1 (#564): scene.act, scene.ready, and the player
+  // block are exposed, `keep-sealed` is aliased, `waitForStoryIdle` is
+  // wired, and `flags.io_intro_seen` toggles on the arrival beat.
+  // Phase 2 (#565) will keep this green as delivery.outcome and the
+  // remaining input helpers grow.
+  test("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "story-state-invariant");
     const breakMode = currentBreakMode();
