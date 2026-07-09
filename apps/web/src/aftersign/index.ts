@@ -18,6 +18,14 @@ export {
 } from "./inputLatencyProbe";
 
 export {
+  createPacketIntentModel,
+  type PacketIntentModel,
+  type PacketIntentOptions,
+  type PacketIntentSnapshot,
+  type PacketSealIntent,
+} from "./packetIntent";
+
+export {
   getIoRecognitionLine,
   ioRecognitionLines,
   type IoPacketOutcome,
