@@ -23,6 +23,5 @@ export {
   type IoPacketOutcome,
   type IoRecognitionFacts,
   type IoRecognitionLine,
-  type IoReturnTone,
   type IoRouteAttention,
 } from "./ioVoice";

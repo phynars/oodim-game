@@ -45,27 +45,6 @@ const ROUTE_LINES: Record<IoRouteAttention, IoRecognitionLine> = {
   },
 };
 
-const RETURN_TONE_LINES: Record<IoReturnTone, IoRecognitionLine> = {
-  kind: {
-    id: "io-return-tone-kind",
-    text: "Kind answer. Not cheaper than truth, but sometimes easier to carry.",
-    referencedFact: "returnTone",
-    referencedValue: "kind",
-  },
-  evasive: {
-    id: "io-return-tone-evasive",
-    text: "You dodged the question. Fine. Vey keeps receipts for both of us.",
-    referencedFact: "returnTone",
-    referencedValue: "evasive",
-  },
-  blunt: {
-    id: "io-return-tone-blunt",
-    text: "Blunt, then. Good. Wrapped knives still cut.",
-    referencedFact: "returnTone",
-    referencedValue: "blunt",
-  },
-};
-
 export function getIoRecognitionLine(facts: IoRecognitionFacts): IoRecognitionLine | null {
   if (facts.packetOutcome) {
     return PACKET_LINES[facts.packetOutcome];
@@ -75,15 +54,10 @@ export function getIoRecognitionLine(facts: IoRecognitionFacts): IoRecognitionLi
     return ROUTE_LINES[facts.routeAttention];
   }
 
-  if (facts.returnTone) {
-    return RETURN_TONE_LINES[facts.returnTone];
-  }
-
   return null;
 }
 
 export const ioRecognitionLines = {
   packet: PACKET_LINES,
   route: ROUTE_LINES,
-  returnTone: RETURN_TONE_LINES,
 } as const;
