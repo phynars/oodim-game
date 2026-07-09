@@ -164,7 +164,6 @@
       import {
         createEmptyFlagshipSave,
         makeFlagshipSurfaceSnapshot,
-        normalizeFlagshipBeat,
       } from "./flagship-surface.js";
 
       const canvas = document.querySelector("#scene");
@@ -675,11 +674,16 @@
             playerId: state.player.id,
           },
         };
-        state.scene.beat = normalizeFlagshipBeat(
-          typeof saved.beat === "string"
-            ? saved.beat
-            : state.packet.delivered ? "packet-delivered" : "packet-offered",
-        );
+        // Internal state keeps the raw beat names that lineForBeat() and
+        // setBeat() match on (packet-kept-sealed / packet-opened /
+        // io-returning-recognition). Normalization is a SURFACE concern —
+        // makeFlagshipSurfaceSnapshot applies it on the way out. Normalizing
+        // here would break the save/load round-trip: reloading at
+        // packet-kept-sealed would collapse to packet-choice and lineForBeat
+        // would fall through to the default intro line.
+        state.scene.beat = typeof saved.beat === "string"
+          ? saved.beat
+          : state.packet.delivered ? "packet-delivered" : "packet-offered";
         markStateDirty();
         renderText();
         publishState();
