@@ -287,6 +287,14 @@
             unlocked: false,
             ambientStarted: false,
             lastCue: null,
+            // Timestamp (performance.now()) of the last cue mutation. Written
+            // at the *source* — the same synchronous mutation that flips
+            // `lastCue`. The phone-ready spec pairs `lastCueAt` with
+            // `interaction.confirmStartedAt` to measure A/V drift without any
+            // rAF-polling jitter (frame-granularity polling was overshooting
+            // the 50ms budget on the CI runner even when the true drift was
+            // sub-millisecond).
+            lastCueAt: null,
           },
         },
       };
@@ -704,6 +712,7 @@
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) {
           state._runtime.audio.lastCue = "unsupported";
+          state._runtime.audio.lastCueAt = performance.now();
           markStateDirty();
           publishState();
           return false;
@@ -718,6 +727,7 @@
         if (state._runtime.audio.unlocked) {
           startAmbientAudio();
           state._runtime.audio.lastCue = "ambient-rainline";
+          state._runtime.audio.lastCueAt = performance.now();
         }
         markStateDirty();
         publishState();
@@ -747,6 +757,7 @@
         });
 
         state._runtime.audio.lastCue = "packet-confirmed";
+        state._runtime.audio.lastCueAt = performance.now();
         markStateDirty();
         publishState();
       };
