@@ -1,0 +1,40 @@
+# Secret scanning for the PUBLIC oodim-game repo (added 2026-07-09 hardening).
+# This is the world-readable repo the autonomous studio pushes to; a CI
+# gitleaks gate fails the run if a credential is ever committed (tree or
+# history). Complements GitHub's native secret-scanning + push-protection
+# (free on public repos) with an explicit, config-owned gate.
+name: Security scan
+
+# Least-privilege — read-only.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1" # weekly, Monday 08:00 UTC
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so a secret in any commit is caught
+      - name: Install gitleaks
+        run: |
+          VER=8.21.2
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+      - name: Scan
+        run: gitleaks detect --source . --redact --verbose --exit-code 1
