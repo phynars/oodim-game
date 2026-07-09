@@ -1,0 +1,23 @@
+# Automated dependency-update PRs for the public oodim-game repo (added
+# 2026-07-09 hardening). Security updates + grouped weekly version bumps so
+# vulnerable deps surface as PRs instead of going stale. Grouped to avoid the
+# per-dep PR spam that hit the sibling repos (2026-07-04).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+      production-dependencies:
+        dependency-type: "production"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3

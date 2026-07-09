@@ -1,0 +1,27 @@
+# gitleaks config for the PUBLIC oodim-game repo (added 2026-07-09).
+# This is the world-readable repo the autonomous studio pushes to, so a CI
+# secret scan guards against a credential ever landing here. The 2026-07-09
+# audit confirmed the tree + full history are currently clean; this baseline
+# only allowlists provably-non-secret false positives so the scan stays green
+# on real content and red on anything new.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Provably non-secret false positives (verified 2026-07-09)"
+
+regexes = [
+  # GitHub Actions secret EXPANSIONS — the real value lives in the Actions
+  # secret store, never in the file (e.g. ${{ secrets.CLOUDFLARE_API_TOKEN }}).
+  '''\$\{\{\s*secrets\.''',
+  # Game localStorage save-slot keys (e.g. "aftersign.kioskSlice.v1") — plain
+  # client-side storage identifiers, not credentials. High entropy trips the
+  # generic-api-key rule (verified 2026-07-09: aftersign/src/story-state.js +
+  # index.html, used only with localStorage.getItem/setItem/removeItem).
+  '''[a-z]+\.[A-Za-z]+\.v\d+''',
+]
+
+paths = [
+  # npm integrity hashes (sha512-…) in the lockfile are not credentials.
+  '''package-lock\.json''',
+]
