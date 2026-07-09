@@ -259,9 +259,7 @@ export function recognitionFeedbackAt(
     subtitleScale = 1 + 0.04 * settle;
   }
 
-  const normalizedYaw = RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES === 0
-    ? 0
-    : cameraYawDegrees / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
+  const normalizedYaw = cameraYawDegrees / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
   const audioCue = resolveAudioCue(safeElapsedMs, phase, outcome);
 
   return {
