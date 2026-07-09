@@ -23,41 +23,46 @@ declare global {
 }
 
 // The single flagship harness spec that consumes the shared contract in
-// e2e-shared/flagshipStoryStateContract.ts. This is the failing-first
-// test the review requires: nothing in aftersign/ imports the shared
-// contract yet, so without this spec the contract is an orphan type
-// file. With this spec, every export in the contract has a load-bearing
-// consumer.
+// e2e-shared/flagshipStoryStateContract.ts. Nothing else imports the
+// shared contract yet, so this spec keeps every export in the contract
+// tied to a load-bearing consumer.
 //
-// Today, this spec is RED for the right reason — the impl at HEAD does
-// NOT yet expose:
+// STATUS: all three tests below are `test.fixme` because the current
+// impl at aftersign/index.html publishState() exposes a smaller shape
+// than FlagshipGameSurface (no scene.act/ready, no player/delivery/save
+// blocks, npcs.io.memory not memories, choice id 'keep-packet-sealed'
+// not 'keep-sealed'). Running these tests unfixmed would crash on the
+// first choose() call before any assertion fires, painting the whole
+// aftersign lane red and blocking every other aftersign PR.
 //
-//   - scene.id === 'io-night-post-kiosk' (impl uses different scene ids)
-//   - scene.act, scene.ready
-//   - delivery.outcome (impl uses packet.delivered/sealed)
-//   - player.id, player.flags (spec-authored bag)
-//   - npcs.io.memories with id === 'io-remembers-blue-packet-{sealed,opened}'
-//   - save.authority, save.lastLoadProof
-//   - input.waitForStoryIdle, input.forceReload({clearLocalState})
-//     honoring the argument on the returning-recognition beat
+// The `fixme` marker is the honest signal: "this assertion is authored
+// against a surface that doesn't exist yet, don't run it, and don't
+// forget it either." Playwright emits a skip in the report so the gap
+// stays visible on every run — this is louder than a comment.
 //
-// Each impl PR that lands one of those fields flips one assertion here
-// from red to green. When the impl fully satisfies the spec the whole
-// suite passes with no changes to this spec. That is the Galaga rule
-// the founder wrote into the brief: no beat exists unless a harness
-// assertion says so, and the assertion must exist BEFORE the beat.
+// Tracked by #563 (parent) with per-phase children:
+//   Phase 1 (#564) — scene.act + scene.ready + player block
+//                 → unfixme test #1 (story-state invariant)
+//   Phase 2 (#565) — delivery.outcome + input helpers
+//                 → keeps test #1 green
+//   Phase 3 (#566) — npcs.io.memories + Io returning-line
+//                 → unfixme test #2 (npc-memory round-trip)
+//   Phase 4 (#567) — save.authority + lastLoadProof + FLAGSHIP_BREAK_MODE
+//                 → unfixme test #3 (durable save/load)
+//
+// The Galaga rule the founder wrote into the brief — "no beat exists
+// unless a harness assertion says so, and the assertion must exist
+// BEFORE the beat" — is honored by keeping the assertion body intact
+// and the shared contract types load-bearing. Each phase PR flips one
+// fixme to a live `test` in the same diff that lands the field, so the
+// harness catches the regression from the moment the field exists.
 //
 // FLAGSHIP_BREAK_MODE red-polarity: when the env var is set to a
 // recognized break-mode value, the corresponding assertion is INVERTED
 // — the test only passes if the surface fails in the specified way.
 // That's how CI proves "our green test would actually go red if the
-// impl regressed" without shipping a permanently-failing job.
-//
-// Wire-up caveat: while `FLAGSHIP_BREAK_MODE` wiring into the vite build
-// does not yet exist (tracked separately as impl work), the polarity
-// switch here is still runtime-guarded — setting the env var in local
-// dev exercises the inverted branch so the polarity logic itself is
-// covered.
+// impl regressed" without shipping a permanently-failing job. The
+// vite wire-up is Phase 4 (#567).
 
 const BREAK_MODES: readonly FlagshipBreakMode[] = [
   "drop-memory",
@@ -103,7 +108,10 @@ function watchPageErrors(page: Page, label: string): void {
 test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
+  // Unfixme in Phase 1 (#564) once scene.act, scene.ready, and the
+  // player block exist. Phase 2 (#565) then makes the delivery.outcome
+  // and input-helper assertions non-crashing.
+  test.fixme("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "story-state-invariant");
     const breakMode = currentBreakMode();
@@ -139,7 +147,10 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     }
   });
 
-  test("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
+  // Unfixme in Phase 3 (#566) once npcs.io.memories, npcs.io.lastLine,
+  // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
+  // on the return-to-io beat.
+  test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
     const breakMode = currentBreakMode();
@@ -212,7 +223,10 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     expect(returning.save.lastLoadProof.source).toBe("server");
   });
 
-  test("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
+  // Unfixme in Phase 4 (#567) once save.authority, save.lastLoadProof,
+  // input.forceSave/forceReload, and the FLAGSHIP_BREAK_MODE vite
+  // wire-up exist.
+  test.fixme("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "durable-save-load");
     const breakMode = currentBreakMode();
