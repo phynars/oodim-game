@@ -29,6 +29,34 @@ describe("Io recognition voice", () => {
     );
   });
 
+  it("falls back to return tone when no packet or route memory exists", () => {
+    expect(getIoRecognitionLine({ returnTone: "kind" })).toEqual(
+      ioRecognitionLines.returnTone.kind,
+    );
+    expect(getIoRecognitionLine({ returnTone: "evasive" })).toEqual(
+      ioRecognitionLines.returnTone.evasive,
+    );
+    expect(getIoRecognitionLine({ returnTone: "blunt" })).toEqual(
+      ioRecognitionLines.returnTone.blunt,
+    );
+  });
+
+  it("prefers packet outcome over both route attention and return tone", () => {
+    expect(
+      getIoRecognitionLine({
+        packetOutcome: "sealed",
+        routeAttention: "listened",
+        returnTone: "kind",
+      }),
+    ).toEqual(ioRecognitionLines.packet.sealed);
+  });
+
+  it("prefers route attention over return tone when packet outcome is absent", () => {
+    expect(
+      getIoRecognitionLine({ routeAttention: "skipped", returnTone: "blunt" }),
+    ).toEqual(ioRecognitionLines.route.skipped);
+  });
+
   it("returns no recognition line without a concrete remembered action", () => {
     expect(getIoRecognitionLine({})).toBeNull();
   });
