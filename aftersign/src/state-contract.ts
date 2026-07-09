@@ -37,8 +37,8 @@ export type MemoryBeatOutcome = "sealed" | "opened";
  *     (`ALLOWED_LINE_IDS`).
  * If either side changes, update this union in the same PR. */
 export type IoRecognitionLineId =
-  | "io-returning-recognition-sealed"
-  | "io-returning-recognition-opened";
+  | "io_return_packet_sealed"
+  | "io_return_packet_opened";
 
 /** Story runtime payload for Io's first memory beat. */
 export interface MemoryBeat {
