@@ -16,3 +16,12 @@ export {
   type InputLatencyProbe,
   type InputLatencySample,
 } from "./inputLatencyProbe";
+
+export {
+  getIoRecognitionLine,
+  ioRecognitionLines,
+  type IoPacketOutcome,
+  type IoRecognitionFacts,
+  type IoRecognitionLine,
+  type IoRouteAttention,
+} from "./ioVoice";
