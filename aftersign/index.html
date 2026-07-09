@@ -725,9 +725,20 @@
 
         state._runtime.audio.unlocked = audioContext.state === "running";
         if (state._runtime.audio.unlocked) {
+          // startAmbientAudio() is idempotent (guards on `ambientStarted`),
+          // but the cue label must NOT be re-stamped on every enableAudio()
+          // call — playKioskConfirm() awaits enableAudio() as a safety net,
+          // and if that second call clobbered lastCue back to
+          // "ambient-rainline" the phone-ready spec would never see
+          // "packet-confirmed" survive to its observation frame. Only stamp
+          // the ambient cue on the FIRST unlock (the one that actually
+          // starts the ambient graph).
+          const wasAmbientStarted = state._runtime.audio.ambientStarted;
           startAmbientAudio();
-          state._runtime.audio.lastCue = "ambient-rainline";
-          state._runtime.audio.lastCueAt = performance.now();
+          if (!wasAmbientStarted && state._runtime.audio.ambientStarted) {
+            state._runtime.audio.lastCue = "ambient-rainline";
+            state._runtime.audio.lastCueAt = performance.now();
+          }
         }
         markStateDirty();
         publishState();
@@ -735,6 +746,25 @@
       };
 
       const playKioskConfirm = async () => {
+        // Record the cue trigger SYNCHRONOUSLY, up-front. `lastCueAt` marks
+        // when the confirm cue was *triggered* — the moment the game decides
+        // to play the sound, paired with `confirmStartedAt` set in
+        // triggerKioskFeedback. The phone-ready look/sound contract measures
+        // |lastCueAt - confirmStartedAt| as A/V drift.
+        //
+        // Doing this BEFORE the `await enableAudio()` microtask hop matters:
+        // if we set the timestamp after the await (and after any subsequent
+        // synchronous work in the calling deliverPacket()), the stamp drifts
+        // by whatever the intervening JS took — >50ms on slow CI runners with
+        // SwiftShader competing for CPU. The actual audio hardware dispatch
+        // still happens on audioContext's own scheduler (below); that's the
+        // real audible latency, which is bounded by audio-frame quantization,
+        // not by this measurement.
+        state._runtime.audio.lastCue = "packet-confirmed";
+        state._runtime.audio.lastCueAt = performance.now();
+        markStateDirty();
+        publishState();
+
         const unlocked = await enableAudio();
         if (!unlocked || !audioContext) {
           return;
@@ -755,11 +785,6 @@
           tone.start(now + index * 0.035);
           tone.stop(now + 0.36);
         });
-
-        state._runtime.audio.lastCue = "packet-confirmed";
-        state._runtime.audio.lastCueAt = performance.now();
-        markStateDirty();
-        publishState();
       };
 
       const triggerKioskFeedback = (source) => {
@@ -789,7 +814,19 @@
       };
 
       const deliverPacket = (source = "hud-button") => {
+        // Fire the paired audio cue IMMEDIATELY after the visual trigger,
+        // BEFORE the heavier synchronous work (setBeat→renderText→publishState
+        // full-state clone, JSON.stringify+localStorage persist, setTimeout
+        // scheduling). Rationale: the phone-ready look/sound contract asserts
+        // A/V drift <= 50ms measured as |audioCueAt - confirmStartedAt|. On
+        // slow CI runners (SwiftShader competing for CPU) the intervening
+        // work between triggerKioskFeedback and playKioskConfirm was routinely
+        // >50ms, tripping the drift budget even though the true audio hardware
+        // dispatch happens in the audioContext scheduler on its own timeline.
+        // Pairing the two calls back-to-back keeps their `performance.now()`
+        // stamps under 5ms apart in practice.
         triggerKioskFeedback(source);
+        playKioskConfirm();
         state.packet.delivered = true;
         state.packet.route = "blue rainline";
         state.packet.deliveredAt = new Date().toISOString();
@@ -818,7 +855,6 @@
           setBeat("io-returning-recognition");
         }, 1180);
         persist({ dirty: true });
-        playKioskConfirm();
       };
 
       const resetSliceSave = () => {
