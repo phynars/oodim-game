@@ -784,17 +784,18 @@
         setBeat("packet-delivered");
         setTimeout(() => {
           const beatEndedAt = performance.now();
+          const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
           state.story.memoryBeat = {
             kind: "io_packet_return",
-            outcome: state.packet.sealed ? "sealed" : "opened",
+            outcome: durableOutcome,
             startedAt: beatStartedAt,
             endedAt: beatEndedAt,
             cameraDeltaMeters: 0.3,
             cameraYawDegrees: 4,
             inputLockMs: Math.min(1220, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
-            lineId: state.packet.sealed
-              ? "io-returning-recognition-sealed"
-              : "io-returning-recognition-opened",
+            lineId: durableOutcome === "sealed"
+              ? "io_return_packet_sealed"
+              : "io_return_packet_opened",
           };
           markStateDirty();
           setBeat("io-returning-recognition");
