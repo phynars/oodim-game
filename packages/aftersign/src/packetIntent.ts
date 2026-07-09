@@ -11,8 +11,6 @@ export interface PacketIntentConfig {
   openHoldMs: number;
   /** Movement beyond this radius cancels the open hold so thumb drift does not break trust. */
   cancelRadiusPx: number;
-  /** A quick release before openHoldMs preserves the packet. */
-  keepSealedMaxMs: number;
 }
 
 export interface PacketIntentResult {
@@ -25,7 +23,6 @@ export interface PacketIntentResult {
 export const DEFAULT_PACKET_INTENT_CONFIG: PacketIntentConfig = {
   openHoldMs: 520,
   cancelRadiusPx: 18,
-  keepSealedMaxMs: 240,
 };
 
 interface Point {
