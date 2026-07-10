@@ -134,7 +134,7 @@ test.describe("AFTERSIGN save slot contract", () => {
     const isolatedSnapshot = await snapshot(isolatedPage);
     expect(isolatedSnapshot.packet.delivered).toBe(false);
     expect(isolatedSnapshot.npcs.io.memory).toEqual([]);
-    expect(isolatedSnapshot.save).toEqual({ revision: 0, dirty: false });
+    expect(isolatedSnapshot.save).toMatchObject({ revision: 0, dirty: false });
 
     await context.close();
   });

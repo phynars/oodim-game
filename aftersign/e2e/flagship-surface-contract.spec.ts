@@ -27,13 +27,15 @@ declare global {
 // shared contract yet, so this spec keeps every export in the contract
 // tied to a load-bearing consumer.
 //
-// STATUS: all three tests below are `test.fixme` because the current
-// impl at aftersign/index.html publishState() exposes a smaller shape
-// than FlagshipGameSurface (no scene.act/ready, no player/delivery/save
-// blocks, npcs.io.memory not memories, choice id 'keep-packet-sealed'
-// not 'keep-sealed'). Running these tests unfixmed would crash on the
-// first choose() call before any assertion fires, painting the whole
-// aftersign lane red and blocking every other aftersign PR.
+// STATUS: test #1 (story-state invariant) is LIVE as of Phase 1 (#564):
+// publishState() now builds the surface via
+// aftersign/flagship-surface.js makeFlagshipSurfaceSnapshot(), which
+// exposes scene.act/ready, the player/delivery/save blocks, npcs.io
+// under BOTH `memories` (contract) and `memory` (legacy specs), and
+// aliases choice id 'keep-sealed' alongside 'keep-packet-sealed'.
+// Tests #2 and #3 below remain `test.fixme` until their phases land —
+// running them today would fail on the not-yet-implemented durable
+// save path and returning-line memory refs.
 //
 // The `fixme` marker is the honest signal: "this assertion is authored
 // against a surface that doesn't exist yet, don't run it, and don't
