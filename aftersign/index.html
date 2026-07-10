@@ -792,6 +792,9 @@
         state.interaction.kioskPulse = 1;
         state.interaction.confirmCount += 1;
         state.interaction.confirmStartedAt = performance.now();
+        // New pulse → previous settle stamp is stale. Cleared here so a
+        // harness can wait on "confirmSettledAt !== null" for THIS pulse.
+        state.interaction.confirmSettledAt = null;
         state.interaction.confirmFeedback = {
           ...CONFIRM_FEEDBACK,
           active: true,
