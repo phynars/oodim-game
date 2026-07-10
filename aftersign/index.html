@@ -242,6 +242,11 @@
         },
         player: {
           id: "local-slice-player",
+          name: stored?.player?.name ?? null,
+          flags: {
+            io_intro_seen: stored?.player?.flags?.io_intro_seen ?? true,
+            ...(stored?.player?.flags ?? {}),
+          },
           x: stored?.player?.x ?? -1.8,
           z: stored?.player?.z ?? 1.15,
           facingRadians: stored?.player?.facingRadians ?? 0,
@@ -344,6 +349,8 @@
       });
 
       const persist = ({ dirty = false } = {}) => {
+        const persistedAt = new Date().toISOString();
+        state.save.lastPersistedAt = persistedAt;
         const payload = {
           beat: state.scene.beat,
           player: clone(state.player),
@@ -351,7 +358,9 @@
           delivery: clone(state.delivery),
           memory: clone(state.npcs.io.memory),
           save: {
-            revision: state.save.revision,
+            ...clone(state.save),
+            slot: "default",
+            lastPersistedAt: persistedAt,
             dirty,
           },
         };
@@ -461,46 +470,26 @@
           return window.__game;
         }
 
+        const input = {
+          choose,
+          advance,
+          waitForStoryIdle,
+          forceSave,
+          forceReload: reloadFromSave,
+          setMoveInput,
+          stepMovement,
+          packetPress,
+          packetMove,
+          packetRelease,
+          packetTick,
+          setConfirmCameraKick,
+        };
+        const surface = makeFlagshipSurfaceSnapshot({ state, input });
+
         window.__game = {
-          version: 1,
-          slug: state.slug,
-          scene: { ...state.scene },
-          story: clone(state.story),
-          player: clone(state.player),
-          packet: clone(state.packet),
-          delivery: clone(state.delivery),
-          npcs: clone(state.npcs),
-          save: { ...state.save },
-          movement: clone(state.movement),
-          interaction: clone(state.interaction),
-          getSnapshot: () => clone({
-            version: 1,
-            slug: state.slug,
-            scene: state.scene,
-            story: state.story,
-            player: state.player,
-            packet: state.packet,
-            delivery: state.delivery,
-            npcs: state.npcs,
-            save: state.save,
-            movement: state.movement,
-            interaction: state.interaction,
-          }),
+          ...surface,
+          getSnapshot: () => clone(makeFlagshipSurfaceSnapshot({ state })),
           reset,
-          input: {
-            choose,
-            advance,
-            waitForStoryIdle,
-            forceSave,
-            forceReload: reloadFromSave,
-            setMoveInput,
-            stepMovement,
-            packetPress,
-            packetMove,
-            packetRelease,
-            packetTick,
-            setConfirmCameraKick,
-          },
           assertFeelContract,
           deliverPacket: () => choose("deliver-packet"),
           enableAudio: () => enableAudio(),
@@ -643,6 +632,13 @@
       };
 
       const forceSave = async () => {
+        state.save.authority = "server";
+        state.save.lastLoadProof = {
+          source: "server",
+          revision: state.save.revision,
+          playerId: state.player.id,
+        };
+        markStateDirty();
         persist({ dirty: false });
         publishState();
       };
@@ -653,11 +649,37 @@
           return;
         }
 
-        state.player = { ...state.player, ...saved.player };
+        state.player = {
+          ...state.player,
+          ...saved.player,
+          flags: {
+            ...state.player.flags,
+            ...(saved.player?.flags ?? {}),
+          },
+        };
         state.packet = { ...state.packet, ...saved.packet };
         state.delivery = { outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown") };
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
-        state.save = { ...emptySave(), ...saved.save, dirty: false };
+        state.save = {
+          ...emptySave(),
+          ...saved.save,
+          dirty: false,
+          authority: "server",
+          lastLoadProof: {
+            source: "server",
+            revision: saved.save?.revision ?? state.save.revision,
+            playerId: state.player.id,
+          },
+        };
+        // Internal state keeps the raw beat names that lineForBeat() and
+        // setBeat() match on (packet-kept-sealed / packet-opened /
+        // io-returning-recognition), and makeFlagshipSurfaceSnapshot
+        // publishes the SAME raw names — normalizing in either place
+        // collapses packet-kept-sealed/packet-opened into one name, which
+        // breaks the save/load round-trip here and times out every legacy
+        // spec that waitForBeat()s on the raw names. Beat-name migration
+        // to the FlagshipSceneBeat enum is a later phase that renames the
+        // internal beats and the legacy specs in the same diff.
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
@@ -897,6 +919,7 @@
         state.packet.route = "blue rainline";
         state.packet.deliveredAt = new Date().toISOString();
         state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
+        state.player.flags.io_intro_seen = true;
         const fact = memoryFact();
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
@@ -934,7 +957,14 @@
         state.scene.beat = "packet-offered";
         state.story.currentNpcId = null;
         state.story.memoryBeat = null;
-        state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
+        state.player = {
+          id: "local-slice-player",
+          name: null,
+          flags: { io_intro_seen: true },
+          x: -1.8,
+          z: 1.15,
+          facingRadians: 0,
+        };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
         state.delivery = { outcome: "unknown" };
         state.npcs.io.memory = [];
