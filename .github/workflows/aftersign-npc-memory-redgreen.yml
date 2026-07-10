@@ -1,0 +1,121 @@
+# AFTERSIGN NPC memory round-trip red/green harness.
+#
+# This is intentionally a harness contract, not gameplay implementation.
+# The normal lane may remain skipped until the vertical slice exposes the
+# durable NPC-memory surface. The broken-polarity lane forces the same spec
+# awake with FLAGSHIP_BREAK_MODE=drop-memory and inverts the result, proving
+# the contract would catch a missing persisted NPC memory beat.
+#
+# Mirrors .github/workflows/aftersign-durable-save-redgreen.yml — same
+# preflight-then-invert shape the reviewer confirmed on #526.
+
+name: aftersign-npc-memory-redgreen
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "aftersign/**"
+      - "e2e-shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/aftersign-npc-memory-redgreen.yml"
+  push:
+    branches: [main]
+    paths:
+      - "aftersign/**"
+      - "e2e-shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/aftersign-npc-memory-redgreen.yml"
+
+jobs:
+  green-polarity:
+    name: npc-memory contract (green — default suite may skip)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run AFTERSIGN NPC memory contract in default mode
+        run: npm run test:e2e:aftersign:npc-memory
+
+  red-polarity-drop-memory:
+    name: npc-memory contract (red — drop-memory MUST fail)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Preflight — decide whether the red lane can run yet
+        id: preflight
+        shell: bash
+        run: |
+          # The npc-memory-roundtrip test currently lives as test.fixme (an
+          # UNCONDITIONAL skip authored against a surface the impl does not
+          # yet expose — Phase 3 / #566 unfixmes it). Playwright exits 0 on
+          # an all-skipped run, so a naive "invert the exit code" red lane
+          # would fail on every PR. Detect that state and retire the red
+          # step until the fixme is converted to a conditional test.skip
+          # keyed off FLAGSHIP_BREAK_MODE=drop-memory (the pattern the
+          # sibling durable-save spec already uses).
+          spec=aftersign/e2e/flagship-surface-contract.spec.ts
+          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
+            echo "conditional guard present — red polarity will run."
+            echo "retired=false" >> "$GITHUB_OUTPUT"
+          elif grep -Pzo '(?s)test\.fixme\(\s*"npc-memory round-trip' "$spec" > /dev/null; then
+            echo "npc-memory-roundtrip is still test.fixme (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
+            echo "retired=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'test\.skip(' "$spec"; then
+            echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
+            exit 1
+          else
+            echo "npc-memory contract is fully live in the main suite — red polarity retired."
+            echo "retired=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run AFTERSIGN NPC memory contract in broken mode and require failure
+        if: steps.preflight.outputs.retired == 'false'
+        env:
+          FLAGSHIP_BREAK_MODE: drop-memory
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:aftersign:npc-memory
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Expected FLAGSHIP_BREAK_MODE=drop-memory to fail, but the NPC-memory contract passed."
+            exit 1
+          fi
+
+          echo "NPC-memory contract failed under drop-memory as expected."

@@ -41,6 +41,7 @@
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
     "test:e2e:aftersign:durable-save": "playwright test --config aftersign/playwright.config.ts e2e/save-load-durable-contract.spec.ts",
     "test:e2e:aftersign:durable-save:broken-local-only": "FLAGSHIP_BREAK_MODE=local-only-save playwright test --config aftersign/playwright.broken-local-only-save.config.ts e2e/save-load-durable-contract.spec.ts",
+    "test:e2e:aftersign:npc-memory": "playwright test --config aftersign/playwright.config.ts e2e/flagship-surface-contract.spec.ts",
     "test:e2e:landing": "playwright test --config landing/playwright.config.ts",
     "build": "npm run build:pacman && npm run build:galaga && npm run build:doom && npm run build:agar && npm run build:aftersign",
     "typecheck": "npm run typecheck:pacman && npm run typecheck:galaga && npm run typecheck:doom && npm run typecheck:agar && npm run typecheck:agar-server && npm run typecheck:aftersign",
