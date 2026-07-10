@@ -1,28 +1,42 @@
-import { describe, expect, it } from 'vitest';
-import { IO_FIRST_ARRIVAL_LINES, getIoFirstArrivalLine, type IoFirstArrivalLineKey } from './ioFirstArrival';
+import { getIoFirstArrivalLine, IO_FIRST_ARRIVAL_LINES } from "./ioFirstArrival";
 
-const expectedLines: Record<IoFirstArrivalLineKey, string> = {
-  surfaceQualification: 'You made it above the water. Good. That is the first qualification.',
-  packetInstruction: "Blue packet. Sign box with three moths painted on it. Keep the seal closed unless you want me to know you didn't.",
-  routeInstruction: 'Left stair, red string, brass bell. If the stair argues with you, trust the bell.',
-  deliverySuccess: 'The bell rang. Good. The city prefers evidence to enthusiasm.',
-  deliveryWrongBox: 'No bell. So either the box lied, or you gave it something already spent.',
-  openedPacketLedger: 'Curiosity is not a crime. It is an invoice.',
-  returnPromise: 'You come back later. That is where most couriers fail.',
-};
-
-describe('Io first-arrival lines', () => {
-  it('keeps every vertical-slice line keyed for harness lookup', () => {
-    expect(IO_FIRST_ARRIVAL_LINES).toEqual(
-      Object.fromEntries(
-        Object.entries(expectedLines).map(([key, text]) => [key, { key, text }]),
-      ),
+describe("Io first-arrival dialogue", () => {
+  it("pins the opening beat to the Night Post arrival", () => {
+    expect(getIoFirstArrivalLine("opening")).toBe(
+      "You found the Night Post. Or it found the shape of you. Either way, stand where the roof still works."
     );
   });
 
-  it('returns the requested line without falling back to generic copy', () => {
-    for (const [key, text] of Object.entries(expectedLines) as Array<[IoFirstArrivalLineKey, string]>) {
-      expect(getIoFirstArrivalLine(key)).toEqual({ key, text });
-    }
+  it("makes the sealed packet instruction concrete and auditable", () => {
+    expect(getIoFirstArrivalLine("packetOffer")).toBe(
+      "Blue seal. Dry as I can keep it. Take it to the sign box before the stair changes its mind."
+    );
+    expect(getIoFirstArrivalLine("packetWarning")).toBe(
+      "Do not open it unless you want the message to remember your hands first."
+    );
+  });
+
+  it("keeps the route instruction readable as play text", () => {
+    expect(getIoFirstArrivalLine("routeStart")).toBe(
+      "Three lanterns down. Brass moth left. Red string up. If the water is above your ankles, you chose the wrong stair."
+    );
+  });
+
+  it("pins inspect lines to objects in Io's kiosk", () => {
+    expect(IO_FIRST_ARRIVAL_LINES.inspectKettle).toBe(
+      "Kettle is for morale. Tea is for districts with budgets."
+    );
+    expect(IO_FIRST_ARRIVAL_LINES.inspectLedger).toBe(
+      "Names in black arrived. Names in red arrived late. Names in pencil are pretending."
+    );
+  });
+
+  it("distinguishes sealed and opened packet returns before persistence", () => {
+    expect(getIoFirstArrivalLine("sealedReturn")).toBe(
+      "Seal intact. Good. The city likes a courier who knows the difference between carrying and owning."
+    );
+    expect(getIoFirstArrivalLine("openedReturn")).toBe(
+      "Seal broken. Useful information, badly purchased."
+    );
   });
 });
