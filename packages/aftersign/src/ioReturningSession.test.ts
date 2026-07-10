@@ -5,20 +5,23 @@ import {
   type IoReturningSessionLineKey,
 } from './ioReturningSession'
 
+// These strings are pinned to docs/flagship/vertical-slice-script.md §7–§8.
+// If a beat needs to move, amend the script in the same PR — do not fork
+// the words here.
 const expectedLines: Record<IoReturningSessionLineKey, string> = {
   sealedPacket:
     'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
   openedPacket: 'You came back. The seal did not. I can use one of those facts.',
   listenedRoute: 'You listened before you ran. Rare habit. Keep it.',
   skippedRoute: 'You found the box anyway. Next time, let me finish saving your life.',
-  kindReturn: 'Kind answer. Dangerous tool. Keep it sharp.',
-  evasiveReturn: 'You walked around the question. I noticed the shape of the path.',
-  bluntReturn: 'Blunt, then. Fine. A dull knife still opens rope.',
-  fallback: 'Back again. Good. Vey is less cruel to repeat witnesses.',
+  kindReturn:
+    'Careful. Say that too often and people will start handing you breakable things.',
+  evasiveReturn: 'Work is a clean word. We can use it until it stains.',
+  bluntReturn: 'Good. Wanting is easier to route than pretending.',
 }
 
 describe('ioReturningSessionLines', () => {
-  it('pins every authored returning-session line', () => {
+  it('pins every authored returning-session line to the script', () => {
     expect(ioReturningSessionLines).toEqual(expectedLines)
   })
 
@@ -47,12 +50,12 @@ describe('ioReturningSessionLines', () => {
     ).toBe(expectedLines.openedPacket)
   })
 
-  it('falls through to route attention, answer tone, then fallback', () => {
-    expect(chooseIoReturningSessionLine({ routeAttention: 'listened' })).toBe(
-      expectedLines.listenedRoute,
-    )
+  it('falls through to route attention, then answer tone', () => {
     expect(chooseIoReturningSessionLine({ routeAttention: 'skipped' })).toBe(
       expectedLines.skippedRoute,
+    )
+    expect(chooseIoReturningSessionLine({ routeAttention: 'listened' })).toBe(
+      expectedLines.listenedRoute,
     )
     expect(chooseIoReturningSessionLine({ returnAnswerTone: 'kind' })).toBe(
       expectedLines.kindReturn,
@@ -63,6 +66,9 @@ describe('ioReturningSessionLines', () => {
     expect(chooseIoReturningSessionLine({ returnAnswerTone: 'blunt' })).toBe(
       expectedLines.bluntReturn,
     )
-    expect(chooseIoReturningSessionLine({})).toBe(expectedLines.fallback)
+  })
+
+  it('defaults empty memory to the listened-route line', () => {
+    expect(chooseIoReturningSessionLine({})).toBe(expectedLines.listenedRoute)
   })
 })
