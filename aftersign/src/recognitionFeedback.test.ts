@@ -318,3 +318,5 @@ export function runRecognitionFeedbackChecks(): void {
   checkRecognitionDialogueTimeline();
   checkRecognitionDialogueForBeatContract();
 }
+
+runRecognitionFeedbackChecks();
