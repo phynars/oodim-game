@@ -1,0 +1,95 @@
+# AFTERSIGN durable save/load harness — red/green polarity gate.
+#
+# The default aftersign lane keeps the durable save/load contract skipped until
+# a real durable path exists, because a permanently red main e2e suite hides
+# unrelated regressions. This workflow gives the contract its failing-first
+# proof anyway: FLAGSHIP_BREAK_MODE=local-only-save unskips the same spec and
+# the red job inverts the exit code.
+
+name: aftersign-durable-save-redgreen
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "aftersign/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/aftersign-durable-save-redgreen.yml"
+  push:
+    branches: [main]
+    paths:
+      - "aftersign/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/aftersign-durable-save-redgreen.yml"
+
+jobs:
+  green-polarity:
+    name: durable-save contract (green — default suite remains skipped)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run AFTERSIGN durable save/load spec in default mode
+        run: npm run test:e2e:aftersign:durable-save
+
+  red-polarity-local-only:
+    name: durable-save contract (red — local-only-save MUST fail)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Skip-when-skipped preflight (local-only-save)
+        id: preflight
+        shell: bash
+        run: |
+          if grep -q 'process.env.FLAGSHIP_BREAK_MODE !== "local-only-save"' aftersign/e2e/save-load-durable-contract.spec.ts; then
+            echo "durable save/load contract is guarded by FLAGSHIP_BREAK_MODE — red polarity can run."
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "durable save/load contract is fully live in the main suite — red polarity no longer needed."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run AFTERSIGN durable save/load contract (red polarity — MUST fail)
+        if: steps.preflight.outputs.skipped == 'false'
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:aftersign:durable-save:broken-local-only
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — durable save/load did NOT catch the local-only-save break mode."
+            exit 1
+          else
+            echo "Broken-polarity spec failed as expected (exit $rc) — durable save/load guard is honest."
+            exit 0
+          fi
