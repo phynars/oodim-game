@@ -26,17 +26,6 @@ export {
 } from "./packetIntent";
 
 export {
-  createPacketChoiceFeelModel,
-  defaultPacketChoiceTuning,
-  type PacketChoice,
-  type PacketChoicePointerPhase,
-  type PacketChoiceSnapshot,
-  type PacketChoiceStart,
-  type PacketChoiceTuning,
-  type PacketChoiceUpdate,
-} from "./packetChoiceFeel";
-
-export {
   getIoRecognitionLine,
   ioRecognitionLines,
   type IoPacketOutcome,
