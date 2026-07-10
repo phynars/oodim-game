@@ -499,6 +499,7 @@
             packetMove,
             packetRelease,
             packetTick,
+            setConfirmCameraKick,
           },
           assertFeelContract,
           deliverPacket: () => choose("deliver-packet"),
@@ -757,13 +758,20 @@
         publishState();
       };
 
+      const setConfirmCameraKick = ({ worldX = CONFIRM_FEEDBACK.cameraKickWorldX, yawDegrees = CONFIRM_FEEDBACK.cameraKickDeg } = {}) => {
+        state.interaction.confirmFeedback.cameraKickWorldX = worldX;
+        state.interaction.confirmFeedback.cameraKickDeg = yawDegrees;
+        markStateDirty();
+        publishState();
+      };
+
       const triggerKioskFeedback = (source) => {
         state.interaction.lastAction = source;
         state.interaction.kioskPulse = 1;
         state.interaction.confirmCount += 1;
         state.interaction.confirmStartedAt = performance.now();
         state.interaction.confirmFeedback = {
-          ...CONFIRM_FEEDBACK,
+          ...state.interaction.confirmFeedback,
           active: true,
           remainingMs: CONFIRM_FEEDBACK.durationMs,
         };
@@ -783,6 +791,40 @@
         publishState();
       };
 
+      let memoryBeatCameraProbe = null;
+
+      const startMemoryBeatCameraProbe = (startedAt) => {
+        memoryBeatCameraProbe = {
+          startedAt,
+          startPosition: camera.position.clone(),
+          startYawRadians: camera.rotation.z,
+          maxDeltaMeters: 0,
+          maxYawDegrees: 0,
+        };
+      };
+
+      const sampleMemoryBeatCameraProbe = () => {
+        if (!memoryBeatCameraProbe) {
+          return;
+        }
+        const deltaMeters = camera.position.distanceTo(memoryBeatCameraProbe.startPosition);
+        const yawDegrees = Math.abs(THREE.MathUtils.radToDeg(camera.rotation.z - memoryBeatCameraProbe.startYawRadians));
+        memoryBeatCameraProbe.maxDeltaMeters = Math.max(memoryBeatCameraProbe.maxDeltaMeters, deltaMeters);
+        memoryBeatCameraProbe.maxYawDegrees = Math.max(memoryBeatCameraProbe.maxYawDegrees, yawDegrees);
+      };
+
+      const finishMemoryBeatCameraProbe = () => {
+        sampleMemoryBeatCameraProbe();
+        const measured = memoryBeatCameraProbe
+          ? {
+              cameraDeltaMeters: Number(memoryBeatCameraProbe.maxDeltaMeters.toFixed(3)),
+              cameraYawDegrees: Number(memoryBeatCameraProbe.maxYawDegrees.toFixed(2)),
+            }
+          : { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
+        memoryBeatCameraProbe = null;
+        return measured;
+      };
+
       const deliverPacket = (source = "hud-button") => {
         triggerKioskFeedback(source);
         state.packet.delivered = true;
@@ -794,18 +836,20 @@
         state.save.revision += 1;
         state.save.dirty = true;
         const beatStartedAt = performance.now();
+        startMemoryBeatCameraProbe(beatStartedAt);
         markStateDirty();
         setBeat("packet-delivered");
         setTimeout(() => {
           const beatEndedAt = performance.now();
           const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
+          const cameraMotion = finishMemoryBeatCameraProbe();
           state.story.memoryBeat = {
             kind: "io_packet_return",
             outcome: durableOutcome,
             startedAt: beatStartedAt,
             endedAt: beatEndedAt,
-            cameraDeltaMeters: 0.3,
-            cameraYawDegrees: 4,
+            cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
+            cameraYawDegrees: cameraMotion.cameraYawDegrees,
             inputLockMs: Math.min(1220, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
             lineId: durableOutcome === "sealed"
               ? "io_return_packet_sealed"
@@ -1165,9 +1209,10 @@
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = state.player.x * 0.12 + confirmWobble * CONFIRM_FEEDBACK.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
+        camera.position.x = state.player.x * 0.12 + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
         camera.position.z = 7.6 + state.player.z * 0.12;
-        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * CONFIRM_FEEDBACK.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+        sampleMemoryBeatCameraProbe();
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
         if (failureSting) {
