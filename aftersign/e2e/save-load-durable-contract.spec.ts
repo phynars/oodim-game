@@ -169,8 +169,8 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     //      flips green in the main suite with no other changes (all
     //      assertions below already target the impl's real surface).
     test.skip(
-      true,
-      "durable save path not implemented — see docs/flagship/story-state-contract.md #3 and the SKIP RATIONALE above. Unskip when impl lands `forceReload({ clearLocalState })` + a store that outlives localStorage.clear(), OR when a matching red-polarity workflow inverts this spec's exit code (mirror of .github/workflows/agar-persistence-redgreen.yml).",
+      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
+      "durable save path not implemented — see docs/flagship/story-state-contract.md #3 and the SKIP RATIONALE above. The red-polarity lane runs this under FLAGSHIP_BREAK_MODE=local-only-save and inverts the expected failure until real durability lands.",
     );
 
     test.setTimeout(COLD_START_MS);
