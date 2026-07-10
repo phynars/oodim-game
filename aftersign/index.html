@@ -794,10 +794,23 @@
       let memoryBeatCameraProbe = null;
 
       const startMemoryBeatCameraProbe = (startedAt) => {
+        // Anchor the probe to the DETERMINISTIC "resting" camera pose (the
+        // pose the render loop would paint with confirmWobble=0 and
+        // failureWobble=0), NOT to camera.position.clone(). If we captured
+        // the live clone we'd race the render loop: on cold CI runs the
+        // first tick after startProbe can be the one that installs
+        // state.player.x/z into camera.position for the first time, so
+        // delta from (0, 2.25, 7.6) picks up ~0.26m of baseline instead
+        // of the ~0.05m confirm kick we're actually measuring. This
+        // anchors on state so the delta is purely the wobble contribution.
         memoryBeatCameraProbe = {
           startedAt,
-          startPosition: camera.position.clone(),
-          startYawRadians: camera.rotation.z,
+          startPosition: new THREE.Vector3(
+            state.player.x * 0.12,
+            camera.position.y,
+            7.6 + state.player.z * 0.12,
+          ),
+          startYawRadians: 0,
           maxDeltaMeters: 0,
           maxYawDegrees: 0,
         };
