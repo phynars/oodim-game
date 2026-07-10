@@ -5,6 +5,9 @@
 # unrelated regressions. This workflow gives the contract its failing-first
 # proof anyway: FLAGSHIP_BREAK_MODE=local-only-save unskips the same spec and
 # the red job inverts the exit code.
+#
+# Mirrors .github/workflows/agar-persistence-redgreen.yml — the shape the
+# reviewer confirmed on #526 (same polarity, same preflight-then-invert).
 
 name: aftersign-durable-save-redgreen
 
