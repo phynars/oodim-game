@@ -66,20 +66,30 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Skip-when-skipped preflight (local-only-save)
+      - name: Preflight — confirm the guard string still exists
         id: preflight
         shell: bash
         run: |
-          if grep -q 'process.env.FLAGSHIP_BREAK_MODE !== "local-only-save"' aftersign/e2e/save-load-durable-contract.spec.ts; then
-            echo "durable save/load contract is guarded by FLAGSHIP_BREAK_MODE — red polarity can run."
-            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          # Whitespace-tolerant search: matches the guard regardless of how
+          # the `test.skip(...)` call is line-wrapped or reformatted. If the
+          # guard is genuinely gone (durability landed → spec is unconditional)
+          # we surface that as `retired=true` and skip the red job. If the
+          # guard has merely been RENAMED or the sentinel value drifted, that
+          # is a silent-disable footgun — fail loud so a human decides.
+          spec=aftersign/e2e/save-load-durable-contract.spec.ts
+          if grep -Pzo '(?s)process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"local-only-save"' "$spec" > /dev/null; then
+            echo "guard present — red polarity will run."
+            echo "retired=false" >> "$GITHUB_OUTPUT"
+          elif grep -q 'test\.skip(' "$spec"; then
+            echo "::error::Spec still calls test.skip(...) but the FLAGSHIP_BREAK_MODE=local-only-save guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
+            exit 1
           else
-            echo "durable save/load contract is fully live in the main suite — red polarity no longer needed."
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "durable save/load contract is fully live in the main suite — red polarity retired."
+            echo "retired=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run AFTERSIGN durable save/load contract (red polarity — MUST fail)
-        if: steps.preflight.outputs.skipped == 'false'
+        if: steps.preflight.outputs.retired == 'false'
         shell: bash
         run: |
           set +e
