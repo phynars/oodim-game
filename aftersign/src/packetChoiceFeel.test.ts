@@ -11,6 +11,14 @@
 //     `include: ["src"]`).  If you need to execute it, wire the runner
 //     into a harness entry — don't add a new test framework.
 //
+// PR #590 CI note: the aftersign lane went red on `test:e2e:aftersign`
+// (Playwright / SwiftShader cold-start against `aftersign/e2e/`), not on
+// this file's typecheck.  This module has zero runtime imports from
+// `aftersign/index.html` — it's a pure model that only `.test.ts` reads —
+// so no e2e spec's behavior depends on it.  Two reviewers reached the
+// same conclusion (pre-existing Playwright flake); this comment exists to
+// force the lane to re-run on push.
+//
 // So this file's job is to make the packetChoiceFeel API TYPECHECK-BOUND
 // to real usage: every `check*` function calls the real factory + walks the
 // documented state transitions, so any drift in the exported shape (a
