@@ -22,9 +22,9 @@ export const IO_RETURNING_SESSION_LINES: Record<IoReturningSessionKey, string> =
   openedReturn: "You came back. The seal did not. I can use one of those facts.",
   listenedRoute: "You listened before you ran. Rare habit. Keep it.",
   skippedRoute: "You found the box anyway. Next time, let me finish saving your life.",
-  kindReturn: "Kind answer. Dangerous habit. Useful in the right rain.",
-  evasiveReturn: "You dodge cleanly. I am writing that under skills and risks.",
-  bluntReturn: "Blunt, then. Good. Saves paper when the roof is leaking."
+  kindReturn: "Careful. Say that too often and people will start handing you breakable things.",
+  evasiveReturn: "Work is a clean word. We can use it until it stains.",
+  bluntReturn: "Good. Wanting is easier to route than pretending."
 };
 
 export function getIoReturningSessionLine(key: IoReturningSessionKey): string {

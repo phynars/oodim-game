@@ -14,6 +14,18 @@ describe("Io returning-session dialogue", () => {
     );
   });
 
+  it("pins the return-tone lines to vertical-slice-script.md §8", () => {
+    expect(getIoReturningSessionLine("kindReturn")).toBe(
+      "Careful. Say that too often and people will start handing you breakable things."
+    );
+    expect(getIoReturningSessionLine("evasiveReturn")).toBe(
+      "Work is a clean word. We can use it until it stains."
+    );
+    expect(getIoReturningSessionLine("bluntReturn")).toBe(
+      "Good. Wanting is easier to route than pretending."
+    );
+  });
+
   it("keeps Io's route-attention memory short and concrete", () => {
     expect(getIoReturningSessionLine("listenedRoute")).toBe(
       "You listened before you ran. Rare habit. Keep it."
