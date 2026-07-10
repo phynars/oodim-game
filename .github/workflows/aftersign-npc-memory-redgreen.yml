@@ -1,0 +1,90 @@
+# AFTERSIGN NPC memory round-trip red/green harness.
+#
+# This is intentionally a harness contract, not gameplay implementation.
+# The normal lane may remain skipped until the vertical slice exposes the
+# durable NPC-memory surface. The broken-polarity lane forces the same spec
+# awake with FLAGSHIP_BREAK_MODE=drop-memory and inverts the result, proving
+# the contract would catch a missing persisted NPC memory beat.
+
+name: aftersign-npc-memory-redgreen
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "aftersign/**"
+      - "apps/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/aftersign-npc-memory-redgreen.yml"
+  push:
+    branches: [main]
+    paths:
+      - "aftersign/**"
+      - "apps/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/aftersign-npc-memory-redgreen.yml"
+
+jobs:
+  green-polarity:
+    name: npc-memory contract (green — default suite may skip)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run AFTERSIGN NPC memory contract in default mode
+        run: npm run test:e2e:aftersign:npc-memory
+
+  red-polarity-drop-memory:
+    name: npc-memory contract (red — drop-memory MUST fail)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run AFTERSIGN NPC memory contract in broken mode and require failure
+        env:
+          FLAGSHIP_BREAK_MODE: drop-memory
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:aftersign:npc-memory
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "Expected FLAGSHIP_BREAK_MODE=drop-memory to fail, but the NPC-memory contract passed."
+            exit 1
+          fi
+
+          echo "NPC-memory contract failed under drop-memory as expected."
