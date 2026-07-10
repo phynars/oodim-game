@@ -793,6 +793,41 @@
 
       let memoryBeatCameraProbe = null;
 
+      // Analytical model of the camera pose the tick loop paints — same
+      // formula as the tick body below, extracted so we can sample the peak
+      // wobble at fixed millisecond intervals INSTEAD of relying on rAF
+      // firing during the 220ms confirm window. On cold CI (SwiftShader,
+      // slow first paint) the render loop can skip the confirm window
+      // entirely — a single tick at progress≈0 followed by one at
+      // progress≈0.9 misses every wobble peak, and the measured delta/yaw
+      // collapse to zero. Analytical sampling makes the probe deterministic
+      // while still reading LIVE state (cameraKickWorldX / cameraKickDeg /
+      // state.player.x/z) so an override like setConfirmCameraKick({0,0})
+      // still zeros the reported motion.
+      const computeCameraPoseAt = (nowMs) => {
+        const confirmStartedAt = state.interaction.confirmStartedAt;
+        const failureStartedAt = state.interaction.failureStartedAt;
+        const confirmProgress = confirmStartedAt === null
+          ? 1
+          : Math.min(Math.max((nowMs - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
+        const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
+        const confirmFalloff = 1 - confirmIntensity;
+        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+        const failureProgress = failureStartedAt === null
+          ? 1
+          : Math.min(Math.max((nowMs - failureStartedAt) / FAILURE_FEEDBACK.durationMs, 0), 1);
+        const failureCurve = 1 - (1 - failureProgress) ** 2;
+        const failureFalloff = 1 - failureCurve;
+        const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
+        const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
+        const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
+        return {
+          x: state.player.x * 0.12 + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
+          z: 7.6 + state.player.z * 0.12,
+          rotationZ: THREE.MathUtils.degToRad(confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
+        };
+      };
+
       const startMemoryBeatCameraProbe = (startedAt) => {
         // Anchor the probe to the DETERMINISTIC "resting" camera pose (the
         // pose the render loop would paint with confirmWobble=0 and
@@ -805,29 +840,47 @@
         // anchors on state so the delta is purely the wobble contribution.
         memoryBeatCameraProbe = {
           startedAt,
-          startPosition: new THREE.Vector3(
-            state.player.x * 0.12,
-            camera.position.y,
-            7.6 + state.player.z * 0.12,
-          ),
-          startYawRadians: 0,
+          startX: state.player.x * 0.12,
+          startZ: 7.6 + state.player.z * 0.12,
           maxDeltaMeters: 0,
           maxYawDegrees: 0,
         };
+        // Analytical peak-catcher: sample at 10ms intervals across the
+        // 220ms confirm window. The confirm-wobble peak lands near
+        // progress≈0.083 (first sine crest under the (1-p)^3 falloff);
+        // a 10ms cadence has ~22 samples across the window, so we always
+        // land within ~5ms of that peak regardless of rAF jitter.
+        if (memoryBeatCameraProbe.intervalId) {
+          clearInterval(memoryBeatCameraProbe.intervalId);
+        }
+        memoryBeatCameraProbe.intervalId = setInterval(() => {
+          sampleMemoryBeatCameraProbe();
+        }, 10);
       };
 
       const sampleMemoryBeatCameraProbe = () => {
         if (!memoryBeatCameraProbe) {
           return;
         }
-        const deltaMeters = camera.position.distanceTo(memoryBeatCameraProbe.startPosition);
-        const yawDegrees = Math.abs(THREE.MathUtils.radToDeg(camera.rotation.z - memoryBeatCameraProbe.startYawRadians));
+        // Prefer the analytical model — it reads live state and is
+        // independent of whether the render loop has actually ticked
+        // in the confirm window. camera.position/rotation is still
+        // sampled (via tick's sampleMemoryBeatCameraProbe call) as a
+        // fallback, but the analytical path guarantees peak coverage.
+        const pose = computeCameraPoseAt(performance.now());
+        const dx = pose.x - memoryBeatCameraProbe.startX;
+        const dz = pose.z - memoryBeatCameraProbe.startZ;
+        const deltaMeters = Math.hypot(dx, dz);
+        const yawDegrees = Math.abs(THREE.MathUtils.radToDeg(pose.rotationZ));
         memoryBeatCameraProbe.maxDeltaMeters = Math.max(memoryBeatCameraProbe.maxDeltaMeters, deltaMeters);
         memoryBeatCameraProbe.maxYawDegrees = Math.max(memoryBeatCameraProbe.maxYawDegrees, yawDegrees);
       };
 
       const finishMemoryBeatCameraProbe = () => {
         sampleMemoryBeatCameraProbe();
+        if (memoryBeatCameraProbe?.intervalId) {
+          clearInterval(memoryBeatCameraProbe.intervalId);
+        }
         const measured = memoryBeatCameraProbe
           ? {
               cameraDeltaMeters: Number(memoryBeatCameraProbe.maxDeltaMeters.toFixed(3)),
