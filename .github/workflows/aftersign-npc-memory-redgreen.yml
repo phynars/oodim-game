@@ -18,7 +18,7 @@ on:
   pull_request:
     paths:
       - "aftersign/**"
-      - "apps/**"
+      - "e2e-shared/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/aftersign-npc-memory-redgreen.yml"
@@ -26,7 +26,7 @@ on:
     branches: [main]
     paths:
       - "aftersign/**"
-      - "apps/**"
+      - "e2e-shared/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/aftersign-npc-memory-redgreen.yml"
