@@ -95,7 +95,16 @@ export function makeFlagshipSurfaceSnapshot({ state, input }) {
     slug: state.slug ?? FLAGSHIP_BUILD.slug,
     scene: {
       ...FLAGSHIP_SCENE,
-      beat: normalizeFlagshipBeat(state.scene?.beat),
+      // Publish the beat VERBATIM. The runtime's beat names
+      // (packet-kept-sealed / packet-opened / io-returning-recognition)
+      // are load-bearing for every legacy aftersign spec that calls
+      // waitForBeat / asserts scene.beat, and they carry information a
+      // normalized "packet-choice" loses (sealed vs opened). Migrating
+      // to the FlagshipSceneBeat enum names is a later phase that must
+      // rename the internal beats AND the legacy specs in one diff —
+      // renaming only on the surface splits the two vocabularies and
+      // times out every waitForBeat("packet-kept-sealed") in CI.
+      beat: state.scene?.beat ?? "packet-offered",
       ready: Boolean(state.scene?.ready ?? true),
     },
     story: JSON.parse(JSON.stringify(state.story ?? {})),

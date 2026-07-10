@@ -676,11 +676,13 @@
         };
         // Internal state keeps the raw beat names that lineForBeat() and
         // setBeat() match on (packet-kept-sealed / packet-opened /
-        // io-returning-recognition). Normalization is a SURFACE concern —
-        // makeFlagshipSurfaceSnapshot applies it on the way out. Normalizing
-        // here would break the save/load round-trip: reloading at
-        // packet-kept-sealed would collapse to packet-choice and lineForBeat
-        // would fall through to the default intro line.
+        // io-returning-recognition), and makeFlagshipSurfaceSnapshot
+        // publishes the SAME raw names — normalizing in either place
+        // collapses packet-kept-sealed/packet-opened into one name, which
+        // breaks the save/load round-trip here and times out every legacy
+        // spec that waitForBeat()s on the raw names. Beat-name migration
+        // to the FlagshipSceneBeat enum is a later phase that renames the
+        // internal beats and the legacy specs in the same diff.
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
