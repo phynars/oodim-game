@@ -7,7 +7,6 @@ import {
   assertNpcReferencesPriorMemory,
   assertSerializableFlagshipSurface,
   assertStoryBeatTransition,
-  getFlagshipSurface,
   type FlagshipBreakMode,
   type FlagshipGameSurface,
 } from "../../e2e-shared/flagshipStoryStateContract";
@@ -27,44 +26,11 @@ declare global {
 // shared contract yet, so this spec keeps every export in the contract
 // tied to a load-bearing consumer.
 //
-// STATUS: test #1 (story-state invariant) is LIVE as of Phase 1 (#564):
-// publishState() now builds the surface via
-// aftersign/flagship-surface.js makeFlagshipSurfaceSnapshot(), which
-// exposes scene.act/ready, the player/delivery/save blocks, npcs.io
-// under BOTH `memories` (contract) and `memory` (legacy specs), and
-// aliases choice id 'keep-sealed' alongside 'keep-packet-sealed'.
-// Tests #2 and #3 below remain `test.fixme` until their phases land —
-// running them today would fail on the not-yet-implemented durable
-// save path and returning-line memory refs.
-//
-// The `fixme` marker is the honest signal: "this assertion is authored
-// against a surface that doesn't exist yet, don't run it, and don't
-// forget it either." Playwright emits a skip in the report so the gap
-// stays visible on every run — this is louder than a comment.
-//
-// Tracked by #563 (parent) with per-phase children:
-//   Phase 1 (#564) — scene.act + scene.ready + player block
-//                 → unfixme test #1 (story-state invariant)
-//   Phase 2 (#565) — delivery.outcome + input helpers
-//                 → keeps test #1 green
-//   Phase 3 (#566) — npcs.io.memories + Io returning-line
-//                 → unfixme test #2 (npc-memory round-trip)
-//   Phase 4 (#567) — save.authority + lastLoadProof + FLAGSHIP_BREAK_MODE
-//                 → unfixme test #3 (durable save/load)
-//
-// The Galaga rule the founder wrote into the brief — "no beat exists
-// unless a harness assertion says so, and the assertion must exist
-// BEFORE the beat" — is honored by keeping the assertion body intact
-// and the shared contract types load-bearing. Each phase PR flips one
-// fixme to a live `test` in the same diff that lands the field, so the
-// harness catches the regression from the moment the field exists.
-//
-// FLAGSHIP_BREAK_MODE red-polarity: when the env var is set to a
-// recognized break-mode value, the corresponding assertion is INVERTED
-// — the test only passes if the surface fails in the specified way.
-// That's how CI proves "our green test would actually go red if the
-// impl regressed" without shipping a permanently-failing job. The
-// vite wire-up is Phase 4 (#567).
+// Phase status:
+//   - Phase 2 (#565): ACTIVE test below verifies delivery.id/outcome +
+//     input helpers (`waitForStoryIdle`, `forceSave`, `forceReload`) +
+//     callable choice ids (`keep-sealed`, `deliver-packet`, `return-to-io`).
+//   - Remaining tests stay fixme until Phases 3/4 fields are shipped.
 
 const BREAK_MODES: readonly FlagshipBreakMode[] = [
   "drop-memory",
@@ -110,48 +76,50 @@ function watchPageErrors(page: Page, label: string): void {
 test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   test.describe.configure({ mode: "serial" });
 
-  // Unfixmed in Phase 1 (#564): scene.act, scene.ready, and the player
-  // block are exposed, `keep-sealed` is aliased, `waitForStoryIdle` is
-  // wired, and `flags.io_intro_seen` toggles on the arrival beat.
-  // Phase 2 (#565) will keep this green as delivery.outcome and the
-  // remaining input helpers grow.
-  test("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
+  test("phase-2 surface: delivery outcome + input helpers", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
-    watchPageErrors(page, "story-state-invariant");
-    const breakMode = currentBreakMode();
+    watchPageErrors(page, "phase-2-surface");
 
-    await page.goto(`/aftersign/?slot=flagship-story-${Date.now()}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=flagship-phase2-${Date.now()}`, { waitUntil: "load" });
+    await waitForVersion(page);
 
-    const initial = await readSurface(page);
-    assertSerializableFlagshipSurface(initial);
+    const initial = await page.evaluate(() => ({
+      delivery: window.__game?.delivery,
+      hasChoose: typeof window.__game?.input?.choose === "function",
+      hasWaitForStoryIdle: typeof window.__game?.input?.waitForStoryIdle === "function",
+      hasForceSave: typeof window.__game?.input?.forceSave === "function",
+      hasForceReload: typeof window.__game?.input?.forceReload === "function",
+    }));
 
-    expect(initial.scene.beat === "arrival" || initial.scene.beat === "packet-offered").toBe(true);
-    expect(initial.delivery.outcome).toBe("unknown");
+    expect(initial.delivery?.id).toBe("blue-packet");
+    expect(initial.delivery?.outcome).toBe("unknown");
+    expect(initial.hasChoose).toBe(true);
+    expect(initial.hasWaitForStoryIdle).toBe(true);
+    expect(initial.hasForceSave).toBe(true);
+    expect(initial.hasForceReload).toBe(true);
 
-    // Drive the sealed branch: keep-sealed → deliver-packet.
     await page.evaluate(() => window.__game!.input.choose("keep-sealed"));
     await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-    const afterChoice = await readSurface(page);
-
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-    const afterDeliver = await readSurface(page);
 
-    // Spec: "Required tests" #1 assertions.
-    assertStoryBeatTransition(afterChoice, afterDeliver, "packet-delivered", "io_intro_seen");
-    expect(afterDeliver.delivery.outcome).toBe("sealed");
-    expect(afterDeliver.npcs.io.trustPosture).toBe("trusted-seal");
+    const afterDeliver = await page.evaluate(() => ({
+      outcome: window.__game?.delivery?.outcome,
+    }));
+    expect(afterDeliver.outcome).toBe("sealed");
 
-    if (breakMode === "wrong-io-line") {
-      // In the wrong-io-line break, the spec expects Io's line to
-      // eventually contradict the sealed memory. The story-invariant
-      // test proves the pre-return story is still coherent though;
-      // this branch just documents intent (assertion belongs to the
-      // returning-session test below).
-    }
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+    await page.evaluate(() => window.__game!.input.choose("return-to-io"));
+    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+
+    const afterReturn = await page.evaluate(() => ({
+      beat: window.__game?.scene?.beat,
+    }));
+    expect(afterReturn.beat).toBe("io-returning-recognition");
   });
 
-  // Unfixme in Phase 3 (#566) once npcs.io.memories, npcs.io.lastLine,
+  // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
   test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
@@ -186,10 +154,6 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     assertSerializableFlagshipSurface(returning);
 
     if (breakMode === "drop-memory") {
-      // Impl was told to drop the memory: the sealed memory must be
-      // absent, so the assertion below must throw. If it did NOT throw
-      // then the break mode is not actually broken, which is itself a
-      // failure. Convert the polarity here.
       let didThrow = false;
       try {
         assertNpcReferencesPriorMemory(returning, "sealed");
@@ -217,19 +181,14 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
       return;
     }
 
-    // Green path: the spec's "Required tests" #2 sealed branch.
     assertNpcReferencesPriorMemory(returning, "sealed");
-
-    // Redundant explicit assertions so a failure message points to the
-    // exact rule that broke:
     expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT.sealed);
     expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID.sealed);
     expect(returning.save.lastLoadProof.source).toBe("server");
   });
 
-  // Unfixme in Phase 4 (#567) once save.authority, save.lastLoadProof,
-  // input.forceSave/forceReload, and the FLAGSHIP_BREAK_MODE vite
-  // wire-up exist.
+  // Unfixme in Phase 4 once save.authority, save.lastLoadProof, and
+  // the FLAGSHIP_BREAK_MODE vite wire-up exist.
   test.fixme("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "durable-save-load");
@@ -241,14 +200,11 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     await page.goto(url, { waitUntil: "load" });
     await readSurface(page);
 
-    // 1+2. Mutate a flag and author an Io delivery-outcome memory via
-    //      harness input.
     await page.evaluate(() => window.__game!.input.choose("keep-sealed"));
     await page.evaluate(() => window.__game!.input.waitForStoryIdle());
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 
-    // 3. forceSave.
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
       timeout: WAIT_MS,
@@ -257,13 +213,10 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     const beforeReload = await readSurface(page);
     assertSerializableFlagshipSurface(beforeReload);
 
-    // Pre-reload sanity: save is server-authoritative on the way OUT
-    // too — a local-fallback save can't be reasoned about as durable.
     expect(beforeReload.save.authority).toBe("server");
     expect(beforeReload.delivery.outcome).toBe("sealed");
     expect(beforeReload.save.dirty).toBe(false);
 
-    // 4+5. Capture revision, then durable reload with clearLocalState.
     await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
     const afterReload = await readSurface(page);
 
@@ -281,7 +234,38 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
       return;
     }
 
-    // 6. Assertions per spec #3.
     assertDurableSaveLoaded(beforeReload, afterReload);
+  });
+
+  // Unfixme once scene/player blocks from Phase 1 + trust posture from
+  // Phase 3 are available together.
+  test("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "story-state-invariant");
+    const breakMode = currentBreakMode();
+
+    await page.goto(`/aftersign/?slot=flagship-story-${Date.now()}`, { waitUntil: "load" });
+
+    const initial = await readSurface(page);
+    assertSerializableFlagshipSurface(initial);
+
+    expect(initial.scene.beat === "arrival" || initial.scene.beat === "packet-offered").toBe(true);
+    expect(initial.delivery.outcome).toBe("unknown");
+
+    await page.evaluate(() => window.__game!.input.choose("keep-sealed"));
+    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+    const afterChoice = await readSurface(page);
+
+    await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+    const afterDeliver = await readSurface(page);
+
+    assertStoryBeatTransition(afterChoice, afterDeliver, "packet-delivered", "io_intro_seen");
+    expect(afterDeliver.delivery.outcome).toBe("sealed");
+    expect(afterDeliver.npcs.io.trustPosture).toBe("trusted-seal");
+
+    if (breakMode === "wrong-io-line") {
+      // This branch intentionally only documents mode ownership.
+    }
   });
 });

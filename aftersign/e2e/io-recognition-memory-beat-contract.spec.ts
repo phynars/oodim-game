@@ -21,10 +21,16 @@ type MemoryBeat = {
   lineId: string;
 };
 
+// Camera bounds come from the owning feel spec
+// (docs/flagship/io-recognition-beat.md — "cameraDeltaMeters is between
+// 0.24m and 0.36m" / "cameraYawDegrees is between 3deg and 5deg" when
+// reduced motion is off). The old 0.02-0.08m / 0.5-1.5deg band predated
+// the 1,220ms recognition envelope and only covered the 220ms confirm
+// kick, not the authored 0.32m dolly / 4deg yaw the beat now performs.
 const BEAT_LIMITS = {
   durationMs: { min: 1100, max: 1350 },
-  cameraDeltaMeters: { min: 0.02, max: 0.08 },
-  cameraYawDegrees: { min: 0.5, max: 1.5 },
+  cameraDeltaMeters: { min: 0.24, max: 0.36 },
+  cameraYawDegrees: { min: 3, max: 5 },
   inputLockMsMax: 1220,
 } as const;
 
@@ -136,14 +142,26 @@ test("io recognition reports measured camera motion, not canned literals", async
   const normalBeat = await collectBeat(page, "sealed");
   assertBeatContract(normalBeat);
 
+  // Zero BOTH camera-motion sources — the 220ms confirm kick AND the
+  // 1,220ms recognition envelope. The probe measures the live camera pose,
+  // so with both amplitudes flat the reported motion must collapse below
+  // the contract minimums. If the runtime ever reverts to stamping canned
+  // literals (e.g. a Math.max floor to the contract constants), this
+  // assertion is the one that catches it.
   await page.evaluate(() => {
     const game = (window as Window & {
-      __game?: { input?: { setConfirmCameraKick?: (kick: { worldX: number; yawDegrees: number }) => void } };
+      __game?: {
+        input?: {
+          setConfirmCameraKick?: (kick: { worldX: number; yawDegrees: number }) => void;
+          setRecognitionCameraEnvelope?: (envelope: { cameraDeltaMeters: number; cameraYawDegrees: number }) => void;
+        };
+      };
     }).__game;
-    if (!game?.input?.setConfirmCameraKick) {
-      throw new Error("window.__game.input.setConfirmCameraKick is not available");
+    if (!game?.input?.setConfirmCameraKick || !game.input.setRecognitionCameraEnvelope) {
+      throw new Error("window.__game.input camera overrides are not available");
     }
     game.input.setConfirmCameraKick({ worldX: 0, yawDegrees: 0 });
+    game.input.setRecognitionCameraEnvelope({ cameraDeltaMeters: 0, cameraYawDegrees: 0 });
   });
 
   const flatBeat = await collectBeat(page, "opened");

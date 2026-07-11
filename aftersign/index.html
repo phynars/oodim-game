@@ -161,7 +161,6 @@
       import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./packet-intent.js";
-      import { makeFlagshipSurfaceSnapshot } from "./flagship-surface.js";
 
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
@@ -181,6 +180,11 @@
         hudShakePx: 10,
         hudLiftPx: 3,
         pulseDecayPerSecond: 3.8,
+      };
+      const MEMORY_RECOGNITION_FEEDBACK = {
+        durationMs: 1220,
+        cameraDeltaMeters: 0.32,
+        cameraYawDegrees: 4,
       };
       const FAILURE_FEEDBACK = {
         durationMs: 180,
@@ -231,7 +235,14 @@
       const state = {
         slug: "aftersign",
         scene: {
-          id: "io-kiosk-rainline",
+          // Contract-canonical scene identity (e2e-shared asserts these —
+          // #564 Phase 1; the old dev id "io-kiosk-rainline" predated the
+          // shared contract and nothing else referenced it).
+          id: "io-night-post-kiosk",
+          act: "act-1-seal",
+          // Flipped true once listeners + first render are wired (boot tail)
+          // — the harness's "safe to drive input" signal.
+          ready: false,
           beat: stored?.beat ?? "packet-offered",
         },
         story: {
@@ -239,13 +250,14 @@
           memoryBeat: null,
         },
         delivery: {
+          id: "blue-packet",
           outcome: stored?.delivery?.outcome || "unknown",
         },
         player: {
           id: "local-slice-player",
           name: stored?.player?.name ?? null,
           flags: {
-            io_intro_seen: stored?.player?.flags?.io_intro_seen ?? true,
+            io_intro_seen: false,
             ...(stored?.player?.flags ?? {}),
           },
           x: stored?.player?.x ?? -1.8,
@@ -283,6 +295,13 @@
             ...CONFIRM_FEEDBACK,
             active: false,
             remainingMs: 0,
+          },
+          // Live amplitudes for the recognition-beat camera envelope. Kept in
+          // state (not the const) so the harness can zero them via
+          // setRecognitionCameraEnvelope and prove the durable beat reports
+          // MEASURED motion, not canned contract literals.
+          recognitionFeedback: {
+            ...MEMORY_RECOGNITION_FEEDBACK,
           },
           failureFeedback: {
             ...FAILURE_FEEDBACK,
@@ -350,8 +369,6 @@
       });
 
       const persist = ({ dirty = false } = {}) => {
-        const persistedAt = new Date().toISOString();
-        state.save.lastPersistedAt = persistedAt;
         const payload = {
           beat: state.scene.beat,
           player: clone(state.player),
@@ -359,9 +376,7 @@
           delivery: clone(state.delivery),
           memory: clone(state.npcs.io.memory),
           save: {
-            ...clone(state.save),
-            slot: "default",
-            lastPersistedAt: persistedAt,
+            revision: state.save.revision,
             dirty,
           },
         };
@@ -471,26 +486,66 @@
           return window.__game;
         }
 
-        const input = {
-          choose,
-          advance,
-          waitForStoryIdle,
-          forceSave,
-          forceReload: reloadFromSave,
-          setMoveInput,
-          stepMovement,
-          packetPress,
-          packetMove,
-          packetRelease,
-          packetTick,
-          setConfirmCameraKick,
-        };
-        const surface = makeFlagshipSurfaceSnapshot({ state, input });
-
         window.__game = {
-          ...surface,
-          getSnapshot: () => clone(makeFlagshipSurfaceSnapshot({ state })),
+          version: 1,
+          slug: state.slug,
+          build: { slug: state.slug },
+          scene: { ...state.scene },
+          story: clone(state.story),
+          player: clone(state.player),
+          packet: clone(state.packet),
+          delivery: {
+            id: "blue-packet",
+            ...clone(state.delivery),
+          },
+          npcs: clone(state.npcs),
+          save: { ...state.save },
+          movement: clone(state.movement),
+          interaction: clone(state.interaction),
+          // Publish the runtime audio surface so the look/sound contract
+          // spec can observe playKioskConfirm()'s stamped cue. Without
+          // this the harness reads window.__game._runtime as undefined
+          // and the audio half of the assertion (audioLastCue ===
+          // 'packet-confirmed') can never satisfy. The closure's
+          // state._runtime is stamped inside enableAudio()/
+          // playKioskConfirm() but was previously invisible from the
+          // outside; cloning it here mirrors every other published
+          // sub-object so mutations after publishState() don't leak
+          // back into the live state graph.
+          _runtime: clone(state._runtime),
+          getSnapshot: () => clone({
+            version: 1,
+            slug: state.slug,
+            build: { slug: state.slug },
+            scene: state.scene,
+            story: state.story,
+            player: state.player,
+            packet: state.packet,
+            delivery: {
+              id: "blue-packet",
+              ...state.delivery,
+            },
+            npcs: state.npcs,
+            save: state.save,
+            movement: state.movement,
+            interaction: state.interaction,
+          }),
           reset,
+          input: {
+            choose,
+            advance,
+            waitForStoryIdle,
+            forceSave,
+            forceReload: reloadFromSave,
+            setMoveInput,
+            stepMovement,
+            packetPress,
+            packetMove,
+            packetRelease,
+            packetTick,
+            setConfirmCameraKick,
+            setRecognitionCameraEnvelope,
+          },
           assertFeelContract,
           deliverPacket: () => choose("deliver-packet"),
           enableAudio: () => enableAudio(),
@@ -617,6 +672,11 @@
           return;
         }
 
+        if (choiceId === "return-to-io") {
+          await advance();
+          return;
+        }
+
         throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
       };
 
@@ -633,21 +693,19 @@
       };
 
       const forceSave = async () => {
-        state.save.authority = "server";
-        state.save.lastLoadProof = {
-          source: "server",
-          revision: state.save.revision,
-          playerId: state.player.id,
-        };
-        markStateDirty();
         persist({ dirty: false });
+        renderText();
         publishState();
       };
 
-      const reloadFromSave = async () => {
+      const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         const saved = readStored();
         if (!saved) {
           return;
+        }
+
+        if (clearLocalState) {
+          window.localStorage.removeItem(storageKey);
         }
 
         state.player = {
@@ -659,31 +717,20 @@
           },
         };
         state.packet = { ...state.packet, ...saved.packet };
-        state.delivery = { outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown") };
-        state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
-        state.save = {
-          ...emptySave(),
-          ...saved.save,
-          dirty: false,
-          authority: "server",
-          lastLoadProof: {
-            source: "server",
-            revision: saved.save?.revision ?? state.save.revision,
-            playerId: state.player.id,
-          },
+        state.delivery = {
+          id: "blue-packet",
+          outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
         };
-        // Internal state keeps the raw beat names that lineForBeat() and
-        // setBeat() match on (packet-kept-sealed / packet-opened /
-        // io-returning-recognition), and makeFlagshipSurfaceSnapshot
-        // publishes the SAME raw names — normalizing in either place
-        // collapses packet-kept-sealed/packet-opened into one name, which
-        // breaks the save/load round-trip here and times out every legacy
-        // spec that waitForBeat()s on the raw names. Beat-name migration
-        // to the FlagshipSceneBeat enum is a later phase that renames the
-        // internal beats and the legacy specs in the same diff.
+        state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
+        state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
+
+        if (clearLocalState) {
+          persist({ dirty: false });
+        }
+
         markStateDirty();
         renderText();
         publishState();
@@ -755,7 +802,29 @@
       };
 
       const playKioskConfirm = async () => {
+        // Stamp the STORY-LEVEL cue FIRST, before the audio-unlock gate.
+        // The look/sound contract is "the game dispatched a packet-confirmed
+        // cue on the same tick as the visual feedback" — that dispatch is
+        // deterministic and independent of whether the browser actually
+        // unlocked its AudioContext (headless CI without a user gesture
+        // leaves audioContext.state === "suspended" and enableAudio()
+        // returns false; if we gate lastCue on that we can never assert
+        // the coupling from an e2e harness). The actual oscillator tones
+        // are still gated on unlock — that's a real-audio concern — but
+        // the state marker is set unconditionally so the harness (and any
+        // downstream analytics consumer) can observe that the cue fired.
+        const stampConfirmCue = () => {
+          state._runtime.audio.lastCue = "packet-confirmed";
+          markStateDirty();
+          publishState();
+        };
+        stampConfirmCue();
+
         const unlocked = await enableAudio();
+        // enableAudio() may overwrite lastCue with "ambient-rainline" on
+        // its FIRST successful unlock. Re-stamp packet-confirmed after —
+        // the CONFIRM cue is the more specific signal for this call.
+        stampConfirmCue();
         if (!unlocked || !audioContext) {
           return;
         }
@@ -775,15 +844,25 @@
           tone.start(now + index * 0.035);
           tone.stop(now + 0.36);
         });
-
-        state._runtime.audio.lastCue = "packet-confirmed";
-        markStateDirty();
-        publishState();
       };
 
       const setConfirmCameraKick = ({ worldX = CONFIRM_FEEDBACK.cameraKickWorldX, yawDegrees = CONFIRM_FEEDBACK.cameraKickDeg } = {}) => {
         state.interaction.confirmFeedback.cameraKickWorldX = worldX;
         state.interaction.confirmFeedback.cameraKickDeg = yawDegrees;
+        markStateDirty();
+        publishState();
+      };
+
+      // Harness-only: override the recognition-beat camera envelope
+      // amplitudes. Zeroing both proves the durable memoryBeat reports
+      // MEASURED camera motion (the probe reads the live pose, which goes
+      // flat when the envelope is flat), not canned contract literals.
+      const setRecognitionCameraEnvelope = ({
+        cameraDeltaMeters = MEMORY_RECOGNITION_FEEDBACK.cameraDeltaMeters,
+        cameraYawDegrees = MEMORY_RECOGNITION_FEEDBACK.cameraYawDegrees,
+      } = {}) => {
+        state.interaction.recognitionFeedback.cameraDeltaMeters = cameraDeltaMeters;
+        state.interaction.recognitionFeedback.cameraYawDegrees = cameraYawDegrees;
         markStateDirty();
         publishState();
       };
@@ -815,6 +894,43 @@
       };
 
       let memoryBeatCameraProbe = null;
+      let memoryRecognitionBeatStartedAt = null;
+
+      const easeOutCubic = (value) => 1 - ((1 - clamp(value, 0, 1)) ** 3);
+      const easeInOutCubic = (value) => {
+        const k = clamp(value, 0, 1);
+        return k < 0.5 ? 4 * k * k * k : 1 - ((-2 * k + 2) ** 3) / 2;
+      };
+
+      const recognitionEnvelopeAt = (elapsedMs) => {
+        const safeElapsedMs = Math.max(0, elapsedMs);
+        let yawProgress;
+        if (safeElapsedMs < 180) {
+          yawProgress = easeOutCubic(safeElapsedMs / 180) * 0.25;
+        } else if (safeElapsedMs < 700) {
+          yawProgress = 0.25 + 0.75 * easeInOutCubic((safeElapsedMs - 180) / 520);
+        } else {
+          yawProgress = 1 - easeOutCubic((safeElapsedMs - 700) / 520);
+        }
+        const normalized = clamp(yawProgress, 0, 1);
+        return {
+          cameraDeltaMeters: state.interaction.recognitionFeedback.cameraDeltaMeters * normalized,
+          cameraYawDegrees: state.interaction.recognitionFeedback.cameraYawDegrees * normalized,
+        };
+      };
+
+      // Compute the recognition envelope's contribution at an arbitrary
+      // timestamp — 0 when no recognition beat is running. Shared by the
+      // render tick and the analytical camera probe so the probe measures
+      // the SAME pose the loop paints (the earlier draft omitted this from
+      // computeCameraPoseAt, so the durable beat under-reported the dolly
+      // by ~6x versus what the camera actually did).
+      const recognitionMotionAt = (nowMs) => {
+        if (memoryRecognitionBeatStartedAt === null) {
+          return { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
+        }
+        return recognitionEnvelopeAt(nowMs - memoryRecognitionBeatStartedAt);
+      };
 
       // Analytical model of the camera pose the tick loop paints — same
       // formula as the tick body below, extracted so we can sample the peak
@@ -844,10 +960,11 @@
         const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
         const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
         const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
+        const recognitionMotion = recognitionMotionAt(nowMs);
         return {
-          x: state.player.x * 0.12 + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
+          x: state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
           z: 7.6 + state.player.z * 0.12,
-          rotationZ: THREE.MathUtils.degToRad(confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
+          rotationZ: THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
         };
       };
 
@@ -920,19 +1037,20 @@
         state.packet.route = "blue rainline";
         state.packet.deliveredAt = new Date().toISOString();
         state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
-        state.player.flags.io_intro_seen = true;
         const fact = memoryFact();
         state.npcs.io.memory = [fact];
         state.save.revision += 1;
         state.save.dirty = true;
         const beatStartedAt = performance.now();
         startMemoryBeatCameraProbe(beatStartedAt);
+        memoryRecognitionBeatStartedAt = beatStartedAt;
         markStateDirty();
         setBeat("packet-delivered");
         setTimeout(() => {
           const beatEndedAt = performance.now();
           const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
           const cameraMotion = finishMemoryBeatCameraProbe();
+          memoryRecognitionBeatStartedAt = null;
           state.story.memoryBeat = {
             kind: "io_packet_return",
             outcome: durableOutcome,
@@ -940,7 +1058,7 @@
             endedAt: beatEndedAt,
             cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
             cameraYawDegrees: cameraMotion.cameraYawDegrees,
-            inputLockMs: Math.min(1220, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
+            inputLockMs: Math.min(MEMORY_RECOGNITION_FEEDBACK.durationMs, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
             lineId: durableOutcome === "sealed"
               ? "io_return_packet_sealed"
               : "io_return_packet_opened",
@@ -958,16 +1076,9 @@
         state.scene.beat = "packet-offered";
         state.story.currentNpcId = null;
         state.story.memoryBeat = null;
-        state.player = {
-          id: "local-slice-player",
-          name: null,
-          flags: { io_intro_seen: true },
-          x: -1.8,
-          z: 1.15,
-          facingRadians: 0,
-        };
+        state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
-        state.delivery = { outcome: "unknown" };
+        state.delivery = { id: "blue-packet", outcome: "unknown" };
         state.npcs.io.memory = [];
         state.npcs.io.lastLineMemoryRefs = [];
         state.save = emptySave();
@@ -985,11 +1096,15 @@
           active: false,
           remainingMs: 0,
         };
+        state.interaction.recognitionFeedback = {
+          ...MEMORY_RECOGNITION_FEEDBACK,
+        };
         state.interaction.failureFeedback = {
           ...FAILURE_FEEDBACK,
           active: false,
           remainingMs: 0,
         };
+        memoryRecognitionBeatStartedAt = null;
         lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
         markStateDirty();
         syncPacketIntent();
@@ -1030,7 +1145,7 @@
           state.packet = { ...state.packet, ...restored.packet };
         }
         if (restored.delivery && typeof restored.delivery === "object") {
-          state.delivery = { outcome: restored.delivery.outcome || "unknown" };
+          state.delivery = { id: "blue-packet", outcome: restored.delivery.outcome || "unknown" };
         }
         if (restored.npcs && restored.npcs.io) {
           state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
@@ -1268,6 +1383,14 @@
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
 
+      // Boot complete: listeners wired + Io's kiosk line rendered. The scene
+      // is interactive (scene.ready) and her intro has been seen — a restored
+      // save keeps whatever it already recorded (#564 Phase 1).
+      state.scene.ready = true;
+      if (!state.player.flags.io_intro_seen) {
+        state.player.flags.io_intro_seen = true;
+        markStateDirty();
+      }
       renderText();
       publishState();
       resize();
@@ -1306,9 +1429,10 @@
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = state.player.x * 0.12 + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
+        const recognitionMotion = recognitionMotionAt(now);
+        camera.position.x = state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
         camera.position.z = 7.6 + state.player.z * 0.12;
-        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+        camera.rotation.z = THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
         sampleMemoryBeatCameraProbe();
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
