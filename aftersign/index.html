@@ -473,6 +473,17 @@
           save: { ...state.save },
           movement: clone(state.movement),
           interaction: clone(state.interaction),
+          // Publish the runtime audio surface so the look/sound contract
+          // spec can observe playKioskConfirm()'s stamped cue. Without
+          // this the harness reads window.__game._runtime as undefined
+          // and the audio half of the assertion (audioLastCue ===
+          // 'packet-confirmed') can never satisfy. The closure's
+          // state._runtime is stamped inside enableAudio()/
+          // playKioskConfirm() but was previously invisible from the
+          // outside; cloning it here mirrors every other published
+          // sub-object so mutations after publishState() don't leak
+          // back into the live state graph.
+          _runtime: clone(state._runtime),
           getSnapshot: () => clone({
             version: 1,
             slug: state.slug,
