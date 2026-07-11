@@ -228,7 +228,14 @@
         window.localStorage.setItem(storageKey, JSON.stringify(payload));
       };
 
-      const emptySave = () => ({ revision: 0, dirty: false });
+      const emptySave = () => ({
+        slot: "default",
+        revision: 0,
+        lastPersistedAt: null,
+        dirty: false,
+        authority: "local-fallback",
+        lastLoadProof: { source: null, revision: null, playerId: null },
+      });
       const stored = readStored();
       const packetIntent = new PacketIntentController();
 
@@ -498,7 +505,15 @@
             id: "blue-packet",
             ...clone(state.delivery),
           },
-          npcs: clone(state.npcs),
+          npcs: {
+            io: {
+              id: "io",
+              displayName: "Io Vale",
+              present: true,
+              ...clone(state.npcs.io),
+              memories: clone(state.npcs.io.memory),
+            },
+          },
           save: { ...state.save },
           movement: clone(state.movement),
           interaction: clone(state.interaction),
@@ -525,7 +540,15 @@
               id: "blue-packet",
               ...state.delivery,
             },
-            npcs: state.npcs,
+            npcs: {
+              io: {
+                id: "io",
+                displayName: "Io Vale",
+                present: true,
+                ...state.npcs.io,
+                memories: state.npcs.io.memory,
+              },
+            },
             save: state.save,
             movement: state.movement,
             interaction: state.interaction,
