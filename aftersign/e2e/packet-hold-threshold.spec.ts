@@ -101,7 +101,8 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   });
 
   expect(tapSnapshot.packet.sealed).toBe(true);
-  expect(tapSnapshot.scene.beat).not.toBe("packet-opened");
+  // Under the unified packet-choice beat, opened vs sealed is discriminated
+  // by packet.sealed (asserted above), not by a distinct beat string.
   expect(tapSnapshot.interaction.packetIntent.outcome).toBe("sealed");
 
   // Reset the slice so the next press starts from a clean sealed offer.
@@ -116,7 +117,8 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   });
 
   expect(midHoldSnapshot.packet.sealed).toBe(true);
-  expect(midHoldSnapshot.scene.beat).not.toBe("packet-opened");
+  // Mid-hold: no beat transition yet — packet.sealed=true (asserted above)
+  // is the invariant, not a beat-name check against the collapsed union.
   expect(midHoldSnapshot.interaction.packetIntent.outcome).toBe("unknown");
   expect(midHoldSnapshot.interaction.packetIntent.progress).toBeGreaterThan(0);
   expect(midHoldSnapshot.interaction.packetIntent.progress).toBeLessThan(1);
@@ -196,7 +198,9 @@ test("deadzone release (181–449 ms) preserves the seal instead of cancelling",
   });
 
   expect(deadzoneSnapshot.packet.sealed).toBe(true);
-  expect(deadzoneSnapshot.scene.beat).not.toBe("packet-opened");
+  // Deadzone release stays sealed — packet.sealed=true (above) carries the
+  // invariant; the beat union no longer has a distinct "packet-opened" to
+  // negate against.
   expect(deadzoneSnapshot.interaction.packetIntent.outcome).toBe("sealed");
   expect(deadzoneSnapshot.interaction.packetIntent.progress).toBe(0);
 
@@ -211,6 +215,7 @@ test("deadzone release (181–449 ms) preserves the seal instead of cancelling",
   });
 
   expect(nearMissSnapshot.packet.sealed).toBe(true);
-  expect(nearMissSnapshot.scene.beat).not.toBe("packet-opened");
+  // Near-miss upper boundary: same as deadzone — packet.sealed above is
+  // the load-bearing invariant.
   expect(nearMissSnapshot.interaction.packetIntent.outcome).toBe("sealed");
 });

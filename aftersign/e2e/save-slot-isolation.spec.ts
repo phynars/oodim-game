@@ -94,7 +94,7 @@ test.describe("AFTERSIGN save slot contract", () => {
     await firstPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForBeat(firstPage, "packet-offered");
     await firstPage.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(firstPage, "packet-kept-sealed");
+    await waitForBeat(firstPage, "packet-choice");
     await firstPage.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(firstPage, "packet-delivered");
 

@@ -148,7 +148,7 @@ test.describe("AFTERSIGN NPC memory-line contract", () => {
 
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("open-packet"));
-    await waitForBeat(page, "packet-opened");
+    await waitForBeat(page, "packet-choice");
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
 
@@ -159,7 +159,7 @@ test.describe("AFTERSIGN NPC memory-line contract", () => {
 
     await page.evaluate(() => window.__game!.input.forceReload());
     await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-returning-recognition");
+    await waitForBeat(page, "io-return-recognition");
 
     const returning = await page.evaluate(() => window.__game as GameSurface);
     const line = returning.npcs.io.lastLine;

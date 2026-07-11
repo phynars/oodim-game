@@ -77,7 +77,7 @@ test("Io recognition line lands within the feel budget after a returning advance
 
   await waitForBeat(page, "packet-offered");
   await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-kept-sealed");
+  await waitForBeat(page, "packet-choice");
   await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
   await waitForBeat(page, "packet-delivered");
 
@@ -135,7 +135,7 @@ test("full page reload keeps packet-delivered state and memory before recognitio
 
   await waitForBeat(page, "packet-offered");
   await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-kept-sealed");
+  await waitForBeat(page, "packet-choice");
   await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
   await waitForBeat(page, "packet-delivered");
 
@@ -165,7 +165,7 @@ test("full page reload keeps packet-delivered state and memory before recognitio
   expect(afterReload.hasDeliveredFact).toBe(true);
 
   await page.evaluate(() => window.__game!.input.advance());
-  await waitForBeat(page, "io-returning-recognition");
+  await waitForBeat(page, "io-return-recognition");
 
   const recognition = await page.evaluate(() => {
     const snapshot = window.__game!;

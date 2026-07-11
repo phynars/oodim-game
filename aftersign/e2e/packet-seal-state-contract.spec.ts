@@ -7,10 +7,9 @@ import { expect, test, type Page } from "@playwright/test";
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type GameSurface = {
   version: 1;
@@ -94,7 +93,7 @@ test.describe("packet seal state contract", () => {
     // AFTER the reload, advance into the returning recognition beat.
     // Doing this before the reload would be dropped by the save restore.
     await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-returning-recognition");
+    await waitForBeat(page, "io-return-recognition");
 
     expect(await readSealed(page)).toBe(true);
   });
