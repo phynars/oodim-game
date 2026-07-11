@@ -94,7 +94,7 @@ test("packet choice controls stay responsive through offer -> seal -> deliver", 
   // Latency is NOT measured here — only from the first choice onward.
   await waitForBeat(page, "packet-offered");
 
-  const sealLatency = await measureChoiceLatency(page, "keep-packet-sealed", "packet-kept-sealed");
+  const sealLatency = await measureChoiceLatency(page, "keep-packet-sealed", "packet-choice");
   expect(
     sealLatency,
     `keep-packet-sealed took ${sealLatency}ms (budget ${CHOICE_RESPONSE_MS}ms)`,

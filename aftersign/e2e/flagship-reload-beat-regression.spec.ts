@@ -2,7 +2,7 @@
 //
 // What it guards (impl at aftersign/index.html, publishState()):
 //   • deliverPacket() persists with beat="packet-delivered" SYNCHRONOUSLY,
-//     then schedules a setBeat("io-returning-recognition") after 1180ms.
+//     then schedules a setBeat("io-return-recognition") after 1180ms.
 //     The persisted beat we reload from is "packet-delivered" — that's
 //     the durable one; the returning-line beat is a live-session
 //     animation, not a save-state.

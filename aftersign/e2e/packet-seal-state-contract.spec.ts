@@ -77,7 +77,7 @@ test.describe("packet seal state contract", () => {
     await waitForBeat(page, "packet-offered");
 
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
 
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");

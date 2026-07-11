@@ -34,10 +34,9 @@ const WAIT_MS = 60_000;
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type GameSurface = {
   version: 1;

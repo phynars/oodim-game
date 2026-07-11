@@ -16,10 +16,9 @@ type PacketOutcome = "unknown" | "sealed" | "opened" | "cancelled";
 
 type Beat =
   | "packet-offered"
-  | "packet-kept-sealed"
-  | "packet-opened"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type InteractionFeedback = {
   active: boolean;
