@@ -974,8 +974,8 @@
             outcome: durableOutcome,
             startedAt: beatStartedAt,
             endedAt: beatEndedAt,
-            cameraDeltaMeters: Math.max(cameraMotion.cameraDeltaMeters, MEMORY_RECOGNITION_FEEDBACK.cameraDeltaMeters),
-            cameraYawDegrees: Math.max(cameraMotion.cameraYawDegrees, MEMORY_RECOGNITION_FEEDBACK.cameraYawDegrees),
+            cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
+            cameraYawDegrees: cameraMotion.cameraYawDegrees,
             inputLockMs: Math.min(MEMORY_RECOGNITION_FEEDBACK.durationMs, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
             lineId: durableOutcome === "sealed"
               ? "io_return_packet_sealed"
