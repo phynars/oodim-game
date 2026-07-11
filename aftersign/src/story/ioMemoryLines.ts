@@ -47,7 +47,7 @@ export const IO_RETURN_TONE_LINES: Record<ReturnTone, string> = {
 
 export function getIoReturningMemoryLine(memory: IoMemoryState): string {
   if (!memory.firstPacketOutcome) {
-    return 'You came back. That is where most couriers fail.';
+    return 'Back again. Good. Vey is less cruel to repeat witnesses.';
   }
 
   return IO_RETURNING_MEMORY_LINES[memory.firstPacketOutcome];

@@ -48,7 +48,7 @@ export function checkEmptyMemoryFallsBackToDefaults(): void {
   const empty: IoMemoryState = {};
   assertEqual(
     getIoReturningMemoryLine(empty),
-    'You came back. That is where most couriers fail.',
+    'Back again. Good. Vey is less cruel to repeat witnesses.',
     'empty memory primary line',
   );
   assertEqual(getIoSecondaryMemoryLine(empty), undefined, 'empty memory secondary line');
