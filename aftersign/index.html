@@ -181,6 +181,11 @@
         hudLiftPx: 3,
         pulseDecayPerSecond: 3.8,
       };
+      const MEMORY_RECOGNITION_FEEDBACK = {
+        durationMs: 1220,
+        cameraDeltaMeters: 0.32,
+        cameraYawDegrees: 4,
+      };
       const FAILURE_FEEDBACK = {
         durationMs: 180,
         easing: "easeOutQuad",
@@ -278,6 +283,13 @@
             ...CONFIRM_FEEDBACK,
             active: false,
             remainingMs: 0,
+          },
+          // Live amplitudes for the recognition-beat camera envelope. Kept in
+          // state (not the const) so the harness can zero them via
+          // setRecognitionCameraEnvelope and prove the durable beat reports
+          // MEASURED motion, not canned contract literals.
+          recognitionFeedback: {
+            ...MEMORY_RECOGNITION_FEEDBACK,
           },
           failureFeedback: {
             ...FAILURE_FEEDBACK,
@@ -518,6 +530,7 @@
             packetRelease,
             packetTick,
             setConfirmCameraKick,
+            setRecognitionCameraEnvelope,
           },
           assertFeelContract,
           deliverPacket: () => choose("deliver-packet"),
@@ -819,6 +832,20 @@
         publishState();
       };
 
+      // Harness-only: override the recognition-beat camera envelope
+      // amplitudes. Zeroing both proves the durable memoryBeat reports
+      // MEASURED camera motion (the probe reads the live pose, which goes
+      // flat when the envelope is flat), not canned contract literals.
+      const setRecognitionCameraEnvelope = ({
+        cameraDeltaMeters = MEMORY_RECOGNITION_FEEDBACK.cameraDeltaMeters,
+        cameraYawDegrees = MEMORY_RECOGNITION_FEEDBACK.cameraYawDegrees,
+      } = {}) => {
+        state.interaction.recognitionFeedback.cameraDeltaMeters = cameraDeltaMeters;
+        state.interaction.recognitionFeedback.cameraYawDegrees = cameraYawDegrees;
+        markStateDirty();
+        publishState();
+      };
+
       const triggerKioskFeedback = (source) => {
         state.interaction.lastAction = source;
         state.interaction.kioskPulse = 1;
@@ -846,6 +873,43 @@
       };
 
       let memoryBeatCameraProbe = null;
+      let memoryRecognitionBeatStartedAt = null;
+
+      const easeOutCubic = (value) => 1 - ((1 - clamp(value, 0, 1)) ** 3);
+      const easeInOutCubic = (value) => {
+        const k = clamp(value, 0, 1);
+        return k < 0.5 ? 4 * k * k * k : 1 - ((-2 * k + 2) ** 3) / 2;
+      };
+
+      const recognitionEnvelopeAt = (elapsedMs) => {
+        const safeElapsedMs = Math.max(0, elapsedMs);
+        let yawProgress;
+        if (safeElapsedMs < 180) {
+          yawProgress = easeOutCubic(safeElapsedMs / 180) * 0.25;
+        } else if (safeElapsedMs < 700) {
+          yawProgress = 0.25 + 0.75 * easeInOutCubic((safeElapsedMs - 180) / 520);
+        } else {
+          yawProgress = 1 - easeOutCubic((safeElapsedMs - 700) / 520);
+        }
+        const normalized = clamp(yawProgress, 0, 1);
+        return {
+          cameraDeltaMeters: state.interaction.recognitionFeedback.cameraDeltaMeters * normalized,
+          cameraYawDegrees: state.interaction.recognitionFeedback.cameraYawDegrees * normalized,
+        };
+      };
+
+      // Compute the recognition envelope's contribution at an arbitrary
+      // timestamp — 0 when no recognition beat is running. Shared by the
+      // render tick and the analytical camera probe so the probe measures
+      // the SAME pose the loop paints (the earlier draft omitted this from
+      // computeCameraPoseAt, so the durable beat under-reported the dolly
+      // by ~6x versus what the camera actually did).
+      const recognitionMotionAt = (nowMs) => {
+        if (memoryRecognitionBeatStartedAt === null) {
+          return { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
+        }
+        return recognitionEnvelopeAt(nowMs - memoryRecognitionBeatStartedAt);
+      };
 
       // Analytical model of the camera pose the tick loop paints — same
       // formula as the tick body below, extracted so we can sample the peak
@@ -875,10 +939,11 @@
         const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
         const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
         const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
+        const recognitionMotion = recognitionMotionAt(nowMs);
         return {
-          x: state.player.x * 0.12 + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
+          x: state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
           z: 7.6 + state.player.z * 0.12,
-          rotationZ: THREE.MathUtils.degToRad(confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
+          rotationZ: THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
         };
       };
 
@@ -957,12 +1022,14 @@
         state.save.dirty = true;
         const beatStartedAt = performance.now();
         startMemoryBeatCameraProbe(beatStartedAt);
+        memoryRecognitionBeatStartedAt = beatStartedAt;
         markStateDirty();
         setBeat("packet-delivered");
         setTimeout(() => {
           const beatEndedAt = performance.now();
           const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
           const cameraMotion = finishMemoryBeatCameraProbe();
+          memoryRecognitionBeatStartedAt = null;
           state.story.memoryBeat = {
             kind: "io_packet_return",
             outcome: durableOutcome,
@@ -970,7 +1037,7 @@
             endedAt: beatEndedAt,
             cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
             cameraYawDegrees: cameraMotion.cameraYawDegrees,
-            inputLockMs: Math.min(1220, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
+            inputLockMs: Math.min(MEMORY_RECOGNITION_FEEDBACK.durationMs, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
             lineId: durableOutcome === "sealed"
               ? "io_return_packet_sealed"
               : "io_return_packet_opened",
@@ -1008,11 +1075,15 @@
           active: false,
           remainingMs: 0,
         };
+        state.interaction.recognitionFeedback = {
+          ...MEMORY_RECOGNITION_FEEDBACK,
+        };
         state.interaction.failureFeedback = {
           ...FAILURE_FEEDBACK,
           active: false,
           remainingMs: 0,
         };
+        memoryRecognitionBeatStartedAt = null;
         lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
         markStateDirty();
         syncPacketIntent();
@@ -1329,9 +1400,10 @@
         kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
-        camera.position.x = state.player.x * 0.12 + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
+        const recognitionMotion = recognitionMotionAt(now);
+        camera.position.x = state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
         camera.position.z = 7.6 + state.player.z * 0.12;
-        camera.rotation.z = THREE.MathUtils.degToRad(confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+        camera.rotation.z = THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
         sampleMemoryBeatCameraProbe();
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
