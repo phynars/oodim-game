@@ -20,10 +20,9 @@ import { expect, test, type Page } from "@playwright/test";
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type MemoryFact = {
   id: string;

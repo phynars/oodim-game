@@ -77,7 +77,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
     // Live impl (aftersign/index.html):
     //   • deliverPacket() persists with beat="packet-delivered" synchronously,
-    //     then advances to "io-returning-recognition" ~1180ms later. The saved
+    //     then advances to "io-return-recognition" ~1180ms later. The saved
     //     beat we reload from is "packet-delivered".
     //   • npcs.io.memory is the singular array field. There is no plural
     //     `memories` — asserting on it would always be undefined.

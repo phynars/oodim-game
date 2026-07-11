@@ -12,7 +12,7 @@ const COLD_START_MS = 90_000;
 // import + WebGL bring-up on the *first* navigation.
 const WAIT_MS = 60_000;
 
-type Beat = "packet-offered" | "packet-kept-sealed" | "packet-delivered";
+type Beat = "packet-offered" | "packet-choice" | "packet-delivered";
 
 type GameSurface = {
   version: 1;

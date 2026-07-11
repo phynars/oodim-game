@@ -167,7 +167,9 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   });
 
   expect(heldSnapshot.packet.sealed).toBe(false);
-  expect(heldSnapshot.scene.beat).toBe("packet-opened");
+  // Past HOLD_TO_OPEN_MS: unified packet-choice beat, opened branch keyed
+  // off packet.sealed === false above.
+  expect(heldSnapshot.scene.beat).toBe("packet-choice");
   expect(heldSnapshot.interaction.packetIntent.outcome).toBe("opened");
   expect(heldSnapshot.interaction.packetIntent.progress).toBe(1);
 });

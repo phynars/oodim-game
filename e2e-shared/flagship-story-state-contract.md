@@ -80,11 +80,11 @@ Starting from a fresh player identity:
 1. wait until `window.__game.version === 1`;
 2. assert `scene.beat === "packet-offered"`;
 3. call `window.__game.input.choose("keep-packet-sealed")`;
-4. wait for a quiesced state where `scene.beat === "packet-kept-sealed"`;
+4. wait for a quiesced state where `scene.beat === "packet-choice"` and `packet.sealed === true`;
 5. assert `player.flags.packetSealed === true`;
 6. assert `player.flags.packetOpened !== true`.
 
-A sibling path must cover `choose("open-packet")` and assert the opposite flags.
+A sibling path must cover `choose("open-packet")`, wait for `scene.beat === "packet-choice"` and `packet.sealed === false`, and assert the opposite flags. The unified `packet-choice` beat is branched on `packet.sealed`; earlier revisions of this contract split it into `packet-kept-sealed` / `packet-opened`, but the runtime and harness collapsed them into a single beat that keys the branch off the packet-sealed flag.
 
 ### 2. Io memory round-trip
 
@@ -94,7 +94,7 @@ Using the same durable player identity across a forced reload:
 2. deliver the packet;
 3. force save;
 4. force reload;
-5. advance until Io's returning-recognition beat;
+5. advance until Io's `io-return-recognition` beat;
 6. assert `npcs.io.memory` contains exactly one packet-outcome fact for the current session lineage;
 7. assert `npcs.io.lastLineMemoryRefs` contains that fact id;
 8. assert the referenced fact object matches the packet outcome.

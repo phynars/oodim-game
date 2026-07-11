@@ -19,10 +19,9 @@
 export type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 /** The single memory-beat kind slice-1 emits. */
 export type MemoryBeatKind = "io_packet_return";

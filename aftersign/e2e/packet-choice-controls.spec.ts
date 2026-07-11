@@ -17,7 +17,7 @@ const WAIT_MS = 60_000;
 // stall: two beat transitions at 2.5s each vs. the 60s cold-wait budget.
 const CHOICE_RESPONSE_MS = 2_500;
 
-type PacketBeat = "packet-offered" | "packet-kept-sealed" | "packet-delivered";
+type PacketBeat = "packet-offered" | "packet-choice" | "packet-delivered";
 
 type PacketChoiceId = "keep-packet-sealed" | "deliver-packet";
 

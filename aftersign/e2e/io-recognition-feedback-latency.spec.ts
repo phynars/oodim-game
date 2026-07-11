@@ -109,7 +109,7 @@ test("Io recognition line lands within the feel budget after a returning advance
   });
 
   // Recognition beat actually reached — otherwise a latency number is meaningless.
-  expect(result.beat).toBe("io-returning-recognition");
+  expect(result.beat).toBe("io-return-recognition");
 
   // The line is the sealed-packet recognition (matches lineForBeat() in
   // aftersign/index.html). Guards against silent regressions to a generic

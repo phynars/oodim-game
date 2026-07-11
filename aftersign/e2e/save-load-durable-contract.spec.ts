@@ -100,8 +100,8 @@ test.describe("AFTERSIGN durable save/load contract", () => {
   // gaps are tracked separately as impl work. Meanwhile this test
   // preserves the SAME polarity by:
   //
-  //   1. Playing through packet-kept-sealed → packet-delivered so an
-  //      Io memory fact is authored (index.html memoryFact()).
+  //   1. Playing through packet-choice (sealed branch) → packet-delivered so
+  //      an Io memory fact is authored (index.html memoryFact()).
   //   2. forceSave() — the impl's only harness-visible flush call.
   //   3. Wiping `window.localStorage` from the test — this is the
   //      HARNESS-SIDE equivalent of `clearLocalState: true`: it removes
