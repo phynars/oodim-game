@@ -228,14 +228,34 @@
         window.localStorage.setItem(storageKey, JSON.stringify(payload));
       };
 
-      const emptySave = () => ({ revision: 0, dirty: false });
+      // Io's trust posture is a pure function of the delivery outcome
+      // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
+      // sealed -> trusted-seal, opened -> useful-breach, unknown -> untested.
+      const trustPostureForOutcome = (outcome) =>
+        outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
+
+      const emptySave = () => ({
+        slot: "default",
+        revision: 0,
+        lastPersistedAt: null,
+        dirty: false,
+        authority: "local-fallback",
+        lastLoadProof: { source: null, revision: null, playerId: null },
+      });
       const stored = readStored();
       const packetIntent = new PacketIntentController();
 
       const state = {
         slug: "aftersign",
         scene: {
-          id: "io-kiosk-rainline",
+          // Contract-canonical scene identity (e2e-shared asserts these —
+          // #564 Phase 1; the old dev id "io-kiosk-rainline" predated the
+          // shared contract and nothing else referenced it).
+          id: "io-night-post-kiosk",
+          act: "act-1-seal",
+          // Flipped true once listeners + first render are wired (boot tail)
+          // — the harness's "safe to drive input" signal.
+          ready: false,
           beat: stored?.beat ?? "packet-offered",
         },
         story: {
@@ -248,6 +268,11 @@
         },
         player: {
           id: "local-slice-player",
+          name: stored?.player?.name ?? null,
+          flags: {
+            io_intro_seen: false,
+            ...(stored?.player?.flags ?? {}),
+          },
           x: stored?.player?.x ?? -1.8,
           z: stored?.player?.z ?? 1.15,
           facingRadians: stored?.player?.facingRadians ?? 0,
@@ -477,6 +502,7 @@
         window.__game = {
           version: 1,
           slug: state.slug,
+          build: { slug: state.slug },
           scene: { ...state.scene },
           story: clone(state.story),
           player: clone(state.player),
@@ -485,7 +511,16 @@
             id: "blue-packet",
             ...clone(state.delivery),
           },
-          npcs: clone(state.npcs),
+          npcs: {
+            io: {
+              id: "io",
+              displayName: "Io Vale",
+              present: true,
+              ...clone(state.npcs.io),
+              memories: clone(state.npcs.io.memory),
+              trustPosture: trustPostureForOutcome(state.delivery.outcome),
+            },
+          },
           save: { ...state.save },
           movement: clone(state.movement),
           interaction: clone(state.interaction),
@@ -503,6 +538,7 @@
           getSnapshot: () => clone({
             version: 1,
             slug: state.slug,
+            build: { slug: state.slug },
             scene: state.scene,
             story: state.story,
             player: state.player,
@@ -511,7 +547,16 @@
               id: "blue-packet",
               ...state.delivery,
             },
-            npcs: state.npcs,
+            npcs: {
+              io: {
+                id: "io",
+                displayName: "Io Vale",
+                present: true,
+                ...state.npcs.io,
+                memories: state.npcs.io.memory,
+                trustPosture: trustPostureForOutcome(state.delivery.outcome),
+              },
+            },
             save: state.save,
             movement: state.movement,
             interaction: state.interaction,
@@ -694,7 +739,14 @@
           window.localStorage.removeItem(storageKey);
         }
 
-        state.player = { ...state.player, ...saved.player };
+        state.player = {
+          ...state.player,
+          ...saved.player,
+          flags: {
+            ...state.player.flags,
+            ...(saved.player?.flags ?? {}),
+          },
+        };
         state.packet = { ...state.packet, ...saved.packet };
         state.delivery = {
           id: "blue-packet",
@@ -1362,6 +1414,14 @@
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
 
+      // Boot complete: listeners wired + Io's kiosk line rendered. The scene
+      // is interactive (scene.ready) and her intro has been seen — a restored
+      // save keeps whatever it already recorded (#564 Phase 1).
+      state.scene.ready = true;
+      if (!state.player.flags.io_intro_seen) {
+        state.player.flags.io_intro_seen = true;
+        markStateDirty();
+      }
       renderText();
       publishState();
       resize();

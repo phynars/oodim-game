@@ -239,7 +239,7 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
 
   // Unfixme once scene/player blocks from Phase 1 + trust posture from
   // Phase 3 are available together.
-  test.fixme("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
+  test("story-state invariant: sealed delivery advances the authored beats", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "story-state-invariant");
     const breakMode = currentBreakMode();
