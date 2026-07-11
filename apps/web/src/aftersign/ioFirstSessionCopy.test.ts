@@ -24,16 +24,34 @@ assert.deepEqual(
 
 for (const line of ioFirstSessionCopy) {
   assert.ok(line.text.length > 0, `${line.id} has copy`);
-  assert.ok(line.text.length <= 72, `${line.id} stays playable in a compact dialogue surface`);
-  assert.doesNotMatch(line.text, /memory system|persistent|durable|server/i, `${line.id} avoids system exposition`);
+  // Io's authored lines run up to ~85 chars (see the route instruction in
+  // docs/flagship/vertical-slice-script.md). The cap catches essays, not
+  // scripture — keep it generous enough for the authored copy.
+  assert.ok(line.text.length <= 120, `${line.id} stays playable in a compact dialogue surface`);
+  assert.doesNotMatch(
+    line.text,
+    /memory system|persistent|durable|server/i,
+    `${line.id} avoids system exposition`,
+  );
 }
 
+// Arrival is script-locked; the harness reads this exact string.
 assert.equal(
   getIoFirstSessionText("arrival"),
-  "You made it above the water. That is not the same as safe.",
+  "You made it above the water. Good. That is the first qualification.",
 );
-assert.equal(getIoFirstSessionLine("returnSealed").referencedPlayerAction, "kept-seal");
-assert.equal(getIoFirstSessionLine("returnOpened").referencedPlayerAction, "broke-seal");
+
+// The returning-session lines are the primary recognition proof. The
+// story-state contract asserts these fragments; keep them stable.
+assert.match(getIoFirstSessionText("returnSealed"), /The bell rang\. Good\./);
+assert.match(getIoFirstSessionText("returnOpened"), /^No bell\./);
+
+// referencedPlayerAction uses the same tokens as
+// docs/flagship/story-state-contract.md (delivery.outcome: 'sealed' | 'opened').
+assert.equal(getIoFirstSessionLine("returnSealed").referencedPlayerAction, "sealed");
+assert.equal(getIoFirstSessionLine("returnOpened").referencedPlayerAction, "opened");
+assert.equal(getIoFirstSessionLine("sealedWarning").referencedPlayerAction, "sealed");
+assert.equal(getIoFirstSessionLine("openedWarning").referencedPlayerAction, "opened");
 
 assert.throws(
   () => getIoFirstSessionText("missing" as IoFirstSessionBeatId),

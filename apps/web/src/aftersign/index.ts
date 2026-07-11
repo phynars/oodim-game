@@ -42,6 +42,15 @@ export {
 } from "./ioVoice";
 
 export {
+  getIoFirstSessionLine,
+  getIoFirstSessionText,
+  ioFirstSessionCopy,
+  type IoFirstSessionBeatId,
+  type IoFirstSessionCopyLine,
+  type IoReferencedPlayerAction,
+} from "./ioFirstSessionCopy";
+
+export {
   getRecognitionFeedbackDuration,
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,

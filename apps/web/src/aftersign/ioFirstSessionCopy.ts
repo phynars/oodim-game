@@ -1,8 +1,15 @@
 // AFTERSIGN — Io first-session copy contract for the flagship slice.
 //
-// This keeps the vertical slice's opening exchange concrete and testable before
-// it is wired into the rendered scene. Io should teach by dispatching, not by
-// explaining the game.
+// Source of truth: docs/flagship/vertical-slice-script.md.
+// Every line here is the authored script text; do not paraphrase. The
+// harness (see docs/flagship/story-state-contract.md) asserts these
+// beats by id and by fragment, so drift here breaks the slice proof.
+//
+// Same-session lines cover the first arrival, the job hand-off, and
+// the route instruction. Returning-session lines (returnSealed /
+// returnOpened) are the primary recognition beats and must reference
+// the packet outcome tokens the story-state contract uses: `sealed`
+// and `opened`.
 
 export type IoFirstSessionBeatId =
   | "arrival"
@@ -13,55 +20,62 @@ export type IoFirstSessionBeatId =
   | "returnSealed"
   | "returnOpened";
 
+export type IoReferencedPlayerAction =
+  | "arrived"
+  | "accepted-packet"
+  | "listened"
+  | "sealed"
+  | "opened";
+
 export type IoFirstSessionCopyLine = {
   id: IoFirstSessionBeatId;
   text: string;
   intent: "anchor" | "choice" | "route" | "memory-write";
-  referencedPlayerAction?: "arrived" | "accepted-packet" | "listened" | "kept-seal" | "broke-seal";
+  referencedPlayerAction?: IoReferencedPlayerAction;
 };
 
 export const ioFirstSessionCopy: readonly IoFirstSessionCopyLine[] = [
   {
     id: "arrival",
-    text: "You made it above the water. That is not the same as safe.",
+    text: "You made it above the water. Good. That is the first qualification.",
     intent: "anchor",
     referencedPlayerAction: "arrived",
   },
   {
     id: "packetOffer",
-    text: "Blue seal. Brass box. No names until it lands.",
+    text: "Blue packet. Sign box with three moths painted on it.",
     intent: "choice",
     referencedPlayerAction: "accepted-packet",
   },
   {
     id: "routeInstruction",
-    text: "Follow the lanterns that hum. Ignore the ones that know your voice.",
+    text: "Left stair, red string, brass bell. If the stair argues with you, trust the bell.",
     intent: "route",
     referencedPlayerAction: "listened",
   },
   {
     id: "sealedWarning",
-    text: "If it stays closed, I learn one thing about you.",
+    text: "Keep the seal closed unless you want me to know you didn't.",
     intent: "memory-write",
-    referencedPlayerAction: "kept-seal",
+    referencedPlayerAction: "sealed",
   },
   {
     id: "openedWarning",
-    text: "If it opens, I learn a different thing.",
+    text: "Curiosity is not a crime. It is an invoice.",
     intent: "memory-write",
-    referencedPlayerAction: "broke-seal",
+    referencedPlayerAction: "opened",
   },
   {
     id: "returnSealed",
-    text: "Blue seal intact. Good. Vey needs hands that do not itch.",
+    text: "The bell rang. Good. The city prefers evidence to enthusiasm.",
     intent: "memory-write",
-    referencedPlayerAction: "kept-seal",
+    referencedPlayerAction: "sealed",
   },
   {
     id: "returnOpened",
-    text: "Blue seal broken. Curiosity is a tool. So is a knife.",
+    text: "No bell. So either the box lied, or you gave it something already spent.",
     intent: "memory-write",
-    referencedPlayerAction: "broke-seal",
+    referencedPlayerAction: "opened",
   },
 ] as const;
 
