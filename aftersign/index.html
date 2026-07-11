@@ -238,6 +238,7 @@
           memoryBeat: null,
         },
         delivery: {
+          id: "blue-packet",
           outcome: stored?.delivery?.outcome || "unknown",
         },
         player: {
@@ -468,7 +469,10 @@
           story: clone(state.story),
           player: clone(state.player),
           packet: clone(state.packet),
-          delivery: clone(state.delivery),
+          delivery: {
+            id: "blue-packet",
+            ...clone(state.delivery),
+          },
           npcs: clone(state.npcs),
           save: { ...state.save },
           movement: clone(state.movement),
@@ -491,7 +495,10 @@
             story: state.story,
             player: state.player,
             packet: state.packet,
-            delivery: state.delivery,
+            delivery: {
+              id: "blue-packet",
+              ...state.delivery,
+            },
             npcs: state.npcs,
             save: state.save,
             movement: state.movement,
@@ -638,6 +645,11 @@
           return;
         }
 
+        if (choiceId === "return-to-io") {
+          await advance();
+          return;
+        }
+
         throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
       };
 
@@ -655,23 +667,36 @@
 
       const forceSave = async () => {
         persist({ dirty: false });
+        renderText();
         publishState();
       };
 
-      const reloadFromSave = async () => {
+      const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         const saved = readStored();
         if (!saved) {
           return;
         }
 
+        if (clearLocalState) {
+          window.localStorage.removeItem(storageKey);
+        }
+
         state.player = { ...state.player, ...saved.player };
         state.packet = { ...state.packet, ...saved.packet };
-        state.delivery = { outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown") };
+        state.delivery = {
+          id: "blue-packet",
+          outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
+        };
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
+
+        if (clearLocalState) {
+          persist({ dirty: false });
+        }
+
         markStateDirty();
         renderText();
         publishState();
@@ -965,7 +990,7 @@
         state.story.memoryBeat = null;
         state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
-        state.delivery = { outcome: "unknown" };
+        state.delivery = { id: "blue-packet", outcome: "unknown" };
         state.npcs.io.memory = [];
         state.npcs.io.lastLineMemoryRefs = [];
         state.save = emptySave();
@@ -1028,7 +1053,7 @@
           state.packet = { ...state.packet, ...restored.packet };
         }
         if (restored.delivery && typeof restored.delivery === "object") {
-          state.delivery = { outcome: restored.delivery.outcome || "unknown" };
+          state.delivery = { id: "blue-packet", outcome: restored.delivery.outcome || "unknown" };
         }
         if (restored.npcs && restored.npcs.io) {
           state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
