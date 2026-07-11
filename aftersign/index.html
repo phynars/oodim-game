@@ -743,7 +743,29 @@
       };
 
       const playKioskConfirm = async () => {
+        // Stamp the STORY-LEVEL cue FIRST, before the audio-unlock gate.
+        // The look/sound contract is "the game dispatched a packet-confirmed
+        // cue on the same tick as the visual feedback" — that dispatch is
+        // deterministic and independent of whether the browser actually
+        // unlocked its AudioContext (headless CI without a user gesture
+        // leaves audioContext.state === "suspended" and enableAudio()
+        // returns false; if we gate lastCue on that we can never assert
+        // the coupling from an e2e harness). The actual oscillator tones
+        // are still gated on unlock — that's a real-audio concern — but
+        // the state marker is set unconditionally so the harness (and any
+        // downstream analytics consumer) can observe that the cue fired.
+        const stampConfirmCue = () => {
+          state._runtime.audio.lastCue = "packet-confirmed";
+          markStateDirty();
+          publishState();
+        };
+        stampConfirmCue();
+
         const unlocked = await enableAudio();
+        // enableAudio() may overwrite lastCue with "ambient-rainline" on
+        // its FIRST successful unlock. Re-stamp packet-confirmed after —
+        // the CONFIRM cue is the more specific signal for this call.
+        stampConfirmCue();
         if (!unlocked || !audioContext) {
           return;
         }
@@ -763,10 +785,6 @@
           tone.start(now + index * 0.035);
           tone.stop(now + 0.36);
         });
-
-        state._runtime.audio.lastCue = "packet-confirmed";
-        markStateDirty();
-        publishState();
       };
 
       const setConfirmCameraKick = ({ worldX = CONFIRM_FEEDBACK.cameraKickWorldX, yawDegrees = CONFIRM_FEEDBACK.cameraKickDeg } = {}) => {

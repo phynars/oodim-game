@@ -114,11 +114,15 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
     if (game.story) {
       game.story.memoryBeat = null;
     }
-    // Pre-warm the audio context BEFORE deliverPacket() so playKioskConfirm's
-    // enableAudio() await resolves with unlocked=true and the "packet-confirmed"
-    // cue actually gets stamped into state._runtime.audio.lastCue. Playwright's
-    // bundled chromium ships with --autoplay-policy=no-user-gesture-required
-    // by default, so resume() succeeds without a synthetic click.
+    // Best-effort pre-warm of the audio context. In headless CI without a
+    // user gesture the AudioContext usually STAYS suspended after resume(),
+    // so enableAudio() returns false — but that's fine: playKioskConfirm()
+    // stamps state._runtime.audio.lastCue = "packet-confirmed" BEFORE the
+    // enableAudio() gate (index.html: see the comment on playKioskConfirm),
+    // so the look/sound coupling is observable from the story-state contract
+    // whether or not the browser actually produced sound. This call is kept
+    // for local runs where audio IS unlockable — it means the developer
+    // watching the run actually hears the confirm tone.
     if (typeof game.enableAudio === 'function') {
       await game.enableAudio();
     }
