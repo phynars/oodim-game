@@ -238,6 +238,84 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     expect(reloaded.npcs.io.lastLineMemoryRefs).toEqual(saved.npcs.io.lastLineMemoryRefs);
   });
 
+  test("cold-load migrates a legacy beat name and recognition still syncs memory refs", async ({
+    page,
+  }) => {
+    // Guards the fix Soren flagged on PR #603: migrateLegacyBeatName was
+    // only wired into reloadFromSave(). Cold-load (the state literal at
+    // the top of aftersign/index.html) also has to migrate, otherwise a
+    // save persisted before the packet-kept-sealed → packet-choice and
+    // io-returning-recognition → io-return-recognition rename lands raw,
+    // falls through lineForBeat()'s default, and breaks memory-ref sync
+    // at recognition.
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "legacy-cold-load");
+
+    const slot = `legacy-cold-load-${Date.now()}`;
+    const storageKey = `aftersign:kiosk-slice:${slot}`;
+    const legacyFact: MemoryFact = {
+      id: `io:${slot}:delivered-blue-packet`,
+      predicate: "delivered-blue-packet",
+      object: "sealed",
+      sessionId: `session-${slot}`,
+    };
+    const legacySave = {
+      // The legacy beat name that no longer exists in the runtime's
+      // switch/case — proves migration happens on cold-load, not just
+      // via reloadFromSave().
+      beat: "packet-kept-sealed",
+      player: { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 },
+      packet: {
+        delivered: true,
+        route: "blue rainline",
+        sealed: true,
+        deliveredAt: new Date().toISOString(),
+      },
+      delivery: { outcome: "sealed" },
+      memory: [legacyFact],
+      save: { revision: 3, dirty: false },
+    };
+
+    // Seed localStorage BEFORE the app boots so the cold-load `state`
+    // literal (not reloadFromSave) is the code path under test.
+    await page.addInitScript(
+      ({ key, value }) => {
+        window.localStorage.setItem(key, value);
+      },
+      { key: storageKey, value: JSON.stringify(legacySave) },
+    );
+
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+
+    // Cold-load must have migrated the legacy beat name; the raw
+    // "packet-kept-sealed" value should never reach state.scene.beat.
+    // Because the legacy save also has packet.delivered === true, the
+    // migrated beat is "packet-choice" (opened/sealed branch) which will
+    // typically advance further — either way, "packet-kept-sealed" is
+    // forbidden.
+    await page.waitForFunction(() => window.__game?.version === 1, undefined, {
+      timeout: WAIT_MS,
+    });
+    const cold = await game(page);
+    expect(cold.scene.beat as string).not.toBe("packet-kept-sealed");
+    expect(cold.scene.beat as string).not.toBe("packet-opened");
+    expect(cold.scene.beat as string).not.toBe("io-returning-recognition");
+
+    // The delivered fact from the legacy save must survive unmigrated —
+    // it's the payload we're going to reference at recognition.
+    expect(cold.npcs.io.memory).toEqual([legacyFact]);
+
+    // Advance into recognition — the whole point of migrating on
+    // cold-load is that lineForBeat() and memory-ref sync work off a
+    // real beat name, so this transition must succeed.
+    await page.evaluate(() => window.__game!.input.advance());
+    await waitForBeat(page, "io-return-recognition");
+
+    const returning = await game(page);
+    expect(returning.npcs.io.lastLineMemoryRefs).toEqual([legacyFact.id]);
+    expect(returning.npcs.io.lastLine).toContain("blue seal, unbroken");
+  });
+
   test("forceSave is idempotent when no story state changed", async ({ page }) => {
     const slot = `save-idempotent-${Date.now()}`;
 

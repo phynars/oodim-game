@@ -224,6 +224,23 @@
       };
 
       const emptySave = () => ({ revision: 0, dirty: false });
+
+      // Hoisted above the `stored` read so the cold-load `state` literal
+      // below can migrate legacy beat names on the first paint too — not
+      // just via reloadFromSave(). A save persisted before the
+      // packet-kept-sealed / packet-opened / io-returning-recognition
+      // rename would otherwise land in state.scene.beat raw, fall through
+      // lineForBeat()'s default, and break memory-ref sync at recognition.
+      const migrateLegacyBeatName = (beat) => {
+        if (beat === "packet-kept-sealed" || beat === "packet-opened") {
+          return "packet-choice";
+        }
+        if (beat === "io-returning-recognition") {
+          return "io-return-recognition";
+        }
+        return beat;
+      };
+
       const stored = readStored();
       const packetIntent = new PacketIntentController();
 
@@ -231,7 +248,13 @@
         slug: "aftersign",
         scene: {
           id: "io-kiosk-rainline",
-          beat: stored?.beat ?? "packet-offered",
+          // Migrate legacy beat names on cold-load too, not just on
+          // reloadFromSave(). Otherwise a save persisted before the
+          // packet-kept-sealed → packet-choice / io-returning-recognition
+          // → io-return-recognition rename lands raw in state.scene.beat,
+          // falls through lineForBeat()'s default, and breaks memory-ref
+          // sync at recognition.
+          beat: migrateLegacyBeatName(stored?.beat) ?? "packet-offered",
         },
         story: {
           currentNpcId: null,
@@ -643,16 +666,6 @@
       const forceSave = async () => {
         persist({ dirty: false });
         publishState();
-      };
-
-      const migrateLegacyBeatName = (beat) => {
-        if (beat === "packet-kept-sealed" || beat === "packet-opened") {
-          return "packet-choice";
-        }
-        if (beat === "io-returning-recognition") {
-          return "io-return-recognition";
-        }
-        return beat;
       };
 
       const reloadFromSave = async () => {
