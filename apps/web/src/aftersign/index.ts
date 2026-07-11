@@ -18,6 +18,12 @@ export {
 } from "./inputLatencyProbe";
 
 export {
+  INTERACTION_CONFIRM_FEEL,
+  sampleInteractionConfirmFeel,
+  type InteractionConfirmSample,
+} from "./interactionConfirmFeel";
+
+export {
   createPacketIntentModel,
   type PacketIntentModel,
   type PacketIntentOptions,
