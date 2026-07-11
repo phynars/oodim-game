@@ -18,15 +18,12 @@ const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const IO_SEALED_RECOGNITION_LINE =
   'I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.';
 
-// Look-and-sound budget: the beat's clamped input-lock window is the
-// game's own contract (index.html:919, Math.min(1220, ...)). Any value
-// > 1220 would mean the clamp itself broke.
-const MAX_UI_SETTLE_MS = 1220;
-// The audio cue playKioskConfirm() stamps into state._runtime.audio.lastCue
-// when it fires alongside triggerKioskFeedback() from deliverPacket()
-// (index.html:756). Asserting on the string proves the audio half of
-// the look/sound contract was dispatched on the same tick as the visual
-// half — a structural coupling, not a fabricated numeric drift.
+// Phone-ready envelope for the first Io recognition beat. These are measured
+// around the runtime transition, not copied from static constants: the text
+// must settle inside one deliberate UI beat and the audio cue must follow the
+// visual recognition state closely enough to feel paired on a phone speaker.
+const MAX_UI_SETTLE_MS = 360;
+const MAX_AV_DRIFT_MS = 50;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
 type PhoneReadyProbe = {
@@ -47,24 +44,15 @@ type PhoneReadyProbe = {
   };
   readonly horizontalOverflowPx: number;
   readonly verticalOverflowPx: number;
-  // inputLockMs is the game's OWN clamped settle value (index.html:919,
-  // Math.min(1220, Math.max(0, Math.round(endedAt - startedAt)))). We
-  // assert on that field directly rather than recomputing our own
-  // unclamped delta — otherwise a slow CI runner where the 1180ms
-  // setTimeout fires at ~1225ms trips MAX_UI_SETTLE_MS on the spec
-  // while the game itself reports the clamped 1220 it actually
-  // enforces. Mirrors io-recognition-memory-beat-contract.spec.ts:50.
-  readonly inputLockMs: number;
-  // Structural audio-visual coupling: the visual cue is triggered by
-  // triggerKioskFeedback() and the audio cue is published by
-  // playKioskConfirm(), both dispatched from the same deliverPacket()
-  // call (index.html:895/928). We verify the audio cue "packet-confirmed"
-  // was stamped into state._runtime.audio.lastCue — that's the
-  // structural coupling the contract is protecting. A tautological
-  // numeric drift assertion (which the previous draft used, returning
-  // 0 from both branches of a ternary) cannot fail and so verifies
-  // nothing.
+  readonly settleMs: number;
+  readonly avDriftMs: number;
   readonly audioLastCue: string | null;
+};
+
+type RuntimeMarks = {
+  readonly recognitionTriggeredAt: number;
+  readonly lineSettledAt: number;
+  readonly audioCueAt: number;
 };
 
 // Wait for the module script to boot the game surface (parallels the
@@ -88,6 +76,67 @@ const waitForGame = async (page: Page) => {
   );
 };
 
+const installPhoneReadyRuntimeMarks = async (page: Page) => {
+  await page.evaluate((expectedCue) => {
+    const win = window as Window & {
+      __ioPhoneReadyMarks?: {
+        recognitionTriggeredAt?: number;
+        lineSettledAt?: number;
+        audioCueAt?: number;
+      };
+      __game?: {
+        scene?: { beat?: string };
+        _runtime?: { audio?: { lastCue?: string | null } };
+      };
+    };
+
+    win.__ioPhoneReadyMarks = {};
+
+    let lastBeat: string | null = null;
+    let lastLineText = '';
+    let lastAudioCue: string | null = null;
+
+    const observe = () => {
+      const game = win.__game;
+      const beat = game?.scene?.beat ?? null;
+      const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
+      const audioCue = game?._runtime?.audio?.lastCue ?? null;
+      const marks = win.__ioPhoneReadyMarks;
+
+      if (marks) {
+        if (beat === 'io-returning-recognition' && lastBeat !== 'io-returning-recognition') {
+          marks.recognitionTriggeredAt = performance.now();
+        }
+
+        if (
+          marks.recognitionTriggeredAt !== undefined
+          && marks.lineSettledAt === undefined
+          && lineText.includes('I remember you: blue seal, unbroken.')
+          && lineText !== lastLineText
+        ) {
+          marks.lineSettledAt = performance.now();
+        }
+
+        if (
+          marks.recognitionTriggeredAt !== undefined
+          && marks.audioCueAt === undefined
+          && audioCue === expectedCue
+          && lastAudioCue !== expectedCue
+        ) {
+          marks.audioCueAt = performance.now();
+        }
+      }
+
+      lastBeat = beat;
+      lastLineText = lineText;
+      lastAudioCue = audioCue;
+      requestAnimationFrame(observe);
+    };
+
+    requestAnimationFrame(observe);
+  }, EXPECTED_AUDIO_CUE);
+};
+
 // Drive the game into the sealed recognition beat via the same public
 // input surface the other e2e specs use — keep-packet-sealed →
 // deliver-packet → advance(). The prior draft tried to boot straight to
@@ -95,6 +144,7 @@ const waitForGame = async (page: Page) => {
 // query param was a no-op and the page stayed on 'packet-offered'.
 const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
+  await installPhoneReadyRuntimeMarks(page);
   await page.evaluate(async () => {
     const game = (window as Window & {
       __game?: {
@@ -115,14 +165,9 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
       game.story.memoryBeat = null;
     }
     // Best-effort pre-warm of the audio context. In headless CI without a
-    // user gesture the AudioContext usually STAYS suspended after resume(),
-    // so enableAudio() returns false — but that's fine: playKioskConfirm()
-    // stamps state._runtime.audio.lastCue = "packet-confirmed" BEFORE the
-    // enableAudio() gate (index.html: see the comment on playKioskConfirm),
-    // so the look/sound coupling is observable from the story-state contract
-    // whether or not the browser actually produced sound. This call is kept
-    // for local runs where audio IS unlockable — it means the developer
-    // watching the run actually hears the confirm tone.
+    // user gesture the AudioContext usually stays suspended after resume(),
+    // but playKioskConfirm() stamps state._runtime.audio.lastCue before the
+    // unlock gate, so the contract can still observe dispatch timing.
     if (typeof game.enableAudio === 'function') {
       await game.enableAudio();
     }
@@ -131,35 +176,33 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
     await game.input.advance();
   });
 
-  // deliver-packet publishes the memoryBeat via a ~1180ms setTimeout, then
-  // sets scene.beat to 'io-returning-recognition'. Wait for BOTH the beat
-  // to land AND the audio cue to be stamped — playKioskConfirm() is async
-  // (its enableAudio() await resolves on the next microtask), so lastCue
-  // can lag the visual beat by a few ms even though both were dispatched
-  // from the same deliverPacket() call.
   await page.waitForFunction(
-    () => {
-      const game = (window as Window & {
+    (expectedCue) => {
+      const win = window as Window & {
         __game?: {
           scene?: { beat?: string };
           story?: { memoryBeat?: unknown };
           _runtime?: { audio?: { lastCue?: string | null } };
         };
-      }).__game;
+        __ioPhoneReadyMarks?: Partial<RuntimeMarks>;
+      };
       return (
-        game?.scene?.beat === 'io-returning-recognition'
-        && game?.story?.memoryBeat !== null
-        && game?._runtime?.audio?.lastCue === 'packet-confirmed'
+        win.__game?.scene?.beat === 'io-returning-recognition'
+        && win.__game?.story?.memoryBeat !== null
+        && win.__game?._runtime?.audio?.lastCue === expectedCue
+        && win.__ioPhoneReadyMarks?.recognitionTriggeredAt !== undefined
+        && win.__ioPhoneReadyMarks?.lineSettledAt !== undefined
+        && win.__ioPhoneReadyMarks?.audioCueAt !== undefined
       );
     },
-    undefined,
+    EXPECTED_AUDIO_CUE,
     { timeout: WAIT_MS },
   );
 };
 
 const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => {
   return page.evaluate(
-    ({ lineText: _lineText }) => {
+    () => {
       const lineNode = document.querySelector<HTMLElement>('#line');
       if (!lineNode) {
         throw new Error('Missing #line node in AFTERSIGN HUD');
@@ -186,36 +229,24 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => {
         rect.bottom - viewport.height,
       );
 
-      // Settle timing: read the game's OWN clamped inputLockMs field
-      // (index.html:919), NOT a recomputed delta. deliverPacket() stamps
-      //   inputLockMs: Math.min(1220, Math.max(0, Math.round(endedAt - startedAt)))
-      // so the value is always within [0, 1220] regardless of CI jitter.
-      // Recomputing our own settleMs from performance.now() timestamps
-      // captured outside the game — as the previous draft did — added
-      // extra delta from the `deliver-packet` choose() dispatch and could
-      // exceed MAX_UI_SETTLE_MS on a slow runner while the game itself
-      // still reported the clamped 1220. Asserting on the same field the
-      // sibling io-recognition-memory-beat-contract.spec.ts:50 asserts
-      // on keeps the two contracts in agreement.
-      const game = (window as Window & {
+      const win = window as Window & {
         __game?: {
-          story?: { memoryBeat?: { inputLockMs?: number } | null };
           _runtime?: { audio?: { lastCue?: string | null } };
         };
-      }).__game;
-      const beat = game?.story?.memoryBeat ?? null;
-      const inputLockMs = typeof beat?.inputLockMs === 'number' ? beat.inputLockMs : Number.NaN;
+        __ioPhoneReadyMarks?: Partial<RuntimeMarks>;
+      };
+      const marks = win.__ioPhoneReadyMarks;
+      if (
+        marks?.recognitionTriggeredAt === undefined
+        || marks.lineSettledAt === undefined
+        || marks.audioCueAt === undefined
+      ) {
+        throw new Error('Missing Io phone-ready runtime marks');
+      }
 
-      // Audio cue: verify state._runtime.audio.lastCue was stamped to
-      // "packet-confirmed" by playKioskConfirm() (index.html:756). The
-      // visual cue (triggerKioskFeedback) and the audio cue
-      // (playKioskConfirm) are dispatched from the SAME synchronous
-      // deliverPacket() call (index.html:895/928) — the coupling we
-      // care about is "did the audio cue get published on the same
-      // tick as the visual one?", which the lastCue string answers
-      // directly. Numeric drift from a headless AudioContext would be
-      // fabricated (audio doesn't unlock without a user gesture in CI).
-      const audioLastCue = game?._runtime?.audio?.lastCue ?? null;
+      const settleMs = Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt);
+      const avDriftMs = Math.abs(marks.audioCueAt - marks.lineSettledAt);
+      const audioLastCue = win.__game?._runtime?.audio?.lastCue ?? null;
 
       return {
         lineText: lineNode.innerText.trim(),
@@ -236,11 +267,12 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => {
         viewport,
         horizontalOverflowPx,
         verticalOverflowPx,
-        inputLockMs,
+        settleMs,
+        avDriftMs,
         audioLastCue,
       } satisfies PhoneReadyProbe;
     },
-    { lineText: IO_SEALED_RECOGNITION_LINE },
+    undefined,
   );
 };
 
@@ -275,15 +307,9 @@ test.describe('Io phone-ready look/sound contract', () => {
     expect(probe.lineRect.right).toBeLessThanOrEqual(probe.viewport.width);
     expect(probe.horizontalOverflowPx).toBe(0);
     expect(probe.verticalOverflowPx).toBe(0);
-    // Assert on the game's OWN clamped settle value. This is the same
-    // field io-recognition-memory-beat-contract.spec.ts:50 checks — a
-    // failure here means the clamp in index.html:919 itself regressed,
-    // not that CI ran slow.
-    expect(probe.inputLockMs).toBeGreaterThanOrEqual(0);
-    expect(probe.inputLockMs).toBeLessThanOrEqual(MAX_UI_SETTLE_MS);
-    // Assert the sound half of the look/sound contract: the packet-
-    // confirmed cue must have been stamped by playKioskConfirm() during
-    // the same deliverPacket() call that fired the visual feedback.
+    expect(probe.settleMs).toBeGreaterThanOrEqual(0);
+    expect(probe.settleMs).toBeLessThanOrEqual(MAX_UI_SETTLE_MS);
     expect(probe.audioLastCue).toBe(EXPECTED_AUDIO_CUE);
+    expect(probe.avDriftMs).toBeLessThanOrEqual(MAX_AV_DRIFT_MS);
   });
 });
