@@ -315,19 +315,17 @@
       let kioskHumGain;
 
       const lineForBeat = () => {
-        if (state.scene.beat === "packet-kept-sealed") {
-          return "Good. Some doors only open for people who can carry a secret without looking inside.";
-        }
-
-        if (state.scene.beat === "packet-opened") {
-          return "You opened it. The route still glows, but now the city knows curiosity got there first.";
+        if (state.scene.beat === "packet-choice") {
+          return state.packet.sealed
+            ? "Good. Some doors only open for people who can carry a secret without looking inside."
+            : "You opened it. The route still glows, but now the city knows curiosity got there first.";
         }
 
         if (state.scene.beat === "packet-delivered") {
           return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
         }
 
-        if (state.scene.beat === "io-returning-recognition") {
+        if (state.scene.beat === "io-return-recognition") {
           return state.packet.sealed
             ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
             : "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
@@ -364,7 +362,7 @@
 
       const syncIoLine = () => {
         const nextLine = lineForBeat();
-        const nextMemoryRefs = state.scene.beat === "io-returning-recognition"
+        const nextMemoryRefs = state.scene.beat === "io-return-recognition"
           ? state.npcs.io.memory.map((fact) => fact.id)
           : [];
         if (
@@ -522,7 +520,7 @@
           state.scene.beat = beat;
           markStateDirty();
         }
-        const nextNpcId = beat === "io-returning-recognition" ? "io" : null;
+        const nextNpcId = beat === "io-return-recognition" ? "io" : null;
         if (state.story.currentNpcId !== nextNpcId) {
           state.story.currentNpcId = nextNpcId;
           markStateDirty();
@@ -537,7 +535,7 @@
             state.packet.sealed = true;
             markStateDirty();
           }
-          setBeat("packet-kept-sealed");
+          setBeat("packet-choice");
         }
 
         if (outcome === PACKET_OUTCOME.OPENED) {
@@ -545,7 +543,7 @@
             state.packet.sealed = false;
             markStateDirty();
           }
-          setBeat("packet-opened");
+          setBeat("packet-choice");
         }
       };
 
@@ -609,7 +607,7 @@
             state.packet.sealed = false;
             markStateDirty();
           }
-          setBeat("packet-opened");
+          setBeat("packet-choice");
           return;
         }
 
@@ -618,7 +616,7 @@
             state.packet.sealed = true;
             markStateDirty();
           }
-          setBeat("packet-kept-sealed");
+          setBeat("packet-choice");
           return;
         }
 
@@ -633,7 +631,7 @@
       const advance = async () => {
         if (state.packet.delivered && state.npcs.io.memory.length > 0) {
           markStateDirty();
-          setBeat("io-returning-recognition");
+          setBeat("io-return-recognition");
         }
       };
 
@@ -647,6 +645,16 @@
         publishState();
       };
 
+      const migrateLegacyBeatName = (beat) => {
+        if (beat === "packet-kept-sealed" || beat === "packet-opened") {
+          return "packet-choice";
+        }
+        if (beat === "io-returning-recognition") {
+          return "io-return-recognition";
+        }
+        return beat;
+      };
+
       const reloadFromSave = async () => {
         const saved = readStored();
         if (!saved) {
@@ -658,9 +666,10 @@
         state.delivery = { outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown") };
         state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
-        state.scene.beat = typeof saved.beat === "string"
-          ? saved.beat
-          : state.packet.delivered ? "packet-delivered" : "packet-offered";
+        const migratedBeat = typeof saved.beat === "string"
+          ? migrateLegacyBeatName(saved.beat)
+          : null;
+        state.scene.beat = migratedBeat ?? (state.packet.delivered ? "packet-delivered" : "packet-offered");
         markStateDirty();
         renderText();
         publishState();
@@ -922,7 +931,7 @@
               : "io_return_packet_opened",
           };
           markStateDirty();
-          setBeat("io-returning-recognition");
+          setBeat("io-return-recognition");
         }, 1180);
         persist({ dirty: true });
         playKioskConfirm();
