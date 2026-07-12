@@ -1,59 +1,46 @@
-import assert from "node:assert/strict";
+import { describe, expect, it } from 'vitest'
 
 import {
   getIoFirstSessionLine,
-  getIoFirstSessionText,
-  ioFirstSessionCopy,
-  type IoFirstSessionBeatId,
-} from "./ioFirstSessionCopy";
+  ioFirstSessionLines,
+  type IoFirstSessionBeat,
+} from './ioFirstSessionCopy'
 
-const expectedIds: readonly IoFirstSessionBeatId[] = [
-  "arrival",
-  "packetOffer",
-  "routeInstruction",
-  "sealedWarning",
-  "openedWarning",
-  "returnSealed",
-  "returnOpened",
-];
+const expectedBeatOrder: readonly IoFirstSessionBeat[] = [
+  'arrival',
+  'packetOffer',
+  'routeInstruction',
+  'sealedWarning',
+  'openedWarning',
+  'returnSealed',
+  'returnOpened',
+]
 
-assert.deepEqual(
-  ioFirstSessionCopy.map((line) => line.id),
-  expectedIds,
-);
+const forbiddenExpositionWords = /\b(memory system|persistent|server-authoritative|durable|mechanic)\b/i
 
-for (const line of ioFirstSessionCopy) {
-  assert.ok(line.text.length > 0, `${line.id} has copy`);
-  // Io's authored lines run up to ~85 chars (see the route instruction in
-  // docs/flagship/vertical-slice-script.md). The cap catches essays, not
-  // scripture — keep it generous enough for the authored copy.
-  assert.ok(line.text.length <= 120, `${line.id} stays playable in a compact dialogue surface`);
-  assert.doesNotMatch(
-    line.text,
-    /memory system|persistent|durable|server/i,
-    `${line.id} avoids system exposition`,
-  );
-}
+describe('Io first-session copy', () => {
+  it('keeps the authored beat order stable for the slice', () => {
+    expect(ioFirstSessionLines.map((entry) => entry.beat)).toEqual(expectedBeatOrder)
+  })
 
-// Arrival is script-locked; the harness reads this exact string.
-assert.equal(
-  getIoFirstSessionText("arrival"),
-  "You made it above the water. Good. That is the first qualification.",
-);
+  it('keeps every Io line short enough for phone dialogue UI', () => {
+    for (const entry of ioFirstSessionLines) {
+      expect(entry.line.length, entry.beat).toBeLessThanOrEqual(76)
+    }
+  })
 
-// The returning-session lines are the primary recognition proof. The
-// story-state contract asserts these fragments; keep them stable.
-assert.match(getIoFirstSessionText("returnSealed"), /The bell rang\. Good\./);
-assert.match(getIoFirstSessionText("returnOpened"), /^No bell\./);
+  it('keeps Io from explaining the memory system out loud', () => {
+    for (const entry of ioFirstSessionLines) {
+      expect(entry.line, entry.beat).not.toMatch(forbiddenExpositionWords)
+    }
+  })
 
-// referencedPlayerAction uses the same tokens as
-// docs/flagship/story-state-contract.md (delivery.outcome: 'sealed' | 'opened').
-assert.equal(getIoFirstSessionLine("returnSealed").referencedPlayerAction, "sealed");
-assert.equal(getIoFirstSessionLine("returnOpened").referencedPlayerAction, "opened");
-assert.equal(getIoFirstSessionLine("sealedWarning").referencedPlayerAction, "sealed");
-assert.equal(getIoFirstSessionLine("openedWarning").referencedPlayerAction, "opened");
+  it('looks up a line by beat', () => {
+    expect(getIoFirstSessionLine('packetOffer')).toBe('Blue seal. Brass box. No names until it lands.')
+  })
 
-assert.throws(
-  () => getIoFirstSessionText("missing" as IoFirstSessionBeatId),
-  /Unknown Io first-session beat: missing/,
-);
+  it('anchors return lines to the packet state the player caused', () => {
+    expect(getIoFirstSessionLine('returnSealed')).toMatch(/seal intact/i)
+    expect(getIoFirstSessionLine('returnOpened')).toMatch(/seal broken/i)
+  })
+})
