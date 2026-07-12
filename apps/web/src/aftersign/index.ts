@@ -18,6 +18,22 @@ export {
 } from "./inputLatencyProbe";
 
 export {
+  INTERACTION_CONFIRM_FEEL,
+  sampleInteractionConfirmFeel,
+  type InteractionConfirmSample,
+} from "./interactionConfirmFeel";
+
+export {
+  cancelPacketSealHold,
+  createPacketSealState,
+  DEFAULT_PACKET_SEAL_FEEL,
+  samplePacketSealHold,
+  type PacketSealFeelConfig,
+  type PacketSealFeelState,
+  type PacketSealPhase,
+} from "./packetSealFeel";
+
+export {
   createPacketIntentModel,
   type PacketIntentModel,
   type PacketIntentOptions,
@@ -34,6 +50,15 @@ export {
   type IoReturnTone,
   type IoRouteAttention,
 } from "./ioVoice";
+
+export {
+  getIoFirstSessionLine,
+  getIoFirstSessionText,
+  ioFirstSessionCopy,
+  type IoFirstSessionBeatId,
+  type IoFirstSessionCopyLine,
+  type IoReferencedPlayerAction,
+} from "./ioFirstSessionCopy";
 
 export {
   getRecognitionFeedbackDuration,

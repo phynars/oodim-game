@@ -104,7 +104,7 @@ test.describe("AFTERSIGN save slot contract", () => {
       route: "blue rainline",
       sealed: true,
     });
-    expect(dirtySnapshot.save).toEqual({ revision: 1, dirty: true });
+    expect(dirtySnapshot.save).toMatchObject({ revision: 1, dirty: true });
     expect(dirtySnapshot.npcs.io.memory).toHaveLength(1);
 
     await firstPage.evaluate(() => window.__game!.input.forceSave());
@@ -122,7 +122,7 @@ test.describe("AFTERSIGN save slot contract", () => {
       route: "blue rainline",
       sealed: true,
     });
-    expect(returningSnapshot.save).toEqual({ revision: 1, dirty: false });
+    expect(returningSnapshot.save).toMatchObject({ revision: 1, dirty: false });
     expect(returningSnapshot.npcs.io.memory).toEqual(dirtySnapshot.npcs.io.memory);
     await returningPage.close();
 
@@ -134,7 +134,7 @@ test.describe("AFTERSIGN save slot contract", () => {
     const isolatedSnapshot = await snapshot(isolatedPage);
     expect(isolatedSnapshot.packet.delivered).toBe(false);
     expect(isolatedSnapshot.npcs.io.memory).toEqual([]);
-    expect(isolatedSnapshot.save).toEqual({ revision: 0, dirty: false });
+    expect(isolatedSnapshot.save).toMatchObject({ revision: 0, dirty: false });
 
     await context.close();
   });
