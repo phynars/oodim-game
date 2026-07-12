@@ -1,21 +1,31 @@
+// Io Vale — FIRST-session copy for the vertical slice.
+//
+// This module owns only the beats Io speaks on the player's FIRST arrival.
+// Returning-session recognition lines (§7 of the vertical-slice script) live
+// in `packages/aftersign/src/ioReturningSession.ts` — that module is the
+// single source of truth for anything a returning player hears, and
+// `aftersign/src/ioFirstSessionPacing.ts` encodes the same invariant in its
+// beat union. Do not re-add returnSealed / returnOpened here; the harness
+// reads those from ioReturningSessionLines and duplicating the copy is a
+// regression.
+
 export type IoFirstSessionCopyKey =
   | 'arrival'
   | 'packetOffer'
   | 'routeInstruction'
   | 'sealedWarning'
-  | 'openedWarning'
-  | 'returnSealed'
-  | 'returnOpened';
+  | 'openedWarning';
 
-export type IoFirstSessionLine = Readonly<{
+export type IoFirstSessionLine = {
   key: IoFirstSessionCopyKey;
   text: string;
-}>;
+};
 
 export const ioFirstSessionCopy: readonly IoFirstSessionLine[] = [
   {
     key: 'arrival',
-    text: 'You made it above the water. That is not the same as safe.',
+    // Script-locked — docs/flagship/vertical-slice-script.md §1.
+    text: 'You made it above the water. Good. That is the first qualification.',
   },
   {
     key: 'packetOffer',
@@ -33,22 +43,14 @@ export const ioFirstSessionCopy: readonly IoFirstSessionLine[] = [
     key: 'openedWarning',
     text: 'If it opens, I learn a different thing.',
   },
-  {
-    key: 'returnSealed',
-    text: 'Blue seal intact. Good. Vey needs hands that do not itch.',
-  },
-  {
-    key: 'returnOpened',
-    text: 'Blue seal broken. Curiosity is a tool. So is a knife.',
-  },
 ] as const;
 
-export function getIoFirstSessionLine(key: IoFirstSessionCopyKey): IoFirstSessionLine {
-  const line = ioFirstSessionCopy.find((candidate) => candidate.key === key);
+export function getIoFirstSessionLine(key: IoFirstSessionCopyKey): string {
+  const line = ioFirstSessionCopy.find((entry) => entry.key === key);
 
   if (!line) {
     throw new Error(`Unknown Io first-session copy key: ${key}`);
   }
 
-  return line;
+  return line.text;
 }

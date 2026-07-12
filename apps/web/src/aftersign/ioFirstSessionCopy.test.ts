@@ -12,8 +12,6 @@ const expectedOrder: IoFirstSessionCopyKey[] = [
   'routeInstruction',
   'sealedWarning',
   'openedWarning',
-  'returnSealed',
-  'returnOpened',
 ];
 
 describe('ioFirstSessionCopy', () => {
@@ -28,13 +26,15 @@ describe('ioFirstSessionCopy', () => {
     }
   });
 
-  it('avoids explaining the memory system in-world', () => {
-    const bannedPhrases = [
-      'memory system',
+  it('avoids explaining the memory system in UI language', () => {
+    const forbiddenSystemWords = [
+      'memory',
+      'remember',
       'persistent',
       'server',
-      'durable',
-      'save',
+      'session',
+      'state',
+      'choice',
       'trust +',
     ];
     const joinedCopy = ioFirstSessionCopy
@@ -42,25 +42,34 @@ describe('ioFirstSessionCopy', () => {
       .join(' ')
       .toLowerCase();
 
-    for (const phrase of bannedPhrases) {
-      expect(joinedCopy).not.toContain(phrase);
+    for (const word of forbiddenSystemWords) {
+      expect(joinedCopy).not.toContain(word);
     }
   });
 
-  it('anchors the returning memory lines to the packet outcome', () => {
-    expect(getIoFirstSessionLine('returnSealed').text).toContain('seal intact');
-    expect(getIoFirstSessionLine('returnOpened').text).toContain('seal broken');
+  it('lets runtime code look up a line by key', () => {
+    expect(getIoFirstSessionLine('arrival')).toBe(
+      'You made it above the water. Good. That is the first qualification.',
+    );
   });
 
-  it('returns the requested authored line by key', () => {
-    expect(getIoFirstSessionLine('packetOffer').text).toBe(
-      'Blue seal. Brass box. No names until it lands.',
-    );
+  it('names the packet outcome each warning refers to', () => {
+    expect(getIoFirstSessionLine('sealedWarning')).toContain('stays closed');
+    expect(getIoFirstSessionLine('openedWarning')).toContain('opens');
+  });
+
+  it('does not duplicate returning-session recognition lines', () => {
+    // Returning-player copy is owned by packages/aftersign/src/ioReturningSession.ts
+    // (keys sealedPacket / openedPacket). Guard against a regression that
+    // re-adds those beats here under return* aliases.
+    const keys = new Set<string>(ioFirstSessionCopy.map((line) => line.key));
+    expect(keys.has('returnSealed')).toBe(false);
+    expect(keys.has('returnOpened')).toBe(false);
   });
 
   it('throws on an unknown key so a typo cannot silently render empty', () => {
     expect(() =>
-      getIoFirstSessionLine('missing' as IoFirstSessionCopyKey),
-    ).toThrow('Unknown Io first-session copy key: missing');
+      getIoFirstSessionLine('nonsense' as IoFirstSessionCopyKey),
+    ).toThrow(/Unknown Io first-session copy key/);
   });
 });
