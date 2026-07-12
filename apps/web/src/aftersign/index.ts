@@ -24,6 +24,12 @@ export {
 } from "./interactionConfirmFeel";
 
 export {
+  FAILURE_STING_FEEL,
+  sampleFailureStingFeel,
+  type FailureStingSample,
+} from "./failureStingFeel";
+
+export {
   createPacketIntentModel,
   type PacketIntentModel,
   type PacketIntentOptions,
