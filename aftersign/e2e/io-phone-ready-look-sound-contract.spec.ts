@@ -11,6 +11,7 @@ const WAIT_MS = 60_000;
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
+const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 
 // The line that ACTUALLY renders at the sealed recognition beat, per
 // index.html's lineForBeat() branch for state.scene.beat ===
@@ -283,6 +284,9 @@ test.describe('Io phone-ready look/sound contract', () => {
   test('keeps the sealed-packet recognition beat readable, settled, and coupled on a phone viewport', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     await page.setViewportSize(PHONE_VIEWPORT);
+    await page.addInitScript((key) => {
+      window.localStorage.removeItem(key);
+    }, STORAGE_KEY);
     await page.goto(`/aftersign/index.html?slot=${DETERMINISTIC_SLOT}`, {
       waitUntil: 'load',
     });
