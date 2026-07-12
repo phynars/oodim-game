@@ -61,6 +61,12 @@ export {
 } from "./ioFirstSessionCopy";
 
 export {
+  IO_PHONE_READY_FEEL,
+  sampleIoPhoneReadyFeel,
+  type IoPhoneReadyFeelSample,
+} from "./ioPhoneReadyFeel";
+
+export {
   getRecognitionFeedbackDuration,
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,

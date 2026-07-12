@@ -3,6 +3,14 @@
 // The renderer/harness should consume this module as numbers only: no timers,
 // DOM, audio nodes, or three.js objects live here. That keeps the beat
 // measurable and lets Playwright assert the same contract the game uses.
+//
+// OWNERSHIP: this module owns the RECOGNITION 3D-scene envelope — camera delta
+// and yaw, sign glow multiplier over the full beat, sting gain in dB, wooden
+// click timing, and the input lock window. The PHONE-READY sub-envelope for
+// the same beat (line rise/opacity, glow opacity gate on mobile, audio gain
+// gate, phone settle budget) lives in ./ioPhoneReadyFeel.ts. Together they
+// describe the same recognition moment at two zoom levels; keep them
+// reconcilable when either changes.
 
 export type RecognitionOutcome = "sealed" | "opened";
 

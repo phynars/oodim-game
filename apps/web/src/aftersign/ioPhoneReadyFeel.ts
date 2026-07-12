@@ -2,6 +2,16 @@
 //
 // Pure-data timing envelope for the first mobile recognition beat. Runtime and
 // e2e code can sample this instead of duplicating feel numbers in assertions.
+//
+// OWNERSHIP: this module owns the PHONE-READY sub-envelope for the recognition
+// beat — line rise / opacity, glow opacity, audio gain gate, and the settle /
+// audio-visual drift budget on a mobile viewport. The wider three.js recognition
+// choreography (camera delta/yaw, sting envelope, wooden click, input lock)
+// lives in ./recognitionFeedback.ts. If a new phone-only feel number needs a
+// home, it belongs HERE; if it's a shared 3D-scene beat number, it belongs THERE.
+// The two must stay reconcilable — the numeric mirror in
+// e2e-shared/aftersign/ioPhoneReadyFeel.ts is authoritative for phone-only
+// assertions, and this file is the runtime source it mirrors.
 
 export type IoPhoneReadyFeelSample = {
   elapsedMs: number;
