@@ -122,13 +122,6 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
-  //
-  // Do NOT rename this test title while it remains test.fixme: the CI
-  // preflight in .github/workflows/aftersign-npc-memory-redgreen.yml
-  // currently greps for `test.fixme("npc-memory round-trip` to decide
-  // whether to retire the red-polarity lane. See #622 — the workflow
-  // needs to switch to a stable retirement signal (out of this PR's
-  // write scope; requires .github/workflows/ access).
   test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
