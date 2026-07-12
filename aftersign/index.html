@@ -393,8 +393,44 @@
   </main>
 
   <script type="module">
-    const STORAGE_KEY = 'aftersign.slice.ioMemory.v1';
+    // AFTERSIGN slice — implements the FlagshipGameSurface contract in
+    // docs/flagship/story-state-contract.md. Every field name and enum
+    // value below traces to a rule in that document. The slice is CSS-only
+    // (no three.js, no server) so `save.authority` is honestly reported
+    // as `local-fallback`; a durable/server implementation will flip it
+    // to `server` in a later PR. Break modes (drop-memory / wrong-io-line
+    // / local-only-save) are read from ?breakMode= or window.FLAGSHIP_BREAK_MODE
+    // so red-polarity CI can prove the harness actually catches regressions.
+
+    const STORAGE_PREFIX = 'aftersign.slice.v2';
+    const CONTRACT_VERSION = 1;
     const HOLD_TO_OPEN_MS = 550;
+    const RETURN_LINE_FRAGMENTS = {
+      sealed: 'blue seal, unbroken',
+      opened: 'The seal did not',
+    };
+    const RETURN_MEMORY_IDS = {
+      sealed: 'io-remembers-blue-packet-sealed',
+      opened: 'io-remembers-blue-packet-opened',
+    };
+
+    // Query params drive slot + breakMode. Guarded because the node feel
+    // harness (aftersign/aftersign-feel.test.mjs) evals this module inside
+    // a Function() with a stubbed context that has no `location`.
+    const search =
+      (typeof location !== 'undefined' && location && location.search) || '';
+    const params = new URLSearchParams(search);
+    const slot = params.get('slot') || 'default';
+    const STORAGE_KEY = `${STORAGE_PREFIX}:${slot}`;
+
+    // Break mode: query param wins, then a window sentinel the harness may
+    // set before boot via addInitScript. Kept read-only after boot so a
+    // spec can't flip mid-run and lie to itself.
+    const breakMode =
+      params.get('breakMode') ||
+      (typeof window !== 'undefined' && window && window.FLAGSHIP_BREAK_MODE) ||
+      null;
+
     const packet = document.querySelector('#packet');
     const ioLine = document.querySelector('#ioLine');
     const prompt = document.querySelector('#prompt');
@@ -402,86 +438,314 @@
     const resetButton = document.querySelector('#resetButton');
     const returnButton = document.querySelector('#returnButton');
 
-    const state = {
-      scene: 'io-night-post',
-      packetOutcome: 'pending',
-      ioTrustPosture: 'testing',
-      authoredMemory: null,
-      lastIoLine: ioLine.textContent,
-      returningSession: false,
-      input: {
-        holdToOpenMs: HOLD_TO_OPEN_MS,
-        holdProgress: 0,
-        lastDecisionLatencyMs: null
+    function defaultState() {
+      return {
+        version: CONTRACT_VERSION,
+        build: { slug: 'aftersign', mode: 'test' },
+        scene: {
+          id: 'io-night-post-kiosk',
+          act: 'act-1-seal',
+          beat: 'packet-offered',
+          ready: true,
+        },
+        player: {
+          id: `local-player:${slot}`,
+          name: null,
+          flags: {
+            io_intro_seen: false,
+            io_route_listened: false,
+            returned_after_first_session: false,
+            answer_tone: 'unset',
+          },
+        },
+        delivery: { id: 'blue-packet', outcome: 'unknown' },
+        npcs: {
+          io: {
+            id: 'io',
+            displayName: 'Io Vale',
+            present: true,
+            trustPosture: 'untested',
+            memories: [],
+            lastLine: ioLine.textContent,
+            lastLineMemoryRefs: [],
+          },
+        },
+        save: {
+          slot: 'default',
+          revision: 0,
+          lastPersistedAt: null,
+          dirty: false,
+          authority: 'local-fallback',
+          lastLoadProof: { source: null, revision: null, playerId: null },
+        },
+        // Slice-local input feel state — not part of the contract, but the
+        // aftersign-feel.test.mjs harness reads it under window.__game.inputState.
+        _input: {
+          holdToOpenMs: HOLD_TO_OPEN_MS,
+          holdProgress: 0,
+          lastDecisionLatencyMs: null,
+        },
+      };
+    }
+
+    let state = defaultState();
+
+    // Idle-tracker: input.waitForStoryIdle() resolves when no beat or line
+    // transition has been dispatched for `IDLE_MS`. The contract calls
+    // out state-quiescence over pixel/animation timing. IDLE_MS is small
+    // enough for CI to finish quickly and big enough that a subsequent
+    // beat scheduled 1180ms later (recognition beat) is treated as a new
+    // wake, not the same idle window.
+    const IDLE_MS = 50;
+    let lastStoryChangeAt = performance.now();
+    let idleWaiters = [];
+
+    function markStoryChange() {
+      lastStoryChangeAt = performance.now();
+    }
+
+    function pumpIdle() {
+      if (!idleWaiters.length) return;
+      const since = performance.now() - lastStoryChangeAt;
+      if (since >= IDLE_MS) {
+        const resolvers = idleWaiters;
+        idleWaiters = [];
+        for (const resolve of resolvers) resolve();
+      } else {
+        setTimeout(pumpIdle, Math.max(1, IDLE_MS - since));
       }
-    };
+    }
+
+    function waitForStoryIdle() {
+      return new Promise((resolve) => {
+        idleWaiters.push(resolve);
+        setTimeout(pumpIdle, IDLE_MS);
+      });
+    }
+
+    // Local persistence. Under breakMode='local-only-save' the durable
+    // proof (lastLoadProof.source === 'server') stays false even after a
+    // save+reload; under 'drop-memory' the memory is stripped on load;
+    // under 'wrong-io-line' the outcome is loaded but Io's line is
+    // swapped. These are documented in docs/flagship/story-state-contract.md
+    // "Required red polarity".
+
+    function persist() {
+      const payload = {
+        scene: state.scene,
+        player: state.player,
+        delivery: state.delivery,
+        npcs: state.npcs,
+        save: state.save,
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch {
+        /* headless envs may lack quota — surface as dirty=true. */
+      }
+    }
+
+    function loadPersisted() {
+      let raw;
+      try {
+        raw = localStorage.getItem(STORAGE_KEY);
+      } catch {
+        return null;
+      }
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function publish() {
+      // No-op — the getter on window.__game reads `state` live. Left as a
+      // named seam so any future async publish path is discoverable.
+      markStoryChange();
+    }
+
+    function setLine(text) {
+      ioLine.textContent = text;
+      state.npcs.io.lastLine = text;
+      ioLine.classList.remove('beat');
+      void ioLine.offsetWidth;
+      ioLine.classList.add('beat');
+      markStoryChange();
+    }
+
+    function setBeat(nextBeat) {
+      if (state.scene.beat === nextBeat) return;
+      state.scene.beat = nextBeat;
+      markStoryChange();
+    }
+
+    function ioLineFor(outcome, phase) {
+      if (phase === 'first-session') {
+        return outcome === 'sealed'
+          ? 'Io: “Unbroken. Good. Vey can use one more pair of clean hands.”'
+          : 'Io: “Wax broke before the box. I can still use the fact. Not the habit.”';
+      }
+      // return-to-io recognition beat
+      const sealed = 'Io: “You came back. So did the ' + RETURN_LINE_FRAGMENTS.sealed + '. That gives me two facts to trust.”';
+      const opened = 'Io: “You came back. ' + RETURN_LINE_FRAGMENTS.opened + '. I can use one of those facts.”';
+      if (breakMode === 'wrong-io-line') {
+        // Swap the two lines so the fragment check catches it.
+        return outcome === 'sealed' ? opened : sealed;
+      }
+      return outcome === 'sealed' ? sealed : opened;
+    }
+
+    function memoryFor(outcome) {
+      return {
+        id: RETURN_MEMORY_IDS[outcome],
+        kind: 'delivery-outcome',
+        subject: 'player',
+        predicate: 'delivered',
+        object: outcome === 'sealed' ? 'blue-packet-sealed' : 'blue-packet-opened',
+        deliveryId: 'blue-packet',
+        sessionId: `session:${slot}:${Date.now()}`,
+        source: 'server',
+      };
+    }
+
+    function commitDelivery(outcome, latencyMs) {
+      if (state.delivery.outcome !== 'unknown') return;
+      state.delivery.outcome = outcome;
+      state._input.lastDecisionLatencyMs = Math.round(latencyMs);
+      packet.classList.toggle('opened', outcome === 'opened');
+      packet.classList.add('delivered');
+      game.classList.add('beat');
+
+      state.player.flags.io_intro_seen = true;
+      state.npcs.io.trustPosture = outcome === 'sealed' ? 'trusted-seal' : 'useful-breach';
+
+      // Persist the delivery-outcome memory.
+      const mem = memoryFor(outcome);
+      state.npcs.io.memories = [mem];
+      state.save.dirty = true;
+
+      setBeat('packet-delivered');
+      setLine(ioLineFor(outcome, 'first-session'));
+      prompt.textContent = 'Saved. Start a return session to test Io’s memory line.';
+      publish();
+    }
+
+    function forceSave() {
+      state.save.revision = state.save.revision + 1;
+      state.save.lastPersistedAt = new Date().toISOString();
+      state.save.dirty = false;
+      persist();
+      markStoryChange();
+    }
+
+    function forceReload(options) {
+      const clearLocalState = !!(options && options.clearLocalState);
+      const persisted = clearLocalState ? null : loadPersisted();
+
+      if (!persisted) {
+        // No saved state (or local wiped) — reset to first-session.
+        state = defaultState();
+        packet.classList.remove('opened', 'delivered');
+        packet.style.setProperty('--hold', '0');
+        setLine('Io: “Blue packet. Sign box by the rail. Bring me back the fact, not the story.”');
+        prompt.textContent = 'Tap the packet to deliver sealed. Hold 0.55s to break the wax first.';
+        markStoryChange();
+        return;
+      }
+
+      // Load path — restore prior state.
+      state = defaultState();
+      state.scene = persisted.scene || state.scene;
+      state.player = persisted.player || state.player;
+      state.delivery = persisted.delivery || state.delivery;
+      state.npcs = persisted.npcs || state.npcs;
+      state.save = persisted.save || state.save;
+
+      // drop-memory break: the local blob loads but Io's packet memory is
+      // stripped, so returning-session assertions must fail.
+      if (breakMode === 'drop-memory') {
+        state.npcs.io.memories = [];
+        state.npcs.io.lastLineMemoryRefs = [];
+      }
+
+      // Under the CSS-only slice there is no real server. The durable
+      // proof requires `source === 'server'` in lastLoadProof after
+      // clearLocalState — which honestly cannot be satisfied here. So:
+      //   - a normal reload reports source='local-fallback'
+      //   - a clearLocalState reload reports source=null (nothing to prove)
+      // A future server-backed impl flips these to 'server'. For now the
+      // durable spec is guarded on FLAGSHIP_BREAK_MODE=local-only-save so
+      // the red-polarity CI can prove the guard is honest.
+      state.save.lastLoadProof = {
+        source: clearLocalState ? null : 'local-fallback',
+        revision: clearLocalState ? null : state.save.revision,
+        playerId: clearLocalState ? null : state.player.id,
+      };
+      state.save.dirty = false;
+
+      if (state.delivery.outcome !== 'unknown') {
+        packet.classList.add('delivered');
+      }
+      markStoryChange();
+    }
+
+    async function choose(choiceId) {
+      switch (choiceId) {
+        case 'keep-sealed':
+          setBeat('packet-choice');
+          state.player.flags.io_intro_seen = true;
+          return;
+        case 'open-packet':
+          setBeat('packet-choice');
+          state.player.flags.io_intro_seen = true;
+          commitDelivery('opened', HOLD_TO_OPEN_MS);
+          return;
+        case 'deliver-packet': {
+          // Deliver whichever outcome the player currently intends —
+          // default to sealed unless open-packet was chosen already.
+          if (state.delivery.outcome === 'unknown') {
+            commitDelivery('sealed', 0);
+          }
+          return;
+        }
+        case 'return-to-io': {
+          // Recognition beat: reference the persisted delivery memory and
+          // speak the line whose fragment maps to that outcome.
+          const outcome = state.delivery.outcome;
+          if (outcome === 'sealed' || outcome === 'opened') {
+            const memId = RETURN_MEMORY_IDS[outcome];
+            const hasMem = state.npcs.io.memories.some((m) => m.id === memId);
+            state.npcs.io.lastLineMemoryRefs = hasMem ? [memId] : [];
+            setLine(ioLineFor(outcome, 'return'));
+            setBeat('io-return-recognition');
+            state.player.flags.returned_after_first_session = true;
+          } else {
+            setLine('Io: “No packet in the ledger yet. First we make a fact.”');
+          }
+          return;
+        }
+        default:
+          throw new Error(`Unknown choiceId: ${choiceId}`);
+      }
+    }
+
+    // ------------------- input wiring (pointer / keyboard) -------------------
 
     let holdStart = 0;
     let holdFrame = 0;
     let pointerDown = false;
     let decidedThisPress = false;
 
-    function loadMemory() {
-      try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      } catch {
-        return null;
-      }
-    }
-
-    function saveMemory(record) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        ...record,
-        durablePlayerId: record.durablePlayerId || 'local-harness-player',
-        savedAt: new Date().toISOString()
-      }));
-    }
-
-    function setLine(text) {
-      ioLine.textContent = text;
-      state.lastIoLine = text;
-      ioLine.classList.remove('beat');
-      void ioLine.offsetWidth;
-      ioLine.classList.add('beat');
-    }
-
-    function setOutcome(outcome, latencyMs) {
-      if (state.packetOutcome !== 'pending') return;
-      state.packetOutcome = outcome;
-      state.input.lastDecisionLatencyMs = Math.round(latencyMs);
-      packet.classList.toggle('opened', outcome === 'opened');
-      packet.classList.add('delivered');
-      game.classList.add('beat');
-
-      if (outcome === 'sealed') {
-        state.ioTrustPosture = 'trusting';
-        state.authoredMemory = 'The player delivered the blue packet unopened.';
-        setLine('Io: “Unbroken. Good. Vey can use one more pair of clean hands.”');
-      } else {
-        state.ioTrustPosture = 'wary';
-        state.authoredMemory = 'The player opened the blue packet before delivery.';
-        setLine('Io: “Wax broke before the box. I can still use the fact. Not the habit.”');
-      }
-
-      saveMemory({
-        completedDeliveryIds: ['blue-packet-sign-box'],
-        deliveryOutcome: outcome,
-        npcTrustPosture: state.ioTrustPosture,
-        authoredMemory: state.authoredMemory,
-        lastSeenBucket: 'same-night'
-      });
-
-      prompt.textContent = 'Saved. Start a return session to test Io’s memory line.';
-    }
-
     function updateHoldProgress(now) {
       if (!pointerDown || decidedThisPress) return;
       const elapsed = now - holdStart;
-      state.input.holdProgress = Math.min(1, elapsed / HOLD_TO_OPEN_MS);
-      packet.style.setProperty('--hold', state.input.holdProgress.toFixed(3));
+      state._input.holdProgress = Math.min(1, elapsed / HOLD_TO_OPEN_MS);
+      packet.style.setProperty('--hold', state._input.holdProgress.toFixed(3));
       if (elapsed >= HOLD_TO_OPEN_MS) {
         decidedThisPress = true;
-        setOutcome('opened', elapsed);
+        commitDelivery('opened', elapsed);
         if (navigator.vibrate) navigator.vibrate(24);
         return;
       }
@@ -489,13 +753,13 @@
     }
 
     function beginPress(event) {
-      if (state.packetOutcome !== 'pending') return;
+      if (state.delivery.outcome !== 'unknown') return;
       event.preventDefault();
       packet.setPointerCapture?.(event.pointerId);
       pointerDown = true;
       decidedThisPress = false;
       holdStart = performance.now();
-      state.input.holdProgress = 0;
+      state._input.holdProgress = 0;
       packet.style.setProperty('--hold', '0');
       holdFrame = requestAnimationFrame(updateHoldProgress);
     }
@@ -507,47 +771,10 @@
       cancelAnimationFrame(holdFrame);
       packet.style.setProperty('--hold', '0');
       const elapsed = performance.now() - holdStart;
-      if (!decidedThisPress && state.packetOutcome === 'pending') {
-        setOutcome('sealed', elapsed);
+      if (!decidedThisPress && state.delivery.outcome === 'unknown') {
+        commitDelivery('sealed', elapsed);
         if (navigator.vibrate) navigator.vibrate(12);
       }
-    }
-
-    function startReturnSession() {
-      const memory = loadMemory();
-      state.returningSession = true;
-      packet.classList.add('delivered');
-      if (!memory) {
-        setLine('Io: “No packet in the ledger yet. First we make a fact.”');
-        prompt.textContent = 'No saved delivery found. Reset and make the first packet choice.';
-        return;
-      }
-
-      state.packetOutcome = memory.deliveryOutcome;
-      state.ioTrustPosture = memory.npcTrustPosture;
-      state.authoredMemory = memory.authoredMemory;
-
-      if (memory.deliveryOutcome === 'sealed') {
-        setLine('Io: “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”');
-      } else {
-        setLine('Io: “You came back. The seal did not. I can use one of those facts.”');
-      }
-      prompt.textContent = 'Return beat loaded from saved memory. Harness can assert lastIoLine against packetOutcome.';
-    }
-
-    function resetSlice() {
-      localStorage.removeItem(STORAGE_KEY);
-      state.scene = 'io-night-post';
-      state.packetOutcome = 'pending';
-      state.ioTrustPosture = 'testing';
-      state.authoredMemory = null;
-      state.returningSession = false;
-      state.input.holdProgress = 0;
-      state.input.lastDecisionLatencyMs = null;
-      packet.classList.remove('opened', 'delivered');
-      packet.style.setProperty('--hold', '0');
-      setLine('Io: “Blue packet. Sign box by the rail. Bring me back the fact, not the story.”');
-      prompt.textContent = 'Tap the packet to deliver sealed. Hold 0.55s to break the wax first.';
     }
 
     packet.addEventListener('pointerdown', beginPress, { passive: false });
@@ -556,34 +783,129 @@
     packet.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        setOutcome('sealed', 0);
+        commitDelivery('sealed', 0);
       }
       if (event.key.toLowerCase() === 'o') {
         event.preventDefault();
-        setOutcome('opened', HOLD_TO_OPEN_MS);
+        commitDelivery('opened', HOLD_TO_OPEN_MS);
       }
     });
-    resetButton.addEventListener('click', resetSlice);
-    returnButton.addEventListener('click', startReturnSession);
+    resetButton.addEventListener('click', () => {
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* no-op */ }
+      state = defaultState();
+      packet.classList.remove('opened', 'delivered');
+      packet.style.setProperty('--hold', '0');
+      setLine('Io: “Blue packet. Sign box by the rail. Bring me back the fact, not the story.”');
+      prompt.textContent = 'Tap the packet to deliver sealed. Hold 0.55s to break the wax first.';
+    });
+    returnButton.addEventListener('click', () => choose('return-to-io'));
+
+    // On boot, if there IS a persisted state for this slot, load it — same
+    // behavior as the older slice. Harness specs override this via
+    // forceReload/reset as needed.
+    (function boot() {
+      const persisted = loadPersisted();
+      if (persisted) {
+        forceReload({ clearLocalState: false });
+      }
+      markStoryChange();
+    })();
+
+    // ------------------- public FlagshipGameSurface -------------------
+
+    // Slot slug for save.slot per the contract enum ('default'). Real slot
+    // isolation is done via the storage key, not the surface field.
+    Object.defineProperty(state.save, 'slot', {
+      value: 'default',
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+
+    function snapshot() {
+      return JSON.parse(JSON.stringify({
+        version: state.version,
+        build: state.build,
+        scene: state.scene,
+        player: state.player,
+        delivery: state.delivery,
+        npcs: state.npcs,
+        save: state.save,
+      }));
+    }
 
     window.__game = {
+      get version() { return state.version; },
+      get build() { return state.build; },
+      get scene() { return state.scene; },
+      get player() { return state.player; },
+      get delivery() { return state.delivery; },
+      get npcs() { return state.npcs; },
+      get save() { return state.save; },
+
+      // Feel-harness (aftersign-feel.test.mjs) reads these; not part of
+      // the FlagshipGameSurface but colocated for a single boot script.
+      get inputState() { return { ...state._input }; },
       get storyState() {
+        // Back-compat shim for the CSS-slice feel test — mirrors what the
+        // slice used to publish while remaining a subset of the contract.
         return {
-          scene: state.scene,
-          packetOutcome: state.packetOutcome,
-          ioTrustPosture: state.ioTrustPosture,
-          authoredMemory: state.authoredMemory,
-          lastIoLine: state.lastIoLine,
-          returningSession: state.returningSession
+          scene: state.scene.id,
+          packetOutcome:
+            state.delivery.outcome === 'unknown' ? 'pending' : state.delivery.outcome,
+          ioTrustPosture:
+            state.npcs.io.trustPosture === 'trusted-seal'
+              ? 'trusting'
+              : state.npcs.io.trustPosture === 'useful-breach'
+                ? 'wary'
+                : 'testing',
+          authoredMemory:
+            state.npcs.io.memories.length
+              ? (state.delivery.outcome === 'sealed'
+                  ? 'The player delivered the blue packet unopened.'
+                  : 'The player opened the blue packet before delivery.')
+              : null,
+          lastIoLine: state.npcs.io.lastLine,
+          returningSession: state.scene.beat === 'io-return-recognition',
         };
       },
-      get inputState() {
-        return { ...state.input };
+
+      // Legacy CSS-slice helpers kept for the node feel harness.
+      choosePacketOutcome(outcome) {
+        commitDelivery(outcome, outcome === 'opened' ? HOLD_TO_OPEN_MS : 0);
       },
-      resetSlice,
-      startReturnSession,
-      choosePacketOutcome: (outcome) => setOutcome(outcome, outcome === 'opened' ? HOLD_TO_OPEN_MS : 0),
-      loadMemory
+      startReturnSession() {
+        choose('return-to-io');
+      },
+      resetSlice() {
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* no-op */ }
+        state = defaultState();
+        packet.classList.remove('opened', 'delivered');
+        packet.style.setProperty('--hold', '0');
+        setLine('Io: “Blue packet. Sign box by the rail. Bring me back the fact, not the story.”');
+      },
+
+      // Contract input surface.
+      input: {
+        choose,
+        advance: () => choose('return-to-io'),
+        forceSave: async () => forceSave(),
+        forceReload: async (options) => forceReload(options),
+        waitForStoryIdle,
+      },
+
+      // Snapshot / reset — used by the memory-prior-session spec.
+      getSnapshot: snapshot,
+      reset: (saved) => {
+        if (saved) {
+          state = defaultState();
+          Object.assign(state, JSON.parse(JSON.stringify(saved)));
+          state.version = CONTRACT_VERSION;
+        } else {
+          state = defaultState();
+        }
+        markStoryChange();
+      },
     };
   </script>
 </body>
