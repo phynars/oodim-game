@@ -24,6 +24,16 @@ export {
 } from "./interactionConfirmFeel";
 
 export {
+  cancelPacketSealHold,
+  createPacketSealState,
+  DEFAULT_PACKET_SEAL_FEEL,
+  samplePacketSealHold,
+  type PacketSealFeelConfig,
+  type PacketSealFeelState,
+  type PacketSealPhase,
+} from "./packetSealFeel";
+
+export {
   createPacketIntentModel,
   type PacketIntentModel,
   type PacketIntentOptions,
