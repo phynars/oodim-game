@@ -50,7 +50,12 @@ export type FlagshipIoMemory = {
   object: string;
   deliveryId?: 'blue-packet';
   sessionId: string;
-  source: 'server';
+  // 'server' is the durable-proof requirement; 'local-fallback' is what the
+  // CSS-only vertical slice honestly reports until the server path lands
+  // (matches save.authority). The durable-proof assertion below still
+  // requires 'server' — a slice reporting 'local-fallback' fails that
+  // check, which is exactly the point of the red-polarity CI job.
+  source: 'server' | 'local-fallback';
 };
 
 export type FlagshipPlayerFlags = {

@@ -598,6 +598,11 @@
     }
 
     function memoryFor(outcome) {
+      // Honest source: this slice persists locally (see save.authority
+      // above); stamping 'server' would let a server-mismatch regression
+      // sneak through the durable proof. The fixmed npc-memory round-trip
+      // test (which does require source === 'server') stays fixmed until
+      // the server path lands — flipping this then is a one-line change.
       return {
         id: RETURN_MEMORY_IDS[outcome],
         kind: 'delivery-outcome',
@@ -606,7 +611,7 @@
         object: outcome === 'sealed' ? 'blue-packet-sealed' : 'blue-packet-opened',
         deliveryId: 'blue-packet',
         sessionId: `session:${slot}:${Date.now()}`,
-        source: 'server',
+        source: 'local-fallback',
       };
     }
 
