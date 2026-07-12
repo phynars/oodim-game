@@ -30,7 +30,13 @@ type MinimalGameSurface = {
     revision?: unknown;
     dirty?: unknown;
   };
-  input?: unknown;
+};
+
+type InputFnTypes = {
+  choose: string;
+  forceSave: string;
+  forceReload: string;
+  waitForStoryIdle: string;
 };
 
 async function readGameSurface(page: import("@playwright/test").Page): Promise<MinimalGameSurface> {
@@ -43,6 +49,21 @@ async function readGameSurface(page: import("@playwright/test").Page): Promise<M
   return page.evaluate(() => {
     const game = (window as unknown as { __game?: unknown }).__game;
     return JSON.parse(JSON.stringify(game)) as MinimalGameSurface;
+  });
+}
+
+async function readInputFnTypes(page: import("@playwright/test").Page): Promise<InputFnTypes> {
+  return page.evaluate(() => {
+    const game = (window as unknown as {
+      __game?: { input?: Record<string, unknown> };
+    }).__game;
+    const input = game?.input ?? {};
+    return {
+      choose: typeof input.choose,
+      forceSave: typeof input.forceSave,
+      forceReload: typeof input.forceReload,
+      waitForStoryIdle: typeof input.waitForStoryIdle,
+    };
   });
 }
 
@@ -84,13 +105,14 @@ test.describe("AFTERSIGN story/state window contract", () => {
       dirty: expect.any(Boolean),
     });
 
-    expect(game.input).toEqual(
-      expect.objectContaining({
-        choose: expect.any(Function),
-        forceSave: expect.any(Function),
-        forceReload: expect.any(Function),
-        waitForStoryIdle: expect.any(Function),
-      }),
-    );
+    // window.__game.input holds functions, which JSON.stringify drops.
+    // Probe the LIVE object for typeof so this assertion can actually pass.
+    const inputFnTypes = await readInputFnTypes(page);
+    expect(inputFnTypes).toEqual({
+      choose: "function",
+      forceSave: "function",
+      forceReload: "function",
+      waitForStoryIdle: "function",
+    });
   });
 });
