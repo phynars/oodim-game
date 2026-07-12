@@ -1,1513 +1,590 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>AFTERSIGN — Kiosk Slice</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #05070c;
-        color: #edf7ff;
-        --confirm-shake-x: 0px;
-        --confirm-shake-y: 0px;
-        --packet-progress: 0;
-      }
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AFTERSIGN — Night Post Slice</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #061116;
+      color: #f5ead2;
+      --amber: #f0b75f;
+      --moth: #e7f3ff;
+      --water: #0b2e35;
+      --red: #9d3d33;
+    }
 
-      * {
-        box-sizing: border-box;
-      }
+    * { box-sizing: border-box; }
 
-      body {
-        margin: 0;
-        min-height: 100vh;
-        overflow: hidden;
-        background: radial-gradient(circle at 50% 20%, #182033 0%, #05070c 65%);
-        touch-action: manipulation;
-      }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      touch-action: none;
+      overscroll-behavior: none;
+      background: radial-gradient(circle at 50% 10%, #173842 0%, #061116 58%, #020507 100%);
+    }
 
-      canvas {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-        cursor: pointer;
-        touch-action: none;
-      }
+    body {
+      display: grid;
+      place-items: stretch;
+    }
 
-      .hud {
-        position: fixed;
-        inset: auto 0 0 0;
-        padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-        pointer-events: none;
-        background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
-        transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
-        will-change: transform;
-      }
+    #game {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(231, 243, 255, 0.08), transparent 36%),
+        radial-gradient(circle at 74% 18%, rgba(240, 183, 95, 0.22), transparent 20%),
+        linear-gradient(160deg, #07151b 0%, #09262d 46%, #020607 100%);
+    }
 
-      .failure-sting {
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        opacity: 0;
-        background: radial-gradient(circle at 50% 60%, rgba(255, 93, 128, 0.24) 0%, rgba(255, 58, 96, 0.18) 28%, rgba(0, 0, 0, 0) 72%);
-        mix-blend-mode: screen;
-      }
+    #scene {
+      position: absolute;
+      inset: 0;
+      perspective: 820px;
+      transform-style: preserve-3d;
+      overflow: hidden;
+    }
 
-      .panel {
-        width: min(680px, 100%);
-        border: 1px solid rgba(119, 232, 255, 0.34);
-        border-radius: 18px;
-        padding: 16px;
-        background: rgba(5, 10, 19, 0.72);
-        box-shadow: 0 0 40px rgba(0, 204, 255, 0.12), inset 0 0 30px rgba(22, 89, 130, 0.14);
-        backdrop-filter: blur(12px);
-      }
+    .rain {
+      position: absolute;
+      inset: -20%;
+      opacity: 0.22;
+      background-image: repeating-linear-gradient(105deg, transparent 0 15px, rgba(231, 243, 255, 0.42) 16px, transparent 18px);
+      animation: rain 0.72s linear infinite;
+      will-change: transform;
+    }
 
-      .speaker {
-        margin: 0 0 8px;
-        color: #78e9ff;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      }
+    @keyframes rain {
+      from { transform: translate3d(-2%, -4%, 0); }
+      to { transform: translate3d(2%, 4%, 0); }
+    }
 
-      .line {
-        margin: 0;
-        font-size: clamp(17px, 3.6vw, 24px);
-        line-height: 1.32;
-        text-wrap: balance;
-      }
+    .fog {
+      position: absolute;
+      left: -20%;
+      right: -20%;
+      bottom: -18%;
+      height: 46%;
+      background:
+        radial-gradient(ellipse at 30% 40%, rgba(182, 220, 224, 0.18), transparent 55%),
+        radial-gradient(ellipse at 70% 55%, rgba(121, 169, 174, 0.16), transparent 58%);
+      filter: blur(18px);
+      animation: fog 8s ease-in-out infinite alternate;
+      will-change: transform;
+    }
 
-      .controls {
-        display: flex;
-        gap: 10px;
-        margin-top: 12px;
-        flex-wrap: wrap;
-        pointer-events: auto;
-      }
+    @keyframes fog {
+      from { transform: translate3d(-3%, 0, 0) scale(1); }
+      to { transform: translate3d(3%, -4%, 0) scale(1.05); }
+    }
 
-      button {
-        border: 1px solid rgba(173, 242, 255, 0.4);
-        border-radius: 999px;
-        padding: 11px 14px;
-        color: #edf7ff;
-        background: rgba(8, 28, 43, 0.85);
-        box-shadow: 0 0 20px rgba(0, 204, 255, 0.1);
-        font: inherit;
-        font-weight: 750;
-        cursor: pointer;
-      }
+    .stair {
+      position: absolute;
+      left: 50%;
+      bottom: 7%;
+      width: min(76vw, 660px);
+      height: min(54vh, 420px);
+      transform: translateX(-50%) rotateX(59deg) rotateZ(-4deg);
+      transform-origin: 50% 80%;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.08) 0 1px, transparent 1px 16%),
+        repeating-linear-gradient(180deg, #20333a 0 32px, #16272e 32px 40px);
+      border: 1px solid rgba(231, 243, 255, 0.16);
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.52), inset 0 0 70px rgba(255,255,255,0.04);
+    }
 
-      button:active {
-        transform: translateY(1px) scale(0.99);
-      }
+    .rail {
+      position: absolute;
+      bottom: 31%;
+      left: 14%;
+      width: 74%;
+      height: 6px;
+      background: linear-gradient(90deg, transparent, rgba(201, 127, 66, 0.9), transparent);
+      box-shadow: 0 0 22px rgba(240, 183, 95, 0.25);
+      transform: rotate(-4deg);
+    }
 
-      .packet-button {
-        position: relative;
-        overflow: hidden;
-      }
+    .kiosk {
+      position: absolute;
+      left: 50%;
+      top: 14%;
+      width: min(68vw, 520px);
+      height: min(39vh, 300px);
+      transform: translateX(-50%);
+      border-radius: 24px 24px 10px 10px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.08), transparent 28%),
+        linear-gradient(110deg, #2b1710, #4a2619 52%, #1b1210);
+      border: 1px solid rgba(240, 183, 95, 0.24);
+      box-shadow: 0 22px 80px rgba(0, 0, 0, 0.62), 0 0 40px rgba(240, 183, 95, 0.12);
+      overflow: hidden;
+    }
 
-      .packet-button::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        width: calc(var(--packet-progress) * 100%);
-        background: linear-gradient(90deg, rgba(120, 233, 255, 0.2), rgba(255, 184, 107, 0.28));
-        pointer-events: none;
-        transition: width 40ms linear;
-      }
+    .kiosk::before {
+      content: "NIGHT POST";
+      position: absolute;
+      left: 50%;
+      top: 18px;
+      transform: translateX(-50%);
+      letter-spacing: 0.42em;
+      font-size: clamp(0.68rem, 1.8vw, 0.88rem);
+      color: rgba(245, 234, 210, 0.78);
+      text-shadow: 0 0 18px rgba(240, 183, 95, 0.54);
+      white-space: nowrap;
+    }
 
-      .packet-button span {
-        position: relative;
-        z-index: 1;
-      }
+    .window {
+      position: absolute;
+      left: 10%;
+      right: 10%;
+      bottom: 16%;
+      height: 46%;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 50% 20%, rgba(240, 183, 95, 0.5), transparent 50%),
+        linear-gradient(180deg, rgba(55, 35, 20, 0.95), rgba(12, 16, 18, 0.88));
+      border: 1px solid rgba(240, 183, 95, 0.28);
+      box-shadow: inset 0 0 35px rgba(240, 183, 95, 0.18), 0 0 35px rgba(240, 183, 95, 0.1);
+    }
 
-      .state-readout {
-        position: fixed;
-        top: max(14px, env(safe-area-inset-top));
-        left: max(14px, env(safe-area-inset-left));
-        margin: 0;
-        padding: 8px 10px;
-        border-radius: 999px;
-        color: rgba(237, 247, 255, 0.74);
-        background: rgba(3, 7, 13, 0.58);
-        font-size: 12px;
-        letter-spacing: 0.04em;
-      }
-    </style>
-  </head>
-  <body>
-    <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
-    <div class="failure-sting" aria-hidden="true"></div>
-    <p class="state-readout" id="stateReadout">story: packet-offered</p>
-    <section class="hud" aria-live="polite">
-      <div class="panel">
-        <p class="speaker" id="speaker">Io</p>
-        <p class="line" id="line">Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.</p>
-        <div class="controls">
-          <button id="packetButton" class="packet-button" type="button" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
-          <button id="deliverButton" type="button">Deliver at the blue kiosk</button>
-          <button id="soundButton" type="button">Wake kiosk sound</button>
-          <button id="resetButton" type="button">Reset slice save</button>
-        </div>
+    .io {
+      position: absolute;
+      left: 50%;
+      bottom: 17%;
+      width: 78px;
+      height: 112px;
+      transform: translateX(-50%);
+      border-radius: 44px 44px 24px 24px;
+      background: linear-gradient(180deg, #3b4e55, #151c20);
+      box-shadow: 0 -18px 32px rgba(240, 183, 95, 0.13), inset 0 0 18px rgba(231,243,255,0.08);
+    }
+
+    .io::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 14px;
+      width: 34px;
+      height: 34px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: linear-gradient(180deg, #d0b690, #7f6148);
+      box-shadow: 0 0 12px rgba(240, 183, 95, 0.24);
+    }
+
+    .lantern {
+      position: absolute;
+      width: 42px;
+      height: 58px;
+      border-radius: 50% 50% 44% 44%;
+      background: radial-gradient(circle at 50% 35%, #fff2b9, var(--amber) 44%, #9f4c26 84%);
+      box-shadow: 0 0 24px rgba(240, 183, 95, 0.72), 0 0 70px rgba(240, 183, 95, 0.28);
+      animation: lantern 2.6s ease-in-out infinite alternate;
+    }
+
+    .lantern.left { left: 18%; top: 26%; }
+    .lantern.right { right: 17%; top: 20%; animation-delay: -1.4s; }
+
+    @keyframes lantern {
+      from { transform: translateY(0); filter: brightness(0.9); }
+      to { transform: translateY(7px); filter: brightness(1.15); }
+    }
+
+    .box {
+      position: absolute;
+      right: min(18vw, 170px);
+      bottom: 18%;
+      width: 88px;
+      height: 118px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #253a3e, #0d181b);
+      border: 1px solid rgba(231, 243, 255, 0.22);
+      box-shadow: 0 15px 36px rgba(0,0,0,0.5), 0 0 20px rgba(231,243,255,0.08);
+    }
+
+    .box::before {
+      content: "";
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      top: 24px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(231, 243, 255, 0.72);
+      box-shadow: 0 0 18px rgba(231, 243, 255, 0.24);
+    }
+
+    .packet {
+      position: absolute;
+      left: 50%;
+      bottom: calc(13% + env(safe-area-inset-bottom));
+      width: min(58vw, 310px);
+      height: 112px;
+      transform: translateX(-50%);
+      border-radius: 16px;
+      background: linear-gradient(135deg, #244a63, #0e2431 58%, #061219);
+      border: 1px solid rgba(231, 243, 255, 0.2);
+      box-shadow: 0 20px 55px rgba(0,0,0,0.48), inset 0 0 35px rgba(231,243,255,0.07);
+      z-index: 12;
+      touch-action: none;
+      user-select: none;
+      cursor: pointer;
+      transition: transform 140ms ease, filter 140ms ease;
+    }
+
+    .packet:active { transform: translateX(-50%) scale(0.985); }
+
+    .seal {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 54px;
+      height: 54px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #d97968, var(--red) 58%, #4f1513 100%);
+      box-shadow: 0 0 24px rgba(157, 61, 51, 0.48), inset 0 0 12px rgba(255,255,255,0.18);
+    }
+
+    .packet.opened .seal {
+      width: 74px;
+      height: 16px;
+      border-radius: 999px;
+      transform: translate(-50%, -50%) rotate(-18deg);
+      filter: saturate(0.75) brightness(0.8);
+    }
+
+    .packet.delivered {
+      transform: translateX(32vw) translateY(-16vh) scale(0.36);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 420ms cubic-bezier(.2,.9,.2,1), opacity 420ms ease;
+    }
+
+    .choice-ring {
+      position: absolute;
+      inset: -12px;
+      border-radius: 24px;
+      border: 3px solid rgba(231, 243, 255, 0.0);
+      background: conic-gradient(from -90deg, rgba(231, 243, 255, 0.85) calc(var(--hold) * 1turn), transparent 0);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      padding: 6px;
+      opacity: calc(0.14 + var(--hold));
+      pointer-events: none;
+    }
+
+    #hud {
+      position: fixed;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      top: max(16px, env(safe-area-inset-top));
+      z-index: 20;
+      display: grid;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .line {
+      width: fit-content;
+      max-width: min(680px, 100%);
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(2, 7, 9, 0.68);
+      border: 1px solid rgba(240, 183, 95, 0.18);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.36);
+      backdrop-filter: blur(10px);
+      line-height: 1.35;
+      font-size: clamp(0.95rem, 2.5vw, 1.08rem);
+    }
+
+    .prompt {
+      color: rgba(245, 234, 210, 0.76);
+      font-size: clamp(0.78rem, 2.1vw, 0.9rem);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      position: fixed;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 24;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      pointer-events: none;
+    }
+
+    button {
+      pointer-events: auto;
+      border: 1px solid rgba(245, 234, 210, 0.22);
+      border-radius: 999px;
+      color: #f5ead2;
+      background: rgba(2, 7, 9, 0.62);
+      padding: 13px 16px;
+      min-height: 48px;
+      font: inherit;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.28);
+      backdrop-filter: blur(8px);
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, rgba(240, 183, 95, 0.82), rgba(157, 61, 51, 0.78));
+      color: #130908;
+      font-weight: 700;
+    }
+
+    .beat {
+      animation: beat 580ms ease both;
+    }
+
+    @keyframes beat {
+      0% { filter: brightness(1); }
+      35% { filter: brightness(1.42) saturate(1.2); }
+      100% { filter: brightness(1); }
+    }
+
+    @media (max-width: 560px) {
+      .kiosk { top: 12%; height: 34vh; width: 78vw; }
+      .packet { bottom: calc(18% + env(safe-area-inset-bottom)); }
+      .box { right: 7vw; bottom: 24%; transform: scale(0.84); }
+      .controls { align-items: flex-end; }
+      button { padding-inline: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="game" aria-label="AFTERSIGN Night Post vertical slice">
+    <div id="scene">
+      <div class="rain" aria-hidden="true"></div>
+      <div class="fog" aria-hidden="true"></div>
+      <div class="lantern left" aria-hidden="true"></div>
+      <div class="lantern right" aria-hidden="true"></div>
+      <div class="rail" aria-hidden="true"></div>
+      <div class="stair" aria-hidden="true"></div>
+      <section class="kiosk" aria-label="Io's Night Post kiosk">
+        <div class="window"><div class="io" aria-hidden="true"></div></div>
+      </section>
+      <div class="box" aria-label="nearby sign box"></div>
+      <div id="packet" class="packet" role="button" tabindex="0" aria-label="sealed blue packet: hold to open, tap deliver sealed" style="--hold: 0">
+        <div class="choice-ring" aria-hidden="true"></div>
+        <div class="seal" aria-hidden="true"></div>
       </div>
+    </div>
+
+    <section id="hud" aria-live="polite">
+      <div id="ioLine" class="line">Io: “Blue packet. Sign box by the rail. Bring me back the fact, not the story.”</div>
+      <div id="prompt" class="line prompt">Tap the packet to deliver sealed. Hold 0.55s to break the wax first.</div>
     </section>
 
-    <script type="module">
-      import * as THREE from "three";
-      import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-      import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-      import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-      import { PacketIntentController, PACKET_OUTCOME } from "./packet-intent.js";
-
-      const canvas = document.querySelector("#scene");
-      const line = document.querySelector("#line");
-      const speaker = document.querySelector("#speaker");
-      const stateReadout = document.querySelector("#stateReadout");
-      const failureSting = document.querySelector(".failure-sting");
-      const packetButton = document.querySelector("#packetButton");
-      const deliverButton = document.querySelector("#deliverButton");
-      const soundButton = document.querySelector("#soundButton");
-      const resetButton = document.querySelector("#resetButton");
-
-      const CONFIRM_FEEDBACK = {
-        durationMs: 220,
-        easing: "easeOutCubic",
-        cameraKickDeg: 1.4,
-        cameraKickWorldX: 0.055,
-        hudShakePx: 10,
-        hudLiftPx: 3,
-        pulseDecayPerSecond: 3.8,
-      };
-      const MEMORY_RECOGNITION_FEEDBACK = {
-        durationMs: 1220,
-        cameraDeltaMeters: 0.32,
-        cameraYawDegrees: 4,
-      };
-      const FAILURE_FEEDBACK = {
-        durationMs: 180,
-        easing: "easeOutQuad",
-        cameraKickDeg: 0.9,
-        cameraKickWorldX: 0.038,
-        hudShakePx: 8,
-        hudDropPx: 2,
-        flashAlpha: 0.34,
-        wobbleCycles: 5,
-      };
-      const MOVEMENT = {
-        fixedStepSeconds: 1 / 60,
-        targetFrameMs: 16.67,
-        speedMetersPerSecond: 3.6,
-        deadzone: 0.08,
-        minX: -5.2,
-        maxX: 5.2,
-        minZ: -6.4,
-        maxZ: 2.2,
-        inputToVelocityFrames: 1,
-      };
-
-      const params = new URLSearchParams(window.location.search);
-      const slot = params.get("slot") || "local";
-      const storageKey = `aftersign:kiosk-slice:${slot}`;
-      const sessionId = `session-${slot}`;
-
-      const clone = (value) => JSON.parse(JSON.stringify(value));
-      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-      const readStored = () => {
-        try {
-          const raw = window.localStorage.getItem(storageKey);
-          return raw ? JSON.parse(raw) : null;
-        } catch {
-          return null;
-        }
-      };
-
-      const writeStored = (payload) => {
-        window.localStorage.setItem(storageKey, JSON.stringify(payload));
-      };
-
-      // Io's trust posture is a pure function of the delivery outcome
-      // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
-      // sealed -> trusted-seal, opened -> useful-breach, unknown -> untested.
-      const trustPostureForOutcome = (outcome) =>
-        outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
-
-      const emptySave = () => ({
-        slot: "default",
-        revision: 0,
-        lastPersistedAt: null,
-        dirty: false,
-        authority: "local-fallback",
-        lastLoadProof: { source: null, revision: null, playerId: null },
-      });
-      const stored = readStored();
-      const packetIntent = new PacketIntentController();
-
-      const state = {
-        slug: "aftersign",
-        scene: {
-          // Contract-canonical scene identity (e2e-shared asserts these —
-          // #564 Phase 1; the old dev id "io-kiosk-rainline" predated the
-          // shared contract and nothing else referenced it).
-          id: "io-night-post-kiosk",
-          act: "act-1-seal",
-          // Flipped true once listeners + first render are wired (boot tail)
-          // — the harness's "safe to drive input" signal.
-          ready: false,
-          beat: stored?.beat ?? "packet-offered",
-        },
-        story: {
-          currentNpcId: null,
-          memoryBeat: null,
-        },
-        delivery: {
-          id: "blue-packet",
-          outcome: stored?.delivery?.outcome || "unknown",
-        },
-        player: {
-          id: "local-slice-player",
-          name: stored?.player?.name ?? null,
-          flags: {
-            io_intro_seen: false,
-            ...(stored?.player?.flags ?? {}),
-          },
-          x: stored?.player?.x ?? -1.8,
-          z: stored?.player?.z ?? 1.15,
-          facingRadians: stored?.player?.facingRadians ?? 0,
-        },
-        packet: {
-          delivered: Boolean(stored?.packet?.delivered),
-          route: stored?.packet?.route || null,
-          sealed: stored?.packet?.sealed ?? true,
-          deliveredAt: stored?.packet?.deliveredAt || null,
-        },
-        npcs: {
-          io: {
-            memory: stored?.memory ? clone(stored.memory) : [],
-            lastLine: null,
-            lastLineMemoryRefs: [],
-          },
-        },
-        save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
-        movement: {
-          input: { x: 0, z: 0, source: "none", active: false },
-          lastStepMs: 0,
-          lastVelocityMetersPerSecond: 0,
-          contract: { ...MOVEMENT },
-        },
-        interaction: {
-          lastAction: null,
-          lastPointer: null,
-          kioskPulse: 0,
-          confirmCount: 0,
-          confirmStartedAt: null,
-          failureStartedAt: null,
-          confirmFeedback: {
-            ...CONFIRM_FEEDBACK,
-            active: false,
-            remainingMs: 0,
-          },
-          // Live amplitudes for the recognition-beat camera envelope. Kept in
-          // state (not the const) so the harness can zero them via
-          // setRecognitionCameraEnvelope and prove the durable beat reports
-          // MEASURED motion, not canned contract literals.
-          recognitionFeedback: {
-            ...MEMORY_RECOGNITION_FEEDBACK,
-          },
-          failureFeedback: {
-            ...FAILURE_FEEDBACK,
-            active: false,
-            remainingMs: 0,
-          },
-          packetIntent: packetIntent.snapshot(),
-        },
-        _runtime: {
-          audio: {
-            unlocked: false,
-            ambientStarted: false,
-            lastCue: null,
-          },
-        },
-      };
-
-      let statePublishVersion = 0;
-      let publishedStateVersion = -1;
-
-      const markStateDirty = () => {
-        statePublishVersion += 1;
-      };
-
-      const setTextContentIfChanged = (node, value) => {
-        if (node.textContent !== value) {
-          node.textContent = value;
-        }
-      };
-
-      let audioContext;
-      let ambientGain;
-      let rainNoise;
-      let rainFilter;
-      let kioskHum;
-      let kioskHumGain;
-
-      const lineForBeat = () => {
-        if (state.scene.beat === "packet-kept-sealed") {
-          return "Good. Some doors only open for people who can carry a secret without looking inside.";
-        }
-
-        if (state.scene.beat === "packet-opened") {
-          return "You opened it. The route still glows, but now the city knows curiosity got there first.";
-        }
-
-        if (state.scene.beat === "packet-delivered") {
-          return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
-        }
-
-        if (state.scene.beat === "io-returning-recognition") {
-          return state.packet.sealed
-            ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
-            : "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
-        }
-
-        return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
-      };
-
-      const memoryFact = () => ({
-        id: `io:${slot}:delivered-blue-packet`,
-        predicate: "delivered-blue-packet",
-        object: state.packet.sealed ? "sealed" : "opened",
-        sessionId,
-      });
-
-      const persist = ({ dirty = false } = {}) => {
-        const payload = {
-          beat: state.scene.beat,
-          player: clone(state.player),
-          packet: clone(state.packet),
-          delivery: clone(state.delivery),
-          memory: clone(state.npcs.io.memory),
-          save: {
-            revision: state.save.revision,
-            dirty,
-          },
-        };
-        writeStored(payload);
-        if (state.save.dirty !== dirty) {
-          state.save.dirty = dirty;
-          markStateDirty();
-        }
-      };
-
-      const syncIoLine = () => {
-        const nextLine = lineForBeat();
-        const nextMemoryRefs = state.scene.beat === "io-returning-recognition"
-          ? state.npcs.io.memory.map((fact) => fact.id)
-          : [];
-        if (
-          state.npcs.io.lastLine !== nextLine
-          || state.npcs.io.lastLineMemoryRefs.length !== nextMemoryRefs.length
-          || state.npcs.io.lastLineMemoryRefs.some((ref, index) => ref !== nextMemoryRefs[index])
-        ) {
-          state.npcs.io.lastLine = nextLine;
-          state.npcs.io.lastLineMemoryRefs = nextMemoryRefs;
-          markStateDirty();
-        }
-      };
-
-      const syncPacketIntent = (snapshot = packetIntent.snapshot()) => {
-        const progressValue = snapshot.progress.toFixed(3);
-        if (document.documentElement.style.getPropertyValue("--packet-progress") !== progressValue) {
-          document.documentElement.style.setProperty("--packet-progress", progressValue);
-        }
-        const ariaValue = Math.round(snapshot.progress * 100).toString();
-        if (packetButton.getAttribute("aria-valuenow") !== ariaValue) {
-          packetButton.setAttribute("aria-valuenow", ariaValue);
-        }
-
-        const currentIntent = JSON.stringify(state.interaction.packetIntent);
-        const nextIntent = JSON.stringify(snapshot);
-        if (currentIntent !== nextIntent) {
-          state.interaction.packetIntent = clone(snapshot);
-          markStateDirty();
-        }
-      };
-
-      const setMoveInput = (x, z, source = "script") => {
-        const length = Math.hypot(x, z);
-        const scale = length > 1 ? 1 / length : 1;
-        const nextX = x * scale;
-        const nextZ = z * scale;
-        state.movement.input = {
-          x: Math.abs(nextX) < MOVEMENT.deadzone ? 0 : nextX,
-          z: Math.abs(nextZ) < MOVEMENT.deadzone ? 0 : nextZ,
-          source,
-          active: Math.hypot(nextX, nextZ) >= MOVEMENT.deadzone,
-        };
-        publishState();
-      };
-
-      const stepMovement = (dt = MOVEMENT.fixedStepSeconds) => {
-        const input = state.movement.input;
-        const vx = input.x * MOVEMENT.speedMetersPerSecond;
-        const vz = input.z * MOVEMENT.speedMetersPerSecond;
-        state.player.x = clamp(state.player.x + vx * dt, MOVEMENT.minX, MOVEMENT.maxX);
-        state.player.z = clamp(state.player.z + vz * dt, MOVEMENT.minZ, MOVEMENT.maxZ);
-        if (input.x || input.z) {
-          state.player.facingRadians = Math.atan2(input.x, input.z);
-        }
-        state.movement.lastStepMs = dt * 1000;
-        state.movement.lastVelocityMetersPerSecond = Math.hypot(vx, vz);
-      };
-
-      const assertFeelContract = () => {
-        // Snapshot ALL state this probe mutates so it's non-destructive when
-        // called from the console via window.__game. Restore on exit — otherwise
-        // repeated calls accumulate ~0.06m of drift per invocation.
-        const playerSnapshot = clone(state.player);
-        const inputSnapshot = clone(state.movement.input);
-        const lastStepMsSnapshot = state.movement.lastStepMs;
-        const lastVelocitySnapshot = state.movement.lastVelocityMetersPerSecond;
-        const startX = state.player.x;
-        const startZ = state.player.z;
-        setMoveInput(1, 0, "harness");
-        stepMovement(MOVEMENT.fixedStepSeconds);
-        const movedThisFrame = state.player.x > startX && state.player.z === startZ;
-        const observedStepMs = state.movement.lastStepMs;
-        const fixedStepInsideBudget = observedStepMs <= MOVEMENT.targetFrameMs + 0.01;
-        // Restore — position, input vector, and derived movement telemetry.
-        state.player = playerSnapshot;
-        state.movement.input = inputSnapshot;
-        state.movement.lastStepMs = lastStepMsSnapshot;
-        state.movement.lastVelocityMetersPerSecond = lastVelocitySnapshot;
-        publishState();
-        return {
-          passed: movedThisFrame && fixedStepInsideBudget,
-          movedThisFrame,
-          fixedStepInsideBudget,
-          lastStepMs: observedStepMs,
-          targetFrameMs: MOVEMENT.targetFrameMs,
-          inputToVelocityFrames: MOVEMENT.inputToVelocityFrames,
-        };
-      };
-
-      const publishState = () => {
-        syncIoLine();
-        syncPacketIntent();
-        if (publishedStateVersion === statePublishVersion && window.__game) {
-          return window.__game;
-        }
-
-        window.__game = {
-          version: 1,
-          slug: state.slug,
-          build: { slug: state.slug },
-          scene: { ...state.scene },
-          story: clone(state.story),
-          player: clone(state.player),
-          packet: clone(state.packet),
-          delivery: {
-            id: "blue-packet",
-            ...clone(state.delivery),
-          },
-          npcs: {
-            io: {
-              id: "io",
-              displayName: "Io Vale",
-              present: true,
-              ...clone(state.npcs.io),
-              memories: clone(state.npcs.io.memory),
-              trustPosture: trustPostureForOutcome(state.delivery.outcome),
-            },
-          },
-          save: { ...state.save },
-          movement: clone(state.movement),
-          interaction: clone(state.interaction),
-          // Publish the runtime audio surface so the look/sound contract
-          // spec can observe playKioskConfirm()'s stamped cue. Without
-          // this the harness reads window.__game._runtime as undefined
-          // and the audio half of the assertion (audioLastCue ===
-          // 'packet-confirmed') can never satisfy. The closure's
-          // state._runtime is stamped inside enableAudio()/
-          // playKioskConfirm() but was previously invisible from the
-          // outside; cloning it here mirrors every other published
-          // sub-object so mutations after publishState() don't leak
-          // back into the live state graph.
-          _runtime: clone(state._runtime),
-          getSnapshot: () => clone({
-            version: 1,
-            slug: state.slug,
-            build: { slug: state.slug },
-            scene: state.scene,
-            story: state.story,
-            player: state.player,
-            packet: state.packet,
-            delivery: {
-              id: "blue-packet",
-              ...state.delivery,
-            },
-            npcs: {
-              io: {
-                id: "io",
-                displayName: "Io Vale",
-                present: true,
-                ...state.npcs.io,
-                memories: state.npcs.io.memory,
-                trustPosture: trustPostureForOutcome(state.delivery.outcome),
-              },
-            },
-            save: state.save,
-            movement: state.movement,
-            interaction: state.interaction,
-          }),
-          reset,
-          input: {
-            choose,
-            advance,
-            waitForStoryIdle,
-            forceSave,
-            forceReload: reloadFromSave,
-            setMoveInput,
-            stepMovement,
-            packetPress,
-            packetMove,
-            packetRelease,
-            packetTick,
-            setConfirmCameraKick,
-            setRecognitionCameraEnvelope,
-          },
-          assertFeelContract,
-          deliverPacket: () => choose("deliver-packet"),
-          enableAudio: () => enableAudio(),
-          resetSliceSave: () => resetSliceSave(),
-        };
-        publishedStateVersion = statePublishVersion;
-        return window.__game;
-      };
-
-      const renderText = () => {
-        syncIoLine();
-        setTextContentIfChanged(speaker, "Io");
-        setTextContentIfChanged(line, state.npcs.io.lastLine);
-        setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
-      };
-
-      const setBeat = (beat) => {
-        if (state.scene.beat !== beat) {
-          state.scene.beat = beat;
-          markStateDirty();
-        }
-        const nextNpcId = beat === "io-returning-recognition" ? "io" : null;
-        if (state.story.currentNpcId !== nextNpcId) {
-          state.story.currentNpcId = nextNpcId;
-          markStateDirty();
-        }
-        renderText();
-        publishState();
-      };
-
-      const commitPacketOutcome = (outcome) => {
-        if (outcome === PACKET_OUTCOME.SEALED) {
-          if (!state.packet.sealed) {
-            state.packet.sealed = true;
-            markStateDirty();
-          }
-          setBeat("packet-kept-sealed");
-        }
-
-        if (outcome === PACKET_OUTCOME.OPENED) {
-          if (state.packet.sealed) {
-            state.packet.sealed = false;
-            markStateDirty();
-          }
-          setBeat("packet-opened");
-        }
-      };
-
-      // Failure sting fires on the TRANSITION into CANCELLED, never on the
-      // stale snapshot. Drift → cancel happens inside move(); the following
-      // pointerup → release() early-returns because controller.active=false
-      // and its snapshot still carries outcome=CANCELLED. Without this
-      // transition guard the sting double-fires and the player sees the
-      // 180ms flash replay. Reset on press() so a fresh interaction can
-      // fail cleanly.
-      let lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
-
-      const maybeTriggerFailureFromOutcome = (outcome, source) => {
-        if (outcome === PACKET_OUTCOME.CANCELLED
-          && lastPacketOutcomeForFailure !== PACKET_OUTCOME.CANCELLED) {
-          triggerFailureFeedback(source);
-        }
-        lastPacketOutcomeForFailure = outcome;
-      };
-
-      const packetPress = (input) => {
-        const snapshot = packetIntent.press(input);
-        lastPacketOutcomeForFailure = snapshot.outcome;
-        syncPacketIntent(snapshot);
-        publishState();
-        return state.interaction.packetIntent;
-      };
-
-      const isCommittedOutcome = (outcome) =>
-        outcome !== null && outcome !== undefined && outcome !== PACKET_OUTCOME.UNKNOWN;
-
-      const packetMove = (input) => {
-        const snapshot = packetIntent.move(input);
-        syncPacketIntent(snapshot);
-        maybeTriggerFailureFromOutcome(snapshot.outcome, "packet-cancelled");
-        if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
-        publishState();
-        return state.interaction.packetIntent;
-      };
-
-      const packetTick = (timeMs) => {
-        const snapshot = packetIntent.tick(timeMs);
-        syncPacketIntent(snapshot);
-        if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
-        publishState();
-        return state.interaction.packetIntent;
-      };
-
-      const packetRelease = (input) => {
-        const snapshot = packetIntent.release(input);
-        syncPacketIntent(snapshot);
-        maybeTriggerFailureFromOutcome(snapshot.outcome, "packet-cancelled");
-        if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
-        publishState();
-        return state.interaction.packetIntent;
-      };
-
-      const choose = async (choiceId) => {
-        if (choiceId === "open-packet") {
-          if (state.packet.sealed) {
-            state.packet.sealed = false;
-            markStateDirty();
-          }
-          setBeat("packet-opened");
-          return;
-        }
-
-        if (choiceId === "keep-packet-sealed" || choiceId === "keep-sealed") {
-          if (!state.packet.sealed) {
-            state.packet.sealed = true;
-            markStateDirty();
-          }
-          setBeat("packet-kept-sealed");
-          return;
-        }
-
-        if (choiceId === "deliver-packet") {
-          deliverPacket("contract-input");
-          return;
-        }
-
-        if (choiceId === "return-to-io") {
-          await advance();
-          return;
-        }
-
-        throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
-      };
-
-      const advance = async () => {
-        if (state.packet.delivered && state.npcs.io.memory.length > 0) {
-          markStateDirty();
-          setBeat("io-returning-recognition");
-        }
-      };
-
-      const waitForStoryIdle = async () => {
-        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        publishState();
-      };
-
-      const forceSave = async () => {
-        persist({ dirty: false });
-        renderText();
-        publishState();
-      };
-
-      const reloadFromSave = async ({ clearLocalState = false } = {}) => {
-        const saved = readStored();
-        if (!saved) {
-          return;
-        }
-
-        if (clearLocalState) {
-          window.localStorage.removeItem(storageKey);
-        }
-
-        state.player = {
-          ...state.player,
-          ...saved.player,
-          flags: {
-            ...state.player.flags,
-            ...(saved.player?.flags ?? {}),
-          },
-        };
-        state.packet = { ...state.packet, ...saved.packet };
-        state.delivery = {
-          id: "blue-packet",
-          outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
-        };
-        state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
-        state.save = { ...emptySave(), ...saved.save, dirty: false };
-        state.scene.beat = typeof saved.beat === "string"
-          ? saved.beat
-          : state.packet.delivered ? "packet-delivered" : "packet-offered";
-
-        if (clearLocalState) {
-          persist({ dirty: false });
-        }
-
-        markStateDirty();
-        renderText();
-        publishState();
-      };
-
-      const makeRainBuffer = (context) => {
-        const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < data.length; i += 1) {
-          data[i] = (Math.random() * 2 - 1) * 0.38;
-        }
-        return buffer;
-      };
-
-      const startAmbientAudio = () => {
-        if (!audioContext || state._runtime.audio.ambientStarted) {
-          return;
-        }
-
-        ambientGain = audioContext.createGain();
-        ambientGain.gain.value = 0.045;
-        ambientGain.connect(audioContext.destination);
-
-        rainNoise = audioContext.createBufferSource();
-        rainNoise.buffer = makeRainBuffer(audioContext);
-        rainNoise.loop = true;
-
-        rainFilter = audioContext.createBiquadFilter();
-        rainFilter.type = "bandpass";
-        rainFilter.frequency.value = 1350;
-        rainFilter.Q.value = 0.72;
-        rainNoise.connect(rainFilter).connect(ambientGain);
-        rainNoise.start();
-
-        kioskHum = audioContext.createOscillator();
-        kioskHum.type = "sine";
-        kioskHum.frequency.value = 91;
-        kioskHumGain = audioContext.createGain();
-        kioskHumGain.gain.value = 0.018;
-        kioskHum.connect(kioskHumGain).connect(ambientGain);
-        kioskHum.start();
-
-        state._runtime.audio.ambientStarted = true;
-        markStateDirty();
-      };
-
-      const enableAudio = async () => {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) {
-          state._runtime.audio.lastCue = "unsupported";
-          markStateDirty();
-          publishState();
-          return false;
-        }
-
-        audioContext ||= new AudioContext();
-        if (audioContext.state === "suspended") {
-          await audioContext.resume();
-        }
-
-        state._runtime.audio.unlocked = audioContext.state === "running";
-        if (state._runtime.audio.unlocked) {
-          startAmbientAudio();
-          state._runtime.audio.lastCue = "ambient-rainline";
-        }
-        markStateDirty();
-        publishState();
-        return state._runtime.audio.unlocked;
-      };
-
-      const playKioskConfirm = async () => {
-        // Stamp the STORY-LEVEL cue FIRST, before the audio-unlock gate.
-        // The look/sound contract is "the game dispatched a packet-confirmed
-        // cue on the same tick as the visual feedback" — that dispatch is
-        // deterministic and independent of whether the browser actually
-        // unlocked its AudioContext (headless CI without a user gesture
-        // leaves audioContext.state === "suspended" and enableAudio()
-        // returns false; if we gate lastCue on that we can never assert
-        // the coupling from an e2e harness). The actual oscillator tones
-        // are still gated on unlock — that's a real-audio concern — but
-        // the state marker is set unconditionally so the harness (and any
-        // downstream analytics consumer) can observe that the cue fired.
-        const stampConfirmCue = () => {
-          state._runtime.audio.lastCue = "packet-confirmed";
-          markStateDirty();
-          publishState();
-        };
-        stampConfirmCue();
-
-        const unlocked = await enableAudio();
-        // enableAudio() may overwrite lastCue with "ambient-rainline" on
-        // its FIRST successful unlock. Re-stamp packet-confirmed after —
-        // the CONFIRM cue is the more specific signal for this call.
-        stampConfirmCue();
-        if (!unlocked || !audioContext) {
-          return;
-        }
-
-        const now = audioContext.currentTime;
-        const gain = audioContext.createGain();
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
-        gain.connect(audioContext.destination);
-
-        [523.25, 659.25, 987.77].forEach((frequency, index) => {
-          const tone = audioContext.createOscillator();
-          tone.type = index === 2 ? "triangle" : "sine";
-          tone.frequency.setValueAtTime(frequency, now + index * 0.035);
-          tone.connect(gain);
-          tone.start(now + index * 0.035);
-          tone.stop(now + 0.36);
-        });
-      };
-
-      const setConfirmCameraKick = ({ worldX = CONFIRM_FEEDBACK.cameraKickWorldX, yawDegrees = CONFIRM_FEEDBACK.cameraKickDeg } = {}) => {
-        state.interaction.confirmFeedback.cameraKickWorldX = worldX;
-        state.interaction.confirmFeedback.cameraKickDeg = yawDegrees;
-        markStateDirty();
-        publishState();
-      };
-
-      // Harness-only: override the recognition-beat camera envelope
-      // amplitudes. Zeroing both proves the durable memoryBeat reports
-      // MEASURED camera motion (the probe reads the live pose, which goes
-      // flat when the envelope is flat), not canned contract literals.
-      const setRecognitionCameraEnvelope = ({
-        cameraDeltaMeters = MEMORY_RECOGNITION_FEEDBACK.cameraDeltaMeters,
-        cameraYawDegrees = MEMORY_RECOGNITION_FEEDBACK.cameraYawDegrees,
-      } = {}) => {
-        state.interaction.recognitionFeedback.cameraDeltaMeters = cameraDeltaMeters;
-        state.interaction.recognitionFeedback.cameraYawDegrees = cameraYawDegrees;
-        markStateDirty();
-        publishState();
-      };
-
-      const triggerKioskFeedback = (source) => {
-        state.interaction.lastAction = source;
-        state.interaction.kioskPulse = 1;
-        state.interaction.confirmCount += 1;
-        state.interaction.confirmStartedAt = performance.now();
-        state.interaction.confirmFeedback = {
-          ...state.interaction.confirmFeedback,
-          active: true,
-          remainingMs: CONFIRM_FEEDBACK.durationMs,
-        };
-        markStateDirty();
-        publishState();
-      };
-
-      const triggerFailureFeedback = (source) => {
-        state.interaction.lastAction = source;
-        state.interaction.failureStartedAt = performance.now();
-        state.interaction.failureFeedback = {
-          ...FAILURE_FEEDBACK,
-          active: true,
-          remainingMs: FAILURE_FEEDBACK.durationMs,
-        };
-        markStateDirty();
-        publishState();
-      };
-
-      let memoryBeatCameraProbe = null;
-      let memoryRecognitionBeatStartedAt = null;
-
-      const easeOutCubic = (value) => 1 - ((1 - clamp(value, 0, 1)) ** 3);
-      const easeInOutCubic = (value) => {
-        const k = clamp(value, 0, 1);
-        return k < 0.5 ? 4 * k * k * k : 1 - ((-2 * k + 2) ** 3) / 2;
-      };
-
-      const recognitionEnvelopeAt = (elapsedMs) => {
-        const safeElapsedMs = Math.max(0, elapsedMs);
-        let yawProgress;
-        if (safeElapsedMs < 180) {
-          yawProgress = easeOutCubic(safeElapsedMs / 180) * 0.25;
-        } else if (safeElapsedMs < 700) {
-          yawProgress = 0.25 + 0.75 * easeInOutCubic((safeElapsedMs - 180) / 520);
-        } else {
-          yawProgress = 1 - easeOutCubic((safeElapsedMs - 700) / 520);
-        }
-        const normalized = clamp(yawProgress, 0, 1);
-        return {
-          cameraDeltaMeters: state.interaction.recognitionFeedback.cameraDeltaMeters * normalized,
-          cameraYawDegrees: state.interaction.recognitionFeedback.cameraYawDegrees * normalized,
-        };
-      };
-
-      // Compute the recognition envelope's contribution at an arbitrary
-      // timestamp — 0 when no recognition beat is running. Shared by the
-      // render tick and the analytical camera probe so the probe measures
-      // the SAME pose the loop paints (the earlier draft omitted this from
-      // computeCameraPoseAt, so the durable beat under-reported the dolly
-      // by ~6x versus what the camera actually did).
-      const recognitionMotionAt = (nowMs) => {
-        if (memoryRecognitionBeatStartedAt === null) {
-          return { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
-        }
-        return recognitionEnvelopeAt(nowMs - memoryRecognitionBeatStartedAt);
-      };
-
-      // Analytical model of the camera pose the tick loop paints — same
-      // formula as the tick body below, extracted so we can sample the peak
-      // wobble at fixed millisecond intervals INSTEAD of relying on rAF
-      // firing during the 220ms confirm window. On cold CI (SwiftShader,
-      // slow first paint) the render loop can skip the confirm window
-      // entirely — a single tick at progress≈0 followed by one at
-      // progress≈0.9 misses every wobble peak, and the measured delta/yaw
-      // collapse to zero. Analytical sampling makes the probe deterministic
-      // while still reading LIVE state (cameraKickWorldX / cameraKickDeg /
-      // state.player.x/z) so an override like setConfirmCameraKick({0,0})
-      // still zeros the reported motion.
-      const computeCameraPoseAt = (nowMs) => {
-        const confirmStartedAt = state.interaction.confirmStartedAt;
-        const failureStartedAt = state.interaction.failureStartedAt;
-        const confirmProgress = confirmStartedAt === null
-          ? 1
-          : Math.min(Math.max((nowMs - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
-        const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
-        const confirmFalloff = 1 - confirmIntensity;
-        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
-        const failureProgress = failureStartedAt === null
-          ? 1
-          : Math.min(Math.max((nowMs - failureStartedAt) / FAILURE_FEEDBACK.durationMs, 0), 1);
-        const failureCurve = 1 - (1 - failureProgress) ** 2;
-        const failureFalloff = 1 - failureCurve;
-        const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
-        const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
-        const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
-        const recognitionMotion = recognitionMotionAt(nowMs);
-        return {
-          x: state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
-          z: 7.6 + state.player.z * 0.12,
-          rotationZ: THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
-        };
-      };
-
-      const startMemoryBeatCameraProbe = (startedAt) => {
-        // Anchor the probe to the DETERMINISTIC "resting" camera pose (the
-        // pose the render loop would paint with confirmWobble=0 and
-        // failureWobble=0), NOT to camera.position.clone(). If we captured
-        // the live clone we'd race the render loop: on cold CI runs the
-        // first tick after startProbe can be the one that installs
-        // state.player.x/z into camera.position for the first time, so
-        // delta from (0, 2.25, 7.6) picks up ~0.26m of baseline instead
-        // of the ~0.05m confirm kick we're actually measuring. This
-        // anchors on state so the delta is purely the wobble contribution.
-        memoryBeatCameraProbe = {
-          startedAt,
-          startX: state.player.x * 0.12,
-          startZ: 7.6 + state.player.z * 0.12,
-          maxDeltaMeters: 0,
-          maxYawDegrees: 0,
-        };
-        // Analytical peak-catcher: sample at 10ms intervals across the
-        // 220ms confirm window. The confirm-wobble peak lands near
-        // progress≈0.083 (first sine crest under the (1-p)^3 falloff);
-        // a 10ms cadence has ~22 samples across the window, so we always
-        // land within ~5ms of that peak regardless of rAF jitter.
-        if (memoryBeatCameraProbe.intervalId) {
-          clearInterval(memoryBeatCameraProbe.intervalId);
-        }
-        memoryBeatCameraProbe.intervalId = setInterval(() => {
-          sampleMemoryBeatCameraProbe();
-        }, 10);
-      };
-
-      const sampleMemoryBeatCameraProbe = () => {
-        if (!memoryBeatCameraProbe) {
-          return;
-        }
-        // Prefer the analytical model — it reads live state and is
-        // independent of whether the render loop has actually ticked
-        // in the confirm window. camera.position/rotation is still
-        // sampled (via tick's sampleMemoryBeatCameraProbe call) as a
-        // fallback, but the analytical path guarantees peak coverage.
-        const pose = computeCameraPoseAt(performance.now());
-        const dx = pose.x - memoryBeatCameraProbe.startX;
-        const dz = pose.z - memoryBeatCameraProbe.startZ;
-        const deltaMeters = Math.hypot(dx, dz);
-        const yawDegrees = Math.abs(THREE.MathUtils.radToDeg(pose.rotationZ));
-        memoryBeatCameraProbe.maxDeltaMeters = Math.max(memoryBeatCameraProbe.maxDeltaMeters, deltaMeters);
-        memoryBeatCameraProbe.maxYawDegrees = Math.max(memoryBeatCameraProbe.maxYawDegrees, yawDegrees);
-      };
-
-      const finishMemoryBeatCameraProbe = () => {
-        sampleMemoryBeatCameraProbe();
-        if (memoryBeatCameraProbe?.intervalId) {
-          clearInterval(memoryBeatCameraProbe.intervalId);
-        }
-        const measured = memoryBeatCameraProbe
-          ? {
-              cameraDeltaMeters: Number(memoryBeatCameraProbe.maxDeltaMeters.toFixed(3)),
-              cameraYawDegrees: Number(memoryBeatCameraProbe.maxYawDegrees.toFixed(2)),
-            }
-          : { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
-        memoryBeatCameraProbe = null;
-        return measured;
-      };
-
-      const deliverPacket = (source = "hud-button") => {
-        triggerKioskFeedback(source);
-        state.packet.delivered = true;
-        state.packet.route = "blue rainline";
-        state.packet.deliveredAt = new Date().toISOString();
-        state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
-        const fact = memoryFact();
-        state.npcs.io.memory = [fact];
-        state.save.revision += 1;
-        state.save.dirty = true;
-        const beatStartedAt = performance.now();
-        startMemoryBeatCameraProbe(beatStartedAt);
-        memoryRecognitionBeatStartedAt = beatStartedAt;
-        markStateDirty();
-        setBeat("packet-delivered");
-        setTimeout(() => {
-          const beatEndedAt = performance.now();
-          const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
-          const cameraMotion = finishMemoryBeatCameraProbe();
-          memoryRecognitionBeatStartedAt = null;
-          state.story.memoryBeat = {
-            kind: "io_packet_return",
-            outcome: durableOutcome,
-            startedAt: beatStartedAt,
-            endedAt: beatEndedAt,
-            cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
-            cameraYawDegrees: cameraMotion.cameraYawDegrees,
-            inputLockMs: Math.min(MEMORY_RECOGNITION_FEEDBACK.durationMs, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
-            lineId: durableOutcome === "sealed"
-              ? "io_return_packet_sealed"
-              : "io_return_packet_opened",
-          };
-          markStateDirty();
-          setBeat("io-returning-recognition");
-        }, 1180);
-        persist({ dirty: true });
-        playKioskConfirm();
-      };
-
-      const resetSliceSave = () => {
-        window.localStorage.removeItem(storageKey);
-        packetIntent.reset();
-        state.scene.beat = "packet-offered";
-        state.story.currentNpcId = null;
-        state.story.memoryBeat = null;
-        state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
-        state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
-        state.delivery = { id: "blue-packet", outcome: "unknown" };
-        state.npcs.io.memory = [];
-        state.npcs.io.lastLineMemoryRefs = [];
-        state.save = emptySave();
-        state.movement.input = { x: 0, z: 0, source: "none", active: false };
-        state.movement.lastStepMs = 0;
-        state.movement.lastVelocityMetersPerSecond = 0;
-        state.interaction.lastAction = null;
-        state.interaction.lastPointer = null;
-        state.interaction.kioskPulse = 0;
-        state.interaction.confirmCount = 0;
-        state.interaction.confirmStartedAt = null;
-        state.interaction.failureStartedAt = null;
-        state.interaction.confirmFeedback = {
-          ...CONFIRM_FEEDBACK,
-          active: false,
-          remainingMs: 0,
-        };
-        state.interaction.recognitionFeedback = {
-          ...MEMORY_RECOGNITION_FEEDBACK,
-        };
-        state.interaction.failureFeedback = {
-          ...FAILURE_FEEDBACK,
-          active: false,
-          remainingMs: 0,
-        };
-        memoryRecognitionBeatStartedAt = null;
-        lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
-        markStateDirty();
-        syncPacketIntent();
-        document.documentElement.style.setProperty("--confirm-shake-x", "0px");
-        document.documentElement.style.setProperty("--confirm-shake-y", "0px");
-        if (failureSting) {
-          failureSting.style.opacity = "0";
-        }
-        camera.position.x = 0;
-        camera.rotation.z = 0;
-        renderText();
-        publishState();
-      };
-
-      // Harness-only: restore state from a snapshot produced by getSnapshot(),
-      // OR (no arg) fall back to resetSliceSave(). Restores the same fields
-      // getSnapshot() exposes — scene, player, packet, npcs, save — via a
-      // deep clone so the caller's snapshot is not aliased into live state.
-      // Runtime-only concerns (audio, transient interaction feedback) are
-      // intentionally left as-is; they aren't part of the story-state contract.
-      const reset = (snapshot) => {
-        if (!snapshot || typeof snapshot !== "object") {
-          resetSliceSave();
-          return;
-        }
-        const restored = clone(snapshot);
-        if (restored.scene && typeof restored.scene.beat === "string") {
-          state.scene.beat = restored.scene.beat;
-        }
-        if (restored.story && typeof restored.story === "object") {
-          state.story.currentNpcId = restored.story.currentNpcId ?? null;
-          state.story.memoryBeat = restored.story.memoryBeat ?? null;
-        }
-        if (restored.player && typeof restored.player === "object") {
-          state.player = { ...state.player, ...restored.player };
-        }
-        if (restored.packet && typeof restored.packet === "object") {
-          state.packet = { ...state.packet, ...restored.packet };
-        }
-        if (restored.delivery && typeof restored.delivery === "object") {
-          state.delivery = { id: "blue-packet", outcome: restored.delivery.outcome || "unknown" };
-        }
-        if (restored.npcs && restored.npcs.io) {
-          state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
-            ? clone(restored.npcs.io.memory)
-            : [];
-          state.npcs.io.lastLine = restored.npcs.io.lastLine ?? null;
-          state.npcs.io.lastLineMemoryRefs = Array.isArray(restored.npcs.io.lastLineMemoryRefs)
-            ? clone(restored.npcs.io.lastLineMemoryRefs)
-            : [];
-        }
-        if (restored.save && typeof restored.save === "object") {
-          state.save = { ...emptySave(), ...restored.save };
-        }
-        markStateDirty();
-        renderText();
-        publishState();
-      };
-
-      const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0x07111d, 0.045);
-
-      const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
-      camera.position.set(0, 2.25, 7.6);
-
-      const raycaster = new THREE.Raycaster();
-      const pointer = new THREE.Vector2();
-
-      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.08;
-
-      const composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.52, 0.55, 0.18);
-      composer.addPass(bloomPass);
-
-      const hemi = new THREE.HemisphereLight(0x8ccfff, 0x09111d, 1.4);
-      scene.add(hemi);
-
-      const key = new THREE.DirectionalLight(0xc4f4ff, 2.2);
-      key.position.set(-4, 6, 5);
-      key.castShadow = true;
-      key.shadow.mapSize.set(1024, 1024);
-      scene.add(key);
-
-      const signLight = new THREE.PointLight(0x33ddff, 8, 9, 1.8);
-      signLight.position.set(0, 2.15, -1.1);
-      scene.add(signLight);
-
-      const wetGround = new THREE.Mesh(
-        new THREE.PlaneGeometry(16, 18),
-        new THREE.MeshStandardMaterial({ color: 0x07111a, roughness: 0.18, metalness: 0.2 })
-      );
-      wetGround.rotation.x = -Math.PI / 2;
-      wetGround.receiveShadow = true;
-      scene.add(wetGround);
-
-      const playerMesh = new THREE.Group();
-      const playerBody = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.22, 0.74, 6, 12),
-        new THREE.MeshStandardMaterial({ color: 0xf4dfb1, roughness: 0.48, metalness: 0.08 })
-      );
-      playerBody.position.y = 0.76;
-      playerBody.castShadow = true;
-      playerMesh.add(playerBody);
-      const playerFacing = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12, 0.08, 0.28),
-        new THREE.MeshStandardMaterial({ color: 0x79e8ff, emissive: 0x17677b, emissiveIntensity: 0.7 })
-      );
-      playerFacing.position.set(0, 1.02, 0.18);
-      playerMesh.add(playerFacing);
-      scene.add(playerMesh);
-
-      const kiosk = new THREE.Group();
-      const kioskBody = new THREE.Mesh(
-        new THREE.BoxGeometry(1.35, 2.45, 0.5),
-        new THREE.MeshStandardMaterial({ color: 0x102134, roughness: 0.42, metalness: 0.25 })
-      );
-      kioskBody.position.y = 1.23;
-      kioskBody.castShadow = true;
-      kiosk.add(kioskBody);
-
-      const screen = new THREE.Mesh(
-        new THREE.BoxGeometry(1.08, 0.66, 0.04),
-        new THREE.MeshStandardMaterial({ color: 0x67eaff, emissive: 0x25cfff, emissiveIntensity: 1.8, roughness: 0.08 })
-      );
-      screen.position.set(0, 1.65, 0.28);
-      kiosk.add(screen);
-
-      const slotMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.76, 0.08, 0.05),
-        new THREE.MeshStandardMaterial({ color: 0x07111a, emissive: 0x0b6a82, emissiveIntensity: 0.7 })
-      );
-      slotMesh.position.set(0, 0.92, 0.3);
-      kiosk.add(slotMesh);
-      scene.add(kiosk);
-      const kioskHitTargets = [kioskBody, screen, slotMesh];
-
-      const io = new THREE.Group();
-      const coat = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.34, 1.08, 6, 12),
-        new THREE.MeshStandardMaterial({ color: 0x1d2738, roughness: 0.64, metalness: 0.05 })
-      );
-      coat.position.y = 1.1;
-      coat.castShadow = true;
-      io.add(coat);
-
-      const face = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 24, 16),
-        new THREE.MeshStandardMaterial({ color: 0xd7b99c, roughness: 0.5 })
-      );
-      face.position.y = 1.92;
-      face.castShadow = true;
-      io.add(face);
-
-      const visor = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.08, 0.08),
-        new THREE.MeshStandardMaterial({ color: 0x8af2ff, emissive: 0x5bdfff, emissiveIntensity: 1.1 })
-      );
-      visor.position.set(0, 1.95, 0.17);
-      io.add(visor);
-      io.position.set(-1.55, 0, 0.7);
-      io.rotation.y = 0.35;
-      scene.add(io);
-
-      const makeTower = (x, z, height, color) => {
-        const tower = new THREE.Mesh(
-          new THREE.BoxGeometry(0.72, height, 0.72),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.08 })
-        );
-        tower.position.set(x, height / 2, z);
-        tower.castShadow = true;
-        tower.receiveShadow = true;
-        scene.add(tower);
-
-        const windowStrip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, 0.06, 0.04),
-          new THREE.MeshStandardMaterial({ color: 0xffca75, emissive: 0xff9d2e, emissiveIntensity: 0.45 })
-        );
-        windowStrip.position.set(x, height * 0.72, z + 0.39);
-        scene.add(windowStrip);
-      };
-
-      makeTower(-4.6, -3.8, 4.4, 0x0c1724);
-      makeTower(3.8, -3.4, 5.8, 0x101b2a);
-      makeTower(-3.1, -6.1, 7.1, 0x0a1420);
-      makeTower(4.9, -6.4, 6.3, 0x0d1722);
-
-      const rain = new THREE.Group();
-      const rainMaterial = new THREE.LineBasicMaterial({ color: 0x8edfff, transparent: true, opacity: 0.38 });
-      for (let i = 0; i < 90; i += 1) {
-        const x = THREE.MathUtils.randFloatSpread(13);
-        const y = THREE.MathUtils.randFloat(1.5, 8.5);
-        const z = THREE.MathUtils.randFloat(-8, 4);
-        const points = [new THREE.Vector3(x, y, z), new THREE.Vector3(x - 0.08, y - 0.55, z)];
-        const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rainMaterial);
-        rain.add(drop);
+    <nav class="controls" aria-label="slice controls">
+      <button id="resetButton" type="button">Reset save</button>
+      <button id="returnButton" type="button" class="primary">Start return session</button>
+    </nav>
+  </main>
+
+  <script type="module">
+    const STORAGE_KEY = 'aftersign.slice.ioMemory.v1';
+    const HOLD_TO_OPEN_MS = 550;
+    const packet = document.querySelector('#packet');
+    const ioLine = document.querySelector('#ioLine');
+    const prompt = document.querySelector('#prompt');
+    const game = document.querySelector('#game');
+    const resetButton = document.querySelector('#resetButton');
+    const returnButton = document.querySelector('#returnButton');
+
+    const state = {
+      scene: 'io-night-post',
+      packetOutcome: 'pending',
+      ioTrustPosture: 'testing',
+      authoredMemory: null,
+      lastIoLine: ioLine.textContent,
+      returningSession: false,
+      input: {
+        holdToOpenMs: HOLD_TO_OPEN_MS,
+        holdProgress: 0,
+        lastDecisionLatencyMs: null
       }
-      scene.add(rain);
+    };
 
-      const resize = () => {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height, false);
-        composer.setSize(width, height);
-        bloomPass.setSize(width, height);
-      };
+    let holdStart = 0;
+    let holdFrame = 0;
+    let pointerDown = false;
+    let decidedThisPress = false;
 
-      const handleScenePointer = (event) => {
-        const rect = canvas.getBoundingClientRect();
-        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        state.interaction.lastPointer = {
-          x: Math.round(event.clientX - rect.left),
-          y: Math.round(event.clientY - rect.top),
-        };
-        markStateDirty();
-        raycaster.setFromCamera(pointer, camera);
-        if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
-          event.preventDefault();
-          deliverPacket("scene-kiosk-pointer");
-        } else {
-          publishState();
-        }
-      };
-
-      const pressedKeys = new Set();
-      const syncKeyboardInput = () => {
-        const x = Number(pressedKeys.has("KeyD") || pressedKeys.has("ArrowRight")) - Number(pressedKeys.has("KeyA") || pressedKeys.has("ArrowLeft"));
-        const z = Number(pressedKeys.has("KeyS") || pressedKeys.has("ArrowDown")) - Number(pressedKeys.has("KeyW") || pressedKeys.has("ArrowUp"));
-        setMoveInput(x, z, x || z ? "keyboard" : "none");
-      };
-
-      const packetPointFromEvent = (event) => ({
-        timeMs: performance.now(),
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      packetButton.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        packetButton.setPointerCapture(event.pointerId);
-        packetPress(packetPointFromEvent(event));
-      });
-      packetButton.addEventListener("pointermove", (event) => {
-        if (state.interaction.packetIntent.active) {
-          event.preventDefault();
-          packetMove(packetPointFromEvent(event));
-        }
-      });
-      packetButton.addEventListener("pointerup", (event) => {
-        event.preventDefault();
-        packetRelease(packetPointFromEvent(event));
-      });
-      packetButton.addEventListener("pointercancel", (event) => {
-        event.preventDefault();
-        packetMove({ ...packetPointFromEvent(event), x: state.interaction.packetIntent.config.DRIFT_CANCEL_PX + event.clientX + 1 });
-      });
-      deliverButton.addEventListener("click", () => choose("deliver-packet"));
-      canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
-      window.addEventListener("keydown", (event) => {
-        pressedKeys.add(event.code);
-        syncKeyboardInput();
-      });
-      window.addEventListener("keyup", (event) => {
-        pressedKeys.delete(event.code);
-        syncKeyboardInput();
-      });
-      soundButton.addEventListener("click", enableAudio);
-      resetButton.addEventListener("click", resetSliceSave);
-      window.addEventListener("resize", resize, { passive: true });
-
-      // Boot complete: listeners wired + Io's kiosk line rendered. The scene
-      // is interactive (scene.ready) and her intro has been seen — a restored
-      // save keeps whatever it already recorded (#564 Phase 1).
-      state.scene.ready = true;
-      if (!state.player.flags.io_intro_seen) {
-        state.player.flags.io_intro_seen = true;
-        markStateDirty();
+    function loadMemory() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      } catch {
+        return null;
       }
-      renderText();
-      publishState();
-      resize();
+    }
 
-      let last = performance.now();
-      let movementAccumulator = 0;
-      const tick = (now) => {
-        const dt = Math.min((now - last) / 1000, 0.05);
-        last = now;
-        movementAccumulator += dt;
-        while (movementAccumulator >= MOVEMENT.fixedStepSeconds) {
-          stepMovement(MOVEMENT.fixedStepSeconds);
-          movementAccumulator -= MOVEMENT.fixedStepSeconds;
-        }
-        const t = now / 1000;
-        const kioskPulse = state.interaction.kioskPulse;
-        const confirmStartedAt = state.interaction.confirmStartedAt;
-        const failureStartedAt = state.interaction.failureStartedAt;
-        const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
-        const packetProgress = packetIntentSnapshot.progress;
-        const confirmProgress = confirmStartedAt === null
-          ? 1
-          : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
-        const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
-        const confirmFalloff = 1 - confirmIntensity;
-        const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
-        const failureProgress = failureStartedAt === null
-          ? 1
-          : Math.min(Math.max((now - failureStartedAt) / FAILURE_FEEDBACK.durationMs, 0), 1);
-        const failureCurve = 1 - (1 - failureProgress) ** 2;
-        const failureFalloff = 1 - failureCurve;
-        const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
+    function saveMemory(record) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        ...record,
+        durablePlayerId: record.durablePlayerId || 'local-harness-player',
+        savedAt: new Date().toISOString()
+      }));
+    }
 
-        playerMesh.position.set(state.player.x, 0, state.player.z);
-        playerMesh.rotation.y = state.player.facingRadians;
-        kiosk.rotation.y = Math.sin(t * 0.6) * 0.025 + confirmWobble * 0.045;
-        kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
-        io.position.y = Math.sin(t * 1.7) * 0.025;
-        const recognitionMotion = recognitionMotionAt(now);
-        camera.position.x = state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
-        camera.position.z = 7.6 + state.player.z * 0.12;
-        camera.rotation.z = THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
-        sampleMemoryBeatCameraProbe();
-        document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
-        document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
-        if (failureSting) {
-          failureSting.style.opacity = `${(failureFalloff * FAILURE_FEEDBACK.flashAlpha).toFixed(3)}`;
-        }
-        screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
-        slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45 + packetProgress * 0.4;
-        signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3 + packetProgress * 1.1;
-        state.interaction.kioskPulse = Math.max(0, kioskPulse - dt * CONFIRM_FEEDBACK.pulseDecayPerSecond);
-        if (confirmStartedAt !== null) {
-          state.interaction.confirmFeedback.active = confirmProgress < 1;
-          state.interaction.confirmFeedback.remainingMs = Math.max(0, Math.round(CONFIRM_FEEDBACK.durationMs - (now - confirmStartedAt)));
-          if (confirmProgress >= 1) {
-            state.interaction.confirmStartedAt = null;
-          }
-        }
-        if (failureStartedAt !== null) {
-          state.interaction.failureFeedback.active = failureProgress < 1;
-          state.interaction.failureFeedback.remainingMs = Math.max(0, Math.round(FAILURE_FEEDBACK.durationMs - (now - failureStartedAt)));
-          if (failureProgress >= 1) {
-            state.interaction.failureStartedAt = null;
-          }
-        }
-        if (rainFilter) {
-          rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
-        }
-        if (kioskHum) {
-          kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
-        }
-        rain.children.forEach((drop, index) => {
-          drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
-          if (drop.position.y < -2) {
-            drop.position.y = 7.5;
-          }
-        });
+    function setLine(text) {
+      ioLine.textContent = text;
+      state.lastIoLine = text;
+      ioLine.classList.remove('beat');
+      void ioLine.offsetWidth;
+      ioLine.classList.add('beat');
+    }
 
-        renderText();
-        publishState();
-        composer.render();
-        requestAnimationFrame(tick);
-      };
+    function setOutcome(outcome, latencyMs) {
+      if (state.packetOutcome !== 'pending') return;
+      state.packetOutcome = outcome;
+      state.input.lastDecisionLatencyMs = Math.round(latencyMs);
+      packet.classList.toggle('opened', outcome === 'opened');
+      packet.classList.add('delivered');
+      game.classList.add('beat');
 
-      requestAnimationFrame(tick);
-    </script>
-  </body>
+      if (outcome === 'sealed') {
+        state.ioTrustPosture = 'trusting';
+        state.authoredMemory = 'The player delivered the blue packet unopened.';
+        setLine('Io: “Unbroken. Good. Vey can use one more pair of clean hands.”');
+      } else {
+        state.ioTrustPosture = 'wary';
+        state.authoredMemory = 'The player opened the blue packet before delivery.';
+        setLine('Io: “Wax broke before the box. I can still use the fact. Not the habit.”');
+      }
+
+      saveMemory({
+        completedDeliveryIds: ['blue-packet-sign-box'],
+        deliveryOutcome: outcome,
+        npcTrustPosture: state.ioTrustPosture,
+        authoredMemory: state.authoredMemory,
+        lastSeenBucket: 'same-night'
+      });
+
+      prompt.textContent = 'Saved. Start a return session to test Io’s memory line.';
+    }
+
+    function updateHoldProgress(now) {
+      if (!pointerDown || decidedThisPress) return;
+      const elapsed = now - holdStart;
+      state.input.holdProgress = Math.min(1, elapsed / HOLD_TO_OPEN_MS);
+      packet.style.setProperty('--hold', state.input.holdProgress.toFixed(3));
+      if (elapsed >= HOLD_TO_OPEN_MS) {
+        decidedThisPress = true;
+        setOutcome('opened', elapsed);
+        if (navigator.vibrate) navigator.vibrate(24);
+        return;
+      }
+      holdFrame = requestAnimationFrame(updateHoldProgress);
+    }
+
+    function beginPress(event) {
+      if (state.packetOutcome !== 'pending') return;
+      event.preventDefault();
+      packet.setPointerCapture?.(event.pointerId);
+      pointerDown = true;
+      decidedThisPress = false;
+      holdStart = performance.now();
+      state.input.holdProgress = 0;
+      packet.style.setProperty('--hold', '0');
+      holdFrame = requestAnimationFrame(updateHoldProgress);
+    }
+
+    function endPress(event) {
+      if (!pointerDown) return;
+      event.preventDefault();
+      pointerDown = false;
+      cancelAnimationFrame(holdFrame);
+      packet.style.setProperty('--hold', '0');
+      const elapsed = performance.now() - holdStart;
+      if (!decidedThisPress && state.packetOutcome === 'pending') {
+        setOutcome('sealed', elapsed);
+        if (navigator.vibrate) navigator.vibrate(12);
+      }
+    }
+
+    function startReturnSession() {
+      const memory = loadMemory();
+      state.returningSession = true;
+      packet.classList.add('delivered');
+      if (!memory) {
+        setLine('Io: “No packet in the ledger yet. First we make a fact.”');
+        prompt.textContent = 'No saved delivery found. Reset and make the first packet choice.';
+        return;
+      }
+
+      state.packetOutcome = memory.deliveryOutcome;
+      state.ioTrustPosture = memory.npcTrustPosture;
+      state.authoredMemory = memory.authoredMemory;
+
+      if (memory.deliveryOutcome === 'sealed') {
+        setLine('Io: “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”');
+      } else {
+        setLine('Io: “You came back. The seal did not. I can use one of those facts.”');
+      }
+      prompt.textContent = 'Return beat loaded from saved memory. Harness can assert lastIoLine against packetOutcome.';
+    }
+
+    function resetSlice() {
+      localStorage.removeItem(STORAGE_KEY);
+      state.scene = 'io-night-post';
+      state.packetOutcome = 'pending';
+      state.ioTrustPosture = 'testing';
+      state.authoredMemory = null;
+      state.returningSession = false;
+      state.input.holdProgress = 0;
+      state.input.lastDecisionLatencyMs = null;
+      packet.classList.remove('opened', 'delivered');
+      packet.style.setProperty('--hold', '0');
+      setLine('Io: “Blue packet. Sign box by the rail. Bring me back the fact, not the story.”');
+      prompt.textContent = 'Tap the packet to deliver sealed. Hold 0.55s to break the wax first.';
+    }
+
+    packet.addEventListener('pointerdown', beginPress, { passive: false });
+    packet.addEventListener('pointerup', endPress, { passive: false });
+    packet.addEventListener('pointercancel', endPress, { passive: false });
+    packet.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setOutcome('sealed', 0);
+      }
+      if (event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        setOutcome('opened', HOLD_TO_OPEN_MS);
+      }
+    });
+    resetButton.addEventListener('click', resetSlice);
+    returnButton.addEventListener('click', startReturnSession);
+
+    window.__game = {
+      get storyState() {
+        return {
+          scene: state.scene,
+          packetOutcome: state.packetOutcome,
+          ioTrustPosture: state.ioTrustPosture,
+          authoredMemory: state.authoredMemory,
+          lastIoLine: state.lastIoLine,
+          returningSession: state.returningSession
+        };
+      },
+      get inputState() {
+        return { ...state.input };
+      },
+      resetSlice,
+      startReturnSession,
+      choosePacketOutcome: (outcome) => setOutcome(outcome, outcome === 'opened' ? HOLD_TO_OPEN_MS : 0),
+      loadMemory
+    };
+  </script>
+</body>
 </html>
