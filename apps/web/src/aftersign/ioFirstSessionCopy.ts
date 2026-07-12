@@ -3,9 +3,11 @@
 // This module owns only the beats Io speaks on the player's FIRST arrival.
 // Returning-session recognition lines (§7 of the vertical-slice script) live
 // in `packages/aftersign/src/ioReturningSession.ts` — that module is the
-// single source of truth for anything a returning player hears. Do not
-// re-add returnSealed / returnOpened here; the harness reads those from
-// ioReturningSessionLines and duplicating the copy is a regression.
+// single source of truth for anything a returning player hears, and
+// `aftersign/src/ioFirstSessionPacing.ts` encodes the same invariant in its
+// beat union. Do not re-add returnSealed / returnOpened here; the harness
+// reads those from ioReturningSessionLines and duplicating the copy is a
+// regression.
 
 export type IoFirstSessionCopyKey =
   | 'arrival'

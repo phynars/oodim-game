@@ -58,6 +58,15 @@ describe('ioFirstSessionCopy', () => {
     expect(getIoFirstSessionLine('openedWarning')).toContain('opens');
   });
 
+  it('does not duplicate returning-session recognition lines', () => {
+    // Returning-player copy is owned by packages/aftersign/src/ioReturningSession.ts
+    // (keys sealedPacket / openedPacket). Guard against a regression that
+    // re-adds those beats here under return* aliases.
+    const keys = new Set<string>(ioFirstSessionCopy.map((line) => line.key));
+    expect(keys.has('returnSealed')).toBe(false);
+    expect(keys.has('returnOpened')).toBe(false);
+  });
+
   it('throws on an unknown key so a typo cannot silently render empty', () => {
     expect(() =>
       getIoFirstSessionLine('nonsense' as IoFirstSessionCopyKey),
