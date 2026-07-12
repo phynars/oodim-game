@@ -54,9 +54,9 @@ export {
 export {
   getIoFirstSessionLine,
   getIoFirstSessionText,
-  ioFirstSessionCopy,
-  type IoFirstSessionBeatId,
-  type IoFirstSessionCopyLine,
+  ioFirstSessionLines,
+  type IoFirstSessionBeat,
+  type IoFirstSessionLine,
   type IoReferencedPlayerAction,
 } from "./ioFirstSessionCopy";
 
