@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { IO_PHONE_READY_FEEL } from '../../e2e-shared/aftersign/ioPhoneReadyFeel';
+
 // Cold-start budget matches sibling AFTERSIGN specs: SwiftShader + three.js
 // first WebGL context regularly blows the default 30s in CI. Every spec in
 // aftersign/e2e/ opts into 90s and uses waitUntil: 'load' — 'networkidle'
@@ -18,12 +20,13 @@ const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const IO_SEALED_RECOGNITION_LINE =
   'I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.';
 
-// Phone-ready envelope for the first Io recognition beat. These are measured
-// around the runtime transition, not copied from static constants: the text
-// must settle inside one deliberate UI beat and the audio cue must follow the
-// visual recognition state closely enough to feel paired on a phone speaker.
-const MAX_UI_SETTLE_MS = 360;
-const MAX_AV_DRIFT_MS = 50;
+// Phone-ready envelope for the first Io recognition beat. Sourced from the
+// shared feel contract (e2e-shared/aftersign/ioPhoneReadyFeel.ts) so the spec
+// asserts against the SAME numbers the runtime samples — no parallel source
+// of truth. If these budgets need to move, edit the shared contract; the
+// runtime mirror in apps/web/src/aftersign/ioPhoneReadyFeel.ts must match.
+const MAX_UI_SETTLE_MS = IO_PHONE_READY_FEEL.settleMs;
+const MAX_AV_DRIFT_MS = IO_PHONE_READY_FEEL.maxAudioVisualDriftMs;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
 type PhoneReadyProbe = {
