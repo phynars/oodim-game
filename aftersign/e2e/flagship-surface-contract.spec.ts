@@ -32,20 +32,6 @@ declare global {
 //     callable choice ids (`keep-sealed`, `deliver-packet`, `return-to-io`).
 //   - Remaining tests stay fixme until Phases 3/4 fields are shipped.
 
-// CI sentinel contract for .github/workflows/aftersign-npc-memory-redgreen.yml:
-// Keep this literal while npc-memory round-trip remains fixme'd so the
-// workflow preflight can retire red-polarity without coupling to the runtime
-// test title. Remove this sentinel when Phase 3 converts the test to a
-// conditional guard keyed off FLAGSHIP_BREAK_MODE (drop-memory), matching
-// the sibling durable-save spec pattern.
-//
-// NOTE: this comment intentionally does NOT contain the live guard substring
-// the preflight greps for — the preflight is text-only and matches inside
-// comments, so any lookalike here would trip the "guard present" branch and
-// wake the red lane against a still-fixme'd spec. Follow-up #TBD: key the
-// preflight on this symbol name instead so the signal is intent, not string.
-const NPC_MEMORY_REDGREEN_FIXME_SENTINEL = 'test.fixme("npc-memory round-trip';
-
 const BREAK_MODES: readonly FlagshipBreakMode[] = [
   "drop-memory",
   "wrong-io-line",
@@ -136,9 +122,14 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
-  // Keep the sentinel symbol referenced so lint treats it as load-bearing.
-  void NPC_MEMORY_REDGREEN_FIXME_SENTINEL;
-  test.fixme("npc-memory persistence contract: Io recognizes the prior sealed session", async ({ page }) => {
+  //
+  // Do NOT rename this test title while it remains test.fixme: the CI
+  // preflight in .github/workflows/aftersign-npc-memory-redgreen.yml
+  // currently greps for `test.fixme("npc-memory round-trip` to decide
+  // whether to retire the red-polarity lane. See #622 — the workflow
+  // needs to switch to a stable retirement signal (out of this PR's
+  // write scope; requires .github/workflows/ access).
+  test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
     const breakMode = currentBreakMode();
