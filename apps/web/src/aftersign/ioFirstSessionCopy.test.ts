@@ -12,19 +12,17 @@ const expectedOrder: IoFirstSessionCopyKey[] = [
   'routeInstruction',
   'sealedWarning',
   'openedWarning',
-  'returnSealed',
-  'returnOpened',
 ];
 
 describe('ioFirstSessionCopy', () => {
-  it('keeps the first-session Io beat in authored order', () => {
+  it('keeps the first-session Io beats in authored order', () => {
     expect(ioFirstSessionCopy.map((line) => line.key)).toEqual(expectedOrder);
   });
 
   it('keeps Io terse enough for an in-scene dialogue surface', () => {
     for (const line of ioFirstSessionCopy) {
       expect(line.text.length).toBeLessThanOrEqual(72);
-      expect(line.text.split(/\s+/)).toHaveLengthLessThanOrEqual(12);
+      expect(line.text.split(/\s+/).length).toBeLessThanOrEqual(12);
     }
   });
 
@@ -39,7 +37,10 @@ describe('ioFirstSessionCopy', () => {
       'choice',
       'trust +',
     ];
-    const joinedCopy = ioFirstSessionCopy.map((line) => line.text).join(' ').toLowerCase();
+    const joinedCopy = ioFirstSessionCopy
+      .map((line) => line.text)
+      .join(' ')
+      .toLowerCase();
 
     for (const word of forbiddenSystemWords) {
       expect(joinedCopy).not.toContain(word);
@@ -47,13 +48,19 @@ describe('ioFirstSessionCopy', () => {
   });
 
   it('lets runtime code look up a line by key', () => {
-    expect(getIoFirstSessionLine('returnSealed')).toBe(
-      'Blue seal intact. Good. Vey needs hands that do not itch.',
+    expect(getIoFirstSessionLine('arrival')).toBe(
+      'You made it above the water. That is not the same as safe.',
     );
   });
 
-  it('makes the return lines reference concrete packet outcomes', () => {
-    expect(getIoFirstSessionLine('returnSealed')).toContain('seal intact');
-    expect(getIoFirstSessionLine('returnOpened')).toContain('seal broken');
+  it('names the packet outcome each warning refers to', () => {
+    expect(getIoFirstSessionLine('sealedWarning')).toContain('stays closed');
+    expect(getIoFirstSessionLine('openedWarning')).toContain('opens');
+  });
+
+  it('throws on an unknown key so a typo cannot silently render empty', () => {
+    expect(() =>
+      getIoFirstSessionLine('nonsense' as IoFirstSessionCopyKey),
+    ).toThrow(/Unknown Io first-session copy key/);
   });
 });

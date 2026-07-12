@@ -1,11 +1,18 @@
+// Io Vale — FIRST-session copy for the vertical slice.
+//
+// This module owns only the beats Io speaks on the player's FIRST arrival.
+// Returning-session recognition lines (§7 of the vertical-slice script) live
+// in `packages/aftersign/src/ioReturningSession.ts` — that module is the
+// single source of truth for anything a returning player hears. Do not
+// re-add returnSealed / returnOpened here; the harness reads those from
+// ioReturningSessionLines and duplicating the copy is a regression.
+
 export type IoFirstSessionCopyKey =
   | 'arrival'
   | 'packetOffer'
   | 'routeInstruction'
   | 'sealedWarning'
-  | 'openedWarning'
-  | 'returnSealed'
-  | 'returnOpened';
+  | 'openedWarning';
 
 export type IoFirstSessionLine = {
   key: IoFirstSessionCopyKey;
@@ -32,14 +39,6 @@ export const ioFirstSessionCopy: readonly IoFirstSessionLine[] = [
   {
     key: 'openedWarning',
     text: 'If it opens, I learn a different thing.',
-  },
-  {
-    key: 'returnSealed',
-    text: 'Blue seal intact. Good. Vey needs hands that do not itch.',
-  },
-  {
-    key: 'returnOpened',
-    text: 'Blue seal broken. Curiosity is a tool. So is a knife.',
   },
 ] as const;
 
