@@ -96,9 +96,22 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
     win.__ioPhoneReadyMarks = {};
 
-    let lastBeat: string | null = null;
-    let lastLineText = '';
-    let lastAudioCue: string | null = null;
+    // Seed the "last" values from the CURRENT state, not sentinel defaults.
+    // Otherwise the first rAF tick can see beat/line/audioCue at a stale
+    // "before-drive" value that trivially satisfies the transition guards
+    // (lastBeat=null !== 'io-returning-recognition', lastAudioCue=null !==
+    // 'packet-confirmed'), and if the drive has already reached the sealed
+    // recognition beat by the time this observer's first tick fires (which
+    // is realistic on cold CI where SwiftShader delays the render loop
+    // relative to microtask completion), the marks would be stamped with
+    // performance.now() at OBSERVATION time — not at the actual transition —
+    // yielding a settleMs / avDriftMs that reflects rAF jitter, not runtime
+    // coupling. Seeding here means the transition guards only fire on a
+    // genuine change AFTER install, which is what the contract measures.
+    const initialGame = win.__game;
+    let lastBeat: string | null = initialGame?.scene?.beat ?? null;
+    let lastLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
+    let lastAudioCue: string | null = initialGame?._runtime?.audio?.lastCue ?? null;
 
     const observe = () => {
       const game = win.__game;
