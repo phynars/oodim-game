@@ -49,7 +49,7 @@ describe('ioFirstSessionCopy', () => {
 
   it('lets runtime code look up a line by key', () => {
     expect(getIoFirstSessionLine('arrival')).toBe(
-      'You made it above the water. That is not the same as safe.',
+      'You made it above the water. Good. That is the first qualification.',
     );
   });
 

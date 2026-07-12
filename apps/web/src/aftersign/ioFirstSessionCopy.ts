@@ -22,7 +22,8 @@ export type IoFirstSessionLine = {
 export const ioFirstSessionCopy: readonly IoFirstSessionLine[] = [
   {
     key: 'arrival',
-    text: 'You made it above the water. That is not the same as safe.',
+    // Script-locked — docs/flagship/vertical-slice-script.md §1.
+    text: 'You made it above the water. Good. That is the first qualification.',
   },
   {
     key: 'packetOffer',

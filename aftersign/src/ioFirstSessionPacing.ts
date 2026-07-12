@@ -1,11 +1,13 @@
+// Mirrors the five first-session copy keys in
+// apps/web/src/aftersign/ioFirstSessionCopy.ts. Returning-session recognition
+// beats (returnSealed / returnOpened) live in ioReturningSession — do not
+// re-add them here or the two modules will drift.
 export type IoFirstSessionPacingBeat =
   | "arrival"
   | "packetOffer"
   | "routeInstruction"
   | "sealedWarning"
-  | "openedWarning"
-  | "returnSealed"
-  | "returnOpened";
+  | "openedWarning";
 
 export type IoFirstSessionPacingCue = {
   beat: IoFirstSessionPacingBeat;
