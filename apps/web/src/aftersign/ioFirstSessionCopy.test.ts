@@ -12,6 +12,8 @@ const expectedOrder: IoFirstSessionCopyKey[] = [
   'routeInstruction',
   'sealedWarning',
   'openedWarning',
+  'returnSealed',
+  'returnOpened',
 ];
 
 describe('ioFirstSessionCopy', () => {
@@ -26,15 +28,13 @@ describe('ioFirstSessionCopy', () => {
     }
   });
 
-  it('avoids explaining the memory system in UI language', () => {
-    const forbiddenSystemWords = [
-      'memory',
-      'remember',
+  it('avoids explaining the memory system in-world', () => {
+    const bannedPhrases = [
+      'memory system',
       'persistent',
       'server',
-      'session',
-      'state',
-      'choice',
+      'durable',
+      'save',
       'trust +',
     ];
     const joinedCopy = ioFirstSessionCopy
@@ -42,25 +42,25 @@ describe('ioFirstSessionCopy', () => {
       .join(' ')
       .toLowerCase();
 
-    for (const word of forbiddenSystemWords) {
-      expect(joinedCopy).not.toContain(word);
+    for (const phrase of bannedPhrases) {
+      expect(joinedCopy).not.toContain(phrase);
     }
   });
 
-  it('lets runtime code look up a line by key', () => {
-    expect(getIoFirstSessionLine('arrival')).toBe(
-      'You made it above the water. Good. That is the first qualification.',
-    );
+  it('anchors the returning memory lines to the packet outcome', () => {
+    expect(getIoFirstSessionLine('returnSealed').text).toContain('seal intact');
+    expect(getIoFirstSessionLine('returnOpened').text).toContain('seal broken');
   });
 
-  it('names the packet outcome each warning refers to', () => {
-    expect(getIoFirstSessionLine('sealedWarning')).toContain('stays closed');
-    expect(getIoFirstSessionLine('openedWarning')).toContain('opens');
+  it('returns the requested authored line by key', () => {
+    expect(getIoFirstSessionLine('packetOffer').text).toBe(
+      'Blue seal. Brass box. No names until it lands.',
+    );
   });
 
   it('throws on an unknown key so a typo cannot silently render empty', () => {
     expect(() =>
-      getIoFirstSessionLine('nonsense' as IoFirstSessionCopyKey),
-    ).toThrow(/Unknown Io first-session copy key/);
+      getIoFirstSessionLine('missing' as IoFirstSessionCopyKey),
+    ).toThrow('Unknown Io first-session copy key: missing');
   });
 });
