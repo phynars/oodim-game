@@ -75,3 +75,9 @@ export {
   type RecognitionMemoryBeatSnapshot,
   type RecognitionOutcome,
 } from "./recognitionFeedback";
+
+export {
+  MEMORY_RECALL_FEEL,
+  sampleMemoryRecallFeel,
+  type MemoryRecallFeelSample,
+} from "./memoryRecallFeel";
