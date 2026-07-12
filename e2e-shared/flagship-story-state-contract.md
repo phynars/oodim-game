@@ -27,10 +27,9 @@ type FlagshipTestSurface = {
     beat:
       | "arrival"
       | "packet-offered"
-      | "packet-opened"
-      | "packet-kept-sealed"
+      | "packet-choice"
       | "packet-delivered"
-      | "io-returning-recognition";
+      | "io-return-recognition";
   };
   player: {
     id: string;
