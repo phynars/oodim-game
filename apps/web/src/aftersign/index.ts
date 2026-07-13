@@ -24,6 +24,16 @@ export {
 } from "./interactionConfirmFeel";
 
 export {
+  DEFAULT_PACKET_CHOICE_FEEL,
+  evaluatePacketChoiceGesture,
+  type PacketChoice,
+  type PacketChoiceDecision,
+  type PacketChoiceFeelConfig,
+  type PacketChoiceGesture,
+  type PacketGestureKind,
+} from "./packetChoiceFeel";
+
+export {
   cancelPacketSealHold,
   createPacketSealState,
   DEFAULT_PACKET_SEAL_FEEL,
