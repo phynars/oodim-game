@@ -9,6 +9,8 @@ import {
   IO_RECOGNITION_BEAT_MS,
   RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS,
   RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES,
+  RECOGNITION_DIALOGUE_NUDGE_PX,
+  RECOGNITION_DIALOGUE_REVEAL_MS,
   RECOGNITION_FEEDBACK_GLOW_FROM,
   RECOGNITION_FEEDBACK_GLOW_TO,
   RECOGNITION_FEEDBACK_OPENED_TARGET_OFFSET_METERS,
@@ -253,6 +255,44 @@ export function checkSubtitleScaleEnvelopeBounds(): void {
   assertClose(endState.subtitleScale, 1, 0.01, 't=end subtitleScale reset');
 }
 
+export function checkRecognitionDialogueMotionEnvelope(): void {
+  const beforeFirstLine = recognitionFeedbackAt(439);
+  assert(beforeFirstLine.dialogueActiveBeatIndex === null, 'dialogue motion should be idle before first line');
+  assertClose(beforeFirstLine.dialogueLineRevealProgress, 0, 0.001, 'pre-line reveal progress');
+  assertClose(beforeFirstLine.dialogueLineOpacity, 0, 0.001, 'pre-line opacity');
+  assertClose(beforeFirstLine.dialogueLineNudgePx, 0, 0.001, 'pre-line nudge');
+
+  const lineStart = recognitionFeedbackAt(440);
+  assert(lineStart.dialogueActiveBeatIndex === 0, `t=440 active dialogue index: expected 0, got ${lineStart.dialogueActiveBeatIndex}`);
+  assertClose(lineStart.dialogueLineRevealProgress, 0, 0.001, 't=440 reveal progress');
+  assertClose(lineStart.dialogueLineOpacity, 0, 0.001, 't=440 opacity');
+  assertClose(lineStart.dialogueLineNudgePx, RECOGNITION_DIALOGUE_NUDGE_PX, 0.001, 't=440 nudge');
+
+  const lineMid = recognitionFeedbackAt(440 + RECOGNITION_DIALOGUE_REVEAL_MS / 2);
+  assert(lineMid.dialogueLineRevealProgress > 0.5, `mid-line reveal should ease out past halfway, got ${lineMid.dialogueLineRevealProgress}`);
+  assert(lineMid.dialogueLineOpacity > 0.5, `mid-line opacity should ease out past halfway, got ${lineMid.dialogueLineOpacity}`);
+  assert(
+    lineMid.dialogueLineNudgePx > 0 && lineMid.dialogueLineNudgePx < RECOGNITION_DIALOGUE_NUDGE_PX,
+    `mid-line nudge should be between 0 and ${RECOGNITION_DIALOGUE_NUDGE_PX}px, got ${lineMid.dialogueLineNudgePx}`,
+  );
+
+  const lineDone = recognitionFeedbackAt(440 + RECOGNITION_DIALOGUE_REVEAL_MS);
+  assertClose(lineDone.dialogueLineRevealProgress, 1, 0.001, 'line reveal completion');
+  assertClose(lineDone.dialogueLineOpacity, 1, 0.001, 'line opacity completion');
+  assertClose(lineDone.dialogueLineNudgePx, 0, 0.001, 'line nudge completion');
+
+  const secondLine = recognitionFeedbackAt(880);
+  assert(secondLine.dialogueActiveBeatIndex === 1, `t=880 active dialogue index: expected 1, got ${secondLine.dialogueActiveBeatIndex}`);
+  assertClose(secondLine.dialogueLineRevealProgress, 0, 0.001, 'second-line reveal resets');
+  assertClose(secondLine.dialogueLineNudgePx, RECOGNITION_DIALOGUE_NUDGE_PX, 0.001, 'second-line nudge resets');
+
+  const reducedLineStart = recognitionFeedbackAt(440, { reducedMotion: true });
+  assert(reducedLineStart.dialogueActiveBeatIndex === 0, `reduced t=440 active dialogue index: expected 0, got ${reducedLineStart.dialogueActiveBeatIndex}`);
+  assertClose(reducedLineStart.dialogueLineRevealProgress, 0, 0.001, 'reduced t=440 reveal progress');
+  assertClose(reducedLineStart.dialogueLineOpacity, 0, 0.001, 'reduced t=440 opacity');
+  assertClose(reducedLineStart.dialogueLineNudgePx, 0, 0.001, 'reduced motion disables dialogue nudge');
+}
+
 export function checkRecognitionDialogueTimeline(): void {
   assert(recognitionDialogueAt(0, 'sealed') === null, 'dialogue should be null before first beat');
 
@@ -314,6 +354,7 @@ export function runRecognitionFeedbackChecks(): void {
   checkOutcomeBranchDeltas();
   checkReducedMotionFallback();
   checkCameraPushEnvelopeMonotonic();
+  checkRecognitionDialogueMotionEnvelope();
   checkSubtitleScaleEnvelopeBounds();
   checkRecognitionDialogueTimeline();
   checkRecognitionDialogueForBeatContract();

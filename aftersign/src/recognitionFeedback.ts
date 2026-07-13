@@ -15,6 +15,13 @@ export type RecognitionFeedbackOptions = {
   readonly reducedMotion?: boolean;
 };
 
+export type RecognitionDialogueMotion = {
+  readonly activeBeatIndex: IoRecognitionBeatIndex | null;
+  readonly lineRevealProgress: number;
+  readonly lineOpacity: number;
+  readonly lineNudgePx: number;
+};
+
 export type RecognitionFeedbackState = {
   readonly elapsedMs: number;
   readonly phase: RecognitionFeedbackPhase['name'];
@@ -30,6 +37,10 @@ export type RecognitionFeedbackState = {
   readonly subtitleScale: number;
   readonly signEmissiveScale: number;
   readonly signGlowProgress: number;
+  readonly dialogueActiveBeatIndex: IoRecognitionBeatIndex | null;
+  readonly dialogueLineRevealProgress: number;
+  readonly dialogueLineOpacity: number;
+  readonly dialogueLineNudgePx: number;
   readonly audioCue: RecognitionFeedbackPhase['audioCue'] | 'bell-glass-sting' | 'wooden-click';
   readonly audioCueStarted: boolean;
   readonly audioCueDurationMs: number;
@@ -61,6 +72,8 @@ export const RECOGNITION_FEEDBACK_GLOW_FROM = 0.8;
 export const RECOGNITION_FEEDBACK_GLOW_TO = 1.35;
 export const RECOGNITION_FEEDBACK_OPENED_TARGET_OFFSET_METERS = 0.06;
 export const RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS = 45;
+export const RECOGNITION_DIALOGUE_REVEAL_MS = 180;
+export const RECOGNITION_DIALOGUE_NUDGE_PX = 8;
 
 export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
@@ -134,6 +147,28 @@ function resolveDialogueBeatIndex(elapsedMs: number): IoRecognitionBeatIndex | n
   return 2;
 }
 
+function resolveDialogueMotion(elapsedMs: number): RecognitionDialogueMotion {
+  const activeBeatIndex = resolveDialogueBeatIndex(elapsedMs);
+  if (activeBeatIndex === null) {
+    return {
+      activeBeatIndex: null,
+      lineRevealProgress: 0,
+      lineOpacity: 0,
+      lineNudgePx: 0,
+    };
+  }
+
+  const triggerMs = IO_RECOGNITION_BEAT_MS[activeBeatIndex];
+  const revealProgress = easeOutCubic((elapsedMs - triggerMs) / RECOGNITION_DIALOGUE_REVEAL_MS);
+
+  return {
+    activeBeatIndex,
+    lineRevealProgress: revealProgress,
+    lineOpacity: revealProgress,
+    lineNudgePx: RECOGNITION_DIALOGUE_NUDGE_PX * (1 - revealProgress),
+  };
+}
+
 function resolveSignEmissiveScale(elapsedMs: number, reducedMotion: boolean): number {
   const glowWindowMs = reducedMotion
     ? RECOGNITION_FEEDBACK_REDUCED_MOTION_MS
@@ -199,6 +234,7 @@ export function recognitionFeedbackAt(
   const outcome = options.outcome ?? 'sealed';
   const reducedMotion = options.reducedMotion ?? false;
   const safeElapsedMs = Math.max(0, elapsedMs);
+  const dialogueMotion = resolveDialogueMotion(safeElapsedMs);
 
   if (reducedMotion) {
     const pulse = easeOutCubic(safeElapsedMs / RECOGNITION_FEEDBACK_REDUCED_MOTION_MS);
@@ -219,6 +255,10 @@ export function recognitionFeedbackAt(
       subtitleScale: 1,
       signEmissiveScale: RECOGNITION_FEEDBACK_GLOW_FROM + (RECOGNITION_FEEDBACK_GLOW_TO - RECOGNITION_FEEDBACK_GLOW_FROM) * pulse,
       signGlowProgress: pulse,
+      dialogueActiveBeatIndex: dialogueMotion.activeBeatIndex,
+      dialogueLineRevealProgress: dialogueMotion.lineRevealProgress,
+      dialogueLineOpacity: dialogueMotion.lineOpacity,
+      dialogueLineNudgePx: 0,
       audioCue,
       audioCueStarted: audioCue === 'bell-glass-sting',
       audioCueDurationMs: audioCue === 'bell-glass-sting' ? RECOGNITION_FEEDBACK_STING_DURATION_MS : 0,
@@ -278,6 +318,10 @@ export function recognitionFeedbackAt(
     subtitleScale,
     signEmissiveScale: resolveSignEmissiveScale(safeElapsedMs, false),
     signGlowProgress: clamp01((safeElapsedMs - RECOGNITION_FEEDBACK_GLOW_START_MS) / RECOGNITION_FEEDBACK_GLOW_DURATION_MS),
+    dialogueActiveBeatIndex: dialogueMotion.activeBeatIndex,
+    dialogueLineRevealProgress: dialogueMotion.lineRevealProgress,
+    dialogueLineOpacity: dialogueMotion.lineOpacity,
+    dialogueLineNudgePx: dialogueMotion.lineNudgePx,
     audioCue,
     audioCueStarted: audioCue === 'bell-glass-sting' || audioCue === 'wooden-click',
     audioCueDurationMs: audioCue === 'bell-glass-sting' || audioCue === 'wooden-click'
