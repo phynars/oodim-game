@@ -122,6 +122,15 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
+  //
+  // CI SENTINEL (#622): the @pending-npc-memory-roundtrip tag below is the
+  // retirement signal for .github/workflows/aftersign-npc-memory-redgreen.yml.
+  // The red-polarity preflight greps for this tag (NOT the test title) to
+  // decide the fixme is still pending, so the title may be renamed freely.
+  // When you unfixme this test in Phase 3, REMOVE the tag and add the
+  // conditional guard the workflow expects:
+  //   test.skip(process.env.FLAGSHIP_BREAK_MODE !== "drop-memory", ...)
+  // (the pattern save-load-durable-contract.spec.ts already uses).
   test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", { tag: "@pending-npc-memory-roundtrip" }, async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");

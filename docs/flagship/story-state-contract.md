@@ -238,6 +238,15 @@ The first implementation PR for this contract must include at least one delibera
 
 CI should run both the normal green path and a red-polarity check that proves the broken mode does not pass accidentally.
 
+### Red-polarity retirement sentinel (#622)
+
+While the npc-memory round-trip test is still `test.fixme` (Phase 3 pending), the red-polarity lane in `.github/workflows/aftersign-npc-memory-redgreen.yml` retires itself — an all-skipped Playwright run exits 0, so inverting the exit code would fail every PR.
+
+Retirement detection keys off a stable marker tag, **not** the test title:
+
+- The pending test in `aftersign/e2e/flagship-surface-contract.spec.ts` carries `{ tag: "@pending-npc-memory-roundtrip" }`. The workflow preflight greps for this tag, so renaming the test title never flips retirement behavior.
+- Adding the conditional guard `test.skip(process.env.FLAGSHIP_BREAK_MODE !== "drop-memory", ...)` re-activates the red lane; remove the marker tag at the same time you unfixme the test.
+
 ## Explicit non-goals
 
 - No pixel diffs.
