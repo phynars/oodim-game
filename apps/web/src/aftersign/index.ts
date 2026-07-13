@@ -69,6 +69,13 @@ export {
 } from "./ioFirstSessionCopy";
 
 export {
+  getIoPacketChoiceLine,
+  ioPacketChoiceCopy,
+  type IoPacketChoiceCopyKey,
+  type IoPacketChoiceLine,
+} from "./ioPacketChoiceCopy";
+
+export {
   IO_PHONE_READY_FEEL,
   sampleIoPhoneReadyFeel,
   type IoPhoneReadyFeelSample,
