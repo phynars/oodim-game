@@ -91,7 +91,8 @@ jobs:
           if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
             echo "conditional guard present — red polarity will run."
             echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -Pzo '(?s)test\.fixme\(\s*"npc-memory round-trip' "$spec" > /dev/null; then
+          # Detection keyed off the @pending-npc-memory-roundtrip marker tag, not the test title (#622)
+          elif grep -q '@pending-npc-memory-roundtrip' "$spec"; then
             echo "npc-memory-roundtrip is still test.fixme (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
             echo "retired=true" >> "$GITHUB_OUTPUT"
           elif grep -q 'test\.skip(' "$spec"; then
