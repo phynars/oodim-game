@@ -320,6 +320,7 @@ test.describe('Io phone-ready look/sound contract', () => {
 
     const probe = await measurePhoneReadyProbe(page);
 
+    expect(probe.viewport).toEqual(PHONE_VIEWPORT);
     expect(probe.lineText).toContain(IO_SEALED_RECOGNITION_LINE);
     expect(probe.lineVisible).toBe(true);
     expect(probe.lineReadable).toBe(true);
