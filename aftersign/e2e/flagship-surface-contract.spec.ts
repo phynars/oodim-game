@@ -123,12 +123,14 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
   //
-  // The marker below is a STABLE sentinel for the preflight step in
-  // .github/workflows/aftersign-npc-memory-redgreen.yml (which greps the
-  // test TITLE today and should be repointed at this marker — see #622).
-  // It must sit directly above the fixme and must be removed in the same
-  // change that converts the fixme to a conditional test.skip guard.
-  // Do not rename it.
+  // The marker below is the STABLE sentinel that the preflight step in
+  // .github/workflows/aftersign-npc-memory-redgreen.yml greps to decide
+  // red-lane retirement (#622) — it keys CI off intent, not the
+  // human-readable test title, so renaming this test cannot silently
+  // flip retirement behavior. It must sit directly above the fixme and
+  // must be removed in the same change that converts the fixme to a
+  // conditional test.skip guard (the guard check takes precedence in
+  // the workflow, so a forgotten marker fails safe). Do not rename it.
   // @redgreen:npc-memory-roundtrip fixme-pending-phase-3 (#566)
   test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
