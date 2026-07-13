@@ -75,6 +75,20 @@ export {
 } from "./ioPhoneReadyFeel";
 
 export {
+  createAftersignVerticalSliceSave,
+  createAftersignVerticalSliceState,
+  meetIoForAftersignSlice,
+  recordAftersignPacketChoice,
+  restoreAftersignVerticalSliceState,
+  sampleAftersignIoMemoryBeat,
+  type AftersignIoMemoryBeat,
+  type AftersignPacketOutcome,
+  type AftersignSceneId,
+  type AftersignVerticalSliceSave,
+  type AftersignVerticalSliceState,
+} from "./verticalSliceState";
+
+export {
   getRecognitionFeedbackDuration,
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,
