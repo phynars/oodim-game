@@ -122,7 +122,18 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
-  test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
+  //
+  // The @pending-npc-memory-roundtrip tag is a STABLE retirement sentinel
+  // consumed by .github/workflows/aftersign-npc-memory-redgreen.yml's
+  // preflight. The workflow keys retirement detection off this tag, NOT
+  // the human-readable title — rename the title freely, but keep the tag
+  // until the fixme is converted to the conditional
+  // `test.skip(process.env.FLAGSHIP_BREAK_MODE !== "drop-memory", ...)`
+  // guard (at which point remove the tag along with the fixme).
+  test.fixme(
+    "npc-memory round-trip: Io recognizes the sealed prior session",
+    { tag: "@pending-npc-memory-roundtrip" },
+    async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
     const breakMode = currentBreakMode();
@@ -185,7 +196,8 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT.sealed);
     expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID.sealed);
     expect(returning.save.lastLoadProof.source).toBe("server");
-  });
+    },
+  );
 
   // Unfixme in Phase 4 once save.authority, save.lastLoadProof, and
   // the FLAGSHIP_BREAK_MODE vite wire-up exist.
