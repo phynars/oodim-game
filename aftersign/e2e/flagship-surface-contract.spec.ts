@@ -122,6 +122,14 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
+  //
+  // The marker below is a STABLE sentinel for the preflight step in
+  // .github/workflows/aftersign-npc-memory-redgreen.yml (which greps the
+  // test TITLE today and should be repointed at this marker — see #622).
+  // It must sit directly above the fixme and must be removed in the same
+  // change that converts the fixme to a conditional test.skip guard.
+  // Do not rename it.
+  // @redgreen:npc-memory-roundtrip fixme-pending-phase-3 (#566)
   test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
