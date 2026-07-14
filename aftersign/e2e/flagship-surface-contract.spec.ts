@@ -231,7 +231,7 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // FLAGSHIP_BREAK_MODE skip guard in save-load-durable-contract.spec.ts
   // protects its spec. The red-polarity proof for durability already
   // lives in .github/workflows/aftersign-durable-save-redgreen.yml.
-  test.fixme("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
+  test("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "durable-save-load");
     const breakMode = currentBreakMode();
