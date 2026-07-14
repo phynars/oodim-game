@@ -88,17 +88,25 @@ jobs:
           # keyed off FLAGSHIP_BREAK_MODE=drop-memory (the pattern the
           # sibling durable-save spec already uses).
           spec=aftersign/e2e/flagship-surface-contract.spec.ts
-          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
+          sentinel='redgreen-sentinel: npc-memory-red-lane-retired'
+          has_sentinel=false
+          has_guard=false
+          grep -q "$sentinel" "$spec" && has_sentinel=true
+          grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null && has_guard=true
+          if $has_sentinel && $has_guard; then
+            echo "::error::Spec contains BOTH the retirement sentinel ('$sentinel') and the FLAGSHIP_BREAK_MODE=drop-memory conditional guard. These states are contradictory — delete the sentinel in the same change that introduces the guard."
+            exit 1
+          elif $has_guard; then
             echo "conditional guard present — red polarity will run."
             echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -Pzo '(?s)test\.fixme\(\s*"npc-memory round-trip' "$spec" > /dev/null; then
-            echo "npc-memory-roundtrip is still test.fixme (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
+          elif $has_sentinel; then
+            echo "retirement sentinel present — red polarity retired until the spec exposes a conditional guard (Phase 3 / #566). Rename-safe: retirement no longer keys off the test title."
             echo "retired=true" >> "$GITHUB_OUTPUT"
           elif grep -q 'test\.skip(' "$spec"; then
             echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
             exit 1
           else
-            echo "npc-memory contract is fully live in the main suite — red polarity retired."
+            echo "npc-memory contract is fully live in the main suite (no sentinel, no skip) — red polarity retired."
             echo "retired=true" >> "$GITHUB_OUTPUT"
           fi
 
