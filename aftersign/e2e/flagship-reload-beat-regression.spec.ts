@@ -123,9 +123,18 @@ async function playSaveReloadPath(
   path: PacketPath,
   options: { clearLocalStateOnReload?: boolean } = {},
 ) {
-  await page.addInitScript((breakMode) => {
-    window.__FLAGSHIP_BREAK_MODE = breakMode || undefined;
-  }, process.env.FLAGSHIP_BREAK_MODE ?? "");
+  // Only install the break-mode hook when a mode is actually set — a
+  // no-op init script on every default-lane test both wastes a bit of
+  // navigation setup and (more importantly) muddies the failure diff
+  // if anything else about addInitScript timing changes. The default
+  // lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op and
+  // the runtime path is byte-identical to pre-guard behavior.
+  const breakMode = process.env.FLAGSHIP_BREAK_MODE;
+  if (breakMode) {
+    await page.addInitScript((mode) => {
+      window.__FLAGSHIP_BREAK_MODE = mode;
+    }, breakMode);
+  }
   await page.goto("./");
   await waitForSurface(page);
 
