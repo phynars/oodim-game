@@ -136,10 +136,18 @@ async function playSaveReloadPath(
   }
 
   await page.evaluate(() => window.__game!.input.forceSave());
-  await page.evaluate(
-    (reloadOptions) => window.__game!.input.forceReload(reloadOptions),
-    { clearLocalState: options.clearLocalStateOnReload ?? false },
-  );
+  // Default lane stays byte-identical to the pre-guard path: no-arg
+  // forceReload() when the caller did not opt into clearLocalState.
+  // Passing an explicit `{clearLocalState:false}` should be equivalent
+  // (impl destructures `{clearLocalState = false} = {}`), but keeping
+  // the no-arg call for the default lane removes any chance the arg
+  // path changes shape underneath us and makes a real regression look
+  // like a green-lane change.
+  if (options.clearLocalStateOnReload) {
+    await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+  } else {
+    await page.evaluate(() => window.__game!.input.forceReload());
+  }
   await idle(page);
 
   return page.evaluate(() => window.__game!.getSnapshot());
