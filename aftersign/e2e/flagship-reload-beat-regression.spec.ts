@@ -136,6 +136,11 @@ async function advanceToRecognition(page: Page) {
 }
 
 test.describe("AFTERSIGN reload beat regression", () => {
+  test.skip(
+    process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
+    "red guard lane only: this suite should fail under local-only-save break mode and stay out of default green lane.",
+  );
+
   for (const path of PACKET_PATHS) {
     test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);

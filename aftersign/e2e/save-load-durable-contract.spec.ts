@@ -169,8 +169,8 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     //      flips green in the main suite with no other changes (all
     //      assertions below already target the impl's real surface).
     test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
-      "durable save path not implemented — see docs/flagship/story-state-contract.md #3 and the SKIP RATIONALE above. The red-polarity lane runs this under FLAGSHIP_BREAK_MODE=local-only-save and inverts the expected failure until real durability lands.",
+      process.env.FLAGSHIP_BREAK_MODE === "local-only-save",
+      "local-only-save intentionally regresses durability; this contract runs in default mode and the red guard owns broken-mode polarity.",
     );
 
     test.setTimeout(COLD_START_MS);
