@@ -24,7 +24,13 @@ export {
 } from "./interactionConfirmFeel";
 
 export {
-  DEFAULT_PACKET_CHOICE_FEEL,
+  FAILURE_STING_FEEL,
+  sampleFailureStingFeel,
+  type FailureStingSample,
+} from "./failureStingFeel";
+
+export {
+DEFAULT_PACKET_CHOICE_FEEL,
   evaluatePacketChoiceGesture,
   type PacketChoice,
   type PacketChoiceDecision,
