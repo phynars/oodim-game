@@ -133,12 +133,17 @@ test.describe("AFTERSIGN durable save/load contract", () => {
   // survival ACROSS a local-state wipe, which the prior-session test
   // does not exercise.
   test("Io memory + revision survive a local-state wipe reload", async ({ page }) => {
-    // Guard retired: the server-authoritative IndexedDB save path landed
-    // in aftersign/server-authoritative-save.js and reloadFromSave() now
-    // stamps `authority: "server"` + `lastLoadProof`. IndexedDB outlives
-    // `window.localStorage.clear()`, so the assertion is now genuine
-    // green in the default lane. The red-polarity workflow's preflight
-    // (aftersign-durable-save-redgreen.yml) detects that the
+    // Guard retired: the server-authoritative HTTP save path landed
+    // (aftersign/server-authoritative-save.js talks to the vite middleware
+    // in aftersign/vite.config.ts, which holds the store in the Node
+    // process — genuinely out of the browser). reloadFromSave() now
+    // stamps `authority: "server"` + `lastLoadProof` truthfully because
+    // the payload actually crossed a network boundary and does not live
+    // in any browser bucket (localStorage, IndexedDB, cache, or
+    // clear-site-data reach). Cold `page.goto` after `localStorage.clear()`
+    // re-fetches from the vite Node process, so the assertions below are
+    // now genuine green in the default lane. The red-polarity workflow's
+    // preflight (aftersign-durable-save-redgreen.yml) detects that the
     // `FLAGSHIP_BREAK_MODE !== "local-only-save"` guard string is gone
     // and cleanly retires the red job. See the workflow's Preflight step
     // for the retirement contract.
@@ -207,9 +212,9 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     //    the module's top-level `stored = readStored()` on cold load —
     //    so anything that isn't durably persisted is genuinely lost.
     //
-    //    Same slot URL: any future authoritative store keyed by slot
-    //    (server-side, IndexedDB, etc.) still gets its chance to
-    //    rehydrate. Only the localStorage bucket is wiped.
+    //    Same slot URL: the server-authoritative store (vite middleware,
+    //    keyed by playerId+slot) still holds the payload and rehydrates
+    //    on cold boot. Only the localStorage bucket is wiped.
     await page.evaluate(() => {
       window.localStorage.clear();
     });
