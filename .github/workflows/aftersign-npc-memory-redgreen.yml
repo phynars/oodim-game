@@ -91,8 +91,8 @@ jobs:
           if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
             echo "conditional guard present — red polarity will run."
             echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -Pzo '(?s)test\.fixme\(\s*"npc-memory round-trip' "$spec" > /dev/null; then
-            echo "npc-memory-roundtrip is still test.fixme (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
+          elif grep -q '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' "$spec"; then
+            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
             echo "retired=true" >> "$GITHUB_OUTPUT"
           elif grep -q 'test\.skip(' "$spec"; then
             echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
