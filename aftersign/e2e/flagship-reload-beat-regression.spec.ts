@@ -214,6 +214,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
       process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line",
       "red guard: only runs when the runtime is deliberately configured to swap Io recognition lines",
     );
+    test.setTimeout(COLD_START_MS);
 
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page);
