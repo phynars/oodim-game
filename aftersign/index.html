@@ -217,6 +217,7 @@
       const slot = params.get("slot") || "local";
       const storageKey = `aftersign:kiosk-slice:${slot}`;
       const sessionId = `session-${slot}`;
+      const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
       const clone = (value) => JSON.parse(JSON.stringify(value));
       const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
