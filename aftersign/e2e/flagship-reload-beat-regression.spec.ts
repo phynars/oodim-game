@@ -288,8 +288,18 @@ test.describe("AFTERSIGN reload beat regression", () => {
       await idle(page);
     }
     await page.evaluate(() => window.__game!.input.forceSave());
+    // Wait for the localStorage payload to actually land. Do NOT wait
+    // on save.authority — under the local-fallback impl per the
+    // contract (docs/flagship/story-state-contract.md L162), authority
+    // stays "local-fallback" and only flips to "server" when the
+    // server-authoritative store ships. Waiting on the localStorage
+    // key is the honest signal that forceSave()'s persist path ran.
     await page.waitForFunction(
-      () => window.__game?.getSnapshot().save.authority === "server",
+      () => {
+        const params = new URLSearchParams(window.location.search);
+        const slot = params.get("slot") || "local";
+        return window.localStorage.getItem(`aftersign:kiosk-slice:${slot}`) !== null;
+      },
       undefined,
       { timeout: WAIT_MS },
     );

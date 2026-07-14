@@ -727,24 +727,18 @@
       };
 
       const forceSave = async () => {
+        // Flush the persist path. Do NOT upgrade save.authority — this
+        // impl only persists to localStorage, which the contract
+        // (docs/flagship/story-state-contract.md L162) explicitly
+        // classifies as `local-fallback`. `authority === "server"` is
+        // reserved for the server-backed store that hasn't shipped
+        // yet; stamping it here would false-green the fixme'd durable-
+        // save test (flagship-surface-contract.spec.ts L253, "Unfixme
+        // in Phase 3") when it flips on. Same rule for
+        // lastLoadProof.source: forceSave() is a WRITE, not a load,
+        // and lastLoadProof describes the last LOAD's provenance —
+        // leave it alone here entirely.
         persist({ dirty: false });
-        // A completed forceSave() means the persist path ran to
-        // completion — for the vertical slice that path IS the
-        // authoritative store for the SAME-SESSION reload path (the
-        // in-page reloadFromSave rehydrates from readStored), so
-        // upgrade save.authority accordingly. This upgrade is honest
-        // for normal reloads; the local-only-save red polarity is
-        // proved by a COLD RESTART via page.goto after localStorage
-        // is cleared (see flagship-reload-beat-regression.spec.ts),
-        // where readStored() returns null and the fresh module boots
-        // with authority="local-fallback" per emptySave().
-        state.save.authority = "server";
-        state.save.lastLoadProof = {
-          source: "server",
-          revision: state.save.revision,
-          playerId: state.player.id,
-        };
-        markStateDirty();
         renderText();
         publishState();
       };
@@ -753,20 +747,15 @@
         const saved = readStored();
         if (!saved) {
           // Nothing to load — leave state at whatever the current run
-          // has in memory. This branch fires on a fresh boot with no
-          // prior save, and (importantly for the durability probe) on
-          // a COLD RESTART after localStorage.clear(): the module
-          // rebuilds `state` from emptySave() at the top of the file,
-          // and this reloadFromSave call has no persisted store to
+          // has in memory. Fires on a fresh boot with no prior save,
+          // and on a COLD RESTART after localStorage.clear(): the
+          // module rebuilds `state` from emptySave() at the top of
+          // the file, and this call has no persisted store to
           // rehydrate from. That is the local-only-save red polarity —
           // authority stays "local-fallback" and lastLoadProof.source
           // stays null, and story fields (packet.delivered, io memory,
           // scene.beat) revert to their fresh-boot defaults.
           return;
-        }
-
-        if (clearLocalState) {
-          window.localStorage.removeItem(storageKey);
         }
 
         state.player = {
@@ -790,23 +779,32 @@
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
 
-        // The reload succeeded from the persisted store — stamp the
-        // authority + lastLoadProof so the harness has durable proof
-        // that state came from the save path, not from live in-memory
-        // leftovers of the just-played session. Per the contract
-        // (story-state-contract.md L164-168): after a real reload,
-        //   lastLoadProof.source === 'server'
-        //   lastLoadProof.revision === save.revision
-        //   lastLoadProof.playerId === player.id
-        state.save.authority = "server";
+        // Stamp lastLoadProof to describe the provenance of THIS
+        // reload. Under the current localStorage-only impl the source
+        // is honestly "local-fallback" — the contract
+        // (docs/flagship/story-state-contract.md L162, L164-168)
+        // reserves "server" for the server-authoritative store that
+        // hasn't shipped yet. save.authority is left at whatever the
+        // saved payload carried (default: "local-fallback" from
+        // emptySave), NOT upgraded — lying about authority here would
+        // false-green the fixme'd durable-save test the moment it
+        // unfixmes. When the server store lands, THIS is the site
+        // that upgrades to source: "server".
         state.save.lastLoadProof = {
-          source: "server",
+          source: "local-fallback",
           revision: state.save.revision,
           playerId: state.player.id,
         };
 
+        // clearLocalState must WIN. Remove the key AFTER rehydrating
+        // from `saved` (we still needed the payload to hydrate), and
+        // do NOT call persist() afterward — persist() would write the
+        // just-rehydrated state right back to the store, undoing the
+        // clear and letting data survive across a "wiped" reload. The
+        // contract's local-only-save red polarity requires the wipe
+        // to actually erase durable state for the vertical slice.
         if (clearLocalState) {
-          persist({ dirty: false });
+          window.localStorage.removeItem(storageKey);
         }
 
         markStateDirty();
