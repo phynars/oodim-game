@@ -43,15 +43,24 @@ declare global {
       };
       getSnapshot: () => {
         scene: { beat: string };
+        packet: { delivered: boolean; sealed: boolean };
         npcs: {
           io: {
             lastLine?: string | null;
             lastLineMemoryRefs?: string[];
-            memory: Array<{ id?: string; object?: string; action?: string }>;
+            memory: Array<{
+              id?: string;
+              object?: string;
+              action?: string;
+              predicate?: string;
+              sessionId?: string;
+            }>;
           };
         };
         delivery: { outcome: string };
         save: {
+          revision: number;
+          dirty: boolean;
           authority: "server" | "local-fallback";
           lastLoadProof: {
             source: "server" | "local-fallback" | null;
@@ -242,37 +251,52 @@ test.describe("AFTERSIGN reload beat regression", () => {
       "red guard: only runs when the runtime is deliberately configured to prove local-only durability limits",
     );
 
-    // The contract (docs/flagship/story-state-contract.md L237) is:
-    //   local-only-save — state survives a NORMAL reload but fails
-    //   after `clearLocalState: true`.
+    // Contract (docs/flagship/story-state-contract.md L237):
+    //   local-only-save — state survives a NORMAL reload but FAILS
+    //   after `clearLocalState: true` / a device-wipe cold restart.
     //
-    // "Fails after clearLocalState" only means something across a COLD
-    // RESTART. In-page forceReload() cannot honestly express that: it
-    // reads readStored() first, and even if we invert the order the
-    // live in-memory `state` from the just-played session is right
-    // there — no server, no localStorage, but a session-leftover
-    // object that looks restored. Any assertion against that object
-    // would pass for the wrong reason.
+    // For a red guard the POLARITY must be: fail-under-break, pass
+    // once the contract is honored. A durable server-backed store
+    // (or any store outliving localStorage.clear()) SURVIVES the
+    // wipe — memory returns, packet.delivered returns, save.revision
+    // matches. The local-fallback impl at HEAD does NOT survive:
+    // readStored() returns null on cold restart, the module rebuilds
+    // `state` from emptySave() defaults, and everything the player
+    // did is gone.
     //
-    // Mirror save-load-durable-contract.spec.ts's honest shape:
-    //   1. Play through packet-kept-sealed → packet-delivered so an
-    //      Io memory fact is authored.
-    //   2. forceSave() to flush the durable path (whatever it is).
-    //   3. localStorage.clear() to simulate a device wipe / different
-    //      browser / cleared cookies.
-    //   4. page.goto(sameSlotUrl) — rebuild `state` from module scope.
-    //      This is the real cold-restart-with-clearLocalState.
-    //   5. Assert the NATURAL consequences of a local-only store
-    //      losing everything: beat regresses to packet-offered, io
-    //      memory is empty, save.authority is "local-fallback". Any
-    //      future server-backed impl restores these and the test
-    //      flips green with no assertion change.
+    // So the load-bearing assertions here are SURVIVAL claims. They
+    // fail today under the local-fallback impl (RED = the contract
+    // isn't satisfied) and pass automatically the moment a durable
+    // store ships (GREEN with zero assertion changes). This mirrors
+    // the shape of save-load-durable-contract.spec.ts, which uses
+    // the same red-polarity harness for the same reason.
     //
-    // Why this catches the break: under a local-only impl there is no
-    // authoritative store outside localStorage, so a genuine wipe
-    // erases the delivery outcome. The assertions read the fresh
-    // module's default state directly — no cheating on a field the
-    // break mode chose to tamper with.
+    // Prior draft asserted the FAILURE state (authority ==
+    // "local-fallback", memory empty, beat back at packet-offered,
+    // outcome "unknown") — that passed under the break instead of
+    // failing under it, which is the inverse of what a red guard
+    // must do. Soren #662 review caught it; this is the fix.
+    //
+    // Method:
+    //   1. Play packet-kept-sealed → packet-delivered so a
+    //      delivered-blue-packet Io memory fact is authored.
+    //   2. forceSave() and wait for state.save.dirty to clear —
+    //      the impl-agnostic signal that the persist path ran to
+    //      completion (durable spec uses the same wait; localStorage
+    //      key presence would tie us to the local-fallback impl).
+    //   3. localStorage.clear() to simulate a device wipe.
+    //   4. page.goto(sameSlotUrl) — cold restart that rebuilds
+    //      `state` from module scope (in-page forceReload() cannot
+    //      express this honestly — see save-load-durable spec's
+    //      note; readStored() early-return would leave the pre-wipe
+    //      in-memory state and every assertion below would pass
+    //      trivially).
+    //   5. Assert survival of the durable fields.
+    //
+    // The wait-on-dirty (step 2) is intentionally NOT a wait on the
+    // localStorage key. Under a future server-authoritative impl
+    // there may be no localStorage bucket at all, only a network
+    // flush; save.dirty is the surface both impls share.
     const slot = `local-only-save-${Date.now()}`;
     const url = `./?slot=${slot}`;
 
@@ -287,19 +311,33 @@ test.describe("AFTERSIGN reload beat regression", () => {
       await page.evaluate((choiceId) => window.__game!.input.choose(choiceId), choice);
       await idle(page);
     }
+
+    // Snapshot the pre-wipe state so post-restart survival is
+    // asserted against the actual values the player produced, not
+    // hard-coded literals. Delivering the sealed packet authors the
+    // delivered-blue-packet memory fact (index.html memoryFact())
+    // and bumps save.revision; both are what a durable store must
+    // preserve across a device wipe.
+    const beforeWipe = await page.evaluate(() => window.__game!.getSnapshot());
+    const sealedFact = beforeWipe.npcs.io.memory.find(
+      (fact) => fact.predicate === "delivered-blue-packet",
+    );
+    expect(
+      sealedFact,
+      "precondition: deliver-packet must author the Io sealed-delivery memory before we wipe",
+    ).toBeDefined();
+    expect(sealedFact!.object).toBe("sealed");
+    expect(beforeWipe.packet.delivered).toBe(true);
+    expect(beforeWipe.packet.sealed).toBe(true);
+    const revisionBeforeWipe = beforeWipe.save.revision;
+
     await page.evaluate(() => window.__game!.input.forceSave());
-    // Wait for the localStorage payload to actually land. Do NOT wait
-    // on save.authority — under the local-fallback impl per the
-    // contract (docs/flagship/story-state-contract.md L162), authority
-    // stays "local-fallback" and only flips to "server" when the
-    // server-authoritative store ships. Waiting on the localStorage
-    // key is the honest signal that forceSave()'s persist path ran.
+    // Wait on save.dirty (not the localStorage key) — this is the
+    // impl-agnostic "persist path flushed" signal that continues to
+    // work once a server-backed store lands and the local key
+    // disappears from the picture entirely.
     await page.waitForFunction(
-      () => {
-        const params = new URLSearchParams(window.location.search);
-        const slot = params.get("slot") || "local";
-        return window.localStorage.getItem(`aftersign:kiosk-slice:${slot}`) !== null;
-      },
+      () => window.__game?.getSnapshot().save.dirty === false,
       undefined,
       { timeout: WAIT_MS },
     );
@@ -314,14 +352,34 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
     const afterColdRestart = await page.evaluate(() => window.__game!.getSnapshot());
 
-    // Natural consequences of local-only durability under a real wipe:
-    // no persisted store to read → fresh emptySave() defaults →
-    // authority is "local-fallback", lastLoadProof.source is null,
-    // no delivery outcome, no io memory, beat is packet-offered.
-    expect(afterColdRestart.save.authority).toBe("local-fallback");
-    expect(afterColdRestart.save.lastLoadProof.source).toBeNull();
-    expect(afterColdRestart.delivery.outcome).toBe("unknown");
-    expect(afterColdRestart.scene.beat).toBe("packet-offered");
-    expect(afterColdRestart.npcs.io.memory.length).toBe(0);
+    // Survival claims — a durable store passes these; the
+    // local-fallback impl at HEAD fails them (memory=[],
+    // packet.delivered=false, revision=0, beat="packet-offered")
+    // because there is nothing outside localStorage to rehydrate
+    // from. That failure IS the red guard — it fires precisely when
+    // the vertical slice is running local-only, and goes green the
+    // moment a durable store lands.
+    expect(
+      afterColdRestart.packet.delivered,
+      "packet.delivered must survive local-state wipe — durable store required",
+    ).toBe(true);
+    expect(afterColdRestart.packet.sealed).toBe(true);
+    expect(afterColdRestart.delivery.outcome).toBe("sealed");
+    expect(afterColdRestart.scene.beat).toBe("packet-delivered");
+
+    const recalledFact = afterColdRestart.npcs.io.memory.find(
+      (fact) => fact.predicate === "delivered-blue-packet",
+    );
+    expect(
+      recalledFact,
+      "Io sealed-delivery memory must survive local-state wipe — durable store required",
+    ).toBeDefined();
+    expect(recalledFact!.object).toBe("sealed");
+    expect(recalledFact).toEqual(sealedFact);
+
+    expect(
+      afterColdRestart.save.revision,
+      "save.revision must survive local-state wipe — durable store required",
+    ).toBe(revisionBeforeWipe);
   });
 });
