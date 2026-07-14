@@ -5,13 +5,21 @@
 //     then schedules a setBeat("io-returning-recognition") after 1180ms.
 //     The persisted beat we reload from is "packet-delivered" — that's
 //     the durable one; the returning-line beat is a live-session
-//     animation, not a save-state.
+//     animation, not a save-state. To reach it after a reload the test
+//     calls choose("return-to-io"), which routes through advance() and
+//     promotes the beat when packet.delivered && memory.length > 0
+//     (both survive reload).
 //   • state.npcs.io.memory (SINGULAR) is the field publishState exposes.
 //     There is no plural `memories` — asserting on it would read undefined
 //     and pass silently even after a regression. The shared contract
 //     (e2e-shared/flagshipStoryStateContract.ts) uses `memories`, but that
 //     surface is `test.fixme`'d until Phase 3 (#566) lands the rename.
 //     Until then this spec asserts against the LIVE shape.
+//   • The expected lastLine strings are pinned to lineForBeat() in
+//     aftersign/index.html — the ONLY source publishState() reads. The
+//     earlier draft pinned to constants in aftersign/src/io-dialogue.ts
+//     which index.html doesn't import; that failed on strict equality
+//     because the runtime never emits those strings.
 //
 // Guard is state-quiesced (waitForFunction + waitForStoryIdle) — no
 // waitForTimeout, per e2e-shared/no-wall-clock-waits.
@@ -48,15 +56,23 @@ declare global {
 }
 
 const WAIT_MS = 10_000;
-const SEALED_LINE = "You came back. So did the blue seal, unbroken. That gives me two facts to trust.";
-const OPENED_LINE = "You came back. The seal did not. I can use one of those facts.";
+
+// The literal strings lineForBeat() emits in aftersign/index.html. If a
+// refactor moves these, update BOTH ends together — the spec's job is to
+// pin the runtime, not describe it in the abstract.
+const DELIVERED_LINE =
+  "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+const SEALED_RECOGNITION_LINE =
+  "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
+const OPENED_RECOGNITION_LINE =
+  "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
 
 type PacketPath = {
   name: string;
   choices: string[];
   expectedOutcome: "sealed" | "opened";
-  expectedLine: string;
-  wrongLine: string;
+  expectedRecognitionLine: string;
+  wrongRecognitionLine: string;
 };
 
 const PACKET_PATHS: PacketPath[] = [
@@ -64,15 +80,15 @@ const PACKET_PATHS: PacketPath[] = [
     name: "sealed packet",
     choices: ["keep-sealed", "deliver-packet"],
     expectedOutcome: "sealed",
-    expectedLine: SEALED_LINE,
-    wrongLine: OPENED_LINE,
+    expectedRecognitionLine: SEALED_RECOGNITION_LINE,
+    wrongRecognitionLine: OPENED_RECOGNITION_LINE,
   },
   {
     name: "opened packet",
     choices: ["open-packet", "deliver-packet"],
     expectedOutcome: "opened",
-    expectedLine: OPENED_LINE,
-    wrongLine: SEALED_LINE,
+    expectedRecognitionLine: OPENED_RECOGNITION_LINE,
+    wrongRecognitionLine: SEALED_RECOGNITION_LINE,
   },
 ];
 
@@ -109,9 +125,19 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   return page.evaluate(() => window.__game!.getSnapshot());
 }
 
+// After reload we're at the durable "packet-delivered" beat. The
+// sealed/opened split only appears at "io-returning-recognition"; reach
+// it deterministically by routing through advance() — no wall-clock wait,
+// no reliance on the 1180ms setTimeout (which doesn't survive reload).
+async function advanceToRecognition(page: Page) {
+  await page.evaluate(() => window.__game!.input.choose("return-to-io"));
+  await idle(page);
+  return page.evaluate(() => window.__game!.getSnapshot());
+}
+
 test.describe("AFTERSIGN reload beat regression", () => {
   for (const path of PACKET_PATHS) {
-    test(`reloads the ${path.name} outcome into Io's correct remembered line`, async ({ page }) => {
+    test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);
 
       // Live impl (aftersign/index.html):
@@ -120,21 +146,38 @@ test.describe("AFTERSIGN reload beat regression", () => {
       //     beat we reload from is "packet-delivered".
       //   • npcs.io.memory is the singular array field. There is no plural
       //     `memories` — asserting on it would always be undefined.
+      //   • At the reloaded beat lineForBeat() emits the SAME
+      //     "Done. Blue route..." string for both paths — the sealed/opened
+      //     split only appears at io-returning-recognition. Path is
+      //     distinguished here by delivery.outcome + memory[].object.
       expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
       expect(afterReload.scene.beat).toBe("packet-delivered");
       expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-      expect(afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome)).toBe(true);
-      expect(afterReload.npcs.io.lastLine).toBe(path.expectedLine);
-      expect(afterReload.npcs.io.lastLine).not.toBe(path.wrongLine);
+      expect(
+        afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome),
+      ).toBe(true);
+      expect(afterReload.npcs.io.lastLine).toBe(DELIVERED_LINE);
+
+      // Now advance to the recognition beat and confirm the durable
+      // outcome routes to the correct remembered line.
+      const afterRecognition = await advanceToRecognition(page);
+      expect(afterRecognition.scene.beat).toBe("io-returning-recognition");
+      expect(afterRecognition.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
+      expect(afterRecognition.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
     });
   }
 
   test("sealed and opened reload paths produce distinct Io recognition lines", async ({ page }) => {
-    const sealed = await playSaveReloadPath(page, PACKET_PATHS[0]);
-    const opened = await playSaveReloadPath(page, PACKET_PATHS[1]);
+    await playSaveReloadPath(page, PACKET_PATHS[0]);
+    const sealed = await advanceToRecognition(page);
 
-    expect(sealed.npcs.io.lastLine).toBe(SEALED_LINE);
-    expect(opened.npcs.io.lastLine).toBe(OPENED_LINE);
+    await playSaveReloadPath(page, PACKET_PATHS[1]);
+    const opened = await advanceToRecognition(page);
+
+    expect(sealed.scene.beat).toBe("io-returning-recognition");
+    expect(opened.scene.beat).toBe("io-returning-recognition");
+    expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
+    expect(opened.npcs.io.lastLine).toBe(OPENED_RECOGNITION_LINE);
     expect(sealed.npcs.io.lastLine).not.toBe(opened.npcs.io.lastLine);
   });
 });
