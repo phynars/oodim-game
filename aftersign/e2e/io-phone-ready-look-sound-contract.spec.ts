@@ -326,6 +326,8 @@ test.describe('Io phone-ready look/sound contract', () => {
     expect(probe.lineReadable).toBe(true);
     expect(probe.lineRect.left).toBeGreaterThanOrEqual(0);
     expect(probe.lineRect.right).toBeLessThanOrEqual(probe.viewport.width);
+    expect(probe.lineRect.top).toBeGreaterThanOrEqual(0);
+    expect(probe.lineRect.bottom).toBeLessThanOrEqual(probe.viewport.height);
     expect(probe.horizontalOverflowPx).toBe(0);
     expect(probe.verticalOverflowPx).toBe(0);
     expect(probe.settleMs).toBeGreaterThanOrEqual(0);
