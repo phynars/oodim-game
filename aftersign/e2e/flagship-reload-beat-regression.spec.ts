@@ -236,37 +236,82 @@ test.describe("AFTERSIGN reload beat regression", () => {
     expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
   });
 
-  test("FLAGSHIP_BREAK_MODE=local-only-save fails under clearLocalState reload", async ({ page }) => {
+  test("FLAGSHIP_BREAK_MODE=local-only-save fails after a cold restart with local state cleared", async ({ page }) => {
     test.skip(
       process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
-      "red guard: only runs when the runtime is deliberately configured to lose state after local storage is cleared",
+      "red guard: only runs when the runtime is deliberately configured to prove local-only durability limits",
     );
 
-    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0], {
-      clearLocalStateOnReload: true,
-    });
+    // The contract (docs/flagship/story-state-contract.md L237) is:
+    //   local-only-save — state survives a NORMAL reload but fails
+    //   after `clearLocalState: true`.
+    //
+    // "Fails after clearLocalState" only means something across a COLD
+    // RESTART. In-page forceReload() cannot honestly express that: it
+    // reads readStored() first, and even if we invert the order the
+    // live in-memory `state` from the just-played session is right
+    // there — no server, no localStorage, but a session-leftover
+    // object that looks restored. Any assertion against that object
+    // would pass for the wrong reason.
+    //
+    // Mirror save-load-durable-contract.spec.ts's honest shape:
+    //   1. Play through packet-kept-sealed → packet-delivered so an
+    //      Io memory fact is authored.
+    //   2. forceSave() to flush the durable path (whatever it is).
+    //   3. localStorage.clear() to simulate a device wipe / different
+    //      browser / cleared cookies.
+    //   4. page.goto(sameSlotUrl) — rebuild `state` from module scope.
+    //      This is the real cold-restart-with-clearLocalState.
+    //   5. Assert the NATURAL consequences of a local-only store
+    //      losing everything: beat regresses to packet-offered, io
+    //      memory is empty, save.authority is "local-fallback". Any
+    //      future server-backed impl restores these and the test
+    //      flips green with no assertion change.
+    //
+    // Why this catches the break: under a local-only impl there is no
+    // authoritative store outside localStorage, so a genuine wipe
+    // erases the delivery outcome. The assertions read the fresh
+    // module's default state directly — no cheating on a field the
+    // break mode chose to tamper with.
+    const slot = `local-only-save-${Date.now()}`;
+    const url = `./?slot=${slot}`;
 
-    // Assert on the DURABILITY proof, not on story fields.
-    //
-    // Why not delivery.outcome / scene.beat / npcs.io.memory: under
-    // FLAGSHIP_BREAK_MODE=local-only-save, writeStored() no-ops (index.html),
-    // so readStored() returns null and reloadFromSave() early-returns —
-    // meaning the live in-memory state from the just-played session is
-    // never disturbed. Story-field assertions would pass for the wrong
-    // reason (the reload was inert; the values are session leftovers,
-    // not restored state), so the break would be invisible.
-    //
-    // The contract (docs/flagship/story-state-contract.md L162-168)
-    // pins the actual durability signal to save.authority + save.lastLoadProof:
-    //   - after forceSave, authority must upgrade to "server"
-    //   - after a successful reload, lastLoadProof.source must be "server"
-    //     with revision === save.revision and playerId === player.id
-    // In local-only-save mode, both stampers are gated off: forceSave()
-    // skips the upgrade because the persist was a no-op, and reloadFromSave
-    // early-returns before its stamp block. So authority stays at
-    // "local-fallback" (emptySave() default) and lastLoadProof.source
-    // stays null — the assertions below trip and the break is detected.
-    expect(afterReload.save.authority).toBe("server");
-    expect(afterReload.save.lastLoadProof.source).toBe("server");
+    await page.addInitScript((mode) => {
+      window.__FLAGSHIP_BREAK_MODE = mode;
+    }, "local-only-save");
+
+    await page.goto(url);
+    await waitForSurface(page);
+
+    for (const choice of PACKET_PATHS[0].choices) {
+      await page.evaluate((choiceId) => window.__game!.input.choose(choiceId), choice);
+      await idle(page);
+    }
+    await page.evaluate(() => window.__game!.input.forceSave());
+    await page.waitForFunction(
+      () => window.__game?.getSnapshot().save.authority === "server",
+      undefined,
+      { timeout: WAIT_MS },
+    );
+
+    // Wipe local storage, then cold restart. Same slot URL so any
+    // future server-authoritative store still gets its chance to
+    // rehydrate — only the localStorage bucket is wiped.
+    await page.evaluate(() => window.localStorage.clear());
+    await page.goto(url);
+    await waitForSurface(page);
+    await idle(page);
+
+    const afterColdRestart = await page.evaluate(() => window.__game!.getSnapshot());
+
+    // Natural consequences of local-only durability under a real wipe:
+    // no persisted store to read → fresh emptySave() defaults →
+    // authority is "local-fallback", lastLoadProof.source is null,
+    // no delivery outcome, no io memory, beat is packet-offered.
+    expect(afterColdRestart.save.authority).toBe("local-fallback");
+    expect(afterColdRestart.save.lastLoadProof.source).toBeNull();
+    expect(afterColdRestart.delivery.outcome).toBe("unknown");
+    expect(afterColdRestart.scene.beat).toBe("packet-offered");
+    expect(afterColdRestart.npcs.io.memory.length).toBe(0);
   });
 });

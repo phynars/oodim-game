@@ -226,9 +226,6 @@
       };
 
       const writeStored = (payload) => {
-        if (breakMode === "local-only-save") {
-          return;
-        }
         window.localStorage.setItem(storageKey, JSON.stringify(payload));
       };
 
@@ -733,22 +730,21 @@
         persist({ dirty: false });
         // A completed forceSave() means the persist path ran to
         // completion — for the vertical slice that path IS the
-        // authoritative store, so upgrade save.authority accordingly.
-        // Under FLAGSHIP_BREAK_MODE=local-only-save, writeStored() no-ops
-        // (see above), so the "persist" was inert — leave authority at
-        // its local-fallback default so the break-guard can detect it.
-        // The contract (docs/flagship/story-state-contract.md L162, L164)
-        // is explicit: authority must be "server" and lastLoadProof.source
-        // must be "server" after a durable save.
-        if (breakMode !== "local-only-save") {
-          state.save.authority = "server";
-          state.save.lastLoadProof = {
-            source: "server",
-            revision: state.save.revision,
-            playerId: state.player.id,
-          };
-          markStateDirty();
-        }
+        // authoritative store for the SAME-SESSION reload path (the
+        // in-page reloadFromSave rehydrates from readStored), so
+        // upgrade save.authority accordingly. This upgrade is honest
+        // for normal reloads; the local-only-save red polarity is
+        // proved by a COLD RESTART via page.goto after localStorage
+        // is cleared (see flagship-reload-beat-regression.spec.ts),
+        // where readStored() returns null and the fresh module boots
+        // with authority="local-fallback" per emptySave().
+        state.save.authority = "server";
+        state.save.lastLoadProof = {
+          source: "server",
+          revision: state.save.revision,
+          playerId: state.player.id,
+        };
+        markStateDirty();
         renderText();
         publishState();
       };
@@ -756,15 +752,16 @@
       const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         const saved = readStored();
         if (!saved) {
-          // Nothing to load — leave state (including save.authority /
-          // save.lastLoadProof) at whatever the previous run left it.
-          // Under FLAGSHIP_BREAK_MODE=local-only-save this branch is the
-          // signature failure: writeStored() no-ops, so readStored()
-          // returns null and the durability proof (authority='server',
-          // lastLoadProof.source='server') never gets stamped. The
-          // reload-beat regression's local-only-save guard asserts on
-          // exactly those fields — the break is now detectable, not
-          // masked by live in-memory state from the just-played session.
+          // Nothing to load — leave state at whatever the current run
+          // has in memory. This branch fires on a fresh boot with no
+          // prior save, and (importantly for the durability probe) on
+          // a COLD RESTART after localStorage.clear(): the module
+          // rebuilds `state` from emptySave() at the top of the file,
+          // and this reloadFromSave call has no persisted store to
+          // rehydrate from. That is the local-only-save red polarity —
+          // authority stays "local-fallback" and lastLoadProof.source
+          // stays null, and story fields (packet.delivered, io memory,
+          // scene.beat) revert to their fresh-boot defaults.
           return;
         }
 
