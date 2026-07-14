@@ -731,6 +731,24 @@
 
       const forceSave = async () => {
         persist({ dirty: false });
+        // A completed forceSave() means the persist path ran to
+        // completion — for the vertical slice that path IS the
+        // authoritative store, so upgrade save.authority accordingly.
+        // Under FLAGSHIP_BREAK_MODE=local-only-save, writeStored() no-ops
+        // (see above), so the "persist" was inert — leave authority at
+        // its local-fallback default so the break-guard can detect it.
+        // The contract (docs/flagship/story-state-contract.md L162, L164)
+        // is explicit: authority must be "server" and lastLoadProof.source
+        // must be "server" after a durable save.
+        if (breakMode !== "local-only-save") {
+          state.save.authority = "server";
+          state.save.lastLoadProof = {
+            source: "server",
+            revision: state.save.revision,
+            playerId: state.player.id,
+          };
+          markStateDirty();
+        }
         renderText();
         publishState();
       };
@@ -738,6 +756,15 @@
       const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         const saved = readStored();
         if (!saved) {
+          // Nothing to load — leave state (including save.authority /
+          // save.lastLoadProof) at whatever the previous run left it.
+          // Under FLAGSHIP_BREAK_MODE=local-only-save this branch is the
+          // signature failure: writeStored() no-ops, so readStored()
+          // returns null and the durability proof (authority='server',
+          // lastLoadProof.source='server') never gets stamped. The
+          // reload-beat regression's local-only-save guard asserts on
+          // exactly those fields — the break is now detectable, not
+          // masked by live in-memory state from the just-played session.
           return;
         }
 
@@ -765,6 +792,21 @@
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
+
+        // The reload succeeded from the persisted store — stamp the
+        // authority + lastLoadProof so the harness has durable proof
+        // that state came from the save path, not from live in-memory
+        // leftovers of the just-played session. Per the contract
+        // (story-state-contract.md L164-168): after a real reload,
+        //   lastLoadProof.source === 'server'
+        //   lastLoadProof.revision === save.revision
+        //   lastLoadProof.playerId === player.id
+        state.save.authority = "server";
+        state.save.lastLoadProof = {
+          source: "server",
+          revision: state.save.revision,
+          playerId: state.player.id,
+        };
 
         if (clearLocalState) {
           persist({ dirty: false });

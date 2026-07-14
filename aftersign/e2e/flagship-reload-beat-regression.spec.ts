@@ -51,6 +51,14 @@ declare global {
           };
         };
         delivery: { outcome: string };
+        save: {
+          authority: "server" | "local-fallback";
+          lastLoadProof: {
+            source: "server" | "local-fallback" | null;
+            revision: number | null;
+            playerId: string | null;
+          };
+        };
       };
     };
   }
@@ -229,8 +237,27 @@ test.describe("AFTERSIGN reload beat regression", () => {
       clearLocalStateOnReload: true,
     });
 
-    expect(afterReload.delivery.outcome).toBe("sealed");
-    expect(afterReload.scene.beat).toBe("packet-delivered");
-    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
+    // Assert on the DURABILITY proof, not on story fields.
+    //
+    // Why not delivery.outcome / scene.beat / npcs.io.memory: under
+    // FLAGSHIP_BREAK_MODE=local-only-save, writeStored() no-ops (index.html),
+    // so readStored() returns null and reloadFromSave() early-returns —
+    // meaning the live in-memory state from the just-played session is
+    // never disturbed. Story-field assertions would pass for the wrong
+    // reason (the reload was inert; the values are session leftovers,
+    // not restored state), so the break would be invisible.
+    //
+    // The contract (docs/flagship/story-state-contract.md L162-168)
+    // pins the actual durability signal to save.authority + save.lastLoadProof:
+    //   - after forceSave, authority must upgrade to "server"
+    //   - after a successful reload, lastLoadProof.source must be "server"
+    //     with revision === save.revision and playerId === player.id
+    // In local-only-save mode, both stampers are gated off: forceSave()
+    // skips the upgrade because the persist was a no-op, and reloadFromSave
+    // early-returns before its stamp block. So authority stays at
+    // "local-fallback" (emptySave() default) and lastLoadProof.source
+    // stays null — the assertions below trip and the break is detected.
+    expect(afterReload.save.authority).toBe("server");
+    expect(afterReload.save.lastLoadProof.source).toBe("server");
   });
 });
