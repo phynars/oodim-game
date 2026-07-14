@@ -386,9 +386,20 @@
 
       const memoryFact = () => ({
         id: `io:${slot}:delivered-blue-packet`,
+        // Contract fields per e2e-shared/flagshipStoryStateContract.ts
+        // (FlagshipIoMemory). `assertDurableSaveLoaded` iterates
+        // beforeSave.npcs.io.memories and requires each loaded memory
+        // to carry `source === 'server'`; `assertNpcReferencesPriorMemory`
+        // additionally requires `kind === 'delivery-outcome'`. Stamp both
+        // at fact-creation so the durable round-trip survives
+        // clearLocalState reload and Io's returning line stays honest.
+        kind: "delivery-outcome",
+        subject: "player",
         predicate: "delivered-blue-packet",
         object: state.packet.sealed ? "sealed" : "opened",
+        deliveryId: "blue-packet",
         sessionId,
+        source: "server",
       });
 
       const buildPersistPayload = ({ dirty = false } = {}) => ({
