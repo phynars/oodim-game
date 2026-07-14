@@ -212,6 +212,7 @@
       const slot = params.get("slot") || "local";
       const storageKey = `aftersign:kiosk-slice:${slot}`;
       const sessionId = `session-${slot}`;
+      const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
       const clone = (value) => JSON.parse(JSON.stringify(value));
       const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -225,6 +226,9 @@
       };
 
       const writeStored = (payload) => {
+        if (breakMode === "local-only-save") {
+          return;
+        }
         window.localStorage.setItem(storageKey, JSON.stringify(payload));
       };
 
@@ -366,7 +370,9 @@
         }
 
         if (state.scene.beat === "io-returning-recognition") {
-          return state.packet.sealed
+          const rememberedSealed = state.packet.sealed;
+          const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
+          return speakAsSealed
             ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
             : "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
         }
@@ -752,7 +758,9 @@
           id: "blue-packet",
           outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
         };
-        state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
+        state.npcs.io.memory = breakMode === "drop-memory"
+          ? []
+          : saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat

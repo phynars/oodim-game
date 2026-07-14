@@ -32,12 +32,13 @@ import { expect, test, type Page } from "@playwright/test";
 // FlagshipGameSurface.
 declare global {
   interface Window {
+    __FLAGSHIP_BREAK_MODE?: string;
     __game?: {
       scene: { beat: string };
       input: {
         choose: (choiceId: string) => void | Promise<void>;
         forceSave: () => void | Promise<void>;
-        forceReload: () => void | Promise<void>;
+        forceReload: (options?: { clearLocalState?: boolean }) => void | Promise<void>;
         waitForStoryIdle: () => void | Promise<void>;
       };
       getSnapshot: () => {
@@ -109,7 +110,14 @@ async function idle(page: Page): Promise<void> {
   await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
-async function playSaveReloadPath(page: Page, path: PacketPath) {
+async function playSaveReloadPath(
+  page: Page,
+  path: PacketPath,
+  options: { clearLocalStateOnReload?: boolean } = {},
+) {
+  await page.addInitScript((breakMode) => {
+    window.__FLAGSHIP_BREAK_MODE = breakMode || undefined;
+  }, process.env.FLAGSHIP_BREAK_MODE ?? "");
   await page.goto("./");
   await waitForSurface(page);
 
@@ -119,7 +127,10 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   }
 
   await page.evaluate(() => window.__game!.input.forceSave());
-  await page.evaluate(() => window.__game!.input.forceReload());
+  await page.evaluate(
+    (reloadOptions) => window.__game!.input.forceReload(reloadOptions),
+    { clearLocalState: options.clearLocalStateOnReload ?? false },
+  );
   await idle(page);
 
   return page.evaluate(() => window.__game!.getSnapshot());
@@ -179,5 +190,47 @@ test.describe("AFTERSIGN reload beat regression", () => {
     expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
     expect(opened.npcs.io.lastLine).toBe(OPENED_RECOGNITION_LINE);
     expect(sealed.npcs.io.lastLine).not.toBe(opened.npcs.io.lastLine);
+  });
+
+  test("FLAGSHIP_BREAK_MODE=wrong-io-line fails the outcome-correct Io line contract", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line",
+      "red guard: only runs when the runtime is deliberately configured to swap Io recognition lines",
+    );
+
+    await playSaveReloadPath(page, PACKET_PATHS[0]);
+    const sealed = await advanceToRecognition(page);
+
+    expect(sealed.scene.beat).toBe("io-returning-recognition");
+    expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
+    expect(sealed.npcs.io.lastLine).not.toBe(OPENED_RECOGNITION_LINE);
+  });
+
+  test("FLAGSHIP_BREAK_MODE=drop-memory fails the persisted memory contract", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory",
+      "red guard: only runs when the runtime is deliberately configured to drop Io memory on reload",
+    );
+
+    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0]);
+
+    expect(afterReload.delivery.outcome).toBe("sealed");
+    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
+    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
+  });
+
+  test("FLAGSHIP_BREAK_MODE=local-only-save fails under clearLocalState reload", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
+      "red guard: only runs when the runtime is deliberately configured to lose state after local storage is cleared",
+    );
+
+    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0], {
+      clearLocalStateOnReload: true,
+    });
+
+    expect(afterReload.delivery.outcome).toBe("sealed");
+    expect(afterReload.scene.beat).toBe("packet-delivered");
+    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
   });
 });
