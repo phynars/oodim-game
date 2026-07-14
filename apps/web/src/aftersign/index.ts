@@ -30,6 +30,26 @@ export {
 } from "./failureStingFeel";
 
 export {
+DEFAULT_PACKET_CHOICE_FEEL,
+  evaluatePacketChoiceGesture,
+  type PacketChoice,
+  type PacketChoiceDecision,
+  type PacketChoiceFeelConfig,
+  type PacketChoiceGesture,
+  type PacketGestureKind,
+} from "./packetChoiceFeel";
+
+export {
+  cancelPacketSealHold,
+  createPacketSealState,
+  DEFAULT_PACKET_SEAL_FEEL,
+  samplePacketSealHold,
+  type PacketSealFeelConfig,
+  type PacketSealFeelState,
+  type PacketSealPhase,
+} from "./packetSealFeel";
+
+export {
   createPacketIntentModel,
   type PacketIntentModel,
   type PacketIntentOptions,
@@ -49,12 +69,37 @@ export {
 
 export {
   getIoFirstSessionLine,
-  getIoFirstSessionText,
   ioFirstSessionCopy,
-  type IoFirstSessionBeatId,
-  type IoFirstSessionCopyLine,
-  type IoReferencedPlayerAction,
+  type IoFirstSessionCopyKey,
+  type IoFirstSessionLine,
 } from "./ioFirstSessionCopy";
+
+export {
+  getIoPacketChoiceLine,
+  ioPacketChoiceCopy,
+  type IoPacketChoiceCopyKey,
+  type IoPacketChoiceLine,
+} from "./ioPacketChoiceCopy";
+
+export {
+  IO_PHONE_READY_FEEL,
+  sampleIoPhoneReadyFeel,
+  type IoPhoneReadyFeelSample,
+} from "./ioPhoneReadyFeel";
+
+export {
+  createAftersignVerticalSliceSave,
+  createAftersignVerticalSliceState,
+  meetIoForAftersignSlice,
+  recordAftersignPacketChoice,
+  restoreAftersignVerticalSliceState,
+  sampleAftersignIoMemoryBeat,
+  type AftersignIoMemoryBeat,
+  type AftersignPacketOutcome,
+  type AftersignSceneId,
+  type AftersignVerticalSliceSave,
+  type AftersignVerticalSliceState,
+} from "./verticalSliceState";
 
 export {
   getRecognitionFeedbackDuration,
@@ -67,3 +112,9 @@ export {
   type RecognitionMemoryBeatSnapshot,
   type RecognitionOutcome,
 } from "./recognitionFeedback";
+
+export {
+  MEMORY_RECALL_FEEL,
+  sampleMemoryRecallFeel,
+  type MemoryRecallFeelSample,
+} from "./memoryRecallFeel";

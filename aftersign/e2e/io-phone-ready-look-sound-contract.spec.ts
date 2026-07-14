@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { IO_PHONE_READY_FEEL } from '../../e2e-shared/aftersign/ioPhoneReadyFeel';
+
 // Cold-start budget matches sibling AFTERSIGN specs: SwiftShader + three.js
 // first WebGL context regularly blows the default 30s in CI. Every spec in
 // aftersign/e2e/ opts into 90s and uses waitUntil: 'load' — 'networkidle'
@@ -9,6 +11,7 @@ const WAIT_MS = 60_000;
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
+const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 
 // The line that ACTUALLY renders at the sealed recognition beat, per
 // index.html's lineForBeat() branch for state.scene.beat ===
@@ -18,12 +21,13 @@ const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const IO_SEALED_RECOGNITION_LINE =
   'I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.';
 
-// Phone-ready envelope for the first Io recognition beat. These are measured
-// around the runtime transition, not copied from static constants: the text
-// must settle inside one deliberate UI beat and the audio cue must follow the
-// visual recognition state closely enough to feel paired on a phone speaker.
-const MAX_UI_SETTLE_MS = 360;
-const MAX_AV_DRIFT_MS = 50;
+// Phone-ready envelope for the first Io recognition beat. Sourced from the
+// shared feel contract (e2e-shared/aftersign/ioPhoneReadyFeel.ts) so the spec
+// asserts against the SAME numbers the runtime samples — no parallel source
+// of truth. If these budgets need to move, edit the shared contract; the
+// runtime mirror in apps/web/src/aftersign/ioPhoneReadyFeel.ts must match.
+const MAX_UI_SETTLE_MS = IO_PHONE_READY_FEEL.settleMs;
+const MAX_AV_DRIFT_MS = IO_PHONE_READY_FEEL.maxAudioVisualDriftMs;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
 type PhoneReadyProbe = {
@@ -92,9 +96,22 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
     win.__ioPhoneReadyMarks = {};
 
-    let lastBeat: string | null = null;
-    let lastLineText = '';
-    let lastAudioCue: string | null = null;
+    // Seed the "last" values from the CURRENT state, not sentinel defaults.
+    // Otherwise the first rAF tick can see beat/line/audioCue at a stale
+    // "before-drive" value that trivially satisfies the transition guards
+    // (lastBeat=null !== 'io-returning-recognition', lastAudioCue=null !==
+    // 'packet-confirmed'), and if the drive has already reached the sealed
+    // recognition beat by the time this observer's first tick fires (which
+    // is realistic on cold CI where SwiftShader delays the render loop
+    // relative to microtask completion), the marks would be stamped with
+    // performance.now() at OBSERVATION time — not at the actual transition —
+    // yielding a settleMs / avDriftMs that reflects rAF jitter, not runtime
+    // coupling. Seeding here means the transition guards only fire on a
+    // genuine change AFTER install, which is what the contract measures.
+    const initialGame = win.__game;
+    let lastBeat: string | null = initialGame?.scene?.beat ?? null;
+    let lastLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
+    let lastAudioCue: string | null = initialGame?._runtime?.audio?.lastCue ?? null;
 
     const observe = () => {
       const game = win.__game;
@@ -280,6 +297,9 @@ test.describe('Io phone-ready look/sound contract', () => {
   test('keeps the sealed-packet recognition beat readable, settled, and coupled on a phone viewport', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     await page.setViewportSize(PHONE_VIEWPORT);
+    await page.addInitScript((key) => {
+      window.localStorage.removeItem(key);
+    }, STORAGE_KEY);
     await page.goto(`/aftersign/index.html?slot=${DETERMINISTIC_SLOT}`, {
       waitUntil: 'load',
     });
@@ -300,6 +320,7 @@ test.describe('Io phone-ready look/sound contract', () => {
 
     const probe = await measurePhoneReadyProbe(page);
 
+    expect(probe.viewport).toEqual(PHONE_VIEWPORT);
     expect(probe.lineText).toContain(IO_SEALED_RECOGNITION_LINE);
     expect(probe.lineVisible).toBe(true);
     expect(probe.lineReadable).toBe(true);

@@ -1,94 +1,56 @@
-// AFTERSIGN — Io first-session copy contract for the flagship slice.
+// Io Vale — FIRST-session copy for the vertical slice.
 //
-// Source of truth: docs/flagship/vertical-slice-script.md.
-// Every line here is the authored script text; do not paraphrase. The
-// harness (see docs/flagship/story-state-contract.md) asserts these
-// beats by id and by fragment, so drift here breaks the slice proof.
-//
-// Same-session lines cover the first arrival, the job hand-off, and
-// the route instruction. Returning-session lines (returnSealed /
-// returnOpened) are the primary recognition beats and must reference
-// the packet outcome tokens the story-state contract uses: `sealed`
-// and `opened`.
+// This module owns only the beats Io speaks on the player's FIRST arrival.
+// Returning-session recognition lines (§7 of the vertical-slice script) live
+// in `packages/aftersign/src/ioReturningSession.ts` — that module is the
+// single source of truth for anything a returning player hears, and
+// `aftersign/src/ioFirstSessionPacing.ts` encodes the same invariant in its
+// beat union. Do not re-add returnSealed / returnOpened here; the harness
+// reads those from ioReturningSessionLines and duplicating the copy is a
+// regression.
 
-export type IoFirstSessionBeatId =
-  | "arrival"
-  | "packetOffer"
-  | "routeInstruction"
-  | "sealedWarning"
-  | "openedWarning"
-  | "returnSealed"
-  | "returnOpened";
+export type IoFirstSessionCopyKey =
+  | 'arrival'
+  | 'packetOffer'
+  | 'routeInstruction'
+  | 'sealedWarning'
+  | 'openedWarning';
 
-export type IoReferencedPlayerAction =
-  | "arrived"
-  | "accepted-packet"
-  | "listened"
-  | "sealed"
-  | "opened";
-
-export type IoFirstSessionCopyLine = {
-  id: IoFirstSessionBeatId;
+export type IoFirstSessionLine = {
+  key: IoFirstSessionCopyKey;
   text: string;
-  intent: "anchor" | "choice" | "route" | "memory-write";
-  referencedPlayerAction?: IoReferencedPlayerAction;
 };
 
-export const ioFirstSessionCopy: readonly IoFirstSessionCopyLine[] = [
+export const ioFirstSessionCopy: readonly IoFirstSessionLine[] = [
   {
-    id: "arrival",
-    text: "You made it above the water. Good. That is the first qualification.",
-    intent: "anchor",
-    referencedPlayerAction: "arrived",
+    key: 'arrival',
+    // Script-locked — docs/flagship/vertical-slice-script.md §1.
+    text: 'You made it above the water. Good. That is the first qualification.',
   },
   {
-    id: "packetOffer",
-    text: "Blue packet. Sign box with three moths painted on it.",
-    intent: "choice",
-    referencedPlayerAction: "accepted-packet",
+    key: 'packetOffer',
+    text: 'Blue seal. Brass box. No names until it lands.',
   },
   {
-    id: "routeInstruction",
-    text: "Left stair, red string, brass bell. If the stair argues with you, trust the bell.",
-    intent: "route",
-    referencedPlayerAction: "listened",
+    key: 'routeInstruction',
+    text: 'Follow the lanterns that hum. Ignore the ones that know your voice.',
   },
   {
-    id: "sealedWarning",
-    text: "Keep the seal closed unless you want me to know you didn't.",
-    intent: "memory-write",
-    referencedPlayerAction: "sealed",
+    key: 'sealedWarning',
+    text: 'If it stays closed, I learn one thing about you.',
   },
   {
-    id: "openedWarning",
-    text: "Curiosity is not a crime. It is an invoice.",
-    intent: "memory-write",
-    referencedPlayerAction: "opened",
-  },
-  {
-    id: "returnSealed",
-    text: "The bell rang. Good. The city prefers evidence to enthusiasm.",
-    intent: "memory-write",
-    referencedPlayerAction: "sealed",
-  },
-  {
-    id: "returnOpened",
-    text: "No bell. So either the box lied, or you gave it something already spent.",
-    intent: "memory-write",
-    referencedPlayerAction: "opened",
+    key: 'openedWarning',
+    text: 'If it opens, I learn a different thing.',
   },
 ] as const;
 
-export function getIoFirstSessionLine(id: IoFirstSessionBeatId): IoFirstSessionCopyLine {
-  const line = ioFirstSessionCopy.find((candidate) => candidate.id === id);
+export function getIoFirstSessionLine(key: IoFirstSessionCopyKey): string {
+  const line = ioFirstSessionCopy.find((entry) => entry.key === key);
 
   if (!line) {
-    throw new Error(`Unknown Io first-session beat: ${id}`);
+    throw new Error(`Unknown Io first-session copy key: ${key}`);
   }
 
-  return line;
-}
-
-export function getIoFirstSessionText(id: IoFirstSessionBeatId): string {
-  return getIoFirstSessionLine(id).text;
+  return line.text;
 }
