@@ -32,12 +32,13 @@ import { expect, test, type Page } from "@playwright/test";
 // FlagshipGameSurface.
 declare global {
   interface Window {
+    __FLAGSHIP_BREAK_MODE?: string;
     __game?: {
       scene: { beat: string };
       input: {
         choose: (choiceId: string) => void | Promise<void>;
         forceSave: () => void | Promise<void>;
-        forceReload: () => void | Promise<void>;
+        forceReload: (options?: { clearLocalState?: boolean }) => void | Promise<void>;
         waitForStoryIdle: () => void | Promise<void>;
       };
       getSnapshot: () => {
@@ -56,6 +57,9 @@ declare global {
 }
 
 const WAIT_MS = 10_000;
+// Red-guard lanes run under CI runners where SwiftShader init + first
+// WebGL context can eat most of the default budget — give them headroom.
+const COLD_START_MS = 90_000;
 
 // The literal strings lineForBeat() emits in aftersign/index.html. If a
 // refactor moves these, update BOTH ends together — the spec's job is to
@@ -109,7 +113,23 @@ async function idle(page: Page): Promise<void> {
   await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
-async function playSaveReloadPath(page: Page, path: PacketPath) {
+async function playSaveReloadPath(
+  page: Page,
+  path: PacketPath,
+  options: { clearLocalStateOnReload?: boolean } = {},
+) {
+  // Only install the break-mode hook when a mode is actually set — a
+  // no-op init script on every default-lane test both wastes a bit of
+  // navigation setup and (more importantly) muddies the failure diff
+  // if anything else about addInitScript timing changes. The default
+  // lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op and
+  // the runtime path is byte-identical to pre-guard behavior.
+  const breakMode = process.env.FLAGSHIP_BREAK_MODE;
+  if (breakMode) {
+    await page.addInitScript((mode) => {
+      window.__FLAGSHIP_BREAK_MODE = mode;
+    }, breakMode);
+  }
   await page.goto("./");
   await waitForSurface(page);
 
@@ -119,7 +139,18 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   }
 
   await page.evaluate(() => window.__game!.input.forceSave());
-  await page.evaluate(() => window.__game!.input.forceReload());
+  // Default lane stays byte-identical to the pre-guard path: no-arg
+  // forceReload() when the caller did not opt into clearLocalState.
+  // Passing an explicit `{clearLocalState:false}` should be equivalent
+  // (impl destructures `{clearLocalState = false} = {}`), but keeping
+  // the no-arg call for the default lane removes any chance the arg
+  // path changes shape underneath us and makes a real regression look
+  // like a green-lane change.
+  if (options.clearLocalStateOnReload) {
+    await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+  } else {
+    await page.evaluate(() => window.__game!.input.forceReload());
+  }
   await idle(page);
 
   return page.evaluate(() => window.__game!.getSnapshot());
@@ -180,4 +211,48 @@ test.describe("AFTERSIGN reload beat regression", () => {
     expect(opened.npcs.io.lastLine).toBe(OPENED_RECOGNITION_LINE);
     expect(sealed.npcs.io.lastLine).not.toBe(opened.npcs.io.lastLine);
   });
+
+  test("FLAGSHIP_BREAK_MODE=wrong-io-line fails the outcome-correct Io line contract", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line",
+      "red guard: only runs when the runtime is deliberately configured to swap Io recognition lines",
+    );
+    test.setTimeout(COLD_START_MS);
+
+    await playSaveReloadPath(page, PACKET_PATHS[0]);
+    const sealed = await advanceToRecognition(page);
+
+    expect(sealed.scene.beat).toBe("io-returning-recognition");
+    expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
+    expect(sealed.npcs.io.lastLine).not.toBe(OPENED_RECOGNITION_LINE);
+  });
+
+  test("FLAGSHIP_BREAK_MODE=drop-memory fails the persisted memory contract", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory",
+      "red guard: only runs when the runtime is deliberately configured to drop Io memory on reload",
+    );
+    test.setTimeout(COLD_START_MS);
+
+    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0]);
+
+    expect(afterReload.delivery.outcome).toBe("sealed");
+    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
+    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
+  });
+
+  // FLAGSHIP_BREAK_MODE=local-only-save red guard: DEFERRED to a follow-up.
+  //
+  // Multiple review rounds contested the polarity + wiring of this
+  // specific probe (PR #662, five REQUEST_CHANGES). The green-lane
+  // safety concern is the same one that keeps save-load-durable-
+  // contract's equivalent probe fixme'd: without a durable store, the
+  // survival assertions can't be authored honestly, and the fallback
+  // shapes proposed (asserting the failure state, asserting `authority`
+  // alone) either invert red-polarity or don't distinguish break vs.
+  // contract-honored. Deferring lets wrong-io-line + drop-memory ship
+  // green while the local-only-save probe lands in the same PR that
+  // ships the server-authoritative store (Refs #653) — the moment the
+  // contract can actually be honored, both this probe AND the fixme'd
+  // durable-save test unfixme together.
 });
