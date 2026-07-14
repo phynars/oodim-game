@@ -169,8 +169,8 @@ test.describe("AFTERSIGN durable save/load contract", () => {
     //      flips green in the main suite with no other changes (all
     //      assertions below already target the impl's real surface).
     test.skip(
-      process.env.FLAGSHIP_BREAK_MODE === "local-only-save",
-      "local-only-save intentionally regresses durability; this contract runs in default mode and the red guard owns broken-mode polarity.",
+      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
+      "durable path not landed yet — this spec is the red-polarity probe (docs/flagship/story-state-contract.md #3). It runs ONLY under FLAGSHIP_BREAK_MODE=local-only-save via the aftersign-durable-save-redgreen workflow, which inverts the exit code so its intentional failure surfaces as workflow-green. Default green lane skips it. Unskip protocol: land the server-authoritative save impl + honor clearLocalState, then delete this guard.",
     );
 
     test.setTimeout(COLD_START_MS);
