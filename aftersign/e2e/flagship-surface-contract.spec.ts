@@ -122,6 +122,14 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // Unfixme in Phase 3 once npcs.io.memories, npcs.io.lastLine,
   // npcs.io.lastLineMemoryRefs, and npcs.io.trustPosture are populated
   // on the return-to-io beat.
+  //
+  // redgreen-sentinel: npc-memory-red-lane-retired
+  // The aftersign-npc-memory-redgreen.yml preflight keys off the sentinel
+  // line above (NOT this test's title), so renaming the test never flips
+  // retirement behavior. DELETE the sentinel in the same change that
+  // converts this fixme to the conditional
+  // `test.skip(process.env.FLAGSHIP_BREAK_MODE !== "drop-memory", ...)`
+  // guard — that is what re-arms the red-polarity lane.
   test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
