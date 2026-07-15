@@ -233,6 +233,12 @@ test.describe("AFTERSIGN reload beat regression", () => {
       "red guard: only runs when runtime saves local-only and should fail after storage wipe",
     );
 
+    // Runtime hook: aftersign/index.html forceSave/reloadFromSave check
+    // `breakMode === "local-only-save"`. Under that mode, forceSave
+    // SKIPS persistAuthoritative (server never receives the payload)
+    // and reloadFromSave with clearLocalState wipes localStorage BEFORE
+    // reading, then calls resetStateToBootstrap — so the delivered/
+    // sealed/memory state genuinely disappears across the reload.
     const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0], {
       clearLocalState: true,
     });

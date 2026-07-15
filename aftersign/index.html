@@ -772,24 +772,72 @@
 
       const forceSave = async () => {
         persist({ dirty: false });
-        await persistAuthoritative({ dirty: false });
-        state.save.lastLoadProof = {
-          source: "server",
-          revision: state.save.revision,
-          playerId: state.player.id,
-        };
+        // Red-guard hook (#665): local-only-save deliberately skips the
+        // server-authoritative write so a subsequent clearLocalState
+        // reload finds nothing to rehydrate from. The default lane
+        // (breakMode === "") persists to both stores as before.
+        if (breakMode !== "local-only-save") {
+          await persistAuthoritative({ dirty: false });
+          state.save.lastLoadProof = {
+            source: "server",
+            revision: state.save.revision,
+            playerId: state.player.id,
+          };
+        } else {
+          state.save.authority = "local-fallback";
+          state.save.lastLoadProof = {
+            source: null,
+            revision: null,
+            playerId: null,
+          };
+        }
         markStateDirty();
         renderText();
         publishState();
       };
 
+      const resetStateToBootstrap = () => {
+        state.story.currentNpcId = null;
+        state.story.memoryBeat = null;
+        state.player = { id: state.player.id, name: null, flags: { io_intro_seen: false }, x: -1.8, z: 1.15, facingRadians: 0 };
+        state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
+        state.delivery = { id: "blue-packet", outcome: "unknown" };
+        state.npcs.io.memory = [];
+        state.npcs.io.lastLine = null;
+        state.npcs.io.lastLineMemoryRefs = [];
+        state.save = emptySave();
+        state.scene.beat = "packet-offered";
+      };
+
       const reloadFromSave = async ({ clearLocalState = false } = {}) => {
+        // Red-guard hook (#665): under local-only-save, treat the wipe
+        // as authoritative — skip the server read AND clear localStorage
+        // BEFORE the load, so `saved` is genuinely null and the state
+        // resets to bootstrap defaults. Under this mode the "durable"
+        // save is a fiction; a wipe should visibly drop the record.
+        if (breakMode === "local-only-save" && clearLocalState) {
+          window.localStorage.removeItem(storageKey);
+          resetStateToBootstrap();
+          markStateDirty();
+          renderText();
+          publishState();
+          return;
+        }
         const playerId = state.player.id;
-        const saved = await readAuthoritativeSave({
-          slot,
-          playerId,
-        }).catch(() => null) || readStored();
+        const saved = breakMode === "local-only-save"
+          ? readStored()
+          : (await readAuthoritativeSave({
+              slot,
+              playerId,
+            }).catch(() => null) || readStored());
         if (!saved) {
+          if (clearLocalState) {
+            window.localStorage.removeItem(storageKey);
+            resetStateToBootstrap();
+            markStateDirty();
+            renderText();
+            publishState();
+          }
           return;
         }
 
