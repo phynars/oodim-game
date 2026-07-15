@@ -772,6 +772,20 @@
 
       const forceSave = async () => {
         persist({ dirty: false });
+
+        if (breakMode === "local-only-save") {
+          state.save.authority = "local-fallback";
+          state.save.lastLoadProof = {
+            source: "local-fallback",
+            revision: state.save.revision,
+            playerId: state.player.id,
+          };
+          markStateDirty();
+          renderText();
+          publishState();
+          return;
+        }
+
         await persistAuthoritative({ dirty: false });
         state.save.lastLoadProof = {
           source: "server",
@@ -785,11 +799,38 @@
 
       const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         const playerId = state.player.id;
-        const saved = await readAuthoritativeSave({
-          slot,
-          playerId,
-        }).catch(() => null) || readStored();
+
+        if (clearLocalState) {
+          window.localStorage.removeItem(storageKey);
+        }
+
+        const authoritativeSave = breakMode === "local-only-save"
+          ? null
+          : await readAuthoritativeSave({
+              slot,
+              playerId,
+            }).catch(() => null);
+        const saved = authoritativeSave || (clearLocalState ? null : readStored());
+
         if (!saved) {
+          state.story.currentNpcId = null;
+          state.story.memoryBeat = null;
+          state.scene.beat = "packet-offered";
+          state.packet = { ...state.packet, delivered: false, route: null, deliveredAt: null };
+          state.delivery = { id: "blue-packet", outcome: "unknown" };
+          state.npcs.io.memory = [];
+          state.save = {
+            ...emptySave(),
+            authority: authoritativeSave ? "server" : "local-fallback",
+            lastLoadProof: {
+              source: null,
+              revision: null,
+              playerId,
+            },
+          };
+          markStateDirty();
+          renderText();
+          publishState();
           return;
         }
 
@@ -813,19 +854,15 @@
           ? []
           : saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
-        state.save.authority = "server";
+        state.save.authority = authoritativeSave ? "server" : "local-fallback";
         state.save.lastLoadProof = {
-          source: "server",
+          source: authoritativeSave ? "server" : "local-fallback",
           revision: state.save.revision,
           playerId: state.player.id,
         };
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
-
-        if (clearLocalState) {
-          window.localStorage.removeItem(storageKey);
-        }
 
         markStateDirty();
         renderText();
