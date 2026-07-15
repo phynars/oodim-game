@@ -103,6 +103,16 @@ export {
 } from "./verticalSliceState";
 
 export {
+  createNpcMemoryRoundTrip,
+  type AftersignNpcMemoryBeat,
+  type AftersignNpcMemoryChoice,
+  type AftersignNpcMemoryNpcId,
+  type AftersignNpcMemoryRecall,
+  type AftersignNpcMemoryRoundTrip,
+  type AftersignNpcMemoryRoundTripSnapshot,
+} from "./npcMemoryRoundTrip";
+
+export {
   getRecognitionFeedbackDuration,
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,
