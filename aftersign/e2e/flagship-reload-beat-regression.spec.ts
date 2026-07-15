@@ -110,7 +110,11 @@ async function idle(page: Page): Promise<void> {
   await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
-async function playSaveReloadPath(page: Page, path: PacketPath) {
+async function playSaveReloadPath(
+  page: Page,
+  path: PacketPath,
+  reloadOptions?: { clearLocalState?: boolean },
+) {
   // Only install the break-mode hook when a mode is actually set — the
   // default lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op
   // and the runtime path stays byte-identical to pre-guard behavior.
@@ -129,7 +133,7 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   }
 
   await page.evaluate(() => window.__game!.input.forceSave());
-  await page.evaluate(() => window.__game!.input.forceReload());
+  await page.evaluate((options) => window.__game!.input.forceReload(options), reloadOptions);
   await idle(page);
 
   return page.evaluate(() => window.__game!.getSnapshot());
@@ -223,15 +227,20 @@ test.describe("AFTERSIGN reload beat regression", () => {
     expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
   });
 
-  // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
-  // here. Durability shipped: save-load-durable-contract.spec.ts asserts
-  // survival across a localStorage wipe unconditionally (no break-mode
-  // guard) against the server-authoritative store, and
-  // .github/workflows/aftersign-durable-save-redgreen.yml's red-polarity
-  // job self-retired via its preflight (the guard string it grepped for
-  // is gone). flagship-surface-contract.spec.ts's durable save/load test
-  // is the shared-contract owner. The wrong-io-line/drop-memory red
-  // probes above are owned by that same shared spec, which the CI red-
-  // green workflow (.github/workflows/aftersign-npc-memory-redgreen.yml)
-  // targets directly. One owner per break mode keeps polarity auditable.
+  test("FLAGSHIP_BREAK_MODE=local-only-save fails under clearLocalState reload", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
+      "red guard: only runs when runtime saves local-only and should fail after storage wipe",
+    );
+
+    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0], {
+      clearLocalState: true,
+    });
+
+    // Under local-only-save the wiped local state drops the durable record,
+    // so these assertions FAIL in red-polarity mode.
+    expect(afterReload.delivery.outcome).toBe("sealed");
+    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
+    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
+  });
 });
