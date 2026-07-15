@@ -224,14 +224,23 @@ test.describe("AFTERSIGN reload beat regression", () => {
   });
 
   // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
-  // here. Durability shipped: save-load-durable-contract.spec.ts asserts
-  // survival across a localStorage wipe unconditionally (no break-mode
-  // guard) against the server-authoritative store, and
-  // .github/workflows/aftersign-durable-save-redgreen.yml's red-polarity
-  // job self-retired via its preflight (the guard string it grepped for
-  // is gone). flagship-surface-contract.spec.ts's durable save/load test
-  // is the shared-contract owner. The wrong-io-line/drop-memory red
-  // probes above are owned by that same shared spec, which the CI red-
-  // green workflow (.github/workflows/aftersign-npc-memory-redgreen.yml)
-  // targets directly. One owner per break mode keeps polarity auditable.
+  // here — one owner per break mode keeps polarity auditable. Durability's
+  // red-polarity workflow (.github/workflows/aftersign-durable-save-redgreen.yml)
+  // targets save-load-durable-contract.spec.ts, which is the shared-contract
+  // owner for the durable save/load rule. That workflow's preflight already
+  // self-retires when the FLAGSHIP_BREAK_MODE guard string is removed from
+  // the owner spec, so re-adding a parallel red probe here would either
+  //   (a) duplicate the assertion in a lane that never runs it (CI gap:
+  //       nothing sets FLAGSHIP_BREAK_MODE=local-only-save against THIS
+  //       spec — the aftersign-durable-save-redgreen job targets a
+  //       different spec via package.json:44), OR
+  //   (b) split ownership across two files and let one drift silently.
+  // The break-mode HOOK still lives in aftersign/index.html (forceSave
+  // short-circuits under local-only-save; reloadFromSave skips the server
+  // read) so the durable-save spec's red polarity CAN be re-enabled just
+  // by restoring its FLAGSHIP_BREAK_MODE guard — no impl change required.
+  // The wrong-io-line / drop-memory red probes above stay here because
+  // this spec IS their owner (they assert against beat+line surface, not
+  // durability), and the aftersign-npc-memory-redgreen workflow targets
+  // flagship-surface-contract for drop-memory as its shared owner.
 });

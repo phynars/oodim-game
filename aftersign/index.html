@@ -772,6 +772,20 @@
 
       const forceSave = async () => {
         persist({ dirty: false });
+
+        if (breakMode === "local-only-save") {
+          state.save.authority = "local-fallback";
+          state.save.lastLoadProof = {
+            source: "local-fallback",
+            revision: state.save.revision,
+            playerId: state.player.id,
+          };
+          markStateDirty();
+          renderText();
+          publishState();
+          return;
+        }
+
         await persistAuthoritative({ dirty: false });
         state.save.lastLoadProof = {
           source: "server",
@@ -785,11 +799,68 @@
 
       const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         const playerId = state.player.id;
-        const saved = await readAuthoritativeSave({
-          slot,
-          playerId,
-        }).catch(() => null) || readStored();
+
+        if (clearLocalState) {
+          window.localStorage.removeItem(storageKey);
+        }
+
+        const authoritativeSave = breakMode === "local-only-save"
+          ? null
+          : await readAuthoritativeSave({
+              slot,
+              playerId,
+            }).catch(() => null);
+        const saved = authoritativeSave || (clearLocalState ? null : readStored());
+
         if (!saved) {
+          // Two shapes reach this branch:
+          //   (a) cold-boot no-op: caller invoked forceReload() with no
+          //       args and there is nothing saved anywhere. The in-memory
+          //       state is already at boot defaults — do nothing, so we
+          //       stay byte-identical to the pre-#653 behavior and the
+          //       many specs that call forceReload() before any save
+          //       (io-phone-ready, io-recognition-*, memory-reference-
+          //       integrity, npc-memory-line-contract...) keep passing.
+          //   (b) explicit durability-wipe / local-only-save red probe:
+          //       caller passed { clearLocalState: true } OR the runtime
+          //       is in local-only-save break mode. HERE the caller is
+          //       asserting "the durable path should have recovered
+          //       something and did not" — we hard-reset the story/save
+          //       surface so the failing assertions in the harness are
+          //       genuine failures against a zeroed state, not stale
+          //       in-memory state left over from before the wipe.
+          if (!clearLocalState && breakMode !== "local-only-save") {
+            return;
+          }
+          state.story.currentNpcId = null;
+          state.story.memoryBeat = null;
+          state.scene.beat = "packet-offered";
+          // Match resetSliceSave() shape (line ~1205) so the hard-reset
+          // branch is consistent: `sealed: true` is the boot default and
+          // `delivery.outcome: "unknown"` is what an unstarted slice
+          // reports. The prior draft preserved packet.sealed via spread
+          // while resetting delivery.outcome — Ivy flagged that as an
+          // inconsistency on #675.
+          state.packet = {
+            delivered: false,
+            route: null,
+            sealed: true,
+            deliveredAt: null,
+          };
+          state.delivery = { id: "blue-packet", outcome: "unknown" };
+          state.npcs.io.memory = [];
+          state.save = {
+            ...emptySave(),
+            authority: authoritativeSave ? "server" : "local-fallback",
+            lastLoadProof: {
+              source: null,
+              revision: null,
+              playerId,
+            },
+          };
+          markStateDirty();
+          renderText();
+          publishState();
           return;
         }
 
@@ -813,19 +884,15 @@
           ? []
           : saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
-        state.save.authority = "server";
+        state.save.authority = authoritativeSave ? "server" : "local-fallback";
         state.save.lastLoadProof = {
-          source: "server",
+          source: authoritativeSave ? "server" : "local-fallback",
           revision: state.save.revision,
           playerId: state.player.id,
         };
         state.scene.beat = typeof saved.beat === "string"
           ? saved.beat
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
-
-        if (clearLocalState) {
-          window.localStorage.removeItem(storageKey);
-        }
 
         markStateDirty();
         renderText();
