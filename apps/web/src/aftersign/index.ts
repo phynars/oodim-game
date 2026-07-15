@@ -59,6 +59,7 @@ export {
 
 export {
   getIoRecognitionLine,
+  getIoRecognitionLines,
   ioRecognitionLines,
   type IoPacketOutcome,
   type IoRecognitionFacts,

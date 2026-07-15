@@ -1,63 +1,85 @@
-import { describe, expect, it } from "vitest";
-import { getIoRecognitionLine, ioRecognitionLines } from "./ioVoice";
+import assert from "node:assert/strict";
 
-describe("Io recognition voice", () => {
-  it("returns the sealed-packet line with an auditable referenced fact", () => {
-    expect(getIoRecognitionLine({ packetOutcome: "sealed" })).toEqual({
-      id: "io-return-packet-sealed",
-      text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
-      referencedFact: "packetOutcome",
-      referencedValue: "sealed",
-    });
-  });
+import {
+  getIoRecognitionLine,
+  getIoRecognitionLines,
+  ioRecognitionLines,
+} from "./ioVoice";
 
-  it("returns the opened-packet line with an auditable referenced fact", () => {
-    expect(getIoRecognitionLine({ packetOutcome: "opened" })).toEqual({
-      id: "io-return-packet-opened",
-      text: "You came back. The seal did not. I can use one of those facts.",
-      referencedFact: "packetOutcome",
-      referencedValue: "opened",
-    });
-  });
+// Single-axis: packet only.
+{
+  const line = getIoRecognitionLine({ packetOutcome: "sealed" });
+  assert.notEqual(line, null);
+  assert.equal(line?.referencedFact, "packetOutcome");
+  assert.equal(line?.referencedValue, "sealed");
+  assert.equal(line?.id, "io-return-packet-sealed");
+}
 
-  it("falls back to route attention when no packet outcome is known", () => {
-    expect(getIoRecognitionLine({ routeAttention: "listened" })).toEqual(
-      ioRecognitionLines.route.listened,
-    );
-    expect(getIoRecognitionLine({ routeAttention: "skipped" })).toEqual(
-      ioRecognitionLines.route.skipped,
-    );
-  });
+// Single-axis: route only.
+{
+  const line = getIoRecognitionLine({ routeAttention: "skipped" });
+  assert.equal(line?.referencedFact, "routeAttention");
+  assert.equal(line?.referencedValue, "skipped");
+}
 
-  it("falls back to return tone when no packet or route memory is present", () => {
-    expect(getIoRecognitionLine({ returnTone: "kind" })).toEqual(
-      ioRecognitionLines.tone.kind,
-    );
-    expect(getIoRecognitionLine({ returnTone: "evasive" })).toEqual(
-      ioRecognitionLines.tone.evasive,
-    );
-    expect(getIoRecognitionLine({ returnTone: "blunt" })).toEqual(
-      ioRecognitionLines.tone.blunt,
-    );
-  });
+// Single-axis: tone only, and the revised copy is what shipped.
+{
+  const line = getIoRecognitionLine({ returnTone: "kind" });
+  assert.equal(line?.referencedFact, "returnTone");
+  assert.equal(line?.referencedValue, "kind");
+  assert.equal(line?.text, "Kind answer. Expensive habit. Useful one.");
+}
 
-  it("prefers packet outcome over route attention and tone", () => {
-    expect(
-      getIoRecognitionLine({
-        packetOutcome: "sealed",
-        routeAttention: "skipped",
-        returnTone: "blunt",
-      }),
-    ).toEqual(ioRecognitionLines.packet.sealed);
-  });
+// Empty facts → no line.
+{
+  assert.equal(getIoRecognitionLine({}), null);
+  assert.deepEqual(getIoRecognitionLines({}), []);
+}
 
-  it("prefers route attention over tone when packet outcome is absent", () => {
-    expect(
-      getIoRecognitionLine({ routeAttention: "listened", returnTone: "kind" }),
-    ).toEqual(ioRecognitionLines.route.listened);
+// Multi-axis gather: all three facts return three lines in packet → route → tone order.
+{
+  const lines = getIoRecognitionLines({
+    packetOutcome: "opened",
+    routeAttention: "listened",
+    returnTone: "blunt",
   });
+  assert.equal(lines.length, 3);
+  assert.deepEqual(
+    lines.map((l) => l.referencedFact),
+    ["packetOutcome", "routeAttention", "returnTone"],
+  );
+  assert.equal(lines[0]?.referencedValue, "opened");
+  assert.equal(lines[1]?.referencedValue, "listened");
+  assert.equal(lines[2]?.referencedValue, "blunt");
+}
 
-  it("returns no recognition line without a concrete remembered action", () => {
-    expect(getIoRecognitionLine({})).toBeNull();
+// Partial multi-axis: packet + tone, skipping route.
+{
+  const lines = getIoRecognitionLines({
+    packetOutcome: "sealed",
+    returnTone: "evasive",
   });
-});
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0]?.referencedFact, "packetOutcome");
+  assert.equal(lines[1]?.referencedFact, "returnTone");
+  assert.equal(
+    lines[1]?.text,
+    "You dodged the why. Fine. I pay attention to where people stand after dodging.",
+  );
+}
+
+// getIoRecognitionLine keeps its single-line contract (first axis wins).
+{
+  const line = getIoRecognitionLine({
+    packetOutcome: "sealed",
+    returnTone: "blunt",
+  });
+  assert.equal(line?.referencedFact, "packetOutcome");
+}
+
+// Registry surface is unchanged.
+{
+  assert.equal(ioRecognitionLines.packet.sealed.referencedValue, "sealed");
+  assert.equal(ioRecognitionLines.route.listened.referencedValue, "listened");
+  assert.equal(ioRecognitionLines.tone.blunt.referencedValue, "blunt");
+}

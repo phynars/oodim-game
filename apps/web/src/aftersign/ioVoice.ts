@@ -70,38 +70,49 @@ const TONE_LINES: {
 } = {
   kind: {
     id: "io-return-tone-kind",
-    text: "Kind answer. Not cheaper than truth, but sometimes easier to carry.",
+    text: "Kind answer. Expensive habit. Useful one.",
     referencedFact: "returnTone",
     referencedValue: "kind",
   },
   evasive: {
     id: "io-return-tone-evasive",
-    text: "You dodged the question. Fine. Vey keeps receipts for both of us.",
+    text: "You dodged the why. Fine. I pay attention to where people stand after dodging.",
     referencedFact: "returnTone",
     referencedValue: "evasive",
   },
   blunt: {
     id: "io-return-tone-blunt",
-    text: "Blunt, then. Good. Wrapped knives still cut.",
+    text: "Blunt answer. Saves time. Costs less if you aim it carefully.",
     referencedFact: "returnTone",
     referencedValue: "blunt",
   },
 };
 
+// Return the first matching axis (backwards-compatible with existing callers
+// that only expect a single line back).
 export function getIoRecognitionLine(facts: IoRecognitionFacts): IoRecognitionLine | null {
+  const lines = getIoRecognitionLines(facts);
+  return lines[0] ?? null;
+}
+
+// Return every axis the caller supplied a fact for, in packet → route → tone
+// order. Empty array if no facts are set.
+export function getIoRecognitionLines(facts: IoRecognitionFacts): readonly IoRecognitionLine[] {
+  const lines: IoRecognitionLine[] = [];
+
   if (facts.packetOutcome) {
-    return PACKET_LINES[facts.packetOutcome];
+    lines.push(PACKET_LINES[facts.packetOutcome]);
   }
 
   if (facts.routeAttention) {
-    return ROUTE_LINES[facts.routeAttention];
+    lines.push(ROUTE_LINES[facts.routeAttention]);
   }
 
   if (facts.returnTone) {
-    return TONE_LINES[facts.returnTone];
+    lines.push(TONE_LINES[facts.returnTone]);
   }
 
-  return null;
+  return lines;
 }
 
 export const ioRecognitionLines = {
