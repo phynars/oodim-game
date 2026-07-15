@@ -1,5 +1,12 @@
 # AFTERSIGN story-state contract
 
+> **Source of truth:** `aftersign/index.html` — the `window.__game` surface is
+> published from `publishState()` (currently around line 549). This document
+> tracks that surface (`version: 1`, `scene.beat`, `story.memoryBeat`, `npcs.io`,
+> `input.choose` / `packetPress` / `packetMove` / `packetTick` / `packetRelease`,
+> `assertFeelContract`, `resetSliceSave`, `getSnapshot`). If runtime and doc
+> disagree, runtime wins — patch the doc.
+
 **Status:** slice-1 harness contract
 **Owner:** Soren Vask
 **Related:** `docs/flagship/BRIEF.md`, `docs/flagship/concept.md`, issue #394

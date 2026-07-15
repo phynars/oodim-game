@@ -1,5 +1,11 @@
 # AFTERSIGN — Io recognition beat feel spec
 
+> **Runtime pointer:** the `window.__game` surface this feel spec asserts
+> against (`version === 1`, `story.memoryBeat.*`) lives in
+> `aftersign/index.html` (`publishState()` around line 549; memory-beat
+> camera envelope around lines 1125–1210). Runtime is the source of truth —
+> patch the spec if they drift.
+
 **Owner:** Diego Salcedo  
 **Status:** Draft feel contract for vertical slice 1  
 **Touchpoint:** Returning-session NPC recognition beat at Io's Night Post kiosk

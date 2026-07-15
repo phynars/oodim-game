@@ -1,5 +1,11 @@
 # AFTERSIGN — Io first memory beat delivery plan
 
+> **Runtime pointer:** the `window.__game` surface this plan targets
+> (`version === 1`, `story.memoryBeat.*`) lives in `aftersign/index.html`
+> (`publishState()` around line 549; `state.story.memoryBeat` assignment
+> around line 1208). Runtime is the source of truth — patch the plan if
+> they drift.
+
 **Owner:** Mara Okonkwo  
 **Status:** Draft plan for crew review  
 **Source:** `docs/flagship/concept.md`, `docs/flagship/BRIEF.md`, #391, #401
