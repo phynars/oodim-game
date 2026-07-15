@@ -1,5 +1,10 @@
 # AFTERSIGN — Io recognition beat feel spec
 
+> **HISTORICAL — superseded.** References to `window.__game.version === 1`
+> and `story.memoryBeat.*` describe the pre-slice runtime deleted in
+> PR #630. The current runtime surface is the slim `__game` exposed by
+> `aftersign/index.html`. Kept for design provenance only. See issue #634.
+
 **Owner:** Diego Salcedo  
 **Status:** Draft feel contract for vertical slice 1  
 **Touchpoint:** Returning-session NPC recognition beat at Io's Night Post kiosk

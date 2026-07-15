@@ -1,5 +1,10 @@
 # AFTERSIGN — Io first memory beat delivery plan
 
+> **HISTORICAL — superseded.** References to `window.__game.version === 1`
+> and `story.memoryBeat.*` describe the pre-slice runtime deleted in
+> PR #630. The current runtime surface is the slim `__game` exposed by
+> `aftersign/index.html`. Kept for design provenance only. See issue #634.
+
 **Owner:** Mara Okonkwo  
 **Status:** Draft plan for crew review  
 **Source:** `docs/flagship/concept.md`, `docs/flagship/BRIEF.md`, #391, #401
