@@ -26,7 +26,11 @@ export type AftersignNpcMemoryRecall = {
   line: string;
 };
 
-export type AftersignNpcMemorySnapshot = {
+// Named to avoid colliding with `AftersignNpcMemorySnapshot` in
+// packages/aftersign/src/storyStateHarness.ts (the earlier authority),
+// which describes an entirely different shape (referencedPlayerAction /
+// lastReferencedBeatId / line).
+export type AftersignNpcMemoryRoundTripSnapshot = {
   version: 1;
   beats: AftersignNpcMemoryBeat[];
 };
@@ -34,12 +38,12 @@ export type AftersignNpcMemorySnapshot = {
 export type AftersignNpcMemoryRoundTrip = {
   remember: (beat: AftersignNpcMemoryBeat) => void;
   recallFor: (npcId: AftersignNpcMemoryNpcId, playerId: string) => AftersignNpcMemoryRecall | null;
-  save: () => AftersignNpcMemorySnapshot;
+  save: () => AftersignNpcMemoryRoundTripSnapshot;
   reload: () => AftersignNpcMemoryRoundTrip;
 };
 
 export function createNpcMemoryRoundTrip(
-  snapshot: AftersignNpcMemorySnapshot = { version: 1, beats: [] },
+  snapshot: AftersignNpcMemoryRoundTripSnapshot = { version: 1, beats: [] },
 ): AftersignNpcMemoryRoundTrip {
   const beats = snapshot.beats.map(copyBeat);
 

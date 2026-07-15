@@ -109,7 +109,7 @@ export {
   type AftersignNpcMemoryNpcId,
   type AftersignNpcMemoryRecall,
   type AftersignNpcMemoryRoundTrip,
-  type AftersignNpcMemorySnapshot,
+  type AftersignNpcMemoryRoundTripSnapshot,
 } from "./npcMemoryRoundTrip";
 
 export {
