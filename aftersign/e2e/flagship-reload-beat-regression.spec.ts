@@ -224,10 +224,14 @@ test.describe("AFTERSIGN reload beat regression", () => {
   });
 
   // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
-  // here: save-load-durable-contract.spec.ts already proves durable
-  // survival across a localStorage wipe against the server-authoritative
-  // store, and .github/workflows/aftersign-durable-save-redgreen.yml owns
-  // that mode's red polarity. Duplicating the probe in this spec was the
-  // contested piece across #662's five review rounds — one owner per
-  // break mode keeps polarity auditable.
+  // here. Durability shipped: save-load-durable-contract.spec.ts asserts
+  // survival across a localStorage wipe unconditionally (no break-mode
+  // guard) against the server-authoritative store, and
+  // .github/workflows/aftersign-durable-save-redgreen.yml's red-polarity
+  // job self-retired via its preflight (the guard string it grepped for
+  // is gone). flagship-surface-contract.spec.ts's durable save/load test
+  // is the shared-contract owner. The wrong-io-line/drop-memory red
+  // probes above are owned by that same shared spec, which the CI red-
+  // green workflow (.github/workflows/aftersign-npc-memory-redgreen.yml)
+  // targets directly. One owner per break mode keeps polarity auditable.
 });
