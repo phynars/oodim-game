@@ -814,7 +814,6 @@
 
         if (clearLocalState) {
           window.localStorage.removeItem(storageKey);
-          await clearAuthoritativeSave({ slot, playerId });
         }
 
         markStateDirty();
@@ -1156,8 +1155,9 @@
         playKioskConfirm();
       };
 
-      const resetSliceSave = () => {
+      const resetSliceSave = async () => {
         window.localStorage.removeItem(storageKey);
+        await clearAuthoritativeSave({ slot, playerId: state.player.id });
         packetIntent.reset();
         state.scene.beat = "packet-offered";
         state.story.currentNpcId = null;
