@@ -102,6 +102,18 @@ export {
 } from "./verticalSliceState";
 
 export {
+  getIoReturningSessionLines,
+  IO_RETURNING_PACKET_LINES,
+  IO_RETURNING_ROUTE_LINES,
+  IO_RETURNING_TONE_LINES,
+  type IoPacketMemoryOutcome,
+  type IoReturningSessionLine,
+  type IoReturningSessionMemory,
+  type IoReturnTone,
+  type IoRouteMemoryOutcome,
+} from "./ioReturningSessionCopy";
+
+export {
   getRecognitionFeedbackDuration,
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,
