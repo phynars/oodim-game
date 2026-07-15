@@ -76,7 +76,7 @@ Technical details: `doom/docs/ARCHITECTURE.md`
 A multiplayer growth-and-survival prototype focused on server-authoritative
 real-time play.
 
-Technical details: `agar/docs/ARCHITECTURE.md`
+Technical details: see `agar/` (docs land slice by slice)
 
 ## How it's built
 
