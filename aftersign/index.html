@@ -998,7 +998,13 @@
       // by ~6x versus what the camera actually did).
       const recognitionMotionAt = (nowMs) => {
         if (memoryRecognitionBeatStartedAt === null) {
-          return { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
+          // Must include EVERY key the render loop reads from this shape —
+          // signLight.intensity (line ~1515) sums recognitionMotion.signGlowBoost
+          // every frame, and `undefined + number` = NaN, which three.js silently
+          // propagates into the point-light shader and blacks out the scene.
+          // The aftersign e2e lane went red on exactly this before we added
+          // signGlowBoost to the inactive-branch stub.
+          return { cameraDeltaMeters: 0, cameraYawDegrees: 0, signGlowBoost: 0 };
         }
         return recognitionEnvelopeAt(nowMs - memoryRecognitionBeatStartedAt);
       };
