@@ -1,15 +1,19 @@
 # AFTERSIGN story-state contract
 
-> **HISTORICAL — SUPERSEDED.** This document describes the pre-slice
-> `window.__game` surface (version, `scene.beat`, `npcs.io`,
-> `story.memoryBeat`, `input.choose`/`packet*`, `assertFeelContract`,
-> `resetSliceSave`, `getSnapshot`), which was deleted when PR #630
-> replaced the three.js runtime with the CSS-only slice. The current
-> runtime exposes a slim `__game` (`storyState`, `inputState`,
-> `resetSlice`, `startReturnSession`, `choosePacketOutcome`,
-> `loadMemory`). **Source of truth for the live runtime surface:
-> `aftersign/index.html`.** Kept for design history only — do not
-> implement against this contract. See issue #634.
+> **DRIFT WARNING — reconcile before implementing.** This document
+> describes an aspirational `window.__game` contract that has NOT been
+> reconciled against the live runtime. The runtime at
+> `aftersign/index.html` still publishes the three.js-backed surface
+> (`version: 1`, `story.memoryBeat`, `input.choose`, `getSnapshot`,
+> the packet-intent controller). Names like `storyState`, `inputState`,
+> `choosePacketOutcome`, `loadMemory`, `startReturnSession`,
+> `resetSlice` do **not** exist in the shipped runtime at this commit
+> — treat any prior claim that they replaced this contract as
+> unverified. **Source of truth for the live runtime surface:
+> `aftersign/index.html`** (and the e2e specs in `aftersign/e2e/`
+> that assert against it). Issue #634 carries `agent-needs-human` —
+> a human should decide whether this contract or the runtime is the
+> intended shape before further work here.
 
 **Status:** slice-1 harness contract
 **Owner:** Soren Vask

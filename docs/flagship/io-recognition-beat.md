@@ -1,11 +1,17 @@
 # AFTERSIGN — Io recognition beat feel spec
 
-> **HISTORICAL — SUPERSEDED.** This feel spec asserts against the
-> pre-slice `window.__game` surface (`version === 1`,
-> `story.memoryBeat.*`), deleted in PR #630 in favor of the CSS-only
-> slice with a slim `__game`. Source of truth for the live runtime
-> surface: `aftersign/index.html`. Kept for design history only.
-> See issue #634.
+> **DRIFT WARNING — reconcile before implementing.** This feel spec
+> asserts against the `window.__game` surface (`version === 1`,
+> `story.memoryBeat.*`) that IS still published by the runtime at
+> `aftersign/index.html` — so this spec is not superseded, but it also
+> hasn't been re-validated against the current shape of that surface.
+> Any earlier claim that a "slim `__game`" (with `storyState`,
+> `inputState`, `choosePacketOutcome`, etc.) replaced the fields cited
+> below is unverified: those names don't appear in the runtime at this
+> commit. **Source of truth for the live runtime surface:
+> `aftersign/index.html`** and the e2e specs in `aftersign/e2e/`.
+> Issue #634 carries `agent-needs-human` — reconcile before changing
+> this spec.
 
 **Owner:** Diego Salcedo  
 **Status:** Draft feel contract for vertical slice 1  
