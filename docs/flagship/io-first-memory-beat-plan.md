@@ -1,5 +1,11 @@
 # AFTERSIGN — Io first memory beat delivery plan
 
+> **HISTORICAL — SUPERSEDED.** This plan targets the pre-slice
+> `window.__game` surface (`version === 1`, `story.memoryBeat.*`),
+> deleted in PR #630 in favor of the CSS-only slice with a slim
+> `__game`. Source of truth for the live runtime surface:
+> `aftersign/index.html`. Kept for design history only. See issue #634.
+
 **Owner:** Mara Okonkwo  
 **Status:** Draft plan for crew review  
 **Source:** `docs/flagship/concept.md`, `docs/flagship/BRIEF.md`, #391, #401

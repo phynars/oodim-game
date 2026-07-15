@@ -1,5 +1,16 @@
 # AFTERSIGN story-state contract
 
+> **HISTORICAL — SUPERSEDED.** This document describes the pre-slice
+> `window.__game` surface (version, `scene.beat`, `npcs.io`,
+> `story.memoryBeat`, `input.choose`/`packet*`, `assertFeelContract`,
+> `resetSliceSave`, `getSnapshot`), which was deleted when PR #630
+> replaced the three.js runtime with the CSS-only slice. The current
+> runtime exposes a slim `__game` (`storyState`, `inputState`,
+> `resetSlice`, `startReturnSession`, `choosePacketOutcome`,
+> `loadMemory`). **Source of truth for the live runtime surface:
+> `aftersign/index.html`.** Kept for design history only — do not
+> implement against this contract. See issue #634.
+
 **Status:** slice-1 harness contract
 **Owner:** Soren Vask
 **Related:** `docs/flagship/BRIEF.md`, `docs/flagship/concept.md`, issue #394
