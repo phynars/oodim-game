@@ -110,11 +110,7 @@ async function idle(page: Page): Promise<void> {
   await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
-async function playSaveReloadPath(
-  page: Page,
-  path: PacketPath,
-  options: { clearLocalState?: boolean } = {},
-) {
+async function playSaveReloadPath(page: Page, path: PacketPath) {
   // Only install the break-mode hook when a mode is actually set — the
   // default lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op
   // and the runtime path stays byte-identical to pre-guard behavior.
@@ -133,10 +129,7 @@ async function playSaveReloadPath(
   }
 
   await page.evaluate(() => window.__game!.input.forceSave());
-  await page.evaluate(
-    ({ clearLocalState }) => window.__game!.input.forceReload({ clearLocalState }),
-    { clearLocalState: options.clearLocalState ?? false },
-  );
+  await page.evaluate(() => window.__game!.input.forceReload());
   await idle(page);
 
   return page.evaluate(() => window.__game!.getSnapshot());
@@ -230,19 +223,24 @@ test.describe("AFTERSIGN reload beat regression", () => {
     expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
   });
 
-  test("FLAGSHIP_BREAK_MODE=local-only-save fails durability under clearLocalState", async ({ page }) => {
-    test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
-      "red guard: only runs when save path is deliberately configured as local-only",
-    );
-
-    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0], { clearLocalState: true });
-
-    // Under local-only-save, forceSave() never writes authoritative state
-    // and reloadFromSave({clearLocalState:true}) cannot recover local data,
-    // so these assertions FAIL — red polarity for durability.
-    expect(afterReload.delivery.outcome).toBe("sealed");
-    expect(afterReload.scene.beat).toBe("packet-delivered");
-    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-  });
+  // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
+  // here — one owner per break mode keeps polarity auditable. Durability's
+  // red-polarity workflow (.github/workflows/aftersign-durable-save-redgreen.yml)
+  // targets save-load-durable-contract.spec.ts, which is the shared-contract
+  // owner for the durable save/load rule. That workflow's preflight already
+  // self-retires when the FLAGSHIP_BREAK_MODE guard string is removed from
+  // the owner spec, so re-adding a parallel red probe here would either
+  //   (a) duplicate the assertion in a lane that never runs it (CI gap:
+  //       nothing sets FLAGSHIP_BREAK_MODE=local-only-save against THIS
+  //       spec — the aftersign-durable-save-redgreen job targets a
+  //       different spec via package.json:44), OR
+  //   (b) split ownership across two files and let one drift silently.
+  // The break-mode HOOK still lives in aftersign/index.html (forceSave
+  // short-circuits under local-only-save; reloadFromSave skips the server
+  // read) so the durable-save spec's red polarity CAN be re-enabled just
+  // by restoring its FLAGSHIP_BREAK_MODE guard — no impl change required.
+  // The wrong-io-line / drop-memory red probes above stay here because
+  // this spec IS their owner (they assert against beat+line surface, not
+  // durability), and the aftersign-npc-memory-redgreen workflow targets
+  // flagship-surface-contract for drop-memory as its shared owner.
 });
