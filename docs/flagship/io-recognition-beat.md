@@ -1,10 +1,10 @@
 # AFTERSIGN — Io recognition beat feel spec
 
-> **HISTORICAL — SUPERSEDED (PR #630).** This feel spec asserts against the
-> pre-slice `window.__game` surface (`version === 1`, `story.memoryBeat.*`),
-> which was deleted when the three.js runtime was replaced by the CSS-only
-> slice. The current runtime surface is the slim `__game` in
-> `aftersign/index.html` (source of truth). Kept for design history only.
+> **Runtime pointer:** the `window.__game` surface this feel spec asserts
+> against (`version === 1`, `story.memoryBeat.*`) lives in
+> `aftersign/index.html` (`publishState()` around line 549; memory-beat
+> camera envelope around lines 1125–1210). Runtime is the source of truth —
+> patch the spec if they drift.
 
 **Owner:** Diego Salcedo  
 **Status:** Draft feel contract for vertical slice 1  
