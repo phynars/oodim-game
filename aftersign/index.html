@@ -377,7 +377,12 @@
         }
 
         if (state.scene.beat === "io-returning-recognition") {
-          return state.packet.sealed
+          // Red-guard hook (#653): wrong-io-line deliberately swaps the
+          // recognition line so the harness can prove it would catch a
+          // line/outcome mismatch. No-op when breakMode is "".
+          const rememberedSealed = state.packet.sealed;
+          const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
+          return speakAsSealed
             ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
             : "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
         }
@@ -801,7 +806,12 @@
           id: "blue-packet",
           outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
         };
-        state.npcs.io.memory = saved.memory ? clone(saved.memory) : [];
+        // Red-guard hook (#653): drop-memory deliberately loses Io's
+        // persisted memory on reload so the harness can prove it would
+        // catch a dropped-memory regression. No-op when breakMode is "".
+        state.npcs.io.memory = breakMode === "drop-memory"
+          ? []
+          : saved.memory ? clone(saved.memory) : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.save.authority = "server";
         state.save.lastLoadProof = {

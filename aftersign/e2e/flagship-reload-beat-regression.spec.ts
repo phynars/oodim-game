@@ -32,12 +32,13 @@ import { expect, test, type Page } from "@playwright/test";
 // FlagshipGameSurface.
 declare global {
   interface Window {
+    __FLAGSHIP_BREAK_MODE?: string;
     __game?: {
       scene: { beat: string };
       input: {
         choose: (choiceId: string) => void | Promise<void>;
         forceSave: () => void | Promise<void>;
-        forceReload: () => void | Promise<void>;
+        forceReload: (options?: { clearLocalState?: boolean }) => void | Promise<void>;
         waitForStoryIdle: () => void | Promise<void>;
       };
       getSnapshot: () => {
@@ -110,6 +111,15 @@ async function idle(page: Page): Promise<void> {
 }
 
 async function playSaveReloadPath(page: Page, path: PacketPath) {
+  // Only install the break-mode hook when a mode is actually set — the
+  // default lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op
+  // and the runtime path stays byte-identical to pre-guard behavior.
+  const breakMode = process.env.FLAGSHIP_BREAK_MODE;
+  if (breakMode) {
+    await page.addInitScript((mode) => {
+      window.__FLAGSHIP_BREAK_MODE = mode;
+    }, breakMode);
+  }
   await page.goto("./");
   await waitForSurface(page);
 
@@ -180,4 +190,44 @@ test.describe("AFTERSIGN reload beat regression", () => {
     expect(opened.npcs.io.lastLine).toBe(OPENED_RECOGNITION_LINE);
     expect(sealed.npcs.io.lastLine).not.toBe(opened.npcs.io.lastLine);
   });
+
+  test("FLAGSHIP_BREAK_MODE=wrong-io-line fails the outcome-correct Io line contract", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line",
+      "red guard: only runs when the runtime is deliberately configured to swap Io recognition lines",
+    );
+
+    await playSaveReloadPath(page, PACKET_PATHS[0]);
+    const sealed = await advanceToRecognition(page);
+
+    // Under wrong-io-line the runtime swaps the recognition line, so the
+    // sealed path speaks the OPENED line and these assertions FAIL —
+    // that failure is the red-polarity proof the workflow inverts.
+    expect(sealed.scene.beat).toBe("io-returning-recognition");
+    expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
+    expect(sealed.npcs.io.lastLine).not.toBe(OPENED_RECOGNITION_LINE);
+  });
+
+  test("FLAGSHIP_BREAK_MODE=drop-memory fails the persisted memory contract", async ({ page }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory",
+      "red guard: only runs when the runtime is deliberately configured to drop Io memory on reload",
+    );
+
+    const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0]);
+
+    // Under drop-memory reloadFromSave() discards saved.memory, so
+    // memory.length is 0 and these assertions FAIL — red polarity.
+    expect(afterReload.delivery.outcome).toBe("sealed");
+    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
+    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
+  });
+
+  // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
+  // here: save-load-durable-contract.spec.ts already proves durable
+  // survival across a localStorage wipe against the server-authoritative
+  // store, and .github/workflows/aftersign-durable-save-redgreen.yml owns
+  // that mode's red polarity. Duplicating the probe in this spec was the
+  // contested piece across #662's five review rounds — one owner per
+  // break mode keeps polarity auditable.
 });
