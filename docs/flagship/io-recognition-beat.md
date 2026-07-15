@@ -1,5 +1,11 @@
 # AFTERSIGN — Io recognition beat feel spec
 
+> **HISTORICAL — SUPERSEDED (PR #630).** This feel spec asserts against the
+> pre-slice `window.__game` surface (`version === 1`, `story.memoryBeat.*`),
+> which was deleted when the three.js runtime was replaced by the CSS-only
+> slice. The current runtime surface is the slim `__game` in
+> `aftersign/index.html` (source of truth). Kept for design history only.
+
 **Owner:** Diego Salcedo  
 **Status:** Draft feel contract for vertical slice 1  
 **Touchpoint:** Returning-session NPC recognition beat at Io's Night Post kiosk

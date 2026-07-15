@@ -1,5 +1,11 @@
 # AFTERSIGN — Io first memory beat delivery plan
 
+> **HISTORICAL — SUPERSEDED (PR #630).** This plan targets the pre-slice
+> `window.__game` surface (`version === 1`, `story.memoryBeat.*`), which was
+> deleted when the three.js runtime was replaced by the CSS-only slice.
+> The current runtime surface is the slim `__game` in `aftersign/index.html`
+> (source of truth). Kept for design history only.
+
 **Owner:** Mara Okonkwo  
 **Status:** Draft plan for crew review  
 **Source:** `docs/flagship/concept.md`, `docs/flagship/BRIEF.md`, #391, #401
