@@ -18,6 +18,11 @@ const WAIT_MS = 60_000;
 declare global {
   interface Window {
     __game?: FlagshipGameSurface;
+    // Break-mode bridge: Playwright's `page.addInitScript` sets this
+    // from process.env.FLAGSHIP_BREAK_MODE before the page loads so the
+    // runtime hook in aftersign/index.html:221 can observe it. Only
+    // populated in break-mode CI lanes; undefined on the default lane.
+    __FLAGSHIP_BREAK_MODE?: string;
   }
 }
 
@@ -165,6 +170,23 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     const slot = `flagship-memory-${Date.now()}`;
     const url = `/aftersign/?slot=${slot}`;
 
+    // Bridge FLAGSHIP_BREAK_MODE from the Node process into the browser
+    // BEFORE the first navigation. The impl reads window.__FLAGSHIP_BREAK_MODE
+    // (aftersign/index.html:221), which is populated only via addInitScript.
+    // Without this bridge, `breakMode` in Node correctly gates the assertion
+    // polarity but the runtime sees breakMode === "" — memory is not
+    // dropped and the Io line is not swapped, so the red-lane "must throw"
+    // check would fail vacuously (matches the sibling spec pattern at
+    // flagship-reload-beat-regression.spec.ts:119). addInitScript persists
+    // across the in-page `location.reload()` that forceReload triggers,
+    // so a single install covers Session A and Session B.
+    const envBreakMode = process.env.FLAGSHIP_BREAK_MODE;
+    if (envBreakMode) {
+      await page.addInitScript((mode) => {
+        window.__FLAGSHIP_BREAK_MODE = mode;
+      }, envBreakMode);
+    }
+
     // Session A: sealed delivery + forceSave.
     await page.goto(url, { waitUntil: "load" });
     await readSurface(page);
@@ -239,6 +261,19 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
 
     const slot = `flagship-durable-${Date.now()}`;
     const url = `/aftersign/?slot=${slot}`;
+
+    // Bridge FLAGSHIP_BREAK_MODE into the browser before goto — same
+    // reasoning as the npc-memory test above. Without this, the
+    // local-only-save red-polarity branch would evaluate against a
+    // runtime that never saw the break mode (window.__FLAGSHIP_BREAK_MODE
+    // is undefined), forceSave would take the normal path, and the
+    // "must throw" assertion would be vacuous.
+    const envBreakMode = process.env.FLAGSHIP_BREAK_MODE;
+    if (envBreakMode) {
+      await page.addInitScript((mode) => {
+        window.__FLAGSHIP_BREAK_MODE = mode;
+      }, envBreakMode);
+    }
 
     await page.goto(url, { waitUntil: "load" });
     await readSurface(page);
