@@ -173,6 +173,7 @@
       } from "./server-authoritative-save.js";
       import {
         DEFAULT_KIOSK_CAMERA_RIG,
+        computeKioskCameraTarget,
         createKioskCameraRigState,
         stepKioskCameraRig as stepKioskCameraRigModel,
       } from "./src/kioskCameraRig.ts";
@@ -1142,9 +1143,26 @@
         const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
         const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
         const recognitionMotion = recognitionMotionAt(nowMs);
+        // Base pose = the rig's DETERMINISTIC resting pose (velocity=0 →
+        // rig converges to computeKioskCameraTarget). Must match the render
+        // loop, which paints rig.position + wobbles; probing the old
+        // player.x*0.12 / 7.6+player.z*0.12 line drifted from what's on
+        // screen the moment the rig landed and made this probe measure a
+        // ghost camera. Wobbles (recognition dolly, confirm kick, failure
+        // shake) stack on top exactly as the render loop stacks them.
+        const restingPose = computeKioskCameraTarget(
+          {
+            playerX: state.player.x,
+            playerZ: state.player.z,
+            facingRadians: state.player.facingRadians,
+            velocityX: 0,
+            velocityZ: 0,
+          },
+          DEFAULT_KIOSK_CAMERA_RIG,
+        );
         return {
-          x: state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
-          z: 7.6 + state.player.z * 0.12,
+          x: restingPose.x + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
+          z: restingPose.z,
           rotationZ: THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
         };
       };
@@ -1159,10 +1177,24 @@
         // delta from (0, 2.25, 7.6) picks up ~0.26m of baseline instead
         // of the ~0.05m confirm kick we're actually measuring. This
         // anchors on state so the delta is purely the wobble contribution.
+        // Anchor uses the SAME resting-pose math as computeCameraPoseAt's
+        // base — otherwise dx/dz would encode the (rig-baseline vs
+        // player*0.12 legacy) offset instead of the pure wobble
+        // contribution we're trying to measure.
+        const anchorPose = computeKioskCameraTarget(
+          {
+            playerX: state.player.x,
+            playerZ: state.player.z,
+            facingRadians: state.player.facingRadians,
+            velocityX: 0,
+            velocityZ: 0,
+          },
+          DEFAULT_KIOSK_CAMERA_RIG,
+        );
         memoryBeatCameraProbe = {
           startedAt,
-          startX: state.player.x * 0.12,
-          startZ: 7.6 + state.player.z * 0.12,
+          startX: anchorPose.x,
+          startZ: anchorPose.z,
           maxDeltaMeters: 0,
           maxYawDegrees: 0,
         };
