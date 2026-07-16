@@ -396,23 +396,35 @@
         return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
       };
 
-      const memoryFact = () => ({
-        id: `io:${slot}:delivered-blue-packet`,
-        // Contract fields per e2e-shared/flagshipStoryStateContract.ts
-        // (FlagshipIoMemory). `assertDurableSaveLoaded` iterates
-        // beforeSave.npcs.io.memories and requires each loaded memory
-        // to carry `source === 'server'`; `assertNpcReferencesPriorMemory`
-        // additionally requires `kind === 'delivery-outcome'`. Stamp both
-        // at fact-creation so the durable round-trip survives
-        // clearLocalState reload and Io's returning line stays honest.
-        kind: "delivery-outcome",
-        subject: "player",
-        predicate: "delivered-blue-packet",
-        object: state.packet.sealed ? "sealed" : "opened",
-        deliveryId: "blue-packet",
-        sessionId,
-        source: "server",
-      });
+      const memoryFact = () => {
+        const outcome = state.packet.sealed ? "sealed" : "opened";
+        return {
+          // Contract-canonical id per e2e-shared/flagshipStoryStateContract.ts
+          // IO_RETURN_MEMORY_ID: `io-remembers-blue-packet-${outcome}`.
+          // `assertNpcReferencesPriorMemory` looks this exact id up in both
+          // `lastLineMemoryRefs` and `memories`; the prior slot-scoped id
+          // (`io:${slot}:delivered-blue-packet`) could never satisfy the
+          // returning-session assertion at HEAD. Slot isolation still
+          // holds — each Playwright test uses a distinct ?slot=, which
+          // scopes the storage key + sessionId; the memory id itself is
+          // the shared contract identifier.
+          id: `io-remembers-blue-packet-${outcome}`,
+          // Contract fields per e2e-shared/flagshipStoryStateContract.ts
+          // (FlagshipIoMemory). `assertDurableSaveLoaded` iterates
+          // beforeSave.npcs.io.memories and requires each loaded memory
+          // to carry `source === 'server'`; `assertNpcReferencesPriorMemory`
+          // additionally requires `kind === 'delivery-outcome'`. Stamp both
+          // at fact-creation so the durable round-trip survives
+          // clearLocalState reload and Io's returning line stays honest.
+          kind: "delivery-outcome",
+          subject: "player",
+          predicate: "delivered-blue-packet",
+          object: outcome,
+          deliveryId: "blue-packet",
+          sessionId,
+          source: "server",
+        };
+      };
 
       const buildPersistPayload = ({ dirty = false } = {}) => ({
         beat: state.scene.beat,
