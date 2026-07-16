@@ -139,6 +139,12 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     // opened-branch round-trip intent of the snapshot/reset test.
     expect(await page.evaluate(() => window.__game!.packet.sealed)).toBe(false);
 
+    // Story-state fields the snapshot/reset contract restores: the beat,
+    // the sealed/opened branch, and Io's memory surface. Save-bookkeeping
+    // (revision, dirty) is intentionally NOT asserted here — reset() writes
+    // through the save layer, so revision/dirty legitimately shift post-reset.
+    // Those fields have dedicated coverage in the forceReload / forceSave
+    // tests below.
     const expectedPreSnapshotState = await page.evaluate(() => {
       const state = window.__game!;
       return {
@@ -147,8 +153,6 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
         ioMemory: state.npcs.io.memory,
         ioLastLine: state.npcs.io.lastLine,
         ioLastLineMemoryRefs: state.npcs.io.lastLineMemoryRefs,
-        saveRevision: state.save.revision,
-        saveDirty: state.save.dirty,
       };
     });
 
@@ -168,8 +172,6 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
         ioMemory: state.npcs.io.memory,
         ioLastLine: state.npcs.io.lastLine,
         ioLastLineMemoryRefs: state.npcs.io.lastLineMemoryRefs,
-        saveRevision: state.save.revision,
-        saveDirty: state.save.dirty,
       };
     });
 
