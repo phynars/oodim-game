@@ -17,7 +17,11 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
   });
 
   expect(tapSnapshot.packet.sealed).toBe(true);
-  expect(tapSnapshot.scene.beat).toBe('packet-kept-sealed');
+  // Both sealed and opened outcomes canonicalize to the shared
+  // `packet-choice` beat (see aftersign/flagship-beat-migration.js);
+  // the outcome-specific assertion lives on packet.sealed and
+  // interaction.packetIntent.outcome.
+  expect(tapSnapshot.scene.beat).toBe('packet-choice');
   expect(tapSnapshot.interaction.packetIntent.outcome).toBe('sealed');
   expect(tapSnapshot.interaction.packetIntent.progress).toBe(0);
 
@@ -30,7 +34,7 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
   });
 
   expect(holdSnapshot.packet.sealed).toBe(false);
-  expect(holdSnapshot.scene.beat).toBe('packet-opened');
+  expect(holdSnapshot.scene.beat).toBe('packet-choice');
   expect(holdSnapshot.interaction.packetIntent.outcome).toBe('opened');
   expect(holdSnapshot.interaction.packetIntent.progress).toBe(1);
 
@@ -44,7 +48,7 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
   });
 
   expect(holdThenReleaseSnapshot.packet.sealed).toBe(false);
-  expect(holdThenReleaseSnapshot.scene.beat).toBe('packet-opened');
+  expect(holdThenReleaseSnapshot.scene.beat).toBe('packet-choice');
   expect(holdThenReleaseSnapshot.interaction.packetIntent.outcome).toBe('opened');
   expect(holdThenReleaseSnapshot.interaction.packetIntent.progress).toBe(1);
 
@@ -57,7 +61,7 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
   });
 
   expect(inBetweenHoldSnapshot.packet.sealed).toBe(true);
-  expect(inBetweenHoldSnapshot.scene.beat).toBe('packet-kept-sealed');
+  expect(inBetweenHoldSnapshot.scene.beat).toBe('packet-choice');
   expect(inBetweenHoldSnapshot.interaction.packetIntent.outcome).toBe('sealed');
   expect(inBetweenHoldSnapshot.interaction.packetIntent.progress).toBe(0);
 

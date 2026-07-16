@@ -56,7 +56,7 @@ export function buildRememberingLine(input: RememberingLineInput): string {
  *
  * The runtime scene (`aftersign/index.html`) hand-writes its recognition
  * lines rather than importing this module — but any line landing on
- * `window.__game.npcs.io.lastLine` at the `io-returning-recognition` beat
+ * `window.__game.npcs.io.lastLine` at the `io-return-recognition` beat
  * MUST satisfy this same contract. The e2e spec enforces that; drift
  * between the module and the runtime shows up as a red harness.
  */

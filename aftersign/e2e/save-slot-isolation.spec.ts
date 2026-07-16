@@ -12,7 +12,7 @@ const COLD_START_MS = 90_000;
 // import + WebGL bring-up on the *first* navigation.
 const WAIT_MS = 60_000;
 
-type Beat = "packet-offered" | "packet-kept-sealed" | "packet-delivered";
+type Beat = "packet-offered" | "packet-choice" | "packet-delivered";
 
 type GameSurface = {
   version: 1;
@@ -94,7 +94,7 @@ test.describe("AFTERSIGN save slot contract", () => {
     await firstPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForBeat(firstPage, "packet-offered");
     await firstPage.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(firstPage, "packet-kept-sealed");
+    await waitForBeat(firstPage, "packet-choice");
     await firstPage.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(firstPage, "packet-delivered");
 
