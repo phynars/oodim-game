@@ -136,29 +136,31 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     expect(afterReturn.beat).toBe("io-return-recognition");
   });
 
-  // Unfixme in Phase 3 once npcs.io.memories entries carry the contract
-  // shape ({ kind, source: 'server', ... } with the
-  // io-remembers-blue-packet-* ids) and lastLine uses the contract's
-  // authored fragments. The impl's current memoryFact() emits
-  // { id: `io:${slot}:delivered-blue-packet`, predicate, object,
-  // sessionId } with no source field, so assertNpcReferencesPriorMemory
-  // cannot pass at HEAD. lastLoadProof.source is also still null after
-  // reloadFromSave (index.html emptySave()) — the server-authoritative
-  // half belongs to Phase 4.
+  // Phase 3 (#566): LIVE. memoryFact() now emits the contract shape
+  // ({ id: 'io-remembers-blue-packet-sealed', kind: 'delivery-outcome',
+  // source: 'server', ... }) and lastLine carries the authored fragment,
+  // so assertNpcReferencesPriorMemory passes at HEAD. The one remaining
+  // Phase-4 dependency — save.lastLoadProof.source === 'server' — has
+  // moved OUT of this test and into the Phase-4 durable-save test below,
+  // so this test no longer gates on the server-authoritative save path.
   //
-  // The marker below is the STABLE sentinel that the preflight step in
+  // The former @redgreen fixme sentinel is gone: the conditional
+  // test.skip guard below (same pattern as
+  // save-load-durable-contract.spec.ts) is what the preflight step in
   // .github/workflows/aftersign-npc-memory-redgreen.yml greps to decide
-  // red-lane retirement (#622) — it keys CI off intent, not the
-  // human-readable test title, so renaming this test cannot silently
-  // flip retirement behavior. It must sit directly above the fixme and
-  // must be removed in the same change that converts the fixme to a
-  // conditional test.skip guard (the guard check takes precedence in
-  // the workflow, so a forgotten marker fails safe). Do not rename it.
-  // @redgreen:npc-memory-roundtrip fixme-pending-phase-3 (#566)
-  test.fixme("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
+  // that the red-polarity lane may run. The guard check takes precedence
+  // over the retired-marker check, so this conversion un-retires the
+  // red lane in the same diff.
+  test("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
     const breakMode = currentBreakMode();
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory"
+        && process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line"
+        && breakMode !== null,
+      "npc-memory round-trip only runs in default mode or under a memory-owned break mode.",
+    );
 
     const slot = `flagship-memory-${Date.now()}`;
     const url = `/aftersign/?slot=${slot}`;
