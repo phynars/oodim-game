@@ -91,8 +91,12 @@ jobs:
           sentinel='redgreen-sentinel: npc-memory-red-lane-retired'
           has_sentinel=false
           has_guard=false
-          grep -q "$sentinel" "$spec" && has_sentinel=true
-          grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null && has_guard=true
+          if grep -q "$sentinel" "$spec"; then
+            has_sentinel=true
+          fi
+          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
+            has_guard=true
+          fi
           if $has_sentinel && $has_guard; then
             echo "::error::Spec contains BOTH the retirement sentinel ('$sentinel') and the FLAGSHIP_BREAK_MODE=drop-memory conditional guard. These states are contradictory — delete the sentinel in the same change that introduces the guard."
             exit 1
