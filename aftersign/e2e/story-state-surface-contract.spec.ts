@@ -20,10 +20,9 @@ import { expect, test, type Page } from "@playwright/test";
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type MemoryFact = {
   id: string;
@@ -93,7 +92,7 @@ test("window.__game exposes story/state contract fields for harness assertions",
   // sits at its real nested address and is a non-empty string tied to
   // the slot.
   await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-kept-sealed");
+  await waitForBeat(page, "packet-choice");
   await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
   await waitForBeat(page, "packet-delivered");
 

@@ -133,7 +133,7 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     const afterReturn = await page.evaluate(() => ({
       beat: window.__game?.scene?.beat,
     }));
-    expect(afterReturn.beat).toBe("io-returning-recognition");
+    expect(afterReturn.beat).toBe("io-return-recognition");
   });
 
   // Unfixme in Phase 3 once npcs.io.memories entries carry the contract

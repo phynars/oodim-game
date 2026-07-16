@@ -19,10 +19,9 @@ const RECOGNITION_FEEDBACK_BUDGET_MS = 250;
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type MemoryFact = {
   id: string;
@@ -78,7 +77,7 @@ test("Io recognition line lands within the feel budget after a returning advance
 
   await waitForBeat(page, "packet-offered");
   await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-kept-sealed");
+  await waitForBeat(page, "packet-choice");
   await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
   await waitForBeat(page, "packet-delivered");
 
@@ -110,7 +109,7 @@ test("Io recognition line lands within the feel budget after a returning advance
   });
 
   // Recognition beat actually reached — otherwise a latency number is meaningless.
-  expect(result.beat).toBe("io-returning-recognition");
+  expect(result.beat).toBe("io-return-recognition");
 
   // The line is the sealed-packet recognition (matches lineForBeat() in
   // aftersign/index.html). Guards against silent regressions to a generic
@@ -136,7 +135,7 @@ test("full page reload keeps packet-delivered state and memory before recognitio
 
   await waitForBeat(page, "packet-offered");
   await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-kept-sealed");
+  await waitForBeat(page, "packet-choice");
   await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
   await waitForBeat(page, "packet-delivered");
 
@@ -166,7 +165,7 @@ test("full page reload keeps packet-delivered state and memory before recognitio
   expect(afterReload.hasDeliveredFact).toBe(true);
 
   await page.evaluate(() => window.__game!.input.advance());
-  await waitForBeat(page, "io-returning-recognition");
+  await waitForBeat(page, "io-return-recognition");
 
   const recognition = await page.evaluate(() => {
     const snapshot = window.__game!;

@@ -2,7 +2,7 @@
 //
 // What it guards (impl at aftersign/index.html, publishState()):
 //   • deliverPacket() persists with beat="packet-delivered" SYNCHRONOUSLY,
-//     then schedules a setBeat("io-returning-recognition") after 1180ms.
+//     then schedules a setBeat("io-return-recognition") after 1180ms.
 //     The persisted beat we reload from is "packet-delivered" — that's
 //     the durable one; the returning-line beat is a live-session
 //     animation, not a save-state. To reach it after a reload the test
@@ -136,7 +136,7 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
 }
 
 // After reload we're at the durable "packet-delivered" beat. The
-// sealed/opened split only appears at "io-returning-recognition"; reach
+// sealed/opened split only appears at "io-return-recognition"; reach
 // it deterministically by routing through advance() — no wall-clock wait,
 // no reliance on the 1180ms setTimeout (which doesn't survive reload).
 async function advanceToRecognition(page: Page) {
@@ -152,13 +152,13 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
       // Live impl (aftersign/index.html):
       //   • deliverPacket() persists with beat="packet-delivered" synchronously,
-      //     then advances to "io-returning-recognition" ~1180ms later. The saved
+      //     then advances to "io-return-recognition" ~1180ms later. The saved
       //     beat we reload from is "packet-delivered".
       //   • npcs.io.memory is the singular array field. There is no plural
       //     `memories` — asserting on it would always be undefined.
       //   • At the reloaded beat lineForBeat() emits the SAME
       //     "Done. Blue route..." string for both paths — the sealed/opened
-      //     split only appears at io-returning-recognition. Path is
+      //     split only appears at io-return-recognition. Path is
       //     distinguished here by delivery.outcome + memory[].object.
       expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
       expect(afterReload.scene.beat).toBe("packet-delivered");
@@ -171,7 +171,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
       // Now advance to the recognition beat and confirm the durable
       // outcome routes to the correct remembered line.
       const afterRecognition = await advanceToRecognition(page);
-      expect(afterRecognition.scene.beat).toBe("io-returning-recognition");
+      expect(afterRecognition.scene.beat).toBe("io-return-recognition");
       expect(afterRecognition.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
       expect(afterRecognition.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
     });
@@ -184,8 +184,8 @@ test.describe("AFTERSIGN reload beat regression", () => {
     await playSaveReloadPath(page, PACKET_PATHS[1]);
     const opened = await advanceToRecognition(page);
 
-    expect(sealed.scene.beat).toBe("io-returning-recognition");
-    expect(opened.scene.beat).toBe("io-returning-recognition");
+    expect(sealed.scene.beat).toBe("io-return-recognition");
+    expect(opened.scene.beat).toBe("io-return-recognition");
     expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
     expect(opened.npcs.io.lastLine).toBe(OPENED_RECOGNITION_LINE);
     expect(sealed.npcs.io.lastLine).not.toBe(opened.npcs.io.lastLine);
@@ -203,7 +203,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
     // Under wrong-io-line the runtime swaps the recognition line, so the
     // sealed path speaks the OPENED line and these assertions FAIL —
     // that failure is the red-polarity proof the workflow inverts.
-    expect(sealed.scene.beat).toBe("io-returning-recognition");
+    expect(sealed.scene.beat).toBe("io-return-recognition");
     expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
     expect(sealed.npcs.io.lastLine).not.toBe(OPENED_RECOGNITION_LINE);
   });

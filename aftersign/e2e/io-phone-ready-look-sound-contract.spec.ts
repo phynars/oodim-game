@@ -15,7 +15,7 @@ const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 
 // The line that ACTUALLY renders at the sealed recognition beat, per
 // index.html's lineForBeat() branch for state.scene.beat ===
-// 'io-returning-recognition' with state.packet.sealed === true. The earlier
+// 'io-return-recognition' with state.packet.sealed === true. The earlier
 // draft waited on "You brought it back sealed." which lives only in
 // aftersign/src/recognitionFeedback.ts and is never imported by index.html.
 const IO_SEALED_RECOGNITION_LINE =
@@ -99,7 +99,7 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
     // Seed the "last" values from the CURRENT state, not sentinel defaults.
     // Otherwise the first rAF tick can see beat/line/audioCue at a stale
     // "before-drive" value that trivially satisfies the transition guards
-    // (lastBeat=null !== 'io-returning-recognition', lastAudioCue=null !==
+    // (lastBeat=null !== 'io-return-recognition', lastAudioCue=null !==
     // 'packet-confirmed'), and if the drive has already reached the sealed
     // recognition beat by the time this observer's first tick fires (which
     // is realistic on cold CI where SwiftShader delays the render loop
@@ -121,7 +121,7 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
       const marks = win.__ioPhoneReadyMarks;
 
       if (marks) {
-        if (beat === 'io-returning-recognition' && lastBeat !== 'io-returning-recognition') {
+        if (beat === 'io-return-recognition' && lastBeat !== 'io-return-recognition') {
           marks.recognitionTriggeredAt = performance.now();
         }
 
@@ -204,7 +204,7 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
         __ioPhoneReadyMarks?: Partial<RuntimeMarks>;
       };
       return (
-        win.__game?.scene?.beat === 'io-returning-recognition'
+        win.__game?.scene?.beat === 'io-return-recognition'
         && win.__game?.story?.memoryBeat !== null
         && win.__game?._runtime?.audio?.lastCue === expectedCue
         && win.__ioPhoneReadyMarks?.recognitionTriggeredAt !== undefined

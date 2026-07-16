@@ -9,10 +9,9 @@ const WAIT_MS = 60_000;
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type MemoryFact = {
   id: string;
@@ -24,6 +23,7 @@ type MemoryFact = {
 type GameSurface = {
   version: 1;
   scene: { beat: Beat };
+  packet: { sealed: boolean };
   npcs: {
     io: {
       memory: MemoryFact[];
@@ -87,7 +87,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
 
@@ -110,7 +110,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     await page.evaluate(() => window.__game!.input.forceReload());
     await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-returning-recognition");
+    await waitForBeat(page, "io-return-recognition");
 
     const returning = await game(page);
     const recalledFact = returning.npcs.io.memory.find(
@@ -132,7 +132,12 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("open-packet"));
-    await waitForBeat(page, "packet-opened");
+    await waitForBeat(page, "packet-choice");
+    // Sealed/opened split now lives on state.packet.sealed — the beat
+    // canonicalized to "packet-choice" for both branches (see
+    // aftersign/flagship-beat-migration.js). Pin BOTH to preserve the
+    // opened-branch round-trip intent of the snapshot/reset test.
+    expect(await page.evaluate(() => window.__game!.packet.sealed)).toBe(false);
 
     const snapshot = await page.evaluate(() => window.__game!.getSnapshot());
 
@@ -140,10 +145,11 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await waitForBeat(page, "packet-delivered");
 
     await page.evaluate((saved) => window.__game!.reset(saved), snapshot);
-    await waitForBeat(page, "packet-opened");
+    await waitForBeat(page, "packet-choice");
 
     const restored = await game(page);
-    expect(restored.scene.beat).toBe("packet-opened");
+    expect(restored.scene.beat).toBe("packet-choice");
+    expect(restored.packet.sealed).toBe(false);
   });
 
   test("prior-session memory stays slot-scoped across save/reload", async ({ page }) => {
@@ -153,7 +159,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.goto(`/aftersign/?slot=${slotA}`);
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
 
@@ -164,7 +170,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
 
     await page.evaluate(() => window.__game!.input.forceReload());
     await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-returning-recognition");
+    await waitForBeat(page, "io-return-recognition");
 
     const slotAState = await game(page);
     expect(
@@ -189,7 +195,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.goto(`/aftersign/?slot=${slot}`);
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
 
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
@@ -215,7 +221,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.goto(`/aftersign/?slot=${slot}`);
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
 
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
@@ -240,7 +246,7 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.goto(`/aftersign/?slot=${slot}`);
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
 
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {

@@ -19,10 +19,9 @@
 export type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 /** The single memory-beat kind slice-1 emits. */
 export type MemoryBeatKind = "io_packet_return";
@@ -31,6 +30,7 @@ export type MemoryBeatKind = "io_packet_return";
 export type MemoryBeatOutcome = "sealed" | "opened";
 
 /** Recognition line ids the runtime publishes on `story.memoryBeat.lineId`.
+ * Emitted at the `io-return-recognition` beat.
  * Must stay in sync with:
  *   - aftersign/index.html (`lineId: state.packet.sealed ? ... : ...`)
  *   - aftersign/e2e/io-recognition-memory-beat-contract.spec.ts

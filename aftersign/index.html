@@ -161,6 +161,7 @@
       import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./packet-intent.js";
+      import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
       import {
         IO_RECOGNITION_BEAT_FEEDBACK,
         ioRecognitionBeatEnvelopeAt,
@@ -267,7 +268,7 @@
           // Flipped true once listeners + first render are wired (boot tail)
           // — the harness's "safe to drive input" signal.
           ready: false,
-          beat: stored?.beat ?? "packet-offered",
+          beat: canonicalFlagshipBeat(stored?.beat) ?? "packet-offered",
         },
         story: {
           currentNpcId: null,
@@ -364,19 +365,17 @@
       let kioskHumGain;
 
       const lineForBeat = () => {
-        if (state.scene.beat === "packet-kept-sealed") {
-          return "Good. Some doors only open for people who can carry a secret without looking inside.";
-        }
-
-        if (state.scene.beat === "packet-opened") {
-          return "You opened it. The route still glows, but now the city knows curiosity got there first.";
+        if (state.scene.beat === "packet-choice") {
+          return state.packet.sealed
+            ? "Good. Some doors only open for people who can carry a secret without looking inside."
+            : "You opened it. The route still glows, but now the city knows curiosity got there first.";
         }
 
         if (state.scene.beat === "packet-delivered") {
           return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
         }
 
-        if (state.scene.beat === "io-returning-recognition") {
+        if (state.scene.beat === "io-return-recognition") {
           // Red-guard hook (#653): wrong-io-line deliberately swaps the
           // recognition line so the harness can prove it would catch a
           // line/outcome mismatch. No-op when breakMode is "".
@@ -449,7 +448,7 @@
 
       const syncIoLine = () => {
         const nextLine = lineForBeat();
-        const nextMemoryRefs = state.scene.beat === "io-returning-recognition"
+        const nextMemoryRefs = state.scene.beat === "io-return-recognition"
           ? state.npcs.io.memory.map((fact) => fact.id)
           : [];
         if (
@@ -641,11 +640,12 @@
       };
 
       const setBeat = (beat) => {
-        if (state.scene.beat !== beat) {
-          state.scene.beat = beat;
+        const canonicalBeat = canonicalFlagshipBeat(beat);
+        if (state.scene.beat !== canonicalBeat) {
+          state.scene.beat = canonicalBeat;
           markStateDirty();
         }
-        const nextNpcId = beat === "io-returning-recognition" ? "io" : null;
+        const nextNpcId = canonicalBeat === "io-return-recognition" ? "io" : null;
         if (state.story.currentNpcId !== nextNpcId) {
           state.story.currentNpcId = nextNpcId;
           markStateDirty();
@@ -660,7 +660,7 @@
             state.packet.sealed = true;
             markStateDirty();
           }
-          setBeat("packet-kept-sealed");
+          setBeat("packet-choice");
         }
 
         if (outcome === PACKET_OUTCOME.OPENED) {
@@ -668,7 +668,7 @@
             state.packet.sealed = false;
             markStateDirty();
           }
-          setBeat("packet-opened");
+          setBeat("packet-choice");
         }
       };
 
@@ -732,7 +732,7 @@
             state.packet.sealed = false;
             markStateDirty();
           }
-          setBeat("packet-opened");
+          setBeat("packet-choice");
           return;
         }
 
@@ -741,7 +741,7 @@
             state.packet.sealed = true;
             markStateDirty();
           }
-          setBeat("packet-kept-sealed");
+          setBeat("packet-choice");
           return;
         }
 
@@ -761,7 +761,7 @@
       const advance = async () => {
         if (state.packet.delivered && state.npcs.io.memory.length > 0) {
           markStateDirty();
-          setBeat("io-returning-recognition");
+          setBeat("io-return-recognition");
         }
       };
 
@@ -891,7 +891,7 @@
           playerId: state.player.id,
         };
         state.scene.beat = typeof saved.beat === "string"
-          ? saved.beat
+          ? canonicalFlagshipBeat(saved.beat)
           : state.packet.delivered ? "packet-delivered" : "packet-offered";
 
         markStateDirty();
@@ -1218,7 +1218,7 @@
               : "io_return_packet_opened",
           };
           markStateDirty();
-          setBeat("io-returning-recognition");
+          setBeat("io-return-recognition");
         }, 1180);
         persist({ dirty: true });
         playKioskConfirm();
