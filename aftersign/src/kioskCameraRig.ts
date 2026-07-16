@@ -134,9 +134,12 @@ export const stepKioskCameraRig = (
 
 class CameraRigAssertionError extends Error {}
 
-const assert = (condition: unknown, message: string): asserts condition => {
+// Must be a `function` declaration, not an arrow assigned to `const`:
+// TypeScript rejects `asserts` predicate return types on arrow-function
+// const declarations — that mismatch is what turned CI red.
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new CameraRigAssertionError(message);
-};
+}
 
 export function checkKioskCameraRigConvergesWithinTwoFramesAfterDirectionChange(): void {
   const config = DEFAULT_KIOSK_CAMERA_RIG;
