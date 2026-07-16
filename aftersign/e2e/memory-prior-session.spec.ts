@@ -139,6 +139,23 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     // opened-branch round-trip intent of the snapshot/reset test.
     expect(await page.evaluate(() => window.__game!.packet.sealed)).toBe(false);
 
+    // Story-state fields the snapshot/reset contract restores: the beat,
+    // the sealed/opened branch, and Io's memory surface. Save-bookkeeping
+    // (revision, dirty) is intentionally NOT asserted here — reset() writes
+    // through the save layer, so revision/dirty legitimately shift post-reset.
+    // Those fields have dedicated coverage in the forceReload / forceSave
+    // tests below.
+    const expectedPreSnapshotState = await page.evaluate(() => {
+      const state = window.__game!;
+      return {
+        beat: state.scene.beat,
+        packetSealed: state.packet.sealed,
+        ioMemory: state.npcs.io.memory,
+        ioLastLine: state.npcs.io.lastLine,
+        ioLastLineMemoryRefs: state.npcs.io.lastLineMemoryRefs,
+      };
+    });
+
     const snapshot = await page.evaluate(() => window.__game!.getSnapshot());
 
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
@@ -147,9 +164,18 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     await page.evaluate((saved) => window.__game!.reset(saved), snapshot);
     await waitForBeat(page, "packet-choice");
 
-    const restored = await game(page);
-    expect(restored.scene.beat).toBe("packet-choice");
-    expect(restored.packet.sealed).toBe(false);
+    const restored = await page.evaluate(() => {
+      const state = window.__game!;
+      return {
+        beat: state.scene.beat,
+        packetSealed: state.packet.sealed,
+        ioMemory: state.npcs.io.memory,
+        ioLastLine: state.npcs.io.lastLine,
+        ioLastLineMemoryRefs: state.npcs.io.lastLineMemoryRefs,
+      };
+    });
+
+    expect(restored).toEqual(expectedPreSnapshotState);
   });
 
   test("prior-session memory stays slot-scoped across save/reload", async ({ page }) => {
