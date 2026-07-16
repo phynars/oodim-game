@@ -42,6 +42,35 @@ export type AftersignNpcMemoryRoundTrip = {
   reload: () => AftersignNpcMemoryRoundTrip;
 };
 
+export type AftersignReturningPlayerLineId =
+  | "io-returning-packet-carried"
+  | "io-returning-room-listened"
+  | "io-returning-choice-left-a-mark";
+
+export type AftersignReturningPlayerLine = {
+  id: AftersignReturningPlayerLineId;
+  npcId: AftersignNpcMemoryNpcId;
+  text: string;
+};
+
+export const AFTERSIGN_RETURNING_PLAYER_LINES: readonly AftersignReturningPlayerLine[] = [
+  {
+    id: "io-returning-packet-carried",
+    npcId: "io",
+    text: "You came back. Good. I kept the packet where your last choice left it.",
+  },
+  {
+    id: "io-returning-room-listened",
+    npcId: "io",
+    text: "The room remembers you before I do. Then I catch up.",
+  },
+  {
+    id: "io-returning-choice-left-a-mark",
+    npcId: "io",
+    text: "You {choiceSummary}. That did not pass through cleanly. Nothing does here.",
+  },
+] as const;
+
 export function createNpcMemoryRoundTrip(
   snapshot: AftersignNpcMemoryRoundTripSnapshot = { version: 1, beats: [] },
 ): AftersignNpcMemoryRoundTrip {
@@ -93,5 +122,12 @@ function copyBeat(beat: AftersignNpcMemoryBeat): AftersignNpcMemoryBeat {
 }
 
 function buildIoRecallLine(choice: AftersignNpcMemoryChoice): string {
-  return `Io remembers that you ${choice.summary}. The sealed packet changed how the room listened.`;
+  const line = AFTERSIGN_RETURNING_PLAYER_LINES.find(
+    (candidate) => candidate.id === "io-returning-choice-left-a-mark",
+  );
+
+  return (line?.text ?? "You {choiceSummary}. I remember the shape of it.").replace(
+    "{choiceSummary}",
+    choice.summary,
+  );
 }
