@@ -171,6 +171,12 @@
         readAuthoritativeSave,
         writeAuthoritativeSave,
       } from "./server-authoritative-save.js";
+      import {
+        DEFAULT_KIOSK_CAMERA_RIG,
+        computeKioskCameraTarget,
+        createKioskCameraRigState,
+        stepKioskCameraRig as stepKioskCameraRigModel,
+      } from "./src/kioskCameraRig.js";
 
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
@@ -309,6 +315,7 @@
           lastVelocityMetersPerSecond: 0,
           contract: { ...MOVEMENT },
         },
+        cameraRig: null,
         interaction: {
           lastAction: null,
           lastPointer: null,
@@ -507,6 +514,24 @@
         state.movement.lastVelocityMetersPerSecond = Math.hypot(vx, vz);
       };
 
+      const cameraRigInput = (dtSeconds = MOVEMENT.fixedStepSeconds) => ({
+        playerX: state.player.x,
+        playerZ: state.player.z,
+        facingRadians: state.player.facingRadians,
+        velocityX: state.movement.input.x * MOVEMENT.speedMetersPerSecond,
+        velocityZ: state.movement.input.z * MOVEMENT.speedMetersPerSecond,
+        dtSeconds,
+      });
+
+      const stepCameraRig = (dtSeconds = MOVEMENT.fixedStepSeconds) => {
+        state.cameraRig = state.cameraRig
+          ? stepKioskCameraRigModel(state.cameraRig, cameraRigInput(dtSeconds), DEFAULT_KIOSK_CAMERA_RIG)
+          : createKioskCameraRigState(cameraRigInput(dtSeconds), DEFAULT_KIOSK_CAMERA_RIG);
+        markStateDirty();
+        publishState();
+        return clone(state.cameraRig);
+      };
+
       const assertFeelContract = () => {
         // Snapshot ALL state this probe mutates so it's non-destructive when
         // called from the console via window.__game. Restore on exit — otherwise
@@ -569,6 +594,7 @@
           },
           save: { ...state.save },
           movement: clone(state.movement),
+          cameraRig: clone(state.cameraRig),
           interaction: clone(state.interaction),
           // Publish the runtime audio surface so the look/sound contract
           // spec can observe playKioskConfirm()'s stamped cue. Without
@@ -605,6 +631,7 @@
             },
             save: state.save,
             movement: state.movement,
+            cameraRig: state.cameraRig,
             interaction: state.interaction,
           }),
           reset,
@@ -616,6 +643,7 @@
             forceReload: reloadFromSave,
             setMoveInput,
             stepMovement,
+            stepCameraRig,
             packetPress,
             packetMove,
             packetRelease,
@@ -1115,9 +1143,26 @@
         const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
         const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
         const recognitionMotion = recognitionMotionAt(nowMs);
+        // Base pose = the rig's DETERMINISTIC resting pose (velocity=0 →
+        // rig converges to computeKioskCameraTarget). Must match the render
+        // loop, which paints rig.position + wobbles; probing the old
+        // player.x*0.12 / 7.6+player.z*0.12 line drifted from what's on
+        // screen the moment the rig landed and made this probe measure a
+        // ghost camera. Wobbles (recognition dolly, confirm kick, failure
+        // shake) stack on top exactly as the render loop stacks them.
+        const restingPose = computeKioskCameraTarget(
+          {
+            playerX: state.player.x,
+            playerZ: state.player.z,
+            facingRadians: state.player.facingRadians,
+            velocityX: 0,
+            velocityZ: 0,
+          },
+          DEFAULT_KIOSK_CAMERA_RIG,
+        );
         return {
-          x: state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
-          z: 7.6 + state.player.z * 0.12,
+          x: restingPose.x + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
+          z: restingPose.z,
           rotationZ: THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
         };
       };
@@ -1132,10 +1177,24 @@
         // delta from (0, 2.25, 7.6) picks up ~0.26m of baseline instead
         // of the ~0.05m confirm kick we're actually measuring. This
         // anchors on state so the delta is purely the wobble contribution.
+        // Anchor uses the SAME resting-pose math as computeCameraPoseAt's
+        // base — otherwise dx/dz would encode the (rig-baseline vs
+        // player*0.12 legacy) offset instead of the pure wobble
+        // contribution we're trying to measure.
+        const anchorPose = computeKioskCameraTarget(
+          {
+            playerX: state.player.x,
+            playerZ: state.player.z,
+            facingRadians: state.player.facingRadians,
+            velocityX: 0,
+            velocityZ: 0,
+          },
+          DEFAULT_KIOSK_CAMERA_RIG,
+        );
         memoryBeatCameraProbe = {
           startedAt,
-          startX: state.player.x * 0.12,
-          startZ: 7.6 + state.player.z * 0.12,
+          startX: anchorPose.x,
+          startZ: anchorPose.z,
           maxDeltaMeters: 0,
           maxYawDegrees: 0,
         };
@@ -1240,6 +1299,7 @@
         state.movement.input = { x: 0, z: 0, source: "none", active: false };
         state.movement.lastStepMs = 0;
         state.movement.lastVelocityMetersPerSecond = 0;
+        state.cameraRig = null;
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
         state.interaction.kioskPulse = 0;
@@ -1585,9 +1645,12 @@
         kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
         io.position.y = Math.sin(t * 1.7) * 0.025;
         const recognitionMotion = recognitionMotionAt(now);
-        camera.position.x = state.player.x * 0.12 + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
-        camera.position.z = 7.6 + state.player.z * 0.12;
-        camera.rotation.z = THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+        const rig = stepCameraRig(dt);
+        camera.position.x = rig.position.x + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
+        camera.position.y = rig.position.y;
+        camera.position.z = rig.position.z;
+        camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
+        camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
         sampleMemoryBeatCameraProbe();
         document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
         document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
