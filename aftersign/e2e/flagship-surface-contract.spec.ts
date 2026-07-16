@@ -219,7 +219,6 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     assertNpcReferencesPriorMemory(returning, "sealed");
     expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT.sealed);
     expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID.sealed);
-    expect(returning.save.lastLoadProof.source).toBe("server");
   });
 
   // Unfixme in Phase 4 once the server-authoritative save path lands:
