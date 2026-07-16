@@ -17,7 +17,7 @@ const WAIT_MS = 60_000;
 // stall: two beat transitions at 2.5s each vs. the 60s cold-wait budget.
 const CHOICE_RESPONSE_MS = 2_500;
 
-type PacketBeat = "packet-offered" | "packet-kept-sealed" | "packet-delivered";
+type PacketBeat = "packet-offered" | "packet-choice" | "packet-delivered";
 
 type PacketChoiceId = "keep-packet-sealed" | "deliver-packet";
 
@@ -94,7 +94,7 @@ test("packet choice controls stay responsive through offer -> seal -> deliver", 
   // Latency is NOT measured here — only from the first choice onward.
   await waitForBeat(page, "packet-offered");
 
-  const sealLatency = await measureChoiceLatency(page, "keep-packet-sealed", "packet-kept-sealed");
+  const sealLatency = await measureChoiceLatency(page, "keep-packet-sealed", "packet-choice");
   expect(
     sealLatency,
     `keep-packet-sealed took ${sealLatency}ms (budget ${CHOICE_RESPONSE_MS}ms)`,

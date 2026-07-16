@@ -16,10 +16,9 @@ type PacketOutcome = "unknown" | "sealed" | "opened" | "cancelled";
 
 type Beat =
   | "packet-offered"
-  | "packet-kept-sealed"
-  | "packet-opened"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type InteractionFeedback = {
   active: boolean;
@@ -102,7 +101,9 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   });
 
   expect(tapSnapshot.packet.sealed).toBe(true);
-  expect(tapSnapshot.scene.beat).not.toBe("packet-opened");
+  // Beat name is canonical ("packet-choice") for both sealed/opened branches;
+  // sealed vs opened now lives on state.packet.sealed. The `.sealed === true`
+  // assertion above is the load-bearing "not crossed to opened" check.
   expect(tapSnapshot.interaction.packetIntent.outcome).toBe("sealed");
 
   // Reset the slice so the next press starts from a clean sealed offer.
@@ -117,7 +118,8 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   });
 
   expect(midHoldSnapshot.packet.sealed).toBe(true);
-  expect(midHoldSnapshot.scene.beat).not.toBe("packet-opened");
+  // Canonical beat model: sealed vs opened lives on packet.sealed. See tap
+  // block comment above for context.
   expect(midHoldSnapshot.interaction.packetIntent.outcome).toBe("unknown");
   expect(midHoldSnapshot.interaction.packetIntent.progress).toBeGreaterThan(0);
   expect(midHoldSnapshot.interaction.packetIntent.progress).toBeLessThan(1);
@@ -168,7 +170,9 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   });
 
   expect(heldSnapshot.packet.sealed).toBe(false);
-  expect(heldSnapshot.scene.beat).toBe("packet-opened");
+  // Canonical beat is "packet-choice"; opened/sealed split lives on
+  // packet.sealed (asserted immediately above).
+  expect(heldSnapshot.scene.beat).toBe("packet-choice");
   expect(heldSnapshot.interaction.packetIntent.outcome).toBe("opened");
   expect(heldSnapshot.interaction.packetIntent.progress).toBe(1);
 });
@@ -195,7 +199,7 @@ test("deadzone release (181–449 ms) preserves the seal instead of cancelling",
   });
 
   expect(deadzoneSnapshot.packet.sealed).toBe(true);
-  expect(deadzoneSnapshot.scene.beat).not.toBe("packet-opened");
+  // Canonical beat model: sealed vs opened lives on packet.sealed.
   expect(deadzoneSnapshot.interaction.packetIntent.outcome).toBe("sealed");
   expect(deadzoneSnapshot.interaction.packetIntent.progress).toBe(0);
 
@@ -210,6 +214,6 @@ test("deadzone release (181–449 ms) preserves the seal instead of cancelling",
   });
 
   expect(nearMissSnapshot.packet.sealed).toBe(true);
-  expect(nearMissSnapshot.scene.beat).not.toBe("packet-opened");
+  // Canonical beat model: sealed vs opened lives on packet.sealed.
   expect(nearMissSnapshot.interaction.packetIntent.outcome).toBe("sealed");
 });

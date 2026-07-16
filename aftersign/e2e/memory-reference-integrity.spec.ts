@@ -6,10 +6,9 @@ const WAIT_MS = 60_000;
 type Beat =
   | "arrival"
   | "packet-offered"
-  | "packet-opened"
-  | "packet-kept-sealed"
+  | "packet-choice"
   | "packet-delivered"
-  | "io-returning-recognition";
+  | "io-return-recognition";
 
 type MemoryFact = {
   id: string;
@@ -68,13 +67,13 @@ test.describe("AFTERSIGN memory reference integrity", () => {
     expect(firstRun.npcs.io.lastLineMemoryRefs).toEqual([]);
 
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-    await waitForBeat(page, "packet-kept-sealed");
+    await waitForBeat(page, "packet-choice");
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
     await page.evaluate(() => window.__game!.input.forceSave());
     await page.evaluate(() => window.__game!.input.forceReload());
     await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-returning-recognition");
+    await waitForBeat(page, "io-return-recognition");
 
     const returning = await game(page);
     const factsById = new Map(returning.npcs.io.memory.map((fact) => [fact.id, fact]));
