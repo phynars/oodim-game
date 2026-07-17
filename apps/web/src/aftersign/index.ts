@@ -58,17 +58,6 @@ export {
 } from "./packetIntent";
 
 export {
-  getIoRecognitionLine,
-  getIoRecognitionLines,
-  ioRecognitionLines,
-  type IoPacketOutcome,
-  type IoRecognitionFacts,
-  type IoRecognitionLine,
-  type IoReturnTone,
-  type IoRouteAttention,
-} from "./ioVoice";
-
-export {
   getIoFirstSessionLine,
   ioFirstSessionCopy,
   type IoFirstSessionCopyKey,
