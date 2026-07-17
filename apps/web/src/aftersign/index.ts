@@ -8,11 +8,11 @@
 //
 // Two modules here export an identifier called `ioReturningSessionLines`:
 //   - the authority (record keyed by IoReturningSessionLineKey — strings)
-//   - the web view (record keyed by IoReturningSessionOutcome — objects)
+//   - the web view (record keyed by AftersignIoReturningSessionOutcome — objects)
 // To keep both reachable without a barrel collision, the authority is
 // re-exported under a namespace and the harness-facing web view keeps the
 // bare names.
 
-export * as ioReturningSessionAuthority from './ioReturningSession'
-export * from './ioReturningSessionLines'
-export * from './ioFirstSessionCopy'
+export * as ioReturningSessionAuthority from "./ioReturningSession";
+export * from "./ioReturningSessionLines";
+export * from "./ioFirstSessionCopy";
