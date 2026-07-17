@@ -117,6 +117,62 @@ test('dragging outside the interaction radius cancels without committing a packe
   assert.equal(result.progress, 0);
 });
 
+test('drift-cancel is sticky: a subsequent tick past the hold threshold cannot resurrect OPENED', () => {
+  // Feel contract: once a gesture drifts out of the interaction radius it is
+  // committed to CANCELLED and the packet stays sealed. If the rAF loop keeps
+  // calling tick() after the cancel (which it does, because the scene doesn't
+  // know the outcome yet on that frame), the packet must NOT quietly open at
+  // HOLD_TO_OPEN_MS. A false-opened is unrecoverable; this test pins that.
+  const packet = new PacketIntentController();
+  const t0 = 30_000;
+
+  packet.press({ timeMs: t0, x: 100, y: 100 });
+  const drifted = packet.move({
+    timeMs: t0 + 50,
+    x: 100 + PACKET_INTENT.DRIFT_CANCEL_PX + 1,
+    y: 100,
+  });
+  assert.equal(drifted.outcome, PACKET_OUTCOME.CANCELLED);
+
+  // Simulate the rAF loop continuing to tick well past the hold threshold.
+  let last = drifted;
+  for (let t = t0 + 50; t <= t0 + PACKET_INTENT.HOLD_TO_OPEN_MS + 200; t += 16) {
+    last = packet.tick(t);
+  }
+
+  assert.equal(last.outcome, PACKET_OUTCOME.CANCELLED, 'cancelled gesture must stay cancelled');
+  assert.equal(last.active, false);
+  assert.equal(last.progress, 0);
+});
+
+test('reset() re-arms the controller so the player can attempt the choice again', () => {
+  // Feel contract: after any committed outcome (SEALED / OPENED / CANCELLED)
+  // the scene must be able to re-arm for a fresh attempt — e.g. the player
+  // brushed the packet, got a stray CANCELLED, and now genuinely wants to
+  // hold. Without reset() there is no path back to UNKNOWN, and a stuck
+  // outcome would silently block the next gesture from advancing.
+  const packet = new PacketIntentController();
+
+  packet.press({ timeMs: 7000, x: 50, y: 50 });
+  const cancelled = packet.move({
+    timeMs: 7050,
+    x: 50 + PACKET_INTENT.DRIFT_CANCEL_PX + 1,
+    y: 50,
+  });
+  assert.equal(cancelled.outcome, PACKET_OUTCOME.CANCELLED);
+
+  const rearmed = packet.reset();
+  assert.equal(rearmed.outcome, PACKET_OUTCOME.UNKNOWN, 'reset must clear the committed outcome');
+  assert.equal(rearmed.active, false);
+  assert.equal(rearmed.progress, 0);
+
+  // A fresh deliberate hold after reset() must open the packet normally.
+  packet.press({ timeMs: 8000, x: 50, y: 50 });
+  const opened = packet.tick(8000 + PACKET_INTENT.HOLD_TO_OPEN_MS);
+  assert.equal(opened.outcome, PACKET_OUTCOME.OPENED, 'reset controller must accept a fresh open');
+  assert.equal(opened.progress, 1);
+});
+
 test('harness mirrors packet outcome for window.__game story state', () => {
   const harness = createPacketIntentHarness();
 
