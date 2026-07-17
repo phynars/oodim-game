@@ -26,9 +26,18 @@ one the product actually uses.
 
 ## Single source of truth
 
-`aftersign/packet-intent.js` (450ms) is now the only copy. Any future port to
-TypeScript should MOVE this file's behavior (450ms threshold), not resurrect
-either deleted fork's constants.
+`aftersign/src/packetIntent.ts` (450ms) is now the only copy. The prior
+`aftersign/packet-intent.js` was MOVED — not forked — into TypeScript in
+a follow-up change: the JS module + its `node:test` file were deleted in
+the same PR that added the `.ts` module and rewired `aftersign/index.html`
+(line 163) to import `./src/packetIntent.js`, which Vite resolves to the
+`.ts` file (same convention as `./src/kioskCameraRig.js`).
+
+Any future change to the feel contract (constants, outcome semantics, the
+sticky-cancel invariant) MUST land in `aftersign/src/packetIntent.ts` and
+be pinned by both `runPacketIntentChecks()` in that file and
+`aftersign/e2e/packet-hold-threshold.spec.ts`. Do not re-introduce a
+parallel copy.
 
 Note: `apps/web/src/aftersign/packetIntentPressureFeel.ts` is a separate,
 still-live module (pressure-based decision feel) and was intentionally left
