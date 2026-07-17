@@ -129,3 +129,11 @@ export {
   sampleMemoryRecallFeel,
   type MemoryRecallFeelSample,
 } from "./memoryRecallFeel";
+
+export {
+  AFTERSIGN_IO_RETURNING_SESSION_LINES,
+  findAftersignIoReturningSessionLine,
+  type AftersignIoReturningSessionLine,
+  type AftersignIoReturningSessionLineId,
+  type AftersignIoReturningSessionOutcome,
+} from "./ioReturningSessionLines";
