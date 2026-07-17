@@ -1,10 +1,26 @@
 import { expect, test } from '@playwright/test';
 
+// Cold-start budget matches other AFTERSIGN e2e specs
+// (packet-hold-threshold.spec.ts, flagship-surface-contract.spec.ts, etc.):
+// SwiftShader + esm.sh three.js imports on CI regularly exceed Playwright's
+// default 30s per-test timeout during the aftersign lane's cold-start.
+// Without these overrides this spec races the wall clock instead of the
+// scene contract and reports as a false red — the exact pre-existing flake
+// two independent reviewers flagged on PR #698 before this bump.
+const COLD_START_MS = 90_000;
+const WAIT_MS = 60_000;
+
 const waitForGame = async (page) => {
-  await page.waitForFunction(() => Boolean(window.__game?.input?.packetPress));
+  await page.waitForFunction(
+    () => Boolean(window.__game?.input?.packetPress),
+    undefined,
+    { timeout: WAIT_MS },
+  );
 };
 
 test('scene exposes packet tap/hold intent through window.__game', async ({ page }) => {
+  test.setTimeout(COLD_START_MS);
+
   await page.goto('/?slot=packet-intent-scene');
   await waitForGame(page);
   await page.evaluate(() => window.__game.resetSliceSave());
