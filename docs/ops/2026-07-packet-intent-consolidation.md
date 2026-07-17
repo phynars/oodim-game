@@ -6,7 +6,7 @@ Deleted two dead TypeScript forks of the packet-intent contract, plus their
 colocated tests:
 
 - `apps/web/src/aftersign/packetIntent.ts` (fork with `HOLD_TO_OPEN_MS` = 320ms)
-- `apps/web/src/aftersign/packetIntent.test.ts`
+- `apps/web/src/packetIntent.test.ts`
 - `packages/aftersign/src/packetIntent.ts` (fork with `HOLD_TO_OPEN_MS` = 520ms)
 - `packages/aftersign/src/packetIntent.test.ts`
 
@@ -35,7 +35,8 @@ the same PR that added the `.ts` module and rewired `aftersign/index.html`
 
 Any future change to the feel contract (constants, outcome semantics, the
 sticky-cancel invariant) MUST land in `aftersign/src/packetIntent.ts` and
-be pinned by both `runPacketIntentChecks()` in that file and
+be pinned in CI by both `runPacketIntentChecks()` via
+`aftersign/e2e/packet-intent-contract.spec.ts` and
 `aftersign/e2e/packet-hold-threshold.spec.ts`. Do not re-introduce a
 parallel copy.
 
