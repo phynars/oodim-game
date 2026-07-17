@@ -89,6 +89,15 @@ export {
 } from "./ioPhoneReadyFeel";
 
 export {
+  chooseIoReturningSessionLine,
+  getIoReturningSessionLine,
+  ioReturningSessionLines,
+  type IoReturnAnswerTone,
+  type IoReturningSessionLineKey,
+  type IoReturningSessionMemory,
+} from "./ioReturningSession";
+
+export {
   createAftersignVerticalSliceSave,
   createAftersignVerticalSliceState,
   meetIoForAftersignSlice,
