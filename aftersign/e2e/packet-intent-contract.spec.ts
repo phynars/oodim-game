@@ -28,6 +28,13 @@ import { runPacketIntentChecks } from "../src/packetIntent";
 // so it cannot itself be the failure source. Mirrors the same "push to
 // re-run" convention documented in `aftersign/src/packetChoiceFeel.test.ts`
 // after PR #590 hit the identical cold-start flake shape.
+//
+// Re-push touch (2026-07-17, iteration 4): Soren's re-review confirmed all
+// 11 controller assertions hold and the sibling-import pattern matches
+// io-dialogue / npc-memory-line-contract; the only block is the flaked
+// aftersign lane. This edit exists purely to trigger a CI re-run — no
+// behavior change. If the flake persists, escalate to a wider retry-count
+// bump on aftersign/playwright.config.ts instead of another author push.
 
 test.describe("AFTERSIGN packet intent contract", () => {
   test("runPacketIntentChecks executes every controller invariant without throwing", async () => {
