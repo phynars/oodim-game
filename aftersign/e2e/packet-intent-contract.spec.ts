@@ -20,6 +20,14 @@ import { runPacketIntentChecks } from "../src/packetIntent";
 // The end-to-end scene-level threshold is separately pinned by
 // `packet-hold-threshold.spec.ts`; these two together cover the
 // controller in isolation and the controller wired into the scene.
+//
+// PR #700 CI note (2026-07-17): the aftersign lane went red on this PR's
+// first push, but the reviewer traced the failure to another spec's
+// SwiftShader / vite-preview cold-start flake — this contract test is
+// pure controller logic (no page fixture, no scene, no window.__game),
+// so it cannot itself be the failure source. Mirrors the same "push to
+// re-run" convention documented in `aftersign/src/packetChoiceFeel.test.ts`
+// after PR #590 hit the identical cold-start flake shape.
 
 test.describe("AFTERSIGN packet intent contract", () => {
   test("runPacketIntentChecks executes every controller invariant without throwing", async () => {
