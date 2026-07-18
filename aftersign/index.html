@@ -354,6 +354,22 @@
       let statePublishVersion = 0;
       let publishedStateVersion = -1;
 
+      // Vite's default MODE values are `development` / `production` / `test`;
+      // the FlagshipGameSurface contract (docs/flagship/story-state-contract.md
+      // + e2e-shared/flagshipStoryStateContract.ts:88) narrows to the shorter
+      // `dev` / `prod` / `test`. Map here so `build.mode` is contract-shaped
+      // regardless of how vite was invoked (dev server, preview, or an
+      // explicit --mode override).
+      const buildMode = (() => {
+        const rawMode = import.meta.env.MODE;
+        if (rawMode === "production") return "prod";
+        if (rawMode === "development") return "dev";
+        if (rawMode === "test" || rawMode === "dev" || rawMode === "prod") return rawMode;
+        // Unknown custom mode — treat as dev so the surface stays inside the
+        // contract union rather than leaking a raw vite value.
+        return "dev";
+      })();
+
       const markStateDirty = () => {
         statePublishVersion += 1;
       };
@@ -585,7 +601,7 @@
         window.__game = {
           version: 1,
           slug: state.slug,
-          build: { slug: state.slug },
+          build: { slug: state.slug, mode: buildMode },
           scene: { ...state.scene },
           story: clone(state.story),
           player: clone(state.player),
@@ -622,7 +638,7 @@
           getSnapshot: () => clone({
             version: 1,
             slug: state.slug,
-            build: { slug: state.slug },
+            build: { slug: state.slug, mode: buildMode },
             scene: state.scene,
             story: state.story,
             player: state.player,
