@@ -29,14 +29,33 @@ export type AftersignDurableSaveEnvelope = {
   state: AftersignVerticalSliceSave;
 };
 
+export type AftersignIoRecognitionFeel = {
+  durationMs: 620;
+  eyeCatchDelayMs: 90;
+  cameraPushInDegrees: 3.5;
+  subtitleLiftPx: 10;
+  easing: "cubic-bezier(.2,.8,.2,1)";
+  chimeOffsetMs: 140;
+};
+
 export type AftersignIoMemoryBeat = {
   scene: AftersignSceneId;
   recognizesPlayer: boolean;
   packetOutcome: AftersignPacketOutcome | null;
+  recognitionFeel: AftersignIoRecognitionFeel | null;
 };
 
 const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
   "aftersign.verticalSlice.v1";
+
+export const AFTERSIGN_IO_RECOGNITION_FEEL = {
+  durationMs: 620,
+  eyeCatchDelayMs: 90,
+  cameraPushInDegrees: 3.5,
+  subtitleLiftPx: 10,
+  easing: "cubic-bezier(.2,.8,.2,1)",
+  chimeOffsetMs: 140,
+} as const satisfies AftersignIoRecognitionFeel;
 
 export function createAftersignVerticalSliceState(): AftersignVerticalSliceState {
   return {
@@ -147,6 +166,7 @@ export function sampleAftersignIoMemoryBeat(
     scene: state.scene,
     recognizesPlayer: state.ioRecognizesPlayer,
     packetOutcome: state.packetOutcome,
+    recognitionFeel: state.ioRecognizesPlayer ? AFTERSIGN_IO_RECOGNITION_FEEL : null,
   };
 }
 
