@@ -13,14 +13,16 @@
 import {
   getIoReturningSessionLine as getIoReturningSessionLineFromPackage,
   type IoPacketOutcome,
+  type IoReturnAnswerTone,
   type IoRouteAttention,
 } from '../../../../packages/aftersign/src/ioReturningSession'
 
-export type { IoPacketOutcome, IoRouteAttention }
+export type { IoPacketOutcome, IoReturnAnswerTone, IoRouteAttention }
 
 export interface IoReturningSessionMemory {
   packetOutcome: IoPacketOutcome
   routeInstructionBehavior?: IoRouteAttention
+  returnAnswerTone?: IoReturnAnswerTone
 }
 
 export interface IoReturningSessionMemoryLine {
@@ -55,6 +57,26 @@ export const IO_ROUTE_MEMORY_LINES: Record<IoRouteAttention, IoReturningSessionM
   },
 }
 
+// Posture is the tone the player struck when Io asked why they came back.
+// Only spoken AFTER the packet-return line — never a substitute for it.
+export const IO_RETURN_POSTURE_LINES: Record<IoReturnAnswerTone, IoReturningSessionMemoryLine> = {
+  kind: {
+    id: 'io-return-kind',
+    rememberedAction: 'Player answered Io kindly when asked why they returned.',
+    text: getIoReturningSessionLineFromPackage('kindReturn'),
+  },
+  evasive: {
+    id: 'io-return-evasive',
+    rememberedAction: 'Player deflected when Io asked why they returned.',
+    text: getIoReturningSessionLineFromPackage('evasiveReturn'),
+  },
+  blunt: {
+    id: 'io-return-blunt',
+    rememberedAction: 'Player answered Io bluntly when asked why they returned.',
+    text: getIoReturningSessionLineFromPackage('bluntReturn'),
+  },
+}
+
 // Renamed to avoid shadowing the package's `getIoReturningSessionLine`
 // export (which returns a raw string keyed by line id). The web view
 // returns the decorated memory record instead — different signature,
@@ -73,4 +95,33 @@ export function getIoRouteMemoryLine(
   }
 
   return IO_ROUTE_MEMORY_LINES[memory.routeInstructionBehavior]
+}
+
+export function getIoReturnPostureLine(
+  memory: IoReturningSessionMemory,
+): IoReturningSessionMemoryLine | undefined {
+  if (!memory.returnAnswerTone) {
+    return undefined
+  }
+
+  return IO_RETURN_POSTURE_LINES[memory.returnAnswerTone]
+}
+
+// Full recognition surface for a returning session: the packet-return line
+// (always present — it's what Io opens with), then optional route-memory
+// texture, then optional posture reflection. Order is fixed by the script.
+export function getIoReturningSessionRecognitionLines(
+  memory: IoReturningSessionMemory,
+): readonly IoReturningSessionMemoryLine[] {
+  const lines: IoReturningSessionMemoryLine[] = [
+    getIoReturningSessionMemoryLine(memory),
+  ]
+
+  const route = getIoRouteMemoryLine(memory)
+  if (route) lines.push(route)
+
+  const posture = getIoReturnPostureLine(memory)
+  if (posture) lines.push(posture)
+
+  return lines
 }
