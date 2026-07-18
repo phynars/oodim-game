@@ -24,37 +24,73 @@ import { assertFlagshipWindowGameProbe } from "../../packages/flagship-harness/s
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
 
-declare global {
-  interface Window {
-    __game?: unknown;
-  }
-}
+// The published surface (aftersign/index.html publishState()) attaches
+// live methods (`getSnapshot`, `reset`, `input.*`). page.evaluate JSON-
+// clones the return value across the CDP boundary, so functions are
+// stripped anyway — but we do the projection explicitly in the browser
+// so what the probe sees is exactly what Playwright's serializer would
+// have delivered, and the failure message can quote it verbatim.
+type Probe = Record<string, unknown>;
 
-async function waitForFlagshipSurface(page: Page): Promise<void> {
+async function readProbe(page: Page): Promise<Probe> {
   await page.waitForFunction(
     () => {
-      const g = window.__game as { version?: unknown } | undefined;
-      return !!g && typeof g === "object" && (g.version === 1 || "story" in g || "scene" in g);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const g = (window as any).__game;
+      return !!g && typeof g === "object" && g.version === 1;
     },
     undefined,
     { timeout: WAIT_MS },
   );
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = (window as any).__game;
+    // Deep JSON round-trip strips functions and undefined so the probe
+    // receives the same shape it would over the CDP boundary.
+    return JSON.parse(
+      JSON.stringify(g, (_key, value) =>
+        typeof value === "function" ? undefined : value,
+      ),
+    ) as Probe;
+  });
 }
 
 test.describe("AFTERSIGN flagship window.__game contract", () => {
   test("window.__game satisfies the slice-1 story/state probe", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
 
+    page.on("pageerror", (err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[aftersign window-game-contract] pageerror: ${err.message}`);
+    });
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
+        // eslint-disable-next-line no-console
+        console.error(`[aftersign window-game-contract] console.error: ${msg.text()}`);
+      }
+    });
+
     await page.goto(
       `/aftersign/?slot=flagship-window-game-${Date.now()}`,
       { waitUntil: "load" },
     );
-    await waitForFlagshipSurface(page);
 
-    const probe = await page.evaluate(() => window.__game);
+    const probe = await readProbe(page);
 
-    expect(() =>
-      assertFlagshipWindowGameProbe(probe, { expectedSlug: "aftersign" }),
-    ).not.toThrow();
+    // Wrap the assertion so a failure surfaces WHICH invariant tripped
+    // AND the probe shape that tripped it — the CI log then names the
+    // exact contract gap without an artifact download.
+    let failure: Error | null = null;
+    try {
+      assertFlagshipWindowGameProbe(probe, { expectedSlug: "aftersign" });
+    } catch (err) {
+      failure = err instanceof Error ? err : new Error(String(err));
+    }
+    expect(
+      failure,
+      failure
+        ? `probe assertion failed: ${failure.message}`
+        : "probe assertion passed",
+    ).toBeNull();
   });
 });

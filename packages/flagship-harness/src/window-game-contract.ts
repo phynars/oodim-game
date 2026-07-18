@@ -21,6 +21,16 @@
 // contract asserters in `e2e-shared/flagshipStoryStateContract.ts` and
 // `packages/aftersign/src/storyStateHarness.ts`. Any object satisfying
 // `FlagshipGameSurface` also satisfies this probe by construction.
+//
+// INPUT SHAPE (why we accept the JSON-serialized projection, not raw
+// window.__game): Playwright's `page.evaluate(() => window.__game)`
+// round-trips the value through JSON, which STRIPS every method
+// (`getSnapshot`, `reset`, `input.choose`, `input.waitForStoryIdle`,
+// `input.forceSave`, `input.forceReload`). The probe only reads
+// data fields — never methods — so the stripped projection satisfies
+// the contract identically to the live surface. The spec is
+// responsible for handing us that projection; we do not try to
+// re-hydrate it here.
 
 export interface FlagshipWindowGameProbe {
   /** `build.slug` in the full surface; kept top-level here for the
@@ -37,6 +47,11 @@ export interface FlagshipWindowGameProbe {
   state: Record<string, unknown>;
 }
 
+export interface AssertFlagshipWindowGameProbeOptions {
+  /** Slug the harness expects the page to publish — e.g. "aftersign". */
+  expectedSlug: string;
+}
+
 /**
  * Assert that a value read from `window.__game` in the flagship harness
  * satisfies the slice-1 story/state probe contract. Throws on the first
@@ -46,20 +61,27 @@ export interface FlagshipWindowGameProbe {
  * The runner (Playwright spec) is responsible for producing the input:
  *   const probe = await page.evaluate(() => window.__game);
  *   assertFlagshipWindowGameProbe(probe, { expectedSlug: "aftersign" });
+ *
+ * All error messages include a truncated JSON snapshot of the probe so
+ * a red CI lane surfaces WHY the probe failed, not just that it did.
  */
 export function assertFlagshipWindowGameProbe(
   probe: unknown,
-  options: { expectedSlug: string; expectedPlayerId?: string },
+  options: AssertFlagshipWindowGameProbeOptions,
 ): asserts probe is FlagshipWindowGameProbe {
   if (probe === null || typeof probe !== "object") {
-    throw new Error("window.__game must be an object exposing the flagship probe");
+    throw new Error(
+      `window.__game must be an object exposing the flagship probe (got ${describe(probe)})`,
+    );
   }
 
   const record = probe as Record<string, unknown>;
 
   const slug = readString(record, "slug") ?? readNestedString(record, "build", "slug");
   if (!slug) {
-    throw new Error("window.__game must expose a non-empty slug (top-level or build.slug)");
+    throw new Error(
+      `window.__game must expose a non-empty slug (top-level or build.slug); probe=${summarize(record)}`,
+    );
   }
   if (slug !== options.expectedSlug) {
     throw new Error(
@@ -69,15 +91,14 @@ export function assertFlagshipWindowGameProbe(
 
   const player = readObject(record, "player");
   if (!player) {
-    throw new Error("window.__game.player must be an object");
+    throw new Error(
+      `window.__game.player must be an object; probe=${summarize(record)}`,
+    );
   }
   const playerId = readString(player, "id");
   if (!playerId) {
-    throw new Error("window.__game.player.id must be a non-empty string");
-  }
-  if (options.expectedPlayerId && playerId !== options.expectedPlayerId) {
     throw new Error(
-      `window.__game.player.id mismatch: expected ${options.expectedPlayerId}, got ${playerId}`,
+      `window.__game.player.id must be a non-empty string; player=${summarize(player)}`,
     );
   }
   // NOTE: sessionId is NOT a top-level `player` field — per
@@ -105,17 +126,17 @@ export function assertFlagshipWindowGameProbe(
 
   if (!beatId) {
     throw new Error(
-      "window.__game must expose a story beat id (story.beatId or scene.beat)",
+      `window.__game must expose a story beat id (story.beatId or scene.beat); story=${summarize(story)} scene=${summarize(scene)}`,
     );
   }
   if (!actId) {
     throw new Error(
-      "window.__game must expose an act id (story.actId or scene.act)",
+      `window.__game must expose an act id (story.actId or scene.act); story=${summarize(story)} scene=${summarize(scene)}`,
     );
   }
   if (!summary) {
     throw new Error(
-      "window.__game must expose a story summary (story.summary, scene.id, or beat id)",
+      `window.__game must expose a story summary (story.summary, scene.id, or beat id); story=${summarize(story)} scene=${summarize(scene)}`,
     );
   }
 
@@ -125,7 +146,7 @@ export function assertFlagshipWindowGameProbe(
     readObject(record, "player");
   if (!state) {
     throw new Error(
-      "window.__game must expose a serializable state object (state, save, or player)",
+      `window.__game must expose a serializable state object (state, save, or player); probe=${summarize(record)}`,
     );
   }
 }
@@ -136,11 +157,15 @@ function readString(record: Record<string, unknown>, key: string): string | null
 }
 
 function readObject(
-  record: Record<string, unknown>,
+  record: Record<string, unknown> | null,
   key: string,
 ): Record<string, unknown> | null {
+  if (!record) return null;
   const value = record[key];
-  return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
 function readNestedString(
@@ -151,4 +176,21 @@ function readNestedString(
   const nested = readObject(record, outer);
   if (!nested) return null;
   return readString(nested, inner);
+}
+
+function describe(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  return typeof value;
+}
+
+function summarize(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  try {
+    const json = JSON.stringify(value, (_key, v) => (typeof v === "function" ? "[function]" : v));
+    if (!json) return String(value);
+    return json.length > 240 ? `${json.slice(0, 240)}…` : json;
+  } catch {
+    return `[unserializable ${typeof value}]`;
+  }
 }
