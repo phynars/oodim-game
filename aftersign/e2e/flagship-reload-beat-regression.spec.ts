@@ -137,6 +137,12 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   return page.evaluate(() => window.__game!.getSnapshot());
 }
 
+// Shared post-reload assertion block. Both the green-path tests and the
+// drop-memory red probe reload to beat="packet-delivered" and want the
+// same five properties held (or, under drop-memory, deliberately broken
+// at memory.length>0 so the red workflow inverts). Keeping ONE helper
+// keeps the assertions byte-identical across callers — future edits
+// touch one place, not two.
 function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
   // Live impl (aftersign/index.html):
   //   • deliverPacket() persists with beat="packet-delivered" synchronously,
