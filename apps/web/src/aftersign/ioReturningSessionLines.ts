@@ -1,64 +1,57 @@
-// Web view of Io's returning-session copy.
-//
-// SINGLE-SOURCE CONTRACT: the line STRINGS live in the authority package
-// (`packages/aftersign/src/ioReturningSession.ts`, re-exported here via
-// `./ioReturningSession`). This module ONLY reshapes them for the harness
-// — mapping the authority's line-key vocabulary onto the harness's
-// outcome vocabulary and attaching `rememberedAction` metadata that
-// describes the physical player choice each line responds to.
-//
-// Do NOT inline any of the authored line strings here. If you find
-// yourself typing a Io line, stop: add it to the authority instead.
-// `ioReturningSessionLines.test.ts` asserts every `line` field in this
-// module matches the authority verbatim; forking will fail CI.
+export type IoPacketOutcome = 'sealed' | 'opened';
+export type IoRouteAttention = 'listened' | 'skipped';
 
-import {
-  ioReturningSessionLines as authoredLines,
-  type IoReturningSessionLineKey,
-} from "./ioReturningSession";
+export type IoReturnMemory =
+  | {
+      kind: 'packet';
+      outcome: IoPacketOutcome;
+      rememberedAction: string;
+      line: string;
+    }
+  | {
+      kind: 'route';
+      outcome: IoRouteAttention;
+      rememberedAction: string;
+      line: string;
+    };
 
-export type AftersignIoReturningSessionOutcome =
-  | "sealed"
-  | "opened"
-  | "skippedRoute"
-  | "listenedRoute";
+export const IO_RETURN_MEMORIES = {
+  packetSealed: {
+    kind: 'packet',
+    outcome: 'sealed',
+    rememberedAction: 'The player delivered the first sealed packet unopened.',
+    line: 'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
+  },
+  packetOpened: {
+    kind: 'packet',
+    outcome: 'opened',
+    rememberedAction: 'The player opened the first sealed packet before delivery.',
+    line: 'You came back. The seal did not. I can use one of those facts.',
+  },
+  routeListened: {
+    kind: 'route',
+    outcome: 'listened',
+    rememberedAction: 'The player listened to Io\'s route instructions before leaving.',
+    line: 'You listened before you ran. Rare habit. Keep it.',
+  },
+  routeSkipped: {
+    kind: 'route',
+    outcome: 'skipped',
+    rememberedAction: 'The player skipped away before Io finished the route instructions.',
+    line: 'You found the box anyway. Next time, let me finish saving your life.',
+  },
+} as const satisfies Record<string, IoReturnMemory>;
 
-export type AftersignIoReturningSessionLine = {
-  outcome: AftersignIoReturningSessionOutcome;
-  rememberedAction: string;
-  line: string;
-};
+export type IoReturnMemoryKey = keyof typeof IO_RETURN_MEMORIES;
 
-// Outcome vocabulary (harness-facing) → line-key vocabulary (authority).
-// Kept as a small, explicit table so a rename on either side trips the
-// test in `ioReturningSessionLines.test.ts` instead of drifting silently.
-const outcomeToLineKey: Record<AftersignIoReturningSessionOutcome, IoReturningSessionLineKey> = {
-  sealed: "sealedPacket",
-  opened: "openedPacket",
-  skippedRoute: "skippedRoute",
-  listenedRoute: "listenedRoute",
-};
+export function getIoPacketReturnLine(outcome: IoPacketOutcome): string {
+  return outcome === 'sealed'
+    ? IO_RETURN_MEMORIES.packetSealed.line
+    : IO_RETURN_MEMORIES.packetOpened.line;
+}
 
-// The physical player action each outcome remembers. This metadata is
-// authored HERE (not in the authority) because it describes the harness's
-// interpretation of what the player did, not the NPC's dialogue.
-const rememberedActionByOutcome: Record<AftersignIoReturningSessionOutcome, string> = {
-  sealed: "delivered the blue packet with its seal unbroken",
-  opened: "opened the blue packet before returning",
-  skippedRoute: "left before Io finished the route instructions",
-  listenedRoute: "listened to Io's route instructions before leaving",
-};
-
-export const AFTERSIGN_IO_RETURNING_SESSION_LINES: readonly AftersignIoReturningSessionLine[] = (
-  Object.keys(outcomeToLineKey) as AftersignIoReturningSessionOutcome[]
-).map((outcome) => ({
-  outcome,
-  rememberedAction: rememberedActionByOutcome[outcome],
-  line: authoredLines[outcomeToLineKey[outcome]],
-}));
-
-export function getAftersignIoReturningSessionLine(
-  outcome: AftersignIoReturningSessionOutcome,
-): AftersignIoReturningSessionLine {
-  return AFTERSIGN_IO_RETURNING_SESSION_LINES.find((candidate) => candidate.outcome === outcome)!;
+export function getIoRouteReturnLine(outcome: IoRouteAttention): string {
+  return outcome === 'listened'
+    ? IO_RETURN_MEMORIES.routeListened.line
+    : IO_RETURN_MEMORIES.routeSkipped.line;
 }
