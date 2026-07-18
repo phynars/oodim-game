@@ -28,7 +28,6 @@ export interface FlagshipWindowGameProbe {
   slug: string;
   player: {
     id: string;
-    sessionId: string;
   };
   story: {
     beatId: string;
@@ -81,10 +80,12 @@ export function assertFlagshipWindowGameProbe(
       `window.__game.player.id mismatch: expected ${options.expectedPlayerId}, got ${playerId}`,
     );
   }
-  const sessionId = readString(player, "sessionId");
-  if (!sessionId) {
-    throw new Error("window.__game.player.sessionId must be a non-empty string");
-  }
+  // NOTE: sessionId is NOT a top-level `player` field — per
+  // `docs/flagship/story-state-contract.md` and
+  // `aftersign/src/state-contract.ts`, `sessionId` lives on NPC memory
+  // facts (`npcs.io.memory[i].sessionId`). That invariant is pinned by
+  // `story-state-surface-contract.spec.ts`; this probe intentionally
+  // does not re-assert it.
 
   // The documented surface uses `scene.beat` / `scene.act`. Accept either
   // the doc-surface path or a flatter `story.{beatId, actId, summary}`
