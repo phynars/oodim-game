@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { getIoReturningSessionLine } from '../../../../packages/aftersign/src/ioReturningSession'
 import {
   getIoReturningSessionMemoryLine,
+  getIoReturningSessionRecognitionLines,
+  getIoReturnPostureLine,
   getIoRouteMemoryLine,
+  IO_RETURN_POSTURE_LINES,
   IO_RETURNING_SESSION_LINES,
   IO_ROUTE_MEMORY_LINES,
 } from './ioReturningSessionLines'
@@ -37,15 +40,44 @@ describe('Io returning-session lines (web view sources from package)', () => {
     )
   })
 
+  it('sources kind posture text from the aftersign package', () => {
+    expect(IO_RETURN_POSTURE_LINES.kind.text).toBe(
+      getIoReturningSessionLine('kindReturn'),
+    )
+  })
+
+  it('sources evasive posture text from the aftersign package', () => {
+    expect(IO_RETURN_POSTURE_LINES.evasive.text).toBe(
+      getIoReturningSessionLine('evasiveReturn'),
+    )
+  })
+
+  it('sources blunt posture text from the aftersign package', () => {
+    expect(IO_RETURN_POSTURE_LINES.blunt.text).toBe(
+      getIoReturningSessionLine('bluntReturn'),
+    )
+  })
+
   it('anchors each memory to a concrete remembered player action (not trust deltas)', () => {
     const all = [
       ...Object.values(IO_RETURNING_SESSION_LINES),
       ...Object.values(IO_ROUTE_MEMORY_LINES),
+      ...Object.values(IO_RETURN_POSTURE_LINES),
     ]
     for (const memory of all) {
       expect(memory.rememberedAction).not.toHaveLength(0)
       expect(memory.rememberedAction).not.toMatch(/trust \+\d/i)
     }
+  })
+
+  it('keeps every recognition-line id stable and unique', () => {
+    const all = [
+      ...Object.values(IO_RETURNING_SESSION_LINES),
+      ...Object.values(IO_ROUTE_MEMORY_LINES),
+      ...Object.values(IO_RETURN_POSTURE_LINES),
+    ]
+    const ids = all.map((m) => m.id)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   it('resolves a packet outcome to the decorated memory record', () => {
@@ -65,5 +97,32 @@ describe('Io returning-session lines (web view sources from package)', () => {
     expect(
       getIoRouteMemoryLine({ packetOutcome: 'opened', routeInstructionBehavior: 'skipped' }),
     ).toBe(IO_ROUTE_MEMORY_LINES.skipped)
+  })
+
+  it('exposes posture as an optional third beat, never a substitute', () => {
+    expect(getIoReturnPostureLine({ packetOutcome: 'sealed' })).toBeUndefined()
+    expect(
+      getIoReturnPostureLine({ packetOutcome: 'sealed', returnAnswerTone: 'evasive' }),
+    ).toBe(IO_RETURN_POSTURE_LINES.evasive)
+  })
+
+  it('assembles the full recognition surface: packet, then route, then posture', () => {
+    expect(
+      getIoReturningSessionRecognitionLines({
+        packetOutcome: 'sealed',
+        routeInstructionBehavior: 'listened',
+        returnAnswerTone: 'evasive',
+      }),
+    ).toEqual([
+      IO_RETURNING_SESSION_LINES.sealed,
+      IO_ROUTE_MEMORY_LINES.listened,
+      IO_RETURN_POSTURE_LINES.evasive,
+    ])
+  })
+
+  it('returns only the packet line when no route or posture is remembered', () => {
+    expect(
+      getIoReturningSessionRecognitionLines({ packetOutcome: 'opened' }),
+    ).toEqual([IO_RETURNING_SESSION_LINES.opened])
   })
 })
