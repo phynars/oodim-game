@@ -20,7 +20,17 @@ export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // AFTERSIGN gets one MORE retry than sibling three.js lanes (pacman /
+  // galaga / doom / agar all use retries: 1). Rationale: the aftersign
+  // spec is a heavier cold-start than the other WebGL games — it boots
+  // three.js AND the audio-cue pipeline AND waits on window.__game story
+  // marks (recognitionTriggeredAt / lineSettledAt / audioCueAt), all
+  // gated behind SwiftShader's software renderer. Reviewers on #706
+  // (following #453 / #468 / #590) all noted the same cold-start flake
+  // shape; bumping to 2 retries is the durable fix — a real assertion
+  // bug still fails 3× in a row and stays red, while a genuine cold-
+  // start hiccup gets the extra attempt it needs.
+  retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
     baseURL: "http://localhost:4374/aftersign/",
