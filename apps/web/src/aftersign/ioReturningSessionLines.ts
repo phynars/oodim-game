@@ -1,69 +1,76 @@
-// Web-view shaping for Io's returning-session lines.
+// Web view over Io's returning-session lines.
 //
-// STRINGS are owned by the shared package (`packages/aftersign/src/
-// ioReturningSession.ts`) — its header pins the wording to the script
-// and the harness asserts them verbatim. This module MUST NOT redeclare
-// those strings; it sources each `line` via `getIoReturningSessionLine`.
+// The strings themselves are owned by
+// `packages/aftersign/src/ioReturningSession.ts` — the harness asserts
+// those verbatim and `ioFirstSessionCopy.ts` calls duplication here a
+// regression. This module only decorates each canonical line with the
+// web-side metadata (a stable id + a plain-English `rememberedAction`
+// note) that the UI needs to explain WHY Io is saying it.
+//
+// If a line ever needs to change, edit the package. The parity test
+// alongside this file will fail loudly if the web view drifts.
 
 import {
-  getIoReturningSessionLine,
+  getIoReturningSessionLine as getIoReturningSessionLineFromPackage,
   type IoPacketOutcome,
   type IoRouteAttention,
-} from '../../../../packages/aftersign/src/ioReturningSession';
+} from '../../../../packages/aftersign/src/ioReturningSession'
 
-export type { IoPacketOutcome, IoRouteAttention };
+export type { IoPacketOutcome, IoRouteAttention }
 
-export type IoReturnMemory =
-  | {
-      kind: 'packet';
-      outcome: IoPacketOutcome;
-      rememberedAction: string;
-      line: string;
-    }
-  | {
-      kind: 'route';
-      outcome: IoRouteAttention;
-      rememberedAction: string;
-      line: string;
-    };
-
-export const IO_RETURN_MEMORIES = {
-  packetSealed: {
-    kind: 'packet',
-    outcome: 'sealed',
-    rememberedAction: 'The player delivered the first sealed packet unopened.',
-    line: getIoReturningSessionLine('sealedPacket'),
-  },
-  packetOpened: {
-    kind: 'packet',
-    outcome: 'opened',
-    rememberedAction: 'The player opened the first sealed packet before delivery.',
-    line: getIoReturningSessionLine('openedPacket'),
-  },
-  routeListened: {
-    kind: 'route',
-    outcome: 'listened',
-    rememberedAction: "The player listened to Io's route instructions before leaving.",
-    line: getIoReturningSessionLine('listenedRoute'),
-  },
-  routeSkipped: {
-    kind: 'route',
-    outcome: 'skipped',
-    rememberedAction: 'The player skipped away before Io finished the route instructions.',
-    line: getIoReturningSessionLine('skippedRoute'),
-  },
-} as const satisfies Record<string, IoReturnMemory>;
-
-export type IoReturnMemoryKey = keyof typeof IO_RETURN_MEMORIES;
-
-export function getIoPacketReturnLine(outcome: IoPacketOutcome): string {
-  return outcome === 'sealed'
-    ? IO_RETURN_MEMORIES.packetSealed.line
-    : IO_RETURN_MEMORIES.packetOpened.line;
+export interface IoReturningSessionMemory {
+  packetOutcome: IoPacketOutcome
+  routeInstructionBehavior?: IoRouteAttention
 }
 
-export function getIoRouteReturnLine(outcome: IoRouteAttention): string {
-  return outcome === 'listened'
-    ? IO_RETURN_MEMORIES.routeListened.line
-    : IO_RETURN_MEMORIES.routeSkipped.line;
+export interface IoReturningSessionMemoryLine {
+  readonly id: string
+  readonly rememberedAction: string
+  readonly text: string
+}
+
+export const IO_RETURNING_SESSION_LINES: Record<IoPacketOutcome, IoReturningSessionMemoryLine> = {
+  sealed: {
+    id: 'io-return-sealed-packet',
+    rememberedAction: 'Player delivered the first blue packet with its seal unbroken.',
+    text: getIoReturningSessionLineFromPackage('sealedPacket'),
+  },
+  opened: {
+    id: 'io-return-opened-packet',
+    rememberedAction: 'Player opened the first blue packet before delivery.',
+    text: getIoReturningSessionLineFromPackage('openedPacket'),
+  },
+}
+
+export const IO_ROUTE_MEMORY_LINES: Record<IoRouteAttention, IoReturningSessionMemoryLine> = {
+  listened: {
+    id: 'io-route-listened',
+    rememberedAction: 'Player listened to Io before leaving the kiosk.',
+    text: getIoReturningSessionLineFromPackage('listenedRoute'),
+  },
+  skipped: {
+    id: 'io-route-skipped',
+    rememberedAction: 'Player left before Io finished the route instructions.',
+    text: getIoReturningSessionLineFromPackage('skippedRoute'),
+  },
+}
+
+// Renamed to avoid shadowing the package's `getIoReturningSessionLine`
+// export (which returns a raw string keyed by line id). The web view
+// returns the decorated memory record instead — different signature,
+// different behavior, so it gets a different name.
+export function getIoReturningSessionMemoryLine(
+  memory: IoReturningSessionMemory,
+): IoReturningSessionMemoryLine {
+  return IO_RETURNING_SESSION_LINES[memory.packetOutcome]
+}
+
+export function getIoRouteMemoryLine(
+  memory: IoReturningSessionMemory,
+): IoReturningSessionMemoryLine | undefined {
+  if (!memory.routeInstructionBehavior) {
+    return undefined
+  }
+
+  return IO_ROUTE_MEMORY_LINES[memory.routeInstructionBehavior]
 }
