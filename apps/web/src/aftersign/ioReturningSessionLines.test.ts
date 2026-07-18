@@ -1,48 +1,57 @@
-import { describe, expect, it } from "vitest";
-import {
-  ioReturningSessionLines as authoredLines,
-  type IoReturningSessionLineKey,
-} from "./ioReturningSession";
-import {
-  AFTERSIGN_IO_RETURNING_SESSION_LINES,
-  getAftersignIoReturningSessionLine,
-  type AftersignIoReturningSessionOutcome,
-} from "./ioReturningSessionLines";
+import { describe, expect, it } from 'vitest';
 
-// Cross-vocabulary map the web view relies on. Asserted here (independent
-// of the map inside the module) so a rename in either the outcome or the
-// line-key vocabulary trips this test instead of drifting silently — this
-// is the ONLY thing catching drift between the authority and the web view.
-const outcomeToLineKey: Record<AftersignIoReturningSessionOutcome, IoReturningSessionLineKey> = {
-  sealed: "sealedPacket",
-  opened: "openedPacket",
-  skippedRoute: "skippedRoute",
-  listenedRoute: "listenedRoute",
-};
+import { getIoReturningSessionLine } from '../../../../packages/aftersign/src/ioReturningSession';
+import {
+  getIoPacketReturnLine,
+  getIoRouteReturnLine,
+  IO_RETURN_MEMORIES,
+} from './ioReturningSessionLines';
 
-describe("AFTERSIGN Io returning-session lines (web view)", () => {
-  it("reads every line from the aftersign authority package — no duplicated strings", () => {
-    for (const outcome of Object.keys(outcomeToLineKey) as AftersignIoReturningSessionOutcome[]) {
-      const entry = getAftersignIoReturningSessionLine(outcome);
-      expect(entry.line).toBe(authoredLines[outcomeToLineKey[outcome]]);
-    }
+// Parity guard: the web view MUST NOT redeclare Io's line strings. Every
+// `line` field has to equal the shared-package authority verbatim, or the
+// single-source contract is broken. If this drifts, fix the web view —
+// never paraphrase the package.
+describe('Io returning-session lines (web view sources from package)', () => {
+  it('sourced sealed packet line from the aftersign package', () => {
+    expect(IO_RETURN_MEMORIES.packetSealed.line).toBe(
+      getIoReturningSessionLine('sealedPacket'),
+    );
+    expect(getIoPacketReturnLine('sealed')).toBe(
+      getIoReturningSessionLine('sealedPacket'),
+    );
   });
 
-  it("exposes an entry for every outcome, in a stable order", () => {
-    expect(AFTERSIGN_IO_RETURNING_SESSION_LINES.map((entry) => entry.outcome)).toEqual([
-      "sealed",
-      "opened",
-      "skippedRoute",
-      "listenedRoute",
-    ]);
+  it('sourced opened packet line from the aftersign package', () => {
+    expect(IO_RETURN_MEMORIES.packetOpened.line).toBe(
+      getIoReturningSessionLine('openedPacket'),
+    );
+    expect(getIoPacketReturnLine('opened')).toBe(
+      getIoReturningSessionLine('openedPacket'),
+    );
   });
 
-  it("keeps every outcome tied to a concrete remembered player action", () => {
-    for (const entry of AFTERSIGN_IO_RETURNING_SESSION_LINES) {
-      expect(entry.rememberedAction).not.toHaveLength(0);
-      // Guard against the temptation to encode trust-point deltas as prose;
-      // rememberedAction is meant to describe a physical player choice.
-      expect(entry.rememberedAction).not.toMatch(/trust \+\d/i);
+  it('sourced listened route line from the aftersign package', () => {
+    expect(IO_RETURN_MEMORIES.routeListened.line).toBe(
+      getIoReturningSessionLine('listenedRoute'),
+    );
+    expect(getIoRouteReturnLine('listened')).toBe(
+      getIoReturningSessionLine('listenedRoute'),
+    );
+  });
+
+  it('sourced skipped route line from the aftersign package', () => {
+    expect(IO_RETURN_MEMORIES.routeSkipped.line).toBe(
+      getIoReturningSessionLine('skippedRoute'),
+    );
+    expect(getIoRouteReturnLine('skipped')).toBe(
+      getIoReturningSessionLine('skippedRoute'),
+    );
+  });
+
+  it('anchors each memory to a concrete remembered player action (not trust deltas)', () => {
+    for (const memory of Object.values(IO_RETURN_MEMORIES)) {
+      expect(memory.rememberedAction).not.toHaveLength(0);
+      expect(memory.rememberedAction).not.toMatch(/trust \+\d/i);
     }
   });
 });
