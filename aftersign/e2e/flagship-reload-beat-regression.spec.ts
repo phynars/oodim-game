@@ -41,20 +41,22 @@ declare global {
         forceReload: (options?: { clearLocalState?: boolean }) => void | Promise<void>;
         waitForStoryIdle: () => void | Promise<void>;
       };
-      getSnapshot: () => {
-        scene: { beat: string };
-        npcs: {
-          io: {
-            lastLine?: string | null;
-            lastLineMemoryRefs?: string[];
-            memory: Array<{ id?: string; object?: string; action?: string }>;
-          };
-        };
-        delivery: { outcome: string };
-      };
+      getSnapshot: () => ReloadSnapshot;
     };
   }
 }
+
+type ReloadSnapshot = {
+  scene: { beat: string };
+  npcs: {
+    io: {
+      lastLine?: string | null;
+      lastLineMemoryRefs?: string[];
+      memory: Array<{ id?: string; object?: string; action?: string }>;
+    };
+  };
+  delivery: { outcome: string };
+};
 
 const WAIT_MS = 10_000;
 
@@ -135,6 +137,32 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   return page.evaluate(() => window.__game!.getSnapshot());
 }
 
+// Shared post-reload assertion block. Both the green-path tests and the
+// drop-memory red probe reload to beat="packet-delivered" and want the
+// same five properties held (or, under drop-memory, deliberately broken
+// at memory.length>0 so the red workflow inverts). Keeping ONE helper
+// keeps the assertions byte-identical across callers — future edits
+// touch one place, not two.
+function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
+  // Live impl (aftersign/index.html):
+  //   • deliverPacket() persists with beat="packet-delivered" synchronously,
+  //     then advances to "io-return-recognition" ~1180ms later. The saved
+  //     beat we reload from is "packet-delivered".
+  //   • npcs.io.memory is the singular array field. There is no plural
+  //     `memories` — asserting on it would always be undefined.
+  //   • At the reloaded beat lineForBeat() emits the SAME
+  //     "Done. Blue route..." string for both paths — the sealed/opened
+  //     split only appears at io-return-recognition. Path is
+  //     distinguished here by delivery.outcome + memory[].object.
+  expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
+  expect(afterReload.scene.beat).toBe("packet-delivered");
+  expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
+  expect(afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome)).toBe(
+    true,
+  );
+  expect(afterReload.npcs.io.lastLine).toBe(DELIVERED_LINE);
+}
+
 // After reload we're at the durable "packet-delivered" beat. The
 // sealed/opened split only appears at "io-return-recognition"; reach
 // it deterministically by routing through advance() — no wall-clock wait,
@@ -150,23 +178,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
     test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);
 
-      // Live impl (aftersign/index.html):
-      //   • deliverPacket() persists with beat="packet-delivered" synchronously,
-      //     then advances to "io-return-recognition" ~1180ms later. The saved
-      //     beat we reload from is "packet-delivered".
-      //   • npcs.io.memory is the singular array field. There is no plural
-      //     `memories` — asserting on it would always be undefined.
-      //   • At the reloaded beat lineForBeat() emits the SAME
-      //     "Done. Blue route..." string for both paths — the sealed/opened
-      //     split only appears at io-return-recognition. Path is
-      //     distinguished here by delivery.outcome + memory[].object.
-      expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
-      expect(afterReload.scene.beat).toBe("packet-delivered");
-      expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-      expect(
-        afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome),
-      ).toBe(true);
-      expect(afterReload.npcs.io.lastLine).toBe(DELIVERED_LINE);
+      expectReloadedOutcome(afterReload, path);
 
       // Now advance to the recognition beat and confirm the durable
       // outcome routes to the correct remembered line.
@@ -218,9 +230,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
     // Under drop-memory reloadFromSave() discards saved.memory, so
     // memory.length is 0 and these assertions FAIL — red polarity.
-    expect(afterReload.delivery.outcome).toBe("sealed");
-    expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-    expect(afterReload.npcs.io.memory.some((memory) => memory.object === "sealed")).toBe(true);
+    expectReloadedOutcome(afterReload, PACKET_PATHS[0]);
   });
 
   // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
