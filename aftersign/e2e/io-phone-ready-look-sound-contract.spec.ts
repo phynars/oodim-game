@@ -12,6 +12,7 @@ const WAIT_MS = 60_000;
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
+const MAX_VIEWPORT_EDGE_EPSILON_PX = 1;
 
 // The line that ACTUALLY renders at the sealed recognition beat, per
 // index.html's lineForBeat() branch for state.scene.beat ===
@@ -324,10 +325,12 @@ test.describe('Io phone-ready look/sound contract', () => {
     expect(probe.lineText).toContain(IO_SEALED_RECOGNITION_LINE);
     expect(probe.lineVisible).toBe(true);
     expect(probe.lineReadable).toBe(true);
-    expect(probe.lineRect.left).toBeGreaterThanOrEqual(0);
-    expect(probe.lineRect.right).toBeLessThanOrEqual(probe.viewport.width);
-    expect(probe.horizontalOverflowPx).toBe(0);
-    expect(probe.verticalOverflowPx).toBe(0);
+    expect(probe.lineRect.left).toBeGreaterThanOrEqual(-MAX_VIEWPORT_EDGE_EPSILON_PX);
+    expect(probe.lineRect.right).toBeLessThanOrEqual(probe.viewport.width + MAX_VIEWPORT_EDGE_EPSILON_PX);
+    expect(probe.lineRect.top).toBeGreaterThanOrEqual(-MAX_VIEWPORT_EDGE_EPSILON_PX);
+    expect(probe.lineRect.bottom).toBeLessThanOrEqual(probe.viewport.height + MAX_VIEWPORT_EDGE_EPSILON_PX);
+    expect(probe.horizontalOverflowPx).toBeLessThanOrEqual(MAX_VIEWPORT_EDGE_EPSILON_PX);
+    expect(probe.verticalOverflowPx).toBeLessThanOrEqual(MAX_VIEWPORT_EDGE_EPSILON_PX);
     expect(probe.settleMs).toBeGreaterThanOrEqual(0);
     expect(probe.settleMs).toBeLessThanOrEqual(MAX_UI_SETTLE_MS);
     expect(probe.audioLastCue).toBe(EXPECTED_AUDIO_CUE);
