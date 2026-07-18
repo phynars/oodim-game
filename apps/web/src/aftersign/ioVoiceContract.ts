@@ -1,6 +1,24 @@
-export type AftersignPacketOutcome = "sealed" | "opened";
+// Aftersign Io voice contract (web view).
+//
+// Line strings are owned by
+// `packages/aftersign/src/ioReturningSession.ts`. The harness asserts
+// those verbatim, and `ioReturningSessionLines.ts` documents the
+// package as the single source. Redeclaring the strings here would
+// silently drift — instead we pull each canonical line by key and
+// decorate it with the UI-side metadata (stable id + `remembers`
+// tags) that recognition surfaces need.
+//
+// If a line ever needs to change, edit the package.
 
-export type AftersignReturnPosture = "kind" | "evasive" | "blunt";
+import {
+  getIoReturningSessionLine,
+  type IoPacketOutcome,
+  type IoReturnAnswerTone,
+} from '../../../../packages/aftersign/src/ioReturningSession'
+
+export type AftersignPacketOutcome = IoPacketOutcome;
+
+export type AftersignReturnPosture = IoReturnAnswerTone;
 
 export interface AftersignIoMemoryContext {
   readonly packetOutcome: AftersignPacketOutcome;
@@ -18,12 +36,12 @@ export interface AftersignIoRecognitionLine {
 const PACKET_RETURN_LINES: Record<AftersignPacketOutcome, AftersignIoRecognitionLine> = {
   sealed: {
     id: "io-return-packet-sealed",
-    text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+    text: getIoReturningSessionLine("sealedPacket"),
     remembers: ["returned-after-leaving", "packet-sealed"],
   },
   opened: {
     id: "io-return-packet-opened",
-    text: "You came back. The seal did not. I can use one of those facts.",
+    text: getIoReturningSessionLine("openedPacket"),
     remembers: ["returned-after-leaving", "packet-opened"],
   },
 };
@@ -31,12 +49,12 @@ const PACKET_RETURN_LINES: Record<AftersignPacketOutcome, AftersignIoRecognition
 const ROUTE_LINES: Record<"listened" | "skipped", AftersignIoRecognitionLine> = {
   listened: {
     id: "io-route-listened",
-    text: "You listened before you ran. Rare habit. Keep it.",
+    text: getIoReturningSessionLine("listenedRoute"),
     remembers: ["listened-to-route"],
   },
   skipped: {
     id: "io-route-skipped",
-    text: "You found the box anyway. Next time, let me finish saving your life.",
+    text: getIoReturningSessionLine("skippedRoute"),
     remembers: ["skipped-route"],
   },
 };
@@ -44,17 +62,17 @@ const ROUTE_LINES: Record<"listened" | "skipped", AftersignIoRecognitionLine> = 
 const POSTURE_LINES: Record<AftersignReturnPosture, AftersignIoRecognitionLine> = {
   kind: {
     id: "io-return-kind",
-    text: "Kind answer. Not always useful. Tonight, maybe.",
+    text: getIoReturningSessionLine("kindReturn"),
     remembers: ["returned-kind"],
   },
   evasive: {
     id: "io-return-evasive",
-    text: "You walked around the question. I mark detours too.",
+    text: getIoReturningSessionLine("evasiveReturn"),
     remembers: ["returned-evasive"],
   },
   blunt: {
     id: "io-return-blunt",
-    text: "Blunt, then. Easier to file. Harder to forget.",
+    text: getIoReturningSessionLine("bluntReturn"),
     remembers: ["returned-blunt"],
   },
 };

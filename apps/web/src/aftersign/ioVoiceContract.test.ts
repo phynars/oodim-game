@@ -69,7 +69,7 @@ describe("Aftersign Io voice contract", () => {
       },
       {
         id: "io-return-evasive",
-        text: "You walked around the question. I mark detours too.",
+        text: "Work is a clean word. We can use it until it stains.",
         remembers: ["returned-evasive"],
       },
     ]);
