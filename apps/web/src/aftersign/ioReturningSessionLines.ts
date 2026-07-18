@@ -1,5 +1,17 @@
-export type IoPacketOutcome = 'sealed' | 'opened';
-export type IoRouteAttention = 'listened' | 'skipped';
+// Web-view shaping for Io's returning-session lines.
+//
+// STRINGS are owned by the shared package (`packages/aftersign/src/
+// ioReturningSession.ts`) — its header pins the wording to the script
+// and the harness asserts them verbatim. This module MUST NOT redeclare
+// those strings; it sources each `line` via `getIoReturningSessionLine`.
+
+import {
+  getIoReturningSessionLine,
+  type IoPacketOutcome,
+  type IoRouteAttention,
+} from '../../../../packages/aftersign/src/ioReturningSession';
+
+export type { IoPacketOutcome, IoRouteAttention };
 
 export type IoReturnMemory =
   | {
@@ -20,25 +32,25 @@ export const IO_RETURN_MEMORIES = {
     kind: 'packet',
     outcome: 'sealed',
     rememberedAction: 'The player delivered the first sealed packet unopened.',
-    line: 'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
+    line: getIoReturningSessionLine('sealedPacket'),
   },
   packetOpened: {
     kind: 'packet',
     outcome: 'opened',
     rememberedAction: 'The player opened the first sealed packet before delivery.',
-    line: 'You came back. The seal did not. I can use one of those facts.',
+    line: getIoReturningSessionLine('openedPacket'),
   },
   routeListened: {
     kind: 'route',
     outcome: 'listened',
-    rememberedAction: 'The player listened to Io\'s route instructions before leaving.',
-    line: 'You listened before you ran. Rare habit. Keep it.',
+    rememberedAction: "The player listened to Io's route instructions before leaving.",
+    line: getIoReturningSessionLine('listenedRoute'),
   },
   routeSkipped: {
     kind: 'route',
     outcome: 'skipped',
     rememberedAction: 'The player skipped away before Io finished the route instructions.',
-    line: 'You found the box anyway. Next time, let me finish saving your life.',
+    line: getIoReturningSessionLine('skippedRoute'),
   },
 } as const satisfies Record<string, IoReturnMemory>;
 
