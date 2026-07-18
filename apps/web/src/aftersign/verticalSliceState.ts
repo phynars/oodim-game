@@ -5,6 +5,19 @@
 // back later with Io recognizing the remembered outcome. Keep this file free of
 // rendering, storage, and network concerns so the harness can assert the public
 // game contract before the scene implementation exists.
+//
+// FEEL NUMBERS: the recognition-beat feel exposed here is NOT reinvented —
+// it re-exports the single frozen contract `IO_RETURNING_RECOGNITION_FEEL`
+// from `aftersign/src/ioReturningRecognitionFeel.ts`, which itself derives
+// its numbers from the live `recognitionFeedback.ts` constants. See PR #629
+// review + PR #712 review — every prior draft that hardcoded feel numbers
+// here drifted from the live implementation. Do not add fields with literal
+// numeric types to this module; consume the frozen contract instead.
+
+import {
+  IO_RETURNING_RECOGNITION_FEEL,
+  type IoReturningRecognitionFeel,
+} from "../../../../aftersign/src/ioReturningRecognitionFeel";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 
@@ -29,14 +42,11 @@ export type AftersignDurableSaveEnvelope = {
   state: AftersignVerticalSliceSave;
 };
 
-export type AftersignIoRecognitionFeel = {
-  durationMs: 620;
-  eyeCatchDelayMs: 90;
-  cameraPushInDegrees: 3.5;
-  subtitleLiftPx: 10;
-  easing: "cubic-bezier(.2,.8,.2,1)";
-  chimeOffsetMs: 140;
-};
+/**
+ * Type alias for the frozen recognition-feel contract. Kept as an alias
+ * (not a redefinition) so this module cannot drift from the live source.
+ */
+export type AftersignIoRecognitionFeel = IoReturningRecognitionFeel;
 
 export type AftersignIoMemoryBeat = {
   scene: AftersignSceneId;
@@ -48,14 +58,13 @@ export type AftersignIoMemoryBeat = {
 const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
   "aftersign.verticalSlice.v1";
 
-export const AFTERSIGN_IO_RECOGNITION_FEEL = {
-  durationMs: 620,
-  eyeCatchDelayMs: 90,
-  cameraPushInDegrees: 3.5,
-  subtitleLiftPx: 10,
-  easing: "cubic-bezier(.2,.8,.2,1)",
-  chimeOffsetMs: 140,
-} as const satisfies AftersignIoRecognitionFeel;
+/**
+ * Re-export of the frozen live contract. Consumers reading this constant
+ * observe exactly the numbers `recognitionFeedback.ts` uses at runtime —
+ * `RECOGNITION_FEEDBACK_TOTAL_MS`, `_CAMERA_YAW_DEGREES`, `_STING_START_MS`, etc.
+ */
+export const AFTERSIGN_IO_RECOGNITION_FEEL: AftersignIoRecognitionFeel =
+  IO_RETURNING_RECOGNITION_FEEL;
 
 export function createAftersignVerticalSliceState(): AftersignVerticalSliceState {
   return {

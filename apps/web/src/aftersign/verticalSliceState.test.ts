@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AFTERSIGN_IO_RECOGNITION_FEEL,
   createAftersignVerticalSliceSave,
   createAftersignVerticalSliceState,
   meetIoForAftersignSlice,
@@ -73,6 +74,7 @@ describe("verticalSliceState", () => {
       scene: "io-return",
       recognizesPlayer: true,
       packetOutcome: "opened",
+      recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
     });
   });
 });
