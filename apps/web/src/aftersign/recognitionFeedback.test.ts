@@ -51,12 +51,34 @@ function inBand(value: number, min: number, max: number): void {
 }
 
 {
+  const sealed = sampleRecognitionFeedbackBeat(recognitionFeedbackContract.stingStartMs + 8, { outcome: "sealed" });
+  const opened = sampleRecognitionFeedbackBeat(
+    recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
+    { outcome: "opened" },
+  );
+
+  assert.equal(sealed.lantern.color, "#f5c978");
+  assert.equal(opened.lantern.color, "#ffe1a8");
+  assert.notEqual(sealed.lantern.intensityTo, opened.lantern.intensityTo);
+  assert.equal(sealed.packetSeal.audioId, "seal-wax-click");
+  assert.equal(opened.packetSeal.audioId, "seal-paper-tear");
+  assert.notEqual(sealed.packetSeal.color, opened.packetSeal.color);
+  assert.notEqual(sealed.kioskSign.durationMs, opened.kioskSign.durationMs);
+  assert.notEqual(sealed.rainRim.intensityTo, opened.rainRim.intensityTo);
+  assert.notEqual(sealed.hapticScale.amplitude, opened.hapticScale.amplitude);
+  assert.deepEqual(sealed.audioCueIds, ["recognition-sting", "seal-wax-click", "bell-soft"]);
+  assert.deepEqual(opened.audioCueIds, ["recognition-sting", "seal-paper-tear", "bell-soft"]);
+}
+
+{
   const reduced = sampleRecognitionFeedbackBeat(160, { reducedMotion: true, outcome: "opened" });
   assert.equal(reduced.totalMs, 160);
   assert.equal(reduced.cameraDeltaMeters, 0);
   assert.equal(reduced.cameraYawDegrees, 0);
   assert.equal(reduced.inputLockMs, 160);
   assert.notEqual(reduced.stingGainDb, null);
+  assert.equal(reduced.packetSeal.audioId, "seal-paper-tear");
+  assert.equal(reduced.hapticScale.durationMs, 72);
 }
 
 {
