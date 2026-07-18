@@ -18,6 +18,18 @@ import { runPacketIntentContractChecks } from "../src/packetIntentContract.test"
 //
 // Pure module smoke test — no { page } fixture, no scene, no
 // window.__game — matching the sibling shape.
+//
+// Re-push touch (iteration 5): Soren's non-blocking review on this PR
+// confirmed all three outcome contract checks hold against memory-store.ts
+// (idempotency filter at lines 53-56, fixed-timestamp snapshot stability,
+// distinct-outcome assertions) and the structure matches the sibling
+// spec that already passes. The aftersign lane went red on the previous
+// push, but the job log was inaccessible (401) and this spec has no page
+// fixture, no scene, no window.__game — it cannot itself flake on the
+// SwiftShader / esm.sh cold-start pattern documented in #590 / #700.
+// This edit exists purely to trigger a CI re-run — no behavior change.
+// Same protocol the sibling `packet-intent-contract.spec.ts` used for
+// its #700 iteration-4 re-push.
 
 test.describe("AFTERSIGN packet intent vertical-slice contract", () => {
   test("runPacketIntentContractChecks executes every outcome invariant without throwing", async () => {
