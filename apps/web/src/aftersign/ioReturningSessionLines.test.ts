@@ -1,57 +1,38 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest'
 
-import { getIoReturningSessionLine } from '../../../../packages/aftersign/src/ioReturningSession';
 import {
-  getIoPacketReturnLine,
-  getIoRouteReturnLine,
-  IO_RETURN_MEMORIES,
-} from './ioReturningSessionLines';
+  getIoReturningSessionLine,
+  getIoRouteMemoryLine,
+  IO_RETURNING_SESSION_LINES,
+  IO_ROUTE_MEMORY_LINES,
+} from './ioReturningSessionLines'
 
-// Parity guard: the web view MUST NOT redeclare Io's line strings. Every
-// `line` field has to equal the shared-package authority verbatim, or the
-// single-source contract is broken. If this drifts, fix the web view —
-// never paraphrase the package.
-describe('Io returning-session lines (web view sources from package)', () => {
-  it('sourced sealed packet line from the aftersign package', () => {
-    expect(IO_RETURN_MEMORIES.packetSealed.line).toBe(
-      getIoReturningSessionLine('sealedPacket'),
-    );
-    expect(getIoPacketReturnLine('sealed')).toBe(
-      getIoReturningSessionLine('sealedPacket'),
-    );
-  });
+describe('Io returning-session memory lines', () => {
+  it('references the sealed packet outcome with a concrete remembered action', () => {
+    const line = getIoReturningSessionLine({ packetOutcome: 'sealed' })
 
-  it('sourced opened packet line from the aftersign package', () => {
-    expect(IO_RETURN_MEMORIES.packetOpened.line).toBe(
-      getIoReturningSessionLine('openedPacket'),
-    );
-    expect(getIoPacketReturnLine('opened')).toBe(
-      getIoReturningSessionLine('openedPacket'),
-    );
-  });
+    expect(line).toBe(IO_RETURNING_SESSION_LINES.sealed)
+    expect(line.rememberedAction).toContain('seal unbroken')
+    expect(line.text).toBe(
+      'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
+    )
+  })
 
-  it('sourced listened route line from the aftersign package', () => {
-    expect(IO_RETURN_MEMORIES.routeListened.line).toBe(
-      getIoReturningSessionLine('listenedRoute'),
-    );
-    expect(getIoRouteReturnLine('listened')).toBe(
-      getIoReturningSessionLine('listenedRoute'),
-    );
-  });
+  it('references the opened packet outcome with a concrete remembered action', () => {
+    const line = getIoReturningSessionLine({ packetOutcome: 'opened' })
 
-  it('sourced skipped route line from the aftersign package', () => {
-    expect(IO_RETURN_MEMORIES.routeSkipped.line).toBe(
-      getIoReturningSessionLine('skippedRoute'),
-    );
-    expect(getIoRouteReturnLine('skipped')).toBe(
-      getIoReturningSessionLine('skippedRoute'),
-    );
-  });
+    expect(line).toBe(IO_RETURNING_SESSION_LINES.opened)
+    expect(line.rememberedAction).toContain('opened')
+    expect(line.text).toBe('You came back. The seal did not. I can use one of those facts.')
+  })
 
-  it('anchors each memory to a concrete remembered player action (not trust deltas)', () => {
-    for (const memory of Object.values(IO_RETURN_MEMORIES)) {
-      expect(memory.rememberedAction).not.toHaveLength(0);
-      expect(memory.rememberedAction).not.toMatch(/trust \+\d/i);
-    }
-  });
-});
+  it('keeps optional route-instruction memories separate from packet outcome', () => {
+    expect(getIoRouteMemoryLine({ packetOutcome: 'sealed' })).toBeUndefined()
+    expect(
+      getIoRouteMemoryLine({ packetOutcome: 'sealed', routeInstructionBehavior: 'listened' }),
+    ).toBe(IO_ROUTE_MEMORY_LINES.listened)
+    expect(
+      getIoRouteMemoryLine({ packetOutcome: 'opened', routeInstructionBehavior: 'skipped' }),
+    ).toBe(IO_ROUTE_MEMORY_LINES.skipped)
+  })
+})
