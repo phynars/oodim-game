@@ -1,15 +1,19 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { assertFlagshipWindowGameProbe } from "../../packages/flagship-harness/src/window-game-contract";
+import { assertFlagshipWindowGameProbe } from "../../e2e-shared/flagshipWindowGameContract";
 
 // CI-gate for the flagship `window.__game` story/state probe.
 //
 // `assertFlagshipWindowGameProbe` lives in
-// `packages/flagship-harness/src/window-game-contract.ts` and validates
-// the slice-1 subset of the documented `FlagshipGameSurface`
-// (`docs/flagship/story-state-contract.md`): the harness cannot claim a
-// story beat exists unless the page publishes a slug, a durable player
-// identity, a story beat/act, and a serializable state object.
+// `e2e-shared/flagshipWindowGameContract.ts` (repo convention for
+// shared spec helpers — see `flagshipStoryStateContract.ts` next to it;
+// prior attempts at `packages/flagship-harness/` were an orphan tree
+// with no workspace, tsconfig, or npm script wiring, and CI went red
+// for that exact reason). It validates the slice-1 subset of the
+// documented `FlagshipGameSurface` (`docs/flagship/story-state-contract.md`):
+// the harness cannot claim a story beat exists unless the page publishes
+// a slug, a durable player identity, a story beat/act, and a serializable
+// state object.
 //
 // Prior to this spec the assertion module was orphaned in the same
 // pattern Soren filed as #699 (`runPacketIntentChecks()` with no

@@ -1,9 +1,20 @@
 // Flagship harness — window.__game story/state probe assertion.
 //
-// This module is the smallest red-first contract check for the flagship
-// vertical slice: it validates that a `window.__game` value pulled from
-// the WebGL-headless Playwright harness exposes the fields required by
+// The smallest red-first contract check for the flagship vertical slice:
+// validates that a `window.__game` value pulled from the WebGL-headless
+// Playwright harness exposes the fields required by
 // `docs/flagship/story-state-contract.md`.
+//
+// LOCATION: this lives under `e2e-shared/` (the established convention
+// for shared spec helpers — see `flagshipStoryStateContract.ts` next to
+// it) rather than a new `packages/flagship-harness/` tree. The repo
+// has no `packages/` workspace, no monorepo tooling, and no root
+// tsconfig references packages/ — so a helper module placed there is
+// an orphan the Playwright transformer would have to reach via a bare
+// relative path with no owning tsconfig/package.json. `e2e-shared/`
+// is already inside the aftersign Playwright config's project root
+// (via testDir:"e2e" + relative imports), so specs pick it up with no
+// extra wiring.
 //
 // CONVENTION (repo-wide, established by PR #453/#468 and reinforced by
 // #699): the repo does NOT depend on vitest. Harness checks are written
@@ -14,13 +25,14 @@
 //
 // SHAPE (relationship to FlagshipGameSurface):
 // This checker validates a SUBSET of the documented `FlagshipGameSurface`
-// (see `docs/flagship/story-state-contract.md`). It intentionally only
+// (see `docs/flagship/story-state-contract.md` and
+// `e2e-shared/flagshipStoryStateContract.ts`). It intentionally only
 // asserts the fields required for the "story beat + durable player
 // identity" invariant that gates slice-1 wake-1. Additional fields
 // (`delivery`, `npcs`, `save`, `input`) are pinned by their own
-// contract asserters in `e2e-shared/flagshipStoryStateContract.ts` and
-// `packages/aftersign/src/storyStateHarness.ts`. Any object satisfying
-// `FlagshipGameSurface` also satisfies this probe by construction.
+// contract asserters in `flagshipStoryStateContract.ts`. Any object
+// satisfying `FlagshipGameSurface` also satisfies this probe by
+// construction.
 //
 // INPUT SHAPE (why we accept the JSON-serialized projection, not raw
 // window.__game): Playwright's `page.evaluate(() => window.__game)`
