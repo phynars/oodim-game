@@ -5,6 +5,19 @@
 // back later with Io recognizing the remembered outcome. Keep this file free of
 // rendering, storage, and network concerns so the harness can assert the public
 // game contract before the scene implementation exists.
+//
+// FEEL NUMBERS: the recognition-beat feel exposed here is NOT reinvented —
+// it re-exports the single frozen contract `IO_RETURNING_RECOGNITION_FEEL`
+// from `aftersign/src/ioReturningRecognitionFeel.ts`, which itself derives
+// its numbers from the live `recognitionFeedback.ts` constants. See PR #629
+// review + PR #712 review — every prior draft that hardcoded feel numbers
+// here drifted from the live implementation. Do not add fields with literal
+// numeric types to this module; consume the frozen contract instead.
+
+import {
+  IO_RETURNING_RECOGNITION_FEEL,
+  type IoReturningRecognitionFeel,
+} from "../../../../aftersign/src/ioReturningRecognitionFeel";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 
@@ -29,14 +42,29 @@ export type AftersignDurableSaveEnvelope = {
   state: AftersignVerticalSliceSave;
 };
 
+/**
+ * Type alias for the frozen recognition-feel contract. Kept as an alias
+ * (not a redefinition) so this module cannot drift from the live source.
+ */
+export type AftersignIoRecognitionFeel = IoReturningRecognitionFeel;
+
 export type AftersignIoMemoryBeat = {
   scene: AftersignSceneId;
   recognizesPlayer: boolean;
   packetOutcome: AftersignPacketOutcome | null;
+  recognitionFeel: AftersignIoRecognitionFeel | null;
 };
 
 const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
   "aftersign.verticalSlice.v1";
+
+/**
+ * Re-export of the frozen live contract. Consumers reading this constant
+ * observe exactly the numbers `recognitionFeedback.ts` uses at runtime —
+ * `RECOGNITION_FEEDBACK_TOTAL_MS`, `_CAMERA_YAW_DEGREES`, `_STING_START_MS`, etc.
+ */
+export const AFTERSIGN_IO_RECOGNITION_FEEL: AftersignIoRecognitionFeel =
+  IO_RETURNING_RECOGNITION_FEEL;
 
 export function createAftersignVerticalSliceState(): AftersignVerticalSliceState {
   return {
@@ -147,6 +175,7 @@ export function sampleAftersignIoMemoryBeat(
     scene: state.scene,
     recognizesPlayer: state.ioRecognizesPlayer,
     packetOutcome: state.packetOutcome,
+    recognitionFeel: state.ioRecognizesPlayer ? AFTERSIGN_IO_RECOGNITION_FEEL : null,
   };
 }
 

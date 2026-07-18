@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AFTERSIGN_IO_RECOGNITION_FEEL,
   createAftersignVerticalSliceState,
   decodeAftersignDurableSave,
   encodeAftersignDurableSave,
@@ -33,6 +34,7 @@ describe("Aftersign durable save/load contract", () => {
       scene: "io-return",
       recognizesPlayer: true,
       packetOutcome: "sealed",
+      recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
     });
   });
 
