@@ -119,13 +119,29 @@ test.describe('AFTERSIGN window.__game contract', () => {
         revision: expect.any(Number),
         dirty: expect.any(Boolean),
         authority: expect.stringMatching(/^(server|local-fallback)$/),
-        lastLoadProof: {
-          // source may legitimately be null before any load has occurred.
-          revision: expect.anything(),
-          playerId: expect.anything(),
-        },
       },
     });
+
+    // `lastLoadProof` is a required struct on the save surface, but every
+    // field inside it is legitimately `null` on a cold slot before any
+    // load has occurred (see aftersign/index.html:emptySave() and the
+    // fresh-slot branch that stamps `{ source: null, revision: null,
+    // playerId: null }`). `expect.anything()` inside a toMatchObject would
+    // reject those nulls, so assert key presence + per-field type-or-null
+    // explicitly here. A populated proof is covered by
+    // flagship-surface-contract.spec.ts after a real reload.
+    expect(probe.save).toHaveProperty('lastLoadProof');
+    const proof = probe.save.lastLoadProof;
+    expect(proof).not.toBeNull();
+    if (proof.source !== null) {
+      expect(proof.source).toMatch(/^(server|local-fallback)$/);
+    }
+    if (proof.revision !== null) {
+      expect(typeof proof.revision).toBe('number');
+    }
+    if (proof.playerId !== null) {
+      expect(typeof proof.playerId).toBe('string');
+    }
 
     // Non-empty invariants the doc calls out explicitly.
     expect(probe.player.id.length).toBeGreaterThan(0);
