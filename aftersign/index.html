@@ -1121,7 +1121,12 @@
         return k < 0.5 ? 4 * k * k * k : 1 - ((-2 * k + 2) ** 3) / 2;
       };
 
-      const recognitionEnvelopeAt = (elapsedMs) => ioRecognitionBeatEnvelopeAt(elapsedMs, state.interaction.recognitionFeedback);
+      const recognitionEnvelopeAt = (elapsedMs) =>
+        ioRecognitionBeatEnvelopeAt(
+          elapsedMs,
+          state.packet.sealed ? "sealed" : "opened",
+          state.interaction.recognitionFeedback,
+        );
 
       // Compute the recognition envelope's contribution at an arbitrary
       // timestamp — 0 when no recognition beat is running. Shared by the

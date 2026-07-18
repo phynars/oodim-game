@@ -16,11 +16,44 @@ export type RecognitionOutcome = "sealed" | "opened";
 
 export type RecognitionBeatKind = "io-recognition";
 
+export type RecognitionCueEasing = "linear" | "easeOutCubic" | "easeInOutSine" | "bell";
+
+export type RecognitionAudioCueId = "recognition-sting" | "seal-wax-click" | "seal-paper-tear" | "bell-soft";
+
 export interface RecognitionFeedbackOptions {
   outcome?: RecognitionOutcome;
   reducedMotion?: boolean;
   startedAt?: number;
   lineId?: string;
+}
+
+export interface RecognitionLightCue {
+  startMs: number;
+  durationMs: number;
+  easing: RecognitionCueEasing;
+  intensityFrom: number;
+  intensityTo: number;
+  color: string;
+}
+
+export interface RecognitionPacketSealCue extends RecognitionLightCue {
+  audioId: RecognitionAudioCueId;
+}
+
+export interface RecognitionHapticScaleCue {
+  startMs: number;
+  durationMs: number;
+  easing: RecognitionCueEasing;
+  amplitude: number;
+}
+
+export interface RecognitionOutcomeCues {
+  lantern: RecognitionLightCue;
+  packetSeal: RecognitionPacketSealCue;
+  kioskSign: RecognitionLightCue;
+  rainRim: RecognitionLightCue;
+  hapticScale: RecognitionHapticScaleCue;
+  audioCueIds: readonly RecognitionAudioCueId[];
 }
 
 export interface RecognitionFeedbackSample {
@@ -40,6 +73,12 @@ export interface RecognitionFeedbackSample {
   lineId: string;
   startedAt: number;
   endedAt: number | null;
+  lantern: RecognitionLightCue;
+  packetSeal: RecognitionPacketSealCue;
+  kioskSign: RecognitionLightCue;
+  rainRim: RecognitionLightCue;
+  hapticScale: RecognitionHapticScaleCue;
+  audioCueIds: readonly RecognitionAudioCueId[];
 }
 
 export interface RecognitionMemoryBeatSnapshot {
@@ -71,6 +110,92 @@ export const recognitionFeedbackContract = {
   stingDurationMs: 180,
   stingGainDb: -9,
   openedWoodenClickDelayMs: 45,
+  outcomeCues: {
+    sealed: {
+      lantern: {
+        startMs: 70,
+        durationMs: 360,
+        easing: "easeOutCubic" as const,
+        intensityFrom: 0.72,
+        intensityTo: 1.18,
+        color: "#f5c978",
+      },
+      packetSeal: {
+        startMs: 128,
+        durationMs: 180,
+        easing: "bell" as const,
+        intensityFrom: 0.55,
+        intensityTo: 1.35,
+        color: "#ffcf70",
+        audioId: "seal-wax-click" as const,
+      },
+      kioskSign: {
+        startMs: 90,
+        durationMs: 420,
+        easing: "easeInOutSine" as const,
+        intensityFrom: 0.9,
+        intensityTo: 1.24,
+        color: "#ffd99a",
+      },
+      rainRim: {
+        startMs: 160,
+        durationMs: 520,
+        easing: "easeOutCubic" as const,
+        intensityFrom: 0.4,
+        intensityTo: 0.64,
+        color: "#9cc8ff",
+      },
+      hapticScale: {
+        startMs: 128,
+        durationMs: 54,
+        easing: "bell" as const,
+        amplitude: 0.34,
+      },
+      audioCueIds: ["recognition-sting", "seal-wax-click", "bell-soft"] as const,
+    },
+    opened: {
+      lantern: {
+        startMs: 60,
+        durationMs: 440,
+        easing: "easeOutCubic" as const,
+        intensityFrom: 0.7,
+        intensityTo: 1.42,
+        color: "#ffe1a8",
+      },
+      packetSeal: {
+        startMs: 165,
+        durationMs: 210,
+        easing: "bell" as const,
+        intensityFrom: 0.48,
+        intensityTo: 1.05,
+        color: "#b7d8ff",
+        audioId: "seal-paper-tear" as const,
+      },
+      kioskSign: {
+        startMs: 80,
+        durationMs: 500,
+        easing: "easeInOutSine" as const,
+        intensityFrom: 0.9,
+        intensityTo: 1.38,
+        color: "#ffe6b8",
+      },
+      rainRim: {
+        startMs: 140,
+        durationMs: 620,
+        easing: "easeOutCubic" as const,
+        intensityFrom: 0.42,
+        intensityTo: 0.82,
+        color: "#bfe1ff",
+      },
+      hapticScale: {
+        startMs: 165,
+        durationMs: 72,
+        easing: "bell" as const,
+        amplitude: 0.22,
+      },
+      audioCueIds: ["recognition-sting", "seal-paper-tear", "bell-soft"] as const,
+    },
+  },
 } as const;
 
 const DEFAULT_LINE_ID = "io.recognition.returning.v1";
@@ -106,6 +231,7 @@ export function sampleRecognitionFeedbackBeat(
   options: RecognitionFeedbackOptions = {},
 ): RecognitionFeedbackSample {
   const outcome = options.outcome ?? "sealed";
+  const outcomeCues = recognitionFeedbackContract.outcomeCues[outcome];
   const totalMs = getRecognitionFeedbackDuration(options);
   const clampedElapsedMs = Math.max(0, Math.min(elapsedMs, totalMs));
   const progress = clamp01(clampedElapsedMs / totalMs);
@@ -135,6 +261,7 @@ export function sampleRecognitionFeedbackBeat(
       lineId: options.lineId ?? DEFAULT_LINE_ID,
       startedAt,
       endedAt,
+      ...outcomeCues,
     };
   }
 
@@ -182,6 +309,7 @@ export function sampleRecognitionFeedbackBeat(
     lineId: options.lineId ?? DEFAULT_LINE_ID,
     startedAt,
     endedAt,
+    ...outcomeCues,
   };
 }
 
