@@ -16,6 +16,18 @@ import { test, expect, Page } from "@playwright/test";
 // (a genuinely new session, no in-page helper), and session B proves Io's
 // recognition line is backed by THAT prior-session fact — same id, same
 // sessionId — not a fact re-minted after the boundary.
+//
+// Timing note: deliverPacket() persists beat="packet-delivered" synchronously
+// and then schedules a setBeat("io-return-recognition") after 1180ms
+// (aftersign/index.html — deliverPacket()). That timeout mutates the live
+// state.scene.beat but does NOT call persist(), so the durable save stays
+// at "packet-delivered" ONLY if forceSave() runs before the 1180ms fires —
+// otherwise forceSave persists at beat="io-return-recognition". Cross-RPC
+// hops from Playwright can easily exceed that budget in CI. This spec
+// therefore mints + saves in a SINGLE page.evaluate (no RPC boundary between
+// deliver and forceSave), and treats either persisted beat ("packet-delivered"
+// or "io-return-recognition") as valid — the invariant we prove is the
+// MEMORY-FACT round-trip, not which beat the timer landed on.
 
 // Cold-start budget: SwiftShader init + first WebGL context can exceed
 // Playwright's default timeout in CI even when story/state logic is correct.
@@ -106,23 +118,34 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
     await waitForBeat(page, "packet-choice");
-    await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-    await waitForBeat(page, "packet-delivered");
 
-    const sessionA = await game(page);
-    const mintedFact = sessionA.npcs.io.memory.find(
+    // Drive delivery + forceSave in a SINGLE evaluate to race ahead of
+    // deliverPacket()'s 1180ms setBeat("io-return-recognition") timeout.
+    // If we split these across RPC hops, CI latency can push forceSave to
+    // persist beat="io-return-recognition" instead of "packet-delivered",
+    // which is a legitimate outcome but shifts what session B loads.
+    // Colocating keeps session A's saved beat deterministic.
+    const sessionAResult = await page.evaluate(async () => {
+      await window.__game!.input.choose("deliver-packet");
+      await window.__game!.input.forceSave();
+      const snapshot = window.__game!;
+      return {
+        beat: snapshot.scene.beat,
+        revision: snapshot.save.revision,
+        dirty: snapshot.save.dirty,
+        memory: snapshot.npcs.io.memory,
+      };
+    });
+
+    expect(sessionAResult.dirty).toBe(false);
+    const mintedFact = sessionAResult.memory.find(
       (fact) => fact.predicate === "delivered-blue-packet",
     );
     expect(mintedFact, "session A must mint a delivered-blue-packet MemoryFact").toBeTruthy();
     expect(mintedFact!.object).toBe("sealed");
     expect(mintedFact!.id).toBeTruthy();
-    expect(mintedFact!.sessionId).toBeTruthy();
-
-    await page.evaluate(() => window.__game!.input.forceSave());
-    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-      timeout: WAIT_MS,
-    });
-    const persistedRevision = (await game(page)).save.revision;
+    expect(mintedFact!.sessionId).toBe(`session-${slot}`);
+    const persistedRevision = sessionAResult.revision;
 
     // ---- Hard session boundary: full fresh navigation, NOT the in-page
     // forceReload helper. Everything session B sees must come off the save. ----
@@ -130,7 +153,15 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
     await page.goto(url, { waitUntil: "load" });
 
     const sessionB = await game(page);
-    expect(sessionB.scene.beat).toBe("packet-delivered");
+
+    // Persisted beat is either "packet-delivered" (durable delivery beat)
+    // or "io-return-recognition" if session A's 1180ms setBeat fired before
+    // forceSave() persisted. Either is a valid saved state; the memory
+    // round-trip is what matters.
+    expect(
+      sessionB.scene.beat === "packet-delivered"
+        || sessionB.scene.beat === "io-return-recognition",
+    ).toBe(true);
     expect(sessionB.save.revision).toBe(persistedRevision);
     expect(sessionB.save.dirty).toBe(false);
 
@@ -142,8 +173,12 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
     expect(recalledFact).toEqual(mintedFact);
 
     // ---- Session B reaches recognition; the line is memory-backed. ----
-    await page.evaluate(() => window.__game!.input.advance());
-    await waitForBeat(page, "io-return-recognition");
+    // If the loaded beat is already "io-return-recognition" (session A's
+    // 1180ms timer had fired), we're already there. Otherwise advance().
+    if (sessionB.scene.beat !== "io-return-recognition") {
+      await page.evaluate(() => window.__game!.input.advance());
+      await waitForBeat(page, "io-return-recognition");
+    }
 
     const returning = await game(page);
     expect(returning.npcs.io.lastLineMemoryRefs).toEqual([mintedFact!.id]);
