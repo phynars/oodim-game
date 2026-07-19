@@ -65,6 +65,10 @@ export interface PacketIntentSnapshot {
   config: PacketIntentConfig;
 }
 
+export interface PacketIntentTickOptions {
+  hasFocus?: boolean;
+}
+
 function clamp01(value: number): number {
   if (value <= 0) return 0;
   if (value >= 1) return 1;
@@ -142,8 +146,12 @@ export class PacketIntentController {
    * the packet must still open at HOLD_TO_OPEN_MS. Scene tick / rAF loop
    * should call this every frame while `active` is true.
    */
-  tick(timeMs: number): PacketIntentSnapshot {
+  tick(timeMs: number, options: PacketIntentTickOptions = {}): PacketIntentSnapshot {
     if (!this.active || this.isCommitted()) return this.snapshot();
+    if (options.hasFocus === false) {
+      this.progress = this.openProgressAt(timeMs);
+      return this.snapshot();
+    }
     this.advanceProgress(timeMs);
     return this.snapshot();
   }
@@ -218,7 +226,7 @@ export interface PacketIntentHarness {
   readonly state: PacketIntentHarnessState;
   press(input: PacketIntentPressInput): PacketIntentHarnessState;
   move(input: PacketIntentPressInput): PacketIntentHarnessState;
-  tick(timeMs: number): PacketIntentHarnessState;
+  tick(timeMs: number, options?: PacketIntentTickOptions): PacketIntentHarnessState;
   release(input: PacketIntentPressInput): PacketIntentHarnessState;
   reset(): PacketIntentHarnessState;
 }
@@ -244,8 +252,8 @@ export function createPacketIntentHarness(): PacketIntentHarness {
     move(input) {
       return sync(controller.move(input));
     },
-    tick(timeMs) {
-      return sync(controller.tick(timeMs));
+    tick(timeMs, options) {
+      return sync(controller.tick(timeMs, options));
     },
     release(input) {
       return sync(controller.release(input));
@@ -277,6 +285,7 @@ export function runPacketIntentChecks(): void {
   checkDriftBeyondFourteenPxCancels();
   checkInBoundsWiggleDoesNotCancel();
   checkStickyCancelCannotBeResurrectedByTick();
+  checkBackgroundTickCannotOpenPacket();
   checkResetReArmsController();
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
@@ -461,6 +470,22 @@ function checkStickyCancelCannotBeResurrectedByTick(): void {
   );
   assertEqual(last.active, false, "cancelled gesture must remain inactive");
   assertEqual(last.progress, 0, "cancelled gesture must remain at zero progress");
+}
+
+function checkBackgroundTickCannotOpenPacket(): void {
+  const c = new PacketIntentController();
+  c.press({ timeMs: 60_000, x: 64, y: 64 });
+  const s = c.tick(60_000 + PACKET_INTENT.HOLD_TO_OPEN_MS + 100, {
+    hasFocus: false,
+  });
+
+  assertEqual(
+    s.outcome,
+    PACKET_OUTCOME.UNKNOWN,
+    "background tick must not commit OPENED from stale hold time",
+  );
+  assertEqual(s.active, true, "background tick keeps the gesture pending");
+  assertEqual(s.progress, 1, "background tick may show saturated progress only");
 }
 
 function checkResetReArmsController(): void {
