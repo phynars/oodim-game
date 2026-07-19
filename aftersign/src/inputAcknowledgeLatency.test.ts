@@ -1,3 +1,3 @@
-import { runInputAcknowledgeLatencyChecks } from "./inputAcknowledgeLatency.js";
+import { runInputAcknowledgeLatencyChecks } from './inputAcknowledgeLatency';
 
 runInputAcknowledgeLatencyChecks();
