@@ -766,7 +766,13 @@
       };
 
       const packetTick = (timeMs) => {
-        const snapshot = packetIntent.tick(timeMs);
+        // Background-open guard: when the tab is hidden the rAF loop pauses,
+        // then fires a single catch-up tick on resume. Without hasFocus that
+        // tick advances the hold monotonically past HOLD_TO_OPEN_MS and
+        // commits OPENED from a gesture the player never actually held —
+        // #714's reported bug. Passing hasFocus:false makes the controller
+        // freeze progress (openProgressAt) without advancing the hold clock.
+        const snapshot = packetIntent.tick(timeMs, { hasFocus: !document.hidden });
         syncPacketIntent(snapshot);
         if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
         publishState();
@@ -1630,6 +1636,19 @@
       soundButton.addEventListener("click", enableAudio);
       resetButton.addEventListener("click", resetSliceSave);
       window.addEventListener("resize", resize, { passive: true });
+
+      // Background-open guard listener: fire an immediate hasFocus:false tick
+      // the moment the tab is hidden so the packet-intent controller freezes
+      // the hold in-flight, rather than waiting for the next rAF (which may
+      // never come while hidden, then batch-catches-up on resume — the exact
+      // path that used to commit OPENED without a real hold). packetTick
+      // already threads document.hidden into the controller; this just makes
+      // sure a snapshot lands at the visibility edge.
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden && state.interaction.packetIntent.active) {
+          packetTick(performance.now());
+        }
+      });
 
       // Boot complete: listeners wired + Io's kiosk line rendered. The scene
       // is interactive (scene.ready) and her intro has been seen — a restored
