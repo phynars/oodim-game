@@ -95,15 +95,32 @@ export class PacketIntentController {
   public outcome: PacketOutcome;
   public progress: number;
   /**
-   * Wall-clock time at which we first observed `hasFocus:false` during an
-   * active hold, or `null` when the gesture is currently focused. On the
-   * next focused tick we shift `startTimeMs` forward by
-   * `(timeMs - hiddenAtMs)` so the accumulated hidden interval does NOT
-   * count toward the hold clock. Without this, the rAF catch-up tick on
-   * tab-resume would compute `progress >= 1` from wall-clock alone and
-   * silently commit OPENED — see #714.
+   * Wall-clock time at which the hidden interval STARTED — i.e. the last
+   * focused advance the controller observed before losing focus. `null`
+   * while the gesture is currently focused. On the next focused tick we
+   * shift `startTimeMs` forward by `(timeMs - hiddenAtMs)` so the full
+   * hidden interval — from the last focused advance up to resume — is
+   * excluded from the hold clock.
+   *
+   * IMPORTANT: this is stamped from `lastAdvanceMs`, NOT from the hidden
+   * tick's own timestamp. The hidden tick itself may arrive an arbitrary
+   * time after focus was actually lost (visibility events don't guarantee
+   * an immediate tick), so using the hidden tick's clock would leave a
+   * gap of unaccounted wall-clock that the resume tick then reads as
+   * "held" and silently commits OPENED — see #714 and the PR-review fix
+   * (`checkBackgroundTickCannotOpenPacket`).
    */
   public hiddenAtMs: number | null;
+  /**
+   * Timestamp of the most recent focused advance (`press` / focused `tick`
+   * / `move` / `release`). Used to anchor `hiddenAtMs` when focus is lost
+   * so the ENTIRE gap between last-focused-advance and resume is shifted
+   * out of the hold clock. Without this anchor, `hiddenAtMs` would stamp
+   * at the hidden tick's own clock and only subtract the sliver between
+   * the hidden tick and resume — leaving the pre-hidden-tick gap counted
+   * as held (bug fixed by #714's re-review).
+   */
+  public lastAdvanceMs: number;
 
   constructor(config: Partial<PacketIntentConfig> = {}) {
     this.config = { ...PACKET_INTENT, ...config };
@@ -114,6 +131,7 @@ export class PacketIntentController {
     this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
     this.hiddenAtMs = null;
+    this.lastAdvanceMs = 0;
   }
 
   reset(): PacketIntentSnapshot {
@@ -124,6 +142,7 @@ export class PacketIntentController {
     this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
     this.hiddenAtMs = null;
+    this.lastAdvanceMs = 0;
     return this.snapshot();
   }
 
@@ -135,6 +154,11 @@ export class PacketIntentController {
     this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
     this.hiddenAtMs = null;
+    // Anchor for the hidden-interval calculation. Until the first focused
+    // tick advances this, the press time itself stands in as "last known
+    // focused moment" — correct: if the tab is hidden immediately after
+    // press, we credit zero held time.
+    this.lastAdvanceMs = input.timeMs;
     return this.snapshot();
   }
 
@@ -153,6 +177,7 @@ export class PacketIntentController {
     }
 
     this.advanceProgress(input.timeMs);
+    this.lastAdvanceMs = input.timeMs;
     return this.snapshot();
   }
 
@@ -165,11 +190,15 @@ export class PacketIntentController {
   tick(timeMs: number, options: PacketIntentTickOptions = {}): PacketIntentSnapshot {
     if (!this.active || this.isCommitted()) return this.snapshot();
     if (options.hasFocus === false) {
-      // Record the first hidden moment and FREEZE progress at whatever it
-      // was — do NOT recompute from wall-clock, which would let the frozen
-      // snapshot report saturation and, worse, let the next focused tick
-      // read `progress >= 1` and commit OPENED. See #714.
-      if (this.hiddenAtMs === null) this.hiddenAtMs = timeMs;
+      // Freeze progress and STAMP hiddenAtMs at `lastAdvanceMs`, not the
+      // hidden tick's own clock. The hidden tick can arrive an arbitrary
+      // wall-clock delta after focus was actually lost (rAF pauses when
+      // hidden; `visibilitychange` fires whenever the browser gets around
+      // to it). Anchoring on the last focused advance means the entire
+      // pre-hidden-tick gap is credited as hidden, not as held — which is
+      // the actual fix for #714 (the resume tick otherwise reads that gap
+      // as hold time and commits OPENED).
+      if (this.hiddenAtMs === null) this.hiddenAtMs = this.lastAdvanceMs;
       return this.snapshot();
     }
     // Focused tick: if we were hidden, shift `startTimeMs` forward by the
@@ -177,6 +206,7 @@ export class PacketIntentController {
     // advance normally.
     this.consumeHiddenInterval(timeMs);
     this.advanceProgress(timeMs);
+    this.lastAdvanceMs = timeMs;
     return this.snapshot();
   }
 
