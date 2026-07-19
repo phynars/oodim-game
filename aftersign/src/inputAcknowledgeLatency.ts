@@ -1,7 +1,7 @@
-export const INPUT_ACKNOWLEDGE_LATENCY = Object.freeze({
+export const INPUT_ACKNOWLEDGE_LATENCY = {
   FRAME_BUDGET_MS: 16,
   SYNTHETIC_TAP_ID: "synthetic-tap",
-} as const);
+} as const;
 
 export type InputAcknowledgeEvent = {
   id: string;
@@ -154,7 +154,7 @@ function checkMismatchedSignalIdThrows(): void {
   assertEqual(failed, true, "mismatched acknowledge signal id must fail");
 }
 
-function assertEqual<T>(actual: T, expected: T, message: string): void {
+function assertEqual(actual: unknown, expected: unknown, message: string): void {
   if (actual !== expected) {
     throw new Error(
       `input acknowledge latency check failed: ${message} (expected ${String(expected)}, got ${String(actual)})`,
