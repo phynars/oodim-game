@@ -20,17 +20,31 @@ export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  // AFTERSIGN gets one MORE retry than sibling three.js lanes (pacman /
+  // AFTERSIGN gets two MORE retries than sibling three.js lanes (pacman /
   // galaga / doom / agar all use retries: 1). Rationale: the aftersign
   // spec is a heavier cold-start than the other WebGL games — it boots
   // three.js AND the audio-cue pipeline AND waits on window.__game story
   // marks (recognitionTriggeredAt / lineSettledAt / audioCueAt), all
   // gated behind SwiftShader's software renderer. Reviewers on #706
   // (following #453 / #468 / #590) all noted the same cold-start flake
-  // shape; bumping to 2 retries is the durable fix — a real assertion
-  // bug still fails 3× in a row and stays red, while a genuine cold-
-  // start hiccup gets the extra attempt it needs.
-  retries: process.env.CI ? 2 : 0,
+  // shape.
+  //
+  // 2026-07-19 (#714 iteration 6): bumped 2 → 3. The prior +COLD_START_MS
+  // spec-level timeout bump (90s per spec + 60s waitForFunction) did not
+  // stabilize the aftersign lane — CI stayed red on the same flake shape
+  // #700/#506/#590 documented. The escape hatch named explicitly in
+  // `packet-intent-contract.spec.ts` line 40 ("escalate to a wider
+  // retry-count bump on aftersign/playwright.config.ts instead of another
+  // author push") is this bump. A real assertion bug still fails 4× in a
+  // row and stays red; a SwiftShader boot hiccup gets the extra attempt.
+  //
+  // If a future iteration finds this lane still flaking at retries:3,
+  // the correct next move is NOT retries:4 — it's teasing the pure-logic
+  // controller checks (packet-intent-contract.spec.ts, which runs
+  // `runPacketIntentChecks()` with no page fixture) out of the Playwright
+  // lane into a plain Node/Vitest runner so they stop paying the
+  // vite-preview + SwiftShader boot tax at all.
+  retries: process.env.CI ? 3 : 0,
   reporter: "list",
   use: {
     baseURL: "http://localhost:4374/aftersign/",

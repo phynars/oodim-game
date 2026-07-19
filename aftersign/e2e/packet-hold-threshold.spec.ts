@@ -180,6 +180,13 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
 test("deadzone release (181–449 ms) preserves the seal instead of cancelling", async ({
   page,
 }) => {
+  // Cold-start budget: matches the "short tap" test above and every other
+  // aftersign spec (see COLD_START_MS at file head + playwright.config.ts
+  // rationale). Without this, the default 30s test timeout races the
+  // SwiftShader + three.js + vite-preview boot on a fresh worker and this
+  // test reports a false red — the exact flake shape #700 / #706 reviewers
+  // flagged and the sibling test already guards against. #714 CI re-review.
+  test.setTimeout(COLD_START_MS);
   // Feel contract, pinned through window.__game: a hesitant in-bounds
   // release inside the 181–449 ms deadzone is not a punitive CANCEL — it
   // defaults to SEALED. A false-sealed is recoverable (press again);

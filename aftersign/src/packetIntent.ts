@@ -65,6 +65,10 @@ export interface PacketIntentSnapshot {
   config: PacketIntentConfig;
 }
 
+export interface PacketIntentTickOptions {
+  hasFocus?: boolean;
+}
+
 function clamp01(value: number): number {
   if (value <= 0) return 0;
   if (value >= 1) return 1;
@@ -90,6 +94,33 @@ export class PacketIntentController {
   public lastPoint: PacketIntentPoint;
   public outcome: PacketOutcome;
   public progress: number;
+  /**
+   * Wall-clock time at which the hidden interval STARTED — i.e. the last
+   * focused advance the controller observed before losing focus. `null`
+   * while the gesture is currently focused. On the next focused tick we
+   * shift `startTimeMs` forward by `(timeMs - hiddenAtMs)` so the full
+   * hidden interval — from the last focused advance up to resume — is
+   * excluded from the hold clock.
+   *
+   * IMPORTANT: this is stamped from `lastAdvanceMs`, NOT from the hidden
+   * tick's own timestamp. The hidden tick itself may arrive an arbitrary
+   * time after focus was actually lost (visibility events don't guarantee
+   * an immediate tick), so using the hidden tick's clock would leave a
+   * gap of unaccounted wall-clock that the resume tick then reads as
+   * "held" and silently commits OPENED — see #714 and the PR-review fix
+   * (`checkBackgroundTickCannotOpenPacket`).
+   */
+  public hiddenAtMs: number | null;
+  /**
+   * Timestamp of the most recent focused advance (`press` / focused `tick`
+   * / `move` / `release`). Used to anchor `hiddenAtMs` when focus is lost
+   * so the ENTIRE gap between last-focused-advance and resume is shifted
+   * out of the hold clock. Without this anchor, `hiddenAtMs` would stamp
+   * at the hidden tick's own clock and only subtract the sliver between
+   * the hidden tick and resume — leaving the pre-hidden-tick gap counted
+   * as held (bug fixed by #714's re-review).
+   */
+  public lastAdvanceMs: number;
 
   constructor(config: Partial<PacketIntentConfig> = {}) {
     this.config = { ...PACKET_INTENT, ...config };
@@ -99,6 +130,8 @@ export class PacketIntentController {
     this.lastPoint = { x: 0, y: 0 };
     this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
+    this.hiddenAtMs = null;
+    this.lastAdvanceMs = 0;
   }
 
   reset(): PacketIntentSnapshot {
@@ -108,6 +141,8 @@ export class PacketIntentController {
     this.lastPoint = { x: 0, y: 0 };
     this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
+    this.hiddenAtMs = null;
+    this.lastAdvanceMs = 0;
     return this.snapshot();
   }
 
@@ -118,11 +153,20 @@ export class PacketIntentController {
     this.lastPoint = { x: input.x, y: input.y };
     this.outcome = PACKET_OUTCOME.UNKNOWN;
     this.progress = 0;
+    this.hiddenAtMs = null;
+    // Anchor for the hidden-interval calculation. Until the first focused
+    // tick advances this, the press time itself stands in as "last known
+    // focused moment" — correct: if the tab is hidden immediately after
+    // press, we credit zero held time.
+    this.lastAdvanceMs = input.timeMs;
     return this.snapshot();
   }
 
   move(input: PacketIntentPressInput): PacketIntentSnapshot {
     if (!this.active || this.isCommitted()) return this.snapshot();
+    // A pointer move implies the tab is focused enough to receive input, so
+    // resolve any pending hidden interval before we advance progress.
+    this.consumeHiddenInterval(input.timeMs);
     this.lastPoint = { x: input.x, y: input.y };
 
     if (distancePx(this.startPoint, this.lastPoint) > this.config.DRIFT_CANCEL_PX) {
@@ -133,6 +177,7 @@ export class PacketIntentController {
     }
 
     this.advanceProgress(input.timeMs);
+    this.lastAdvanceMs = input.timeMs;
     return this.snapshot();
   }
 
@@ -142,14 +187,36 @@ export class PacketIntentController {
    * the packet must still open at HOLD_TO_OPEN_MS. Scene tick / rAF loop
    * should call this every frame while `active` is true.
    */
-  tick(timeMs: number): PacketIntentSnapshot {
+  tick(timeMs: number, options: PacketIntentTickOptions = {}): PacketIntentSnapshot {
     if (!this.active || this.isCommitted()) return this.snapshot();
+    if (options.hasFocus === false) {
+      // Freeze progress and STAMP hiddenAtMs at `lastAdvanceMs`, not the
+      // hidden tick's own clock. The hidden tick can arrive an arbitrary
+      // wall-clock delta after focus was actually lost (rAF pauses when
+      // hidden; `visibilitychange` fires whenever the browser gets around
+      // to it). Anchoring on the last focused advance means the entire
+      // pre-hidden-tick gap is credited as hidden, not as held — which is
+      // the actual fix for #714 (the resume tick otherwise reads that gap
+      // as hold time and commits OPENED).
+      if (this.hiddenAtMs === null) this.hiddenAtMs = this.lastAdvanceMs;
+      return this.snapshot();
+    }
+    // Focused tick: if we were hidden, shift `startTimeMs` forward by the
+    // hidden duration so the hold clock only counts focused time. Then
+    // advance normally.
+    this.consumeHiddenInterval(timeMs);
     this.advanceProgress(timeMs);
+    this.lastAdvanceMs = timeMs;
     return this.snapshot();
   }
 
   release(input: PacketIntentPressInput): PacketIntentSnapshot {
     if (!this.active || this.isCommitted()) return this.snapshot();
+    // If the release fires straight out of a hidden interval (e.g. the tab
+    // was backgrounded, the pointer was released on resume), the accumulated
+    // hidden duration must not count toward the hold — otherwise a
+    // background pause + on-resume release commits OPENED. #714.
+    this.consumeHiddenInterval(input.timeMs);
     this.lastPoint = { x: input.x, y: input.y };
 
     if (distancePx(this.startPoint, this.lastPoint) > this.config.DRIFT_CANCEL_PX) {
@@ -201,6 +268,20 @@ export class PacketIntentController {
       this.active = false;
     }
   }
+
+  /**
+   * If we accumulated a hidden interval (`hiddenAtMs` was set by a
+   * `hasFocus:false` tick), shift `startTimeMs` forward by that duration
+   * so the hold clock resumes from the moment focus returned. Clears the
+   * pending interval. Safe to call unconditionally — it's a no-op when
+   * no interval is pending.
+   */
+  private consumeHiddenInterval(timeMs: number): void {
+    if (this.hiddenAtMs === null) return;
+    const hiddenMs = Math.max(0, timeMs - this.hiddenAtMs);
+    this.startTimeMs += hiddenMs;
+    this.hiddenAtMs = null;
+  }
 }
 
 /**
@@ -218,7 +299,7 @@ export interface PacketIntentHarness {
   readonly state: PacketIntentHarnessState;
   press(input: PacketIntentPressInput): PacketIntentHarnessState;
   move(input: PacketIntentPressInput): PacketIntentHarnessState;
-  tick(timeMs: number): PacketIntentHarnessState;
+  tick(timeMs: number, options?: PacketIntentTickOptions): PacketIntentHarnessState;
   release(input: PacketIntentPressInput): PacketIntentHarnessState;
   reset(): PacketIntentHarnessState;
 }
@@ -244,8 +325,8 @@ export function createPacketIntentHarness(): PacketIntentHarness {
     move(input) {
       return sync(controller.move(input));
     },
-    tick(timeMs) {
-      return sync(controller.tick(timeMs));
+    tick(timeMs, options) {
+      return sync(controller.tick(timeMs, options));
     },
     release(input) {
       return sync(controller.release(input));
@@ -277,6 +358,7 @@ export function runPacketIntentChecks(): void {
   checkDriftBeyondFourteenPxCancels();
   checkInBoundsWiggleDoesNotCancel();
   checkStickyCancelCannotBeResurrectedByTick();
+  checkBackgroundTickCannotOpenPacket();
   checkResetReArmsController();
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
@@ -461,6 +543,72 @@ function checkStickyCancelCannotBeResurrectedByTick(): void {
   );
   assertEqual(last.active, false, "cancelled gesture must remain inactive");
   assertEqual(last.progress, 0, "cancelled gesture must remain at zero progress");
+}
+
+function checkBackgroundTickCannotOpenPacket(): void {
+  // #714: rAF pauses while the tab is hidden, then fires a single catch-up
+  // tick on resume. If the controller advances the hold clock from raw
+  // wall-clock time, the resume tick reads `progress >= 1` and commits
+  // OPENED from a gesture the player never actually held. This test pins
+  // BOTH steps — the hidden tick AND the resume tick — because the first
+  // fix (freeze progress on the hidden tick) still let the resume tick
+  // commit from the accumulated hidden interval.
+  const c = new PacketIntentController();
+  const t0 = 60_000;
+  c.press({ timeMs: t0, x: 64, y: 64 });
+
+  // Advance a tiny amount so mid-hold progress is non-zero when we hide.
+  const preHiddenMs = 100;
+  const midHold = c.tick(t0 + preHiddenMs);
+  assertEqual(
+    midHold.outcome,
+    PACKET_OUTCOME.UNKNOWN,
+    "pre-hidden tick must not commit",
+  );
+
+  // Hidden tick well past HOLD_TO_OPEN_MS — freezes progress, does not commit.
+  const hidden = c.tick(t0 + preHiddenMs + PACKET_INTENT.HOLD_TO_OPEN_MS + 500, {
+    hasFocus: false,
+  });
+  assertEqual(
+    hidden.outcome,
+    PACKET_OUTCOME.UNKNOWN,
+    "hidden tick must not commit OPENED from stale hold time",
+  );
+  assertEqual(hidden.active, true, "hidden tick keeps the gesture pending");
+  assertEqual(
+    hidden.progress,
+    midHold.progress,
+    "hidden tick must freeze progress at the last focused value, not advance",
+  );
+
+  // Resume tick fires immediately (0 ms of focused hold since resume). Even
+  // though wall-clock now shows > HOLD_TO_OPEN_MS since press, the hidden
+  // interval must be subtracted so we DON'T commit OPENED.
+  const resumeMs = t0 + preHiddenMs + PACKET_INTENT.HOLD_TO_OPEN_MS + 500 + 16;
+  const resumed = c.tick(resumeMs);
+  assertEqual(
+    resumed.outcome,
+    PACKET_OUTCOME.UNKNOWN,
+    "resume tick must not commit OPENED from accumulated hidden time",
+  );
+  assertEqual(resumed.active, true, "resume tick keeps the gesture pending");
+  assert(
+    resumed.progress < 1,
+    `resume progress must be below 1 (only pre-hidden held time counts), got ${resumed.progress}`,
+  );
+
+  // But if the player keeps holding through resume, the packet still opens
+  // at HOLD_TO_OPEN_MS of REAL focused time — no regression on the primary
+  // open path.
+  const remainingMs = PACKET_INTENT.HOLD_TO_OPEN_MS - preHiddenMs;
+  const opened = c.tick(resumeMs + remainingMs + 16);
+  assertEqual(
+    opened.outcome,
+    PACKET_OUTCOME.OPENED,
+    "focused hold spanning HOLD_TO_OPEN_MS across a hidden interval must still open",
+  );
+  assertEqual(opened.progress, 1, "opened commit must saturate progress");
 }
 
 function checkResetReArmsController(): void {
