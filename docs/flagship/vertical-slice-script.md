@@ -186,7 +186,15 @@ Packet outcome is the primary recognition line.
 
 **Io:** “You came back. The seal did not. I can use one of those facts.”
 
+If there is no remembered packet outcome and no remembered route behavior:
+
+**Io:** “You came back. Good. We can start from that.”
+
 Optional route-behavior follow-up, only after the packet line:
+
+**If durable memory has no packet outcome and no route attention:**
+
+**Io:** “You came back. Good. We can start from that.”
 
 **If player skipped route instructions:**
 

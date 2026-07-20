@@ -6,6 +6,7 @@ import {
   getIoReturningSessionRecognitionLines,
   getIoReturnPostureLine,
   getIoRouteMemoryLine,
+  IO_BARE_RETURN_LINE,
   IO_RETURN_POSTURE_LINES,
   IO_RETURNING_SESSION_LINES,
   IO_ROUTE_MEMORY_LINES,
@@ -40,6 +41,10 @@ describe('Io returning-session lines (web view sources from package)', () => {
     )
   })
 
+  it('sources bare-return text from the aftersign package', () => {
+    expect(IO_BARE_RETURN_LINE.text).toBe(getIoReturningSessionLine('bareReturn'))
+  })
+
   it('sources kind posture text from the aftersign package', () => {
     expect(IO_RETURN_POSTURE_LINES.kind.text).toBe(
       getIoReturningSessionLine('kindReturn'),
@@ -62,6 +67,7 @@ describe('Io returning-session lines (web view sources from package)', () => {
     const all = [
       ...Object.values(IO_RETURNING_SESSION_LINES),
       ...Object.values(IO_ROUTE_MEMORY_LINES),
+      IO_BARE_RETURN_LINE,
       ...Object.values(IO_RETURN_POSTURE_LINES),
     ]
     for (const memory of all) {
@@ -74,6 +80,7 @@ describe('Io returning-session lines (web view sources from package)', () => {
     const all = [
       ...Object.values(IO_RETURNING_SESSION_LINES),
       ...Object.values(IO_ROUTE_MEMORY_LINES),
+      IO_BARE_RETURN_LINE,
       ...Object.values(IO_RETURN_POSTURE_LINES),
     ]
     const ids = all.map((m) => m.id)
