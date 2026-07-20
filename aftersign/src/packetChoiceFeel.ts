@@ -3,7 +3,7 @@ export type PacketChoice = 'preserve' | 'open';
 export type PacketChoicePhase = 'idle' | 'pressing' | 'committed' | 'cancelled';
 
 export interface PacketChoiceTuning {
-  /** Minimum continuous hold before either packet outcome commits. */
+  /** Minimum continuous focused hold before either packet outcome commits. */
   holdMs: number;
   /** Touch drift allowed before the choice cancels as an accidental swipe. */
   cancelRadiusPx: number;
@@ -26,6 +26,11 @@ export interface PacketChoiceUpdate {
   pointerX: number;
   pointerY: number;
   axis: number;
+  /**
+   * False when the document is hidden / unfocused. Hidden time is excluded
+   * from the hold clock so a backgrounded tab cannot spend the player's trust.
+   */
+  hasFocus?: boolean;
 }
 
 export interface PacketChoiceSnapshot {
@@ -87,10 +92,24 @@ export function createPacketChoiceFeelModel(
   const tuning = { ...DEFAULT_PACKET_CHOICE_TUNING, ...tuningOverrides };
   let started: PacketChoiceStart | null = null;
   let current = idleSnapshot();
+  let hiddenAtMs: number | null = null;
+  let lastAdvanceMs = 0;
+
+  function consumeHiddenInterval(nowMs: number): void {
+    if (started === null || hiddenAtMs === null) return;
+    const hiddenMs = Math.max(0, nowMs - hiddenAtMs);
+    started = {
+      ...started,
+      nowMs: started.nowMs + hiddenMs,
+    };
+    hiddenAtMs = null;
+  }
 
   return {
     start(start) {
       started = start;
+      hiddenAtMs = null;
+      lastAdvanceMs = start.nowMs;
       current = {
         phase: 'pressing',
         choice: start.choice,
@@ -111,6 +130,13 @@ export function createPacketChoiceFeelModel(
       ) {
         return current;
       }
+
+      if (update.hasFocus === false) {
+        if (hiddenAtMs === null) hiddenAtMs = lastAdvanceMs;
+        return current;
+      }
+
+      consumeHiddenInterval(update.nowMs);
 
       const elapsedMs = Math.max(0, update.nowMs - started.nowMs);
       const travelPx = distance(
@@ -159,6 +185,7 @@ export function createPacketChoiceFeelModel(
         axis: update.axis,
         committedChoice: null,
       };
+      lastAdvanceMs = update.nowMs;
       return current;
     },
 
@@ -175,6 +202,8 @@ export function createPacketChoiceFeelModel(
 
     reset(axis = 0) {
       started = null;
+      hiddenAtMs = null;
+      lastAdvanceMs = 0;
       current = idleSnapshot(axis);
       return current;
     },

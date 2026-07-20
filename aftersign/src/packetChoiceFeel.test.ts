@@ -191,10 +191,62 @@ export function checkCommittedSnapshotIsSticky(): void {
   assert(drifted.progress === 1, 'sticky.progress stays at 1');
 }
 
+export function checkBackgroundTimeDoesNotCommitChoice(): void {
+  const choice = createPacketChoiceFeelModel({ holdMs: 420 });
+
+  choice.start({
+    choice: 'open',
+    nowMs: 10_000,
+    pointerX: 200,
+    pointerY: 160,
+    axis: 0.7,
+  });
+
+  const preHidden = choice.update({
+    nowMs: 10_100,
+    pointerX: 200,
+    pointerY: 160,
+    axis: 0.7,
+  });
+  assertEqual(preHidden.phase, 'pressing', 'background.preHidden.phase');
+  assertClose(preHidden.progress, 100 / 420, 'background.preHidden.progress');
+
+  const hidden = choice.update({
+    nowMs: 10_100 + DEFAULT_PACKET_CHOICE_TUNING.holdMs + 500,
+    pointerX: 200,
+    pointerY: 160,
+    axis: 0.7,
+    hasFocus: false,
+  });
+  assertEqual(hidden.phase, 'pressing', 'background.hidden.phase');
+  assertClose(hidden.progress, preHidden.progress, 'background.hidden.progressFrozen');
+  assertEqual(hidden.committedChoice, null, 'background.hidden.committedChoice');
+
+  const resumed = choice.update({
+    nowMs: 10_100 + DEFAULT_PACKET_CHOICE_TUNING.holdMs + 516,
+    pointerX: 200,
+    pointerY: 160,
+    axis: 0.7,
+  });
+  assertEqual(resumed.phase, 'pressing', 'background.resumed.phase');
+  assertEqual(resumed.committedChoice, null, 'background.resumed.committedChoice');
+  assert(resumed.progress < 1, 'background resume must not spend hidden time');
+
+  const committed = choice.update({
+    nowMs: 10_100 + DEFAULT_PACKET_CHOICE_TUNING.holdMs + 516 + 336,
+    pointerX: 200,
+    pointerY: 160,
+    axis: 0.7,
+  });
+  assertEqual(committed.phase, 'committed', 'background.focusedHold.phase');
+  assertEqual(committed.committedChoice, 'open', 'background.focusedHold.choice');
+}
+
 export function runPacketChoiceFeelChecks(): void {
   checkOpenRequiresDeliberateHold();
   checkPreserveIsAnEquallyExplicitHold();
   checkStrayDriftCancelsCommit();
   checkCrossingAxisSideCancelsCommit();
   checkCommittedSnapshotIsSticky();
+  checkBackgroundTimeDoesNotCommitChoice();
 }
