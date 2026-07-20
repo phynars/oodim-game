@@ -38,6 +38,31 @@ describe("Aftersign durable save/load contract", () => {
     });
   });
 
+  it("keeps Io's first meeting quiet, then plays the frozen recognition feel on return", () => {
+    const unopenedFirstMeeting = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+    );
+
+    expect(sampleAftersignIoMemoryBeat(unopenedFirstMeeting)).toEqual({
+      scene: "io-return",
+      recognizesPlayer: false,
+      packetOutcome: "sealed",
+      recognitionFeel: null,
+    });
+
+    const savedAfterFirstMeeting = encodeAftersignDurableSave(unopenedFirstMeeting, 12);
+    const returningMeeting = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(savedAfterFirstMeeting),
+    );
+
+    expect(sampleAftersignIoMemoryBeat(returningMeeting)).toEqual({
+      scene: "io-return",
+      recognizesPlayer: true,
+      packetOutcome: "sealed",
+      recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+    });
+  });
+
   it("rejects malformed durable save payloads instead of silently resetting story state", () => {
     expect(() => restoreAftersignDurableSave("not-json")).toThrow(
       "Invalid Aftersign durable save: payload is not JSON",
