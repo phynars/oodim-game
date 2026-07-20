@@ -1,0 +1,475 @@
+# Consolidated red/green polarity proofs (issue #615).
+#
+# One workflow, per-proof path-gated jobs. Each proof pair (green polarity =
+# spec must pass in default mode; red polarity = spec must FAIL under its
+# break mode, exit code inverted) is carried over VERBATIM from its original
+# standalone workflow:
+#
+#   - aftersign durable save/load   (was aftersign-durable-save-redgreen.yml)
+#       break mode: FLAGSHIP_BREAK_MODE=local-only-save (baked into the
+#       `:broken-local-only` npm script) — preflight retires the red lane
+#       when the conditional guard is gone, fails loud if merely renamed.
+#   - aftersign NPC memory          (was aftersign-npc-memory-redgreen.yml)
+#       break mode: FLAGSHIP_BREAK_MODE=drop-memory — preflight retires the
+#       red lane while the spec carries the
+#       `@redgreen:npc-memory-roundtrip fixme-pending-phase-3` marker
+#       (Phase 3 / #566 unfixmes it).
+#   - agar multiplayer convergence  (was agar-multiplayer-redgreen.yml, #276)
+#       break mode: AGAR_DO_BREAK_MODE=drop-every-7th, threaded to the
+#       Worker via `wrangler dev --var` inside the `:broken` npm script.
+#   - agar persistence harness      (was agar-persistence-redgreen.yml, #323)
+#       break modes: non-monotone-persist / lossy-persist, threaded via
+#       per-mode `wrangler dev --var` scripts. Step-level `env:` does NOT
+#       reach the Worker — that was the round-1 wiring bug; do not regress.
+#
+# Path gating: `on.paths` is workflow-level, so the union of all proofs'
+# paths triggers the workflow, and the `changes` job (dorny/paths-filter)
+# scopes each proof's jobs to its original path set. A proof whose paths
+# didn't change is SKIPPED, matching the old per-workflow behaviour.
+
+name: redgreen-proofs
+
+# Least-privilege GITHUB_TOKEN. pull-requests: read is required by
+# dorny/paths-filter to list changed files on pull_request events.
+permissions:
+  contents: read
+  pull-requests: read
+
+on:
+  pull_request:
+    paths:
+      - "aftersign/**"
+      - "agar/**"
+      - "e2e-shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/redgreen-proofs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "aftersign/**"
+      - "agar/**"
+      - "e2e-shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/redgreen-proofs.yml"
+
+jobs:
+  changes:
+    name: detect changed proof surfaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      aftersign-durable: ${{ steps.filter.outputs.aftersign-durable }}
+      aftersign-npc: ${{ steps.filter.outputs.aftersign-npc }}
+      agar: ${{ steps.filter.outputs.agar }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            aftersign-durable:
+              - "aftersign/**"
+              - "package.json"
+              - "package-lock.json"
+              - ".github/workflows/redgreen-proofs.yml"
+            aftersign-npc:
+              - "aftersign/**"
+              - "e2e-shared/**"
+              - "package.json"
+              - "package-lock.json"
+              - ".github/workflows/redgreen-proofs.yml"
+            agar:
+              - "agar/**"
+              - "e2e-shared/**"
+              - "package.json"
+              - "package-lock.json"
+              - ".github/workflows/redgreen-proofs.yml"
+
+  # ---------------------------------------------------------------------
+  # AFTERSIGN durable save/load — FLAGSHIP_BREAK_MODE=local-only-save
+  # ---------------------------------------------------------------------
+  durable-save-green:
+    name: durable-save contract (green — default suite remains skipped)
+    needs: changes
+    if: needs.changes.outputs.aftersign-durable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run AFTERSIGN durable save/load spec in default mode
+        run: npm run test:e2e:aftersign:durable-save
+
+  durable-save-red:
+    name: durable-save contract (red — local-only-save MUST fail)
+    needs: changes
+    if: needs.changes.outputs.aftersign-durable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Preflight — confirm the guard string still exists
+        id: preflight
+        shell: bash
+        run: |
+          # Whitespace-tolerant search: matches the guard regardless of how
+          # the `test.skip(...)` call is line-wrapped or reformatted. If the
+          # guard is genuinely gone (durability landed → spec is unconditional)
+          # we surface that as `retired=true` and skip the red job. If the
+          # guard has merely been RENAMED or the sentinel value drifted, that
+          # is a silent-disable footgun — fail loud so a human decides.
+          spec=aftersign/e2e/save-load-durable-contract.spec.ts
+          if grep -Pzo '(?s)process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"local-only-save"' "$spec" > /dev/null; then
+            echo "guard present — red polarity will run."
+            echo "retired=false" >> "$GITHUB_OUTPUT"
+          elif grep -q 'test\.skip(' "$spec"; then
+            echo "::error::Spec still calls test.skip(...) but the FLAGSHIP_BREAK_MODE=local-only-save guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
+            exit 1
+          else
+            echo "durable save/load contract is fully live in the main suite — red polarity retired."
+            echo "retired=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run AFTERSIGN durable save/load contract (red polarity — MUST fail)
+        if: steps.preflight.outputs.retired == 'false'
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:aftersign:durable-save:broken-local-only
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — durable save/load did NOT catch the local-only-save break mode."
+            exit 1
+          else
+            echo "Broken-polarity spec failed as expected (exit $rc) — durable save/load guard is honest."
+            exit 0
+          fi
+
+  # ---------------------------------------------------------------------
+  # AFTERSIGN NPC memory round-trip — FLAGSHIP_BREAK_MODE=drop-memory
+  # ---------------------------------------------------------------------
+  npc-memory-green:
+    name: npc-memory contract (green — default suite may skip)
+    needs: changes
+    if: needs.changes.outputs.aftersign-npc == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run AFTERSIGN NPC memory contract in default mode
+        run: npm run test:e2e:aftersign:npc-memory
+
+  npc-memory-red:
+    name: npc-memory contract (red — drop-memory MUST fail)
+    needs: changes
+    if: needs.changes.outputs.aftersign-npc == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Preflight — decide whether the red lane can run yet
+        id: preflight
+        shell: bash
+        run: |
+          # The npc-memory-roundtrip test currently lives as test.fixme (an
+          # UNCONDITIONAL skip authored against a surface the impl does not
+          # yet expose — Phase 3 / #566 unfixmes it). Playwright exits 0 on
+          # an all-skipped run, so a naive "invert the exit code" red lane
+          # would fail on every PR. Detect that state and retire the red
+          # step until the fixme is converted to a conditional test.skip
+          # keyed off FLAGSHIP_BREAK_MODE=drop-memory (the pattern the
+          # sibling durable-save spec already uses).
+          spec=aftersign/e2e/flagship-surface-contract.spec.ts
+          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
+            echo "conditional guard present — red polarity will run."
+            echo "retired=false" >> "$GITHUB_OUTPUT"
+          elif grep -q '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' "$spec"; then
+            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
+            echo "retired=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'test\.skip(' "$spec"; then
+            echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
+            exit 1
+          else
+            echo "npc-memory contract is fully live in the main suite — red polarity retired."
+            echo "retired=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run AFTERSIGN NPC memory contract in broken mode and require failure
+        if: steps.preflight.outputs.retired == 'false'
+        env:
+          FLAGSHIP_BREAK_MODE: drop-memory
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:aftersign:npc-memory
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Expected FLAGSHIP_BREAK_MODE=drop-memory to fail, but the NPC-memory contract passed."
+            exit 1
+          fi
+
+          echo "NPC-memory contract failed under drop-memory as expected."
+
+  # ---------------------------------------------------------------------
+  # agar multiplayer convergence — AGAR_DO_BREAK_MODE=drop-every-7th (#276)
+  # The spec file is byte-identical across both jobs (same `testDir: "e2e"`);
+  # only the wrangler webServer command differs. That invariance IS the
+  # proof — see agar/docs/desync-broken-fixture-plan.md.
+  # ---------------------------------------------------------------------
+  agar-multiplayer-green:
+    name: agar multiplayer (green — main DO, spec must pass)
+    needs: changes
+    if: needs.changes.outputs.agar == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run agar multiplayer-convergence spec (green polarity)
+        run: npm run test:e2e:agar
+
+  agar-multiplayer-red:
+    name: agar multiplayer (red — drop-every-7th DO, spec must fail)
+    needs: changes
+    if: needs.changes.outputs.agar == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      # Red polarity: invert the Playwright exit code. The spec is
+      # expected to FAIL against the desync-broken Worker; if it
+      # passes (exit 0), the inversion makes the step fail — which is
+      # the signal that the drop logic was silently removed and the
+      # fixture stopped proving anything.
+      - name: Run agar multiplayer-convergence spec (red polarity — MUST fail)
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:agar:broken
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — the AC3 drop logic is not exercising the convergence guard. Did the drop point regress?"
+            exit 1
+          fi
+          echo "Broken-polarity spec failed as expected (exit $rc) — AC3 guard is honest."
+
+  # ---------------------------------------------------------------------
+  # agar persistence harness — non-monotone-persist / lossy-persist (#323)
+  # WIRING: deps install at REPO ROOT (`npm ci`); Playwright is invoked via
+  # the `npm run test:e2e:agar:persistence*` scripts which bake in the
+  # configs (vite preview + wrangler dev webServers). The break-mode env
+  # must reach the WORKER via `wrangler dev --var` inside the per-mode
+  # scripts — step-level `env:` lands on the runner shell, not wrangler.
+  # ---------------------------------------------------------------------
+  agar-persistence-green:
+    name: persistence-harness (green — default mode)
+    needs: changes
+    if: needs.changes.outputs.agar == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run agar persistence-harness spec (green polarity)
+        run: npm run test:e2e:agar:persistence
+
+  agar-persistence-red-monotonic:
+    name: persistence-harness (red — non-monotone-persist MUST fail monotonic-persist)
+    needs: changes
+    if: needs.changes.outputs.agar == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # AC3 — skip-when-skipped guard. Until #319 (slice 1) unskips
+      # monotonic-persist, there is no test for the broken break-mode
+      # to flip. We detect the per-test skip by anchoring on the test
+      # title `monotonic-persist` (the `-A 3` window scopes the second
+      # grep to that test's first 3 lines, so it cannot leak into the
+      # `eviction-roundtrip` skip below) and looking for `test.skip(`
+      # in that window. We deliberately do NOT match the `true` literal
+      # — the spec writes the call across two lines, so a
+      # `test\.skip(\s*true` regex (round-1 Mara catch) never matches
+      # under pipe-grep's line-oriented mode. The `-A 3` scoping is
+      # what keeps this honest: when slice 1 unskips by deleting the
+      # whole `test.skip(...)` call, the bare `test.skip(` token
+      # disappears from the window and the preflight flips to "live".
+      - name: Skip-when-skipped preflight (monotonic-persist)
+        id: preflight
+        shell: bash
+        run: |
+          if grep -A 3 'test(\s*"monotonic-persist' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip('; then
+            echo "monotonic-persist is still skipped — #319 has not landed yet — red polarity not enforced this run."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "monotonic-persist is live — enforcing red polarity under AGAR_DO_BREAK_MODE=non-monotone-persist."
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run agar persistence-harness monotonic-persist (red polarity — MUST fail)
+        if: steps.preflight.outputs.skipped == 'false'
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:agar:persistence:broken-non-monotone
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — monotonic-persist did NOT catch the non-monotone-persist break mode. Did slice 1's break-mode wiring regress, or is the test asserting a weaker property than the harness contract?"
+            exit 1
+          else
+            echo "Broken-polarity spec failed as expected (exit $rc) — monotonic-persist guard is honest."
+            exit 0
+          fi
+
+  agar-persistence-red-eviction:
+    name: persistence-harness (red — lossy-persist MUST fail eviction-roundtrip)
+    needs: changes
+    if: needs.changes.outputs.agar == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Slice 3 has landed and eviction-roundtrip is live. Keep the
+      # preflight anyway: if a future refactor accidentally re-skips
+      # the test, this job exits with an explicit log instead of
+      # pretending the lossy-persist polarity was exercised.
+      - name: Skip-when-skipped preflight (eviction-roundtrip)
+        id: preflight
+        shell: bash
+        run: |
+          # Anchor on the eviction-roundtrip title — same shape as the
+          # monotonic-persist preflight above. Match `test.skip(` only
+          # (not `test.skip(\s*true`); the spec splits the call across
+          # lines and pipe-grep is line-oriented. The `-A 3` window is
+          # what scopes us to this test's skip, not the `true` arg.
+          if grep -A 3 'test(\s*"eviction-roundtrip' agar/e2e/persistence-harness.spec.ts | grep -q 'test\.skip('; then
+            echo "eviction-roundtrip is skipped — red polarity not enforced this run."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eviction-roundtrip is live — enforcing red polarity under AGAR_DO_BREAK_MODE=lossy-persist."
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run agar persistence-harness eviction-roundtrip (red polarity — MUST fail)
+        if: steps.preflight.outputs.skipped == 'false'
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e:agar:persistence:broken-lossy
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Broken-polarity spec passed (exit 0) — eviction-roundtrip did NOT catch the lossy-persist break mode."
+            exit 1
+          else
+            echo "Broken-polarity spec failed as expected (exit $rc) — eviction-roundtrip guard is honest."
+            exit 0
+          fi
