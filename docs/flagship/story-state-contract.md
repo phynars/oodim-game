@@ -17,6 +17,33 @@ The vertical slice proves one thing: a player returns, and Io says a line that i
 
 This document defines the smallest `window.__game` surface the WebGL-headless harness may rely on for that proof. It is a test contract, not a gameplay architecture. Gameplay code can organize itself however it wants internally, but the browser page must expose this plain serializable surface in test builds.
 
+Slice M2 adds one additional durable fact in the same save slice: the player's second deliberate kiosk action state (`secondAction: 'done' | 'skipped'`) carried alongside packet outcome memory.
+
+The second action is a real player input, not a beat-derivation. Two new
+`choose(...)` ids record it at the `packet-choice` beat, before delivery:
+
+- `acknowledge-kiosk` — records `secondAction = "done"`.
+- `skip-kiosk-acknowledge` — records `secondAction = "skipped"`.
+
+Neither advances the beat. `deliver-packet` then mints TWO MemoryFacts —
+the delivery-outcome fact (paraphrased in Io's return-line) and the
+route-attention fact carrying the second action (durable but NOT spoken,
+so its id must not appear in `lastLineMemoryRefs`). If the player never
+calls either second-action choice before delivery, `state.player.secondAction`
+is `null` and the route-attention fact is stamped `"skipped"` — the
+absence-of-action branch. The two-memory shape is invariant across both
+branches; only the fact `object` differs.
+
+`window.__game.story.memoryBeat` exposes:
+
+- `outcome: 'sealed' | 'opened'` — packet outcome.
+- `secondAction: 'done' | 'skipped'` — second-action outcome.
+- `memory_ref: string | null` — id of the delivery-outcome fact.
+- `secondAction_memory_ref: string | null` — id of the route-attention fact.
+
+Save revision reflects the added fact — one revision bump on delivery
+covers both memories in the same slice, mirroring M1.
+
 ## Non-negotiable invariants
 
 1. Every story beat visible to the harness has a stable id.

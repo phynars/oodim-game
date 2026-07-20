@@ -105,7 +105,9 @@ test.describe("AFTERSIGN save slot contract", () => {
       sealed: true,
     });
     expect(dirtySnapshot.save).toMatchObject({ revision: 1, dirty: true });
-    expect(dirtySnapshot.npcs.io.memory).toHaveLength(1);
+    // Two facts after a delivered packet: the delivery-outcome fact minted
+    // by deliverPacket, plus the route-attention follow-up action fact.
+    expect(dirtySnapshot.npcs.io.memory).toHaveLength(2);
 
     await firstPage.evaluate(() => window.__game!.input.forceSave());
     await firstPage.waitForFunction(() => window.__game?.save.dirty === false);

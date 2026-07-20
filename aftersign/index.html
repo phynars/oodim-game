@@ -161,6 +161,14 @@
       import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./src/packetIntent.js";
+      import {
+        buildPacketOutcomeMemoryFact,
+        buildSecondActionMemoryFact,
+        memoryRefsFromMemory,
+        normalizeSecondAction,
+        SECOND_ACTION,
+        secondActionFromMemory,
+      } from "./src/memoryFacts.js";
       import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
       import {
         IO_RECOGNITION_BEAT_FEEDBACK,
@@ -294,6 +302,15 @@
           x: stored?.player?.x ?? -1.8,
           z: stored?.player?.z ?? 1.15,
           facingRadians: stored?.player?.facingRadians ?? 0,
+          // Second deliberate kiosk action (#736 M2-E1). Recorded by
+          // the "acknowledge-kiosk" / "skip-kiosk-acknowledge" choices
+          // at the packet-choice beat, BEFORE deliver-packet mints the
+          // route-attention fact. `null` before the player has decided;
+          // deliverPacket() normalizes null→"skipped" at fact-mint time
+          // so a player who ignores the second action still lands on the
+          // SKIPPED branch (the two-memory shape is invariant; only the
+          // route-attention `object` differs).
+          secondAction: stored?.player?.secondAction ?? null,
         },
         packet: {
           delivered: Boolean(stored?.packet?.delivered),
@@ -412,33 +429,25 @@
         return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
       };
 
-      const memoryFact = () => {
+      const memoryFacts = () => {
         const outcome = state.packet.sealed ? "sealed" : "opened";
+        // Read the SECOND ACTION from the durable player-input flag, not
+        // from the beat. deliverPacket() runs while beat==="packet-choice"
+        // so a beat-derived value would be a constant. normalizeSecondAction
+        // maps `null` (player never acknowledged) → SKIPPED — that's the
+        // absence-of-action branch, and the reason both memory-length
+        // outcomes are 2 (fact SHAPE is invariant; fact `object` differs).
+        const secondAction = normalizeSecondAction(state.player.secondAction);
         return {
-          // Contract-canonical id per e2e-shared/flagshipStoryStateContract.ts
-          // IO_RETURN_MEMORY_ID: `io-remembers-blue-packet-${outcome}`.
-          // `assertNpcReferencesPriorMemory` looks this exact id up in both
-          // `lastLineMemoryRefs` and `memories`; the prior slot-scoped id
-          // (`io:${slot}:delivered-blue-packet`) could never satisfy the
-          // returning-session assertion at HEAD. Slot isolation still
-          // holds — each Playwright test uses a distinct ?slot=, which
-          // scopes the storage key + sessionId; the memory id itself is
-          // the shared contract identifier.
-          id: `io-remembers-blue-packet-${outcome}`,
-          // Contract fields per e2e-shared/flagshipStoryStateContract.ts
-          // (FlagshipIoMemory). `assertDurableSaveLoaded` iterates
-          // beforeSave.npcs.io.memories and requires each loaded memory
-          // to carry `source === 'server'`; `assertNpcReferencesPriorMemory`
-          // additionally requires `kind === 'delivery-outcome'`. Stamp both
-          // at fact-creation so the durable round-trip survives
-          // clearLocalState reload and Io's returning line stays honest.
-          kind: "delivery-outcome",
-          subject: "player",
-          predicate: "delivered-blue-packet",
-          object: outcome,
-          deliveryId: "blue-packet",
-          sessionId,
-          source: "server",
+          packetOutcomeFact: buildPacketOutcomeMemoryFact({
+            outcome,
+            sessionId,
+          }),
+          secondActionFact: buildSecondActionMemoryFact({
+            secondAction,
+            sessionId,
+          }),
+          secondAction,
         };
       };
 
@@ -483,8 +492,16 @@
 
       const syncIoLine = () => {
         const nextLine = lineForBeat();
+        // Only ids the recognition line actually references belong here.
+        // The line paraphrases the delivery-outcome fact ("blue seal,
+        // unbroken" / "blue route delivered, seal broken") — the second
+        // action route-attention fact is durable memory but is NOT spoken,
+        // so it must not appear in lastLineMemoryRefs (npc-memory-roundtrip
+        // asserts exact-equality with just the minted delivery-outcome id).
         const nextMemoryRefs = state.scene.beat === "io-return-recognition"
-          ? state.npcs.io.memory.map((fact) => fact.id)
+          ? state.npcs.io.memory
+              .filter((fact) => fact.kind === "delivery-outcome")
+              .map((fact) => fact.id)
           : [];
         if (
           state.npcs.io.lastLine !== nextLine
@@ -817,6 +834,27 @@
           return;
         }
 
+        if (choiceId === "acknowledge-kiosk" || choiceId === "skip-kiosk-acknowledge") {
+          // #736 M2-E1: the SECOND deliberate kiosk action. Only valid at
+          // the packet-choice beat — before deliver-packet mints the
+          // route-attention fact. Recording it later would arrive AFTER
+          // the fact is stamped and would lie about the fact's object.
+          // The beat stays "packet-choice"; this is a durable player-input
+          // flag, not a beat transition.
+          if (state.scene.beat !== "packet-choice") {
+            return;
+          }
+          const next = choiceId === "acknowledge-kiosk"
+            ? SECOND_ACTION.DONE
+            : SECOND_ACTION.SKIPPED;
+          if (state.player.secondAction !== next) {
+            state.player.secondAction = next;
+            markStateDirty();
+            publishState();
+          }
+          return;
+        }
+
         throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
       };
 
@@ -897,7 +935,11 @@
           state.story.currentNpcId = null;
           state.story.memoryBeat = null;
           state.scene.beat = "packet-offered";
-          // Match resetSliceSave() shape (line ~1205) so the hard-reset
+          // #736: clear the second-action flag too — otherwise a hard
+        // reset could inherit the prior slice's kiosk acknowledgement
+        // and mint a route-attention fact the new player never chose.
+        state.player.secondAction = null;
+        // Match resetSliceSave() shape (line ~1205) so the hard-reset
           // branch is consistent: `sealed: true` is the boot default and
           // `delivery.outcome: "unknown"` is what an unstarted slice
           // reports. The prior draft preserved packet.sealed via spread
@@ -1289,8 +1331,8 @@
         state.packet.route = "blue rainline";
         state.packet.deliveredAt = new Date().toISOString();
         state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
-        const fact = memoryFact();
-        state.npcs.io.memory = [fact];
+        const { packetOutcomeFact, secondActionFact } = memoryFacts();
+        state.npcs.io.memory = [packetOutcomeFact, secondActionFact];
         state.save.revision += 1;
         state.save.dirty = true;
         const beatStartedAt = performance.now();
@@ -1300,12 +1342,18 @@
         setBeat("packet-delivered");
         setTimeout(() => {
           const beatEndedAt = performance.now();
-          const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
+          const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
+          const secondAction = secondActionFromMemory(state.npcs.io.memory);
+          const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
           const cameraMotion = finishMemoryBeatCameraProbe();
           memoryRecognitionBeatStartedAt = null;
           state.story.memoryBeat = {
             kind: "io_packet_return",
             outcome: durableOutcome,
+            secondAction,
+            memory_ref,
+            secondAction_memory_ref,
+            save_revision: state.save.revision,
             startedAt: beatStartedAt,
             endedAt: beatEndedAt,
             cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
@@ -1329,7 +1377,16 @@
         state.scene.beat = "packet-offered";
         state.story.currentNpcId = null;
         state.story.memoryBeat = null;
-        state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
+        state.player = {
+          id: "local-slice-player",
+          x: -1.8,
+          z: 1.15,
+          facingRadians: 0,
+          // #736: reset the second-action flag alongside the packet
+          // outcome so a fresh slice cannot silently inherit a prior
+          // player's kiosk acknowledgement.
+          secondAction: null,
+        };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
         state.delivery = { id: "blue-packet", outcome: "unknown" };
         state.npcs.io.memory = [];

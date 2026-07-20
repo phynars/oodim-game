@@ -29,6 +29,12 @@ export type MemoryBeatKind = "io_packet_return";
 /** Packet outcome carried on the memory beat. */
 export type MemoryBeatOutcome = "sealed" | "opened";
 
+/** Second deliberate kiosk action recorded alongside the packet outcome
+ * (#736 M2-E1). Persists on `state.player.secondAction`; surfaces on
+ * `story.memoryBeat.secondAction`. `"skipped"` is the absence-of-action
+ * branch (player never called `acknowledge-kiosk` before delivery). */
+export type SecondAction = "done" | "skipped";
+
 /** Recognition line ids the runtime publishes on `story.memoryBeat.lineId`.
  * Emitted at the `io-return-recognition` beat.
  * Must stay in sync with:
@@ -50,6 +56,15 @@ export interface MemoryBeat {
   cameraYawDegrees: number;
   inputLockMs: number;
   lineId: IoRecognitionLineId;
+  /** #736 M2-E1: second deliberate kiosk action, chained onto the packet
+   * outcome under the same durable player identity. */
+  secondAction: SecondAction;
+  /** Id of the packet-outcome MemoryFact that anchors this beat (matches
+   * `npcs.io.memory[kind==="delivery-outcome"].id`). */
+  memory_ref: string | null;
+  /** Id of the route-attention MemoryFact carrying the second action
+   * (matches `npcs.io.memory[predicate==="kiosk-second-action"].id`). */
+  secondAction_memory_ref: string | null;
 }
 
 /** Story state exposed for harness assertions. */
@@ -58,10 +73,17 @@ export interface StoryState {
   memoryBeat: MemoryBeat | null;
 }
 
+/** Kind classifier for MemoryFacts. `delivery-outcome` is the packet fact
+ * paraphrased in Io's return-line (its id appears in `lastLineMemoryRefs`).
+ * `route-attention` is the second-action fact — durable but NOT spoken, so
+ * its id must NOT appear in `lastLineMemoryRefs`. */
+export type MemoryFactKind = "delivery-outcome" | "route-attention";
+
 /** A single fact remembered by an NPC. `sessionId` scopes prior-session recall
  * and is asserted by aftersign/e2e/memory-prior-session.spec.ts. */
 export interface MemoryFact {
   id: string;
+  kind: MemoryFactKind;
   predicate: string;
   object: string;
   sessionId: string;
@@ -78,8 +100,18 @@ export interface NpcState {
 }
 
 /** Choice IDs the scene's input surface accepts. Match the strings passed to
- * `game.input.choose(...)` in aftersign/e2e/*.spec.ts. */
-export type ChoiceId = "open-packet" | "keep-packet-sealed" | "deliver-packet";
+ * `game.input.choose(...)` in aftersign/e2e/*.spec.ts.
+ *
+ * `acknowledge-kiosk` / `skip-kiosk-acknowledge` record the second
+ * deliberate action at the packet-choice beat (#736 M2-E1). They set
+ * `state.player.secondAction` but do NOT advance the beat — the follow-up
+ * `deliver-packet` mints the route-attention MemoryFact off that flag. */
+export type ChoiceId =
+  | "open-packet"
+  | "keep-packet-sealed"
+  | "deliver-packet"
+  | "acknowledge-kiosk"
+  | "skip-kiosk-acknowledge";
 
 /** Input driver the harness uses instead of clicking DOM buttons. Keeps the
  * spec free of view-layer coupling. */
