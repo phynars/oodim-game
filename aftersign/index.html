@@ -464,18 +464,28 @@
       });
 
       const persist = ({ dirty = false } = {}) => {
+        // #741: stamp durability time into the payload so it round-trips
+        // through reload (`{ ...emptySave(), ...saved.save }` picks it up),
+        // but only mirror it into live state AFTER writeStored succeeds —
+        // a throwing write must not claim the save was persisted. Same
+        // timestamp source as packet.deliveredAt (new Date().toISOString()).
         const payload = buildPersistPayload({ dirty });
+        payload.save.lastPersistedAt = new Date().toISOString();
         writeStored(payload);
+        state.save.lastPersistedAt = payload.save.lastPersistedAt;
         if (state.save.dirty !== dirty) {
           state.save.dirty = dirty;
-          markStateDirty();
         }
+        markStateDirty();
       };
 
       const persistAuthoritative = async ({ dirty = false } = {}) => {
         const payload = buildPersistPayload({ dirty });
         payload.save = {
           ...payload.save,
+          // #741: stamped pre-write so the SERVER copy carries it; mirrored
+          // into live state only after writeAuthoritativeSave resolves.
+          lastPersistedAt: new Date().toISOString(),
           authority: "server",
         };
         await writeAuthoritativeSave({
@@ -484,10 +494,11 @@
           payload,
         });
         state.save.authority = "server";
+        state.save.lastPersistedAt = payload.save.lastPersistedAt;
         if (state.save.dirty !== dirty) {
           state.save.dirty = dirty;
-          markStateDirty();
         }
+        markStateDirty();
       };
 
       const syncIoLine = () => {
