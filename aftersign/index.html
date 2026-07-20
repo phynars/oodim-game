@@ -476,8 +476,16 @@
 
       const syncIoLine = () => {
         const nextLine = lineForBeat();
+        // Only ids the recognition line actually references belong here.
+        // The line paraphrases the delivery-outcome fact ("blue seal,
+        // unbroken" / "blue route delivered, seal broken") — the second
+        // action route-attention fact is durable memory but is NOT spoken,
+        // so it must not appear in lastLineMemoryRefs (npc-memory-roundtrip
+        // asserts exact-equality with just the minted delivery-outcome id).
         const nextMemoryRefs = state.scene.beat === "io-return-recognition"
-          ? state.npcs.io.memory.map((fact) => fact.id)
+          ? state.npcs.io.memory
+              .filter((fact) => fact.kind === "delivery-outcome")
+              .map((fact) => fact.id)
           : [];
         if (
           state.npcs.io.lastLine !== nextLine
