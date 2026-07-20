@@ -32,6 +32,8 @@ import { expect, test, type Page } from '@playwright/test';
 // default 30s per-test timeout applies — which three SwiftShader cold
 // boots blow through, turning this file red on the aftersign lane with
 // no useful signal.
+const COLD_START_MS = 90_000;
+const WAIT_MS = 60_000;
 
 type SaveAuthority = 'server' | 'local-fallback';
 type LoadProof = {
