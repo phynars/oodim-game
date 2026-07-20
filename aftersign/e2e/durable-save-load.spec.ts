@@ -21,7 +21,14 @@
 // not this file.
 import { expect, test, type Page } from '@playwright/test';
 
-const WAIT_MS = 15_000;
+// Three cold `page.goto` boots in this spec; matches the budget used by
+// sibling flagship contract specs (flagship-surface-contract.spec.ts,
+// flagship-phase2-input-delivery-contract.spec.ts, game-surface-version.spec.ts)
+// which run the same boot path.
+const COLD_START_MS = 90_000;
+const WAIT_MS = 60_000;
+
+test.setTimeout(COLD_START_MS);
 
 type SaveAuthority = 'server' | 'local-fallback';
 type LoadProof = {
