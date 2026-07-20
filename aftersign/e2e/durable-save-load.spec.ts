@@ -1,10 +1,24 @@
-// Red contract for the AFTERSIGN durable save/load surface.
+// Hard-navigation survival for the AFTERSIGN save surface.
 //
-// This pins the harness-level invariant the flagship brief asks for: a save is
-// not real until a fresh page can load it through window.__game and expose an
-// explicit load proof. The implementation may use the server authority or the
-// local fallback in test mode, but the observable contract must survive a hard
-// session boundary.
+// This is NOT the durable/authoritative contract test — that lives at
+// aftersign/e2e/flagship-surface-contract.spec.ts
+//   > "durable save/load: authoritative reload survives clearLocalState"
+// and is the sole gate for docs/flagship/story-state-contract.md §"save"
+// (server authority, clearLocalState, lastLoadProof.source === 'server').
+//
+// What this spec pins instead: after forceSave(), a full browser
+// navigation (page.goto to a fresh document, then back to the slot URL)
+// followed by forceReload() must still surface the same slot, revision,
+// playerId, and lastLoadProof. The in-page forceReload path in the
+// authoritative test does not exercise a real document teardown; this
+// one does. It deliberately accepts either 'server' or 'local-fallback'
+// because authority polarity is owned by the strict test — duplicating
+// that gate here would only add a second place to update when the
+// contract shifts.
+//
+// If you are looking for the test that must fail under
+// FLAGSHIP_BREAK_MODE=local-only-save, it is the strict one linked above,
+// not this file.
 import { expect, test, type Page } from '@playwright/test';
 
 const WAIT_MS = 15_000;
@@ -78,9 +92,9 @@ async function forceReload(page: Page): Promise<void> {
   });
 }
 
-test.describe('AFTERSIGN durable save/load contract', () => {
-  test('reloads a saved slot with explicit authority and load proof', async ({ page }) => {
-    const slot = `durable-save-load-${Date.now()}`;
+test.describe('AFTERSIGN hard-navigation save survival', () => {
+  test('slot, revision, playerId, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
+    const slot = `hard-nav-save-${Date.now()}`;
 
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: 'load' });
 
@@ -95,8 +109,11 @@ test.describe('AFTERSIGN durable save/load contract', () => {
     expect(saved.save.dirty).toBe(false);
     expect(saved.save.revision).toBeGreaterThanOrEqual(cold.save.revision);
     expect(saved.save.lastPersistedAt).toEqual(expect.any(String));
+    // Authority polarity is intentionally NOT gated here — the strict
+    // durable test owns that assertion. See file header.
     expect(saved.save.authority).toMatch(/^(server|local-fallback)$/);
 
+    // The point of this spec: a real document teardown, not an in-page reload.
     await page.goto('/aftersign/', { waitUntil: 'load' });
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: 'load' });
     await forceReload(page);
