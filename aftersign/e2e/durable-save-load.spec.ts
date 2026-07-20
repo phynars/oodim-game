@@ -21,18 +21,20 @@
 // not this file.
 import { expect, test, type Page } from '@playwright/test';
 
-// Three cold `page.goto` boots in this spec; matches the budget used by
-// sibling flagship contract specs (flagship-surface-contract.spec.ts,
-// flagship-phase2-input-delivery-contract.spec.ts, game-surface-version.spec.ts)
-// which run the same boot path.
+// This spec drives THREE cold `page.goto` boots in a single test
+// (initial load → clear-doc → back to slot URL). Sibling flagship
+// contract specs (flagship-surface-contract.spec.ts:90, :133, :207,
+// :247) budget 90s for ONE cold boot per test — so we need ~3× that
+// wall clock, plus headroom for forceSave/forceReload/waitForStoryIdle
+// between boots. 240_000ms lands us safely under a 5-minute lane cap
+// while covering the SwiftShader-cold worst case on CI.
 //
 // NOTE: `test.setTimeout(COLD_START_MS)` MUST be called inside the test
-// body (see sibling flagship-surface-contract.spec.ts:90, :133, :207,
-// :247). Called at module scope Playwright silently drops it and the
-// default 30s per-test timeout applies — which three SwiftShader cold
-// boots blow through, turning this file red on the aftersign lane with
-// no useful signal.
-const COLD_START_MS = 90_000;
+// body (see the sibling specs above). Called at module scope Playwright
+// silently drops it and the default 30s per-test timeout applies —
+// which three cold boots blow through, turning this file red on the
+// aftersign lane with no useful signal.
+const COLD_START_MS = 240_000;
 const WAIT_MS = 60_000;
 
 type SaveAuthority = 'server' | 'local-fallback';
