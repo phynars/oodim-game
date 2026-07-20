@@ -14,6 +14,7 @@ export type IoReturningSessionLineKey =
   | 'kindReturn'
   | 'evasiveReturn'
   | 'bluntReturn'
+  | 'bareReturn'
 
 // Lines are pinned to docs/flagship/vertical-slice-script.md §7–§8.
 // Do not paraphrase; the harness asserts these strings verbatim.
@@ -35,6 +36,8 @@ export const ioReturningSessionLines: Record<IoReturningSessionLineKey, string> 
     'Careful. Say that too often and people will start handing you breakable things.',
   evasiveReturn: 'Work is a clean word. We can use it until it stains.',
   bluntReturn: 'Good. Wanting is easier to route than pretending.',
+  bareReturn:
+    'You came back. That is the only fact I have on you, and it is the one I weigh heaviest.',
 }
 
 export interface IoReturningSessionMemory {
@@ -70,8 +73,7 @@ export function chooseIoReturningSessionLine(
   if (memory.returnAnswerTone === 'kind') return ioReturningSessionLines.kindReturn
   if (memory.returnAnswerTone === 'evasive') return ioReturningSessionLines.evasiveReturn
   if (memory.returnAnswerTone === 'blunt') return ioReturningSessionLines.bluntReturn
-  // Empty memory: no packet outcome, no route, no tone. The script has no
-  // authored line for this shape; default to the route-listened tone, which
-  // is the mildest observation Io can make about a returning stranger.
-  return ioReturningSessionLines.listenedRoute
+  // Empty memory: no packet outcome, no route, no tone. Io still recognizes
+  // the return itself — the one fact she always keeps (#731).
+  return ioReturningSessionLines.bareReturn
 }

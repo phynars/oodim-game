@@ -26,6 +26,8 @@ const expectedLines: Record<IoReturningSessionLineKey, string> = {
     'Careful. Say that too often and people will start handing you breakable things.',
   evasiveReturn: 'Work is a clean word. We can use it until it stains.',
   bluntReturn: 'Good. Wanting is easier to route than pretending.',
+  bareReturn:
+    'You came back. That is the only fact I have on you, and it is the one I weigh heaviest.',
 }
 
 describe('ioReturningSessionLines', () => {
@@ -103,7 +105,7 @@ describe('ioReturningSessionLines', () => {
     )
   })
 
-  it('defaults empty memory to the listened-route line', () => {
-    expect(chooseIoReturningSessionLine({})).toBe(expectedLines.listenedRoute)
+  it('defaults empty memory to the bare-return line (#731)', () => {
+    expect(chooseIoReturningSessionLine({})).toBe(expectedLines.bareReturn)
   })
 })

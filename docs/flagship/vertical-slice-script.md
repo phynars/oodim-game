@@ -261,3 +261,4 @@ If these labels ever obscure player understanding on phone, clarity wins. The fa
 - A returning session after opened delivery displays: “You came back. The seal did not. I can use one of those facts.”
 - A returning-session line fails harness validation if it references the wrong packet outcome.
 - Route-behavior lines never replace the packet outcome line.
+- A returning session with no remembered facts displays the bare-return line: “You came back. That is the only fact I have on you, and it is the one I weigh heaviest.”

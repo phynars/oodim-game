@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { getIoReturningSessionLine } from '../../../../packages/aftersign/src/ioReturningSession'
 import {
   getIoReturningSessionMemoryLine,
+  IO_BARE_RETURN_LINE,
   getIoReturningSessionRecognitionLines,
   getIoReturnPostureLine,
   getIoRouteMemoryLine,
@@ -81,6 +82,10 @@ describe('Io returning-session lines (web view sources from package)', () => {
     expect(IO_RETURN_POSTURE_LINES.blunt.text).toBe(
       getIoReturningSessionLine('bluntReturn'),
     )
+  })
+
+  it('sources bare-return text from the aftersign package (#731)', () => {
+    expect(IO_BARE_RETURN_LINE.text).toBe(getIoReturningSessionLine('bareReturn'))
   })
 
   it('anchors each memory to a concrete remembered player action (not trust deltas)', () => {
