@@ -79,20 +79,19 @@ jobs:
         id: preflight
         shell: bash
         run: |
-          # The npc-memory-roundtrip test currently lives as test.fixme (an
-          # UNCONDITIONAL skip authored against a surface the impl does not
-          # yet expose — Phase 3 / #566 unfixmes it). Playwright exits 0 on
-          # an all-skipped run, so a naive "invert the exit code" red lane
-          # would fail on every PR. Detect that state and retire the red
-          # step until the fixme is converted to a conditional test.skip
-          # keyed off FLAGSHIP_BREAK_MODE=drop-memory (the pattern the
-          # sibling durable-save spec already uses).
-          spec=aftersign/e2e/flagship-surface-contract.spec.ts
+          # The red-polarity lane only runs once the npc-memory spec exposes
+          # a conditional guard keyed off FLAGSHIP_BREAK_MODE=drop-memory
+          # (the pattern the sibling durable-save spec already uses). Until
+          # then the spec is either fully live (green lane sufficient) or
+          # unconditionally skipped (Playwright exits 0, so a naive "invert
+          # the exit code" red lane would fail on every PR). Detect both
+          # states and retire the red step accordingly.
+          spec=aftersign/e2e/npc-memory-roundtrip.spec.ts
           if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
             echo "conditional guard present — red polarity will run."
             echo "retired=false" >> "$GITHUB_OUTPUT"
           elif grep -q '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' "$spec"; then
-            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present (Phase 3 / #566 pending) — red polarity retired until the spec exposes a conditional guard."
+            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present — red polarity retired until the spec exposes a conditional guard."
             echo "retired=true" >> "$GITHUB_OUTPUT"
           elif grep -q 'test\.skip(' "$spec"; then
             echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
