@@ -44,6 +44,38 @@ export const IO_RETURNING_SESSION_LINES: Record<IoPacketOutcome, IoReturningSess
   },
 }
 
+type IoReturningSessionChainedKey = `${IoPacketOutcome}Packet${Capitalize<IoRouteAttention>}Route`
+
+export const IO_RETURNING_SESSION_CHAINED_LINES: Record<
+  IoReturningSessionChainedKey,
+  IoReturningSessionMemoryLine
+> = {
+  sealedPacketListenedRoute: {
+    id: 'io-return-sealed-listened-route',
+    rememberedAction:
+      'Player delivered the packet sealed and listened to Io\'s full route instructions before leaving.',
+    text: getIoReturningSessionLineFromPackage('sealedPacketListenedRoute'),
+  },
+  sealedPacketSkippedRoute: {
+    id: 'io-return-sealed-skipped-route',
+    rememberedAction:
+      'Player delivered the packet sealed but left before Io finished the route instructions.',
+    text: getIoReturningSessionLineFromPackage('sealedPacketSkippedRoute'),
+  },
+  openedPacketListenedRoute: {
+    id: 'io-return-opened-listened-route',
+    rememberedAction:
+      'Player opened the packet before delivery and still listened to Io\'s full route instructions.',
+    text: getIoReturningSessionLineFromPackage('openedPacketListenedRoute'),
+  },
+  openedPacketSkippedRoute: {
+    id: 'io-return-opened-skipped-route',
+    rememberedAction:
+      'Player opened the packet before delivery and left before Io finished the route instructions.',
+    text: getIoReturningSessionLineFromPackage('openedPacketSkippedRoute'),
+  },
+}
+
 export const IO_ROUTE_MEMORY_LINES: Record<IoRouteAttention, IoReturningSessionMemoryLine> = {
   listened: {
     id: 'io-route-listened',
@@ -84,6 +116,11 @@ export const IO_RETURN_POSTURE_LINES: Record<IoReturnAnswerTone, IoReturningSess
 export function getIoReturningSessionMemoryLine(
   memory: IoReturningSessionMemory,
 ): IoReturningSessionMemoryLine {
+  if (memory.routeInstructionBehavior) {
+    const chainedKey = `${memory.packetOutcome}Packet${memory.routeInstructionBehavior === 'listened' ? 'Listened' : 'Skipped'}Route` as const
+    return IO_RETURNING_SESSION_CHAINED_LINES[chainedKey]
+  }
+
   return IO_RETURNING_SESSION_LINES[memory.packetOutcome]
 }
 
@@ -108,17 +145,14 @@ export function getIoReturnPostureLine(
 }
 
 // Full recognition surface for a returning session: the packet-return line
-// (always present — it's what Io opens with), then optional route-memory
-// texture, then optional posture reflection. Order is fixed by the script.
+// (always present — it's what Io opens with), then optional posture reflection.
+// Route memory is folded into the packet line when both memories are present.
 export function getIoReturningSessionRecognitionLines(
   memory: IoReturningSessionMemory,
 ): readonly IoReturningSessionMemoryLine[] {
   const lines: IoReturningSessionMemoryLine[] = [
     getIoReturningSessionMemoryLine(memory),
   ]
-
-  const route = getIoRouteMemoryLine(memory)
-  if (route) lines.push(route)
 
   const posture = getIoReturnPostureLine(memory)
   if (posture) lines.push(posture)
