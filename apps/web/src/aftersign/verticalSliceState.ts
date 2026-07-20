@@ -48,6 +48,16 @@ export type AftersignDurableSaveEnvelope = {
  */
 export type AftersignIoRecognitionFeel = IoReturningRecognitionFeel;
 
+export type AftersignPacketChoiceConfirmFeel = {
+  durationMs: 180;
+  screenShakePx: 2;
+  packetLiftPx: 10;
+  packetSettlePx: 3;
+  glowPeakOpacity: 0.42;
+  audioStartMs: 24;
+  easing: "cubic-bezier(.2,.8,.2,1)";
+};
+
 export type AftersignIoMemoryBeat = {
   scene: AftersignSceneId;
   recognizesPlayer: boolean;
@@ -65,6 +75,21 @@ const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
  */
 export const AFTERSIGN_IO_RECOGNITION_FEEL: AftersignIoRecognitionFeel =
   IO_RETURNING_RECOGNITION_FEEL;
+
+/**
+ * Tiny confirmation pop for the vertical-slice packet choice. This is the
+ * player's first authored action, so the kiosk should answer with a tactile
+ * lift-settle instead of a silent state flip.
+ */
+export const AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL: AftersignPacketChoiceConfirmFeel = {
+  durationMs: 180,
+  screenShakePx: 2,
+  packetLiftPx: 10,
+  packetSettlePx: 3,
+  glowPeakOpacity: 0.42,
+  audioStartMs: 24,
+  easing: "cubic-bezier(.2,.8,.2,1)",
+};
 
 export function createAftersignVerticalSliceState(): AftersignVerticalSliceState {
   return {
