@@ -6,18 +6,24 @@
 // rendering, storage, and network concerns so the harness can assert the public
 // game contract before the scene implementation exists.
 //
-// FEEL NUMBERS: the recognition-beat feel exposed here is NOT reinvented —
-// it re-exports the single frozen contract `IO_RETURNING_RECOGNITION_FEEL`
-// from `aftersign/src/ioReturningRecognitionFeel.ts`, which itself derives
-// its numbers from the live `recognitionFeedback.ts` constants. See PR #629
-// review + PR #712 review — every prior draft that hardcoded feel numbers
-// here drifted from the live implementation. Do not add fields with literal
-// numeric types to this module; consume the frozen contract instead.
+// FEEL NUMBERS: the feel contracts exposed here are NOT reinvented —
+// they re-export the live single-source constants:
+//   • `AFTERSIGN_IO_RECOGNITION_FEEL` ← `IO_RETURNING_RECOGNITION_FEEL`
+//     (`aftersign/src/ioReturningRecognitionFeel.ts`, itself derived
+//     from the live `recognitionFeedback.ts` constants).
+//   • `AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL` ← `DELIVER_PACKET_CONFIRM_FEEL`
+//     (`packages/aftersign/src/interactionConfirm.ts`, the live confirm cue).
+// See PR #629 / #712 / #728 review — every prior draft that hardcoded feel
+// numbers here drifted from the live implementation. Do not add fields with
+// literal numeric types to this module; consume the live contract instead.
 
 import {
   IO_RETURNING_RECOGNITION_FEEL,
   type IoReturningRecognitionFeel,
 } from "../../../../aftersign/src/ioReturningRecognitionFeel";
+import {
+  DELIVER_PACKET_CONFIRM_FEEL,
+} from "../../../../packages/aftersign/src/interactionConfirm";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 
@@ -48,6 +54,14 @@ export type AftersignDurableSaveEnvelope = {
  */
 export type AftersignIoRecognitionFeel = IoReturningRecognitionFeel;
 
+/**
+ * Type alias for the live packet-confirm feel. Kept as an alias (not a
+ * redefinition) so this module cannot drift from the live source in
+ * `packages/aftersign/src/interactionConfirm.ts`. Same discipline as
+ * `AftersignIoRecognitionFeel` above.
+ */
+export type AftersignPacketChoiceConfirmFeel = typeof DELIVER_PACKET_CONFIRM_FEEL;
+
 export type AftersignIoMemoryBeat = {
   scene: AftersignSceneId;
   recognizesPlayer: boolean;
@@ -65,6 +79,18 @@ const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
  */
 export const AFTERSIGN_IO_RECOGNITION_FEEL: AftersignIoRecognitionFeel =
   IO_RETURNING_RECOGNITION_FEEL;
+
+/**
+ * Re-export of the live packet-confirm feel. Consumers reading this
+ * constant observe exactly the numbers `packages/aftersign/src/interactionConfirm.ts`
+ * uses at runtime (`DELIVER_PACKET_CONFIRM_FEEL`: `pulseMs`, `phoneLiftPx`,
+ * `shakePx`, `ringScaleFrom/To`, `ringEase`, `audioLeadMs`, `maxDriftMs`).
+ * No numbers are fabricated here — this is the tactile lift-settle answer
+ * to the player's first authored action, sourced from the one place that
+ * owns it.
+ */
+export const AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL: AftersignPacketChoiceConfirmFeel =
+  DELIVER_PACKET_CONFIRM_FEEL;
 
 export function createAftersignVerticalSliceState(): AftersignVerticalSliceState {
   return {
