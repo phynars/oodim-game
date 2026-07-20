@@ -164,8 +164,9 @@
       import {
         buildPacketOutcomeMemoryFact,
         buildSecondActionMemoryFact,
-        deriveSecondAction,
         memoryRefsFromMemory,
+        normalizeSecondAction,
+        SECOND_ACTION,
         secondActionFromMemory,
       } from "./src/memoryFacts.js";
       import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
@@ -301,6 +302,15 @@
           x: stored?.player?.x ?? -1.8,
           z: stored?.player?.z ?? 1.15,
           facingRadians: stored?.player?.facingRadians ?? 0,
+          // Second deliberate kiosk action (#736 M2-E1). Recorded by
+          // the "acknowledge-kiosk" / "skip-kiosk-acknowledge" choices
+          // at the packet-choice beat, BEFORE deliver-packet mints the
+          // route-attention fact. `null` before the player has decided;
+          // deliverPacket() normalizes null→"skipped" at fact-mint time
+          // so a player who ignores the second action still lands on the
+          // SKIPPED branch (the two-memory shape is invariant; only the
+          // route-attention `object` differs).
+          secondAction: stored?.player?.secondAction ?? null,
         },
         packet: {
           delivered: Boolean(stored?.packet?.delivered),
@@ -421,7 +431,13 @@
 
       const memoryFacts = () => {
         const outcome = state.packet.sealed ? "sealed" : "opened";
-        const secondAction = deriveSecondAction(state.scene.beat);
+        // Read the SECOND ACTION from the durable player-input flag, not
+        // from the beat. deliverPacket() runs while beat==="packet-choice"
+        // so a beat-derived value would be a constant. normalizeSecondAction
+        // maps `null` (player never acknowledged) → SKIPPED — that's the
+        // absence-of-action branch, and the reason both memory-length
+        // outcomes are 2 (fact SHAPE is invariant; fact `object` differs).
+        const secondAction = normalizeSecondAction(state.player.secondAction);
         return {
           packetOutcomeFact: buildPacketOutcomeMemoryFact({
             outcome,
@@ -818,6 +834,27 @@
           return;
         }
 
+        if (choiceId === "acknowledge-kiosk" || choiceId === "skip-kiosk-acknowledge") {
+          // #736 M2-E1: the SECOND deliberate kiosk action. Only valid at
+          // the packet-choice beat — before deliver-packet mints the
+          // route-attention fact. Recording it later would arrive AFTER
+          // the fact is stamped and would lie about the fact's object.
+          // The beat stays "packet-choice"; this is a durable player-input
+          // flag, not a beat transition.
+          if (state.scene.beat !== "packet-choice") {
+            return;
+          }
+          const next = choiceId === "acknowledge-kiosk"
+            ? SECOND_ACTION.DONE
+            : SECOND_ACTION.SKIPPED;
+          if (state.player.secondAction !== next) {
+            state.player.secondAction = next;
+            markStateDirty();
+            publishState();
+          }
+          return;
+        }
+
         throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
       };
 
@@ -898,7 +935,11 @@
           state.story.currentNpcId = null;
           state.story.memoryBeat = null;
           state.scene.beat = "packet-offered";
-          // Match resetSliceSave() shape (line ~1205) so the hard-reset
+          // #736: clear the second-action flag too — otherwise a hard
+        // reset could inherit the prior slice's kiosk acknowledgement
+        // and mint a route-attention fact the new player never chose.
+        state.player.secondAction = null;
+        // Match resetSliceSave() shape (line ~1205) so the hard-reset
           // branch is consistent: `sealed: true` is the boot default and
           // `delivery.outcome: "unknown"` is what an unstarted slice
           // reports. The prior draft preserved packet.sealed via spread
@@ -1336,7 +1377,16 @@
         state.scene.beat = "packet-offered";
         state.story.currentNpcId = null;
         state.story.memoryBeat = null;
-        state.player = { id: "local-slice-player", x: -1.8, z: 1.15, facingRadians: 0 };
+        state.player = {
+          id: "local-slice-player",
+          x: -1.8,
+          z: 1.15,
+          facingRadians: 0,
+          // #736: reset the second-action flag alongside the packet
+          // outcome so a fresh slice cannot silently inherit a prior
+          // player's kiosk acknowledgement.
+          secondAction: null,
+        };
         state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
         state.delivery = { id: "blue-packet", outcome: "unknown" };
         state.npcs.io.memory = [];
