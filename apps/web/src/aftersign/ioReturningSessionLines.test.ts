@@ -84,6 +84,10 @@ describe('Io returning-session lines (web view sources from package)', () => {
     )
   })
 
+  it('sources bare-return text from the aftersign package (#731)', () => {
+    expect(IO_BARE_RETURN_LINE.text).toBe(getIoReturningSessionLine('bareReturn'))
+  })
+
   it('anchors each memory to a concrete remembered player action (not trust deltas)', () => {
     const all = [
       ...Object.values(IO_RETURNING_SESSION_LINES),
