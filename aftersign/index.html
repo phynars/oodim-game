@@ -161,6 +161,13 @@
       import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
       import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./src/packetIntent.js";
+      import {
+        buildPacketOutcomeMemoryFact,
+        buildSecondActionMemoryFact,
+        deriveSecondAction,
+        memoryRefsFromMemory,
+        secondActionFromMemory,
+      } from "./src/memoryFacts.js";
       import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
       import {
         IO_RECOGNITION_BEAT_FEEDBACK,
@@ -412,33 +419,19 @@
         return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
       };
 
-      const memoryFact = () => {
+      const memoryFacts = () => {
         const outcome = state.packet.sealed ? "sealed" : "opened";
+        const secondAction = deriveSecondAction(state.scene.beat);
         return {
-          // Contract-canonical id per e2e-shared/flagshipStoryStateContract.ts
-          // IO_RETURN_MEMORY_ID: `io-remembers-blue-packet-${outcome}`.
-          // `assertNpcReferencesPriorMemory` looks this exact id up in both
-          // `lastLineMemoryRefs` and `memories`; the prior slot-scoped id
-          // (`io:${slot}:delivered-blue-packet`) could never satisfy the
-          // returning-session assertion at HEAD. Slot isolation still
-          // holds — each Playwright test uses a distinct ?slot=, which
-          // scopes the storage key + sessionId; the memory id itself is
-          // the shared contract identifier.
-          id: `io-remembers-blue-packet-${outcome}`,
-          // Contract fields per e2e-shared/flagshipStoryStateContract.ts
-          // (FlagshipIoMemory). `assertDurableSaveLoaded` iterates
-          // beforeSave.npcs.io.memories and requires each loaded memory
-          // to carry `source === 'server'`; `assertNpcReferencesPriorMemory`
-          // additionally requires `kind === 'delivery-outcome'`. Stamp both
-          // at fact-creation so the durable round-trip survives
-          // clearLocalState reload and Io's returning line stays honest.
-          kind: "delivery-outcome",
-          subject: "player",
-          predicate: "delivered-blue-packet",
-          object: outcome,
-          deliveryId: "blue-packet",
-          sessionId,
-          source: "server",
+          packetOutcomeFact: buildPacketOutcomeMemoryFact({
+            outcome,
+            sessionId,
+          }),
+          secondActionFact: buildSecondActionMemoryFact({
+            secondAction,
+            sessionId,
+          }),
+          secondAction,
         };
       };
 
@@ -1289,8 +1282,8 @@
         state.packet.route = "blue rainline";
         state.packet.deliveredAt = new Date().toISOString();
         state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
-        const fact = memoryFact();
-        state.npcs.io.memory = [fact];
+        const { packetOutcomeFact, secondActionFact } = memoryFacts();
+        state.npcs.io.memory = [packetOutcomeFact, secondActionFact];
         state.save.revision += 1;
         state.save.dirty = true;
         const beatStartedAt = performance.now();
@@ -1300,12 +1293,18 @@
         setBeat("packet-delivered");
         setTimeout(() => {
           const beatEndedAt = performance.now();
-          const durableOutcome = state.npcs.io.memory[0]?.object === "opened" ? "opened" : "sealed";
+          const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
+          const secondAction = secondActionFromMemory(state.npcs.io.memory);
+          const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
           const cameraMotion = finishMemoryBeatCameraProbe();
           memoryRecognitionBeatStartedAt = null;
           state.story.memoryBeat = {
             kind: "io_packet_return",
             outcome: durableOutcome,
+            secondAction,
+            memory_ref,
+            secondAction_memory_ref,
+            save_revision: state.save.revision,
             startedAt: beatStartedAt,
             endedAt: beatEndedAt,
             cameraDeltaMeters: cameraMotion.cameraDeltaMeters,

@@ -17,6 +17,8 @@ The vertical slice proves one thing: a player returns, and Io says a line that i
 
 This document defines the smallest `window.__game` surface the WebGL-headless harness may rely on for that proof. It is a test contract, not a gameplay architecture. Gameplay code can organize itself however it wants internally, but the browser page must expose this plain serializable surface in test builds.
 
+Slice M2 adds one additional durable fact in the same save slice: the player's second deliberate kiosk action state (`secondAction: 'done' | 'skipped'`) carried alongside packet outcome memory.
+
 ## Non-negotiable invariants
 
 1. Every story beat visible to the harness has a stable id.
