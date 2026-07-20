@@ -7,6 +7,7 @@ import {
   getIoReturnPostureLine,
   getIoRouteMemoryLine,
   IO_RETURN_POSTURE_LINES,
+  IO_RETURNING_SESSION_CHAINED_LINES,
   IO_RETURNING_SESSION_LINES,
   IO_ROUTE_MEMORY_LINES,
 } from './ioReturningSessionLines'
@@ -25,6 +26,30 @@ describe('Io returning-session lines (web view sources from package)', () => {
   it('sources opened packet text from the aftersign package', () => {
     expect(IO_RETURNING_SESSION_LINES.opened.text).toBe(
       getIoReturningSessionLine('openedPacket'),
+    )
+  })
+
+  it('sources sealed+listened chained text from the aftersign package', () => {
+    expect(IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketListenedRoute.text).toBe(
+      getIoReturningSessionLine('sealedPacketListenedRoute'),
+    )
+  })
+
+  it('sources sealed+skipped chained text from the aftersign package', () => {
+    expect(IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketSkippedRoute.text).toBe(
+      getIoReturningSessionLine('sealedPacketSkippedRoute'),
+    )
+  })
+
+  it('sources opened+listened chained text from the aftersign package', () => {
+    expect(IO_RETURNING_SESSION_CHAINED_LINES.openedPacketListenedRoute.text).toBe(
+      getIoReturningSessionLine('openedPacketListenedRoute'),
+    )
+  })
+
+  it('sources opened+skipped chained text from the aftersign package', () => {
+    expect(IO_RETURNING_SESSION_CHAINED_LINES.openedPacketSkippedRoute.text).toBe(
+      getIoReturningSessionLine('openedPacketSkippedRoute'),
     )
   })
 
@@ -89,7 +114,7 @@ describe('Io returning-session lines (web view sources from package)', () => {
     )
   })
 
-  it('keeps optional route-instruction memories separate from packet outcome', () => {
+  it('keeps optional route-instruction memories available as standalone follow-up lines', () => {
     expect(getIoRouteMemoryLine({ packetOutcome: 'sealed' })).toBeUndefined()
     expect(
       getIoRouteMemoryLine({ packetOutcome: 'sealed', routeInstructionBehavior: 'listened' }),
@@ -106,7 +131,7 @@ describe('Io returning-session lines (web view sources from package)', () => {
     ).toBe(IO_RETURN_POSTURE_LINES.evasive)
   })
 
-  it('assembles the full recognition surface: packet, then route, then posture', () => {
+  it('assembles the full recognition surface: chained packet+route line, then posture', () => {
     expect(
       getIoReturningSessionRecognitionLines({
         packetOutcome: 'sealed',
@@ -114,8 +139,7 @@ describe('Io returning-session lines (web view sources from package)', () => {
         returnAnswerTone: 'evasive',
       }),
     ).toEqual([
-      IO_RETURNING_SESSION_LINES.sealed,
-      IO_ROUTE_MEMORY_LINES.listened,
+      IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketListenedRoute,
       IO_RETURN_POSTURE_LINES.evasive,
     ])
   })
@@ -124,5 +148,21 @@ describe('Io returning-session lines (web view sources from package)', () => {
     expect(
       getIoReturningSessionRecognitionLines({ packetOutcome: 'opened' }),
     ).toEqual([IO_RETURNING_SESSION_LINES.opened])
+  })
+
+  it('returns the chained line when packet outcome and route memory are both present', () => {
+    expect(
+      getIoReturningSessionMemoryLine({
+        packetOutcome: 'sealed',
+        routeInstructionBehavior: 'skipped',
+      }),
+    ).toBe(IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketSkippedRoute)
+
+    expect(
+      getIoReturningSessionMemoryLine({
+        packetOutcome: 'opened',
+        routeInstructionBehavior: 'listened',
+      }),
+    ).toBe(IO_RETURNING_SESSION_CHAINED_LINES.openedPacketListenedRoute)
   })
 })

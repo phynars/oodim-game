@@ -176,17 +176,35 @@ Persist the authored memory sentence for the next session:
 
 **Trigger:** New session begins with durable Io memory present.
 
-Packet outcome is the primary recognition line.
+Packet outcome is the primary recognition line when it is the only remembered fact.
 
-**If previous packet outcome was sealed:**
+**If previous packet outcome was sealed (single-memory):**
 
 **Io:** “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”
 
-**If previous packet outcome was opened:**
+**If previous packet outcome was opened (single-memory):**
 
 **Io:** “You came back. The seal did not. I can use one of those facts.”
 
-Optional route-behavior follow-up, only after the packet line:
+When BOTH packet outcome and route behavior are remembered, Io chains both facts into one dispatcher line:
+
+**If packet was sealed and route was listened:**
+
+**Io:** “You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.”
+
+**If packet was sealed and route was skipped:**
+
+**Io:** “You came back with the blue seal unbroken, and you still ran before the route finished. Reliable hands, impatient feet.”
+
+**If packet was opened and route was listened:**
+
+**Io:** “You came back with a broken seal, but you listened before you ran. One clean habit is still a habit.”
+
+**If packet was opened and route was skipped:**
+
+**Io:** “You came back with a broken seal and half my route. That is not ideal, but it is enough to route.”
+
+Fallback route-only lines remain authored for route-memory-only states:
 
 **If player skipped route instructions:**
 
