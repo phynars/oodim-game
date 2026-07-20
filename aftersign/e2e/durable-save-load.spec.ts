@@ -25,10 +25,13 @@ import { expect, test, type Page } from '@playwright/test';
 // sibling flagship contract specs (flagship-surface-contract.spec.ts,
 // flagship-phase2-input-delivery-contract.spec.ts, game-surface-version.spec.ts)
 // which run the same boot path.
-const COLD_START_MS = 90_000;
-const WAIT_MS = 60_000;
-
-test.setTimeout(COLD_START_MS);
+//
+// NOTE: `test.setTimeout(COLD_START_MS)` MUST be called inside the test
+// body (see sibling flagship-surface-contract.spec.ts:90, :133, :207,
+// :247). Called at module scope Playwright silently drops it and the
+// default 30s per-test timeout applies — which three SwiftShader cold
+// boots blow through, turning this file red on the aftersign lane with
+// no useful signal.
 
 type SaveAuthority = 'server' | 'local-fallback';
 type LoadProof = {
@@ -101,6 +104,7 @@ async function forceReload(page: Page): Promise<void> {
 
 test.describe('AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
     // The `?slot=` query keys the storage bucket + endpoint so parallel
     // runs don't collide — it does NOT reach `save.slot`, which the
     // contract (docs/flagship/story-state-contract.md §"save") pins to
