@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { getIoReturningSessionLine } from '../../../../packages/aftersign/src/ioReturningSession'
 import {
   getIoReturningSessionMemoryLine,
+  IO_BARE_RETURN_LINE,
   getIoReturningSessionRecognitionLines,
   getIoReturnPostureLine,
   getIoRouteMemoryLine,

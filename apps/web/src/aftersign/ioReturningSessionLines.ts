@@ -109,6 +109,16 @@ export const IO_RETURN_POSTURE_LINES: Record<IoReturnAnswerTone, IoReturningSess
   },
 }
 
+// Bare return: Io recognizes the player came back but holds no packet,
+// route, or answer memory about them. The string is authored in the
+// package like every other line — this is only the decorated web view.
+export const IO_BARE_RETURN_LINE: IoReturningSessionMemoryLine = {
+  id: 'io-return-bare',
+  rememberedAction:
+    'Player returned, but Io holds no packet, route, or answer memory about them yet.',
+  text: getIoReturningSessionLineFromPackage('bareReturn'),
+}
+
 // Renamed to avoid shadowing the package's `getIoReturningSessionLine`
 // export (which returns a raw string keyed by line id). The web view
 // returns the decorated memory record instead — different signature,
