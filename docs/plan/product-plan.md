@@ -23,70 +23,96 @@ in under two minutes, the flagship has a heartbeat we can build a city around.
 
 ## Milestones
 
-### M1 (ACTIVE) — Io remembers your blue-packet choice across a real session boundary
+### M1 (DONE ✅) — Io remembers your blue-packet choice across a real session boundary
 
 **Observable outcome:** A visitor on a phone opens the AFTERSIGN slice, makes
 the blue-packet choice (keep sealed vs. open), closes/reloads the page, and on
 return Io speaks a line that fits *their* choice and only their choice. A second
 visitor who chose the opposite hears a visibly different line.
 
+**Shipped:** E1's integration proof **#653 merged 2026-07-15**. The both-outcome
+save→reload→correct-Io-line assertions plus the three red break modes
+(`wrong-io-line` / `drop-memory` / `local-only-save`) live in
+`aftersign/e2e/flagship-surface-contract.spec.ts`. The signature promise is now
+machine-guarded on every push. M1 is falsified-negative-proof and closed.
+
+### M2 (ACTIVE) — A second aftersign beat chains off the first
+
+**Observable outcome:** A returning visitor whom Io *already* recognized (from
+the M1 packet beat) does a NEW deliberate action in the same slice, leaves, and
+returns AGAIN. On that second return Io speaks a line that references BOTH
+memories at once — the original packet choice AND the new action — so the player
+feels a relationship accumulating, not two independent recognitions. A visitor
+who skipped the second action hears a line that acknowledges only the first
+memory (the `bareReturn`-family fallback), visibly distinct from the chained
+line.
+
 **Definition of done (falsifiable):**
-- Load `game.oodim.com/aftersign` on a phone; make a choice; hard-reload.
-- Io's returning line matches the choice made — and differs from the other
-  outcome's line.
-- The `test:e2e:aftersign` CI lane proves this for BOTH outcomes and turns RED
-  under the three documented break modes.
+- On a phone: complete the packet beat, reload (M1 recognition fires), do the
+  second action, reload again → Io's line references the packet outcome AND the
+  second action in one authored sentence.
+- A control player who does packet-only-then-reload-twice hears the
+  single-memory line, NOT the chained line.
+- The e2e lane proves the chained vs. single-memory branch for the packet
+  outcomes AND turns RED when the second memory is dropped or the wrong
+  (single-memory) line is served to a two-memory player.
 
-**LoE budget:** ~1 epic (E1). Later epics (a second beat, a second NPC) are
-explicitly OUT of M1 — they are M2+.
-
-### M2 (planned, not active) — A second aftersign beat chains off the first
-_Deferred. Do not file stories until M1's E1 integration story passes._
-
----
-
-## Active milestone (M1) — epics
-
-### E1 (ACTIVE) — Io first-memory beat survives save→reload and speaks the outcome-correct line
-
-**Acceptance criteria:** The signature promise is machine-verified end to end —
-choose → save → reload → Io says the outcome-correct, outcome-DISTINCT line, and
-`wrong-io-line` / `drop-memory` / `local-only-save` break modes fail the lane.
-
-**Status:** in progress. Precursor harness merged; integration proof (#653) open.
-
-**Integration story (the done-gate):** **#653** — `save→reload→correct Io line
-for BOTH outcomes, with red break-mode guards`. E1 is DONE when #653 is green,
-not when its pieces merge. Everything below either feeds #653 or hardens it.
+**LoE budget:** ~1 epic (E1). A second NPC, branching episodes, and a
+memory *graph* remain OUT — they are M3+.
 
 ---
 
-## Story map (E1)
+## Active milestone (M2) — epics
+
+### E1 (ACTIVE) — A second memory chains onto Io's first recognition in one line
+
+**Acceptance criteria:** The slice persists a SECOND player action alongside the
+M1 packet outcome, and on the next return Io serves ONE authored line that
+references both memories for a two-memory player — while a one-memory (packet
+only) player still gets the single-memory line. Wrong-branch and dropped-second-
+memory paths fail the e2e lane.
+
+**Status:** active. Copy surface pattern exists (`bareReturn` extension via
+#731); no chained-beat integration proof yet.
+
+**Integration story (the done-gate):** **#735** (filed this session) —
+`two-memory return serves the chained line for both packet outcomes; one-memory
+return serves the single-memory line; red break modes for dropped-second-memory
+and wrong-branch`. E1 is DONE when #735 is green, not when its pieces merge.
+Everything below either feeds #735 or hardens it.
+
+**Integration story of M1 (reference):** #653 (merged) proved the *single*
+memory beat. M2-E1's #735 is the strict generalization: prove that a SECOND
+memory chains, without regressing the first.
+
+---
+
+## Story map (M2-E1)
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Integration proof (done-gate)** — both outcomes, correct distinct Io line, 3 red break modes | **#653** | M | integration | open |
-| Update aftersign e2e specs to `FlagshipSceneBeat` names + field-based assertions | #601 | L | precursor (unblocks stable beat naming for #653) | open (blocked-by #600) |
-| Wire Io phone-ready look/sound contract into executed e2e lane | #544 | M | hardening (phone-viewport feel guard on the beat #653 proves) | open |
-| Precursor reload-beat regression harness (single sealed path) | — (`aftersign/e2e/flagship-reload-beat-regression.spec.ts`) | — | merged precursor — #653 generalizes it to both outcomes + break modes | merged |
+| **Integration proof (done-gate)** — two-memory chained line + one-memory fallback, both packet outcomes, red break modes | **#735** | M | integration | filed this session |
+| Extend Io returning copy in the package with a `bareReturn`/empty-memory key (single-source, parity-guarded) | **#731** | S | building block — establishes the fallback/single-memory line surface #735 asserts against | open |
+| Persist the second player action alongside packet outcome; expose it on `window.__game.story.memoryBeat` | **#736** | M | building block — the second durable memory #735 chains on | filed this session |
+| Author + wire the two-memory CHAINED line in the package; parity re-export | **#737** | S | building block — the line #735 proves is served for two-memory players | filed this session |
+| Wire Io phone-ready look/sound contract into executed e2e lane | #544 | M | hardening — carries over from M1; phone-viewport feel guard on the chained beat | open |
 
-**Integration-first note:** #653 is filed and mapped BEFORE further
-implementation stories because it defines what "E1 done" means. #601 and #544
-are supporting — they make the beat namable and phone-ready — but neither on its
-own proves the epic outcome. If forced to sequence: land #653's both-outcome +
-break-mode assertions against the live shape; #601's rename can follow (#566
-phase-3) without blocking the outcome.
+**Integration-first note:** #735 is filed and mapped BEFORE the implementation
+stories because it defines what "M2-E1 done" means. #731/#736/#737 are the three
+building blocks (fallback line / second memory / chained line); none alone
+proves the epic outcome. Sequence if forced: #736 (second memory persists) →
+#731 + #737 (both lines authored) → #735 asserts the branch end to end.
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-These are NOT closed here (operator/human disposes). Named so they don't masquerade as M1 work:
+These are NOT closed here (operator/human disposes). Named so they don't masquerade as M2 work:
 
-- **#615** — does not map to M1-E1; revisit under M2 or reclassify.
-- **#622** — does not map to M1-E1; revisit under M2 or reclassify.
-- **#454** — does not map to M1-E1; likely pre-flagship debt; reclassify or close.
-- **#634** — does not map to M1-E1; revisit under M2 or reclassify.
+- **#727** — [Mara, `agent-needs-human`] AFTERSIGN red/green workflow relies on
+  brittle spec marker text for retirement gating. Real harness debt, but it is a
+  *process/tooling* fix, not part of the M2-E1 chained-beat outcome. Human-flagged;
+  disposition owed by operator. Does NOT enter the M2 story map.
 
-_Disposition owed: confirm each is M2-fodder vs. stale debt. Until then they are
-outside the plan and the backlog picker should not treat them as M1 stories._
+_Prior-cycle drift (#615/#622/#454/#634) is now CLOSED — no longer open, removed
+from this list. The only current drift is #727 above._
