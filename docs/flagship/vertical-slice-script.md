@@ -192,10 +192,6 @@ If there is no remembered packet outcome and no remembered route behavior:
 
 Optional route-behavior follow-up, only after the packet line:
 
-**If durable memory has no packet outcome and no route attention:**
-
-**Io:** “You came back. Good. We can start from that.”
-
 **If player skipped route instructions:**
 
 **Io:** “You found the box anyway. Next time, let me finish saving your life.”

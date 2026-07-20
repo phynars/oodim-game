@@ -45,9 +45,9 @@ export const IO_RETURNING_SESSION_LINES: Record<IoPacketOutcome, IoReturningSess
 }
 
 export const IO_BARE_RETURN_LINE: IoReturningSessionMemoryLine = {
-  id: 'io-return-bare-return',
+  id: 'io-return-bare',
   rememberedAction:
-    'Player returned in a later session without a packet outcome or route-attention memory.',
+    'Player returned with no remembered packet outcome, route attention, or return tone.',
   text: getIoReturningSessionLineFromPackage('bareReturn'),
 }
 
@@ -62,13 +62,6 @@ export const IO_ROUTE_MEMORY_LINES: Record<IoRouteAttention, IoReturningSessionM
     rememberedAction: 'Player left before Io finished the route instructions.',
     text: getIoReturningSessionLineFromPackage('skippedRoute'),
   },
-}
-
-export const IO_BARE_RETURN_LINE: IoReturningSessionMemoryLine = {
-  id: 'io-return-bare',
-  rememberedAction:
-    'Player returned with no remembered packet outcome, route attention, or return tone.',
-  text: getIoReturningSessionLineFromPackage('bareReturn'),
 }
 
 // Posture is the tone the player struck when Io asked why they came back.
