@@ -94,18 +94,24 @@ async function forceReload(page: Page): Promise<void> {
 
 test.describe('AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
-    const slot = `hard-nav-save-${Date.now()}`;
+    // The `?slot=` query keys the storage bucket + endpoint so parallel
+    // runs don't collide — it does NOT reach `save.slot`, which the
+    // contract (docs/flagship/story-state-contract.md §"save") pins to
+    // the literal string 'default' and assertSerializableFlagshipSurface
+    // enforces at runtime. We assert against 'default' below.
+    const slotKey = `hard-nav-save-${Date.now()}`;
+    const CONTRACT_SLOT = 'default';
 
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: 'load' });
+    await page.goto(`/aftersign/?slot=${slotKey}`, { waitUntil: 'load' });
 
     const cold = await readSaveProbe(page);
-    expect(cold.save.slot).toBe(slot);
+    expect(cold.save.slot).toBe(CONTRACT_SLOT);
     expect(cold.player.id.length).toBeGreaterThan(0);
 
     await forceSave(page);
 
     const saved = await readSaveProbe(page);
-    expect(saved.save.slot).toBe(slot);
+    expect(saved.save.slot).toBe(CONTRACT_SLOT);
     expect(saved.save.dirty).toBe(false);
     expect(saved.save.revision).toBeGreaterThanOrEqual(cold.save.revision);
     expect(saved.save.lastPersistedAt).toEqual(expect.any(String));
@@ -115,11 +121,11 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
 
     // The point of this spec: a real document teardown, not an in-page reload.
     await page.goto('/aftersign/', { waitUntil: 'load' });
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: 'load' });
+    await page.goto(`/aftersign/?slot=${slotKey}`, { waitUntil: 'load' });
     await forceReload(page);
 
     const loaded = await readSaveProbe(page);
-    expect(loaded.save.slot).toBe(slot);
+    expect(loaded.save.slot).toBe(CONTRACT_SLOT);
     expect(loaded.save.lastLoadProof).toEqual({
       source: saved.save.authority,
       revision: saved.save.revision,
