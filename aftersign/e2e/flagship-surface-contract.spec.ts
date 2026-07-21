@@ -265,69 +265,74 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     expect(afterReturn.beat).toBe("io-return-recognition");
   });
 
-  test("npc-memory round-trip: Io recognizes the sealed prior session", async ({ page }) => {
+  test("npc-memory round-trip: Io recognizes sealed and opened prior sessions", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
     const breakMode = currentBreakMode();
 
-    const slot = `flagship-memory-${Date.now()}`;
-    const url = `/aftersign/?slot=${slot}`;
+    for (const outcome of ["sealed", "opened"] as const) {
+      const slot = `flagship-memory-${outcome}-${Date.now()}`;
+      const url = `/aftersign/?slot=${slot}`;
 
-    // Session A: sealed delivery + forceSave.
-    await page.goto(url, { waitUntil: "load" });
-    await readSurface(page);
+      // Session A: choose an outcome + forceSave.
+      await page.goto(url, { waitUntil: "load" });
+      await readSurface(page);
 
-    await page.evaluate(() => window.__game!.input.choose("keep-sealed"));
-    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-    await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+      await page.evaluate(
+        (choiceId) => window.__game!.input.choose(choiceId),
+        outcome === "sealed" ? "keep-sealed" : "open-packet",
+      );
+      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+      await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 
-    await page.evaluate(() => window.__game!.input.forceSave());
-    await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-      timeout: WAIT_MS,
-    });
+      await page.evaluate(() => window.__game!.input.forceSave());
+      await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+        timeout: WAIT_MS,
+      });
 
-    // Session B: clearLocalState reload + return-to-io.
-    await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
-    await readSurface(page);
-    await page.evaluate(() => window.__game!.input.choose("return-to-io"));
-    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+      // Session B: clearLocalState reload + return-to-io.
+      await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+      await readSurface(page);
+      await page.evaluate(() => window.__game!.input.choose("return-to-io"));
+      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 
-    const returning = await readSurface(page);
-    assertSerializableFlagshipSurface(returning);
+      const returning = await readSurface(page);
+      assertSerializableFlagshipSurface(returning);
 
-    if (breakMode === "drop-memory") {
-      let didThrow = false;
-      try {
-        assertNpcReferencesPriorMemory(returning, "sealed");
-      } catch {
-        didThrow = true;
+      if (breakMode === "drop-memory") {
+        let didThrow = false;
+        try {
+          assertNpcReferencesPriorMemory(returning, outcome);
+        } catch {
+          didThrow = true;
+        }
+        expect(
+          didThrow,
+          `FLAGSHIP_BREAK_MODE=drop-memory must cause assertNpcReferencesPriorMemory to fail for ${outcome}; it did not — the break mode is not wired up.`,
+        ).toBe(true);
+        continue;
       }
-      expect(
-        didThrow,
-        "FLAGSHIP_BREAK_MODE=drop-memory must cause assertNpcReferencesPriorMemory to fail; it did not — the break mode is not wired up.",
-      ).toBe(true);
-      return;
-    }
 
-    if (breakMode === "wrong-io-line") {
-      let didThrow = false;
-      try {
-        assertNpcReferencesPriorMemory(returning, "sealed");
-      } catch {
-        didThrow = true;
+      if (breakMode === "wrong-io-line") {
+        let didThrow = false;
+        try {
+          assertNpcReferencesPriorMemory(returning, outcome);
+        } catch {
+          didThrow = true;
+        }
+        expect(
+          didThrow,
+          `FLAGSHIP_BREAK_MODE=wrong-io-line must cause assertNpcReferencesPriorMemory to fail for ${outcome}; it did not.`,
+        ).toBe(true);
+        continue;
       }
-      expect(
-        didThrow,
-        "FLAGSHIP_BREAK_MODE=wrong-io-line must cause assertNpcReferencesPriorMemory to fail; it did not.",
-      ).toBe(true);
-      return;
-    }
 
-    assertNpcReferencesPriorMemory(returning, "sealed");
-    expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT.sealed);
-    expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID.sealed);
-    expect(returning.save.lastLoadProof.source).toBe("server");
+      assertNpcReferencesPriorMemory(returning, outcome);
+      expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT[outcome]);
+      expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID[outcome]);
+      expect(returning.save.lastLoadProof.source).toBe("server");
+    }
   });
 
   test("M2-E1: Io chains packet outcome + second-action memory across a durable reload", async ({ page }) => {
