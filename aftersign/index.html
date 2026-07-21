@@ -185,6 +185,13 @@
         createKioskCameraRigState,
         stepKioskCameraRig as stepKioskCameraRigModel,
       } from "./src/kioskCameraRig.js";
+      import {
+        DEFAULT_PLAYER_MOVEMENT_FEEL,
+        checkPlayerMovementFeel,
+        createPlayerMovementState,
+        normalizeMoveInput,
+        stepPlayerMovement as stepPlayerMovementModel,
+      } from "./src/playerMovementFeel.ts";
 
       const canvas = document.querySelector("#scene");
       const line = document.querySelector("#line");
@@ -216,17 +223,7 @@
         flashAlpha: 0.34,
         wobbleCycles: 5,
       };
-      const MOVEMENT = {
-        fixedStepSeconds: 1 / 60,
-        targetFrameMs: 16.67,
-        speedMetersPerSecond: 3.6,
-        deadzone: 0.08,
-        minX: -5.2,
-        maxX: 5.2,
-        minZ: -6.4,
-        maxZ: 2.2,
-        inputToVelocityFrames: 1,
-      };
+      const MOVEMENT = DEFAULT_PLAYER_MOVEMENT_FEEL;
 
       const params = new URLSearchParams(window.location.search);
       const slot = params.get("slot") || "local";
@@ -544,30 +541,25 @@
       };
 
       const setMoveInput = (x, z, source = "script") => {
-        const length = Math.hypot(x, z);
-        const scale = length > 1 ? 1 / length : 1;
-        const nextX = x * scale;
-        const nextZ = z * scale;
-        state.movement.input = {
-          x: Math.abs(nextX) < MOVEMENT.deadzone ? 0 : nextX,
-          z: Math.abs(nextZ) < MOVEMENT.deadzone ? 0 : nextZ,
-          source,
-          active: Math.hypot(nextX, nextZ) >= MOVEMENT.deadzone,
-        };
+        state.movement.input = normalizeMoveInput(x, z, source, MOVEMENT);
         publishState();
       };
 
       const stepMovement = (dt = MOVEMENT.fixedStepSeconds) => {
-        const input = state.movement.input;
-        const vx = input.x * MOVEMENT.speedMetersPerSecond;
-        const vz = input.z * MOVEMENT.speedMetersPerSecond;
-        state.player.x = clamp(state.player.x + vx * dt, MOVEMENT.minX, MOVEMENT.maxX);
-        state.player.z = clamp(state.player.z + vz * dt, MOVEMENT.minZ, MOVEMENT.maxZ);
-        if (input.x || input.z) {
-          state.player.facingRadians = Math.atan2(input.x, input.z);
-        }
-        state.movement.lastStepMs = dt * 1000;
-        state.movement.lastVelocityMetersPerSecond = Math.hypot(vx, vz);
+        const movementState = createPlayerMovementState({
+          x: state.player.x,
+          z: state.player.z,
+          facingRadians: state.player.facingRadians,
+          input: state.movement.input,
+          lastStepMs: state.movement.lastStepMs,
+          lastVelocityMetersPerSecond: state.movement.lastVelocityMetersPerSecond,
+        });
+        const result = stepPlayerMovementModel(movementState, dt, MOVEMENT);
+        state.player.x = result.state.x;
+        state.player.z = result.state.z;
+        state.player.facingRadians = result.state.facingRadians;
+        state.movement.lastStepMs = result.state.lastStepMs;
+        state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
       };
 
       const cameraRigInput = (dtSeconds = MOVEMENT.fixedStepSeconds) => ({
@@ -588,36 +580,7 @@
         return clone(state.cameraRig);
       };
 
-      const assertFeelContract = () => {
-        // Snapshot ALL state this probe mutates so it's non-destructive when
-        // called from the console via window.__game. Restore on exit — otherwise
-        // repeated calls accumulate ~0.06m of drift per invocation.
-        const playerSnapshot = clone(state.player);
-        const inputSnapshot = clone(state.movement.input);
-        const lastStepMsSnapshot = state.movement.lastStepMs;
-        const lastVelocitySnapshot = state.movement.lastVelocityMetersPerSecond;
-        const startX = state.player.x;
-        const startZ = state.player.z;
-        setMoveInput(1, 0, "harness");
-        stepMovement(MOVEMENT.fixedStepSeconds);
-        const movedThisFrame = state.player.x > startX && state.player.z === startZ;
-        const observedStepMs = state.movement.lastStepMs;
-        const fixedStepInsideBudget = observedStepMs <= MOVEMENT.targetFrameMs + 0.01;
-        // Restore — position, input vector, and derived movement telemetry.
-        state.player = playerSnapshot;
-        state.movement.input = inputSnapshot;
-        state.movement.lastStepMs = lastStepMsSnapshot;
-        state.movement.lastVelocityMetersPerSecond = lastVelocitySnapshot;
-        publishState();
-        return {
-          passed: movedThisFrame && fixedStepInsideBudget,
-          movedThisFrame,
-          fixedStepInsideBudget,
-          lastStepMs: observedStepMs,
-          targetFrameMs: MOVEMENT.targetFrameMs,
-          inputToVelocityFrames: MOVEMENT.inputToVelocityFrames,
-        };
-      };
+      const assertFeelContract = () => checkPlayerMovementFeel(MOVEMENT);
 
       const publishState = () => {
         syncIoLine();
