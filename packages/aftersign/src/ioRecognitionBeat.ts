@@ -1,40 +1,42 @@
+// Story-state publisher for Io's recognition beat.
+//
+// This module OWNS the state-publish side of the beat: stamping a cue on
+// `IoRecognitionBeatState` so the harness/renderer can react. It does NOT
+// own the feel numbers.
+//
+// SOURCE OF TRUTH for duration, camera delta, sign glow, sting timing, and
+// reduced-motion budget is `apps/web/src/aftersign/recognitionFeedback.ts`
+// (`recognitionFeedbackContract` + `sampleRecognitionFeedbackBeat`). That
+// file publishes a per-ms sample of the whole envelope and is what the
+// renderer/PW tests already consume. Any renderer that wants numbers reads
+// them from there — this cue exists only to tell the renderer *when* to
+// start sampling and *which outcome branch* to walk.
+//
+// Do not add duration/easing/camera/glow constants here. If you feel the
+// urge, edit `recognitionFeedbackContract` instead and let this module
+// stay a thin publisher.
+
 export type IoPacketOutcome = "sealed" | "opened";
 
 export type IoRecognitionBeatCue = {
   readonly kind: "io-recognition-beat";
   readonly packetOutcome: IoPacketOutcome;
   readonly startedAtMs: number;
-  readonly durationMs: number;
-  readonly easing: "cubic-bezier(.2,.8,.2,1)";
-  readonly cameraPushInMeters: number;
-  readonly cameraLiftMeters: number;
-  readonly signGlowPeak: number;
-  readonly signGlowDelayMs: number;
-  readonly bellStingDelayMs: number;
-  readonly subtitleSettleDelayMs: number;
-  readonly reducedMotionDurationMs: number;
 };
 
 export type IoRecognitionBeatState = {
-  lastCue?: "io-recognition-beat";
-  lastCueAt?: number;
+  lastCue: "io-recognition-beat" | null;
+  lastCueAt: number | null;
   statePublishVersion: number;
-  ioRecognitionBeat?: IoRecognitionBeatCue;
+  ioRecognitionBeat: IoRecognitionBeatCue | null;
 };
-
-export const IO_RECOGNITION_BEAT_DURATION_MS = 420;
-export const IO_RECOGNITION_BEAT_EASING = "cubic-bezier(.2,.8,.2,1)" as const;
-export const IO_RECOGNITION_CAMERA_PUSH_IN_METERS = 0.28;
-export const IO_RECOGNITION_CAMERA_LIFT_METERS = 0.04;
-export const IO_RECOGNITION_SIGN_GLOW_PEAK = 1.35;
-export const IO_RECOGNITION_SIGN_GLOW_DELAY_MS = 80;
-export const IO_RECOGNITION_BELL_STING_DELAY_MS = 130;
-export const IO_RECOGNITION_SUBTITLE_SETTLE_DELAY_MS = 180;
-export const IO_RECOGNITION_REDUCED_MOTION_DURATION_MS = 140;
 
 export function createIoRecognitionBeatState(): IoRecognitionBeatState {
   return {
+    lastCue: null,
+    lastCueAt: null,
     statePublishVersion: 0,
+    ioRecognitionBeat: null,
   };
 }
 
@@ -47,15 +49,6 @@ export function playIoRecognitionBeat(
     kind: "io-recognition-beat",
     packetOutcome,
     startedAtMs,
-    durationMs: IO_RECOGNITION_BEAT_DURATION_MS,
-    easing: IO_RECOGNITION_BEAT_EASING,
-    cameraPushInMeters: IO_RECOGNITION_CAMERA_PUSH_IN_METERS,
-    cameraLiftMeters: IO_RECOGNITION_CAMERA_LIFT_METERS,
-    signGlowPeak: IO_RECOGNITION_SIGN_GLOW_PEAK,
-    signGlowDelayMs: IO_RECOGNITION_SIGN_GLOW_DELAY_MS,
-    bellStingDelayMs: IO_RECOGNITION_BELL_STING_DELAY_MS,
-    subtitleSettleDelayMs: IO_RECOGNITION_SUBTITLE_SETTLE_DELAY_MS,
-    reducedMotionDurationMs: IO_RECOGNITION_REDUCED_MOTION_DURATION_MS,
   };
 
   state.ioRecognitionBeat = cue;
@@ -86,58 +79,6 @@ export function assertIoRecognitionBeatCue(
   if (cue.startedAtMs !== startedAtMs) {
     throw new Error(
       `Expected Io recognition to start at ${startedAtMs}ms, received ${cue.startedAtMs}ms`,
-    );
-  }
-
-  if (cue.durationMs !== IO_RECOGNITION_BEAT_DURATION_MS) {
-    throw new Error(
-      `Expected ${IO_RECOGNITION_BEAT_DURATION_MS}ms recognition beat, received ${cue.durationMs}ms`,
-    );
-  }
-
-  if (cue.easing !== IO_RECOGNITION_BEAT_EASING) {
-    throw new Error(`Expected easing ${IO_RECOGNITION_BEAT_EASING}, received ${cue.easing}`);
-  }
-
-  if (cue.cameraPushInMeters !== IO_RECOGNITION_CAMERA_PUSH_IN_METERS) {
-    throw new Error(
-      `Expected ${IO_RECOGNITION_CAMERA_PUSH_IN_METERS}m camera push-in, received ${cue.cameraPushInMeters}m`,
-    );
-  }
-
-  if (cue.cameraLiftMeters !== IO_RECOGNITION_CAMERA_LIFT_METERS) {
-    throw new Error(
-      `Expected ${IO_RECOGNITION_CAMERA_LIFT_METERS}m camera lift, received ${cue.cameraLiftMeters}m`,
-    );
-  }
-
-  if (cue.signGlowPeak !== IO_RECOGNITION_SIGN_GLOW_PEAK) {
-    throw new Error(
-      `Expected ${IO_RECOGNITION_SIGN_GLOW_PEAK}x sign glow peak, received ${cue.signGlowPeak}x`,
-    );
-  }
-
-  if (cue.signGlowDelayMs !== IO_RECOGNITION_SIGN_GLOW_DELAY_MS) {
-    throw new Error(
-      `Expected sign glow at ${IO_RECOGNITION_SIGN_GLOW_DELAY_MS}ms, received ${cue.signGlowDelayMs}ms`,
-    );
-  }
-
-  if (cue.bellStingDelayMs !== IO_RECOGNITION_BELL_STING_DELAY_MS) {
-    throw new Error(
-      `Expected bell sting at ${IO_RECOGNITION_BELL_STING_DELAY_MS}ms, received ${cue.bellStingDelayMs}ms`,
-    );
-  }
-
-  if (cue.subtitleSettleDelayMs !== IO_RECOGNITION_SUBTITLE_SETTLE_DELAY_MS) {
-    throw new Error(
-      `Expected subtitle settle at ${IO_RECOGNITION_SUBTITLE_SETTLE_DELAY_MS}ms, received ${cue.subtitleSettleDelayMs}ms`,
-    );
-  }
-
-  if (cue.reducedMotionDurationMs !== IO_RECOGNITION_REDUCED_MOTION_DURATION_MS) {
-    throw new Error(
-      `Expected reduced-motion duration ${IO_RECOGNITION_REDUCED_MOTION_DURATION_MS}ms, received ${cue.reducedMotionDurationMs}ms`,
     );
   }
 

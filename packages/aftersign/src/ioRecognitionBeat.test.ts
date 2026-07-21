@@ -1,12 +1,4 @@
 import {
-  IO_RECOGNITION_BEAT_DURATION_MS,
-  IO_RECOGNITION_BELL_STING_DELAY_MS,
-  IO_RECOGNITION_CAMERA_LIFT_METERS,
-  IO_RECOGNITION_CAMERA_PUSH_IN_METERS,
-  IO_RECOGNITION_REDUCED_MOTION_DURATION_MS,
-  IO_RECOGNITION_SIGN_GLOW_DELAY_MS,
-  IO_RECOGNITION_SIGN_GLOW_PEAK,
-  IO_RECOGNITION_SUBTITLE_SETTLE_DELAY_MS,
   assertIoRecognitionBeatCue,
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
@@ -39,36 +31,31 @@ test("Io recognition beat stamps opened-packet cue without changing the feel con
 
   assertIoRecognitionBeatCue(before, state, cue, "opened", startedAtMs);
   expect(cue.packetOutcome).toBe("opened");
-  expect(cue.durationMs).toBe(IO_RECOGNITION_BEAT_DURATION_MS);
-  expect(cue.cameraPushInMeters).toBe(IO_RECOGNITION_CAMERA_PUSH_IN_METERS);
-  expect(cue.cameraLiftMeters).toBe(IO_RECOGNITION_CAMERA_LIFT_METERS);
-  expect(cue.signGlowPeak).toBe(IO_RECOGNITION_SIGN_GLOW_PEAK);
+  expect(cue.startedAtMs).toBe(startedAtMs);
 });
 
-test("Io recognition beat carries renderer timing for camera, glow, bell, subtitle, and reduced motion", () => {
+test("Io recognition cue is a thin publisher — no duplicate feel numbers", () => {
   const state = createIoRecognitionBeatState();
   const cue = playIoRecognitionBeat(state, "sealed", 7200);
 
+  // The cue tells the renderer WHEN and WHICH outcome. All timing/camera/glow
+  // numbers live in `apps/web/src/aftersign/recognitionFeedback.ts`
+  // (`recognitionFeedbackContract`). Keep this cue shape minimal so it can't
+  // drift from the contract.
   expect(cue).toEqual({
     kind: "io-recognition-beat",
     packetOutcome: "sealed",
     startedAtMs: 7200,
-    durationMs: 420,
-    easing: "cubic-bezier(.2,.8,.2,1)",
-    cameraPushInMeters: 0.28,
-    cameraLiftMeters: 0.04,
-    signGlowPeak: 1.35,
-    signGlowDelayMs: 80,
-    bellStingDelayMs: 130,
-    subtitleSettleDelayMs: 180,
-    reducedMotionDurationMs: 140,
   });
 
-  expect(IO_RECOGNITION_BELL_STING_DELAY_MS).toBeGreaterThan(IO_RECOGNITION_SIGN_GLOW_DELAY_MS);
-  expect(IO_RECOGNITION_SUBTITLE_SETTLE_DELAY_MS).toBeGreaterThan(
-    IO_RECOGNITION_BELL_STING_DELAY_MS,
-  );
-  expect(IO_RECOGNITION_REDUCED_MOTION_DURATION_MS).toBeLessThan(
-    IO_RECOGNITION_BEAT_DURATION_MS,
-  );
+  expect(Object.keys(cue).sort()).toEqual(["kind", "packetOutcome", "startedAtMs"]);
+});
+
+test("Io recognition state initializes with explicit null fields", () => {
+  const state = createIoRecognitionBeatState();
+
+  expect(state.lastCue).toBeNull();
+  expect(state.lastCueAt).toBeNull();
+  expect(state.ioRecognitionBeat).toBeNull();
+  expect(state.statePublishVersion).toBe(0);
 });
