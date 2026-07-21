@@ -10,6 +10,31 @@ export interface FirstCameraMoveFeelFrame {
   readonly lowPassHz: number;
 }
 
+export interface FirstCameraMoveSignGlow {
+  readonly riseMs: number;
+  readonly holdMs: number;
+  readonly fallMs: number;
+  readonly peakIntensityMultiplier: number;
+}
+
+export interface FirstCameraMoveWetSheenPulse {
+  readonly offsetMs: number;
+  readonly durationMs: number;
+  readonly peakRoughnessDrop: number;
+}
+
+export interface FirstCameraMoveAudioCoupling {
+  readonly rainDuckDb: number;
+  readonly bellHitMs: number;
+  readonly signHumFadeInMs: number;
+}
+
+export interface FirstCameraMoveMobileSafety {
+  readonly maxCameraTravelDegreesPerFrameAt60fps: number;
+  readonly maxScreenShakePx: number;
+  readonly targetFps: number;
+}
+
 export interface FirstCameraMoveFeelContract {
   readonly durationMs: number;
   readonly sampleRateFps: number;
@@ -23,6 +48,18 @@ export interface FirstCameraMoveFeelContract {
   readonly bloomEndStrength: number;
   readonly vignetteStartAlpha: number;
   readonly vignetteEndAlpha: number;
+  // Coupled AV beats layered on top of the camera motion. These are
+  // authored numbers (not sampled) so the runtime and Playwright can
+  // agree on the same envelope. Added 2026-07-21 (PR #748) as the
+  // "flagship JUICE bar" extension — folded into this canonical
+  // contract instead of a parallel `AFTERSIGN_FIRST_CAMERA_MOVE_FEEL`
+  // that would drift.
+  readonly maximumControlLockMs: number;
+  readonly lanternLeadMs: number;
+  readonly signGlow: FirstCameraMoveSignGlow;
+  readonly wetSurfaceSheenPulse: FirstCameraMoveWetSheenPulse;
+  readonly audioCoupling: FirstCameraMoveAudioCoupling;
+  readonly mobileSafety: FirstCameraMoveMobileSafety;
 }
 
 export const FIRST_CAMERA_MOVE_FEEL: FirstCameraMoveFeelContract = {
@@ -38,6 +75,29 @@ export const FIRST_CAMERA_MOVE_FEEL: FirstCameraMoveFeelContract = {
   bloomEndStrength: 0.42,
   vignetteStartAlpha: 0.42,
   vignetteEndAlpha: 0.18,
+  maximumControlLockMs: 900,
+  lanternLeadMs: 120,
+  signGlow: {
+    riseMs: 180,
+    holdMs: 420,
+    fallMs: 260,
+    peakIntensityMultiplier: 1.35,
+  },
+  wetSurfaceSheenPulse: {
+    offsetMs: 240,
+    durationMs: 520,
+    peakRoughnessDrop: 0.16,
+  },
+  audioCoupling: {
+    rainDuckDb: -3,
+    bellHitMs: 760,
+    signHumFadeInMs: 320,
+  },
+  mobileSafety: {
+    maxCameraTravelDegreesPerFrameAt60fps: 0.65,
+    maxScreenShakePx: 0,
+    targetFps: 60,
+  },
 };
 
 export function easeOutCubic(t: number): number {

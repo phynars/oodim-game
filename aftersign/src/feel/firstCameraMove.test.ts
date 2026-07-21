@@ -124,8 +124,68 @@ export function checkSixtyFpsTimelineIsBoundedAndMonotonic(): void {
   }
 }
 
+export function checkCoupledAvBeatsFitInsideAuthoredDuration(): void {
+  const glowTotalMs =
+    FIRST_CAMERA_MOVE_FEEL.signGlow.riseMs +
+    FIRST_CAMERA_MOVE_FEEL.signGlow.holdMs +
+    FIRST_CAMERA_MOVE_FEEL.signGlow.fallMs;
+
+  assert(
+    glowTotalMs <= FIRST_CAMERA_MOVE_FEEL.durationMs,
+    `firstCameraMove.signGlow.total: expected <= ${FIRST_CAMERA_MOVE_FEEL.durationMs}, got ${glowTotalMs}`,
+  );
+
+  assert(
+    FIRST_CAMERA_MOVE_FEEL.maximumControlLockMs <= FIRST_CAMERA_MOVE_FEEL.durationMs,
+    `firstCameraMove.maximumControlLockMs: expected <= ${FIRST_CAMERA_MOVE_FEEL.durationMs}, got ${FIRST_CAMERA_MOVE_FEEL.maximumControlLockMs}`,
+  );
+
+  assert(
+    FIRST_CAMERA_MOVE_FEEL.audioCoupling.bellHitMs < FIRST_CAMERA_MOVE_FEEL.durationMs,
+    `firstCameraMove.bellHitMs: expected < ${FIRST_CAMERA_MOVE_FEEL.durationMs}, got ${FIRST_CAMERA_MOVE_FEEL.audioCoupling.bellHitMs}`,
+  );
+
+  assert(
+    FIRST_CAMERA_MOVE_FEEL.wetSurfaceSheenPulse.offsetMs <
+      FIRST_CAMERA_MOVE_FEEL.audioCoupling.bellHitMs,
+    `firstCameraMove.wetSurfaceSheenPulse.offsetMs: expected < bellHitMs ${FIRST_CAMERA_MOVE_FEEL.audioCoupling.bellHitMs}, got ${FIRST_CAMERA_MOVE_FEEL.wetSurfaceSheenPulse.offsetMs}`,
+  );
+
+  assert(
+    FIRST_CAMERA_MOVE_FEEL.lanternLeadMs >= 100 &&
+      FIRST_CAMERA_MOVE_FEEL.lanternLeadMs <= 140,
+    `firstCameraMove.lanternLeadMs: expected in [100,140], got ${FIRST_CAMERA_MOVE_FEEL.lanternLeadMs}`,
+  );
+}
+
+export function checkMobileSafetyBudget(): void {
+  assertEqual(
+    FIRST_CAMERA_MOVE_FEEL.mobileSafety.targetFps,
+    60,
+    'firstCameraMove.mobileSafety.targetFps',
+  );
+  assertEqual(
+    FIRST_CAMERA_MOVE_FEEL.mobileSafety.maxScreenShakePx,
+    0,
+    'firstCameraMove.mobileSafety.maxScreenShakePx',
+  );
+
+  const yawPerFrame =
+    FIRST_CAMERA_MOVE_FEEL.yawDegrees /
+    ((FIRST_CAMERA_MOVE_FEEL.durationMs / 1000) *
+      FIRST_CAMERA_MOVE_FEEL.mobileSafety.targetFps);
+  // Average yaw travel per 60fps frame must fit the mobile-safety budget.
+  assert(
+    yawPerFrame <=
+      FIRST_CAMERA_MOVE_FEEL.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps,
+    `firstCameraMove.mobileSafety.avgYawPerFrame: expected <= ${FIRST_CAMERA_MOVE_FEEL.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps}, got ${yawPerFrame}`,
+  );
+}
+
 export function runFirstCameraMoveChecks(): void {
   checkStartsVeiledAndLandsOnAuthoredMark();
   checkOpeningPullFeelsIntentionalByFortyPercent();
   checkSixtyFpsTimelineIsBoundedAndMonotonic();
+  checkCoupledAvBeatsFitInsideAuthoredDuration();
+  checkMobileSafetyBudget();
 }
