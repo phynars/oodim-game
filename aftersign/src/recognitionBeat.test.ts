@@ -245,4 +245,19 @@ export function runRecognitionBeatChecks(): void {
   checkBeatSettlesAtEnd();
 }
 
-runRecognitionBeatChecks();
+// Deliberately no top-level `runRecognitionBeatChecks()` call here.
+//
+// Convention (see `aftersign/src/feel/firstCameraMove.test.ts` +
+// `aftersign/src/packetIntent.test.ts` + `aftersign/e2e/packet-intent-contract.spec.ts`):
+// the CI-gating INVOCATION lives in a Playwright spec under `aftersign/e2e/`
+// so `test:e2e:aftersign` actually runs the checks. Wrapping `runRecognitionBeatChecks()`
+// inside a spec's `expect(() => …).not.toThrow()` gives:
+//   • one clear failure message with a stack trace in the Playwright report
+//     when an invariant regresses,
+//   • idempotent execution under the aftersign lane's `retries: 3` cold-start
+//     policy (see `aftersign/playwright.config.ts`), because the checks read
+//     only pure functions with no page fixture,
+//   • no double-execution when a future e2e spec imports symbols from this
+//     module — a bare bottom-level call would fire at import time and re-run
+//     under the harness spec.
+// The paired spec is `aftersign/e2e/recognition-beat-contract.spec.ts`.
