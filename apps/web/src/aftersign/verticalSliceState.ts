@@ -24,6 +24,16 @@ import {
 import {
   DELIVER_PACKET_CONFIRM_FEEL,
 } from "../../../../packages/aftersign/src/interactionConfirm";
+import {
+  createIoRecognitionBeatState,
+  playIoRecognitionBeat,
+  type IoRecognitionBeatCue,
+  type IoRecognitionBeatState,
+} from "../../../../packages/aftersign/src/ioRecognitionBeat";
+import {
+  sampleRecognitionFeedbackBeat,
+  type RecognitionFeedbackSample,
+} from "./recognitionFeedback";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 
@@ -203,6 +213,92 @@ export function sampleAftersignIoMemoryBeat(
     packetOutcome: state.packetOutcome,
     recognitionFeel: state.ioRecognizesPlayer ? AFTERSIGN_IO_RECOGNITION_FEEL : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Recognition-beat producer + renderer sampler wiring.
+//
+// `sampleAftersignIoMemoryBeat` above tells the harness *whether* the beat
+// should play (`recognitionFeel !== null`). What follows wires the actual
+// beat lifecycle:
+//
+//   producer: `openAftersignIoRecognitionBeat` — story-side code (the scene
+//     controller) calls this the moment Io recognizes the player. It stamps
+//     an `IoRecognitionBeatCue` on a small piece of story state
+//     (`IoRecognitionBeatState`) so any renderer/harness watching that state
+//     can react in the same frame.
+//
+//   renderer: `sampleAftersignIoRecognitionEnvelope` — the renderer/PW test
+//     reads the cue and delegates to `sampleRecognitionFeedbackBeat` (the
+//     live feel numbers) to get the per-ms envelope for camera/glow/sting.
+//     This is the wire-up the reviewer asked for on PR #751: the cue module
+//     is now both PUBLISHED to (producer) and READ from (renderer).
+// ---------------------------------------------------------------------------
+
+export type AftersignIoRecognitionBeatOpen = {
+  readonly cueState: IoRecognitionBeatState;
+  readonly cue: IoRecognitionBeatCue;
+};
+
+/**
+ * Producer: stamp Io's recognition-beat cue when the slice enters the
+ * moment where Io remembers the player's packet choice.
+ *
+ * Requires `state.ioRecognizesPlayer === true` and a committed
+ * `state.packetOutcome`; otherwise there is no beat to open and calling
+ * this is a programming error.
+ */
+export function openAftersignIoRecognitionBeat(
+  state: AftersignVerticalSliceState,
+  startedAtMs: number,
+): AftersignIoRecognitionBeatOpen {
+  if (!state.ioRecognizesPlayer) {
+    throw new Error(
+      "Cannot open Io recognition beat: Io does not recognize the player yet",
+    );
+  }
+  if (state.packetOutcome !== "sealed" && state.packetOutcome !== "opened") {
+    throw new Error(
+      "Cannot open Io recognition beat: packetOutcome is not committed",
+    );
+  }
+  if (!Number.isFinite(startedAtMs) || startedAtMs < 0) {
+    throw new Error(
+      "Cannot open Io recognition beat: startedAtMs must be a non-negative finite number",
+    );
+  }
+
+  const cueState = createIoRecognitionBeatState();
+  const cue = playIoRecognitionBeat(cueState, state.packetOutcome, startedAtMs);
+  return { cueState, cue };
+}
+
+/**
+ * Renderer: sample the recognition envelope from an open cue.
+ *
+ * The renderer holds the `IoRecognitionBeatCue` published by the producer
+ * and calls this every frame with the current clock (`nowMs`). Timing and
+ * feel numbers come from the live `recognitionFeedbackContract` /
+ * `sampleRecognitionFeedbackBeat` — this function only converts
+ * `nowMs - cue.startedAtMs` into the elapsed sample so the cue is what
+ * anchors the envelope in time.
+ */
+export function sampleAftersignIoRecognitionEnvelope(
+  cue: IoRecognitionBeatCue,
+  nowMs: number,
+  options: { reducedMotion?: boolean; lineId?: string } = {},
+): RecognitionFeedbackSample {
+  if (!Number.isFinite(nowMs)) {
+    throw new Error("sampleAftersignIoRecognitionEnvelope: nowMs must be finite");
+  }
+
+  const elapsedMs = Math.max(0, nowMs - cue.startedAtMs);
+  return sampleRecognitionFeedbackBeat(elapsedMs, {
+    outcome: cue.packetOutcome,
+    startedAt: cue.startedAtMs,
+    reducedMotion: options.reducedMotion,
+    lineId: options.lineId,
+  });
 }
 
 function assertValidSavedAtTurn(savedAtTurn: number): void {

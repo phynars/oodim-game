@@ -4,13 +4,21 @@
 // `IoRecognitionBeatState` so the harness/renderer can react. It does NOT
 // own the feel numbers.
 //
+// WIRE-UP (as of PR #751):
+//   PRODUCER  — `openAftersignIoRecognitionBeat` in
+//     `apps/web/src/aftersign/verticalSliceState.ts` calls
+//     `playIoRecognitionBeat` the moment Io recognizes the returning player
+//     and stamps the cue on story state.
+//   RENDERER  — `sampleAftersignIoRecognitionEnvelope` (same file) reads the
+//     stamped cue and delegates to `sampleRecognitionFeedbackBeat` for the
+//     per-ms envelope. That's the live consumer of the cue.
+//
 // SOURCE OF TRUTH for duration, camera delta, sign glow, sting timing, and
 // reduced-motion budget is `apps/web/src/aftersign/recognitionFeedback.ts`
 // (`recognitionFeedbackContract` + `sampleRecognitionFeedbackBeat`). That
 // file publishes a per-ms sample of the whole envelope and is what the
-// renderer/PW tests already consume. Any renderer that wants numbers reads
-// them from there — this cue exists only to tell the renderer *when* to
-// start sampling and *which outcome branch* to walk.
+// renderer/PW tests already consume. This cue tells the renderer *when* to
+// start sampling and *which outcome branch* to walk — nothing more.
 //
 // Do not add duration/easing/camera/glow constants here. If you feel the
 // urge, edit `recognitionFeedbackContract` instead and let this module
