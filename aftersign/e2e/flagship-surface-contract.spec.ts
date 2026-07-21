@@ -271,67 +271,97 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     const breakMode = currentBreakMode();
 
     for (const outcome of ["sealed", "opened"] as const) {
-      const slot = `flagship-memory-${outcome}-${Date.now()}`;
-      const url = `/aftersign/?slot=${slot}`;
+      // Wrap each iteration in a labeled step so a Playwright trace
+      // (retain-on-failure in playwright.config.ts) makes it obvious
+      // WHICH iteration failed — the reviewer on #757 could not read
+      // the failing job's log, and without a labeled step the trace
+      // would just show a bare assertion inside an anonymous for-loop.
+      await test.step(`npc-memory round-trip: prior outcome=${outcome}`, async () => {
+        const slot = `flagship-memory-${outcome}-${Date.now()}`;
+        const url = `/aftersign/?slot=${slot}`;
 
-      // Session A: choose an outcome + forceSave.
-      await page.goto(url, { waitUntil: "load" });
-      await readSurface(page);
+        // Session A: choose an outcome + forceSave.
+        await page.goto(url, { waitUntil: "load" });
+        await readSurface(page);
 
-      await page.evaluate(
-        (choiceId) => window.__game!.input.choose(choiceId),
-        outcome === "sealed" ? "keep-sealed" : "open-packet",
-      );
-      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-      await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+        await page.evaluate(
+          (choiceId) => window.__game!.input.choose(choiceId),
+          outcome === "sealed" ? "keep-sealed" : "open-packet",
+        );
+        await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+        await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+        await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 
-      await page.evaluate(() => window.__game!.input.forceSave());
-      await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-        timeout: WAIT_MS,
+        await page.evaluate(() => window.__game!.input.forceSave());
+        await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+          timeout: WAIT_MS,
+        });
+
+        // After forceSave, the impl's deliverPacket() 1180ms setTimeout
+        // may (or may not) have promoted the beat to io-return-recognition
+        // already. Session B's clearLocalState reload zeros the live
+        // state, then choose("return-to-io") advances off the durable
+        // packet-delivered save. Either persisted beat is fine for the
+        // round-trip proof — the invariant is memory + line, not which
+        // beat the timer landed on.
+
+        // Session B: clearLocalState reload + return-to-io.
+        await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+        await readSurface(page);
+        await page.evaluate(() => window.__game!.input.choose("return-to-io"));
+        await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+
+        const returning = await readSurface(page);
+        assertSerializableFlagshipSurface(returning);
+
+        if (breakMode === "drop-memory") {
+          let didThrow = false;
+          try {
+            assertNpcReferencesPriorMemory(returning, outcome);
+          } catch {
+            didThrow = true;
+          }
+          expect(
+            didThrow,
+            `FLAGSHIP_BREAK_MODE=drop-memory must cause assertNpcReferencesPriorMemory to fail for ${outcome}; it did not — the break mode is not wired up.`,
+          ).toBe(true);
+          return;
+        }
+
+        if (breakMode === "wrong-io-line") {
+          let didThrow = false;
+          try {
+            assertNpcReferencesPriorMemory(returning, outcome);
+          } catch {
+            didThrow = true;
+          }
+          expect(
+            didThrow,
+            `FLAGSHIP_BREAK_MODE=wrong-io-line must cause assertNpcReferencesPriorMemory to fail for ${outcome}; it did not.`,
+          ).toBe(true);
+          return;
+        }
+
+        // Pin the beat before the line assertions — if the assertion
+        // fails, the annotation makes the failure self-describing
+        // (which iteration, what beat, what line) instead of a bare
+        // "expected substring" without context.
+        expect(
+          returning.scene.beat,
+          `[outcome=${outcome}] expected scene.beat to advance to io-return-recognition after return-to-io; got '${returning.scene.beat}'`,
+        ).toBe("io-return-recognition");
+
+        assertNpcReferencesPriorMemory(returning, outcome);
+        expect(
+          returning.npcs.io.lastLine,
+          `[outcome=${outcome}] expected lastLine to contain '${IO_RETURN_LINE_FRAGMENT[outcome]}'; got: ${returning.npcs.io.lastLine}`,
+        ).toContain(IO_RETURN_LINE_FRAGMENT[outcome]);
+        expect(
+          returning.npcs.io.lastLineMemoryRefs,
+          `[outcome=${outcome}] expected lastLineMemoryRefs to contain '${IO_RETURN_MEMORY_ID[outcome]}'; got: [${returning.npcs.io.lastLineMemoryRefs.join(", ")}]`,
+        ).toContain(IO_RETURN_MEMORY_ID[outcome]);
+        expect(returning.save.lastLoadProof.source).toBe("server");
       });
-
-      // Session B: clearLocalState reload + return-to-io.
-      await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
-      await readSurface(page);
-      await page.evaluate(() => window.__game!.input.choose("return-to-io"));
-      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-
-      const returning = await readSurface(page);
-      assertSerializableFlagshipSurface(returning);
-
-      if (breakMode === "drop-memory") {
-        let didThrow = false;
-        try {
-          assertNpcReferencesPriorMemory(returning, outcome);
-        } catch {
-          didThrow = true;
-        }
-        expect(
-          didThrow,
-          `FLAGSHIP_BREAK_MODE=drop-memory must cause assertNpcReferencesPriorMemory to fail for ${outcome}; it did not — the break mode is not wired up.`,
-        ).toBe(true);
-        continue;
-      }
-
-      if (breakMode === "wrong-io-line") {
-        let didThrow = false;
-        try {
-          assertNpcReferencesPriorMemory(returning, outcome);
-        } catch {
-          didThrow = true;
-        }
-        expect(
-          didThrow,
-          `FLAGSHIP_BREAK_MODE=wrong-io-line must cause assertNpcReferencesPriorMemory to fail for ${outcome}; it did not.`,
-        ).toBe(true);
-        continue;
-      }
-
-      assertNpcReferencesPriorMemory(returning, outcome);
-      expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT[outcome]);
-      expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID[outcome]);
-      expect(returning.save.lastLoadProof.source).toBe("server");
     }
   });
 
