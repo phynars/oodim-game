@@ -1,27 +1,39 @@
 // Memory-line resolver for Io's returning-player recognition beat.
 //
 // SCOPE (deliberately narrow):
-//   • Own the LINE TEXT variants ("sealed + listened", "opened + listened",
-//     etc.) — this is authored-string data, not a feel envelope.
-//   • Delegate every millisecond, meter, decibel, and easing curve to the
-//     one live source of truth: `recognitionFeedbackContract` and
+//   • Own the LINE-KEY mapping for the returning-session recognition
+//     beat: given a packet outcome × route-attention pair, return the
+//     canonical authored line.
+//   • Delegate every millisecond, meter, decibel, and easing curve to
+//     the one live source of truth: `recognitionFeedbackContract` and
 //     `sampleRecognitionFeedbackBeat` in
 //     `apps/web/src/aftersign/recognitionFeedback.ts`.
+//   • Delegate every string of dialogue to `chooseIoReturningSessionLine`
+//     in `packages/aftersign/src/ioReturningSession.ts`. That module
+//     owns the pinned line text (`sealedPacket`, `openedPacket`,
+//     `sealedPacketListenedRoute`, `sealedPacketSkippedRoute`,
+//     `openedPacketListenedRoute`, `openedPacketSkippedRoute`, etc.);
+//     the shared harness asserts those strings verbatim. Never fork,
+//     paraphrase, or splice them here.
 //
 // EXPLICITLY OUT OF SCOPE:
 //   • No `cameraPushMs`, `cameraPushMeters`, `signGlowDelayMs`,
 //     `stingDelayMs`, `screenShakePx` constants live in this file. Every
 //     prior draft that hardcoded feel numbers here drifted from the live
 //     implementation within one refactor. Consume the contract instead.
+//   • No literal line strings live in this file. If a variant is
+//     missing, add it to `ioReturningSessionLines` in the package —
+//     do not compose it locally by concatenating a coda onto a root.
 //   • No collision with `IoRecognitionBeatCue` / `IoRecognitionBeatState`
 //     from `packages/aftersign/src/ioRecognitionBeat.ts` (that module is
 //     the state-publisher). This module's types are prefixed
 //     `ReturningRecognition…` to keep the vocabulary distinct.
 //
-// If you feel the urge to add a duration or easing here: STOP. Edit
-// `recognitionFeedbackContract` in `recognitionFeedback.ts` — the renderer,
-// Playwright tests, and this module will all pick up the change through
-// `sampleRecognitionFeedbackBeat`.
+// If you feel the urge to add a duration, easing, or line string here:
+// STOP. Edit `recognitionFeedbackContract` in `recognitionFeedback.ts`
+// or `ioReturningSessionLines` in `ioReturningSession.ts` — the
+// renderer, Playwright tests, and this module will all pick up the
+// change through their respective resolvers.
 
 import {
   recognitionFeedbackContract,
@@ -30,13 +42,18 @@ import {
   type RecognitionFeedbackSample,
   type RecognitionOutcome,
 } from "../../apps/web/src/aftersign/recognitionFeedback";
+import {
+  chooseIoReturningSessionLine,
+  type IoRouteAttention,
+} from "../../packages/aftersign/src/ioReturningSession";
 
 export type ReturningPacketOutcome = RecognitionOutcome;
 
 export interface ReturningRecognitionLineState {
   readonly outcome: ReturningPacketOutcome;
   /** Did the player listen to the "let me finish saving your life" route
-   *  the first time? If false, Io appends the corrective coda. */
+   *  the first time? Maps to the canonical `routeAttention` axis in
+   *  `ioReturningSessionLines`: `true → 'listened'`, `false → 'skipped'`. */
   readonly listenedToRoute: boolean;
 }
 
@@ -53,25 +70,30 @@ const LINE_ID = {
   openedSkipped: "io.recognition.returning.opened.skipped.v1",
 } as const;
 
-const SEALED_ROOT =
-  "You came back. So did the blue seal, unbroken. That gives me two facts to trust.";
-const OPENED_ROOT =
-  "You came back. The seal did not. I can use one of those facts.";
-const SKIP_CODA = " Next time, let me finish saving your life.";
-
 /**
  * Resolve the authored memory line Io speaks on recognition.
  *
- * This function returns TEXT ONLY. For timing/camera/glow/sting envelope,
- * call `recognitionBeatProgress` (which delegates to the live contract).
+ * This function returns TEXT ONLY, sourced verbatim from
+ * `chooseIoReturningSessionLine` — the canonical resolver that owns the
+ * pinned line strings. For timing/camera/glow/sting envelope, call
+ * `recognitionBeatProgress` (which delegates to the live contract).
  */
 export function ioRecognitionBeat(
   state: ReturningRecognitionLineState,
 ): ReturningRecognitionLine {
+  const routeAttention: IoRouteAttention = state.listenedToRoute
+    ? "listened"
+    : "skipped";
+
+  const line = chooseIoReturningSessionLine({
+    packetOutcome: state.outcome,
+    routeAttention,
+  });
+
   if (state.outcome === "sealed") {
     return {
       outcome: "sealed",
-      line: state.listenedToRoute ? SEALED_ROOT : `${SEALED_ROOT}${SKIP_CODA}`,
+      line,
       lineId: state.listenedToRoute
         ? LINE_ID.sealedListened
         : LINE_ID.sealedSkipped,
@@ -80,7 +102,7 @@ export function ioRecognitionBeat(
 
   return {
     outcome: "opened",
-    line: state.listenedToRoute ? OPENED_ROOT : `${OPENED_ROOT}${SKIP_CODA}`,
+    line,
     lineId: state.listenedToRoute
       ? LINE_ID.openedListened
       : LINE_ID.openedSkipped,
