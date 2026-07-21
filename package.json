@@ -39,7 +39,7 @@
     "preview:aftersign": "vite preview --config aftersign/vite.config.ts",
     "typecheck:aftersign": "tsc --noEmit -p aftersign/tsconfig.json",
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
-    "test:e2e:aftersign:durable-save": "playwright test --config aftersign/playwright.config.ts e2e/save-load-durable-contract.spec.ts",
+    "test:e2e:aftersign:durable-save": "playwright test --config aftersign/playwright.config.ts e2e/save-load-durable-contract.spec.ts e2e/durable-save-load.spec.ts",
     "test:e2e:aftersign:durable-save:broken-local-only": "FLAGSHIP_BREAK_MODE=local-only-save playwright test --config aftersign/playwright.broken-local-only-save.config.ts e2e/save-load-durable-contract.spec.ts",
     "test:e2e:aftersign:npc-memory": "playwright test --config aftersign/playwright.config.ts e2e/npc-memory-roundtrip.spec.ts",
     "test:e2e:landing": "playwright test --config landing/playwright.config.ts",
