@@ -1,51 +1,112 @@
 import { describe, expect, it } from "vitest";
 
-import { ioRecognitionBeat, recognitionBeatProgress } from "./recognitionBeat";
+import {
+  ioRecognitionBeat,
+  recognitionBeatProgress,
+  recognitionFeedbackContract,
+} from "./recognitionBeat";
 
-describe("Io recognition beat", () => {
-  it("uses the sealed packet memory line with a short authored camera push", () => {
+describe("ioRecognitionBeat — memory line resolver", () => {
+  it("uses the sealed packet memory line when the player listened to the route", () => {
     const beat = ioRecognitionBeat({ outcome: "sealed", listenedToRoute: true });
 
+    expect(beat.outcome).toBe("sealed");
     expect(beat.line).toBe(
       "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
     );
-    expect(beat.cameraPushMs).toBe(420);
-    expect(beat.cameraPushMeters).toBe(0.34);
-    expect(beat.signGlowDelayMs).toBe(120);
-    expect(beat.stingDelayMs).toBe(180);
-    expect(beat.screenLiftPx).toBe(6);
-    expect(beat.screenShakePx).toBe(0.8);
+    expect(beat.lineId).toBe("io.recognition.returning.sealed.listened.v1");
   });
 
-  it("uses the opened packet memory line and preserves the route-skip sting", () => {
+  it("appends the corrective coda when the player skipped the route", () => {
     const beat = ioRecognitionBeat({ outcome: "opened", listenedToRoute: false });
 
+    expect(beat.outcome).toBe("opened");
     expect(beat.line).toBe(
       "You came back. The seal did not. I can use one of those facts. Next time, let me finish saving your life.",
     );
+    expect(beat.lineId).toBe("io.recognition.returning.opened.skipped.v1");
   });
 
-  it("keeps the recognition motion bounded and finished within the beat window", () => {
-    expect(recognitionBeatProgress(0)).toEqual({
-      camera: 0,
-      glow: 0,
-      sting: 0,
-      liftPx: 0,
-      shakePx: 0,
+  it("resolves distinct line ids per outcome × listened combination", () => {
+    const ids = new Set([
+      ioRecognitionBeat({ outcome: "sealed", listenedToRoute: true }).lineId,
+      ioRecognitionBeat({ outcome: "sealed", listenedToRoute: false }).lineId,
+      ioRecognitionBeat({ outcome: "opened", listenedToRoute: true }).lineId,
+      ioRecognitionBeat({ outcome: "opened", listenedToRoute: false }).lineId,
+    ]);
+
+    expect(ids.size).toBe(4);
+  });
+});
+
+describe("recognitionBeatProgress — delegates to the live contract", () => {
+  it("starts at rest with zero camera delta and no sting", () => {
+    const start = recognitionBeatProgress(0);
+
+    expect(start.cameraDeltaMeters).toBe(0);
+    expect(start.cameraYawDegrees).toBe(0);
+    expect(start.stingGainDb).toBeNull();
+    expect(start.progress).toBe(0);
+  });
+
+  it("peaks the camera delta at the contract's cameraPeakMs, not a locally hardcoded value", () => {
+    const peak = recognitionBeatProgress(recognitionFeedbackContract.cameraPeakMs, {
+      outcome: "sealed",
     });
 
-    const mid = recognitionBeatProgress(210);
-    expect(mid.camera).toBeCloseTo(0.875, 3);
-    expect(mid.glow).toBeGreaterThan(0);
-    expect(mid.sting).toBeGreaterThan(0);
-    expect(mid.liftPx).toBe(0);
-    expect(Math.abs(mid.shakePx)).toBeLessThanOrEqual(0.8);
+    expect(peak.cameraDeltaMeters).toBeCloseTo(
+      recognitionFeedbackContract.cameraDeltaMeters,
+      6,
+    );
+    expect(peak.cameraYawDegrees).toBeCloseTo(
+      recognitionFeedbackContract.cameraYawDegrees,
+      6,
+    );
+  });
 
-    const end = recognitionBeatProgress(880);
-    expect(end.camera).toBe(1);
-    expect(end.glow).toBe(0);
-    expect(end.sting).toBe(0);
-    expect(end.liftPx).toBe(0);
-    expect(Math.abs(end.shakePx)).toBeLessThanOrEqual(0.8);
+  it("respects reduced-motion by suppressing camera motion (inherited from the contract)", () => {
+    const reduced = recognitionBeatProgress(80, {
+      reducedMotion: true,
+      outcome: "sealed",
+    });
+
+    expect(reduced.cameraDeltaMeters).toBe(0);
+    expect(reduced.cameraYawDegrees).toBe(0);
+    expect(reduced.totalMs).toBe(recognitionFeedbackContract.reducedMotionTotalMs);
+  });
+
+  it("emits outcome-branch light cues (lantern, packetSeal, kioskSign, rainRim) — not just camera + glow", () => {
+    const sample = recognitionBeatProgress(200, { outcome: "opened" });
+
+    expect(sample.lantern).toBeDefined();
+    expect(sample.packetSeal).toBeDefined();
+    expect(sample.kioskSign).toBeDefined();
+    expect(sample.rainRim).toBeDefined();
+    expect(sample.hapticScale).toBeDefined();
+    expect(sample.audioCueIds).toContain("recognition-sting");
+  });
+
+  it("emits a wooden-click sample when the opened packet is torn (contract-owned timing)", () => {
+    const stingStart = recognitionFeedbackContract.stingStartMs;
+    const clickDelay = recognitionFeedbackContract.openedWoodenClickDelayMs;
+    const opened = recognitionBeatProgress(stingStart + clickDelay + 5, {
+      outcome: "opened",
+    });
+
+    expect(opened.woodenClickElapsedMs).not.toBeNull();
+    expect(opened.woodenClickElapsedMs!).toBeGreaterThanOrEqual(0);
+  });
+
+  it("settles at the end of the beat — no perpetual oscillation past totalMs", () => {
+    const settled = recognitionBeatProgress(
+      recognitionFeedbackContract.totalMs + 500,
+    );
+
+    // elapsedMs is clamped to totalMs by the sampler → progress fully home,
+    // sting has expired (null), and the beat has an endedAt timestamp.
+    expect(settled.progress).toBe(1);
+    expect(settled.elapsedMs).toBe(recognitionFeedbackContract.totalMs);
+    expect(settled.stingGainDb).toBeNull();
+    expect(settled.endedAt).not.toBeNull();
   });
 });
