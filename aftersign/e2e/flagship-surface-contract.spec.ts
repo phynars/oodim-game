@@ -33,6 +33,8 @@ declare global {
 //   - Phase 3/4: NPC memory and durable save/load are active harness gates;
 //     default mode must stay green, and FLAGSHIP_BREAK_MODE proves the same
 //     assertions fail under intentional red-polarity regressions.
+//   - M2-E1 (#735): ACTIVE test below proves a second route-attention memory
+//     chains onto Io's packet memory only after both memories survive a reload.
 //
 // GREEN-LANE SAFETY (review on #648): every assertion in the ACTIVE
 // tests below targets the impl surface that exists at HEAD in
@@ -47,6 +49,36 @@ const BREAK_MODES: readonly FlagshipBreakMode[] = [
   "wrong-io-line",
   "local-only-save",
 ] as const;
+
+type IoPacketOutcome = "sealed" | "opened";
+type IoRouteAttention = "listened" | "skipped";
+
+type StoryMemoryBeat = {
+  lineId?: string;
+  rememberedAction?: string | readonly string[];
+};
+
+type M2Surface = FlagshipGameSurface & {
+  story?: {
+    memoryBeat?: StoryMemoryBeat;
+  };
+};
+
+const IO_CHAINED_MEMORY_ID: Record<IoPacketOutcome, Record<IoRouteAttention, string>> = {
+  sealed: {
+    listened: "io-return-sealed-listened-route",
+    skipped: "io-return-sealed-skipped-route",
+  },
+  opened: {
+    listened: "io-return-opened-listened-route",
+    skipped: "io-return-opened-skipped-route",
+  },
+};
+
+const IO_SINGLE_MEMORY_ID: Record<IoPacketOutcome, string> = {
+  sealed: "io-return-sealed-packet",
+  opened: "io-return-opened-packet",
+};
 
 function currentBreakMode(): FlagshipBreakMode | null {
   const raw = process.env.FLAGSHIP_BREAK_MODE;
@@ -81,6 +113,66 @@ function watchPageErrors(page: Page, label: string): void {
       console.error(`[aftersign ${label}] console.error:`, msg.text());
     }
   });
+}
+
+async function chooseAndWait(page: Page, choiceId: string): Promise<void> {
+  await page.evaluate((id) => window.__game!.input.choose(id), choiceId);
+  await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+}
+
+async function completePacketBeat(page: Page, outcome: IoPacketOutcome): Promise<void> {
+  await chooseAndWait(page, outcome === "sealed" ? "keep-sealed" : "open-packet");
+  await chooseAndWait(page, "deliver-packet");
+}
+
+async function persistAndClearReload(page: Page): Promise<void> {
+  await page.evaluate(() => window.__game!.input.forceSave());
+  await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+    timeout: WAIT_MS,
+  });
+  await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+  await readSurface(page);
+}
+
+async function completeRouteAttentionBeat(
+  page: Page,
+  routeAttention: IoRouteAttention,
+): Promise<void> {
+  await chooseAndWait(page, routeAttention === "listened" ? "listen-to-route" : "skip-route");
+}
+
+function readMemoryBeat(surface: FlagshipGameSurface): StoryMemoryBeat {
+  const memoryBeat = (surface as M2Surface).story?.memoryBeat;
+  expect(memoryBeat, "window.__game.story.memoryBeat must expose the active Io memory line.").toBeTruthy();
+  return memoryBeat!;
+}
+
+function rememberedActions(memoryBeat: StoryMemoryBeat): readonly string[] {
+  if (!memoryBeat.rememberedAction) return [];
+  return Array.isArray(memoryBeat.rememberedAction)
+    ? memoryBeat.rememberedAction
+    : [memoryBeat.rememberedAction];
+}
+
+function assertTwoMemoryIoLine(
+  surface: FlagshipGameSurface,
+  outcome: IoPacketOutcome,
+  routeAttention: IoRouteAttention,
+): void {
+  const memoryBeat = readMemoryBeat(surface);
+  expect(memoryBeat.lineId).toBe(IO_CHAINED_MEMORY_ID[outcome][routeAttention]);
+  expect(memoryBeat.lineId).not.toBe(IO_SINGLE_MEMORY_ID[outcome]);
+  expect(rememberedActions(memoryBeat)).toContain(IO_SINGLE_MEMORY_ID[outcome]);
+  expect(rememberedActions(memoryBeat)).toContain(
+    routeAttention === "listened" ? "io-route-listened" : "io-route-skipped",
+  );
+}
+
+function assertSingleMemoryIoLine(surface: FlagshipGameSurface, outcome: IoPacketOutcome): void {
+  const memoryBeat = readMemoryBeat(surface);
+  expect(memoryBeat.lineId).toBe(IO_SINGLE_MEMORY_ID[outcome]);
+  expect(memoryBeat.lineId).not.toBe(IO_CHAINED_MEMORY_ID[outcome].listened);
+  expect(memoryBeat.lineId).not.toBe(IO_CHAINED_MEMORY_ID[outcome].skipped);
 }
 
 test.describe("AFTERSIGN flagship surface contract (shared)", () => {
@@ -197,6 +289,58 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT.sealed);
     expect(returning.npcs.io.lastLineMemoryRefs).toContain(IO_RETURN_MEMORY_ID.sealed);
     expect(returning.save.lastLoadProof.source).toBe("server");
+  });
+
+  test("M2-E1: Io chains route attention onto packet memory only after both survive reload", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "m2-e1-chained-memory");
+    const breakMode = currentBreakMode();
+
+    for (const outcome of ["sealed", "opened"] as const) {
+      const twoMemorySlot = `flagship-m2-${outcome}-two-memory-${Date.now()}`;
+      const twoMemoryUrl = `/aftersign/?slot=${twoMemorySlot}`;
+
+      await page.goto(twoMemoryUrl, { waitUntil: "load" });
+      await readSurface(page);
+      await completePacketBeat(page, outcome);
+      await persistAndClearReload(page);
+      await completeRouteAttentionBeat(page, "listened");
+      await persistAndClearReload(page);
+      await chooseAndWait(page, "return-to-io");
+
+      const twoMemoryReturn = await readSurface(page);
+      assertSerializableFlagshipSurface(twoMemoryReturn);
+
+      if (breakMode === "drop-memory" || breakMode === "wrong-io-line") {
+        let didThrow = false;
+        try {
+          assertTwoMemoryIoLine(twoMemoryReturn, outcome, "listened");
+        } catch {
+          didThrow = true;
+        }
+        expect(
+          didThrow,
+          `FLAGSHIP_BREAK_MODE=${breakMode} must make the two-memory Io branch fail for ${outcome}; it did not.`,
+        ).toBe(true);
+        continue;
+      }
+
+      assertTwoMemoryIoLine(twoMemoryReturn, outcome, "listened");
+
+      const packetOnlySlot = `flagship-m2-${outcome}-packet-only-${Date.now()}`;
+      const packetOnlyUrl = `/aftersign/?slot=${packetOnlySlot}`;
+
+      await page.goto(packetOnlyUrl, { waitUntil: "load" });
+      await readSurface(page);
+      await completePacketBeat(page, outcome);
+      await persistAndClearReload(page);
+      await persistAndClearReload(page);
+      await chooseAndWait(page, "return-to-io");
+
+      const packetOnlyReturn = await readSurface(page);
+      assertSerializableFlagshipSurface(packetOnlyReturn);
+      assertSingleMemoryIoLine(packetOnlyReturn, outcome);
+    }
   });
 
   test("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
