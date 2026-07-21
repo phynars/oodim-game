@@ -420,7 +420,7 @@
           const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
           return speakAsSealed
             ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
-            : "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
+            : "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept the risk beside your name.";
         }
 
         return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
@@ -502,7 +502,7 @@
         const nextLine = lineForBeat();
         // Only ids the recognition line actually references belong here.
         // The line paraphrases the delivery-outcome fact ("blue seal,
-        // unbroken" / "blue route delivered, seal broken") — the second
+        // unbroken" / "blue route delivered. The seal did not survive") — the second
         // action route-attention fact is durable memory but is NOT spoken,
         // so it must not appear in lastLineMemoryRefs (npc-memory-roundtrip
         // asserts exact-equality with just the minted delivery-outcome id).
