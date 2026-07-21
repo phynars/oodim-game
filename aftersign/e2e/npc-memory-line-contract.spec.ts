@@ -167,8 +167,13 @@ test.describe("AFTERSIGN NPC memory-line contract", () => {
     expect(isRuntimeRememberingLine(line)).toBe(true);
     expect(returning.npcs.io.lastLineMemoryRefs.length).toBeGreaterThan(0);
 
-    // Branch-correct: the opened run acknowledges the broken seal.
-    // Use word-boundary so this doesn't accidentally match "unbroken".
-    expect(line).toMatch(/\bbroken\b/i);
+    // Branch-correct: the opened run acknowledges the seal did not
+    // survive delivery. The recognition line was rephrased in #757 from
+    // "...seal broken..." to "...The seal did not survive." — assert on
+    // the new fragment (which is also the shared
+    // IO_RETURN_LINE_FRAGMENT.opened source of truth in
+    // e2e-shared/flagshipStoryStateContract.ts), not on a token that no
+    // longer appears in the line.
+    expect(line).toMatch(/the seal did not survive/i);
   });
 });
