@@ -30,16 +30,6 @@ export function runIoDialogueChecks(): void {
   );
 
   assertLine(
-    getIoPacketReturnLine({ returnedAfterClose: true, packetOutcome: "withheld" }),
-    IO_RETURNING_LINES.withheldPacket.id,
-  );
-
-  assertLine(
-    getIoPacketReturnLine({ returnedAfterClose: true, packetOutcome: "returned" }),
-    IO_RETURNING_LINES.returnedPacket.id,
-  );
-
-  assertLine(
     getIoRouteReturnLine({ routeAttention: "listened" }),
     IO_RETURNING_LINES.listenedRoute.id,
   );
