@@ -1,6 +1,11 @@
-export const AFTERSIGN_PACKET_OUTCOMES = ["sealed", "opened"] as const;
+// Single source of truth for `AftersignPacketOutcome` lives in
+// `verticalSliceState.ts` — re-export it here so the voice contract cannot
+// drift from the state contract. See PR #758 review.
+export type { AftersignPacketOutcome } from "./verticalSliceState";
+import type { AftersignPacketOutcome } from "./verticalSliceState";
 
-export type AftersignPacketOutcome = (typeof AFTERSIGN_PACKET_OUTCOMES)[number];
+export const AFTERSIGN_PACKET_OUTCOMES = ["sealed", "opened"] as const satisfies readonly AftersignPacketOutcome[];
+
 export type AftersignRouteAttention = "heard" | "skipped";
 export type AftersignReturnReason = "kind" | "evasive" | "blunt";
 
