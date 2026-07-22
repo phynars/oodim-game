@@ -338,6 +338,47 @@ export function createPacketIntentHarness(): PacketIntentHarness {
 }
 
 /**
+ * Reusable guard for any scene/feel adapter that wants to layer animation or
+ * audio on top of packet intent without inventing a second contract. The
+ * player only gets one affordance: 450 ms hold, 14 px cancel radius, and the
+ * four canonical outcomes exposed by this file.
+ */
+export function assertCanonicalPacketIntentContract(
+  config: PacketIntentConfig = PACKET_INTENT,
+  outcomeVocabulary: Record<string, string> = PACKET_OUTCOME,
+): void {
+  assertEqual(
+    config.HOLD_TO_OPEN_MS,
+    PACKET_INTENT.HOLD_TO_OPEN_MS,
+    "packet intent adapters must use the canonical 450ms hold threshold",
+  );
+  assertEqual(
+    config.TAP_TO_PRESERVE_MAX_MS,
+    PACKET_INTENT.TAP_TO_PRESERVE_MAX_MS,
+    "packet intent adapters must use the canonical tap-to-preserve window",
+  );
+  assertEqual(
+    config.DRIFT_CANCEL_PX,
+    PACKET_INTENT.DRIFT_CANCEL_PX,
+    "packet intent adapters must use the canonical 14px drift cancel radius",
+  );
+  assertEqual(
+    config.PROGRESS_DEADBAND_MS,
+    PACKET_INTENT.PROGRESS_DEADBAND_MS,
+    "packet intent adapters must use the canonical progress deadband",
+  );
+
+  const outcomes = Object.values(outcomeVocabulary).sort();
+  const canonicalOutcomes = Object.values(PACKET_OUTCOME).sort();
+
+  assertEqual(
+    outcomes.join("|"),
+    canonicalOutcomes.join("|"),
+    "packet intent adapters must expose exactly unknown/sealed/opened/cancelled",
+  );
+}
+
+/**
  * Runs the parity checks that pin the feel contract.
  *
  * These mirror the assertions in `aftersign/e2e/packet-hold-threshold.spec.ts`
@@ -349,6 +390,7 @@ export function createPacketIntentHarness(): PacketIntentHarness {
  * uncommitted sentinel that the controller actually returns.
  */
 export function runPacketIntentChecks(): void {
+  checkCanonicalContractIsReusableByAdapters();
   checkShortTapPreservesSeal();
   checkDeadzoneReleasePreservesSeal();
   checkNearMissReleasePreservesSeal();
@@ -362,6 +404,10 @@ export function runPacketIntentChecks(): void {
   checkResetReArmsController();
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
+}
+
+function checkCanonicalContractIsReusableByAdapters(): void {
+  assertCanonicalPacketIntentContract();
 }
 
 function checkShortTapPreservesSeal(): void {
