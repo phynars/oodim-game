@@ -14,6 +14,15 @@ name: aftersign-npc-memory-redgreen
 permissions:
   contents: read
 
+env:
+  # Explicit red-lane retirement gate (issue #727). This is the ONLY source
+  # of truth for whether the red-polarity lane runs — the workflow no longer
+  # greps marker text out of the spec file, so editing spec comments cannot
+  # flip red/green polarity. Flip to "live" when Phase 3 lands the
+  # FLAGSHIP_BREAK_MODE=drop-memory conditional guard in
+  # aftersign/e2e/npc-memory-roundtrip.spec.ts.
+  NPC_MEMORY_RED_LANE: retired
+
 on:
   pull_request:
     paths:
@@ -79,27 +88,28 @@ jobs:
         id: preflight
         shell: bash
         run: |
-          # The red-polarity lane only runs once the npc-memory spec exposes
-          # a conditional guard keyed off FLAGSHIP_BREAK_MODE=drop-memory
-          # (the pattern the sibling durable-save spec already uses). Until
-          # then the spec is either fully live (green lane sufficient) or
-          # unconditionally skipped (Playwright exits 0, so a naive "invert
-          # the exit code" red lane would fail on every PR). Detect both
-          # states and retire the red step accordingly.
-          spec=aftersign/e2e/npc-memory-roundtrip.spec.ts
-          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
-            echo "conditional guard present — red polarity will run."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -q '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' "$spec"; then
-            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present — red polarity retired until the spec exposes a conditional guard."
-            echo "retired=true" >> "$GITHUB_OUTPUT"
-          elif grep -q 'test\.skip(' "$spec"; then
-            echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
-            exit 1
-          else
-            echo "npc-memory contract is fully live in the main suite — red polarity retired."
-            echo "retired=true" >> "$GITHUB_OUTPUT"
-          fi
+          # Retirement is an explicit, reviewable gate (issue #727): the
+          # workflow-level NPC_MEMORY_RED_LANE env var above. No spec-text
+          # grepping — a comment edit in the spec can never change CI
+          # polarity. If the gate is flipped to "live" before the spec
+          # actually exposes the FLAGSHIP_BREAK_MODE=drop-memory guard,
+          # the red step below fails loudly ("expected drop-memory to
+          # fail, but the contract passed"), which is the correct signal
+          # to either land the guard or flip the gate back.
+          case "$NPC_MEMORY_RED_LANE" in
+            live)
+              echo "NPC_MEMORY_RED_LANE=live — red polarity will run."
+              echo "retired=false" >> "$GITHUB_OUTPUT"
+              ;;
+            retired)
+              echo "NPC_MEMORY_RED_LANE=retired — red polarity retired until Phase 3 lands the drop-memory conditional guard."
+              echo "retired=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::NPC_MEMORY_RED_LANE must be 'live' or 'retired' (got '${NPC_MEMORY_RED_LANE}'). Fix the env block at the top of this workflow."
+              exit 1
+              ;;
+          esac
 
       - name: Run AFTERSIGN NPC memory contract in broken mode and require failure
         if: steps.preflight.outputs.retired == 'false'
