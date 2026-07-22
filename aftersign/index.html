@@ -298,7 +298,16 @@
           },
           x: stored?.player?.x ?? -1.8,
           z: stored?.player?.z ?? 1.15,
-          facingRadians: stored?.player?.facingRadians ?? 0,
+          // Fresh slots start facing the kiosk (which sits at -z from the
+          // player's spawn at z=1.15). facingRadians=π means forward=(0,-1),
+          // so the trailing camera lands at z ≈ 1.15 + 6.15 = 7.30 — matches
+          // the intended `camera.position.set(0, 2.25, 7.6)` at scene init
+          // (no snap on frame one) and satisfies the kiosk-scene-init
+          // contract's `cameraRig.position.z > 0` assertion. The old
+          // default (0) faced +z, away from the kiosk, and drove the rig
+          // to z ≈ -5.0 while the three.js camera sat at +7.6 — reviewer
+          // on #772 flagged that snap as the real bug behind the red spec.
+          facingRadians: stored?.player?.facingRadians ?? Math.PI,
           // Second deliberate kiosk action (#736 M2-E1). Recorded by
           // the "acknowledge-kiosk" / "skip-kiosk-acknowledge" choices
           // at the packet-choice beat, BEFORE deliver-packet mints the
