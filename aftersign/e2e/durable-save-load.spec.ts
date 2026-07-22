@@ -9,12 +9,12 @@
 // What this spec pins instead: after forceSave(), a full browser
 // navigation (page.goto to a fresh document, then back to the slot URL)
 // followed by forceReload() must still surface the same slot, revision,
-// playerId, timestamp, and lastLoadProof. The in-page forceReload path in
-// the authoritative test does not exercise a real document teardown; this
-// one does. It deliberately accepts either 'server' or 'local-fallback'
-// because authority polarity is owned by the strict test — duplicating
-// that gate here would only add a second place to update when the
-// contract shifts.
+// playerId, timestamp, clean-state, authority, and lastLoadProof. The
+// in-page forceReload path in the authoritative test does not exercise a
+// real document teardown; this one does. It deliberately accepts either
+// 'server' or 'local-fallback' because authority polarity is owned by the
+// strict test — duplicating that gate here would only add a second place
+// to update when the contract shifts.
 //
 // If you are looking for the test that must fail under
 // FLAGSHIP_BREAK_MODE=local-only-save, it is the strict one linked above,
@@ -107,7 +107,7 @@ async function forceReload(page: Page): Promise<void> {
 }
 
 test.describe('AFTERSIGN hard-navigation save survival', () => {
-  test('slot, revision, playerId, timestamp, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
+  test('slot, revision, playerId, timestamp, clean-state, authority, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     // The `?slot=` query keys the storage bucket + endpoint so parallel
     // runs don't collide — it does NOT reach `save.slot`, which the
@@ -153,5 +153,7 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
     expect(loaded.player.id).toBe(saved.player.id);
     expect(loaded.save.revision).toBe(saved.save.revision);
     expect(loaded.save.lastPersistedAt).toBe(saved.save.lastPersistedAt);
+    expect(loaded.save.dirty).toBe(false);
+    expect(loaded.save.authority).toBe(saved.save.authority);
   });
 });
