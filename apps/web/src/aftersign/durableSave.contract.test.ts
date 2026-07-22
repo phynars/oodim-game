@@ -6,10 +6,13 @@ import {
   decodeAftersignDurableSave,
   encodeAftersignDurableSave,
   meetIoForAftersignSlice,
+  openAftersignIoRecognitionBeat,
   recordAftersignPacketChoice,
   restoreAftersignDurableSave,
   sampleAftersignIoMemoryBeat,
+  sampleAftersignIoRecognitionEnvelope,
 } from "./verticalSliceState";
+import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
 
 describe("Aftersign durable save/load contract", () => {
   it("round-trips the remembered packet outcome through a durable save payload", () => {
@@ -61,6 +64,54 @@ describe("Aftersign durable save/load contract", () => {
       packetOutcome: "sealed",
       recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
     });
+  });
+
+  it("anchors Io's returning recognition envelope to the published cue timestamp", () => {
+    const firstSession = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+    );
+    const returningSession = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(encodeAftersignDurableSave(firstSession, 20)),
+    );
+
+    const { cue } = openAftersignIoRecognitionBeat(returningSession, 1_200);
+
+    expect(cue).toEqual({
+      packetOutcome: "opened",
+      startedAtMs: 1_200,
+    });
+    expect(
+      sampleAftersignIoRecognitionEnvelope(cue, 1_320, {
+        reducedMotion: true,
+        lineId: "io-return-opened",
+      }),
+    ).toEqual(
+      sampleRecognitionFeedbackBeat(120, {
+        outcome: "opened",
+        startedAt: 1_200,
+        reducedMotion: true,
+        lineId: "io-return-opened",
+      }),
+    );
+  });
+
+  it("rejects recognition cue opens before Io has a remembered packet outcome", () => {
+    expect(() =>
+      openAftersignIoRecognitionBeat(
+        recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        0,
+      ),
+    ).toThrow("Cannot open Io recognition beat: Io does not recognize the player yet");
+
+    const returningWithoutPacket = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(meetIoForAftersignSlice(createAftersignVerticalSliceState()), 4),
+      ),
+    );
+
+    expect(() => openAftersignIoRecognitionBeat(returningWithoutPacket, 0)).toThrow(
+      "Cannot open Io recognition beat: packetOutcome is not committed",
+    );
   });
 
   it("rejects malformed durable save payloads instead of silently resetting story state", () => {
