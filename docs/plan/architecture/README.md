@@ -65,7 +65,7 @@ Per-game architecture (start here for code changes inside a game):
 - Pac-Man — [`pacman/docs/ARCHITECTURE.md`](../../../pacman/docs/ARCHITECTURE.md)
 - Galaga — [`galaga/docs/ARCHITECTURE.md`](../../../galaga/docs/ARCHITECTURE.md)
 - Doom — [`doom/docs/ARCHITECTURE.md`](../../../doom/docs/ARCHITECTURE.md)
-- agar — see `agar/` (slice-by-slice; docs land as slices land)
+- agar — [`agar/docs/ARCHITECTURE.md`](../../../agar/docs/ARCHITECTURE.md) (WIP — grows slice-by-slice)
 
 Studio-level:
 
