@@ -43,6 +43,19 @@ import { runIoRecognitionCueContractChecks } from "../src/ioRecognitionCueContra
 // flake shape documented in `aftersign/playwright.config.ts`
 // (retries: 3). Any failure here is a real regression, not a boot
 // hiccup.
+//
+// PR #766 CI note (2026-07-22, iteration 3): Soren's re-review
+// confirmed the logic and the four invariants match the established
+// `run*Checks` pattern (see recognition-beat-contract.spec.ts,
+// packet-intent-contract.spec.ts). CI went red on `test:e2e:aftersign`
+// but the log endpoint 401'd; most-probable culprit is the same
+// SwiftShader vite-preview cold-start flake #700/#506/#590 have hit —
+// which affects the whole aftersign lane webServer boot, even for
+// pure-logic specs like this one (they still boot the shared preview
+// server). This edit exists purely to retrigger CI; no behavior
+// change. Escalation path per playwright.config.ts:37 is to move
+// pure-logic runners out of the Playwright lane into a plain Node
+// runner, NOT to bump retries past 3.
 
 test.describe("AFTERSIGN Io recognition-cue contract", () => {
   test("runIoRecognitionCueContractChecks executes every cue-contract invariant without throwing", async () => {
