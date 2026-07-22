@@ -77,6 +77,7 @@ describe("Aftersign durable save/load contract", () => {
     const { cue } = openAftersignIoRecognitionBeat(returningSession, 1_200);
 
     expect(cue).toEqual({
+      kind: "io-recognition-beat",
       packetOutcome: "opened",
       startedAtMs: 1_200,
     });
