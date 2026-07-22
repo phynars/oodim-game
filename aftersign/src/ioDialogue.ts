@@ -1,4 +1,4 @@
-export type PacketOutcome = "sealed" | "opened";
+export type PacketOutcome = "sealed" | "opened" | "withheld" | "returned";
 
 export type RouteAttention = "listened" | "skipped";
 
@@ -46,6 +46,16 @@ export const IO_RETURNING_LINES = {
     text: "You came back. The seal did not. I can use one of those facts.",
     remembers: ["returnedAfterClose", "packetOutcome"],
   },
+  withheldPacket: {
+    id: "io.return.packet-withheld",
+    text: "You came back with the packet still in your pocket. That is not nothing. It is not delivery.",
+    remembers: ["returnedAfterClose", "packetOutcome"],
+  },
+  returnedPacket: {
+    id: "io.return.packet-returned",
+    text: "You brought the work back instead of losing it. Bad news, neatly labeled, still counts.",
+    remembers: ["returnedAfterClose", "packetOutcome"],
+  },
   skippedRoute: {
     id: "io.return.route-skipped",
     text: "You found the box anyway. Next time, let me finish saving your life.",
@@ -74,9 +84,17 @@ export const IO_RETURNING_LINES = {
 } as const satisfies Record<string, IoDialogueLine>;
 
 export function getIoPacketReturnLine(memory: IoPlayerMemory): IoDialogueLine {
-  return memory.packetOutcome === "opened"
-    ? IO_RETURNING_LINES.openedPacket
-    : IO_RETURNING_LINES.sealedPacket;
+  switch (memory.packetOutcome) {
+    case "opened":
+      return IO_RETURNING_LINES.openedPacket;
+    case "withheld":
+      return IO_RETURNING_LINES.withheldPacket;
+    case "returned":
+      return IO_RETURNING_LINES.returnedPacket;
+    case "sealed":
+    default:
+      return IO_RETURNING_LINES.sealedPacket;
+  }
 }
 
 export function getIoRouteReturnLine(memory: IoPlayerMemory): IoDialogueLine | null {
