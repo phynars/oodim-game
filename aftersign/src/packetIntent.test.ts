@@ -1,3 +1,3 @@
-import { runPacketIntentChecks } from './packetIntent';
+import { runPacketIntentChecks } from "./packetIntent";
 
 runPacketIntentChecks();
