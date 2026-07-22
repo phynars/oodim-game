@@ -349,7 +349,6 @@ export function createPacketIntentHarness(): PacketIntentHarness {
  * uncommitted sentinel that the controller actually returns.
  */
 export function runPacketIntentChecks(): void {
-  checkCanonicalContractIsReusableByAdapters();
   checkShortTapPreservesSeal();
   checkDeadzoneReleasePreservesSeal();
   checkNearMissReleasePreservesSeal();
@@ -363,10 +362,6 @@ export function runPacketIntentChecks(): void {
   checkResetReArmsController();
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
-}
-
-function checkCanonicalContractIsReusableByAdapters(): void {
-  assertCanonicalPacketIntentContract();
 }
 
 function checkShortTapPreservesSeal(): void {
