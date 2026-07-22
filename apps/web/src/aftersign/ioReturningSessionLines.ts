@@ -42,9 +42,27 @@ export const IO_RETURNING_SESSION_LINES: Record<IoPacketOutcome, IoReturningSess
     rememberedAction: 'Player opened the first blue packet before delivery.',
     text: getIoReturningSessionLineFromPackage('openedPacket'),
   },
+  withheld: {
+    id: 'io-return-withheld-packet',
+    rememberedAction:
+      'Player came back still holding the first blue packet — never delivered, never opened.',
+    text: getIoReturningSessionLineFromPackage('withheldPacket'),
+  },
+  returned: {
+    id: 'io-return-returned-packet',
+    rememberedAction:
+      'Player carried the first blue packet back to Io instead of losing or delivering it.',
+    text: getIoReturningSessionLineFromPackage('returnedPacket'),
+  },
 }
 
-type IoReturningSessionChainedKey = `${IoPacketOutcome}Packet${Capitalize<IoRouteAttention>}Route`
+// Chained packet+route lines only exist for the two outcomes where the
+// player actually reached the delivery leg (sealed / opened). Withheld
+// and returned end the route before route-attention is measured, so
+// there's nothing to chain — the packet line stands alone.
+type IoChainablePacketOutcome = Extract<IoPacketOutcome, 'sealed' | 'opened'>
+type IoReturningSessionChainedKey =
+  `${IoChainablePacketOutcome}Packet${Capitalize<IoRouteAttention>}Route`
 
 export const IO_RETURNING_SESSION_CHAINED_LINES: Record<
   IoReturningSessionChainedKey,
@@ -123,10 +141,16 @@ export const IO_BARE_RETURN_LINE: IoReturningSessionMemoryLine = {
 // export (which returns a raw string keyed by line id). The web view
 // returns the decorated memory record instead — different signature,
 // different behavior, so it gets a different name.
+function isChainablePacketOutcome(
+  outcome: IoPacketOutcome,
+): outcome is IoChainablePacketOutcome {
+  return outcome === 'sealed' || outcome === 'opened'
+}
+
 export function getIoReturningSessionMemoryLine(
   memory: IoReturningSessionMemory,
 ): IoReturningSessionMemoryLine {
-  if (memory.routeInstructionBehavior) {
+  if (memory.routeInstructionBehavior && isChainablePacketOutcome(memory.packetOutcome)) {
     const chainedKey = `${memory.packetOutcome}Packet${memory.routeInstructionBehavior === 'listened' ? 'Listened' : 'Skipped'}Route` as const
     return IO_RETURNING_SESSION_CHAINED_LINES[chainedKey]
   }
