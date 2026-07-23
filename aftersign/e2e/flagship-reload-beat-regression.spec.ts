@@ -68,7 +68,7 @@ const DELIVERED_LINE =
 const SEALED_RECOGNITION_LINE =
   "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
 const OPENED_RECOGNITION_LINE =
-  "I remember you: blue route delivered, seal broken. The kiosk kept the route; I kept the risk beside your name.";
+  "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept the risk beside your name.";
 
 type PacketPath = {
   name: string;
