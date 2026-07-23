@@ -1,3 +1,3 @@
-import { runPacketChoiceFeelChecks } from './packetChoiceFeel';
+import { runPacketChoiceFeelChecks } from './packetChoiceFeel'
 
-runPacketChoiceFeelChecks();
+runPacketChoiceFeelChecks()
