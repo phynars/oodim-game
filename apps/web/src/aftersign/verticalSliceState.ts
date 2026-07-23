@@ -54,6 +54,14 @@ import {
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackSample,
 } from "./recognitionFeedback";
+import {
+  IO_RETURN_MEMORY_ID,
+  type FlagshipDeliveryOutcome,
+  type FlagshipGameSurface,
+  type FlagshipIoMemory,
+  type FlagshipIoTrustPosture,
+  type FlagshipSceneBeat,
+} from "../../../../e2e-shared/flagshipStoryStateContract";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 
@@ -105,46 +113,31 @@ export type AftersignPacketChoiceConfirmBeat = {
   confirmFeel: AftersignPacketChoiceConfirmFeel;
 };
 
-export type AftersignStoryBeatId =
-  | "packet-unresolved"
-  | "packet-sealed"
-  | "packet-opened"
-  | "io-first-meeting"
-  | "io-remembers-sealed-packet"
-  | "io-remembers-opened-packet";
-
-export type AftersignStoryStateSnapshot = {
-  story: {
-    id: "aftersign.verticalSlice";
-    act: "act-1";
-    beat: AftersignStoryBeatId;
-    completedBeats: AftersignStoryBeatId[];
-  };
-  state: {
-    scene: AftersignSceneId;
-    player: {
-      id: string;
-      name: string;
-    };
-    npcs: [
-      {
-        id: "io";
-        name: "Io";
-        disposition: "waiting" | "met-player" | "recognizes-player";
-        rememberedSessionIds: string[];
-        memory: {
-          recognizesPlayer: boolean;
-          packetOutcome: AftersignPacketOutcome | null;
-        };
-      },
-    ];
-  };
-};
+/**
+ * Story/state snapshot for the vertical slice, typed AGAINST the
+ * authoritative FlagshipGameSurface contract
+ * (e2e-shared/flagshipStoryStateContract.ts, mirroring
+ * docs/flagship/story-state-contract.md). Every enum value here —
+ * scene.id, scene.act, scene.beat, delivery.outcome, npcs.io.trustPosture,
+ * memory ids — is the contract's own vocabulary, imported (not redefined)
+ * so this module cannot drift from the shape the harness asserts via
+ * `assertSerializableFlagshipSurface`.
+ *
+ * This is the data slice of the surface: everything except `input`
+ * (the imperative driver methods) and the full `save` block, which are
+ * owned by the window-surface layer that wires storage + reload proofs.
+ * `storyStateInvariants.test.ts` remains the failing-first gate for the
+ * complete surface; this snapshot is the pure-state contribution to it.
+ */
+export type AftersignStoryStateSnapshot = Pick<
+  FlagshipGameSurface,
+  "version" | "build" | "scene" | "player" | "delivery" | "npcs"
+>;
 
 export type AftersignStoryStateOptions = {
   playerId: string;
-  playerName: string;
-  rememberedSessionIds?: string[];
+  playerName?: string | null;
+  sessionId: string;
 };
 
 const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
@@ -305,94 +298,114 @@ export function sampleAftersignIoMemoryBeat(
   };
 }
 
+/**
+ * Project the vertical-slice state onto the contract's data shape.
+ *
+ * The snapshot is pure data (JSON-serializable — same rule
+ * `assertSerializableFlagshipSurface` round-trips) and every enum value
+ * comes from the imported contract vocabulary. Dialogue (`lastLine`,
+ * `lastLineMemoryRefs`) is intentionally null/empty here: authored lines
+ * belong to the line-producer capability, not the pure state projection.
+ */
 export function getAftersignStoryState(
   state: AftersignVerticalSliceState,
   options: AftersignStoryStateOptions,
 ): AftersignStoryStateSnapshot {
   return {
-    story: {
-      id: "aftersign.verticalSlice",
-      act: "act-1",
-      beat: getAftersignCurrentStoryBeat(state),
-      completedBeats: getAftersignCompletedStoryBeats(state),
+    version: 1,
+    build: {
+      slug: "aftersign",
+      mode: "test",
     },
-    state: {
-      scene: state.scene,
-      player: {
-        id: options.playerId,
-        name: options.playerName,
+    scene: {
+      id: "io-night-post-kiosk",
+      act: "act-1-seal",
+      beat: getAftersignSceneBeat(state),
+      ready: true,
+    },
+    player: {
+      id: options.playerId,
+      name: options.playerName ?? null,
+      flags: {
+        ...(state.ioHasMetPlayer ? { io_intro_seen: true } : {}),
+        ...(state.ioRecognizesPlayer ? { returned_after_first_session: true } : {}),
       },
-      npcs: [
-        {
-          id: "io",
-          name: "Io",
-          disposition: getAftersignIoDisposition(state),
-          rememberedSessionIds: [...(options.rememberedSessionIds ?? [])],
-          memory: {
-            recognizesPlayer: state.ioRecognizesPlayer,
-            packetOutcome: state.packetOutcome,
-          },
-        },
-      ],
+    },
+    delivery: {
+      id: "blue-packet",
+      outcome: getAftersignDeliveryOutcome(state),
+    },
+    npcs: {
+      io: {
+        id: "io",
+        displayName: "Io Vale",
+        present: state.scene === "io-return",
+        trustPosture: getAftersignIoTrustPosture(state),
+        memories: getAftersignIoMemories(state, options.sessionId),
+        lastLine: null,
+        lastLineMemoryRefs: [],
+      },
     },
   };
 }
 
-function getAftersignCurrentStoryBeat(
-  state: AftersignVerticalSliceState,
-): AftersignStoryBeatId {
-  if (state.ioRecognizesPlayer && state.packetOutcome === "opened") {
-    return "io-remembers-opened-packet";
+function getAftersignSceneBeat(state: AftersignVerticalSliceState): FlagshipSceneBeat {
+  if (
+    state.ioRecognizesPlayer &&
+    (state.packetOutcome === "sealed" || state.packetOutcome === "opened")
+  ) {
+    return "io-return-recognition";
   }
+  if (state.packetOutcome === "sealed" || state.packetOutcome === "opened") {
+    return "packet-delivered";
+  }
+  return "packet-choice";
+}
+
+function getAftersignDeliveryOutcome(
+  state: AftersignVerticalSliceState,
+): FlagshipDeliveryOutcome {
+  return state.packetOutcome ?? "unknown";
+}
+
+function getAftersignIoTrustPosture(
+  state: AftersignVerticalSliceState,
+): FlagshipIoTrustPosture {
   if (state.ioRecognizesPlayer && state.packetOutcome === "sealed") {
-    return "io-remembers-sealed-packet";
+    return "trusted-seal";
   }
-  if (state.ioHasMetPlayer) {
-    return "io-first-meeting";
-  }
-  if (state.packetOutcome === "opened") {
-    return "packet-opened";
-  }
-  if (state.packetOutcome === "sealed") {
-    return "packet-sealed";
-  }
-  return "packet-unresolved";
-}
-
-function getAftersignCompletedStoryBeats(
-  state: AftersignVerticalSliceState,
-): AftersignStoryBeatId[] {
-  const completedBeats: AftersignStoryBeatId[] = [];
-
-  if (state.packetOutcome === "opened") {
-    completedBeats.push("packet-opened");
-  } else if (state.packetOutcome === "sealed") {
-    completedBeats.push("packet-sealed");
-  }
-
-  if (state.ioHasMetPlayer) {
-    completedBeats.push("io-first-meeting");
-  }
-
   if (state.ioRecognizesPlayer && state.packetOutcome === "opened") {
-    completedBeats.push("io-remembers-opened-packet");
-  } else if (state.ioRecognizesPlayer && state.packetOutcome === "sealed") {
-    completedBeats.push("io-remembers-sealed-packet");
+    return "useful-breach";
   }
-
-  return completedBeats;
+  return "untested";
 }
 
-function getAftersignIoDisposition(
+function getAftersignIoMemories(
   state: AftersignVerticalSliceState,
-): AftersignStoryStateSnapshot["state"]["npcs"][number]["disposition"] {
-  if (state.ioRecognizesPlayer) {
-    return "recognizes-player";
+  sessionId: string,
+): FlagshipIoMemory[] {
+  if (
+    !state.ioRecognizesPlayer ||
+    (state.packetOutcome !== "sealed" && state.packetOutcome !== "opened")
+  ) {
+    return [];
   }
-  if (state.ioHasMetPlayer) {
-    return "met-player";
-  }
-  return "waiting";
+
+  // Memory id comes from the contract's required-mappings table
+  // (IO_RETURN_MEMORY_ID) — the same id assertNpcReferencesPriorMemory
+  // requires in lastLineMemoryRefs when the returning line plays.
+  return [
+    {
+      id: IO_RETURN_MEMORY_ID[state.packetOutcome],
+      kind: "delivery-outcome",
+      subject: "player",
+      predicate: "delivered-packet",
+      object: state.packetOutcome,
+      deliveryId: "blue-packet",
+      sessionId,
+      source: "server",
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------

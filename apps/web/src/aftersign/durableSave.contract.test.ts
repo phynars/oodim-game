@@ -47,7 +47,13 @@ describe("Aftersign durable save/load contract", () => {
     });
   });
 
-  it("publishes the story/state snapshot that window.__game must expose", () => {
+  it("publishes the FlagshipGameSurface-shaped story/state snapshot after a durable NPC-memory round-trip", () => {
+    // Session 1: choose "opened", meet Io, durably save. Session 2:
+    // restore + meet Io again — the recognition state must project to
+    // the AUTHORITATIVE contract vocabulary (e2e-shared/
+    // flagshipStoryStateContract.ts): scene.act 'act-1-seal', beat
+    // 'io-return-recognition', memory id from IO_RETURN_MEMORY_ID with
+    // source 'server'. No invented enums.
     const returningSession = meetIoForAftersignSlice(
       restoreAftersignDurableSave(
         encodeAftersignDurableSave(
@@ -59,43 +65,81 @@ describe("Aftersign durable save/load contract", () => {
       ),
     );
 
-    expect(
-      getAftersignStoryState(returningSession, {
-        playerId: "player-persistent-7",
-        playerName: "Signal Runner",
-        rememberedSessionIds: ["session-1"],
-      }),
-    ).toEqual({
-      story: {
-        id: "aftersign.verticalSlice",
-        act: "act-1",
-        beat: "io-remembers-opened-packet",
-        completedBeats: [
-          "packet-opened",
-          "io-first-meeting",
-          "io-remembers-opened-packet",
-        ],
+    const snapshot = getAftersignStoryState(returningSession, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      sessionId: "session-1",
+    });
+
+    expect(snapshot).toEqual({
+      version: 1,
+      build: {
+        slug: "aftersign",
+        mode: "test",
       },
-      state: {
-        scene: "io-return",
-        player: {
-          id: "player-persistent-7",
-          name: "Signal Runner",
+      scene: {
+        id: "io-night-post-kiosk",
+        act: "act-1-seal",
+        beat: "io-return-recognition",
+        ready: true,
+      },
+      player: {
+        id: "player-persistent-7",
+        name: "Signal Runner",
+        flags: {
+          io_intro_seen: true,
+          returned_after_first_session: true,
         },
-        npcs: [
-          {
-            id: "io",
-            name: "Io",
-            disposition: "recognizes-player",
-            rememberedSessionIds: ["session-1"],
-            memory: {
-              recognizesPlayer: true,
-              packetOutcome: "opened",
+      },
+      delivery: {
+        id: "blue-packet",
+        outcome: "opened",
+      },
+      npcs: {
+        io: {
+          id: "io",
+          displayName: "Io Vale",
+          present: true,
+          trustPosture: "useful-breach",
+          memories: [
+            {
+              id: "io-remembers-blue-packet-opened",
+              kind: "delivery-outcome",
+              subject: "player",
+              predicate: "delivered-packet",
+              object: "opened",
+              deliveryId: "blue-packet",
+              sessionId: "session-1",
+              source: "server",
             },
-          },
-        ],
+          ],
+          lastLine: null,
+          lastLineMemoryRefs: [],
+        },
       },
     });
+
+    // Pure-data rule from the contract: the snapshot must survive a
+    // JSON round-trip byte-identical (no functions, cycles, or Dates).
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
+  it("keeps Io's memories empty and posture untested before recognition", () => {
+    const firstMeeting = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+    );
+
+    const snapshot = getAftersignStoryState(firstMeeting, {
+      playerId: "player-persistent-7",
+      sessionId: "session-1",
+    });
+
+    expect(snapshot.scene.beat).toBe("packet-delivered");
+    expect(snapshot.delivery.outcome).toBe("sealed");
+    expect(snapshot.npcs.io.trustPosture).toBe("untested");
+    expect(snapshot.npcs.io.memories).toEqual([]);
+    expect(snapshot.player.name).toBeNull();
+    expect(snapshot.player.flags).toEqual({ io_intro_seen: true });
   });
 
   it("keeps Io's first meeting quiet, then plays the frozen recognition feel on return", () => {
