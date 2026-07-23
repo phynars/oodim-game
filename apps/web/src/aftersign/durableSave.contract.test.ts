@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
   AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
   confirmAftersignPacketChoice,
@@ -10,9 +11,11 @@ import {
   meetIoForAftersignSlice,
   openAftersignIoRecognitionBeat,
   recordAftersignPacketChoice,
+  resolveAftersignPacketConfirmInteraction,
   restoreAftersignDurableSave,
   sampleAftersignIoMemoryBeat,
   sampleAftersignIoRecognitionEnvelope,
+  sampleAftersignPacketConfirmInteractionEnvelope,
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
 
@@ -140,6 +143,53 @@ describe("Aftersign durable save/load contract", () => {
     expect(() => openAftersignIoRecognitionBeat(returningWithoutPacket, 0)).toThrow(
       "Cannot open Io recognition beat: packetOutcome is not committed",
     );
+  });
+
+  it("resolves the packet-confirm interaction kind from the committed outcome", () => {
+    const opened = recordAftersignPacketChoice(
+      createAftersignVerticalSliceState(),
+      "opened",
+    );
+    const sealed = recordAftersignPacketChoice(
+      createAftersignVerticalSliceState(),
+      "sealed",
+    );
+
+    expect(resolveAftersignPacketConfirmInteraction(opened)).toEqual({
+      kind: "packetOpen",
+      feel: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetOpen,
+    });
+    expect(resolveAftersignPacketConfirmInteraction(sealed)).toEqual({
+      kind: "packetPreserve",
+      feel: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetPreserve,
+    });
+    expect(
+      resolveAftersignPacketConfirmInteraction(sealed, "inspect"),
+    ).toEqual({
+      kind: "packetInspect",
+      feel: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetInspect,
+    });
+
+    expect(() =>
+      resolveAftersignPacketConfirmInteraction(createAftersignVerticalSliceState()),
+    ).toThrow(
+      "Cannot resolve Aftersign packet-confirm interaction: packetOutcome is not committed",
+    );
+  });
+
+  it("routes the resolved kind through the live envelope sampler", () => {
+    const opened = recordAftersignPacketChoice(
+      createAftersignVerticalSliceState(),
+      "opened",
+    );
+    const { kind } = resolveAftersignPacketConfirmInteraction(opened);
+
+    const envelope = sampleAftersignPacketConfirmInteractionEnvelope(kind, 0);
+    expect(envelope.kind).toBe("packetOpen");
+    expect(envelope.label).toBe("packet-open");
+    if (envelope.kind === "packetOpen") {
+      expect(envelope.tearProgress).toBe(0);
+    }
   });
 
   it("rejects malformed durable save payloads instead of silently resetting story state", () => {
