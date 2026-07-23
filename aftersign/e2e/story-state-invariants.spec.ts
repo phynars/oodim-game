@@ -20,6 +20,12 @@
 // It's failing-first against any impl that publishes a beat outside the
 // authored enum (e.g. someone renames `packet-choice` → `choose-packet`
 // without updating the contract). It's green under the current impl.
+//
+// Iteration on review #784: added `watchPageErrors` (matches every sibling
+// spec — surfaces JS errors in the CI job log the next time this lane
+// flakes) and now drives BOTH `sealed` AND `opened` outcomes at runtime,
+// so the invariant covers two of the five FlagshipDeliveryOutcome values
+// dynamically rather than only structurally.
 
 import { expect, test, type Page } from '@playwright/test';
 
@@ -68,6 +74,23 @@ async function readSurface(page: Page): Promise<FlagshipGameSurface> {
   return page.evaluate(() => window.__game as FlagshipGameSurface);
 }
 
+// Mirrors the sibling flagship-surface-contract.spec.ts helper. Surfaces
+// JS errors and console errors in the Playwright job log so the next
+// reviewer who hits a red aftersign lane has SOME signal even when the
+// GitHub Actions job-logs endpoint is 401 (see the review on #784).
+function watchPageErrors(page: Page, label: string): void {
+  page.on('pageerror', (err) => {
+    // eslint-disable-next-line no-console
+    console.error(`[aftersign ${label}] pageerror:`, err.message);
+  });
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      // eslint-disable-next-line no-console
+      console.error(`[aftersign ${label}] console.error:`, msg.text());
+    }
+  });
+}
+
 function assertBeatInAuthoredSet(beat: string, label: string): void {
   expect(
     AUTHORED_BEATS.has(beat as FlagshipSceneBeat),
@@ -82,70 +105,96 @@ function assertDeliveryOutcomeInAuthoredSet(outcome: string, label: string): voi
   ).toBe(true);
 }
 
+// The two committed delivery outcomes the packet flow can produce at
+// runtime. `unknown` is the cold-start value; `withheld` / `returned`
+// are enum members not driven by the current authored happy paths and
+// stay covered by the structural (enum-set) assertions.
+const PACKET_FLOW: readonly {
+  choice: 'keep-sealed' | 'open-packet';
+  outcome: 'sealed' | 'opened';
+}[] = [
+  { choice: 'keep-sealed', outcome: 'sealed' },
+  { choice: 'open-packet', outcome: 'opened' },
+] as const;
+
 test.describe('AFTERSIGN story/state invariants', () => {
-  test('scene beat and delivery outcome stay inside the authored contract across a sealed run', async ({
-    page,
-  }) => {
-    test.setTimeout(COLD_START_MS);
+  for (const { choice, outcome } of PACKET_FLOW) {
+    test(`scene beat and delivery outcome stay inside the authored contract across a ${outcome} run`, async ({
+      page,
+    }) => {
+      test.setTimeout(COLD_START_MS);
+      watchPageErrors(page, `story-state-invariants-${outcome}`);
 
-    await page.goto(`/aftersign/?slot=story-state-invariants-${Date.now()}`, {
-      waitUntil: 'load',
+      await page.goto(
+        `/aftersign/?slot=story-state-invariants-${outcome}-${Date.now()}`,
+        { waitUntil: 'load' },
+      );
+
+      const initial = await readSurface(page);
+      assertSerializableFlagshipSurface(initial);
+
+      // Cold-start invariants — pinned literals from the shared contract.
+      expect(initial.scene.act, 'scene.act must be act-1-seal at cold start').toBe(
+        'act-1-seal',
+      );
+      expect(initial.scene.id, 'scene.id must be io-night-post-kiosk').toBe(
+        'io-night-post-kiosk',
+      );
+      assertBeatInAuthoredSet(initial.scene.beat, `cold-start ${outcome}`);
+      assertDeliveryOutcomeInAuthoredSet(initial.delivery.outcome, `cold-start ${outcome}`);
+      expect(initial.delivery.id, 'delivery.id must be blue-packet').toBe('blue-packet');
+      expect(
+        initial.delivery.outcome,
+        'cold-start delivery.outcome must be unknown',
+      ).toBe('unknown');
+      expect(initial.npcs.io.id, 'npcs.io.id must be io').toBe('io');
+
+      // Drive the packet-choice branch and re-assert the invariant at each
+      // observation point. If a rename lands (e.g. `packet-choice` →
+      // `choose-packet`) or a debug-only beat leaks through, one of these
+      // snapshots will trip.
+      await page.evaluate((id) => window.__game!.input.choose(id), choice);
+      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+      const afterChoice = await readSurface(page);
+      assertBeatInAuthoredSet(afterChoice.scene.beat, `after ${choice}`);
+      assertDeliveryOutcomeInAuthoredSet(
+        afterChoice.delivery.outcome,
+        `after ${choice}`,
+      );
+
+      await page.evaluate(() => window.__game!.input.choose('deliver-packet'));
+      await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+      const afterDeliver = await readSurface(page);
+      assertBeatInAuthoredSet(afterDeliver.scene.beat, `after deliver-packet (${outcome})`);
+      assertDeliveryOutcomeInAuthoredSet(
+        afterDeliver.delivery.outcome,
+        `after deliver-packet (${outcome})`,
+      );
+
+      // Delivery-outcome invariant: once delivered, outcome must be the
+      // committed value the player chose — not 'unknown', not a debug
+      // placeholder. This is the story-state hinge the harness gates,
+      // and driving both branches proves the outcome tracks the input
+      // rather than being a hardcoded literal.
+      expect(
+        afterDeliver.delivery.outcome,
+        `after deliver-packet the delivery.outcome must be committed to '${outcome}'`,
+      ).toBe(outcome);
+
+      // Sanity: getFlagshipSurface (the shared entry point every sibling
+      // spec funnels through) accepts the final surface without throwing —
+      // this ties the invariant proof to the same accessor the rest of
+      // the harness uses.
+      const viaGetter = await page.evaluate(() => {
+        const game = window.__game;
+        return game ? { version: game.version, act: game.scene.act } : null;
+      });
+      expect(viaGetter).not.toBeNull();
+      expect(viaGetter?.version).toBe(1);
+      expect(viaGetter?.act).toBe('act-1-seal');
+      // Reference getFlagshipSurface to keep the shared accessor coupled to
+      // this spec — a rename of the shared helper must ripple here too.
+      expect(typeof getFlagshipSurface).toBe('function');
     });
-
-    const initial = await readSurface(page);
-    assertSerializableFlagshipSurface(initial);
-
-    // Cold-start invariants.
-    expect(initial.scene.act, 'scene.act must be act-1-seal at cold start').toBe(
-      'act-1-seal',
-    );
-    expect(initial.scene.id, 'scene.id must be io-night-post-kiosk').toBe(
-      'io-night-post-kiosk',
-    );
-    assertBeatInAuthoredSet(initial.scene.beat, 'cold-start');
-    assertDeliveryOutcomeInAuthoredSet(initial.delivery.outcome, 'cold-start');
-    expect(initial.delivery.id, 'delivery.id must be blue-packet').toBe('blue-packet');
-    expect(initial.delivery.outcome, 'cold-start delivery.outcome must be unknown').toBe(
-      'unknown',
-    );
-    expect(initial.npcs.io.id, 'npcs.io.id must be io').toBe('io');
-
-    // Drive the sealed flow and re-assert the invariant at each observation
-    // point. If a rename lands (e.g. `packet-choice` → `choose-packet`) or a
-    // debug-only beat leaks through, one of these snapshots will trip.
-    await page.evaluate(() => window.__game!.input.choose('keep-sealed'));
-    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-    const afterChoice = await readSurface(page);
-    assertBeatInAuthoredSet(afterChoice.scene.beat, 'after keep-sealed');
-    assertDeliveryOutcomeInAuthoredSet(afterChoice.delivery.outcome, 'after keep-sealed');
-
-    await page.evaluate(() => window.__game!.input.choose('deliver-packet'));
-    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
-    const afterDeliver = await readSurface(page);
-    assertBeatInAuthoredSet(afterDeliver.scene.beat, 'after deliver-packet');
-    assertDeliveryOutcomeInAuthoredSet(afterDeliver.delivery.outcome, 'after deliver-packet');
-
-    // Delivery-outcome invariant: once delivered, outcome must be the
-    // committed 'sealed' value the player chose — not 'unknown', not a
-    // debug placeholder. This is the story-state hinge the harness gates.
-    expect(
-      afterDeliver.delivery.outcome,
-      'after deliver-packet the delivery.outcome must be committed to sealed',
-    ).toBe('sealed');
-
-    // Sanity: getFlagshipSurface (the shared entry point every sibling
-    // spec funnels through) accepts the final surface without throwing —
-    // this ties the invariant proof to the same accessor the rest of
-    // the harness uses.
-    const viaGetter = await page.evaluate(() => {
-      const game = window.__game;
-      return game ? { version: game.version, act: game.scene.act } : null;
-    });
-    expect(viaGetter).not.toBeNull();
-    expect(viaGetter?.version).toBe(1);
-    expect(viaGetter?.act).toBe('act-1-seal');
-    // Reference getFlagshipSurface to keep the shared accessor coupled to
-    // this spec — a rename of the shared helper must ripple here too.
-    expect(typeof getFlagshipSurface).toBe('function');
-  });
+  }
 });
