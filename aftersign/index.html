@@ -157,7 +157,9 @@
 
     <script type="module">
       import * as THREE from "three";
-      import { createKioskScene } from "./src/kioskScene.js";
+      import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
       import { PacketIntentController, PACKET_OUTCOME } from "./src/packetIntent.js";
       import {
         buildPacketOutcomeMemoryFact,
