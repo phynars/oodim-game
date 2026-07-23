@@ -6,16 +6,24 @@
 // rendering, storage, and network concerns so the harness can assert the public
 // game contract before the scene implementation exists.
 //
-// FEEL NUMBERS: the feel contracts exposed here are NOT reinvented —
-// they re-export the live single-source constants:
-//   • `AFTERSIGN_IO_RECOGNITION_FEEL` ← `IO_RETURNING_RECOGNITION_FEEL`
-//     (`aftersign/src/ioReturningRecognitionFeel.ts`, itself derived
-//     from the live `recognitionFeedback.ts` constants).
-//   • `AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL` ← `DELIVER_PACKET_CONFIRM_FEEL`
-//     (`packages/aftersign/src/interactionConfirm.ts`, the live confirm cue).
+// FEEL NUMBERS — sources:
+//   • `AFTERSIGN_IO_RECOGNITION_FEEL` ← re-export of `IO_RETURNING_RECOGNITION_FEEL`
+//     (`aftersign/src/ioReturningRecognitionFeel.ts`, derived from the live
+//     `recognitionFeedback.ts` constants).
+//   • `AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL` ← re-export of
+//     `DELIVER_PACKET_CONFIRM_FEEL` (`packages/aftersign/src/interactionConfirm.ts`,
+//     the live generic confirm cue).
+//   • `AFTERSIGN_INTERACTION_CONFIRM_FEEL` ← ORIGINATED in
+//     `./interactionFeelContract.ts`. These are NEW feel numbers — the
+//     three-way packet decision (inspect / open / preserve) is not modeled
+//     by the generic confirm above, so those shapes are authored here.
+//     `resolveAftersignPacketConfirmInteraction` (below) is the live
+//     consumer; `interactionFeelContract.test.ts` pins the easing math.
 // See PR #629 / #712 / #728 review — every prior draft that hardcoded feel
-// numbers here drifted from the live implementation. Do not add fields with
-// literal numeric types to this module; consume the live contract instead.
+// numbers WITHOUT a source header drifted from the live implementation. If
+// you add feel numbers here, either re-export a live constant or authorize
+// them in a sibling contract file with its own test — never both hardcode
+// and comment "TODO source later."
 
 import {
   IO_RETURNING_RECOGNITION_FEEL,
@@ -24,6 +32,18 @@ import {
 import {
   DELIVER_PACKET_CONFIRM_FEEL,
 } from "../../../../packages/aftersign/src/interactionConfirm";
+import {
+  AFTERSIGN_INTERACTION_CONFIRM_FEEL,
+  sampleAftersignInteractionConfirmEnvelope,
+  type AftersignInteractionConfirmEnvelope,
+  type AftersignInteractionConfirmKind,
+} from "./interactionFeelContract";
+
+export {
+  AFTERSIGN_INTERACTION_CONFIRM_FEEL,
+  type AftersignInteractionConfirmEnvelope,
+  type AftersignInteractionConfirmKind,
+};
 import {
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
@@ -327,6 +347,72 @@ export function sampleAftersignIoRecognitionEnvelope(
     reducedMotion: options.reducedMotion,
     lineId: options.lineId,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Packet-confirm interaction resolver.
+//
+// The generic `AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL` above answers "did the
+// player commit?" with a single lift-settle cue. The three-way packet
+// decision (inspect the seal without committing / open it / preserve it)
+// needs three distinct tactile answers — those live in
+// `interactionFeelContract.ts` and are consumed here so the story-side
+// commit maps to the right renderer envelope.
+//
+//   producer: `resolveAftersignPacketConfirmInteraction(state, action?)` —
+//     the scene controller calls this at the moment of commit and gets back
+//     the `kind` (which of the three shapes to play) plus the resolved feel
+//     block. `action` is optional — when omitted, the resolver reads the
+//     committed `packetOutcome`; `"inspect"` is the preview action available
+//     before commit.
+//
+//   renderer: `sampleAftersignPacketConfirmInteractionEnvelope` — passes the
+//     resolved `kind` and `elapsedMs` through to the live sampler. Kept as a
+//     thin re-export so tests and the renderer both go through one door.
+// ---------------------------------------------------------------------------
+
+export type AftersignPacketInteractionAction = "inspect" | "commit";
+
+export type AftersignPacketConfirmInteraction = {
+  kind: AftersignInteractionConfirmKind;
+  feel: (typeof AFTERSIGN_INTERACTION_CONFIRM_FEEL)[AftersignInteractionConfirmKind];
+};
+
+export function resolveAftersignPacketConfirmInteraction(
+  state: AftersignVerticalSliceState,
+  action: AftersignPacketInteractionAction = "commit",
+): AftersignPacketConfirmInteraction {
+  if (action === "inspect") {
+    return {
+      kind: "packetInspect",
+      feel: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetInspect,
+    };
+  }
+
+  if (state.packetOutcome === "opened") {
+    return {
+      kind: "packetOpen",
+      feel: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetOpen,
+    };
+  }
+  if (state.packetOutcome === "sealed") {
+    return {
+      kind: "packetPreserve",
+      feel: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetPreserve,
+    };
+  }
+
+  throw new Error(
+    "Cannot resolve Aftersign packet-confirm interaction: packetOutcome is not committed",
+  );
+}
+
+export function sampleAftersignPacketConfirmInteractionEnvelope(
+  kind: AftersignInteractionConfirmKind,
+  elapsedMs: number,
+  reducedMotion = false,
+): AftersignInteractionConfirmEnvelope {
+  return sampleAftersignInteractionConfirmEnvelope(kind, elapsedMs, reducedMotion);
 }
 
 function assertValidSavedAtTurn(savedAtTurn: number): void {
