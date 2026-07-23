@@ -19,7 +19,67 @@ import {
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
 
+type FeelContractSample = {
+  label: string;
+  value: unknown;
+};
+
+const collectFiniteNumbers = (value: unknown): number[] => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? [value] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectFiniteNumbers);
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectFiniteNumbers);
+  }
+  return [];
+};
+
+const collectStringTokens = (value: unknown): string[] => {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStringTokens);
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectStringTokens);
+  }
+  return [];
+};
+
+const expectLiveFeelContract = ({ label, value }: FeelContractSample) => {
+  const numbers = collectFiniteNumbers(value);
+  const strings = collectStringTokens(value);
+
+  expect(numbers.length, `${label} should expose concrete ms/px/frame numbers`).toBeGreaterThan(0);
+  expect(
+    numbers.every((number) => number >= 0 && number <= 1_500),
+    `${label} should keep live feedback timings/distances inside a mobile-readable range`,
+  ).toBe(true);
+  expect(
+    strings.some((token) => /ease|cubic|quad|spring|linear/i.test(token)),
+    `${label} should name the easing curve that choreographs the feedback`,
+  ).toBe(true);
+};
+
 describe("Aftersign durable save/load contract", () => {
+  it("keeps every live feedback contract numeric, bounded, and eased", () => {
+    const samples: FeelContractSample[] = [
+      { label: "packet-choice-confirm", value: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL },
+      { label: "io-recognition", value: AFTERSIGN_IO_RECOGNITION_FEEL },
+      { label: "packet-open", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetOpen },
+      { label: "packet-preserve", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetPreserve },
+      { label: "packet-inspect", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetInspect },
+    ];
+
+    for (const sample of samples) {
+      expectLiveFeelContract(sample);
+    }
+  });
+
   it("round-trips the remembered packet outcome through a durable save payload", () => {
     const firstSession = meetIoForAftersignSlice(
       recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
