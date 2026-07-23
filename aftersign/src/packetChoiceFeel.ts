@@ -155,6 +155,12 @@ export function checkPacketChoiceFeel(config: PacketChoiceFeelConfig = DEFAULT_P
 
   let preserveIntent = startPacketChoiceIntent('preserve', 0, origin)
   preserveIntent = stepPacketChoiceIntent(preserveIntent, {
+    nowMs: config.preserveConfirmMs,
+    pointer: origin,
+    pressed: true,
+  }, config)
+  assertPacketChoice(preserveIntent.phase === 'armed', 'preserving arms only after the confirm hold completes')
+  preserveIntent = stepPacketChoiceIntent(preserveIntent, {
     nowMs: config.preserveConfirmMs + config.minArmedVisibleMs,
     pointer: origin,
     pressed: true,
