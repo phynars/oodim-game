@@ -13,6 +13,14 @@ import {
   IO_ROUTE_MEMORY_LINES,
 } from './ioReturningSessionLines'
 
+const allIoMemoryLines = [
+  ...Object.values(IO_RETURNING_SESSION_LINES),
+  ...Object.values(IO_RETURNING_SESSION_CHAINED_LINES),
+  ...Object.values(IO_ROUTE_MEMORY_LINES),
+  ...Object.values(IO_RETURN_POSTURE_LINES),
+  IO_BARE_RETURN_LINE,
+]
+
 // Parity guard: the web view MUST NOT redeclare Io's line strings. Every
 // `text` field has to equal the shared-package authority verbatim, or the
 // single-source contract is broken. If this drifts, fix the web view —
@@ -89,24 +97,14 @@ describe('Io returning-session lines (web view sources from package)', () => {
   })
 
   it('anchors each memory to a concrete remembered player action (not trust deltas)', () => {
-    const all = [
-      ...Object.values(IO_RETURNING_SESSION_LINES),
-      ...Object.values(IO_ROUTE_MEMORY_LINES),
-      ...Object.values(IO_RETURN_POSTURE_LINES),
-    ]
-    for (const memory of all) {
+    for (const memory of allIoMemoryLines) {
       expect(memory.rememberedAction).not.toHaveLength(0)
       expect(memory.rememberedAction).not.toMatch(/trust \+\d/i)
     }
   })
 
   it('keeps every recognition-line id stable and unique', () => {
-    const all = [
-      ...Object.values(IO_RETURNING_SESSION_LINES),
-      ...Object.values(IO_ROUTE_MEMORY_LINES),
-      ...Object.values(IO_RETURN_POSTURE_LINES),
-    ]
-    const ids = all.map((m) => m.id)
+    const ids = allIoMemoryLines.map((m) => m.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
 
