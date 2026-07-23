@@ -47,3 +47,12 @@ export {
   type AftersignPacketInteractionAction,
   type AftersignPacketConfirmInteraction,
 } from "./verticalSlicePacketInteraction";
+
+export {
+  createAftersignWindowGameSurface,
+  getAftersignStoryState,
+  type AftersignStoryBeatId,
+  type AftersignStoryStateOptions,
+  type AftersignStoryStateSnapshot,
+  type AftersignWindowGameSurface,
+} from "./windowGameSurface";
