@@ -21,7 +21,7 @@ describe("chooseAftersignIoReturningLine", () => {
       chooseAftersignIoReturningLine({
         packetOutcome: "opened",
         returnedAfterClose: true,
-        routeAttention: "listened",
+        routeAttention: "heard",
       }),
     ).toEqual(AFTERSIGN_IO_RETURNING_LINES.packetOpened);
   });
@@ -32,8 +32,8 @@ describe("chooseAftersignIoReturningLine", () => {
     ).toEqual(AFTERSIGN_IO_RETURNING_LINES.routeSkipped);
 
     expect(
-      chooseAftersignIoReturningLine({ routeAttention: "listened" }),
-    ).toEqual(AFTERSIGN_IO_RETURNING_LINES.routeListened);
+      chooseAftersignIoReturningLine({ routeAttention: "heard" }),
+    ).toEqual(AFTERSIGN_IO_RETURNING_LINES.routeHeard);
   });
 
   it("does not invent a memory when nothing auditable is present", () => {
