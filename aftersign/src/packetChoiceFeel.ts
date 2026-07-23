@@ -33,6 +33,20 @@
 //   will commit a story choice on the player's behalf — that is by design
 //   of a pure stepper, and the guard belongs one layer up next to the
 //   `requestAnimationFrame` / input-poll site.
+//
+// COMMIT-STICKY CONTRACT (also caller-owned — see PR #786 review):
+//   Once `state.committedIntent` is non-null, the choice is decided and
+//   the stepper should NOT be called again for that gesture. The pure
+//   stepper does not lock the committed side: if you keep passing
+//   `pressed: true` with a `dragMeters` that crosses to the opposite
+//   band, `heldMs` continues to accumulate, `readPacketChoiceIntent`
+//   re-reads from the new drag, and because `heldMs >= confirmHoldMs`
+//   still holds, `committedIntent` will flip. That would silently
+//   rewrite the player's story choice.
+//   Caller contract: stop stepping (or hold `input.pressed = false`) as
+//   soon as `state.committedIntent` is set; resume only after the player
+//   releases and re-presses. Symmetric with the focus guard — locking
+//   belongs at the input-poll site, not inside the pure reducer.
 
 export type PacketChoiceIntent = 'preserve' | 'open';
 export type PacketChoicePhase = 'idle' | 'aiming' | 'committed';
