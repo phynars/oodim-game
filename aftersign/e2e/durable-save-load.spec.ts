@@ -16,6 +16,11 @@
 // strict test — duplicating that gate here would only add a second place
 // to update when the contract shifts.
 //
+// The loaded surface must also remain writable after the hard-navigation
+// boundary: forceSave() on the rehydrated document must not dirty the slot,
+// swap the player identity, or regress the persisted revision/timestamp.
+// That keeps save/load from becoming a read-only replay path.
+//
 // If you are looking for the test that must fail under
 // FLAGSHIP_BREAK_MODE=local-only-save, it is the strict one linked above,
 // not this file.
@@ -155,5 +160,17 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
     expect(loaded.save.lastPersistedAt).toBe(saved.save.lastPersistedAt);
     expect(loaded.save.dirty).toBe(false);
     expect(loaded.save.authority).toBe(saved.save.authority);
+
+    await forceSave(page);
+
+    const resaved = await readSaveProbe(page);
+    expect(resaved.save.slot).toBe(CONTRACT_SLOT);
+    expect(resaved.player.id).toBe(saved.player.id);
+    expect(resaved.save.revision).toBeGreaterThanOrEqual(loaded.save.revision);
+    expect(resaved.save.lastPersistedAt).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(resaved.save.lastPersistedAt as string))).toBe(false);
+    expect(resaved.save.dirty).toBe(false);
+    expect(resaved.save.authority).toBe(loaded.save.authority);
+    expect(resaved.save.lastLoadProof).toEqual(loaded.save.lastLoadProof);
   });
 });
