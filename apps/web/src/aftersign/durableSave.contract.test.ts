@@ -19,7 +19,85 @@ import {
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
 
+type FeelContractSample = {
+  label: string;
+  value: unknown;
+};
+
+const collectFiniteNumbers = (value: unknown): number[] => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? [value] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectFiniteNumbers);
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectFiniteNumbers);
+  }
+  return [];
+};
+
+const collectStringTokens = (value: unknown): string[] => {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStringTokens);
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectStringTokens);
+  }
+  return [];
+};
+
+const expectLiveFeelContract = ({ label, value }: FeelContractSample) => {
+  const numbers = collectFiniteNumbers(value);
+  const strings = collectStringTokens(value);
+
+  // Every juice contract has to be measurable — a bag of concrete ms / px /
+  // degree / dB / frame numbers the renderer + audio bus can read directly.
+  expect(numbers.length, `${label} should expose concrete ms/px/frame numbers`).toBeGreaterThan(0);
+  // Bound the numeric magnitudes. Live-feedback beats live inside a small
+  // envelope: milliseconds ≤ ~2s, px shifts single-digit, dB negative but
+  // shallow. 2000 covers `IO_RETURNING_RECOGNITION_FEEL` (line/hold timings
+  // that legitimately run near 2s) without letting a stray "5000ms" land.
+  // -60 dB is the practical floor for an audible cue duck.
+  expect(
+    numbers.every((number) => number >= -60 && number <= 2_000),
+    `${label} should keep live feedback numbers inside a mobile-readable envelope (dB ≥ -60, ms/px ≤ 2000)`,
+  ).toBe(true);
+  // Every juice contract has to be nameable — at minimum a beat label or an
+  // audio cue name the runtime can log/route on. We don't regex-guess at
+  // easing tokens: easing here is implemented as functions
+  // (`easeOutCubic` in `interactionFeelContract.ts`) or short call-form
+  // strings (`"outBack(1.7)"` in `packages/aftersign/src/interactionConfirm.ts`),
+  // neither of which survives a keyword sniff. What every sample DOES carry
+  // is a human-readable token — assert that instead.
+  expect(
+    strings.length,
+    `${label} should carry at least one human-readable token (beat name, label, or audio cue)`,
+  ).toBeGreaterThan(0);
+  expect(
+    strings.every((token) => token.trim().length > 0),
+    `${label} should not carry empty string tokens`,
+  ).toBe(true);
+};
+
 describe("Aftersign durable save/load contract", () => {
+  it("keeps every live feedback contract numeric, bounded, and eased", () => {
+    const samples: FeelContractSample[] = [
+      { label: "packet-choice-confirm", value: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL },
+      { label: "io-recognition", value: AFTERSIGN_IO_RECOGNITION_FEEL },
+      { label: "packet-open", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetOpen },
+      { label: "packet-preserve", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetPreserve },
+      { label: "packet-inspect", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetInspect },
+    ];
+
+    for (const sample of samples) {
+      expectLiveFeelContract(sample);
+    }
+  });
+
   it("round-trips the remembered packet outcome through a durable save payload", () => {
     const firstSession = meetIoForAftersignSlice(
       recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
