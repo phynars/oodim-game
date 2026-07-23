@@ -8,6 +8,7 @@ import {
   createAftersignVerticalSliceState,
   decodeAftersignDurableSave,
   encodeAftersignDurableSave,
+  getAftersignStoryState,
   meetIoForAftersignSlice,
   openAftersignIoRecognitionBeat,
   recordAftersignPacketChoice,
@@ -43,6 +44,57 @@ describe("Aftersign durable save/load contract", () => {
       recognizesPlayer: true,
       packetOutcome: "sealed",
       recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+    });
+  });
+
+  it("publishes the story/state snapshot that window.__game must expose", () => {
+    const returningSession = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(
+          meetIoForAftersignSlice(
+            recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+          ),
+          3,
+        ),
+      ),
+    );
+
+    expect(
+      getAftersignStoryState(returningSession, {
+        playerId: "player-persistent-7",
+        playerName: "Signal Runner",
+        rememberedSessionIds: ["session-1"],
+      }),
+    ).toEqual({
+      story: {
+        id: "aftersign.verticalSlice",
+        act: "act-1",
+        beat: "io-remembers-opened-packet",
+        completedBeats: [
+          "packet-opened",
+          "io-first-meeting",
+          "io-remembers-opened-packet",
+        ],
+      },
+      state: {
+        scene: "io-return",
+        player: {
+          id: "player-persistent-7",
+          name: "Signal Runner",
+        },
+        npcs: [
+          {
+            id: "io",
+            name: "Io",
+            disposition: "recognizes-player",
+            rememberedSessionIds: ["session-1"],
+            memory: {
+              recognizesPlayer: true,
+              packetOutcome: "opened",
+            },
+          },
+        ],
+      },
     });
   });
 
