@@ -79,6 +79,12 @@ export type AftersignIoMemoryBeat = {
   recognitionFeel: AftersignIoRecognitionFeel | null;
 };
 
+export type AftersignPacketChoiceConfirmBeat = {
+  packetOutcome: AftersignPacketOutcome;
+  confirmedAtMs: number;
+  confirmFeel: AftersignPacketChoiceConfirmFeel;
+};
+
 const DURABLE_SAVE_KEY: AftersignDurableSaveEnvelope["key"] =
   "aftersign.verticalSlice.v1";
 
@@ -118,6 +124,28 @@ export function recordAftersignPacketChoice(
   return {
     ...state,
     packetOutcome,
+  };
+}
+
+export function confirmAftersignPacketChoice(
+  state: AftersignVerticalSliceState,
+  confirmedAtMs: number,
+): AftersignPacketChoiceConfirmBeat {
+  if (state.packetOutcome !== "sealed" && state.packetOutcome !== "opened") {
+    throw new Error(
+      "Cannot confirm Aftersign packet choice: packetOutcome is not committed",
+    );
+  }
+  if (!Number.isFinite(confirmedAtMs) || confirmedAtMs < 0) {
+    throw new Error(
+      "Cannot confirm Aftersign packet choice: confirmedAtMs must be a non-negative finite number",
+    );
+  }
+
+  return {
+    packetOutcome: state.packetOutcome,
+    confirmedAtMs,
+    confirmFeel: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
   };
 }
 

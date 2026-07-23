@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AFTERSIGN_IO_RECOGNITION_FEEL,
+  AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
+  confirmAftersignPacketChoice,
   createAftersignVerticalSliceState,
   decodeAftersignDurableSave,
   encodeAftersignDurableSave,
@@ -64,6 +66,31 @@ describe("Aftersign durable save/load contract", () => {
       packetOutcome: "sealed",
       recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
     });
+  });
+
+  it("publishes the live packet-choice confirm feel once the player commits a packet outcome", () => {
+    const state = recordAftersignPacketChoice(
+      createAftersignVerticalSliceState(),
+      "opened",
+    );
+
+    expect(confirmAftersignPacketChoice(state, 540)).toEqual({
+      packetOutcome: "opened",
+      confirmedAtMs: 540,
+      confirmFeel: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
+    });
+  });
+
+  it("rejects packet-choice confirm beats before the outcome is committed", () => {
+    expect(() =>
+      confirmAftersignPacketChoice(createAftersignVerticalSliceState(), 0),
+    ).toThrow("Cannot confirm Aftersign packet choice: packetOutcome is not committed");
+
+    const state = recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed");
+
+    expect(() => confirmAftersignPacketChoice(state, -1)).toThrow(
+      "Cannot confirm Aftersign packet choice: confirmedAtMs must be a non-negative finite number",
+    );
   });
 
   it("anchors Io's returning recognition envelope to the published cue timestamp", () => {
