@@ -1,79 +1,65 @@
-export type AftersignPacketOutcome = 'sealed' | 'opened'
-export type AftersignRouteAttention = 'listened' | 'skipped'
+export type AftersignPacketOutcome = "sealed" | "opened" | "withheld" | "returned";
+
+export type AftersignRouteAttention = "listened" | "skipped" | "unknown";
 
 export type AftersignIoMemory = {
-  packetOutcome?: AftersignPacketOutcome
-  routeAttention?: AftersignRouteAttention
-  returnedAfterClose?: boolean
-}
-
-export type AftersignIoMemoryReference =
-  | 'packet.delivered_sealed'
-  | 'packet.opened'
-  | 'route.listened'
-  | 'route.skipped'
-  | 'player.returned'
+  packetOutcome?: AftersignPacketOutcome;
+  routeAttention?: AftersignRouteAttention;
+  returnedAfterClose?: boolean;
+};
 
 export type AftersignIoReturningLine = {
-  id: string
-  text: string
-  references: AftersignIoMemoryReference[]
-}
+  id: string;
+  text: string;
+  references: string[];
+};
 
-const IO_RETURNING_LINES = {
-  sealed: {
-    id: 'io.returning.packet.sealed',
-    text: 'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
-    references: ['player.returned', 'packet.delivered_sealed'],
+export const AFTERSIGN_IO_RETURNING_LINES = {
+  packetSealed: {
+    id: "io-return-packet-sealed",
+    text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+    references: ["packetOutcome:sealed", "returnedAfterClose:true"],
   },
-  opened: {
-    id: 'io.returning.packet.opened',
-    text: 'You came back. The seal did not. I can use one of those facts.',
-    references: ['player.returned', 'packet.opened'],
+  packetOpened: {
+    id: "io-return-packet-opened",
+    text: "You came back. The seal did not. I can use one of those facts.",
+    references: ["packetOutcome:opened", "returnedAfterClose:true"],
   },
-  skippedRoute: {
-    id: 'io.returning.route.skipped',
-    text: 'You found the box anyway. Next time, let me finish saving your life.',
-    references: ['route.skipped'],
+  routeSkipped: {
+    id: "io-return-route-skipped",
+    text: "You found the box anyway. Next time, let me finish saving your life.",
+    references: ["routeAttention:skipped"],
   },
-  listenedRoute: {
-    id: 'io.returning.route.listened',
-    text: 'You listened before you ran. Rare habit. Keep it.',
-    references: ['route.listened'],
+  routeListened: {
+    id: "io-return-route-listened",
+    text: "You listened before you ran. Rare habit. Keep it.",
+    references: ["routeAttention:listened"],
   },
   fallback: {
-    id: 'io.returning.fallback',
-    text: 'Back again. Good. Vey wastes fewer facts on the familiar.',
+    id: "io-return-fallback",
+    text: "Back again. Good. Vey keeps receipts better than people do.",
     references: [],
   },
-} satisfies Record<string, AftersignIoReturningLine>
+} as const satisfies Record<string, AftersignIoReturningLine>;
 
-export function chooseAftersignIoReturningLine(memory: AftersignIoMemory): AftersignIoReturningLine {
-  if (memory.packetOutcome === 'sealed') {
-    return IO_RETURNING_LINES.sealed
+export function chooseAftersignIoReturningLine(
+  memory: AftersignIoMemory,
+): AftersignIoReturningLine {
+  if (memory.packetOutcome === "sealed") {
+    return AFTERSIGN_IO_RETURNING_LINES.packetSealed;
   }
 
-  if (memory.packetOutcome === 'opened') {
-    return IO_RETURNING_LINES.opened
+  if (memory.packetOutcome === "opened") {
+    return AFTERSIGN_IO_RETURNING_LINES.packetOpened;
   }
 
-  if (memory.routeAttention === 'skipped') {
-    return IO_RETURNING_LINES.skippedRoute
+  if (memory.routeAttention === "skipped") {
+    return AFTERSIGN_IO_RETURNING_LINES.routeSkipped;
   }
 
-  if (memory.routeAttention === 'listened') {
-    return IO_RETURNING_LINES.listenedRoute
+  if (memory.routeAttention === "listened") {
+    return AFTERSIGN_IO_RETURNING_LINES.routeListened;
   }
 
-  return IO_RETURNING_LINES.fallback
-}
-
-export function getAftersignIoReturningLines(): AftersignIoReturningLine[] {
-  return [
-    IO_RETURNING_LINES.sealed,
-    IO_RETURNING_LINES.opened,
-    IO_RETURNING_LINES.skippedRoute,
-    IO_RETURNING_LINES.listenedRoute,
-    IO_RETURNING_LINES.fallback,
-  ]
+  return AFTERSIGN_IO_RETURNING_LINES.fallback;
 }
