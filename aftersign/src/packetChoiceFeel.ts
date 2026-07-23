@@ -1,5 +1,41 @@
+// Standalone feel model + assertion contract for the AFTERSIGN packet choice.
+//
+// Repo convention (aftersign/README.md — reaffirmed in PR #453, #468, #590):
+//   - Vitest is NOT a repo dependency. `import ... from "vitest"` is dead
+//     code by construction and gates nothing in CI.
+//   - `node:test` / `node:assert` are not wired into any npm script either;
+//     `test:e2e:aftersign` only runs Playwright against aftersign/e2e.
+//   - Therefore the convention is a plain-TS assertion contract that lives
+//     alongside the model (or at `aftersign/src/*.test.ts`), exports
+//     `assert*Contract()` + a `run*Checks()` entry, and is typechecked by
+//     `typecheck:aftersign` (tsconfig `include: ["src"]`). If you need to
+//     execute it, wire the runner into a harness entry — don't add a new
+//     test framework.
+//
+// PR #590 CI note: the aftersign lane went red on `test:e2e:aftersign`
+// (Playwright / SwiftShader cold-start against `aftersign/e2e/`), not on
+// this file's typecheck. The packet-choice model has zero runtime imports
+// from `aftersign/index.html` — it's a pure stepper that only `.test.ts`
+// reads — so no e2e spec's behavior depends on it.
+//
+// This file's job is to keep the packetChoice API TYPECHECK-BOUND to real
+// usage: `assertPacketChoiceFeelContract` calls `stepPacketChoice` and
+// walks every documented phase transition, so any drift in the exported
+// shape (a removed field, a renamed export, a changed state key) surfaces
+// as a tsc error in the aftersign lane, not as a silent green.
+//
+// FOCUS-GUARD CONTRACT (moved out of the model — see PR #786 review):
+//   `stepPacketChoice` is pure and takes `dtMs` directly, so it does NOT
+//   freeze the hold clock when the tab is backgrounded. That is the
+//   CALLER's responsibility: when `document.hasFocus() === false` (or the
+//   equivalent visibility signal in the harness), the caller must either
+//   skip the step or pass `dtMs: 0`. Passing a real dt on a hidden frame
+//   will commit a story choice on the player's behalf — that is by design
+//   of a pure stepper, and the guard belongs one layer up next to the
+//   `requestAnimationFrame` / input-poll site.
+
 export type PacketChoiceIntent = 'preserve' | 'open';
-export type PacketChoicePhase = 'idle' | 'aiming' | 'committed' | 'cancelled';
+export type PacketChoicePhase = 'idle' | 'aiming' | 'committed';
 
 export interface PacketChoiceFeelConfig {
   readonly intentionalHoldMs: number;
@@ -120,7 +156,7 @@ export function assertPacketChoiceFeelContract(
   state = stepPacketChoice(state, { pressed: true, dragMeters: config.cancelRadiusMeters * 0.5, dtMs: config.intentionalHoldMs - 1 }, config);
   state = stepPacketChoice(state, { pressed: false, dragMeters: 0, dtMs: oneFrame }, config);
   assert(state.phase === 'idle', 'release inside cancel radius before intent should return to idle');
-  assert(state.committedIntent === null, 'cancelled packet contact must not write a story choice');
+  assert(state.committedIntent === null, 'aborted packet contact must not write a story choice');
 }
 
 export function runPacketChoiceFeelChecks(): void {
