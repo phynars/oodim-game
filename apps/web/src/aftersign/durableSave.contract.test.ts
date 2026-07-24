@@ -270,6 +270,21 @@ describe("Aftersign durable save/load contract", () => {
     }
   });
 
+  it("keeps the packet-open confirm envelope resting on the commit frame", () => {
+    const opened = recordAftersignPacketChoice(
+      createAftersignVerticalSliceState(),
+      "opened",
+    );
+    const { kind } = resolveAftersignPacketConfirmInteraction(opened);
+    const envelope = sampleAftersignPacketConfirmInteractionEnvelope(kind, 0);
+
+    expect(envelope).toMatchObject({
+      kind: "packetOpen",
+      label: "packet-open",
+      tearProgress: 0,
+    });
+  });
+
   it("rejects malformed durable save payloads instead of silently resetting story state", () => {
     expect(() => restoreAftersignDurableSave("not-json")).toThrow(
       "Invalid Aftersign durable save: payload is not JSON",
