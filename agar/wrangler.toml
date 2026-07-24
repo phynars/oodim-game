@@ -5,9 +5,9 @@
 # preview during the e2e merge gate so a Playwright test can prove the
 # round-trip through a REAL DO inside CI.
 #
-# Prod-hardening (origin allowlist on the WS upgrade, auth, rate limit,
-# multi-room routing) is deferred to slice 3+. The protocol intentionally
-# accepts any origin in dev — see issue #164 scope.
+# Production path now exists under `[env.production]` and is intended to
+# host the `/ws` websocket endpoint used by `agar/src/multiplayer.ts`.
+# Deploy with: `wrangler deploy --env production`.
 
 name = "oodim-agar"
 main = "server/worker.ts"
@@ -38,3 +38,9 @@ new_classes = ["EchoRoom"]
 # locally gets the same bind shape as CI.
 ip = "127.0.0.1"
 port = 8787
+
+[env.production]
+# Dedicated Worker host for the authoritative multiplayer websocket.
+# The `/ws` route is served by `server/worker.ts`.
+name = "oodim-agar-prod"
+workers_dev = true

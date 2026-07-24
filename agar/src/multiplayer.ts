@@ -185,6 +185,9 @@ function wsUrl(seed: string): string {
     loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
       ? `${loc.hostname}:8787`
       : loc.host;
+  // Production deploy assumption: the authoritative DO worker is routed
+  // on this same host and serves `/ws`, so non-localhost clients can
+  // connect with no hardcoded workers.dev hostname.
   return `${proto}//${host}/ws?seed=${encodeURIComponent(seed)}&cid=${encodeURIComponent(clientId)}`;
 }
 
