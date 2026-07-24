@@ -201,8 +201,10 @@ const appliedLog: InputDir[] = [];
 
 // Slice 4 determinism tape — every client appends `snapshot.frame`
 // verbatim. `pureReplay(seed, appliedFrames)` reproduces canonical
-// state bit-exact (assuming no missed snapshots).
+// state bit-exact only while observed snapshot ticks stay contiguous.
 const appliedFrames: ReplayFrame[] = [];
+let lastAppendedFrameTick: number | null = null;
+let tapeContiguous = true;
 
 const latencyProbe = createInputLatencyProbe();
 
@@ -377,8 +379,14 @@ function openWs(): WebSocket {
 
     // Determinism tape — append the frame verbatim. Every client
     // that observes this snapshot appends the SAME frame, so any
-    // client's full tape replays to the same canonical state.
+    // client's full tape replays to the same canonical state while
+    // observed ticks are contiguous. If we detect a gap (most likely
+    // across disconnect/reconnect), mark the tape as untrustworthy.
+    if (lastAppendedFrameTick !== null && parsed.tick !== lastAppendedFrameTick + 1) {
+      tapeContiguous = false;
+    }
     appliedFrames.push(parsed.frame);
+    lastAppendedFrameTick = parsed.tick;
 
     // Slice-3 compat: extract THIS client's own dir from the frame
     // (defaults to "none" if no input was reported for us this tick).
@@ -438,6 +446,8 @@ interface AgarTestSurface {
   // Slice-4 determinism tape. Additive — not a rename of any of the 8
   // normative fields. Per-tick ReplayFrames built from snapshots.
   readonly appliedFrames: readonly ReplayFrame[];
+  // True only while observed snapshot ticks are contiguous.
+  readonly tapeContiguous: boolean;
   readonly clientId: string;
   readonly seed: string;
   sendInput(dir: InputDir): void;
@@ -498,6 +508,9 @@ const testSurface: AgarTestSurface = {
   },
   get appliedFrames() {
     return appliedFrames.slice();
+  },
+  get tapeContiguous() {
+    return tapeContiguous;
   },
   get clientId() {
     return clientId;
