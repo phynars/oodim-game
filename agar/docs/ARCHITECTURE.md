@@ -24,8 +24,13 @@ browser client (src/)  ⇄  WebSocket  ⇄  Cloudflare Durable Object (server/)
   the authoritative room state, maps sockets to player ids, and handles
   the WebSocket upgrade (`Upgrade: websocket` → 101 with a
   `WebSocketPair`). A test-only `/__test/top-score` route is handled
-  before the upgrade path. Dev flow uses local `wrangler dev`; production
-  flow is `wrangler deploy --env production` from `agar/wrangler.toml`.
+  before the upgrade path. Dev/CI runs this file directly via
+  `wrangler dev` against `agar/wrangler.toml` (that config is never
+  deployed). Production re-exports `EchoRoom` from the repo-root
+  `oodim-game` Worker (`wrangler.jsonc` + `src/server.ts`), which
+  routes `/ws` on `game.oodim.com` to the DO on the same origin as
+  the static `/agar/` client — deploy from the repo root with
+  `wrangler deploy`.
 - **`agar/src/multiplayer.ts`** — the WebSocket client. Opens the
   socket (seeded via query param), reconnects, and drives the shared
   `window.__game` state contract from server snapshots.
@@ -57,7 +62,7 @@ agar/
 ├── e2e/                 Playwright specs (state-contract assertions)
 ├── playwright.config.ts harness: wrangler dev + browser contexts
 ├── vite.config.ts       client build (published under /agar/)
-└── wrangler.toml        DO Worker config (dev + production env)
+└── wrangler.toml        DO Worker config for dev/CI only (prod uses repo-root wrangler.jsonc)
 ```
 
 ## When to update this file
