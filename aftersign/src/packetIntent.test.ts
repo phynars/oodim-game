@@ -1,3 +1,3 @@
-import { runPacketIntentChecks } from './packetIntent.ts';
+import { runPacketIntentChecks } from "./packetIntent";
 
 runPacketIntentChecks();
