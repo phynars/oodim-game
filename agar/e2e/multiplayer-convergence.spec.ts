@@ -394,6 +394,37 @@ test.describe("agar · multiplayer CONVERGENCE (rung merge gate)", () => {
           "pageB: caught up to authoritative tick",
         ).toBeGreaterThanOrEqual(stateA.canonical?.tick ?? 0);
       }
+
+      // Tape-gap detection (#812). B was offline across ≥1 server tick
+      // (A drove the DO through tick 14 while B's socket was down), so
+      // the snapshots B missed are absent from its determinism tape and
+      // `pureReplay(seed, tape)` can no longer reproduce canonical. The
+      // client MUST notice: `tapeContiguous` flips false on the first
+      // post-reconnect snapshot whose tick != lastAppendedTick + 1. A
+      // held a continuous connection — its observed ticks never gapped
+      // — so its tape stays trustworthy. Dual access (call-or-read),
+      // same idiom the binding uses for every read field.
+      const [tapeA, tapeB] = await Promise.all(
+        [pageA, pageB].map((p) =>
+          p.evaluate(() => {
+            const g = (
+              window as unknown as { __game: { tapeContiguous: unknown } }
+            ).__game;
+            const v = g.tapeContiguous;
+            return typeof v === "function"
+              ? (v as () => boolean)()
+              : (v as boolean);
+          }),
+        ),
+      );
+      expect(
+        tapeA,
+        "pageA (continuous connection): tape stays contiguous",
+      ).toBe(true);
+      expect(
+        tapeB,
+        "pageB (reconnected across a tick gap): tapeContiguous reflects the gap",
+      ).toBe(false);
     } finally {
       await ctxA.close();
       await ctxB.close();
