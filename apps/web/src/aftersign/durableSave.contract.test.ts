@@ -8,6 +8,7 @@ import {
   createAftersignVerticalSliceState,
   decodeAftersignDurableSave,
   encodeAftersignDurableSave,
+  getAftersignStoryState,
   meetIoForAftersignSlice,
   openAftersignIoRecognitionBeat,
   recordAftersignPacketChoice,
@@ -121,6 +122,82 @@ describe("Aftersign durable save/load contract", () => {
       recognizesPlayer: true,
       packetOutcome: "sealed",
       recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+    });
+  });
+
+  it("publishes the story/state snapshot after a durable NPC-memory round-trip", () => {
+    // Session 1: choose "opened", meet Io, durably save. Session 2:
+    // restore + meet Io again — the recognition state must project to
+    // main's window-surface vocabulary (windowGameSurface.ts): beat
+    // "io-remembers-opened-packet", Io disposition "recognizes-player",
+    // and the remembered packet outcome surfaced in Io's memory block.
+    const returningSession = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(
+          meetIoForAftersignSlice(
+            recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+          ),
+          3,
+        ),
+      ),
+    );
+
+    const snapshot = getAftersignStoryState(returningSession, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      rememberedSessionIds: ["session-1"],
+    });
+
+    expect(snapshot).toEqual({
+      story: {
+        id: "aftersign.verticalSlice",
+        act: "act-1",
+        beat: "io-remembers-opened-packet",
+        completedBeats: ["packet-opened", "io-first-meeting", "io-remembers-opened-packet"],
+      },
+      state: {
+        scene: "io-return",
+        player: {
+          id: "player-persistent-7",
+          name: "Signal Runner",
+        },
+        npcs: [
+          {
+            id: "io",
+            name: "Io",
+            disposition: "recognizes-player",
+            rememberedSessionIds: ["session-1"],
+            memory: {
+              recognizesPlayer: true,
+              packetOutcome: "opened",
+            },
+          },
+        ],
+      },
+    });
+
+    // Pure-data rule: the snapshot must survive a JSON round-trip
+    // byte-identical (no functions, cycles, or Dates).
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
+  it("keeps Io's disposition met-player and recognition off before a durable return", () => {
+    const firstMeeting = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+    );
+
+    const snapshot = getAftersignStoryState(firstMeeting, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+    });
+
+    expect(snapshot.story.beat).toBe("io-first-meeting");
+    expect(snapshot.story.completedBeats).toEqual(["packet-sealed", "io-first-meeting"]);
+    expect(snapshot.state.npcs[0].disposition).toBe("met-player");
+    expect(snapshot.state.npcs[0].rememberedSessionIds).toEqual([]);
+    expect(snapshot.state.npcs[0].memory).toEqual({
+      recognizesPlayer: false,
+      packetOutcome: "sealed",
     });
   });
 
