@@ -270,18 +270,50 @@ describe("Aftersign durable save/load contract", () => {
     }
   });
 
-  it("keeps the packet-open confirm envelope resting on the commit frame", () => {
+  it("advances the packet-open envelope halfway through the tear window", () => {
+    // Mid-tear frame: elapsedMs = 110, tearMs = 220 → tearProgress = 0.5.
+    // Locks the tear ramp, the seal-scale interpolation back toward 1.0,
+    // full cameraShakePx (recoil hasn't started yet at t < tearMs), and the
+    // shard-opacity linear decay against waxShardLifeMs = 260.
     const opened = recordAftersignPacketChoice(
       createAftersignVerticalSliceState(),
       "opened",
     );
     const { kind } = resolveAftersignPacketConfirmInteraction(opened);
+    const envelope = sampleAftersignPacketConfirmInteractionEnvelope(kind, 110);
+
+    expect(envelope.kind).toBe("packetOpen");
+    if (envelope.kind === "packetOpen") {
+      expect(envelope.label).toBe("packet-open");
+      expect(envelope.tearProgress).toBeCloseTo(0.5, 5);
+      // sealScale = 1 + (sealSnapScale - 1) * (1 - tearProgress)
+      //           = 1 + 0.08 * 0.5 = 1.04
+      expect(envelope.sealScale).toBeCloseTo(1.04, 5);
+      // Recoil begins at elapsedMs === tearMs, so cameraShakePx is still at peak.
+      expect(envelope.cameraShakePx).toBeCloseTo(1.5, 5);
+      // waxShardOpacity = 1 - 110/260
+      expect(envelope.waxShardOpacity).toBeCloseTo(1 - 110 / 260, 5);
+    }
+  });
+
+  it("pins the packet-preserve resting envelope to a soundless first frame", () => {
+    // Sealed outcome routes to a fundamentally different envelope shape
+    // (pulseProgress / sealScale / humDuckDb — no tear, no shards). At t=0
+    // the pulse hasn't started: sealScale sits at 1 (no visual jump) and
+    // humDuckDb sits at the full -3 dB duck before the bell fades it back.
+    const sealed = recordAftersignPacketChoice(
+      createAftersignVerticalSliceState(),
+      "sealed",
+    );
+    const { kind } = resolveAftersignPacketConfirmInteraction(sealed);
     const envelope = sampleAftersignPacketConfirmInteractionEnvelope(kind, 0);
 
-    expect(envelope).toMatchObject({
-      kind: "packetOpen",
-      label: "packet-open",
-      tearProgress: 0,
+    expect(envelope).toEqual({
+      kind: "packetPreserve",
+      label: "packet-preserve",
+      pulseProgress: 0,
+      sealScale: 1,
+      humDuckDb: -3,
     });
   });
 
