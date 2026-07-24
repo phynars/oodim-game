@@ -1,13 +1,17 @@
 # agar — slice 2/4 (Durable Object websocket echo).
 #
 # Wrangler config for the agar/ Worker that hosts the EchoRoom Durable
-# Object. Dev only in this slice: `wrangler dev` runs alongside vite
-# preview during the e2e merge gate so a Playwright test can prove the
-# round-trip through a REAL DO inside CI.
+# Object. DEV / CI ONLY: `wrangler dev` runs alongside vite preview
+# during the e2e merge gate so a Playwright test can prove the round-trip
+# through a REAL DO inside CI. This config is NEVER `wrangler deploy`d.
 #
-# Prod-hardening (origin allowlist on the WS upgrade, auth, rate limit,
-# multi-room routing) is deferred to slice 3+. The protocol intentionally
-# accepts any origin in dev — see issue #164 scope.
+# Production path: the repo-root `oodim-game` Worker (see wrangler.jsonc
+# + src/server.ts at the repo root) re-exports EchoRoom from
+# `agar/server/worker.ts`, routes `/ws` on game.oodim.com to it, and
+# applies the origin allowlist + WS_RATELIMIT binding. Same-origin with
+# the static /agar/ client — so `agar/src/multiplayer.ts` opens `/ws` on
+# `loc.host` and hits the DO with no hardcoded workers.dev host.
+# Deploy prod with (from repo root): `wrangler deploy` (uses wrangler.jsonc).
 
 name = "oodim-agar"
 main = "server/worker.ts"

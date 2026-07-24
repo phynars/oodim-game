@@ -19,19 +19,24 @@ browser client (src/)  ⇄  WebSocket  ⇄  Cloudflare Durable Object (server/)
 
 ## Current boundaries
 
-- **`agar/server/worker.ts`** — the dev-only Cloudflare Worker. Hosts
-  the `EchoRoom` Durable Object (`ECHO_ROOM` namespace binding), which
-  owns the authoritative room state, maps sockets to player ids, and
-  handles the WebSocket upgrade (`Upgrade: websocket` → 101 with a
+- **`agar/server/worker.ts`** — the Cloudflare Worker that hosts the
+  `EchoRoom` Durable Object (`ECHO_ROOM` namespace binding), which owns
+  the authoritative room state, maps sockets to player ids, and handles
+  the WebSocket upgrade (`Upgrade: websocket` → 101 with a
   `WebSocketPair`). A test-only `/__test/top-score` route is handled
-  before the upgrade path.
+  before the upgrade path. Dev/CI runs this file directly via
+  `wrangler dev` against `agar/wrangler.toml` (that config is never
+  deployed). Production re-exports `EchoRoom` from the repo-root
+  `oodim-game` Worker (`wrangler.jsonc` + `src/server.ts`), which
+  routes `/ws` on `game.oodim.com` to the DO on the same origin as
+  the static `/agar/` client — deploy from the repo root with
+  `wrangler deploy`.
 - **`agar/src/multiplayer.ts`** — the WebSocket client. Opens the
   socket (seeded via query param), reconnects, and drives the shared
   `window.__game` state contract from server snapshots.
 - **`agar/src/solo.ts`** — the offline single-player sim: no server,
   no WebSocket. Food, bots, eating, growth, death/respawn all run
-  client-side. The DO Worker is dev-only; `agar/wrangler.toml` is not
-  deployed as the production path.
+  client-side.
 - **Client selection** — `?mp=1` selects the multiplayer WebSocket
   client; without it the solo sim runs (see `agar/e2e/smoke.spec.ts`
   and `agar/e2e/client-surface.spec.ts`).
@@ -52,12 +57,12 @@ Same studio rule as every game: **state assertions, not pixels.**
 
 ```
 agar/
-├── server/worker.ts     Worker + EchoRoom Durable Object (dev-only)
+├── server/worker.ts     Worker + EchoRoom DO (prod re-exports it via src/server.ts)
 ├── src/                 client — multiplayer.ts (WS) / solo.ts (offline)
 ├── e2e/                 Playwright specs (state-contract assertions)
 ├── playwright.config.ts harness: wrangler dev + browser contexts
 ├── vite.config.ts       client build (published under /agar/)
-└── wrangler.toml        dev-only DO Worker config
+└── wrangler.toml        DO Worker config for dev/CI only (prod uses repo-root wrangler.jsonc)
 ```
 
 ## When to update this file
@@ -66,4 +71,6 @@ agar/
   new client mode, protocol change).
 - The state contract (`window.__game`) gains or renames fields that
   e2e specs assert on.
-- The DO Worker stops being dev-only (deployment story changes).
+- The DO Worker deployment story changes (env/route/host assumptions
+  in either `agar/wrangler.toml` for dev/CI or the repo-root
+  `wrangler.jsonc` / `src/server.ts` for prod).

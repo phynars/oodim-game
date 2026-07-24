@@ -185,6 +185,11 @@ function wsUrl(seed: string): string {
     loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
       ? `${loc.hostname}:8787`
       : loc.host;
+  // Production: the /agar/ page and the authoritative DO share ONE
+  // origin — the repo-root `oodim-game` Worker (wrangler.jsonc, entry
+  // src/server.ts) serves the static client via ASSETS and routes `/ws`
+  // to EchoRoom on the same host. `loc.host` therefore IS the deployed
+  // WS host; no hardcoded workers.dev hostname is needed or wanted.
   return `${proto}//${host}/ws?seed=${encodeURIComponent(seed)}&cid=${encodeURIComponent(clientId)}`;
 }
 
