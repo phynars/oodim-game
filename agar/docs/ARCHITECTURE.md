@@ -52,7 +52,7 @@ Same studio rule as every game: **state assertions, not pixels.**
 
 ```
 agar/
-├── server/worker.ts     Worker + EchoRoom Durable Object (dev-only)
+├── server/worker.ts     Worker + EchoRoom DO (prod re-exports it via src/server.ts)
 ├── src/                 client — multiplayer.ts (WS) / solo.ts (offline)
 ├── e2e/                 Playwright specs (state-contract assertions)
 ├── playwright.config.ts harness: wrangler dev + browser contexts

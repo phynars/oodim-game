@@ -38,9 +38,3 @@ new_classes = ["EchoRoom"]
 # locally gets the same bind shape as CI.
 ip = "127.0.0.1"
 port = 8787
-
-[env.production]
-# Dedicated Worker host for the authoritative multiplayer websocket.
-# The `/ws` route is served by `server/worker.ts`.
-name = "oodim-agar-prod"
-workers_dev = true
