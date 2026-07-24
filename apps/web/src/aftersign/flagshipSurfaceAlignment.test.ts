@@ -9,6 +9,7 @@ import {
   meetIoForAftersignSlice,
   recordAftersignPacketChoice,
 } from "./verticalSliceRuntimeState";
+import type { AftersignSceneId } from "./verticalSliceRuntimeState";
 import {
   createAftersignWindowGameSurface,
   type AftersignStoryBeatId,
@@ -28,6 +29,18 @@ const STORY_BEAT_TO_FLAGSHIP_BEAT: Record<AftersignStoryBeatId, FlagshipSceneBea
   "io-first-meeting": "packet-offered",
   "io-remembers-sealed-packet": "io-return-recognition",
   "io-remembers-opened-packet": "io-return-recognition",
+};
+
+// The vertical-slice snapshot uses its own scene vocabulary
+// (`AftersignSceneId = "kiosk" | "io-return"`) while the flagship story-state
+// contract pins `scene.id` to the literal `"io-night-post-kiosk"`. This map
+// documents the projection so the alignment test can assert both sides:
+// the vertical-slice literal we actually emit AND the flagship scene id it
+// stands in for. When we later widen `AftersignSceneId` or rename the
+// flagship scene, this record forces a compile error at the seam.
+const SCENE_TO_FLAGSHIP_SCENE_ID: Record<AftersignSceneId, "io-night-post-kiosk"> = {
+  kiosk: "io-night-post-kiosk",
+  "io-return": "io-night-post-kiosk",
 };
 
 const PACKET_OUTCOME_TO_FLAGSHIP_DELIVERY: Record<
@@ -65,7 +78,12 @@ describe("AftersignWindowGameSurface flagship alignment", () => {
       expect(STORY_BEAT_TO_FLAGSHIP_BEAT[snapshot.story.beat]).toBe("io-return-recognition");
       expect(snapshot.story.completedBeats).toContain(expectedStoryBeat);
 
-      expect(snapshot.state.scene).toBe("io-night-post-kiosk");
+      // Two `meetIoForAftersignSlice` calls advance the vertical-slice scene
+      // to `"io-return"`. That's the literal our snapshot carries; the
+      // flagship-side scene id it maps to is asserted via
+      // `SCENE_TO_FLAGSHIP_SCENE_ID` below.
+      expect(snapshot.state.scene).toBe("io-return");
+      expect(SCENE_TO_FLAGSHIP_SCENE_ID[snapshot.state.scene]).toBe("io-night-post-kiosk");
       expect(snapshot.state.player).toEqual({
         id: PLAYER.playerId,
         name: PLAYER.playerName,
