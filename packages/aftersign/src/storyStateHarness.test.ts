@@ -5,33 +5,40 @@ import {
   type AftersignGameHarnessSnapshot,
 } from "./storyStateHarness";
 
-describe("AFTERSIGN story/state harness contract", () => {
-  it("accepts a window.__game snapshot whose story beat, route, NPC memory, and publish version agree", () => {
-    const snapshot: AftersignGameHarnessSnapshot = {
-      story: {
-        currentBeatId: "io-recognizes-preserved-packet",
-        visitedBeatIds: ["arrival", "packet-choice", "io-recognizes-preserved-packet"],
-        routeAttention: "preserved-seal",
-      },
-      npcs: {
-        io: {
-          id: "io",
-          displayName: "Io",
-          memory: {
-            referencedPlayerAction: "preserved-seal",
-            lastReferencedBeatId: "io-recognizes-preserved-packet",
-            line: "You kept the blue seal intact. I remember that.",
-          },
+function createHarnessSnapshot(
+  override: Partial<AftersignGameHarnessSnapshot> = {},
+): AftersignGameHarnessSnapshot {
+  return {
+    story: {
+      currentBeatId: "io-recognizes-preserved-packet",
+      visitedBeatIds: ["arrival", "packet-choice", "io-recognizes-preserved-packet"],
+      routeAttention: "preserved-seal",
+    },
+    npcs: {
+      io: {
+        id: "io",
+        displayName: "Io",
+        memory: {
+          referencedPlayerAction: "preserved-seal",
+          lastReferencedBeatId: "io-recognizes-preserved-packet",
+          line: "You kept the blue seal intact. I remember that.",
         },
       },
-      statePublishVersion: 7,
-    };
+    },
+    statePublishVersion: 7,
+    ...override,
+  };
+}
+
+describe("AFTERSIGN story/state harness contract", () => {
+  it("accepts a window.__game snapshot whose story beat, route, NPC memory, and publish version agree", () => {
+    const snapshot = createHarnessSnapshot();
 
     expect(() => assertAftersignStoryStateInvariants(snapshot)).not.toThrow();
   });
 
   it("rejects a published story beat that is not represented in visitedBeatIds", () => {
-    const snapshot: AftersignGameHarnessSnapshot = {
+    const snapshot = createHarnessSnapshot({
       story: {
         currentBeatId: "io-recognizes-opened-packet",
         visitedBeatIds: ["arrival", "packet-choice"],
@@ -49,18 +56,13 @@ describe("AFTERSIGN story/state harness contract", () => {
         },
       },
       statePublishVersion: 8,
-    };
+    });
 
     expect(() => assertAftersignStoryStateInvariants(snapshot)).toThrow(/currentBeatId.*visitedBeatIds/i);
   });
 
   it("rejects an Io memory action that does not match the committed route", () => {
-    const snapshot: AftersignGameHarnessSnapshot = {
-      story: {
-        currentBeatId: "io-recognizes-preserved-packet",
-        visitedBeatIds: ["arrival", "packet-choice", "io-recognizes-preserved-packet"],
-        routeAttention: "preserved-seal",
-      },
+    const snapshot = createHarnessSnapshot({
       npcs: {
         io: {
           id: "io",
@@ -73,18 +75,13 @@ describe("AFTERSIGN story/state harness contract", () => {
         },
       },
       statePublishVersion: 9,
-    };
+    });
 
     expect(() => assertAftersignStoryStateInvariants(snapshot)).toThrow(/Io.*referencedPlayerAction.*routeAttention/i);
   });
 
   it("rejects an Io memory line that does not name the committed player action", () => {
-    const snapshot: AftersignGameHarnessSnapshot = {
-      story: {
-        currentBeatId: "io-recognizes-preserved-packet",
-        visitedBeatIds: ["arrival", "packet-choice", "io-recognizes-preserved-packet"],
-        routeAttention: "preserved-seal",
-      },
+    const snapshot = createHarnessSnapshot({
       npcs: {
         io: {
           id: "io",
@@ -97,32 +94,14 @@ describe("AFTERSIGN story/state harness contract", () => {
         },
       },
       statePublishVersion: 10,
-    };
+    });
 
     expect(() => assertAftersignStoryStateInvariants(snapshot)).toThrow(/preserved-seal player action/i);
   });
 
   it("rejects snapshots that have not published state for the harness", () => {
-    const snapshot: AftersignGameHarnessSnapshot = {
-      story: {
-        currentBeatId: "io-recognizes-preserved-packet",
-        visitedBeatIds: ["arrival", "packet-choice", "io-recognizes-preserved-packet"],
-        routeAttention: "preserved-seal",
-      },
-      npcs: {
-        io: {
-          id: "io",
-          displayName: "Io",
-          memory: {
-            referencedPlayerAction: "preserved-seal",
-            lastReferencedBeatId: "io-recognizes-preserved-packet",
-            line: "You kept the blue seal intact. I remember that.",
-          },
-        },
-      },
-      statePublishVersion: 0,
-    };
+    const snapshot = createHarnessSnapshot({ statePublishVersion: 0 });
 
-    expect(() => assertAftersignStoryStateInvariants(snapshot)).toThrow(/statePublishVersion/i);
+    expect(() => assertAftersignStoryStateInvariants(snapshot)).toThrow(/positive statePublishVersion/i);
   });
 });
