@@ -5,10 +5,37 @@ import {
   createAftersignWindowGameSurface,
   type AftersignStoryStateSnapshot,
 } from "./windowGameSurface";
-import type { AftersignVerticalSliceState } from "./verticalSliceRuntimeState";
+import {
+  createAftersignVerticalSliceState,
+  meetIoForAftersignSlice,
+  recordAftersignPacketChoice,
+} from "./verticalSliceRuntimeState";
+
+// This vitest is the fast-lane twin of the browser-layer FlagshipGameSurface
+// contract (see `e2e-shared/flagshipStoryStateContract.ts` and
+// `docs/flagship/story-state-contract.md`). Its job is to fail loudly the
+// moment the vertical-slice snapshot drifts from the subset of the flagship
+// surface it CLAIMS to already cover.
+//
+// It intentionally covers only the subset the vertical-slice snapshot can
+// actually derive from `AftersignStoryStateSnapshot` today (#798 option b):
+//   - delivery.id (constant per spec) + delivery.outcome (from npc memory)
+//   - npcs.io.id
+//   - scene.beat (from `story.beat`, via `mapStoryBeat`)
+//
+// Fields the vertical-slice snapshot CANNOT yet honestly derive are called
+// out below and deliberately excluded from the pinned subset:
+//   - scene.id: FlagshipGameSurface fixes it to 'io-night-post-kiosk', but
+//     the runtime enum `AftersignSceneId` is `'kiosk' | 'io-return'`. The
+//     mapping is a separate impl issue; asserting a hardcoded flagship
+//     literal here would be fabricated (see #798).
+//   - scene.act: FlagshipGameSurface fixes it to 'act-1-seal', but the
+//     snapshot reports `'act-1'`. Same gap.
+// Growing the snapshot to close either gap is out of scope for #798 and
+// should land in its own PR.
 
 type ClaimedFlagshipSubset = {
-  scene: Pick<FlagshipGameSurface["scene"], "id" | "act" | "beat">;
+  scene: Pick<FlagshipGameSurface["scene"], "beat">;
   delivery: Pick<FlagshipGameSurface["delivery"], "id" | "outcome">;
   npcs: {
     io: Pick<FlagshipGameSurface["npcs"]["io"], "id">;
@@ -17,27 +44,24 @@ type ClaimedFlagshipSubset = {
 
 describe("AftersignWindowGameSurface flagship alignment", () => {
   it("pins the FlagshipGameSurface subset the vertical-slice snapshot claims today", () => {
-    const surface = createAftersignWindowGameSurface(
-      state({
-        scene: "io-night-post-kiosk",
-        packetOutcome: "sealed",
-        ioHasMetPlayer: true,
-        ioRecognizesPlayer: true,
-      }),
-      {
-        playerId: "player-flagship-alignment",
-        playerName: "Trace",
-        rememberedSessionIds: ["session-before"],
-      },
-    );
+    // Build the state through the real reducers so every field the test
+    // reads comes from the runtime, not an ad-hoc cast.
+    const initial = createAftersignVerticalSliceState();
+    const afterChoice = recordAftersignPacketChoice(initial, "sealed");
+    const afterFirstMeeting = meetIoForAftersignSlice(afterChoice);
+    const afterReturn = meetIoForAftersignSlice(afterFirstMeeting);
+
+    const surface = createAftersignWindowGameSurface(afterReturn, {
+      playerId: "player-flagship-alignment",
+      playerName: "Trace",
+      rememberedSessionIds: ["session-before"],
+    });
 
     const snapshot = surface.getStoryState();
     const aligned = toClaimedFlagshipSubset(snapshot);
 
     expect(aligned).toEqual({
       scene: {
-        id: "io-night-post-kiosk",
-        act: "act-1-seal",
         beat: "io-return-recognition",
       },
       delivery: {
@@ -58,8 +82,6 @@ function toClaimedFlagshipSubset(
 ): ClaimedFlagshipSubset {
   return {
     scene: {
-      id: mapSceneId(snapshot.state.scene),
-      act: "act-1-seal",
       beat: mapStoryBeat(snapshot.story.beat),
     },
     delivery: {
@@ -72,15 +94,6 @@ function toClaimedFlagshipSubset(
       },
     },
   };
-}
-
-function mapSceneId(
-  scene: AftersignStoryStateSnapshot["state"]["scene"],
-): FlagshipGameSurface["scene"]["id"] {
-  if (scene !== "io-night-post-kiosk") {
-    throw new Error(`No FlagshipGameSurface scene mapping for '${scene}'.`);
-  }
-  return "io-night-post-kiosk";
 }
 
 function mapStoryBeat(
@@ -98,16 +111,4 @@ function mapStoryBeat(
     case "io-remembers-opened-packet":
       return "io-return-recognition";
   }
-}
-
-function state(
-  overrides: Partial<AftersignVerticalSliceState>,
-): AftersignVerticalSliceState {
-  return {
-    scene: "io-night-post-kiosk",
-    packetOutcome: null,
-    ioHasMetPlayer: false,
-    ioRecognizesPlayer: false,
-    ...overrides,
-  } as AftersignVerticalSliceState;
 }
