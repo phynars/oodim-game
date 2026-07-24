@@ -66,4 +66,6 @@ agar/
   new client mode, protocol change).
 - The state contract (`window.__game`) gains or renames fields that
   e2e specs assert on.
-- The DO Worker deployment story changes (env/route/host assumptions).
+- The DO Worker deployment story changes (env/route/host assumptions
+  in either `agar/wrangler.toml` for dev/CI or the repo-root
+  `wrangler.jsonc` / `src/server.ts` for prod).
