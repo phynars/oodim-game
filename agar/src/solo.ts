@@ -3,12 +3,9 @@
 // Why this exists (root cause of "I can't play agar — it doesn't grow
 // or eat others"): the original client (multiplayer.ts) renders ONLY
 // from server snapshots pushed by the EchoRoom Durable Object over a
-// WebSocket. That DO Worker is dev-only — `agar/wrangler.toml` has no
-// deploy routing and the deploy workflow publishes only static assets.
-// So on the live site `wss://…/ws` 404s, no snapshot ever arrives,
-// `latest` stays null, and the canvas shows "no one is listening" with
-// zero gameplay. Locally it's the same unless you also run
-// `wrangler dev` on :8787.
+// WebSocket. Multiplayer is deployed in production via the repo-root
+// wrangler.jsonc Worker (`oodim-game`, entry `src/server.ts`) on
+// game.oodim.com, with deploys from .github/workflows/deploy.yml.
 //
 // The fix: run the SAME proven pure reducer LOCALLY at 20 Hz. No
 // server, no WebSocket — food, bots, eating, growth, death/respawn all

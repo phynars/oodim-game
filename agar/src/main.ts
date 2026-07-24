@@ -14,13 +14,11 @@
 //     specs navigate with `?mp=1`, so they keep hitting this path
 //     unchanged.
 //
-// Root cause this split fixes: the DO Worker is dev-only (no deploy
-// routing in agar/wrangler.toml; deploy.yml publishes only static
-// assets), so on the live site the WS upgrade 404s and the multiplayer
-// client never receives a snapshot — "no one is listening", no
-// gameplay. Defaulting to local single-player makes /agar/ playable with
-// no backend at all (and incidentally makes the prod play-smoke pass,
-// since solo populates window.__game.canonical and ticks locally).
+// Root cause this split fixes: multiplayer IS deployed in production via
+// the repo-root wrangler.jsonc Worker (`oodim-game`, entry `src/server.ts`),
+// which routes game.oodim.com and serves `/ws` through EchoRoom. Deploys run
+// from .github/workflows/deploy.yml. This mode split is for UX/default-path
+// behavior, not because production lacks a multiplayer route.
 
 import { startSolo } from "./solo";
 import { startMultiplayer } from "./multiplayer";
