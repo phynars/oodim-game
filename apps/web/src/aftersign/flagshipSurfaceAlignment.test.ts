@@ -19,9 +19,6 @@ import {
 //
 // It intentionally covers only the subset the vertical-slice snapshot can
 // actually DERIVE from `AftersignStoryStateSnapshot` today (#798 option b):
-//   - delivery.id: constant per the flagship spec ("blue-packet"). Asserted
-//     as a literal because the spec pins it, not because we're papering
-//     over a mismatch.
 //   - delivery.outcome: derived from `npcs[0].memory.packetOutcome`.
 //   - npcs.io.id: derived from `npcs[0].id`.
 //   - scene.beat: derived from `story.beat` via `mapStoryBeat`.
@@ -39,12 +36,15 @@ import {
 //     snapshot reports `story.act === 'act-1'`. Same gap.
 //   - npcs.io.displayName / npcs.io.present: not on the snapshot at all;
 //     asserting flagship literals here would be pure fabrication.
+//   - delivery.id: FlagshipGameSurface pins it to 'blue-packet', but the
+//     snapshot carries no delivery identifier — asserting the spec literal
+//     on both sides would be the same tautology as the fields above.
 // Growing the snapshot to close either gap is out of scope for #798 and
 // should land in its own PR.
 
 type ClaimedFlagshipSubset = {
   scene: Pick<FlagshipGameSurface["scene"], "beat">;
-  delivery: Pick<FlagshipGameSurface["delivery"], "id" | "outcome">;
+  delivery: Pick<FlagshipGameSurface["delivery"], "outcome">;
   npcs: {
     io: Pick<FlagshipGameSurface["npcs"]["io"], "id">;
   };
@@ -73,7 +73,6 @@ describe("AftersignWindowGameSurface flagship alignment", () => {
         beat: "io-return-recognition",
       },
       delivery: {
-        id: "blue-packet",
         outcome: "sealed",
       },
       npcs: {
@@ -93,7 +92,6 @@ function toClaimedFlagshipSubset(
       beat: mapStoryBeat(snapshot.story.beat),
     },
     delivery: {
-      id: "blue-packet",
       outcome: snapshot.state.npcs[0].memory.packetOutcome ?? "unknown",
     },
     npcs: {
