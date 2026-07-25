@@ -59,6 +59,7 @@ export default defineConfig({
     "packet-intent-vertical-slice-contract.spec.ts",
     "io-recognition-cue-contract.spec.ts",
     "recognition-beat-contract.spec.ts",
+    "io-recognition-timing-feel-contract.spec.ts",
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
