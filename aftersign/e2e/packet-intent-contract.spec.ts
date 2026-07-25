@@ -1,1 +1,1 @@
-export { runPacketIntentChecks } from "../src/packet-intent-contract.test";
+export { runPacketIntentChecks } from "../src/packetIntent";

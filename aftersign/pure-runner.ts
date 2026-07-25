@@ -1,7 +1,7 @@
-import { runPacketIntentChecks } from "./src/packet-intent-contract.test";
+import { runPacketIntentChecks } from "./src/packetIntent";
 
 async function main(): Promise<void> {
-  await runPacketIntentChecks();
+  runPacketIntentChecks();
 }
 
 main().catch((error) => {
