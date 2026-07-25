@@ -9,9 +9,12 @@ import { runPacketIntentChecks } from "../src/packetIntent";
 // typechecked but never invoked; before PR #828 they were invoked only on
 // the flaky Playwright/SwiftShader lane.
 //
-// PR #828 adds a plain-Node lane (`test:aftersign:pure` via
-// `aftersign/pure-runner.ts`) chained into `typecheck:aftersign` so the
-// contract runs under `node --import tsx` on CI without a browser boot.
+// PR #828 adds a plain-Node lane (`test:aftersign:pure`) chained into
+// `typecheck:aftersign` so the contract runs under
+// `node --experimental-strip-types aftersign/src/packetIntent.test.ts`
+// on CI without a browser boot. The `.test.ts` file is a thin entrypoint
+// that imports `runPacketIntentChecks` and invokes it at module top-level
+// — a nonzero exit propagates the throw, satisfying #825's acceptance.
 // This spec is retained so the SAME check bundle also runs inside the
 // existing `test:e2e:aftersign` step during migration — a regression
 // trips whichever lane executes first, and coverage is not lost while
