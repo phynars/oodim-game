@@ -176,6 +176,7 @@ jobs:
       - run: npm run build:aftersign
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:aftersign
+      - run: npm run test:aftersign:pure
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
