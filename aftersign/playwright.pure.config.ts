@@ -24,11 +24,16 @@ import { defineConfig } from "@playwright/test";
 //    specs never touch a page fixture, so nothing needs to boot.
 //  - `retries: 0` — a pure-logic assertion is either true or it isn't;
 //    retrying a deterministic check just delays the red signal.
-//  - `grep: /-contract\.spec\.ts$/` — convention: any spec whose file
-//    ends in `-contract.spec.ts` is a pure controller/contract check.
-//    New pure specs pick up the lane automatically by following the
-//    naming.  Non-pure specs (scene, save/load, etc.) stay on the main
-//    lane where they have a page fixture and a preview server.
+//  - `testMatch` — an EXPLICIT allow-list of the pure specs.  Playwright's
+//    `grep` filters on TEST TITLE, not filename, so a regex like
+//    `/-contract\.spec\.ts$/` would still discover every
+//    `*-contract.spec.ts` file (the whole `aftersign/e2e/` dir),
+//    then match zero titles and run nothing — or worse, match a title
+//    that happens to contain that substring.  Using `testMatch` narrows
+//    at the DISCOVERY layer so files that need `{ page }` + the
+//    vite-preview webServer never enter this lane in the first place.
+//    Adding a new pure spec is a one-line edit here — deliberate, not
+//    accidental via naming.
 //  - The main lane also runs these specs (they still live under
 //    aftersign/e2e/), so the pure lane is ADDITIVE gating, not a
 //    replacement.  A regression that survives the flaky main-lane
@@ -45,7 +50,16 @@ import { defineConfig } from "@playwright/test";
 // lane is deterministic.
 export default defineConfig({
   testDir: "e2e",
-  grep: /-contract\.spec\.ts$/,
+  // Explicit allow-list: only specs that are documented to NOT use the
+  // `{ page }` fixture belong on this lane.  Do not switch to a glob
+  // that captures every `*-contract.spec.ts` — most of those files DO
+  // use `{ page }` and require the main lane's vite-preview webServer.
+  testMatch: [
+    "packet-intent-contract.spec.ts",
+    "packet-intent-vertical-slice-contract.spec.ts",
+    "io-recognition-cue-contract.spec.ts",
+    "recognition-beat-contract.spec.ts",
+  ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
