@@ -35,9 +35,14 @@ import { defineConfig } from "@playwright/test";
 //    retries will still be caught here on the first attempt.
 //
 // This lane is wired into CI in .github/workflows/ci.yml (aftersign job)
-// via `npm run test:aftersign:pure`, placed AFTER `test:e2e:aftersign`
-// so the pure step never blocks the (flaky) main lane from running —
-// see issue #829 acceptance criteria.
+// via `npm run test:aftersign:pure`, placed BEFORE `test:e2e:aftersign`
+// (and before `playwright install`) — the pure lane launches no browser
+// and is deterministic (retries: 0), so it costs seconds and gives a
+// first-attempt green signal on the pure-controller contracts. Issue
+// #829 acceptance criteria explicitly allow "before or alongside"; the
+// non-chaining constraint (AC3) is about the main lane's flakiness
+// affecting a chained step, which does not apply here since the pure
+// lane is deterministic.
 export default defineConfig({
   testDir: "e2e",
   grep: /-contract\.spec\.ts$/,

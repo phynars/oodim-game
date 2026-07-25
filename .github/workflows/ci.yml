@@ -174,9 +174,17 @@ jobs:
       - run: npm install
       - run: npm run typecheck:aftersign
       - run: npm run build:aftersign
+      # Pure lane runs BEFORE the browser install and the main lane: it
+      # launches no browser (see aftersign/playwright.pure.config.ts) and
+      # is deterministic (retries: 0), so it costs ~seconds and gives a
+      # first-attempt green signal on the pure-controller contracts before
+      # the main lane pays the vite-preview + SwiftShader boot tax. Issue
+      # #829 explicitly allows "before or alongside" — running first means
+      # the pure step actually executes even when the main lane's
+      # pre-existing SwiftShader flake (#700/#506) aborts the job.
+      - run: npm run test:aftersign:pure
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:aftersign
-      - run: npm run test:aftersign:pure
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
