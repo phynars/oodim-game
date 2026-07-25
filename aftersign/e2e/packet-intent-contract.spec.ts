@@ -1,43 +1,36 @@
 import { test, expect } from "@playwright/test";
 import { runPacketIntentChecks } from "../src/packetIntent";
 
-// CI-gate for the packet-intent feel-contract checks.
+// AFTERSIGN packet-intent feel-contract — dual-lane gate.
 //
-// `runPacketIntentChecks()` lives in aftersign/src/packetIntent.ts and
-// pins 11 invariants against the controller (450ms threshold, 180ms tap
-// ceiling, sticky-cancel, anti-punitive-dead-zone SEALED default, harness
-// mirror, etc.). Before this spec landed, the checks were TYPECHECKED
-// but never INVOKED by any CI runner — the aftersign lane greenlit
-// silently on a broken invariant.
+// `runPacketIntentChecks()` pins 11 controller invariants (450ms hold
+// threshold, 180ms tap ceiling, sticky-cancel, anti-punitive-dead-zone
+// SEALED default, harness mirror, etc.). Before PR #700 these checks were
+// typechecked but never invoked; before PR #828 they were invoked only on
+// the flaky Playwright/SwiftShader lane.
 //
-// This spec runs the check bundle inside a Playwright test so the
-// existing `test:e2e:aftersign` step gates it. It intentionally does
-// NOT use the { page } fixture — the checks are pure controller logic
-// (no scene, no window.__game), matching the sibling shape in
-// `npc-memory-line-contract.spec.ts` where `test.describe` wraps a
-// pure-module smoke test alongside the runtime specs.
+// PR #828 adds a plain-Node lane (`test:aftersign:pure`) chained into
+// `typecheck:aftersign` so the contract runs under
+// `node --experimental-strip-types aftersign/src/packetIntent.test.ts`
+// on CI without a browser boot. The `.test.ts` file is a thin entrypoint
+// that imports `runPacketIntentChecks` and invokes it at module top-level
+// — a nonzero exit propagates the throw, satisfying #825's acceptance.
+// This spec is retained so the SAME check bundle also runs inside the
+// existing `test:e2e:aftersign` step during migration — a regression
+// trips whichever lane executes first, and coverage is not lost while
+// the pure lane proves itself.
 //
-// The end-to-end scene-level threshold is separately pinned by
-// `packet-hold-threshold.spec.ts`; these two together cover the
-// controller in isolation and the controller wired into the scene.
-//
-// PR #700 CI note (2026-07-17): the aftersign lane went red on this PR's
-// first push, but the reviewer traced the failure to another spec's
-// SwiftShader / vite-preview cold-start flake — this contract test is
-// pure controller logic (no page fixture, no scene, no window.__game),
-// so it cannot itself be the failure source. Mirrors the same "push to
-// re-run" convention documented in `aftersign/src/packetChoiceFeel.test.ts`
-// after PR #590 hit the identical cold-start flake shape.
-//
-// Re-push touch (2026-07-17, iteration 4): Soren's re-review confirmed all
-// 11 controller assertions hold and the sibling-import pattern matches
-// io-dialogue / npc-memory-line-contract; the only block is the flaked
-// aftersign lane. This edit exists purely to trigger a CI re-run — no
-// behavior change. If the flake persists, escalate to a wider retry-count
-// bump on aftersign/playwright.config.ts instead of another author push.
-
+// The spec intentionally does NOT use the `{ page }` fixture: the
+// checks are pure controller logic (no scene, no window.__game),
+// matching the sibling shape in `npc-memory-line-contract.spec.ts`.
+// End-to-end scene-level thresholds are separately pinned by
+// `packet-hold-threshold.spec.ts`.
 test.describe("AFTERSIGN packet intent contract", () => {
   test("runPacketIntentChecks executes every controller invariant without throwing", async () => {
     expect(() => runPacketIntentChecks()).not.toThrow();
   });
 });
+
+// Re-export kept so any future consumer (or the pure runner, if it is
+// ever restructured to pull through this module) has a stable barrel.
+export { runPacketIntentChecks };
