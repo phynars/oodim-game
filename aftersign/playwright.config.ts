@@ -86,24 +86,11 @@ export default defineConfig({
   webServer: [
     {
       cwd: repoRoot,
-      // 2026-07-25 (PR #822 root cause): in CI, do NOT rebuild inside
-      // webServer. The aftersign CI job already runs `npm run
-      // build:aftersign` as its own step, so the previous
-      // `build && preview` command paid a SECOND full tsc + vite build
-      // inside the 120s webServer timeout on a cold, loaded runner.
-      // Playwright `retries` (see above) only retry TESTS — webServer
-      // startup is never retried — so a boot overrun failed the WHOLE
-      // lane on every push. That is the recurring "cold-start flake"
-      // shape (#700/#506/#590/#766) that the retries 1→2→3 escalations
-      // could not fix. Locally (no CI env) the rebuild is kept so
-      // `npm run test:e2e:aftersign` still works from a clean checkout;
-      // the timeout gets headroom either way.
-      command: process.env.CI
-        ? "npm run preview:aftersign -- --host localhost --port 4374 --strictPort"
-        : "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
+      command:
+        "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
       url: "http://localhost:4374/aftersign/",
       reuseExistingServer: !process.env.CI,
-      timeout: 240_000,
+      timeout: 120_000,
     },
     {
       cwd: repoRoot,
