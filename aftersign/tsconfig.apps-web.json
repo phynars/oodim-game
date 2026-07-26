@@ -1,0 +1,40 @@
+{
+  // BURN-DOWN sibling for #843. The main `aftersign/tsconfig.json`
+  // deliberately keeps `include: ["src"]` — widening it turns the
+  // BLOCKING `typecheck:aftersign` step red on ~25 files' worth of
+  // latent errors in one shot (PR #837's failure mode; see the main
+  // tsconfig's comment). This config exists so those ~25 files
+  // typecheck under the same strict flags as the main config, but via
+  // a SEPARATE ci.yml step that runs `continue-on-error: true` (the
+  // aftersign lane's burn-down surface). Fix errors file-by-file;
+  // when the step lands green on its own, flip to blocking by
+  // removing `continue-on-error` from the ci.yml step. When zero
+  // errors are reachable AND blocking, this file can be retired by
+  // merging its `include` back into the main tsconfig and updating
+  // `aftersign/README.md`'s typecheck-status section.
+  //
+  // Strictness matches the main config on purpose: the tolerance
+  // axis is ci.yml's `continue-on-error`, not looser compiler flags.
+  // That way "flip to blocking" is a one-line change, and no file
+  // gets marked green under weaker rules than it will eventually
+  // face.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client"]
+  },
+  "include": ["../apps/web/src/aftersign/**/*.ts"],
+  "exclude": ["node_modules"]
+}
