@@ -1,6 +1,9 @@
-# aftersign
+# aftersign (post-signal) game
 
-Runnable vertical slice for the AFTERSIGN flagship touchpoints.
+Post-signal, post-language: two players share a lattice, exchange
+recognition cues, and negotiate meaning without a dictionary. This
+directory is the game engine + assertion harness; the browser shell
+lives under `apps/web/src/aftersign/`.
 
 ## Recognition beat
 
