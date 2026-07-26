@@ -34,13 +34,17 @@
 //     turned CI red. Staying inside packages/aftersign is what keeps
 //     this lane green.
 
+// Explicit `.ts` extension: this module is executed by
+// `aftersign/pure-runner.ts` under `node --experimental-strip-types`,
+// whose native ESM resolver requires exact file paths on relative
+// imports. Typecheck accepts it via `allowImportingTsExtensions`.
 import {
   assertIoRecognitionBeatCue,
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
   type IoRecognitionBeatCue,
   type IoRecognitionBeatState,
-} from "../../packages/aftersign/src/ioRecognitionBeat";
+} from "../../packages/aftersign/src/ioRecognitionBeat.ts";
 
 class AssertionError extends Error {}
 
@@ -158,7 +162,7 @@ export function runIoRecognitionCueContractChecks(): void {
   checkPublishVersionMonotonicPerBeat();
 }
 
-// No top-level call — the CI-gating INVOCATION lives in the paired
-// Playwright spec `aftersign/e2e/io-recognition-cue-contract.spec.ts`
-// so the aftersign lane actually runs the checks under
-// `test:e2e:aftersign`.
+// No top-level call — since #826 (PR #838) the CI-gating INVOCATION
+// lives in `aftersign/pure-runner.ts` (`npm run test:aftersign:pure`).
+// `aftersign/e2e/io-recognition-cue-contract.spec.ts` remains as a thin
+// typechecked re-export only.

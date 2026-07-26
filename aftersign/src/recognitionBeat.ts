@@ -35,17 +35,21 @@
 // renderer, Playwright tests, and this module will all pick up the
 // change through their respective resolvers.
 
+// Explicit `.ts` extensions: this module is imported (transitively) by
+// `aftersign/pure-runner.ts` under `node --experimental-strip-types`,
+// whose native ESM resolver requires exact file paths on relative
+// imports. Typecheck accepts them via `allowImportingTsExtensions`.
 import {
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackOptions,
   type RecognitionFeedbackSample,
   type RecognitionOutcome,
-} from "../../apps/web/src/aftersign/recognitionFeedback";
+} from "../../apps/web/src/aftersign/recognitionFeedback.ts";
 import {
   chooseIoReturningSessionLine,
   type IoRouteAttention,
-} from "../../packages/aftersign/src/ioReturningSession";
+} from "../../packages/aftersign/src/ioReturningSession.ts";
 
 export type ReturningPacketOutcome = RecognitionOutcome;
 

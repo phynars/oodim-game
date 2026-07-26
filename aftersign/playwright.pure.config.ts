@@ -54,11 +54,22 @@ export default defineConfig({
   // `{ page }` fixture belong on this lane.  Do not switch to a glob
   // that captures every `*-contract.spec.ts` — most of those files DO
   // use `{ page }` and require the main lane's vite-preview webServer.
+  // 2026-07-26 (#826, PR #838): `io-recognition-cue-contract.spec.ts`,
+  // `recognition-beat-contract.spec.ts`, and `first-camera-move-contract.spec.ts`
+  // moved to the plain-Node `aftersign/pure-runner.ts` lane (see
+  // `test:aftersign:pure` script, invoked from ci.yml's aftersign job).
+  // They stay in `aftersign/e2e/` as thin typechecked re-exports so the
+  // `run*Checks` symbol paths remain validated by `typecheck:aftersign`,
+  // but Playwright no longer invokes them (they have no `test(...)`
+  // blocks). The remaining entries below still use `test()` and remain
+  // on the Playwright pure lane; the packet-intent ones are ALSO
+  // exercised by `pure-runner.ts` and by the main `test:e2e:aftersign`
+  // lane, so coverage is preserved. `kiosk-scene-contract.spec.ts`
+  // (added on main after this PR opened) is left on the Playwright
+  // pure lane — it's not one of the runners this PR migrated.
   testMatch: [
     "packet-intent-contract.spec.ts",
     "packet-intent-vertical-slice-contract.spec.ts",
-    "io-recognition-cue-contract.spec.ts",
-    "recognition-beat-contract.spec.ts",
     "kiosk-scene-contract.spec.ts",
   ],
   fullyParallel: true,

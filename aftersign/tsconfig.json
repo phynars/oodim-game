@@ -35,6 +35,6 @@
   // Do NOT add `**/*.test.ts` to `exclude`: aftersign/src/*.test.ts are
   // plain-TS assertion runners that are deliberately typechecked by this
   // config (see aftersign/src/packetIntentContract.test.ts header).
-  "include": ["src"],
+  "include": ["src", "pure-runner.ts"],
   "exclude": ["node_modules", "../dist-aftersign", "e2e", "playwright.config.ts", "vite.config.ts"]
 }

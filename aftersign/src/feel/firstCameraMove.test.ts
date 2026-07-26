@@ -13,12 +13,16 @@
 // veil/still frame, authored landing pose, intentional pull past the
 // midpoint, and a 60fps monotonic timeline.
 
+// Explicit `.ts` extension: this module is executed by
+// `aftersign/pure-runner.ts` under `node --experimental-strip-types`,
+// whose native ESM resolver requires exact file paths on relative
+// imports. Typecheck accepts it via `allowImportingTsExtensions`.
 import {
   FIRST_CAMERA_MOVE_FEEL,
   sampleFirstCameraMove,
   sampleFirstCameraMoveTimeline,
   type FirstCameraMoveFeelFrame,
-} from './firstCameraMove';
+} from './firstCameraMove.ts';
 
 class AssertionError extends Error {}
 

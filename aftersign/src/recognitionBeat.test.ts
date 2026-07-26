@@ -11,12 +11,19 @@
 // If you're tempted to `import { describe, expect, it } from "vitest"`:
 // STOP. That will fail TS2307 in CI. Use the throw-asserts below.
 
+// Explicit `.ts` extensions: this module is executed by
+// `aftersign/pure-runner.ts` under `node --experimental-strip-types`,
+// which uses Node's native ESM resolver and requires exact file paths on
+// relative imports. `moduleResolution: "Bundler"` +
+// `allowImportingTsExtensions` in aftersign/tsconfig.json accept the
+// `.ts` suffix during typecheck, so both lanes agree (same pattern as
+// `aftersign/src/packetIntent.test.ts`).
 import {
   ioRecognitionBeat,
   recognitionBeatProgress,
   recognitionFeedbackContract,
-} from "./recognitionBeat";
-import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+} from "./recognitionBeat.ts";
+import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession.ts";
 
 class AssertionError extends Error {}
 
@@ -247,17 +254,10 @@ export function runRecognitionBeatChecks(): void {
 
 // Deliberately no top-level `runRecognitionBeatChecks()` call here.
 //
-// Convention (see `aftersign/src/feel/firstCameraMove.test.ts` +
-// `aftersign/src/packetIntent.test.ts` + `aftersign/e2e/packet-intent-contract.spec.ts`):
-// the CI-gating INVOCATION lives in a Playwright spec under `aftersign/e2e/`
-// so `test:e2e:aftersign` actually runs the checks. Wrapping `runRecognitionBeatChecks()`
-// inside a spec's `expect(() => …).not.toThrow()` gives:
-//   • one clear failure message with a stack trace in the Playwright report
-//     when an invariant regresses,
-//   • idempotent execution under the aftersign lane's `retries: 3` cold-start
-//     policy (see `aftersign/playwright.config.ts`), because the checks read
-//     only pure functions with no page fixture,
-//   • no double-execution when a future e2e spec imports symbols from this
-//     module — a bare bottom-level call would fire at import time and re-run
-//     under the harness spec.
-// The paired spec is `aftersign/e2e/recognition-beat-contract.spec.ts`.
+// Since #826 (PR #838) the CI-gating INVOCATION lives in
+// `aftersign/pure-runner.ts` (`npm run test:aftersign:pure`, chained into
+// `typecheck:aftersign` and run directly by the ci.yml aftersign job).
+// A bare bottom-level call would fire at import time and double-run when
+// another module imports symbols from this file — the runner owns the
+// single invocation. `aftersign/e2e/recognition-beat-contract.spec.ts`
+// remains as a thin typechecked re-export only.
