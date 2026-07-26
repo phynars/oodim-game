@@ -1,17 +1,17 @@
 import { test, expect, Page } from "@playwright/test";
 
-// @redgreen:npc-memory-roundtrip fixme-pending-phase-3
-//
-// Sentinel read by .github/workflows/aftersign-npc-memory-redgreen.yml
-// (both polarities). While this marker is present, the green-polarity
-// lane retires its Playwright run — the spec has been CI-flaky under
-// SwiftShader cold-start (#700/#506/#590/#766) and no drop-memory
-// conditional guard has landed yet, so neither polarity has a stable
-// signal to gate merges on. Remove this marker as part of the phase-3
-// PR that either (a) makes the spec durable under default mode, or
-// (b) introduces the `test.skip(process.env.FLAGSHIP_BREAK_MODE !==
-// "drop-memory", ...)` guard the red lane's preflight already looks
-// for. The workflow will then run both polarities on their own merit.
+// CI gating for this spec lives in aftersign/e2e/redgreen-gates.json
+// (key: "npc-memory-roundtrip"), read by the preflight steps of
+// .github/workflows/aftersign-npc-memory-redgreen.yml. Modes:
+//   - "off"      — both polarities retire (spec is CI-flaky; see
+//                  #700/#506/#590/#766 for the SwiftShader cold-start
+//                  history).
+//   - "live"     — green polarity runs; red polarity stays retired
+//                  until the drop-memory conditional guard lands.
+//   - "redgreen" — both polarities run on their own merit.
+// Flip the mode in the gate file — do NOT reintroduce an in-spec
+// sentinel marker; the workflow greps the gate file, not this header.
+// Tracking: #727.
 
 // NPC-memory ROUND-TRIP across a hard session boundary.
 //
