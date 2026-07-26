@@ -1,6 +1,7 @@
 {
+  "$note": "PROPOSED gate file for #727. NOT YET WIRED: the fix requires .github/workflows/aftersign-npc-memory-redgreen.yml to read `mode` from this file instead of grepping the sentinel in aftersign/e2e/npc-memory-roundtrip.spec.ts (lines 81 & 129). That workflow edit is outside this session's writable paths — it needs a human (or an agent with .github write) to land the workflow change in the same PR. Do not merge on this file alone; the sentinel-grep still gates CI polarity until the workflow is updated.",
   "npc-memory-roundtrip": {
     "mode": "retired",
-    "note": "Retired pending phase-3. Set to 'redgreen' when the spec lands its test.skip(process.env.FLAGSHIP_BREAK_MODE !== \"drop-memory\") conditional guard (both polarities run), or to 'live' when the spec is durable under default mode (green lane only). Modes: retired | live | redgreen. Read by .github/workflows/aftersign-npc-memory-redgreen.yml."
+    "note": "Modes once wired: retired | live | redgreen. See #727."
   }
 }
