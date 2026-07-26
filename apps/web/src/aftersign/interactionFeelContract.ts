@@ -90,29 +90,55 @@ export const AFTERSIGN_INTERACTION_CONFIRM_FEEL = {
 export type AftersignInteractionConfirmKind = keyof typeof AFTERSIGN_INTERACTION_CONFIRM_FEEL;
 
 export type AftersignInteractionConfirmEnvelope =
-  | {
-      kind: "packetInspect";
-      label: "packet-inspect";
-      settleProgress: number;
-      cameraNudgeDegrees: number;
-      objectLiftPx: number;
-      sealGlowPx: number;
-    }
-  | {
-      kind: "packetOpen";
-      label: "packet-open";
-      tearProgress: number;
-      sealScale: number;
-      cameraShakePx: number;
-      waxShardOpacity: number;
-    }
-  | {
-      kind: "packetPreserve";
-      label: "packet-preserve";
-      pulseProgress: number;
-      sealScale: number;
-      humDuckDb: number;
-    };
+  | AftersignPacketInspectEnvelope
+  | AftersignPacketOpenEnvelope
+  | AftersignPacketPreserveEnvelope;
+
+export type AftersignPacketInspectEnvelope = {
+  kind: "packetInspect";
+  label: "packet-inspect";
+  settleProgress: number;
+  cameraNudgeDegrees: number;
+  objectLiftPx: number;
+  sealGlowPx: number;
+};
+
+export type AftersignPacketOpenEnvelope = {
+  kind: "packetOpen";
+  label: "packet-open";
+  tearProgress: number;
+  sealScale: number;
+  cameraShakePx: number;
+  waxShardOpacity: number;
+};
+
+export type AftersignPacketPreserveEnvelope = {
+  kind: "packetPreserve";
+  label: "packet-preserve";
+  pulseProgress: number;
+  sealScale: number;
+  humDuckDb: number;
+};
+
+/**
+ * Map from the discriminant `kind` to its narrowed envelope shape. Lets
+ * `sampleAftersignInteractionConfirmEnvelope` return the branch the caller
+ * asked for when `kind` is a string literal — the union stays available for
+ * generic call sites that only know a `AftersignInteractionConfirmKind`
+ * variable (see the wrapper in `verticalSlicePacketInteraction.ts`).
+ *
+ * This is a pure type-system move: the runtime already returns the right
+ * shape per `kind`; without this map, TS conservatively narrows every
+ * call to the full union and forces test call sites to guard on `.kind`
+ * before touching branch-specific fields like `settleProgress` /
+ * `sealGlowPx` / `tearProgress`. Kept here (co-located with the union) so
+ * the narrowing stays in sync when a branch's fields change.
+ */
+export type AftersignInteractionConfirmEnvelopeByKind = {
+  packetInspect: AftersignPacketInspectEnvelope;
+  packetOpen: AftersignPacketOpenEnvelope;
+  packetPreserve: AftersignPacketPreserveEnvelope;
+};
 
 /**
  * Per-frame envelope for the packet-confirm interaction. The renderer holds
@@ -130,6 +156,25 @@ export type AftersignInteractionConfirmEnvelope =
  *     floor (zero shake/nudge, unit scale) — audio and progress values are
  *     preserved so the beat still lands on time.
  */
+// Overloads: when the caller passes a literal `kind` (as every test does and
+// as `resolveAftersignPacketConfirmInteraction`'s consumers can) the return
+// type narrows to that branch, so `.settleProgress` / `.sealGlowPx` /
+// `.tearProgress` typecheck without a discriminant guard. The final
+// implementation signature keeps the full union for the generic-`kind` case
+// (see `verticalSlicePacketInteraction.ts`, which passes through an
+// `AftersignInteractionConfirmKind` variable).
+export function sampleAftersignInteractionConfirmEnvelope<
+  K extends AftersignInteractionConfirmKind,
+>(
+  kind: K,
+  elapsedMs: number,
+  reducedMotion?: boolean,
+): AftersignInteractionConfirmEnvelopeByKind[K];
+export function sampleAftersignInteractionConfirmEnvelope(
+  kind: AftersignInteractionConfirmKind,
+  elapsedMs: number,
+  reducedMotion?: boolean,
+): AftersignInteractionConfirmEnvelope;
 export function sampleAftersignInteractionConfirmEnvelope(
   kind: AftersignInteractionConfirmKind,
   elapsedMs: number,

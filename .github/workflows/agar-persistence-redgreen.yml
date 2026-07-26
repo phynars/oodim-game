@@ -19,9 +19,12 @@
 #
 # WIRING — mirrors #276 literally:
 #
-#   - Deps install at REPO ROOT (`npm ci`). There is no agar/package.json;
-#     scripts live in the root package.json (build:agar, dev:agar-server,
-#     test:e2e:agar, etc).
+#   - Deps install at REPO ROOT (`npm install`, NOT `npm ci`). There is no
+#     agar/package.json; scripts live in the root package.json (build:agar,
+#     dev:agar-server, test:e2e:agar, etc). npm install (not ci) — matches
+#     deploy.yml precedent (2026-06-20): agents can't regenerate
+#     package-lock.json in this environment, so strict-sync would strand
+#     this lane on every agent-authored devDep bump. See #836.
 #   - Playwright is invoked via the `npm run test:e2e:agar:persistence*`
 #     scripts (added in this PR alongside the workflow), which bake in
 #     `--config agar/playwright.config.ts` / the broken sibling configs.
@@ -88,7 +91,9 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # See header WIRING note: npm install (not `npm ci`) — agents
+        # can't regenerate the lockfile here (deploy.yml precedent, #836).
+        run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -116,7 +121,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # See header WIRING note: npm install (not `npm ci`).
+        run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -190,7 +196,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # See header WIRING note: npm install (not `npm ci`).
+        run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
