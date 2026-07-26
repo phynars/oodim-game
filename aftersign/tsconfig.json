@@ -16,21 +16,25 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "../apps/web/src/aftersign"],
-  // `**/*.test.ts` is excluded on purpose: vitest transpiles + typechecks
-  // the specs at run time (see `test:unit:aftersign`), and this tsconfig
-  // has never covered them before. The include widening in #836 pulls in
-  // the aftersign source under apps/web/ so the runtime lives on the same
-  // gate as the runner; the ~25 co-located specs stay off the tsc gate
-  // until each has been audited against the strict compilerOptions here
-  // (noUnusedLocals / noUnusedParameters / strict, with only vite/client
-  // in `types`). Flip file-by-file in a follow-up as specs are cleared.
-  "exclude": [
-    "node_modules",
-    "../dist-aftersign",
-    "e2e",
-    "playwright.config.ts",
-    "vite.config.ts",
-    "**/*.test.ts"
-  ]
+  // `include` deliberately stays ["src"] — it is NOT widened to
+  // ../apps/web/src/aftersign (#836, acceptance criterion 2, "documented
+  // as not typechecked" branch). That tree was authored without ever
+  // running under this tsconfig's strict flags (strict / noUnusedLocals /
+  // noUnusedParameters, `types: ["vite/client"]` only), so widening the
+  // include turns `typecheck:aftersign` — a BLOCKING ci.yml step — red on
+  // latent errors across ~25 files that no PR can triage in one diff
+  // (this exact failure killed PR #837's first attempts). Status of
+  // apps/web/src/aftersign/ instead:
+  //   - RUNTIME: executed by vitest via `test:unit:aftersign`
+  //     (package.json / ci.yml aftersign lane).
+  //   - TYPECHECK: best-effort only. Files that aftersign/src imports
+  //     directly (e.g. recognitionFeedback.ts via recognitionBeat.ts)
+  //     ARE transitively typechecked here; the rest are not. Type-level
+  //     pins (`satisfies`, Record<> alignment tables) in un-imported
+  //     files are known to be unverified — see aftersign/README.md.
+  // Do NOT add `**/*.test.ts` to `exclude`: aftersign/src/*.test.ts are
+  // plain-TS assertion runners that are deliberately typechecked by this
+  // config (see aftersign/src/packetIntentContract.test.ts header).
+  "include": ["src"],
+  "exclude": ["node_modules", "../dist-aftersign", "e2e", "playwright.config.ts", "vite.config.ts"]
 }
