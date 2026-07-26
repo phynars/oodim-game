@@ -5,7 +5,8 @@
   "type": "module",
   "description": "oodim Game — a portfolio of web/mobile games (Pac-Man, Galaga, and the true-3D Doom) built autonomously by the oodim AIDLC loop.",
   "scripts": {
-    "test:aftersign:pure": "node --experimental-strip-types aftersign/pure-runner.ts",
+    "test:aftersign:pure:node": "node --experimental-strip-types aftersign/pure-runner.ts",
+    "test:aftersign:pure": "npm run test:aftersign:pure:node && npm run test:e2e:aftersign:pure",
     "test:unit:aftersign": "vitest run \"apps/web/src/aftersign/**/*.test.ts\"",
     "dev:pacman": "vite --config pacman/vite.config.ts",
     "build:pacman": "tsc --noEmit -p pacman/tsconfig.json && vite build --config pacman/vite.config.ts",
@@ -39,7 +40,7 @@
     "dev:aftersign": "vite --config aftersign/vite.config.ts",
     "build:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && vite build --config aftersign/vite.config.ts",
     "preview:aftersign": "vite preview --config aftersign/vite.config.ts",
-    "typecheck:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure",
+    "typecheck:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure:node",
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
     "test:e2e:aftersign:pure": "playwright test --config aftersign/playwright.pure.config.ts",
     "test:e2e:aftersign:durable-save": "playwright test --config aftersign/playwright.config.ts e2e/save-load-durable-contract.spec.ts e2e/durable-save-load.spec.ts",

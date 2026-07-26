@@ -1,11 +1,16 @@
 // AFTERSIGN plain-Node pure-logic runner (issue #826, follow-up to #825).
 //
-// Invoked by `npm run test:aftersign:pure` (see package.json) via
-// `node --experimental-strip-types`. That script is also chained into
-// `typecheck:aftersign`, and the CI aftersign job runs it BEFORE
-// `test:e2e:aftersign` (see .github/workflows/ci.yml). So this file is
-// the single point that guarantees every pure-logic aftersign contract
-// check actually executes on CI — not just typechecks.
+// Invoked by `npm run test:aftersign:pure:node` (see package.json) via
+// `node --experimental-strip-types`. That script is chained into
+// `typecheck:aftersign` and is also the first step of the composite
+// `test:aftersign:pure` script (which then runs
+// `test:e2e:aftersign:pure` — the Playwright pure lane that still gates
+// packet-intent / packet-intent-vertical-slice / kiosk-scene contract
+// specs). The CI aftersign job (.github/workflows/ci.yml) invokes the
+// composite `npm run test:aftersign:pure` before `test:e2e:aftersign`,
+// so this file plus the Playwright pure lane together are the single
+// point that guarantees every pure-logic aftersign contract check
+// actually executes on CI — not just typechecks.
 //
 // Why plain Node (not the Playwright pure lane): the pure specs never
 // touch `{ page }`, a scene, or `window.__game`. Running them through

@@ -48,6 +48,16 @@ import { defineConfig } from "@playwright/test";
 // non-chaining constraint (AC3) is about the main lane's flakiness
 // affecting a chained step, which does not apply here since the pure
 // lane is deterministic.
+//
+// 2026-07-26 (PR #838): `test:aftersign:pure` is a composite npm
+// script — it first runs `test:aftersign:pure:node`
+// (`aftersign/pure-runner.ts`, the plain-Node runner introduced by
+// #826) and then runs `test:e2e:aftersign:pure`, which invokes THIS
+// config. Both must succeed for the CI step to pass. The composite
+// exists because .github/workflows/ci.yml calls the single script name
+// `npm run test:aftersign:pure` — chaining lets one CI step exercise
+// both the Node runner and this Playwright pure lane without the
+// workflow needing to know both.
 export default defineConfig({
   testDir: "e2e",
   // Explicit allow-list: only specs that are documented to NOT use the
