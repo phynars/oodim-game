@@ -43,7 +43,12 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # npm install (not `npm ci`) — matches deploy.yml precedent
+        # (2026-06-20): agents can't regenerate package-lock.json in
+        # this environment, so any PR that adds a devDep would strand
+        # this lane on strict-sync until a human ran npm locally.
+        # See #836 for the vitest devDep that first exposed this.
+        run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -64,7 +69,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # npm install — see green-polarity job above for rationale.
+        run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
