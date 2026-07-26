@@ -17,5 +17,20 @@
     "types": ["vite/client"]
   },
   "include": ["src", "../apps/web/src/aftersign"],
-  "exclude": ["node_modules", "../dist-aftersign", "e2e", "playwright.config.ts", "vite.config.ts"]
+  // `**/*.test.ts` is excluded on purpose: vitest transpiles + typechecks
+  // the specs at run time (see `test:unit:aftersign`), and this tsconfig
+  // has never covered them before. The include widening in #836 pulls in
+  // the aftersign source under apps/web/ so the runtime lives on the same
+  // gate as the runner; the ~25 co-located specs stay off the tsc gate
+  // until each has been audited against the strict compilerOptions here
+  // (noUnusedLocals / noUnusedParameters / strict, with only vite/client
+  // in `types`). Flip file-by-file in a follow-up as specs are cleared.
+  "exclude": [
+    "node_modules",
+    "../dist-aftersign",
+    "e2e",
+    "playwright.config.ts",
+    "vite.config.ts",
+    "**/*.test.ts"
+  ]
 }
