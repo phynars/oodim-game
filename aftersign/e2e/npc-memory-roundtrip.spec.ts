@@ -124,35 +124,36 @@ function watchPageErrors(page: Page, label: string): void {
   });
 }
 
-test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
+// In-spec retirement of the DEFAULT (green) main-lane run, keyed off the
+// same phase-3 fixme the workflow preflight greps for. Rationale:
+//   • redgreen-gates.json marks this spec's mode as "off" — both
+//     polarities retired — but that JSON is not yet consumed by CI (the
+//     workflow rewrite is a paired human change; see this file's header
+//     block).
+//   • The two red/green workflows already retire themselves via the
+//     `@redgreen:npc-memory-roundtrip fixme-pending-phase-3` marker
+//     branch in their preflights (aftersign-npc-memory-redgreen.yml
+//     lines 81/129).
+//   • The main `aftersign` CI lane (.github/workflows/ci.yml:209 —
+//     `npm run test:e2e:aftersign`) does NOT read the marker: it runs
+//     the whole aftersign/e2e/ directory unconditionally, so this spec
+//     has been dragging the main lane onto the SwiftShader cold-start
+//     flake documented at #700/#506/#590/#766.
+// Using `test.describe.skip` (not `test.skip(true, ...)` inside the test
+// body) so no browser context / `page` fixture is allocated at all —
+// per Playwright's docs, an in-body skip still runs hooks + fixtures
+// before it fires, which under SwiftShader is precisely where the
+// cold-start flake originates. Describe-level skip retires the spec
+// before the worker even reaches setup. Remove this `.skip` in the same
+// PR that removes the phase-3 marker at the top of this file — either
+// (a) the spec becomes durable under default mode, or (b) the
+// sentinel-block's FLAGSHIP_BREAK_MODE=drop-memory conditional guard
+// lands. This matches the redgreen-gates.json declared mode ("off") for
+// the main lane without touching the workflows.
+test.describe.skip("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
   test("a MemoryFact minted in session A backs Io's recognition line in a fresh session B", async ({
     page,
   }) => {
-    // In-spec retirement of the DEFAULT (green) main-lane run, keyed off
-    // the same phase-3 fixme the workflow preflight greps for. Rationale:
-    //   • redgreen-gates.json marks this spec's mode as "off" — both
-    //     polarities retired — but that JSON is not yet consumed by CI
-    //     (the workflow rewrite is a paired human change; see this
-    //     file's header block).
-    //   • The two red/green workflows already retire themselves via the
-    //     `@redgreen:npc-memory-roundtrip fixme-pending-phase-3` marker
-    //     branch in their preflights (aftersign-npc-memory-redgreen.yml
-    //     lines 81/129).
-    //   • The main `aftersign` CI lane (.github/workflows/ci.yml:209 —
-    //     `npm run test:e2e:aftersign`) does NOT read the marker: it
-    //     runs the whole aftersign/e2e/ directory unconditionally, so
-    //     this spec has been dragging the main lane onto the SwiftShader
-    //     cold-start flake documented at #700/#506/#590/#766.
-    // Skipping here matches the redgreen-gates.json declared mode ("off"
-    // — both polarities retired) for the main lane too, without touching
-    // the workflows. Remove this `test.skip` in the same PR that removes
-    // the phase-3 marker at the top of this file — either (a) the spec
-    // becomes durable under default mode, or (b) the sentinel-block's
-    // FLAGSHIP_BREAK_MODE=drop-memory conditional guard lands.
-    test.skip(
-      true,
-      "npc-memory-roundtrip retired in the main aftersign lane pending phase-3 stabilization (#700/#506/#590/#766); redgreen-gates.json mode=off",
-    );
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
 
