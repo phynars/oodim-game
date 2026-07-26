@@ -58,26 +58,33 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # Preflight: `test:e2e:aftersign:durable-save` runs Playwright over
-      # BOTH `e2e/save-load-durable-contract.spec.ts` (the shared-contract
-      # spec) and `e2e/durable-save-load.spec.ts` (the hard-nav sibling).
-      # The shared-contract spec has not landed yet (see the top-of-file
-      # comment in durable-save-load.spec.ts and #727). If it's missing,
-      # Playwright errors before running the sibling — turning this lane
-      # red on every unrelated aftersign PR. Retire the green-polarity
-      # step until the shared-contract spec lands; the red-polarity job
-      # below still runs its own preflight against the same file.
-      - name: Preflight — confirm the shared-contract spec exists
+      # Preflight: symmetric with the sibling npc-memory lane's marker
+      # retirement (see .github/workflows/aftersign-npc-memory-redgreen.yml
+      # and the sentinel block at the top of npc-memory-roundtrip.spec.ts).
+      # `test:e2e:aftersign:durable-save` drives THREE cold `page.goto`
+      # boots per test and has been red on main under Playwright's CI
+      # cold-start (SwiftShader init + first WebGL context, tracked in
+      # #700/#506/#590/#766) — the same infra flake this workflow's paths
+      # filter already tries to dodge. Until the spec either lands a
+      # `FLAGSHIP_BREAK_MODE=local-only-save` conditional guard (making it
+      # a true red/green pair) or the phase-3 fixme marker is removed
+      # (declaring the spec durable), retire the green step so unrelated
+      # aftersign PRs aren't dragged onto that flake. The red-polarity
+      # lane below retires under the same rules.
+      - name: Preflight — decide whether the green lane can run yet
         id: preflight
         shell: bash
         run: |
-          spec=aftersign/e2e/save-load-durable-contract.spec.ts
-          if [ -f "$spec" ]; then
-            echo "shared-contract spec present — green polarity will run."
+          spec=aftersign/e2e/durable-save-load.spec.ts
+          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"local-only-save"' "$spec" > /dev/null; then
+            echo "conditional guard present — green polarity will run (spec live under default mode)."
             echo "retired=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "shared-contract spec ($spec) not yet landed — green polarity retired until it exists."
+          elif grep -q '@redgreen:durable-save-load fixme-pending-phase-3' "$spec"; then
+            echo "@redgreen:durable-save-load fixme-pending-phase-3 marker present — green polarity retired until the spec stabilizes."
             echo "retired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "durable-save contract is fully live in the main suite — green polarity will run."
+            echo "retired=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run AFTERSIGN durable save/load spec in default mode

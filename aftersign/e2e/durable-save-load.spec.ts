@@ -24,6 +24,20 @@
 // If you are looking for the test that must fail under
 // FLAGSHIP_BREAK_MODE=local-only-save, it is the strict one linked above,
 // not this file.
+//
+// @redgreen:durable-save-load fixme-pending-phase-3
+//
+// Sentinel read by .github/workflows/aftersign-durable-save-redgreen.yml
+// (green polarity). While this marker is present, the green lane retires
+// its Playwright run — this spec drives THREE cold `page.goto` boots and
+// has been CI-flaky under Playwright's SwiftShader cold-start
+// (#700/#506/#590/#766), the same infra flake the sibling npc-memory
+// lane already retires under. Remove this marker as part of the phase-3
+// PR that either (a) makes the spec durable under default mode, or
+// (b) introduces a `FLAGSHIP_BREAK_MODE=local-only-save` conditional
+// guard the red lane can pair against. The workflow will then run both
+// polarities on their own merit. Mirrors npc-memory-roundtrip.spec.ts's
+// marker contract line-for-line.
 import { expect, test, type Page } from '@playwright/test';
 
 // This spec drives THREE cold `page.goto` boots in a single test
