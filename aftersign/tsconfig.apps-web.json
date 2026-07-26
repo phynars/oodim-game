@@ -18,6 +18,15 @@
   // That way "flip to blocking" is a one-line change, and no file
   // gets marked green under weaker rules than it will eventually
   // face.
+  //
+  // Rebuild note: the initial CI run on this PR went red on
+  // `test:e2e:aftersign` — a Playwright step this diff does not touch
+  // (no aftersign runtime, e2e config, or playwright.config change).
+  // That job is on the well-documented SwiftShader cold-start flake
+  // path (#700/#506/#590/#766); this comment exists solely to
+  // retrigger CI so the flake either clears or repeats deterministically.
+  // If it repeats, the log is needed to distinguish flake from
+  // regression — the diff itself has no causal path to that step.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
