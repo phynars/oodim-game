@@ -5,7 +5,7 @@
   "type": "module",
   "description": "oodim Game — a portfolio of web/mobile games (Pac-Man, Galaga, and the true-3D Doom) built autonomously by the oodim AIDLC loop.",
   "scripts": {
-    "test:aftersign:pure": "node --experimental-strip-types aftersign/src/packetIntent.test.ts",
+    "test:aftersign:pure": "playwright test --config aftersign/playwright.pure.config.ts",
     "test:unit:aftersign": "vitest run \"apps/web/src/aftersign/**/*.test.ts\"",
     "dev:pacman": "vite --config pacman/vite.config.ts",
     "build:pacman": "tsc --noEmit -p pacman/tsconfig.json && vite build --config pacman/vite.config.ts",
@@ -42,7 +42,6 @@
     "typecheck:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure",
     "typecheck:aftersign:apps-web": "tsc --noEmit -p aftersign/tsconfig.apps-web.json",
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
-    "test:aftersign:pure": "playwright test --config aftersign/playwright.pure.config.ts",
     "test:e2e:aftersign:durable-save": "playwright test --config aftersign/playwright.config.ts e2e/save-load-durable-contract.spec.ts e2e/durable-save-load.spec.ts",
     "test:e2e:aftersign:durable-save:broken-local-only": "FLAGSHIP_BREAK_MODE=local-only-save playwright test --config aftersign/playwright.broken-local-only-save.config.ts e2e/save-load-durable-contract.spec.ts",
     "test:e2e:aftersign:npc-memory": "playwright test --config aftersign/playwright.config.ts e2e/npc-memory-roundtrip.spec.ts",
@@ -63,6 +62,10 @@
     "typescript": "^5.6.3",
     "vite": "^8.1.3",
     "vitest": "^3.2.4",
-    "wrangler": "^4.107.0"
+    "wrangler": "4.107.0"
+  },
+  "overrides": {
+    "sharp": ">=0.35.0",
+    "postcss": ">=8.5.18"
   }
 }
