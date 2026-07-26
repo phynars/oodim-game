@@ -173,6 +173,7 @@ jobs:
           node-version: "22"
       - run: npm install
       - run: npm run typecheck:aftersign
+      - run: npm run test:unit:aftersign
       - run: npm run build:aftersign
       # Pure lane runs BEFORE the browser install and the main lane: it
       # launches no browser (see aftersign/playwright.pure.config.ts) and

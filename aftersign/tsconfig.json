@@ -16,6 +16,6 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src"],
+  "include": ["src", "../apps/web/src/aftersign"],
   "exclude": ["node_modules", "../dist-aftersign", "e2e", "playwright.config.ts", "vite.config.ts"]
 }
