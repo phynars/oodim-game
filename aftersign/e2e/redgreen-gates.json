@@ -1,0 +1,6 @@
+{
+  "npc-memory-roundtrip": {
+    "mode": "retired",
+    "note": "Retired pending phase-3. Set to 'redgreen' when the spec lands its test.skip(process.env.FLAGSHIP_BREAK_MODE !== \"drop-memory\") conditional guard (both polarities run), or to 'live' when the spec is durable under default mode (green lane only). Modes: retired | live | redgreen. Read by .github/workflows/aftersign-npc-memory-redgreen.yml."
+  }
+}
