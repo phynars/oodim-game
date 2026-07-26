@@ -15,20 +15,23 @@ permissions:
   contents: read
 
 on:
+  # `package.json` / `package-lock.json` intentionally NOT in the paths
+  # filter (#830): this lane's real signal comes from `aftersign/**` and
+  # `e2e-shared/**`. Lockfile drift is already surfaced by the main
+  # `aftersign` CI lane which shares the `npm install` guarantee via
+  # `actions/setup-node`'s cache — including package.json here just
+  # dragged every scripts-only or devDep-only PR onto a SwiftShader
+  # cold-start Playwright flake (#700/#506/#590/#766).
   pull_request:
     paths:
       - "aftersign/**"
       - "e2e-shared/**"
-      - "package.json"
-      - "package-lock.json"
       - ".github/workflows/aftersign-npc-memory-redgreen.yml"
   push:
     branches: [main]
     paths:
       - "aftersign/**"
       - "e2e-shared/**"
-      - "package.json"
-      - "package-lock.json"
       - ".github/workflows/aftersign-npc-memory-redgreen.yml"
 
 jobs:
