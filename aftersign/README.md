@@ -22,14 +22,24 @@ review context.
 
 - **Executed:** yes — `test:unit:aftersign` runs all
   `apps/web/src/aftersign/**/*.test.ts` under vitest in CI (#836).
-- **Typechecked:** best-effort only. `aftersign/tsconfig.json` includes
-  only `src`; files that `aftersign/src` imports directly (e.g.
-  `recognitionFeedback.ts`) are transitively typechecked, the rest are
-  typechecked by vitest's transform at run time, not by
-  `typecheck:aftersign`'s strict `tsc --noEmit` gate. Type-level pins
-  (`satisfies`, `Record<>` alignment tables) in files no test executes
-  and no `aftersign/src` module imports are best-effort. See the comment
-  in `aftersign/tsconfig.json` for why the include is not widened.
+- **Typechecked (blocking):** partial. `aftersign/tsconfig.json`
+  includes only `src`; files that `aftersign/src` imports directly
+  (e.g. `recognitionFeedback.ts`) are transitively typechecked under
+  `typecheck:aftersign`'s strict `tsc --noEmit` gate. The main include
+  is deliberately not widened — doing so turns the blocking step red on
+  ~25 files of latent errors (PR #837).
+- **Typechecked (burn-down, non-blocking):** the rest of the tree —
+  the ~25 files `aftersign/src` does not import — is covered by
+  `aftersign/tsconfig.apps-web.json`, wired via
+  `npm run typecheck:aftersign:apps-web` and run as a
+  `continue-on-error: true` step in ci.yml's aftersign lane (#843).
+  Errors surface in the log without gating merges; fix them
+  file-by-file. When the burn-down step lands green on its own it
+  flips to blocking (drop `continue-on-error` in ci.yml) and the
+  sibling can be retired into the main include. Type-level pins
+  (`satisfies`, `Record<>` alignment tables) in this bucket ARE now
+  visible — check the burn-down step's log rather than trusting them
+  silently.
 
 The feel contract this module is being brought to — 1,220ms total,
 0.32m dolly, 4° yaw, sealed/opened branches, reduced-motion fallback —

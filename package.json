@@ -40,6 +40,7 @@
     "build:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && vite build --config aftersign/vite.config.ts",
     "preview:aftersign": "vite preview --config aftersign/vite.config.ts",
     "typecheck:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure",
+    "typecheck:aftersign:apps-web": "tsc --noEmit -p aftersign/tsconfig.apps-web.json",
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
     "test:aftersign:pure": "playwright test --config aftersign/playwright.pure.config.ts",
     "test:e2e:aftersign:durable-save": "playwright test --config aftersign/playwright.config.ts e2e/save-load-durable-contract.spec.ts e2e/durable-save-load.spec.ts",
