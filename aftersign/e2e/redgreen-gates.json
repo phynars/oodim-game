@@ -1,7 +1,0 @@
-{
-  "$note": "PROPOSED gate file for #727. NOT YET WIRED: the fix requires .github/workflows/aftersign-npc-memory-redgreen.yml to read `mode` from this file instead of grepping the sentinel in aftersign/e2e/npc-memory-roundtrip.spec.ts (lines 81 & 129). That workflow edit is outside this session's writable paths — it needs a human (or an agent with .github write) to land the workflow change in the same PR. Do not merge on this file alone; the sentinel-grep still gates CI polarity until the workflow is updated.",
-  "npc-memory-roundtrip": {
-    "mode": "retired",
-    "note": "Modes once wired: retired | live | redgreen. See #727."
-  }
-}
