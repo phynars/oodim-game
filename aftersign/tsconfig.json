@@ -23,9 +23,12 @@
   // noUnusedParameters, `types: ["vite/client"]` only), so widening the
   // include turns `typecheck:aftersign` — a BLOCKING ci.yml step — red on
   // latent errors across ~25 files that no PR can triage in one diff
-  // (this exact failure killed PR #837's first attempts).
+  // (this exact failure killed PR #837's first attempts, and #851's first
+  // attempt at #846's option-1 path — vitest imports resolve now, but the
+  // ~25 latent errors underneath do not, so widening still turns the
+  // blocking gate red).
   //
-  // BURN-DOWN (#843): the ~25 files are typechecked instead by
+  // BURN-DOWN (#843, #846): the ~25 files are typechecked instead by
   // `aftersign/tsconfig.apps-web.json`, wired via
   // `npm run typecheck:aftersign:apps-web` and run as a non-blocking
   // step (`continue-on-error: true`) in ci.yml's aftersign lane. As

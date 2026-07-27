@@ -173,7 +173,7 @@ jobs:
           node-version: "22"
       - run: npm install
       - run: npm run typecheck:aftersign
-      # Burn-down surface for #843: strict `tsc --noEmit` over the
+      # Burn-down surface for #843 / #846: strict `tsc --noEmit` over the
       # `apps/web/src/aftersign/` tree via the sibling tsconfig
       # `aftersign/tsconfig.apps-web.json`. Non-blocking on purpose —
       # the main `typecheck:aftersign` step above keeps `include: ["src"]`
