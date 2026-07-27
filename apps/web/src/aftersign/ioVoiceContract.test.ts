@@ -1,6 +1,7 @@
 import {
   AFTERSIGN_IO_LINES,
   buildIoMemorySentence,
+  buildIoReturnMemoryThread,
   ioPacketReturnLine,
   ioReturnReasonLine,
   ioRouteAttentionLine,
@@ -41,5 +42,19 @@ describe("Aftersign Io voice contract", () => {
     expect(buildIoMemorySentence(AFTERSIGN_IO_LINES.firstGreeting)).toBe(
       `Io remembers: ${AFTERSIGN_IO_LINES.firstGreeting.text}`,
     );
+  });
+
+  it("builds a deterministic three-line returning-player memory thread", () => {
+    expect(
+      buildIoReturnMemoryThread({
+        routeAttention: "skipped",
+        packetOutcome: "opened",
+        returnReason: "blunt",
+      }),
+    ).toEqual([
+      "Io remembers that the courier skipped the route instructions.",
+      "Io remembers that the courier opened the blue packet.",
+      "Io remembers that the courier answered bluntly when asked why they returned.",
+    ]);
   });
 });
