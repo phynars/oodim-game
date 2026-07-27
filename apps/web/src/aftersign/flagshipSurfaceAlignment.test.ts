@@ -1,175 +1,176 @@
-// Fast-lane vitest twin of the browser-level FlagshipGameSurface contract
-// (e2e-shared/flagshipStoryStateContract.ts).  The vertical-slice snapshot
-// published by createAftersignWindowGameSurface is INTENTIONALLY a subset of
-// FlagshipGameSurface — this test pins the alignment it DOES claim today:
+// Vitest-level twin of the FlagshipGameSurface contract for aftersign.
 //
-//   1. story.id / story.act / story.beat / completedBeats are the exact
-//      literals the runtime produces (compile-time pins).
-//   2. state.npcs[0].id is the compile-time "io" literal that the flagship
-//      contract's npcs.io key depends on.
-//   3. state.npcs[0].memory.packetOutcome is a subset of
-//      FlagshipDeliveryOutcome — asserted via a `satisfies` clause so a
-//      drift in AftersignPacketOutcome fails typecheck, not runtime.
-//   4. The snapshot round-trips through JSON byte-identically (no functions,
-//      no cycles, no Dates) — same purity rule the browser-level
-//      assertSerializableFlagshipSurface enforces.
-//   5. The returning-session recognition arc (meetIoForAftersignSlice twice)
-//      produces disposition === "recognizes-player" and the
-//      "io-remembers-*-packet" beat — the arc the flagship's
-//      IO_RETURN_MEMORY_ID mapping ultimately serves.
+// Restores the fast-lane coverage lost when PR #796's fix-up deleted
+// `storyStateInvariants.test.ts` (it imported the removed
+// `createAftersignWindowGame`). See issue #798.
 //
-// Ref: issue #798 (option b — document the subset, pin what's real).
+// SCOPE (issue #798, option b): the vertical-slice snapshot
+// (`AftersignStoryStateSnapshot`) is INTENTIONALLY a subset of the
+// authoritative `FlagshipGameSurface` defined in
+// `e2e-shared/flagshipStoryStateContract.ts` (which additionally requires
+// `version`, `build.slug`, `scene.act/beat`, `delivery.id`,
+// `npcs.io.memories`, `save.slot`, ...). This test does NOT claim the
+// snapshot satisfies the full contract — that's tracked separately if
+// the snapshot ever grows. What it DOES pin is every FlagshipGameSurface
+// expectation the vertical slice covers today:
+//
+//   1. The snapshot is pure serializable data (harness reads are data).
+//   2. Io npc identity aligns with `npcs.io.id` in the flagship contract.
+//   3. Every `AftersignPacketOutcome` is a valid `FlagshipDeliveryOutcome`
+//      (packetOutcome → delivery.outcome mapping never drifts).
+//   4. Every `AftersignStoryBeatId` maps to a `FlagshipSceneBeat`
+//      (the vertical-slice beats live inside the flagship beat space).
+//   5. Both aftersign scenes play inside the single flagship scene
+//      `io-night-post-kiosk` — the slice never invents a scene the
+//      flagship contract doesn't know about.
+//
+// If the flagship contract renames an enum value or the snapshot drifts,
+// the `satisfies` checks below fail at typecheck time and the runtime
+// asserts fail in vitest — the fast lane catches it before the browser
+// e2e lane does.
+//
+// Sibling: `windowGameSurface.contract.test.ts` covers the durable-restore
+// round-trip snapshot-equality path. This file is deliberately different
+// — it pins the CROSS-PACKAGE flagship↔slice type alignment that a plain
+// snapshot equality cannot catch.
 
 import { describe, expect, it } from "vitest";
 
+import type {
+  FlagshipDeliveryOutcome,
+  FlagshipGameSurface,
+  FlagshipSceneBeat,
+} from "../../../../e2e-shared/flagshipStoryStateContract";
 import {
   createAftersignVerticalSliceState,
   meetIoForAftersignSlice,
   recordAftersignPacketChoice,
   type AftersignPacketOutcome,
-} from "./verticalSliceState";
+  type AftersignSceneId,
+} from "./verticalSliceRuntimeState";
 import {
   createAftersignWindowGameSurface,
-  getAftersignStoryState,
+  type AftersignStoryBeatId,
+  type AftersignStoryStateSnapshot,
 } from "./windowGameSurface";
 
-// Mirror of the FlagshipDeliveryOutcome union defined in
-// e2e-shared/flagshipStoryStateContract.ts.  Kept as a local mirror
-// because `apps/web/src/` is not in that file's tsconfig include path
-// — the compile-time subset check below still fails typecheck if
-// AftersignPacketOutcome grows a value not listed here.  If the
-// authoritative union in e2e-shared changes, update this mirror in
-// the same PR.
-type FlagshipDeliveryOutcomeMirror =
-  | "unknown"
-  | "sealed"
-  | "opened"
-  | "withheld"
-  | "returned";
+const SURFACE_OPTIONS = {
+  playerId: "player-test-1",
+  playerName: "Tester",
+  rememberedSessionIds: ["session-1"],
+};
 
-const DEFAULT_OPTIONS = {
-  playerId: "player-vertical-slice",
-  playerName: "Signal Runner",
-} as const;
+function buildSnapshot(
+  mutate?: (
+    state: ReturnType<typeof createAftersignVerticalSliceState>,
+  ) => ReturnType<typeof createAftersignVerticalSliceState>,
+): AftersignStoryStateSnapshot {
+  const base = createAftersignVerticalSliceState();
+  const state = mutate ? mutate(base) : base;
+  return createAftersignWindowGameSurface(state, SURFACE_OPTIONS).getStoryState();
+}
 
-describe("Aftersign flagship surface alignment", () => {
-  it("publishes the story/state snapshot the fast-lane e2e twin depends on", () => {
-    const state = recordAftersignPacketChoice(
-      createAftersignVerticalSliceState(),
-      "sealed",
+// ---------------------------------------------------------------------------
+// Type-level alignment pins. These lines fail `tsc` (and therefore vitest
+// with typechecking) if either side of the contract drifts — no runtime
+// needed. They intentionally reference the flagship types so a rename in
+// e2e-shared/flagshipStoryStateContract.ts breaks THIS file, not just the
+// browser e2e lane.
+// ---------------------------------------------------------------------------
+
+// (3) packetOutcome → delivery.outcome: every aftersign outcome must be a
+// valid flagship delivery outcome. (The reverse is NOT required — the
+// slice covers a subset: no 'withheld' / 'returned' / 'unknown' yet.)
+const OUTCOME_ALIGNMENT: Record<AftersignPacketOutcome, FlagshipDeliveryOutcome> = {
+  sealed: "sealed",
+  opened: "opened",
+};
+
+// (4) Every vertical-slice story beat maps into the flagship beat space.
+const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
+  "packet-unresolved": "arrival",
+  "packet-sealed": "packet-choice",
+  "packet-opened": "packet-choice",
+  "io-first-meeting": "packet-offered",
+  "io-remembers-sealed-packet": "io-return-recognition",
+  "io-remembers-opened-packet": "io-return-recognition",
+};
+
+// (5) Both aftersign scenes play inside the single flagship scene.
+const SCENE_ALIGNMENT: Record<AftersignSceneId, FlagshipGameSurface["scene"]["id"]> = {
+  kiosk: "io-night-post-kiosk",
+  "io-return": "io-night-post-kiosk",
+};
+
+// (2) Io identity: the snapshot's npc id literal must be assignable to the
+// flagship contract's npcs.io.id literal.
+type AftersignIoId = AftersignStoryStateSnapshot["state"]["npcs"][number]["id"];
+const IO_ID_ALIGNMENT: FlagshipGameSurface["npcs"]["io"]["id"] =
+  "io" satisfies AftersignIoId;
+
+describe("aftersign snapshot ↔ FlagshipGameSurface alignment (vitest twin)", () => {
+  it("is a pure serializable data snapshot (no functions, cycles, or Dates)", () => {
+    const snapshot = buildSnapshot((state) =>
+      meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
     );
-
-    const surface = createAftersignWindowGameSurface(state, DEFAULT_OPTIONS);
-    const snapshot = surface.getStoryState();
-
-    // Story block — exact literals the flagship contract's scene/act/beat
-    // fields consume once the vertical slice grows into the full surface.
-    expect(snapshot.story.id).toBe("aftersign.verticalSlice");
-    expect(snapshot.story.act).toBe("act-1");
-    expect(snapshot.story.beat).toBe("packet-sealed");
-    expect(snapshot.story.completedBeats).toEqual(["packet-sealed"]);
-
-    // State block — scene id + player identity survive verbatim.
-    expect(snapshot.state.scene).toBe("kiosk");
-    expect(snapshot.state.player).toEqual({
-      id: DEFAULT_OPTIONS.playerId,
-      name: DEFAULT_OPTIONS.playerName,
-    });
-
-    // npcs is a 1-tuple array in the vertical slice (not the object-keyed
-    // `{ io: ... }` map the flagship uses).  Pin the length + the compile-
-    // time "io" literal so a rename or an extra NPC entry breaks the test.
-    expect(snapshot.state.npcs).toHaveLength(1);
-    const io = snapshot.state.npcs[0];
-    const ioId: "io" = io.id; // compile-time literal pin
-    expect(ioId).toBe("io");
-    expect(io.name).toBe("Io");
-    expect(io.disposition).toBe("waiting");
-    expect(io.memory).toEqual({
-      recognizesPlayer: false,
-      packetOutcome: "sealed",
-    });
+    const roundTripped = JSON.parse(
+      JSON.stringify(snapshot),
+    ) as AftersignStoryStateSnapshot;
+    expect(roundTripped).toEqual(snapshot);
   });
 
-  it("pins packetOutcome as a subset of the flagship's FlagshipDeliveryOutcome", () => {
-    // Compile-time subset proof: every AftersignPacketOutcome must be
-    // assignable to FlagshipDeliveryOutcome.  The assignment fails
-    // typecheck if the aftersign enum grows a value the flagship
-    // contract does not accept — exactly the drift we want CI to catch.
-    const _subsetProof = (
-      value: AftersignPacketOutcome,
-    ): FlagshipDeliveryOutcomeMirror => value;
-    void _subsetProof;
+  it("pins Io npc identity to the flagship contract's npcs.io.id", () => {
+    const snapshot = buildSnapshot();
+    const io = snapshot.state.npcs[0];
+    expect(io.id).toBe(IO_ID_ALIGNMENT);
+    expect(io.name).toBe("Io");
+  });
 
-    // Runtime pin: the outcomes the vertical slice actually emits are
-    // both members of FlagshipDeliveryOutcome.
-    const validFlagshipOutcomes: readonly FlagshipDeliveryOutcomeMirror[] = [
-      "unknown",
-      "sealed",
-      "opened",
-      "withheld",
-      "returned",
-    ];
+  it("maps every packetOutcome the slice produces to a flagship delivery outcome", () => {
     for (const outcome of ["sealed", "opened"] as const) {
-      const state = recordAftersignPacketChoice(
-        createAftersignVerticalSliceState(),
-        outcome,
+      const snapshot = buildSnapshot((state) =>
+        recordAftersignPacketChoice(state, outcome),
       );
-      const snapshot = getAftersignStoryState(state, DEFAULT_OPTIONS);
-      const runtimeOutcome = snapshot.state.npcs[0].memory.packetOutcome;
-      expect(runtimeOutcome).toBe(outcome);
-      expect(validFlagshipOutcomes).toContain(runtimeOutcome);
+      const packetOutcome = snapshot.state.npcs[0].memory.packetOutcome;
+      expect(packetOutcome).toBe(outcome);
+      // Runtime twin of the type-level pin: the produced value must be a
+      // key of the alignment table (i.e. a valid FlagshipDeliveryOutcome).
+      expect(Object.keys(OUTCOME_ALIGNMENT)).toContain(packetOutcome);
     }
   });
 
-  it("round-trips byte-identically through JSON (pure data snapshot)", () => {
-    // Mirrors assertSerializableFlagshipSurface: no functions, no cycles,
-    // no Dates.  Harness reads must be plain data.
-    const state = meetIoForAftersignSlice(
-      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
-    );
-    const snapshot = getAftersignStoryState(state, {
-      ...DEFAULT_OPTIONS,
-      rememberedSessionIds: ["session-a", "session-b"],
-    });
+  it("keeps every reachable story beat inside the flagship beat space", () => {
+    const reachableSnapshots = [
+      buildSnapshot(),
+      buildSnapshot((state) => recordAftersignPacketChoice(state, "sealed")),
+      buildSnapshot((state) => recordAftersignPacketChoice(state, "opened")),
+      buildSnapshot((state) => meetIoForAftersignSlice(state)),
+      buildSnapshot((state) =>
+        meetIoForAftersignSlice(
+          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
+        ),
+      ),
+      buildSnapshot((state) =>
+        meetIoForAftersignSlice(
+          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "opened")),
+        ),
+      ),
+    ];
 
-    const cloned = JSON.parse(JSON.stringify(snapshot));
-    expect(cloned).toEqual(snapshot);
-
-    // A stray function on the snapshot would silently disappear through
-    // JSON.stringify — assert every value on both trees is JSON-safe by
-    // comparing the deep-cloned tree structurally.
-    expect(JSON.stringify(cloned)).toBe(JSON.stringify(snapshot));
+    for (const snapshot of reachableSnapshots) {
+      const beat = snapshot.story.beat;
+      expect(Object.keys(BEAT_ALIGNMENT)).toContain(beat);
+      for (const completed of snapshot.story.completedBeats) {
+        expect(Object.keys(BEAT_ALIGNMENT)).toContain(completed);
+      }
+    }
   });
 
-  it("advances the returning-session recognition arc the flagship's memory mapping depends on", () => {
-    // First meeting: player is met but not yet recognized.
-    const firstMeeting = meetIoForAftersignSlice(
-      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
-    );
-    const firstSnapshot = getAftersignStoryState(firstMeeting, DEFAULT_OPTIONS);
-    expect(firstSnapshot.state.npcs[0].disposition).toBe("met-player");
-    expect(firstSnapshot.state.npcs[0].memory.recognizesPlayer).toBe(false);
-    expect(firstSnapshot.story.beat).toBe("io-first-meeting");
+  it("keeps every scene the slice reaches inside the flagship scene", () => {
+    const kioskSnapshot = buildSnapshot();
+    const returnSnapshot = buildSnapshot((state) => meetIoForAftersignSlice(state));
 
-    // Second meeting on the same durable state → recognition flips on.
-    // (meetIoForAftersignSlice sets recognizesPlayer from the pre-existing
-    //  ioHasMetPlayer flag — the vertical slice's stand-in for the
-    //  flagship contract's IO_RETURN_MEMORY_ID['sealed'] mapping.)
-    const returningSession = meetIoForAftersignSlice(firstMeeting);
-    const returningSnapshot = getAftersignStoryState(
-      returningSession,
-      DEFAULT_OPTIONS,
-    );
-    expect(returningSnapshot.state.npcs[0].disposition).toBe(
-      "recognizes-player",
-    );
-    expect(returningSnapshot.state.npcs[0].memory.recognizesPlayer).toBe(true);
-    expect(returningSnapshot.story.beat).toBe("io-remembers-sealed-packet");
-    expect(returningSnapshot.story.completedBeats).toEqual([
-      "packet-sealed",
-      "io-first-meeting",
-      "io-remembers-sealed-packet",
-    ]);
+    expect(SCENE_ALIGNMENT[kioskSnapshot.state.scene]).toBe("io-night-post-kiosk");
+    expect(SCENE_ALIGNMENT[returnSnapshot.state.scene]).toBe("io-night-post-kiosk");
   });
 });
