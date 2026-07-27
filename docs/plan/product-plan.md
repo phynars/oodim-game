@@ -113,10 +113,11 @@ fail the e2e lane.
 (concept-only); Io's memory surface (`window.__game.story.memoryBeat`) is the
 proven pattern the Orra record parallels.
 
-**Integration story (the done-gate):** **filed this session below** — proves
-Orra's independent recognition + Io non-regression + the three red break modes.
-E1 is DONE when that lane is green, not when its building blocks merge.
-Everything below either feeds that proof or hardens it.
+**Integration story (the done-gate):** **#863** — proves Orra's independent
+recognition (action vs. first-contact branch across reload) + Io non-regression
++ the three red break modes (`orra-dropped` / `orra-wrong` /
+`orra-io-contamination`). E1 is DONE when that lane is green, not when its
+building blocks merge. Everything below either feeds that proof or hardens it.
 
 **Integration story of M2 (reference):** #735 (merged) proved a second memory on
 ONE NPC. M3-E1's integration proof is the orthogonal generalization: a second
@@ -126,24 +127,29 @@ memory on a SECOND NPC, proven not to disturb the first NPC's memory.
 
 ## Story map (M3-E1)
 
-The integration proof (done-gate) is filed FIRST; building-block stories are
-filed only once the done-gate names the exact `window.__game` surface the Orra
-memory exposes and Io-non-regression is expressed as an assertion. Sequence if
-forced: persist Orra memory record → author Orra first-contact + recognition
-lines → integration lane asserts the branch + Io parallel.
+| Story | Issue | Size | Role | Status |
+|-------|-------|------|------|--------|
+| **Integration proof (done-gate)** — Orra action/first-contact split across reload + Io non-regression + `orra-dropped` / `orra-wrong` / `orra-io-contamination` red modes | **#863** | M | integration | filed |
+| Persist an Orra-owned memory record (distinct storage key + `kind: "orra-recognition"`); expose on `window.__game.story.orraMemoryBeat`, isolated from Io's | **#865** | M | building block — Orra's durable, Io-isolated memory the proof reads | filed |
+| Author + wire Orra's FIRST-CONTACT line + her RECOGNITION line in the copy package (single-source, parity-guarded) | **#864** | S | building block — the two lines the proof asserts (first-contact vs. recognition) | filed |
 
-_Story rows land in the next chunk once the integration issue number exists._
+**Integration-first note:** #863 (the done-gate) is filed and mapped BEFORE the
+implementation stories because it defines what "M3-E1 done" means. The two
+building blocks (#865 Orra's isolated memory record / #864 Orra's first-contact
++ recognition lines) each feed the proof; neither alone proves the epic outcome.
+Sequence if forced: #865 (persist Orra memory record) → #864 (author both Orra
+lines) → #863 (integration lane asserts the branch + Io non-regression end to end).
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-These are NOT closed here (operator/human disposes). Named so they don't masquerade as M2 work:
+These are NOT closed here (operator/human disposes). Named so they don't masquerade as M3 work:
 
 - **#727** — [Mara, `agent-needs-human`] AFTERSIGN red/green workflow relies on
   brittle spec marker text for retirement gating. Real harness debt, but it is a
-  *process/tooling* fix, not part of the M2-E1 chained-beat outcome. Human-flagged;
-  disposition owed by operator. Does NOT enter the M2 story map.
+  *process/tooling* fix, not part of the M3-E1 Orra-recognition outcome.
+  Human-flagged; disposition owed by operator. Does NOT enter the M3 story map.
 
 _Prior-cycle drift (#615/#622/#454/#634) is now CLOSED — no longer open, removed
 from this list. The only current drift is #727 above._
