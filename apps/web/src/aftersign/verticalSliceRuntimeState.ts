@@ -3,14 +3,18 @@ import {
 } from "../../../../packages/aftersign/src/interactionConfirm";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
+export type AftersignOrraAction = "answered-saint-orra";
 
-export type AftersignSceneId = "kiosk" | "io-return";
+export type AftersignSceneId = "kiosk" | "io-return" | "orra-return";
 
 export type AftersignVerticalSliceState = {
   scene: AftersignSceneId;
   packetOutcome: AftersignPacketOutcome | null;
   ioHasMetPlayer: boolean;
   ioRecognizesPlayer: boolean;
+  orraAction: AftersignOrraAction | null;
+  orraHasMetPlayer: boolean;
+  orraRecognizesPlayer: boolean;
 };
 
 /**
@@ -38,6 +42,9 @@ export function createAftersignVerticalSliceState(): AftersignVerticalSliceState
     packetOutcome: null,
     ioHasMetPlayer: false,
     ioRecognizesPlayer: false,
+    orraAction: null,
+    orraHasMetPlayer: false,
+    orraRecognizesPlayer: false,
   };
 }
 
@@ -48,6 +55,16 @@ export function recordAftersignPacketChoice(
   return {
     ...state,
     packetOutcome,
+  };
+}
+
+export function recordAftersignOrraAction(
+  state: AftersignVerticalSliceState,
+  orraAction: AftersignOrraAction,
+): AftersignVerticalSliceState {
+  return {
+    ...state,
+    orraAction,
   };
 }
 
@@ -81,5 +98,16 @@ export function meetIoForAftersignSlice(
     scene: "io-return",
     ioHasMetPlayer: true,
     ioRecognizesPlayer: state.ioHasMetPlayer,
+  };
+}
+
+export function meetOrraForAftersignSlice(
+  state: AftersignVerticalSliceState,
+): AftersignVerticalSliceState {
+  return {
+    ...state,
+    scene: "orra-return",
+    orraHasMetPlayer: true,
+    orraRecognizesPlayer: state.orraHasMetPlayer,
   };
 }
