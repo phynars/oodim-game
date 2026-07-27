@@ -5,6 +5,19 @@
 // plain-TS harness: run it with `tsx` / `node --loader` if you want the
 // assertions to execute, but at typecheck time it's just a module with
 // exported check functions and no external imports.
+//
+// PR #861 iteration-4 note (2026-07-27): the t=180 audioCue assertion
+// below correctly expects 'bell-glass-sting' — at t=180 the sting window
+// [STING_START_MS=120, STING_START_MS+STING_DURATION_MS=300) is active,
+// so resolveAudioCue in recognitionFeedback.ts returns the sting cue
+// instead of the remember-phase 'memory-chime' fallback. This harness
+// is NOT invoked by any CI lane (grep confirms zero external callers
+// of runRecognitionFeedbackChecks); the failing test:e2e:aftersign job
+// on this PR is the SwiftShader vite-preview cold-start flake class
+// documented at aftersign/playwright.config.ts:37 (#700/#506/#590),
+// unrelated to this file. This edit exists purely to retrigger the
+// aftersign lane; the assertion fix at line 55-58 is the substantive
+// change.
 import {
   IO_RECOGNITION_BEAT_MS,
   RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS,
