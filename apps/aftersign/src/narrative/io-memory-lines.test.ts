@@ -1,58 +1,66 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 
-import { IO_FIRST_BRIEFING_LINES, selectIoReturningLines } from "./io-memory-lines";
+import { selectIoReturningLines } from './io-memory-lines';
 
-describe("Io memory lines", () => {
-  it("does not expose returning lines before a second session", () => {
+describe('selectIoReturningLines', () => {
+  it('keeps first contact direct and usable before any return memory exists', () => {
     expect(
       selectIoReturningLines({
-        returnedAfterFirstSession: false,
-        packetOutcome: "sealed",
-        routeInstructionOutcome: "listened",
-        returnTone: "kind",
+        hasReturned: false,
+        packetOutcome: 'unknown',
+        routeAttention: 'unknown',
       }),
-    ).toEqual([]);
+    ).toEqual({
+      greeting: 'You made it to the Night Post. Good. We can use people who arrive intact.',
+    });
   });
 
-  it("selects the sealed-packet memory line after return", () => {
+  it('names the sealed blue packet outcome as a concrete remembered fact', () => {
     expect(
       selectIoReturningLines({
-        returnedAfterFirstSession: true,
-        packetOutcome: "sealed",
-        routeInstructionOutcome: "unknown",
-        returnTone: "unknown",
-      }),
-    ).toEqual([
-      {
-        id: "io-return-packet-sealed",
-        kind: "packet-memory",
-        text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
-      },
-    ]);
+        hasReturned: true,
+        packetOutcome: 'sealed',
+        routeAttention: 'unknown',
+      }).packetLine,
+    ).toBe('So did the blue seal, unbroken. That gives me two facts to trust.');
   });
 
-  it("selects the opened-packet memory line after return", () => {
+  it('names the opened packet outcome without pretending Io trusts it', () => {
     expect(
       selectIoReturningLines({
-        returnedAfterFirstSession: true,
-        packetOutcome: "opened",
-        routeInstructionOutcome: "unknown",
-        returnTone: "unknown",
-      }),
-    ).toEqual([
-      {
-        id: "io-return-packet-opened",
-        kind: "packet-memory",
-        text: "You came back. The seal did not. I can use one of those facts.",
-      },
-    ]);
+        hasReturned: true,
+        packetOutcome: 'opened',
+        routeAttention: 'unknown',
+      }).packetLine,
+    ).toBe('The seal did not. I can use one of those facts.');
   });
 
-  it("keeps briefing copy concrete and short", () => {
-    expect(IO_FIRST_BRIEFING_LINES.map((line) => line.text)).toEqual([
-      "Night Post needs legs, not a legend. You have legs.",
-      "Blue seal stays closed. If it opens, make sure your reason is heavier than curiosity.",
-      "Three lanterns up, brass stair left, sign box under the moth light. Repeat that if you plan to live.",
-    ]);
+  it('remembers whether the player listened to the route briefing', () => {
+    expect(
+      selectIoReturningLines({
+        hasReturned: true,
+        packetOutcome: 'unknown',
+        routeAttention: 'listened',
+      }).routeLine,
+    ).toBe('You listened before you ran. Rare habit. Keep it.');
+
+    expect(
+      selectIoReturningLines({
+        hasReturned: true,
+        packetOutcome: 'unknown',
+        routeAttention: 'skipped',
+      }).routeLine,
+    ).toBe('You found the box anyway. Next time, let me finish saving your life.');
+  });
+
+  it('keeps optional return-tone memory short and ledger-edged', () => {
+    expect(
+      selectIoReturningLines({
+        hasReturned: true,
+        packetOutcome: 'unknown',
+        routeAttention: 'unknown',
+        returnTone: 'evasive',
+      }).toneLine,
+    ).toBe('You stepped around the question. I marked the footprint.');
   });
 });
