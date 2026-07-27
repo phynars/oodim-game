@@ -86,6 +86,15 @@ const OUTCOME_ALIGNMENT: Record<AftersignPacketOutcome, FlagshipDeliveryOutcome>
 };
 
 // (4) Every vertical-slice story beat maps into the flagship beat space.
+//
+// The Orra slice beats piggy-back on the flagship's existing recognition
+// beats — Orra doesn't (yet) have her own dedicated FlagshipSceneBeat.
+// `orra-first-meeting` reuses `packet-offered` (first NPC encounter on
+// the return leg) and `orra-remembers-answered-saint-orra` reuses
+// `io-return-recognition` (the recognition-envelope shape is identical:
+// NPC remembers a prior player action). When Orra gets her own beats in
+// the flagship contract, these two mappings become 1:1 and the reuse
+// note goes away.
 const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
   "packet-unresolved": "arrival",
   "packet-sealed": "packet-choice",
@@ -93,12 +102,18 @@ const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
   "io-first-meeting": "packet-offered",
   "io-remembers-sealed-packet": "io-return-recognition",
   "io-remembers-opened-packet": "io-return-recognition",
+  "orra-first-meeting": "packet-offered",
+  "orra-remembers-answered-saint-orra": "io-return-recognition",
 };
 
-// (5) Both aftersign scenes play inside the single flagship scene.
+// (5) Every aftersign scene plays inside the single flagship scene
+// `io-night-post-kiosk`. The Orra return leg is a distinct slice-level
+// scene id but stays inside the same flagship scene bucket — the slice
+// never invents a flagship scene the contract doesn't know about.
 const SCENE_ALIGNMENT: Record<AftersignSceneId, FlagshipGameSurface["scene"]["id"]> = {
   kiosk: "io-night-post-kiosk",
   "io-return": "io-night-post-kiosk",
+  "orra-return": "io-night-post-kiosk",
 };
 
 // (2) Io identity: the snapshot's npc id literal must be assignable to the
