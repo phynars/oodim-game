@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
+  AFTERSIGN_KIOSK_SCENE_FEEL,
   AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
   confirmAftersignPacketChoice,
   createAftersignVerticalSliceState,
@@ -16,6 +17,7 @@ import {
   restoreAftersignDurableSave,
   sampleAftersignIoMemoryBeat,
   sampleAftersignIoRecognitionEnvelope,
+  sampleAftersignKioskSceneEnvelope,
   sampleAftersignPacketConfirmInteractionEnvelope,
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
@@ -89,6 +91,7 @@ describe("Aftersign durable save/load contract", () => {
     const samples: FeelContractSample[] = [
       { label: "packet-choice-confirm", value: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL },
       { label: "io-recognition", value: AFTERSIGN_IO_RECOGNITION_FEEL },
+      { label: "kiosk-scene-ready", value: AFTERSIGN_KIOSK_SCENE_FEEL },
       { label: "packet-open", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetOpen },
       { label: "packet-preserve", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetPreserve },
       { label: "packet-inspect", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetInspect },
@@ -248,6 +251,44 @@ describe("Aftersign durable save/load contract", () => {
 
     expect(() => confirmAftersignPacketChoice(state, -1)).toThrow(
       "Cannot confirm Aftersign packet choice: confirmedAtMs must be a non-negative finite number",
+    );
+  });
+
+  it("samples the kiosk scene-ready beat with camera, recognition, and audio timing", () => {
+    expect(sampleAftersignKioskSceneEnvelope(0)).toEqual({
+      label: "kiosk-scene-ready",
+      elapsedMs: 0,
+      cameraYOffsetPx: 18,
+      cameraPushInZPx: -24,
+      scanlineYPx: 0,
+      ledGlowAlpha: 0,
+      faceplateGlowPx: 0,
+      humDuckDb: -4,
+      audioCue: null,
+    });
+
+    const midBeat = sampleAftersignKioskSceneEnvelope(150);
+
+    expect(midBeat.cameraYOffsetPx).toBeGreaterThan(0);
+    expect(midBeat.cameraYOffsetPx).toBeLessThan(18);
+    expect(midBeat.scanlineYPx).toBeGreaterThan(0);
+    expect(midBeat.scanlineYPx).toBeLessThanOrEqual(42);
+    expect(midBeat.ledGlowAlpha).toBeGreaterThan(0.9);
+    expect(midBeat.faceplateGlowPx).toBeGreaterThan(5);
+    expect(midBeat.humDuckDb).toBe(0);
+    expect(midBeat.audioCue).toBe("kiosk-ready-chime");
+
+    expect(sampleAftersignKioskSceneEnvelope(150, { reducedMotion: true })).toEqual({
+      ...midBeat,
+      cameraYOffsetPx: 0,
+      cameraPushInZPx: 0,
+      scanlineYPx: 42,
+    });
+  });
+
+  it("rejects malformed kiosk scene-ready timestamps", () => {
+    expect(() => sampleAftersignKioskSceneEnvelope(-1)).toThrow(
+      "Cannot sample Aftersign kiosk scene feel: elapsedMs must be a non-negative finite number",
     );
   });
 
