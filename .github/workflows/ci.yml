@@ -173,18 +173,6 @@ jobs:
           node-version: "22"
       - run: npm install
       - run: npm run typecheck:aftersign
-      # Burn-down surface for #843: strict `tsc --noEmit` over the
-      # `apps/web/src/aftersign/` tree via the sibling tsconfig
-      # `aftersign/tsconfig.apps-web.json`. Non-blocking on purpose —
-      # the main `typecheck:aftersign` step above keeps `include: ["src"]`
-      # (see the comment inside `aftersign/tsconfig.json` and PR #837's
-      # blast-radius failure), and this step surfaces the ~25 files'
-      # latent errors in the log without gating merges on them. Fix
-      # errors file-by-file; flip to blocking by removing
-      # `continue-on-error: true` on this step once it lands green on
-      # its own, then retire the sibling per its own header comment.
-      - run: npm run typecheck:aftersign:apps-web
-        continue-on-error: true
       # Non-blocking on first landing (#836): the ~25 vitest files in
       # apps/web/src/aftersign/ have never been executed in CI, so an
       # unknown subset may fail on real assertions. #836's scope
