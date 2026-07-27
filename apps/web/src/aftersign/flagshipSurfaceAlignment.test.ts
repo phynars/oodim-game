@@ -28,6 +28,11 @@
 // the `satisfies` checks below fail at typecheck time and the runtime
 // asserts fail in vitest — the fast lane catches it before the browser
 // e2e lane does.
+//
+// Sibling: `windowGameSurface.contract.test.ts` covers the durable-restore
+// round-trip snapshot-equality path. This file is deliberately different
+// — it pins the CROSS-PACKAGE flagship↔slice type alignment that a plain
+// snapshot equality cannot catch.
 
 import { describe, expect, it } from "vitest";
 
