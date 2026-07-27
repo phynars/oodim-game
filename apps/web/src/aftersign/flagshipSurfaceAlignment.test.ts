@@ -71,11 +71,10 @@ function buildSnapshot(
 }
 
 // ---------------------------------------------------------------------------
-// Type-level alignment pins. These lines fail `tsc` (and therefore vitest
-// with typechecking) if either side of the contract drifts — no runtime
-// needed. They intentionally reference the flagship types so a rename in
-// e2e-shared/flagshipStoryStateContract.ts breaks THIS file, not just the
-// browser e2e lane.
+// Type-level alignment pins. These lines fail `tsc` if either side of the
+// contract drifts — no runtime needed. They intentionally reference the
+// flagship types so a rename in e2e-shared/flagshipStoryStateContract.ts
+// breaks THIS file, not just the browser e2e lane.
 // ---------------------------------------------------------------------------
 
 // (3) packetOutcome → delivery.outcome: every aftersign outcome must be a
@@ -134,8 +133,8 @@ describe("aftersign snapshot ↔ FlagshipGameSurface alignment (vitest twin)", (
       const packetOutcome = snapshot.state.npcs[0].memory.packetOutcome;
       expect(packetOutcome).toBe(outcome);
       // Runtime twin of the type-level pin: the produced value must be a
-      // key of the alignment table (i.e. a valid FlagshipDeliveryOutcome).
-      expect(Object.keys(OUTCOME_ALIGNMENT)).toContain(packetOutcome);
+      // mapped value of the alignment table (i.e. a valid FlagshipDeliveryOutcome).
+      expect(Object.values(OUTCOME_ALIGNMENT)).toContain(packetOutcome);
     }
   });
 
