@@ -52,6 +52,25 @@ export interface IoReturningSessionMemory {
   returnAnswerTone?: IoReturnAnswerTone
 }
 
+export type OrraRecognitionLineKey = 'firstContact' | 'recognition'
+
+export const orraRecognitionLines: Record<OrraRecognitionLineKey, string> = {
+  firstContact:
+    'You are new to this corner, and that is all right. Stand close; I can keep first steps from turning into falls.',
+  recognition:
+    'You came back after taking my hand when I asked — that choice is why I remember your stride now.',
+}
+
+export function getOrraRecognitionLine(key: OrraRecognitionLineKey): string {
+  return orraRecognitionLines[key]
+}
+
+export function chooseOrraRecognitionLine(hasRememberedAction: boolean): string {
+  return hasRememberedAction
+    ? orraRecognitionLines.recognition
+    : orraRecognitionLines.firstContact
+}
+
 export function getIoReturningSessionLine(key: IoReturningSessionLineKey): string {
   return ioReturningSessionLines[key]
 }
