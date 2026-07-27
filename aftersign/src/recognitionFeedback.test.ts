@@ -52,8 +52,8 @@ export function checkCatchBeatOpensRecognition(): void {
     `t=180 phase: expected 'remember', got '${rememberStart.phase}'`,
   );
   assert(
-    rememberStart.audioCue === 'memory-chime',
-    `t=180 audioCue: expected 'memory-chime', got '${rememberStart.audioCue}'`,
+    rememberStart.audioCue === 'bell-glass-sting',
+    `t=180 audioCue: expected 'bell-glass-sting', got '${rememberStart.audioCue}'`,
   );
 }
 
