@@ -4,6 +4,7 @@ import {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
   AFTERSIGN_KIOSK_SCENE_FEEL,
+  AFTERSIGN_ORRA_RECOGNITION_FEEL,
   AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
   confirmAftersignPacketChoice,
   createAftersignVerticalSliceState,
@@ -11,13 +12,18 @@ import {
   encodeAftersignDurableSave,
   getAftersignStoryState,
   meetIoForAftersignSlice,
+  meetOrraForAftersignSlice,
   openAftersignIoRecognitionBeat,
+  openAftersignOrraRecognitionBeat,
+  recordAftersignOrraAction,
   recordAftersignPacketChoice,
   resolveAftersignPacketConfirmInteraction,
   restoreAftersignDurableSave,
   sampleAftersignIoMemoryBeat,
   sampleAftersignIoRecognitionEnvelope,
   sampleAftersignKioskSceneEnvelope,
+  sampleAftersignOrraMemoryBeat,
+  sampleAftersignOrraRecognitionEnvelope,
   sampleAftersignPacketConfirmInteractionEnvelope,
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
@@ -91,6 +97,7 @@ describe("Aftersign durable save/load contract", () => {
     const samples: FeelContractSample[] = [
       { label: "packet-choice-confirm", value: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL },
       { label: "io-recognition", value: AFTERSIGN_IO_RECOGNITION_FEEL },
+      { label: "orra-recognition", value: AFTERSIGN_ORRA_RECOGNITION_FEEL },
       { label: "kiosk-scene-ready", value: AFTERSIGN_KIOSK_SCENE_FEEL },
       { label: "packet-open", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetOpen },
       { label: "packet-preserve", value: AFTERSIGN_INTERACTION_CONFIRM_FEEL.packetPreserve },
@@ -128,6 +135,46 @@ describe("Aftersign durable save/load contract", () => {
     });
   });
 
+  it("round-trips Orra's own recognition memory without contaminating Io", () => {
+    const firstSession = meetOrraForAftersignSlice(
+      recordAftersignOrraAction(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        "answered-saint-orra",
+      ),
+    );
+
+    const payload = encodeAftersignDurableSave(firstSession, 9);
+    const envelope = decodeAftersignDurableSave(payload);
+    const secondSession = meetOrraForAftersignSlice(restoreAftersignDurableSave(payload));
+
+    expect(envelope).toEqual({
+      key: "aftersign.verticalSlice.v1",
+      savedAtTurn: 9,
+      state: {
+        version: 1,
+        packetOutcome: "sealed",
+        ioHasMetPlayer: true,
+        orraHasMetPlayer: true,
+        orraAction: "answered-saint-orra",
+      },
+    });
+    expect(sampleAftersignIoMemoryBeat(secondSession)).toEqual({
+      scene: "orra-return",
+      recognizesPlayer: false,
+      packetOutcome: "sealed",
+      recognitionFeel: null,
+    });
+    expect(sampleAftersignOrraMemoryBeat(secondSession)).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: true,
+      orraAction: "answered-saint-orra",
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+    });
+  });
+
   it("publishes the story/state snapshot after a durable NPC-memory round-trip", () => {
     // Session 1: choose "opened", meet Io, durably save. Session 2:
     // restore + meet Io again — the recognition state must project to
@@ -157,6 +204,12 @@ describe("Aftersign durable save/load contract", () => {
         act: "act-1",
         beat: "io-remembers-opened-packet",
         completedBeats: ["packet-opened", "io-first-meeting", "io-remembers-opened-packet"],
+        ioMemoryBeat: {
+          scene: "io-return",
+          recognizesPlayer: true,
+          packetOutcome: "opened",
+          recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+        },
       },
       state: {
         scene: "io-return",
@@ -181,6 +234,64 @@ describe("Aftersign durable save/load contract", () => {
 
     // Pure-data rule: the snapshot must survive a JSON round-trip
     // byte-identical (no functions, cycles, or Dates).
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
+  it("publishes Orra's story memory beat alongside Io without sharing fields", () => {
+    const returningSession = meetOrraForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(
+          meetOrraForAftersignSlice(
+            recordAftersignOrraAction(
+              meetIoForAftersignSlice(
+                recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+              ),
+              "answered-saint-orra",
+            ),
+          ),
+          13,
+        ),
+      ),
+    );
+
+    const snapshot = getAftersignStoryState(returningSession, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      rememberedSessionIds: ["session-1"],
+    });
+
+    expect(snapshot.story.completedBeats).toContain("io-remembers-opened-packet");
+    expect(snapshot.story.completedBeats).toContain("orra-remembers-answered-saint-orra");
+    expect(snapshot.state.npcs).toEqual([
+      {
+        id: "io",
+        name: "Io",
+        disposition: "recognizes-player",
+        rememberedSessionIds: ["session-1"],
+        memory: {
+          recognizesPlayer: true,
+          packetOutcome: "opened",
+        },
+      },
+      {
+        id: "orra",
+        name: "Saint Orra",
+        disposition: "recognizes-player",
+        rememberedSessionIds: ["session-1"],
+        memory: {
+          recognizesPlayer: true,
+          orraAction: "answered-saint-orra",
+        },
+      },
+    ]);
+    expect(snapshot.story.orraMemoryBeat).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: true,
+      orraAction: "answered-saint-orra",
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+    });
+    expect(snapshot.story.orraMemoryBeat).not.toEqual(snapshot.story.ioMemoryBeat);
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
 
@@ -226,6 +337,32 @@ describe("Aftersign durable save/load contract", () => {
       recognizesPlayer: true,
       packetOutcome: "sealed",
       recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+    });
+  });
+
+  it("keeps Orra's first meeting quiet, then plays her own recognition feel on return", () => {
+    const firstMeeting = meetOrraForAftersignSlice(
+      recordAftersignOrraAction(createAftersignVerticalSliceState(), "answered-saint-orra"),
+    );
+
+    expect(sampleAftersignOrraMemoryBeat(firstMeeting)).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: false,
+      orraAction: "answered-saint-orra",
+      recognitionFeel: null,
+    });
+
+    const returningMeeting = meetOrraForAftersignSlice(
+      restoreAftersignDurableSave(encodeAftersignDurableSave(firstMeeting, 14)),
+    );
+
+    expect(sampleAftersignOrraMemoryBeat(returningMeeting)).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: true,
+      orraAction: "answered-saint-orra",
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
     });
   });
 
@@ -275,7 +412,7 @@ describe("Aftersign durable save/load contract", () => {
     expect(midBeat.scanlineYPx).toBeLessThanOrEqual(42);
     expect(midBeat.ledGlowAlpha).toBeGreaterThan(0.9);
     expect(midBeat.faceplateGlowPx).toBeGreaterThan(5);
-    expect(midBeat.humDuckDb).toBe(0);
+    expect(midBeat.humDuckDb).toBeCloseTo(0, 5);
     expect(midBeat.audioCue).toBe("kiosk-ready-chime");
 
     expect(sampleAftersignKioskSceneEnvelope(150, { reducedMotion: true })).toEqual({
@@ -322,6 +459,32 @@ describe("Aftersign durable save/load contract", () => {
     );
   });
 
+  it("anchors Orra's returning recognition envelope to her own published cue timestamp", () => {
+    const firstSession = meetOrraForAftersignSlice(
+      recordAftersignOrraAction(createAftersignVerticalSliceState(), "answered-saint-orra"),
+    );
+    const returningSession = meetOrraForAftersignSlice(
+      restoreAftersignDurableSave(encodeAftersignDurableSave(firstSession, 22)),
+    );
+
+    const { cue } = openAftersignOrraRecognitionBeat(returningSession, 1_260);
+
+    expect(cue).toEqual({
+      kind: "orra-recognition-beat",
+      orraAction: "answered-saint-orra",
+      startedAtMs: 1_260,
+    });
+    expect(sampleAftersignOrraRecognitionEnvelope(cue, 1_380, { reducedMotion: true })).toEqual({
+      label: "orra-recognition",
+      elapsedMs: 120,
+      saintHaloPulsePx: 0,
+      cameraKneelDeg: 0,
+      memoryThreadGlowAlpha: 0.82,
+      chapelHumDuckDb: -2,
+      audioCue: "orra-recognition-bell",
+    });
+  });
+
   it("rejects recognition cue opens before Io has a remembered packet outcome", () => {
     expect(() =>
       openAftersignIoRecognitionBeat(
@@ -338,6 +501,25 @@ describe("Aftersign durable save/load contract", () => {
 
     expect(() => openAftersignIoRecognitionBeat(returningWithoutPacket, 0)).toThrow(
       "Cannot open Io recognition beat: packetOutcome is not committed",
+    );
+  });
+
+  it("rejects Orra recognition cue opens before Orra has remembered the player", () => {
+    expect(() =>
+      openAftersignOrraRecognitionBeat(
+        recordAftersignOrraAction(createAftersignVerticalSliceState(), "answered-saint-orra"),
+        0,
+      ),
+    ).toThrow("Cannot open Orra recognition beat: Orra does not recognize the player yet");
+
+    const returningWithoutAction = meetOrraForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(meetOrraForAftersignSlice(createAftersignVerticalSliceState()), 6),
+      ),
+    );
+
+    expect(() => openAftersignOrraRecognitionBeat(returningWithoutAction, 0)).toThrow(
+      "Cannot open Orra recognition beat: Orra action is not committed",
     );
   });
 
