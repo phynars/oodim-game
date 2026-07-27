@@ -114,10 +114,16 @@ export function checkOrraRecognitionMemory() {
   assert(litReturn.lineId === ORRA_RETURN_LINE_BY_ACTION.lit, "Lit action must map to lit recognition line");
   assert(litReturn.memoryRef === litMemory.id, "Recognition line must cite the Orra memory id");
 
+  // Cross-kind guard: forge an Io-shaped memory by round-tripping through
+  // `unknown` (a direct `as OrraRecognitionMemoryFact` cast off an object
+  // literal whose `kind` widens to `string` is rejected under strict
+  // `tsc --noEmit -p aftersign/tsconfig.json`, which is the exact step
+  // that gates this PR). The selector must still refuse to fabricate
+  // an Orra recognition from Io state.
   const ioShapedMemory = {
     ...litMemory,
     kind: "io-recognition",
-  } as OrraRecognitionMemoryFact;
+  } as unknown as OrraRecognitionMemoryFact;
   assert(
     orraRecognitionLineForMemory(ioShapedMemory).branch === "first-contact",
     "Io-shaped memory must not trigger Orra recognition",
