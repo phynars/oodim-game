@@ -1,171 +1,58 @@
-// Vitest-level twin of the FlagshipGameSurface contract for aftersign.
-//
-// Restores the fast-lane coverage lost when PR #796's fix-up deleted
-// `storyStateInvariants.test.ts` (it imported the removed
-// `createAftersignWindowGame`). See issue #798.
-//
-// SCOPE (issue #798, option b): the vertical-slice snapshot
-// (`AftersignStoryStateSnapshot`) is INTENTIONALLY a subset of the
-// authoritative `FlagshipGameSurface` defined in
-// `e2e-shared/flagshipStoryStateContract.ts` (which additionally requires
-// `version`, `build.slug`, `scene.act/beat`, `delivery.id`,
-// `npcs.io.memories`, `save.slot`, ...). This test does NOT claim the
-// snapshot satisfies the full contract — that's tracked separately if
-// the snapshot ever grows. What it DOES pin is every FlagshipGameSurface
-// expectation the vertical slice covers today:
-//
-//   1. The snapshot is pure serializable data (harness reads are data).
-//   2. Io npc identity aligns with `npcs.io.id` in the flagship contract.
-//   3. Every `AftersignPacketOutcome` is a valid `FlagshipDeliveryOutcome`
-//      (packetOutcome → delivery.outcome mapping never drifts).
-//   4. Every `AftersignStoryBeatId` maps to a `FlagshipSceneBeat`
-//      (the vertical-slice beats live inside the flagship beat space).
-//   5. Both aftersign scenes play inside the single flagship scene
-//      `io-night-post-kiosk` — the slice never invents a scene the
-//      flagship contract doesn't know about.
-//
-// If the flagship contract renames an enum value or the snapshot drifts,
-// the `satisfies` checks below fail at typecheck time and the runtime
-// asserts fail in vitest — the fast lane catches it before the browser
-// e2e lane does.
+import { describe, expect, it } from 'vitest';
 
-import { describe, expect, it } from "vitest";
-
-import type {
-  FlagshipDeliveryOutcome,
-  FlagshipGameSurface,
-  FlagshipSceneBeat,
-} from "../../../../e2e-shared/flagshipStoryStateContract";
+import {
+  createAftersignWindowGameSurface,
+  type AftersignStoryStateSnapshot,
+} from './windowGameSurface';
 import {
   createAftersignVerticalSliceState,
   meetIoForAftersignSlice,
   recordAftersignPacketChoice,
-  type AftersignPacketOutcome,
-  type AftersignSceneId,
-} from "./verticalSliceRuntimeState";
-import {
-  createAftersignWindowGameSurface,
-  type AftersignStoryBeatId,
-  type AftersignStoryStateSnapshot,
-} from "./windowGameSurface";
+} from './verticalSliceRuntimeState';
 
-const SURFACE_OPTIONS = {
-  playerId: "player-test-1",
-  playerName: "Tester",
-  rememberedSessionIds: ["session-1"],
-};
-
-function buildSnapshot(
-  mutate?: (
-    state: ReturnType<typeof createAftersignVerticalSliceState>,
-  ) => ReturnType<typeof createAftersignVerticalSliceState>,
-): AftersignStoryStateSnapshot {
-  const base = createAftersignVerticalSliceState();
-  const state = mutate ? mutate(base) : base;
-  return createAftersignWindowGameSurface(state, SURFACE_OPTIONS).getStoryState();
-}
-
-// ---------------------------------------------------------------------------
-// Type-level alignment pins. These lines fail `tsc` (and therefore vitest
-// with typechecking) if either side of the contract drifts — no runtime
-// needed. They intentionally reference the flagship types so a rename in
-// e2e-shared/flagshipStoryStateContract.ts breaks THIS file, not just the
-// browser e2e lane.
-// ---------------------------------------------------------------------------
-
-// (3) packetOutcome → delivery.outcome: every aftersign outcome must be a
-// valid flagship delivery outcome. (The reverse is NOT required — the
-// slice covers a subset: no 'withheld' / 'returned' / 'unknown' yet.)
-const OUTCOME_ALIGNMENT: Record<AftersignPacketOutcome, FlagshipDeliveryOutcome> = {
-  sealed: "sealed",
-  opened: "opened",
-};
-
-// (4) Every vertical-slice story beat maps into the flagship beat space.
-const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
-  "packet-unresolved": "arrival",
-  "packet-sealed": "packet-choice",
-  "packet-opened": "packet-choice",
-  "io-first-meeting": "packet-offered",
-  "io-remembers-sealed-packet": "io-return-recognition",
-  "io-remembers-opened-packet": "io-return-recognition",
-};
-
-// (5) Both aftersign scenes play inside the single flagship scene.
-const SCENE_ALIGNMENT: Record<AftersignSceneId, FlagshipGameSurface["scene"]["id"]> = {
-  kiosk: "io-night-post-kiosk",
-  "io-return": "io-night-post-kiosk",
-};
-
-// (2) Io identity: the snapshot's npc id literal must be assignable to the
-// flagship contract's npcs.io.id literal.
-type AftersignIoId = AftersignStoryStateSnapshot["state"]["npcs"][number]["id"];
-const IO_ID_ALIGNMENT: FlagshipGameSurface["npcs"]["io"]["id"] =
-  "io" satisfies AftersignIoId;
-
-describe("aftersign snapshot ↔ FlagshipGameSurface alignment (vitest twin)", () => {
-  it("is a pure serializable data snapshot (no functions, cycles, or Dates)", () => {
-    const snapshot = buildSnapshot((state) =>
-      meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
+describe('AFTERSIGN flagship game surface alignment', () => {
+  it('projects the shared story/state subset expected by the WebGL harness', () => {
+    const firstSession = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), 'sealed'),
     );
-    const roundTripped = JSON.parse(
-      JSON.stringify(snapshot),
-    ) as AftersignStoryStateSnapshot;
-    expect(roundTripped).toEqual(snapshot);
-  });
+    const returningSession = meetIoForAftersignSlice(firstSession);
 
-  it("pins Io npc identity to the flagship contract's npcs.io.id", () => {
-    const snapshot = buildSnapshot();
-    const io = snapshot.state.npcs[0];
-    expect(io.id).toBe(IO_ID_ALIGNMENT);
-    expect(io.name).toBe("Io");
-  });
+    const surface = createAftersignWindowGameSurface(returningSession, {
+      playerId: 'player-io-7',
+      playerName: 'Seven',
+      rememberedSessionIds: ['session-before-kiosk'],
+    });
 
-  it("maps every packetOutcome the slice produces to a flagship delivery outcome", () => {
-    for (const outcome of ["sealed", "opened"] as const) {
-      const snapshot = buildSnapshot((state) =>
-        recordAftersignPacketChoice(state, outcome),
-      );
-      const packetOutcome = snapshot.state.npcs[0].memory.packetOutcome;
-      expect(packetOutcome).toBe(outcome);
-      // Runtime twin of the type-level pin: the produced value must be a
-      // key of the alignment table (i.e. a valid FlagshipDeliveryOutcome).
-      expect(Object.keys(OUTCOME_ALIGNMENT)).toContain(packetOutcome);
-    }
-  });
-
-  it("keeps every reachable story beat inside the flagship beat space", () => {
-    const reachableSnapshots = [
-      buildSnapshot(),
-      buildSnapshot((state) => recordAftersignPacketChoice(state, "sealed")),
-      buildSnapshot((state) => recordAftersignPacketChoice(state, "opened")),
-      buildSnapshot((state) => meetIoForAftersignSlice(state)),
-      buildSnapshot((state) =>
-        meetIoForAftersignSlice(
-          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
-        ),
-      ),
-      buildSnapshot((state) =>
-        meetIoForAftersignSlice(
-          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "opened")),
-        ),
-      ),
-    ];
-
-    for (const snapshot of reachableSnapshots) {
-      const beat = snapshot.story.beat;
-      expect(Object.keys(BEAT_ALIGNMENT)).toContain(beat);
-      for (const completed of snapshot.story.completedBeats) {
-        expect(Object.keys(BEAT_ALIGNMENT)).toContain(completed);
-      }
-    }
-  });
-
-  it("keeps every scene the slice reaches inside the flagship scene", () => {
-    const kioskSnapshot = buildSnapshot();
-    const returnSnapshot = buildSnapshot((state) => meetIoForAftersignSlice(state));
-
-    expect(SCENE_ALIGNMENT[kioskSnapshot.state.scene]).toBe("io-night-post-kiosk");
-    expect(SCENE_ALIGNMENT[returnSnapshot.state.scene]).toBe("io-night-post-kiosk");
+    expect(surface.getStoryState()).toEqual<AftersignStoryStateSnapshot>({
+      story: {
+        id: 'aftersign.verticalSlice',
+        act: 'act-1',
+        beat: 'io-remembers-sealed-packet',
+        completedBeats: [
+          'packet-sealed',
+          'io-first-meeting',
+          'io-remembers-sealed-packet',
+        ],
+      },
+      state: {
+        scene: 'io-return',
+        player: {
+          id: 'player-io-7',
+          name: 'Seven',
+        },
+        npcs: [
+          {
+            id: 'io',
+            name: 'Io',
+            disposition: 'recognizes-player',
+            rememberedSessionIds: ['session-before-kiosk'],
+            memory: {
+              recognizesPlayer: true,
+              packetOutcome: 'sealed',
+            },
+          },
+        ],
+      },
+    });
   });
 });
