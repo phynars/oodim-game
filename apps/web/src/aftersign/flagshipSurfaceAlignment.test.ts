@@ -17,8 +17,8 @@
 //   1. The snapshot is pure serializable data (harness reads are data).
 //   2. Io npc identity aligns with `npcs.io.id` in the flagship contract.
 //   3. Every `AftersignPacketOutcome` is a valid `FlagshipDeliveryOutcome`
-//      (packetOutcome → delivery.outcome mapping never drifts).
-//   4. Every `AftersignStoryBeatId` maps to a `FlagshipSceneBeat`
+//      and maps to the expected delivery outcome.
+//   4. Every `AftersignStoryBeatId` maps to the expected `FlagshipSceneBeat`
 //      (the vertical-slice beats live inside the flagship beat space).
 //   5. Both aftersign scenes play inside the single flagship scene
 //      `io-night-post-kiosk` — the slice never invents a scene the
@@ -125,43 +125,69 @@ describe("aftersign snapshot ↔ FlagshipGameSurface alignment (vitest twin)", (
     expect(io.name).toBe("Io");
   });
 
-  it("maps every packetOutcome the slice produces to a flagship delivery outcome", () => {
+  it("maps every packetOutcome the slice produces to its flagship delivery outcome", () => {
     for (const outcome of ["sealed", "opened"] as const) {
       const snapshot = buildSnapshot((state) =>
         recordAftersignPacketChoice(state, outcome),
       );
       const packetOutcome = snapshot.state.npcs[0].memory.packetOutcome;
       expect(packetOutcome).toBe(outcome);
-      // Runtime twin of the type-level pin: the produced value must be a
-      // mapped value of the alignment table (i.e. a valid FlagshipDeliveryOutcome).
-      expect(Object.values(OUTCOME_ALIGNMENT)).toContain(packetOutcome);
+      expect(packetOutcome).not.toBeNull();
+      expect(OUTCOME_ALIGNMENT[packetOutcome]).toBe(outcome);
     }
   });
 
-  it("keeps every reachable story beat inside the flagship beat space", () => {
-    const reachableSnapshots = [
-      buildSnapshot(),
-      buildSnapshot((state) => recordAftersignPacketChoice(state, "sealed")),
-      buildSnapshot((state) => recordAftersignPacketChoice(state, "opened")),
-      buildSnapshot((state) => meetIoForAftersignSlice(state)),
-      buildSnapshot((state) =>
-        meetIoForAftersignSlice(
-          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
+  it("maps every reachable story beat to the expected flagship beat", () => {
+    const reachableSnapshots: Array<{
+      snapshot: AftersignStoryStateSnapshot;
+      expectedBeat: FlagshipSceneBeat;
+      expectedCompletedBeats: FlagshipSceneBeat[];
+    }> = [
+      {
+        snapshot: buildSnapshot(),
+        expectedBeat: "arrival",
+        expectedCompletedBeats: [],
+      },
+      {
+        snapshot: buildSnapshot((state) => recordAftersignPacketChoice(state, "sealed")),
+        expectedBeat: "packet-choice",
+        expectedCompletedBeats: ["packet-choice"],
+      },
+      {
+        snapshot: buildSnapshot((state) => recordAftersignPacketChoice(state, "opened")),
+        expectedBeat: "packet-choice",
+        expectedCompletedBeats: ["packet-choice"],
+      },
+      {
+        snapshot: buildSnapshot((state) => meetIoForAftersignSlice(state)),
+        expectedBeat: "packet-offered",
+        expectedCompletedBeats: ["packet-offered"],
+      },
+      {
+        snapshot: buildSnapshot((state) =>
+          meetIoForAftersignSlice(
+            meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
+          ),
         ),
-      ),
-      buildSnapshot((state) =>
-        meetIoForAftersignSlice(
-          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "opened")),
+        expectedBeat: "io-return-recognition",
+        expectedCompletedBeats: ["packet-choice", "packet-offered", "io-return-recognition"],
+      },
+      {
+        snapshot: buildSnapshot((state) =>
+          meetIoForAftersignSlice(
+            meetIoForAftersignSlice(recordAftersignPacketChoice(state, "opened")),
+          ),
         ),
-      ),
+        expectedBeat: "io-return-recognition",
+        expectedCompletedBeats: ["packet-choice", "packet-offered", "io-return-recognition"],
+      },
     ];
 
-    for (const snapshot of reachableSnapshots) {
-      const beat = snapshot.story.beat;
-      expect(Object.keys(BEAT_ALIGNMENT)).toContain(beat);
-      for (const completed of snapshot.story.completedBeats) {
-        expect(Object.keys(BEAT_ALIGNMENT)).toContain(completed);
-      }
+    for (const { snapshot, expectedBeat, expectedCompletedBeats } of reachableSnapshots) {
+      expect(BEAT_ALIGNMENT[snapshot.story.beat]).toBe(expectedBeat);
+      expect(snapshot.story.completedBeats.map((beat) => BEAT_ALIGNMENT[beat])).toEqual(
+        expectedCompletedBeats,
+      );
     }
   });
 
