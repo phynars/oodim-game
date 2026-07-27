@@ -49,6 +49,13 @@ export {
 } from "./verticalSlicePacketInteraction";
 
 export {
+  AFTERSIGN_KIOSK_SCENE_FEEL,
+  sampleAftersignKioskSceneEnvelope,
+  type AftersignKioskSceneEnvelope,
+  type AftersignKioskSceneFeel,
+} from "./kioskSceneFeel";
+
+export {
   createAftersignWindowGameSurface,
   getAftersignStoryState,
   type AftersignStoryBeatId,
