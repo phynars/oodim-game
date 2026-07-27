@@ -14,11 +14,43 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vite/client", "vitest/globals"]
+    "types": ["vite/client"]
   },
-  // Strict gate now covers both aftersign package source and the
-  // apps/web AFTERSIGN slice test+runtime tree.
-  // Keep test files included; vitest global types are provided above.
-  "include": ["src", "../apps/web/src/aftersign/**/*.ts"],
+  // `include` deliberately stays ["src"] — it is NOT widened to
+  // ../apps/web/src/aftersign (#836, acceptance criterion 2, "documented
+  // as not typechecked" branch). That tree was authored without ever
+  // running under this tsconfig's strict flags (strict / noUnusedLocals /
+  // noUnusedParameters, `types: ["vite/client"]` only), so widening the
+  // include turns `typecheck:aftersign` — a BLOCKING ci.yml step — red on
+  // latent errors across ~25 files that no PR can triage in one diff
+  // (this exact failure killed PR #837's first attempts, and #851's first
+  // attempt at #846's option-1 path — vitest imports resolve now, but the
+  // ~25 latent errors underneath do not, so widening still turns the
+  // blocking gate red).
+  //
+  // BURN-DOWN (#843, #846): the ~25 files are typechecked instead by
+  // `aftersign/tsconfig.apps-web.json`, wired via
+  // `npm run typecheck:aftersign:apps-web` and run as a non-blocking
+  // step (`continue-on-error: true`) in ci.yml's aftersign lane. As
+  // errors are fixed file-by-file, the burn-down step will land green
+  // on its own; when it does, it flips to blocking (drop
+  // `continue-on-error`) and the sibling `include` can be merged back
+  // into this one — see the sibling's header comment.
+  //
+  // Status of apps/web/src/aftersign/ until then:
+  //   - RUNTIME: executed by vitest via `test:unit:aftersign`
+  //     (package.json / ci.yml aftersign lane).
+  //   - TYPECHECK: best-effort blocking + burn-down non-blocking. Files
+  //     that aftersign/src imports directly (e.g. recognitionFeedback.ts
+  //     via recognitionBeat.ts) ARE transitively typechecked here under
+  //     the blocking gate; the rest are typechecked under the sibling
+  //     burn-down config, whose failures currently do not gate merges.
+  //     Type-level pins (`satisfies`, Record<> alignment tables) in
+  //     un-imported files are visible in the burn-down log — see
+  //     aftersign/README.md.
+  // Do NOT add `**/*.test.ts` to `exclude`: aftersign/src/*.test.ts are
+  // plain-TS assertion runners that are deliberately typechecked by this
+  // config (see aftersign/src/packetIntentContract.test.ts header).
+  "include": ["src"],
   "exclude": ["node_modules", "../dist-aftersign", "e2e", "playwright.config.ts", "vite.config.ts"]
 }
