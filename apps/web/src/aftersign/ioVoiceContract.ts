@@ -72,6 +72,12 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
 };
 
+export type AftersignIoReturnMemoryThreadInput = {
+  routeAttention: AftersignRouteAttention;
+  packetOutcome: string | null | undefined;
+  returnReason: AftersignReturnReason;
+};
+
 export function normalizeAftersignPacketOutcome(
   outcome: string | null | undefined,
 ): AftersignPacketOutcome {
@@ -96,4 +102,16 @@ export function ioReturnReasonLine(reason: AftersignReturnReason): AftersignIoLi
 
 export function buildIoMemorySentence(line: AftersignIoLine): string {
   return line.memorySentence ?? `Io remembers: ${line.text}`;
+}
+
+export function buildIoReturnMemoryThread({
+  routeAttention,
+  packetOutcome,
+  returnReason,
+}: AftersignIoReturnMemoryThreadInput): readonly string[] {
+  return [
+    buildIoMemorySentence(ioRouteAttentionLine(routeAttention)),
+    buildIoMemorySentence(ioPacketReturnLine(packetOutcome)),
+    buildIoMemorySentence(ioReturnReasonLine(returnReason)),
+  ];
 }
