@@ -570,7 +570,12 @@
         state.player.facingRadians = result.state.facingRadians;
         state.movement.lastStepMs = result.state.lastStepMs;
         state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
-        state.movement.fixedStepsLastFrame = result.state.lastStepMs > 0 ? 1 : 0;
+        // Legacy single-step wrapper: by construction we ran exactly one
+        // fixed step this call. Deriving from `lastStepMs > 0` was cosmetic
+        // (a duration masquerading as a count) — happened to yield 1 for
+        // any real step, 0 only if a caller passed dt=0. Set the count
+        // directly so the field reads intent-first.
+        state.movement.fixedStepsLastFrame = 1;
         state.movement.droppedStepMs = 0;
       };
 
