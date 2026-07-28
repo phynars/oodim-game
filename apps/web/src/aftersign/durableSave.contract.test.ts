@@ -623,10 +623,10 @@ describe("Aftersign durable save/load contract", () => {
     );
 
     expect(() => encodeAftersignDurableSave(state, -1)).toThrow(
-      "Cannot encode Aftersign durable save: savedAtTurn must be a non-negative safe integer",
+      "Invalid Aftersign durable save: savedAtTurn must be a safe integer",
     );
     expect(() => encodeAftersignDurableSave(state, 1.5)).toThrow(
-      "Cannot encode Aftersign durable save: savedAtTurn must be a non-negative safe integer",
+      "Invalid Aftersign durable save: savedAtTurn must be a safe integer",
     );
     expect(() =>
       restoreAftersignDurableSave(
@@ -640,7 +640,7 @@ describe("Aftersign durable save/load contract", () => {
           },
         }),
       ),
-    ).toThrow("Invalid Aftersign durable save: savedAtTurn is malformed");
+    ).toThrow("Invalid Aftersign durable save: savedAtTurn must be a safe integer");
   });
 
   it("rejects malformed durable save payloads instead of silently resetting story state", () => {
