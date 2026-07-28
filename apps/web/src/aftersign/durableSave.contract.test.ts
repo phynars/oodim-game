@@ -617,6 +617,32 @@ describe("Aftersign durable save/load contract", () => {
     });
   });
 
+  it("rejects malformed durable save timestamps instead of writing unordered snapshots", () => {
+    const state = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+    );
+
+    expect(() => encodeAftersignDurableSave(state, -1)).toThrow(
+      "Cannot encode Aftersign durable save: savedAtTurn must be a non-negative safe integer",
+    );
+    expect(() => encodeAftersignDurableSave(state, 1.5)).toThrow(
+      "Cannot encode Aftersign durable save: savedAtTurn must be a non-negative safe integer",
+    );
+    expect(() =>
+      restoreAftersignDurableSave(
+        JSON.stringify({
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn: -1,
+          state: {
+            version: 1,
+            packetOutcome: "opened",
+            ioHasMetPlayer: true,
+          },
+        }),
+      ),
+    ).toThrow("Invalid Aftersign durable save: savedAtTurn is malformed");
+  });
+
   it("rejects malformed durable save payloads instead of silently resetting story state", () => {
     expect(() => restoreAftersignDurableSave("not-json")).toThrow(
       "Invalid Aftersign durable save: payload is not JSON",
