@@ -26,11 +26,21 @@ describe("Aftersign Io first-scene dialogue", () => {
     expect(getAftersignIoFirstSceneLine("packetOffer").text).toContain(
       "Sealed",
     );
-    expect(getAftersignIoFirstSceneLine("sealedReturn").text).toContain(
-      "unbroken",
+    // Script-locked lines: assert the full canonical string, not a
+    // substring — `.toContain("unbroken")` would pass a paraphrase.
+    // Canonical source: packages/aftersign/src/ioReturningSession.ts:25
+    // and docs/flagship/vertical-slice-script.md:183.
+    expect(getAftersignIoFirstSceneLine("sealedReturn").text).toBe(
+      "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
     );
-    expect(getAftersignIoFirstSceneLine("openedReturn").text).toContain(
-      "did not",
+    expect(getAftersignIoFirstSceneLine("openedReturn").text).toBe(
+      "You came back. The seal did not. I can use one of those facts.",
+    );
+    expect(getAftersignIoFirstSceneLine("listenedReturn").text).toBe(
+      "You listened before you ran. Rare habit. Keep it.",
+    );
+    expect(getAftersignIoFirstSceneLine("skippedReturn").text).toBe(
+      "You found the box anyway. Next time, let me finish saving your life.",
     );
   });
 
