@@ -237,6 +237,34 @@ describe("Aftersign durable save/load contract", () => {
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
 
+  it("surfaces the durable save turn on the published state snapshot", () => {
+    const savedAtTurn = 31;
+    const restoredSession = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(
+          meetIoForAftersignSlice(
+            recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+          ),
+          savedAtTurn,
+        ),
+      ),
+    );
+
+    const snapshot = getAftersignStoryState(restoredSession, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      rememberedSessionIds: ["session-1"],
+    });
+
+    expect(snapshot.state).toMatchObject({
+      save: {
+        key: "aftersign.verticalSlice.v1",
+        savedAtTurn,
+      },
+    });
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
   it("publishes Orra's story memory beat alongside Io without sharing fields", () => {
     const returningSession = meetOrraForAftersignSlice(
       restoreAftersignDurableSave(
