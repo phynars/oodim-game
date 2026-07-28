@@ -167,6 +167,13 @@
         SECOND_ACTION,
         secondActionFromMemory,
       } from "./src/memoryFacts.js";
+      import {
+        actionForOrraChoice,
+        buildOrraRecognitionMemoryFact,
+        lineCopyForOrraLineId,
+        ORRA_FIRST_CONTACT_LINE_ID,
+        selectOrraRecognitionLine,
+      } from "./src/orraRuntimeLane.ts";
       import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
       import {
         IO_RECOGNITION_BEAT_FEEDBACK,
@@ -267,6 +274,11 @@
       }).catch(() => null) || localStored;
       const packetIntent = new PacketIntentController();
 
+      const orraMemoryFromStored = Array.isArray(stored?.npcs?.orra?.memory)
+        ? clone(stored.npcs.orra.memory)
+        : [];
+      const orraLineFromStored = selectOrraRecognitionLine(orraMemoryFromStored);
+
       const state = {
         slug: "aftersign",
         scene: {
@@ -328,6 +340,11 @@
             memory: stored?.memory ? clone(stored.memory) : [],
             lastLine: null,
             lastLineMemoryRefs: [],
+          },
+          orra: {
+            memory: orraMemoryFromStored,
+            lastLine: lineCopyForOrraLineId(orraLineFromStored.lineId),
+            lastLineId: orraLineFromStored.lineId,
           },
         },
         save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
@@ -464,6 +481,13 @@
         packet: clone(state.packet),
         delivery: clone(state.delivery),
         memory: clone(state.npcs.io.memory),
+        npcs: {
+          orra: {
+            memory: clone(state.npcs.orra.memory),
+            lastLine: state.npcs.orra.lastLine,
+            lastLineId: state.npcs.orra.lastLineId,
+          },
+        },
         save: {
           revision: state.save.revision,
           dirty,
@@ -625,6 +649,14 @@
       const publishState = () => {
         syncIoLine();
         syncPacketIntent();
+        const orraLine = selectOrraRecognitionLine(state.npcs.orra.memory);
+        const nextOrraLastLineId = orraLine.lineId;
+        const nextOrraLastLine = lineCopyForOrraLineId(nextOrraLastLineId);
+        if (state.npcs.orra.lastLineId !== nextOrraLastLineId || state.npcs.orra.lastLine !== nextOrraLastLine) {
+          state.npcs.orra.lastLineId = nextOrraLastLineId;
+          state.npcs.orra.lastLine = nextOrraLastLine;
+          markStateDirty();
+        }
         if (publishedStateVersion === statePublishVersion && window.__game) {
           return window.__game;
         }
@@ -649,6 +681,13 @@
               ...clone(state.npcs.io),
               memories: clone(state.npcs.io.memory),
               trustPosture: trustPostureForOutcome(state.delivery.outcome),
+            },
+            orra: {
+              id: "orra",
+              displayName: "Orra",
+              present: true,
+              ...clone(state.npcs.orra),
+              memories: clone(state.npcs.orra.memory),
             },
           },
           save: { ...state.save },
@@ -686,6 +725,13 @@
                 ...state.npcs.io,
                 memories: state.npcs.io.memory,
                 trustPosture: trustPostureForOutcome(state.delivery.outcome),
+              },
+              orra: {
+                id: "orra",
+                displayName: "Orra",
+                present: true,
+                ...state.npcs.orra,
+                memories: state.npcs.orra.memory,
               },
             },
             save: state.save,
@@ -870,6 +916,31 @@
           return;
         }
 
+        const orraAction = actionForOrraChoice(choiceId);
+        if (orraAction) {
+          const nextRevision = state.save.revision + 1;
+          const nextFact = buildOrraRecognitionMemoryFact({
+            playerId: state.player.id,
+            action: orraAction,
+            sessionId,
+            revision: nextRevision,
+          });
+          state.save.revision = nextRevision;
+          state.npcs.orra.memory = [nextFact];
+          markStateDirty();
+          await forceSave();
+          return;
+        }
+
+        if (choiceId === "return-to-orra") {
+          const selected = selectOrraRecognitionLine(state.npcs.orra.memory);
+          state.npcs.orra.lastLineId = selected.lineId;
+          state.npcs.orra.lastLine = lineCopyForOrraLineId(selected.lineId);
+          markStateDirty();
+          publishState();
+          return;
+        }
+
         throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
       };
 
@@ -1002,6 +1073,9 @@
         state.npcs.io.memory = breakMode === "drop-memory"
           ? []
           : saved.memory ? clone(saved.memory) : [];
+        state.npcs.orra.memory = Array.isArray(saved.npcs?.orra?.memory)
+          ? clone(saved.npcs.orra.memory)
+          : [];
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.save.authority = authoritativeSave ? "server" : "local-fallback";
         state.save.lastLoadProof = {
@@ -1406,6 +1480,9 @@
         state.delivery = { id: "blue-packet", outcome: "unknown" };
         state.npcs.io.memory = [];
         state.npcs.io.lastLineMemoryRefs = [];
+        state.npcs.orra.memory = [];
+        state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
+        state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
         state.save = emptySave();
         state.movement.input = { x: 0, z: 0, source: "none", active: false };
         state.movement.lastStepMs = 0;
@@ -1484,6 +1561,17 @@
           state.npcs.io.lastLineMemoryRefs = Array.isArray(restored.npcs.io.lastLineMemoryRefs)
             ? clone(restored.npcs.io.lastLineMemoryRefs)
             : [];
+        }
+        if (restored.npcs && restored.npcs.orra) {
+          state.npcs.orra.memory = Array.isArray(restored.npcs.orra.memory)
+            ? clone(restored.npcs.orra.memory)
+            : [];
+          state.npcs.orra.lastLine = typeof restored.npcs.orra.lastLine === "string"
+            ? restored.npcs.orra.lastLine
+            : lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
+          state.npcs.orra.lastLineId = typeof restored.npcs.orra.lastLineId === "string"
+            ? restored.npcs.orra.lastLineId
+            : ORRA_FIRST_CONTACT_LINE_ID;
         }
         if (restored.save && typeof restored.save === "object") {
           state.save = { ...emptySave(), ...restored.save };
