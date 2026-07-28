@@ -122,7 +122,13 @@ describe("verticalSliceState save/reload integration", () => {
     });
   });
 
-  it("keeps Orra on first-contact when her deliberate action was not recorded", () => {
+  it("recognizes Orra on re-meet even when her deliberate action was not recorded", () => {
+    // Contract mirrors Io: recognition gates on hasMetPlayer (persisted via
+    // save), NOT on the deliberate action. So after save→restore→re-meet
+    // with no orraAction recorded, Orra still recognizes the player; the
+    // action stays null and the recognition-feel envelope is present.
+    // (Gating recognition on orraAction would be a runtime-state change,
+    // out of scope for this test-only PR.)
     const firstContact = meetOrraForAftersignSlice(createAftersignVerticalSliceState());
     const returned = meetOrraForAftersignSlice(
       restoreAftersignVerticalSliceState(createAftersignVerticalSliceSave(firstContact)),
@@ -131,9 +137,9 @@ describe("verticalSliceState save/reload integration", () => {
     expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
       kind: "orra-recognition",
       scene: "orra-return",
-      recognizesPlayer: false,
+      recognizesPlayer: true,
       orraAction: null,
-      recognitionFeel: null,
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
     });
   });
 
