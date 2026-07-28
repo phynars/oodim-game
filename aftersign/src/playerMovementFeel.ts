@@ -10,6 +10,7 @@ export interface PlayerMovementFeelConfig {
   minZ: number;
   maxZ: number;
   inputToVelocityFrames: number;
+  maxFixedStepsPerFrame: number;
 }
 
 export interface PlayerMovementInput {
@@ -36,6 +37,15 @@ export interface PlayerMovementStepResult {
   movedZ: number;
 }
 
+export interface PlayerMovementFixedUpdateResult {
+  state: PlayerMovementState;
+  steps: number;
+  consumedSeconds: number;
+  remainderSeconds: number;
+  droppedSeconds: number;
+  capped: boolean;
+}
+
 export interface PlayerMovementFeelReport {
   passed: boolean;
   movedThisFrame: boolean;
@@ -46,6 +56,10 @@ export interface PlayerMovementFeelReport {
   lastStepMs: number;
   targetFrameMs: number;
   inputToVelocityFrames: number;
+  maxFixedStepsPerFrame: number;
+  spikeIsCapped: boolean;
+  fixedStepsOnSpike: number;
+  droppedStepMsOnSpike: number;
 }
 
 export const DEFAULT_PLAYER_MOVEMENT_FEEL: PlayerMovementFeelConfig = {
@@ -58,6 +72,7 @@ export const DEFAULT_PLAYER_MOVEMENT_FEEL: PlayerMovementFeelConfig = {
   minZ: -6.4,
   maxZ: 2.2,
   inputToVelocityFrames: 1,
+  maxFixedStepsPerFrame: 4,
 };
 
 export const createPlayerMovementState = (
@@ -132,6 +147,39 @@ export const stepPlayerMovement = (
   };
 };
 
+export const stepPlayerMovementFixedUpdate = (
+  current: PlayerMovementState,
+  accumulatorSeconds: number,
+  frameDtSeconds: number,
+  config: PlayerMovementFeelConfig = DEFAULT_PLAYER_MOVEMENT_FEEL,
+): PlayerMovementFixedUpdateResult => {
+  let state = cloneMovementState(current);
+  const fixedStepSeconds = config.fixedStepSeconds;
+  const maxSteps = Math.max(1, Math.floor(config.maxFixedStepsPerFrame));
+  let availableSeconds = Math.max(0, accumulatorSeconds) + Math.max(0, frameDtSeconds);
+  let steps = 0;
+
+  while (availableSeconds + 0.0000001 >= fixedStepSeconds && steps < maxSteps) {
+    const result = stepPlayerMovement(state, fixedStepSeconds, config);
+    state = result.state;
+    availableSeconds -= fixedStepSeconds;
+    steps += 1;
+  }
+
+  const capped = availableSeconds + 0.0000001 >= fixedStepSeconds;
+  const remainderSeconds = capped ? 0 : Math.max(0, availableSeconds);
+  const droppedSeconds = capped ? Math.max(0, availableSeconds) : 0;
+
+  return {
+    state,
+    steps,
+    consumedSeconds: steps * fixedStepSeconds,
+    remainderSeconds,
+    droppedSeconds,
+    capped,
+  };
+};
+
 export const checkPlayerMovementFeel = (
   config: PlayerMovementFeelConfig = DEFAULT_PLAYER_MOVEMENT_FEEL,
 ): PlayerMovementFeelReport => {
@@ -153,8 +201,19 @@ export const checkPlayerMovementFeel = (
   const edgeStep = stepPlayerMovement(edgeStart, config.fixedStepSeconds, config);
   const clampHeld = edgeStep.state.x === config.maxX;
 
+  const spikeInput = normalizeMoveInput(1, 0, "harness", config);
+  const spikeStep = stepPlayerMovementFixedUpdate(
+    { ...start, input: spikeInput },
+    0,
+    config.fixedStepSeconds * (config.maxFixedStepsPerFrame + 3),
+    config,
+  );
+  const spikeIsCapped = spikeStep.capped
+    && spikeStep.steps === Math.max(1, Math.floor(config.maxFixedStepsPerFrame))
+    && spikeStep.droppedSeconds >= config.fixedStepSeconds;
+
   return {
-    passed: movedThisFrame && fixedStepInsideBudget && diagonalIsNormalized && deadzoneIsSilent && clampHeld,
+    passed: movedThisFrame && fixedStepInsideBudget && diagonalIsNormalized && deadzoneIsSilent && clampHeld && spikeIsCapped,
     movedThisFrame,
     fixedStepInsideBudget,
     diagonalIsNormalized,
@@ -163,6 +222,10 @@ export const checkPlayerMovementFeel = (
     lastStepMs: rightStep.state.lastStepMs,
     targetFrameMs: config.targetFrameMs,
     inputToVelocityFrames: config.inputToVelocityFrames,
+    maxFixedStepsPerFrame: config.maxFixedStepsPerFrame,
+    spikeIsCapped,
+    fixedStepsOnSpike: spikeStep.steps,
+    droppedStepMsOnSpike: spikeStep.droppedSeconds * 1000,
   };
 };
 

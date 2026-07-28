@@ -189,6 +189,7 @@
         createPlayerMovementState,
         normalizeMoveInput,
         stepPlayerMovement as stepPlayerMovementModel,
+        stepPlayerMovementFixedUpdate,
       } from "./src/playerMovementFeel.ts";
 
       const canvas = document.querySelector("#scene");
@@ -334,6 +335,8 @@
           input: { x: 0, z: 0, source: "none", active: false },
           lastStepMs: 0,
           lastVelocityMetersPerSecond: 0,
+          fixedStepsLastFrame: 0,
+          droppedStepMs: 0,
           contract: { ...MOVEMENT },
         },
         cameraRig: null,
@@ -567,6 +570,31 @@
         state.player.facingRadians = result.state.facingRadians;
         state.movement.lastStepMs = result.state.lastStepMs;
         state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
+        state.movement.fixedStepsLastFrame = result.state.lastStepMs > 0 ? 1 : 0;
+        state.movement.droppedStepMs = 0;
+      };
+
+      let movementAccumulator = 0;
+
+      const stepMovementFixed = (frameDt = MOVEMENT.fixedStepSeconds) => {
+        const movementState = createPlayerMovementState({
+          x: state.player.x,
+          z: state.player.z,
+          facingRadians: state.player.facingRadians,
+          input: state.movement.input,
+          lastStepMs: state.movement.lastStepMs,
+          lastVelocityMetersPerSecond: state.movement.lastVelocityMetersPerSecond,
+        });
+        const result = stepPlayerMovementFixedUpdate(movementState, movementAccumulator, frameDt, MOVEMENT);
+        state.player.x = result.state.x;
+        state.player.z = result.state.z;
+        state.player.facingRadians = result.state.facingRadians;
+        state.movement.lastStepMs = result.state.lastStepMs;
+        state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
+        state.movement.fixedStepsLastFrame = result.steps;
+        state.movement.droppedStepMs = result.droppedSeconds * 1000;
+        movementAccumulator = result.remainderSeconds;
+        return result;
       };
 
       const cameraRigInput = (dtSeconds = MOVEMENT.fixedStepSeconds) => ({
@@ -669,6 +697,7 @@
             forceReload: reloadFromSave,
             setMoveInput,
             stepMovement,
+            stepMovementFixed,
             stepCameraRig,
             packetPress,
             packetMove,
@@ -1376,6 +1405,9 @@
         state.movement.input = { x: 0, z: 0, source: "none", active: false };
         state.movement.lastStepMs = 0;
         state.movement.lastVelocityMetersPerSecond = 0;
+        state.movement.fixedStepsLastFrame = 0;
+        state.movement.droppedStepMs = 0;
+        movementAccumulator = 0;
         state.cameraRig = null;
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
@@ -1565,15 +1597,10 @@
       resize();
 
       let last = performance.now();
-      let movementAccumulator = 0;
       const tick = (now) => {
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
-        movementAccumulator += dt;
-        while (movementAccumulator >= MOVEMENT.fixedStepSeconds) {
-          stepMovement(MOVEMENT.fixedStepSeconds);
-          movementAccumulator -= MOVEMENT.fixedStepSeconds;
-        }
+        stepMovementFixed(dt);
         const t = now / 1000;
         const kioskPulse = state.interaction.kioskPulse;
         const confirmStartedAt = state.interaction.confirmStartedAt;
