@@ -108,6 +108,6 @@ export function meetOrraForAftersignSlice(
     ...state,
     scene: "orra-return",
     orraHasMetPlayer: true,
-    orraRecognizesPlayer: state.orraHasMetPlayer,
+    orraRecognizesPlayer: state.orraHasMetPlayer && state.orraAction !== null,
   };
 }
