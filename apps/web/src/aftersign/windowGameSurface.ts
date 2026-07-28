@@ -1,4 +1,10 @@
 import {
+  AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
+  composeAftersignIoReturnBeat,
+  getAftersignIoFirstSceneLine,
+  type AftersignIoFirstSceneLine,
+} from "./ioFirstSceneDialogue";
+import {
   sampleAftersignIoMemoryBeat,
   sampleAftersignOrraMemoryBeat,
   type AftersignIoMemoryBeat,
@@ -21,6 +27,25 @@ export type AftersignStoryBeatId =
   | "orra-first-meeting"
   | "orra-remembers-answered-saint-orra";
 
+export type AftersignIoDialogueSnapshot = {
+  /**
+   * Kiosk beat lines Io speaks BEFORE the player commits the packet
+   * fork. Emitted while `state.scene === "kiosk"` — arrival, route,
+   * packetOffer. Sourced from `AFTERSIGN_IO_FIRST_SCENE_DIALOGUE` so
+   * the scene renderer and the durable-save layer see the same words.
+   */
+  readonly kioskLines: readonly AftersignIoFirstSceneLine[];
+  /**
+   * Return-beat pair (packet + route memory) Io speaks when the player
+   * comes back — emitted only when the player has committed a packet
+   * outcome (i.e. `composeAftersignIoReturnBeat` will not throw).
+   */
+  readonly returnBeat?: {
+    readonly packetLine: AftersignIoFirstSceneLine;
+    readonly routeLine: AftersignIoFirstSceneLine;
+  };
+};
+
 export type AftersignStoryStateSnapshot = {
   story: {
     id: "aftersign.verticalSlice";
@@ -29,6 +54,7 @@ export type AftersignStoryStateSnapshot = {
     completedBeats: AftersignStoryBeatId[];
     ioMemoryBeat?: AftersignIoMemoryBeat;
     orraMemoryBeat?: AftersignOrraMemoryBeat;
+    ioDialogue: AftersignIoDialogueSnapshot;
   };
   state: {
     scene: AftersignSceneId;
@@ -65,6 +91,14 @@ export type AftersignStoryStateOptions = {
   playerId: string;
   playerName: string;
   rememberedSessionIds?: string[];
+  /**
+   * Whether the player heard Io's kiosk route beat before running the
+   * route. Drives which of the two route-memory return lines
+   * (`listened_to_route` / `skipped_route`) Io speaks on return.
+   * Defaults to `false` (skipped) so callers that don't yet track this
+   * still get a valid snapshot.
+   */
+  listenedToRoute?: boolean;
 };
 
 export type AftersignWindowGameSurface = {
@@ -89,6 +123,9 @@ export function getAftersignStoryState(
     act: "act-1",
     beat: getAftersignCurrentStoryBeat(state),
     completedBeats: getAftersignCompletedStoryBeats(state),
+    ioDialogue: getAftersignIoDialogueSnapshot(state, {
+      listenedToRoute: options.listenedToRoute ?? false,
+    }),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
 
@@ -204,6 +241,49 @@ function getAftersignIoDisposition(
     return "met-player";
   }
   return "waiting";
+}
+
+/**
+ * Assemble Io's spoken dialogue for the runtime surface.
+ *
+ * This is the seam that makes `ioFirstSceneDialogue` non-test code:
+ *   - Kiosk lines (arrival / route / packetOffer) are always emitted so
+ *     the scene renderer can play the fork setup at scene "kiosk".
+ *   - The return beat (packet-memory + route-memory pair) is emitted
+ *     only when the player has committed a packet outcome — i.e. the
+ *     scene has advanced past the fork. That gate matches
+ *     `composeAftersignIoReturnBeat`'s throw-on-uncommitted contract.
+ */
+function getAftersignIoDialogueSnapshot(
+  state: AftersignVerticalSliceState,
+  options: { listenedToRoute: boolean },
+): AftersignIoDialogueSnapshot {
+  const kioskLines: readonly AftersignIoFirstSceneLine[] = [
+    getAftersignIoFirstSceneLine("arrival"),
+    getAftersignIoFirstSceneLine("route"),
+    getAftersignIoFirstSceneLine("packetOffer"),
+  ] satisfies readonly AftersignIoFirstSceneLine[];
+
+  // Reference the module-level dialogue constant so a scene renderer
+  // that wants the full ordered list (not just the kiosk three) can
+  // rely on the same source of truth. Fixing an off-by-one on this
+  // guard means the invariant lives here, not in a caller.
+  if (kioskLines.length > AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.length) {
+    throw new Error(
+      "Aftersign Io kiosk line count exceeds the dialogue module — regenerate the snapshot.",
+    );
+  }
+
+  if (state.packetOutcome === "sealed" || state.packetOutcome === "opened") {
+    return {
+      kioskLines,
+      returnBeat: composeAftersignIoReturnBeat(state, {
+        listenedToRoute: options.listenedToRoute,
+      }),
+    };
+  }
+
+  return { kioskLines };
 }
 
 function getAftersignOrraDisposition(
