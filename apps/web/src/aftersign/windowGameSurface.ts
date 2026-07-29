@@ -46,6 +46,11 @@ export type AftersignIoDialogueSnapshot = {
   };
 };
 
+export type AftersignSaveSnapshot = {
+  key: "aftersign.verticalSlice.v1";
+  savedAtTurn: number;
+};
+
 export type AftersignStoryStateSnapshot = {
   story: {
     id: "aftersign.verticalSlice";
@@ -62,6 +67,7 @@ export type AftersignStoryStateSnapshot = {
       id: string;
       name: string;
     };
+    save?: AftersignSaveSnapshot;
     npcs: Array<
       | {
           id: "io";
@@ -128,6 +134,7 @@ export function getAftersignStoryState(
     }),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
+  const save = getAftersignSaveSnapshot(state);
 
   if (state.ioHasMetPlayer || state.ioRecognizesPlayer) {
     story.ioMemoryBeat = sampleAftersignIoMemoryBeat(state);
@@ -144,6 +151,7 @@ export function getAftersignStoryState(
         id: options.playerId,
         name: options.playerName,
       },
+      ...(save ? { save } : {}),
       npcs: [
         {
           id: "io",
@@ -171,6 +179,21 @@ export function getAftersignStoryState(
           : []),
       ],
     },
+  };
+}
+
+function getAftersignSaveSnapshot(
+  state: AftersignVerticalSliceState,
+): AftersignSaveSnapshot | undefined {
+  // `savedAtTurn` is set only by `restoreAftersignDurableSave`, which
+  // attaches the envelope's turn to the state it returns. Fresh /
+  // in-memory states leave it undefined, so the surface omits `save`.
+  if (typeof state.savedAtTurn !== "number") {
+    return undefined;
+  }
+  return {
+    key: "aftersign.verticalSlice.v1",
+    savedAtTurn: state.savedAtTurn,
   };
 }
 
