@@ -3,10 +3,7 @@ import { test, expect } from "@playwright/test";
 import pureConfig from "../playwright.pure.config";
 import { runKioskSceneContractChecks } from "../src/kioskSceneContract";
 import { runOrraRecognitionMemoryChecks } from "../src/orraRecognitionMemory";
-import {
-  assertHardNavigationSaveSurvival,
-  type HardNavigationSaveSnapshot,
-} from "../src/hardNavigationSaveSurvival";
+import { HARD_NAVIGATION_SAVE_CONTRACT_SLOT } from "../src/hardNavigationSaveSurvival";
 
 // Product-spine guard for the AFTERSIGN runnable slice.
 //
@@ -17,23 +14,30 @@ import {
 //   2. one remembering NPC,
 //   3. durable save/load survival.
 //
-// Each promise is owned by a dedicated `run*Checks()` contract runner in
-// `aftersign/src/`. Individual `-contract.spec.ts` specs already invoke
-// those runners one at a time. This guard owns a smaller, sharper truth:
-// future work must not quietly advance one promise while deleting another
-// from the spine.
+// What each spine arm actually gates (per Soren's PR #895 review):
 //
-// Why the assertions look the way they do (Soren's PR #895 review):
-//   - We import the pure-lane config's `testMatch` and assert each spine
-//     filename is present. Delete `kiosk-scene-contract.spec.ts` from the
-//     allow-list and THIS test fails — the spine can no longer route that
-//     promise through the pure lane.
-//   - We invoke each spine runner directly. Break any invariant those
-//     contracts pin (e.g. drop the `remember` beat, weaken the memory
-//     recognition rule, unset the save-survival flag) and THIS test
-//     fails on the runner's throw — even before the individual contract
-//     spec runs. So the spine guard is not documentation dressed as a
-//     test; it is an executable dependency on all three runners.
+// - Kiosk + orra invoke the real zero-arg contract runners
+//   (`runKioskSceneContractChecks()`, `runOrraRecognitionMemoryChecks()`).
+//   Break any invariant those runners pin (drop a beat, weaken the
+//   recognition rule) and THIS spec fails on the runner's throw.
+//
+// - Save-survival is different: its contract is snapshot-shaped rather
+//   than a zero-arg runner. The browser-driven arm lives in
+//   `durable-save-load.spec.ts` and only makes sense with a real
+//   document boundary. Re-feeding a hand-built snapshot to
+//   `assertHardNavigationSaveSurvival()` here would only re-run what the
+//   sibling `hard-navigation-save-survival-contract.spec.ts` already
+//   runs against the same snapshot (Soren's #895 nit). Instead, the
+//   save arm gates the load-bearing SLOT CONSTANT
+//   (`HARD_NAVIGATION_SAVE_CONTRACT_SLOT === "default"`): if anyone
+//   renames the slot string in `aftersign/src/hardNavigationSaveSurvival.ts`,
+//   the flagship save-load hook shifts out from under the story-state
+//   contract (`docs/flagship/story-state-contract.md` §"save") and this
+//   guard goes red BEFORE the individual contract spec has a chance to.
+//
+// Together with the pure-lane `testMatch` allow-list check below, that
+// gives one clear signal when the vertical slice loses a load-bearing
+// invariant — not a scattered failure across three unrelated specs.
 
 interface SpinePromise {
   readonly playerPromise: string;
@@ -55,60 +59,19 @@ const RUNNABLE_SLICE_SPINE: readonly SpinePromise[] = [
   {
     playerPromise: "durable save/load survival",
     pureSpec: "hard-navigation-save-survival-contract.spec.ts",
-    // The save-survival contract exposes an assertion + snapshot shape
-    // rather than a zero-arg `run*Checks()`. We construct a minimal
-    // passing snapshot here and feed it to the real assertion; if a
-    // future edit tightens the invariants and this snapshot no longer
-    // passes, the spine guard fails alongside the contract spec.
+    // Save-survival's runner is snapshot-shaped, not zero-arg. Rather
+    // than re-run the sibling contract spec's own assertion against a
+    // duplicated snapshot (Soren's #895 nit), we gate the SLOT CONSTANT
+    // — the one load-bearing string the story-state contract pins
+    // (§"save"), and the one thing a rename would silently break.
     runChecks: () => {
-      const savedAt = "2026-07-28T00:00:00.000Z";
-      const snapshot: HardNavigationSaveSnapshot = {
-        cold: {
-          player: { id: "player-io" },
-          save: {
-            slot: "default",
-            revision: 2,
-            lastPersistedAt: null,
-            dirty: false,
-            authority: "server",
-            lastLoadProof: { source: null, revision: null, playerId: null },
-          },
-        },
-        saved: {
-          player: { id: "player-io" },
-          save: {
-            slot: "default",
-            revision: 3,
-            lastPersistedAt: savedAt,
-            dirty: false,
-            authority: "server",
-            lastLoadProof: { source: null, revision: null, playerId: null },
-          },
-        },
-        loaded: {
-          player: { id: "player-io" },
-          save: {
-            slot: "default",
-            revision: 3,
-            lastPersistedAt: savedAt,
-            dirty: false,
-            authority: "server",
-            lastLoadProof: { source: "server", revision: 3, playerId: "player-io" },
-          },
-        },
-        resaved: {
-          player: { id: "player-io" },
-          save: {
-            slot: "default",
-            revision: 4,
-            lastPersistedAt: "2026-07-28T00:00:01.000Z",
-            dirty: false,
-            authority: "server",
-            lastLoadProof: { source: "server", revision: 3, playerId: "player-io" },
-          },
-        },
-      };
-      assertHardNavigationSaveSurvival(snapshot);
+      if (HARD_NAVIGATION_SAVE_CONTRACT_SLOT !== "default") {
+        throw new Error(
+          `AFTERSIGN save-survival slot constant must remain "default" ` +
+            `to match docs/flagship/story-state-contract.md §"save" ` +
+            `(got: ${HARD_NAVIGATION_SAVE_CONTRACT_SLOT})`,
+        );
+      }
     },
   },
 ] as const;
@@ -137,15 +100,16 @@ test.describe("AFTERSIGN runnable-slice product spine", () => {
       ).toContain(promise.pureSpec);
     }
 
-    // (2) Each spine promise's contract runner must currently pass. If
-    //     a future edit weakens any of the three underlying contracts,
-    //     the spine guard goes red BEFORE the individual contract spec
-    //     runs — giving one clear signal that the vertical slice has
-    //     lost a load-bearing invariant, not just a scattered failure.
+    // (2) Each spine promise's invariant must currently hold. Kiosk and
+    //     orra call their real contract runners; save-survival checks
+    //     the load-bearing slot constant (see header for why it isn't
+    //     re-running the snapshot assertion). If any of these three
+    //     goes red, the spine has lost an invariant before the
+    //     individual contract spec even runs.
     for (const promise of RUNNABLE_SLICE_SPINE) {
       expect(
         () => promise.runChecks(),
-        `spine promise "${promise.playerPromise}" must satisfy its contract runner`,
+        `spine promise "${promise.playerPromise}" must satisfy its contract invariant`,
       ).not.toThrow();
     }
   });
