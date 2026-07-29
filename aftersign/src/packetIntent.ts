@@ -352,6 +352,7 @@ export function runPacketIntentChecks(): void {
   checkShortTapPreservesSeal();
   checkDeadzoneReleasePreservesSeal();
   checkNearMissReleasePreservesSeal();
+  checkRecoverableFalseSealedCanOpen();
   checkSustainedHoldOpens();
   checkTickOpensWithoutMove();
   checkTickMidHoldAdvancesProgressWithoutOpening();
@@ -408,6 +409,43 @@ function checkNearMissReleasePreservesSeal(): void {
     s.outcome,
     PACKET_OUTCOME.SEALED,
     "release at HOLD_TO_OPEN_MS - 1 must still be SEALED",
+  );
+}
+
+// Pins the RECOVERABILITY half of the anti-punitive-dead-zone contract
+// (file header: "a false-sealed is recoverable, a false-opened spends
+// trust"). The three sibling checks above pin that near-miss / deadzone
+// / short-tap all RESULT IN SEALED; this one pins that after a SEALED
+// near-miss the SAME controller instance can be pressed again and hold
+// through to OPENED — i.e. the SEALED outcome does not latch state that
+// blocks the next attempt. A regression that left `active` set or that
+// failed to re-arm on `press()` would fail here (and only here — the
+// short-tap check releases at TAP_TO_PRESERVE_MAX_MS, well below the
+// hold threshold, and cannot detect a stuck-after-near-miss bug).
+function checkRecoverableFalseSealedCanOpen(): void {
+  const c = new PacketIntentController();
+  c.press({ timeMs: 16_000, x: 50, y: 50 });
+  const first = c.release({
+    timeMs: 16_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1,
+    x: 50,
+    y: 50,
+  });
+  assertEqual(
+    first.outcome,
+    PACKET_OUTCOME.SEALED,
+    "near-miss release should preserve the packet instead of spending trust",
+  );
+
+  c.press({ timeMs: 17_000, x: 50, y: 50 });
+  const second = c.release({
+    timeMs: 17_000 + PACKET_INTENT.HOLD_TO_OPEN_MS,
+    x: 50,
+    y: 50,
+  });
+  assertEqual(
+    second.outcome,
+    PACKET_OUTCOME.OPENED,
+    "a preserved near-miss must be recoverable by pressing again and holding",
   );
 }
 
