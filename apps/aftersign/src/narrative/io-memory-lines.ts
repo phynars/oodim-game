@@ -59,6 +59,90 @@ export function selectIoReturningLines(memory: IoMemoryRecord): IoReturningLines
   };
 }
 
+// ----- Playback schedule ---------------------------------------------------
+// Turn a returning-lines deck into an ordered sequence of playback steps a
+// lines renderer can walk without re-inventing the timing math. This is the
+// real consumer of `IoReturningLinesFeel`: every field in the feel-spec
+// (pauseBeforeGreetingMs, memoryLineDelayMs, eyeLiftPx, phoneTiltDegrees,
+// easing) is read here and shows up in the returned steps. Drifting any of
+// those numbers changes the schedule this function produces, so the schedule
+// tests break — that's the load-bearing use that pins the feel numbers.
+
+export interface IoReturningLinesPlaybackStep {
+  kind: 'greeting' | 'packet' | 'route' | 'tone';
+  text: string;
+  /** Milliseconds from the start of the beat that this step becomes visible. */
+  startAtMs: number;
+  /** Visual transform to apply to Io while this step plays. */
+  transform: {
+    liftPx: number;
+    tiltDegrees: number;
+    easing: typeof IO_RETURNING_LINES_EASING;
+  };
+}
+
+/**
+ * Compute the ordered playback schedule for a returning-lines deck. Pure and
+ * deterministic: consumers (renderers, tests, previewers) get the exact
+ * cue-start times and transforms without duplicating the feel math.
+ *
+ * First-contact decks (no `returningLinesFeel` attached) render as a single
+ * greeting step at t=0 with no transform, matching the "direct, unstyled"
+ * first-meeting brief.
+ */
+export function scheduleIoReturningLinesPlayback(
+  lines: IoReturningLines,
+): IoReturningLinesPlaybackStep[] {
+  const feel = lines.returningLinesFeel;
+  if (!feel) {
+    return [
+      {
+        kind: 'greeting',
+        text: lines.greeting,
+        startAtMs: 0,
+        transform: { liftPx: 0, tiltDegrees: 0, easing: IO_RETURNING_LINES_EASING },
+      },
+    ];
+  }
+
+  const transform = {
+    liftPx: feel.eyeLiftPx,
+    tiltDegrees: feel.phoneTiltDegrees,
+    easing: feel.easing,
+  };
+
+  const steps: IoReturningLinesPlaybackStep[] = [
+    {
+      kind: 'greeting',
+      text: lines.greeting,
+      startAtMs: feel.pauseBeforeGreetingMs,
+      transform,
+    },
+  ];
+
+  const memoryLines: ReadonlyArray<{ kind: IoReturningLinesPlaybackStep['kind']; text?: string }> = [
+    { kind: 'packet', text: lines.packetLine },
+    { kind: 'route', text: lines.routeLine },
+    { kind: 'tone', text: lines.toneLine },
+  ];
+
+  let memoryIndex = 0;
+  for (const line of memoryLines) {
+    if (!line.text) {
+      continue;
+    }
+    memoryIndex += 1;
+    steps.push({
+      kind: line.kind,
+      text: line.text,
+      startAtMs: feel.pauseBeforeGreetingMs + feel.memoryLineDelayMs * memoryIndex,
+      transform,
+    });
+  }
+
+  return steps;
+}
+
 function selectGreeting(lastSeenBucket: IoMemoryRecord['lastSeenBucket']): string {
   if (lastSeenBucket === 'long-absence') {
     return 'Long walk back. Still, you came.';
