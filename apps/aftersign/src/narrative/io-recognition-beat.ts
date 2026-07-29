@@ -1,4 +1,32 @@
-export type IoPacketOutcome = 'sealed' | 'opened' | 'withheld' | 'returned';
+// Io's recognition beat — the single spoken LINE Io says when she recognizes
+// the returning player. One beat per memory shape, chosen by priority:
+// packet outcome (most concrete) → route attention → return tone → default.
+//
+// BOUNDARY WITH TWO NEIGHBORS (do not fold these together without a plan):
+//
+//   packages/aftersign/src/ioRecognitionBeat.ts — the CUE PUBLISHER.
+//     Owns `playIoRecognitionBeat`, `IoRecognitionBeatCue`, and its own
+//     `IoPacketOutcome = "sealed" | "opened"` (only two branches, because
+//     the renderer only distinguishes two envelope shapes). That file
+//     answers "when does the beat start and which envelope do we play?"
+//     — NOT the words.
+//
+//   apps/aftersign/src/narrative/io-memory-lines.ts — the GREETING DECK.
+//     `selectIoReturningLines` returns a multi-part {greeting, packetLine,
+//     routeLine, toneLine} shape used when Io re-encounters the player
+//     across a broader spread of memory. Overlaps in spirit but not in
+//     shape or consumer.
+//
+//   THIS FILE — the RECOGNITION LINE. Returns a single `IoRecognitionBeat`
+//     (id + line + remembered facts + required-memory guard). Used by the
+//     cue publisher's renderer when it needs the actual sentence Io speaks
+//     at the moment of recognition, and by memory-authoring code that
+//     needs a sentence like "the player opened the blue packet" for the
+//     ledger. Type is `IoPacketMemoryOutcome` (four branches) — DIFFERENT
+//     from the cue's `IoPacketOutcome` on purpose: the line deck knows
+//     about withheld/returned outcomes even though the envelope doesn't.
+
+export type IoPacketMemoryOutcome = 'sealed' | 'opened' | 'withheld' | 'returned';
 
 export type IoRouteAttention = 'listened' | 'skipped' | 'unknown';
 
@@ -6,7 +34,7 @@ export type IoReturnTone = 'kind' | 'evasive' | 'blunt' | 'unknown';
 
 export interface IoSliceMemoryRecord {
   readonly completedDeliveryIds: readonly string[];
-  readonly packetOutcome?: IoPacketOutcome;
+  readonly packetOutcome?: IoPacketMemoryOutcome;
   readonly routeAttention?: IoRouteAttention;
   readonly returnTone?: IoReturnTone;
   readonly authoredMemorySentence?: string;
@@ -92,7 +120,7 @@ const FIRST_RETURN_BEAT: IoRecognitionBeat = {
   requiredMemory: {},
 };
 
-const PACKET_BEATS: Record<IoPacketOutcome, IoRecognitionBeat> = {
+const PACKET_BEATS: Record<IoPacketMemoryOutcome, IoRecognitionBeat> = {
   sealed: SEALED_BEAT,
   opened: OPENED_BEAT,
   withheld: WITHHELD_BEAT,
