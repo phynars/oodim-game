@@ -126,7 +126,35 @@ async function forceReload(page: Page): Promise<void> {
   });
 }
 
-test.describe('AFTERSIGN hard-navigation save survival', () => {
+// In-spec retirement of the DEFAULT (green) main-lane run, keyed off the
+// same `@redgreen:durable-save-load fixme-pending-phase-3` marker in
+// this file's header block. Rationale mirrors
+// npc-memory-roundtrip.spec.ts's `test.describe.skip` (lines 129-151):
+//   • The paired red/green workflow
+//     (.github/workflows/aftersign-durable-save-redgreen.yml) already
+//     retires its green polarity via the marker preflight (lines 82-83).
+//   • The main `aftersign` CI lane (.github/workflows/ci.yml:209 —
+//     `npm run test:e2e:aftersign`) does NOT read the marker: it runs
+//     the whole aftersign/e2e/ directory unconditionally, so this spec
+//     has been dragging the main lane onto the SwiftShader cold-start
+//     flake documented at #700/#506/#590/#766 — same shape the sibling
+//     npc-memory-roundtrip spec retires under.
+//   • Coverage is NOT lost:
+//       - hard-navigation-save-survival-contract.spec.ts (pure lane)
+//         pins the same snapshot-shaped invariants via
+//         `assertHardNavigationSaveSurvival(...)` — the exact assertion
+//         this spec would run, minus the browser boundary.
+//       - flagship-surface-contract.spec.ts owns the authoritative
+//         reload gate (this file's header states it explicitly:
+//         "This is NOT the durable/authoritative contract test").
+// Using `test.describe.skip` (not in-body `test.skip(true, ...)`) so no
+// browser context / `page` fixture is allocated — an in-body skip still
+// runs hooks + fixtures before firing, which under SwiftShader is
+// precisely where the cold-start flake originates. Remove this `.skip`
+// in the same PR that removes the phase-3 marker at the top of this
+// file — either (a) the spec becomes durable under default mode, or
+// (b) a `FLAGSHIP_BREAK_MODE=local-only-save` conditional guard lands.
+test.describe.skip('AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, timestamp, clean-state, authority, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     // The `?slot=` query keys the storage bucket + endpoint so parallel
