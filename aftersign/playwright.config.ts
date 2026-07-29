@@ -41,6 +41,7 @@ export default defineConfig({
     "recognition-beat-contract.spec.ts",
     "kiosk-scene-contract.spec.ts",
     "orra-recognition-memory-contract.spec.ts",
+    "hard-navigation-save-survival-contract.spec.ts",
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
