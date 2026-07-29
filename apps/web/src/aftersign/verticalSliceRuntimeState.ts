@@ -15,6 +15,14 @@ export type AftersignVerticalSliceState = {
   orraAction: AftersignOrraAction | null;
   orraHasMetPlayer: boolean;
   orraRecognizesPlayer: boolean;
+  /**
+   * Set only when the state came out of a durable-save restore
+   * (`restoreAftersignDurableSave`). Carries the turn the envelope was
+   * written on so the window-surface snapshot can publish
+   * `state.save.savedAtTurn` without re-parsing the envelope. Fresh /
+   * in-memory states leave this undefined.
+   */
+  savedAtTurn?: number;
 };
 
 /**

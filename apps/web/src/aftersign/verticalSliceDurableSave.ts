@@ -99,7 +99,11 @@ export function restoreAftersignVerticalSliceState(
 }
 
 export function restoreAftersignDurableSave(payload: string): AftersignVerticalSliceState {
-  return restoreAftersignVerticalSliceState(decodeAftersignDurableSave(payload).state);
+  const envelope = decodeAftersignDurableSave(payload);
+  return {
+    ...restoreAftersignVerticalSliceState(envelope.state),
+    savedAtTurn: envelope.savedAtTurn,
+  };
 }
 
 function assertValidSavedAtTurn(savedAtTurn: number): void {

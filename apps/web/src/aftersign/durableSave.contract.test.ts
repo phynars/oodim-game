@@ -217,6 +217,10 @@ describe("Aftersign durable save/load contract", () => {
           id: "player-persistent-7",
           name: "Signal Runner",
         },
+        save: {
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn: 3,
+        },
         npcs: [
           {
             id: "io",

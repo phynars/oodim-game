@@ -185,23 +185,16 @@ export function getAftersignStoryState(
 function getAftersignSaveSnapshot(
   state: AftersignVerticalSliceState,
 ): AftersignSaveSnapshot | undefined {
-  const savedState = state as AftersignVerticalSliceState & {
-    readonly save?: Partial<AftersignSaveSnapshot>;
-    readonly savedAtTurn?: number;
+  // `savedAtTurn` is set only by `restoreAftersignDurableSave`, which
+  // attaches the envelope's turn to the state it returns. Fresh /
+  // in-memory states leave it undefined, so the surface omits `save`.
+  if (typeof state.savedAtTurn !== "number") {
+    return undefined;
+  }
+  return {
+    key: "aftersign.verticalSlice.v1",
+    savedAtTurn: state.savedAtTurn,
   };
-  const savedAtTurn =
-    typeof savedState.savedAtTurn === "number"
-      ? savedState.savedAtTurn
-      : typeof savedState.save?.savedAtTurn === "number"
-        ? savedState.save.savedAtTurn
-        : undefined;
-
-  return typeof savedAtTurn === "number"
-    ? {
-        key: "aftersign.verticalSlice.v1",
-        savedAtTurn,
-      }
-    : undefined;
 }
 
 function getAftersignCurrentStoryBeat(
