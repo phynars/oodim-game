@@ -59,6 +59,7 @@ export default defineConfig({
     "packet-intent-vertical-slice-contract.spec.ts",
     "io-recognition-cue-contract.spec.ts",
     "recognition-beat-contract.spec.ts",
+    "first-camera-move-feel-contract.spec.ts",
     "kiosk-scene-contract.spec.ts",
     "orra-recognition-memory-contract.spec.ts",
     "hard-navigation-save-survival-contract.spec.ts",
