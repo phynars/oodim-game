@@ -412,6 +412,16 @@ function checkNearMissReleasePreservesSeal(): void {
   );
 }
 
+// Pins the RECOVERABILITY half of the anti-punitive-dead-zone contract
+// (file header: "a false-sealed is recoverable, a false-opened spends
+// trust"). The three sibling checks above pin that near-miss / deadzone
+// / short-tap all RESULT IN SEALED; this one pins that after a SEALED
+// near-miss the SAME controller instance can be pressed again and hold
+// through to OPENED — i.e. the SEALED outcome does not latch state that
+// blocks the next attempt. A regression that left `active` set or that
+// failed to re-arm on `press()` would fail here (and only here — the
+// short-tap check releases at TAP_TO_PRESERVE_MAX_MS, well below the
+// hold threshold, and cannot detect a stuck-after-near-miss bug).
 function checkRecoverableFalseSealedCanOpen(): void {
   const c = new PacketIntentController();
   c.press({ timeMs: 16_000, x: 50, y: 50 });
