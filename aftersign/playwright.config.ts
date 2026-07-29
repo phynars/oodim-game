@@ -42,6 +42,7 @@ export default defineConfig({
     "kiosk-scene-contract.spec.ts",
     "orra-recognition-memory-contract.spec.ts",
     "hard-navigation-save-survival-contract.spec.ts",
+    "flagship-runnable-slice-spine-contract.spec.ts",
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
