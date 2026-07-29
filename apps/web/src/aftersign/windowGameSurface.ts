@@ -46,6 +46,11 @@ export type AftersignIoDialogueSnapshot = {
   };
 };
 
+export type AftersignSaveSnapshot = {
+  key: "aftersign.verticalSlice.v1";
+  savedAtTurn: number;
+};
+
 export type AftersignStoryStateSnapshot = {
   story: {
     id: "aftersign.verticalSlice";
@@ -62,6 +67,7 @@ export type AftersignStoryStateSnapshot = {
       id: string;
       name: string;
     };
+    save?: AftersignSaveSnapshot;
     npcs: Array<
       | {
           id: "io";
@@ -128,6 +134,7 @@ export function getAftersignStoryState(
     }),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
+  const save = getAftersignSaveSnapshot(state);
 
   if (state.ioHasMetPlayer || state.ioRecognizesPlayer) {
     story.ioMemoryBeat = sampleAftersignIoMemoryBeat(state);
@@ -144,6 +151,7 @@ export function getAftersignStoryState(
         id: options.playerId,
         name: options.playerName,
       },
+      ...(save ? { save } : {}),
       npcs: [
         {
           id: "io",
@@ -172,6 +180,28 @@ export function getAftersignStoryState(
       ],
     },
   };
+}
+
+function getAftersignSaveSnapshot(
+  state: AftersignVerticalSliceState,
+): AftersignSaveSnapshot | undefined {
+  const savedState = state as AftersignVerticalSliceState & {
+    readonly save?: Partial<AftersignSaveSnapshot>;
+    readonly savedAtTurn?: number;
+  };
+  const savedAtTurn =
+    typeof savedState.savedAtTurn === "number"
+      ? savedState.savedAtTurn
+      : typeof savedState.save?.savedAtTurn === "number"
+        ? savedState.save.savedAtTurn
+        : undefined;
+
+  return typeof savedAtTurn === "number"
+    ? {
+        key: "aftersign.verticalSlice.v1",
+        savedAtTurn,
+      }
+    : undefined;
 }
 
 function getAftersignCurrentStoryBeat(
