@@ -10,11 +10,18 @@ export interface IoMemoryRecord {
   lastSeenBucket?: 'same-night' | 'later' | 'long-absence';
 }
 
-export interface IoRecognitionBeatFeel {
+// Feel-spec for the returning-lines deck. This is DELIBERATELY not named
+// after `io-recognition-beat` — that cue lives in packages/aftersign and has
+// a pinned `{ kind: "io-recognition-beat", ... }` shape and consumer. This
+// object is the greeting deck's own timing/easing contract, consumed by the
+// lines renderer when it plays a returning greeting.
+export const IO_RETURNING_LINES_EASING = 'cubic-bezier(.2,.8,.2,1)' as const;
+
+export interface IoReturningLinesFeel {
   pauseBeforeGreetingMs: number;
   eyeLiftPx: number;
   phoneTiltDegrees: number;
-  easing: 'cubic-bezier(.2,.8,.2,1)';
+  easing: typeof IO_RETURNING_LINES_EASING;
   memoryLineDelayMs: number;
 }
 
@@ -23,14 +30,14 @@ export interface IoReturningLines {
   packetLine?: string;
   routeLine?: string;
   toneLine?: string;
-  recognitionBeat?: IoRecognitionBeatFeel;
+  returningLinesFeel?: IoReturningLinesFeel;
 }
 
-export const IO_RECOGNITION_BEAT_FEEL: IoRecognitionBeatFeel = {
+export const IO_RETURNING_LINES_FEEL: IoReturningLinesFeel = {
   pauseBeforeGreetingMs: 180,
   eyeLiftPx: 6,
   phoneTiltDegrees: -4,
-  easing: 'cubic-bezier(.2,.8,.2,1)',
+  easing: IO_RETURNING_LINES_EASING,
   memoryLineDelayMs: 260,
 };
 
@@ -48,7 +55,7 @@ export function selectIoReturningLines(memory: IoMemoryRecord): IoReturningLines
     packetLine: selectPacketLine(memory.packetOutcome),
     routeLine: selectRouteLine(memory.routeAttention),
     toneLine: selectToneLine(memory.returnTone ?? 'unknown'),
-    recognitionBeat: IO_RECOGNITION_BEAT_FEEL,
+    returningLinesFeel: IO_RETURNING_LINES_FEEL,
   };
 }
 
