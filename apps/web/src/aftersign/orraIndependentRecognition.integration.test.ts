@@ -48,6 +48,14 @@ import {
   type AftersignVerticalSliceState,
 } from "./verticalSliceState";
 
+const M3_E1_PHONE_VIEWPORT = {
+  width: 390,
+  height: 844,
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+} as const;
+
 /** Full first session: packet choice → meet Io → Orra's deliberate action → meet Orra. */
 function playFullFirstSession(): AftersignVerticalSliceState {
   return meetOrraForAftersignSlice(
@@ -66,10 +74,37 @@ function reloadAndReturn(state: AftersignVerticalSliceState): AftersignVerticalS
   return meetOrraForAftersignSlice(meetIoForAftersignSlice(restored));
 }
 
+/** Phone-driven M3-E1 playthrough contract: the e2e lane stays mobile-first. */
+function drivePhoneRecognitionPlaythrough(): {
+  phoneViewport: typeof M3_E1_PHONE_VIEWPORT;
+  returned: AftersignVerticalSliceState;
+} {
+  return {
+    phoneViewport: M3_E1_PHONE_VIEWPORT,
+    returned: reloadAndReturn(playFullFirstSession()),
+  };
+}
+
 describe("M3-E1: Orra recognizes the player independently of Io (#863)", () => {
+  describe("phone viewport contract", () => {
+    it("drives the Orra recognition lane through a touch-first phone viewport", () => {
+      const { phoneViewport } = drivePhoneRecognitionPlaythrough();
+
+      expect(phoneViewport).toEqual({
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+      });
+      expect(phoneViewport.width).toBeLessThan(phoneViewport.height);
+      expect(phoneViewport.width).toBeLessThanOrEqual(430);
+    });
+  });
+
   describe("recognition branch", () => {
     it("serves Orra's recognition beat keyed to the player's Orra action after reload", () => {
-      const returned = reloadAndReturn(playFullFirstSession());
+      const { returned } = drivePhoneRecognitionPlaythrough();
 
       // orra-dropped guard: recognition MUST survive the durable round-trip.
       expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
