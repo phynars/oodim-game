@@ -10,12 +10,29 @@ export interface IoMemoryRecord {
   lastSeenBucket?: 'same-night' | 'later' | 'long-absence';
 }
 
+export interface IoRecognitionBeatFeel {
+  pauseBeforeGreetingMs: number;
+  eyeLiftPx: number;
+  phoneTiltDegrees: number;
+  easing: 'cubic-bezier(.2,.8,.2,1)';
+  memoryLineDelayMs: number;
+}
+
 export interface IoReturningLines {
   greeting: string;
   packetLine?: string;
   routeLine?: string;
   toneLine?: string;
+  recognitionBeat?: IoRecognitionBeatFeel;
 }
+
+export const IO_RECOGNITION_BEAT_FEEL: IoRecognitionBeatFeel = {
+  pauseBeforeGreetingMs: 180,
+  eyeLiftPx: 6,
+  phoneTiltDegrees: -4,
+  easing: 'cubic-bezier(.2,.8,.2,1)',
+  memoryLineDelayMs: 260,
+};
 
 const FIRST_MEETING: IoReturningLines = {
   greeting: 'You made it to the Night Post. Good. We can use people who arrive intact.',
@@ -31,6 +48,7 @@ export function selectIoReturningLines(memory: IoMemoryRecord): IoReturningLines
     packetLine: selectPacketLine(memory.packetOutcome),
     routeLine: selectRouteLine(memory.routeAttention),
     toneLine: selectToneLine(memory.returnTone ?? 'unknown'),
+    recognitionBeat: IO_RECOGNITION_BEAT_FEEL,
   };
 }
 
