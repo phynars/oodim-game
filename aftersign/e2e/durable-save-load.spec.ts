@@ -39,6 +39,7 @@
 // polarities on their own merit. Mirrors npc-memory-roundtrip.spec.ts's
 // marker contract line-for-line.
 import { expect, test, type Page } from '@playwright/test';
+import { assertHardNavigationSaveSurvival } from './hard-navigation-save-survival-contract.spec';
 
 // This spec drives THREE cold `page.goto` boots in a single test
 // (initial load → clear-doc → back to slot URL). Sibling flagship
@@ -163,28 +164,10 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
     await forceReload(page);
 
     const loaded = await readSaveProbe(page);
-    expect(loaded.save.slot).toBe(CONTRACT_SLOT);
-    expect(loaded.save.lastLoadProof).toEqual({
-      source: saved.save.authority,
-      revision: saved.save.revision,
-      playerId: saved.player.id,
-    });
-    expect(loaded.player.id).toBe(saved.player.id);
-    expect(loaded.save.revision).toBe(saved.save.revision);
-    expect(loaded.save.lastPersistedAt).toBe(saved.save.lastPersistedAt);
-    expect(loaded.save.dirty).toBe(false);
-    expect(loaded.save.authority).toBe(saved.save.authority);
 
     await forceSave(page);
 
     const resaved = await readSaveProbe(page);
-    expect(resaved.save.slot).toBe(CONTRACT_SLOT);
-    expect(resaved.player.id).toBe(saved.player.id);
-    expect(resaved.save.revision).toBeGreaterThanOrEqual(loaded.save.revision);
-    expect(resaved.save.lastPersistedAt).toEqual(expect.any(String));
-    expect(Number.isNaN(Date.parse(resaved.save.lastPersistedAt as string))).toBe(false);
-    expect(resaved.save.dirty).toBe(false);
-    expect(resaved.save.authority).toBe(loaded.save.authority);
-    expect(resaved.save.lastLoadProof).toEqual(loaded.save.lastLoadProof);
+    assertHardNavigationSaveSurvival({ cold, saved, loaded, resaved });
   });
 });
