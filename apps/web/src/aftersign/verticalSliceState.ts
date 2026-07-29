@@ -40,6 +40,7 @@ export {
   openAftersignOrraRecognitionBeat,
   sampleAftersignIoRecognitionEnvelope,
   sampleAftersignOrraRecognitionEnvelope,
+  sampleAftersignOrraRecognitionForViewport,
   type AftersignIoRecognitionFeel,
   type AftersignOrraRecognitionFeel,
   type AftersignIoMemoryBeat,
@@ -48,6 +49,8 @@ export {
   type AftersignOrraRecognitionBeatOpen,
   type AftersignOrraRecognitionBeatCue,
   type AftersignOrraRecognitionEnvelope,
+  type AftersignOrraRecognitionViewportEnvelope,
+  type AftersignRecognitionViewport,
 } from "./verticalSliceRecognitionBeat";
 
 export {

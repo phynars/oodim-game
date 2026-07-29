@@ -2,6 +2,7 @@ import {
   IO_RETURNING_RECOGNITION_FEEL,
   type IoReturningRecognitionFeel,
 } from "../../../../aftersign/src/ioReturningRecognitionFeel";
+import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel";
 import {
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
@@ -212,6 +213,57 @@ export function sampleAftersignOrraRecognitionEnvelope(
     memoryThreadGlowAlpha: AFTERSIGN_ORRA_RECOGNITION_FEEL.memoryThreadGlowAlpha,
     chapelHumDuckDb: AFTERSIGN_ORRA_RECOGNITION_FEEL.chapelHumDuckDb,
     audioCue: elapsedMs <= 180 ? AFTERSIGN_ORRA_RECOGNITION_FEEL.audioCue : null,
+  };
+}
+
+/**
+ * Viewport shape the Orra recognition envelope BRANCHES on. Phone-shaped
+ * viewports (isMobile + hasTouch) get the phone-ready audio-cue timing gate
+ * (audio waits for visualCueMs to respect the AV-drift budget owned by
+ * IO_PHONE_READY_FEEL) plus touch-suppress input lock. Desktop viewports
+ * skip the phone audio warmup and get no input lock. This is a real gate:
+ * the same cue at the same elapsedMs produces DIFFERENT envelopes on
+ * phone vs desktop — that's what makes the phone-driven lane falsifiable.
+ */
+export type AftersignRecognitionViewport = {
+  readonly isMobile: boolean;
+  readonly hasTouch: boolean;
+};
+
+export type AftersignOrraRecognitionViewportEnvelope = AftersignOrraRecognitionEnvelope & {
+  readonly inputLock: "touch-suppress" | null;
+  readonly viewportKind: "phone" | "desktop";
+};
+
+export function sampleAftersignOrraRecognitionForViewport(
+  cue: AftersignOrraRecognitionBeatCue,
+  nowMs: number,
+  viewport: AftersignRecognitionViewport,
+  options: { reducedMotion?: boolean } = {},
+): AftersignOrraRecognitionViewportEnvelope {
+  const base = sampleAftersignOrraRecognitionEnvelope(cue, nowMs, options);
+  const isPhone = viewport.isMobile && viewport.hasTouch;
+
+  if (isPhone) {
+    // Phone: audio cue is GATED behind the phone-ready visualCueMs so
+    // audio never fires ahead of the phone's visual settle — this is the
+    // mobile AV-drift discipline owned by ioPhoneReadyFeel.
+    const audioCue =
+      base.elapsedMs >= IO_PHONE_READY_FEEL.visualCueMs ? base.audioCue : null;
+    return {
+      ...base,
+      audioCue,
+      inputLock: "touch-suppress",
+      viewportKind: "phone",
+    };
+  }
+
+  // Desktop: no phone-ready warmup, no touch-lock. Audio fires from t=0
+  // whenever the pure envelope would emit it.
+  return {
+    ...base,
+    inputLock: null,
+    viewportKind: "desktop",
   };
 }
 

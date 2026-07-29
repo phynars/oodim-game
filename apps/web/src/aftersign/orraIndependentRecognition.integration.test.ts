@@ -21,6 +21,17 @@
 //                            changing because Orra's record exists) → the
 //                            isolation asserts fail in either direction.
 //
+// PHONE VIEWPORT contract (#863 acceptance: "Phone viewport used for the
+// driven playthrough"): the driven-lane envelope is sampled via
+// `sampleAftersignOrraRecognitionForViewport`, which BRANCHES on
+// isMobile+hasTouch — phone gates the audio cue behind
+// IO_PHONE_READY_FEEL.visualCueMs (the mobile AV-drift discipline) AND
+// clamps input to touch-suppress; desktop skips both. The lane asserts the
+// phone branch AND a desktop control on the SAME cue at the SAME elapsedMs
+// — if the branch degenerated to a viewport-agnostic passthrough, the
+// control test flips green and the lane goes red. That's what turns
+// "phone viewport used" into a falsifiable claim instead of a decoration.
+//
 // NOTE on the recognition contract: recognition (hasMetPlayer → recognizes
 // on re-meet) is deliberately SEPARATE from the deliberate-action gate.
 // `openAftersignOrraRecognitionBeat` enforces BOTH — recognition first, then
@@ -31,6 +42,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel";
 import {
   AFTERSIGN_IO_RECOGNITION_FEEL,
   AFTERSIGN_ORRA_RECOGNITION_FEEL,
@@ -45,8 +57,26 @@ import {
   restoreAftersignDurableSave,
   sampleAftersignIoMemoryBeat,
   sampleAftersignOrraMemoryBeat,
+  sampleAftersignOrraRecognitionForViewport,
+  type AftersignRecognitionViewport,
   type AftersignVerticalSliceState,
 } from "./verticalSliceState";
+
+// iPhone 14/15-shape phone viewport used by the M3-E1 driven playthrough.
+// This is consumed by `sampleAftersignOrraRecognitionForViewport` and
+// GATES real behavior (audio warmup + touch input-lock).
+const M3_E1_PHONE_VIEWPORT: AftersignRecognitionViewport = {
+  isMobile: true,
+  hasTouch: true,
+};
+
+// Desktop control viewport — same shape, opposite kind. Used ONLY inside
+// the red-mode assertion below to prove the phone branch is a real gate:
+// the same cue at the same elapsedMs must produce a DIFFERENT envelope.
+const M3_E1_DESKTOP_CONTROL_VIEWPORT: AftersignRecognitionViewport = {
+  isMobile: false,
+  hasTouch: false,
+};
 
 /** Full first session: packet choice → meet Io → Orra's deliberate action → meet Orra. */
 function playFullFirstSession(): AftersignVerticalSliceState {
@@ -89,6 +119,64 @@ describe("M3-E1: Orra recognizes the player independently of Io (#863)", () => {
         orraAction: "answered-saint-orra",
         startedAtMs: 900,
       });
+
+      // PHONE VIEWPORT DRIVEN ASSERTIONS — the envelope is sampled via the
+      // viewport-branching helper. Sample slightly BEFORE the phone
+      // visualCueMs: on phone the audio cue must still be null (audio
+      // warmup gate), on desktop it must already be firing. Same cue,
+      // same elapsedMs, different output = the branch is real.
+      const beforeVisualCueMs = IO_PHONE_READY_FEEL.visualCueMs - 1;
+      const phoneEarly = sampleAftersignOrraRecognitionForViewport(
+        cue,
+        cue.startedAtMs + beforeVisualCueMs,
+        M3_E1_PHONE_VIEWPORT,
+      );
+      expect(phoneEarly.viewportKind).toBe("phone");
+      expect(phoneEarly.inputLock).toBe("touch-suppress");
+      expect(phoneEarly.audioCue).toBeNull(); // gated by phone AV budget
+
+      // At/after visualCueMs on phone the audio cue is allowed to fire.
+      const phoneAtCue = sampleAftersignOrraRecognitionForViewport(
+        cue,
+        cue.startedAtMs + IO_PHONE_READY_FEEL.visualCueMs,
+        M3_E1_PHONE_VIEWPORT,
+      );
+      expect(phoneAtCue.viewportKind).toBe("phone");
+      expect(phoneAtCue.inputLock).toBe("touch-suppress");
+      expect(phoneAtCue.audioCue).toBe("orra-recognition-bell");
+    });
+
+    it("desktop control diverges from phone at the same cue+elapsedMs (proves the phone gate is real)", () => {
+      // If the viewport branch were a passthrough, this test would fail:
+      // the desktop envelope would match the phone one and the divergence
+      // asserts below would all be equal. That is the falsifier that
+      // makes "phone viewport used for driven playthrough" observable.
+      const returned = reloadAndReturn(playFullFirstSession());
+      const { cue } = openAftersignOrraRecognitionBeat(returned, 900);
+      const beforeVisualCueMs = IO_PHONE_READY_FEEL.visualCueMs - 1;
+
+      const phone = sampleAftersignOrraRecognitionForViewport(
+        cue,
+        cue.startedAtMs + beforeVisualCueMs,
+        M3_E1_PHONE_VIEWPORT,
+      );
+      const desktop = sampleAftersignOrraRecognitionForViewport(
+        cue,
+        cue.startedAtMs + beforeVisualCueMs,
+        M3_E1_DESKTOP_CONTROL_VIEWPORT,
+      );
+
+      // Same cue, same elapsedMs, DIFFERENT branches:
+      expect(phone.viewportKind).toBe("phone");
+      expect(desktop.viewportKind).toBe("desktop");
+      // inputLock: phone locks touch, desktop does not.
+      expect(phone.inputLock).toBe("touch-suppress");
+      expect(desktop.inputLock).toBeNull();
+      expect(phone.inputLock).not.toBe(desktop.inputLock);
+      // audio: phone still gated (before visualCueMs), desktop already firing.
+      expect(phone.audioCue).toBeNull();
+      expect(desktop.audioCue).toBe("orra-recognition-bell");
+      expect(phone.audioCue).not.toBe(desktop.audioCue);
     });
   });
 
