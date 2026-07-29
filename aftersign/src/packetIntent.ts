@@ -352,6 +352,7 @@ export function runPacketIntentChecks(): void {
   checkShortTapPreservesSeal();
   checkDeadzoneReleasePreservesSeal();
   checkNearMissReleasePreservesSeal();
+  checkRecoverableFalseSealedCanOpen();
   checkSustainedHoldOpens();
   checkTickOpensWithoutMove();
   checkTickMidHoldAdvancesProgressWithoutOpening();
@@ -408,6 +409,33 @@ function checkNearMissReleasePreservesSeal(): void {
     s.outcome,
     PACKET_OUTCOME.SEALED,
     "release at HOLD_TO_OPEN_MS - 1 must still be SEALED",
+  );
+}
+
+function checkRecoverableFalseSealedCanOpen(): void {
+  const c = new PacketIntentController();
+  c.press({ timeMs: 16_000, x: 50, y: 50 });
+  const first = c.release({
+    timeMs: 16_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1,
+    x: 50,
+    y: 50,
+  });
+  assertEqual(
+    first.outcome,
+    PACKET_OUTCOME.SEALED,
+    "near-miss release should preserve the packet instead of spending trust",
+  );
+
+  c.press({ timeMs: 17_000, x: 50, y: 50 });
+  const second = c.release({
+    timeMs: 17_000 + PACKET_INTENT.HOLD_TO_OPEN_MS,
+    x: 50,
+    y: 50,
+  });
+  assertEqual(
+    second.outcome,
+    PACKET_OUTCOME.OPENED,
+    "a preserved near-miss must be recoverable by pressing again and holding",
   );
 }
 
