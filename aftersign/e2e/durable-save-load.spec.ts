@@ -39,7 +39,7 @@
 // polarities on their own merit. Mirrors npc-memory-roundtrip.spec.ts's
 // marker contract line-for-line.
 import { expect, test, type Page } from '@playwright/test';
-import { assertHardNavigationSaveSurvival } from './hard-navigation-save-survival-contract.spec';
+import { assertHardNavigationSaveSurvival } from '../src/hardNavigationSaveSurvival';
 
 // This spec drives THREE cold `page.goto` boots in a single test
 // (initial load → clear-doc → back to slot URL). Sibling flagship

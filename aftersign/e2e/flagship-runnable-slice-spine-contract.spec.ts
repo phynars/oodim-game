@@ -6,7 +6,7 @@ import { runOrraRecognitionMemoryChecks } from "../src/orraRecognitionMemory";
 import {
   assertHardNavigationSaveSurvival,
   type HardNavigationSaveSnapshot,
-} from "./hard-navigation-save-survival-contract.spec";
+} from "../src/hardNavigationSaveSurvival";
 
 // Product-spine guard for the AFTERSIGN runnable slice.
 //
