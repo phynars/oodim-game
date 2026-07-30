@@ -32,11 +32,6 @@ export type InteractionConfirmContract = {
   sample: (options: InteractionConfirmOptions) => InteractionConfirmFrame;
 };
 
-export function easeOutCubic(t: number): number {
-  const clamped = Math.max(0, Math.min(1, t));
-  return 1 - Math.pow(1 - clamped, 3);
-}
-
 export function createIoInteractionConfirmContract(): InteractionConfirmContract {
   const audio: InteractionConfirmAudioShape = {
     type: "sine",
@@ -55,7 +50,7 @@ export function createIoInteractionConfirmContract(): InteractionConfirmContract
         0,
         Math.min(1, elapsedMs / IO_INTERACTION_CONFIRM_DURATION_MS),
       );
-      const pulse = Math.sin(Math.PI * easeOutCubic(progress));
+      const pulse = Math.sin(Math.PI * progress);
       const responseVisible = elapsedMs <= frameMs * IO_INTERACTION_CONFIRM_RESPONSE_FRAME_BUDGET;
 
       return {

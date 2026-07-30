@@ -32,7 +32,7 @@ describe("Io interaction confirm feel contract", () => {
     expect(contract.sample({ elapsedMs: twoFramesMs + 0.01 }).responseVisible).toBe(false);
   });
 
-  it("uses a 120ms ease-out-cubic scale pulse that peaks at 1.05", () => {
+  it("uses a 120ms sine-arch scale pulse that peaks at 1.05 at midpoint", () => {
     const contract = createIoInteractionConfirmContract();
     const midpoint = contract.sample({ elapsedMs: IO_INTERACTION_CONFIRM_DURATION_MS / 2 });
 
