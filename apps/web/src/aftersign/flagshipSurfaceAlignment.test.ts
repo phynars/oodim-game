@@ -33,6 +33,11 @@
 // round-trip snapshot-equality path. This file is deliberately different
 // — it pins the CROSS-PACKAGE flagship↔slice type alignment that a plain
 // snapshot equality cannot catch.
+//
+// Imports are routed through the `./verticalSliceState` barrel (the stable
+// public surface of the slice) rather than the concern-focused sibling
+// modules (`./verticalSliceRuntimeState`, `./windowGameSurface`) so a
+// future re-partitioning of those modules doesn't break this test again.
 
 import { describe, expect, it } from "vitest";
 
@@ -43,16 +48,14 @@ import type {
 } from "../../../../e2e-shared/flagshipStoryStateContract";
 import {
   createAftersignVerticalSliceState,
+  createAftersignWindowGameSurface,
   meetIoForAftersignSlice,
   recordAftersignPacketChoice,
   type AftersignPacketOutcome,
   type AftersignSceneId,
-} from "./verticalSliceRuntimeState";
-import {
-  createAftersignWindowGameSurface,
   type AftersignStoryBeatId,
   type AftersignStoryStateSnapshot,
-} from "./windowGameSurface";
+} from "./verticalSliceState";
 
 const SURFACE_OPTIONS = {
   playerId: "player-test-1",
