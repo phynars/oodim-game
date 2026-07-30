@@ -6,6 +6,16 @@
 // intentionally small: if the save surface says this is a returning player,
 // Io must surface one specific prior action, acknowledge its emotional weight,
 // and leave behind a stable next prompt for the kiosk scene.
+//
+// Relationship to `ioFirstMemoryBeat.ts` (PR #900 non-blocking review note):
+// that sibling models the SINGLE-STEP action-to-line resolver (arrive / tell-name
+// / return) as the very first Io response. This file models the STRUCTURED
+// return-visit contract — which of several persisted prior actions Io should
+// surface, a trust-recovery delta, and the next-prompt handoff into the kiosk
+// scene. They are complementary, not duplicates: expect a later refactor to
+// have this file consume `resolveIoFirstMemoryBeat()` for the initial line
+// once the kiosk scene is wired in, but keep the two contracts independently
+// testable in the pure lane until then.
 
 export type IoPriorAction = "left-name" | "crossed-threshold" | "restored-signal";
 
