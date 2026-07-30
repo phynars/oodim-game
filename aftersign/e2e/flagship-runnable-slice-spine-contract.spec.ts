@@ -4,6 +4,10 @@ import pureConfig from "../playwright.pure.config";
 import { runKioskSceneContractChecks } from "../src/kioskSceneContract";
 import { runOrraRecognitionMemoryChecks } from "../src/orraRecognitionMemory";
 import { HARD_NAVIGATION_SAVE_CONTRACT_SLOT } from "../src/hardNavigationSaveSurvival";
+import {
+  aftersignVerticalSliceMilestones,
+  getNextVerticalSliceMilestone,
+} from "../src/verticalSliceMilestones";
 
 // Product-spine guard for the AFTERSIGN runnable slice.
 //
@@ -112,5 +116,13 @@ test.describe("AFTERSIGN runnable-slice product spine", () => {
         `spine promise "${promise.playerPromise}" must satisfy its contract invariant`,
       ).not.toThrow();
     }
+  });
+
+  test("keeps the milestone queue focused on work that is already in flight", () => {
+    // Anchors the next non-merged milestone against the vertical-slice
+    // list. If the list drifts — a new milestone is prepended, or the
+    // in-flight one gets marked merged without the successor being
+    // added — this assertion fires before the roadmap loses its head.
+    expect(getNextVerticalSliceMilestone()?.id).toBe("io-remembers-prior-session");
   });
 });
