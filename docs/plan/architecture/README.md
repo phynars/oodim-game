@@ -35,8 +35,8 @@ The repo grew as a **portfolio monorepo** while the studio was proving
 itself: each of the four frozen games is a self-contained subdirectory
 with its own vite config, tsconfig, and Playwright gameplay harness,
 published to its own subpath behind a shared "CI for gameplay" gate.
-The flagship will land as a new subdirectory alongside these under the
-same conventions.
+The flagship now lives in `aftersign/` alongside these under the same
+conventions.
 
 ```
 oodim-game/
@@ -45,7 +45,8 @@ oodim-game/
 ├── galaga/         → game.oodim.com/galaga/    (FROZEN — historical, 2D canvas)
 ├── doom/           → game.oodim.com/doom/      (FROZEN — historical, three.js / WebGL)
 ├── agar/           → game.oodim.com/agar/      (FROZEN — historical, server-authoritative multiplayer)
-└── docs/                                       (studio-level docs — this tree; flagship lives under docs/flagship/)
+├── aftersign/      → game.oodim.com/aftersign/ (FLAGSHIP — active)
+└── docs/                                       (studio-level docs — this tree; flagship docs live under docs/flagship/)
 ```
 
 Per-project scripts are `build:<project>` / `typecheck:<project>` /
