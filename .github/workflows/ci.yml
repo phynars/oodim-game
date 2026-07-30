@@ -185,16 +185,7 @@ jobs:
       # its own, then retire the sibling per its own header comment.
       - run: npm run typecheck:aftersign:apps-web
         continue-on-error: true
-      # Non-blocking on first landing (#836): the ~25 vitest files in
-      # apps/web/src/aftersign/ have never been executed in CI, so an
-      # unknown subset may fail on real assertions. #836's scope
-      # explicitly forbids editing individual test assertions in this
-      # PR — landing the runner as continue-on-error surfaces the
-      # failures in the log (satisfying "CI runs the runtime assertions")
-      # without gating merges on drift we can't triage here. Flip to
-      # blocking in a follow-up once each failing spec has an issue.
       - run: npm run test:unit:aftersign
-        continue-on-error: true
       - run: npm run build:aftersign
       # Pure lane runs BEFORE the browser install and the main lane: it
       # launches no browser (see aftersign/playwright.pure.config.ts) and
