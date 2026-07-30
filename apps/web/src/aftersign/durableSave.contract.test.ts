@@ -33,6 +33,16 @@ type FeelContractSample = {
   value: unknown;
 };
 
+type AftersignHeadlessGame = {
+  restoreDurableSave: (payload: string) => void;
+  meetNpc: (npcId: "io") => void;
+  getStoryState: () => ReturnType<typeof getAftersignStoryState>;
+};
+
+type HeadlessWindow = {
+  __game?: AftersignHeadlessGame;
+};
+
 const collectFiniteNumbers = (value: unknown): number[] => {
   if (typeof value === "number") {
     return Number.isFinite(value) ? [value] : [];
@@ -172,6 +182,63 @@ describe("Aftersign durable save/load contract", () => {
       recognizesPlayer: true,
       orraAction: "answered-saint-orra",
       recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+    });
+  });
+
+  it("boots window.__game for a headless durable NPC-memory round-trip", () => {
+    const firstSessionPayload = encodeAftersignDurableSave(
+      meetIoForAftersignSlice(
+        recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+      ),
+      3,
+    );
+    const headlessWindow = (globalThis as typeof globalThis & { window?: HeadlessWindow }).window;
+
+    expect(
+      headlessWindow?.__game,
+      "The WebGL-headless harness must expose window.__game before story/NPC-memory slice code can be trusted",
+    ).toBeDefined();
+
+    const game = headlessWindow?.__game;
+    game?.restoreDurableSave(firstSessionPayload);
+    game?.meetNpc("io");
+
+    expect(game?.getStoryState()).toEqual({
+      story: {
+        id: "aftersign.verticalSlice",
+        act: "act-1",
+        beat: "io-remembers-opened-packet",
+        completedBeats: ["packet-opened", "io-first-meeting", "io-remembers-opened-packet"],
+        ioMemoryBeat: {
+          scene: "io-return",
+          recognizesPlayer: true,
+          packetOutcome: "opened",
+          recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+        },
+      },
+      state: {
+        scene: "io-return",
+        player: {
+          id: "player-persistent-7",
+          name: "Signal Runner",
+        },
+        save: {
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn: 3,
+        },
+        npcs: [
+          {
+            id: "io",
+            name: "Io",
+            disposition: "recognizes-player",
+            rememberedSessionIds: ["session-1"],
+            memory: {
+              recognizesPlayer: true,
+              packetOutcome: "opened",
+            },
+          },
+        ],
+      },
     });
   });
 
