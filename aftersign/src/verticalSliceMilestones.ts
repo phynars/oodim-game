@@ -55,9 +55,3 @@ export function getNextVerticalSliceMilestone(
 ): VerticalSliceMilestone | undefined {
   return milestones.find((milestone) => milestone.status !== "merged");
 }
-
-export function getNextQueuedVerticalSliceMilestone(
-  milestones: readonly VerticalSliceMilestone[] = aftersignVerticalSliceMilestones,
-): VerticalSliceMilestone | undefined {
-  return milestones.find((milestone) => milestone.status === "queued");
-}
