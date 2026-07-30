@@ -1,30 +1,6 @@
-// Io's recognition beat — the single spoken LINE Io says when she recognizes
-// the returning player. One beat per memory shape, chosen by priority:
-// packet outcome (most concrete) → route attention → return tone → default.
-//
-// BOUNDARY WITH TWO NEIGHBORS (do not fold these together without a plan):
-//
-//   packages/aftersign/src/ioRecognitionBeat.ts — the CUE PUBLISHER.
-//     Owns `playIoRecognitionBeat`, `IoRecognitionBeatCue`, and its own
-//     `IoPacketOutcome = "sealed" | "opened"` (only two branches, because
-//     the renderer only distinguishes two envelope shapes). That file
-//     answers "when does the beat start and which envelope do we play?"
-//     — NOT the words.
-//
-//   apps/aftersign/src/narrative/io-memory-lines.ts — the GREETING DECK.
-//     `selectIoReturningLines` returns a multi-part {greeting, packetLine,
-//     routeLine, toneLine} shape used when Io re-encounters the player
-//     across a broader spread of memory. Overlaps in spirit but not in
-//     shape or consumer.
-//
-//   THIS FILE — the RECOGNITION LINE. Returns a single `IoRecognitionBeat`
-//     (id + line + remembered facts + required-memory guard). Used by the
-//     cue publisher's renderer when it needs the actual sentence Io speaks
-//     at the moment of recognition, and by memory-authoring code that
-//     needs a sentence like "the player opened the blue packet" for the
-//     ledger. Type is `IoPacketMemoryOutcome` (four branches) — DIFFERENT
-//     from the cue's `IoPacketOutcome` on purpose: the line deck knows
-//     about withheld/returned outcomes even though the envelope doesn't.
+// Io's return recognition deck — the single spoken line Io says when she
+// recognizes a returning player. One selector owns the words; cue timing lives
+// in packages/aftersign/src/ioRecognitionBeat.ts.
 
 export type IoPacketMemoryOutcome = 'sealed' | 'opened' | 'withheld' | 'returned';
 
@@ -49,95 +25,81 @@ export interface IoRecognitionBeat {
 }
 
 const FIRST_PACKET_DELIVERY_ID = 'io-blue-packet';
+const PLAYER_RETURNED_MEMORY = 'the player returned';
+export const IO_OPENED_SEAL_LINE = 'You came back. The seal did not. I can use one of those facts.';
 
-const SEALED_BEAT: IoRecognitionBeat = {
-  id: 'io-return-blue-seal-unbroken',
-  line: 'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
-  remembers: ['the player returned', 'the player delivered the blue packet unopened'],
-  requiredMemory: { packetOutcome: 'sealed' },
+const makeBeat = (beat: IoRecognitionBeat): IoRecognitionBeat => beat;
+
+const PACKET_BEATS: Record<IoPacketMemoryOutcome, IoRecognitionBeat> = {
+  sealed: makeBeat({
+    id: 'io-return-blue-seal-unbroken',
+    line: 'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player delivered the blue packet unopened'],
+    requiredMemory: { packetOutcome: 'sealed' },
+  }),
+  opened: makeBeat({
+    id: 'io-return-blue-seal-broken',
+    line: IO_OPENED_SEAL_LINE,
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player opened the blue packet'],
+    requiredMemory: { packetOutcome: 'opened' },
+  }),
+  withheld: makeBeat({
+    id: 'io-return-blue-packet-withheld',
+    line: 'You came back without the packet. That is not failure yet. It is inventory.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player withheld the blue packet'],
+    requiredMemory: { packetOutcome: 'withheld' },
+  }),
+  returned: makeBeat({
+    id: 'io-return-blue-packet-returned',
+    line: 'You brought it back instead of pretending the route was clean. Useful habit.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player returned the blue packet to Io'],
+    requiredMemory: { packetOutcome: 'returned' },
+  }),
 };
 
-const OPENED_BEAT: IoRecognitionBeat = {
-  id: 'io-return-blue-seal-broken',
-  line: 'You came back. The seal did not. I can use one of those facts.',
-  remembers: ['the player returned', 'the player opened the blue packet'],
-  requiredMemory: { packetOutcome: 'opened' },
+const ROUTE_BEATS: Record<IoRouteAttention, IoRecognitionBeat | undefined> = {
+  listened: makeBeat({
+    id: 'io-return-route-listened',
+    line: 'You listened before you ran. Rare habit. Keep it.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player listened to Io’s route instructions'],
+    requiredMemory: { routeAttention: 'listened' },
+  }),
+  skipped: makeBeat({
+    id: 'io-return-route-skipped',
+    line: 'You found the box anyway. Next time, let me finish saving your life.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player left before Io finished the route'],
+    requiredMemory: { routeAttention: 'skipped' },
+  }),
+  unknown: undefined,
 };
 
-const WITHHELD_BEAT: IoRecognitionBeat = {
-  id: 'io-return-blue-packet-withheld',
-  line: 'You came back without the packet. That is not failure yet. It is inventory.',
-  remembers: ['the player returned', 'the player withheld the blue packet'],
-  requiredMemory: { packetOutcome: 'withheld' },
-};
-
-const RETURNED_BEAT: IoRecognitionBeat = {
-  id: 'io-return-blue-packet-returned',
-  line: 'You brought it back instead of pretending the route was clean. Useful habit.',
-  remembers: ['the player returned', 'the player returned the blue packet to Io'],
-  requiredMemory: { packetOutcome: 'returned' },
-};
-
-const SKIPPED_ROUTE_BEAT: IoRecognitionBeat = {
-  id: 'io-return-route-skipped',
-  line: 'You found the box anyway. Next time, let me finish saving your life.',
-  remembers: ['the player returned', 'the player left before Io finished the route'],
-  requiredMemory: { routeAttention: 'skipped' },
-};
-
-const LISTENED_ROUTE_BEAT: IoRecognitionBeat = {
-  id: 'io-return-route-listened',
-  line: 'You listened before you ran. Rare habit. Keep it.',
-  remembers: ['the player returned', 'the player listened to Io’s route instructions'],
-  requiredMemory: { routeAttention: 'listened' },
-};
-
-const KIND_RETURN_BEAT: IoRecognitionBeat = {
-  id: 'io-return-tone-kind',
-  line: 'Kind answer. Not required. Not wasted.',
-  remembers: ['the player returned', 'the player answered Io kindly'],
-  requiredMemory: { returnTone: 'kind' },
-};
-
-const EVASIVE_RETURN_BEAT: IoRecognitionBeat = {
-  id: 'io-return-tone-evasive',
-  line: 'You dodged the question. Fine. Couriers start with feet, not confessions.',
-  remembers: ['the player returned', 'the player avoided saying why they came back'],
-  requiredMemory: { returnTone: 'evasive' },
-};
-
-const BLUNT_RETURN_BEAT: IoRecognitionBeat = {
-  id: 'io-return-tone-blunt',
-  line: 'Blunt, then. Saves ink.',
-  remembers: ['the player returned', 'the player answered Io bluntly'],
-  requiredMemory: { returnTone: 'blunt' },
+const RETURN_TONE_BEATS: Record<IoReturnTone, IoRecognitionBeat | undefined> = {
+  kind: makeBeat({
+    id: 'io-return-tone-kind',
+    line: 'Kind answer. Not required. Not wasted.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player answered Io kindly'],
+    requiredMemory: { returnTone: 'kind' },
+  }),
+  evasive: makeBeat({
+    id: 'io-return-tone-evasive',
+    line: 'You dodged the question. Fine. Couriers start with feet, not confessions.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player avoided saying why they came back'],
+    requiredMemory: { returnTone: 'evasive' },
+  }),
+  blunt: makeBeat({
+    id: 'io-return-tone-blunt',
+    line: 'Blunt, then. Saves ink.',
+    remembers: [PLAYER_RETURNED_MEMORY, 'the player answered Io bluntly'],
+    requiredMemory: { returnTone: 'blunt' },
+  }),
+  unknown: undefined,
 };
 
 const FIRST_RETURN_BEAT: IoRecognitionBeat = {
   id: 'io-return-first',
   line: 'You came back. Good. Vey loses fewer people who do that twice.',
-  remembers: ['the player returned'],
+  remembers: [PLAYER_RETURNED_MEMORY],
   requiredMemory: {},
-};
-
-const PACKET_BEATS: Record<IoPacketMemoryOutcome, IoRecognitionBeat> = {
-  sealed: SEALED_BEAT,
-  opened: OPENED_BEAT,
-  withheld: WITHHELD_BEAT,
-  returned: RETURNED_BEAT,
-};
-
-const ROUTE_BEATS: Record<IoRouteAttention, IoRecognitionBeat | undefined> = {
-  listened: LISTENED_ROUTE_BEAT,
-  skipped: SKIPPED_ROUTE_BEAT,
-  unknown: undefined,
-};
-
-const RETURN_TONE_BEATS: Record<IoReturnTone, IoRecognitionBeat | undefined> = {
-  kind: KIND_RETURN_BEAT,
-  evasive: EVASIVE_RETURN_BEAT,
-  blunt: BLUNT_RETURN_BEAT,
-  unknown: undefined,
 };
 
 export function selectIoRecognitionBeat(memory: IoSliceMemoryRecord): IoRecognitionBeat {
@@ -171,5 +133,5 @@ export function buildIoAuthoredMemorySentence(memory: IoSliceMemoryRecord): stri
     return memory.authoredMemorySentence;
   }
 
-  return beat.remembers[beat.remembers.length - 1] ?? 'the player returned';
+  return beat.remembers[beat.remembers.length - 1] ?? PLAYER_RETURNED_MEMORY;
 }
