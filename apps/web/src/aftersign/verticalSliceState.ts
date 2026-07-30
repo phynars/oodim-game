@@ -9,11 +9,14 @@ export {
   AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
   createAftersignVerticalSliceState,
   recordAftersignPacketChoice,
+  recordAftersignOrraAction,
   confirmAftersignPacketChoice,
   meetIoForAftersignSlice,
+  meetOrraForAftersignSlice,
   type AftersignPacketChoiceConfirmBeat,
   type AftersignPacketChoiceConfirmFeel,
   type AftersignPacketOutcome,
+  type AftersignOrraAction,
   type AftersignSceneId,
   type AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
@@ -30,12 +33,24 @@ export {
 
 export {
   AFTERSIGN_IO_RECOGNITION_FEEL,
+  AFTERSIGN_ORRA_RECOGNITION_FEEL,
   sampleAftersignIoMemoryBeat,
+  sampleAftersignOrraMemoryBeat,
   openAftersignIoRecognitionBeat,
+  openAftersignOrraRecognitionBeat,
   sampleAftersignIoRecognitionEnvelope,
+  sampleAftersignOrraRecognitionEnvelope,
+  sampleAftersignOrraRecognitionForViewport,
   type AftersignIoRecognitionFeel,
+  type AftersignOrraRecognitionFeel,
   type AftersignIoMemoryBeat,
+  type AftersignOrraMemoryBeat,
   type AftersignIoRecognitionBeatOpen,
+  type AftersignOrraRecognitionBeatOpen,
+  type AftersignOrraRecognitionBeatCue,
+  type AftersignOrraRecognitionEnvelope,
+  type AftersignOrraRecognitionViewportEnvelope,
+  type AftersignRecognitionViewport,
 } from "./verticalSliceRecognitionBeat";
 
 export {
@@ -47,6 +62,13 @@ export {
   type AftersignPacketInteractionAction,
   type AftersignPacketConfirmInteraction,
 } from "./verticalSlicePacketInteraction";
+
+export {
+  AFTERSIGN_KIOSK_SCENE_FEEL,
+  sampleAftersignKioskSceneEnvelope,
+  type AftersignKioskSceneEnvelope,
+  type AftersignKioskSceneFeel,
+} from "./kioskSceneFeel";
 
 export {
   createAftersignWindowGameSurface,

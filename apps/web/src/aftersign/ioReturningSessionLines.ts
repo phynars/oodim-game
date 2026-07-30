@@ -12,6 +12,7 @@
 
 import {
   getIoReturningSessionLine as getIoReturningSessionLineFromPackage,
+  getOrraRecognitionLine as getOrraRecognitionLineFromPackage,
   type IoPacketOutcome,
   type IoReturnAnswerTone,
   type IoRouteAttention,
@@ -26,6 +27,12 @@ export interface IoReturningSessionMemory {
 }
 
 export interface IoReturningSessionMemoryLine {
+  readonly id: string
+  readonly rememberedAction: string
+  readonly text: string
+}
+
+export interface OrraRecognitionLine {
   readonly id: string
   readonly rememberedAction: string
   readonly text: string
@@ -135,6 +142,26 @@ export const IO_BARE_RETURN_LINE: IoReturningSessionMemoryLine = {
   rememberedAction:
     'Player returned, but Io holds no packet, route, or answer memory about them yet.',
   text: getIoReturningSessionLineFromPackage('bareReturn'),
+}
+
+export const ORRA_FIRST_CONTACT_LINE: OrraRecognitionLine = {
+  id: 'orra-first-contact-v1',
+  rememberedAction:
+    'Player is new to Orra or Orra has no remembered action for this player yet.',
+  text: getOrraRecognitionLineFromPackage('firstContact'),
+}
+
+export const ORRA_RECOGNITION_LINE: OrraRecognitionLine = {
+  id: 'orra-recognition-v1',
+  rememberedAction:
+    'Player returned after performing a deliberate Orra action that Orra remembers.',
+  text: getOrraRecognitionLineFromPackage('recognition'),
+}
+
+export function getOrraRecognitionLine(
+  orraMemoryBeat: string | null | undefined,
+): OrraRecognitionLine {
+  return orraMemoryBeat ? ORRA_RECOGNITION_LINE : ORRA_FIRST_CONTACT_LINE
 }
 
 // Renamed to avoid shadowing the package's `getIoReturningSessionLine`

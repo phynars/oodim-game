@@ -167,6 +167,13 @@
         SECOND_ACTION,
         secondActionFromMemory,
       } from "./src/memoryFacts.js";
+      import {
+        actionForOrraChoice,
+        buildOrraRecognitionMemoryFact,
+        lineCopyForOrraLineId,
+        ORRA_FIRST_CONTACT_LINE_ID,
+        selectOrraRecognitionLine,
+      } from "./src/orraRuntimeLane.ts";
       import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
       import {
         IO_RECOGNITION_BEAT_FEEDBACK,
@@ -189,6 +196,7 @@
         createPlayerMovementState,
         normalizeMoveInput,
         stepPlayerMovement as stepPlayerMovementModel,
+        stepPlayerMovementFixedUpdate,
       } from "./src/playerMovementFeel.ts";
 
       const canvas = document.querySelector("#scene");
@@ -266,6 +274,11 @@
       }).catch(() => null) || localStored;
       const packetIntent = new PacketIntentController();
 
+      const orraMemoryFromStored = Array.isArray(stored?.npcs?.orra?.memory)
+        ? clone(stored.npcs.orra.memory)
+        : [];
+      const orraLineFromStored = selectOrraRecognitionLine(orraMemoryFromStored);
+
       const state = {
         slug: "aftersign",
         scene: {
@@ -328,12 +341,19 @@
             lastLine: null,
             lastLineMemoryRefs: [],
           },
+          orra: {
+            memory: orraMemoryFromStored,
+            lastLine: lineCopyForOrraLineId(orraLineFromStored.lineId),
+            lastLineId: orraLineFromStored.lineId,
+          },
         },
         save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
         movement: {
           input: { x: 0, z: 0, source: "none", active: false },
           lastStepMs: 0,
           lastVelocityMetersPerSecond: 0,
+          fixedStepsLastFrame: 0,
+          droppedStepMs: 0,
           contract: { ...MOVEMENT },
         },
         cameraRig: null,
@@ -461,6 +481,13 @@
         packet: clone(state.packet),
         delivery: clone(state.delivery),
         memory: clone(state.npcs.io.memory),
+        npcs: {
+          orra: {
+            memory: clone(state.npcs.orra.memory),
+            lastLine: state.npcs.orra.lastLine,
+            lastLineId: state.npcs.orra.lastLineId,
+          },
+        },
         save: {
           revision: state.save.revision,
           dirty,
@@ -567,6 +594,36 @@
         state.player.facingRadians = result.state.facingRadians;
         state.movement.lastStepMs = result.state.lastStepMs;
         state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
+        // Legacy single-step wrapper: by construction we ran exactly one
+        // fixed step this call. Deriving from `lastStepMs > 0` was cosmetic
+        // (a duration masquerading as a count) — happened to yield 1 for
+        // any real step, 0 only if a caller passed dt=0. Set the count
+        // directly so the field reads intent-first.
+        state.movement.fixedStepsLastFrame = 1;
+        state.movement.droppedStepMs = 0;
+      };
+
+      let movementAccumulator = 0;
+
+      const stepMovementFixed = (frameDt = MOVEMENT.fixedStepSeconds) => {
+        const movementState = createPlayerMovementState({
+          x: state.player.x,
+          z: state.player.z,
+          facingRadians: state.player.facingRadians,
+          input: state.movement.input,
+          lastStepMs: state.movement.lastStepMs,
+          lastVelocityMetersPerSecond: state.movement.lastVelocityMetersPerSecond,
+        });
+        const result = stepPlayerMovementFixedUpdate(movementState, movementAccumulator, frameDt, MOVEMENT);
+        state.player.x = result.state.x;
+        state.player.z = result.state.z;
+        state.player.facingRadians = result.state.facingRadians;
+        state.movement.lastStepMs = result.state.lastStepMs;
+        state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
+        state.movement.fixedStepsLastFrame = result.steps;
+        state.movement.droppedStepMs = result.droppedSeconds * 1000;
+        movementAccumulator = result.remainderSeconds;
+        return result;
       };
 
       const cameraRigInput = (dtSeconds = MOVEMENT.fixedStepSeconds) => ({
@@ -592,6 +649,17 @@
       const publishState = () => {
         syncIoLine();
         syncPacketIntent();
+        // NOTE: Orra's lastLine/lastLineId are updated at the two places
+        // that actually change Orra's memory or the player's beat with
+        // Orra — the mint branch (`orraAction`) in handleChoice, and the
+        // return-to-orra branch. Boot, reset, and restore also stamp them
+        // from `selectOrraRecognitionLine(state.npcs.orra.memory)`. Doing
+        // this INSIDE publishState was defensively re-derivable but ran on
+        // every RAF tick (the runtime pumps publishState() from the tick
+        // loop at ~60Hz) — an extra branch + string comparisons + a
+        // potential `markStateDirty()` on the hot path for no correctness
+        // gain. Keep the derivation at the memory-change sites where it
+        // belongs; publishState stays read-only for the Orra lane.
         if (publishedStateVersion === statePublishVersion && window.__game) {
           return window.__game;
         }
@@ -616,6 +684,13 @@
               ...clone(state.npcs.io),
               memories: clone(state.npcs.io.memory),
               trustPosture: trustPostureForOutcome(state.delivery.outcome),
+            },
+            orra: {
+              id: "orra",
+              displayName: "Orra",
+              present: true,
+              ...clone(state.npcs.orra),
+              memories: clone(state.npcs.orra.memory),
             },
           },
           save: { ...state.save },
@@ -654,6 +729,13 @@
                 memories: state.npcs.io.memory,
                 trustPosture: trustPostureForOutcome(state.delivery.outcome),
               },
+              orra: {
+                id: "orra",
+                displayName: "Orra",
+                present: true,
+                ...state.npcs.orra,
+                memories: state.npcs.orra.memory,
+              },
             },
             save: state.save,
             movement: state.movement,
@@ -669,6 +751,7 @@
             forceReload: reloadFromSave,
             setMoveInput,
             stepMovement,
+            stepMovementFixed,
             stepCameraRig,
             packetPress,
             packetMove,
@@ -836,6 +919,41 @@
           return;
         }
 
+        const orraAction = actionForOrraChoice(choiceId);
+        if (orraAction) {
+          const nextRevision = state.save.revision + 1;
+          const nextFact = buildOrraRecognitionMemoryFact({
+            playerId: state.player.id,
+            action: orraAction,
+            sessionId,
+            revision: nextRevision,
+          });
+          state.save.revision = nextRevision;
+          state.npcs.orra.memory = [nextFact];
+          // Keep Orra's spoken surface in lockstep with her memory at the
+          // mint site — publishState no longer re-derives per frame, so
+          // the update has to happen HERE (and at return-to-orra / boot /
+          // reset / restore). Deriving from the freshly-minted fact via
+          // the same `selectOrraRecognitionLine` selector keeps this
+          // consistent with the pure-logic contract.
+          const mintedLine = selectOrraRecognitionLine(state.npcs.orra.memory);
+          state.npcs.orra.lastLineId = mintedLine.lineId;
+          state.npcs.orra.lastLine = lineCopyForOrraLineId(mintedLine.lineId);
+          markStateDirty();
+          await forceSave();
+          publishState();
+          return;
+        }
+
+        if (choiceId === "return-to-orra") {
+          const selected = selectOrraRecognitionLine(state.npcs.orra.memory);
+          state.npcs.orra.lastLineId = selected.lineId;
+          state.npcs.orra.lastLine = lineCopyForOrraLineId(selected.lineId);
+          markStateDirty();
+          publishState();
+          return;
+        }
+
         throw new Error(`Unknown AFTERSIGN choice: ${choiceId}`);
       };
 
@@ -968,6 +1086,16 @@
         state.npcs.io.memory = breakMode === "drop-memory"
           ? []
           : saved.memory ? clone(saved.memory) : [];
+        state.npcs.orra.memory = Array.isArray(saved.npcs?.orra?.memory)
+          ? clone(saved.npcs.orra.memory)
+          : [];
+        // publishState no longer re-derives Orra's spoken surface per
+        // frame (see the comment above `syncIoLine` in publishState) —
+        // stamp lastLineId/lastLine at every load site so the surface
+        // is consistent by construction, not by frame-loop drift.
+        const orraLineFromSaved = selectOrraRecognitionLine(state.npcs.orra.memory);
+        state.npcs.orra.lastLineId = orraLineFromSaved.lineId;
+        state.npcs.orra.lastLine = lineCopyForOrraLineId(orraLineFromSaved.lineId);
         state.save = { ...emptySave(), ...saved.save, dirty: false };
         state.save.authority = authoritativeSave ? "server" : "local-fallback";
         state.save.lastLoadProof = {
@@ -1372,10 +1500,16 @@
         state.delivery = { id: "blue-packet", outcome: "unknown" };
         state.npcs.io.memory = [];
         state.npcs.io.lastLineMemoryRefs = [];
+        state.npcs.orra.memory = [];
+        state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
+        state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
         state.save = emptySave();
         state.movement.input = { x: 0, z: 0, source: "none", active: false };
         state.movement.lastStepMs = 0;
         state.movement.lastVelocityMetersPerSecond = 0;
+        state.movement.fixedStepsLastFrame = 0;
+        state.movement.droppedStepMs = 0;
+        movementAccumulator = 0;
         state.cameraRig = null;
         state.interaction.lastAction = null;
         state.interaction.lastPointer = null;
@@ -1447,6 +1581,25 @@
           state.npcs.io.lastLineMemoryRefs = Array.isArray(restored.npcs.io.lastLineMemoryRefs)
             ? clone(restored.npcs.io.lastLineMemoryRefs)
             : [];
+        }
+        if (restored.npcs && restored.npcs.orra) {
+          state.npcs.orra.memory = Array.isArray(restored.npcs.orra.memory)
+            ? clone(restored.npcs.orra.memory)
+            : [];
+          // Fall back to deriving lastLine/lastLineId from the restored
+          // memory if the persisted payload predates them (or the payload
+          // was hand-shaped by a test) — the memory is the source of truth
+          // for which line Orra should speak, per the pure-logic contract.
+          // publishState no longer re-derives per frame (see its comment),
+          // so a fallback that lands on first-contact when memory would
+          // pick recognition would strand the surface out of sync.
+          const orraLineFromRestored = selectOrraRecognitionLine(state.npcs.orra.memory);
+          state.npcs.orra.lastLineId = typeof restored.npcs.orra.lastLineId === "string"
+            ? restored.npcs.orra.lastLineId
+            : orraLineFromRestored.lineId;
+          state.npcs.orra.lastLine = typeof restored.npcs.orra.lastLine === "string"
+            ? restored.npcs.orra.lastLine
+            : lineCopyForOrraLineId(orraLineFromRestored.lineId);
         }
         if (restored.save && typeof restored.save === "object") {
           state.save = { ...emptySave(), ...restored.save };
@@ -1565,15 +1718,10 @@
       resize();
 
       let last = performance.now();
-      let movementAccumulator = 0;
       const tick = (now) => {
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
-        movementAccumulator += dt;
-        while (movementAccumulator >= MOVEMENT.fixedStepSeconds) {
-          stepMovement(MOVEMENT.fixedStepSeconds);
-          movementAccumulator -= MOVEMENT.fixedStepSeconds;
-        }
+        stepMovementFixed(dt);
         const t = now / 1000;
         const kioskPulse = state.interaction.kioskPulse;
         const confirmStartedAt = state.interaction.confirmStartedAt;

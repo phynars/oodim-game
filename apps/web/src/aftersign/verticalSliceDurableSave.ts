@@ -1,4 +1,5 @@
 import type {
+  AftersignOrraAction,
   AftersignPacketOutcome,
   AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
@@ -7,6 +8,8 @@ export type AftersignVerticalSliceSave = {
   version: 1;
   packetOutcome: AftersignPacketOutcome | null;
   ioHasMetPlayer: boolean;
+  orraAction?: AftersignOrraAction | null;
+  orraHasMetPlayer?: boolean;
 };
 
 export type AftersignDurableSaveEnvelope = {
@@ -25,6 +28,12 @@ export function createAftersignVerticalSliceSave(
     version: 1,
     packetOutcome: state.packetOutcome,
     ioHasMetPlayer: state.ioHasMetPlayer,
+    ...(state.orraHasMetPlayer || state.orraAction
+      ? {
+          orraHasMetPlayer: state.orraHasMetPlayer,
+          orraAction: state.orraAction,
+        }
+      : {}),
   };
 }
 
@@ -83,11 +92,18 @@ export function restoreAftersignVerticalSliceState(
     packetOutcome: save.packetOutcome,
     ioHasMetPlayer: save.ioHasMetPlayer,
     ioRecognizesPlayer: false,
+    orraAction: save.orraAction ?? null,
+    orraHasMetPlayer: save.orraHasMetPlayer ?? false,
+    orraRecognizesPlayer: false,
   };
 }
 
 export function restoreAftersignDurableSave(payload: string): AftersignVerticalSliceState {
-  return restoreAftersignVerticalSliceState(decodeAftersignDurableSave(payload).state);
+  const envelope = decodeAftersignDurableSave(payload);
+  return {
+    ...restoreAftersignVerticalSliceState(envelope.state),
+    savedAtTurn: envelope.savedAtTurn,
+  };
 }
 
 function assertValidSavedAtTurn(savedAtTurn: number): void {
@@ -108,7 +124,9 @@ function isVerticalSliceSave(save: unknown): save is AftersignVerticalSliceSave 
   return (
     save.version === 1 &&
     isPacketOutcomeOrNull(save.packetOutcome) &&
-    typeof save.ioHasMetPlayer === "boolean"
+    typeof save.ioHasMetPlayer === "boolean" &&
+    (save.orraAction === undefined || isOrraActionOrNull(save.orraAction)) &&
+    (save.orraHasMetPlayer === undefined || typeof save.orraHasMetPlayer === "boolean")
   );
 }
 
@@ -116,6 +134,10 @@ function isPacketOutcomeOrNull(
   packetOutcome: unknown,
 ): packetOutcome is AftersignPacketOutcome | null {
   return packetOutcome === null || packetOutcome === "sealed" || packetOutcome === "opened";
+}
+
+function isOrraActionOrNull(orraAction: unknown): orraAction is AftersignOrraAction | null {
+  return orraAction === null || orraAction === "answered-saint-orra";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -36,7 +36,7 @@ save→reload→correct-Io-line assertions plus the three red break modes
 `aftersign/e2e/flagship-surface-contract.spec.ts`. The signature promise is now
 machine-guarded on every push. M1 is falsified-negative-proof and closed.
 
-### M2 (ACTIVE) — A second aftersign beat chains off the first
+### M2 (DONE ✅) — A second aftersign beat chains off the first
 
 **Observable outcome:** A returning visitor whom Io *already* recognized (from
 the M1 packet beat) does a NEW deliberate action in the same slice, leaves, and
@@ -47,72 +47,109 @@ who skipped the second action hears a line that acknowledges only the first
 memory (the `bareReturn`-family fallback), visibly distinct from the chained
 line.
 
+**Shipped:** E1's integration proof **#735 merged + closed 2026-07-21**. The
+two-memory chained line vs. one-memory fallback is asserted for BOTH packet
+outcomes in `aftersign/e2e/flagship-surface-contract.spec.ts`, with the two red
+break modes (dropped-second-memory → chained line unreachable; single-memory
+line served to a two-memory player) live on every push. Building blocks
+#736 (second-memory persistence), #731 (fallback line), #737 (chained line)
+all merged + closed. The "relationship accumulates" promise is now
+machine-guarded. M2 is falsified-negative-proof and closed.
+
+---
+
+## Milestones (cont.)
+
+### M3 (ACTIVE) — A SECOND character remembers you, independently of Io
+
+**Observable outcome:** A returning visitor who already has a relationship with
+Io meets a DIFFERENT named character in the same slice — Saint Orra, the living
+sign over the old pharmacy — performs one deliberate action toward Orra (touch
+the sign gently vs. strike it to make it speak), leaves, and returns. On return
+Orra speaks a line that references *that* prior action — proving the memory
+mechanic is not welded to one NPC but is a property of the world. Io's own
+recognition is UNTOUCHED: the same returning player still hears Io's correct
+chained line. A player who never touched Orra hears Orra's first-contact line,
+visibly distinct from the recognition line.
+
+**Why this is the next-smallest outcome:** M1 proved one memory; M2 proved two
+memories on ONE NPC. The concept's Act II turns on a SECOND remembering
+character (Saint Orra) with her OWN memory of the player. M3 proves the
+mechanic generalizes to a second independent memory-holder — the smallest honest
+step toward "a world whose people know your name" — WITHOUT yet introducing a
+memory graph, cross-NPC memory sharing, or branching episodes (all M4+).
+
 **Definition of done (falsifiable):**
-- On a phone: complete the packet beat, reload (M1 recognition fires), do the
-  second action, reload again → Io's line references the packet outcome AND the
-  second action in one authored sentence.
-- A control player who does packet-only-then-reload-twice hears the
-  single-memory line, NOT the chained line.
-- The e2e lane proves the chained vs. single-memory branch for the packet
-  outcomes AND turns RED when the second memory is dropped or the wrong
-  (single-memory) line is served to a two-memory player.
+- On a phone: complete the Io beats (M1+M2), meet Saint Orra, perform the Orra
+  action (gentle-touch OR strike), reload → Orra speaks a line that references
+  that specific action.
+- The SAME returning player still hears Io's correct chained line — Orra's
+  memory does not regress or contaminate Io's.
+- A control player who never interacts with Orra hears Orra's first-contact
+  line, NOT a recognition line.
+- The e2e lane proves the gentle-vs-strike branch for Orra AND the Io-parallel
+  recognition, and turns RED when: Orra's memory is dropped, the wrong Orra
+  line is served, OR the presence of Orra's memory perturbs Io's line.
 
-**LoE budget:** ~1 epic (E1). A second NPC, branching episodes, and a
-memory *graph* remain OUT — they are M3+.
-
----
-
-## Active milestone (M2) — epics
-
-### E1 (ACTIVE) — A second memory chains onto Io's first recognition in one line
-
-**Acceptance criteria:** The slice persists a SECOND player action alongside the
-M1 packet outcome, and on the next return Io serves ONE authored line that
-references both memories for a two-memory player — while a one-memory (packet
-only) player still gets the single-memory line. Wrong-branch and dropped-second-
-memory paths fail the e2e lane.
-
-**Status:** active. Copy surface pattern exists (`bareReturn` extension via
-#731); no chained-beat integration proof yet.
-
-**Integration story (the done-gate):** **#735** (filed this session) —
-`two-memory return serves the chained line for both packet outcomes; one-memory
-return serves the single-memory line; red break modes for dropped-second-memory
-and wrong-branch`. E1 is DONE when #735 is green, not when its pieces merge.
-Everything below either feeds #735 or hardens it.
-
-**Integration story of M1 (reference):** #653 (merged) proved the *single*
-memory beat. M2-E1's #735 is the strict generalization: prove that a SECOND
-memory chains, without regressing the first.
+**LoE budget:** ~1 epic (E1: prove the second independent NPC memory end to
+end). A memory *graph*, cross-NPC memory (Orra referencing an Io beat), Niko /
+Maud / the Child, and branching episodes remain OUT — they are M4+.
 
 ---
 
-## Story map (M2-E1)
+## Active milestone (M3) — epics
+
+### E1 (ACTIVE) — Saint Orra remembers a player action independently of Io
+
+**Acceptance criteria:** The slice persists a SECOND, per-NPC memory record for
+Saint Orra (the gentle-touch vs. strike action) keyed to the durable player id,
+alongside — and independent of — the existing Io memory beat. On the next return
+Orra serves the correct recognition line for a player who acted, the
+first-contact line for a player who did not, and Io's own chained line is
+unchanged. Dropped-Orra-memory, wrong-Orra-line, and Io-contamination paths all
+fail the e2e lane.
+
+**Status:** active. No Orra runtime surface, memory record, or lines exist yet
+(concept-only); Io's memory surface (`window.__game.story.memoryBeat`) is the
+proven pattern the Orra record parallels.
+
+**Integration story (the done-gate):** **#863** — proves Orra's independent
+recognition (action vs. first-contact branch across reload) + Io non-regression
++ the three red break modes (`orra-dropped` / `orra-wrong` /
+`orra-io-contamination`). E1 is DONE when that lane is green, not when its
+building blocks merge. Everything below either feeds that proof or hardens it.
+
+**Integration story of M2 (reference):** #735 (merged) proved a second memory on
+ONE NPC. M3-E1's integration proof is the orthogonal generalization: a second
+memory on a SECOND NPC, proven not to disturb the first NPC's memory.
+
+---
+
+## Story map (M3-E1)
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Integration proof (done-gate)** — two-memory chained line + one-memory fallback, both packet outcomes, red break modes | **#735** | M | integration | filed this session |
-| Extend Io returning copy in the package with a `bareReturn`/empty-memory key (single-source, parity-guarded) | **#731** | S | building block — establishes the fallback/single-memory line surface #735 asserts against | open |
-| Persist the second player action alongside packet outcome; expose it on `window.__game.story.memoryBeat` | **#736** | M | building block — the second durable memory #735 chains on | filed this session |
-| Author + wire the two-memory CHAINED line in the package; parity re-export | **#737** | S | building block — the line #735 proves is served for two-memory players | filed this session |
-| Wire Io phone-ready look/sound contract into executed e2e lane | #544 | M | hardening — carries over from M1; phone-viewport feel guard on the chained beat | open |
+| **Integration proof (done-gate)** — Orra action/first-contact split across reload + Io non-regression + `orra-dropped` / `orra-wrong` / `orra-io-contamination` red modes | **#863** | M | integration | filed |
+| Persist an Orra-owned memory record (distinct storage key + `kind: "orra-recognition"`); expose on `window.__game.story.orraMemoryBeat`, isolated from Io's | **#865** | M | building block — Orra's durable, Io-isolated memory the proof reads | filed |
+| Author + wire Orra's FIRST-CONTACT line + her RECOGNITION line in the copy package (single-source, parity-guarded) | **#864** | S | building block — the two lines the proof asserts (first-contact vs. recognition) | filed |
 
-**Integration-first note:** #735 is filed and mapped BEFORE the implementation
-stories because it defines what "M2-E1 done" means. #731/#736/#737 are the three
-building blocks (fallback line / second memory / chained line); none alone
-proves the epic outcome. Sequence if forced: #736 (second memory persists) →
-#731 + #737 (both lines authored) → #735 asserts the branch end to end.
+**Integration-first note:** #863 (the done-gate) is filed and mapped BEFORE the
+implementation stories because it defines what "M3-E1 done" means. The two
+building blocks (#865 Orra's isolated memory record / #864 Orra's first-contact
++ recognition lines) each feed the proof; neither alone proves the epic outcome.
+Sequence if forced: #865 (persist Orra memory record) → #864 (author both Orra
+lines) → #863 (integration lane asserts the branch + Io non-regression end to end).
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-These are NOT closed here (operator/human disposes). Named so they don't masquerade as M2 work:
+These are NOT closed here (operator/human disposes). Named so they don't masquerade as M3 work:
 
 - **#727** — [Mara, `agent-needs-human`] AFTERSIGN red/green workflow relies on
   brittle spec marker text for retirement gating. Real harness debt, but it is a
-  *process/tooling* fix, not part of the M2-E1 chained-beat outcome. Human-flagged;
-  disposition owed by operator. Does NOT enter the M2 story map.
+  *process/tooling* fix, not part of the M3-E1 Orra-recognition outcome.
+  Human-flagged; disposition owed by operator. Does NOT enter the M3 story map.
 
 _Prior-cycle drift (#615/#622/#454/#634) is now CLOSED — no longer open, removed
 from this list. The only current drift is #727 above._

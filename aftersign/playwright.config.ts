@@ -18,6 +18,34 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export default defineConfig({
   testDir: "e2e",
+  // Exclude pure-logic specs that already run in the deterministic pure
+  // lane (`aftersign/playwright.pure.config.ts`, `test:aftersign:pure`).
+  // These specs do NOT use the `{ page }` fixture — each file's header
+  // comment states it explicitly — so they don't need the vite-preview
+  // webServer or the SwiftShader-backed chromium project. Running them
+  // ONLY on the pure lane (retries: 0, no browser) means:
+  //   1. They don't inflate this lane's cold-start surface with N extra
+  //      files the SwiftShader boot has to shepherd through.
+  //   2. A pure-logic regression fails on the pure lane, first attempt,
+  //      instead of being masked by this lane's `retries: 3`.
+  // This is the escape hatch this file's `retries` comment names
+  // ("teasing the pure-logic controller checks … out of the Playwright
+  // lane so they stop paying the vite-preview + SwiftShader boot tax
+  // at all"). Keep this list in lockstep with the pure config's
+  // `testMatch` — a spec that runs on BOTH lanes wastes cold-start
+  // budget on this one; a spec that runs on NEITHER lane gates nothing.
+  testIgnore: [
+    "packet-intent-contract.spec.ts",
+    "packet-intent-vertical-slice-contract.spec.ts",
+    "io-recognition-cue-contract.spec.ts",
+    "recognition-beat-contract.spec.ts",
+    "io-return-memory-beat-contract.spec.ts",
+    "memory-prompt-timing-feel-contract.spec.ts",
+    "kiosk-scene-contract.spec.ts",
+    "orra-recognition-memory-contract.spec.ts",
+    "hard-navigation-save-survival-contract.spec.ts",
+    "flagship-runnable-slice-spine-contract.spec.ts",
+  ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // AFTERSIGN gets two MORE retries than sibling three.js lanes (pacman /

@@ -11,16 +11,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AFTERSIGN_IO_RECOGNITION_FEEL,
+  AFTERSIGN_ORRA_RECOGNITION_FEEL,
   createAftersignVerticalSliceSave,
   createAftersignVerticalSliceState,
   meetIoForAftersignSlice,
+  meetOrraForAftersignSlice,
+  recordAftersignOrraAction,
   recordAftersignPacketChoice,
   restoreAftersignVerticalSliceState,
   sampleAftersignIoMemoryBeat,
+  sampleAftersignOrraMemoryBeat,
   type AftersignPacketOutcome,
 } from "./verticalSliceState";
 
-function playThroughReload(outcome: AftersignPacketOutcome) {
+function playThroughIoReload(outcome: AftersignPacketOutcome) {
   // First session: receive packet, choose, meet Io, save.
   const chosen = recordAftersignPacketChoice(
     createAftersignVerticalSliceState(),
@@ -34,32 +39,49 @@ function playThroughReload(outcome: AftersignPacketOutcome) {
   return meetIoForAftersignSlice(restored);
 }
 
+function playThroughOrraReload(outcome: AftersignPacketOutcome) {
+  const firstSession = meetOrraForAftersignSlice(
+    recordAftersignOrraAction(
+      meetIoForAftersignSlice(
+        recordAftersignPacketChoice(createAftersignVerticalSliceState(), outcome),
+      ),
+      "answered-saint-orra",
+    ),
+  );
+
+  const save = createAftersignVerticalSliceSave(firstSession);
+  const restored = restoreAftersignVerticalSliceState(save);
+  return meetOrraForAftersignSlice(restored);
+}
+
 describe("verticalSliceState save/reload integration", () => {
   it("preserves the sealed outcome across save and reload", () => {
-    const returned = playThroughReload("sealed");
+    const returned = playThroughIoReload("sealed");
     const beat = sampleAftersignIoMemoryBeat(returned);
 
     expect(beat).toEqual({
       scene: "io-return",
       recognizesPlayer: true,
       packetOutcome: "sealed",
+      recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
     });
   });
 
   it("preserves the opened outcome across save and reload", () => {
-    const returned = playThroughReload("opened");
+    const returned = playThroughIoReload("opened");
     const beat = sampleAftersignIoMemoryBeat(returned);
 
     expect(beat).toEqual({
       scene: "io-return",
       recognizesPlayer: true,
       packetOutcome: "opened",
+      recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
     });
   });
 
   it("diverges Io's memory beat between sealed and opened playthroughs", () => {
-    const sealedBeat = sampleAftersignIoMemoryBeat(playThroughReload("sealed"));
-    const openedBeat = sampleAftersignIoMemoryBeat(playThroughReload("opened"));
+    const sealedBeat = sampleAftersignIoMemoryBeat(playThroughIoReload("sealed"));
+    const openedBeat = sampleAftersignIoMemoryBeat(playThroughIoReload("opened"));
 
     expect(sealedBeat.packetOutcome).toBe("sealed");
     expect(openedBeat.packetOutcome).toBe("opened");
@@ -85,5 +107,57 @@ describe("verticalSliceState save/reload integration", () => {
     const beat = sampleAftersignIoMemoryBeat(restored);
     expect(beat.recognizesPlayer).toBe(false);
     expect(beat.packetOutcome).toBe("sealed");
+    expect(beat.recognitionFeel).toBeNull();
+  });
+
+  it("preserves Orra's own recognition memory across save and reload", () => {
+    const returned = playThroughOrraReload("sealed");
+
+    expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: true,
+      orraAction: "answered-saint-orra",
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+    });
+  });
+
+  it("recognizes Orra on re-meet even when her deliberate action was not recorded", () => {
+    // Contract mirrors Io: recognition gates on hasMetPlayer (persisted via
+    // save), NOT on the deliberate action. So after save→restore→re-meet
+    // with no orraAction recorded, Orra still recognizes the player; the
+    // action stays null and the recognition-feel envelope is present.
+    // (Gating recognition on orraAction would be a runtime-state change,
+    // out of scope for this test-only PR.)
+    const firstContact = meetOrraForAftersignSlice(createAftersignVerticalSliceState());
+    const returned = meetOrraForAftersignSlice(
+      restoreAftersignVerticalSliceState(createAftersignVerticalSliceSave(firstContact)),
+    );
+
+    expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: true,
+      orraAction: null,
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+    });
+  });
+
+  it("keeps Io's packet recognition independent when Orra memory is present", () => {
+    const returned = playThroughOrraReload("opened");
+
+    expect(sampleAftersignIoMemoryBeat(returned)).toEqual({
+      scene: "orra-return",
+      recognizesPlayer: false,
+      packetOutcome: "opened",
+      recognitionFeel: null,
+    });
+    expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
+      kind: "orra-recognition",
+      scene: "orra-return",
+      recognizesPlayer: true,
+      orraAction: "answered-saint-orra",
+      recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+    });
   });
 });

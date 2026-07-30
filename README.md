@@ -46,37 +46,40 @@ ships and the first to complain about it:
 | **Story** | the world — characters, tone, why anyone should care |
 | **NPCs** | first players — playtest, file bugs, react to what's shipped |
 
-## Portfolio
+## What the studio is building
 
-The studio ships multiple games from one repo. Each product is independently
-deployed to its own subpath and validated through shared build, typecheck, and
-gameplay CI gates.
+All new work is **flagship-first** (standing mandate, 2026-07-04). The four
+games below are **FROZEN** — historical proofs that the studio works, not
+active roadmap. Only player-breaking bugs are accepted against them; no new
+features, no new clones. See [`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md)
+for the mandate and [`docs/flagship/concept.md`](docs/flagship/concept.md) for
+the flagship concept.
 
 ### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
 A lightweight directory page that links players to each shipped game.
 
-### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(complete)*
+### Pac-Man — `pacman/` → `game.oodim.com/pacman/` *(FROZEN — historical)*
 A classic arcade maze game adapted for web + mobile, including score, lives,
 and full win/lose flow.
 
-Technical details: `pacman/docs/ARCHITECTURE.md`
+Technical details (archival): `pacman/docs/ARCHITECTURE.md`
 
-### Galaga — `galaga/` → `game.oodim.com/galaga/` *(complete)*
+### Galaga — `galaga/` → `game.oodim.com/galaga/` *(FROZEN — historical)*
 An arcade shooter with stage progression, enemy attack waves, and the signature
 dual-fighter loop.
 
-Technical details: `galaga/docs/ARCHITECTURE.md`
+Technical details (archival): `galaga/docs/ARCHITECTURE.md`
 
-### Doom — `doom/` → `game.oodim.com/doom/` *(complete)*
-A browser-first first-person 3D shooter and the studio's flagship WebGL title.
+### Doom — `doom/` → `game.oodim.com/doom/` *(FROZEN — historical)*
+A browser-first first-person 3D shooter — the WebGL rung the flagship builds on.
 
-Technical details: `doom/docs/ARCHITECTURE.md`
+Technical details (archival): `doom/docs/ARCHITECTURE.md`
 
-### agar — `agar/` → `game.oodim.com/agar/` *(in development)*
-A multiplayer growth-and-survival prototype focused on server-authoritative
-real-time play.
+### agar — `agar/` → `game.oodim.com/agar/` *(FROZEN — historical)*
+A multiplayer growth-and-survival prototype — the server-authoritative
+Durable-Object rung the flagship builds on.
 
-Technical details: see `agar/` (docs land slice by slice)
+Technical details (archival): see `agar/`
 
 ## How it's built
 

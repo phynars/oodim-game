@@ -17,8 +17,8 @@
 //   1. The snapshot is pure serializable data (harness reads are data).
 //   2. Io npc identity aligns with `npcs.io.id` in the flagship contract.
 //   3. Every `AftersignPacketOutcome` is a valid `FlagshipDeliveryOutcome`
-//      (packetOutcome → delivery.outcome mapping never drifts).
-//   4. Every `AftersignStoryBeatId` maps to a `FlagshipSceneBeat`
+//      and maps to the expected delivery outcome.
+//   4. Every `AftersignStoryBeatId` maps to the expected `FlagshipSceneBeat`
 //      (the vertical-slice beats live inside the flagship beat space).
 //   5. Both aftersign scenes play inside the single flagship scene
 //      `io-night-post-kiosk` — the slice never invents a scene the
@@ -33,6 +33,11 @@
 // round-trip snapshot-equality path. This file is deliberately different
 // — it pins the CROSS-PACKAGE flagship↔slice type alignment that a plain
 // snapshot equality cannot catch.
+//
+// Imports are routed through the `./verticalSliceState` barrel (the stable
+// public surface of the slice) rather than the concern-focused sibling
+// modules (`./verticalSliceRuntimeState`, `./windowGameSurface`) so a
+// future re-partitioning of those modules doesn't break this test again.
 
 import { describe, expect, it } from "vitest";
 
@@ -43,16 +48,14 @@ import type {
 } from "../../../../e2e-shared/flagshipStoryStateContract";
 import {
   createAftersignVerticalSliceState,
+  createAftersignWindowGameSurface,
   meetIoForAftersignSlice,
   recordAftersignPacketChoice,
   type AftersignPacketOutcome,
   type AftersignSceneId,
-} from "./verticalSliceRuntimeState";
-import {
-  createAftersignWindowGameSurface,
   type AftersignStoryBeatId,
   type AftersignStoryStateSnapshot,
-} from "./windowGameSurface";
+} from "./verticalSliceState";
 
 const SURFACE_OPTIONS = {
   playerId: "player-test-1",
@@ -71,11 +74,10 @@ function buildSnapshot(
 }
 
 // ---------------------------------------------------------------------------
-// Type-level alignment pins. These lines fail `tsc` (and therefore vitest
-// with typechecking) if either side of the contract drifts — no runtime
-// needed. They intentionally reference the flagship types so a rename in
-// e2e-shared/flagshipStoryStateContract.ts breaks THIS file, not just the
-// browser e2e lane.
+// Type-level alignment pins. These lines fail `tsc` if either side of the
+// contract drifts — no runtime needed. They intentionally reference the
+// flagship types so a rename in e2e-shared/flagshipStoryStateContract.ts
+// breaks THIS file, not just the browser e2e lane.
 // ---------------------------------------------------------------------------
 
 // (3) packetOutcome → delivery.outcome: every aftersign outcome must be a
@@ -87,6 +89,15 @@ const OUTCOME_ALIGNMENT: Record<AftersignPacketOutcome, FlagshipDeliveryOutcome>
 };
 
 // (4) Every vertical-slice story beat maps into the flagship beat space.
+//
+// The Orra slice beats piggy-back on the flagship's existing recognition
+// beats — Orra doesn't (yet) have her own dedicated FlagshipSceneBeat.
+// `orra-first-meeting` reuses `packet-offered` (first NPC encounter on
+// the return leg) and `orra-remembers-answered-saint-orra` reuses
+// `io-return-recognition` (the recognition-envelope shape is identical:
+// NPC remembers a prior player action). When Orra gets her own beats in
+// the flagship contract, these two mappings become 1:1 and the reuse
+// note goes away.
 const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
   "packet-unresolved": "arrival",
   "packet-sealed": "packet-choice",
@@ -94,12 +105,18 @@ const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
   "io-first-meeting": "packet-offered",
   "io-remembers-sealed-packet": "io-return-recognition",
   "io-remembers-opened-packet": "io-return-recognition",
+  "orra-first-meeting": "packet-offered",
+  "orra-remembers-answered-saint-orra": "io-return-recognition",
 };
 
-// (5) Both aftersign scenes play inside the single flagship scene.
+// (5) Every aftersign scene plays inside the single flagship scene
+// `io-night-post-kiosk`. The Orra return leg is a distinct slice-level
+// scene id but stays inside the same flagship scene bucket — the slice
+// never invents a flagship scene the contract doesn't know about.
 const SCENE_ALIGNMENT: Record<AftersignSceneId, FlagshipGameSurface["scene"]["id"]> = {
   kiosk: "io-night-post-kiosk",
   "io-return": "io-night-post-kiosk",
+  "orra-return": "io-night-post-kiosk",
 };
 
 // (2) Io identity: the snapshot's npc id literal must be assignable to the
@@ -126,43 +143,69 @@ describe("aftersign snapshot ↔ FlagshipGameSurface alignment (vitest twin)", (
     expect(io.name).toBe("Io");
   });
 
-  it("maps every packetOutcome the slice produces to a flagship delivery outcome", () => {
+  it("maps every packetOutcome the slice produces to its flagship delivery outcome", () => {
     for (const outcome of ["sealed", "opened"] as const) {
       const snapshot = buildSnapshot((state) =>
         recordAftersignPacketChoice(state, outcome),
       );
       const packetOutcome = snapshot.state.npcs[0].memory.packetOutcome;
       expect(packetOutcome).toBe(outcome);
-      // Runtime twin of the type-level pin: the produced value must be a
-      // key of the alignment table (i.e. a valid FlagshipDeliveryOutcome).
-      expect(Object.keys(OUTCOME_ALIGNMENT)).toContain(packetOutcome);
+      expect(packetOutcome).not.toBeNull();
+      expect(OUTCOME_ALIGNMENT[packetOutcome]).toBe(outcome);
     }
   });
 
-  it("keeps every reachable story beat inside the flagship beat space", () => {
-    const reachableSnapshots = [
-      buildSnapshot(),
-      buildSnapshot((state) => recordAftersignPacketChoice(state, "sealed")),
-      buildSnapshot((state) => recordAftersignPacketChoice(state, "opened")),
-      buildSnapshot((state) => meetIoForAftersignSlice(state)),
-      buildSnapshot((state) =>
-        meetIoForAftersignSlice(
-          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
+  it("maps every reachable story beat to the expected flagship beat", () => {
+    const reachableSnapshots: Array<{
+      snapshot: AftersignStoryStateSnapshot;
+      expectedBeat: FlagshipSceneBeat;
+      expectedCompletedBeats: FlagshipSceneBeat[];
+    }> = [
+      {
+        snapshot: buildSnapshot(),
+        expectedBeat: "arrival",
+        expectedCompletedBeats: [],
+      },
+      {
+        snapshot: buildSnapshot((state) => recordAftersignPacketChoice(state, "sealed")),
+        expectedBeat: "packet-choice",
+        expectedCompletedBeats: ["packet-choice"],
+      },
+      {
+        snapshot: buildSnapshot((state) => recordAftersignPacketChoice(state, "opened")),
+        expectedBeat: "packet-choice",
+        expectedCompletedBeats: ["packet-choice"],
+      },
+      {
+        snapshot: buildSnapshot((state) => meetIoForAftersignSlice(state)),
+        expectedBeat: "packet-offered",
+        expectedCompletedBeats: ["packet-offered"],
+      },
+      {
+        snapshot: buildSnapshot((state) =>
+          meetIoForAftersignSlice(
+            meetIoForAftersignSlice(recordAftersignPacketChoice(state, "sealed")),
+          ),
         ),
-      ),
-      buildSnapshot((state) =>
-        meetIoForAftersignSlice(
-          meetIoForAftersignSlice(recordAftersignPacketChoice(state, "opened")),
+        expectedBeat: "io-return-recognition",
+        expectedCompletedBeats: ["packet-choice", "packet-offered", "io-return-recognition"],
+      },
+      {
+        snapshot: buildSnapshot((state) =>
+          meetIoForAftersignSlice(
+            meetIoForAftersignSlice(recordAftersignPacketChoice(state, "opened")),
+          ),
         ),
-      ),
+        expectedBeat: "io-return-recognition",
+        expectedCompletedBeats: ["packet-choice", "packet-offered", "io-return-recognition"],
+      },
     ];
 
-    for (const snapshot of reachableSnapshots) {
-      const beat = snapshot.story.beat;
-      expect(Object.keys(BEAT_ALIGNMENT)).toContain(beat);
-      for (const completed of snapshot.story.completedBeats) {
-        expect(Object.keys(BEAT_ALIGNMENT)).toContain(completed);
-      }
+    for (const { snapshot, expectedBeat, expectedCompletedBeats } of reachableSnapshots) {
+      expect(BEAT_ALIGNMENT[snapshot.story.beat]).toBe(expectedBeat);
+      expect(snapshot.story.completedBeats.map((beat) => BEAT_ALIGNMENT[beat])).toEqual(
+        expectedCompletedBeats,
+      );
     }
   });
 
