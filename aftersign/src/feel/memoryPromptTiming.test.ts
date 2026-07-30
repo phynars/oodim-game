@@ -117,5 +117,3 @@ export function runMemoryPromptTimingChecks(): void {
   checkChoicesReturnBeforeSkipUnlocks();
   checkTimelineIsMonotonicForReadableElements();
 }
-
-runMemoryPromptTimingChecks();
