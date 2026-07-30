@@ -27,6 +27,7 @@ import {
   sampleAftersignPacketConfirmInteractionEnvelope,
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
+import "./harness/bootWindowGame";
 
 type FeelContractSample = {
   label: string;
@@ -132,6 +133,40 @@ describe("Aftersign durable save/load contract", () => {
       recognizesPlayer: true,
       packetOutcome: "sealed",
       recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+    });
+  });
+
+  it("boots window.__game and projects durable Io memory through the harness surface", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.version).toBe(1);
+
+    const payload = encodeAftersignDurableSave(
+      meetIoForAftersignSlice(
+        recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+      ),
+      7,
+    );
+
+    game?.restoreDurableSave(payload);
+    game?.meetNpc("io");
+
+    expect(game?.getStoryState()).toMatchObject({
+      story: {
+        beat: "io-remembers-sealed-packet",
+      },
+      state: {
+        npcs: [
+          {
+            id: "io",
+            disposition: "recognizes-player",
+            memory: {
+              recognizesPlayer: true,
+              packetOutcome: "sealed",
+            },
+          },
+        ],
+      },
     });
   });
 
