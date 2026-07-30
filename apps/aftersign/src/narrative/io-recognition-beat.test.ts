@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  IO_OPENED_SEAL_LINE,
   buildIoAuthoredMemorySentence,
   isIoRecognitionBeatAllowed,
   selectIoRecognitionBeat,
+  type IoReturnTone,
+  type IoRouteAttention,
   type IoSliceMemoryRecord,
 } from './io-recognition-beat';
 
@@ -23,13 +26,13 @@ describe('selectIoRecognitionBeat', () => {
     expect(beat.remembers).toContain('the player delivered the blue packet unopened');
   });
 
-  it('selects the broken-seal line for a player who opened the packet', () => {
+  it('selects the shared broken-seal line for a player who opened the packet', () => {
     const beat = selectIoRecognitionBeat(
       returnedWith({ completedDeliveryIds: ['io-blue-packet'], packetOutcome: 'opened', routeAttention: 'listened' }),
     );
 
     expect(beat.id).toBe('io-return-blue-seal-broken');
-    expect(beat.line).toBe('You came back. The seal did not. I can use one of those facts.');
+    expect(beat.line).toBe(IO_OPENED_SEAL_LINE);
     expect(beat.remembers).toContain('the player opened the blue packet');
   });
 
@@ -43,18 +46,27 @@ describe('selectIoRecognitionBeat', () => {
     ).toBe('You brought it back instead of pretending the route was clean. Useful habit.');
   });
 
-  it('falls back to route memory when the packet delivery has not been completed', () => {
-    const beat = selectIoRecognitionBeat(returnedWith({ packetOutcome: 'sealed', routeAttention: 'skipped' }));
+  it.each([
+    ['listened', 'io-return-route-listened', 'You listened before you ran. Rare habit. Keep it.'],
+    ['skipped', 'io-return-route-skipped', 'You found the box anyway. Next time, let me finish saving your life.'],
+  ] as const)('falls back to %s route memory when the packet delivery has not been completed', (routeAttention, id, line) => {
+    const beat = selectIoRecognitionBeat(returnedWith({ packetOutcome: 'sealed', routeAttention }));
 
-    expect(beat.id).toBe('io-return-route-skipped');
-    expect(beat.line).toBe('You found the box anyway. Next time, let me finish saving your life.');
+    expect(beat.id).toBe(id);
+    expect(beat.line).toBe(line);
   });
 
-  it('falls back to return-tone memory after route memory', () => {
-    const beat = selectIoRecognitionBeat(returnedWith({ routeAttention: 'unknown', returnTone: 'evasive' }));
+  it.each([
+    ['kind', 'io-return-tone-kind', 'Kind answer. Not required. Not wasted.'],
+    ['evasive', 'io-return-tone-evasive', 'You dodged the question. Fine. Couriers start with feet, not confessions.'],
+    ['blunt', 'io-return-tone-blunt', 'Blunt, then. Saves ink.'],
+  ] as const)('falls back to %s return-tone memory after route memory', (returnTone, id, line) => {
+    const beat = selectIoRecognitionBeat(
+      returnedWith({ routeAttention: 'unknown' as IoRouteAttention, returnTone: returnTone as IoReturnTone }),
+    );
 
-    expect(beat.id).toBe('io-return-tone-evasive');
-    expect(beat.line).toBe('You dodged the question. Fine. Couriers start with feet, not confessions.');
+    expect(beat.id).toBe(id);
+    expect(beat.line).toBe(line);
   });
 
   it('uses a first-return line when no specific memory is available', () => {
