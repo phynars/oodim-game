@@ -40,6 +40,7 @@ export default defineConfig({
     "io-recognition-cue-contract.spec.ts",
     "recognition-beat-contract.spec.ts",
     "io-return-memory-beat-contract.spec.ts",
+    "memory-prompt-timing-feel-contract.spec.ts",
     "kiosk-scene-contract.spec.ts",
     "orra-recognition-memory-contract.spec.ts",
     "hard-navigation-save-survival-contract.spec.ts",
