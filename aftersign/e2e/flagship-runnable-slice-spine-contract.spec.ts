@@ -4,7 +4,10 @@ import pureConfig from "../playwright.pure.config";
 import { runKioskSceneContractChecks } from "../src/kioskSceneContract";
 import { runOrraRecognitionMemoryChecks } from "../src/orraRecognitionMemory";
 import { HARD_NAVIGATION_SAVE_CONTRACT_SLOT } from "../src/hardNavigationSaveSurvival";
-import { getNextVerticalSliceMilestone } from "../src/verticalSliceMilestones";
+import {
+  aftersignVerticalSliceMilestones,
+  getNextVerticalSliceMilestone,
+} from "../src/verticalSliceMilestones";
 
 // Product-spine guard for the AFTERSIGN runnable slice.
 //
