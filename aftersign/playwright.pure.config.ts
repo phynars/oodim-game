@@ -62,6 +62,7 @@ export default defineConfig({
     "first-camera-move-feel-contract.spec.ts",
     "memory-prompt-timing-feel-contract.spec.ts",
     "io-return-memory-beat-contract.spec.ts",
+    "io-returning-recognition-line-contract.spec.ts",
     "kiosk-scene-contract.spec.ts",
     "orra-recognition-memory-contract.spec.ts",
     "hard-navigation-save-survival-contract.spec.ts",
