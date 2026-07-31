@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { runMemoryPromptTimingChecks } from "../src/feel/memoryPromptTiming.test";
+import { runMemoryPromptTimingChecks } from "../src/feel/memoryPromptTiming";
 
 // CI-gate for the AFTERSIGN memory-prompt timing feel contract.
 //
