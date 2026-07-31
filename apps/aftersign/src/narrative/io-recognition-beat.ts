@@ -1,6 +1,18 @@
 // Io's return recognition deck — the single spoken line Io says when she
 // recognizes a returning player. One selector owns the words; cue timing lives
 // in packages/aftersign/src/ioRecognitionBeat.ts.
+//
+// This module also owns the rest of Io's vertical-slice authored copy so the
+// harness has ONE source of truth for her voice: first meeting, packet
+// inspection, delivery return, and the returning-memory selector used by the
+// slice surface. Do not fork these lines into a parallel module — if you need
+// a new beat, add it here.
+
+// A "packet choice" is the two-outcome slice input: the player either kept the
+// blue packet sealed or opened it before delivery. The recognition-beat memory
+// (`IoPacketMemoryOutcome`) has more outcomes (`withheld`, `returned`) that
+// only apply after the delivery is complete.
+export type IoPacketChoice = 'kept-sealed' | 'opened';
 
 export type IoPacketMemoryOutcome = 'sealed' | 'opened' | 'withheld' | 'returned';
 
@@ -134,4 +146,89 @@ export function buildIoAuthoredMemorySentence(memory: IoSliceMemoryRecord): stri
   }
 
   return beat.remembers[beat.remembers.length - 1] ?? PLAYER_RETURNED_MEMORY;
+}
+
+// ---------------------------------------------------------------------------
+// Vertical-slice authored copy (first meeting → packet inspection → delivery
+// return → returning memory). These beats run BEFORE the recognition selector
+// above; they exist here so the slice has one source of Io voice.
+
+export interface IoSliceLine {
+  readonly id: string;
+  readonly speaker: 'io' | 'system';
+  readonly text: string;
+}
+
+export interface IoMemoryLine extends IoSliceLine {
+  readonly remembers: string;
+  readonly requiredChoice: IoPacketChoice;
+}
+
+export const ioFirstMeetingLines = [
+  {
+    id: 'io-first-meeting-name',
+    speaker: 'io',
+    text: "You're late. That's all right. The stairs are worse when they like you.",
+  },
+  {
+    id: 'io-first-meeting-packet',
+    speaker: 'io',
+    text: 'Blue packet. Brass box. No detours you plan to admit to me.',
+  },
+  {
+    id: 'io-first-meeting-route',
+    speaker: 'io',
+    text: 'Follow the amber signs. Ignore anything pale enough to beg.',
+  },
+] as const satisfies readonly IoSliceLine[];
+
+export const ioPacketInspectionLines = {
+  sealed: {
+    id: 'io-packet-sealed-inspection',
+    speaker: 'system',
+    text: 'The wax is cold. Someone pressed a thumb into it before it hardened.',
+  },
+  opened: {
+    id: 'io-packet-opened-inspection',
+    speaker: 'system',
+    text: 'The seal gives with a soft crack. Somewhere below, a bell refuses to ring.',
+  },
+} as const satisfies Record<'sealed' | 'opened', IoSliceLine>;
+
+export const ioDeliveryReturnLines = {
+  keptSealed: {
+    id: 'io-delivery-return-sealed',
+    speaker: 'io',
+    text: 'Box took it. Seal stayed shut. Good. The city likes a courier who can leave a question breathing.',
+  },
+  opened: {
+    id: 'io-delivery-return-opened',
+    speaker: 'io',
+    text: 'Box took it. Seal did not survive you. Also useful. Less clean.',
+  },
+} as const satisfies Record<'keptSealed' | 'opened', IoSliceLine>;
+
+// Returning-memory lines are the single Io line the slice surface shows on the
+// player's SECOND visit. They wrap the corresponding PACKET_BEATS entry so the
+// exact recognition line stays in one place — if a beat's text changes above,
+// this selector inherits it.
+export const ioReturningMemoryLines = {
+  keptSealed: {
+    id: PACKET_BEATS.sealed.id,
+    speaker: 'io',
+    text: PACKET_BEATS.sealed.line,
+    remembers: 'the courier delivered the first blue packet unopened',
+    requiredChoice: 'kept-sealed',
+  },
+  opened: {
+    id: PACKET_BEATS.opened.id,
+    speaker: 'io',
+    text: PACKET_BEATS.opened.line,
+    remembers: 'the courier broke the first blue seal before delivery',
+    requiredChoice: 'opened',
+  },
+} as const satisfies Record<'keptSealed' | 'opened', IoMemoryLine>;
+
+export function selectIoReturningMemoryLine(choice: IoPacketChoice): IoMemoryLine {
+  return choice === 'kept-sealed' ? ioReturningMemoryLines.keptSealed : ioReturningMemoryLines.opened;
 }
