@@ -1,39 +1,30 @@
-export type MemoryPromptPhase =
-  | 'pre-recognition'
-  | 'recognition'
-  | 'player-choice'
-  | 'settled';
+export type MemoryPromptPhase = "pre-recognition" | "recognizing" | "choice-reveal" | "choice-ready";
 
-export type MemoryPromptTimingFrame = {
-  elapsedMs: number;
+export interface MemoryPromptTimingConfig {
+  frameMs: number;
+  recognitionLineReadableMs: number;
+  choiceRevealMs: number;
+  choiceReadyMs: number;
+  npcLineFadeMs: number;
+  choiceFadeMs: number;
+}
+
+export interface MemoryPromptTimingSample {
+  tMs: number;
   phase: MemoryPromptPhase;
   npcLineOpacity: number;
-  memoryGlyphScale: number;
-  playerChoiceOpacity: number;
-  controlLockMsRemaining: number;
-  canSkip: boolean;
-};
+  choiceOpacity: number;
+  controlsLocked: boolean;
+  skipAllowed: boolean;
+}
 
-export type MemoryPromptTimingConfig = {
-  recognitionStartMs: number;
-  recognitionRiseMs: number;
-  glyphPeakMs: number;
-  choiceRevealMs: number;
-  choiceRiseMs: number;
-  settleMs: number;
-  maximumControlLockMs: number;
-  skipEnabledMs: number;
-};
-
-export const MEMORY_PROMPT_TIMING: MemoryPromptTimingConfig = {
-  recognitionStartMs: 180,
-  recognitionRiseMs: 220,
-  glyphPeakMs: 320,
+export const DEFAULT_MEMORY_PROMPT_TIMING: MemoryPromptTimingConfig = {
+  frameMs: 1000 / 60,
+  recognitionLineReadableMs: 300,
   choiceRevealMs: 520,
-  choiceRiseMs: 180,
-  settleMs: 860,
-  maximumControlLockMs: 420,
-  skipEnabledMs: 520,
+  choiceReadyMs: 700,
+  npcLineFadeMs: 240,
+  choiceFadeMs: 180,
 };
 
 function clamp01(value: number): number {
@@ -43,58 +34,127 @@ function clamp01(value: number): number {
 }
 
 function easeOutCubic(value: number): number {
-  const t = clamp01(value);
-  return 1 - (1 - t) ** 3;
-}
-
-function easeOutBack(value: number): number {
-  const t = clamp01(value);
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2;
-}
-
-function round(value: number): number {
-  return Math.round(value * 1_000) / 1_000;
+  const clamped = clamp01(value);
+  return 1 - Math.pow(1 - clamped, 3);
 }
 
 export function sampleMemoryPromptTiming(
-  elapsedMs: number,
-  config: MemoryPromptTimingConfig = MEMORY_PROMPT_TIMING,
-): MemoryPromptTimingFrame {
-  const safeElapsedMs = Math.max(0, elapsedMs);
-  const recognitionProgress = easeOutCubic(
-    (safeElapsedMs - config.recognitionStartMs) / config.recognitionRiseMs,
-  );
-  const choiceProgress = easeOutCubic(
-    (safeElapsedMs - config.choiceRevealMs) / config.choiceRiseMs,
-  );
-  const glyphProgress = easeOutBack(safeElapsedMs / config.glyphPeakMs);
-  const controlLockMsRemaining = Math.max(0, config.maximumControlLockMs - safeElapsedMs);
+  tMs: number,
+  config: MemoryPromptTimingConfig = DEFAULT_MEMORY_PROMPT_TIMING,
+): MemoryPromptTimingSample {
+  const npcLineOpacity = easeOutCubic(tMs / config.npcLineFadeMs);
+  const choiceOpacity = easeOutCubic((tMs - config.choiceRevealMs) / config.choiceFadeMs);
+  const controlsLocked = tMs < config.choiceRevealMs;
+  const skipAllowed = tMs >= config.choiceRevealMs;
 
-  let phase: MemoryPromptPhase = 'pre-recognition';
-  if (safeElapsedMs >= config.settleMs) {
-    phase = 'settled';
-  } else if (safeElapsedMs >= config.choiceRevealMs) {
-    phase = 'player-choice';
-  } else if (safeElapsedMs >= config.recognitionStartMs) {
-    phase = 'recognition';
+  let phase: MemoryPromptPhase = "pre-recognition";
+  if (tMs >= config.choiceReadyMs) {
+    phase = "choice-ready";
+  } else if (tMs >= config.choiceRevealMs) {
+    phase = "choice-reveal";
+  } else if (tMs >= config.frameMs) {
+    phase = "recognizing";
   }
 
   return {
-    elapsedMs: safeElapsedMs,
+    tMs,
     phase,
-    npcLineOpacity: round(recognitionProgress),
-    memoryGlyphScale: round(0.72 + 0.28 * glyphProgress),
-    playerChoiceOpacity: round(choiceProgress),
-    controlLockMsRemaining: round(controlLockMsRemaining),
-    canSkip: safeElapsedMs >= config.skipEnabledMs,
+    npcLineOpacity,
+    choiceOpacity,
+    controlsLocked,
+    skipAllowed,
   };
 }
 
-export function sampleMemoryPromptTimeline(
-  samplesMs: readonly number[],
-  config: MemoryPromptTimingConfig = MEMORY_PROMPT_TIMING,
-): MemoryPromptTimingFrame[] {
-  return samplesMs.map((elapsedMs) => sampleMemoryPromptTiming(elapsedMs, config));
+function assertMemoryPrompt(condition: boolean, message: string): void {
+  if (!condition) throw new Error(message);
+}
+
+export function checkMemoryPromptFirstFrameQuiet(
+  config: MemoryPromptTimingConfig = DEFAULT_MEMORY_PROMPT_TIMING,
+): void {
+  const sample = sampleMemoryPromptTiming(config.frameMs - 0.1, config);
+  assertMemoryPrompt(
+    sample.phase === "pre-recognition",
+    "Memory prompt must not advance past pre-recognition during the first frame",
+  );
+  assertMemoryPrompt(
+    sample.choiceOpacity === 0,
+    "Memory prompt choices must stay hidden during the first frame",
+  );
+  assertMemoryPrompt(
+    sample.controlsLocked,
+    "Memory prompt must keep controls locked before the recognition beat is readable",
+  );
+}
+
+export function checkMemoryPromptLineReadableByRecognitionWindow(
+  config: MemoryPromptTimingConfig = DEFAULT_MEMORY_PROMPT_TIMING,
+): void {
+  const sample = sampleMemoryPromptTiming(config.recognitionLineReadableMs, config);
+  assertMemoryPrompt(
+    sample.phase === "recognizing",
+    "Memory prompt must still be in the authored recognition beat before choices reveal",
+  );
+  assertMemoryPrompt(
+    sample.npcLineOpacity >= 0.9,
+    "Memory prompt NPC line must be readable by the recognition-line window",
+  );
+  assertMemoryPrompt(
+    sample.choiceOpacity === 0,
+    "Memory prompt must not reveal choices before the recognition line is readable",
+  );
+}
+
+export function checkMemoryPromptChoiceRevealReturnsControl(
+  config: MemoryPromptTimingConfig = DEFAULT_MEMORY_PROMPT_TIMING,
+): void {
+  const sample = sampleMemoryPromptTiming(config.choiceRevealMs, config);
+  assertMemoryPrompt(
+    sample.phase === "choice-reveal",
+    "Memory prompt must enter choice-reveal exactly at the authored reveal time",
+  );
+  assertMemoryPrompt(
+    !sample.controlsLocked,
+    "Memory prompt must return control when choices reveal",
+  );
+  assertMemoryPrompt(
+    sample.skipAllowed,
+    "Memory prompt must allow skip once choices reveal",
+  );
+}
+
+export function checkMemoryPromptOpacityIsMonotonic(
+  config: MemoryPromptTimingConfig = DEFAULT_MEMORY_PROMPT_TIMING,
+): void {
+  const samples = [
+    0,
+    config.frameMs,
+    config.recognitionLineReadableMs,
+    config.choiceRevealMs,
+    config.choiceRevealMs + config.choiceFadeMs / 2,
+    config.choiceReadyMs,
+  ].map((tMs) => sampleMemoryPromptTiming(tMs, config));
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    assertMemoryPrompt(
+      current.npcLineOpacity >= previous.npcLineOpacity,
+      "Memory prompt NPC line opacity must never retreat across the authored beat",
+    );
+    assertMemoryPrompt(
+      current.choiceOpacity >= previous.choiceOpacity,
+      "Memory prompt choice opacity must never retreat across the authored beat",
+    );
+  }
+}
+
+export function runMemoryPromptTimingChecks(
+  config: MemoryPromptTimingConfig = DEFAULT_MEMORY_PROMPT_TIMING,
+): void {
+  checkMemoryPromptFirstFrameQuiet(config);
+  checkMemoryPromptLineReadableByRecognitionWindow(config);
+  checkMemoryPromptChoiceRevealReturnsControl(config);
+  checkMemoryPromptOpacityIsMonotonic(config);
 }
