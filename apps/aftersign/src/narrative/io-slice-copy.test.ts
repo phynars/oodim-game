@@ -61,6 +61,17 @@ describe('Io slice copy', () => {
     expect(ioMemorySentence(memory)).toBe(sentence);
   });
 
+  it('omits returnedAfterClose from remembers when the input memory does not set it', () => {
+    expect(ioReturningLine({ packetOutcome: 'sealed' })).toMatchObject({
+      id: 'io.return.packetSealed',
+      remembers: ['packetOutcome:sealed'],
+    });
+    expect(ioReturningLine({ packetOutcome: 'opened' })).toMatchObject({
+      id: 'io.return.packetOpened',
+      remembers: ['packetOutcome:opened'],
+    });
+  });
+
   it('falls back to a return line only when no stronger memory beat is available', () => {
     expect(ioReturningLine({ packetOutcome: 'unknown', returnedAfterClose: true })).toMatchObject({
       id: 'io.return.bare',
@@ -78,7 +89,7 @@ describe('Io slice copy', () => {
       }),
     ).toMatchObject({
       id: 'io.return.packetOpened',
-      remembers: ['packetOutcome:opened', 'returnedAfterClose'],
+      remembers: ['packetOutcome:opened'],
     });
   });
 });

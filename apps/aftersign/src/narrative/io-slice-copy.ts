@@ -62,7 +62,9 @@ export function ioReturningLine(memory: IoSliceMemory): IoLine {
     return {
       id: 'io.return.packetSealed',
       text: 'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
-      remembers: ['packetOutcome:sealed', 'returnedAfterClose'],
+      remembers: memory.returnedAfterClose
+        ? ['packetOutcome:sealed', 'returnedAfterClose']
+        : ['packetOutcome:sealed'],
     };
   }
 
@@ -70,7 +72,9 @@ export function ioReturningLine(memory: IoSliceMemory): IoLine {
     return {
       id: 'io.return.packetOpened',
       text: 'You came back. The seal did not. I can use one of those facts.',
-      remembers: ['packetOutcome:opened', 'returnedAfterClose'],
+      remembers: memory.returnedAfterClose
+        ? ['packetOutcome:opened', 'returnedAfterClose']
+        : ['packetOutcome:opened'],
     };
   }
 
