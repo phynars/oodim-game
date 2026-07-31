@@ -6,13 +6,11 @@ import {
   RECOGNITION_BEAT_DURATION_MS,
 } from "./recognitionBeat";
 import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
-import {
-  RECOGNITION_FEEDBACK_TOTAL_MS,
-  RECOGNITION_FEEDBACK_REDUCED_MOTION_MS,
-  RECOGNITION_FEEDBACK_STING_START_MS,
-  RECOGNITION_FEEDBACK_STING_GAIN_DB,
-  RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS,
-} from "./recognitionFeedback";
+// Canonical single-source-of-truth feel contract (README §"Source of truth").
+// Every assertion in this file that pins a feel number reads from this
+// contract, never from the sibling `./recognitionFeedback` — that is the
+// invariant the README exists to protect.
+import { recognitionFeedbackContract } from "../../apps/web/src/aftersign/recognitionFeedback";
 
 // ---------------------------------------------------------------------------
 // Feel-plan (build) checks — pin the lantern/sting/haptic timing envelope
@@ -24,7 +22,8 @@ import {
 function checkBuildPlan(): void {
   const sealed = buildIoRecognitionBeat("sealed");
   assert.equal(sealed.durationMs, RECOGNITION_BEAT_DURATION_MS);
-  assert.equal(sealed.durationMs, 1640);
+  // Duration is pinned to the canonical contract — build and feel MUST agree.
+  assert.equal(sealed.durationMs, recognitionFeedbackContract.totalMs);
   // Single-source-of-truth: the sealed line is the authored `sealedPacket`
   // key from `ioReturningSessionLines`, not a local copy.
   assert.equal(sealed.line, ioReturningSessionLines.sealedPacket);
@@ -32,14 +31,14 @@ function checkBuildPlan(): void {
     sealed.cues.map((cue) => [cue.atMs, cue.kind, cue.easing ?? "none"]),
     [
       [0, "camera", "easeOutCubic"],
-      [80, "light", "easeInOutSine"],
-      [120, "audio", "linear"],
-      [120, "haptic", "easeOutCubic"],
+      [recognitionFeedbackContract.glowStartMs, "light", "easeInOutSine"],
+      [recognitionFeedbackContract.stingStartMs, "audio", "linear"],
+      [recognitionFeedbackContract.stingStartMs, "haptic", "easeOutCubic"],
       [420, "dialogue", "none"],
     ],
   );
-  assert.equal(sealed.cues[0]?.value, 4);
-  assert.equal(sealed.cues[1]?.value, 1.35);
+  assert.equal(sealed.cues[0]?.value, recognitionFeedbackContract.cameraYawDegrees);
+  assert.equal(sealed.cues[1]?.value, recognitionFeedbackContract.glowToMultiplier);
   assert.equal(sealed.cues[2]?.value, 0.72);
   assert.equal(sealed.cues[3]?.value, 3);
 
@@ -100,44 +99,89 @@ function checkLineResolver(): void {
 
 // ---------------------------------------------------------------------------
 // Feel-envelope (recognitionBeatProgress) checks — thin delegate assertions
-// against `recognitionFeedbackAt`. This guards the delegate contract so a
-// later refactor of the underlying sampler can't silently drop a cue.
+// against `sampleRecognitionFeedbackBeat` (canonical). Asserts the beat
+// starts at rest, camera peaks at `cameraPeakMs`, reduced-motion suppresses
+// the camera and uses `reducedMotionTotalMs`, outcome-branch cues are
+// present, wooden-click timing matches `stingStartMs + openedWoodenClickDelayMs`,
+// and the beat settles at `totalMs`. Mirrors the e2e header contract in
+// `aftersign/e2e/recognition-beat-contract.spec.ts`.
 // ---------------------------------------------------------------------------
 
 function checkFeelEnvelope(): void {
+  // Beat starts at rest — camera hasn't moved yet.
   const rest = recognitionBeatProgress(0);
   assert.equal(rest.elapsedMs, 0);
+  assert.equal(rest.cameraDeltaMeters, 0);
   assert.equal(rest.cameraYawDegrees, 0);
-  assert.equal(rest.screenShakePx >= 0, true);
+  assert.equal(rest.progress, 0);
 
-  // Reduced motion collapses the camera + shortens the total.
+  // Camera peaks at `cameraPeakMs` — full delta reached.
+  const peak = recognitionBeatProgress(recognitionFeedbackContract.cameraPeakMs, {
+    outcome: "sealed",
+  });
+  assert.equal(
+    Math.abs(peak.cameraDeltaMeters - recognitionFeedbackContract.cameraDeltaMeters) < 1e-6,
+    true,
+    `camera peak: expected ${recognitionFeedbackContract.cameraDeltaMeters}, got ${peak.cameraDeltaMeters}`,
+  );
+
+  // Reduced motion collapses the camera and shortens the total.
   const reduced = recognitionBeatProgress(80, { reducedMotion: true });
-  assert.equal(reduced.reducedMotion, true);
-  assert.equal(reduced.cameraYawDegrees, 0);
   assert.equal(reduced.cameraDeltaMeters, 0);
+  assert.equal(reduced.cameraYawDegrees, 0);
+  assert.equal(reduced.totalMs, recognitionFeedbackContract.reducedMotionTotalMs);
 
   const reducedDone = recognitionBeatProgress(
-    RECOGNITION_FEEDBACK_REDUCED_MOTION_MS,
+    recognitionFeedbackContract.reducedMotionTotalMs,
     { reducedMotion: true },
   );
-  assert.equal(reducedDone.elapsedMs, RECOGNITION_FEEDBACK_REDUCED_MOTION_MS);
+  assert.equal(reducedDone.elapsedMs, recognitionFeedbackContract.reducedMotionTotalMs);
 
-  // Sting fires at stingStartMs with the authored gain.
-  const sting = recognitionBeatProgress(RECOGNITION_FEEDBACK_STING_START_MS);
-  assert.equal(sting.audioCue, "bell-glass-sting");
-  assert.equal(sting.audioCueGainDb, RECOGNITION_FEEDBACK_STING_GAIN_DB);
+  // Outcome-branch cues present on both branches (lantern, packetSeal,
+  // kioskSign, rainRim, hapticScale, recognition-sting audio).
+  for (const outcome of ["sealed", "opened"] as const) {
+    const cued = recognitionBeatProgress(recognitionFeedbackContract.stingStartMs, {
+      outcome,
+    });
+    assert.equal(cued.lantern.durationMs > 0, true, `${outcome} lantern cue missing`);
+    assert.equal(cued.packetSeal.durationMs > 0, true, `${outcome} packetSeal cue missing`);
+    assert.equal(cued.kioskSign.durationMs > 0, true, `${outcome} kioskSign cue missing`);
+    assert.equal(cued.rainRim.durationMs > 0, true, `${outcome} rainRim cue missing`);
+    assert.equal(cued.hapticScale.amplitude > 0, true, `${outcome} hapticScale cue missing`);
+    assert.equal(
+      cued.audioCueIds.includes("recognition-sting"),
+      true,
+      `${outcome} audio cues missing recognition-sting`,
+    );
+  }
 
-  // Opened branch overlays the wooden click at stingStartMs + delay.
+  // Sting fires at stingStartMs with the authored gain envelope.
+  const stingSample = recognitionBeatProgress(recognitionFeedbackContract.stingStartMs);
+  assert.equal(stingSample.stingElapsedMs !== null, true, "sting did not fire at stingStartMs");
+  assert.equal(
+    stingSample.stingGainDb !== null && stingSample.stingGainDb >= recognitionFeedbackContract.stingGainDb,
+    true,
+  );
+
+  // Opened branch overlays the wooden click at stingStartMs + openedWoodenClickDelayMs.
   const openedClick = recognitionBeatProgress(
-    RECOGNITION_FEEDBACK_STING_START_MS + RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS,
+    recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
     { outcome: "opened" },
   );
-  assert.equal(openedClick.audioCue, "wooden-click");
+  assert.equal(openedClick.woodenClickElapsedMs !== null, true, "opened wooden click did not fire");
+  assert.equal(openedClick.woodenClickElapsedMs, 0);
 
-  // Beat settles at totalMs.
-  const done = recognitionBeatProgress(RECOGNITION_FEEDBACK_TOTAL_MS);
-  assert.equal(done.phase, "settle");
-  assert.equal(done.screenShakePx, 0);
+  // Sealed branch does NOT overlay the wooden click.
+  const sealedNoClick = recognitionBeatProgress(
+    recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
+    { outcome: "sealed" },
+  );
+  assert.equal(sealedNoClick.woodenClickElapsedMs, null);
+
+  // Beat settles at totalMs — progress hits 1.
+  const done = recognitionBeatProgress(recognitionFeedbackContract.totalMs);
+  assert.equal(done.elapsedMs, recognitionFeedbackContract.totalMs);
+  assert.equal(done.progress, 1);
 }
 
 /**

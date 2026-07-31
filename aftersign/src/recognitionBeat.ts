@@ -2,11 +2,26 @@ import {
   chooseIoReturningSessionLine,
   ioReturningSessionLines,
 } from "../../packages/aftersign/src/ioReturningSession";
+// SINGLE SOURCE OF TRUTH for the recognition beat's feel numbers.
+//
+// Per `aftersign/src/README.md`, the recognition beat's timing envelope,
+// camera delta, sign glow, sting, and wooden-click delay live in ONE place:
+// `apps/web/src/aftersign/recognitionFeedback.ts` — exporting
+// `recognitionFeedbackContract` and `sampleRecognitionFeedbackBeat`.
+//
+// This module deliberately imports from that canonical source (not the
+// sibling `aftersign/src/recognitionFeedback.ts` — which is a wider-shape
+// harness that duplicates the same constants for the standalone e2e
+// assertion runners in this folder). Routing through the canonical module
+// is what keeps the flagship's build plan (below) reconcilable with the
+// renderer, harness, and feel-layer samples — they all read from the same
+// contract.
 import {
-  recognitionFeedbackAt,
-  type RecognitionFeedbackState,
-  type IoRecognitionOutcome,
-} from "./recognitionFeedback";
+  recognitionFeedbackContract,
+  sampleRecognitionFeedbackBeat,
+  type RecognitionFeedbackSample,
+  type RecognitionOutcome,
+} from "../../apps/web/src/aftersign/recognitionFeedback";
 
 // Packet outcome shape for the recognition beat's feel envelope. The wider
 // four-value packet outcome (sealed | opened | withheld | returned) lives in
@@ -30,10 +45,16 @@ export interface RecognitionBeatPlan {
   line: string;
 }
 
-export const RECOGNITION_BEAT_DURATION_MS = 1640;
-export const RECOGNITION_PUSH_IN_DEGREES = 4;
-export const RECOGNITION_PUSH_IN_MS = 360;
-export const RECOGNITION_LANTERN_GLOW_GAIN = 1.35;
+// Duration is pinned to the canonical feel contract's `totalMs` so the
+// build plan below and the runtime feel envelope (`recognitionBeatProgress`)
+// cannot disagree. A prior revision hard-coded 1640ms here while the sampler
+// resolved at 1220ms — 420ms of drift between what the flagship declared it
+// was scheduling and what the feel layer actually rendered. Reading the
+// contract eliminates that class of drift entirely.
+export const RECOGNITION_BEAT_DURATION_MS = recognitionFeedbackContract.totalMs;
+export const RECOGNITION_PUSH_IN_DEGREES = recognitionFeedbackContract.cameraYawDegrees;
+export const RECOGNITION_PUSH_IN_MS = recognitionFeedbackContract.cameraPeakMs;
+export const RECOGNITION_LANTERN_GLOW_GAIN = recognitionFeedbackContract.glowToMultiplier;
 export const RECOGNITION_STING_GAIN = 0.72;
 export const RECOGNITION_VISUAL_HAPTIC_SCALE_PX = 3;
 
@@ -62,21 +83,21 @@ export function buildIoRecognitionBeat(outcome: PacketOutcome): RecognitionBeatP
         easing: "easeOutCubic",
       },
       {
-        atMs: 80,
+        atMs: recognitionFeedbackContract.glowStartMs,
         kind: "light",
         label: "Io kiosk lantern memory bloom",
         value: RECOGNITION_LANTERN_GLOW_GAIN,
         easing: "easeInOutSine",
       },
       {
-        atMs: 120,
+        atMs: recognitionFeedbackContract.stingStartMs,
         kind: "audio",
         label: outcome === "sealed" ? "two-note bell trust sting" : "single cracked-bell recognition sting",
         value: RECOGNITION_STING_GAIN,
         easing: "linear",
       },
       {
-        atMs: 120,
+        atMs: recognitionFeedbackContract.stingStartMs,
         kind: "haptic",
         label: "visual-only micro-screen pulse for touch devices",
         value: RECOGNITION_VISUAL_HAPTIC_SCALE_PX,
@@ -157,11 +178,12 @@ export function ioRecognitionBeat(input: IoRecognitionBeatInput): IoRecognitionB
 }
 
 // ---------------------------------------------------------------------------
-// Public feel-envelope API — thin delegate to the pure-data
-// `recognitionFeedbackAt` sampler in `./recognitionFeedback.ts`. Kept as a
-// separately-named entry point so the contract spec has a stable symbol to
-// import and so future feel-envelope callers don't need to reach into the
-// underlying sampler's option surface.
+// Public feel-envelope API — thin delegate to the CANONICAL pure-data
+// `sampleRecognitionFeedbackBeat` in
+// `apps/web/src/aftersign/recognitionFeedback.ts`. Kept as a separately-
+// named entry point so the contract spec has a stable symbol to import and
+// so future feel-envelope callers don't need to reach into the underlying
+// sampler's option surface directly.
 // ---------------------------------------------------------------------------
 
 export interface RecognitionBeatProgressOptions {
@@ -172,9 +194,9 @@ export interface RecognitionBeatProgressOptions {
 export function recognitionBeatProgress(
   elapsedMs: number,
   options: RecognitionBeatProgressOptions = {},
-): RecognitionFeedbackState {
-  const outcome: IoRecognitionOutcome = options.outcome ?? "sealed";
-  return recognitionFeedbackAt(elapsedMs, {
+): RecognitionFeedbackSample {
+  const outcome: RecognitionOutcome = options.outcome ?? "sealed";
+  return sampleRecognitionFeedbackBeat(elapsedMs, {
     outcome,
     reducedMotion: options.reducedMotion ?? false,
   });
