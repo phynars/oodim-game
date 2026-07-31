@@ -68,13 +68,25 @@ export function sampleInteractionConfirm(options: InteractionConfirmOptions): In
 
   const settleElapsed = elapsedMs - INTERACTION_CONFIRM_FEEL.pressMs;
   if (settleElapsed < INTERACTION_CONFIRM_FEEL.settleMs) {
-    const k = easeInOutQuad(settleElapsed / INTERACTION_CONFIRM_FEEL.settleMs);
-    const overshoot = Math.sin(k * Math.PI) * (INTERACTION_CONFIRM_FEEL.overshootScale - 1);
+    // Normalized time through the settle window.
+    const t = settleElapsed / INTERACTION_CONFIRM_FEEL.settleMs;
+    // Front-load the recovery: the base scale sprints from pressScale back to 1
+    // in the first half of the settle window (t=0..0.5), then holds at 1.
+    // This decouples the "return to rest" from the "overshoot pop", so the
+    // sin() bump actually peaks above 1 instead of getting swallowed by a
+    // mid-lerp base still climbing out of press.
+    const recover = easeOutCubic(Math.min(1, t * 2));
+    const base = INTERACTION_CONFIRM_FEEL.pressScale + (1 - INTERACTION_CONFIRM_FEEL.pressScale) * recover;
+    // Overshoot bump peaks at t=0.5 (exactly when base has just reached 1),
+    // so peak visual scale = 1 + (overshootScale - 1) = overshootScale.
+    const overshoot = Math.sin(t * Math.PI) * (INTERACTION_CONFIRM_FEEL.overshootScale - 1);
+    // Emissive glow eases out over the full settle window.
+    const emissiveK = easeInOutQuad(t);
     return {
       phase: "settle",
       elapsedMs,
-      scale: INTERACTION_CONFIRM_FEEL.pressScale + (1 - INTERACTION_CONFIRM_FEEL.pressScale) * k + overshoot,
-      emissiveBoost: INTERACTION_CONFIRM_FEEL.emissiveBoost * (1 - k),
+      scale: base + overshoot,
+      emissiveBoost: INTERACTION_CONFIRM_FEEL.emissiveBoost * (1 - emissiveK),
       shakePx: 0,
       clickGain: 0,
     };
