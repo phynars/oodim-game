@@ -1,3 +1,18 @@
+import {
+  chooseIoReturningSessionLine,
+  ioReturningSessionLines,
+} from "../../packages/aftersign/src/ioReturningSession";
+import {
+  recognitionFeedbackAt,
+  type RecognitionFeedbackState,
+  type IoRecognitionOutcome,
+} from "./recognitionFeedback";
+
+// Packet outcome shape for the recognition beat's feel envelope. The wider
+// four-value packet outcome (sealed | opened | withheld | returned) lives in
+// `packages/aftersign/src/ioReturningSession`. The two-value outcome here is
+// only what the visual/audio beat actually branches on — the lantern
+// intensity, sting sample, and target camera offset.
 export type PacketOutcome = "sealed" | "opened";
 
 export interface RecognitionBeatCue {
@@ -15,11 +30,6 @@ export interface RecognitionBeatPlan {
   line: string;
 }
 
-const RETURN_LINES: Record<PacketOutcome, string> = {
-  sealed: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
-  opened: "You came back. The seal did not. I can use one of those facts.",
-};
-
 export const RECOGNITION_BEAT_DURATION_MS = 1640;
 export const RECOGNITION_PUSH_IN_DEGREES = 4;
 export const RECOGNITION_PUSH_IN_MS = 360;
@@ -27,11 +37,22 @@ export const RECOGNITION_LANTERN_GLOW_GAIN = 1.35;
 export const RECOGNITION_STING_GAIN = 0.72;
 export const RECOGNITION_VISUAL_HAPTIC_SCALE_PX = 3;
 
+// The lantern-only two-outcome return line, used by the pure-visual feel plan
+// below. Sourced from the single-source-of-truth line table so paraphrasing
+// the string here (or drifting from the authored copy) is impossible — the
+// two shorter branch keys (`sealedPacket` / `openedPacket`) are the ones the
+// non-route-attention feel beat plays over the kiosk's lantern bloom.
+const bareOutcomeLine = (outcome: PacketOutcome): string =>
+  outcome === "sealed"
+    ? ioReturningSessionLines.sealedPacket
+    : ioReturningSessionLines.openedPacket;
+
 export function buildIoRecognitionBeat(outcome: PacketOutcome): RecognitionBeatPlan {
+  const line = bareOutcomeLine(outcome);
   return {
     outcome,
     durationMs: RECOGNITION_BEAT_DURATION_MS,
-    line: RETURN_LINES[outcome],
+    line,
     cues: [
       {
         atMs: 0,
@@ -65,8 +86,96 @@ export function buildIoRecognitionBeat(outcome: PacketOutcome): RecognitionBeatP
         atMs: 420,
         kind: "dialogue",
         label: "Io remembered return line",
-        value: RETURN_LINES[outcome],
+        value: line,
       },
     ],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public line-resolver API — consumed by the aftersign e2e lane
+// (`io-returning-recognition-line-contract.spec.ts` and
+// `recognition-beat-contract.spec.ts`).
+//
+// This is the four-branch mapping from saved packet outcome + route-attention
+// state into Io's returning-session line. The line strings are NOT authored
+// here: they come from `chooseIoReturningSessionLine` in
+// `packages/aftersign/src/ioReturningSession.ts` — the single documented
+// source for Io's return copy. Duplicating strings here would silently drift
+// from the vertical-slice script; the wrapper below is copy-free by
+// construction.
+// ---------------------------------------------------------------------------
+
+export type RouteAttention = "listened" | "skipped";
+
+export type IoRecognitionLineId =
+  | "io.recognition.returning.sealed.listened.v1"
+  | "io.recognition.returning.sealed.skipped.v1"
+  | "io.recognition.returning.opened.listened.v1"
+  | "io.recognition.returning.opened.skipped.v1";
+
+export interface IoRecognitionBeatInput {
+  outcome: PacketOutcome;
+  listenedToRoute: boolean;
+}
+
+export interface IoRecognitionBeatLine {
+  outcome: PacketOutcome;
+  listenedToRoute: boolean;
+  routeAttention: RouteAttention;
+  lineId: IoRecognitionLineId;
+  line: string;
+}
+
+function lineIdFor(outcome: PacketOutcome, listened: boolean): IoRecognitionLineId {
+  if (outcome === "sealed" && listened) return "io.recognition.returning.sealed.listened.v1";
+  if (outcome === "sealed") return "io.recognition.returning.sealed.skipped.v1";
+  if (listened) return "io.recognition.returning.opened.listened.v1";
+  return "io.recognition.returning.opened.skipped.v1";
+}
+
+/**
+ * Resolve the returning-player recognition line for one of Io's four saved
+ * outcome × route-attention branches. Line text is delegated to
+ * `chooseIoReturningSessionLine` so paraphrasing is impossible; this
+ * function's only job is to pin the four `lineId`s that the renderer /
+ * flagship script address the line by.
+ */
+export function ioRecognitionBeat(input: IoRecognitionBeatInput): IoRecognitionBeatLine {
+  const routeAttention: RouteAttention = input.listenedToRoute ? "listened" : "skipped";
+  const line = chooseIoReturningSessionLine({
+    packetOutcome: input.outcome,
+    routeAttention,
+  });
+  return {
+    outcome: input.outcome,
+    listenedToRoute: input.listenedToRoute,
+    routeAttention,
+    lineId: lineIdFor(input.outcome, input.listenedToRoute),
+    line,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public feel-envelope API — thin delegate to the pure-data
+// `recognitionFeedbackAt` sampler in `./recognitionFeedback.ts`. Kept as a
+// separately-named entry point so the contract spec has a stable symbol to
+// import and so future feel-envelope callers don't need to reach into the
+// underlying sampler's option surface.
+// ---------------------------------------------------------------------------
+
+export interface RecognitionBeatProgressOptions {
+  outcome?: PacketOutcome;
+  reducedMotion?: boolean;
+}
+
+export function recognitionBeatProgress(
+  elapsedMs: number,
+  options: RecognitionBeatProgressOptions = {},
+): RecognitionFeedbackState {
+  const outcome: IoRecognitionOutcome = options.outcome ?? "sealed";
+  return recognitionFeedbackAt(elapsedMs, {
+    outcome,
+    reducedMotion: options.reducedMotion ?? false,
+  });
 }
