@@ -60,6 +60,8 @@ export interface PlayerMovementFeelReport {
   spikeIsCapped: boolean;
   fixedStepsOnSpike: number;
   droppedStepMsOnSpike: number;
+  releaseStopsWithinOneFrame: boolean;
+  neutralInputKeepsFacing: boolean;
 }
 
 export const DEFAULT_PLAYER_MOVEMENT_FEEL: PlayerMovementFeelConfig = {
@@ -212,8 +214,26 @@ export const checkPlayerMovementFeel = (
     && spikeStep.steps === Math.max(1, Math.floor(config.maxFixedStepsPerFrame))
     && spikeStep.droppedSeconds >= config.fixedStepSeconds;
 
+  const movingState = stepPlayerMovement({ ...start, input: rightInput }, config.fixedStepSeconds, config).state;
+  const releasedStep = stepPlayerMovement(
+    { ...movingState, input: normalizeMoveInput(0, 0, "harness", config) },
+    config.fixedStepSeconds,
+    config,
+  );
+  const releaseStopsWithinOneFrame = releasedStep.state.x === movingState.x
+    && releasedStep.state.z === movingState.z
+    && releasedStep.state.lastVelocityMetersPerSecond === 0;
+  const neutralInputKeepsFacing = releasedStep.state.facingRadians === movingState.facingRadians;
+
   return {
-    passed: movedThisFrame && fixedStepInsideBudget && diagonalIsNormalized && deadzoneIsSilent && clampHeld && spikeIsCapped,
+    passed: movedThisFrame
+      && fixedStepInsideBudget
+      && diagonalIsNormalized
+      && deadzoneIsSilent
+      && clampHeld
+      && spikeIsCapped
+      && releaseStopsWithinOneFrame
+      && neutralInputKeepsFacing,
     movedThisFrame,
     fixedStepInsideBudget,
     diagonalIsNormalized,
@@ -226,6 +246,8 @@ export const checkPlayerMovementFeel = (
     spikeIsCapped,
     fixedStepsOnSpike: spikeStep.steps,
     droppedStepMsOnSpike: spikeStep.droppedSeconds * 1000,
+    releaseStopsWithinOneFrame,
+    neutralInputKeepsFacing,
   };
 };
 
