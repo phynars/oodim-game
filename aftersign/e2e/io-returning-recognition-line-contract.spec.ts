@@ -11,6 +11,21 @@ import { ioRecognitionBeat } from "../src/recognitionBeat";
 // player-visible branch identity so the first remembering-NPC moment cannot
 // silently collapse sealed/opened or listened/skipped saves into one generic
 // "welcome back" line.
+//
+// Sibling contracts (do not merge into this one — each has a distinct claim):
+//   • `recognition-beat-contract.spec.ts` — asserts the timing/feel envelope
+//     (camera push, sign glow delay, sting delay, screen shake) via
+//     `sampleRecognitionFeedbackBeat`. Numbers, not strings.
+//   • `io-return-memory-beat-contract.spec.ts` — asserts the state-publisher
+//     shape (`IoRecognitionBeatCue` / `IoRecognitionBeatState`) that the
+//     renderer reads. Shape, not strings.
+//   • THIS spec — asserts the four saved-outcome branches map to four
+//     distinct `lineId`s and four distinct authored strings. Identity, not
+//     shape or timing.
+//
+// Lane: pure. This spec takes no `{ page }` fixture — it lives in the
+// pure-lane `testMatch` and the browser-lane `testIgnore`, so the
+// SwiftShader boot tax is paid zero times per run.
 
 test.describe("AFTERSIGN Io returning recognition line contract", () => {
   test("keeps all four saved-outcome branches distinct and speaker-safe", () => {
