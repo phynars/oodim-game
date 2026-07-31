@@ -1,75 +1,73 @@
-import {
-  authoredIoMemorySentence,
-  IO_FIRST_MEETING_LINES,
-  IO_PACKET_INSPECTION_LINES,
-  IO_RETURNING_SESSION_LINES,
-  IO_ROUTE_ATTENTION_LINES,
-  IO_RETURN_TONE_LINES,
-  selectIoReturningLine,
-  selectIoReturnToneLine,
-  selectIoRouteAttentionLine,
-  type IoLine,
-} from './io-slice-copy';
+// Tests for Io's authored slice copy. The single source of truth is
+// io-recognition-beat.ts — this file used to test a forked module; the fork
+// has been folded back into the canonical one, and these assertions now cover
+// the new copy (withheld/returned inspection lines, returning-session guard,
+// authored memory sentence) directly against it.
 
-function expectLineToRemember(line: IoLine, rememberedKey: string, rememberedValue: unknown) {
-  expect(line.remembers).toBe(rememberedKey);
-  expect(line.requires).toMatchObject({ [rememberedKey]: rememberedValue });
-  expect(line.text.length).toBeGreaterThan(0);
+import {
+  FIRST_PACKET_DELIVERY_ID,
+  IO_OPENED_SEAL_LINE,
+  authoredIoMemorySentence,
+  ioFirstMeetingLines,
+  ioPacketInspectionLines,
+  ioReturningMemoryLines,
+  selectIoReturningLine,
+  type IoPacketMemoryOutcome,
+  type IoSliceMemoryRecord,
+} from './io-recognition-beat';
+
+function memory(overrides: Partial<IoSliceMemoryRecord> = {}): IoSliceMemoryRecord {
+  return {
+    completedDeliveryIds: [],
+    ...overrides,
+  };
 }
 
-describe('Io slice copy', () => {
+describe('Io slice copy (canonical)', () => {
   it('keeps first-meeting lines short enough for a mobile dialogue card', () => {
-    expect(IO_FIRST_MEETING_LINES).toHaveLength(3);
+    expect(ioFirstMeetingLines).toHaveLength(3);
 
-    for (const line of IO_FIRST_MEETING_LINES) {
+    for (const line of ioFirstMeetingLines) {
       expect(line.text.length).toBeLessThanOrEqual(150);
     }
   });
 
-  it('binds packet inspection copy to auditable packet outcomes', () => {
-    expectLineToRemember(IO_PACKET_INSPECTION_LINES.sealed, 'packetOutcome', 'sealed');
-    expectLineToRemember(IO_PACKET_INSPECTION_LINES.opened, 'packetOutcome', 'opened');
-    expectLineToRemember(IO_PACKET_INSPECTION_LINES.withheld, 'packetOutcome', 'withheld');
-    expectLineToRemember(IO_PACKET_INSPECTION_LINES.returned, 'packetOutcome', 'returned');
+  it('provides a packet-inspection line for every recorded packet outcome', () => {
+    const outcomes: readonly IoPacketMemoryOutcome[] = ['sealed', 'opened', 'withheld', 'returned'];
+
+    for (const outcome of outcomes) {
+      const line = ioPacketInspectionLines[outcome];
+      expect(line.text.length).toBeGreaterThan(0);
+      expect(line.id).toContain(outcome);
+    }
   });
 
-  it('binds route attention copy to auditable route behavior', () => {
-    expectLineToRemember(IO_ROUTE_ATTENTION_LINES.listened, 'routeAttention', 'listened');
-    expectLineToRemember(IO_ROUTE_ATTENTION_LINES.skipped, 'routeAttention', 'skipped');
+  it('does not surface a returning-session line before the first delivery completes', () => {
+    expect(selectIoReturningLine(memory({ packetOutcome: 'sealed' }))).toBeUndefined();
+    expect(selectIoReturningLine(memory({ packetOutcome: 'opened' }))).toBeUndefined();
   });
 
-  it('binds return-tone copy to auditable answer posture', () => {
-    expectLineToRemember(IO_RETURN_TONE_LINES.kind, 'returnTone', 'kind');
-    expectLineToRemember(IO_RETURN_TONE_LINES.evasive, 'returnTone', 'evasive');
-    expectLineToRemember(IO_RETURN_TONE_LINES.blunt, 'returnTone', 'blunt');
-  });
+  it('surfaces the canonical returning line after the delivery is recorded', () => {
+    const completed = { completedDeliveryIds: [FIRST_PACKET_DELIVERY_ID] };
 
-  it('selects returning-session copy only after a later session starts', () => {
-    expect(selectIoReturningLine({ packetOutcome: 'sealed' })).toBeUndefined();
-    expect(selectIoReturningLine({ packetOutcome: 'opened' })).toBeUndefined();
-
-    expect(selectIoReturningLine({ packetOutcome: 'sealed', returnedAfterClose: true })).toEqual(
-      IO_RETURNING_SESSION_LINES.sealed,
+    expect(selectIoReturningLine(memory({ ...completed, packetOutcome: 'sealed' }))).toEqual(
+      ioReturningMemoryLines.keptSealed,
     );
-    expect(selectIoReturningLine({ packetOutcome: 'opened', returnedAfterClose: true })).toEqual(
-      IO_RETURNING_SESSION_LINES.opened,
-    );
+
+    const openedLine = selectIoReturningLine(memory({ ...completed, packetOutcome: 'opened' }));
+    expect(openedLine).toEqual(ioReturningMemoryLines.opened);
+    // Guard against copy drift: the returning line reuses the recognition beat.
+    expect(openedLine?.text).toBe(IO_OPENED_SEAL_LINE);
   });
 
-  it('does not invent returning-session copy for outcomes Io cannot yet greet on', () => {
-    expect(selectIoReturningLine({ packetOutcome: 'withheld', returnedAfterClose: true })).toBeUndefined();
-    expect(selectIoReturningLine({ packetOutcome: 'returned', returnedAfterClose: true })).toBeUndefined();
+  it('does not invent a returning-session line for outcomes Io cannot yet greet on', () => {
+    const completed = { completedDeliveryIds: [FIRST_PACKET_DELIVERY_ID] };
+
+    expect(selectIoReturningLine(memory({ ...completed, packetOutcome: 'withheld' }))).toBeUndefined();
+    expect(selectIoReturningLine(memory({ ...completed, packetOutcome: 'returned' }))).toBeUndefined();
   });
 
-  it('selects optional remembered lines only when their memory keys exist', () => {
-    expect(selectIoRouteAttentionLine({})).toBeUndefined();
-    expect(selectIoReturnToneLine({})).toBeUndefined();
-
-    expect(selectIoRouteAttentionLine({ routeAttention: 'listened' })).toEqual(IO_ROUTE_ATTENTION_LINES.listened);
-    expect(selectIoReturnToneLine({ returnTone: 'blunt' })).toEqual(IO_RETURN_TONE_LINES.blunt);
-  });
-
-  it('turns packet outcomes into one authored memory sentence for persistence', () => {
+  it('turns each packet outcome into one authored memory sentence for persistence', () => {
     expect(authoredIoMemorySentence({ packetOutcome: 'sealed' })).toBe(
       'You delivered the blue packet with its seal unbroken.',
     );
@@ -82,6 +80,10 @@ describe('Io slice copy', () => {
     expect(authoredIoMemorySentence({ packetOutcome: 'returned' })).toBe(
       'You brought the blue packet back to Io.',
     );
+  });
+
+  it('returns undefined when there is no packet outcome yet', () => {
+    expect(authoredIoMemorySentence({})).toBeUndefined();
   });
 
   it('prefers a persisted authored sentence over deriving a new one', () => {
