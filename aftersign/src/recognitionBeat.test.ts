@@ -101,13 +101,13 @@ function checkBuildPlan(): void {
       [recognitionFeedbackContract.glowStartMs, "light", "easeInOutSine"],
       [recognitionFeedbackContract.stingStartMs, "audio", "linear"],
       [recognitionFeedbackContract.stingStartMs, "haptic", "easeOutCubic"],
-      [420, "dialogue", "none"],
+      [recognitionFeedbackContract.dialogueStartMs, "dialogue", "none"],
     ],
   );
   assert.equal(sealed.cues[0]?.value, recognitionFeedbackContract.cameraYawDegrees);
   assert.equal(sealed.cues[1]?.value, recognitionFeedbackContract.glowToMultiplier);
-  assert.equal(sealed.cues[2]?.value, 0.72);
-  assert.equal(sealed.cues[3]?.value, 3);
+  assert.equal(sealed.cues[2]?.value, recognitionFeedbackContract.stingGain);
+  assert.equal(sealed.cues[3]?.value, recognitionFeedbackContract.hapticPx);
 
   const opened = buildIoRecognitionBeat("opened");
   assert.equal(opened.line, ioReturningSessionLines.openedPacket);

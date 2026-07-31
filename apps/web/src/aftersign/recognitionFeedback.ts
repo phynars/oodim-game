@@ -110,6 +110,9 @@ export const recognitionFeedbackContract = {
   stingDurationMs: 180,
   stingGainDb: -9,
   openedWoodenClickDelayMs: 45,
+  dialogueStartMs: 420,
+  stingGain: 0.72,
+  hapticPx: 3,
   outcomeCues: {
     sealed: {
       lantern: {

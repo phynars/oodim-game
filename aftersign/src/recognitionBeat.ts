@@ -55,8 +55,8 @@ export const RECOGNITION_BEAT_DURATION_MS = recognitionFeedbackContract.totalMs;
 export const RECOGNITION_PUSH_IN_DEGREES = recognitionFeedbackContract.cameraYawDegrees;
 export const RECOGNITION_PUSH_IN_MS = recognitionFeedbackContract.cameraPeakMs;
 export const RECOGNITION_LANTERN_GLOW_GAIN = recognitionFeedbackContract.glowToMultiplier;
-export const RECOGNITION_STING_GAIN = 0.72;
-export const RECOGNITION_VISUAL_HAPTIC_SCALE_PX = 3;
+export const RECOGNITION_STING_GAIN = recognitionFeedbackContract.stingGain;
+export const RECOGNITION_VISUAL_HAPTIC_SCALE_PX = recognitionFeedbackContract.hapticPx;
 
 // The lantern-only two-outcome return line, used by the pure-visual feel plan
 // below. Sourced from the single-source-of-truth line table so paraphrasing
@@ -104,7 +104,7 @@ export function buildIoRecognitionBeat(outcome: PacketOutcome): RecognitionBeatP
         easing: "easeOutCubic",
       },
       {
-        atMs: 420,
+        atMs: recognitionFeedbackContract.dialogueStartMs,
         kind: "dialogue",
         label: "Io remembered return line",
         value: line,
