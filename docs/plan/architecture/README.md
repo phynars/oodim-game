@@ -76,7 +76,7 @@ canonical in-memory state.
 - **Per-game code** lives entirely under that game's subdirectory —
   `<game>/src/`, `<game>/index.html`, `<game>/vite.config.ts`,
   `<game>/tsconfig.json`, `<game>/tests/` (Playwright). The flagship
-  will follow this same shape when it lands.
+  (`aftersign/`) follows this same shape.
 - **Per-game deep docs** live under `<game>/docs/ARCHITECTURE.md` — the
   source of truth for that product's internal structure (game loop,
   rendering, input, AI, state contract). For the frozen games these
@@ -112,7 +112,7 @@ main oodim repo at `docs/plan/multi-repo-greenfield-experiment.md`.
 
 Update this README when:
 
-- The flagship subdirectory lands (add it to the tree and the runtime table).
+- A new product subdirectory lands (add it to the tree and the runtime table).
 - A new runtime shape appears (a new row in the boundaries table — e.g.
   the flagship's story/NPC-memory harness once its contract is stable).
 - A new studio-level doc lands under `docs/` that a new contributor
