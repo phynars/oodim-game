@@ -5,9 +5,8 @@ import {
   ioFirstMeetingLines,
   ioPacketInspectionLines,
   ioReturningMemoryLines,
-  ioReturnToneLines,
   selectIoReturningMemoryLine,
-} from './io-slice-copy';
+} from './io-recognition-beat';
 
 describe('Io slice copy', () => {
   it('keeps the first meeting brief and playable', () => {
@@ -49,13 +48,12 @@ describe('Io slice copy', () => {
     );
   });
 
-  it('keeps return tone responses in Io voice', () => {
-    expect(ioReturnToneLines.kind.text).toBe('Kind answer. Dangerous tool. Keep it sharp.');
-    expect(ioReturnToneLines.evasive.text).toBe(
-      "That wasn't an answer. It was weather. Try again when it clears.",
+  it('routes returning-memory lines through the recognition-beat text so voice stays single-sourced', () => {
+    expect(ioReturningMemoryLines.keptSealed.text).toBe(
+      'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
     );
-    expect(ioReturnToneLines.blunt.text).toBe(
-      'Blunt, then. Fine. Blunt things still open doors if the hand is steady.',
+    expect(ioReturningMemoryLines.opened.text).toBe(
+      'You came back. The seal did not. I can use one of those facts.',
     );
   });
 });
