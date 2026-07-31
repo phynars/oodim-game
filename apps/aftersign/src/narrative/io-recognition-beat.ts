@@ -36,7 +36,7 @@ export interface IoRecognitionBeat {
   readonly requiredMemory: Partial<Pick<IoSliceMemoryRecord, 'packetOutcome' | 'routeAttention' | 'returnTone'>>;
 }
 
-const FIRST_PACKET_DELIVERY_ID = 'io-blue-packet';
+export const FIRST_PACKET_DELIVERY_ID = 'io-blue-packet';
 const PLAYER_RETURNED_MEMORY = 'the player returned';
 export const IO_OPENED_SEAL_LINE = 'You came back. The seal did not. I can use one of those facts.';
 
@@ -193,7 +193,17 @@ export const ioPacketInspectionLines = {
     speaker: 'system',
     text: 'The seal gives with a soft crack. Somewhere below, a bell refuses to ring.',
   },
-} as const satisfies Record<'sealed' | 'opened', IoSliceLine>;
+  withheld: {
+    id: 'io-packet-withheld-inspection',
+    speaker: 'system',
+    text: 'The packet stays in your coat. It weighs the same as a small confession.',
+  },
+  returned: {
+    id: 'io-packet-returned-inspection',
+    speaker: 'system',
+    text: 'The packet comes back to Io’s hand still warm from yours. She does not comment on that.',
+  },
+} as const satisfies Record<IoPacketMemoryOutcome, IoSliceLine>;
 
 export const ioDeliveryReturnLines = {
   keptSealed: {
@@ -231,4 +241,50 @@ export const ioReturningMemoryLines = {
 
 export function selectIoReturningMemoryLine(choice: IoPacketChoice): IoMemoryLine {
   return choice === 'kept-sealed' ? ioReturningMemoryLines.keptSealed : ioReturningMemoryLines.opened;
+}
+
+// The persistence layer stores one sentence per Io slice — the single-source
+// authored fact the next session can echo. Derived from the recorded packet
+// outcome so it never drifts from the beat that produced it.
+const AUTHORED_MEMORY_BY_PACKET_OUTCOME: Record<IoPacketMemoryOutcome, string> = {
+  sealed: 'You delivered the blue packet with its seal unbroken.',
+  opened: 'You opened the blue packet before delivery.',
+  withheld: 'You kept the blue packet instead of delivering it.',
+  returned: 'You brought the blue packet back to Io.',
+};
+
+export function authoredIoMemorySentence(memory: {
+  readonly packetOutcome?: IoPacketMemoryOutcome;
+  readonly authoredMemorySentence?: string;
+}): string | undefined {
+  if (memory.authoredMemorySentence) {
+    return memory.authoredMemorySentence;
+  }
+
+  if (memory.packetOutcome) {
+    return AUTHORED_MEMORY_BY_PACKET_OUTCOME[memory.packetOutcome];
+  }
+
+  return undefined;
+}
+
+// Returning-session line — Io's single line on the SECOND (or later) visit,
+// after the first delivery has completed. Guarded on `completedDeliveryIds`
+// so a fresh session with no delivery never surfaces a "you came back" line.
+export function selectIoReturningLine(
+  memory: Pick<IoSliceMemoryRecord, 'completedDeliveryIds' | 'packetOutcome'>,
+): IoMemoryLine | undefined {
+  if (!memory.completedDeliveryIds.includes(FIRST_PACKET_DELIVERY_ID)) {
+    return undefined;
+  }
+
+  if (memory.packetOutcome === 'sealed') {
+    return ioReturningMemoryLines.keptSealed;
+  }
+
+  if (memory.packetOutcome === 'opened') {
+    return ioReturningMemoryLines.opened;
+  }
+
+  return undefined;
 }

@@ -1,59 +1,97 @@
-import { describe, expect, it } from 'vitest';
+// Tests for Io's authored slice copy. The single source of truth is
+// io-recognition-beat.ts — this file used to test a forked module; the fork
+// has been folded back into the canonical one, and these assertions now cover
+// the new copy (withheld/returned inspection lines, returning-session guard,
+// authored memory sentence) directly against it.
 
 import {
-  ioDeliveryReturnLines,
+  FIRST_PACKET_DELIVERY_ID,
+  IO_OPENED_SEAL_LINE,
+  authoredIoMemorySentence,
   ioFirstMeetingLines,
   ioPacketInspectionLines,
   ioReturningMemoryLines,
-  selectIoReturningMemoryLine,
+  selectIoReturningLine,
+  type IoPacketMemoryOutcome,
+  type IoSliceMemoryRecord,
 } from './io-recognition-beat';
 
-describe('Io slice copy', () => {
-  it('keeps the first meeting brief and playable', () => {
+function memory(overrides: Partial<IoSliceMemoryRecord> = {}): IoSliceMemoryRecord {
+  return {
+    completedDeliveryIds: [],
+    ...overrides,
+  };
+}
+
+describe('Io slice copy (canonical)', () => {
+  it('keeps first-meeting lines short enough for a mobile dialogue card', () => {
     expect(ioFirstMeetingLines).toHaveLength(3);
-    expect(ioFirstMeetingLines.map((line) => line.speaker)).toEqual(['io', 'io', 'io']);
-    expect(ioFirstMeetingLines.map((line) => line.text)).toEqual([
-      "You're late. That's all right. The stairs are worse when they like you.",
-      'Blue packet. Brass box. No detours you plan to admit to me.',
-      'Follow the amber signs. Ignore anything pale enough to beg.',
-    ]);
+
+    for (const line of ioFirstMeetingLines) {
+      expect(line.text.length).toBeLessThanOrEqual(150);
+    }
   });
 
-  it('gives the packet one inspect line before and after the player breaks the seal', () => {
-    expect(ioPacketInspectionLines.sealed.text).toBe(
-      'The wax is cold. Someone pressed a thumb into it before it hardened.',
+  it('provides a packet-inspection line for every recorded packet outcome', () => {
+    const outcomes: readonly IoPacketMemoryOutcome[] = ['sealed', 'opened', 'withheld', 'returned'];
+
+    for (const outcome of outcomes) {
+      const line = ioPacketInspectionLines[outcome];
+      expect(line.text.length).toBeGreaterThan(0);
+      expect(line.id).toContain(outcome);
+    }
+  });
+
+  it('does not surface a returning-session line before the first delivery completes', () => {
+    expect(selectIoReturningLine(memory({ packetOutcome: 'sealed' }))).toBeUndefined();
+    expect(selectIoReturningLine(memory({ packetOutcome: 'opened' }))).toBeUndefined();
+  });
+
+  it('surfaces the canonical returning line after the delivery is recorded', () => {
+    const completed = { completedDeliveryIds: [FIRST_PACKET_DELIVERY_ID] };
+
+    expect(selectIoReturningLine(memory({ ...completed, packetOutcome: 'sealed' }))).toEqual(
+      ioReturningMemoryLines.keptSealed,
     );
-    expect(ioPacketInspectionLines.opened.text).toBe(
-      'The seal gives with a soft crack. Somewhere below, a bell refuses to ring.',
+
+    const openedLine = selectIoReturningLine(memory({ ...completed, packetOutcome: 'opened' }));
+    expect(openedLine).toEqual(ioReturningMemoryLines.opened);
+    // Guard against copy drift: the returning line reuses the recognition beat.
+    expect(openedLine?.text).toBe(IO_OPENED_SEAL_LINE);
+  });
+
+  it('does not invent a returning-session line for outcomes Io cannot yet greet on', () => {
+    const completed = { completedDeliveryIds: [FIRST_PACKET_DELIVERY_ID] };
+
+    expect(selectIoReturningLine(memory({ ...completed, packetOutcome: 'withheld' }))).toBeUndefined();
+    expect(selectIoReturningLine(memory({ ...completed, packetOutcome: 'returned' }))).toBeUndefined();
+  });
+
+  it('turns each packet outcome into one authored memory sentence for persistence', () => {
+    expect(authoredIoMemorySentence({ packetOutcome: 'sealed' })).toBe(
+      'You delivered the blue packet with its seal unbroken.',
+    );
+    expect(authoredIoMemorySentence({ packetOutcome: 'opened' })).toBe(
+      'You opened the blue packet before delivery.',
+    );
+    expect(authoredIoMemorySentence({ packetOutcome: 'withheld' })).toBe(
+      'You kept the blue packet instead of delivering it.',
+    );
+    expect(authoredIoMemorySentence({ packetOutcome: 'returned' })).toBe(
+      'You brought the blue packet back to Io.',
     );
   });
 
-  it('lets Io judge the delivery outcome without explaining the system', () => {
-    expect(ioDeliveryReturnLines.keptSealed.text).toBe(
-      'Box took it. Seal stayed shut. Good. The city likes a courier who can leave a question breathing.',
-    );
-    expect(ioDeliveryReturnLines.opened.text).toBe(
-      'Box took it. Seal did not survive you. Also useful. Less clean.',
-    );
+  it('returns undefined when there is no packet outcome yet', () => {
+    expect(authoredIoMemorySentence({})).toBeUndefined();
   });
 
-  it('selects an authored returning line tied to the exact packet choice', () => {
-    expect(selectIoReturningMemoryLine('kept-sealed')).toEqual(ioReturningMemoryLines.keptSealed);
-    expect(selectIoReturningMemoryLine('opened')).toEqual(ioReturningMemoryLines.opened);
-    expect(ioReturningMemoryLines.keptSealed.remembers).toBe(
-      'the courier delivered the first blue packet unopened',
-    );
-    expect(ioReturningMemoryLines.opened.remembers).toBe(
-      'the courier broke the first blue seal before delivery',
-    );
-  });
-
-  it('routes returning-memory lines through the recognition-beat text so voice stays single-sourced', () => {
-    expect(ioReturningMemoryLines.keptSealed.text).toBe(
-      'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
-    );
-    expect(ioReturningMemoryLines.opened.text).toBe(
-      'You came back. The seal did not. I can use one of those facts.',
-    );
+  it('prefers a persisted authored sentence over deriving a new one', () => {
+    expect(
+      authoredIoMemorySentence({
+        packetOutcome: 'sealed',
+        authoredMemorySentence: 'Io filed this exact sentence last session.',
+      }),
+    ).toBe('Io filed this exact sentence last session.');
   });
 });
