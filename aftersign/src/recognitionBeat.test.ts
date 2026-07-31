@@ -1,4 +1,16 @@
-import { strict as assert } from "node:assert";
+// Repo convention (see aftersign/src/ioFirstSessionPacing.test.ts header,
+// and aftersign/README.md — reaffirmed in PR #453, #468, #590, #621, #932):
+//   - Vitest is NOT a repo dependency.
+//   - `node:test` / `node:assert` are NOT usable either: `@types/node` is
+//     only a transitive install and aftersign/tsconfig.json pins
+//     `"types": ["vite/client"]`, so a `node:assert` import fails
+//     typecheck and the aftersign lane goes red before Playwright even
+//     starts (that's what killed PR #621 rev 1 AND PR #932 rev 1).
+//   - Convention is a plain-TS assertion file at
+//     `aftersign/src/*.test.ts`, exporting `check*()` + a `run*Checks()`
+//     entry, typechecked by `typecheck:aftersign` (tsconfig
+//     `include: ["src"]`). Use the hand-rolled `assert` shim below.
+
 import {
   buildIoRecognitionBeat,
   ioRecognitionBeat,
@@ -11,6 +23,61 @@ import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturnin
 // contract, never from the sibling `./recognitionFeedback` — that is the
 // invariant the README exists to protect.
 import { recognitionFeedbackContract } from "../../apps/web/src/aftersign/recognitionFeedback";
+
+class AssertionError extends Error {}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return a === b;
+  if (typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const ak = Object.keys(a as Record<string, unknown>);
+  const bk = Object.keys(b as Record<string, unknown>);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) {
+    if (
+      !deepEqual(
+        (a as Record<string, unknown>)[k],
+        (b as Record<string, unknown>)[k],
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const assert = {
+  equal<T>(actual: T, expected: T, message?: string): void {
+    if (actual !== expected) {
+      throw new AssertionError(
+        message ??
+          `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  },
+  deepEqual<T>(actual: T, expected: T, message?: string): void {
+    if (!deepEqual(actual, expected)) {
+      throw new AssertionError(
+        message ??
+          `deepEqual: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  },
+  ok(condition: unknown, message?: string): asserts condition {
+    if (!condition) {
+      throw new AssertionError(message ?? "expected truthy");
+    }
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Feel-plan (build) checks — pin the lantern/sting/haptic timing envelope
