@@ -1,263 +1,268 @@
-// Standalone assertion harness for `ioRecognitionBeat` and
-// `recognitionBeatProgress` in `./recognitionBeat.ts`.
-//
-// Convention: this package has NO test runner (vitest is not a repo
-// dependency — see `aftersign/README.md` and root `package.json`). Every
-// sibling `aftersign/src/*.test.ts` is a plain-TS module that `throw`s
-// on failure and exports a `run*Checks()` entry. `tsc --noEmit` under
-// `typecheck:aftersign` compiles this file; execution is opt-in via
-// `tsx` or the harness entry.
-//
-// If you're tempted to `import { describe, expect, it } from "vitest"`:
-// STOP. That will fail TS2307 in CI. Use the throw-asserts below.
+// Repo convention (see aftersign/src/ioFirstSessionPacing.test.ts header,
+// and aftersign/README.md — reaffirmed in PR #453, #468, #590, #621, #932):
+//   - Vitest is NOT a repo dependency.
+//   - `node:test` / `node:assert` are NOT usable either: `@types/node` is
+//     only a transitive install and aftersign/tsconfig.json pins
+//     `"types": ["vite/client"]`, so a `node:assert` import fails
+//     typecheck and the aftersign lane goes red before Playwright even
+//     starts (that's what killed PR #621 rev 1 AND PR #932 rev 1).
+//   - Convention is a plain-TS assertion file at
+//     `aftersign/src/*.test.ts`, exporting `check*()` + a `run*Checks()`
+//     entry, typechecked by `typecheck:aftersign` (tsconfig
+//     `include: ["src"]`). Use the hand-rolled `assert` shim below.
 
 import {
+  buildIoRecognitionBeat,
   ioRecognitionBeat,
   recognitionBeatProgress,
-  recognitionFeedbackContract,
+  RECOGNITION_BEAT_DURATION_MS,
 } from "./recognitionBeat";
 import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+// Canonical single-source-of-truth feel contract (README §"Source of truth").
+// Every assertion in this file that pins a feel number reads from this
+// contract, never from the sibling `./recognitionFeedback` — that is the
+// invariant the README exists to protect.
+import { recognitionFeedbackContract } from "../../apps/web/src/aftersign/recognitionFeedback";
 
 class AssertionError extends Error {}
 
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new AssertionError(message);
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return a === b;
+  if (typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const ak = Object.keys(a as Record<string, unknown>);
+  const bk = Object.keys(b as Record<string, unknown>);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) {
+    if (
+      !deepEqual(
+        (a as Record<string, unknown>)[k],
+        (b as Record<string, unknown>)[k],
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
-function assertEqual<T>(actual: T, expected: T, label: string): void {
-  if (actual !== expected) {
-    throw new AssertionError(
-      `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-    );
-  }
-}
+const assert = {
+  equal<T>(actual: T, expected: T, message?: string): void {
+    if (actual !== expected) {
+      throw new AssertionError(
+        message ??
+          `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  },
+  deepEqual<T>(actual: T, expected: T, message?: string): void {
+    if (!deepEqual(actual, expected)) {
+      throw new AssertionError(
+        message ??
+          `deepEqual: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  },
+  ok(condition: unknown, message?: string): asserts condition {
+    if (!condition) {
+      throw new AssertionError(message ?? "expected truthy");
+    }
+  },
+};
 
-function assertClose(
-  actual: number,
-  expected: number,
-  epsilon: number,
-  label: string,
-): void {
-  if (Math.abs(actual - expected) > epsilon) {
-    throw new AssertionError(
-      `${label}: expected ≈ ${expected}, got ${actual} (ε=${epsilon})`,
-    );
-  }
+// ---------------------------------------------------------------------------
+// Feel-plan (build) checks — pin the lantern/sting/haptic timing envelope
+// authored in `buildIoRecognitionBeat`. These are the numbers the flagship
+// slice depends on; drift here means the recognition beat no longer feels
+// the way the spec authored it.
+// ---------------------------------------------------------------------------
+
+function checkBuildPlan(): void {
+  const sealed = buildIoRecognitionBeat("sealed");
+  assert.equal(sealed.durationMs, RECOGNITION_BEAT_DURATION_MS);
+  // Duration is pinned to the canonical contract — build and feel MUST agree.
+  assert.equal(sealed.durationMs, recognitionFeedbackContract.totalMs);
+  // Single-source-of-truth: the sealed line is the authored `sealedPacket`
+  // key from `ioReturningSessionLines`, not a local copy.
+  assert.equal(sealed.line, ioReturningSessionLines.sealedPacket);
+  assert.deepEqual(
+    sealed.cues.map((cue) => [cue.atMs, cue.kind, cue.easing ?? "none"]),
+    [
+      [0, "camera", "easeOutCubic"],
+      [recognitionFeedbackContract.glowStartMs, "light", "easeInOutSine"],
+      [recognitionFeedbackContract.stingStartMs, "audio", "linear"],
+      [recognitionFeedbackContract.stingStartMs, "haptic", "easeOutCubic"],
+      [420, "dialogue", "none"],
+    ],
+  );
+  assert.equal(sealed.cues[0]?.value, recognitionFeedbackContract.cameraYawDegrees);
+  assert.equal(sealed.cues[1]?.value, recognitionFeedbackContract.glowToMultiplier);
+  assert.equal(sealed.cues[2]?.value, 0.72);
+  assert.equal(sealed.cues[3]?.value, 3);
+
+  const opened = buildIoRecognitionBeat("opened");
+  assert.equal(opened.line, ioReturningSessionLines.openedPacket);
+  assert.equal(opened.cues[2]?.label, "single cracked-bell recognition sting");
+
+  // Dialogue-cue value must equal the authored line (not a paraphrase).
+  assert.equal(opened.cues[4]?.value, ioReturningSessionLines.openedPacket);
 }
 
 // ---------------------------------------------------------------------------
-// ioRecognitionBeat — memory line resolver
+// Line-resolver (ioRecognitionBeat) checks — pins the four saved-outcome ×
+// route-attention branches to four distinct lineIds and four distinct
+// authored strings. Line text is delegated to
+// `chooseIoReturningSessionLine`; this asserts we returned exactly those
+// strings verbatim (no local paraphrasing).
 // ---------------------------------------------------------------------------
 
-export function checkSealedListenedLineMatchesCanonical(): void {
-  const beat = ioRecognitionBeat({ outcome: "sealed", listenedToRoute: true });
+function checkLineResolver(): void {
+  const sealedListened = ioRecognitionBeat({ outcome: "sealed", listenedToRoute: true });
+  const sealedSkipped = ioRecognitionBeat({ outcome: "sealed", listenedToRoute: false });
+  const openedListened = ioRecognitionBeat({ outcome: "opened", listenedToRoute: true });
+  const openedSkipped = ioRecognitionBeat({ outcome: "opened", listenedToRoute: false });
 
-  assertEqual(beat.outcome, "sealed", "sealed+listened outcome");
-  assertEqual(
-    beat.line,
-    ioReturningSessionLines.sealedPacketListenedRoute,
-    "sealed+listened line text (must be sourced from ioReturningSessionLines, not composed)",
-  );
-  assertEqual(
-    beat.lineId,
-    "io.recognition.returning.sealed.listened.v1",
-    "sealed+listened lineId",
-  );
-}
+  // lineId pinning — the renderer / flagship script address lines by these.
+  assert.equal(sealedListened.lineId, "io.recognition.returning.sealed.listened.v1");
+  assert.equal(sealedSkipped.lineId, "io.recognition.returning.sealed.skipped.v1");
+  assert.equal(openedListened.lineId, "io.recognition.returning.opened.listened.v1");
+  assert.equal(openedSkipped.lineId, "io.recognition.returning.opened.skipped.v1");
 
-export function checkSealedSkippedLineMatchesCanonical(): void {
-  const beat = ioRecognitionBeat({ outcome: "sealed", listenedToRoute: false });
+  // Verbatim string pinning against the single source.
+  assert.equal(sealedListened.line, ioReturningSessionLines.sealedPacketListenedRoute);
+  assert.equal(sealedSkipped.line, ioReturningSessionLines.sealedPacketSkippedRoute);
+  assert.equal(openedListened.line, ioReturningSessionLines.openedPacketListenedRoute);
+  assert.equal(openedSkipped.line, ioReturningSessionLines.openedPacketSkippedRoute);
 
-  assertEqual(beat.outcome, "sealed", "sealed+skipped outcome");
-  assertEqual(
-    beat.line,
-    ioReturningSessionLines.sealedPacketSkippedRoute,
-    "sealed+skipped line text (must be sourced from ioReturningSessionLines, not composed)",
-  );
-  assertEqual(
-    beat.lineId,
-    "io.recognition.returning.sealed.skipped.v1",
-    "sealed+skipped lineId",
-  );
-}
-
-export function checkOpenedListenedLineMatchesCanonical(): void {
-  const beat = ioRecognitionBeat({ outcome: "opened", listenedToRoute: true });
-
-  assertEqual(beat.outcome, "opened", "opened+listened outcome");
-  assertEqual(
-    beat.line,
-    ioReturningSessionLines.openedPacketListenedRoute,
-    "opened+listened line text (must be sourced from ioReturningSessionLines, not composed)",
-  );
-  assertEqual(
-    beat.lineId,
-    "io.recognition.returning.opened.listened.v1",
-    "opened+listened lineId",
-  );
-}
-
-export function checkOpenedSkippedLineMatchesCanonical(): void {
-  const beat = ioRecognitionBeat({ outcome: "opened", listenedToRoute: false });
-
-  assertEqual(beat.outcome, "opened", "opened+skipped outcome");
-  assertEqual(
-    beat.line,
-    ioReturningSessionLines.openedPacketSkippedRoute,
-    "opened+skipped line text (must be sourced from ioReturningSessionLines, not composed)",
-  );
-  assertEqual(
-    beat.lineId,
-    "io.recognition.returning.opened.skipped.v1",
-    "opened+skipped lineId",
-  );
-}
-
-export function checkAllFourLineIdsAreDistinct(): void {
-  const ids = new Set([
-    ioRecognitionBeat({ outcome: "sealed", listenedToRoute: true }).lineId,
-    ioRecognitionBeat({ outcome: "sealed", listenedToRoute: false }).lineId,
-    ioRecognitionBeat({ outcome: "opened", listenedToRoute: true }).lineId,
-    ioRecognitionBeat({ outcome: "opened", listenedToRoute: false }).lineId,
+  // Four distinct branches, no silent collapse.
+  const lineIds = new Set([
+    sealedListened.lineId,
+    sealedSkipped.lineId,
+    openedListened.lineId,
+    openedSkipped.lineId,
   ]);
-
-  assertEqual(ids.size, 4, "distinct lineIds across outcome × listened");
-}
-
-export function checkAllFourLinesAreDistinct(): void {
   const lines = new Set([
-    ioRecognitionBeat({ outcome: "sealed", listenedToRoute: true }).line,
-    ioRecognitionBeat({ outcome: "sealed", listenedToRoute: false }).line,
-    ioRecognitionBeat({ outcome: "opened", listenedToRoute: true }).line,
-    ioRecognitionBeat({ outcome: "opened", listenedToRoute: false }).line,
+    sealedListened.line,
+    sealedSkipped.line,
+    openedListened.line,
+    openedSkipped.line,
   ]);
+  assert.equal(lineIds.size, 4);
+  assert.equal(lines.size, 4);
 
-  assertEqual(lines.size, 4, "distinct line strings across outcome × listened");
+  // routeAttention derived shape — the shape the state-publisher reads.
+  assert.equal(sealedListened.routeAttention, "listened");
+  assert.equal(openedSkipped.routeAttention, "skipped");
 }
 
 // ---------------------------------------------------------------------------
-// recognitionBeatProgress — thin delegate over the live contract
+// Feel-envelope (recognitionBeatProgress) checks — thin delegate assertions
+// against `sampleRecognitionFeedbackBeat` (canonical). Asserts the beat
+// starts at rest, camera peaks at `cameraPeakMs`, reduced-motion suppresses
+// the camera and uses `reducedMotionTotalMs`, outcome-branch cues are
+// present, wooden-click timing matches `stingStartMs + openedWoodenClickDelayMs`,
+// and the beat settles at `totalMs`. Mirrors the e2e header contract in
+// `aftersign/e2e/recognition-beat-contract.spec.ts`.
 // ---------------------------------------------------------------------------
 
-export function checkBeatStartsAtRest(): void {
-  const start = recognitionBeatProgress(0);
+function checkFeelEnvelope(): void {
+  // Beat starts at rest — camera hasn't moved yet.
+  const rest = recognitionBeatProgress(0);
+  assert.equal(rest.elapsedMs, 0);
+  assert.equal(rest.cameraDeltaMeters, 0);
+  assert.equal(rest.cameraYawDegrees, 0);
+  assert.equal(rest.progress, 0);
 
-  assertClose(start.cameraDeltaMeters, 0, 0.001, "t=0 cameraDeltaMeters");
-  assertClose(start.cameraYawDegrees, 0, 0.001, "t=0 cameraYawDegrees");
-  assert(start.stingGainDb === null, "t=0 stingGainDb should be null");
-  assertClose(start.progress, 0, 0.001, "t=0 progress");
-}
-
-export function checkCameraPeaksAtContractPeakMs(): void {
+  // Camera peaks at `cameraPeakMs` — full delta reached.
   const peak = recognitionBeatProgress(recognitionFeedbackContract.cameraPeakMs, {
     outcome: "sealed",
   });
-
-  assertClose(
-    peak.cameraDeltaMeters,
-    recognitionFeedbackContract.cameraDeltaMeters,
-    1e-6,
-    "peak cameraDeltaMeters matches contract",
+  assert.equal(
+    Math.abs(peak.cameraDeltaMeters - recognitionFeedbackContract.cameraDeltaMeters) < 1e-6,
+    true,
+    `camera peak: expected ${recognitionFeedbackContract.cameraDeltaMeters}, got ${peak.cameraDeltaMeters}`,
   );
-  assertClose(
-    peak.cameraYawDegrees,
-    recognitionFeedbackContract.cameraYawDegrees,
-    1e-6,
-    "peak cameraYawDegrees matches contract",
-  );
-}
 
-export function checkReducedMotionSuppressesCamera(): void {
-  const reduced = recognitionBeatProgress(80, {
-    reducedMotion: true,
-    outcome: "sealed",
-  });
+  // Reduced motion collapses the camera and shortens the total.
+  const reduced = recognitionBeatProgress(80, { reducedMotion: true });
+  assert.equal(reduced.cameraDeltaMeters, 0);
+  assert.equal(reduced.cameraYawDegrees, 0);
+  assert.equal(reduced.totalMs, recognitionFeedbackContract.reducedMotionTotalMs);
 
-  assertClose(reduced.cameraDeltaMeters, 0, 0.001, "reduced cameraDeltaMeters");
-  assertClose(reduced.cameraYawDegrees, 0, 0.001, "reduced cameraYawDegrees");
-  assertEqual(
-    reduced.totalMs,
+  const reducedDone = recognitionBeatProgress(
     recognitionFeedbackContract.reducedMotionTotalMs,
-    "reduced totalMs matches contract",
+    { reducedMotion: true },
   );
+  assert.equal(reducedDone.elapsedMs, recognitionFeedbackContract.reducedMotionTotalMs);
+
+  // Outcome-branch cues present on both branches (lantern, packetSeal,
+  // kioskSign, rainRim, hapticScale, recognition-sting audio).
+  for (const outcome of ["sealed", "opened"] as const) {
+    const cued = recognitionBeatProgress(recognitionFeedbackContract.stingStartMs, {
+      outcome,
+    });
+    assert.equal(cued.lantern.durationMs > 0, true, `${outcome} lantern cue missing`);
+    assert.equal(cued.packetSeal.durationMs > 0, true, `${outcome} packetSeal cue missing`);
+    assert.equal(cued.kioskSign.durationMs > 0, true, `${outcome} kioskSign cue missing`);
+    assert.equal(cued.rainRim.durationMs > 0, true, `${outcome} rainRim cue missing`);
+    assert.equal(cued.hapticScale.amplitude > 0, true, `${outcome} hapticScale cue missing`);
+    assert.equal(
+      cued.audioCueIds.includes("recognition-sting"),
+      true,
+      `${outcome} audio cues missing recognition-sting`,
+    );
+  }
+
+  // Sting fires at stingStartMs with the authored gain envelope.
+  const stingSample = recognitionBeatProgress(recognitionFeedbackContract.stingStartMs);
+  assert.equal(stingSample.stingElapsedMs !== null, true, "sting did not fire at stingStartMs");
+  assert.equal(
+    stingSample.stingGainDb !== null && stingSample.stingGainDb >= recognitionFeedbackContract.stingGainDb,
+    true,
+  );
+
+  // Opened branch overlays the wooden click at stingStartMs + openedWoodenClickDelayMs.
+  const openedClick = recognitionBeatProgress(
+    recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
+    { outcome: "opened" },
+  );
+  assert.equal(openedClick.woodenClickElapsedMs !== null, true, "opened wooden click did not fire");
+  assert.equal(openedClick.woodenClickElapsedMs, 0);
+
+  // Sealed branch does NOT overlay the wooden click.
+  const sealedNoClick = recognitionBeatProgress(
+    recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
+    { outcome: "sealed" },
+  );
+  assert.equal(sealedNoClick.woodenClickElapsedMs, null);
+
+  // Beat settles at totalMs — progress hits 1.
+  const done = recognitionBeatProgress(recognitionFeedbackContract.totalMs);
+  assert.equal(done.elapsedMs, recognitionFeedbackContract.totalMs);
+  assert.equal(done.progress, 1);
 }
 
-export function checkOutcomeBranchCuesArePresent(): void {
-  const sample = recognitionBeatProgress(200, { outcome: "opened" });
-
-  assert(sample.lantern !== undefined, "lantern cue should be defined");
-  assert(sample.packetSeal !== undefined, "packetSeal cue should be defined");
-  assert(sample.kioskSign !== undefined, "kioskSign cue should be defined");
-  assert(sample.rainRim !== undefined, "rainRim cue should be defined");
-  assert(sample.hapticScale !== undefined, "hapticScale should be defined");
-  assert(
-    sample.audioCueIds.includes("recognition-sting"),
-    "audioCueIds should include recognition-sting",
-  );
-}
-
-export function checkOpenedWoodenClickTimingComesFromContract(): void {
-  const stingStart = recognitionFeedbackContract.stingStartMs;
-  const clickDelay = recognitionFeedbackContract.openedWoodenClickDelayMs;
-  const opened = recognitionBeatProgress(stingStart + clickDelay + 5, {
-    outcome: "opened",
-  });
-
-  assert(
-    opened.woodenClickElapsedMs !== null,
-    "opened woodenClickElapsedMs should be non-null past stingStart+clickDelay",
-  );
-  assert(
-    (opened.woodenClickElapsedMs ?? -1) >= 0,
-    "opened woodenClickElapsedMs should be >= 0",
-  );
-}
-
-export function checkBeatSettlesAtEnd(): void {
-  const settled = recognitionBeatProgress(
-    recognitionFeedbackContract.totalMs + 500,
-  );
-
-  // elapsedMs is clamped to totalMs by the sampler → progress fully home,
-  // sting has expired (null), and the beat has an endedAt timestamp.
-  assertClose(settled.progress, 1, 0.001, "settled progress");
-  assertEqual(
-    settled.elapsedMs,
-    recognitionFeedbackContract.totalMs,
-    "settled elapsedMs is clamped to totalMs",
-  );
-  assert(settled.stingGainDb === null, "settled stingGainDb should be null");
-  assert(settled.endedAt !== null, "settled endedAt should be non-null");
-}
-
+/**
+ * Run every recognition-beat invariant (build plan, line resolver, feel
+ * envelope) as a single throwing check bundle. The aftersign e2e lane wraps
+ * this in a Playwright test so a failure surfaces in CI; the standalone
+ * plain-TS harness at the bottom of this file invokes the same bundle so
+ * `test:aftersign` (node --loader) catches drift too.
+ */
 export function runRecognitionBeatChecks(): void {
-  checkSealedListenedLineMatchesCanonical();
-  checkSealedSkippedLineMatchesCanonical();
-  checkOpenedListenedLineMatchesCanonical();
-  checkOpenedSkippedLineMatchesCanonical();
-  checkAllFourLineIdsAreDistinct();
-  checkAllFourLinesAreDistinct();
-  checkBeatStartsAtRest();
-  checkCameraPeaksAtContractPeakMs();
-  checkReducedMotionSuppressesCamera();
-  checkOutcomeBranchCuesArePresent();
-  checkOpenedWoodenClickTimingComesFromContract();
-  checkBeatSettlesAtEnd();
+  checkBuildPlan();
+  checkLineResolver();
+  checkFeelEnvelope();
 }
 
-// Deliberately no top-level `runRecognitionBeatChecks()` call here.
-//
-// Convention (see `aftersign/src/feel/firstCameraMove.test.ts` +
-// `aftersign/src/packetIntent.test.ts` + `aftersign/e2e/packet-intent-contract.spec.ts`):
-// the CI-gating INVOCATION lives in a Playwright spec under `aftersign/e2e/`
-// so `test:e2e:aftersign` actually runs the checks. Wrapping `runRecognitionBeatChecks()`
-// inside a spec's `expect(() => …).not.toThrow()` gives:
-//   • one clear failure message with a stack trace in the Playwright report
-//     when an invariant regresses,
-//   • idempotent execution under the aftersign lane's `retries: 3` cold-start
-//     policy (see `aftersign/playwright.config.ts`), because the checks read
-//     only pure functions with no page fixture,
-//   • no double-execution when a future e2e spec imports symbols from this
-//     module — a bare bottom-level call would fire at import time and re-run
-//     under the harness spec.
-// The paired spec is `aftersign/e2e/recognition-beat-contract.spec.ts`.
+runRecognitionBeatChecks();
+console.log("recognition beat feel contract ok");
