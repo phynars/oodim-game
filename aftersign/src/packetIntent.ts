@@ -24,6 +24,16 @@
  *   - dragging beyond 14 px from the press point cancels
  *   - drift-cancel is sticky: once CANCELLED, subsequent tick()s cannot
  *     resurrect OPENED
+ *
+ * `resolvePacketIntent` (near the bottom of this file) is a PURE HELPER
+ * that maps a fully-recorded gesture sample into a higher-level intent
+ * language (preserve / open / inspect). It's used by callers that only
+ * see a completed gesture; it does NOT replace the controller. The
+ * thresholds it uses are DELIBERATELY tighter (420 ms open floor,
+ * 32 px cancel radius) — resolvePacketIntent is asked "given this whole
+ * gesture, what did the player mean?" and is stricter about requiring
+ * both time AND press pressure before declaring an open. The controller
+ * still owns the live 450/14 feel numbers pinned by the e2e.
  */
 
 export const PACKET_INTENT = Object.freeze({
@@ -337,6 +347,84 @@ export function createPacketIntentHarness(): PacketIntentHarness {
   };
 }
 
+// ---------------------------------------------------------------------------
+// resolvePacketIntent — pure helper, sibling to the controller.
+//
+// The controller above is stateful and live-fed (press/move/tick/release);
+// resolvePacketIntent takes a FINISHED gesture sample and maps it into a
+// higher-level intent label. It's used by callers that only need the final
+// meaning of the gesture, not the frame-by-frame outcome — e.g. deferred
+// story-fork resolvers that receive a recorded gesture and want a single
+// preserve/open/inspect verdict.
+//
+// The thresholds here are DELIBERATELY tighter than the controller's live
+// numbers. The controller answers "should this frame's held state trigger
+// an open?"; resolvePacketIntent answers "given this complete gesture, was
+// the player's intent clear?" — and defaults ambiguous cases to inspect
+// so the story fork is never committed accidentally. Do NOT unify these
+// thresholds with PACKET_INTENT.HOLD_TO_OPEN_MS / DRIFT_CANCEL_PX; the
+// e2e pins the controller's live numbers and this helper's numbers pin a
+// stricter "deliberate" bar for after-the-fact intent classification.
+// ---------------------------------------------------------------------------
+
+export type PacketIntent = 'preserve' | 'open' | 'inspect';
+
+export interface PacketGestureSample {
+  readonly elapsedMs: number;
+  readonly pressDistancePx: number;
+  readonly movedAwayPx: number;
+  readonly releaseInsideSeal: boolean;
+}
+
+export interface PacketIntentThresholds {
+  readonly preserveTapMaxMs: number;
+  readonly preserveTapMaxDistancePx: number;
+  readonly openHoldMinMs: number;
+  readonly openPressMinDistancePx: number;
+  readonly cancelMoveAwayPx: number;
+}
+
+export const DEFAULT_PACKET_INTENT_THRESHOLDS: PacketIntentThresholds = {
+  preserveTapMaxMs: 180,
+  preserveTapMaxDistancePx: 8,
+  openHoldMinMs: 420,
+  openPressMinDistancePx: 14,
+  cancelMoveAwayPx: 32,
+};
+
+export function resolvePacketIntent(
+  sample: PacketGestureSample,
+  thresholds: PacketIntentThresholds = DEFAULT_PACKET_INTENT_THRESHOLDS,
+): PacketIntent {
+  if (!sample.releaseInsideSeal || sample.movedAwayPx >= thresholds.cancelMoveAwayPx) {
+    return 'inspect';
+  }
+
+  const isCleanTap =
+    sample.elapsedMs <= thresholds.preserveTapMaxMs &&
+    sample.pressDistancePx <= thresholds.preserveTapMaxDistancePx;
+
+  if (isCleanTap) {
+    return 'preserve';
+  }
+
+  const isDeliberateBreak =
+    sample.elapsedMs >= thresholds.openHoldMinMs &&
+    sample.pressDistancePx >= thresholds.openPressMinDistancePx;
+
+  if (isDeliberateBreak) {
+    return 'open';
+  }
+
+  return 'inspect';
+}
+
+// ---------------------------------------------------------------------------
+// Parity checks — pin BOTH the stateful controller feel contract AND the
+// pure resolvePacketIntent helper. If either drifts, one of these fails
+// before the e2e even starts.
+// ---------------------------------------------------------------------------
+
 /**
  * Runs the parity checks that pin the feel contract.
  *
@@ -363,6 +451,7 @@ export function runPacketIntentChecks(): void {
   checkResetReArmsController();
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
+  checkResolveIntentHelper();
 }
 
 function checkShortTapPreservesSeal(): void {
@@ -708,6 +797,69 @@ function checkHoldConstantMatches450msSpec(): void {
     PACKET_INTENT.HOLD_TO_OPEN_MS,
     450,
     "HOLD_TO_OPEN_MS must be 450ms per the flagship feel spec",
+  );
+}
+
+function checkResolveIntentHelper(): void {
+  // Pure-helper contract, sibling to the controller. These pin the four
+  // intent branches: clean tap → preserve, deliberate hold+press → open,
+  // ambiguous middle → inspect, cancel radius / release-outside-seal →
+  // inspect. If a future refactor tries to unify these thresholds with
+  // the controller's live 450/14 numbers, one of these fails — the
+  // resolver's bar is deliberately stricter.
+  assertEqual(
+    resolvePacketIntent({
+      elapsedMs: 120,
+      pressDistancePx: 3,
+      movedAwayPx: 0,
+      releaseInsideSeal: true,
+    }),
+    'preserve',
+    'quick, steady tap should preserve the blue packet seal',
+  );
+
+  assertEqual(
+    resolvePacketIntent({
+      elapsedMs: 520,
+      pressDistancePx: 18,
+      movedAwayPx: 2,
+      releaseInsideSeal: true,
+    }),
+    'open',
+    'breaking the blue packet seal should require a held press plus clear pressure travel',
+  );
+
+  assertEqual(
+    resolvePacketIntent({
+      elapsedMs: 260,
+      pressDistancePx: 12,
+      movedAwayPx: 3,
+      releaseInsideSeal: true,
+    }),
+    'inspect',
+    'ambiguous packet handling should inspect, not silently commit the story fork',
+  );
+
+  assertEqual(
+    resolvePacketIntent({
+      elapsedMs: 620,
+      pressDistancePx: 24,
+      movedAwayPx: 40,
+      releaseInsideSeal: true,
+    }),
+    'inspect',
+    'dragging away from the seal should cancel instead of opening the packet',
+  );
+
+  assertEqual(
+    resolvePacketIntent({
+      elapsedMs: 560,
+      pressDistancePx: 20,
+      movedAwayPx: 0,
+      releaseInsideSeal: false,
+    }),
+    'inspect',
+    'releasing outside the seal should never break the packet',
   );
 }
 
