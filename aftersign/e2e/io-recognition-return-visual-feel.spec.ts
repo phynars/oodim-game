@@ -1,5 +1,8 @@
 import { test, expect, Page } from "@playwright/test";
 
+// Cold-start budget matches the sibling e2e specs: SwiftShader + three.js
+// context init can burn most of Playwright's default 30s on a cold CI runner
+// before the first assertion even lands.
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
 
@@ -8,13 +11,20 @@ const WAIT_MS = 60_000;
 // runtime's real recognition surface. There is no top-level `recognition`
 // object on __game, and memoryBeat has no vignetteAlpha field, so this
 // spec asserts only what the runtime actually publishes.
+//
+// Camera bounds come from the OWNING feel spec —
+// docs/flagship/io-recognition-beat.md, mirrored in
+// aftersign/e2e/io-recognition-memory-beat-contract.spec.ts:
+//   cameraDeltaMeters ∈ [0.24m, 0.36m]  (authored dolly ≈ 0.32m)
+//   cameraYawDegrees  ∈ [3°, 5°]        (authored yaw ≈ 4°)
+// Duration mirrors the 1,180ms beat with slack for tick jitter.
 const RETURN_RECOGNITION_VISUAL_FEEL = {
-  maxSettleMs: 1_180,
-  minHoldMs: 720,
-  // memoryBeat.cameraDeltaMeters is in METERS. 0.18 m == 18 cm — matches
-  // the intended "small, tight dolly" feel budget from the plan doc.
-  maxDollyMeters: 0.18,
-  maxYawDeg: 4.5,
+  minSettleMs: 1_100,
+  maxSettleMs: 1_350,
+  minDollyMeters: 0.24,
+  maxDollyMeters: 0.36,
+  minYawDeg: 3,
+  maxYawDeg: 5,
 } as const;
 
 type Beat =
@@ -32,12 +42,17 @@ type MemoryFact = {
 };
 
 // Shape from aftersign/index.html publishState() — story.memoryBeat is null
-// until the recognition beat lands, then carries the measured envelope.
+// until the recognition beat lands (the 1,180ms setTimeout inside
+// deliverPacket populates it), then carries the measured envelope.
 type StoryMemoryBeat = {
-  startedAt?: number;
-  endedAt?: number;
-  cameraDeltaMeters?: number;
-  cameraYawDegrees?: number;
+  kind: "io_packet_return";
+  outcome: "sealed" | "opened";
+  startedAt: number;
+  endedAt: number;
+  cameraDeltaMeters: number;
+  cameraYawDegrees: number;
+  inputLockMs: number;
+  lineId: string;
 };
 
 type GameSurface = {
@@ -56,7 +71,9 @@ type GameSurface = {
   };
   save: { revision: number; dirty: boolean };
   input: {
-    choose(choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet"): Promise<void>;
+    choose(
+      choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet",
+    ): Promise<void>;
     advance(): Promise<void>;
     forceSave(): Promise<void>;
     forceReload(): Promise<void>;
@@ -69,6 +86,20 @@ declare global {
   }
 }
 
+async function waitForGame(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      Boolean(
+        window.__game?.input?.choose &&
+          window.__game.input.advance &&
+          window.__game.input.forceReload &&
+          window.__game.input.forceSave,
+      ),
+    undefined,
+    { timeout: WAIT_MS },
+  );
+}
+
 async function waitForBeat(page: Page, beat: Beat): Promise<void> {
   await page.waitForFunction(
     (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
@@ -77,10 +108,18 @@ async function waitForBeat(page: Page, beat: Beat): Promise<void> {
   );
 }
 
-async function createReturningSealedPacketSession(page: Page): Promise<void> {
-  const slot = `io-recognition-return-visual-${Date.now()}`;
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+test("Io return recognition beat exposes bounded visual feel numbers", async ({
+  page,
+}) => {
+  test.setTimeout(COLD_START_MS);
 
+  const slot = `io-recognition-return-visual-${Date.now()}`;
+  await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
+  await waitForGame(page);
+
+  // First pass — mint the sealed-delivery memory, persist it, hard reload.
+  // This proves the beat can be triggered on a RETURNING session (the
+  // returning-player memory shape is the whole point of this spec).
   await waitForBeat(page, "packet-offered");
   await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
   await waitForBeat(page, "packet-choice");
@@ -88,51 +127,71 @@ async function createReturningSealedPacketSession(page: Page): Promise<void> {
   await waitForBeat(page, "packet-delivered");
 
   await page.evaluate(() => window.__game!.input.forceSave());
-  await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-    timeout: WAIT_MS,
-  });
+  await page.waitForFunction(
+    () => window.__game?.save.dirty === false,
+    undefined,
+    { timeout: WAIT_MS },
+  );
   await page.evaluate(() => window.__game!.input.forceReload());
-}
+  await waitForGame(page);
 
-test("Io return recognition beat exposes bounded visual feel numbers", async ({ page }) => {
-  test.setTimeout(COLD_START_MS);
-
-  await createReturningSealedPacketSession(page);
-
-  const result = await page.evaluate(async () => {
+  // The persisted payload has no `story` field (buildPersistPayload omits it
+  // by design — the beat is derived, not stored), so memoryBeat is null
+  // after reload. Re-drive the recognition flow so the 1,180ms setTimeout
+  // inside deliverPacket re-arms and publishes a fresh memoryBeat. This is
+  // the same pattern io-recognition-memory-beat-contract.spec.ts uses.
+  await page.evaluate(async () => {
+    await window.__game!.input.choose("keep-packet-sealed");
+    await window.__game!.input.choose("deliver-packet");
     await window.__game!.input.advance();
-    const snapshot = window.__game!;
-    const feel = snapshot.story.memoryBeat;
-    return {
-      beat: snapshot.scene.beat,
-      lastLine: snapshot.npcs.io.lastLine,
-      memoryRefs: snapshot.npcs.io.lastLineMemoryRefs,
-      hasFeelSurface: Boolean(feel),
-      settleMs:
-        typeof feel?.startedAt === "number" && typeof feel?.endedAt === "number"
-          ? feel.endedAt - feel.startedAt
-          : null,
-      cameraDeltaMeters: typeof feel?.cameraDeltaMeters === "number" ? feel.cameraDeltaMeters : null,
-      cameraYawDegrees: typeof feel?.cameraYawDegrees === "number" ? feel.cameraYawDegrees : null,
-    };
   });
 
-  expect(result.beat).toBe("io-return-recognition");
-  expect(result.lastLine).toContain("blue seal, unbroken");
-  expect(result.memoryRefs.length).toBeGreaterThan(0);
+  // The beat is published from a setTimeout ~1,180ms after deliver-packet,
+  // so poll story.memoryBeat until it lands. Timeout is generous enough for
+  // SwiftShader tick jitter on cold CI.
+  const beatHandle = await page.waitForFunction(
+    () => {
+      const beat = window.__game?.story?.memoryBeat ?? null;
+      return beat && beat.kind === "io_packet_return" ? beat : null;
+    },
+    undefined,
+    { timeout: WAIT_MS },
+  );
+  const beat = (await beatHandle.jsonValue()) as StoryMemoryBeat;
 
-  expect(result.hasFeelSurface).toBe(true);
-  expect(result.settleMs).not.toBeNull();
-  expect(result.settleMs!).toBeGreaterThanOrEqual(RETURN_RECOGNITION_VISUAL_FEEL.minHoldMs);
-  expect(result.settleMs!).toBeLessThanOrEqual(RETURN_RECOGNITION_VISUAL_FEEL.maxSettleMs);
+  // Scene + line surface: proves the returning-player copy fires against
+  // the sealed-delivery memory that survived the reload.
+  const returnSurface = await page.evaluate(() => ({
+    beat: window.__game!.scene.beat,
+    lastLine: window.__game!.npcs.io.lastLine,
+    memoryRefs: window.__game!.npcs.io.lastLineMemoryRefs,
+  }));
+  expect(returnSurface.beat).toBe("io-return-recognition");
+  expect(returnSurface.lastLine).toContain("blue seal, unbroken");
+  expect(returnSurface.memoryRefs.length).toBeGreaterThan(0);
 
-  expect(result.cameraDeltaMeters).not.toBeNull();
-  expect(Math.abs(result.cameraDeltaMeters!)).toBeLessThanOrEqual(
+  // Feel envelope — this is the spec's whole point: bounded numbers, not
+  // "it fired". Every assertion is against a real field the runtime
+  // publishes at aftersign/index.html:1459-1474.
+  expect(beat.outcome).toBe("sealed");
+
+  const settleMs = beat.endedAt - beat.startedAt;
+  expect(settleMs).toBeGreaterThanOrEqual(
+    RETURN_RECOGNITION_VISUAL_FEEL.minSettleMs,
+  );
+  expect(settleMs).toBeLessThanOrEqual(
+    RETURN_RECOGNITION_VISUAL_FEEL.maxSettleMs,
+  );
+
+  const dolly = Math.abs(beat.cameraDeltaMeters);
+  expect(dolly).toBeGreaterThanOrEqual(
+    RETURN_RECOGNITION_VISUAL_FEEL.minDollyMeters,
+  );
+  expect(dolly).toBeLessThanOrEqual(
     RETURN_RECOGNITION_VISUAL_FEEL.maxDollyMeters,
   );
 
-  expect(result.cameraYawDegrees).not.toBeNull();
-  expect(Math.abs(result.cameraYawDegrees!)).toBeLessThanOrEqual(
-    RETURN_RECOGNITION_VISUAL_FEEL.maxYawDeg,
-  );
+  const yaw = Math.abs(beat.cameraYawDegrees);
+  expect(yaw).toBeGreaterThanOrEqual(RETURN_RECOGNITION_VISUAL_FEEL.minYawDeg);
+  expect(yaw).toBeLessThanOrEqual(RETURN_RECOGNITION_VISUAL_FEEL.maxYawDeg);
 });
