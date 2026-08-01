@@ -28,16 +28,6 @@ const RETURN_RECOGNITION_VISUAL_FEEL = {
   maxYawDeg: 5,
 } as const;
 
-type Beat =
-  | "arrival"
-  | "packet-offered"
-  | "packet-choice"
-  | "packet-delivered"
-  | "io-return-recognition";
-
-// Shape from aftersign/index.html publishState() — story.memoryBeat is null
-// until the recognition beat lands (the 1,180ms setTimeout inside
-// deliverPacket populates it), then carries the measured envelope.
 type StoryMemoryBeat = {
   kind: "io_packet_return";
   outcome: "sealed" | "opened";
@@ -49,23 +39,23 @@ type StoryMemoryBeat = {
   lineId: string;
 };
 
+type GameInput = {
+  choose(choiceId: string): Promise<void>;
+  advance(): Promise<void>;
+  forceReload(): Promise<void>;
+};
+
 type GameSurface = {
   version: 1;
-  scene: { beat: Beat };
+  scene: { beat: string };
   npcs: {
     io: {
       lastLine: string | null;
       lastLineMemoryRefs: string[];
     };
   };
-  save: { revision: number; dirty: boolean };
   story?: { memoryBeat?: StoryMemoryBeat | null };
-  input: {
-    choose(choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet"): Promise<void>;
-    advance(): Promise<void>;
-    forceSave(): Promise<void>;
-    forceReload(): Promise<void>;
-  };
+  input: GameInput;
 };
 
 declare global {
@@ -74,10 +64,20 @@ declare global {
   }
 }
 
-async function waitForBeat(page: Page, beat: Beat): Promise<void> {
+// Wait for the module script to boot the game surface, mirroring the
+// sibling io-recognition-memory-beat-contract.spec.ts. Without this, the
+// first page.evaluate can race the deferred module import and throw
+// "window.__game.input is not available" on cold CI before three.js has
+// finished initializing.
+async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(
-    (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
-    beat,
+    () =>
+      Boolean(
+        window.__game?.input?.choose &&
+          window.__game.input.advance &&
+          window.__game.input.forceReload,
+      ),
+    undefined,
     { timeout: WAIT_MS },
   );
 }
@@ -87,63 +87,49 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({
 }) => {
   test.setTimeout(COLD_START_MS);
 
-  // Returning-session fixture — mirrors the proven flow in
-  // io-recognition-memory-beat-contract.spec.ts: drive keep-sealed →
-  // deliver-packet once (to seed the memory), forceSave, forceReload,
-  // then RE-DRIVE keep-sealed → deliver-packet before calling advance().
-  // buildPersistPayload (aftersign/index.html:~490) has no `story` field,
-  // so memoryBeat is NEVER restored from disk. Only the setTimeout inside
-  // deliverPacket() (index.html:1452-1476) publishes memoryBeat, and
-  // advance() does NOT re-arm it — it only flips scene.beat. Skipping the
-  // re-drive leaves memoryBeat null forever and the poll below times out.
+  // Mirror the proven recipe in io-recognition-memory-beat-contract.spec.ts:
+  //   forceReload → clear story.memoryBeat → choose(keep-sealed) →
+  //   choose(deliver-packet) → advance() → poll story.memoryBeat.
+  //
+  // Why we do NOT wait for intermediate beat transitions here:
+  //   - After forceReload with no prior save, scene.beat is "packet-offered"
+  //     (aftersign/index.html:293) and the game surface is idle.
+  //   - choose("keep-packet-sealed") synchronously flips beat →
+  //     "packet-choice" (index.html:887); choose("deliver-packet") calls
+  //     deliverPacket() (index.html:891) which flips beat →
+  //     "packet-delivered" AND arms the 1,180ms setTimeout that publishes
+  //     story.memoryBeat AND flips beat → "io-return-recognition"
+  //     (index.html:1451-1477).
+  //   - advance() (index.html:960-965) is a no-op if the setTimeout has
+  //     already flipped beat; if we call it before the setTimeout fires,
+  //     it flips beat early — either way the story.memoryBeat poll below
+  //     is what actually gates the assertions.
+  //
+  // Skipping intermediate waitForBeat() calls avoids the reviewer-flagged
+  // hang: this spec previously waited for scene.beat === "packet-offered"
+  // AFTER forceReload, but forceReload restores scene.beat from disk
+  // (index.html:1106-1108) — never "packet-offered" if the pre-save flow
+  // had already driven past it — and the wait timed out.
   const slot = `io-recognition-return-visual-${Date.now()}`;
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+  await waitForGame(page);
 
-  await waitForBeat(page, "packet-offered");
-  await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-choice");
-  await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-  await waitForBeat(page, "packet-delivered");
-
-  await page.evaluate(() => window.__game!.input.forceSave());
-  await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-    timeout: WAIT_MS,
-  });
-
-  // Simulate the player returning: reload from save. buildPersistPayload
-  // (aftersign/index.html:~490) has no `story` field, so memoryBeat is NOT
-  // restored — story.memoryBeat comes back null. advance() only flips
-  // scene.beat → "io-return-recognition"; it does NOT re-arm the 1,180ms
-  // setTimeout that publishes memoryBeat. Only deliverPacket() arms that
-  // timeout (aftersign/index.html:1452-1476), so we must re-drive
-  // keep-sealed → deliver-packet after the reload to observe the beat —
-  // mirroring the proven flow in io-recognition-memory-beat-contract.spec.ts.
-  await page.evaluate(() => window.__game!.input.forceReload());
-  await page.waitForFunction(() => window.__game?.version === 1, undefined, {
-    timeout: WAIT_MS,
-  });
-  await page.evaluate(() => {
-    if (window.__game?.story) {
-      window.__game.story.memoryBeat = null;
+  await page.evaluate(async () => {
+    const game = window.__game;
+    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) {
+      throw new Error("window.__game.input is not available");
     }
+    await game.input.forceReload();
+    if (game.story) {
+      game.story.memoryBeat = null;
+    }
+    await game.input.choose("keep-packet-sealed");
+    await game.input.choose("deliver-packet");
+    await game.input.advance();
   });
 
-  // Re-drive the packet flow so deliverPacket re-arms the setTimeout that
-  // publishes story.memoryBeat. advance() alone would leave memoryBeat
-  // null forever (the 60s waitForFunction below would then time out).
-  await waitForBeat(page, "packet-offered");
-  await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-choice");
-  await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-  await waitForBeat(page, "packet-delivered");
-
-  // advance() flips beat → "io-return-recognition" for the returning-player
-  // copy; the setTimeout armed by the deliverPacket() above is what
-  // actually populates story.memoryBeat ~1,180ms later.
-  await page.evaluate(() => window.__game!.input.advance());
-  await waitForBeat(page, "io-return-recognition");
-
-  // Poll story.memoryBeat until the setTimeout lands. Timeout is generous
+  // Poll story.memoryBeat until the 1,180ms setTimeout inside deliverPacket
+  // (aftersign/index.html:1452-1477) publishes it. Timeout is generous
   // enough for SwiftShader tick jitter on cold CI.
   const beatHandle = await page.waitForFunction(
     () => {
