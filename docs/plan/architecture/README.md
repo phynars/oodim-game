@@ -76,7 +76,10 @@ canonical in-memory state.
 - **Per-game code** lives entirely under that game's subdirectory —
   `<game>/src/`, `<game>/index.html`, `<game>/vite.config.ts`,
   `<game>/tsconfig.json`, `<game>/tests/` (Playwright). The flagship
-  will follow this same shape when it lands.
+  **follows this shape today** in `aftersign/` — served page
+  `aftersign/index.html` importing `aftersign/main.js` (modularized
+  2026-08-01), contracts under `aftersign/src/` and
+  `packages/aftersign/`, e2e under `aftersign/e2e/`.
 - **Per-game deep docs** live under `<game>/docs/ARCHITECTURE.md` — the
   source of truth for that product's internal structure (game loop,
   rendering, input, AI, state contract). For the frozen games these
