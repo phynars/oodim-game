@@ -87,14 +87,15 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({
 }) => {
   test.setTimeout(COLD_START_MS);
 
-  // Returning-session fixture — matches the proven flow in
-  // io-recognition-feedback-latency.spec.ts: run the packet-offered →
-  // packet-choice → packet-delivered chain, forceSave, forceReload, then
-  // advance() to trigger the recognition beat. This is the ONLY reliable
-  // way to observe story.memoryBeat because buildPersistPayload
-  // (aftersign/index.html:727-742) intentionally has no `story` field —
-  // memoryBeat is derived from a re-armed 1,180ms setTimeout inside
-  // deliverPacket, not restored from disk.
+  // Returning-session fixture — mirrors the proven flow in
+  // io-recognition-memory-beat-contract.spec.ts: drive keep-sealed →
+  // deliver-packet once (to seed the memory), forceSave, forceReload,
+  // then RE-DRIVE keep-sealed → deliver-packet before calling advance().
+  // buildPersistPayload (aftersign/index.html:~490) has no `story` field,
+  // so memoryBeat is NEVER restored from disk. Only the setTimeout inside
+  // deliverPacket() (index.html:1452-1476) publishes memoryBeat, and
+  // advance() does NOT re-arm it — it only flips scene.beat. Skipping the
+  // re-drive leaves memoryBeat null forever and the poll below times out.
   const slot = `io-recognition-return-visual-${Date.now()}`;
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
@@ -109,22 +110,36 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({
     timeout: WAIT_MS,
   });
 
-  // Simulate the player returning: reload from save, then null the
-  // memoryBeat surface so any value we later read was minted THIS cycle
-  // (not left over pre-reload).
+  // Simulate the player returning: reload from save. buildPersistPayload
+  // (aftersign/index.html:~490) has no `story` field, so memoryBeat is NOT
+  // restored — story.memoryBeat comes back null. advance() only flips
+  // scene.beat → "io-return-recognition"; it does NOT re-arm the 1,180ms
+  // setTimeout that publishes memoryBeat. Only deliverPacket() arms that
+  // timeout (aftersign/index.html:1452-1476), so we must re-drive
+  // keep-sealed → deliver-packet after the reload to observe the beat —
+  // mirroring the proven flow in io-recognition-memory-beat-contract.spec.ts.
   await page.evaluate(() => window.__game!.input.forceReload());
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
     timeout: WAIT_MS,
   });
-  await waitForBeat(page, "packet-delivered");
   await page.evaluate(() => {
     if (window.__game?.story) {
       window.__game.story.memoryBeat = null;
     }
   });
 
-  // advance() flips beat → "io-return-recognition" synchronously and arms
-  // the 1,180ms setTimeout that populates story.memoryBeat.
+  // Re-drive the packet flow so deliverPacket re-arms the setTimeout that
+  // publishes story.memoryBeat. advance() alone would leave memoryBeat
+  // null forever (the 60s waitForFunction below would then time out).
+  await waitForBeat(page, "packet-offered");
+  await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
+  await waitForBeat(page, "packet-choice");
+  await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
+  await waitForBeat(page, "packet-delivered");
+
+  // advance() flips beat → "io-return-recognition" for the returning-player
+  // copy; the setTimeout armed by the deliverPacket() above is what
+  // actually populates story.memoryBeat ~1,180ms later.
   await page.evaluate(() => window.__game!.input.advance());
   await waitForBeat(page, "io-return-recognition");
 
