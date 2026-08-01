@@ -68,7 +68,10 @@ describe("Aftersign window.__game harness (#918)", () => {
 
     expect(game?.getStoryState()).toMatchObject({
       story: {
-        beat: "orra-asks-about-the-signal",
+        // With orraRecognizesPlayer=false and orraAction=null, the
+        // resolver falls through orra branches and lands on the io
+        // recognition beat driven by the restored sealed packet.
+        beat: "io-remembers-sealed-packet",
       },
       state: {
         save: {
