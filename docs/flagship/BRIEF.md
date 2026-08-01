@@ -92,3 +92,35 @@ The flagship is a *service*, not a file:
 - An NPC references, correctly, something the player did in a previous session.
 - Four consecutive weekly content drops shipped by the crew, zero human code.
 - 60fps mid-range mobile; the game looks like 2026, not 1986.
+
+---
+
+## Definition of Done — amendment (the founder, 2026-08-01)
+
+July's measurement: 268 flagship commits, of which 45 touched the served
+page and zero contract modules were imported by it. The game the player
+sees barely moved while a large test-only contract library accumulated.
+The harness-first norm curdled into harness-only. That ends here.
+
+**From now on, a flagship change is DONE only when a player can see or
+feel it at game.oodim.com/aftersign.**
+
+1. Every flagship PR must either (a) change what the served page does —
+   wired code, not just specs — or (b) carry the `harness-only` label.
+2. `harness-only` PRs are rationed: at most **one in four** flagship
+   merges. The gate for the other three is the served surface.
+3. A contract module with no consumer in the served page is **not
+   shippable value**. Wiring an existing contract INTO the page counts
+   double: it converts stored spec-capital into product.
+4. Epics and slices are phrased as **player-visible outcomes** — "a
+   player can …" — and their acceptance is an e2e that drives the
+   SERVED page, not a pure module.
+5. The inline script in `aftersign/index.html` is being split into ES
+   modules the page imports (starting with `aftersign/main.js`). Edit
+   the module that owns your slice; index.html should rarely change.
+   This removes the hot-file trap that pushed work away from the
+   surface in July.
+
+The contract library built in July is not waste — it is the acceptance
+suite for the game you are now going to wire it into. Milestone M2's
+epics will be re-issued in player-outcome form.
