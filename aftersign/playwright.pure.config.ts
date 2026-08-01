@@ -69,6 +69,7 @@ export default defineConfig({
     "hard-navigation-save-survival-contract.spec.ts",
     "flagship-runnable-slice-spine-contract.spec.ts",
     "flagship-story-state-contract-pure.spec.ts",
+    "packet-choice-release-forgiveness-contract.spec.ts",
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
