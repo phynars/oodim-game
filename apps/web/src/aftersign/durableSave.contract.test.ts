@@ -27,6 +27,7 @@ import {
   sampleAftersignPacketConfirmInteractionEnvelope,
 } from "./verticalSliceState";
 import { sampleRecognitionFeedbackBeat } from "./recognitionFeedback";
+import { ORRA_RECOGNITION_BEATS } from "../../../../aftersign/src/narrative/orra-recognition-beat";
 
 type FeelContractSample = {
   label: string;

@@ -160,11 +160,23 @@ export function openAftersignOrraRecognitionBeat(
     );
   }
 
+  // Project the slice's state onto the canonical selector's memory shape.
+  // `answered-saint-orra` is the deliberate action the slice recognizes on,
+  // and it maps to Orra's "named debt" line — the sharpest recognition in
+  // her deck. When the slice grows a wider action vocabulary, extend this
+  // projection; the selector will already know what to say.
+  const recognitionState: OrraRecognitionState = {
+    hasMetOrra: state.orraHasMetPlayer,
+    debt: state.orraAction === "answered-saint-orra" ? "named" : undefined,
+  };
+  const beat = selectOrraRecognitionBeat(recognitionState);
+
   return {
     cue: {
       kind: "orra-recognition-beat",
       orraAction: state.orraAction,
       startedAtMs,
+      beat,
     },
   };
 }

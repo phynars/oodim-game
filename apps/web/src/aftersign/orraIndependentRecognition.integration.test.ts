@@ -118,6 +118,11 @@ describe("M3-E1: Orra recognizes the player independently of Io (#863)", () => {
         kind: "orra-recognition-beat",
         orraAction: "answered-saint-orra",
         startedAtMs: 900,
+        // Canonical selector is live in the driven slice: the cue carries
+        // Orra's "named debt" beat by object reference from the narrative
+        // deck. This is the M3-E1 "Orra's voice is live" acceptance —
+        // silently drop the wiring and this equality flips red.
+        beat: ORRA_RECOGNITION_BEATS.debt.named,
       });
 
       // PHONE VIEWPORT DRIVEN ASSERTIONS — the envelope is sampled via the
