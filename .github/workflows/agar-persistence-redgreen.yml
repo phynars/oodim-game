@@ -34,6 +34,10 @@
 #   - The break-mode env must reach the WORKER (the Durable Object reads
 #     it once at construction), NOT the test runner. The precedent does
 #     this in package.json:
+  # Lockfile/package.json deliberately NOT in the paths filter (the #830
+  # lesson, applied 2026-08-01): agar is FROZEN — its proofs only matter
+  # when agar/ itself changes. Including the lockfile dragged every
+  # deps-only PR onto frozen-game red/green lanes (dependabot #965).
 #         dev:agar-server:broken =
 #           wrangler dev --config agar/wrangler.toml --var AGAR_DO_BREAK_MODE:drop-every-7th
 #     The persistence epic mirrors that pattern with per-mode scripts:
@@ -65,16 +69,12 @@ on:
     paths:
       - "agar/**"
       - "e2e-shared/**"
-      - "package.json"
-      - "package-lock.json"
       - ".github/workflows/agar-persistence-redgreen.yml"
   push:
     branches: [main]
     paths:
       - "agar/**"
       - "e2e-shared/**"
-      - "package.json"
-      - "package-lock.json"
       - ".github/workflows/agar-persistence-redgreen.yml"
 
 jobs:
