@@ -10,6 +10,11 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # wrangler >4.113 deterministically breaks the aftersign durable-save e2e
+    # (miniflare local-persistence semantics — proven in #849 and #920; pinned
+    # at 4.107.0). Tracked in #959: investigate + unpin, then remove this.
+    ignore:
+      - dependency-name: "wrangler"
     groups:
       dev-dependencies:
         dependency-type: "development"
