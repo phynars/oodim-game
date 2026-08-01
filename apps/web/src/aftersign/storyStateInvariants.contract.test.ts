@@ -5,47 +5,76 @@ import {
   encodeAftersignDurableSave,
   getAftersignStoryState,
   meetIoForAftersignSlice,
+  recordAftersignPacketChoice,
   restoreAftersignDurableSave,
 } from "./verticalSliceState";
 
 const STORY_STATE_OPTIONS = {
-  playerId: "player-story-state",
-  playerName: "Mara",
+  playerId: "player-persistent-7",
+  playerName: "Signal Runner",
+  rememberedSessionIds: ["session-1"],
+};
+
+const assertJsonStable = (value: unknown) => {
+  expect(JSON.parse(JSON.stringify(value))).toEqual(value);
 };
 
 describe("Aftersign story/state surface invariants", () => {
-  it("keeps the canonical story beat inside the completed beat set without duplicates", () => {
-    const state = meetIoForAftersignSlice(createAftersignVerticalSliceState(), {
-      displayName: "Mara",
-    });
+  it("publishes one canonical current beat that is also listed as completed", () => {
+    const state = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(
+          meetIoForAftersignSlice(
+            recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+          ),
+          41,
+        ),
+      ),
+    );
 
     const snapshot = getAftersignStoryState(state, STORY_STATE_OPTIONS);
 
-    expect(snapshot.story.beat).toBeTruthy();
+    expect(snapshot.story.id).toBe("aftersign.verticalSlice");
+    expect(snapshot.story.act).toBe("act-1");
+    expect(snapshot.story.beat).toBe("io-remembers-opened-packet");
     expect(snapshot.story.completedBeats).toContain(snapshot.story.beat);
-    expect(new Set(snapshot.story.completedBeats).size).toBe(snapshot.story.completedBeats.length);
+    expect(new Set(snapshot.story.completedBeats).size).toBe(
+      snapshot.story.completedBeats.length,
+    );
+    assertJsonStable(snapshot);
   });
 
-  it("surfaces durable save metadata beside Io's returning-player memory after restore", () => {
-    const firstVisit = meetIoForAftersignSlice(createAftersignVerticalSliceState(), {
-      displayName: "Mara",
-    });
+  it("keeps the durable save pointer visible on the same state surface as the remembering NPC", () => {
+    const savedAtTurn = 42;
+    const state = meetIoForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(
+          meetIoForAftersignSlice(
+            recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+          ),
+          savedAtTurn,
+        ),
+      ),
+    );
 
-    const save = encodeAftersignDurableSave(firstVisit, 7);
-    const returnVisit = meetIoForAftersignSlice(restoreAftersignDurableSave(save), {
-      displayName: "Mara",
-    });
-    const snapshot = getAftersignStoryState(returnVisit, STORY_STATE_OPTIONS);
+    const snapshot = getAftersignStoryState(state, STORY_STATE_OPTIONS);
 
     expect(snapshot.state.save).toEqual({
       key: "aftersign.verticalSlice.v1",
-      savedAtTurn: 7,
+      savedAtTurn,
     });
-    expect(snapshot.state.npcs).toContainEqual(
-      expect.objectContaining({
+    expect(snapshot.state.npcs).toEqual([
+      {
         id: "io",
+        name: "Io",
         disposition: "recognizes-player",
-      }),
-    );
+        rememberedSessionIds: ["session-1"],
+        memory: {
+          recognizesPlayer: true,
+          packetOutcome: "sealed",
+        },
+      },
+    ]);
+    assertJsonStable(snapshot.state);
   });
 });
