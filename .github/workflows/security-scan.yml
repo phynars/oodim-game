@@ -12,7 +12,12 @@ permissions:
 on:
   push:
     branches: [main]
-  pull_request:
+  # pull_request trigger removed 2026-08-01: this repo is PUBLIC, so PRs
+  # already get native CodeQL (Analyze checks) + GitHub secret scanning for
+  # free — gitleaks/semgrep on every PR duplicated that at ~160 runs/mo.
+  # Post-merge (push to main) + weekly + manual keep the belt for anything
+  # native scanning misses. The PRIVATE repos keep their PR trigger — they
+  # have no free CodeQL.
   workflow_dispatch:
   schedule:
     - cron: "0 8 * * 1" # weekly, Monday 08:00 UTC
