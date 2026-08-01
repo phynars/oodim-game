@@ -1,5 +1,8 @@
+import { describe, expect, it } from "vitest";
+
 import {
   ORRA_RECOGNITION_BEATS,
+  ORRA_RETURNING_BEATS,
   selectOrraRecognitionBeat,
 } from "./orra-recognition-beat";
 
@@ -65,13 +68,7 @@ describe("Orra recognition beat", () => {
   });
 
   it("keeps every returning beat tied to explicit server facts", () => {
-    const returningBeats = [
-      ...Object.values(ORRA_RECOGNITION_BEATS.signal),
-      ...Object.values(ORRA_RECOGNITION_BEATS.pace),
-      ...Object.values(ORRA_RECOGNITION_BEATS.debt),
-    ];
-
-    for (const beat of returningBeats) {
+    for (const beat of ORRA_RETURNING_BEATS) {
       expect(beat.rememberedFacts).toContain("orra.met");
       expect(beat.rememberedFacts.length).toBeGreaterThan(1);
       expect(beat.id).toMatch(/^orra-/);
