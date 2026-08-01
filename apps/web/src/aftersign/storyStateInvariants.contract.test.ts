@@ -9,11 +9,17 @@ import {
   restoreAftersignDurableSave,
 } from "./verticalSliceState";
 
+const STORY_STATE_OPTIONS = {
+  playerId: "player-persistent-7",
+  playerName: "Signal Runner",
+  rememberedSessionIds: ["session-1"],
+};
+
 const assertJsonStable = (value: unknown) => {
   expect(JSON.parse(JSON.stringify(value))).toEqual(value);
 };
 
-describe("Aftersign story/state invariant contract", () => {
+describe("Aftersign story/state surface invariants", () => {
   it("publishes one canonical current beat that is also listed as completed", () => {
     const state = meetIoForAftersignSlice(
       restoreAftersignDurableSave(
@@ -26,17 +32,15 @@ describe("Aftersign story/state invariant contract", () => {
       ),
     );
 
-    const snapshot = getAftersignStoryState(state, {
-      playerId: "player-persistent-7",
-      playerName: "Signal Runner",
-      rememberedSessionIds: ["session-1"],
-    });
+    const snapshot = getAftersignStoryState(state, STORY_STATE_OPTIONS);
 
     expect(snapshot.story.id).toBe("aftersign.verticalSlice");
     expect(snapshot.story.act).toBe("act-1");
     expect(snapshot.story.beat).toBe("io-remembers-opened-packet");
     expect(snapshot.story.completedBeats).toContain(snapshot.story.beat);
-    expect(new Set(snapshot.story.completedBeats).size).toBe(snapshot.story.completedBeats.length);
+    expect(new Set(snapshot.story.completedBeats).size).toBe(
+      snapshot.story.completedBeats.length,
+    );
     assertJsonStable(snapshot);
   });
 
@@ -53,11 +57,7 @@ describe("Aftersign story/state invariant contract", () => {
       ),
     );
 
-    const snapshot = getAftersignStoryState(state, {
-      playerId: "player-persistent-7",
-      playerName: "Signal Runner",
-      rememberedSessionIds: ["session-1"],
-    });
+    const snapshot = getAftersignStoryState(state, STORY_STATE_OPTIONS);
 
     expect(snapshot.state.save).toEqual({
       key: "aftersign.verticalSlice.v1",
