@@ -49,4 +49,37 @@ describe("Aftersign window.__game harness (#918)", () => {
       },
     });
   });
+
+  it("keeps durable save metadata visible after restored story progression", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    const savedAtTurn = 31;
+    const payload = encodeAftersignDurableSave(
+      meetIoForAftersignSlice(
+        recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+      ),
+      savedAtTurn,
+    );
+
+    game?.restoreDurableSave(payload);
+    game?.meetNpc("io");
+    game?.meetNpc("orra");
+
+    expect(game?.getStoryState()).toMatchObject({
+      story: {
+        // With orraRecognizesPlayer=false and orraAction=null, the
+        // resolver falls through orra branches and lands on the io
+        // recognition beat driven by the restored sealed packet.
+        beat: "io-remembers-sealed-packet",
+      },
+      state: {
+        save: {
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn,
+        },
+      },
+    });
+    expect(JSON.parse(JSON.stringify(game?.getStoryState()))).toEqual(game?.getStoryState());
+  });
 });
