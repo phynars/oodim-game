@@ -1,4 +1,4 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 // Cold-start budget matches the sibling e2e specs: SwiftShader + three.js
 // context init can burn most of Playwright's default 30s on a cold CI runner
@@ -7,16 +7,17 @@ const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
 
 // Bounded feel envelope for the Io return-recognition beat. Sourced from
-// window.__game.story.memoryBeat (aftersign/index.html publishState) — the
-// runtime's real recognition surface. There is no top-level `recognition`
-// object on __game, and memoryBeat has no vignetteAlpha field, so this
-// spec asserts only what the runtime actually publishes.
+// window.__game.story.memoryBeat (aftersign/index.html:1459-1474 — the
+// runtime's real recognition surface). memoryBeat.kind is
+// "io_packet_return" and its fields are startedAt/endedAt/
+// cameraDeltaMeters/cameraYawDegrees/inputLockMs/lineId — this spec
+// asserts only what the runtime actually publishes.
 //
-// Camera bounds come from the OWNING feel spec —
+// Camera bounds match the OWNING feel spec —
 // docs/flagship/io-recognition-beat.md, mirrored in
 // aftersign/e2e/io-recognition-memory-beat-contract.spec.ts:
 //   cameraDeltaMeters ∈ [0.24m, 0.36m]  (authored dolly ≈ 0.32m)
-//   cameraYawDegrees  ∈ [3°, 5°]        (authored yaw ≈ 4°)
+//   cameraYawDegrees  ∈ [3°, 5°]        (authored yaw  ≈ 4°)
 // Duration mirrors the 1,180ms beat with slack for tick jitter.
 const RETURN_RECOGNITION_VISUAL_FEEL = {
   minSettleMs: 1_100,
@@ -34,13 +35,6 @@ type Beat =
   | "packet-delivered"
   | "io-return-recognition";
 
-type MemoryFact = {
-  id: string;
-  predicate: string;
-  object: string;
-  sessionId: string;
-};
-
 // Shape from aftersign/index.html publishState() — story.memoryBeat is null
 // until the recognition beat lands (the 1,180ms setTimeout inside
 // deliverPacket populates it), then carries the measured envelope.
@@ -55,55 +49,23 @@ type StoryMemoryBeat = {
   lineId: string;
 };
 
-type GameSurface = {
-  version: 1;
-  scene: { beat: Beat };
-  story: {
-    currentNpcId: string | null;
-    memoryBeat: StoryMemoryBeat | null;
-  };
-  npcs: {
-    io: {
-      memory: MemoryFact[];
-      lastLine: string | null;
-      lastLineMemoryRefs: string[];
-    };
-  };
-  save: { revision: number; dirty: boolean };
-  input: {
-    choose(
-      choiceId: "open-packet" | "keep-packet-sealed" | "deliver-packet",
-    ): Promise<void>;
-    advance(): Promise<void>;
-    forceSave(): Promise<void>;
-    forceReload(): Promise<void>;
-  };
-};
-
-declare global {
-  interface Window {
-    __game?: GameSurface;
-  }
-}
-
 async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(
-    () =>
-      Boolean(
-        window.__game?.input?.choose &&
-          window.__game.input.advance &&
-          window.__game.input.forceReload &&
-          window.__game.input.forceSave,
-      ),
+    () => {
+      const game = (window as unknown as {
+        __game?: {
+          input?: {
+            choose?: unknown;
+            advance?: unknown;
+            forceReload?: unknown;
+          };
+        };
+      }).__game;
+      return Boolean(
+        game?.input?.choose && game.input.advance && game.input.forceReload,
+      );
+    },
     undefined,
-    { timeout: WAIT_MS },
-  );
-}
-
-async function waitForBeat(page: Page, beat: Beat): Promise<void> {
-  await page.waitForFunction(
-    (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
-    beat,
     { timeout: WAIT_MS },
   );
 }
@@ -117,42 +79,59 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({
   await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
   await waitForGame(page);
 
-  // First pass — mint the sealed-delivery memory, persist it, hard reload.
-  // This proves the beat can be triggered on a RETURNING session (the
-  // returning-player memory shape is the whole point of this spec).
-  await waitForBeat(page, "packet-offered");
-  await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
-  await waitForBeat(page, "packet-choice");
-  await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-  await waitForBeat(page, "packet-delivered");
-
-  await page.evaluate(() => window.__game!.input.forceSave());
-  await page.waitForFunction(
-    () => window.__game?.save.dirty === false,
-    undefined,
-    { timeout: WAIT_MS },
-  );
-  await page.evaluate(() => window.__game!.input.forceReload());
-  await waitForGame(page);
-
-  // The persisted payload has no `story` field (buildPersistPayload omits it
-  // by design — the beat is derived, not stored), so memoryBeat is null
-  // after reload. Re-drive the recognition flow so the 1,180ms setTimeout
-  // inside deliverPacket re-arms and publishes a fresh memoryBeat. This is
-  // the same pattern io-recognition-memory-beat-contract.spec.ts uses.
+  // Mirror the returning-player entry pattern from the sibling contract
+  // spec (aftersign/e2e/io-recognition-memory-beat-contract.spec.ts): a
+  // forceReload followed by choose+choose+advance re-arms the 1,180ms
+  // recognition setTimeout that populates story.memoryBeat. Nulling the
+  // beat first proves the value we later read was minted THIS cycle, not
+  // left over from a previous run.
+  //
+  // buildPersistPayload (aftersign/index.html:727-742) has no `story`
+  // field by design, so memoryBeat is intentionally derived (not stored) —
+  // that's why re-driving the flow is the correct way to observe the beat
+  // on a returning session, not restoring it from disk.
   await page.evaluate(async () => {
-    await window.__game!.input.choose("keep-packet-sealed");
-    await window.__game!.input.choose("deliver-packet");
-    await window.__game!.input.advance();
+    const game = (window as unknown as {
+      __game?: {
+        input?: {
+          choose?: (choiceId: string) => Promise<void>;
+          advance?: () => Promise<void>;
+          forceReload?: () => Promise<void>;
+        };
+        story?: { memoryBeat?: unknown };
+      };
+    }).__game;
+    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) {
+      throw new Error("window.__game.input is not available");
+    }
+    await game.input.forceReload();
+    if (game.story) {
+      game.story.memoryBeat = null;
+    }
+    await game.input.choose("keep-packet-sealed");
+    await game.input.choose("deliver-packet");
+    await game.input.advance();
   });
 
   // The beat is published from a setTimeout ~1,180ms after deliver-packet,
-  // so poll story.memoryBeat until it lands. Timeout is generous enough for
-  // SwiftShader tick jitter on cold CI.
+  // so poll story.memoryBeat until it lands. Timeout is generous enough
+  // for SwiftShader tick jitter on cold CI.
   const beatHandle = await page.waitForFunction(
     () => {
-      const beat = window.__game?.story?.memoryBeat ?? null;
-      return beat && beat.kind === "io_packet_return" ? beat : null;
+      const game = (window as unknown as {
+        __game?: {
+          story?: {
+            memoryBeat?: {
+              kind?: string;
+              outcome?: string;
+            } | null;
+          };
+        };
+      }).__game;
+      const beat = game?.story?.memoryBeat ?? null;
+      return beat && beat.kind === "io_packet_return" && beat.outcome === "sealed"
+        ? beat
+        : null;
     },
     undefined,
     { timeout: WAIT_MS },
@@ -160,12 +139,26 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({
   const beat = (await beatHandle.jsonValue()) as StoryMemoryBeat;
 
   // Scene + line surface: proves the returning-player copy fires against
-  // the sealed-delivery memory that survived the reload.
-  const returnSurface = await page.evaluate(() => ({
-    beat: window.__game!.scene.beat,
-    lastLine: window.__game!.npcs.io.lastLine,
-    memoryRefs: window.__game!.npcs.io.lastLineMemoryRefs,
-  }));
+  // the sealed-delivery memory the beat represents.
+  const returnSurface = await page.evaluate(() => {
+    const game = (window as unknown as {
+      __game?: {
+        scene: { beat: Beat };
+        npcs: {
+          io: {
+            lastLine: string | null;
+            lastLineMemoryRefs: string[];
+          };
+        };
+      };
+    }).__game;
+    if (!game) throw new Error("window.__game is not available");
+    return {
+      beat: game.scene.beat,
+      lastLine: game.npcs.io.lastLine,
+      memoryRefs: game.npcs.io.lastLineMemoryRefs,
+    };
+  });
   expect(returnSurface.beat).toBe("io-return-recognition");
   expect(returnSurface.lastLine).toContain("blue seal, unbroken");
   expect(returnSurface.memoryRefs.length).toBeGreaterThan(0);
