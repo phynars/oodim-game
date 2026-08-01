@@ -1,26 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { IO_PHONE_READY_FEEL } from '../../e2e-shared/aftersign/ioPhoneReadyFeel';
-
 // Cold-start budget matches sibling AFTERSIGN specs: SwiftShader + three.js
 // first WebGL context regularly blows the default 30s in CI. Every spec in
 // aftersign/e2e/ opts into 90s and uses waitUntil: 'load' — 'networkidle'
 // never fires when the render loop keeps requesting frames.
-//
-// PR #706: two changes here.
-//   1. horizontal/verticalOverflowPx assertions loosened from ===0 to
-//      <=1px. getBoundingClientRect() returns sub-pixel floats, and
-//      SwiftShader's software rasterizer occasionally rounds a
-//      pixel-perfect layout into a 0.5px overflow. That's not a
-//      layout regression — it's float rounding — and a 1px epsilon
-//      is well below any perceptual threshold on a 390×844 phone.
-//   2. Durable retry bump for the cold-start SwiftShader flake class
-//      (documented in aftersign/src/packetChoiceFeel.test.ts:12-22
-//      and acknowledged in PR #453 / #468 / #590): the fix lives in
-//      aftersign/playwright.config.ts (retries 1 → 2 in CI), not in
-//      another comment tweak. A real assertion bug still fails 3× in
-//      a row and stays red; a genuine cold-start hiccup gets the
-//      extra attempt it needs.
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
 
@@ -29,22 +12,17 @@ const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 const MAX_VIEWPORT_EDGE_EPSILON_PX = 1;
 
+// Issue #544 contract thresholds are pinned as literals here so the harness
+// itself enforces the product envelope even if shared feel constants drift.
+const MAX_UI_SETTLE_MS = 360;
+const MAX_AV_DRIFT_MS = 50;
+const EXPECTED_AUDIO_CUE = 'packet-confirmed';
+
 // The line that ACTUALLY renders at the sealed recognition beat, per
 // index.html's lineForBeat() branch for state.scene.beat ===
-// 'io-return-recognition' with state.packet.sealed === true. The earlier
-// draft waited on "You brought it back sealed." which lives only in
-// aftersign/src/recognitionFeedback.ts and is never imported by index.html.
+// 'io-return-recognition' with state.packet.sealed === true.
 const IO_SEALED_RECOGNITION_LINE =
   'I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.';
-
-// Phone-ready envelope for the first Io recognition beat. Sourced from the
-// shared feel contract (e2e-shared/aftersign/ioPhoneReadyFeel.ts) so the spec
-// asserts against the SAME numbers the runtime samples — no parallel source
-// of truth. If these budgets need to move, edit the shared contract; the
-// runtime mirror in apps/web/src/aftersign/ioPhoneReadyFeel.ts must match.
-const MAX_UI_SETTLE_MS = IO_PHONE_READY_FEEL.settleMs;
-const MAX_AV_DRIFT_MS = IO_PHONE_READY_FEEL.maxAudioVisualDriftMs;
-const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
 type PhoneReadyProbe = {
   readonly lineText: string;
@@ -75,9 +53,6 @@ type RuntimeMarks = {
   readonly audioCueAt: number;
 };
 
-// Wait for the module script to boot the game surface (parallels the
-// pattern in io-recognition-memory-beat-contract.spec.ts). Without this,
-// the first evaluate() can race the deferred module import.
 const waitForGame = async (page: Page) => {
   await page.waitForFunction(
     () => Boolean(
@@ -112,18 +87,6 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
     win.__ioPhoneReadyMarks = {};
 
-    // Seed the "last" values from the CURRENT state, not sentinel defaults.
-    // Otherwise the first rAF tick can see beat/line/audioCue at a stale
-    // "before-drive" value that trivially satisfies the transition guards
-    // (lastBeat=null !== 'io-return-recognition', lastAudioCue=null !==
-    // 'packet-confirmed'), and if the drive has already reached the sealed
-    // recognition beat by the time this observer's first tick fires (which
-    // is realistic on cold CI where SwiftShader delays the render loop
-    // relative to microtask completion), the marks would be stamped with
-    // performance.now() at OBSERVATION time — not at the actual transition —
-    // yielding a settleMs / avDriftMs that reflects rAF jitter, not runtime
-    // coupling. Seeding here means the transition guards only fire on a
-    // genuine change AFTER install, which is what the contract measures.
     const initialGame = win.__game;
     let lastBeat: string | null = initialGame?.scene?.beat ?? null;
     let lastLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
@@ -170,11 +133,6 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
   }, EXPECTED_AUDIO_CUE);
 };
 
-// Drive the game into the sealed recognition beat via the same public
-// input surface the other e2e specs use — keep-packet-sealed →
-// deliver-packet → advance(). The prior draft tried to boot straight to
-// the beat via ?outcome=sealed, but index.html only reads `slot`; the
-// query param was a no-op and the page stayed on 'packet-offered'.
 const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
   await installPhoneReadyRuntimeMarks(page);
@@ -197,10 +155,6 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
     if (game.story) {
       game.story.memoryBeat = null;
     }
-    // Best-effort pre-warm of the audio context. In headless CI without a
-    // user gesture the AudioContext usually stays suspended after resume(),
-    // but playKioskConfirm() stamps state._runtime.audio.lastCue before the
-    // unlock gate, so the contract can still observe dispatch timing.
     if (typeof game.enableAudio === 'function') {
       await game.enableAudio();
     }
@@ -322,9 +276,6 @@ test.describe('Io phone-ready look/sound contract', () => {
 
     await driveToSealedRecognitionBeat(page);
 
-    // The recognition line the game actually paints — assert on the
-    // rendered string, not the one in recognitionFeedback.ts that
-    // index.html never imports.
     await page.waitForFunction(
       (expected) => {
         const node = document.querySelector('#line');
@@ -340,12 +291,6 @@ test.describe('Io phone-ready look/sound contract', () => {
     expect(probe.lineText).toContain(IO_SEALED_RECOGNITION_LINE);
     expect(probe.lineVisible).toBe(true);
     expect(probe.lineReadable).toBe(true);
-    // horizontalOverflowPx / verticalOverflowPx already fold in
-    //   Math.max(0, -rect.left, rect.right - viewport.width, ...)
-    // so a passing <=1px overflow check IMPLIES lineRect edges are
-    // within ±1px of the viewport. Redundant rect.left/right/top/bottom
-    // asserts were removed on Soren's PR #706 review — one bound per
-    // axis, not two.
     expect(probe.horizontalOverflowPx).toBeLessThanOrEqual(MAX_VIEWPORT_EDGE_EPSILON_PX);
     expect(probe.verticalOverflowPx).toBeLessThanOrEqual(MAX_VIEWPORT_EDGE_EPSILON_PX);
     expect(probe.settleMs).toBeGreaterThanOrEqual(0);
