@@ -155,12 +155,26 @@ function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): v
   //     split only appears at io-return-recognition. Path is
   //     distinguished here by delivery.outcome + memory[].object.
   expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
-  expect(afterReload.scene.beat).toBe("packet-delivered");
+  // #958 de-flake: deliverPacket() persists beat="packet-delivered"
+  // synchronously and a 1180ms setTimeout advances to
+  // "io-return-recognition" — and pagehide/forceSave persists WHATEVER
+  // beat is current. On a slow runner the timer wins the race, so BOTH
+  // beats are contract-valid after reload (the byte-identical build
+  // produced either outcome across runners; the timing is environmental,
+  // not behavioral). The durable guard is the outcome + remembered
+  // memory + the beat-appropriate line — asserted for whichever
+  // contract-valid beat we landed on.
+  expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
   expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
   expect(afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome)).toBe(
     true,
   );
-  expect(afterReload.npcs.io.lastLine).toBe(DELIVERED_LINE);
+  if (afterReload.scene.beat === "packet-delivered") {
+    expect(afterReload.npcs.io.lastLine).toBe(DELIVERED_LINE);
+  } else {
+    expect(afterReload.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
+    expect(afterReload.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
+  }
 }
 
 // After reload we're at the durable "packet-delivered" beat. The
@@ -168,8 +182,14 @@ function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): v
 // it deterministically by routing through advance() — no wall-clock wait,
 // no reliance on the 1180ms setTimeout (which doesn't survive reload).
 async function advanceToRecognition(page: Page) {
-  await page.evaluate(() => window.__game!.input.choose("return-to-io"));
-  await idle(page);
+  // #958: if the 1180ms timer already advanced us pre-save, we reloaded
+  // INTO recognition — choosing "return-to-io" again would be an unknown
+  // choice at that beat. Advance only when still at packet-delivered.
+  const beat = await page.evaluate(() => window.__game!.getSnapshot().scene.beat);
+  if (beat !== "io-return-recognition") {
+    await page.evaluate(() => window.__game!.input.choose("return-to-io"));
+    await idle(page);
+  }
   return page.evaluate(() => window.__game!.getSnapshot());
 }
 
