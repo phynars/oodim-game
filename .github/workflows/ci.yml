@@ -81,7 +81,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:pacman
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pacman-playwright-trace
           path: |
@@ -105,7 +105,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:galaga
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: galaga-playwright-trace
           path: |
@@ -129,7 +129,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:doom
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: doom-playwright-trace
           path: |
@@ -153,7 +153,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:agar
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agar-playwright-trace
           path: |
@@ -199,7 +199,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:aftersign
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aftersign-playwright-trace
           path: |
@@ -221,7 +221,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:landing
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: landing-playwright-trace
           path: |
