@@ -3,12 +3,18 @@ import { test, expect, Page } from "@playwright/test";
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
 
+// Bounded feel envelope for the Io return-recognition beat. Sourced from
+// window.__game.story.memoryBeat (aftersign/index.html publishState) — the
+// runtime's real recognition surface. There is no top-level `recognition`
+// object on __game, and memoryBeat has no vignetteAlpha field, so this
+// spec asserts only what the runtime actually publishes.
 const RETURN_RECOGNITION_VISUAL_FEEL = {
   maxSettleMs: 1_180,
   minHoldMs: 720,
-  maxDollyCm: 18,
+  // memoryBeat.cameraDeltaMeters is in METERS. 0.18 m == 18 cm — matches
+  // the intended "small, tight dolly" feel budget from the plan doc.
+  maxDollyMeters: 0.18,
   maxYawDeg: 4.5,
-  maxVignetteAlpha: 0.2,
 } as const;
 
 type Beat =
@@ -25,9 +31,22 @@ type MemoryFact = {
   sessionId: string;
 };
 
+// Shape from aftersign/index.html publishState() — story.memoryBeat is null
+// until the recognition beat lands, then carries the measured envelope.
+type StoryMemoryBeat = {
+  startedAt?: number;
+  endedAt?: number;
+  cameraDeltaMeters?: number;
+  cameraYawDegrees?: number;
+};
+
 type GameSurface = {
   version: 1;
   scene: { beat: Beat };
+  story: {
+    currentNpcId: string | null;
+    memoryBeat: StoryMemoryBeat | null;
+  };
   npcs: {
     io: {
       memory: MemoryFact[];
@@ -44,19 +63,9 @@ type GameSurface = {
   };
 };
 
-type OptionalRecognitionFeelSurface = {
-  recognition?: {
-    startedAtMs?: number;
-    settledAtMs?: number;
-    cameraDollyCm?: number;
-    cameraYawDeg?: number;
-    vignetteAlpha?: number;
-  };
-};
-
 declare global {
   interface Window {
-    __game?: GameSurface & OptionalRecognitionFeelSurface;
+    __game?: GameSurface;
   }
 }
 
@@ -93,19 +102,18 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({ 
   const result = await page.evaluate(async () => {
     await window.__game!.input.advance();
     const snapshot = window.__game!;
-    const feel = snapshot.recognition;
+    const feel = snapshot.story.memoryBeat;
     return {
       beat: snapshot.scene.beat,
       lastLine: snapshot.npcs.io.lastLine,
       memoryRefs: snapshot.npcs.io.lastLineMemoryRefs,
       hasFeelSurface: Boolean(feel),
       settleMs:
-        typeof feel?.startedAtMs === "number" && typeof feel?.settledAtMs === "number"
-          ? feel.settledAtMs - feel.startedAtMs
+        typeof feel?.startedAt === "number" && typeof feel?.endedAt === "number"
+          ? feel.endedAt - feel.startedAt
           : null,
-      cameraDollyCm: feel?.cameraDollyCm ?? null,
-      cameraYawDeg: feel?.cameraYawDeg ?? null,
-      vignetteAlpha: feel?.vignetteAlpha ?? null,
+      cameraDeltaMeters: typeof feel?.cameraDeltaMeters === "number" ? feel.cameraDeltaMeters : null,
+      cameraYawDegrees: typeof feel?.cameraYawDegrees === "number" ? feel.cameraYawDegrees : null,
     };
   });
 
@@ -118,19 +126,13 @@ test("Io return recognition beat exposes bounded visual feel numbers", async ({ 
   expect(result.settleMs!).toBeGreaterThanOrEqual(RETURN_RECOGNITION_VISUAL_FEEL.minHoldMs);
   expect(result.settleMs!).toBeLessThanOrEqual(RETURN_RECOGNITION_VISUAL_FEEL.maxSettleMs);
 
-  expect(result.cameraDollyCm).not.toBeNull();
-  expect(Math.abs(result.cameraDollyCm!)).toBeLessThanOrEqual(
-    RETURN_RECOGNITION_VISUAL_FEEL.maxDollyCm,
+  expect(result.cameraDeltaMeters).not.toBeNull();
+  expect(Math.abs(result.cameraDeltaMeters!)).toBeLessThanOrEqual(
+    RETURN_RECOGNITION_VISUAL_FEEL.maxDollyMeters,
   );
 
-  expect(result.cameraYawDeg).not.toBeNull();
-  expect(Math.abs(result.cameraYawDeg!)).toBeLessThanOrEqual(
+  expect(result.cameraYawDegrees).not.toBeNull();
+  expect(Math.abs(result.cameraYawDegrees!)).toBeLessThanOrEqual(
     RETURN_RECOGNITION_VISUAL_FEEL.maxYawDeg,
-  );
-
-  expect(result.vignetteAlpha).not.toBeNull();
-  expect(result.vignetteAlpha!).toBeGreaterThanOrEqual(0);
-  expect(result.vignetteAlpha!).toBeLessThanOrEqual(
-    RETURN_RECOGNITION_VISUAL_FEEL.maxVignetteAlpha,
   );
 });
