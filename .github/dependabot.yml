@@ -15,6 +15,11 @@ updates:
     # at 4.107.0). Tracked in #959: investigate + unpin, then remove this.
     ignore:
       - dependency-name: "wrangler"
+      # rides with the wrangler pin: wrangler 4.107's peerOptional wants
+      # workers-types ^4, so a types 4->5 bump ERESOLVEs npm install
+      # (dependabot #965). Both unpin together via #959.
+      - dependency-name: "@cloudflare/workers-types"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: "development"
