@@ -68,11 +68,7 @@ function chooseRememberedAction(priorActions: readonly IoPriorAction[]): IoPrior
 }
 
 export function buildIoReturnMemoryBeat(input: IoReturnMemoryInput): IoReturnMemoryBeat {
-  const rememberedAction = input.returningPlayer
-    ? chooseRememberedAction(input.priorActions)
-    : null;
-
-  if (!input.returningPlayer || rememberedAction === null) {
+  if (!input.returningPlayer) {
     return {
       speaker: "Io",
       returningPlayer: false,
@@ -80,6 +76,18 @@ export function buildIoReturnMemoryBeat(input: IoReturnMemoryInput): IoReturnMem
       line: `I do not know you yet, ${normalizeName(input.displayName)}. Give me one true thing to hold onto.`,
       trustDelta: 0,
       nextPrompt: "offer-name",
+    };
+  }
+
+  const rememberedAction = chooseRememberedAction(input.priorActions);
+  if (rememberedAction === null) {
+    return {
+      speaker: "Io",
+      returningPlayer: true,
+      rememberedAction: null,
+      line: `You're back, ${normalizeName(input.displayName)}. I can feel the shape of your last visit, but not the part I need. Tell me what changed.`,
+      trustDelta: 0,
+      nextPrompt: "ask-what-changed",
     };
   }
 
@@ -113,6 +121,26 @@ export function runIoReturnMemoryBeatChecks(): void {
   assert(firstVisit.rememberedAction === null, "first visit must not surface a prior action");
   assert(firstVisit.nextPrompt === "offer-name", "first visit must ask for an identity seed");
   assert(firstVisit.line.includes("stranger"), "blank display names must collapse to the stranger fallback");
+
+  const sparseReturn = buildIoReturnMemoryBeat({
+    playerId: "player-a",
+    displayName: "Mara",
+    returningPlayer: true,
+    priorActions: [],
+    trust: 0.2,
+  });
+
+  assert(sparseReturn.returningPlayer === true, "returning save state must not be collapsed into a first visit");
+  assert(sparseReturn.rememberedAction === null, "sparse returning saves must not invent a remembered action");
+  assert(
+    sparseReturn.line.includes("You're back, Mara"),
+    "sparse returning saves must acknowledge the player returned without faking a specific memory",
+  );
+  assert(sparseReturn.trustDelta === 0, "sparse returning saves must not award trust for an unsurfaced memory");
+  assert(
+    sparseReturn.nextPrompt === "ask-what-changed",
+    "sparse returning saves must continue into the returning-player prompt",
+  );
 
   const returning = buildIoReturnMemoryBeat({
     playerId: "player-a",
