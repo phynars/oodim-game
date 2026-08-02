@@ -270,6 +270,63 @@ describe("Aftersign durable save/load contract", () => {
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
 
+  it("updates the published save turn after a restore, new story beat, and second save", () => {
+    const firstSession = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+    );
+    const firstPayload = encodeAftersignDurableSave(firstSession, 5);
+
+    const progressedSecondSession = meetOrraForAftersignSlice(
+      recordAftersignOrraAction(
+        meetIoForAftersignSlice(restoreAftersignDurableSave(firstPayload)),
+        "answered-saint-orra",
+      ),
+    );
+    const secondPayload = encodeAftersignDurableSave(progressedSecondSession, 12);
+    const restoredAfterSecondSave = restoreAftersignDurableSave(secondPayload);
+
+    const snapshot = getAftersignStoryState(restoredAfterSecondSave, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      rememberedSessionIds: ["session-1", "session-2"],
+    });
+
+    expect(snapshot.story.completedBeats).toEqual([
+      "packet-opened",
+      "io-first-meeting",
+      "io-remembers-opened-packet",
+      "orra-first-meeting",
+      "orra-remembers-answered-saint-orra",
+    ]);
+    expect(snapshot.state.save).toEqual({
+      key: "aftersign.verticalSlice.v1",
+      savedAtTurn: 12,
+    });
+    expect(snapshot.state.npcs).toEqual([
+      {
+        id: "io",
+        name: "Io",
+        disposition: "recognizes-player",
+        rememberedSessionIds: ["session-1", "session-2"],
+        memory: {
+          recognizesPlayer: true,
+          packetOutcome: "opened",
+        },
+      },
+      {
+        id: "orra",
+        name: "Saint Orra",
+        disposition: "met-player",
+        rememberedSessionIds: ["session-1", "session-2"],
+        memory: {
+          recognizesPlayer: false,
+          orraAction: "answered-saint-orra",
+        },
+      },
+    ]);
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
   it("publishes Orra's story memory beat alongside Io without sharing fields", () => {
     const returningSession = meetOrraForAftersignSlice(
       restoreAftersignDurableSave(
