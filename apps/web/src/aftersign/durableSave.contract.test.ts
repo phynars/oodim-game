@@ -270,6 +270,77 @@ describe("Aftersign durable save/load contract", () => {
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
 
+  it("updates the published save turn after a restore, new story beat, and second save", () => {
+    const firstSession = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+    );
+    const firstPayload = encodeAftersignDurableSave(firstSession, 5);
+
+    const progressedSecondSession = meetOrraForAftersignSlice(
+      recordAftersignOrraAction(
+        meetIoForAftersignSlice(restoreAftersignDurableSave(firstPayload)),
+        "answered-saint-orra",
+      ),
+    );
+    const secondPayload = encodeAftersignDurableSave(progressedSecondSession, 12);
+    // restoreAftersignDurableSave resets ioRecognizesPlayer /
+    // orraRecognizesPlayer to false (verticalSliceDurableSave.ts:89-99) —
+    // recognition is derived from re-meeting an NPC whose HasMet flag
+    // survives the save. Re-meet both after the second restore so the
+    // recognition beats + Io's "recognizes-player" disposition asserted
+    // below are actually reachable, matching the sibling test at L330.
+    const restoredAfterSecondSave = meetOrraForAftersignSlice(
+      meetIoForAftersignSlice(restoreAftersignDurableSave(secondPayload)),
+    );
+
+    const snapshot = getAftersignStoryState(restoredAfterSecondSave, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      rememberedSessionIds: ["session-1", "session-2"],
+    });
+
+    // Order matches getAftersignCompletedStoryBeats in
+    // aftersign/windowGameSurface.ts:227-271: fixed packet outcome
+    // first, then first-meetings (Io before Orra), then recognition
+    // beats (Io remembers before Orra remembers). This is a contract:
+    // the surface publishes beats in this stable order so consumers
+    // can rely on it, and this test locks it in.
+    expect(snapshot.story.completedBeats).toEqual([
+      "packet-opened",
+      "io-first-meeting",
+      "orra-first-meeting",
+      "io-remembers-opened-packet",
+      "orra-remembers-answered-saint-orra",
+    ]);
+    expect(snapshot.state.save).toEqual({
+      key: "aftersign.verticalSlice.v1",
+      savedAtTurn: 12,
+    });
+    expect(snapshot.state.npcs).toEqual([
+      {
+        id: "io",
+        name: "Io",
+        disposition: "recognizes-player",
+        rememberedSessionIds: ["session-1", "session-2"],
+        memory: {
+          recognizesPlayer: true,
+          packetOutcome: "opened",
+        },
+      },
+      {
+        id: "orra",
+        name: "Saint Orra",
+        disposition: "recognizes-player",
+        rememberedSessionIds: ["session-1", "session-2"],
+        memory: {
+          recognizesPlayer: true,
+          orraAction: "answered-saint-orra",
+        },
+      },
+    ]);
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
   it("publishes Orra's story memory beat alongside Io without sharing fields", () => {
     const returningSession = meetOrraForAftersignSlice(
       restoreAftersignDurableSave(
