@@ -35,6 +35,7 @@ import {
   readAuthoritativeSave,
   writeAuthoritativeSave,
 } from "./server-authoritative-save.js";
+import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
   computeKioskCameraTarget,
@@ -246,6 +247,17 @@ const state = {
 let statePublishVersion = 0;
 let publishedStateVersion = -1;
 
+// #957: Io's returning-session boot line. Computed once at boot (below,
+// after `visibilitychange` wiring) from the durable delivery-outcome
+// and route-attention memory facts, then consulted by `lineForBeat` so
+// the render path speaks the returning line — not the fresh "clean
+// handoff" copy — until the player advances past the persisted boot
+// beat. Once `state.scene.beat` diverges from `ioReturningBootBeat`
+// (e.g. after "return-to-io" transitions to `io-return-recognition`),
+// this override drops out and the beat's own verbatim line wins.
+let ioReturningBootLine = null;
+let ioReturningBootBeat = null;
+
 // Vite's default MODE values are `development` / `production` / `test`;
 // the FlagshipGameSurface contract (docs/flagship/story-state-contract.md
 // + e2e-shared/flagshipStoryStateContract.ts:88) narrows to the shorter
@@ -280,6 +292,21 @@ let kioskHum;
 let kioskHumGain;
 
 const lineForBeat = () => {
+  // #957: If a returning-session boot line was computed at module init
+  // (delivered save, restored via readAuthoritativeSave / readStored),
+  // speak it while the scene is still at the persisted boot beat. As
+  // soon as the player advances (setBeat mutates state.scene.beat away
+  // from the recorded ioReturningBootBeat), the guard misses and the
+  // next branch's own verbatim-asserted copy wins — the returning line
+  // never overrides a downstream beat like `io-return-recognition`.
+  if (
+    ioReturningBootLine !== null
+    && ioReturningBootBeat !== null
+    && state.scene.beat === ioReturningBootBeat
+  ) {
+    return ioReturningBootLine;
+  }
+
   if (state.scene.beat === "packet-choice") {
     return state.packet.sealed
       ? "Good. Some doors only open for people who can carry a secret without looking inside."
