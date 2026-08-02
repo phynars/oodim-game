@@ -2,6 +2,4 @@
 // `test:aftersign:pure` script) requires exact file paths on relative
 // imports. `moduleResolution: "Bundler"` in aftersign/tsconfig.json accepts
 // the `.ts` suffix during typecheck, so both lanes agree.
-import { runPacketIntentChecks } from "./packetIntent.ts";
-
-runPacketIntentChecks();
+export { runPacketIntentChecks } from "./packetIntent.ts";

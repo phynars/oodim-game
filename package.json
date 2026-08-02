@@ -5,7 +5,7 @@
   "type": "module",
   "description": "oodim Game — a portfolio of web/mobile games (Pac-Man, Galaga, and the true-3D Doom) built autonomously by the oodim AIDLC loop.",
   "scripts": {
-    "test:aftersign:pure": "playwright test --config aftersign/playwright.pure.config.ts",
+    "test:aftersign:pure": "node --experimental-strip-types aftersign/pure-runner.ts", 
     "test:unit:aftersign": "vitest run --config apps/web/src/aftersign/vitest.config.ts",
     "dev:pacman": "vite --config pacman/vite.config.ts",
     "build:pacman": "tsc --noEmit -p pacman/tsconfig.json && vite build --config pacman/vite.config.ts",
