@@ -3,9 +3,13 @@ import { runFirstCameraMoveChecks } from "../src/feel/firstCameraMove.test";
 
 // CI-gate for the first camera move feel contract.
 //
-// This stays in the pure lane: no browser boot, no Worker, no SwiftShader.
-// The vertical slice can wire the same authored samples into the opening
-// surface later; this spec keeps the first 1.4s of camera motion measurable.
+// Runs on `aftersign/playwright.pure.config.ts` (pure lane, retries: 0,
+// no browser boot, no vite-preview) via the `test:aftersign:pure` npm
+// script. Not on the plain-Node runner because the transitive subgraph
+// (firstCameraMove.test.ts → ./firstCameraMove) uses extensionless
+// specifiers that Node's `--experimental-strip-types` cannot resolve
+// (PR #973 review). Playwright bundles the graph and resolves them
+// natively; a follow-up issue tracks the specifier-extension migration.
 
 test.describe("AFTERSIGN first camera move feel contract", () => {
   test("runFirstCameraMoveChecks executes authored motion, AV, and mobile-budget invariants without throwing", () => {

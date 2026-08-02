@@ -4,31 +4,23 @@ import { runRecognitionBeatChecks } from "../src/recognitionBeat.test";
 // CI-gate for the Io returning-session recognition-beat contract checks.
 //
 // `runRecognitionBeatChecks()` lives in aftersign/src/recognitionBeat.test.ts
-// and pins twelve invariants across two surfaces:
+// and pins twelve invariants across two surfaces (LINE RESOLVER +
+// FEEL ENVELOPE — see that file's inline docs for the full list).
 //
-//   1. LINE RESOLVER — `ioRecognitionBeat({ outcome, listenedToRoute })`
-//      returns the canonical authored line for each of the four
-//      outcome × route-attention pairs, sourced verbatim from
-//      `ioReturningSessionLines` (never fabricated by splicing codas onto
-//      roots). Also asserts all four lineIds AND all four lines are
-//      distinct so no pair silently collapses.
+// This spec runs on `aftersign/playwright.pure.config.ts` (the pure lane,
+// retries: 0, no browser boot, no vite-preview) via the `test:aftersign:pure`
+// npm script. It is EXCLUDED from the main lane's `testIgnore` so it does
+// not also run there — the pure lane is the sole gate.
 //
-//   2. FEEL ENVELOPE — `recognitionBeatProgress(elapsedMs, options)` is a
-//      thin delegate to `sampleRecognitionFeedbackBeat` in
-//      `apps/web/src/aftersign/recognitionFeedback.ts`. Asserts the beat
-//      starts at rest, camera peaks at `recognitionFeedbackContract.cameraPeakMs`,
-//      reduced-motion suppresses the camera and uses `reducedMotionTotalMs`,
-//      outcome-branch cues (lantern / packetSeal / kioskSign / rainRim /
-//      hapticScale / recognition-sting audio) are present, wooden-click timing
-//      matches `stingStartMs + openedWoodenClickDelayMs`, and the beat
-//      settles at `totalMs`.
-//
-// Before this spec landed, the checks were TYPECHECKED (via
-// `typecheck:aftersign`, tsconfig `include: ["src"]`) but never INVOKED
-// by any CI runner — the aftersign lane would greenlight a broken
-// invariant. This wrapper matches the established pattern documented in
-// `aftersign/e2e/packet-intent-contract.spec.ts` and used by
-// `runPacketIntentChecks` / `runFirstCameraMoveChecks`.
+// Why still on Playwright and not the plain-Node runner in
+// `aftersign/pure-runner.ts` — the transitive import subgraph reaches
+// `../../packages/aftersign/src/ioReturningSession` and
+// `../../apps/web/src/aftersign/recognitionFeedback` with extensionless
+// specifiers. Node's `--experimental-strip-types` requires explicit `.ts`
+// extensions on every specifier and does not add extension resolution;
+// Playwright bundles the graph and resolves extensionless imports natively.
+// PR #973 review (Soren) documented this as too wide a blast radius for
+// a "swap the runner" PR; a follow-up issue tracks the extension pass.
 //
 // The spec intentionally does NOT use the { page } fixture — the checks
 // are pure controller/resolver logic (no scene, no window.__game, no
