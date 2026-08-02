@@ -9,10 +9,15 @@
 //   • `selectIoMemoryLines` — composes MULTIPLE beats (packet + route + tone)
 //     into an ordered list, whereas `selectIoRecognitionBeat` returns exactly
 //     one line for a given moment. The slice surface uses the single line;
-//     memory-audit surfaces use the composed list.
+//     the memory-audit surface (`io-memory-audit-surface.ts`) uses the list.
 //
 // The fresh-session guard mirrors `selectIoReturningLine`: no packet memory
 // line surfaces until `completedDeliveryIds` records the first delivery.
+//
+// Type-collision note: `IoMemoryLine` is OWNED by io-recognition-beat.ts and
+// re-exported at the bottom of this file. The shim's own record type is
+// `IoMemoryLineRecord` (different shape: dot-namespaced id + fact list) so it
+// never shadows the canonical one.
 
 import {
   FIRST_PACKET_DELIVERY_ID,
@@ -40,7 +45,10 @@ export type IoMemoryLineId =
   | 'io.return.tone.evasive'
   | 'io.return.tone.blunt';
 
-export interface IoMemoryLine {
+// NOT `IoMemoryLine` — that name is reserved for the canonical
+// `IoSliceLine`-extending type in io-recognition-beat.ts (re-exported below).
+// This shim's record has a different shape and is deliberately named apart.
+export interface IoMemoryLineRecord {
   id: IoMemoryLineId;
   text: string;
   rememberedFacts: string[];
@@ -59,7 +67,7 @@ function fromRouteBeat(
   id: IoMemoryLineId,
   routeAttention: CanonicalRouteAttention,
   extraFacts: readonly string[] = [],
-): IoMemoryLine {
+): IoMemoryLineRecord {
   const beat = selectIoRecognitionBeat({
     completedDeliveryIds: [],
     routeAttention,
@@ -71,7 +79,7 @@ function fromRouteBeat(
   };
 }
 
-function fromToneBeat(id: IoMemoryLineId, returnTone: CanonicalReturnTone): IoMemoryLine {
+function fromToneBeat(id: IoMemoryLineId, returnTone: CanonicalReturnTone): IoMemoryLineRecord {
   const beat = selectIoRecognitionBeat({
     completedDeliveryIds: [],
     routeAttention: 'unknown',
@@ -88,7 +96,7 @@ function fromPacketReturningLine(
   id: IoMemoryLineId,
   key: 'keptSealed' | 'opened',
   facts: readonly string[],
-): IoMemoryLine {
+): IoMemoryLineRecord {
   return {
     id,
     text: ioReturningMemoryLines[key].text,
@@ -96,7 +104,7 @@ function fromPacketReturningLine(
   };
 }
 
-export const IO_MEMORY_LINES: Record<IoMemoryLineId, IoMemoryLine> = {
+export const IO_MEMORY_LINES: Record<IoMemoryLineId, IoMemoryLineRecord> = {
   'io.return.packet.sealed': fromPacketReturningLine('io.return.packet.sealed', 'keptSealed', [
     'io.returned',
     'packet.blueSeal.unbroken',
@@ -122,8 +130,8 @@ export function selectIoMemoryLines(state: {
   packetOutcome?: AnyPacketOutcome;
   routeAttention?: IoRouteAttention;
   returnTone?: IoReturnTone;
-}): IoMemoryLine[] {
-  const lines: IoMemoryLine[] = [];
+}): IoMemoryLineRecord[] {
+  const lines: IoMemoryLineRecord[] = [];
   const deliveries = state.completedDeliveryIds ?? [];
   const firstDeliveryDone = deliveries.includes(FIRST_PACKET_DELIVERY_ID);
 
@@ -160,10 +168,13 @@ export function selectIoMemoryLines(state: {
 }
 
 // Re-export the canonical types & selectors so downstream code can migrate to
-// the source of truth without adding a second import path later.
+// the source of truth without adding a second import path later. The canonical
+// `IoMemoryLine` type is re-exported here explicitly so nothing in the app
+// picks up a colliding shim-local shape.
 export {
   FIRST_PACKET_DELIVERY_ID,
   ioReturningMemoryLines,
   selectIoRecognitionBeat,
+  type IoMemoryLine,
   type IoSliceMemoryRecord,
 } from './io-recognition-beat';
