@@ -1,11 +1,25 @@
-// Io memory-audit surface — the shipped consumer of `io-memory-lines.ts`.
+// Io memory-audit surface — the composed-list assertion surface over
+// `io-memory-lines.ts`.
 //
-// Where it runs: after a delivery lands, the slice needs to show the player
-// what Io actually remembers about them — packet outcome, route attention,
-// return tone — as an ordered, stable list keyed by dot-namespaced ids the
-// persistence layer already understands. `selectIoRecognitionBeat` returns
-// ONE line for the moment of recognition; the audit surface returns the
-// FULL set of remembered facts, one entry per axis the player touched.
+// SHIPPING STATUS (2026-08-02): harness-only. No runtime code under
+// `apps/web/src/aftersign/` imports this module yet — the vertical slice
+// consumer lives at `packages/aftersign/src/`, and the runtime wiring
+// (audit UI + persisted-facts writer reading `ioMemoryAuditFacts`) is
+// tracked by #970, which relocates the whole `apps/aftersign/narrative/`
+// deck into `packages/aftersign/src/` where the served page can reach it.
+// Reviewers: this file exists in the meantime as an in-tree assertion
+// surface so `io-memory-lines`'s composed-list contract is pinned
+// end-to-end from a canonical `IoSliceMemoryRecord` — a rename or
+// contract drift in the shim breaks a runnable slice test here, not
+// just a shim-only test.
+//
+// Where it will run once wired: after a delivery lands, the slice needs to
+// show the player what Io actually remembers about them — packet outcome,
+// route attention, return tone — as an ordered, stable list keyed by
+// dot-namespaced ids the persistence layer already understands.
+// `selectIoRecognitionBeat` returns ONE line for the moment of recognition;
+// the audit surface returns the FULL set of remembered facts, one entry per
+// axis the player touched.
 //
 // This module is the reason `io-memory-lines.ts` exists as a composed-list
 // selector rather than folding back into the single-line recognition beat.

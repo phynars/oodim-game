@@ -29,6 +29,14 @@ import {
   type IoSliceMemoryRecord,
 } from './io-recognition-beat';
 
+// The canonical packet-outcome key each shim packet-line derives from. Route
+// and tone helpers call `selectIoRecognitionBeat` directly; packet lines pin
+// to the exact PACKET_BEATS row so the shim never invents a fact string.
+const PACKET_OUTCOME_BY_RETURNING_KEY = {
+  keptSealed: 'sealed',
+  opened: 'opened',
+} as const satisfies Record<'keptSealed' | 'opened', CanonicalPacketOutcome>;
+
 // The memory-lines surface only speaks about the two delivered outcomes and
 // the deterministic route/tone axes. `withheld`/`returned` and the `unknown`
 // axis values are handled by the canonical selector directly.
@@ -95,24 +103,24 @@ function fromToneBeat(id: IoMemoryLineId, returnTone: CanonicalReturnTone): IoMe
 function fromPacketReturningLine(
   id: IoMemoryLineId,
   key: 'keptSealed' | 'opened',
-  facts: readonly string[],
 ): IoMemoryLineRecord {
+  // Derive facts from the canonical PACKET_BEATS row via the recognition
+  // selector — same pattern as fromRouteBeat/fromToneBeat, so the shim's
+  // fact vocabulary always matches the words Io actually said.
+  const beat = selectIoRecognitionBeat({
+    completedDeliveryIds: [FIRST_PACKET_DELIVERY_ID],
+    packetOutcome: PACKET_OUTCOME_BY_RETURNING_KEY[key],
+  });
   return {
     id,
     text: ioReturningMemoryLines[key].text,
-    rememberedFacts: [...facts],
+    rememberedFacts: [...beat.remembers],
   };
 }
 
 export const IO_MEMORY_LINES: Record<IoMemoryLineId, IoMemoryLineRecord> = {
-  'io.return.packet.sealed': fromPacketReturningLine('io.return.packet.sealed', 'keptSealed', [
-    'io.returned',
-    'packet.blueSeal.unbroken',
-  ]),
-  'io.return.packet.opened': fromPacketReturningLine('io.return.packet.opened', 'opened', [
-    'io.returned',
-    'packet.blueSeal.opened',
-  ]),
+  'io.return.packet.sealed': fromPacketReturningLine('io.return.packet.sealed', 'keptSealed'),
+  'io.return.packet.opened': fromPacketReturningLine('io.return.packet.opened', 'opened'),
   'io.route.skipped': fromRouteBeat('io.route.skipped', 'skipped', ['signBox.found']),
   'io.route.listened': fromRouteBeat('io.route.listened', 'listened'),
   'io.return.tone.kind': fromToneBeat('io.return.tone.kind', 'kind'),
