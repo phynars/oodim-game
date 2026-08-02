@@ -299,11 +299,17 @@ describe("Aftersign durable save/load contract", () => {
       rememberedSessionIds: ["session-1", "session-2"],
     });
 
+    // Order matches getAftersignCompletedStoryBeats in
+    // aftersign/windowGameSurface.ts:227-271: fixed packet outcome
+    // first, then first-meetings (Io before Orra), then recognition
+    // beats (Io remembers before Orra remembers). This is a contract:
+    // the surface publishes beats in this stable order so consumers
+    // can rely on it, and this test locks it in.
     expect(snapshot.story.completedBeats).toEqual([
       "packet-opened",
       "io-first-meeting",
-      "io-remembers-opened-packet",
       "orra-first-meeting",
+      "io-remembers-opened-packet",
       "orra-remembers-answered-saint-orra",
     ]);
     expect(snapshot.state.save).toEqual({
