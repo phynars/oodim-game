@@ -13,6 +13,11 @@
         --confirm-shake-x: 0px;
         --confirm-shake-y: 0px;
         --packet-progress: 0;
+        --recognition-sign-glow: 0px;
+        --recognition-seal-glow: 0px;
+        --recognition-rain-rim-alpha: 0;
+        --recognition-haptic-scale: 1;
+        --recognition-warmth: 0;
       }
 
       * {
@@ -25,6 +30,22 @@
         overflow: hidden;
         background: radial-gradient(circle at 50% 20%, #182033 0%, #05070c 65%);
         touch-action: manipulation;
+      }
+
+      /* Rain rim — a soft top-edge sheen the recognition beat brightens.
+         --recognition-rain-rim-alpha 0 → invisible; up to ~0.28 during beat. */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: 42vh;
+        pointer-events: none;
+        background: linear-gradient(180deg,
+          rgba(173, 216, 255, calc(var(--recognition-rain-rim-alpha) * 1)) 0%,
+          rgba(173, 216, 255, 0) 100%);
+        mix-blend-mode: screen;
+        z-index: 0;
+        transition: none;
       }
 
       canvas {
@@ -40,7 +61,11 @@
         inset: auto 0 0 0;
         padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
         pointer-events: none;
-        background: linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
+        background:
+          linear-gradient(0deg,
+            rgba(255, 176, 96, calc(var(--recognition-warmth) * 0.22)) 0%,
+            rgba(255, 176, 96, 0) 62%),
+          linear-gradient(0deg, rgba(2, 5, 10, 0.86) 0%, rgba(2, 5, 10, 0.5) 58%, rgba(2, 5, 10, 0) 100%);
         transform: translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);
         will-change: transform;
       }
@@ -62,6 +87,9 @@
         background: rgba(5, 10, 19, 0.72);
         box-shadow: 0 0 40px rgba(0, 204, 255, 0.12), inset 0 0 30px rgba(22, 89, 130, 0.14);
         backdrop-filter: blur(12px);
+        transform: scale(var(--recognition-haptic-scale));
+        transform-origin: 50% 100%;
+        will-change: transform;
       }
 
       .speaker {
@@ -107,6 +135,9 @@
       .packet-button {
         position: relative;
         overflow: hidden;
+        box-shadow:
+          0 0 20px rgba(0, 204, 255, 0.1),
+          0 0 var(--recognition-seal-glow) rgba(255, 202, 138, 0.55);
       }
 
       .packet-button::after {
@@ -135,6 +166,9 @@
         background: rgba(3, 7, 13, 0.58);
         font-size: 12px;
         letter-spacing: 0.04em;
+        /* Kiosk-sign glow — the readout is the on-page proxy for the sign;
+           --recognition-sign-glow bumps it during the recognition beat. */
+        box-shadow: 0 0 var(--recognition-sign-glow) rgba(120, 233, 255, 0.55);
       }
     </style>
   </head>
