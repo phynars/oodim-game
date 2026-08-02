@@ -27,6 +27,10 @@ import {
   ioRecognitionBeatEnvelopeAt,
 } from "./recognition-beat-feedback.js";
 import {
+  applyRecognitionDomFeedback,
+  clearRecognitionDomFeedback,
+} from "./recognition-dom-feedback.js";
+import {
   clearAuthoritativeSave,
   readAuthoritativeSave,
   writeAuthoritativeSave,
@@ -543,7 +547,10 @@ const publishState = () => {
     save: { ...state.save },
     movement: clone(state.movement),
     cameraRig: clone(state.cameraRig),
-    interaction: clone(state.interaction),
+    interaction: {
+      ...clone(state.interaction),
+      recognitionDomFeedback: clone(recognitionDomFeedback),
+    },
     // Publish the runtime audio surface so the look/sound contract
     // spec can observe playKioskConfirm()'s stamped cue. Without
     // this the harness reads window.__game._runtime as undefined
@@ -587,7 +594,10 @@ const publishState = () => {
       save: state.save,
       movement: state.movement,
       cameraRig: state.cameraRig,
-      interaction: state.interaction,
+      interaction: {
+        ...state.interaction,
+        recognitionDomFeedback,
+      },
     }),
     reset,
     input: {
@@ -1118,6 +1128,14 @@ const triggerFailureFeedback = (source) => {
 
 let memoryBeatCameraProbe = null;
 let memoryRecognitionBeatStartedAt = null;
+let recognitionDomFeedback = {
+  active: false,
+  signGlowPx: 0,
+  sealGlowPx: 0,
+  rainRimAlpha: 0,
+  hapticScale: 1,
+  warmth: 0,
+};
 
 const easeOutCubic = (value) => 1 - ((1 - clamp(value, 0, 1)) ** 3);
 const easeInOutCubic = (value) => {
@@ -1149,6 +1167,40 @@ const recognitionMotionAt = (nowMs) => {
     return { cameraDeltaMeters: 0, cameraYawDegrees: 0, signGlowBoost: 0 };
   }
   return recognitionEnvelopeAt(nowMs - memoryRecognitionBeatStartedAt);
+};
+
+const syncRecognitionDomFeedback = (nowMs) => {
+  if (memoryRecognitionBeatStartedAt === null) {
+    if (recognitionDomFeedback.active) {
+      clearRecognitionDomFeedback({
+        lineNode: line,
+        speakerNode: speaker,
+        stateReadoutNode: stateReadout,
+      });
+      recognitionDomFeedback = {
+        active: false,
+        signGlowPx: 0,
+        sealGlowPx: 0,
+        rainRimAlpha: 0,
+        hapticScale: 1,
+        warmth: 0,
+      };
+      markStateDirty();
+    }
+    return recognitionDomFeedback;
+  }
+
+  const elapsedMs = nowMs - memoryRecognitionBeatStartedAt;
+  recognitionDomFeedback = applyRecognitionDomFeedback({
+    lineNode: line,
+    speakerNode: speaker,
+    stateReadoutNode: stateReadout,
+    elapsedMs,
+    outcome: state.packet.sealed ? "sealed" : "opened",
+    envelope: recognitionEnvelopeAt(elapsedMs),
+  });
+  markStateDirty();
+  return recognitionDomFeedback;
 };
 
 // Analytical model of the camera pose the tick loop paints — same
@@ -1378,6 +1430,19 @@ const resetSliceSave = async () => {
     remainingMs: 0,
   };
   memoryRecognitionBeatStartedAt = null;
+  recognitionDomFeedback = {
+    active: false,
+    signGlowPx: 0,
+    sealGlowPx: 0,
+    rainRimAlpha: 0,
+    hapticScale: 1,
+    warmth: 0,
+  };
+  clearRecognitionDomFeedback({
+    lineNode: line,
+    speakerNode: speaker,
+    stateReadoutNode: stateReadout,
+  });
   lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
   markStateDirty();
   syncPacketIntent();
@@ -1594,6 +1659,7 @@ const tick = (now) => {
   kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
   io.position.y = Math.sin(t * 1.7) * 0.025;
   const recognitionMotion = recognitionMotionAt(now);
+  syncRecognitionDomFeedback(now);
   const rig = stepCameraRig(dt);
   camera.position.x = rig.position.x + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
   camera.position.y = rig.position.y;
