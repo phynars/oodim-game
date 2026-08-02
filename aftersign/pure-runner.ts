@@ -49,7 +49,7 @@ type Runner = {
 };
 
 const runners: Runner[] = [
-  { label: "packet-intent", run: runPacketIntentChecks },
+  { label: "runPacketIntentChecks", run: runPacketIntentChecks },
 ];
 
 let failed = 0;
