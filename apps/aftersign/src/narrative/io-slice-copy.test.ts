@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ioFirstSessionLines,
+  ioMemoryAudit,
+  ioMemoryAuditFacts,
+  ioMemoryAuditIds,
   ioMemorySentence,
   ioReturningLine,
   type IoSliceMemory,
 } from './io-slice-copy';
+import { IO_MEMORY_LINES } from './io-memory-lines';
 
 describe('Io slice copy', () => {
   it('keeps first-session packet reactions tied to auditable packet outcomes', () => {
@@ -90,6 +94,75 @@ describe('Io slice copy', () => {
     ).toMatchObject({
       id: 'io.return.packetOpened',
       remembers: ['packetOutcome:opened'],
+    });
+  });
+
+  describe('ioMemoryAudit — audit-list surface for the slice', () => {
+    it('composes packet + route + tone in that order from the slice-shaped memory', () => {
+      const audit = ioMemoryAudit({
+        packetOutcome: 'sealed',
+        routeAttention: 'listened',
+        returnAnswerTone: 'kind',
+      });
+
+      expect(audit).toEqual([
+        IO_MEMORY_LINES['io.return.packet.sealed'],
+        IO_MEMORY_LINES['io.route.listened'],
+        IO_MEMORY_LINES['io.return.tone.kind'],
+      ]);
+    });
+
+    it('suppresses the packet entry when packetOutcome is unknown (fresh session)', () => {
+      const audit = ioMemoryAudit({ packetOutcome: 'unknown', routeAttention: 'skipped' });
+      expect(audit).toEqual([IO_MEMORY_LINES['io.route.skipped']]);
+    });
+
+    it('returns an empty audit for a fresh memory with no committed axes', () => {
+      expect(ioMemoryAudit({ packetOutcome: 'unknown' })).toEqual([]);
+      expect(ioMemoryAuditIds({ packetOutcome: 'unknown' })).toEqual([]);
+      expect(ioMemoryAuditFacts({ packetOutcome: 'unknown' })).toEqual([]);
+    });
+
+    it('exposes stable dot-namespaced ids for the audit UI', () => {
+      expect(
+        ioMemoryAuditIds({
+          packetOutcome: 'opened',
+          routeAttention: 'skipped',
+          returnAnswerTone: 'blunt',
+        }),
+      ).toEqual(['io.return.packet.opened', 'io.route.skipped', 'io.return.tone.blunt']);
+    });
+
+    it('flattens remembered facts, deduplicated with first-seen order preserved', () => {
+      const facts = ioMemoryAuditFacts({
+        packetOutcome: 'sealed',
+        routeAttention: 'listened',
+        returnAnswerTone: 'kind',
+      });
+
+      const returnedCount = facts.filter((fact) => fact === 'the player returned').length;
+      expect(returnedCount).toBe(1);
+      expect(facts[0]).toBe('the player returned');
+      expect(facts).toContain('the player delivered the blue packet unopened');
+      expect(facts).toContain('the player listened to Io’s route instructions');
+      expect(facts).toContain('the player answered Io kindly');
+    });
+
+    it('drops the tone axis when returnAnswerTone is unknown or omitted', () => {
+      // Route only, no tone — one entry.
+      const routeOnly = ioMemoryAudit({
+        packetOutcome: 'unknown',
+        routeAttention: 'listened',
+        returnAnswerTone: 'unknown',
+      });
+      expect(routeOnly).toEqual([IO_MEMORY_LINES['io.route.listened']]);
+
+      // Route only, tone omitted — same result.
+      const routeOnlyOmitted = ioMemoryAudit({
+        packetOutcome: 'unknown',
+        routeAttention: 'listened',
+      });
+      expect(routeOnlyOmitted).toEqual([IO_MEMORY_LINES['io.route.listened']]);
     });
   });
 });
