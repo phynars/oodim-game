@@ -27,6 +27,10 @@ import {
 //   3. Save metadata survives later story progression on the restored
 //      session. A loaded session can advance before the next durable write;
 //      the public surface should still report the last known durable turn.
+//   4. A second durable write after restored story progression becomes the
+//      new public save turn after another restore. That catches the seam
+//      where a resumed session advances correctly but the next durable
+//      envelope fails to become the canonical restored metadata.
 describe("AFTERSIGN durable save surface — window.__game omissions and flow", () => {
   it("omits state.save on a fresh in-memory session (never durably saved)", () => {
     const fresh = createAftersignVerticalSliceState();
@@ -92,6 +96,34 @@ describe("AFTERSIGN durable save surface — window.__game omissions and flow", 
     expect(snapshot.state.save).toEqual({
       key: "aftersign.verticalSlice.v1",
       savedAtTurn,
+    });
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
+  it("publishes the second durable save turn after restore, progress, resave, and restore", () => {
+    const firstSavedAtTurn = 31;
+    const secondSavedAtTurn = 52;
+    const firstSavedSession = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+    );
+    const restoredThenAdvanced = meetOrraForAftersignSlice(
+      restoreAftersignDurableSave(
+        encodeAftersignDurableSave(firstSavedSession, firstSavedAtTurn),
+      ),
+    );
+    const secondRestoredSession = restoreAftersignDurableSave(
+      encodeAftersignDurableSave(restoredThenAdvanced, secondSavedAtTurn),
+    );
+
+    const snapshot = createAftersignWindowGameSurface(secondRestoredSession, {
+      playerId: "player-persistent-7",
+      playerName: "Signal Runner",
+      rememberedSessionIds: ["session-1"],
+    }).getStoryState();
+
+    expect(snapshot.state.save).toEqual({
+      key: "aftersign.verticalSlice.v1",
+      savedAtTurn: secondSavedAtTurn,
     });
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
