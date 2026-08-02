@@ -283,7 +283,15 @@ describe("Aftersign durable save/load contract", () => {
       ),
     );
     const secondPayload = encodeAftersignDurableSave(progressedSecondSession, 12);
-    const restoredAfterSecondSave = restoreAftersignDurableSave(secondPayload);
+    // restoreAftersignDurableSave resets ioRecognizesPlayer /
+    // orraRecognizesPlayer to false (verticalSliceDurableSave.ts:89-99) —
+    // recognition is derived from re-meeting an NPC whose HasMet flag
+    // survives the save. Re-meet both after the second restore so the
+    // recognition beats + Io's "recognizes-player" disposition asserted
+    // below are actually reachable, matching the sibling test at L330.
+    const restoredAfterSecondSave = meetOrraForAftersignSlice(
+      meetIoForAftersignSlice(restoreAftersignDurableSave(secondPayload)),
+    );
 
     const snapshot = getAftersignStoryState(restoredAfterSecondSave, {
       playerId: "player-persistent-7",
@@ -316,10 +324,10 @@ describe("Aftersign durable save/load contract", () => {
       {
         id: "orra",
         name: "Saint Orra",
-        disposition: "met-player",
+        disposition: "recognizes-player",
         rememberedSessionIds: ["session-1", "session-2"],
         memory: {
-          recognizesPlayer: false,
+          recognizesPlayer: true,
           orraAction: "answered-saint-orra",
         },
       },
