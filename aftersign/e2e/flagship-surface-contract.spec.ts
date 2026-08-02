@@ -437,6 +437,98 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     }
   });
 
+  test("recognition DOM feedback activates at the beat and resets", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "recognition-dom-feedback");
+
+    // Runtime shape published on `interaction.recognitionDomFeedback`
+    // (aftersign/main.js publishState/snapshot; values computed in
+    // aftersign/recognition-dom-feedback.js applyRecognitionDomFeedback).
+    type RecognitionDomFeedbackSnapshot = {
+      active: boolean;
+      signGlowPx: number;
+      sealGlowPx: number;
+      rainRimAlpha: number;
+      hapticScale: number;
+      warmth: number;
+    };
+    const slot = `flagship-dom-feedback-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await readSurface(page);
+
+    // Drive to the recognition beat off a durable save: choose + deliver,
+    // persist, hard-reload with cleared local state, then return-to-io.
+    await chooseAndWait(page, "keep-sealed");
+    await chooseAndWait(page, "deliver-packet");
+    await persistAndClearReload(page);
+    await chooseAndWait(page, "return-to-io");
+
+    // The feedback publishes on the frame loop ~1180ms after the beat
+    // starts (syncRecognitionDomFeedback in aftersign/main.js). Gate on
+    // active + both glow channels being live so a first-frame envelope
+    // value of 0 can't race the assertions below.
+    await page.waitForFunction(
+      () => {
+        const game = window.__game as
+          | (FlagshipGameSurface & {
+              interaction?: { recognitionDomFeedback?: { active?: boolean; signGlowPx?: number; rainRimAlpha?: number } };
+            })
+          | undefined;
+        const fb = game?.interaction?.recognitionDomFeedback;
+        return (
+          fb?.active === true &&
+          (fb.signGlowPx ?? 0) > 0 &&
+          (fb.rainRimAlpha ?? 0) > 0
+        );
+      },
+      undefined,
+      { timeout: WAIT_MS },
+    );
+
+    const activeFeedback = await page.evaluate(() => {
+      const game = window.__game as unknown as {
+        interaction?: { recognitionDomFeedback?: unknown };
+      };
+      return game.interaction?.recognitionDomFeedback;
+    }) as RecognitionDomFeedbackSnapshot;
+
+    expect(activeFeedback.active).toBe(true);
+    // signGlowPx formula base is 8 (recognition-dom-feedback.js line 69),
+    // so any active frame publishes a strictly positive glow.
+    expect(activeFeedback.signGlowPx).toBeGreaterThan(0);
+    expect(activeFeedback.rainRimAlpha).toBeGreaterThan(0);
+
+    // Hard reload with cleared local state must reset the feedback to its
+    // inert shape (aftersign/main.js reset path zeroes the object and
+    // clears the DOM custom properties via clearRecognitionDomFeedback).
+    await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+    await readSurface(page);
+
+    await page.waitForFunction(
+      () => {
+        const game = window.__game as
+          | (FlagshipGameSurface & {
+              interaction?: { recognitionDomFeedback?: { active?: boolean } };
+            })
+          | undefined;
+        return game?.interaction?.recognitionDomFeedback?.active === false;
+      },
+      undefined,
+      { timeout: WAIT_MS },
+    );
+
+    const resetFeedback = await page.evaluate(() => {
+      const game = window.__game as unknown as {
+        interaction?: { recognitionDomFeedback?: unknown };
+      };
+      return game.interaction?.recognitionDomFeedback;
+    }) as RecognitionDomFeedbackSnapshot;
+
+    expect(resetFeedback.active).toBe(false);
+    expect(resetFeedback.signGlowPx).toBe(0);
+    expect(resetFeedback.rainRimAlpha).toBe(0);
+  });
+
   test("durable save/load: authoritative reload survives clearLocalState", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "durable-save-load");
