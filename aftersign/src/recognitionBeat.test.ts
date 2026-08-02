@@ -264,5 +264,8 @@ export function runRecognitionBeatChecks(): void {
   checkFeelEnvelope();
 }
 
-runRecognitionBeatChecks();
-console.log("recognition beat feel contract ok");
+// No top-level invocation — the CI-gating call site is the paired
+// Playwright spec at `aftersign/e2e/recognition-beat-contract.spec.ts`,
+// which runs on `aftersign/playwright.pure.config.ts`. A top-level call
+// here would double-execute the bundle at import time (once on import,
+// once inside the spec's `test()`), which PR #973 review flagged.
