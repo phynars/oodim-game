@@ -195,9 +195,11 @@ jobs:
       # #829 explicitly allows "before or alongside" — running first means
       # the pure step actually executes even when the main lane's
       # pre-existing SwiftShader flake (#700/#506) aborts the job.
-      - run: npm run test:aftersign:pure
+      - name: Test aftersign pure-logic (Node)
+        run: npm run test:aftersign:pure
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e:aftersign
+      - name: Test aftersign WebGL e2e (Playwright)
+        run: npm run test:e2e:aftersign
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
