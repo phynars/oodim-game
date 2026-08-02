@@ -1617,6 +1617,28 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// #957: returning-session boot recognition. A restored DELIVERED save
+// opens with Io acknowledging the return. The delivery-outcome fact's
+// `object` is the packet outcome; the route-attention fact (via
+// secondActionFromMemory) maps done→listened / skipped→skipped. A
+// delivered save WITHOUT the outcome fact is a bare return —
+// chooseIoReturningSessionLine({}) yields the bareReturn line.
+if (stored?.packet?.delivered) {
+  const outcomeFact = state.npcs.io.memory.find(
+    (fact) => fact?.kind === "delivery-outcome",
+  );
+  ioReturningBootLine = outcomeFact
+    ? chooseIoReturningSessionLine({
+        packetOutcome: outcomeFact.object,
+        routeAttention:
+          secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+            ? "listened"
+            : "skipped",
+      })
+    : chooseIoReturningSessionLine({});
+  ioReturningBootBeat = state.scene.beat;
+}
+
 // Boot complete: listeners wired + Io's kiosk line rendered. The scene
 // is interactive (scene.ready) and her intro has been seen — a restored
 // save keeps whatever it already recorded (#564 Phase 1).
