@@ -12,7 +12,7 @@ export {
   ORRA_RETURNING_BEATS as ORRA_MEMORY_LINES,
   selectOrraMemoryLines,
   selectOrraRecognitionBeat,
-} from "./orra-recognition-beat";
+} from "./orra-recognition-beat.ts";
 
 export type {
   OrraDebtMemory,

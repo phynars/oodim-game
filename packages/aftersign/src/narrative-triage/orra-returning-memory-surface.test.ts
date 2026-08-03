@@ -5,7 +5,7 @@ import {
   selectOrraMemoryLines,
   selectOrraRecognitionBeat,
   type OrraMemoryReference,
-} from "./orra-memory-lines";
+} from "./orra-memory-lines.ts";
 import {
   ORRA_RETURNING_BEATS,
   selectOrraRecognitionBeat as selectFromCanonical,
