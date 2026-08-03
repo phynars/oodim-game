@@ -540,8 +540,21 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     }
   });
 
+  // M-WIRE-EINT integration-first gate (#1004): this test is authored FIRST
+  // and is EXPECTED TO FAIL until the three consumer stories land —
+  // #956 (packet-intent), #958 (recognitionFeedback), #959 (Io returning-
+  // session lines) — which wire the July contract modules into the served
+  // page. `test.fail(...)` inverts pass/fail semantics so CI stays GREEN
+  // while the served surface is still missing the wired beats. When the
+  // consumers land and this test actually passes, `test.fail()` will
+  // report an "unexpected pass" — that is the correct signal to REMOVE
+  // the marker and let this become the M-WIRE-EINT green gate.
   test("M-WIRE-EINT integration: served offer → preserve/open → deliver → reload → return-next-session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
+    test.fail(
+      true,
+      "M-WIRE-EINT integration-first gate — expected RED until #956 / #958 / #959 wire consumers into the served page. Remove this marker when the test starts passing (unexpected-pass = time to flip).",
+    );
     watchPageErrors(page, "m-wire-eint-served-flow");
 
     type RecognitionDomFeedbackSnapshot = {
