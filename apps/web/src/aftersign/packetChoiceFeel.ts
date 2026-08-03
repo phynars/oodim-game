@@ -4,6 +4,19 @@
 // This module keeps that decision out of generic menu-click territory by making
 // accidental taps, drags, and tiny holds non-committal. It is pure data so the
 // renderer and harness can share the same timing contract.
+//
+// Release-forgiveness (PR #994): a finger-up frame that lands one or two
+// frames short of the hard threshold is almost always the player's intent —
+// their finger lifted a couple of ms before the frame boundary they were
+// aiming at. Under the sharp thresholds alone that gets punished as
+// "inspect-only" (open) or nothing (preserve). This module now imports
+// `DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.releaseGraceMs` from the pure-lane
+// feel-contract module and uses it as the grace window on both sides of the
+// hold judgement. The pure module's `runPacketChoiceReleaseForgivenessChecks`
+// pins the SAME grace under the state-machine API, so the input surface and
+// the contract cannot drift.
+
+import { DEFAULT_PACKET_CHOICE_RELEASE_CONFIG } from "../../../../aftersign/src/feel/packetChoiceReleaseForgiveness";
 
 export type PacketChoice = "sealed" | "opened";
 
@@ -37,12 +50,20 @@ export type PacketChoiceFeelConfig = {
   maxCommitTravelPx: number;
   /** A quick tap on the intact seal confirms preservation instead of opening. */
   preserveTapMaxMs: number;
+  /**
+   * A finger-up frame that lands within this many ms of the hard hold
+   * threshold still commits — accounts for the frame-boundary between
+   * "intended to release" and "actually released". Pinned by the pure
+   * release-forgiveness contract module.
+   */
+  releaseGraceMs: number;
 };
 
 export const DEFAULT_PACKET_CHOICE_FEEL: PacketChoiceFeelConfig = {
   openHoldMs: 420,
   maxCommitTravelPx: 10,
   preserveTapMaxMs: 180,
+  releaseGraceMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.releaseGraceMs,
 };
 
 export function evaluatePacketChoiceGesture(
@@ -76,7 +97,13 @@ export function evaluatePacketChoiceGesture(
     };
   }
 
-  if (gesture.kind === "hold" && gesture.durationMs >= config.openHoldMs) {
+  // Open-side release forgiveness: a hold that ends up to `releaseGraceMs`
+  // short of `openHoldMs` still counts as an intentional open. This mirrors
+  // aftersign/src/feel/packetChoiceReleaseForgiveness.ts's
+  // `checkReleaseOnFirstEligibleOpenFrameCommits` — releasing on the first
+  // eligible frame (or a hair before) still commits.
+  const openHoldForgivenMs = Math.max(0, config.openHoldMs - config.releaseGraceMs);
+  if (gesture.kind === "hold" && gesture.durationMs >= openHoldForgivenMs) {
     return {
       choice: "opened",
       committed: true,
@@ -85,7 +112,12 @@ export function evaluatePacketChoiceGesture(
     };
   }
 
-  if (gesture.kind === "tap" && gesture.durationMs <= config.preserveTapMaxMs) {
+  // Preserve-side release forgiveness: a tap that overruns `preserveTapMaxMs`
+  // by up to `releaseGraceMs` is still the "quick tap" preserve intent.
+  // Symmetric with the open side; keeps the two committed outcomes' grace
+  // windows in lockstep with the pure contract module.
+  const preserveTapForgivenMs = config.preserveTapMaxMs + config.releaseGraceMs;
+  if (gesture.kind === "tap" && gesture.durationMs <= preserveTapForgivenMs) {
     return {
       choice: "sealed",
       committed: true,
