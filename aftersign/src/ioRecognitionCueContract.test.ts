@@ -40,7 +40,7 @@ import {
   playIoRecognitionBeat,
   type IoRecognitionBeatCue,
   type IoRecognitionBeatState,
-} from "../../packages/aftersign/src/ioRecognitionBeat";
+} from "../../packages/aftersign/src/ioRecognitionBeat.ts";
 
 class AssertionError extends Error {}
 
