@@ -129,6 +129,109 @@ async function chooseAndWait(page: Page, choiceId: string): Promise<void> {
   await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
+async function waitForStoryIdle(page: Page): Promise<void> {
+  await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+}
+
+async function clickChoiceViaDom(page: Page, variants: readonly string[]): Promise<void> {
+  const clicked = await page.evaluate((candidates) => {
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>("button, [role='button'], [data-choice-id], [data-choice], [data-choiceid]"),
+    );
+    const lowered = candidates.map((entry) => entry.toLowerCase());
+
+    const normalize = (value: string | null | undefined): string =>
+      (value ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+
+    for (const node of nodes) {
+      const text = normalize(node.textContent);
+      const attrs = [
+        normalize(node.getAttribute("data-choice-id")),
+        normalize(node.getAttribute("data-choice")),
+        normalize(node.getAttribute("data-choiceid")),
+        normalize(node.getAttribute("aria-label")),
+        normalize(node.id),
+        text,
+      ].filter(Boolean);
+
+      const matches = lowered.some((needle) => attrs.some((hay) => hay.includes(needle)));
+      if (!matches) continue;
+
+      node.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, buttons: 1 }));
+      node.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, buttons: 0 }));
+      node.click();
+      return true;
+    }
+
+    return false;
+  }, variants);
+
+  expect(clicked, `Expected DOM control for one of [${variants.join(", ")}]`).toBe(true);
+}
+
+async function holdChoiceViaDom(page: Page, variants: readonly string[], holdMs: number): Promise<void> {
+  const held = await page.evaluate(
+    async ({ candidates, ms }) => {
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>("button, [role='button'], [data-choice-id], [data-choice], [data-choiceid]"),
+      );
+      const lowered = candidates.map((entry) => entry.toLowerCase());
+
+      const normalize = (value: string | null | undefined): string =>
+        (value ?? "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+
+      for (const node of nodes) {
+        const text = normalize(node.textContent);
+        const attrs = [
+          normalize(node.getAttribute("data-choice-id")),
+          normalize(node.getAttribute("data-choice")),
+          normalize(node.getAttribute("data-choiceid")),
+          normalize(node.getAttribute("aria-label")),
+          normalize(node.id),
+          text,
+        ].filter(Boolean);
+        const matches = lowered.some((needle) => attrs.some((hay) => hay.includes(needle)));
+        if (!matches) continue;
+
+        node.dispatchEvent(
+          new PointerEvent("pointerdown", {
+            bubbles: true,
+            pointerId: 1,
+            button: 0,
+            buttons: 1,
+            pointerType: "touch",
+            isPrimary: true,
+          }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        node.dispatchEvent(
+          new PointerEvent("pointerup", {
+            bubbles: true,
+            pointerId: 1,
+            button: 0,
+            buttons: 0,
+            pointerType: "touch",
+            isPrimary: true,
+          }),
+        );
+        node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        return true;
+      }
+
+      return false;
+    },
+    { candidates: variants, ms: holdMs },
+  );
+
+  expect(held, `Expected holdable DOM control for one of [${variants.join(", ")}]`).toBe(true);
+}
+
 // Play the packet-choice beat. `secondAction` records the second deliberate
 // kiosk action BEFORE `deliver-packet` mints the route-attention MemoryFact
 // (docs/flagship/story-state-contract.md lines 22-28). Passing `null` skips
@@ -434,6 +537,102 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
       // The two runs share an outcome but MUST differ on secondAction —
       // otherwise the recorded input isn't reaching the beat.
       expect(skippedBeat.secondAction).not.toBe(chainedBeat.secondAction);
+    }
+  });
+
+  test("M-WIRE-EINT integration: served offer → preserve/open → deliver → reload → return-next-session", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "m-wire-eint-served-flow");
+
+    type RecognitionDomFeedbackSnapshot = {
+      active: boolean;
+      signGlowPx: number;
+      hapticScale: number;
+    };
+
+    for (const outcome of ["sealed", "opened"] as const) {
+      await test.step(`served flow outcome=${outcome}`, async () => {
+        const slot = `flagship-wire-eint-${outcome}-${Date.now()}`;
+        await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+        await waitForVersion(page);
+
+        const offered = await readSurface(page);
+        expect(["arrival", "packet-offered"]).toContain(offered.scene.beat);
+        expect(offered.delivery.id).toBe("blue-packet");
+        expect(offered.delivery.outcome).toBe("unknown");
+
+        if (outcome === "sealed") {
+          await clickChoiceViaDom(page, ["keep-sealed", "preserve", "seal"]);
+          await waitForStoryIdle(page);
+        } else {
+          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 420);
+          await waitForStoryIdle(page);
+
+          await clickChoiceViaDom(page, ["cancel", "cancel-open", "cancel open"]);
+          await waitForStoryIdle(page);
+          const afterCancel = await readSurface(page);
+          expect(afterCancel.delivery.outcome).toBe("unknown");
+
+          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 420);
+          await waitForStoryIdle(page);
+
+          await clickChoiceViaDom(page, ["inspect", "inspect-packet", "inspect packet"]);
+          await waitForStoryIdle(page);
+
+          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 420);
+          await waitForStoryIdle(page);
+        }
+
+        await clickChoiceViaDom(page, ["deliver-packet", "deliver packet", "deliver"]);
+        await waitForStoryIdle(page);
+
+        const delivered = await readSurface(page);
+        expect(delivered.delivery.outcome).toBe(outcome);
+
+        await page.waitForFunction(
+          () => {
+            const game = window.__game as
+              | (FlagshipGameSurface & {
+                  interaction?: { recognitionDomFeedback?: { active?: boolean; signGlowPx?: number; hapticScale?: number } };
+                })
+              | undefined;
+            const feedback = game?.interaction?.recognitionDomFeedback;
+            return (
+              game?.scene?.beat === "io-return-recognition" &&
+              feedback?.active === true &&
+              (feedback.signGlowPx ?? 0) > 0 &&
+              (feedback.hapticScale ?? 0) > 1
+            );
+          },
+          undefined,
+          { timeout: WAIT_MS },
+        );
+
+        const recognition = (await page.evaluate(() => {
+          const game = window.__game as unknown as {
+            interaction?: { recognitionDomFeedback?: unknown };
+          };
+          return game.interaction?.recognitionDomFeedback;
+        })) as RecognitionDomFeedbackSnapshot;
+
+        expect(recognition.active).toBe(true);
+        expect(recognition.signGlowPx).toBeGreaterThan(0);
+        expect(recognition.hapticScale).toBeGreaterThan(1);
+
+        await page.evaluate(() => window.__game!.input.forceSave());
+        await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
+          timeout: WAIT_MS,
+        });
+        await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+        await readSurface(page);
+
+        await clickChoiceViaDom(page, ["return-to-io", "return to io", "return next session", "return"]);
+        await waitForStoryIdle(page);
+
+        const returning = await readSurface(page);
+        expect(returning.scene.beat).toBe("io-return-recognition");
+        expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT[outcome]);
+      });
     }
   });
 
