@@ -17,7 +17,7 @@ import {
   isRememberingLine,
   MEMORY_CUES,
   type MemoryCue,
-} from './npcMemoryLines';
+} from './npcMemoryLines.ts';
 
 class AssertionError extends Error {}
 

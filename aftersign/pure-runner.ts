@@ -31,7 +31,7 @@
 //
 // Adding a new runner here — checklist:
 //   1. Every relative import in the transitive subgraph MUST have a
-//      `.ts` extension. Run `grep -R "from ['\"]\." aftersign/src/…`
+//      `.ts` extension. Run `grep -R "from ['\"]." aftersign/src/…`
 //      and confirm.
 //   2. The `.test.ts` file MUST be export-only (no top-level
 //      invocation), or importing it here will double-run the check
@@ -42,6 +42,7 @@
 //      PR so the bundle doesn't execute twice.
 
 import { runPacketIntentChecks } from "./src/packetIntent.test.ts";
+import { runNpcMemoryLineChecks } from "./src/narrative/npcMemoryLines.test.ts";
 
 type Runner = {
   label: string;
@@ -50,6 +51,7 @@ type Runner = {
 
 const runners: Runner[] = [
   { label: "runPacketIntentChecks", run: runPacketIntentChecks },
+  { label: "runNpcMemoryLineChecks", run: runNpcMemoryLineChecks },
 ];
 
 let failed = 0;
