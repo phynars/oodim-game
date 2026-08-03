@@ -58,9 +58,67 @@ machine-guarded. M2 is falsified-negative-proof and closed.
 
 ---
 
+### M3 (HARNESS-GREEN, NOT PLAYER-SHIPPED ⚠️) — A SECOND character remembers you, independently of Io
+
+**Reframed 2026-08-01 (Founder DoD amendment).** M3-E1's done-gate #863 is
+CLOSED and green — but green in the CONTRACT HARNESS (`orraIndependentRecognition.integration.test.ts`,
+jsdom `sampleAftersignOrraMemoryBeat`), NOT on the served page. A `grep` for
+`recognitionFeedback|packetIntent|ioReturningSession` consumers in
+`apps/web/**/main.js` returns ZERO matches. Under the amended Definition of
+Done, Orra's recognition is **stored spec-capital, not shipped value** — a
+player at game.oodim.com/aftersign cannot yet see or feel any of it.
+
+M1, M2, and M3 were all declared DONE against contract tests, not the deployed
+surface. That is precisely the failure the Founder measured (268 commits, 45
+touching the served page, ZERO contract modules imported by it). These
+milestones are NOT re-opened, but their "DONE" is downgraded to
+**harness-green**: the invariants are guarded; the player experience is not yet
+wired. The active milestone is now the one that closes that gap.
+
+---
+
 ## Milestones (cont.)
 
-### M3 (ACTIVE) — A SECOND character remembers you, independently of Io
+### M-WIRE (ACTIVE) — a first-time phone player at game.oodim.com/aftersign FEELS the recognition beat, and Io remembers them next session
+
+**Observable outcome (falsifiable on the DEPLOYED page):** A stranger opens
+game.oodim.com/aftersign on a phone with no prior state. They are offered the
+packet; a **tap preserves the seal**, a **~420ms hold opens it** (with
+cancel/inspect), and they FEEL the recognition beat — the camera push, the sign
+glow, the feel envelope the July `recognitionFeedback` contract already asserts.
+They close the page. On a LATER session they return and Io speaks a line that
+remembers their packet outcome (`ioReturningSession` + the `IO_BARE_RETURN`
+family). Every one of those beats is served by wired page code — not a jsdom
+test — and the epic's e2e drives the deployed surface end to end.
+
+**Why this is the next-smallest outcome (and why it is not M4):** M1–M3 proved
+the memory mechanic in the harness. Before a SECOND-character world (M4) or new
+content earns a milestone, the contract library the studio spent July building
+must have a CONSUMER on the page. Per the BRIEF amendment, a contract with no
+consumer is not shippable value, and wiring an existing contract INTO the page
+"counts double." This milestone converts the stored capital (Io recognition,
+packet-intent feel, Orra recognition) into something a player can experience.
+NO new mechanic, NO new character content, NO episode structure — those are M4+.
+
+**Definition of done (falsifiable, served-page):**
+- On a phone at game.oodim.com/aftersign: offer → tap-preserve / 420ms-hold-open
+  (with cancel/inspect) → deliver → the recognition beat is FELT (camera push /
+  sign glow / feel envelope from `recognitionFeedback`).
+- Close + return in a later session → Io serves the returning-session line that
+  matches the player's packet outcome (wired `ioReturningSession`).
+- The epic's integration e2e DRIVES THE DEPLOYED PAGE (not a pure module) and
+  asserts the wired offer→feel→return chain; it turns RED if any beat regresses
+  to unwired.
+- No `harness-only`-labelled PR closes this milestone: the gate is the served
+  surface (harness-only rationed to 1-in-4 per the amendment).
+
+**LoE budget:** ~1 epic (the #954 M2-EINT wiring epic, re-homed here as the
+active milestone). Orra's served wiring, a memory graph, cross-NPC memory, and
+new episodes remain OUT — M4+.
+
+---
+
+### M4 (DEFERRED) — A SECOND character remembers you on the served page (Orra, wired)
 
 **Observable outcome:** A returning visitor who already has a relationship with
 Io meets a DIFFERENT named character in the same slice — Saint Orra, the living
