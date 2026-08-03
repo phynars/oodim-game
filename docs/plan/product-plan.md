@@ -155,59 +155,76 @@ Maud / the Child, and branching episodes remain OUT — they are M4+.
 
 ---
 
-## Active milestone (M3) — epics
+## Active milestone (M-WIRE) — epics
 
-### E1 (ACTIVE) — Saint Orra remembers a player action independently of Io
+### EINT (ACTIVE) — every July contract module gains a consumer on the served page (#954)
 
-**Acceptance criteria:** The slice persists a SECOND, per-NPC memory record for
-Saint Orra (the gentle-touch vs. strike action) keyed to the durable player id,
-alongside — and independent of — the existing Io memory beat. On the next return
-Orra serves the correct recognition line for a player who acted, the
-first-contact line for a player who did not, and Io's own chained line is
-unchanged. Dropped-Orra-memory, wrong-Orra-line, and Io-contamination paths all
-fail the e2e lane.
+**Acceptance criteria:** `aftersign/main.js` (the served entry) imports and
+consumes the July contract library — `recognitionFeedback`, the `packetIntent`
+feel model, and the `ioReturningSession` / `IO_BARE_RETURN_LINE` returning-session
+lines — so each beat those modules assert is present on the deployed surface.
+A single integration e2e drives `game.oodim.com/aftersign` end to end (offer →
+tap-preserve / 420ms-hold-open → deliver → reload → return-next-session) and
+asserts each wired beat is FELT on the served page. The epic is DONE when that
+served-page lane is green — not when the individual wiring PRs merge.
 
-**Status:** active. No Orra runtime surface, memory record, or lines exist yet
-(concept-only); Io's memory surface (`window.__game.story.memoryBeat`) is the
-proven pattern the Orra record parallels.
+**Status:** active. `ioReturningSession` is now PARTIALLY wired — `main.js:38`
+imports `chooseIoReturningSessionLine` and consumes it at lines 1655-1669
+(landed in #980/#985), so the returning-session line is on the surface for the
+sealed/opened outcomes; the remaining bindings (`recognitionFeedback` feel
+envelope, `packetIntent` offer/commit) are NOT yet imported by the served
+entry (#954 founder measurement stands for those two). Contract modules are
+green in isolation. Per #954's CONSUMER RULE, this epic is a pure consumer
+epic — the high-value work is wiring, not new harness (harness-only additions
+need explicit justification).
 
-**Integration story (the done-gate):** **#863** — proves Orra's independent
-recognition (action vs. first-contact branch across reload) + Io non-regression
-+ the three red break modes (`orra-dropped` / `orra-wrong` /
-`orra-io-contamination`). E1 is DONE when that lane is green, not when its
-building blocks merge. Everything below either feeds that proof or hardens it.
+**Integration story (the done-gate):** **#1004** — one e2e that drives the SERVED
+page through offer → tap-preserve / hold-open → deliver → reload →
+return-next-session and asserts the wired beats. Written FIRST, lands LAST.
+EINT is DONE when this lane is green against the deployed surface.
 
-**Integration story of M2 (reference):** #735 (merged) proved a second memory on
-ONE NPC. M3-E1's integration proof is the orthogonal generalization: a second
-memory on a SECOND NPC, proven not to disturb the first NPC's memory.
+**Integration story of M2 (reference):** #735 (merged) proved chained memory in
+a MODULE lane. M-WIRE's integration proof is the orthogonal generalization: the
+same beats, but driven through the DEPLOYED page — closing the module-vs-surface
+gap that #954 measured and #863 exposed (M3 harness-green, player-unshipped).
 
 ---
 
-## Story map (M3-E1)
+## Story map (M-WIRE-EINT)
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Integration proof (done-gate)** — Orra action/first-contact split across reload + Io non-regression + `orra-dropped` / `orra-wrong` / `orra-io-contamination` red modes | **#863** | M | integration | filed |
-| Persist an Orra-owned memory record (distinct storage key + `kind: "orra-recognition"`); expose on `window.__game.story.orraMemoryBeat`, isolated from Io's | **#865** | M | building block — Orra's durable, Io-isolated memory the proof reads | filed |
-| Author + wire Orra's FIRST-CONTACT line + her RECOGNITION line in the copy package (single-source, parity-guarded) | **#864** | S | building block — the two lines the proof asserts (first-contact vs. recognition) | filed |
+| **Integration proof (done-gate)** — one e2e drives the SERVED page offer → preserve/open → deliver → reload → return-next-session, asserts each wired beat | **#1004** | M | integration | filed |
+| Wire `recognitionFeedback` (aftersign/src/recognitionFeedback.ts) into main.js — player FEELS the recognition beat (camera push, sign glow) on deliver | **#1003** | M | consumer — the feel envelope the proof asserts on the surface | filed |
+| Wire the `packetIntent` feel model into the page — tap preserves the seal, 420ms hold opens, with cancel/inspect | **#956** | M | consumer — the offer/commit interaction the proof drives | filed |
+| Wire Io returning-session lines (`ioReturningSession` + `IO_BARE_RETURN_LINE`) into the served scene — a later-session return hears Io remember the packet outcome | **#1002** | M | consumer — the returning-session line the proof asserts | **partially landed** (#980/#985 — main.js:38, 1655-1669) |
 
-**Integration-first note:** #863 (the done-gate) is filed and mapped BEFORE the
-implementation stories because it defines what "M3-E1 done" means. The two
-building blocks (#865 Orra's isolated memory record / #864 Orra's first-contact
-+ recognition lines) each feed the proof; neither alone proves the epic outcome.
-Sequence if forced: #865 (persist Orra memory record) → #864 (author both Orra
-lines) → #863 (integration lane asserts the branch + Io non-regression end to end).
+**Integration-first note:** #1004 (the done-gate) is filed and mapped BEFORE the
+consumer stories because it defines what "M-WIRE-EINT done" means — a green lane
+against the SERVED page. The three consumer stories (#1003 recognition feel /
+#956 packet-intent / #1002 returning-session lines) each give one July module a
+consumer in `main.js`; none alone closes the module-vs-surface gap. Sequence if
+forced: #956 (offer/commit, the entry interaction) → #1003 (recognition feel on
+deliver) → #1002 (returning-session line on reload — already partly landed) →
+#1004 (integration lane asserts the full arc against the deployed surface).
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-These are NOT closed here (operator/human disposes). Named so they don't masquerade as M3 work:
+These are NOT closed here (operator/human disposes). Named so they don't masquerade as M-WIRE work:
 
+- **#976 / #977 / #978** — [Mara, `type:refactor`, decomposed from #974] add
+  explicit `.ts` extensions / migrate check bundles to a plain-Node runner in
+  the aftersign subgraph. Genuine harness/tooling debt, but pure internal
+  refactor — no player sees or feels it, so it does NOT serve M-WIRE-EINT's
+  served-page outcome. Operator disposes; does NOT enter the story map.
 - **#727** — [Mara, `agent-needs-human`] AFTERSIGN red/green workflow relies on
-  brittle spec marker text for retirement gating. Real harness debt, but it is a
-  *process/tooling* fix, not part of the M3-E1 Orra-recognition outcome.
-  Human-flagged; disposition owed by operator. Does NOT enter the M3 story map.
+  brittle spec marker text for retirement gating. Process/tooling fix, not part
+  of the M-WIRE served-page outcome. Human-flagged; disposition owed by operator.
 
-_Prior-cycle drift (#615/#622/#454/#634) is now CLOSED — no longer open, removed
-from this list. The only current drift is #727 above._
+_M3 (Saint Orra) is DEFERRED to M4, not drift: its harness-green integration
+(#863) shipped in the contract lane but not on the served page, so its
+served-page wiring is deliberately gated behind M-WIRE-EINT closing the
+module-vs-surface gap first. Prior-cycle drift (#615/#622/#454/#634) resolved.
+Current drift is #976/#977/#978 + #727 above._
