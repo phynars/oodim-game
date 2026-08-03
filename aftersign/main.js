@@ -1416,7 +1416,10 @@ const resetSliceSave = async () => {
     id: "local-slice-player",
     x: -1.8,
     z: 1.15,
-    facingRadians: 0,
+    // Match the cold-boot kiosk-facing pose. Boot uses π so the
+    // player faces the kiosk at -z; reset must not silently rotate
+    // the slice away from the served-page contract.
+    facingRadians: Math.PI,
     // #736: reset the second-action flag alongside the packet
     // outcome so a fresh slice cannot silently inherit a prior
     // player's kiosk acknowledgement.
