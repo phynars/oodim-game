@@ -11,7 +11,27 @@
 // runner entry is a one-line edit; adding the file to the
 // playwright.pure.config.ts testMatch is NOT needed — this lives in
 // aftersign/src/, not aftersign/e2e/.
-import assert from "node:assert/strict";
+// Local assert helper — aftersign/tsconfig.json ships `types: ["vite/client"]`
+// only (no @types/node), so `node:assert/strict` can't resolve under the
+// strict `tsc --noEmit` gate. Runtime is fine under
+// `node --experimental-strip-types`, but red is red. Matches the pattern
+// in packetIntentContract.test.ts / recognitionBeat.test.ts /
+// ioFirstSessionPacing.test.ts.
+class AssertionError extends Error {}
+
+const assert = {
+  ok(condition: unknown, message?: string): asserts condition {
+    if (!condition) throw new AssertionError(message ?? "assert.ok failed");
+  },
+  equal<T>(actual: T, expected: T, message?: string): void {
+    if (actual !== expected) {
+      throw new AssertionError(
+        message ??
+          `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  },
+};
 
 import { recognitionEnvelopeAt } from "./recognitionFeedbackBridge.ts";
 import {
