@@ -12,7 +12,7 @@ import {
 import {
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackSample,
-} from "./recognitionFeedback";
+} from "./recognitionFeedback.ts";
 import type {
   AftersignOrraAction,
   AftersignPacketOutcome,
