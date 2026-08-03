@@ -95,11 +95,35 @@ describe("evaluatePacketChoiceGesture", () => {
   // packetChoiceIntentFeel.ts tried (and failed) to catch. These live on the
   // one true judge so behaviour cannot drift again.
 
-  it("a hold that ends one millisecond short of openHoldMs must NOT open", () => {
-    // Frame-boundary regression: the seal must not break on 419ms holds.
+  it("a hold that ends one millisecond short of openHoldMs still opens (release forgiveness)", () => {
+    // PR #994 wire-in: a finger-up frame one ms short of the hard threshold
+    // was almost always the intended commit. `releaseGraceMs` now forgives
+    // it. The pure-lane state machine
+    // (aftersign/src/feel/packetChoiceReleaseForgiveness.ts) pins the same
+    // behaviour with `checkReleaseOnFirstEligibleOpenFrameCommits`.
     const decision = evaluatePacketChoiceGesture({
       kind: "hold",
       durationMs: DEFAULT_PACKET_CHOICE_FEEL.openHoldMs - 1,
+      travelPx: 0,
+      startedOnSeal: true,
+      endedOnSeal: true,
+    });
+
+    expect(decision.committed).toBe(true);
+    expect(decision.choice).toBe("opened");
+    expect(decision.reason).toBe("hold-opened");
+  });
+
+  it("a hold that ends BEYOND the release-forgiveness window still does not open", () => {
+    // The forgiveness has a hard boundary — one ms past
+    // `openHoldMs - releaseGraceMs - 1` must still fall through to
+    // `inspect-only`, otherwise the sharp intent-boundary erodes over time.
+    const decision = evaluatePacketChoiceGesture({
+      kind: "hold",
+      durationMs:
+        DEFAULT_PACKET_CHOICE_FEEL.openHoldMs -
+        DEFAULT_PACKET_CHOICE_FEEL.releaseGraceMs -
+        1,
       travelPx: 0,
       startedOnSeal: true,
       endedOnSeal: true,
@@ -110,11 +134,34 @@ describe("evaluatePacketChoiceGesture", () => {
     expect(decision.reason).toBe("inspect-only");
   });
 
-  it("a tap one millisecond past preserveTapMaxMs must NOT commit preserve", () => {
-    // Symmetric regression on the other end: 181ms is no longer a tap.
+  it("a tap one millisecond past preserveTapMaxMs still commits preserve (release forgiveness)", () => {
+    // Symmetric wire-in on the preserve side: a tap that overruns the tap
+    // ceiling by less than `releaseGraceMs` is still the "quick tap"
+    // preserve intent. Matches the state-machine invariant
+    // `checkReleaseOnFirstEligiblePreserveFrameCommits`.
     const decision = evaluatePacketChoiceGesture({
       kind: "tap",
       durationMs: DEFAULT_PACKET_CHOICE_FEEL.preserveTapMaxMs + 1,
+      travelPx: 0,
+      startedOnSeal: true,
+      endedOnSeal: true,
+    });
+
+    expect(decision.committed).toBe(true);
+    expect(decision.choice).toBe("sealed");
+    expect(decision.reason).toBe("tap-preserved");
+  });
+
+  it("a tap BEYOND the preserve release-forgiveness window no longer commits", () => {
+    // Hard boundary on the preserve side too: `releaseGraceMs + 1` past
+    // `preserveTapMaxMs` is no longer a tap. Keeps the sharp intent-boundary
+    // alive at the new (grace-inclusive) edge.
+    const decision = evaluatePacketChoiceGesture({
+      kind: "tap",
+      durationMs:
+        DEFAULT_PACKET_CHOICE_FEEL.preserveTapMaxMs +
+        DEFAULT_PACKET_CHOICE_FEEL.releaseGraceMs +
+        1,
       travelPx: 0,
       startedOnSeal: true,
       endedOnSeal: true,

@@ -1,3 +1,30 @@
+// AFTERSIGN packet-choice release-forgiveness feel contract.
+//
+// The vertical slice's blue-seal choice is deliberately hold-heavy: a
+// preserve tap must land inside a short window, an open hold must
+// survive `openHoldMs`. Both thresholds are sharp — one frame short
+// and the gesture is punished as "inspect-only" (open) or nothing
+// (preserve). That sharpness is correct for the intent, but on real
+// hardware a finger-up frequently trails the *intent* to release by a
+// frame or two. This module pins the invariants that keep those
+// good-faith finger-ups from being scored as cancels.
+//
+// Repo convention (see aftersign/src/packetChoiceFeel.ts + its
+// packetChoiceFeel.test.ts shim; PR #973 for the pure-runner reasoning):
+//   - The `.ts` module OWNS `check*()` + `run*Checks()`.  The sibling
+//     `.test.ts` is an EXPORT-ONLY shim so pure-runner + Playwright can
+//     import the runner without double-executing it.
+//   - Everything is plain TS: no vitest, no jest.  `typecheck:aftersign`
+//     is the type gate; `test:aftersign:pure` executes the checks.
+//
+// Consumer (Soren's rule, PR #994 re-review): this module is not a
+// self-referential harness.  Its `releaseGraceMs` constant is imported
+// by `apps/web/src/aftersign/packetChoiceFeel.ts` (`evaluatePacketChoiceGesture`),
+// the ONE gesture judge, so the forgiveness window here and the
+// forgiveness applied at the input surface cannot drift.  The pure
+// checks below pin the state-machine version; the vitest suite on the
+// gesture judge pins the same behaviour on the runtime API.
+
 export type PacketChoiceReleaseIntent = 'open' | 'preserve';
 export type PacketChoiceReleaseDecision = PacketChoiceReleaseIntent | 'cancel' | 'hold';
 
@@ -86,7 +113,12 @@ export function stepPacketChoiceReleaseForgiveness(
 
   if (input.pressed) {
     const intentChanged = nextIntent !== previous.intent;
-    const armedAtMs = nextIntent === null ? null : intentChanged || previous.armedAtMs === null ? input.nowMs : previous.armedAtMs;
+    const armedAtMs =
+      nextIntent === null
+        ? null
+        : intentChanged || previous.armedAtMs === null
+        ? input.nowMs
+        : previous.armedAtMs;
 
     return finish(
       {
@@ -177,13 +209,6 @@ export function isPacketChoiceReleaseWithinFrameBudget(
   return step.elapsedMs <= config.frameBudgetMs;
 }
 
-// Re-exported from the sibling `.test.ts` so the aftersign e2e spec (on the
-// `typecheck:aftersign` lane) can `import { runPacketChoiceReleaseForgivenessChecks }`
-// from this module path — matches the packet-intent contract convention and
-// unblocks the Playwright pure-lane spec at
-// aftersign/e2e/packet-choice-release-forgiveness-contract.spec.ts.
-export { runPacketChoiceReleaseForgivenessChecks } from './packetChoiceReleaseForgiveness.test';
-
 function finish(
   state: PacketChoiceReleaseState,
   decision: PacketChoiceReleaseDecision,
@@ -195,4 +220,166 @@ function finish(
     decision,
     elapsedMs: Math.max(0, frameEndedAtMs - frameStartedAtMs),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Pure-lane invariant checks
+//
+// These live in the `.ts` module (not the `.test.ts` shim) so
+// `typecheck:aftersign` and `test:aftersign:pure` see the same source
+// of truth. The sibling `.test.ts` re-exports `runPacketChoiceReleaseForgivenessChecks`
+// so the aftersign/e2e/ pure Playwright spec's import path stays stable.
+// ---------------------------------------------------------------------------
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function pressUntil(
+  intent: PacketChoiceReleaseIntent,
+  durationMs: number,
+  options: { sealInspected?: boolean } = {},
+): PacketChoiceReleaseState {
+  let state = createPacketChoiceReleaseState();
+  const first = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: 0,
+    pressed: true,
+    intent,
+    sealInspected: options.sealInspected,
+  });
+  state = first.state;
+
+  const second = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: durationMs,
+    pressed: true,
+    intent,
+    sealInspected: options.sealInspected,
+  });
+
+  return second.state;
+}
+
+export function checkReleaseOnFirstEligibleOpenFrameCommits(): void {
+  const state = pressUntil('open', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs, {
+    sealInspected: true,
+  });
+
+  const release = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs,
+    pressed: false,
+  });
+
+  assert(release.decision === 'open', 'releasing on the first eligible open frame should commit open');
+  assert(release.state.committed === 'open', 'open commit should be recorded in state');
+}
+
+export function checkReleaseOnFirstEligiblePreserveFrameCommits(): void {
+  const state = pressUntil('preserve', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs);
+
+  const release = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs,
+    pressed: false,
+  });
+
+  assert(
+    release.decision === 'preserve',
+    'releasing on the first eligible preserve frame should commit preserve',
+  );
+  assert(release.state.committed === 'preserve', 'preserve commit should be recorded in state');
+}
+
+export function checkOpenReleaseStillRequiresSealInspection(): void {
+  const state = pressUntil('open', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs, {
+    sealInspected: false,
+  });
+
+  const release = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs,
+    pressed: false,
+  });
+
+  assert(release.decision === 'hold', 'open release forgiveness must not bypass seal inspection');
+  assert(release.state.committed === null, 'uninspected open release should not commit');
+}
+
+export function checkStaleReleaseCancels(): void {
+  const state = pressUntil('preserve', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs - 1);
+  const release = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs - 1,
+    pressed: false,
+  });
+
+  const stale = stepPacketChoiceReleaseForgiveness(release.state, {
+    nowMs:
+      DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs -
+      1 +
+      DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.releaseGraceMs +
+      1,
+    pressed: false,
+  });
+
+  assert(stale.decision === 'cancel', 'stale release outside the forgiveness window should cancel');
+  assert(stale.state.cancelled, 'stale release cancellation should be recorded');
+}
+
+export function checkDragAwayCancellationWins(): void {
+  const state = pressUntil('preserve', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs);
+
+  const dragAway = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs,
+    pressed: false,
+    pointerInsideChoice: false,
+  });
+
+  assert(dragAway.decision === 'cancel', 'drag-away should cancel instead of using release forgiveness');
+  assert(dragAway.state.cancelled, 'drag-away cancellation should be recorded');
+  assert(dragAway.state.committed === null, 'drag-away should not commit a packet choice');
+}
+
+export function checkEarlyReleaseInsideGraceWindowStillHolds(): void {
+  // Release BEFORE requiredHoldMs but still inside the grace window: the
+  // state machine keeps the intent alive as `hold` — not committed, not
+  // cancelled — so a subsequent frame within the grace can still resolve
+  // per the real rules.
+  const state = pressUntil('preserve', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs - 20);
+
+  const earlyRelease = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs - 20,
+    pressed: false,
+  });
+
+  assert(
+    earlyRelease.decision === 'hold',
+    'early release inside the grace window but below requiredHoldMs should hold, not commit',
+  );
+  assert(earlyRelease.state.committed === null, 'early release must not commit a packet choice');
+  assert(!earlyRelease.state.cancelled, 'early release inside the grace window must not cancel yet');
+}
+
+export function checkReleaseForgivenessBookkeepingStaysInsideFrameBudget(): void {
+  const state = pressUntil('open', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs, {
+    sealInspected: true,
+  });
+
+  const release = stepPacketChoiceReleaseForgiveness(state, {
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs,
+    pressed: false,
+  });
+
+  assert(
+    isPacketChoiceReleaseWithinFrameBudget(release),
+    `release-forgiveness bookkeeping should stay within ${DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.frameBudgetMs}ms`,
+  );
+}
+
+export function runPacketChoiceReleaseForgivenessChecks(): void {
+  checkReleaseOnFirstEligibleOpenFrameCommits();
+  checkReleaseOnFirstEligiblePreserveFrameCommits();
+  checkOpenReleaseStillRequiresSealInspection();
+  checkStaleReleaseCancels();
+  checkDragAwayCancellationWins();
+  checkEarlyReleaseInsideGraceWindowStillHolds();
+  checkReleaseForgivenessBookkeepingStaysInsideFrameBudget();
 }
