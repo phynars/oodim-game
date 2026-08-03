@@ -3,31 +3,55 @@ import {
   RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS,
   RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES,
   RECOGNITION_FEEDBACK_TOTAL_MS,
+  type IoRecognitionOutcome,
 } from "./recognitionFeedback.ts";
-import { IO_RECOGNITION_BEAT_FEEDBACK } from "../recognition-beat-feedback.js";
+import {
+  IO_RECOGNITION_BEAT_FEEDBACK,
+  type RecognitionBeatLightCue,
+  type RecognitionBeatHapticCue,
+} from "../recognition-beat-feedback.js";
 
-const clamp01 = (value) => Math.max(0, Math.min(1, value));
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+export type RecognitionEnvelopeFeedback = {
+  readonly cameraDeltaMeters?: number;
+  readonly cameraYawDegrees?: number;
+};
+
+export type RecognitionEnvelope = {
+  readonly normalized: number;
+  readonly lantern: RecognitionBeatLightCue;
+  readonly packetSeal: RecognitionBeatLightCue;
+  readonly kioskSign: RecognitionBeatLightCue;
+  readonly rainRim: RecognitionBeatLightCue;
+  readonly hapticScale: RecognitionBeatHapticCue;
+  readonly cameraDeltaMeters: number;
+  readonly cameraYawDegrees: number;
+  readonly signGlowBoost: number;
+};
 
 // Bridge from the RecognitionFeedbackState contract (recognitionFeedback.ts)
 // to the DOM cue envelope shape that applyRecognitionDomFeedback consumes.
 // The contract module is fixed; we adapt on the way out.
 export const recognitionEnvelopeAt = (
-  elapsedMs,
-  outcome = "sealed",
-  feedback,
-) => {
-  const safeOutcome = outcome === "opened" ? "opened" : "sealed";
+  elapsedMs: number,
+  outcome: IoRecognitionOutcome | string = "sealed",
+  feedback?: RecognitionEnvelopeFeedback,
+): RecognitionEnvelope => {
+  const safeOutcome: IoRecognitionOutcome = outcome === "opened" ? "opened" : "sealed";
   const base = recognitionFeedbackAt(elapsedMs, { outcome: safeOutcome });
 
   const peakDelta = feedback?.cameraDeltaMeters ?? RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
   const peakYaw = feedback?.cameraYawDegrees ?? RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
 
-  const deltaRatio = RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS === 0
-    ? 0
-    : peakDelta / RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
-  const yawRatio = RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES === 0
-    ? 0
-    : peakYaw / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
+  const deltaRatio =
+    RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS === 0
+      ? 0
+      : peakDelta / RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
+  const yawRatio =
+    RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES === 0
+      ? 0
+      : peakYaw / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
 
   // signGlowBoost is added to signLight.intensity every frame in the
   // render loop (main.js:1727: `7.4 + ... + recognitionMotion.signGlowBoost + ...`).

@@ -13,7 +13,7 @@
 // aftersign/src/, not aftersign/e2e/.
 import assert from "node:assert/strict";
 
-import { recognitionEnvelopeAt } from "./recognitionFeedbackBridge.js";
+import { recognitionEnvelopeAt } from "./recognitionFeedbackBridge.ts";
 import {
   RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS,
   RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES,
