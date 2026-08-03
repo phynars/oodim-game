@@ -22,7 +22,7 @@ import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturnin
 // Every assertion in this file that pins a feel number reads from this
 // contract, never from the sibling `./recognitionFeedback` — that is the
 // invariant the README exists to protect.
-import { recognitionFeedbackContract } from "../../apps/web/src/aftersign/recognitionFeedback";
+import { recognitionFeedbackContract } from "../../apps/web/src/aftersign/recognitionFeedback.ts";
 
 class AssertionError extends Error {}
 

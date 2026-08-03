@@ -21,7 +21,7 @@ import {
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackSample,
   type RecognitionOutcome,
-} from "../../apps/web/src/aftersign/recognitionFeedback";
+} from "../../apps/web/src/aftersign/recognitionFeedback.ts";
 
 // Packet outcome shape for the recognition beat's feel envelope. The wider
 // four-value packet outcome (sealed | opened | withheld | returned) lives in
