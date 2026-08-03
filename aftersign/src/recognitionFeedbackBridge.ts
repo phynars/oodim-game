@@ -179,14 +179,13 @@ export const recognitionEnvelopeAt = (
   const peakDelta = feedback?.cameraDeltaMeters ?? RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
   const peakYaw = feedback?.cameraYawDegrees ?? RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
 
-  const deltaRatio =
-    RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS === 0
-      ? 0
-      : peakDelta / RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
-  const yawRatio =
-    RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES === 0
-      ? 0
-      : peakYaw / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
+  // The contract constants are exported without explicit type annotations,
+  // so under `strict` they're inferred as non-zero literal types (0.32, 4).
+  // A `=== 0` guard against them is a compile-time "no overlap" error under
+  // strict TS — and is dead code besides, because the constants are
+  // authored-in and non-zero. Divide directly.
+  const deltaRatio = peakDelta / RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
+  const yawRatio = peakYaw / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
 
   // signGlowBoost is added to signLight.intensity every frame in the
   // render loop (main.js:1727: `7.4 + ... + recognitionMotion.signGlowBoost + ...`).
