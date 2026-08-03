@@ -1,170 +1,191 @@
-import {
-  DEFAULT_PACKET_CHOICE_FEEL,
-  isPacketChoiceCommitted,
-  packetChoiceFrameCostMs,
-  startPacketChoiceIntent,
-  stepPacketChoiceIntent,
-  type PacketChoiceAction,
-  type PacketChoiceFeelConfig,
-  type PacketChoiceIntent,
-  type PacketChoicePointer,
-  type PacketChoiceStepInput,
-} from '../packetChoiceFeel'
+export type PacketChoiceReleaseIntent = 'open' | 'preserve';
+export type PacketChoiceReleaseDecision = PacketChoiceReleaseIntent | 'cancel' | 'hold';
 
-export type PacketChoiceReleaseForgivenessConfig = PacketChoiceFeelConfig & {
-  /** Finger-up events that land on the first commit-eligible frame should still count as the intended choice. */
-  releaseGraceMs: number
+export interface PacketChoiceReleaseState {
+  readonly intent: PacketChoiceReleaseIntent | null;
+  readonly armedAtMs: number | null;
+  readonly releasedAtMs: number | null;
+  readonly sealInspected: boolean;
+  readonly pointerInsideChoice: boolean;
+  readonly committed: PacketChoiceReleaseIntent | null;
+  readonly cancelled: boolean;
 }
 
-export const DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS: PacketChoiceReleaseForgivenessConfig = {
-  ...DEFAULT_PACKET_CHOICE_FEEL,
-  releaseGraceMs: DEFAULT_PACKET_CHOICE_FEEL.frameBudgetMs,
+export interface PacketChoiceReleaseInput {
+  readonly nowMs: number;
+  readonly pressed: boolean;
+  readonly intent?: PacketChoiceReleaseIntent | null;
+  readonly sealInspected?: boolean;
+  readonly pointerInsideChoice?: boolean;
 }
 
-export function stepPacketChoiceIntentWithReleaseForgiveness(
-  intent: PacketChoiceIntent,
-  input: PacketChoiceStepInput,
-  config: PacketChoiceReleaseForgivenessConfig = DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS,
-): PacketChoiceIntent {
-  if (intent.phase === 'committed' || intent.phase === 'cancelled') return intent
-  if (input.pressed) return stepPacketChoiceIntent(intent, input, config)
+export interface PacketChoiceReleaseConfig {
+  readonly openHoldMs: number;
+  readonly preserveConfirmMs: number;
+  readonly minArmedVisibleMs: number;
+  readonly releaseGraceMs: number;
+  readonly frameBudgetMs: number;
+}
 
-  const inspectedSeal = intent.inspectedSeal || input.inspectedSeal === true
-  const movedPx = distance(intent.startPointer, input.pointer)
-  if (movedPx > config.cancelRadiusPx) {
-    return stepPacketChoiceIntent(intent, input, config)
+export interface PacketChoiceReleaseStep {
+  readonly state: PacketChoiceReleaseState;
+  readonly decision: PacketChoiceReleaseDecision;
+  readonly elapsedMs: number;
+}
+
+export const DEFAULT_PACKET_CHOICE_RELEASE_CONFIG: PacketChoiceReleaseConfig = {
+  openHoldMs: 420,
+  preserveConfirmMs: 220,
+  minArmedVisibleMs: 96,
+  releaseGraceMs: 96,
+  frameBudgetMs: 16,
+};
+
+export const createPacketChoiceReleaseState = (): PacketChoiceReleaseState => ({
+  intent: null,
+  armedAtMs: null,
+  releasedAtMs: null,
+  sealInspected: false,
+  pointerInsideChoice: true,
+  committed: null,
+  cancelled: false,
+});
+
+export function stepPacketChoiceReleaseForgiveness(
+  previous: PacketChoiceReleaseState,
+  input: PacketChoiceReleaseInput,
+  config: PacketChoiceReleaseConfig = DEFAULT_PACKET_CHOICE_RELEASE_CONFIG,
+): PacketChoiceReleaseStep {
+  const frameStartedAtMs = input.nowMs;
+
+  if (previous.committed !== null) {
+    return finish(previous, previous.committed, frameStartedAtMs, input.nowMs);
   }
 
-  const commitEligibleAtMs = packetChoiceCommitEligibleAtMs(intent, inspectedSeal, config)
-  const releaseLagMs = commitEligibleAtMs === null ? Number.POSITIVE_INFINITY : input.nowMs - commitEligibleAtMs
-  const releaseCanCommit = releaseLagMs >= 0 && releaseLagMs <= config.releaseGraceMs
-
-  if (releaseCanCommit) {
-    return {
-      ...intent,
-      phase: 'committed',
-      armedAtMs: intent.armedAtMs,
-      committedAtMs: input.nowMs,
-      lastPointer: { ...input.pointer },
-      inspectedSeal,
-    }
+  if (previous.cancelled) {
+    return finish(previous, 'cancel', frameStartedAtMs, input.nowMs);
   }
 
-  return stepPacketChoiceIntent(intent, input, config)
+  const pointerInsideChoice = input.pointerInsideChoice ?? previous.pointerInsideChoice;
+  const sealInspected = previous.sealInspected || input.sealInspected === true;
+  const nextIntent = input.intent ?? previous.intent;
+
+  if (!pointerInsideChoice) {
+    return finish(
+      {
+        ...previous,
+        pointerInsideChoice,
+        sealInspected,
+        cancelled: true,
+      },
+      'cancel',
+      frameStartedAtMs,
+      input.nowMs,
+    );
+  }
+
+  if (input.pressed) {
+    const intentChanged = nextIntent !== previous.intent;
+    const armedAtMs = nextIntent === null ? null : intentChanged || previous.armedAtMs === null ? input.nowMs : previous.armedAtMs;
+
+    return finish(
+      {
+        intent: nextIntent,
+        armedAtMs,
+        releasedAtMs: null,
+        sealInspected,
+        pointerInsideChoice,
+        committed: null,
+        cancelled: false,
+      },
+      'hold',
+      frameStartedAtMs,
+      input.nowMs,
+    );
+  }
+
+  if (previous.intent === null || previous.armedAtMs === null) {
+    return finish(
+      {
+        ...previous,
+        sealInspected,
+        pointerInsideChoice,
+        cancelled: true,
+      },
+      'cancel',
+      frameStartedAtMs,
+      input.nowMs,
+    );
+  }
+
+  const releasedAtMs = previous.releasedAtMs ?? input.nowMs;
+  const heldMs = releasedAtMs - previous.armedAtMs;
+  const visibleMs = input.nowMs - previous.armedAtMs;
+  const staleReleaseMs = input.nowMs - releasedAtMs;
+
+  if (staleReleaseMs > config.releaseGraceMs) {
+    return finish(
+      {
+        ...previous,
+        releasedAtMs,
+        sealInspected,
+        pointerInsideChoice,
+        cancelled: true,
+      },
+      'cancel',
+      frameStartedAtMs,
+      input.nowMs,
+    );
+  }
+
+  const requiredHoldMs = previous.intent === 'open' ? config.openHoldMs : config.preserveConfirmMs;
+  const canCommit = heldMs >= requiredHoldMs && visibleMs >= config.minArmedVisibleMs;
+  const openAllowed = previous.intent !== 'open' || sealInspected;
+
+  if (canCommit && openAllowed) {
+    return finish(
+      {
+        ...previous,
+        releasedAtMs,
+        sealInspected,
+        pointerInsideChoice,
+        committed: previous.intent,
+      },
+      previous.intent,
+      frameStartedAtMs,
+      input.nowMs,
+    );
+  }
+
+  return finish(
+    {
+      ...previous,
+      releasedAtMs,
+      sealInspected,
+      pointerInsideChoice,
+    },
+    'hold',
+    frameStartedAtMs,
+    input.nowMs,
+  );
 }
 
-export function packetChoiceCommitEligibleAtMs(
-  intent: PacketChoiceIntent,
-  inspectedSeal: boolean,
-  config: PacketChoiceFeelConfig = DEFAULT_PACKET_CHOICE_FEEL,
-): number | null {
-  if (intent.armedAtMs === null) return null
-  if (intent.action === 'open' && !inspectedSeal) return null
-  return intent.armedAtMs + config.minArmedVisibleMs
+export function isPacketChoiceReleaseWithinFrameBudget(
+  step: PacketChoiceReleaseStep,
+  config: PacketChoiceReleaseConfig = DEFAULT_PACKET_CHOICE_RELEASE_CONFIG,
+): boolean {
+  return step.elapsedMs <= config.frameBudgetMs;
 }
 
-function distance(a: PacketChoicePointer, b: PacketChoicePointer): number {
-  const dx = b.x - a.x
-  const dy = b.y - a.y
-  return Math.hypot(dx, dy)
-}
-
-function assertPacketChoiceRelease(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message)
-}
-
-export function checkPacketChoiceReleaseForgiveness(
-  config: PacketChoiceReleaseForgivenessConfig = DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS,
-): void {
-  const origin = { x: 120, y: 320 }
-
-  let openIntent = startPacketChoiceIntent('open', 0, origin, true)
-  openIntent = stepPacketChoiceIntentWithReleaseForgiveness(openIntent, {
-    nowMs: config.openHoldMs,
-    pointer: origin,
-    pressed: true,
-  }, config)
-  openIntent = stepPacketChoiceIntentWithReleaseForgiveness(openIntent, {
-    nowMs: config.openHoldMs + config.minArmedVisibleMs,
-    pointer: origin,
-    pressed: false,
-  }, config)
-  assertPacketChoiceRelease(isPacketChoiceCommitted(openIntent, 'open'), 'opening release on the first commit-eligible frame still commits')
-
-  let blockedOpenIntent = startPacketChoiceIntent('open', 0, origin, false)
-  blockedOpenIntent = stepPacketChoiceIntentWithReleaseForgiveness(blockedOpenIntent, {
-    nowMs: config.openHoldMs,
-    pointer: origin,
-    pressed: true,
-    inspectedSeal: false,
-  }, config)
-  blockedOpenIntent = stepPacketChoiceIntentWithReleaseForgiveness(blockedOpenIntent, {
-    nowMs: config.openHoldMs + config.minArmedVisibleMs,
-    pointer: origin,
-    pressed: false,
-    inspectedSeal: false,
-  }, config)
-  assertPacketChoiceRelease(blockedOpenIntent.phase === 'cancelled', 'opening release forgiveness does not bypass seal inspection')
-
-  let preserveIntent = startPacketChoiceIntent('preserve', 0, origin)
-  preserveIntent = stepPacketChoiceIntentWithReleaseForgiveness(preserveIntent, {
-    nowMs: config.preserveConfirmMs,
-    pointer: origin,
-    pressed: true,
-  }, config)
-  preserveIntent = stepPacketChoiceIntentWithReleaseForgiveness(preserveIntent, {
-    nowMs: config.preserveConfirmMs + config.minArmedVisibleMs,
-    pointer: origin,
-    pressed: false,
-  }, config)
-  assertPacketChoiceRelease(isPacketChoiceCommitted(preserveIntent, 'preserve'), 'preserve release on the first commit-eligible frame still commits')
-
-  let staleReleaseIntent = startPacketChoiceIntent('preserve', 0, origin)
-  staleReleaseIntent = stepPacketChoiceIntentWithReleaseForgiveness(staleReleaseIntent, {
-    nowMs: config.preserveConfirmMs,
-    pointer: origin,
-    pressed: true,
-  }, config)
-  staleReleaseIntent = stepPacketChoiceIntentWithReleaseForgiveness(staleReleaseIntent, {
-    nowMs: config.preserveConfirmMs + config.minArmedVisibleMs + config.releaseGraceMs + 1,
-    pointer: origin,
-    pressed: false,
-  }, config)
-  assertPacketChoiceRelease(staleReleaseIntent.phase === 'cancelled', 'stale releases after the forgiveness window still cancel')
-
-  let dragAwayIntent = startPacketChoiceIntent('open', 0, origin, true)
-  dragAwayIntent = stepPacketChoiceIntentWithReleaseForgiveness(dragAwayIntent, {
-    nowMs: config.openHoldMs,
-    pointer: origin,
-    pressed: true,
-  }, config)
-  dragAwayIntent = stepPacketChoiceIntentWithReleaseForgiveness(dragAwayIntent, {
-    nowMs: config.openHoldMs + config.minArmedVisibleMs,
-    pointer: { x: origin.x + config.cancelRadiusPx + 1, y: origin.y },
-    pressed: false,
-  }, config)
-  assertPacketChoiceRelease(dragAwayIntent.phase === 'cancelled', 'drag-away cancellation wins over release forgiveness')
-
-  const measuredCost = packetChoiceFrameCostMs(4, 7.5)
-  assertPacketChoiceRelease(measuredCost <= config.frameBudgetMs, 'release-forgiveness bookkeeping stays inside a 60Hz frame budget')
-}
-
-export function runPacketChoiceReleaseForgivenessChecks(): void {
-  checkPacketChoiceReleaseForgiveness()
-}
-
-export function buildPacketChoiceReleaseForgivenessTrace(action: PacketChoiceAction): PacketChoiceIntent {
-  const origin = { x: 120, y: 320 }
-  const started = startPacketChoiceIntent(action, 0, origin, action === 'open')
-  const config = DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS
-  const armed = stepPacketChoiceIntentWithReleaseForgiveness(started, {
-    nowMs: action === 'open' ? config.openHoldMs : config.preserveConfirmMs,
-    pointer: origin,
-    pressed: true,
-  }, config)
-  return stepPacketChoiceIntentWithReleaseForgiveness(armed, {
-    nowMs: (action === 'open' ? config.openHoldMs : config.preserveConfirmMs) + config.minArmedVisibleMs,
-    pointer: origin,
-    pressed: false,
-  }, config)
+function finish(
+  state: PacketChoiceReleaseState,
+  decision: PacketChoiceReleaseDecision,
+  frameStartedAtMs: number,
+  frameEndedAtMs: number,
+): PacketChoiceReleaseStep {
+  return {
+    state,
+    decision,
+    elapsedMs: Math.max(0, frameEndedAtMs - frameStartedAtMs),
+  };
 }
