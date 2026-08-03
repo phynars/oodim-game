@@ -16,7 +16,7 @@ export {
   ioReturningMemoryLines,
   FIRST_PACKET_DELIVERY_ID,
   IO_OPENED_SEAL_LINE,
-} from './io-recognition-beat';
+} from './io-recognition-beat.ts';
 
 export type {
   IoMemoryLine,
@@ -30,4 +30,4 @@ export type {
   IoSliceLine,
   IoSliceMemoryRecord,
   IoSliceMemoryRecord as IoMemoryRecord,
-} from './io-recognition-beat';
+} from './io-recognition-beat.ts';

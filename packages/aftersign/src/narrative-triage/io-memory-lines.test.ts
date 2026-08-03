@@ -6,7 +6,7 @@ import {
   ioReturningMemoryLines,
   selectIoRecognitionBeat,
   selectIoReturningLine,
-} from './io-memory-lines';
+} from './io-memory-lines.ts';
 
 // These tests double as a fence around the "do not fork Io's lines" invariant
 // in io-recognition-beat.ts: the memory-lines shim MUST expose the same
