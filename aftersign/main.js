@@ -22,10 +22,8 @@ import {
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
-import {
-  IO_RECOGNITION_BEAT_FEEDBACK,
-  ioRecognitionBeatEnvelopeAt,
-} from "./recognition-beat-feedback.js";
+import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
+import { recognitionEnvelopeAt as recognitionFeedbackEnvelopeAt } from "./src/recognitionFeedbackBridge.js";
 import {
   applyRecognitionDomFeedback,
   clearRecognitionDomFeedback,
@@ -1171,7 +1169,7 @@ const easeInOutCubic = (value) => {
 };
 
 const recognitionEnvelopeAt = (elapsedMs) =>
-  ioRecognitionBeatEnvelopeAt(
+  recognitionFeedbackEnvelopeAt(
     elapsedMs,
     state.packet.sealed ? "sealed" : "opened",
     state.interaction.recognitionFeedback,
