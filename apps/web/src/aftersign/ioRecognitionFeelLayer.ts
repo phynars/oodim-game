@@ -2,7 +2,7 @@ import {
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackSample,
   type RecognitionOutcome,
-} from "./recognitionFeedback";
+} from "./recognitionFeedback.ts";
 
 export type IoRecognitionFeelCue = {
   packetOutcome: RecognitionOutcome;

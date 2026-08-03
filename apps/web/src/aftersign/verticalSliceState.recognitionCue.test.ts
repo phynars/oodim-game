@@ -24,7 +24,7 @@ import {
   restoreAftersignVerticalSliceState,
   sampleAftersignIoRecognitionEnvelope,
 } from "./verticalSliceState";
-import { recognitionFeedbackContract } from "./recognitionFeedback";
+import { recognitionFeedbackContract } from "./recognitionFeedback.ts";
 
 function returningRecognizedState(outcome: "sealed" | "opened") {
   // Play through: choose outcome, meet Io once, save, reload, meet Io again.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { recognitionFeedbackContract } from "./recognitionFeedback";
+import { recognitionFeedbackContract } from "./recognitionFeedback.ts";
 import { sampleIoRecognitionFeelLayer } from "./ioRecognitionFeelLayer";
 
 const cue = {

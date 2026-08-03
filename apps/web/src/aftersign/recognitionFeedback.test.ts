@@ -4,7 +4,7 @@ import {
   recognitionFeedbackContract,
   sampleRecognitionFeedbackBeat,
   toRecognitionMemoryBeatSnapshot,
-} from "./recognitionFeedback";
+} from "./recognitionFeedback.ts";
 
 function inBand(value: number, min: number, max: number): void {
   assert.ok(value >= min && value <= max, `${value} expected in ${min}..${max}`);

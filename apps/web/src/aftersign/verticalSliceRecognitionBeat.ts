@@ -2,7 +2,7 @@ import {
   IO_RETURNING_RECOGNITION_FEEL,
   type IoReturningRecognitionFeel,
 } from "../../../../aftersign/src/ioReturningRecognitionFeel";
-import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel";
+import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel.ts";
 import {
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
@@ -12,7 +12,7 @@ import {
 import {
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackSample,
-} from "./recognitionFeedback";
+} from "./recognitionFeedback.ts";
 import type {
   AftersignOrraAction,
   AftersignPacketOutcome,
