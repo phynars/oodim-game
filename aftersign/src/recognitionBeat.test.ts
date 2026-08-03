@@ -16,8 +16,8 @@ import {
   ioRecognitionBeat,
   recognitionBeatProgress,
   RECOGNITION_BEAT_DURATION_MS,
-} from "./recognitionBeat";
-import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+} from "./recognitionBeat.ts";
+import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession.ts";
 // Canonical single-source-of-truth feel contract (README §"Source of truth").
 // Every assertion in this file that pins a feel number reads from this
 // contract, never from the sibling `./recognitionFeedback` — that is the

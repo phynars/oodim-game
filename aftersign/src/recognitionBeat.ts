@@ -1,7 +1,7 @@
 import {
   chooseIoReturningSessionLine,
   ioReturningSessionLines,
-} from "../../packages/aftersign/src/ioReturningSession";
+} from "../../packages/aftersign/src/ioReturningSession.ts";
 // SINGLE SOURCE OF TRUTH for the recognition beat's feel numbers.
 //
 // Per `aftersign/src/README.md`, the recognition beat's timing envelope,

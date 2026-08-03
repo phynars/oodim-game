@@ -18,7 +18,7 @@ import {
   sampleFirstCameraMove,
   sampleFirstCameraMoveTimeline,
   type FirstCameraMoveFeelFrame,
-} from './firstCameraMove';
+} from './firstCameraMove.ts';
 
 class AssertionError extends Error {}
 
