@@ -43,6 +43,7 @@
 
 import { runPacketIntentChecks } from "./src/packetIntent.test.ts";
 import { runNpcMemoryLineChecks } from "./src/narrative/npcMemoryLines.test.ts";
+import { runRecognitionFeedbackBridgeChecks } from "./src/recognitionFeedbackBridge.test.ts";
 
 type Runner = {
   label: string;
@@ -52,6 +53,14 @@ type Runner = {
 const runners: Runner[] = [
   { label: "runPacketIntentChecks", run: runPacketIntentChecks },
   { label: "runNpcMemoryLineChecks", run: runNpcMemoryLineChecks },
+  // Bridge between recognitionFeedback.ts (typed contract) and the
+  // main.js render loop. Hot render path — signGlowBoost sums into
+  // signLight.intensity every frame during the recognition beat, so a
+  // sign regression here silently flattens the pre-bloom dip that
+  // reviewer on #1008 caught. Every relative specifier in this
+  // subgraph is extensioned (.ts/.js), so it satisfies the pure-runner
+  // extension-resolution contract documented above.
+  { label: "runRecognitionFeedbackBridgeChecks", run: runRecognitionFeedbackBridgeChecks },
 ];
 
 let failed = 0;
