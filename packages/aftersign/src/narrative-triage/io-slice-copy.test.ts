@@ -5,7 +5,7 @@ import {
   ioMemorySentence,
   ioReturningLine,
   type IoSliceMemory,
-} from './io-slice-copy';
+} from './io-slice-copy.ts';
 
 describe('Io slice copy', () => {
   it('keeps first-session packet reactions tied to auditable packet outcomes', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { INTERACTION_CONFIRM_FEEL, sampleInteractionConfirm } from "./interactionConfirm";
+import { INTERACTION_CONFIRM_FEEL, sampleInteractionConfirm } from "./interactionConfirm.ts";
 
 describe("sampleInteractionConfirm", () => {
   it("starts with a tactile click, glow, and 1.5px shake", () => {

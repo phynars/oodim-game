@@ -15,7 +15,7 @@ import {
   type IoReturnTone,
   type IoRouteAttention,
   type IoSliceMemoryRecord,
-} from './io-recognition-beat';
+} from './io-recognition-beat.ts';
 
 const returnedWith = (memory: Partial<IoSliceMemoryRecord>): IoSliceMemoryRecord => ({
   completedDeliveryIds: [],

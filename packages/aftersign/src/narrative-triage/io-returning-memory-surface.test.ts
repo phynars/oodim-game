@@ -6,7 +6,7 @@ import {
   selectIoRecognitionBeat,
   selectIoReturningLine,
   type IoSliceMemoryRecord,
-} from './io-recognition-beat';
+} from './io-recognition-beat.ts';
 
 const returnedWith = (memory: Partial<IoSliceMemoryRecord>): IoSliceMemoryRecord => ({
   completedDeliveryIds: [FIRST_PACKET_DELIVERY_ID],

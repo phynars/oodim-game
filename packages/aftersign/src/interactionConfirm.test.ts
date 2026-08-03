@@ -6,7 +6,7 @@ import {
   DELIVER_PACKET_CONFIRM_FEEL,
   playDeliverPacketConfirm,
   type InteractionConfirmState,
-} from "./interactionConfirm";
+} from "./interactionConfirm.ts";
 
 function cloneState(state: InteractionConfirmState): InteractionConfirmState {
   return {

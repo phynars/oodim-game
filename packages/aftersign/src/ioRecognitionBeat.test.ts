@@ -2,7 +2,7 @@ import {
   assertIoRecognitionBeatCue,
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
-} from "./ioRecognitionBeat";
+} from "./ioRecognitionBeat.ts";
 
 function cloneState<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));

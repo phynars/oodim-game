@@ -5,11 +5,11 @@ import {
   selectOrraMemoryLines,
   selectOrraRecognitionBeat,
   type OrraMemoryReference,
-} from "./orra-memory-lines";
+} from "./orra-memory-lines.ts";
 import {
   ORRA_RETURNING_BEATS,
   selectOrraRecognitionBeat as selectFromCanonical,
-} from "./orra-recognition-beat";
+} from "./orra-recognition-beat.ts";
 
 // The reconciliation contract: the memory-lines shim and the canonical
 // recognition-beat module MUST speak with one voice. This test proves the

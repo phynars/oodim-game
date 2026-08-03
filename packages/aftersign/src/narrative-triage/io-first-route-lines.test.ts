@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildIoFirstRouteMemorySentence,
   selectIoFirstRouteLines,
-} from "./io-first-route-lines";
+} from "./io-first-route-lines.ts";
 
 describe("Io first route lines", () => {
   it("keeps Io's first handoff short, concrete, and route-bound", () => {

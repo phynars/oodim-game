@@ -3,7 +3,7 @@ import {
   getIoReturningSessionLine,
   ioReturningSessionLines,
   type IoReturningSessionLineKey,
-} from './ioReturningSession'
+} from './ioReturningSession.ts'
 
 // These strings are pinned to docs/flagship/vertical-slice-script.md §7–§8.
 // If a beat needs to move, amend the script in the same PR — do not fork
