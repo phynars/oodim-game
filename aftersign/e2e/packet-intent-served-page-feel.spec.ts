@@ -179,21 +179,26 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
 
       const start = { timeMs: 4_000, x: 260, y: 280 };
       const pressed = game.input.packetPress(start);
-      const halfway = game.input.packetTick(start.timeMs + Math.round(pressed.config.HOLD_TO_OPEN_MS / 2));
+      // Tick at 250ms held. openProgressAt subtracts the 80ms PROGRESS_DEADBAND_MS
+      // before dividing by the usable window (HOLD_TO_OPEN_MS − deadband = 370ms),
+      // so progress = (250 − 80) / 370 ≈ 0.459 — cleanly inside the 0.4–0.7 window
+      // that proves the affordance is inspectable mid-hold. Ticking at
+      // HOLD_TO_OPEN_MS/2 (225ms) would land at 0.392 and fail the lower bound.
+      const midHold = game.input.packetTick(start.timeMs + 250);
       return {
         pressed,
-        halfway,
+        midHold,
         published: window.__game?.interaction.packetIntent,
         cssProgress: document.documentElement.style.getPropertyValue("--packet-progress"),
       };
     });
 
     expect(result.pressed.active).toBe(true);
-    expect(result.halfway.active).toBe(true);
-    expect(result.halfway.outcome).toBe("unknown");
-    expect(result.halfway.progress).toBeGreaterThan(0.4);
-    expect(result.halfway.progress).toBeLessThan(0.7);
-    expect(result.published.progress).toBeCloseTo(result.halfway.progress, 2);
-    expect(Number(result.cssProgress)).toBeCloseTo(result.halfway.progress, 2);
+    expect(result.midHold.active).toBe(true);
+    expect(result.midHold.outcome).toBe("unknown");
+    expect(result.midHold.progress).toBeGreaterThan(0.4);
+    expect(result.midHold.progress).toBeLessThan(0.7);
+    expect(result.published.progress).toBeCloseTo(result.midHold.progress, 2);
+    expect(Number(result.cssProgress)).toBeCloseTo(result.midHold.progress, 2);
   });
 });
