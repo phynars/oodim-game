@@ -29,7 +29,20 @@ export const recognitionEnvelopeAt = (
     ? 0
     : peakYaw / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
 
-  const signGlowBoost = clamp01(base.signEmissiveScale - 1);
+  // signGlowBoost is added to signLight.intensity every frame in the
+  // render loop (main.js:1727: `7.4 + ... + recognitionMotion.signGlowBoost + ...`).
+  // The contract's signEmissiveScale rises 0.8 → 1.35 via easeOutCubic
+  // over [glowStartMs, glowStartMs+glowDurationMs] — so `scale - 1` is
+  // NEGATIVE (down to -0.2) before glowStartMs, crosses zero mid-rise,
+  // then peaks at +0.35. That pre-bloom DIP is authored: the sign light
+  // dims below its 7.4 baseline for a beat before it blooms — the
+  // "catch your breath" moment the reviewer flagged in #1008. Do NOT
+  // clamp to [0,1] — that floors the dip and flattens the temporal feel
+  // (peak magnitudes look identical to e2e bands, but the dim beat is
+  // gone). The unclamped delta matches the old
+  // ioRecognitionBeatEnvelopeAt shape exactly (see
+  // recognition-beat-feedback.js: `Number((signGlowMultiplier - 1).toFixed(3))`).
+  const signGlowBoost = base.signEmissiveScale - 1;
 
   // Cue keys (lantern/packetSeal/kioskSign/rainRim/hapticScale) are consumed by
   // applyRecognitionDomFeedback via cueIntensity(cue, elapsedMs), which reads
