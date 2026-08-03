@@ -11,27 +11,30 @@
 // runner entry is a one-line edit; adding the file to the
 // playwright.pure.config.ts testMatch is NOT needed — this lives in
 // aftersign/src/, not aftersign/e2e/.
-// Local assert helper — aftersign/tsconfig.json ships `types: ["vite/client"]`
+// Local assert helpers — aftersign/tsconfig.json ships `types: ["vite/client"]`
 // only (no @types/node), so `node:assert/strict` can't resolve under the
 // strict `tsc --noEmit` gate. Runtime is fine under
 // `node --experimental-strip-types`, but red is red. Matches the pattern
 // in packetIntentContract.test.ts / recognitionBeat.test.ts /
-// ioFirstSessionPacing.test.ts.
+// ioFirstSessionPacing.test.ts — standalone `function` declarations, NOT
+// an object-method literal: TypeScript disallows `asserts` return types
+// on methods of object literals, so `const assert = { ok(...): asserts
+// condition { ... } }` is a strict-mode typecheck error (this exact
+// shape flunked typecheck:aftersign on PR #1008's earlier heads).
 class AssertionError extends Error {}
 
-const assert = {
-  ok(condition: unknown, message?: string): asserts condition {
-    if (!condition) throw new AssertionError(message ?? "assert.ok failed");
-  },
-  equal<T>(actual: T, expected: T, message?: string): void {
-    if (actual !== expected) {
-      throw new AssertionError(
-        message ??
-          `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-      );
-    }
-  },
-};
+function assertOk(condition: unknown, message?: string): asserts condition {
+  if (!condition) throw new AssertionError(message ?? "assertOk failed");
+}
+
+function assertEqual<T>(actual: T, expected: T, message?: string): void {
+  if (actual !== expected) {
+    throw new AssertionError(
+      message ??
+        `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+}
 
 import { recognitionEnvelopeAt } from "./recognitionFeedbackBridge.ts";
 import {
@@ -45,7 +48,7 @@ import {
 } from "./recognitionFeedback.ts";
 
 function inBand(value: number, min: number, max: number, label: string): void {
-  assert.ok(
+  assertOk(
     value >= min && value <= max,
     `${label}: ${value} expected in ${min}..${max}`,
   );
@@ -63,7 +66,7 @@ export function runRecognitionFeedbackBridgeChecks(): void {
   {
     const t0 = recognitionEnvelopeAt(0, "sealed");
     const expectedDipBoost = RECOGNITION_FEEDBACK_GLOW_FROM - 1; // 0.8 - 1 = -0.2
-    assert.ok(
+    assertOk(
       t0.signGlowBoost < 0,
       `t=0 signGlowBoost must be negative (pre-bloom dip), got ${t0.signGlowBoost}`,
     );
@@ -72,7 +75,7 @@ export function runRecognitionFeedbackBridgeChecks(): void {
 
     // The dip persists across the flat window BEFORE glow rise begins.
     const preRise = recognitionEnvelopeAt(RECOGNITION_FEEDBACK_GLOW_START_MS - 1, "sealed");
-    assert.ok(
+    assertOk(
       preRise.signGlowBoost < 0,
       `pre-rise signGlowBoost must stay negative, got ${preRise.signGlowBoost}`,
     );
@@ -105,11 +108,11 @@ export function runRecognitionFeedbackBridgeChecks(): void {
   {
     const early = recognitionEnvelopeAt(RECOGNITION_FEEDBACK_GLOW_START_MS + 5, "sealed");
     const late = recognitionEnvelopeAt(RECOGNITION_FEEDBACK_GLOW_START_MS + 60, "sealed");
-    assert.ok(
+    assertOk(
       early.signGlowBoost < 0,
       `early-rise signGlowBoost should still be negative, got ${early.signGlowBoost}`,
     );
-    assert.ok(
+    assertOk(
       late.signGlowBoost > 0,
       `late-rise signGlowBoost should be positive, got ${late.signGlowBoost}`,
     );
@@ -122,21 +125,21 @@ export function runRecognitionFeedbackBridgeChecks(): void {
   {
     const sample = recognitionEnvelopeAt(200, "sealed");
     inBand(sample.normalized, 0, 1, "normalized");
-    assert.ok(sample.lantern, "lantern cue must be present");
-    assert.ok(sample.packetSeal, "packetSeal cue must be present");
-    assert.ok(sample.kioskSign, "kioskSign cue must be present");
-    assert.ok(sample.rainRim, "rainRim cue must be present");
-    assert.ok(sample.hapticScale, "hapticScale cue must be present");
+    assertOk(sample.lantern, "lantern cue must be present");
+    assertOk(sample.packetSeal, "packetSeal cue must be present");
+    assertOk(sample.kioskSign, "kioskSign cue must be present");
+    assertOk(sample.rainRim, "rainRim cue must be present");
+    assertOk(sample.hapticScale, "hapticScale cue must be present");
     // sealed-outcome cue tokens must not leak the opened palette.
-    assert.equal(sample.lantern.color, "#f5c978");
-    assert.equal(sample.packetSeal.audioId, "seal-wax-click");
+    assertEqual(sample.lantern.color, "#f5c978");
+    assertEqual(sample.packetSeal.audioId, "seal-wax-click");
   }
 
   // 5. Outcome routing: opened outcome swaps the cue table.
   {
     const opened = recognitionEnvelopeAt(200, "opened");
-    assert.equal(opened.lantern.color, "#ffe1a8");
-    assert.equal(opened.packetSeal.audioId, "seal-paper-tear");
+    assertEqual(opened.lantern.color, "#ffe1a8");
+    assertEqual(opened.packetSeal.audioId, "seal-paper-tear");
   }
 
   // 6. Camera fields default to the contract peaks; the ratio path
@@ -163,11 +166,11 @@ export function runRecognitionFeedbackBridgeChecks(): void {
       cameraDeltaMeters: RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS / 2,
       cameraYawDegrees: RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES / 2,
     });
-    assert.ok(
+    assertOk(
       Math.abs(half.cameraDeltaMeters) <= Math.abs(midBeat.cameraDeltaMeters) + 0.001,
       `override cameraDeltaMeters (${half.cameraDeltaMeters}) should not exceed contract (${midBeat.cameraDeltaMeters})`,
     );
-    assert.ok(
+    assertOk(
       Math.abs(half.cameraYawDegrees) <= Math.abs(midBeat.cameraYawDegrees) + 0.001,
       `override cameraYawDegrees (${half.cameraYawDegrees}) should not exceed contract (${midBeat.cameraYawDegrees})`,
     );
@@ -178,15 +181,15 @@ export function runRecognitionFeedbackBridgeChecks(): void {
     const start = recognitionEnvelopeAt(0, "sealed");
     const mid = recognitionEnvelopeAt(RECOGNITION_FEEDBACK_TOTAL_MS / 2, "sealed");
     const end = recognitionEnvelopeAt(RECOGNITION_FEEDBACK_TOTAL_MS, "sealed");
-    assert.equal(start.normalized, 0);
+    assertEqual(start.normalized, 0);
     inBand(mid.normalized, 0.45, 0.55, "mid-beat normalized");
-    assert.equal(end.normalized, 1);
+    assertEqual(end.normalized, 1);
     // Clamped past the beat end.
     const past = recognitionEnvelopeAt(RECOGNITION_FEEDBACK_TOTAL_MS * 2, "sealed");
-    assert.equal(past.normalized, 1);
+    assertEqual(past.normalized, 1);
     // Clamped for negative inputs (defensive: elapsedMs may be
     // pre-beat if a caller queries during the guard window).
     const negative = recognitionEnvelopeAt(-50, "sealed");
-    assert.equal(negative.normalized, 0);
+    assertEqual(negative.normalized, 0);
   }
 }
