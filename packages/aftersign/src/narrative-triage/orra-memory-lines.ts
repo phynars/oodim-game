@@ -22,4 +22,4 @@ export type {
   OrraRecognitionBeat as OrraMemoryLine,
   OrraRecognitionState,
   OrraSignalMemory,
-} from "./orra-recognition-beat";
+} from "./orra-recognition-beat.ts";

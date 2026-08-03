@@ -1,4 +1,4 @@
-import { getIoFirstArrivalLine, IO_FIRST_ARRIVAL_LINES } from "./ioFirstArrival";
+import { getIoFirstArrivalLine, IO_FIRST_ARRIVAL_LINES } from "./ioFirstArrival.ts";
 
 describe("Io first-arrival dialogue", () => {
   it("pins the opening beat to the Night Post arrival", () => {

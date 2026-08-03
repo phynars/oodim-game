@@ -4,7 +4,7 @@ import {
   ORRA_RECOGNITION_BEATS,
   ORRA_RETURNING_BEATS,
   selectOrraRecognitionBeat,
-} from "./orra-recognition-beat";
+} from "./orra-recognition-beat.ts";
 
 describe("Orra recognition beat", () => {
   it("does not claim memory before Orra has met the courier", () => {

@@ -4,7 +4,7 @@ import {
   ORRA_MEMORY_LINES,
   selectOrraMemoryLines,
   type OrraMemoryReference,
-} from "./orra-memory-lines";
+} from "./orra-memory-lines.ts";
 
 // This test guards the SHIM contract: orra-memory-lines re-exports the
 // canonical beats from orra-recognition-beat with a fact-driven selector.

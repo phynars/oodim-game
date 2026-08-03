@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertAftersignStoryStateInvariants,
   type AftersignGameHarnessSnapshot,
-} from "./storyStateHarness";
+} from "./storyStateHarness.ts";
 
 function createHarnessSnapshot(
   override: Partial<AftersignGameHarnessSnapshot> = {},

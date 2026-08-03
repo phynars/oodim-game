@@ -6,7 +6,7 @@ import {
   IO_INTERACTION_CONFIRM_PEAK_SCALE,
   IO_INTERACTION_CONFIRM_RESPONSE_FRAME_BUDGET,
   createIoInteractionConfirmContract,
-} from "./io-interaction-confirm";
+} from "./io-interaction-confirm.ts";
 
 describe("Io interaction confirm feel contract", () => {
   it("locks the click-to-ack pulse, easing, and audio coupling numbers", () => {
