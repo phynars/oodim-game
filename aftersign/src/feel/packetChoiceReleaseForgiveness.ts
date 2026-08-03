@@ -177,6 +177,13 @@ export function isPacketChoiceReleaseWithinFrameBudget(
   return step.elapsedMs <= config.frameBudgetMs;
 }
 
+// Re-exported from the sibling `.test.ts` so the aftersign e2e spec (on the
+// `typecheck:aftersign` lane) can `import { runPacketChoiceReleaseForgivenessChecks }`
+// from this module path — matches the packet-intent contract convention and
+// unblocks the Playwright pure-lane spec at
+// aftersign/e2e/packet-choice-release-forgiveness-contract.spec.ts.
+export { runPacketChoiceReleaseForgivenessChecks } from './packetChoiceReleaseForgiveness.test';
+
 function finish(
   state: PacketChoiceReleaseState,
   decision: PacketChoiceReleaseDecision,

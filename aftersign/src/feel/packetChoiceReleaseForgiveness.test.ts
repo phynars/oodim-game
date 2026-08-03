@@ -106,6 +106,34 @@ export function checkDragAwayCancellationWins(): void {
   assert(dragAway.state.committed === null, 'drag-away should not commit a packet choice');
 }
 
+export function checkEarlyReleaseInsideGraceWindowStillHolds(): void {
+  // Release BEFORE requiredHoldMs but still inside the grace window:
+  // the state machine should keep the intent alive as `hold`, not commit
+  // and not cancel, so a subsequent frame within the grace can still
+  // upgrade to commit / cancel per the real rules.
+  const state = pressUntil('preserve', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs - 20);
+
+  const earlyRelease = stepPacketChoiceReleaseForgiveness(state, {
+    // Same nowMs as the last press frame → heldMs = press-window duration
+    // (< requiredHoldMs), staleReleaseMs = 0 (inside grace).
+    nowMs: DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.preserveConfirmMs - 20,
+    pressed: false,
+  });
+
+  assert(
+    earlyRelease.decision === 'hold',
+    'early release inside the grace window but below requiredHoldMs should hold, not commit',
+  );
+  assert(
+    earlyRelease.state.committed === null,
+    'early release must not commit a packet choice',
+  );
+  assert(
+    !earlyRelease.state.cancelled,
+    'early release inside the grace window must not cancel yet',
+  );
+}
+
 export function checkReleaseForgivenessBookkeepingStaysInsideFrameBudget(): void {
   const state = pressUntil('open', DEFAULT_PACKET_CHOICE_RELEASE_CONFIG.openHoldMs, { sealInspected: true });
 
@@ -126,6 +154,7 @@ export function runPacketChoiceReleaseForgivenessChecks(): void {
   checkOpenReleaseStillRequiresSealInspection();
   checkStaleReleaseCancels();
   checkDragAwayCancellationWins();
+  checkEarlyReleaseInsideGraceWindowStillHolds();
   checkReleaseForgivenessBookkeepingStaysInsideFrameBudget();
 }
 
