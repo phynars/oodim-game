@@ -1,113 +1,116 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-type StoryBeat = {
-  readonly id: string;
-  readonly completed: boolean;
-  readonly turn: number;
-};
+import {
+  AFTERSIGN_IO_RECOGNITION_FEEL,
+  type AftersignIoMemoryBeat,
+} from "./verticalSliceRecognitionBeat";
+import {
+  createAftersignVerticalSliceState,
+  meetIoForAftersignSlice,
+  recordAftersignPacketChoice,
+} from "./verticalSliceRuntimeState";
+import {
+  createAftersignWindowGameSurface,
+  type AftersignStoryStateSnapshot,
+} from "./windowGameSurface";
 
-type NpcMemory = {
-  readonly npcId: string;
-  readonly rememberedBeatId: string;
-  readonly line: string;
-};
+/**
+ * Player-visible save/load contract.
+ *
+ * Companion to `windowGameSurface`'s live surface: this test asserts
+ * that the JSON-serialisable `AftersignStoryStateSnapshot` published
+ * by `createAftersignWindowGameSurface` is stable across a durable
+ * round-trip AND that a re-derived surface across a "second session"
+ * produces the expected recognition beat.
+ *
+ * The values pinned here (`packet-sealed`, `io-first-meeting`,
+ * `io-remembers-sealed-packet`, the `AftersignIoMemoryBeat` shape) are
+ * the REAL union members and REAL types from `windowGameSurface.ts` /
+ * `verticalSliceRecognitionBeat.ts` — so a drift in either module
+ * breaks this test. It intentionally does not mock the surface.
+ */
 
-type SaveSnapshot = {
-  readonly playerId: string;
-  readonly turn: number;
-  readonly story: {
-    readonly activeBeatId: string;
-    readonly completedBeats: readonly StoryBeat[];
-  };
-  readonly npcMemories: readonly NpcMemory[];
-};
+const PLAYER = { playerId: "player-soren", playerName: "Soren" };
 
-type GameSurface = {
-  readonly save: () => SaveSnapshot;
-  readonly load: (snapshot: SaveSnapshot) => void;
-  readonly act: (actionId: string) => void;
-  readonly getSnapshot: () => SaveSnapshot;
-};
-
-function createGameSurface(playerId = 'player-soren'): GameSurface {
-  let snapshot: SaveSnapshot = {
-    playerId,
-    turn: 0,
-    story: {
-      activeBeatId: 'wake-at-the-beacon',
-      completedBeats: [],
-    },
-    npcMemories: [],
-  };
-
-  function completeBeat(id: string): void {
-    if (snapshot.story.completedBeats.some((beat) => beat.id === id)) return;
-
-    snapshot = {
-      ...snapshot,
-      story: {
-        activeBeatId: id === 'wake-at-the-beacon' ? 'io-recognizes-player' : id,
-        completedBeats: [
-          ...snapshot.story.completedBeats,
-          { id, completed: true, turn: snapshot.turn },
-        ],
-      },
-    };
-  }
-
-  return {
-    save: () => structuredClone(snapshot),
-    load: (nextSnapshot) => {
-      snapshot = structuredClone(nextSnapshot);
-    },
-    act: (actionId) => {
-      snapshot = { ...snapshot, turn: snapshot.turn + 1 };
-
-      if (actionId === 'open-beacon-door') {
-        completeBeat('wake-at-the-beacon');
-      }
-
-      if (actionId === 'speak-to-io' && snapshot.story.completedBeats.some((beat) => beat.id === 'wake-at-the-beacon')) {
-        snapshot = {
-          ...snapshot,
-          npcMemories: [
-            ...snapshot.npcMemories,
-            {
-              npcId: 'io',
-              rememberedBeatId: 'wake-at-the-beacon',
-              line: 'You opened the beacon door before the rain stopped.',
-            },
-          ],
-        };
-        completeBeat('io-recognizes-player');
-      }
-    },
-    getSnapshot: () => structuredClone(snapshot),
-  };
+function snapshotOf(
+  state: ReturnType<typeof createAftersignVerticalSliceState>,
+): AftersignStoryStateSnapshot {
+  return createAftersignWindowGameSurface(state, PLAYER).getStoryState();
 }
 
-describe('player-visible flagship save/load contract', () => {
-  it('persists story state and lets an NPC reference the prior session', () => {
-    const firstSession = createGameSurface();
+describe("player-visible flagship save/load contract", () => {
+  it("round-trips the story-state snapshot through JSON without shape drift", () => {
+    let state = createAftersignVerticalSliceState();
+    state = recordAftersignPacketChoice(state, "sealed");
+    state = meetIoForAftersignSlice(state);
 
-    firstSession.act('open-beacon-door');
-    const durableSave = firstSession.save();
+    const live = snapshotOf(state);
+    const durable = JSON.parse(JSON.stringify(live)) as AftersignStoryStateSnapshot;
 
-    const secondSession = createGameSurface();
-    secondSession.load(durableSave);
-    secondSession.act('speak-to-io');
+    // The durable envelope is a byte-for-byte JSON round-trip of the
+    // player-visible surface — no bespoke serialiser between them.
+    expect(durable).toEqual(live);
 
-    const restored = secondSession.getSnapshot();
-
-    expect(restored.playerId).toBe('player-soren');
-    expect(restored.story.completedBeats).toEqual([
-      { id: 'wake-at-the-beacon', completed: true, turn: 1 },
-      { id: 'io-recognizes-player', completed: true, turn: 2 },
+    // Real beat IDs, not fiction. A rename in `AftersignStoryBeatId`
+    // breaks this line.
+    expect(durable.story.beat).toBe("io-first-meeting");
+    expect(durable.story.completedBeats).toEqual([
+      "packet-sealed",
+      "io-first-meeting",
     ]);
-    expect(restored.npcMemories).toContainEqual({
-      npcId: 'io',
-      rememberedBeatId: 'wake-at-the-beacon',
-      line: 'You opened the beacon door before the rain stopped.',
+
+    // Player identity survives the round-trip.
+    expect(durable.state.player).toEqual({
+      id: "player-soren",
+      name: "Soren",
     });
+
+    // Io is present with the real disposition ladder from the surface.
+    const io = durable.state.npcs.find((npc) => npc.id === "io");
+    expect(io?.disposition).toBe("met-player");
+    expect(io?.memory).toEqual({
+      recognizesPlayer: false,
+      packetOutcome: "sealed",
+    });
+  });
+
+  it("second session recognises the player and publishes the recognition beat", () => {
+    // Session 1: player seals the packet and meets Io.
+    let state = createAftersignVerticalSliceState();
+    state = recordAftersignPacketChoice(state, "sealed");
+    state = meetIoForAftersignSlice(state);
+    const firstSurface = snapshotOf(state);
+
+    // Session 2: state is rehydrated with the durable flags from
+    // session 1 (packet outcome + ioHasMetPlayer). Meeting Io again
+    // flips `ioRecognizesPlayer` — that is the real trigger for the
+    // `io-remembers-sealed-packet` beat in `windowGameSurface.ts`.
+    const rehydrated = {
+      ...createAftersignVerticalSliceState(),
+      packetOutcome: firstSurface.state.npcs.find((npc) => npc.id === "io")
+        ?.memory.packetOutcome ?? null,
+      ioHasMetPlayer: true,
+    };
+    const secondState = meetIoForAftersignSlice(rehydrated);
+    const secondSurface = snapshotOf(secondState);
+
+    expect(secondSurface.story.beat).toBe("io-remembers-sealed-packet");
+    expect(secondSurface.story.completedBeats).toContain(
+      "io-remembers-sealed-packet",
+    );
+
+    // Real `AftersignIoMemoryBeat` shape — recognition-feel pinned to
+    // the frozen live contract, not an ad-hoc mock.
+    const expectedIoBeat: AftersignIoMemoryBeat = {
+      scene: "io-return",
+      recognizesPlayer: true,
+      packetOutcome: "sealed",
+      recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+    };
+    expect(secondSurface.story.ioMemoryBeat).toEqual(expectedIoBeat);
+
+    const io = secondSurface.state.npcs.find((npc) => npc.id === "io");
+    expect(io?.disposition).toBe("recognizes-player");
+    expect(io?.memory.recognizesPlayer).toBe(true);
   });
 });
