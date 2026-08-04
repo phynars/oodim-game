@@ -1,80 +1,99 @@
-// AFTERSIGN — memory-recall feel contract for the flagship slice.
-//
-// Pure-data timing envelope for the first moment an NPC visibly remembers the
-// player across sessions. Runtime code can sample this for camera/audio/UI
-// choreography, and the harness can assert the numbers without DOM/WebGL.
+export type MemoryRecallPhase = "dormant" | "recognize" | "settle" | "held";
 
-export type MemoryRecallFeelSample = {
+export interface MemoryRecallFeelFrame {
+  phase: MemoryRecallPhase;
   elapsedMs: number;
   progress: number;
-  lockProgress: number;
-  cameraPushInPx: number;
+  captionOpacity: number;
+  captionLiftPx: number;
+  haloOpacity: number;
+  haloScale: number;
   cameraYawDeg: number;
-  nameplateLiftPx: number;
-  nameplateOpacity: number;
-  recognitionGlowAlpha: number;
-  screenVignetteAlpha: number;
-  memoryChimeGain: number;
-  visualCueMs: number;
-  audioCueMs: number;
-  audioVisualDriftMs: number;
-};
+  bloomGain: number;
+  audioGain: number;
+  hapticMs: number;
+}
+
+export interface MemoryRecallFeelOptions {
+  elapsedMs: number;
+  reducedMotion?: boolean;
+}
 
 export const MEMORY_RECALL_FEEL = {
-  durationMs: 520,
-  lockMs: 180,
-  cameraPushInPxPeak: 18,
-  cameraYawDegPeak: 0.7,
-  nameplateLiftPx: 10,
-  glowAlphaPeak: 0.46,
-  vignetteAlphaPeak: 0.18,
-  visualCueMs: 72,
-  audioCueMs: 88,
-  audioGainPeak: 0.66,
-  audioGateMs: 96,
-  maxAudioVisualDriftMs: 50,
-  easing: "cubic-bezier(.16,1,.3,1)",
+  durationMs: 760,
+  recognizeMs: 220,
+  settleMs: 320,
+  holdMs: 220,
+  captionLiftPx: 14,
+  haloScalePeak: 1.18,
+  cameraYawDeg: 1.6,
+  bloomGainPeak: 0.34,
+  audioGainPeak: 0.42,
+  hapticMs: 12,
 } as const;
 
-const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - clamp01(t), 3);
+const easeInOutSine = (t: number) => -(Math.cos(Math.PI * clamp01(t)) - 1) / 2;
 
-const easeOutCubic = (value: number): number => {
-  const inverse = 1 - clamp01(value);
-  return 1 - inverse * inverse * inverse;
-};
-
-const easeInOutSine = (value: number): number => {
-  const t = clamp01(value);
-  return -(Math.cos(Math.PI * t) - 1) / 2;
-};
-
-export function sampleMemoryRecallFeel(elapsedMs: number): MemoryRecallFeelSample {
+export function getMemoryRecallFeel({
+  elapsedMs,
+  reducedMotion = false,
+}: MemoryRecallFeelOptions): MemoryRecallFeelFrame {
   const safeElapsedMs = Math.max(0, elapsedMs);
   const progress = clamp01(safeElapsedMs / MEMORY_RECALL_FEEL.durationMs);
-  const lockProgress = easeOutCubic(safeElapsedMs / MEMORY_RECALL_FEEL.lockMs);
-  const settle = easeOutCubic(progress);
-  const pulse = Math.sin(progress * Math.PI);
-  const tail = 1 - easeInOutSine(progress);
-  const audioVisualDriftMs = Math.abs(
-    MEMORY_RECALL_FEEL.audioCueMs - MEMORY_RECALL_FEEL.visualCueMs,
-  );
-  const audioWindowOpen = safeElapsedMs >= MEMORY_RECALL_FEEL.audioCueMs;
-  const audioWindowClosed =
-    safeElapsedMs > MEMORY_RECALL_FEEL.audioCueMs + MEMORY_RECALL_FEEL.audioGateMs;
+  const recognizeEnd = MEMORY_RECALL_FEEL.recognizeMs;
+  const settleEnd = recognizeEnd + MEMORY_RECALL_FEEL.settleMs;
+
+  if (safeElapsedMs <= 0) {
+    return {
+      phase: "dormant",
+      elapsedMs: safeElapsedMs,
+      progress: 0,
+      captionOpacity: 0,
+      captionLiftPx: 0,
+      haloOpacity: 0,
+      haloScale: 1,
+      cameraYawDeg: 0,
+      bloomGain: 0,
+      audioGain: 0,
+      hapticMs: 0,
+    };
+  }
+
+  const recognizeT = clamp01(safeElapsedMs / MEMORY_RECALL_FEEL.recognizeMs);
+  const settleT = clamp01((safeElapsedMs - recognizeEnd) / MEMORY_RECALL_FEEL.settleMs);
+  const holdT = clamp01((safeElapsedMs - settleEnd) / MEMORY_RECALL_FEEL.holdMs);
+  const isSettling = safeElapsedMs > recognizeEnd && safeElapsedMs <= settleEnd;
+  const isHeld = safeElapsedMs > settleEnd;
+
+  const entrance = easeOutCubic(recognizeT);
+  const settle = easeInOutSine(settleT);
+  const holdFade = 1 - easeInOutSine(holdT);
+  const motionScale = reducedMotion ? 0.35 : 1;
 
   return {
+    phase: isHeld ? "held" : isSettling ? "settle" : "recognize",
     elapsedMs: safeElapsedMs,
     progress,
-    lockProgress,
-    cameraPushInPx: MEMORY_RECALL_FEEL.cameraPushInPxPeak * lockProgress * tail,
-    cameraYawDeg: MEMORY_RECALL_FEEL.cameraYawDegPeak * pulse * tail,
-    nameplateLiftPx: MEMORY_RECALL_FEEL.nameplateLiftPx * (1 - settle),
-    nameplateOpacity: settle,
-    recognitionGlowAlpha: MEMORY_RECALL_FEEL.glowAlphaPeak * pulse,
-    screenVignetteAlpha: MEMORY_RECALL_FEEL.vignetteAlphaPeak * lockProgress * tail,
-    memoryChimeGain: audioWindowOpen && !audioWindowClosed ? MEMORY_RECALL_FEEL.audioGainPeak : 0,
-    visualCueMs: MEMORY_RECALL_FEEL.visualCueMs,
-    audioCueMs: MEMORY_RECALL_FEEL.audioCueMs,
-    audioVisualDriftMs,
+    captionOpacity: isHeld ? holdFade : entrance,
+    captionLiftPx: MEMORY_RECALL_FEEL.captionLiftPx * entrance * holdFade * motionScale,
+    haloOpacity: (isHeld ? 0.18 * holdFade : 0.52 * entrance * (1 - 0.45 * settle)),
+    haloScale: 1 + (MEMORY_RECALL_FEEL.haloScalePeak - 1) * entrance * (1 - 0.7 * settle) * motionScale,
+    cameraYawDeg: MEMORY_RECALL_FEEL.cameraYawDeg * Math.sin(Math.PI * progress) * motionScale,
+    bloomGain: MEMORY_RECALL_FEEL.bloomGainPeak * entrance * (isHeld ? holdFade : 1 - 0.55 * settle),
+    audioGain: MEMORY_RECALL_FEEL.audioGainPeak * entrance * (isHeld ? holdFade : 1),
+    hapticMs: safeElapsedMs <= 16 && !reducedMotion ? MEMORY_RECALL_FEEL.hapticMs : 0,
   };
+}
+
+export function sampleMemoryRecallFeel(stepMs = 40): MemoryRecallFeelFrame[] {
+  const frames: MemoryRecallFeelFrame[] = [];
+  for (let elapsedMs = 0; elapsedMs <= MEMORY_RECALL_FEEL.durationMs; elapsedMs += stepMs) {
+    frames.push(getMemoryRecallFeel({ elapsedMs }));
+  }
+  if (frames[frames.length - 1]?.elapsedMs !== MEMORY_RECALL_FEEL.durationMs) {
+    frames.push(getMemoryRecallFeel({ elapsedMs: MEMORY_RECALL_FEEL.durationMs }));
+  }
+  return frames;
 }
