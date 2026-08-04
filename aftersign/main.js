@@ -481,7 +481,11 @@ const syncMobileMovePad = () => {
   markStateDirty();
 };
 
-const setMobileMovePadInput = (x, z, source = "touch-pad") => {
+// `source` reuses the existing "touch" literal from MovementInputSource
+// (aftersign/src/playerMovementFeel.ts) instead of introducing a new
+// "touch-pad" string — Soren's nit on PR #1029. main.js is plain JS so a
+// contract-drift would slip past typecheck; keep the union honest here.
+const setMobileMovePadInput = (x, z, source = "touch") => {
   setMoveInput(x, z, source);
   syncMobileMovePad();
   publishState();
