@@ -148,10 +148,31 @@
         font: inherit;
         font-weight: 750;
         cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        transform: translate3d(0, 0, 0) scale(1);
+        transition:
+          transform 84ms cubic-bezier(.2,.8,.2,1),
+          box-shadow 140ms cubic-bezier(.2,.8,.2,1),
+          border-color 140ms cubic-bezier(.2,.8,.2,1),
+          filter 140ms cubic-bezier(.2,.8,.2,1);
+        will-change: transform;
+      }
+
+      button:focus-visible {
+        outline: none;
+        border-color: rgba(255, 214, 151, 0.88);
+        box-shadow:
+          0 0 0 3px rgba(255, 214, 151, 0.18),
+          0 0 24px rgba(0, 204, 255, 0.16);
       }
 
       button:active {
-        transform: translateY(1px) scale(0.99);
+        transform: translate3d(0, 1px, 0) scale(0.975);
+        filter: brightness(1.14);
+        box-shadow:
+          0 0 12px rgba(0, 204, 255, 0.16),
+          inset 0 0 18px rgba(120, 233, 255, 0.12);
       }
 
       .packet-button {
@@ -175,6 +196,13 @@
       .packet-button span {
         position: relative;
         z-index: 1;
+        display: inline-block;
+        transform: translate3d(0, 0, 0);
+        transition: transform 84ms cubic-bezier(.2,.8,.2,1);
+      }
+
+      .packet-button:active span {
+        transform: translate3d(0, 1px, 0) scale(0.99);
       }
 
       .state-readout {
@@ -191,6 +219,18 @@
         /* Kiosk-sign glow — the readout is the on-page proxy for the sign;
            --recognition-sign-glow bumps it during the recognition beat. */
         box-shadow: 0 0 var(--recognition-sign-glow) rgba(120, 233, 255, 0.55);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        button,
+        .packet-button span {
+          transition: none;
+        }
+
+        button:active,
+        .packet-button:active span {
+          transform: none;
+        }
       }
     </style>
   </head>
