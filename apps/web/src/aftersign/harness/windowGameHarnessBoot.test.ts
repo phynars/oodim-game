@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
 import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
@@ -81,5 +82,79 @@ describe("Aftersign window.__game harness (#918)", () => {
       },
     });
     expect(JSON.parse(JSON.stringify(game?.getStoryState()))).toEqual(game?.getStoryState());
+  });
+
+  // Consumer wiring for the memory-recall feel envelope (PR #1020
+  // follow-up). `getMemoryRecallFeel` used to live only inside its
+  // sibling contract test — an unconsumed pure module. It is now wired
+  // into `bootWindowGame.ts` so `window.__game.recallFeel(elapsedMs)`
+  // samples the envelope keyed off the recognition trigger captured
+  // when `meetNpc` promotes a previously-met NPC to `recognizes-player`.
+  // These assertions run in the aftersign blocking lane, so the wiring
+  // is guarded end-to-end.
+  it("fires the memory-recall envelope only on the second meet (recognition transition)", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    // First contact: no durable memory, no recall trigger.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.meetNpc("io");
+    expect(game?.getRecallTrigger()).toBeNull();
+    expect(game?.recallFeel({ elapsedMs: 120 })).toBeNull();
+
+    // Return session: Io has already met the player, so this meet
+    // promotes her to `recognizes-player`. That transition fires the
+    // recall trigger, and `recallFeel` samples the shared envelope.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        9,
+      ),
+    );
+    game?.meetNpc("io");
+
+    const trigger = game?.getRecallTrigger();
+    expect(trigger?.npcId).toBe("io");
+    expect(typeof trigger?.firedAtMs).toBe("number");
+
+    const recognition = game?.recallFeel({ elapsedMs: MEMORY_RECALL_FEEL.recognizeMs });
+    expect(recognition?.phase).toBe("recognize");
+    expect(recognition?.captionOpacity).toBeCloseTo(1, 5);
+    expect(recognition?.haloScale).toBeCloseTo(MEMORY_RECALL_FEEL.haloScalePeak, 5);
+
+    const held = game?.recallFeel({ elapsedMs: MEMORY_RECALL_FEEL.durationMs });
+    expect(held?.phase).toBe("held");
+    expect(held?.captionOpacity).toBeCloseTo(0, 5);
+  });
+
+  it("honours reducedMotion when sampling the recall envelope through the harness", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        3,
+      ),
+    );
+    game?.meetNpc("io");
+
+    const full = game?.recallFeel({ elapsedMs: MEMORY_RECALL_FEEL.recognizeMs });
+    const reduced = game?.recallFeel({
+      elapsedMs: MEMORY_RECALL_FEEL.recognizeMs,
+      reducedMotion: true,
+    });
+
+    expect(full).not.toBeNull();
+    expect(reduced).not.toBeNull();
+    expect(reduced!.captionLiftPx).toBeLessThan(full!.captionLiftPx);
+    expect(reduced!.cameraYawDeg).toBeLessThan(full!.cameraYawDeg);
+    expect(reduced!.hapticMs).toBe(0);
   });
 });
