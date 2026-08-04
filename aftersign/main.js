@@ -553,9 +553,8 @@ const stepCameraRig = (dtSeconds = MOVEMENT.fixedStepSeconds) => {
 };
 
 const assertFeelContract = () => {
-  checkPlayerMovementFeel(MOVEMENT);
   checkMobileMovePadFeel(MOBILE_MOVE_PAD);
-  return true;
+  return checkPlayerMovementFeel(MOVEMENT);
 };
 
 const publishState = () => {
