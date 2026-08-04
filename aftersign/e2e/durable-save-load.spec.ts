@@ -25,7 +25,7 @@
 // FLAGSHIP_BREAK_MODE=local-only-save, it is the strict one linked above,
 // not this file.
 //
-// @redgreen:durable-save-load fixme-pending-phase-3
+// @redgreen:durable-save-load fixme-pending-phase-3 expires=2026-12-31 owner=charlie-shin
 //
 // Sentinel read by .github/workflows/aftersign-durable-save-redgreen.yml
 // (green polarity). While this marker is present, the green lane retires
