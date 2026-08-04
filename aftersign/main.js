@@ -48,6 +48,11 @@ import {
   stepPlayerMovement as stepPlayerMovementModel,
   stepPlayerMovementFixedUpdate,
 } from "./src/playerMovementFeel.ts";
+import {
+  DEFAULT_MOBILE_MOVE_PAD_FEEL,
+  attachMobileMovePad,
+  checkMobileMovePadFeel,
+} from "./src/mobileMovePad.js";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -61,6 +66,8 @@ const skipRouteButton = document.querySelector("#skipRouteButton");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
+const movePad = document.querySelector("#movePad");
+const movePadKnob = document.querySelector("#movePadKnob");
 
 const CONFIRM_FEEDBACK = {
   durationMs: 220,
@@ -83,6 +90,7 @@ const FAILURE_FEEDBACK = {
   wobbleCycles: 5,
 };
 const MOVEMENT = DEFAULT_PLAYER_MOVEMENT_FEEL;
+const MOBILE_MOVE_PAD = DEFAULT_MOBILE_MOVE_PAD_FEEL;
 
 const params = new URLSearchParams(window.location.search);
 const slot = params.get("slot") || "local";
@@ -208,6 +216,11 @@ const state = {
     fixedStepsLastFrame: 0,
     droppedStepMs: 0,
     contract: { ...MOVEMENT },
+    mobilePad: {
+      active: false,
+      input: { x: 0, z: 0, knobX: 0, knobY: 0, magnitude: 0 },
+      feel: { ...MOBILE_MOVE_PAD },
+    },
   },
   cameraRig: null,
   interaction: {
@@ -458,6 +471,22 @@ const setMoveInput = (x, z, source = "script") => {
   publishState();
 };
 
+let mobileMovePadController = null;
+
+const syncMobileMovePad = () => {
+  if (!mobileMovePadController) {
+    return;
+  }
+  state.movement.mobilePad = mobileMovePadController.snapshot();
+  markStateDirty();
+};
+
+const setMobileMovePadInput = (x, z, source = "touch-pad") => {
+  setMoveInput(x, z, source);
+  syncMobileMovePad();
+  publishState();
+};
+
 const stepMovement = (dt = MOVEMENT.fixedStepSeconds) => {
   const movementState = createPlayerMovementState({
     x: state.player.x,
@@ -523,7 +552,11 @@ const stepCameraRig = (dtSeconds = MOVEMENT.fixedStepSeconds) => {
   return clone(state.cameraRig);
 };
 
-const assertFeelContract = () => checkPlayerMovementFeel(MOVEMENT);
+const assertFeelContract = () => {
+  checkPlayerMovementFeel(MOVEMENT);
+  checkMobileMovePadFeel(MOBILE_MOVE_PAD);
+  return true;
+};
 
 const publishState = () => {
   syncIoLine();
@@ -1450,6 +1483,13 @@ const resetSliceSave = async () => {
   state.movement.lastVelocityMetersPerSecond = 0;
   state.movement.fixedStepsLastFrame = 0;
   state.movement.droppedStepMs = 0;
+  state.movement.mobilePad = mobileMovePadController
+    ? mobileMovePadController.snapshot()
+    : {
+        active: false,
+        input: { x: 0, z: 0, knobX: 0, knobY: 0, magnitude: 0 },
+        feel: { ...MOBILE_MOVE_PAD },
+      };
   movementAccumulator = 0;
   state.cameraRig = null;
   state.interaction.lastAction = null;
@@ -1635,6 +1675,13 @@ packetButton.addEventListener("pointercancel", (event) => {
 acknowledgeRouteButton.addEventListener("click", () => choose("acknowledge-kiosk"));
 skipRouteButton.addEventListener("click", () => choose("skip-kiosk-acknowledge"));
 deliverButton.addEventListener("click", () => choose("deliver-packet"));
+mobileMovePadController = attachMobileMovePad({
+  root: movePad,
+  knob: movePadKnob,
+  onInput: setMobileMovePadInput,
+  feel: MOBILE_MOVE_PAD,
+});
+syncMobileMovePad();
 canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
