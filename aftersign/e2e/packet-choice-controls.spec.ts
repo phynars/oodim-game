@@ -17,7 +17,23 @@ const WAIT_MS = 60_000;
 // stall: two beat transitions at 2.5s each vs. the 60s cold-wait budget.
 const CHOICE_RESPONSE_MS = 2_500;
 
-const ROUTE_CHOICE_LABEL = "Choose whether you listened to Io's route before delivery";
+// NB: the route-choice container is a `<div id="routeChoice" aria-label="…">`
+// with `display: none` while `data-visible="false"`. Two consequences for
+// locators (this cost the previous run its green light):
+//   1. Playwright's `getByLabel` targets FORM CONTROLS (input/textarea/
+//      select) via `<label>` / `aria-labelledby`. A plain `<div>` with a
+//      loose `aria-label` is NOT in that set — the query resolves nothing
+//      and `toHaveAttribute` fails on the empty locator.
+//   2. `getByRole('button', { name: … })` walks the accessibility tree,
+//      which excludes descendants of a `display: none` ancestor. Pre-seal
+//      the buttons live inside the hidden `.route-choice` container, so
+//      the ARIA-tree query returns nothing and `toBeDisabled` fails.
+// CSS / id selectors bypass both — they locate the DOM element regardless
+// of ARIA-tree visibility, and `toBeDisabled` / `toHaveAttribute` still
+// read the underlying DOM property + attribute directly.
+const ROUTE_CHOICE_SELECTOR = "#routeChoice";
+const ACKNOWLEDGE_BUTTON_SELECTOR = "#acknowledgeRouteButton";
+const SKIP_BUTTON_SELECTOR = "#skipRouteButton";
 
 type PacketBeat = "packet-offered" | "packet-choice" | "packet-delivered";
 
@@ -150,9 +166,9 @@ test("packet choice controls stay responsive through offer -> seal -> route memo
   // disabled/data-visible checks race the initial render on cold CI.
   await waitForSceneReady(page);
 
-  await expect(page.getByLabel(ROUTE_CHOICE_LABEL)).toHaveAttribute("data-visible", "false");
-  await expect(page.getByRole("button", { name: "I listened" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "I ran early" })).toBeDisabled();
+  await expect(page.locator(ROUTE_CHOICE_SELECTOR)).toHaveAttribute("data-visible", "false");
+  await expect(page.locator(ACKNOWLEDGE_BUTTON_SELECTOR)).toBeDisabled();
+  await expect(page.locator(SKIP_BUTTON_SELECTOR)).toBeDisabled();
 
   const sealLatency = await measureChoiceLatency(page, "keep-packet-sealed", "packet-choice");
   expect(
@@ -160,9 +176,9 @@ test("packet choice controls stay responsive through offer -> seal -> route memo
     `keep-packet-sealed took ${sealLatency}ms (budget ${CHOICE_RESPONSE_MS}ms)`,
   ).toBeLessThan(CHOICE_RESPONSE_MS);
 
-  await expect(page.getByLabel(ROUTE_CHOICE_LABEL)).toHaveAttribute("data-visible", "true");
-  await expect(page.getByRole("button", { name: "I listened" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "I ran early" })).toBeEnabled();
+  await expect(page.locator(ROUTE_CHOICE_SELECTOR)).toHaveAttribute("data-visible", "true");
+  await expect(page.locator(ACKNOWLEDGE_BUTTON_SELECTOR)).toBeEnabled();
+  await expect(page.locator(SKIP_BUTTON_SELECTOR)).toBeEnabled();
 
   const routeLatency = await measureRouteChoiceLatency(page, "acknowledge-kiosk", "done");
   expect(
