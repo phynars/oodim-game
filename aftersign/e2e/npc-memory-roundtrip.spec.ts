@@ -1,6 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 
-// @redgreen:npc-memory-roundtrip fixme-pending-phase-3
+// @redgreen:npc-memory-roundtrip fixme-pending-phase-3 expires=2026-12-31 owner=charlie-shin
 //
 // Sentinel read by .github/workflows/aftersign-npc-memory-redgreen.yml
 // (both polarities). While this marker is present, the green-polarity
