@@ -46,7 +46,6 @@ export {
   type AftersignIoMemoryBeat,
   type AftersignOrraMemoryBeat,
   type AftersignIoRecognitionBeatOpen,
-  type AftersignOrraRecognitionBeatOpen,
   type AftersignOrraRecognitionBeatCue,
   type AftersignOrraRecognitionEnvelope,
   type AftersignOrraRecognitionViewportEnvelope,
@@ -56,11 +55,14 @@ export {
 export {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   resolveAftersignPacketConfirmInteraction,
+  resolveAndPlayAftersignPacketConfirmInteraction,
+  playAftersignPacketConfirmInteractionFeel,
   sampleAftersignPacketConfirmInteractionEnvelope,
   type AftersignInteractionConfirmEnvelope,
   type AftersignInteractionConfirmKind,
   type AftersignPacketInteractionAction,
   type AftersignPacketConfirmInteraction,
+  type AftersignPacketConfirmInteractionEffectsOptions,
 } from "./verticalSlicePacketInteraction";
 
 export {
