@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
 import {
+  AFTERSIGN_INTERACTION_CONFIRM_FEEL,
+  AFTERSIGN_IO_RECOGNITION_FEEL,
+  AFTERSIGN_KIOSK_SCENE_FEEL,
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   meetIoForAftersignSlice,
@@ -17,6 +20,24 @@ import "./bootWindowGame";
 // drift. Widening the lane's `include` back to the full glob is tracked in
 // #841 — until then, this file is the whole surface of the blocking lane.
 describe("Aftersign window.__game harness (#918)", () => {
+  // Public-surface guard for the `../verticalSliceState` barrel. The three
+  // feel constants (`AFTERSIGN_KIOSK_SCENE_FEEL`,
+  // `AFTERSIGN_IO_RECOGNITION_FEEL`, `AFTERSIGN_INTERACTION_CONFIRM_FEEL`)
+  // are re-exported from the barrel but are not otherwise touched by the
+  // boot-through-harness assertions below. Folding the assertion here —
+  // rather than a standalone `*.consumer.test.ts` at the aftersign root —
+  // is deliberate: the aftersign vitest lane pins
+  // `include: ["harness/windowGameHarnessBoot.test.ts"]` (see
+  // `../vitest.config.ts`), so any test file placed outside `harness/`
+  // never runs in CI. Widening the glob is gated by the #841 drift
+  // triage. Co-locating the surface guard with the boot test keeps the
+  // barrel exports consumed by something CI actually executes.
+  it("re-exports the vertical-slice feel contracts from a single barrel", () => {
+    expect(AFTERSIGN_KIOSK_SCENE_FEEL).toEqual(expect.any(Object));
+    expect(AFTERSIGN_IO_RECOGNITION_FEEL).toEqual(expect.any(Object));
+    expect(AFTERSIGN_INTERACTION_CONFIRM_FEEL).toEqual(expect.any(Object));
+  });
+
   it("boots window.__game and projects durable Io memory through the harness surface", () => {
     const game = window.__game;
     expect(game).toBeDefined();
