@@ -55,6 +55,9 @@ const speaker = document.querySelector("#speaker");
 const stateReadout = document.querySelector("#stateReadout");
 const failureSting = document.querySelector(".failure-sting");
 const packetButton = document.querySelector("#packetButton");
+const routeChoice = document.querySelector("#routeChoice");
+const acknowledgeRouteButton = document.querySelector("#acknowledgeRouteButton");
+const skipRouteButton = document.querySelector("#skipRouteButton");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
@@ -655,7 +658,18 @@ const renderText = () => {
   syncIoLine();
   setTextContentIfChanged(speaker, "Io");
   setTextContentIfChanged(line, state.npcs.io.lastLine);
-  setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
+  const routeChoiceVisible = state.scene.beat === "packet-choice";
+  if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
+    routeChoice.dataset.visible = String(routeChoiceVisible);
+  }
+  acknowledgeRouteButton.disabled = !routeChoiceVisible;
+  skipRouteButton.disabled = !routeChoiceVisible;
+  const routeMemory = state.player.secondAction === SECOND_ACTION.DONE
+    ? "listened"
+    : state.player.secondAction === SECOND_ACTION.SKIPPED
+      ? "ran early"
+      : "unset";
+  setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · route ${routeMemory} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
 };
 
 const setBeat = (beat) => {
@@ -1618,6 +1632,8 @@ packetButton.addEventListener("pointercancel", (event) => {
   event.preventDefault();
   packetMove({ ...packetPointFromEvent(event), x: state.interaction.packetIntent.config.DRIFT_CANCEL_PX + event.clientX + 1 });
 });
+acknowledgeRouteButton.addEventListener("click", () => choose("acknowledge-kiosk"));
+skipRouteButton.addEventListener("click", () => choose("skip-kiosk-acknowledge"));
 deliverButton.addEventListener("click", () => choose("deliver-packet"));
 canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
 window.addEventListener("keydown", (event) => {
