@@ -17,13 +17,20 @@ const WAIT_MS = 60_000;
 // stall: two beat transitions at 2.5s each vs. the 60s cold-wait budget.
 const CHOICE_RESPONSE_MS = 2_500;
 
+const ROUTE_CHOICE_LABEL = "Choose whether you listened to Io's route before delivery";
+
 type PacketBeat = "packet-offered" | "packet-choice" | "packet-delivered";
 
-type PacketChoiceId = "keep-packet-sealed" | "deliver-packet";
+type PacketChoiceId =
+  | "keep-packet-sealed"
+  | "acknowledge-kiosk"
+  | "skip-kiosk-acknowledge"
+  | "deliver-packet";
 
 type GameSurface = {
   version: 1;
   scene: { beat: PacketBeat };
+  player?: { secondAction?: "done" | "skipped" | null };
   input: {
     choose(choiceId: PacketChoiceId): Promise<void>;
   };
@@ -39,6 +46,14 @@ async function waitForBeat(page: Page, beat: PacketBeat): Promise<void> {
   await page.waitForFunction(
     (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
     beat,
+    { timeout: WAIT_MS },
+  );
+}
+
+async function waitForRouteMemory(page: Page, expected: "done" | "skipped"): Promise<void> {
+  await page.waitForFunction(
+    (value) => window.__game?.version === 1 && window.__game.player?.secondAction === value,
+    expected,
     { timeout: WAIT_MS },
   );
 }
@@ -78,7 +93,23 @@ async function measureChoiceLatency(
   return Date.now() - started;
 }
 
-test("packet choice controls stay responsive through offer -> seal -> deliver", async ({
+async function measureRouteChoiceLatency(
+  page: Page,
+  choiceId: "acknowledge-kiosk" | "skip-kiosk-acknowledge",
+  expectedMemory: "done" | "skipped",
+): Promise<number> {
+  const started = Date.now();
+  await page.evaluate((id) => {
+    if (!window.__game) {
+      throw new Error(`window.__game missing when dispatching ${id}`);
+    }
+    return window.__game.input.choose(id);
+  }, choiceId);
+  await waitForRouteMemory(page, expectedMemory);
+  return Date.now() - started;
+}
+
+test("packet choice controls stay responsive through offer -> seal -> route memory -> deliver", async ({
   page,
 }) => {
   // Same cold-start allowance as siblings — the responsiveness gate below
@@ -94,11 +125,26 @@ test("packet choice controls stay responsive through offer -> seal -> deliver", 
   // Latency is NOT measured here — only from the first choice onward.
   await waitForBeat(page, "packet-offered");
 
+  await expect(page.getByLabel(ROUTE_CHOICE_LABEL)).toHaveAttribute("data-visible", "false");
+  await expect(page.getByRole("button", { name: "I listened" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "I ran early" })).toBeDisabled();
+
   const sealLatency = await measureChoiceLatency(page, "keep-packet-sealed", "packet-choice");
   expect(
     sealLatency,
     `keep-packet-sealed took ${sealLatency}ms (budget ${CHOICE_RESPONSE_MS}ms)`,
   ).toBeLessThan(CHOICE_RESPONSE_MS);
+
+  await expect(page.getByLabel(ROUTE_CHOICE_LABEL)).toHaveAttribute("data-visible", "true");
+  await expect(page.getByRole("button", { name: "I listened" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "I ran early" })).toBeEnabled();
+
+  const routeLatency = await measureRouteChoiceLatency(page, "acknowledge-kiosk", "done");
+  expect(
+    routeLatency,
+    `acknowledge-kiosk took ${routeLatency}ms (budget ${CHOICE_RESPONSE_MS}ms)`,
+  ).toBeLessThan(CHOICE_RESPONSE_MS);
+  await expect(page.locator("#stateReadout")).toContainText("route listened");
 
   const deliverLatency = await measureChoiceLatency(page, "deliver-packet", "packet-delivered");
   expect(
