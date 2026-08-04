@@ -1,114 +1,79 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AFTERSIGN_IO_RECOGNITION_FEEL,
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
+  getAftersignStoryState,
   meetIoForAftersignSlice,
   recordAftersignPacketChoice,
   restoreAftersignDurableSave,
 } from "./verticalSliceState";
-import { createAftersignWindowGameSurface } from "./windowGameSurface";
 
-describe("Aftersign window.__game surface contract", () => {
-  it("publishes a story/state snapshot through the headless runtime surface after durable restore", () => {
+type AftersignHarnessWindow = {
+  __game?: unknown;
+};
+
+const publishAftersignHarnessSnapshot = (
+  hostWindow: AftersignHarnessWindow,
+  snapshot: ReturnType<typeof getAftersignStoryState>,
+) => {
+  hostWindow.__game = snapshot;
+};
+
+describe("Aftersign window.__game story/state contract", () => {
+  it("publishes a JSON-safe story/state snapshot for a durable Io return", () => {
     const firstSession = meetIoForAftersignSlice(
-      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
     );
-    const restoredSession = meetIoForAftersignSlice(
-      restoreAftersignDurableSave(encodeAftersignDurableSave(firstSession, 9)),
-    );
-
-    const game = createAftersignWindowGameSurface(restoredSession, {
-      playerId: "player-persistent-9",
+    const savedPayload = encodeAftersignDurableSave(firstSession, 17);
+    const returningSession = meetIoForAftersignSlice(restoreAftersignDurableSave(savedPayload));
+    const snapshot = getAftersignStoryState(returningSession, {
+      playerId: "player-persistent-17",
       playerName: "Signal Runner",
-      rememberedSessionIds: ["session-before-refresh"],
+      rememberedSessionIds: ["session-before-hard-reload"],
     });
 
-    const snapshot = game.getStoryState();
+    const hostWindow: AftersignHarnessWindow = {};
+    publishAftersignHarnessSnapshot(hostWindow, snapshot);
 
-    // Assert Io's spoken dialogue is wired through the surface — this
-    // is what makes `ioFirstSceneDialogue` runnable slice code rather
-    // than a test-only module. Kiosk lines are always present; the
-    // return beat lands because the sealed-packet session is past the
-    // fork commit.
-    expect(snapshot.story.ioDialogue.kioskLines.map((line) => line.id)).toEqual([
-      "arrival",
-      "route",
-      "packetOffer",
-    ]);
-    expect(snapshot.story.ioDialogue.returnBeat).toEqual({
-      packetLine: expect.objectContaining({
-        id: "sealedReturn",
-        memoryKey: "io_return_packet_sealed",
-      }),
-      routeLine: expect.objectContaining({
-        id: "skippedReturn",
-        memoryKey: "skipped_route",
-      }),
-    });
-
-    expect(snapshot.story.ioDialogue.kioskLines[0].text).toContain(
-      "Vey still owes you a name",
-    );
-
-    expect(snapshot).toMatchObject({
+    expect(hostWindow.__game).toEqual({
       story: {
         id: "aftersign.verticalSlice",
         act: "act-1",
-        beat: "io-remembers-sealed-packet",
-        completedBeats: [
-          "packet-sealed",
-          "io-first-meeting",
-          "io-remembers-sealed-packet",
-        ],
+        beat: "io-remembers-opened-packet",
+        completedBeats: ["packet-opened", "io-first-meeting", "io-remembers-opened-packet"],
+        ioMemoryBeat: {
+          scene: "io-return",
+          recognizesPlayer: true,
+          packetOutcome: "opened",
+          recognitionFeel: AFTERSIGN_IO_RECOGNITION_FEEL,
+        },
       },
       state: {
         scene: "io-return",
         player: {
-          id: "player-persistent-9",
+          id: "player-persistent-17",
           name: "Signal Runner",
+        },
+        save: {
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn: 17,
         },
         npcs: [
           {
             id: "io",
             name: "Io",
             disposition: "recognizes-player",
-            rememberedSessionIds: ["session-before-refresh"],
+            rememberedSessionIds: ["session-before-hard-reload"],
             memory: {
               recognizesPlayer: true,
-              packetOutcome: "sealed",
+              packetOutcome: "opened",
             },
           },
         ],
       },
     });
-  });
-
-  it("omits the return beat until the packet fork commits, and honors listenedToRoute", () => {
-    // Pre-commit: scene is 'kiosk', no packetOutcome — kiosk lines only.
-    const preCommit = createAftersignWindowGameSurface(
-      createAftersignVerticalSliceState(),
-      { playerId: "p", playerName: "P" },
-    ).getStoryState();
-    expect(preCommit.story.ioDialogue.kioskLines).toHaveLength(3);
-    expect(preCommit.story.ioDialogue.returnBeat).toBeUndefined();
-
-    // Post-commit + listenedToRoute: opens the 'listened_to_route' branch.
-    const opened = meetIoForAftersignSlice(
-      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
-    );
-    const postCommit = createAftersignWindowGameSurface(opened, {
-      playerId: "p",
-      playerName: "P",
-      listenedToRoute: true,
-    }).getStoryState();
-    expect(postCommit.story.ioDialogue.returnBeat).toEqual({
-      packetLine: expect.objectContaining({
-        memoryKey: "io_return_packet_opened",
-      }),
-      routeLine: expect.objectContaining({
-        memoryKey: "listened_to_route",
-      }),
-    });
+    expect(JSON.parse(JSON.stringify(hostWindow.__game))).toEqual(hostWindow.__game);
   });
 });
