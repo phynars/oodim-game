@@ -38,7 +38,15 @@ describe("Aftersign window.__game story/state contract", () => {
     const hostWindow: AftersignHarnessWindow = {};
     publishAftersignHarnessSnapshot(hostWindow, snapshot);
 
-    expect(hostWindow.__game).toEqual({
+    // `toMatchObject` on the first block: this test owns the
+    // durable-restore snapshot shape (save envelope, player identity,
+    // Io memory beat, npcs). The `ioDialogue` seam is exhaustively
+    // asserted in the second `it` below, so re-asserting it here would
+    // double-book the invariant. Using `toEqual` would additionally
+    // require enumerating `ioDialogue` (which `getAftersignStoryState`
+    // emits unconditionally, windowGameSurface.ts) and would fail
+    // deep-equal on the extra key.
+    expect(hostWindow.__game).toMatchObject({
       story: {
         id: "aftersign.verticalSlice",
         act: "act-1",
@@ -75,6 +83,9 @@ describe("Aftersign window.__game story/state contract", () => {
         ],
       },
     });
+    // JSON round-trip: the surface must be structurally serializable
+    // (no functions, no undefined-only keys) since it's what a real
+    // window.__game consumer would clone across a devtools boundary.
     expect(JSON.parse(JSON.stringify(hostWindow.__game))).toEqual(hostWindow.__game);
   });
 
