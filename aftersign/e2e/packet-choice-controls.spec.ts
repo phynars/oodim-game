@@ -29,7 +29,7 @@ type PacketChoiceId =
 
 type GameSurface = {
   version: 1;
-  scene: { beat: PacketBeat };
+  scene: { beat: PacketBeat; ready?: boolean };
   player?: { secondAction?: "done" | "skipped" | null };
   input: {
     choose(choiceId: PacketChoiceId): Promise<void>;
@@ -46,6 +46,27 @@ async function waitForBeat(page: Page, beat: PacketBeat): Promise<void> {
   await page.waitForFunction(
     (expected) => window.__game?.version === 1 && window.__game.scene.beat === expected,
     beat,
+    { timeout: WAIT_MS },
+  );
+}
+
+// #736 M2-E1 flake root-cause: `state.scene.beat === "packet-offered"` is
+// TRUE from module-init (the state literal seeds it before boot completes),
+// so `waitForBeat("packet-offered")` can return BEFORE the very first
+// `renderText()` runs — which is the pass that flips
+// `acknowledgeRouteButton.disabled` / `skipRouteButton.disabled` to true
+// and stamps the "route unset" segment into `#stateReadout`. The pre-seal
+// DOM assertions below (`toBeDisabled`, `data-visible="false"`) then race
+// the boot render on cold-start CI, failing intermittently even under
+// retries: 3. Sibling `packet-intent-served-page-feel.spec.ts:46` uses
+// the same `scene.ready === true` gate for the same reason — it's flipped
+// at boot tail (aftersign/main.js:1689) IMMEDIATELY BEFORE the
+// `renderText()` that populates the button state (line 1694), so waiting
+// on it guarantees the DOM reflects the initial render before we assert.
+async function waitForSceneReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => window.__game?.version === 1 && window.__game.scene.ready === true,
+    undefined,
     { timeout: WAIT_MS },
   );
 }
@@ -124,6 +145,10 @@ test("packet choice controls stay responsive through offer -> seal -> route memo
   // Warm-up: cold start absorbs the SwiftShader + three.js import cost.
   // Latency is NOT measured here — only from the first choice onward.
   await waitForBeat(page, "packet-offered");
+  // Gate the DOM assertions on `scene.ready === true` (set at boot tail
+  // immediately before the first `renderText()`); without this the
+  // disabled/data-visible checks race the initial render on cold CI.
+  await waitForSceneReady(page);
 
   await expect(page.getByLabel(ROUTE_CHOICE_LABEL)).toHaveAttribute("data-visible", "false");
   await expect(page.getByRole("button", { name: "I listened" })).toBeDisabled();
