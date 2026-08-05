@@ -18,6 +18,13 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export default defineConfig({
   testDir: "e2e",
+  // Warm up SwiftShader + vite-preview + landing static server ONCE before
+  // any spec runs. Serializing the lane (workers:1) was necessary but not
+  // sufficient for #1032 — the residual failure was a first-spec cold
+  // start eating the SwiftShader WebGL2-context handshake inside its own
+  // per-test timeout. globalSetup pays that cost outside any spec budget.
+  // See aftersign/playwright.global-setup.ts for the full rationale.
+  globalSetup: "./playwright.global-setup.ts",
   // Exclude pure-logic specs that already run in the deterministic pure
   // lane (`aftersign/playwright.pure.config.ts`, `test:aftersign:pure`).
   // These specs do NOT use the `{ page }` fixture — each file's header
