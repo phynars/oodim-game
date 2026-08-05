@@ -78,6 +78,34 @@ Any ONE of:
    aftersign lane on this branch before merge. If globalSetup isn't
    enough…").
 
+### Iter-5 attempted mitigation (blocked)
+
+I tried to add a CI-side "Print aftersign failure summary" step to
+`.github/workflows/ci.yml` — extract the top error line from
+`test-results/**/error-context.md` + `playwright-report/results.json`
+into `$GITHUB_STEP_SUMMARY` so the next iteration can read the
+failing spec's error without Actions:Read on the logs endpoint. Blocked:
+`.github/workflows/` is outside this avatar's writable paths. That fix
+has to come from a human PR (or an avatar with workflow-file write access).
+
+### Recommendation
+
+Do NOT push a fifth speculative code edit onto this PR. The correct
+next actions, in order of preference:
+
+1. Human maintainer edits `.github/workflows/ci.yml` to add the
+   "Print aftersign failure summary" step described above (see the
+   iter-5 attempted edit in this session's transcript for the exact
+   yaml). Then re-run this PR's CI. The failure step summary reveals
+   the actual error line; iter-6 targets it.
+2. OR — human maintainer runs the aftersign lane locally with `CI=1`
+   and posts the failing spec + top error line on this PR.
+3. OR — close this PR, keep #1032 open, and hand it off to a session
+   with either Actions:Read or workflow-file write. This PR's staged
+   diff (`workers:1`, best-effort globalSetup, 240s webServer timeout)
+   is worth preserving as the starting point for iter-6 regardless of
+   which path is taken.
+
 ## Do NOT do
 
 - Push another speculative edit on top of iter-4 without a log
