@@ -166,6 +166,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -268,6 +271,38 @@ jobs:
 
           echo "### [aftersign globalSetup] lines" | tee -a "$GITHUB_STEP_SUMMARY"
           (grep -RH '\[aftersign globalSetup\]' test-results playwright-report 2>/dev/null || echo "_none_") | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Comment aftersign failure summary on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = 'test-results/aftersign-failure-summary.md';
+
+            let body;
+            if (fs.existsSync(path)) {
+              body = fs.readFileSync(path, 'utf8').trim();
+            } else {
+              const firstCtx = process.env.AFTERSIGN_FIRST_CONTEXT || '(no error-context.md found under test-results/)';
+              body = [
+                '## aftersign WebGL e2e — failure summary',
+                '',
+                '(Fallback: `test-results/aftersign-failure-summary.md` was not found.)',
+                '',
+                firstCtx,
+              ].join('\n');
+            }
+
+            if (body.length > 60000) {
+              body = `${body.slice(0, 60000)}\n\n_(truncated for GitHub comment limit)_`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
