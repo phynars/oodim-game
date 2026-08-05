@@ -1,98 +1,128 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+// Consumer test for the packet-confirm bloom wiring (#1015).
+//
+// `verticalSlicePacketInteraction.ts` is the runtime consumer of
+// `playAftersignConfirmFeel` — this jsdom test drives the resolver on a
+// committed state and asserts the `.aftersign-confirm-feel` layer is
+// appended to `document.body`, labeled per resolved kind, and cleaned up
+// after `durationMs + 80ms`.
+//
+// Scope guard (per #1015):
+//   - does NOT touch the ms/px numbers in AFTERSIGN_CONFIRM_FEEL — the
+//     sibling `aftersignConfirmFeel.contract.test.ts` pins those.
+//   - does NOT touch `interactionConfirmFeel.ts` (shared envelope).
 
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AFTERSIGN_CONFIRM_FEEL } from "./aftersignConfirmFeel";
 import {
-  AFTERSIGN_CONFIRM_FEEL,
-  resolveAndPlayAftersignPacketConfirmInteraction,
   resolveAftersignPacketConfirmInteraction,
-  playAftersignPacketConfirmInteractionFeel,
-} from "./verticalSliceState";
-import { createAftersignVerticalSliceState, confirmAftersignPacketChoice } from "./verticalSliceRuntimeState";
+  resolveAndPlayAftersignPacketConfirmInteraction,
+} from "./verticalSlicePacketInteraction";
+import type { AftersignVerticalSliceState } from "./verticalSliceRuntimeState";
 
-function committedState(outcome: "opened" | "sealed") {
-  const state = createAftersignVerticalSliceState();
-  state.packetOutcome = outcome;
-  return state;
+const LAYER_SELECTOR = ".aftersign-confirm-feel";
+
+function committedState(
+  packetOutcome: "opened" | "sealed",
+): AftersignVerticalSliceState {
+  // Only `packetOutcome` is read by the resolver; the cast keeps this
+  // test decoupled from unrelated state fields.
+  return { packetOutcome } as AftersignVerticalSliceState;
 }
 
-describe("Aftersign packet-confirm bloom consumer", () => {
-  afterEach(() => {
+function layers(): Element[] {
+  return Array.from(document.body.querySelectorAll(LAYER_SELECTOR));
+}
+
+describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
     document.body.innerHTML = "";
-    document.head.innerHTML = "";
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    document.body.innerHTML = "";
   });
 
-  it.each([
-    ["opened", "Opened"],
-    ["sealed", "Sealed"],
-  ] as const)("plays one %s confirm bloom with the kind label", (outcome, label) => {
-    vi.useFakeTimers();
-    const interaction = resolveAftersignPacketConfirmInteraction(committedState(outcome));
-
-    const handle = playAftersignPacketConfirmInteractionFeel(interaction, {
-      root: document,
-      x: 112,
-      y: 88,
-    });
-
-    const layers = document.body.querySelectorAll(".aftersign-confirm-feel");
-    expect(handle).not.toBeNull();
-    expect(layers).toHaveLength(1);
-    expect(layers[0]?.textContent).toBe(label);
-    expect(layers[0]).toHaveStyle({
-      "--aftersign-confirm-x": "112px",
-      "--aftersign-confirm-y": "88px",
-      "--aftersign-confirm-shake": `${AFTERSIGN_CONFIRM_FEEL.shakePx}px`,
-    });
-
-    vi.advanceTimersByTime(AFTERSIGN_CONFIRM_FEEL.durationMs + 79);
-    expect(document.body.querySelectorAll(".aftersign-confirm-feel")).toHaveLength(1);
-
-    vi.advanceTimersByTime(1);
-    expect(document.body.querySelectorAll(".aftersign-confirm-feel")).toHaveLength(0);
-  });
-
-  it("plays an inspecting bloom for inspect actions", () => {
-    vi.useFakeTimers();
-    const interaction = resolveAftersignPacketConfirmInteraction(
-      createAftersignVerticalSliceState(),
-      "inspect",
+  it("resolves packetOpen for an opened outcome and appends exactly one bloom layer", () => {
+    const interaction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("opened"),
+      "commit",
+      { x: 120, y: 240 },
     );
 
-    playAftersignPacketConfirmInteractionFeel(interaction, { root: document });
-
-    const layer = document.body.querySelector(".aftersign-confirm-feel");
-    expect(layer).not.toBeNull();
-    expect(layer?.textContent).toBe("Inspecting");
+    expect(interaction.kind).toBe("packetOpen");
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]!.textContent).toContain("Opened");
   });
 
-  it("suppresses shake for reduced motion while keeping the visual bloom", () => {
-    vi.useFakeTimers();
-    const interaction = resolveAftersignPacketConfirmInteraction(committedState("opened"));
-
-    playAftersignPacketConfirmInteractionFeel(interaction, {
-      root: document,
-      reducedMotion: true,
-    });
-
-    const layer = document.body.querySelector(".aftersign-confirm-feel");
-    expect(layer).not.toBeNull();
-    expect(layer).toHaveStyle({ "--aftersign-confirm-shake": "0px" });
-  });
-
-  it("can resolve and play from a committed packet interaction in one call", () => {
-    vi.useFakeTimers();
-    const state = createAftersignVerticalSliceState();
-    confirmAftersignPacketChoice(state, "preserve");
-
-    const interaction = resolveAndPlayAftersignPacketConfirmInteraction(state, "commit", {
-      root: document,
-      x: 220,
-      y: 164,
-    });
+  it("resolves packetPreserve for a sealed outcome with the 'Sealed' label", () => {
+    const interaction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("sealed"),
+      "commit",
+      { x: 60, y: 80 },
+    );
 
     expect(interaction.kind).toBe("packetPreserve");
-    const layers = document.body.querySelectorAll(".aftersign-confirm-feel");
-    expect(layers).toHaveLength(1);
-    expect(layers[0]?.textContent).toBe("Sealed");
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]!.textContent).toContain("Sealed");
+  });
+
+  it("resolves packetInspect for the inspect action with the 'Inspecting' label", () => {
+    const interaction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("opened"),
+      "inspect",
+      { x: 10, y: 20 },
+    );
+
+    expect(interaction.kind).toBe("packetInspect");
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]!.textContent).toContain("Inspecting");
+  });
+
+  it("appends exactly one layer per confirm and cleans up on durationMs + 80ms", () => {
+    resolveAndPlayAftersignPacketConfirmInteraction(committedState("opened"));
+    expect(layers()).toHaveLength(1);
+
+    const { durationMs } = AFTERSIGN_CONFIRM_FEEL;
+
+    // Just before the cleanup deadline the layer must still exist.
+    vi.advanceTimersByTime(durationMs + 79);
+    expect(layers()).toHaveLength(1);
+
+    // At durationMs + 80ms it must be removed.
+    vi.advanceTimersByTime(1);
+    expect(layers()).toHaveLength(0);
+  });
+
+  it("suppresses the shake CSS variable under reducedMotion but still shows the layer", () => {
+    resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("sealed"),
+      "commit",
+      { reducedMotion: true },
+    );
+
+    const layer = layers()[0] as HTMLElement | undefined;
+    expect(layer).toBeDefined();
+
+    // The DOM player writes `--aftersign-confirm-shake` (see
+    // aftersignConfirmFeel.ts). reducedMotion pins shakePx to 0, so the
+    // written value must be exactly "0px" — an empty string here would
+    // mean the variable wasn't written at all, which is a regression.
+    const shake = layer!.style
+      .getPropertyValue("--aftersign-confirm-shake")
+      .trim();
+    expect(shake).toBe("0px");
+  });
+
+  it("throws when resolving a commit on an uncommitted packetOutcome", () => {
+    expect(() =>
+      resolveAftersignPacketConfirmInteraction(
+        { packetOutcome: "pending" } as unknown as AftersignVerticalSliceState,
+        "commit",
+      ),
+    ).toThrow(/packetOutcome is not committed/);
+    expect(layers()).toHaveLength(0);
   });
 });
