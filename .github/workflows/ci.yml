@@ -166,6 +166,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -203,71 +206,116 @@ jobs:
       - name: Print aftersign failure summary
         if: failure()
         run: |
-          echo "## aftersign WebGL e2e — failure summary" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Build the failure summary ONCE into a tempfile, then (a) tee it
+          # to $GITHUB_STEP_SUMMARY for humans on the run page and (b) export
+          # it to $GITHUB_ENV as AFTERSIGN_FIRST_CONTEXT so the next step can
+          # relay it to a PR comment. Keeping both readers off the same
+          # source avoids the "step summary and PR comment disagree" drift.
+          #
+          # SINGLE INPUT: playwright-report/results.json, produced by the
+          # `json` reporter configured in aftersign/playwright.config.ts.
+          # Prior iterations of this step also tried to read
+          # `test-results/**/error-context.md` and grep for
+          # `[aftersign globalSetup]` lines under those dirs — NEITHER file
+          # is actually written by Playwright or by the aftersign harness
+          # (error-context.md isn't a real Playwright artifact; globalSetup
+          # logs to console → step log, not to files). Those branches only
+          # ever printed "(none)" placeholders, drowning the real error
+          # signal. See PR #1037 review by Mara Okonkwo.
+          summary_file="$(mktemp)"
 
-          first_ctx=$(find test-results -name 'error-context.md' 2>/dev/null | head -n1 || true)
-          if [ -n "$first_ctx" ]; then
-            echo "### $first_ctx" | tee -a "$GITHUB_STEP_SUMMARY"
-            echo '```' | tee -a "$GITHUB_STEP_SUMMARY"
-            head -n 80 "$first_ctx" | tee -a "$GITHUB_STEP_SUMMARY"
-            echo '```' | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            echo "(no error-context.md found under test-results/)" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo "## aftersign WebGL e2e — failure summary"
+            echo ""
 
-          if [ -f playwright-report/results.json ]; then
-            node -e '
-              const fs = require("node:fs");
-              const report = JSON.parse(fs.readFileSync("playwright-report/results.json", "utf8"));
+            if [ -f playwright-report/results.json ]; then
+              echo "### first failing spec (from playwright-report/results.json)"
+              echo '```'
+              node -e '
+                const fs = require("node:fs");
+                const report = JSON.parse(fs.readFileSync("playwright-report/results.json", "utf8"));
 
-              function findFirstFailingSpec(node) {
-                if (!node || typeof node !== "object") return null;
+                function findFirstFailingSpec(node) {
+                  if (!node || typeof node !== "object") return null;
 
-                if (Array.isArray(node.specs)) {
-                  for (const spec of node.specs) {
-                    const title = spec.title || spec.file || "(unknown spec)";
-                    if (Array.isArray(spec.tests)) {
-                      for (const test of spec.tests) {
-                        if (!Array.isArray(test.results)) continue;
-                        for (const result of test.results) {
-                          if (!Array.isArray(result.errors)) continue;
-                          for (const err of result.errors) {
-                            if ((err && err.message) || err) {
-                              const message = String((err && err.message) || err || "");
-                              return { title, message };
+                  if (Array.isArray(node.specs)) {
+                    for (const spec of node.specs) {
+                      const title = spec.title || spec.file || "(unknown spec)";
+                      if (Array.isArray(spec.tests)) {
+                        for (const test of spec.tests) {
+                          if (!Array.isArray(test.results)) continue;
+                          for (const result of test.results) {
+                            if (!Array.isArray(result.errors)) continue;
+                            for (const err of result.errors) {
+                              if ((err && err.message) || err) {
+                                const message = String((err && err.message) || err || "");
+                                return { title, message };
+                              }
                             }
                           }
                         }
                       }
                     }
                   }
-                }
 
-                if (Array.isArray(node.suites)) {
-                  for (const suite of node.suites) {
-                    const found = findFirstFailingSpec(suite);
-                    if (found) return found;
+                  if (Array.isArray(node.suites)) {
+                    for (const suite of node.suites) {
+                      const found = findFirstFailingSpec(suite);
+                      if (found) return found;
+                    }
                   }
+
+                  return null;
                 }
 
-                return null;
-              }
+                const first = findFirstFailingSpec(report);
+                if (first) {
+                  console.log(`spec: ${first.title}`);
+                  console.log("error:");
+                  console.log(first.message.split("\\n").slice(0, 20).join("\\n"));
+                } else {
+                  console.log("(no failing test recorded in playwright-report/results.json)");
+                }
+              ' 2>&1
+              echo '```'
+            else
+              echo "(playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; check the Playwright run for a crash BEFORE any spec ran, e.g. webServer boot failure)"
+            fi
+          } > "$summary_file"
 
-              const first = findFirstFailingSpec(report);
-              if (first) {
-                console.log(`spec: ${first.title}`);
-                console.log("error:");
-                console.log(first.message.split("\\n").slice(0, 20).join("\\n"));
-              } else {
-                console.log("(no failing test recorded in playwright-report/results.json)");
-              }
-            ' 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            echo "(playwright-report/results.json not found)" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          cat "$summary_file" | tee -a "$GITHUB_STEP_SUMMARY"
 
-          echo "### [aftersign globalSetup] lines" | tee -a "$GITHUB_STEP_SUMMARY"
-          (grep -RH '\[aftersign globalSetup\]' test-results playwright-report 2>/dev/null || echo "_none_") | tee -a "$GITHUB_STEP_SUMMARY"
+          # Export to $GITHUB_ENV using a random heredoc delimiter (the
+          # summary contains fenced code blocks, so a plain EOF is unsafe).
+          delim="EOF_AFTERSIGN_$(date +%s%N)_$$"
+          {
+            echo "AFTERSIGN_FIRST_CONTEXT<<${delim}"
+            cat "$summary_file"
+            echo "${delim}"
+          } >> "$GITHUB_ENV"
+      - name: Comment aftersign failure summary on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // The comment body is built entirely from AFTERSIGN_FIRST_CONTEXT
+            // exported by the "Print aftersign failure summary" step above.
+            // This lane is self-sufficient: no dependency on any reporter
+            // writing test-results/aftersign-failure-summary.md — the same
+            // markdown that reaches $GITHUB_STEP_SUMMARY reaches the PR.
+            let body = process.env.AFTERSIGN_FIRST_CONTEXT
+              || '## aftersign WebGL e2e — failure summary\n\n(no failure context captured; see run logs)';
+
+            if (body.length > 60000) {
+              body = `${body.slice(0, 60000)}\n\n_(truncated for GitHub comment limit)_`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
       - if: failure()
         uses: actions/upload-artifact@v7
         with:

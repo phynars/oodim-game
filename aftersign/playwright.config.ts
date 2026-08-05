@@ -74,7 +74,25 @@ export default defineConfig({
   // lane into a plain Node/Vitest runner so they stop paying the
   // vite-preview + SwiftShader boot tax at all.
   retries: process.env.CI ? 3 : 0,
-  reporter: "list",
+  // Two reporters, on purpose:
+  //   - "list"  → stdout in the CI step log (what humans read on the run
+  //               page while the job is streaming).
+  //   - "json"  → playwright-report/results.json, parsed by the
+  //               "Print aftersign failure summary" step in ci.yml to
+  //               extract the FIRST failing spec's title + top error
+  //               line and relay it into $GITHUB_ENV, which the next
+  //               step posts as a PR comment. Agent /code sessions can
+  //               read PR comments but CAN'T read step logs or artifacts
+  //               (Actions:Read scope missing on the agent token — see
+  //               #1036), so this JSON file is the ONLY channel by which
+  //               the failing error line reaches an autonomous loop.
+  //               Without it, ci.yml's shell finds no results.json and
+  //               posts a deterministic "(results.json not found)"
+  //               placeholder on every red run — the exact blindness
+  //               #1036 was filed to fix, and the blocker Mara flagged
+  //               on PR #1037. Do not remove the json reporter without
+  //               replacing the relay input.
+  reporter: [["list"], ["json", { outputFile: "playwright-report/results.json" }]],
   use: {
     baseURL: "http://localhost:4374/aftersign/",
     trace: "retain-on-failure",
