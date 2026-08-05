@@ -106,9 +106,14 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     const layer = layers()[0] as HTMLElement | undefined;
     expect(layer).toBeDefined();
 
-    const shake = layer!.style.getPropertyValue("--aftersign-confirm-shake-px");
-    // reducedMotion pins shakePx to 0 — accept "0", "0px", or unset.
-    expect(["", "0", "0px"]).toContain(shake.trim());
+    // The DOM player writes `--aftersign-confirm-shake` (see
+    // aftersignConfirmFeel.ts). reducedMotion pins shakePx to 0, so the
+    // written value must be exactly "0px" — an empty string here would
+    // mean the variable wasn't written at all, which is a regression.
+    const shake = layer!.style
+      .getPropertyValue("--aftersign-confirm-shake")
+      .trim();
+    expect(shake).toBe("0px");
   });
 
   it("throws when resolving a commit on an uncommitted packetOutcome", () => {
