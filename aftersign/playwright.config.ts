@@ -47,7 +47,11 @@ export default defineConfig({
     "hard-navigation-save-survival-contract.spec.ts",
     "flagship-runnable-slice-spine-contract.spec.ts",
   ],
-  fullyParallel: true,
+  // SwiftShader/WebGL in headless CI can fail during concurrent cold-starts.
+  // Run this lane serially on CI to remove GPU/context init contention while
+  // preserving parallel local runs for developer speed.
+  fullyParallel: !process.env.CI,
+  workers: process.env.CI ? 1 : undefined,
   forbidOnly: !!process.env.CI,
   // AFTERSIGN gets two MORE retries than sibling three.js lanes (pacman /
   // galaga / doom / agar all use retries: 1). Rationale: the aftersign
