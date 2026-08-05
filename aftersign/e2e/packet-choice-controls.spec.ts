@@ -186,6 +186,12 @@ test("packet choice controls stay responsive through offer -> seal -> route memo
     `acknowledge-kiosk took ${routeLatency}ms (budget ${CHOICE_RESPONSE_MS}ms)`,
   ).toBeLessThan(CHOICE_RESPONSE_MS);
   await expect(page.locator("#stateReadout")).toContainText("route listened");
+  // The readout also carries the packet segment (`packet sealed` pre-delivery
+  // here, since keep-packet-sealed ran above) — assert it so the HUD addition
+  // in main.js renderText() has a load-bearing e2e consumer, and a regression
+  // that drops the segment (or leaks `delivered unknown` pre-delivery) fails
+  // this lane instead of shipping silently.
+  await expect(page.locator("#stateReadout")).toContainText("packet sealed");
 
   const deliverLatency = await measureChoiceLatency(page, "deliver-packet", "packet-delivered");
   expect(
@@ -195,4 +201,9 @@ test("packet choice controls stay responsive through offer -> seal -> route memo
 
   const deliveredBeat = await page.evaluate(() => window.__game?.scene.beat);
   expect(deliveredBeat).toBe("packet-delivered");
+  // Post-delivery the packet segment must flip to the delivery outcome
+  // (`delivered sealed` — state.delivery.outcome is set synchronously in
+  // deliverPacket before renderText runs, so no wait beyond the beat gate
+  // above is needed).
+  await expect(page.locator("#stateReadout")).toContainText("packet delivered sealed");
 });
