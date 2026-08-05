@@ -7,22 +7,28 @@
 // strips types but does NOT add extension resolution, so extensionless
 // specifiers hit `ERR_MODULE_NOT_FOUND` at import time.
 //
-// Currently that means one runner: `runPacketIntentChecks`, whose
-// upstream module `aftersign/src/packetIntent.ts` has zero relative
-// imports (verified 2026-08-02, PR #973 re-review). The four sibling
-// runners named in #826 —
+// Hosted runners: `runPacketIntentChecks` (upstream module
+// `aftersign/src/packetIntent.ts` has zero relative imports — verified
+// 2026-08-02, PR #973 re-review), `runNpcMemoryLineChecks`,
+// `runRecognitionFeedbackBridgeChecks`, plus two of the four #826
+// siblings whose subgraphs are leaf-clean (test file imports are
+// extensioned; upstream modules have ZERO relative imports — verified
+// by exhaustive grep of `aftersign/src/**` at migration time, #978):
+//   - runFirstCameraMoveChecks     (aftersign/src/feel/firstCameraMove.test.ts)
+//   - runMemoryPromptTimingChecks  (aftersign/src/feel/memoryPromptTiming.ts)
+// The two REMAINING #826 runners —
 //   - runRecognitionBeatChecks     (aftersign/src/recognitionBeat.test.ts)
 //   - runIoRecognitionCueContractChecks
 //                                  (aftersign/src/ioRecognitionCueContract.test.ts)
-//   - runFirstCameraMoveChecks     (aftersign/src/feel/firstCameraMove.test.ts)
-//   - runMemoryPromptTimingChecks  (aftersign/src/feel/memoryPromptTiming.ts)
-// — reach through modules with extensionless relative specifiers (into
-// `packages/aftersign/src/` and `apps/web/src/aftersign/`, the latter of
-// which the burn-down config declines to strictly typecheck). Adding
-// `.ts` extensions to every specifier in that subgraph is out of scope
-// for a "swap the runner" PR — a follow-up issue tracks it.
+// — reach through modules in `packages/aftersign/src/` and
+// `apps/web/src/aftersign/` (the latter of which the burn-down config
+// declines to strictly typecheck) whose interior specifiers are not yet
+// verified extensioned. Specifically: ioReturningSession.ts,
+// recognitionFeedback.ts, ioRecognitionBeat.ts. Migrating them means
+// auditing (and possibly extensioning) those interiors — tracked under
+// #978's remaining scope.
 //
-// Until that migration lands, those four bundles continue to run on
+// Until that lands, those two bundles continue to run on
 // `aftersign/playwright.pure.config.ts` (Playwright's bundler resolves
 // extensionless specifiers), invoked in the same `test:aftersign:pure`
 // npm script AFTER this runner completes. Coverage is preserved; the
@@ -44,6 +50,8 @@
 import { runPacketIntentChecks } from "./src/packetIntent.test.ts";
 import { runNpcMemoryLineChecks } from "./src/narrative/npcMemoryLines.test.ts";
 import { runRecognitionFeedbackBridgeChecks } from "./src/recognitionFeedbackBridge.test.ts";
+import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
+import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
 
 type Runner = {
   label: string;
@@ -61,6 +69,9 @@ const runners: Runner[] = [
   // subgraph is extensioned (.ts/.js), so it satisfies the pure-runner
   // extension-resolution contract documented above.
   { label: "runRecognitionFeedbackBridgeChecks", run: runRecognitionFeedbackBridgeChecks },
+  // #826/#978 migrations — leaf-clean subgraphs (see header comment).
+  { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
+  { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
 ];
 
 let failed = 0;

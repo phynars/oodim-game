@@ -59,8 +59,10 @@ export default defineConfig({
     "packet-intent-vertical-slice-contract.spec.ts",
     "io-recognition-cue-contract.spec.ts",
     "recognition-beat-contract.spec.ts",
-    "first-camera-move-feel-contract.spec.ts",
-    "memory-prompt-timing-feel-contract.spec.ts",
+    // first-camera-move-feel-contract + memory-prompt-timing-feel-contract
+    // migrated to aftersign/pure-runner.ts (#978) — dropped here so the
+    // bundles don't execute twice in test:aftersign:pure. Their specs
+    // still run on the MAIN lane (additive gating preserved).
     "io-return-memory-beat-contract.spec.ts",
     "io-return-memory-save-load-contract.spec.ts",
     "io-returning-recognition-line-contract.spec.ts",
