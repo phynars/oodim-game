@@ -352,7 +352,7 @@ const memoryFacts = () => {
   // so a beat-derived value would be a constant. normalizeSecondAction
   // maps `null` (player never acknowledged) → SKIPPED — that's the
   // absence-of-action branch, and the reason both memory-length
-  // outcomes are 2 (fact SHAPE is invariant; fact `object` differs).
+  // outcomes are 2 (fact SHAPE is invariant; only fact `object` differs).
   const secondAction = normalizeSecondAction(state.player.secondAction);
   return {
     packetOutcomeFact: buildPacketOutcomeMemoryFact({
@@ -705,7 +705,12 @@ const renderText = () => {
     : state.player.secondAction === SECOND_ACTION.SKIPPED
       ? "ran early"
       : "unset";
-  setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · route ${routeMemory} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
+  const packetStatus = state.packet.delivered
+    ? `delivered ${state.delivery.outcome}`
+    : state.packet.sealed
+      ? "sealed"
+      : "opened";
+  setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · packet ${packetStatus} · route ${routeMemory} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
 };
 
 const setBeat = (beat) => {
