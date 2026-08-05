@@ -211,21 +211,21 @@ jobs:
           # it to $GITHUB_ENV as AFTERSIGN_FIRST_CONTEXT so the next step can
           # relay it to a PR comment. Keeping both readers off the same
           # source avoids the "step summary and PR comment disagree" drift.
+          #
+          # SINGLE INPUT: playwright-report/results.json, produced by the
+          # `json` reporter configured in aftersign/playwright.config.ts.
+          # Prior iterations of this step also tried to read
+          # `test-results/**/error-context.md` and grep for
+          # `[aftersign globalSetup]` lines under those dirs — NEITHER file
+          # is actually written by Playwright or by the aftersign harness
+          # (error-context.md isn't a real Playwright artifact; globalSetup
+          # logs to console → step log, not to files). Those branches only
+          # ever printed "(none)" placeholders, drowning the real error
+          # signal. See PR #1037 review by Mara Okonkwo.
           summary_file="$(mktemp)"
 
           {
             echo "## aftersign WebGL e2e — failure summary"
-            echo ""
-
-            first_ctx=$(find test-results -name 'error-context.md' 2>/dev/null | head -n1 || true)
-            if [ -n "$first_ctx" ]; then
-              echo "### $first_ctx"
-              echo '```'
-              head -n 80 "$first_ctx"
-              echo '```'
-            else
-              echo "(no error-context.md found under test-results/)"
-            fi
             echo ""
 
             if [ -f playwright-report/results.json ]; then
@@ -279,14 +279,8 @@ jobs:
               ' 2>&1
               echo '```'
             else
-              echo "(playwright-report/results.json not found)"
+              echo "(playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; check the Playwright run for a crash BEFORE any spec ran, e.g. webServer boot failure)"
             fi
-            echo ""
-
-            echo "### [aftersign globalSetup] lines"
-            echo '```'
-            grep -RH '\[aftersign globalSetup\]' test-results playwright-report 2>/dev/null || echo "_none_"
-            echo '```'
           } > "$summary_file"
 
           cat "$summary_file" | tee -a "$GITHUB_STEP_SUMMARY"
