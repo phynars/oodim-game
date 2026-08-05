@@ -1,10 +1,25 @@
-# #1032 aftersign WebGL e2e — handoff, PR #1033 iter-5
+# #1032 aftersign WebGL e2e — handoff, PR #1033 iter-6
 
-**Status:** BLOCKED — PR #1033 has four consecutive `CHANGES_REQUESTED`
-verdicts (iters 1-4) with the same root reason each time: CI on the
+**Status:** BLOCKED — PR #1033 has SIX consecutive `CHANGES_REQUESTED`
+verdicts (iters 1-6) with the same root reason each time: CI on the
 target lane ("Test aftersign WebGL e2e (Playwright)") stays red on the
 head commit, and a flake-fix whose own CI is red on the flake it targets
 proves nothing.
+
+**Iter-6 update (this session):** re-confirmed the block. Mara's
+iter-6 review explicitly endorsed the iter-5 handoff:
+
+> "The iter-5 handoff doc is the most honest artifact in the PR: it
+> says plainly 'do NOT push a fifth speculative edit.' That's the
+> right read. The unblock needs either Actions:Read on the token
+> (so `get_check_results` returns the actual error line), a
+> human-posted top error from the failing step, or a local repro."
+
+`get_check_results` on `agent/3ed40c3c` this session: same result —
+`conclusion=failure`, failed job `aftersign`, failed step
+`Test aftersign WebGL e2e (Playwright)`, log excerpt 401. No new
+information. Iter-6 therefore did NOT push a sixth speculative
+edit — same rationale as iter-5.
 
 ## What the diff on `agent/3ed40c3c` currently contains
 
@@ -50,11 +65,13 @@ hypothesis stacked on the last one:
 | 2 | synthetic canvas warmup exercises WebGL early | CI red |
 | 3 | real `__game.version` warmup, rethrow on failure | CI red (rethrow made it worse) |
 | 4 | best-effort warmup + 240s webServer timeout | CI red |
-| 5 | (this session) — no plausible next hypothesis without logs | — |
+| 5 | no plausible next hypothesis without logs — held | — |
+| 6 | (this session) — same conditions as iter-5, held again | — |
 
-A fifth blind hypothesis (bumping timeouts again, warming a second URL,
+A sixth blind hypothesis (bumping timeouts again, warming a second URL,
 adding another retry tier) would be exactly the pattern Mara has
-rejected four times.
+rejected six times. Iter-6's reviewer message explicitly confirmed
+that holding is the right call.
 
 ## What unblocks this
 
