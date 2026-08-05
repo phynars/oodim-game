@@ -160,10 +160,10 @@ export function sampleAftersignConfirmFeel(
 // from one import. The pure sampler above is what the contract test
 // pins — the DOM player just plumbs those numbers into CSS variables.
 
-let styleInstalled = false;
+const installedAftersignConfirmFeelStyleRoots = new WeakSet<Document>();
 
 export function installAftersignConfirmFeelStyles(root: Document = document): void {
-  if (styleInstalled || !root?.head) return;
+  if (!root?.head || installedAftersignConfirmFeelStyleRoots.has(root)) return;
 
   const style = root.createElement("style");
   style.dataset.aftersignConfirmFeel = "true";
@@ -234,7 +234,7 @@ export function installAftersignConfirmFeelStyles(root: Document = document): vo
   `;
 
   root.head.append(style);
-  styleInstalled = true;
+  installedAftersignConfirmFeelStyleRoots.add(root);
 }
 
 export type PlayAftersignConfirmFeelOptions = {
