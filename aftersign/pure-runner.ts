@@ -61,6 +61,15 @@ const runners: Runner[] = [
   // subgraph is extensioned (.ts/.js), so it satisfies the pure-runner
   // extension-resolution contract documented above.
   { label: "runRecognitionFeedbackBridgeChecks", run: runRecognitionFeedbackBridgeChecks },
+  // #978 migration (final two of four): the leaf modules these bundles
+  // reach — packages/aftersign/src/ioReturningSession.ts,
+  // packages/aftersign/src/ioRecognitionBeat.ts, and
+  // apps/web/src/aftersign/recognitionFeedback.ts — contain ZERO relative
+  // imports (verified 2026 meta-mod session), and the .test.ts-level
+  // imports are already extensioned, so the whole subgraph satisfies the
+  // extension-resolution contract documented above.
+  { label: "runRecognitionBeatChecks", run: runRecognitionBeatChecks },
+  { label: "runIoRecognitionCueContractChecks", run: runIoRecognitionCueContractChecks },
 ];
 
 let failed = 0;

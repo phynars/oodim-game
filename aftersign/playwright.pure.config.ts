@@ -57,8 +57,6 @@ export default defineConfig({
   testMatch: [
     "packet-intent-contract.spec.ts",
     "packet-intent-vertical-slice-contract.spec.ts",
-    "io-recognition-cue-contract.spec.ts",
-    "recognition-beat-contract.spec.ts",
     "first-camera-move-feel-contract.spec.ts",
     "memory-prompt-timing-feel-contract.spec.ts",
     "io-return-memory-beat-contract.spec.ts",
