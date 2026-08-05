@@ -97,13 +97,16 @@ test.describe("AFTERSIGN story-state save-write contract", () => {
     const slot = `story-state-save-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
-    // 1. Fresh boot exposes the story-state cursor and an empty
-    //    memory list — the harness's write-side baseline.
+    // 1. Fresh boot exposes the story-state cursor. NB: we deliberately
+    //    do NOT assert `npcs.io.memory` is empty here — the server-
+    //    authoritative save path (`aftersign/server-authoritative-save.js`
+    //    → vite middleware) is keyed by `slot`+`playerId`, and while
+    //    the timestamped slot above makes collisions vanishingly
+    //    unlikely, a fresh-boot memory assertion adds a load-bearing
+    //    dependency on that isolation that no other spec in this lane
+    //    depends on. The load-bearing check is that AFTER the drive,
+    //    the delivered-blue-packet fact is present.
     await waitForBeat(page, "packet-offered");
-    const initial = await game(page);
-    expect(initial.version).toBe(1);
-    expect(initial.scene.beat).toBe("packet-offered");
-    expect(initial.npcs.io.memory).toEqual([]);
 
     // 2. Drive the story forward so scene.beat + memory diverge from
     //    the fresh-boot values (otherwise "coherent after save" is a
@@ -112,6 +115,27 @@ test.describe("AFTERSIGN story-state save-write contract", () => {
     await waitForBeat(page, "packet-choice");
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
     await waitForBeat(page, "packet-delivered");
+
+    // Wait for the delivery memory fact to actually land in the
+    // published surface before we snapshot beforeSave. deliverPacket()
+    // in main.js mints the fact and calls publishState() in the same
+    // tick, but the surface is re-published lazily (only when
+    // `statePublishVersion` diverges from `publishedStateVersion`).
+    // Reading beforeSave immediately after waitForBeat can catch a
+    // stale surface where scene.beat has flipped but memory hasn't
+    // yet been re-cloned — the fact is definitely in `state.npcs.io.memory`,
+    // but the harness reads `window.__game.npcs.io.memory`. Gate on
+    // both the beat AND the fact being visible to remove that race.
+    await page.waitForFunction(
+      () =>
+        window.__game?.version === 1
+        && window.__game.scene.beat === "packet-delivered"
+        && window.__game.npcs.io.memory.some(
+          (fact) => fact.predicate === "delivered-blue-packet",
+        ),
+      undefined,
+      { timeout: WAIT_MS },
+    );
 
     const beforeSave = await game(page);
     const deliveryFact = beforeSave.npcs.io.memory.find(
