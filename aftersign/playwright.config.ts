@@ -18,12 +18,17 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export default defineConfig({
   testDir: "e2e",
-  // Warm up SwiftShader + vite-preview + landing static server ONCE before
-  // any spec runs. Serializing the lane (workers:1) was necessary but not
-  // sufficient for #1032 — the residual failure was a first-spec cold
-  // start eating the SwiftShader WebGL2-context handshake inside its own
-  // per-test timeout. globalSetup pays that cost outside any spec budget.
-  // See aftersign/playwright.global-setup.ts for the full rationale.
+  // Warm up SwiftShader + vite-preview + landing static server ONCE
+  // before any spec runs (best-effort — a warmup failure logs and
+  // falls through to spec-level retries, it does NOT fail the lane).
+  // Serializing the lane (workers:1) was necessary but not sufficient
+  // for #1032 — the residual failure was a first-spec cold start
+  // eating the SwiftShader WebGL2-context handshake inside its own
+  // per-test timeout. globalSetup pays that cost outside any spec
+  // budget when it succeeds, and is a no-op regression when it
+  // doesn't.  See aftersign/playwright.global-setup.ts for the full
+  // rationale (iter-4: made warmup best-effort after iter-3 rethrew
+  // and produced a red lane on warmup timeouts alone).
   globalSetup: "./playwright.global-setup.ts",
   // Exclude pure-logic specs that already run in the deterministic pure
   // lane (`aftersign/playwright.pure.config.ts`, `test:aftersign:pure`).
@@ -130,7 +135,14 @@ export default defineConfig({
         "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
       url: "http://localhost:4374/aftersign/",
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      // 240s (was 120s): `build:aftersign` is a cold vite build on CI with
+      // no cache, and the aftersign bundle has grown enough that a cold
+      // build + preview startup can tail past 120s on a loaded runner.
+      // A webServer timeout tail-fail surfaces as an "aftersign WebGL
+      // e2e" red with zero spec output — identical shape to a warmup
+      // timeout, hard to distinguish without logs.  Widening the budget
+      // here removes one plausible flake source cheaply.
+      timeout: 240_000,
     },
     {
       cwd: repoRoot,

@@ -1,19 +1,32 @@
-// AFTERSIGN Playwright globalSetup — real cold-start warmup (#1032 iter 3).
+// AFTERSIGN Playwright globalSetup — real cold-start warmup (#1032 iter 4).
 //
 // Iter-1 (workers:1) removed concurrent SwiftShader contention. Iter-2
 // added a globalSetup that waited on `document.createElement("canvas")
-// .getContext("webgl2")` — but that synthetic probe doesn't exercise
-// three.js's real context init, it just proves the browser CAN hand back
-// a WebGL2 context, which is not what the specs actually wait for.
+// .getContext("webgl2")` — synthetic, didn't exercise three.js. Iter-3
+// drove the real `__game.version === 1` wait in warmup — correct
+// contract, but the warmup was FATAL (rethrew on any failure), so if
+// the warmup itself timed out at the 120s budget the whole lane died
+// with no spec output.  That is strictly worse than the pre-warmup
+// baseline for the "warmup thesis is incomplete" case.
+//
+// Iter-4 fix: keep the warmup, but make it BEST-EFFORT.  A completed
+// warmup still pays the vite-preview + SwiftShader + three.js boot
+// cost outside any per-test budget (the whole point).  A failed or
+// timed-out warmup logs `[aftersign globalSetup]` diagnostics and
+// returns without throwing, so the lane falls through to its
+// spec-level `retries: 3` instead of hard-failing on a setup step.
+// This preserves the win when the thesis is right and stops making
+// things worse when it isn't.
 //
 // The specs (aftersign/e2e/*.spec.ts) all block on the same readiness
-// signal: `window.__game?.version === 1` (grep the e2e/ dir). That
+// signal: `window.__game?.version === 1` (48+ matches in e2e/).  That
 // signal is set AFTER the aftersign bundle boots, three.js constructs
-// its renderer against SwiftShader, and the scene mounts. If ANY of
+// its renderer against SwiftShader, and the scene mounts.  If ANY of
 // those steps take seconds on cold start — vite-preview compiling the
-// first request, SwiftShader initializing its software renderer, three.js
-// building buffers — the first spec eats the whole cost inside its own
-// per-test timeout and times out before its assertions begin.
+// first request, SwiftShader initializing its software renderer,
+// three.js building buffers — the first spec eats the whole cost
+// inside its own per-test timeout and times out before its assertions
+// begin.
 //
 // So this globalSetup drives the EXACT same wait the specs do, once,
 // with a generous timeout, before any spec claims the clock:
@@ -21,13 +34,14 @@
 //      project uses (keep in sync with playwright.config.ts).
 //   2. Navigate to the aftersign baseURL.
 //   3. Wait for `window.__game?.version === 1` — the actual readiness
-//      contract every spec asserts on.
+//      contract every spec asserts on.  Best-effort.
 //   4. Best-effort warm the landing static server so its first request
 //      isn't a spec's request.
 //
 // Failure surfaces with a "[aftersign globalSetup]" prefix so a future
-// CI red gives the reviewer a diagnosable line instead of an opaque
-// spec timeout.
+// CI red gives the reviewer a diagnosable line — you can grep the job
+// log for that prefix to see whether the warmup succeeded, warmed
+// partially, or timed out entirely.
 
 import { chromium, request as playwrightRequest } from "@playwright/test";
 
@@ -102,12 +116,20 @@ export default async function globalSetup(): Promise<void> {
 
     await ctx.close();
   } catch (err) {
+    // BEST-EFFORT: do NOT rethrow.  A rethrow here kills the whole lane
+    // on a warmup step and gives zero spec-level signal — strictly worse
+    // than letting the specs run with their own `retries: 3` budget.
+    // Iter-3 rethrew and produced red CI even in cases where the specs
+    // themselves would have passed on retry.  Log the diagnostic prefix
+    // (grep `[aftersign globalSetup] warmup did not complete` in the job
+    // log to distinguish "warmup helped" from "warmup itself failed") and
+    // fall through.
+    const elapsedMs = Date.now() - startedAt;
     // eslint-disable-next-line no-console
-    console.error(
-      `[aftersign globalSetup] FAILED after ${Date.now() - startedAt}ms — this is the cold-start warmup, not a spec. Rethrowing to fail the lane fast with a clear signal.`,
-      err,
+    console.warn(
+      `[aftersign globalSetup] warmup did not complete after ${elapsedMs}ms — falling through to spec-level retries. This is not a lane failure; specs will retry on their own budget.`,
+      err instanceof Error ? err.message : String(err),
     );
-    throw err;
   } finally {
     await browser.close();
   }
