@@ -21,10 +21,20 @@
 // `isReleaseInsideForgivenessWindow` helper for the tap-preserve side).
 //
 // SINGLE DECISION PATH INVARIANT (PR #1019, re-affirmed PR #1050 review):
-// every read of `releaseGraceMs` in this module flows through
-// `isReleaseInsideForgivenessWindow`. Do NOT re-inline the shortfall
-// arithmetic in the stepper — the whole point of the helper is that the
-// gesture judge and the state machine consult one function.
+// the HOLD-THRESHOLD SHORTFALL comparison — "is this release within
+// `releaseGraceMs` of `requiredHoldMs`?" — flows through
+// `isReleaseInsideForgivenessWindow` in exactly one place, so the
+// gesture judge and the state machine cannot disagree about which
+// releases commit. Do NOT re-inline that shortfall arithmetic in the
+// stepper.
+//
+// Narrower than it sounds: `releaseGraceMs` is ALSO read directly for
+// the stale-release age check (~line 106) and referenced in the fixture
+// setups in `checkPacketChoiceReleaseForgiveness` below. Those reads are
+// intentional — they are not the shared shortfall decision the helper
+// pins. If you add a NEW hold-threshold-vs-elapsed shortfall check,
+// route it through `isReleaseInsideForgivenessWindow`; the stale-age
+// comparison and fixture arithmetic stay where they are.
 //
 // Repo convention (see `packetChoiceFeel.ts` + its `.test.ts` shim, PR #973):
 //   - The `.ts` module OWNS `check*()` + `run*Checks()`. The sibling
