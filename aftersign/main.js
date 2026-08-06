@@ -254,6 +254,7 @@ const state = {
       unlocked: false,
       ambientStarted: false,
       lastCue: null,
+      lastCueAt: null,
     },
   },
 };
@@ -1105,9 +1106,10 @@ const enableAudio = async () => {
   }
 
   state._runtime.audio.unlocked = audioContext.state === "running";
-  if (state._runtime.audio.unlocked) {
+  if (state._runtime.audio.unlocked && !state._runtime.audio.ambientStarted) {
     startAmbientAudio();
     state._runtime.audio.lastCue = "ambient-rainline";
+    state._runtime.audio.lastCueAt = performance.now();
   }
   markStateDirty();
   publishState();
@@ -1128,6 +1130,7 @@ const playKioskConfirm = async () => {
   // downstream analytics consumer) can observe that the cue fired.
   const stampConfirmCue = () => {
     state._runtime.audio.lastCue = "packet-confirmed";
+    state._runtime.audio.lastCueAt = performance.now();
     markStateDirty();
     publishState();
   };
@@ -1426,6 +1429,7 @@ const deliverPacket = (source = "hud-button") => {
   const beatStartedAt = performance.now();
   startMemoryBeatCameraProbe(beatStartedAt);
   memoryRecognitionBeatStartedAt = beatStartedAt;
+  playKioskConfirm();
   markStateDirty();
   setBeat("packet-delivered");
   setTimeout(() => {
@@ -1455,7 +1459,6 @@ const deliverPacket = (source = "hud-button") => {
     setBeat("io-return-recognition");
   }, 1180);
   persist({ dirty: true });
-  playKioskConfirm();
 };
 
 const resetSliceSave = async () => {
