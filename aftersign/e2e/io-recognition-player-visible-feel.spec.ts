@@ -85,14 +85,26 @@ test('returning Io recognition beat exposes bounded feel envelope on the served 
     const atSettle = game.recallFeel({ elapsedMs: 380 }); // middle of `settle`
     const atHeldEnd = game.recallFeel({ elapsedMs: 760 }); // tail of `held`
 
-    const story = game.getStoryState();
+    // `getStoryState()` returns `AftersignStoryStateSnapshot` shaped as
+    // `{ story, state }`, with per-NPC memory living at
+    // `state.npcs[i].memory.recognizesPlayer` (see
+    // apps/web/src/aftersign/windowGameSurface.ts). Read the Io entry
+    // out of that array — earlier drafts of this spec looked for
+    // `story.io.recognizesPlayer` / `story.ioRecognizesPlayer`, neither
+    // of which exists on the snapshot, so the assertion was silently
+    // asserting `false` against `Boolean(undefined)`.
+    const snapshot = game.getStoryState();
+    const ioNpc = Array.isArray(snapshot?.state?.npcs)
+      ? snapshot.state.npcs.find((npc: { id?: string }) => npc?.id === 'io')
+      : null;
+    const ioRecognizes = Boolean(ioNpc?.memory?.recognizesPlayer);
 
     return {
       ok: true,
       firstContactTrigger,
       returnTrigger,
       frames: { atZero, atRecognizePeak, atSettle, atHeldEnd },
-      ioRecognizes: Boolean(story?.io?.recognizesPlayer ?? story?.ioRecognizesPlayer),
+      ioRecognizes,
     };
   });
 
