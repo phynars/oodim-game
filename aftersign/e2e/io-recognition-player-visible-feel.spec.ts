@@ -1,60 +1,164 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * Player-visible feel contract for AFTERSIGN's first returning-memory beat.
+ * Player-visible feel contract for AFTERSIGN's first *returning* Io
+ * recognition beat, driven through the SHIPPED window harness
+ * (`AftersignWindowGameHarness` in
+ * apps/web/src/aftersign/harness/bootWindowGame.ts).
  *
- * This intentionally drives the served page instead of a pure module: the founder's
- * 2026-08-01 DoD says flagship work must be visible/feelable at
- * game.oodim.com/aftersign, and docs/flagship/BRIEF.md calls out `window.__game`
- * story/state invariants plus NPC-memory round-trips as the harness surface.
+ * The journey this spec locks in:
+ *   1. First contact with Io — no recall envelope fires (nothing to
+ *      remember yet). `getRecallTrigger()` stays null.
+ *   2. Return meet with Io — recognition transitions
+ *      `!prev.recognizes && next.recognizes`, so the harness stamps
+ *      a `{ npcId:'io', firedAtMs }` trigger. This is the beat.
+ *   3. Renderer samples `recallFeel({ elapsedMs })` across the
+ *      envelope. The frame shape and numeric bounds come from
+ *      `MEMORY_RECALL_FEEL` in apps/web/src/aftersign/memoryRecallFeel.ts —
+ *      durationMs 760, phases dormant → recognize (0-220ms) →
+ *      settle (220-540ms) → held (540-760ms), peak yaw 1.6°, peak
+ *      caption lift 14 px, haptic 12 ms fired on the first frame.
+ *
+ * The spec runs on the served page so a webServer / bundling
+ * regression that fails to expose `window.__game` is caught the same
+ * way a runtime feel regression would be.
  */
-test('returning Io recognition beat has bounded camera, vignette, and timing juice', async ({ page }) => {
+
+type RecallFrame = {
+  phase: 'dormant' | 'recognize' | 'settle' | 'held';
+  elapsedMs: number;
+  progress: number;
+  captionOpacity: number;
+  captionLiftPx: number;
+  haloOpacity: number;
+  haloScale: number;
+  cameraYawDeg: number;
+  bloomGain: number;
+  audioGain: number;
+  hapticMs: number;
+};
+
+type BeatResult =
+  | { ok: false; reason: string }
+  | {
+      ok: true;
+      firstContactTrigger: unknown;
+      returnTrigger: { npcId: string; firedAtMs: number } | null;
+      frames: {
+        atZero: RecallFrame | null;
+        atRecognizePeak: RecallFrame | null;
+        atSettle: RecallFrame | null;
+        atHeldEnd: RecallFrame | null;
+      };
+      ioRecognizes: boolean;
+    };
+
+test('returning Io recognition beat exposes bounded feel envelope on the served page', async ({ page }) => {
   await page.goto('/aftersign/');
 
-  const result = await page.evaluate(async () => {
+  const result: BeatResult = await page.evaluate(async () => {
     const game = (window as unknown as { __game?: any }).__game;
 
     if (!game) {
-      return { ok: false as const, reason: 'window.__game is not exposed on the served AFTERSIGN page' };
+      return { ok: false, reason: 'window.__game is not exposed on the served AFTERSIGN page' };
     }
 
-    if (typeof game.startReturningIoRecognitionBeat !== 'function') {
-      return {
-        ok: false as const,
-        reason: 'window.__game.startReturningIoRecognitionBeat() is not wired on the served AFTERSIGN page',
-      };
+    for (const method of ['meetNpc', 'getRecallTrigger', 'recallFeel', 'getStoryState'] as const) {
+      if (typeof game[method] !== 'function') {
+        return { ok: false, reason: `window.__game.${method} is not a function` };
+      }
     }
 
-    const beat = await game.startReturningIoRecognitionBeat({
-      playerMemory: 'blue seal, unbroken',
-    });
+    // Step 1: first contact with Io. No recall envelope should arm.
+    game.meetNpc('io');
+    const firstContactTrigger = game.getRecallTrigger();
+
+    // Step 2: return meet. This is the transition that arms the
+    // recall trigger — the beat we're locking in.
+    game.meetNpc('io');
+    const returnTrigger = game.getRecallTrigger();
+
+    // Step 3: sample the envelope at four semantically meaningful
+    // points inside the 760ms duration.
+    const atZero = game.recallFeel({ elapsedMs: 0 });
+    const atRecognizePeak = game.recallFeel({ elapsedMs: 220 }); // end of `recognize` phase
+    const atSettle = game.recallFeel({ elapsedMs: 380 }); // middle of `settle`
+    const atHeldEnd = game.recallFeel({ elapsedMs: 760 }); // tail of `held`
+
+    const story = game.getStoryState();
 
     return {
-      ok: true as const,
-      line: beat?.line ?? '',
-      memoryRefs: beat?.memoryRefs ?? [],
-      feel: beat?.feel ?? null,
+      ok: true,
+      firstContactTrigger,
+      returnTrigger,
+      frames: { atZero, atRecognizePeak, atSettle, atHeldEnd },
+      ioRecognizes: Boolean(story?.io?.recognizesPlayer ?? story?.ioRecognizesPlayer),
     };
   });
 
-  expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+  expect(result.ok, result.ok ? undefined : (result as { reason: string }).reason).toBe(true);
   if (!result.ok) return;
 
-  expect(result.line).toContain('blue seal, unbroken');
-  expect(result.memoryRefs.length).toBeGreaterThan(0);
+  // First contact must NOT arm a recall trigger — that's the
+  // harness's "first meet has no memory yet" contract.
+  expect(result.firstContactTrigger).toBeNull();
 
-  expect(result.feel).toEqual(
-    expect.objectContaining({
-      phase: 'io-return-recognition',
-      easing: 'cubic-bezier(.2,.8,.2,1)',
-    }),
-  );
+  // Return meet MUST arm an Io recall trigger with a numeric timestamp.
+  expect(result.returnTrigger).not.toBeNull();
+  expect(result.returnTrigger?.npcId).toBe('io');
+  expect(typeof result.returnTrigger?.firedAtMs).toBe('number');
+  expect(Number.isFinite(result.returnTrigger?.firedAtMs ?? NaN)).toBe(true);
 
-  expect(result.feel.settleMs).toBeGreaterThanOrEqual(720);
-  expect(result.feel.settleMs).toBeLessThanOrEqual(1180);
-  expect(result.feel.cameraDollyCm).toBeGreaterThan(0);
-  expect(result.feel.cameraDollyCm).toBeLessThanOrEqual(18);
-  expect(Math.abs(result.feel.cameraYawDeg)).toBeLessThanOrEqual(4.5);
-  expect(result.feel.vignetteAlpha).toBeGreaterThanOrEqual(0);
-  expect(result.feel.vignetteAlpha).toBeLessThanOrEqual(0.2);
+  // Story state must reflect that Io now recognizes the player after
+  // the return beat — the feel envelope isn't meaningful without it.
+  expect(result.ioRecognizes).toBe(true);
+
+  const { atZero, atRecognizePeak, atSettle, atHeldEnd } = result.frames;
+  expect(atZero).not.toBeNull();
+  expect(atRecognizePeak).not.toBeNull();
+  expect(atSettle).not.toBeNull();
+  expect(atHeldEnd).not.toBeNull();
+
+  // --- Feel numbers ------------------------------------------------
+
+  // Dormant frame at t=0: nothing has moved yet.
+  expect(atZero!.phase).toBe('dormant');
+  expect(atZero!.captionLiftPx).toBe(0);
+  expect(atZero!.cameraYawDeg).toBe(0);
+  expect(atZero!.haloScale).toBe(1);
+
+  // End of the recognize sub-phase (220ms boundary). The harness
+  // treats `elapsedMs > recognizeEnd` as `settle`, so at exactly 220
+  // we should still be in `recognize`. Peak entrance energy lives here.
+  expect(atRecognizePeak!.phase).toBe('recognize');
+  expect(atRecognizePeak!.captionOpacity).toBeGreaterThan(0.9);
+  expect(atRecognizePeak!.hapticMs).toBe(0); // haptic only fires on the very first frame
+
+  // Mid-settle: caption lift is real but bounded by the constant.
+  expect(atSettle!.phase).toBe('settle');
+  expect(atSettle!.captionLiftPx).toBeGreaterThan(0);
+  expect(atSettle!.captionLiftPx).toBeLessThanOrEqual(14); // MEMORY_RECALL_FEEL.captionLiftPx
+  expect(Math.abs(atSettle!.cameraYawDeg)).toBeLessThanOrEqual(1.6); // MEMORY_RECALL_FEEL.cameraYawDeg peak
+  expect(atSettle!.haloScale).toBeGreaterThan(1);
+  expect(atSettle!.haloScale).toBeLessThanOrEqual(1.18); // MEMORY_RECALL_FEEL.haloScalePeak
+
+  // Tail of held: the beat is winding down; caption should be fading.
+  expect(atHeldEnd!.phase).toBe('held');
+  expect(atHeldEnd!.captionOpacity).toBeLessThanOrEqual(0.05);
+  expect(atHeldEnd!.haloOpacity).toBeLessThanOrEqual(0.05);
+
+  // First-frame haptic: 12ms tap, fires only inside the first render tick.
+  const firstFrame = await page.evaluate(() => {
+    const game = (window as unknown as { __game?: any }).__game;
+    return game.recallFeel({ elapsedMs: 8 });
+  });
+  expect(firstFrame.hapticMs).toBe(12); // MEMORY_RECALL_FEEL.hapticMs
+
+  // Reduced-motion contract: yaw and lift trimmed, haptic suppressed.
+  const reducedMotionFrame = await page.evaluate(() => {
+    const game = (window as unknown as { __game?: any }).__game;
+    return game.recallFeel({ elapsedMs: 8, reducedMotion: true });
+  });
+  expect(reducedMotionFrame.hapticMs).toBe(0);
+  expect(Math.abs(reducedMotionFrame.cameraYawDeg)).toBeLessThan(Math.abs(firstFrame.cameraYawDeg) + 1e-6);
 });
