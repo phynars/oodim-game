@@ -17,12 +17,29 @@
 // The pure checks below pin the state-machine behaviour; the vitest suite
 // on the gesture judge pins the same behaviour through the summarised
 // `PacketChoiceGesture` surface. They cannot drift because both call
-// `stepPacketChoiceIntentWithReleaseForgiveness`.
+// `stepPacketChoiceIntentWithReleaseForgiveness` (or the shared
+// `isReleaseInsideForgivenessWindow` helper for the tap-preserve side).
+//
+// SINGLE DECISION PATH INVARIANT (PR #1019, re-affirmed PR #1050 review):
+// the HOLD-THRESHOLD SHORTFALL comparison — "is this release within
+// `releaseGraceMs` of `requiredHoldMs`?" — flows through
+// `isReleaseInsideForgivenessWindow` in exactly one place, so the
+// gesture judge and the state machine cannot disagree about which
+// releases commit. Do NOT re-inline that shortfall arithmetic in the
+// stepper.
+//
+// Narrower than it sounds: `releaseGraceMs` is ALSO read directly for
+// the stale-release age check (~line 106) and referenced in the fixture
+// setups in `checkPacketChoiceReleaseForgiveness` below. Those reads are
+// intentional — they are not the shared shortfall decision the helper
+// pins. If you add a NEW hold-threshold-vs-elapsed shortfall check,
+// route it through `isReleaseInsideForgivenessWindow`; the stale-age
+// comparison and fixture arithmetic stay where they are.
 //
 // Repo convention (see `packetChoiceFeel.ts` + its `.test.ts` shim, PR #973):
 //   - The `.ts` module OWNS `check*()` + `run*Checks()`. The sibling
-//     `.test.ts` is a thin runner so pure-runner + Playwright can import
-//     without double-executing at module load.
+//     `.test.ts` is a thin re-export so pure-runner + Playwright can
+//     import without double-executing at module load.
 //   - Plain TS: no vitest, no jest. `typecheck:aftersign` is the type
 //     gate; `test:aftersign:pure` executes the checks.
 
@@ -114,7 +131,10 @@ export function stepPacketChoiceIntentWithReleaseForgiveness(
   }
 
   // The core rule: a release within `releaseGraceMs` of the threshold
-  // commits. Falls through to the base cancel otherwise.
+  // commits. Falls through to the base cancel otherwise. Note: this is
+  // the ONLY place the stepper reads `releaseGraceMs` for the shortfall
+  // comparison — the arithmetic lives inside the helper so the gesture
+  // judge and this state machine share one decision.
   if (!isReleaseInsideForgivenessWindow(elapsedMs, requiredHoldMs, config.releaseGraceMs)) {
     return stepPacketChoiceIntent(intent, input, config)
   }
