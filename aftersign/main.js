@@ -306,6 +306,12 @@ let rainFilter;
 let kioskHum;
 let kioskHumGain;
 
+const ioRecognitionDialogueSnippets = () => buildIoRecognitionDialogueSnippets({
+  playerId: state.player.id,
+  packetSealed: state.packet.sealed,
+  memory: state.npcs.io.memory,
+});
+
 const lineForBeat = () => {
   // #957: If a returning-session boot line was computed at module init
   // (delivered save, restored via readAuthoritativeSave / readStored),
@@ -338,9 +344,12 @@ const lineForBeat = () => {
     // line/outcome mismatch. No-op when breakMode is "".
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
-    return speakAsSealed
-      ? "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it."
-      : "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept the risk beside your name.";
+    const snippets = buildIoRecognitionDialogueSnippets({
+      playerId: state.player.id,
+      packetSealed: speakAsSealed,
+      memory: state.npcs.io.memory,
+    });
+    return selectIoRecognitionDialogueLine(snippets).line;
   }
 
   return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
