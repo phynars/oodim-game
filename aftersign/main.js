@@ -347,7 +347,10 @@ const lineForBeat = () => {
       packetSealed: speakAsSealed,
       memory: state.npcs.io.memory,
     });
-    return selectIoRecognitionDialogueLine(snippets).line;
+    // Selector needs `memory` to gate deep-recall on the real
+    // second-action (route-attention `object === "done"`). Without
+    // this the fallback path always speaks the returning tier.
+    return selectIoRecognitionDialogueLine(snippets, { memory: state.npcs.io.memory }).line;
   }
 
   return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
@@ -450,7 +453,11 @@ const syncIoLine = () => {
       packetSealed: speakAsSealed,
       memory: state.npcs.io.memory,
     });
-    nextMemoryRefs = [...selectIoRecognitionDialogueLine(snippets).memoryRefs];
+    nextMemoryRefs = [
+      ...selectIoRecognitionDialogueLine(snippets, {
+        memory: state.npcs.io.memory,
+      }).memoryRefs,
+    ];
   }
   if (
     state.npcs.io.lastLine !== nextLine

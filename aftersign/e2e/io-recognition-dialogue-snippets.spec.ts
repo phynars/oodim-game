@@ -9,7 +9,12 @@ type RecognitionDialogueSnippet = {
   npcId: "io";
   tier: Tier;
   line: string;
+  // Citation set — mirrored into `npcs.io.lastLineMemoryRefs` when the
+  // tier is spoken. Contract-clean (delivery id only, no route-attention).
   memoryRefs: string[];
+  // Provenance set — which memory facts influenced the LINE choice.
+  // Deep-recall carries >=2 here (delivery + route-attention).
+  sourceMemoryIds: string[];
 };
 
 type GameSurface = {
@@ -78,8 +83,16 @@ test("Io recognition beat exposes player-keyed dialogue snippets for all recall 
   const returning = snippets.find((snippet) => snippet.tier === "returning")!;
   const deepRecall = snippets.find((snippet) => snippet.tier === "deep-recall")!;
 
+  // memoryRefs is the CITATION set — contract-clean, delivery id only.
   expect(returning.memoryRefs.length).toBeGreaterThanOrEqual(1);
-  expect(deepRecall.memoryRefs.length).toBeGreaterThanOrEqual(2);
+  expect(deepRecall.memoryRefs).toEqual(returning.memoryRefs);
+  // sourceMemoryIds is the wider provenance — deep-recall draws on
+  // both delivery-outcome AND route-attention memories.
+  expect(deepRecall.sourceMemoryIds.length).toBeGreaterThanOrEqual(2);
+
+  // This spec exercises the `acknowledge-kiosk` path (route-attention
+  // object === "done"), so the selector speaks the deep-recall tier
+  // and mirrors its (delivery-only) memoryRefs into lastLineMemoryRefs.
   expect(snapshot.npcs.io.lastLine).toBe(deepRecall.line);
   expect(snapshot.npcs.io.lastLineMemoryRefs).toEqual(deepRecall.memoryRefs);
 });
