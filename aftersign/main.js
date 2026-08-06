@@ -53,6 +53,10 @@ import {
   attachMobileMovePad,
   checkMobileMovePadFeel,
 } from "./src/mobileMovePad.js";
+import {
+  buildIoRecognitionDialogueSnippets,
+  selectIoRecognitionDialogueLine,
+} from "./src/ioRecognitionDialogue.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -306,12 +310,6 @@ let rainFilter;
 let kioskHum;
 let kioskHumGain;
 
-const ioRecognitionDialogueSnippets = () => buildIoRecognitionDialogueSnippets({
-  playerId: state.player.id,
-  packetSealed: state.packet.sealed,
-  memory: state.npcs.io.memory,
-});
-
 const lineForBeat = () => {
   // #957: If a returning-session boot line was computed at module init
   // (delivered save, restored via readAuthoritativeSave / readStored),
@@ -436,17 +434,24 @@ const persistAuthoritative = async ({ dirty = false } = {}) => {
 
 const syncIoLine = () => {
   const nextLine = lineForBeat();
-  // Only ids the recognition line actually references belong here.
-  // The line paraphrases the delivery-outcome fact ("blue seal,
-  // unbroken" / "blue route delivered. The seal did not survive") — the second
-  // action route-attention fact is durable memory but is NOT spoken,
-  // so it must not appear in lastLineMemoryRefs (npc-memory-roundtrip
-  // asserts exact-equality with just the minted delivery-outcome id).
-  const nextMemoryRefs = state.scene.beat === "io-return-recognition"
-    ? state.npcs.io.memory
-        .filter((fact) => fact.kind === "delivery-outcome")
-        .map((fact) => fact.id)
-    : [];
+  // At the recognition beat, memoryRefs come from the SAME snippet
+  // the dialogue module selected to speak — so spoken line and its
+  // memoryRefs are minted from one source of truth. Deep-recall
+  // (both delivery-outcome AND route-attention remembered) carries
+  // two refs; returning carries one; first-meeting carries zero.
+  // The e2e io-recognition-dialogue-snippets spec asserts
+  // lastLineMemoryRefs.toEqual(deepRecall.memoryRefs).
+  let nextMemoryRefs = [];
+  if (state.scene.beat === "io-return-recognition") {
+    const rememberedSealed = state.packet.sealed;
+    const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
+    const snippets = buildIoRecognitionDialogueSnippets({
+      playerId: state.player.id,
+      packetSealed: speakAsSealed,
+      memory: state.npcs.io.memory,
+    });
+    nextMemoryRefs = [...selectIoRecognitionDialogueLine(snippets).memoryRefs];
+  }
   if (
     state.npcs.io.lastLine !== nextLine
     || state.npcs.io.lastLineMemoryRefs.length !== nextMemoryRefs.length
@@ -609,6 +614,16 @@ const publishState = () => {
         ...clone(state.npcs.io),
         memories: clone(state.npcs.io.memory),
         trustPosture: trustPostureForOutcome(state.delivery.outcome),
+        // Player-keyed recognition dialogue snippets — three tiers
+        // (first-meeting / returning / deep-recall) minted from Io's
+        // durable memory. Published on every publishState() so the
+        // io-recognition-dialogue-snippets e2e can assert tier order
+        // and per-tier memoryRef counts at the recognition beat.
+        recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
+          playerId: state.player.id,
+          packetSealed: state.packet.sealed,
+          memory: state.npcs.io.memory,
+        }),
       },
       orra: {
         id: "orra",
@@ -656,6 +671,11 @@ const publishState = () => {
           ...state.npcs.io,
           memories: state.npcs.io.memory,
           trustPosture: trustPostureForOutcome(state.delivery.outcome),
+          recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
+            playerId: state.player.id,
+            packetSealed: state.packet.sealed,
+            memory: state.npcs.io.memory,
+          }),
         },
         orra: {
           id: "orra",
