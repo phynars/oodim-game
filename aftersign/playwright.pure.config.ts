@@ -9,8 +9,12 @@ import { defineConfig } from "@playwright/test";
 // window.__game, no vite-preview). Examples on this branch:
 //   - aftersign/e2e/packet-intent-contract.spec.ts
 //     (`runPacketIntentChecks()` — 11 controller invariants)
-//   - aftersign/e2e/io-recognition-cue-contract.spec.ts
-//   - aftersign/e2e/recognition-beat-contract.spec.ts
+//   - aftersign/e2e/io-return-memory-beat-contract.spec.ts
+//   - aftersign/e2e/orra-recognition-memory-contract.spec.ts
+// Specs whose subgraph is fully `.ts`-extensioned graduate to the
+// plain-Node runner in `aftersign/pure-runner.ts`; the four #978
+// bundles (recognitionBeat, ioRecognitionCueContract, firstCameraMove,
+// memoryPromptTiming) have already made that jump.
 // Under the main config those specs still pay the full boot tax
 // (vite-preview + SwiftShader) even though they need neither, and they
 // inherit `retries: 3` — which HIDES a real regression behind up to
@@ -57,10 +61,6 @@ export default defineConfig({
   testMatch: [
     "packet-intent-contract.spec.ts",
     "packet-intent-vertical-slice-contract.spec.ts",
-    "io-recognition-cue-contract.spec.ts",
-    "recognition-beat-contract.spec.ts",
-    "first-camera-move-feel-contract.spec.ts",
-    "memory-prompt-timing-feel-contract.spec.ts",
     "io-return-memory-beat-contract.spec.ts",
     "io-return-memory-save-load-contract.spec.ts",
     "io-returning-recognition-line-contract.spec.ts",

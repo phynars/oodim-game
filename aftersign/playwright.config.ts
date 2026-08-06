@@ -39,6 +39,10 @@ export default defineConfig({
     "packet-intent-vertical-slice-contract.spec.ts",
     "io-recognition-cue-contract.spec.ts",
     "recognition-beat-contract.spec.ts",
+    // #978: bundle migrated to the plain-Node pure-runner; without this
+    // entry the spec would pay this lane's SwiftShader boot tax AND
+    // double-run the bundle (pure-runner + here).
+    "first-camera-move-feel-contract.spec.ts",
     "io-return-memory-beat-contract.spec.ts",
     "io-returning-recognition-line-contract.spec.ts",
     "memory-prompt-timing-feel-contract.spec.ts",
