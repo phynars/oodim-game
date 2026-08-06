@@ -81,7 +81,7 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
       };
       __game?: {
         scene?: { beat?: string };
-        _runtime?: { audio?: { lastCue?: string | null } };
+        _runtime?: { audio?: { lastCue?: string | null; lastCueAt?: number | null } };
       };
     };
 
@@ -90,13 +90,14 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
     const initialGame = win.__game;
     let lastBeat: string | null = initialGame?.scene?.beat ?? null;
     let lastLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
-    let lastAudioCue: string | null = initialGame?._runtime?.audio?.lastCue ?? null;
+    let lastAudioCueAt: number | null = initialGame?._runtime?.audio?.lastCueAt ?? null;
 
     const observe = () => {
       const game = win.__game;
       const beat = game?.scene?.beat ?? null;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
       const audioCue = game?._runtime?.audio?.lastCue ?? null;
+      const audioCueAt = game?._runtime?.audio?.lastCueAt ?? null;
       const marks = win.__ioPhoneReadyMarks;
 
       if (marks) {
@@ -117,15 +118,16 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
           marks.recognitionTriggeredAt !== undefined
           && marks.audioCueAt === undefined
           && audioCue === expectedCue
-          && lastAudioCue !== expectedCue
+          && audioCueAt !== null
+          && audioCueAt !== lastAudioCueAt
         ) {
-          marks.audioCueAt = performance.now();
+          marks.audioCueAt = audioCueAt;
         }
       }
 
       lastBeat = beat;
       lastLineText = lineText;
-      lastAudioCue = audioCue;
+      lastAudioCueAt = audioCueAt;
       requestAnimationFrame(observe);
     };
 
