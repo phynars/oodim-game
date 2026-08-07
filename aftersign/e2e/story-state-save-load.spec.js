@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-// Reload-durability contract for AFTERSIGN's authoritative save.
+// Reload-durability contract for AFTERSIGN's LOCAL-FALLBACK save (the
+// synchronous path deliverPacket() actually takes: writeStored →
+// localStorage, save.authority stays "local-fallback"). The
+// server-authoritative branch (persistAuthoritative → writeAuthoritativeSave,
+// save.authority === "server") is a separate code path and NOT what this
+// spec exercises — see Mara's nit on PR #1060.
 //
 // Asserts against the SHIPPED window.__game surface (aftersign/main.js —
 // state.scene.id === "io-night-post-kiosk", npcs.io.lastLine, save.lastPersistedAt,
@@ -49,6 +54,9 @@ async function waitForGameReady(page) {
 async function readSnapshot(page) {
   return page.evaluate(() => {
     const game = window.__game;
+    const memory = Array.isArray(game.npcs.io.memory) ? game.npcs.io.memory : [];
+    const outcomeFact = memory.find((f) => f && f.kind === "delivery-outcome");
+    const routeFact = memory.find((f) => f && f.predicate === "kiosk-second-action");
     return {
       beat: game.scene.beat,
       packetDelivered: game.packet.delivered,
@@ -56,15 +64,45 @@ async function readSnapshot(page) {
       packetRoute: game.packet.route,
       deliveryOutcome: game.delivery.outcome,
       ioLastLine: game.npcs.io.lastLine,
-      ioMemoryLength: Array.isArray(game.npcs.io.memory)
-        ? game.npcs.io.memory.length
-        : 0,
+      ioMemoryLength: memory.length,
+      ioMemoryPacketOutcome: outcomeFact ? outcomeFact.object : null,
+      ioMemorySecondAction: routeFact ? routeFact.object : null,
       saveRevision: game.save.revision,
       saveLastPersistedAt: game.save.lastPersistedAt,
       saveAuthority: game.save.authority,
     };
   });
 }
+
+// Mirror of `chooseIoReturningSessionLine` from
+// packages/aftersign/src/ioReturningSession.ts, restricted to the two
+// dimensions main.js:1764-1777 actually feeds it at boot (packetOutcome +
+// routeAttention derived from durable memory). Kept literal so a
+// paraphrase of the shipped lines will break this spec — same posture
+// as the ioReturningSession unit tests.
+const expectedReturningLine = ({ packetOutcome, secondAction }) => {
+  const routeAttention =
+    secondAction === "done" ? "listened" : secondAction === "skipped" ? "skipped" : null;
+  if (packetOutcome === "sealed" && routeAttention === "listened") {
+    return "You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.";
+  }
+  if (packetOutcome === "sealed" && routeAttention === "skipped") {
+    return "You came back with the blue seal unbroken, and you still ran before the route finished. Reliable hands, impatient feet.";
+  }
+  if (packetOutcome === "opened" && routeAttention === "listened") {
+    return "You came back with a broken seal, but you listened before you ran. One clean habit is still a habit.";
+  }
+  if (packetOutcome === "opened" && routeAttention === "skipped") {
+    return "You came back with a broken seal and half my route. That is not ideal, but it is enough to route.";
+  }
+  if (packetOutcome === "sealed") {
+    return "You came back. So did the blue seal, unbroken. That gives me two facts to trust.";
+  }
+  if (packetOutcome === "opened") {
+    return "You came back. The seal did not. I can use one of those facts.";
+  }
+  return null;
+};
 
 test("served AFTERSIGN page reloads the prior beat, Io memory, and save metadata", async ({
   page,
@@ -107,8 +145,11 @@ test("served AFTERSIGN page reloads the prior beat, Io memory, and save metadata
       beat: expect.stringMatching(/^(packet-delivered|io-return-recognition)$/),
     });
 
-  // Wait for lastPersistedAt to actually be a string before snapshotting —
-  // deliverPacket() awaits writeAuthoritativeSave, and we need the stamp
+  // Wait for lastPersistedAt to actually be a string before snapshotting.
+  // deliverPacket() ends with a synchronous persist({ dirty: true }) which
+  // stamps state.save.lastPersistedAt via writeStored (localStorage only) —
+  // save.authority stays "local-fallback" here; the server-authoritative
+  // write is a separate code path (persistAuthoritative). We need the stamp
   // captured pre-reload so the equality check post-reload has something to
   // compare against.
   await expect
@@ -165,14 +206,34 @@ test("served AFTERSIGN page reloads the prior beat, Io memory, and save metadata
     "io-return-recognition",
   ]).toContain(afterReload.beat);
 
-  // Io's spoken line is a pure function of (beat, packet.sealed, memory);
-  // if all three round-tripped, the line does too.
-  if (afterReload.beat === beforeReload.beat) {
-    expect(afterReload.ioLastLine).toBe(beforeReload.ioLastLine);
-  } else {
-    // Different beat post-reload → different verbatim line by design;
-    // just assert we got one.
-    expect(typeof afterReload.ioLastLine).toBe("string");
-    expect(afterReload.ioLastLine.length).toBeGreaterThan(0);
+  // Io's post-reload line is NOT the pre-reload line even when the beat
+  // matches: the returning-session boot override (main.js `lineForBeat` /
+  // `ioReturningBootLine`, wired at boot via `chooseIoReturningSessionLine`
+  // — main.js:1764-1777) deliberately swaps in a "you came back" line for
+  // the persisted boot beat. Pre-reload speaks the beat's own verbatim
+  // copy ("Done. Blue route, clean handoff. Come back after the rain...");
+  // post-reload speaks a `ioReturningSessionLines` entry keyed off the
+  // durable delivery-outcome + route-attention memory facts.
+  //
+  // Contract:
+  //   1. the line is present and non-empty (always), and
+  //   2. at the persisted boot beat (packet-delivered), the line matches
+  //      `chooseIoReturningSessionLine` fed the round-tripped memory —
+  //      that's the durability proof, and it's the assertion that would
+  //      have failed against the pre-reload line.
+  expect(typeof afterReload.ioLastLine).toBe("string");
+  expect(afterReload.ioLastLine.length).toBeGreaterThan(0);
+
+  if (afterReload.beat === "packet-delivered") {
+    const derivedReturningLine = expectedReturningLine({
+      packetOutcome: afterReload.ioMemoryPacketOutcome,
+      secondAction: afterReload.ioMemorySecondAction,
+    });
+    // The delivery-outcome fact must be present post-reload (it's what
+    // ioReturningBootLine keys off — its absence would drop the override
+    // entirely and speak the fresh "Done. Blue route..." copy, which is
+    // exactly the drift Mara flagged).
+    expect(derivedReturningLine).not.toBeNull();
+    expect(afterReload.ioLastLine).toBe(derivedReturningLine);
   }
 });
