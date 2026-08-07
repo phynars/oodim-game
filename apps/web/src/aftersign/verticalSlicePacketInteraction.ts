@@ -38,6 +38,56 @@ const PACKET_CONFIRM_LABELS: Record<AftersignInteractionConfirmKind, string> = {
   packetInspect: "Inspecting",
 };
 
+const PACKET_CONFIRM_BLOOM_OVERRIDES: Record<
+  AftersignInteractionConfirmKind,
+  Partial<PlayAftersignConfirmFeelOptions["feel"]>
+> = {
+  packetOpen: {
+    durationMs: 420,
+    pulseMs: 180,
+    liftPx: 10,
+    bloomOpacity: 0.78,
+    ringScaleStart: 0.8,
+    ringScaleEnd: 1.42,
+    shakePx: 3,
+  },
+  packetPreserve: {
+    durationMs: 460,
+    pulseMs: 190,
+    liftPx: 8,
+    bloomOpacity: 0.66,
+    ringScaleStart: 0.86,
+    ringScaleEnd: 1.3,
+    shakePx: 1.5,
+  },
+  packetInspect: {
+    durationMs: 360,
+    pulseMs: 150,
+    liftPx: 6,
+    bloomOpacity: 0.54,
+    ringScaleStart: 0.9,
+    ringScaleEnd: 1.2,
+    shakePx: 1,
+  },
+};
+
+function getPacketConfirmBloomFeel(
+  kind: AftersignInteractionConfirmKind,
+  reducedMotion: boolean,
+): Partial<PlayAftersignConfirmFeelOptions["feel"]> {
+  const feel = PACKET_CONFIRM_BLOOM_OVERRIDES[kind];
+
+  if (!reducedMotion) return feel;
+
+  return {
+    ...feel,
+    liftPx: 0,
+    shakePx: 0,
+    ringScaleStart: 1,
+    ringScaleEnd: 1,
+  };
+}
+
 export function resolveAftersignPacketConfirmInteraction(
   state: AftersignVerticalSliceState,
   action: AftersignPacketInteractionAction = "commit",
@@ -76,7 +126,7 @@ export function playAftersignPacketConfirmInteractionFeel(
   return playAftersignConfirmFeel({
     ...playOptions,
     label: label ?? PACKET_CONFIRM_LABELS[interaction.kind],
-    feel: reducedMotion ? { shakePx: 0 } : undefined,
+    feel: getPacketConfirmBloomFeel(interaction.kind, reducedMotion),
   });
 }
 
