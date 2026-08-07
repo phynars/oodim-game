@@ -45,7 +45,6 @@ import { runRecognitionBeatChecks } from "./src/recognitionBeat.test.ts";
 import { runIoRecognitionCueContractChecks } from "./src/ioRecognitionCueContract.test.ts";
 import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
-import { runPacketChoiceIntentChecks } from "./src/packetChoiceIntent.test.ts";
 
 type Runner = {
   label: string;
