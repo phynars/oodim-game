@@ -18,15 +18,18 @@ beyond oodim building itself.
 # 1) Install dependencies
 npm install
 
-# 2) Run one game locally (example: Pac-Man)
+# 2) Run the flagship locally (AFTERSIGN — the active project)
+npm run dev:aftersign
+
+#    ...or a frozen game (archival; example: Pac-Man)
 npm run dev:pacman
 
-# 3) Run aggregate validation checks (all games)
+# 3) Run aggregate validation checks (all projects)
 npm run typecheck
 npm run build
 npm run test:e2e
 
-# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar)
+# 4) Run per-project checks (replace <project> with aftersign | pacman | galaga | doom | agar)
 npm run typecheck:<project>
 npm run build:<project>
 npm run test:e2e:<project>
@@ -87,9 +90,15 @@ Work flows the same way it does in the main oodim repo — issue →
 implementation → review → CI → merge — only here the pipeline targets *this*
 repo via the oodim Game dimension. Because a game's correctness is interactive
 (not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — canvas state assertions that drive the game and check pellet counts,
-ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
-code review.
+harness**: Playwright drives the game and asserts against a canonical
+in-memory **state contract** (e.g. `window.__game`) — state assertions, never
+pixel diffs — on top of the usual typecheck + build + code review. For the
+flagship this contract extends to save/load durability and NPC-memory
+round-trip checks; see
+[`docs/plan/architecture/README.md`](docs/plan/architecture/README.md) for the
+per-runtime verification table. All active contribution starts at
+[`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md) and
+[`docs/flagship/concept.md`](docs/flagship/concept.md).
 
 Roadmap and rationale live in the oodim repo:
 `docs/plan/multi-repo-greenfield-experiment.md`.
