@@ -220,6 +220,13 @@ const state = {
     fixedStepsLastFrame: 0,
     droppedStepMs: 0,
     contract: { ...MOVEMENT },
+    inputToRenderLatency: {
+      budget: { ...INPUT_TO_RENDER_LATENCY },
+      samples: [],
+      maxLatencyMs: 0,
+      averageLatencyMs: 0,
+      allWithinBudget: true,
+    },
     mobilePad: {
       active: false,
       input: { x: 0, z: 0, knobX: 0, knobY: 0, magnitude: 0 },
