@@ -2,55 +2,60 @@ import { expect, test } from "@playwright/test";
 
 // Reload-durability contract for AFTERSIGN's story/save round-trip.
 //
-// Focus: the fields the durable-save payload actually carries —
-// packet.delivered / packet.sealed / delivery.outcome / npcs.io.memory /
-// save.revision / save.lastPersistedAt / save.authority — MUST survive
-// a real `page.reload()` (fresh module evaluation, fresh window.__game).
+// Focus: the FIELDS the durable-save payload actually carries —
+// packet.delivered / packet.sealed / delivery.outcome /
+// npcs.io.memory / save.revision / save.lastPersistedAt — MUST survive
+// a reload (fresh module evaluation).
+//
+// Cold-start posture: this spec mirrors flagship-reload-beat-regression.spec.ts
+// exactly — ONE `page.goto`, then `input.forceReload()` (the in-page
+// reload surface that reloads via `location.reload()` under a shared
+// waitForStoryIdle gate). That's the idiom the aftersign lane is
+// budgeted for and the shape sibling reload specs prove reliably green
+// against SwiftShader cold-start. The previously-drafted variant used
+// `page.reload()` and a `?slot=…` query, which paid a second Playwright-
+// driven boot on top of the initial vite-preview + SwiftShader cold
+// boot — the exact flake profile that got `durable-save-load.spec.ts`
+// `.describe.skip`'d (see #700 / #506 / #590 / #766).
 //
 // Scope carve-out — this spec deliberately does NOT re-assert:
 //   • The RETURNING-SESSION boot line (`ioReturningBootLine` /
-//     `chooseIoReturningSessionLine`).  That contract is owned end-to-end
-//     by `io-returning-session-boot.spec.ts` at both branches (listened /
-//     skipped) plus the yield-to-recognition transition.  Duplicating
-//     the assertion here would give TWO owners for one runtime shape —
-//     the drift the reviewer flagged on this PR.
-//   • The authoritative (server) save path.  `flagship-surface-contract`
-//     owns that under `clearLocalState: true` (see PR #1060 review).
+//     `chooseIoReturningSessionLine`). Owned by
+//     `io-returning-session-boot.spec.ts` at both branches.
+//   • The sealed/opened Io line SPLIT at recognition. Owned by
+//     `flagship-reload-beat-regression.spec.ts`.
+//   • Any `lastLine` assertion. `lineForBeat()` has the returning-line
+//     override guard (main.js:321-326) that swaps in
+//     `chooseIoReturningSessionLine(...)` while the beat still matches
+//     the persisted boot beat — draft #3 was rejected for asserting
+//     on it. This spec reads the fields the payload persists, not the
+//     line the render path speaks.
 //
-// Cold-start posture (mirrors io-returning-session-boot.spec.ts and
-// flagship-reload-beat-regression.spec.ts):
-//   • ONE `page.goto` at test start.  The reload uses `page.reload()`
-//     — a real document teardown that re-runs module init (so
-//     readStored → state hydration exercises the durable path) but
-//     without a second `page.goto`.  The sibling `durable-save-load`
-//     spec was `.describe.skip`'d exactly because three cold `page.goto`
-//     boots per test dragged the aftersign lane onto the SwiftShader
-//     cold-start flake documented in #700 / #506 / #590 / #766; this
-//     spec's ONE goto + ONE reload keeps the boot count below that
-//     flake threshold.
-//   • Progression goes through the shipped `window.__game.input.choose(...)`
-//     surface (keep-sealed → deliver-packet), which is the same idiom
-//     the sibling reload specs use — not the synthetic
-//     `window.__game.deliverPacket()` shortcut, which skips the
-//     packet-choice beat that mints the `secondAction` value the
-//     memory fact reads.
+// The additive value here vs the two sibling reload specs:
+//   • `save.revision` bumps across the reload boundary (proof persist()
+//     ran).
+//   • `save.lastPersistedAt` is a non-null ISO string that survives
+//     reload (proof #741's timestamp round-trips).
+//   • `packet.delivered` / `packet.sealed` / `delivery.outcome` are all
+//     read together from the same snapshot (proof the shape is
+//     round-tripped as ONE payload, not reconstructed field-by-field
+//     from `delivery.outcome` alone — the drift the reviewer flagged).
 
-const uniqueSlot = () =>
-  `story-save-load-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+// Narrow local type for the snapshot fields this spec reads. Playwright
+// strips TypeScript at collect time, but the plain-JS spec still benefits
+// from the JSDoc shape as documentation — no runtime impact.
 
 const WAIT_MS = 15_000;
 
-async function waitForReady(page) {
+async function waitForSurface(page) {
   await page.waitForFunction(
     () =>
-      window.__game
-      && window.__game.version === 1
-      && window.__game.scene
-      && window.__game.scene.ready === true
-      && window.__game.input
-      && typeof window.__game.input.choose === "function"
-      && typeof window.__game.input.forceSave === "function"
-      && typeof window.__game.input.waitForStoryIdle === "function",
+      typeof window.__game?.getSnapshot === "function"
+      && typeof window.__game?.input?.choose === "function"
+      && typeof window.__game?.input?.forceSave === "function"
+      && typeof window.__game?.input?.forceReload === "function"
+      && typeof window.__game?.input?.waitForStoryIdle === "function"
+      && window.__game?.scene?.ready === true,
     undefined,
     { timeout: WAIT_MS },
   );
@@ -59,105 +64,98 @@ async function waitForReady(page) {
 
 async function readSnapshot(page) {
   return page.evaluate(() => {
-    const game = window.__game;
-    const memory = Array.isArray(game.npcs.io.memory) ? game.npcs.io.memory : [];
+    const snap = window.__game.getSnapshot();
+    const memory = Array.isArray(snap.npcs?.io?.memory) ? snap.npcs.io.memory : [];
     const outcomeFact = memory.find((f) => f && f.kind === "delivery-outcome");
-    const routeFact = memory.find((f) => f && f.predicate === "kiosk-second-action");
     return {
-      beat: game.scene.beat,
-      packetDelivered: game.packet.delivered,
-      packetSealed: game.packet.sealed,
-      packetRoute: game.packet.route,
-      deliveryOutcome: game.delivery.outcome,
+      beat: snap.scene.beat,
+      packetDelivered: snap.packet.delivered,
+      packetSealed: snap.packet.sealed,
+      packetRoute: snap.packet.route,
+      deliveryOutcome: snap.delivery.outcome,
       ioMemoryLength: memory.length,
       ioMemoryPacketOutcome: outcomeFact ? outcomeFact.object : null,
-      ioMemorySecondAction: routeFact ? routeFact.object : null,
-      saveRevision: game.save.revision,
-      saveLastPersistedAt: game.save.lastPersistedAt,
-      saveAuthority: game.save.authority,
+      saveRevision: snap.save?.revision ?? null,
+      saveLastPersistedAt: snap.save?.lastPersistedAt ?? null,
     };
   });
 }
 
-test("served AFTERSIGN page durably round-trips packet, delivery, Io memory, and save metadata across page.reload()", async ({
+test("AFTERSIGN durably round-trips packet + delivery + Io memory + save metadata across forceReload()", async ({
   page,
 }) => {
-  // Cold-start budget: mirrors flagship-surface-contract.spec.ts's per-test
-  // 90s allowance.  One SwiftShader cold `page.goto` dominates wall time;
-  // `page.reload()` is cheaper than a second goto but still costs a
-  // full module re-eval, which is why the budget matches sibling
-  // reload specs rather than the default 30s.
+  // Match the sibling reload spec's per-test budget. SwiftShader cold
+  // boot dominates wall time on CI; forceReload() re-enters module init
+  // through location.reload() which is cheaper than a fresh page.goto()
+  // but still costs a full re-eval.
   test.setTimeout(90_000);
 
-  const slot = uniqueSlot();
-  await page.goto(`/?slot=${encodeURIComponent(slot)}`);
-  await waitForReady(page);
+  // Mirror flagship-reload-beat-regression.spec.ts:132 — relative "./"
+  // resolves under the config's baseURL (http://localhost:4374/aftersign/).
+  // No ?slot=, no extra query surface — fewer cold-start variables.
+  await page.goto("./");
+  await waitForSurface(page);
 
-  // Drive to packet-delivered through the shipped input surface.  Order
-  // matches io-returning-session-boot.spec.ts:
-  //   1. keep-sealed        — commits packet.sealed=true at packet-choice
-  //   2. acknowledge-kiosk  — records the deliberate SECOND action
-  //                           (state.player.secondAction = "done") so
-  //                           the route-attention memory fact isn't
-  //                           `null`-normalized to "skipped"
-  //   3. deliver-packet     — mints both memory facts, bumps
-  //                           save.revision, stamps save.lastPersistedAt
-  //                           (persist() runs synchronously inside
-  //                           deliverPacket at main.js), transitions
-  //                           scene.beat to "packet-delivered".
+  // Drive to packet-delivered via the shipped input surface. Two-step
+  // path (keep-sealed → deliver-packet) matches the sibling reload spec;
+  // the acknowledge-kiosk step is deliberately OMITTED — this spec asserts
+  // on payload durability, not on the two-fact memory shape (which
+  // `flagship-surface-contract.spec.ts` already owns).  deliverPacket()
+  // normalizes null secondAction → "skipped" at fact-mint time, so the
+  // memory array is length 2 either way.
   await page.evaluate(() => window.__game.input.choose("keep-sealed"));
-  await page.evaluate(() => window.__game.input.choose("acknowledge-kiosk"));
+  await page.evaluate(() => window.__game.input.waitForStoryIdle());
   await page.evaluate(() => window.__game.input.choose("deliver-packet"));
   await page.evaluate(() => window.__game.input.waitForStoryIdle());
 
-  // forceSave() is idempotent post-delivery (deliverPacket already
-  // persisted); calling it here belt-and-braces the "durable" claim —
-  // the save that survives reload is the one forceSave promised.
+  // deliverPacket() persists synchronously; forceSave() belt-and-braces
+  // the "durable" claim so the timestamp we snapshot is the one that
+  // must survive reload.
   await page.evaluate(() => window.__game.input.forceSave());
   await page.evaluate(() => window.__game.input.waitForStoryIdle());
 
   const beforeReload = await readSnapshot(page);
 
   expect(beforeReload.packetDelivered).toBe(true);
+  expect(beforeReload.packetSealed).toBe(true);
   expect(beforeReload.deliveryOutcome).toBe("sealed");
-  // Two memory facts: delivery-outcome (sealed) + route-attention
-  // (kiosk-second-action = done, from the acknowledge-kiosk choice).
+  // Two memory facts — delivery-outcome (sealed) + route-attention
+  // (skipped, since we didn't call acknowledge-kiosk).
   expect(beforeReload.ioMemoryLength).toBe(2);
   expect(beforeReload.ioMemoryPacketOutcome).toBe("sealed");
-  expect(beforeReload.ioMemorySecondAction).toBe("done");
   expect(beforeReload.saveRevision).toBeGreaterThan(0);
-  // #741: persist() / persistAuthoritative() stamp lastPersistedAt as an
-  // ISO string on every successful write.
+  // #741: persist()/persistAuthoritative() stamp an ISO string on every
+  // successful write.
   expect(typeof beforeReload.saveLastPersistedAt).toBe("string");
   expect(Number.isNaN(Date.parse(beforeReload.saveLastPersistedAt))).toBe(false);
-  // Beat is either the durable packet-delivered save (synchronous) or the
-  // scheduled io-return-recognition transition (~1180ms later).  Both
-  // are valid pre-reload states — the persisted beat is whichever is
-  // current when forceSave runs.
+  // Beat is either the durable packet-delivered save OR the ~1180ms
+  // scheduled io-return-recognition transition — same race the sibling
+  // reload spec documents.
   expect(["packet-delivered", "io-return-recognition"]).toContain(beforeReload.beat);
 
-  // Real reload — fresh document, fresh window.__game, fresh module
-  // init.  Storage keys off the ?slot=... query survive.
-  await page.reload();
-  await waitForReady(page);
+  // In-page reload — the shipped surface uses location.reload() under
+  // waitForStoryIdle, so we don't stack a second Playwright cold-boot
+  // on top of the SwiftShader boot.
+  await page.evaluate(() => window.__game.input.forceReload());
+  await waitForSurface(page);
 
   const afterReload = await readSnapshot(page);
 
-  // Durability contract: same packet outcome, same memory shape, same
-  // persisted timestamp, revision unchanged-or-advanced.
+  // Durability contract: same shape after fresh module evaluation.
   expect(afterReload.packetDelivered).toBe(true);
   expect(afterReload.packetSealed).toBe(beforeReload.packetSealed);
   expect(afterReload.packetRoute).toBe(beforeReload.packetRoute);
   expect(afterReload.deliveryOutcome).toBe(beforeReload.deliveryOutcome);
   expect(afterReload.ioMemoryLength).toBe(beforeReload.ioMemoryLength);
   expect(afterReload.ioMemoryPacketOutcome).toBe(beforeReload.ioMemoryPacketOutcome);
-  expect(afterReload.ioMemorySecondAction).toBe(beforeReload.ioMemorySecondAction);
+  // The persisted timestamp survives verbatim — proof #741's stamp
+  // round-trips through readStored/readAuthoritativeSave.
   expect(afterReload.saveLastPersistedAt).toBe(beforeReload.saveLastPersistedAt);
+  // Revision may bump if any post-reload persist ran during boot; it
+  // must NEVER regress.
   expect(afterReload.saveRevision).toBeGreaterThanOrEqual(beforeReload.saveRevision);
-
   // Beat lands in the same {packet-delivered, io-return-recognition}
   // set — the persisted beat is packet-delivered; whether the ~1180ms
-  // setTimeout has fired post-reload depends on timing, but both are
-  // valid restore targets per flagship-reload-beat-regression.spec.ts.
+  // setTimeout has fired post-reload depends on timing.
   expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.beat);
 });
