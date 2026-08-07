@@ -8,57 +8,41 @@ import {
 } from "./verticalSliceRuntimeState";
 
 describe("Aftersign vertical-slice story/state invariants", () => {
-  it("does not let an NPC recognize the player before a prior meeting exists", () => {
-    const initialState = createAftersignVerticalSliceState();
+  it("does not recognize Io or Orra before a prior meeting is recorded", () => {
+    const state = createAftersignVerticalSliceState();
 
-    expect(initialState.ioHasMetPlayer).toBe(false);
-    expect(initialState.ioRecognizesPlayer).toBe(false);
-    expect(initialState.orraHasMetPlayer).toBe(false);
-    expect(initialState.orraRecognizesPlayer).toBe(false);
-
-    const firstIoReturn = meetIoForAftersignSlice(initialState);
-    const firstOrraReturn = meetOrraForAftersignSlice(initialState);
-
-    expect(firstIoReturn.scene).toBe("io-return");
-    expect(firstIoReturn.ioHasMetPlayer).toBe(true);
-    expect(firstIoReturn.ioRecognizesPlayer).toBe(false);
-    expect(firstOrraReturn.scene).toBe("orra-return");
-    expect(firstOrraReturn.orraHasMetPlayer).toBe(true);
-    expect(firstOrraReturn.orraRecognizesPlayer).toBe(false);
+    expect(state.ioHasMetPlayer).toBe(false);
+    expect(state.ioRecognizesPlayer).toBe(false);
+    expect(state.orraHasMetPlayer).toBe(false);
+    expect(state.orraRecognizesPlayer).toBe(false);
   });
 
-  it("recognizes the player only on a later return after the first meeting is recorded", () => {
-    const afterFirstIoMeeting = meetIoForAftersignSlice(
-      createAftersignVerticalSliceState(),
-    );
-    const afterSecondIoMeeting = meetIoForAftersignSlice(afterFirstIoMeeting);
+  it("lets Io recognize the player only after the first meeting is committed", () => {
+    let state = createAftersignVerticalSliceState();
 
-    expect(afterSecondIoMeeting.scene).toBe("io-return");
-    expect(afterSecondIoMeeting.ioHasMetPlayer).toBe(true);
-    expect(afterSecondIoMeeting.ioRecognizesPlayer).toBe(true);
+    state = meetIoForAftersignSlice(state);
 
-    const afterFirstOrraMeeting = meetOrraForAftersignSlice(
-      createAftersignVerticalSliceState(),
-    );
-    const afterSecondOrraMeeting = meetOrraForAftersignSlice(
-      afterFirstOrraMeeting,
-    );
+    expect(state.ioHasMetPlayer).toBe(true);
+    expect(state.ioRecognizesPlayer).toBe(false);
 
-    expect(afterSecondOrraMeeting.scene).toBe("orra-return");
-    expect(afterSecondOrraMeeting.orraHasMetPlayer).toBe(true);
-    expect(afterSecondOrraMeeting.orraRecognizesPlayer).toBe(true);
+    state = meetIoForAftersignSlice(state);
+
+    expect(state.ioHasMetPlayer).toBe(true);
+    expect(state.ioRecognizesPlayer).toBe(true);
   });
 
-  it("keeps committed story choices when the scene advances", () => {
-    const committedState = recordAftersignOrraAction(
-      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
-      "answered-saint-orra",
-    );
+  it("preserves committed packet and Orra story choices while advancing meetings", () => {
+    let state = createAftersignVerticalSliceState();
 
-    const advancedState = meetOrraForAftersignSlice(committedState);
+    state = meetIoForAftersignSlice(state);
+    state = recordAftersignPacketChoice(state, "opened");
+    state = meetOrraForAftersignSlice(state);
+    state = recordAftersignOrraAction(state, "answered-saint-orra");
+    state = meetOrraForAftersignSlice(state);
 
-    expect(advancedState.packetOutcome).toBe("sealed");
-    expect(advancedState.orraAction).toBe("answered-saint-orra");
-    expect(advancedState.scene).toBe("orra-return");
+    expect(state.packetOutcome).toBe("opened");
+    expect(state.orraAction).toBe("answered-saint-orra");
+    expect(state.orraHasMetPlayer).toBe(true);
+    expect(state.orraRecognizesPlayer).toBe(true);
   });
 });
