@@ -57,6 +57,15 @@ import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
 } from "./src/ioRecognitionDialogue.ts";
+import {
+  DEFAULT_INPUT_TO_RENDER_LATENCY_BUDGET,
+  aggregateInputToRenderSamples,
+  appendInputToRenderSample,
+  checkInputToRenderLatency,
+  createInputToRenderEvent,
+  markInputRendered,
+  sampleInputToRenderLatency,
+} from "./src/inputToRenderLatency.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -221,7 +230,7 @@ const state = {
     droppedStepMs: 0,
     contract: { ...MOVEMENT },
     inputToRenderLatency: {
-      budget: { ...INPUT_TO_RENDER_LATENCY },
+      budget: { ...DEFAULT_INPUT_TO_RENDER_LATENCY_BUDGET },
       samples: [],
       maxLatencyMs: 0,
       averageLatencyMs: 0,
@@ -495,8 +504,25 @@ const syncPacketIntent = (snapshot = packetIntent.snapshot()) => {
   }
 };
 
+// #1055 — input-to-render latency probe. When a fresh input becomes
+// active (transition from idle → active), we mint a pending event
+// stamped at `performance.now()`; the render tick marks it rendered
+// after `composer.render()` and appends a sample to the rolling window.
+// One event in-flight at a time: the tick clears it on consumption.
+// See aftersign/src/inputToRenderLatency.ts for the pure primitives.
+let pendingInputToRenderEvent = null;
+let inputToRenderEventCounter = 0;
+
 const setMoveInput = (x, z, source = "script") => {
+  const wasActive = state.movement.input.active;
   state.movement.input = normalizeMoveInput(x, z, source, MOVEMENT);
+  if (state.movement.input.active && !wasActive) {
+    inputToRenderEventCounter += 1;
+    pendingInputToRenderEvent = createInputToRenderEvent({
+      id: `${source}-${inputToRenderEventCounter}`,
+      inputAtMs: performance.now(),
+    });
+  }
   publishState();
 };
 
@@ -587,6 +613,19 @@ const stepCameraRig = (dtSeconds = MOVEMENT.fixedStepSeconds) => {
 
 const assertFeelContract = () => {
   checkMobileMovePadFeel(MOBILE_MOVE_PAD);
+  // #1055 — enforce input-to-render latency when we have at least one
+  // real sample. Empty at boot (before any input) is a legitimate
+  // pass-through: the e2e opens the slice and calls assertFeelContract
+  // before touching the pad; guarding on length keeps that green while
+  // ensuring the first bad frame will throw once samples exist.
+  if (state.movement.inputToRenderLatency.samples.length > 0) {
+    checkInputToRenderLatency(
+      aggregateInputToRenderSamples(
+        state.movement.inputToRenderLatency.samples,
+        state.movement.inputToRenderLatency.budget,
+      ),
+    );
+  }
   return checkPlayerMovementFeel(MOVEMENT);
 };
 
@@ -1537,6 +1576,19 @@ const resetSliceSave = async () => {
   state.movement.lastVelocityMetersPerSecond = 0;
   state.movement.fixedStepsLastFrame = 0;
   state.movement.droppedStepMs = 0;
+  // #1055 — clear the input-to-render latency latch on hard reset:
+  // drop the pending event, empty the rolling window, and zero the
+  // aggregate. A stale bad frame from a prior session must not
+  // survive resetSliceSave() and fail assertFeelContract() on the
+  // fresh boot.
+  pendingInputToRenderEvent = null;
+  state.movement.inputToRenderLatency = {
+    budget: { ...DEFAULT_INPUT_TO_RENDER_LATENCY_BUDGET },
+    samples: [],
+    maxLatencyMs: 0,
+    averageLatencyMs: 0,
+    allWithinBudget: true,
+  };
   state.movement.mobilePad = mobileMovePadController
     ? mobileMovePadController.snapshot()
     : {
@@ -1873,6 +1925,36 @@ const tick = (now) => {
   renderText();
   publishState();
   composer.render();
+  // #1055 — sample input-to-render latency post-render. If a pending
+  // event minted at setMoveInput() is in-flight, stamp its render time
+  // now (immediately after composer.render() returns the GPU-submitted
+  // frame), sample it, append to the rolling window, and mirror the
+  // aggregated report into state.movement.inputToRenderLatency so
+  // window.__game.movement carries the live feel signal.
+  if (pendingInputToRenderEvent) {
+    const rendered = markInputRendered(pendingInputToRenderEvent, performance.now());
+    pendingInputToRenderEvent = null;
+    const sample = sampleInputToRenderLatency(
+      rendered,
+      state.movement.inputToRenderLatency.budget,
+    );
+    const nextSamples = appendInputToRenderSample(
+      state.movement.inputToRenderLatency.samples,
+      sample,
+    );
+    const report = aggregateInputToRenderSamples(
+      nextSamples,
+      state.movement.inputToRenderLatency.budget,
+    );
+    state.movement.inputToRenderLatency = {
+      budget: state.movement.inputToRenderLatency.budget,
+      samples: nextSamples,
+      maxLatencyMs: report.maxLatencyMs,
+      averageLatencyMs: report.averageLatencyMs,
+      allWithinBudget: report.allWithinBudget,
+    };
+    markStateDirty();
+  }
   requestAnimationFrame(tick);
 };
 
