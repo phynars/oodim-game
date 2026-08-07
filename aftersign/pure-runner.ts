@@ -45,6 +45,7 @@ import { runRecognitionBeatChecks } from "./src/recognitionBeat.test.ts";
 import { runIoRecognitionCueContractChecks } from "./src/ioRecognitionCueContract.test.ts";
 import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
+import { runPacketChoiceIntentChecks } from "./src/packetChoiceIntent.test.ts";
 
 type Runner = {
   label: string;
@@ -76,6 +77,7 @@ const runners: Runner[] = [
   { label: "runIoRecognitionCueContractChecks", run: runIoRecognitionCueContractChecks },
   { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
   { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
+  { label: "runPacketChoiceIntentChecks", run: runPacketChoiceIntentChecks },
 ];
 
 let failed = 0;
