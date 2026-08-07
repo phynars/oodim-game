@@ -40,33 +40,36 @@ import { expect, test } from "@playwright/test";
 //     read together from the same snapshot (proof the shape is
 //     round-tripped as ONE payload, not reconstructed field-by-field
 //     from `delivery.outcome` alone — the drift the reviewer flagged).
-
-// Narrow local type for the snapshot fields this spec reads. Playwright
-// strips TypeScript at collect time, but the plain-JS spec still benefits
-// from the JSDoc shape as documentation — no runtime impact.
+//
+// #1060 re-review: renamed from `.spec.js` → `.spec.ts` to match the
+// convention of every sibling in `aftersign/e2e/`. Mara flagged that
+// with no results.json written on any of four CI runs, Playwright was
+// crashing before spec collection — the odd-one-out extension was the
+// suspect. No behavior change; content is plain JS-compatible TS
+// (no annotations, only JSDoc comments).
 
 const WAIT_MS = 15_000;
 
-async function waitForSurface(page) {
+async function waitForSurface(page: import("@playwright/test").Page) {
   await page.waitForFunction(
     () =>
-      typeof window.__game?.getSnapshot === "function"
-      && typeof window.__game?.input?.choose === "function"
-      && typeof window.__game?.input?.forceSave === "function"
-      && typeof window.__game?.input?.forceReload === "function"
-      && typeof window.__game?.input?.waitForStoryIdle === "function"
-      && window.__game?.scene?.ready === true,
+      typeof (window as any).__game?.getSnapshot === "function"
+      && typeof (window as any).__game?.input?.choose === "function"
+      && typeof (window as any).__game?.input?.forceSave === "function"
+      && typeof (window as any).__game?.input?.forceReload === "function"
+      && typeof (window as any).__game?.input?.waitForStoryIdle === "function"
+      && (window as any).__game?.scene?.ready === true,
     undefined,
     { timeout: WAIT_MS },
   );
-  await page.evaluate(() => window.__game.input.waitForStoryIdle());
+  await page.evaluate(() => (window as any).__game.input.waitForStoryIdle());
 }
 
-async function readSnapshot(page) {
+async function readSnapshot(page: import("@playwright/test").Page) {
   return page.evaluate(() => {
-    const snap = window.__game.getSnapshot();
+    const snap = (window as any).__game.getSnapshot();
     const memory = Array.isArray(snap.npcs?.io?.memory) ? snap.npcs.io.memory : [];
-    const outcomeFact = memory.find((f) => f && f.kind === "delivery-outcome");
+    const outcomeFact = memory.find((f: any) => f && f.kind === "delivery-outcome");
     return {
       beat: snap.scene.beat,
       packetDelivered: snap.packet.delivered,
@@ -103,16 +106,16 @@ test("AFTERSIGN durably round-trips packet + delivery + Io memory + save metadat
   // `flagship-surface-contract.spec.ts` already owns).  deliverPacket()
   // normalizes null secondAction → "skipped" at fact-mint time, so the
   // memory array is length 2 either way.
-  await page.evaluate(() => window.__game.input.choose("keep-sealed"));
-  await page.evaluate(() => window.__game.input.waitForStoryIdle());
-  await page.evaluate(() => window.__game.input.choose("deliver-packet"));
-  await page.evaluate(() => window.__game.input.waitForStoryIdle());
+  await page.evaluate(() => (window as any).__game.input.choose("keep-sealed"));
+  await page.evaluate(() => (window as any).__game.input.waitForStoryIdle());
+  await page.evaluate(() => (window as any).__game.input.choose("deliver-packet"));
+  await page.evaluate(() => (window as any).__game.input.waitForStoryIdle());
 
   // deliverPacket() persists synchronously; forceSave() belt-and-braces
   // the "durable" claim so the timestamp we snapshot is the one that
   // must survive reload.
-  await page.evaluate(() => window.__game.input.forceSave());
-  await page.evaluate(() => window.__game.input.waitForStoryIdle());
+  await page.evaluate(() => (window as any).__game.input.forceSave());
+  await page.evaluate(() => (window as any).__game.input.waitForStoryIdle());
 
   const beforeReload = await readSnapshot(page);
 
@@ -124,10 +127,10 @@ test("AFTERSIGN durably round-trips packet + delivery + Io memory + save metadat
   expect(beforeReload.ioMemoryLength).toBe(2);
   expect(beforeReload.ioMemoryPacketOutcome).toBe("sealed");
   expect(beforeReload.saveRevision).toBeGreaterThan(0);
-  // #741: persist()/persistAuthoritative() stamp an ISO string on every
+  // #741: persist()/persistAuthoritativeSave() stamp an ISO string on every
   // successful write.
   expect(typeof beforeReload.saveLastPersistedAt).toBe("string");
-  expect(Number.isNaN(Date.parse(beforeReload.saveLastPersistedAt))).toBe(false);
+  expect(Number.isNaN(Date.parse(beforeReload.saveLastPersistedAt as string))).toBe(false);
   // Beat is either the durable packet-delivered save OR the ~1180ms
   // scheduled io-return-recognition transition — same race the sibling
   // reload spec documents.
@@ -136,7 +139,7 @@ test("AFTERSIGN durably round-trips packet + delivery + Io memory + save metadat
   // In-page reload — the shipped surface uses location.reload() under
   // waitForStoryIdle, so we don't stack a second Playwright cold-boot
   // on top of the SwiftShader boot.
-  await page.evaluate(() => window.__game.input.forceReload());
+  await page.evaluate(() => (window as any).__game.input.forceReload());
   await waitForSurface(page);
 
   const afterReload = await readSnapshot(page);
@@ -153,7 +156,7 @@ test("AFTERSIGN durably round-trips packet + delivery + Io memory + save metadat
   expect(afterReload.saveLastPersistedAt).toBe(beforeReload.saveLastPersistedAt);
   // Revision may bump if any post-reload persist ran during boot; it
   // must NEVER regress.
-  expect(afterReload.saveRevision).toBeGreaterThanOrEqual(beforeReload.saveRevision);
+  expect(afterReload.saveRevision).toBeGreaterThanOrEqual(beforeReload.saveRevision as number);
   // Beat lands in the same {packet-delivered, io-return-recognition}
   // set — the persisted beat is packet-delivered; whether the ~1180ms
   // setTimeout has fired post-reload depends on timing.
