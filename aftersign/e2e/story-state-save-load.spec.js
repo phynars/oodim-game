@@ -1,54 +1,60 @@
 import { expect, test } from "@playwright/test";
 
-// Reload-durability contract for AFTERSIGN's LOCAL-FALLBACK save (the
-// synchronous path deliverPacket() actually takes: writeStored →
-// localStorage, save.authority stays "local-fallback"). The
-// server-authoritative branch (persistAuthoritative → writeAuthoritativeSave,
-// save.authority === "server") is a separate code path and NOT what this
-// spec exercises — see Mara's nit on PR #1060.
+// Reload-durability contract for AFTERSIGN's story/save round-trip.
 //
-// Asserts against the SHIPPED window.__game surface (aftersign/main.js —
-// state.scene.id === "io-night-post-kiosk", npcs.io.lastLine, save.lastPersistedAt,
-// scene.beat), NOT an aspirational shape. See Mara's review on PR #1060: a
-// spec that polls for keys the runtime never publishes dies on the first
-// poll and gates nothing.
+// Focus: the fields the durable-save payload actually carries —
+// packet.delivered / packet.sealed / delivery.outcome / npcs.io.memory /
+// save.revision / save.lastPersistedAt / save.authority — MUST survive
+// a real `page.reload()` (fresh module evaluation, fresh window.__game).
 //
-// Progression is driven via window.__game.deliverPacket() (the same public
-// hook flagship-surface-contract.spec.ts uses) instead of synthesised
-// keyboard/mouse input — headless SwiftShader can't reliably land a
-// pointer on the kiosk hitbox, and this spec is about SAVE durability,
-// not input routing.
+// Scope carve-out — this spec deliberately does NOT re-assert:
+//   • The RETURNING-SESSION boot line (`ioReturningBootLine` /
+//     `chooseIoReturningSessionLine`).  That contract is owned end-to-end
+//     by `io-returning-session-boot.spec.ts` at both branches (listened /
+//     skipped) plus the yield-to-recognition transition.  Duplicating
+//     the assertion here would give TWO owners for one runtime shape —
+//     the drift the reviewer flagged on this PR.
+//   • The authoritative (server) save path.  `flagship-surface-contract`
+//     owns that under `clearLocalState: true` (see PR #1060 review).
+//
+// Cold-start posture (mirrors io-returning-session-boot.spec.ts and
+// flagship-reload-beat-regression.spec.ts):
+//   • ONE `page.goto` at test start.  The reload uses `page.reload()`
+//     — a real document teardown that re-runs module init (so
+//     readStored → state hydration exercises the durable path) but
+//     without a second `page.goto`.  The sibling `durable-save-load`
+//     spec was `.describe.skip`'d exactly because three cold `page.goto`
+//     boots per test dragged the aftersign lane onto the SwiftShader
+//     cold-start flake documented in #700 / #506 / #590 / #766; this
+//     spec's ONE goto + ONE reload keeps the boot count below that
+//     flake threshold.
+//   • Progression goes through the shipped `window.__game.input.choose(...)`
+//     surface (keep-sealed → deliver-packet), which is the same idiom
+//     the sibling reload specs use — not the synthetic
+//     `window.__game.deliverPacket()` shortcut, which skips the
+//     packet-choice beat that mints the `secondAction` value the
+//     memory fact reads.
 
 const uniqueSlot = () =>
   `story-save-load-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-async function waitForGameReady(page) {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() => {
-          const game = window.__game;
-          if (!game) return null;
-          return {
-            slug: game.slug,
-            sceneId: game.scene?.id,
-            sceneReady: game.scene?.ready,
-            beat: game.scene?.beat,
-            hasDeliverPacket: typeof game.deliverPacket === "function",
-          };
-        }),
-      {
-        message:
-          "served AFTERSIGN page publishes the shipped window.__game contract (slug/scene.id/scene.ready/deliverPacket)",
-        timeout: 30_000,
-      },
-    )
-    .toMatchObject({
-      slug: "aftersign",
-      sceneId: "io-night-post-kiosk",
-      sceneReady: true,
-      hasDeliverPacket: true,
-    });
+const WAIT_MS = 15_000;
+
+async function waitForReady(page) {
+  await page.waitForFunction(
+    () =>
+      window.__game
+      && window.__game.version === 1
+      && window.__game.scene
+      && window.__game.scene.ready === true
+      && window.__game.input
+      && typeof window.__game.input.choose === "function"
+      && typeof window.__game.input.forceSave === "function"
+      && typeof window.__game.input.waitForStoryIdle === "function",
+    undefined,
+    { timeout: WAIT_MS },
+  );
+  await page.evaluate(() => window.__game.input.waitForStoryIdle());
 }
 
 async function readSnapshot(page) {
@@ -63,7 +69,6 @@ async function readSnapshot(page) {
       packetSealed: game.packet.sealed,
       packetRoute: game.packet.route,
       deliveryOutcome: game.delivery.outcome,
-      ioLastLine: game.npcs.io.lastLine,
       ioMemoryLength: memory.length,
       ioMemoryPacketOutcome: outcomeFact ? outcomeFact.object : null,
       ioMemorySecondAction: routeFact ? routeFact.object : null,
@@ -74,166 +79,85 @@ async function readSnapshot(page) {
   });
 }
 
-// Mirror of `chooseIoReturningSessionLine` from
-// packages/aftersign/src/ioReturningSession.ts, restricted to the two
-// dimensions main.js:1764-1777 actually feeds it at boot (packetOutcome +
-// routeAttention derived from durable memory). Kept literal so a
-// paraphrase of the shipped lines will break this spec — same posture
-// as the ioReturningSession unit tests.
-const expectedReturningLine = ({ packetOutcome, secondAction }) => {
-  const routeAttention =
-    secondAction === "done" ? "listened" : secondAction === "skipped" ? "skipped" : null;
-  if (packetOutcome === "sealed" && routeAttention === "listened") {
-    return "You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.";
-  }
-  if (packetOutcome === "sealed" && routeAttention === "skipped") {
-    return "You came back with the blue seal unbroken, and you still ran before the route finished. Reliable hands, impatient feet.";
-  }
-  if (packetOutcome === "opened" && routeAttention === "listened") {
-    return "You came back with a broken seal, but you listened before you ran. One clean habit is still a habit.";
-  }
-  if (packetOutcome === "opened" && routeAttention === "skipped") {
-    return "You came back with a broken seal and half my route. That is not ideal, but it is enough to route.";
-  }
-  if (packetOutcome === "sealed") {
-    return "You came back. So did the blue seal, unbroken. That gives me two facts to trust.";
-  }
-  if (packetOutcome === "opened") {
-    return "You came back. The seal did not. I can use one of those facts.";
-  }
-  return null;
-};
-
-test("served AFTERSIGN page reloads the prior beat, Io memory, and save metadata", async ({
+test("served AFTERSIGN page durably round-trips packet, delivery, Io memory, and save metadata across page.reload()", async ({
   page,
 }) => {
+  // Cold-start budget: mirrors flagship-surface-contract.spec.ts's per-test
+  // 90s allowance.  One SwiftShader cold `page.goto` dominates wall time;
+  // `page.reload()` is cheaper than a second goto but still costs a
+  // full module re-eval, which is why the budget matches sibling
+  // reload specs rather than the default 30s.
+  test.setTimeout(90_000);
+
   const slot = uniqueSlot();
-  const url = `/?slot=${encodeURIComponent(slot)}`;
+  await page.goto(`/?slot=${encodeURIComponent(slot)}`);
+  await waitForReady(page);
 
-  await page.goto(url);
-  await waitForGameReady(page);
+  // Drive to packet-delivered through the shipped input surface.  Order
+  // matches io-returning-session-boot.spec.ts:
+  //   1. keep-sealed        — commits packet.sealed=true at packet-choice
+  //   2. acknowledge-kiosk  — records the deliberate SECOND action
+  //                           (state.player.secondAction = "done") so
+  //                           the route-attention memory fact isn't
+  //                           `null`-normalized to "skipped"
+  //   3. deliver-packet     — mints both memory facts, bumps
+  //                           save.revision, stamps save.lastPersistedAt
+  //                           (persist() runs synchronously inside
+  //                           deliverPacket at main.js), transitions
+  //                           scene.beat to "packet-delivered".
+  await page.evaluate(() => window.__game.input.choose("keep-sealed"));
+  await page.evaluate(() => window.__game.input.choose("acknowledge-kiosk"));
+  await page.evaluate(() => window.__game.input.choose("deliver-packet"));
+  await page.evaluate(() => window.__game.input.waitForStoryIdle());
 
-  // Drive the story forward through the shipped public hook. deliverPacket()
-  // mints the packet-outcome + second-action memory facts, bumps save.revision,
-  // stamps save.lastPersistedAt, and transitions scene.beat to "packet-delivered"
-  // synchronously (a setTimeout advances to "io-return-recognition" ~1180ms
-  // later; we don't assert on that async transition here).
-  await page.evaluate(() => window.__game.deliverPacket());
-
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() => ({
-          beat: window.__game?.scene?.beat,
-          packetDelivered: window.__game?.packet?.delivered,
-          saveLastPersistedAt: window.__game?.save?.lastPersistedAt,
-          ioMemoryLength: window.__game?.npcs?.io?.memory?.length ?? 0,
-        })),
-      {
-        message:
-          "deliverPacket() advances the beat, stamps save.lastPersistedAt, and mints Io memory facts",
-        timeout: 10_000,
-      },
-    )
-    .toMatchObject({
-      packetDelivered: true,
-      // Beat is either the durable packet-delivered save (synchronous) or the
-      // scheduled io-return-recognition transition (~1180ms later). Both are
-      // acceptable pre-reload states — the spec's job is to verify the
-      // PERSISTED beat round-trips, and the persisted-write happens at
-      // packet-delivered before the async transition fires.
-      beat: expect.stringMatching(/^(packet-delivered|io-return-recognition)$/),
-    });
-
-  // Wait for lastPersistedAt to actually be a string before snapshotting.
-  // deliverPacket() ends with a synchronous persist({ dirty: true }) which
-  // stamps state.save.lastPersistedAt via writeStored (localStorage only) —
-  // save.authority stays "local-fallback" here; the server-authoritative
-  // write is a separate code path (persistAuthoritative). We need the stamp
-  // captured pre-reload so the equality check post-reload has something to
-  // compare against.
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() =>
-          typeof window.__game?.save?.lastPersistedAt === "string"
-            ? window.__game.save.lastPersistedAt
-            : null,
-        ),
-      {
-        message: "save.lastPersistedAt is stamped after deliverPacket() persists",
-        timeout: 10_000,
-      },
-    )
-    .toEqual(expect.any(String));
+  // forceSave() is idempotent post-delivery (deliverPacket already
+  // persisted); calling it here belt-and-braces the "durable" claim —
+  // the save that survives reload is the one forceSave promised.
+  await page.evaluate(() => window.__game.input.forceSave());
+  await page.evaluate(() => window.__game.input.waitForStoryIdle());
 
   const beforeReload = await readSnapshot(page);
 
   expect(beforeReload.packetDelivered).toBe(true);
-  expect(typeof beforeReload.saveLastPersistedAt).toBe("string");
+  expect(beforeReload.deliveryOutcome).toBe("sealed");
+  // Two memory facts: delivery-outcome (sealed) + route-attention
+  // (kiosk-second-action = done, from the acknowledge-kiosk choice).
+  expect(beforeReload.ioMemoryLength).toBe(2);
+  expect(beforeReload.ioMemoryPacketOutcome).toBe("sealed");
+  expect(beforeReload.ioMemorySecondAction).toBe("done");
   expect(beforeReload.saveRevision).toBeGreaterThan(0);
-  expect(beforeReload.ioMemoryLength).toBeGreaterThan(0);
-  expect(typeof beforeReload.ioLastLine).toBe("string");
-  expect(beforeReload.ioLastLine.length).toBeGreaterThan(0);
+  // #741: persist() / persistAuthoritative() stamp lastPersistedAt as an
+  // ISO string on every successful write.
+  expect(typeof beforeReload.saveLastPersistedAt).toBe("string");
+  expect(Number.isNaN(Date.parse(beforeReload.saveLastPersistedAt))).toBe(false);
+  // Beat is either the durable packet-delivered save (synchronous) or the
+  // scheduled io-return-recognition transition (~1180ms later).  Both
+  // are valid pre-reload states — the persisted beat is whichever is
+  // current when forceSave runs.
+  expect(["packet-delivered", "io-return-recognition"]).toContain(beforeReload.beat);
 
-  // Hard reload — new document, new window.__game — same slot.
-  await page.goto("about:blank");
-  await page.goto(url);
-  await waitForGameReady(page);
+  // Real reload — fresh document, fresh window.__game, fresh module
+  // init.  Storage keys off the ?slot=... query survive.
+  await page.reload();
+  await waitForReady(page);
 
-  // syncIoLine runs during publishState on boot, so lastLine is populated
-  // synchronously with scene.ready. No extra poll needed beyond ready.
   const afterReload = await readSnapshot(page);
 
-  // Durability contract: same delivered packet, same outcome, same memory
-  // count, same persisted timestamp, same or advanced revision.
+  // Durability contract: same packet outcome, same memory shape, same
+  // persisted timestamp, revision unchanged-or-advanced.
   expect(afterReload.packetDelivered).toBe(true);
   expect(afterReload.packetSealed).toBe(beforeReload.packetSealed);
   expect(afterReload.packetRoute).toBe(beforeReload.packetRoute);
   expect(afterReload.deliveryOutcome).toBe(beforeReload.deliveryOutcome);
   expect(afterReload.ioMemoryLength).toBe(beforeReload.ioMemoryLength);
+  expect(afterReload.ioMemoryPacketOutcome).toBe(beforeReload.ioMemoryPacketOutcome);
+  expect(afterReload.ioMemorySecondAction).toBe(beforeReload.ioMemorySecondAction);
   expect(afterReload.saveLastPersistedAt).toBe(beforeReload.saveLastPersistedAt);
-  expect(afterReload.saveRevision).toBeGreaterThanOrEqual(
-    beforeReload.saveRevision,
-  );
+  expect(afterReload.saveRevision).toBeGreaterThanOrEqual(beforeReload.saveRevision);
 
-  // Beat lands in the same {packet-delivered, io-return-recognition} set —
-  // the persisted beat is packet-delivered; whether the ~1180ms setTimeout
-  // has fired post-reload depends on timing, but both are valid restore
-  // targets per flagship-reload-beat-regression.spec.ts.
-  expect([
-    "packet-delivered",
-    "io-return-recognition",
-  ]).toContain(afterReload.beat);
-
-  // Io's post-reload line is NOT the pre-reload line even when the beat
-  // matches: the returning-session boot override (main.js `lineForBeat` /
-  // `ioReturningBootLine`, wired at boot via `chooseIoReturningSessionLine`
-  // — main.js:1764-1777) deliberately swaps in a "you came back" line for
-  // the persisted boot beat. Pre-reload speaks the beat's own verbatim
-  // copy ("Done. Blue route, clean handoff. Come back after the rain...");
-  // post-reload speaks a `ioReturningSessionLines` entry keyed off the
-  // durable delivery-outcome + route-attention memory facts.
-  //
-  // Contract:
-  //   1. the line is present and non-empty (always), and
-  //   2. at the persisted boot beat (packet-delivered), the line matches
-  //      `chooseIoReturningSessionLine` fed the round-tripped memory —
-  //      that's the durability proof, and it's the assertion that would
-  //      have failed against the pre-reload line.
-  expect(typeof afterReload.ioLastLine).toBe("string");
-  expect(afterReload.ioLastLine.length).toBeGreaterThan(0);
-
-  if (afterReload.beat === "packet-delivered") {
-    const derivedReturningLine = expectedReturningLine({
-      packetOutcome: afterReload.ioMemoryPacketOutcome,
-      secondAction: afterReload.ioMemorySecondAction,
-    });
-    // The delivery-outcome fact must be present post-reload (it's what
-    // ioReturningBootLine keys off — its absence would drop the override
-    // entirely and speak the fresh "Done. Blue route..." copy, which is
-    // exactly the drift Mara flagged).
-    expect(derivedReturningLine).not.toBeNull();
-    expect(afterReload.ioLastLine).toBe(derivedReturningLine);
-  }
+  // Beat lands in the same {packet-delivered, io-return-recognition}
+  // set — the persisted beat is packet-delivered; whether the ~1180ms
+  // setTimeout has fired post-reload depends on timing, but both are
+  // valid restore targets per flagship-reload-beat-regression.spec.ts.
+  expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.beat);
 });
