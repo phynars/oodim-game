@@ -46,6 +46,10 @@ import { runRecognitionBeatChecks } from "./src/recognitionBeat.test.ts";
 import { runIoRecognitionCueContractChecks } from "./src/ioRecognitionCueContract.test.ts";
 import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
+// #1055 — imported AND registered in runners[] below. A prior iteration
+// of this branch imported the bundle without a runners[] entry, so
+// `test:aftersign:pure` never executed it (Soren's 03:34 blocker); the
+// entry below is the load-bearing half of the registration.
 import { runInputToRenderLatencyChecks } from "./src/inputToRenderLatency.test.ts";
 
 type Runner = {
