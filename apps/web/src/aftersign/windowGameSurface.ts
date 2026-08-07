@@ -29,6 +29,12 @@ export type AftersignStoryBeatId =
 
 export type AftersignIoDialogueSnapshot = {
   /**
+   * The line the runtime should put in front of the player now. Fresh
+   * kiosk states start on arrival; committed packet states surface the
+   * packet-memory return line first.
+   */
+  readonly activeLine: AftersignIoFirstSceneLine;
+  /**
    * Kiosk beat lines Io speaks BEFORE the player commits the packet
    * fork. Emitted while `state.scene === "kiosk"` — arrival, route,
    * packetOffer. Sourced from `AFTERSIGN_IO_FIRST_SCENE_DIALOGUE` so
@@ -272,6 +278,8 @@ function getAftersignIoDisposition(
  * This is the seam that makes `ioFirstSceneDialogue` non-test code:
  *   - Kiosk lines (arrival / route / packetOffer) are always emitted so
  *     the scene renderer can play the fork setup at scene "kiosk".
+ *   - The active line gives the served page one canonical sentence to
+ *     render without re-deriving the story branch.
  *   - The return beat (packet-memory + route-memory pair) is emitted
  *     only when the player has committed a packet outcome — i.e. the
  *     scene has advanced past the fork. That gate matches
@@ -298,15 +306,18 @@ function getAftersignIoDialogueSnapshot(
   }
 
   if (state.packetOutcome === "sealed" || state.packetOutcome === "opened") {
+    const returnBeat = composeAftersignIoReturnBeat(state, {
+      listenedToRoute: options.listenedToRoute,
+    });
+
     return {
+      activeLine: returnBeat.packetLine,
       kioskLines,
-      returnBeat: composeAftersignIoReturnBeat(state, {
-        listenedToRoute: options.listenedToRoute,
-      }),
+      returnBeat,
     };
   }
 
-  return { kioskLines };
+  return { activeLine: kioskLines[0], kioskLines };
 }
 
 function getAftersignOrraDisposition(
