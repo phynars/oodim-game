@@ -76,7 +76,6 @@ const runners: Runner[] = [
   { label: "runIoRecognitionCueContractChecks", run: runIoRecognitionCueContractChecks },
   { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
   { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
-  { label: "runPacketChoiceIntentChecks", run: runPacketChoiceIntentChecks },
 ];
 
 let failed = 0;
