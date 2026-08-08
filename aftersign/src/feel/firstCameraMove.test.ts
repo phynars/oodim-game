@@ -73,6 +73,11 @@ export function checkStartsVeiledAndLandsOnAuthoredMark(): void {
       // under the 0.65°/frame mobile-safety cap that the new
       // checkFirstCameraMoveFeel enforces. The 40% frame threshold
       // below also drops (14 → 13.9) for the same reason.
+      //
+      // Math: easeOutCubic slope at t=0 is 3× the average. Frame step
+      // at 60fps = 16.667ms, progress-per-frame = 16.667/1400 ≈ 0.0119.
+      // Peak Δyaw (frame 0 → frame 1) = 17.8·(1 − (1−0.0119)³) ≈ 0.628°.
+      // Peak Δpitch ≈ 0.141°. hypot(0.628, 0.141) ≈ 0.644 — under 0.65.
       yawDegrees: 17.8,
       pitchDegrees: -4,
       dollyMeters: 2.4,
