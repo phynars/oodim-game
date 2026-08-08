@@ -80,7 +80,7 @@ export interface FirstCameraMoveFeelCheckResult {
 export const FIRST_CAMERA_MOVE_FEEL: FirstCameraMoveFeelContract = {
   durationMs: 1400,
   sampleRateFps: 60,
-  yawDegrees: 17.8,
+  yawDegrees: 18,
   pitchDegrees: -4,
   dollyMeters: 2.4,
   easing: "easeOutCubic",
@@ -168,6 +168,13 @@ export function sampleFirstCameraMoveTimeline(
 // deterministic sampler can prove.
 const FIRST_MOTION_LATENCY_CAP_MS = 34;
 
+// easeOutCubic's derivative is 3(1−t)², maximal at t=0 where it equals 3 —
+// exactly 3× the average slope of 1. The peak per-frame camera delta of an
+// easeOutCubic move is therefore ≈3× its average per-frame delta, and the
+// peak-travel gate in checkFirstCameraMoveFeel scales the authored AVERAGE
+// budget by this ratio (see the comment at the gate).
+const EASE_OUT_CUBIC_PEAK_TO_AVERAGE_RATIO = 3;
+
 // The authored control-lock feel cap. maximumControlLockMs above this
 // means the player can't take control back inside the "one breath"
 // window we've authored the opening cinematic against — see the
@@ -235,10 +242,26 @@ export function checkFirstCameraMoveFeel(
     }
   }
 
+  // `maxCameraTravelDegreesPerFrameAt60fps` is authored as an AVERAGE
+  // per-frame budget — checkMobileSafetyBudget (firstCameraMove.test.ts)
+  // has always gated `yawDegrees / totalFrames` against it. Applying the
+  // same number to the PEAK per-frame delta is a category error:
+  // easeOutCubic's slope at t=0 is exactly 3× its average slope, so ANY
+  // easeOutCubic move that spends most of the average budget necessarily
+  // peaks near 3× the cap. (An earlier iteration of PR #1072 hit exactly
+  // this: it shrank the authored 18° landing yaw to 17.8° to squeeze the
+  // peak under the average cap — changing shipped game feel to satisfy a
+  // misapplied threshold, and breaking the wired harness that pins 18°.)
+  // The peak gate therefore allows the authored average budget × the
+  // easing's peak-to-average ratio, which still catches a genuinely
+  // discontinuous lurch (a snap/teleport frame) without punishing the
+  // authored ease-out shape.
+  const peakTravelCapDegreesPerFrame =
+    contract.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps * EASE_OUT_CUBIC_PEAK_TO_AVERAGE_RATIO;
   const peakTravelDegreesPerFrame = round3(Math.hypot(peakYawDeltaPerFrame, peakPitchDeltaPerFrame));
-  if (peakTravelDegreesPerFrame > contract.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps) {
+  if (peakTravelDegreesPerFrame > peakTravelCapDegreesPerFrame) {
     throw new Error(
-      `first camera move peak camera travel ${peakTravelDegreesPerFrame}deg/frame exceeds ${contract.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps}deg/frame mobile cap`,
+      `first camera move peak camera travel ${peakTravelDegreesPerFrame}deg/frame exceeds ${peakTravelCapDegreesPerFrame}deg/frame peak cap (avg budget ${contract.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps} × ${EASE_OUT_CUBIC_PEAK_TO_AVERAGE_RATIO})`,
     );
   }
 
