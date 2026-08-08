@@ -154,6 +154,13 @@ export function sampleFirstCameraMoveTimeline(
 // camera move — the exact "invisible hands" feel bar the harness is
 // here to guard. Kept as a named constant so the assertion below and
 // its error message can't drift.
+//
+// Ceiling rationale: 34ms is 2 vsync intervals at 60fps. One-frame
+// (17ms) latency is imperceptible; three-frame (50ms) latency is the
+// widely-cited "controls feel laggy" threshold in game-feel studies.
+// Two frames sits in the gray zone but is what a 60fps sampler can
+// resolve without half-frame stalls, so it's the tightest bound this
+// deterministic sampler can prove.
 const FIRST_MOTION_LATENCY_CAP_MS = 34;
 
 // The authored control-lock feel cap. maximumControlLockMs above this
