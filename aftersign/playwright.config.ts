@@ -141,7 +141,23 @@ export default defineConfig({
         "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
       url: "http://localhost:4374/aftersign/",
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      // 120s → 240s (#1055 CI post-mortem). The aftersign job's own
+      // `npm run build:aftersign` step passes, then this webServer
+      // re-runs the SAME full `tsc --noEmit && vite build` from scratch
+      // (no incremental cache between npm invocations) before vite
+      // preview can bind :4374. On loaded CI runners that second build
+      // has been exceeding the 120s webServer clock; Playwright then
+      // aborts BEFORE discovering any spec, so the json reporter never
+      // writes playwright-report/results.json — the exact
+      // "(results.json not found — crash BEFORE any spec ran, e.g.
+      // webServer boot failure)" signature the failure-summary step
+      // posted on every red run of this PR. webServer startup is not
+      // covered by `retries: 3` (retries apply per-test, not to the
+      // server boot), so a timeout here kills the whole lane with no
+      // retry and no report. 240s keeps the hang-detection property
+      // (a genuinely wedged build still fails the lane) while giving
+      // the double-build path the headroom it demonstrably needs.
+      timeout: 240_000,
     },
     {
       cwd: repoRoot,

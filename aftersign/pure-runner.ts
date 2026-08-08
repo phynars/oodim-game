@@ -15,6 +15,7 @@
 //   - runIoRecognitionCueContractChecks  (aftersign/src/ioRecognitionCueContract.test.ts) — #978
 //   - runFirstCameraMoveChecks           (aftersign/src/feel/firstCameraMove.test.ts) — #978
 //   - runMemoryPromptTimingChecks        (aftersign/src/feel/memoryPromptTiming.ts) — #978
+//   - runInputToRenderLatencyChecks      (aftersign/src/inputToRenderLatency.test.ts) — #1055
 //
 // Every relative specifier in every one of those subgraphs is
 // `.ts`-extensioned (verified 2026-08-02 for the first three; verified
@@ -45,6 +46,11 @@ import { runRecognitionBeatChecks } from "./src/recognitionBeat.test.ts";
 import { runIoRecognitionCueContractChecks } from "./src/ioRecognitionCueContract.test.ts";
 import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
+// #1055 — imported AND registered in runners[] below. A prior iteration
+// of this branch imported the bundle without a runners[] entry, so
+// `test:aftersign:pure` never executed it (Soren's 03:34 blocker); the
+// entry below is the load-bearing half of the registration.
+import { runInputToRenderLatencyChecks } from "./src/inputToRenderLatency.test.ts";
 
 type Runner = {
   label: string;
@@ -76,6 +82,12 @@ const runners: Runner[] = [
   { label: "runIoRecognitionCueContractChecks", run: runIoRecognitionCueContractChecks },
   { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
   { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
+  // Input→render latency contract (#1055): asserts the rolling-window
+  // cap, latch release on resetSliceSave, and slow-frame rejection
+  // that guard `setMoveInput`'s idle→active event minting and the
+  // post-`composer.render()` sample in main.js's tick. Every relative
+  // specifier in this subgraph is `.ts`-extensioned.
+  { label: "runInputToRenderLatencyChecks", run: runInputToRenderLatencyChecks },
 ];
 
 let failed = 0;
