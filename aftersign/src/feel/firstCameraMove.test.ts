@@ -208,7 +208,51 @@ export function checkPeakPerFrameTravelStaysUnderMobileCap(): void {
   //   - first visible motion lands within 34ms (2 frames @ 60fps)
   // Throws on violation; wiring it here means pure-runner + the e2e
   // spec exercise it via the existing runFirstCameraMoveChecks entry.
-  checkFirstCameraMoveFeel();
+  const result = checkFirstCameraMoveFeel();
+
+  // Lock in the exact peak numbers the header math (17.8·(1−(1−0.0119)³)
+  // ≈ 0.628; 4·… ≈ 0.141) predicts. Asserting the cap alone would let
+  // a sampler regression drift the peaks upward without tripping the
+  // 0.65°/frame gate — an assertion on the *values* catches drift with
+  // a precise error line before it approaches the cap. Tolerance is
+  // ±0.002 to absorb the round3() quantization already applied inside
+  // checkFirstCameraMoveFeel; anything wider would defeat the point.
+  assertClose(
+    result.peakYawDeltaPerFrame,
+    0.628,
+    0.002,
+    'firstCameraMove.peakYawDeltaPerFrame',
+  );
+  assertClose(
+    result.peakPitchDeltaPerFrame,
+    0.141,
+    0.002,
+    'firstCameraMove.peakPitchDeltaPerFrame',
+  );
+
+  // First visible motion must land on the 2nd 60fps frame (round(16.667)
+  // = 17ms), well inside the 34ms cap. Locking the exact frame time
+  // catches a sampler that starts a frame late.
+  assertEqual(result.firstMotionMs, 17, 'firstCameraMove.firstMotionMs');
+
+  // Timeline frame count is (durationMs/1000)·fps + 1 = 84 + 1 = 85 —
+  // same invariant checkSixtyFpsTimelineIsBoundedAndMonotonic locks,
+  // but from the checker's own walk (defends against a drift where the
+  // sampler and the checker disagree on frame count).
+  assertEqual(result.frameCount, 85, 'firstCameraMove.checkFrameCount');
+}
+
+function assertClose(
+  actual: number,
+  expected: number,
+  tolerance: number,
+  label: string,
+): void {
+  if (Math.abs(actual - expected) > tolerance) {
+    throw new AssertionError(
+      `${label}: expected ${expected} ± ${tolerance}, got ${actual}`,
+    );
+  }
 }
 
 export function runFirstCameraMoveChecks(): void {
