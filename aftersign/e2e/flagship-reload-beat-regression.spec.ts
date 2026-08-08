@@ -65,10 +65,12 @@ const WAIT_MS = 10_000;
 // pin the runtime, not describe it in the abstract.
 const DELIVERED_LINE =
   "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
-const SEALED_RECOGNITION_LINE =
-  "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
-const OPENED_RECOGNITION_LINE =
-  "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept the risk beside your name.";
+// Recognition lines come from the canonical copy module (#595 cleanup,
+// #1077). These flows never acknowledge the kiosk route, so the
+// RETURNING tier speaks (routeListened=false).
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
+const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
+const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
 
 type PacketPath = {
   name: string;

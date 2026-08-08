@@ -10,16 +10,18 @@ import { expect, test, type Page } from "@playwright/test";
 // the io-return-recognition beat, that beat's own verbatim-asserted
 // strings must win unchanged.
 //
-// Expected strings are pinned verbatim to
-// docs/flagship/vertical-slice-script.md §7–§8 via
-// packages/aftersign/src/ioReturningSession.ts — do not paraphrase.
+// Expected strings come from the CANONICAL copy modules (#595 cleanup,
+// #1077): boot lines from packages/aftersign/src/ioReturningSession.ts,
+// recognition-beat lines from aftersign/src/ioRecognitionDialogue.ts.
+// Never re-pin literals here — copy evolves in those modules only.
+import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 
-const SEALED_LISTENED_LINE =
-  "You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.";
-const SEALED_SKIPPED_LINE =
-  "You came back with the blue seal unbroken, and you still ran before the route finished. Reliable hands, impatient feet.";
-const RECOGNITION_SEALED_LINE =
-  "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
+const SEALED_LISTENED_LINE = ioReturningSessionLines.sealedPacketListenedRoute;
+const SEALED_SKIPPED_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
+// This spec's "listened" flow acknowledges the kiosk route, so the
+// recognition beat speaks the DEEP-RECALL tier (route memory present).
+const RECOGNITION_SEALED_LISTENED_LINE = expectedIoRecognitionLine("sealed", true);
 
 type GameProbe = {
   version?: number;
@@ -89,7 +91,7 @@ test("reloaded delivered save (route listened) boots on Io's returning line, the
   await page.evaluate(() => window.__game!.input!.waitForStoryIdle());
   const advanced = await snapshot(page);
   expect(advanced.scene.beat).toBe("io-return-recognition");
-  expect(advanced.npcs.io.lastLine).toBe(RECOGNITION_SEALED_LINE);
+  expect(advanced.npcs.io.lastLine).toBe(RECOGNITION_SEALED_LISTENED_LINE);
 });
 
 test("reloaded delivered save (route skipped) boots on the skipped-route returning line", async ({ page }) => {

@@ -48,10 +48,11 @@ const BEAT_LIMITS = {
 
 // The two verbatim lines Io speaks at io-return-recognition (see
 // aftersign/main.js `lineForBeat`).
-const SEALED_RECOGNITION_LINE =
-  "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
-const OPENED_RECOGNITION_LINE =
-  "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept the risk beside your name.";
+// Canonical copy module (#595 cleanup, #1077); these flows skip the
+// kiosk route, so the RETURNING tier speaks.
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
+const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
+const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
 
 const EXPECTED_LINE: Record<RecognitionOutcome, string> = {
   sealed: SEALED_RECOGNITION_LINE,

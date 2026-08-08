@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import {
-  IO_RETURN_LINE_FRAGMENT,
+  IO_RETURN_LINES,
   IO_RETURN_MEMORY_ID,
   assertDurableSaveLoaded,
   assertNpcReferencesPriorMemory,
@@ -456,9 +456,9 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
 
         assertNpcReferencesPriorMemory(returning, outcome);
         expect(
-          returning.npcs.io.lastLine,
-          `[outcome=${outcome}] expected lastLine to contain '${IO_RETURN_LINE_FRAGMENT[outcome]}'; got: ${returning.npcs.io.lastLine}`,
-        ).toContain(IO_RETURN_LINE_FRAGMENT[outcome]);
+          IO_RETURN_LINES[outcome],
+          `[outcome=${outcome}] expected lastLine to be a canonical recognition line (ioRecognitionDialogue.ts); got: ${returning.npcs.io.lastLine}`,
+        ).toContain(returning.npcs.io.lastLine);
         expect(
           returning.npcs.io.lastLineMemoryRefs,
           `[outcome=${outcome}] expected lastLineMemoryRefs to contain '${IO_RETURN_MEMORY_ID[outcome]}'; got: [${returning.npcs.io.lastLineMemoryRefs.join(", ")}]`,
@@ -644,7 +644,7 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
 
         const returning = await readSurface(page);
         expect(returning.scene.beat).toBe("io-return-recognition");
-        expect(returning.npcs.io.lastLine).toContain(IO_RETURN_LINE_FRAGMENT[outcome]);
+        expect(IO_RETURN_LINES[outcome]).toContain(returning.npcs.io.lastLine);
       });
     }
   });
