@@ -14,19 +14,27 @@ beyond oodim building itself.
 
 ## Quickstart
 
+All new contribution flows through the **flagship** (`aftersign/`) — start at
+[`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md) and
+[`docs/flagship/concept.md`](docs/flagship/concept.md). The frozen games remain
+runnable as archival context.
+
 ```bash
 # 1) Install dependencies
 npm install
 
-# 2) Run one game locally (example: Pac-Man)
+# 2) Run the flagship locally
+npm run dev:aftersign
+
+# (or a frozen game, e.g. Pac-Man)
 npm run dev:pacman
 
-# 3) Run aggregate validation checks (all games)
+# 3) Run aggregate validation checks (all projects)
 npm run typecheck
 npm run build
 npm run test:e2e
 
-# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar)
+# 4) Run per-project checks (replace <project> with aftersign | pacman | galaga | doom | agar)
 npm run typecheck:<project>
 npm run build:<project>
 npm run test:e2e:<project>
@@ -54,6 +62,12 @@ active roadmap. Only player-breaking bugs are accepted against them; no new
 features, no new clones. See [`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md)
 for the mandate and [`docs/flagship/concept.md`](docs/flagship/concept.md) for
 the flagship concept.
+
+### AFTERSIGN — `aftersign/` → `game.oodim.com/aftersign/` *(FLAGSHIP — active)*
+The studio's original flagship. All new issues, PRs, and branches target this
+project unless they fix a player-breaking bug in a frozen game. Concept and
+mandate: [`docs/flagship/concept.md`](docs/flagship/concept.md),
+[`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md).
 
 ### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
 A lightweight directory page that links players to each shipped game.
@@ -87,9 +101,11 @@ Work flows the same way it does in the main oodim repo — issue →
 implementation → review → CI → merge — only here the pipeline targets *this*
 repo via the oodim Game dimension. Because a game's correctness is interactive
 (not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — canvas state assertions that drive the game and check pellet counts,
-ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
-code review.
+harness**: Playwright drives the game and asserts against each project's
+canonical in-memory **state contract** (never pixels) — on top of the usual
+typecheck + build + code review. Each project defines its own contract; the
+flagship extends the harness further to cover story/state invariants and
+NPC-memory round-trips (see [`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md)).
 
 Roadmap and rationale live in the oodim repo:
 `docs/plan/multi-repo-greenfield-experiment.md`.
