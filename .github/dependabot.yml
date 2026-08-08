@@ -10,16 +10,9 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
-    # wrangler >4.113 deterministically breaks the aftersign durable-save e2e
-    # (miniflare local-persistence semantics — proven in #849 and #920; pinned
-    # at 4.107.0). Tracked in #959: investigate + unpin, then remove this.
-    ignore:
-      - dependency-name: "wrangler"
-      # rides with the wrangler pin: wrangler 4.107's peerOptional wants
-      # workers-types ^4, so a types 4->5 bump ERESOLVEs npm install
-      # (dependabot #965). Both unpin together via #959.
-      - dependency-name: "@cloudflare/workers-types"
-        update-types: ["version-update:semver-major"]
+    # (#959 resolved 2026-08-08: the wrangler >4.113 miniflare-persistence
+    # break was fixed upstream — full agar polarity matrix verified green on
+    # 4.120.0. The redgreen workflow gates future bumps; no ignores needed.)
     groups:
       dev-dependencies:
         dependency-type: "development"
