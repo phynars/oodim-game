@@ -229,6 +229,20 @@ export function checkPeakPerFrameTravelStaysUnderMobileCap(): void {
     0.002,
     'firstCameraMove.peakPitchDeltaPerFrame',
   );
+  // Dolly is on the SAME easeOutCubic curve as yaw+pitch, so its peak
+  // per-frame delta is 2.4·(1−(1−0.0119)³) ≈ 0.0847 → round3 → 0.085m.
+  // checkFirstCameraMoveFeel computes this into the result but doesn't
+  // gate on it — meaning a dolly-only regression (e.g. someone bumps
+  // dollyMeters from 2.4 to 3.0 without touching yaw) could slip past
+  // the peak-travel hypot() cap, since that cap only combines yaw+pitch.
+  // Lock the exact value here so a dolly drift trips the harness with
+  // a precise error line before it shows up as a swim/lurch on device.
+  assertClose(
+    result.peakDollyDeltaPerFrame,
+    0.085,
+    0.002,
+    'firstCameraMove.peakDollyDeltaPerFrame',
+  );
 
   // First visible motion must land on the 2nd 60fps frame (round(16.667)
   // = 17ms), well inside the 34ms cap. Locking the exact frame time
