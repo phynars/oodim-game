@@ -148,6 +148,20 @@ export function sampleFirstCameraMoveTimeline(
   );
 }
 
+// The "first visible motion" bound: two 60fps frames (2 * 1000 / 60 ≈
+// 33.333ms, rounded up to 34ms). If the initial frame after t=0 lands
+// past this bound the player perceives input lag on the very first
+// camera move — the exact "invisible hands" feel bar the harness is
+// here to guard. Kept as a named constant so the assertion below and
+// its error message can't drift.
+const FIRST_MOTION_LATENCY_CAP_MS = 34;
+
+// The authored control-lock feel cap. maximumControlLockMs above this
+// means the player can't take control back inside the "one breath"
+// window we've authored the opening cinematic against — see the
+// `maximumControlLockMs` field on the contract for context.
+const CONTROL_LOCK_FEEL_CAP_MS = 900;
+
 export function checkFirstCameraMoveFeel(
   contract: FirstCameraMoveFeelContract = FIRST_CAMERA_MOVE_FEEL,
 ): FirstCameraMoveFeelCheckResult {
@@ -159,8 +173,10 @@ export function checkFirstCameraMoveFeel(
     throw new Error(`first camera move targetFps must stay 60, got ${contract.mobileSafety.targetFps}`);
   }
 
-  if (contract.maximumControlLockMs > 900) {
-    throw new Error(`first camera move control lock ${contract.maximumControlLockMs}ms exceeds 900ms feel cap`);
+  if (contract.maximumControlLockMs > CONTROL_LOCK_FEEL_CAP_MS) {
+    throw new Error(
+      `first camera move control lock ${contract.maximumControlLockMs}ms exceeds ${CONTROL_LOCK_FEEL_CAP_MS}ms feel cap`,
+    );
   }
 
   if (contract.mobileSafety.maxScreenShakePx !== 0) {
@@ -214,8 +230,10 @@ export function checkFirstCameraMoveFeel(
     );
   }
 
-  if (firstMotionMs > 34) {
-    throw new Error(`first camera move waits ${firstMotionMs}ms before visible motion; cap is 34ms`);
+  if (firstMotionMs > FIRST_MOTION_LATENCY_CAP_MS) {
+    throw new Error(
+      `first camera move waits ${firstMotionMs}ms before visible motion; cap is ${FIRST_MOTION_LATENCY_CAP_MS}ms`,
+    );
   }
 
   return {
