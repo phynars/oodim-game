@@ -15,6 +15,7 @@
 
 import {
   FIRST_CAMERA_MOVE_FEEL,
+  checkFirstCameraMoveFeel,
   sampleFirstCameraMove,
   sampleFirstCameraMoveTimeline,
   type FirstCameraMoveFeelFrame,
@@ -182,10 +183,102 @@ export function checkMobileSafetyBudget(): void {
   );
 }
 
+export function checkPeakPerFrameTravelStaysUnderMobileCap(): void {
+  // Delegates to the exported feel-check in firstCameraMove.ts, which
+  // walks the sampled timeline and asserts:
+  //   - start/final frames match the authored contract
+  //   - peak per-frame yaw+pitch travel stays under the mobile-safety
+  //     AVERAGE budget scaled by easeOutCubic's 3× peak-to-average
+  //     ratio (0.65 × 3 = 1.95°/frame) — catches a discontinuous
+  //     snap/teleport frame without punishing the authored ease-out
+  //     shape (see EASE_OUT_CUBIC_PEAK_TO_AVERAGE_RATIO)
+  //   - first visible motion lands within 34ms (2 frames @ 60fps)
+  // Throws on violation; wiring it here means pure-runner + the e2e
+  // spec exercise it via the existing runFirstCameraMoveChecks entry.
+  const result = checkFirstCameraMoveFeel();
+
+  // Lock in the exact peak numbers the easing math predicts for the
+  // AUTHORED 18° landing yaw. easeOutCubic slope at t=0 is 3× the
+  // average; progress-per-frame at 60fps over 1400ms is 16.667/1400 ≈
+  // 0.0119, so peak Δyaw (frame 0 → 1) = 18·(1 − (1−0.0119)³) ≈ 0.635°
+  // and peak Δpitch = 4·(…) ≈ 0.141°. Asserting the cap alone would let
+  // a sampler regression drift the peaks upward without tripping the
+  // 0.65°/frame gate — an assertion on the *values* catches drift with
+  // a precise error line before it approaches the cap. Tolerance is
+  // ±0.002 to absorb the round3() quantization already applied inside
+  // checkFirstCameraMoveFeel; anything wider would defeat the point.
+  assertClose(
+    result.peakYawDeltaPerFrame,
+    0.635,
+    0.002,
+    'firstCameraMove.peakYawDeltaPerFrame',
+  );
+  assertClose(
+    result.peakPitchDeltaPerFrame,
+    0.141,
+    0.002,
+    'firstCameraMove.peakPitchDeltaPerFrame',
+  );
+  // Dolly is on the SAME easeOutCubic curve as yaw+pitch, so its peak
+  // per-frame delta is 2.4·(1−(1−0.0119)³) ≈ 0.0847 → round3 → 0.085m.
+  // checkFirstCameraMoveFeel computes this into the result but doesn't
+  // gate on it — meaning a dolly-only regression (e.g. someone bumps
+  // dollyMeters from 2.4 to 3.0 without touching yaw) could slip past
+  // the peak-travel hypot() cap, since that cap only combines yaw+pitch.
+  // Lock the exact value here so a dolly drift trips the harness with
+  // a precise error line before it shows up as a swim/lurch on device.
+  assertClose(
+    result.peakDollyDeltaPerFrame,
+    0.085,
+    0.002,
+    'firstCameraMove.peakDollyDeltaPerFrame',
+  );
+
+  // The rounded peak per-frame HYPOT (yaw ⊕ pitch, the number that
+  // actually gates the peak-travel cap inside checkFirstCameraMoveFeel —
+  // the authored AVERAGE budget scaled by easeOutCubic's 3× peak-to-
+  // average ratio, i.e. 0.65 × 3 = 1.95°/frame). hypot(0.635, 0.141) ≈
+  // 0.6505 → round3 → 0.650. Locking the exact rounded value catches a
+  // drift that walks the peak TOWARD the cap before it actually crosses;
+  // by the time the cap-check throws, a device player has already felt
+  // the lurch. This assertion fires earlier.
+  assertClose(
+    result.peakTravelDegreesPerFrame,
+    0.65,
+    0.002,
+    'firstCameraMove.peakTravelDegreesPerFrame',
+  );
+
+  // First visible motion must land on the 2nd 60fps frame (round(16.667)
+  // = 17ms), well inside the 34ms cap. Locking the exact frame time
+  // catches a sampler that starts a frame late.
+  assertEqual(result.firstMotionMs, 17, 'firstCameraMove.firstMotionMs');
+
+  // Timeline frame count is (durationMs/1000)·fps + 1 = 84 + 1 = 85 —
+  // same invariant checkSixtyFpsTimelineIsBoundedAndMonotonic locks,
+  // but from the checker's own walk (defends against a drift where the
+  // sampler and the checker disagree on frame count).
+  assertEqual(result.frameCount, 85, 'firstCameraMove.checkFrameCount');
+}
+
+function assertClose(
+  actual: number,
+  expected: number,
+  tolerance: number,
+  label: string,
+): void {
+  if (Math.abs(actual - expected) > tolerance) {
+    throw new AssertionError(
+      `${label}: expected ${expected} ± ${tolerance}, got ${actual}`,
+    );
+  }
+}
+
 export function runFirstCameraMoveChecks(): void {
   checkStartsVeiledAndLandsOnAuthoredMark();
   checkOpeningPullFeelsIntentionalByFortyPercent();
   checkSixtyFpsTimelineIsBoundedAndMonotonic();
   checkCoupledAvBeatsFitInsideAuthoredDuration();
   checkMobileSafetyBudget();
+  checkPeakPerFrameTravelStaysUnderMobileCap();
 }
