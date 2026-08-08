@@ -62,10 +62,20 @@ export interface FirstCameraMoveFeelContract {
   readonly mobileSafety: FirstCameraMoveMobileSafety;
 }
 
+export interface FirstCameraMoveFeelCheckResult {
+  readonly passed: true;
+  readonly frameCount: number;
+  readonly peakYawDeltaPerFrame: number;
+  readonly peakPitchDeltaPerFrame: number;
+  readonly peakDollyDeltaPerFrame: number;
+  readonly firstMotionMs: number;
+  readonly finalFrame: FirstCameraMoveFeelFrame;
+}
+
 export const FIRST_CAMERA_MOVE_FEEL: FirstCameraMoveFeelContract = {
   durationMs: 1400,
   sampleRateFps: 60,
-  yawDegrees: 18,
+  yawDegrees: 17.8,
   pitchDegrees: -4,
   dollyMeters: 2.4,
   easing: "easeOutCubic",
@@ -136,6 +146,110 @@ export function sampleFirstCameraMoveTimeline(
   return Array.from({ length: frameCount + 1 }, (_, frame) =>
     sampleFirstCameraMove((frame / contract.sampleRateFps) * 1000, contract),
   );
+}
+
+export function checkFirstCameraMoveFeel(
+  contract: FirstCameraMoveFeelContract = FIRST_CAMERA_MOVE_FEEL,
+): FirstCameraMoveFeelCheckResult {
+  assertFinitePositive("durationMs", contract.durationMs);
+  assertFinitePositive("sampleRateFps", contract.sampleRateFps);
+  assertFinitePositive("mobileSafety.targetFps", contract.mobileSafety.targetFps);
+
+  if (contract.mobileSafety.targetFps !== 60) {
+    throw new Error(`first camera move targetFps must stay 60, got ${contract.mobileSafety.targetFps}`);
+  }
+
+  if (contract.maximumControlLockMs > 900) {
+    throw new Error(`first camera move control lock ${contract.maximumControlLockMs}ms exceeds 900ms feel cap`);
+  }
+
+  if (contract.mobileSafety.maxScreenShakePx !== 0) {
+    throw new Error(`first camera move must not add screen shake, got ${contract.mobileSafety.maxScreenShakePx}px`);
+  }
+
+  const timeline = sampleFirstCameraMoveTimeline(contract);
+  const firstFrame = timeline[0];
+  const finalFrame = timeline[timeline.length - 1];
+  assertFrameEquals("first", firstFrame, {
+    yawDegrees: 0,
+    pitchDegrees: 0,
+    dollyMeters: 0,
+    vignetteAlpha: contract.vignetteStartAlpha,
+    bloomStrength: contract.bloomStartStrength,
+    lowPassHz: contract.audioLowPassStartHz,
+  });
+  assertFrameEquals("final", finalFrame, {
+    yawDegrees: contract.yawDegrees,
+    pitchDegrees: contract.pitchDegrees,
+    dollyMeters: contract.dollyMeters,
+    vignetteAlpha: contract.vignetteEndAlpha,
+    bloomStrength: contract.bloomEndStrength,
+    lowPassHz: contract.audioLowPassEndHz,
+  });
+
+  let peakYawDeltaPerFrame = 0;
+  let peakPitchDeltaPerFrame = 0;
+  let peakDollyDeltaPerFrame = 0;
+  let firstMotionMs = Number.POSITIVE_INFINITY;
+
+  for (let index = 1; index < timeline.length; index += 1) {
+    const previous = timeline[index - 1];
+    const current = timeline[index];
+    const yawDelta = Math.abs(current.yawDegrees - previous.yawDegrees);
+    const pitchDelta = Math.abs(current.pitchDegrees - previous.pitchDegrees);
+    const dollyDelta = Math.abs(current.dollyMeters - previous.dollyMeters);
+    peakYawDeltaPerFrame = Math.max(peakYawDeltaPerFrame, yawDelta);
+    peakPitchDeltaPerFrame = Math.max(peakPitchDeltaPerFrame, pitchDelta);
+    peakDollyDeltaPerFrame = Math.max(peakDollyDeltaPerFrame, dollyDelta);
+
+    if (firstMotionMs === Number.POSITIVE_INFINITY && (yawDelta > 0 || pitchDelta > 0 || dollyDelta > 0)) {
+      firstMotionMs = current.timeMs;
+    }
+  }
+
+  const peakTravelDegreesPerFrame = round3(Math.hypot(peakYawDeltaPerFrame, peakPitchDeltaPerFrame));
+  if (peakTravelDegreesPerFrame > contract.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps) {
+    throw new Error(
+      `first camera move peak camera travel ${peakTravelDegreesPerFrame}deg/frame exceeds ${contract.mobileSafety.maxCameraTravelDegreesPerFrameAt60fps}deg/frame mobile cap`,
+    );
+  }
+
+  if (firstMotionMs > 34) {
+    throw new Error(`first camera move waits ${firstMotionMs}ms before visible motion; cap is 34ms`);
+  }
+
+  return {
+    passed: true,
+    frameCount: timeline.length,
+    peakYawDeltaPerFrame: round3(peakYawDeltaPerFrame),
+    peakPitchDeltaPerFrame: round3(peakPitchDeltaPerFrame),
+    peakDollyDeltaPerFrame: round3(peakDollyDeltaPerFrame),
+    firstMotionMs,
+    finalFrame,
+  };
+}
+
+export function runFirstCameraMoveFeelChecks(): FirstCameraMoveFeelCheckResult {
+  return checkFirstCameraMoveFeel(FIRST_CAMERA_MOVE_FEEL);
+}
+
+function assertFinitePositive(label: string, value: number): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`first camera move ${label} must be > 0, got ${value}`);
+  }
+}
+
+function assertFrameEquals(
+  label: string,
+  frame: FirstCameraMoveFeelFrame,
+  expected: Omit<FirstCameraMoveFeelFrame, "timeMs">,
+): void {
+  const mismatches = Object.entries(expected).filter(([key, value]) => frame[key as keyof typeof expected] !== value);
+  if (mismatches.length > 0) {
+    throw new Error(
+      `first camera move ${label} frame drifted: ${mismatches.map(([key, value]) => `${key} expected ${value}, got ${frame[key as keyof typeof expected]}`).join("; ")}`,
+    );
+  }
 }
 
 function clamp01(value: number): number {
