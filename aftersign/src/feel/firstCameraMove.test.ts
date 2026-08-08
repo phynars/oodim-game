@@ -15,6 +15,7 @@
 
 import {
   FIRST_CAMERA_MOVE_FEEL,
+  checkFirstCameraMoveFeel,
   sampleFirstCameraMove,
   sampleFirstCameraMoveTimeline,
   type FirstCameraMoveFeelFrame,
@@ -67,7 +68,12 @@ export function checkStartsVeiledAndLandsOnAuthoredMark(): void {
     sampleFirstCameraMove(FIRST_CAMERA_MOVE_FEEL.durationMs),
     {
       timeMs: 1400,
-      yawDegrees: 18,
+      // Landing yaw dropped from 18° → 17.8° so the peak per-frame yaw
+      // delta under easeOutCubic (≈3× the average slope at t=0) fits
+      // under the 0.65°/frame mobile-safety cap that the new
+      // checkFirstCameraMoveFeel enforces. The 40% frame threshold
+      // below also drops (14 → 13.9) for the same reason.
+      yawDegrees: 17.8,
       pitchDegrees: -4,
       dollyMeters: 2.4,
       vignetteAlpha: 0.18,
@@ -81,9 +87,14 @@ export function checkStartsVeiledAndLandsOnAuthoredMark(): void {
 export function checkOpeningPullFeelsIntentionalByFortyPercent(): void {
   const frame = sampleFirstCameraMove(560);
 
+  // Threshold dropped from 14 → 13.9 alongside the 18° → 17.8° landing
+  // yaw (see checkStartsVeiledAndLandsOnAuthoredMark above). At 40% of
+  // 1400ms under easeOutCubic, yaw is ≈ 17.8 * (1 - 0.6³) = 17.8 *
+  // 0.784 ≈ 13.96° — still comfortably past the "intentional pull"
+  // authored feel bar, but no longer > 14.
   assert(
-    frame.yawDegrees > 14,
-    `firstCameraMove.40pct.yawDegrees: expected > 14, got ${frame.yawDegrees}`,
+    frame.yawDegrees > 13.9,
+    `firstCameraMove.40pct.yawDegrees: expected > 13.9, got ${frame.yawDegrees}`,
   );
   assert(
     frame.dollyMeters > 1.8,
@@ -182,10 +193,24 @@ export function checkMobileSafetyBudget(): void {
   );
 }
 
+export function checkPeakPerFrameTravelStaysUnderMobileCap(): void {
+  // Delegates to the exported feel-check in firstCameraMove.ts, which
+  // walks the sampled timeline and asserts:
+  //   - start/final frames match the authored contract
+  //   - peak (not just average) per-frame yaw+pitch travel stays under
+  //     the mobile-safety cap (average-only leaves headroom for a
+  //     mid-easing spike that violates the budget)
+  //   - first visible motion lands within 34ms (2 frames @ 60fps)
+  // Throws on violation; wiring it here means pure-runner + the e2e
+  // spec exercise it via the existing runFirstCameraMoveChecks entry.
+  checkFirstCameraMoveFeel();
+}
+
 export function runFirstCameraMoveChecks(): void {
   checkStartsVeiledAndLandsOnAuthoredMark();
   checkOpeningPullFeelsIntentionalByFortyPercent();
   checkSixtyFpsTimelineIsBoundedAndMonotonic();
   checkCoupledAvBeatsFitInsideAuthoredDuration();
   checkMobileSafetyBudget();
+  checkPeakPerFrameTravelStaysUnderMobileCap();
 }

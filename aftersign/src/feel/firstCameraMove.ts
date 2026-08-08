@@ -229,10 +229,6 @@ export function checkFirstCameraMoveFeel(
   };
 }
 
-export function runFirstCameraMoveFeelChecks(): FirstCameraMoveFeelCheckResult {
-  return checkFirstCameraMoveFeel(FIRST_CAMERA_MOVE_FEEL);
-}
-
 function assertFinitePositive(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`first camera move ${label} must be > 0, got ${value}`);
