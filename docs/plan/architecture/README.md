@@ -53,7 +53,7 @@ Per-project scripts are `build:<project>` / `typecheck:<project>` /
 `test:e2e:<project>`. The bare `build` / `typecheck` / `test:e2e`
 aggregate across all products.
 
-## Runtime boundaries (from the frozen portfolio)
+## Runtime boundaries
 
 Three shapes of runtime were proved by the frozen games — the boundary
 between them is what dictates how each was verified. The flagship
@@ -61,11 +61,12 @@ inherits the WebGL + server-authoritative rungs and extends the harness
 to cover story/state invariants and NPC-memory round-trips (see the
 brief's "Extend the gameplay harness before the gameplay").
 
-| Shape | Games (frozen) | Verification contract |
+| Shape | Project(s) | Verification contract |
 |---|---|---|
-| **2D canvas, single-player** | `pacman/`, `galaga/` | Playwright drives inputs; assertions read a `window.__game` **state contract** (score, lives, ghost modes, collisions). Never pixels. |
-| **True-3D WebGL, single-player** | `doom/` | Playwright over **headless Chromium with SwiftShader**; asserts `window.__doom` state (player pose, enemies, projectiles, doors). Deterministic fixed-timestep sim decoupled from rendering. |
-| **Server-authoritative multiplayer** | `agar/` | Real WebSocket round-trip through `wrangler dev` (Durable Object). Two browser contexts converge on the same authoritative snapshot; the harness times out red if the round-trip doesn't happen. |
+| **2D canvas, single-player** *(frozen)* | `pacman/`, `galaga/` | Playwright drives inputs; assertions read a `window.__game` **state contract** (score, lives, ghost modes, collisions). Never pixels. |
+| **True-3D WebGL, single-player** *(frozen)* | `doom/` | Playwright over **headless Chromium with SwiftShader**; asserts `window.__doom` state (player pose, enemies, projectiles, doors). Deterministic fixed-timestep sim decoupled from rendering. |
+| **Server-authoritative multiplayer** *(frozen)* | `agar/` | Real WebSocket round-trip through `wrangler dev` (Durable Object). Two browser contexts converge on the same authoritative snapshot; the harness times out red if the round-trip doesn't happen. |
+| **Flagship — WebGL + durable story state** *(active)* | `aftersign/` | Layered gate: a **deterministic pure-sim runner** (`aftersign/pure-runner.ts`, no browser) validates simulation invariants before Playwright runs; Playwright e2e asserts the state contract plus **NPC-memory round-trips** (`e2e/npc-memory-roundtrip.spec.ts`) and the **durable save/load contract** (`e2e/save-load-durable-contract.spec.ts`, incl. a broken-mode fixture proving the check fails when saves are local-only). See the brief's "Extend the gameplay harness before the gameplay" in [`docs/flagship/BRIEF.md`](../../flagship/BRIEF.md). |
 
 Common thread: **state assertions, not pixel diffs**. A game's correctness
 is interactive, so the merge gate drives the game and inspects the
