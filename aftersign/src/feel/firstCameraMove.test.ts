@@ -244,6 +244,20 @@ export function checkPeakPerFrameTravelStaysUnderMobileCap(): void {
     'firstCameraMove.peakDollyDeltaPerFrame',
   );
 
+  // The rounded peak per-frame HYPOT (yaw ⊕ pitch, the number that
+  // actually gates the mobile-safety cap inside checkFirstCameraMoveFeel).
+  // hypot(0.628, 0.141) ≈ 0.6436 → round3 → 0.644 — under the 0.65 cap
+  // with 0.006° of headroom. Locking the exact rounded value catches a
+  // drift that walks the peak TOWARD the cap before it actually crosses;
+  // by the time the cap-check throws, a device player has already felt
+  // the lurch. This assertion fires earlier.
+  assertClose(
+    result.peakTravelDegreesPerFrame,
+    0.644,
+    0.002,
+    'firstCameraMove.peakTravelDegreesPerFrame',
+  );
+
   // First visible motion must land on the 2nd 60fps frame (round(16.667)
   // = 17ms), well inside the 34ms cap. Locking the exact frame time
   // catches a sampler that starts a frame late.

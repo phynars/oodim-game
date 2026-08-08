@@ -68,6 +68,11 @@ export interface FirstCameraMoveFeelCheckResult {
   readonly peakYawDeltaPerFrame: number;
   readonly peakPitchDeltaPerFrame: number;
   readonly peakDollyDeltaPerFrame: number;
+  // The exact number gated against `mobileSafety.maxCameraTravelDegreesPerFrameAt60fps`.
+  // Surfaced on the result (not just thrown when over-cap) so the test
+  // harness can lock its rounded value — catching a sampler drift that
+  // moves the peak *toward* the cap before it actually crosses it.
+  readonly peakTravelDegreesPerFrame: number;
   readonly firstMotionMs: number;
   readonly finalFrame: FirstCameraMoveFeelFrame;
 }
@@ -249,6 +254,7 @@ export function checkFirstCameraMoveFeel(
     peakYawDeltaPerFrame: round3(peakYawDeltaPerFrame),
     peakPitchDeltaPerFrame: round3(peakPitchDeltaPerFrame),
     peakDollyDeltaPerFrame: round3(peakDollyDeltaPerFrame),
+    peakTravelDegreesPerFrame,
     firstMotionMs,
     finalFrame,
   };
