@@ -18,11 +18,11 @@ const MAX_UI_SETTLE_MS = 360;
 const MAX_AV_DRIFT_MS = 50;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
-// The line that ACTUALLY renders at the sealed recognition beat, per
-// index.html's lineForBeat() branch for state.scene.beat ===
-// 'io-return-recognition' with state.packet.sealed === true.
-const IO_SEALED_RECOGNITION_LINE =
-  'I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.';
+// The line that ACTUALLY renders at the sealed recognition beat — from
+// the canonical copy module (#595 cleanup, #1077). This flow skips the
+// kiosk route, so the RETURNING tier speaks.
+import { expectedIoRecognitionLine } from '../src/ioRecognitionDialogue';
+const IO_SEALED_RECOGNITION_LINE = expectedIoRecognitionLine('sealed', false);
 
 type PhoneReadyProbe = {
   readonly lineText: string;
@@ -108,7 +108,10 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
         if (
           marks.recognitionTriggeredAt !== undefined
           && marks.lineSettledAt === undefined
-          && lineText.includes('I remember you: blue seal, unbroken.')
+          // Tier-agnostic prefix: this page-side probe only marks WHEN the
+          // recognition line settled; exact copy is asserted node-side
+          // against the canonical module.
+          && lineText.startsWith('I remember you')
           && lineText !== lastLineText
         ) {
           marks.lineSettledAt = performance.now();
