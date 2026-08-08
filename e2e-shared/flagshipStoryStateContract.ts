@@ -125,14 +125,20 @@ export type FlagshipBreakMode =
   | 'wrong-io-line'
   | 'local-only-save';
 
-// Required line fragment per prior delivery outcome. Sourced from the
-// spec's "Required mappings" table. The fragment check catches a swapped
-// or generic returning line; the memory-id check (see
-// assertNpcReferencesPriorMemory) catches a line that happens to contain
-// the right words but was not tied to the saved memory.
-export const IO_RETURN_LINE_FRAGMENT: Record<'sealed' | 'opened', string> = {
-  sealed: 'blue seal, unbroken',
-  opened: 'The seal did not',
+// Canonical recognition lines per prior delivery outcome, ACROSS TIERS
+// (returning + deep-recall) — sourced from the copy module itself
+// (aftersign/src/ioRecognitionDialogue.ts), not duplicated literals.
+// #1077/#595 cleanup: pinned fragments went stale the moment the
+// memory-aware deep-recall tier started speaking ("blue seal, unbroken"
+// vs the deep-recall "blue seal unbroken" — the comma broke main). The
+// line check catches a swapped or generic returning line; the memory-id
+// check (see assertNpcReferencesPriorMemory) catches a line that happens
+// to match but was not tied to the saved memory.
+import { ioRecognitionLinesFor } from '../aftersign/src/ioRecognitionDialogue';
+
+export const IO_RETURN_LINES: Record<'sealed' | 'opened', readonly string[]> = {
+  sealed: ioRecognitionLinesFor('sealed'),
+  opened: ioRecognitionLinesFor('opened'),
 };
 
 export const IO_RETURN_MEMORY_ID: Record<'sealed' | 'opened', string> = {
@@ -252,7 +258,7 @@ export function assertNpcReferencesPriorMemory(
   priorOutcome: 'sealed' | 'opened',
 ): void {
   const requiredMemoryId = IO_RETURN_MEMORY_ID[priorOutcome];
-  const requiredFragment = IO_RETURN_LINE_FRAGMENT[priorOutcome];
+  const canonicalLines = IO_RETURN_LINES[priorOutcome];
   const io = surface.npcs.io;
 
   if (!io.lastLineMemoryRefs.includes(requiredMemoryId)) {
@@ -283,9 +289,9 @@ export function assertNpcReferencesPriorMemory(
       `Expected npcs.io.lastLine to be non-null after returning-session recognition (prior outcome '${priorOutcome}').`,
     );
   }
-  if (!io.lastLine.includes(requiredFragment)) {
+  if (!canonicalLines.includes(io.lastLine)) {
     throw new Error(
-      `Expected npcs.io.lastLine to contain the required fragment '${requiredFragment}' for prior outcome '${priorOutcome}', got: ${io.lastLine}`,
+      `Expected npcs.io.lastLine to be one of the canonical recognition lines for prior outcome '${priorOutcome}' (see aftersign/src/ioRecognitionDialogue.ts), got: ${io.lastLine}`,
     );
   }
 

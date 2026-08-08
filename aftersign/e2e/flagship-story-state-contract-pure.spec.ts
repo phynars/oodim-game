@@ -7,6 +7,7 @@ import {
   assertStoryBeatTransition,
   type FlagshipGameSurface,
 } from '../../e2e-shared/flagshipStoryStateContract';
+import { expectedIoRecognitionLine } from '../src/ioRecognitionDialogue';
 
 type SurfaceOverrides = Partial<
   Omit<FlagshipGameSurface, 'build' | 'scene' | 'player' | 'delivery' | 'npcs' | 'save' | 'input'>
@@ -139,7 +140,9 @@ test.describe('AFTERSIGN flagship story/state pure contract', () => {
               source: 'server',
             },
           ],
-          lastLine: 'I remember the blue seal, unbroken.',
+          // Canonical returning-tier line (#1077): the contract now
+          // checks membership in the canonical line set, not a fragment.
+          lastLine: expectedIoRecognitionLine('sealed', false),
           lastLineMemoryRefs: ['io-remembers-blue-packet-sealed'],
         },
       },

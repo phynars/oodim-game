@@ -147,6 +147,33 @@ export function buildIoRecognitionDialogueSnippets(
   ];
 }
 
+/** Every canonical line Io may speak at the recognition beat for a given
+ *  durable delivery outcome, across tiers. Harness/e2e assertions should
+ *  check membership here instead of pinning copy literals (#595 cleanup,
+ *  #1077 — two merges evolved line selection and every duplicated literal
+ *  went stale on main). Copy evolves in THIS module only. */
+export function ioRecognitionLinesFor(outcome: "sealed" | "opened"): readonly string[] {
+  return outcome === "sealed"
+    ? [RETURNING_LINES.sealed, DEEP_RECALL_LINES.sealedListened, DEEP_RECALL_LINES.sealedSkipped]
+    : [RETURNING_LINES.opened, DEEP_RECALL_LINES.openedListened, DEEP_RECALL_LINES.openedSkipped];
+}
+
+/** The exact line selectIoRecognitionDialogueLine yields for a delivery
+ *  outcome + route-attention state — for specs that drive a known flow and
+ *  want verbatim equality without duplicating copy. Mirrors the selection
+ *  gate: deep-recall speaks ONLY when the route was listened. */
+export function expectedIoRecognitionLine(
+  outcome: "sealed" | "opened",
+  routeListened: boolean,
+): string {
+  if (routeListened) {
+    return outcome === "sealed"
+      ? DEEP_RECALL_LINES.sealedListened
+      : DEEP_RECALL_LINES.openedListened;
+  }
+  return RETURNING_LINES[outcome];
+}
+
 export function selectIoRecognitionDialogueLine(
   snippets: readonly IoRecognitionDialogueSnippet[],
   input?: { memory?: readonly IoRecognitionMemoryFact[] },
