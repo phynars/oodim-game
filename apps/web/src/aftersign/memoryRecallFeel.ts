@@ -1,3 +1,9 @@
+import {
+  AFTERSIGN_MEMORY_RECALL_GLINT_FEEL,
+  resolveAftersignMemoryRecallGlintEnvelope,
+  type AftersignMemoryRecallGlintEnvelope,
+} from "./memoryRecallGlintFeel";
+
 export type MemoryRecallPhase = "dormant" | "recognize" | "settle" | "held";
 
 export interface MemoryRecallFeelFrame {
@@ -12,6 +18,16 @@ export interface MemoryRecallFeelFrame {
   bloomGain: number;
   audioGain: number;
   hapticMs: number;
+  /**
+   * Specular-shimmer sub-envelope composited on top of the base beat.
+   * Aligned to `MEMORY_RECALL_FEEL.durationMs` / `.cameraYawDeg` via
+   * `AFTERSIGN_MEMORY_RECALL_GLINT_FEEL` so there is ONE source of
+   * truth for the recall beat's core numbers. Consumers (renderer /
+   * `window.__game.recallFeel`) read `frame.glint` to composite the
+   * shimmer pass; reduced-motion callers can ignore it or crossfade
+   * against `frame.progress` at their discretion.
+   */
+  glint: AftersignMemoryRecallGlintEnvelope;
 }
 
 export interface MemoryRecallFeelOptions {
@@ -58,6 +74,10 @@ export function getMemoryRecallFeel({
       bloomGain: 0,
       audioGain: 0,
       hapticMs: 0,
+      glint: resolveAftersignMemoryRecallGlintEnvelope(
+        0,
+        AFTERSIGN_MEMORY_RECALL_GLINT_FEEL,
+      ),
     };
   }
 
@@ -84,6 +104,10 @@ export function getMemoryRecallFeel({
     bloomGain: MEMORY_RECALL_FEEL.bloomGainPeak * entrance * (isHeld ? holdFade : 1 - 0.55 * settle),
     audioGain: MEMORY_RECALL_FEEL.audioGainPeak * entrance * (isHeld ? holdFade : 1),
     hapticMs: safeElapsedMs <= 16 && !reducedMotion ? MEMORY_RECALL_FEEL.hapticMs : 0,
+    glint: resolveAftersignMemoryRecallGlintEnvelope(
+      safeElapsedMs,
+      AFTERSIGN_MEMORY_RECALL_GLINT_FEEL,
+    ),
   };
 }
 

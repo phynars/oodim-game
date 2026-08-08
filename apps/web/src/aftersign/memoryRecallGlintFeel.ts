@@ -1,3 +1,25 @@
+/**
+ * Sub-envelope layered on top of `MEMORY_RECALL_FEEL` — a short specular
+ * shimmer that streaks left→right across the recognized NPC's caption/
+ * halo during the recall beat. This is NOT a competing recall envelope
+ * (the harness's `recallFeel` is still the canonical beat driver); it's
+ * an additional visual pass the renderer composites over the frame the
+ * beat already produces.
+ *
+ * To avoid the "two sources of truth for one beat" drift (#1069 review),
+ * the glint's `durationMs` and `cameraYawDegrees` MUST equal the wired
+ * `MEMORY_RECALL_FEEL.durationMs` / `.cameraYawDeg`. We inline the
+ * numbers here (rather than import from `./memoryRecallFeel`) because
+ * `memoryRecallFeel.ts` composes THIS module into its frame — a live
+ * import would form a cycle at module init. The invariant is guarded
+ * at runtime by the contract test in
+ * `memoryRecallGlintFeel.contract.test.ts`, which asserts equality
+ * against the imported `MEMORY_RECALL_FEEL` object.
+ *
+ * The remaining knobs (glint travel, width, opacity, bloom lift, audio
+ * duck) are the shimmer's own detail and have no counterpart in
+ * `MEMORY_RECALL_FEEL`.
+ */
 export type AftersignMemoryRecallGlintFeel = {
   readonly durationMs: number;
   readonly glintLeadMs: number;
@@ -25,7 +47,9 @@ export type AftersignMemoryRecallGlintEnvelope = {
 };
 
 export const AFTERSIGN_MEMORY_RECALL_GLINT_FEEL = {
-  durationMs: 840,
+  // MUST equal MEMORY_RECALL_FEEL.durationMs — invariant guarded in
+  // the contract test (see file docblock).
+  durationMs: 760,
   glintLeadMs: 120,
   glintTravelPx: 72,
   glintWidthPx: 18,
@@ -34,7 +58,9 @@ export const AFTERSIGN_MEMORY_RECALL_GLINT_FEEL = {
   audioDuckDb: -3,
   audioDuckHoldMs: 180,
   cameraDollyCm: 6,
-  cameraYawDegrees: 1.2,
+  // MUST equal MEMORY_RECALL_FEEL.cameraYawDeg — the glint does not
+  // add its own yaw budget on top; it inherits the beat's ceiling.
+  cameraYawDegrees: 1.6,
   easing: "cubic-bezier(.16,1,.3,1)",
 } as const satisfies AftersignMemoryRecallGlintFeel;
 

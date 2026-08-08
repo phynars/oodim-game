@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEMORY_RECALL_FEEL } from "./memoryRecallFeel";
 import {
   AFTERSIGN_MEMORY_RECALL_GLINT_FEEL,
   resolveAftersignMemoryRecallGlintEnvelope,
@@ -6,8 +7,10 @@ import {
 
 describe("AFTERSIGN memory recall glint feel", () => {
   it("pins the recall glint to a short visible shimmer with restrained camera motion", () => {
+    // The glint inherits its duration and camera-yaw ceiling from the
+    // wired recall beat (`MEMORY_RECALL_FEEL`) — no divergent numbers.
     expect(AFTERSIGN_MEMORY_RECALL_GLINT_FEEL).toMatchObject({
-      durationMs: 840,
+      durationMs: MEMORY_RECALL_FEEL.durationMs,
       glintLeadMs: 120,
       glintTravelPx: 72,
       glintWidthPx: 18,
@@ -16,7 +19,7 @@ describe("AFTERSIGN memory recall glint feel", () => {
       audioDuckDb: -3,
       audioDuckHoldMs: 180,
       cameraDollyCm: 6,
-      cameraYawDegrees: 1.2,
+      cameraYawDegrees: MEMORY_RECALL_FEEL.cameraYawDeg,
       easing: "cubic-bezier(.16,1,.3,1)",
     });
   });
@@ -33,25 +36,28 @@ describe("AFTERSIGN memory recall glint feel", () => {
       bloomLift: 0,
       audioDuckDb: -3,
       cameraDollyCm: 6,
-      cameraYawDegrees: 1.2,
+      cameraYawDegrees: MEMORY_RECALL_FEEL.cameraYawDeg,
     });
   });
 
   it("peaks near the center with readable shimmer but never exceeds the bloom budget", () => {
-    const envelope = resolveAftersignMemoryRecallGlintEnvelope(480);
+    // 120ms lead + half of (760-120) = 120 + 320 = 440ms → glintProgress=0.5
+    const envelope = resolveAftersignMemoryRecallGlintEnvelope(440);
 
-    expect(envelope.progress).toBeGreaterThan(0.55);
-    expect(envelope.glintProgress).toBe(0.5);
+    expect(envelope.progress).toBeGreaterThan(0.5);
+    expect(envelope.glintProgress).toBeCloseTo(0.5, 5);
     expect(envelope.glintOffsetPx).toBeGreaterThanOrEqual(30);
-    expect(envelope.opacity).toBe(0.28);
-    expect(envelope.bloomLift).toBe(0.14);
+    expect(envelope.opacity).toBeCloseTo(0.28, 3);
+    expect(envelope.bloomLift).toBeCloseTo(0.14, 3);
     expect(envelope.audioDuckDb).toBe(0);
     expect(envelope.cameraDollyCm).toBeLessThan(0.5);
     expect(envelope.cameraYawDegrees).toBeLessThan(0.1);
   });
 
-  it("settles fully by 840ms with no leftover shake, duck, or bloom", () => {
-    const envelope = resolveAftersignMemoryRecallGlintEnvelope(840);
+  it("settles fully by the beat's end with no leftover shake, duck, or bloom", () => {
+    const envelope = resolveAftersignMemoryRecallGlintEnvelope(
+      MEMORY_RECALL_FEEL.durationMs,
+    );
 
     expect(envelope).toMatchObject({
       progress: 1,

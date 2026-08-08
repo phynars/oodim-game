@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
+import { AFTERSIGN_MEMORY_RECALL_GLINT_FEEL } from "../memoryRecallGlintFeel";
 import {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
@@ -264,6 +265,72 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(Math.abs(reducedMotionFrame!.cameraYawDeg)).toBeLessThan(
       Math.abs(firstFrame!.cameraYawDeg) + 1e-6,
     );
+  });
+
+  // Consumer wiring for the glint sub-envelope (#1069 review): the
+  // shimmer must reach the harness surface, not sit as an unconsumed
+  // pure module. `frame.glint` is composited by
+  // `getMemoryRecallFeel`, so any harness caller that already samples
+  // `recallFeel({elapsedMs})` gets the shimmer for free — and this
+  // assertion pins that wiring end-to-end in the blocking lane.
+  //
+  // Sanity checks:
+  //   1. The glint's duration & camera-yaw ceiling equal the base beat's
+  //      — one source of truth, no drift.
+  //   2. At the peak-visible instant (glintLead + half the remaining
+  //      window), opacity and bloomLift ride the shimmer's ceiling.
+  //   3. At durationMs the shimmer has resolved (opacity, bloom, duck,
+  //      yaw all zero) — the beat leaves no leftover motion.
+  it("composes the recall glint sub-envelope through the harness recall frame", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        5,
+      ),
+    );
+    game?.meetNpc("io");
+
+    // (1) Duration & camera-yaw ceiling equal the wired beat.
+    expect(AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.durationMs).toBe(
+      MEMORY_RECALL_FEEL.durationMs,
+    );
+    expect(AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.cameraYawDegrees).toBeCloseTo(
+      MEMORY_RECALL_FEEL.cameraYawDeg,
+      5,
+    );
+
+    // (2) Peak-visible: glintLead + half the remaining window.
+    const peakMs =
+      AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.glintLeadMs +
+      (AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.durationMs -
+        AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.glintLeadMs) /
+        2;
+    const peakFrame = game?.recallFeel({ elapsedMs: peakMs });
+    expect(peakFrame?.glint).toBeDefined();
+    expect(peakFrame!.glint.glintProgress).toBeCloseTo(0.5, 5);
+    expect(peakFrame!.glint.opacity).toBeCloseTo(
+      AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.maxOpacity,
+      3,
+    );
+    expect(peakFrame!.glint.bloomLift).toBeCloseTo(
+      AFTERSIGN_MEMORY_RECALL_GLINT_FEEL.bloomLift,
+      3,
+    );
+    expect(peakFrame!.glint.audioDuckDb).toBe(0);
+
+    // (3) At durationMs the shimmer has fully resolved.
+    const tailFrame = game?.recallFeel({ elapsedMs: MEMORY_RECALL_FEEL.durationMs });
+    expect(tailFrame?.glint.progress).toBe(1);
+    expect(tailFrame?.glint.opacity).toBe(0);
+    expect(tailFrame?.glint.bloomLift).toBe(0);
+    expect(tailFrame?.glint.audioDuckDb).toBe(0);
+    expect(tailFrame?.glint.cameraYawDegrees).toBe(0);
+    expect(tailFrame?.glint.cameraDollyCm).toBe(0);
   });
 
   it("honours reducedMotion when sampling the recall envelope through the harness", () => {
