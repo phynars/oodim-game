@@ -74,15 +74,25 @@ test("input-to-render feel contract samples active move input before assertion a
     await game.resetSliceSave();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-    const afterReset = (window.__game as unknown as {
+    const resetGame = window.__game as unknown as {
+      assertFeelContract: () => {
+        passed: boolean;
+        movedThisFrame: boolean;
+        inputToVelocityFrames: number;
+        fixedStepInsideBudget: boolean;
+        targetFrameMs: number;
+      };
       getSnapshot: () => {
         movement: { input: { x: number; z: number; source: string } };
         player: { x: number; z: number };
       };
-    }).getSnapshot();
+    };
+    const afterReset = resetGame.getSnapshot();
+    const afterResetContract = resetGame.assertFeelContract();
 
     return {
       contract,
+      afterResetContract,
       afterInput: {
         input: afterInput.movement.input,
         x: afterInput.player.x,
@@ -124,4 +134,7 @@ test("input-to-render feel contract samples active move input before assertion a
   expect(result.afterReset.input).toMatchObject({ x: 0, z: 0, source: "none" });
   expect(result.afterReset.x).toBeCloseTo(-1.8, 6);
   expect(result.afterReset.z).toBeCloseTo(1.15, 6);
+
+  expect(result.afterResetContract.passed).toBe(true);
+  expect(result.afterResetContract.movedThisFrame).toBe(false);
 });
