@@ -45,6 +45,7 @@ import {
   RECOGNITION_FEEDBACK_GLOW_START_MS,
   RECOGNITION_FEEDBACK_GLOW_DURATION_MS,
   RECOGNITION_FEEDBACK_TOTAL_MS,
+  RECOGNITION_FEEDBACK_REDUCED_MOTION_MS,
 } from "./recognitionFeedback.ts";
 
 function inBand(value: number, min: number, max: number, label: string): void {
@@ -191,5 +192,28 @@ export function runRecognitionFeedbackBridgeChecks(): void {
     // pre-beat if a caller queries during the guard window).
     const negative = recognitionEnvelopeAt(-50, "sealed");
     assertEqual(negative.normalized, 0);
+  }
+
+  // 8. Impact burst: frame-4 trigger emits 14 particles + chirp.
+  {
+    const frameMs = 1000 / 60;
+    const frame4Ms = 120 + 4 * frameMs;
+    const t = recognitionEnvelopeAt(frame4Ms, "sealed");
+    assertEqual(t.impactBurst.particles.length, 14);
+    assertEqual(t.impactBurst.chirp.shouldTrigger, true);
+    assertEqual(t.impactBurst.chirp.frequencyHz, 880);
+    assertEqual(t.impactBurst.chirp.durationMs, 90);
+  }
+
+  // 9. Reduced motion suppresses impact burst emissions.
+  {
+    const frameMs = 1000 / 60;
+    const frame4Ms = 120 + 4 * frameMs;
+    const reduced = recognitionEnvelopeAt(frame4Ms, "sealed", {
+      durationMs: RECOGNITION_FEEDBACK_REDUCED_MOTION_MS,
+      reducedMotionDurationMs: RECOGNITION_FEEDBACK_REDUCED_MOTION_MS,
+    });
+    assertEqual(reduced.impactBurst.particles.length, 0);
+    assertEqual(reduced.impactBurst.chirp.shouldTrigger, false);
   }
 }

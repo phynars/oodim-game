@@ -241,6 +241,47 @@
         transform: translate3d(0, 1px, 0) scale(0.99);
       }
 
+      /* Recognition impact-burst overlay (#1104). Absolute-positioned
+         container anchored near the on-screen NPC-eye position; the
+         render tick in main.js reconciles child `.impact-burst-particle`
+         nodes to `envelope.impactBurst.particles` on every frame, so a
+         14-particle radial burst spawns for ~260ms starting at frame 4
+         of the eye-open animation. Empty envelope ⇒ zero children.
+         Kept purely DOM (not canvas) so the visual-feel e2e can count
+         primitives with `document.querySelectorAll`. */
+      .impact-burst {
+        position: fixed;
+        left: 50%;
+        top: 34vh;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      .impact-burst-particle {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 6px;
+        height: 6px;
+        margin: -3px 0 0 -3px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(255, 236, 190, 0.95) 0%,
+          rgba(255, 202, 138, 0.72) 45%,
+          rgba(255, 176, 96, 0) 100%);
+        box-shadow: 0 0 8px rgba(255, 214, 151, 0.7);
+        mix-blend-mode: screen;
+        will-change: transform, opacity;
+        transform: translate3d(0, 0, 0) scale(1);
+        opacity: 0;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .impact-burst-particle { display: none; }
+      }
+
       .state-readout {
         position: fixed;
         top: max(14px, env(safe-area-inset-top));
@@ -276,6 +317,7 @@
     <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>
+    <div id="recognitionImpactBurst" class="impact-burst" aria-hidden="true"></div>
     <p class="state-readout" id="stateReadout">story: packet-offered</p>
     <section class="hud" aria-live="polite">
       <div class="panel">

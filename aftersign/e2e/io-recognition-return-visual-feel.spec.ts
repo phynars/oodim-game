@@ -234,3 +234,60 @@ test("io return recognition publishes readable visual-feel numbers (opened)", as
   const snapshot = await readFeelSnapshot(page);
   assertVisualFeel(snapshot, "opened");
 });
+
+// #1104 acceptance criterion #3: main.js render loop must spawn particle
+// DOM primitives at the NPC eye position when the envelope's impact-burst
+// window is active. The envelope emits 14 particles at frame 4 (≈187ms
+// after beat start) for a 260ms window; the render tick reconciles child
+// `.impact-burst-particle` nodes under `#recognitionImpactBurst`. This
+// spec drives recognition, then polls the DOM until the burst window
+// paints — proving the published `interaction.impactBurstParticles` list
+// has been consumed by an actual render path, not merely computed.
+test("io return recognition spawns 14 particle primitives during the impact-burst window", async ({ page }) => {
+  test.setTimeout(COLD_START_MS);
+  await page.goto("/aftersign/index.html?slot=io-return-impact-burst", { waitUntil: "load" });
+
+  // Kick off the recognition beat. `driveRecognition` returns as soon as
+  // the last input is dispatched — it does NOT wait for the ~1180ms beat
+  // to end. That matters here because the impact-burst window
+  // (particleBurstStartFrame=4 @60fps → ~67ms after anticipation hold →
+  // ~187ms after beat start, for a 260ms duration) closes long before
+  // `waitForMemoryBeat` would return. If we waited on the beat to finish,
+  // the burst would already be over and the DOM would have zero
+  // primitives.
+  await driveRecognition(page, "sealed");
+
+  // Poll aggressively for 14 particles — the burst window is ~260ms, so
+  // a single-RAF miss can slip past it. `polling: 16` samples every frame.
+  // Sample both the DOM child count AND the published surface at the
+  // same instant so we can also assert they were in sync when the burst
+  // was live.
+  const snapshot = await page.waitForFunction(
+    () => {
+      const overlay = document.querySelector("#recognitionImpactBurst");
+      const domCount = overlay
+        ? overlay.querySelectorAll(".impact-burst-particle").length
+        : 0;
+      if (domCount !== 14) return null;
+      const game = (window as Window & {
+        __game?: { interaction?: { impactBurstParticles?: unknown[] } };
+      }).__game;
+      const published = Array.isArray(game?.interaction?.impactBurstParticles)
+        ? game!.interaction!.impactBurstParticles!.length
+        : -1;
+      return { domCount, published };
+    },
+    undefined,
+    { timeout: WAIT_MS, polling: 16 },
+  );
+
+  const observed = (await snapshot.jsonValue()) as {
+    domCount: number;
+    published: number;
+  };
+  expect(observed.domCount).toBe(14);
+  // Cross-check: the runtime also publishes the same list on
+  // window.__game.interaction.impactBurstParticles. If the DOM has 14 but
+  // the published list doesn't at the same instant, one side has drifted.
+  expect(observed.published).toBe(14);
+});

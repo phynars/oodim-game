@@ -8,6 +8,19 @@ import {
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
+const IMPACT_BURST = {
+  anticipationHoldMs: 120,
+  particleBurstCount: 14,
+  particleBurstStartFrame: 4,
+  particleBurstDurationMs: 260,
+  particleSpreadDegrees: 72,
+  particleSpeedPxPerSecond: 42,
+  chirpFrequencyHz: 880,
+  chirpFrame: 4,
+  chirpDurationMs: 90,
+  eyeOpenAnimationFps: 60,
+} as const;
+
 // DOM-cue shape consumed by applyRecognitionDomFeedback via
 // cueIntensity(cue, elapsedMs) — needs { startMs, durationMs, easing }.
 // The intensityFrom/intensityTo/color/audioId fields are read by the
@@ -148,9 +161,29 @@ const OUTCOME_CUES: {
   },
 };
 
+export type RecognitionParticle = {
+  readonly index: number;
+  readonly angleDeg: number;
+  readonly x: number;
+  readonly y: number;
+  readonly alpha: number;
+  readonly scale: number;
+};
+
+export type RecognitionImpactBurst = {
+  readonly particles: readonly RecognitionParticle[];
+  readonly chirp: {
+    readonly shouldTrigger: boolean;
+    readonly frequencyHz: number;
+    readonly durationMs: number;
+  };
+};
+
 export type RecognitionEnvelopeFeedback = {
   readonly cameraDeltaMeters?: number;
   readonly cameraYawDegrees?: number;
+  readonly durationMs?: number;
+  readonly reducedMotionDurationMs?: number;
 };
 
 export type RecognitionEnvelope = {
@@ -163,6 +196,7 @@ export type RecognitionEnvelope = {
   readonly cameraDeltaMeters: number;
   readonly cameraYawDegrees: number;
   readonly signGlowBoost: number;
+  readonly impactBurst: RecognitionImpactBurst;
 };
 
 // Bridge from the RecognitionFeedbackState contract (recognitionFeedback.ts)
@@ -202,6 +236,38 @@ export const recognitionEnvelopeAt = (
   // recognition-beat-feedback.js: `Number((signGlowMultiplier - 1).toFixed(3))`).
   const signGlowBoost = base.signEmissiveScale - 1;
 
+  const reducedMotionApplied =
+    feedback?.durationMs !== undefined
+    && feedback?.reducedMotionDurationMs !== undefined
+    && feedback.durationMs === feedback.reducedMotionDurationMs;
+  const frameMs = 1000 / IMPACT_BURST.eyeOpenAnimationFps;
+  const burstStartMs =
+    IMPACT_BURST.anticipationHoldMs + IMPACT_BURST.particleBurstStartFrame * frameMs;
+  const chirpStartMs = IMPACT_BURST.anticipationHoldMs + IMPACT_BURST.chirpFrame * frameMs;
+  const burstElapsedMs = elapsedMs - burstStartMs;
+  const burstProgress = clamp01(burstElapsedMs / IMPACT_BURST.particleBurstDurationMs);
+  const burstActive = burstElapsedMs >= 0 && burstElapsedMs <= IMPACT_BURST.particleBurstDurationMs;
+  const halfSpread = IMPACT_BURST.particleSpreadDegrees / 2;
+  const particles = !reducedMotionApplied && burstActive
+    ? Array.from({ length: IMPACT_BURST.particleBurstCount }, (_, index) => {
+        const angleProgress =
+          IMPACT_BURST.particleBurstCount <= 1
+            ? 0
+            : index / (IMPACT_BURST.particleBurstCount - 1);
+        const angleDeg = -halfSpread + angleProgress * IMPACT_BURST.particleSpreadDegrees;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const distance = IMPACT_BURST.particleSpeedPxPerSecond * (burstElapsedMs / 1000);
+        return {
+          index,
+          angleDeg: Number(angleDeg.toFixed(2)),
+          x: Number((Math.cos(angleRad) * distance).toFixed(2)),
+          y: Number((Math.sin(angleRad) * distance).toFixed(2)),
+          alpha: Number((1 - burstProgress).toFixed(3)),
+          scale: Number((0.7 + (1 - burstProgress) * 0.45).toFixed(3)),
+        };
+      })
+    : [];
+
   // Cue keys (lantern/packetSeal/kioskSign/rainRim/hapticScale) are consumed by
   // applyRecognitionDomFeedback via cueIntensity(cue, elapsedMs), which reads
   // { startMs, durationMs, easing }. Pass through from the outcome table so the
@@ -220,5 +286,16 @@ export const recognitionEnvelopeAt = (
     cameraDeltaMeters: Number((base.cameraDeltaMeters * deltaRatio).toFixed(3)),
     cameraYawDegrees: Number((base.cameraYawDegrees * yawRatio).toFixed(2)),
     signGlowBoost: Number(signGlowBoost.toFixed(3)),
+    impactBurst: {
+      particles,
+      chirp: {
+        shouldTrigger:
+          !reducedMotionApplied
+          && elapsedMs >= chirpStartMs
+          && elapsedMs < chirpStartMs + frameMs,
+        frequencyHz: IMPACT_BURST.chirpFrequencyHz,
+        durationMs: IMPACT_BURST.chirpDurationMs,
+      },
+    },
   };
 };
