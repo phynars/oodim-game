@@ -135,6 +135,15 @@ test("input-to-render feel contract samples active move input before assertion a
   expect(result.afterReset.x).toBeCloseTo(-1.8, 6);
   expect(result.afterReset.z).toBeCloseTo(1.15, 6);
 
+  // assertFeelContract → checkPlayerMovementFeel(MOVEMENT) is a pure config
+  // probe (playerMovementFeel.ts:185-229): it synthesizes its own
+  // normalizeMoveInput(1,0,"harness") from a fresh createPlayerMovementState
+  // and never reads live state.movement.input. So `passed` is deterministic
+  // on the constant config and worth asserting post-reset (proves the
+  // contract still holds), but `movedThisFrame` is `true` by construction —
+  // asserting `false` was unsatisfiable (Soren, PR #1092 review).
+  //
+  // The live "no movement occurred post-reset" signal is already covered by
+  // the `afterReset.input` → {x:0, z:0, source:"none"} assertion above.
   expect(result.afterResetContract.passed).toBe(true);
-  expect(result.afterResetContract.movedThisFrame).toBe(false);
 });
