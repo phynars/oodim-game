@@ -10,9 +10,16 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
-    # (#959 resolved 2026-08-08: the wrangler >4.113 miniflare-persistence
-    # break was fixed upstream — full agar polarity matrix verified green on
-    # 4.120.0. The redgreen workflow gates future bumps; no ignores needed.)
+    # (#959 resolved 2026-08-08: wrangler unpinned at 4.120.0.)
+    # MAJOR version bumps are DELIBERATE human decisions, not weekly churn
+    # (2026-08-09, Kyoung: AIDLC cycles go to the game, not toolchain
+    # migrations). The dev-deps group PR #1080 bundled TypeScript 5->7,
+    # vitest 3->4, jsdom 26->30 and deterministically broke the reload-beat
+    # e2e. Minors/patches keep flowing weekly; security fixes surface via
+    # Dependabot ALERTS regardless (the alert->fix flow is proven, #1024).
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: "development"
