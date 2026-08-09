@@ -17,14 +17,23 @@ test("input-to-render feel contract samples active move input before assertion a
   });
 
   const result = await page.evaluate(async () => {
-    // window.__game exposes setMoveInput / assertFeelContract / resetSliceSave
-    // at the TOP LEVEL (aftersign/main.js ~line 710, 721, 724). The earlier
-    // `game.input?.setMoveInput` shape was wrong — the guard threw on every
-    // run, crashing the spec before any assertion and leaving Playwright
-    // unable to write results.json (PR #1085 review).
+    // Hook placement on window.__game (aftersign/main.js):
+    //   - game.input.setMoveInput  (line ~710, inside the `input:` bag opened
+    //     at line 704 — same shape as choose/advance/forceSave/forceReload)
+    //   - game.assertFeelContract  (line ~721, TOP-LEVEL)
+    //   - game.getSnapshot         (line ~661, TOP-LEVEL)
+    //   - game.resetSliceSave      (line ~724, TOP-LEVEL)
+    //
+    // The prior revision assumed `game.setMoveInput` was top-level; the guard
+    // below then threw on every run, aborting Playwright before results.json
+    // was written (PR #1085 CI blocker Ivy flagged twice). Every other spec
+    // that drives input uses `window.__game.input.*` — see
+    // packet-choice-controls.spec.ts, packet-intent-scene.spec.ts, etc.
     const game = window.__game as unknown as {
       version: number;
-      setMoveInput?: (x: number, z: number, source?: string) => void;
+      input?: {
+        setMoveInput?: (x: number, z: number, source?: string) => void;
+      };
       assertFeelContract?: () => {
         passed: boolean;
         movedThisFrame: boolean;
@@ -44,17 +53,17 @@ test("input-to-render feel contract samples active move input before assertion a
     };
 
     if (
-      !game?.setMoveInput
+      !game?.input?.setMoveInput
       || !game.assertFeelContract
       || !game.resetSliceSave
       || !game.getSnapshot
     ) {
       throw new Error(
-        "Missing AFTERSIGN input feel hooks: setMoveInput, assertFeelContract, resetSliceSave, getSnapshot",
+        "Missing AFTERSIGN input feel hooks: game.input.setMoveInput, game.assertFeelContract, game.resetSliceSave, game.getSnapshot",
       );
     }
 
-    game.setMoveInput(1, 0, "script");
+    game.input.setMoveInput(1, 0, "script");
 
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -104,7 +113,15 @@ test("input-to-render feel contract samples active move input before assertion a
   expect(result.afterInput.lastVelocityMetersPerSecond).toBeGreaterThan(0);
   expect(Math.abs(result.afterInput.x) + Math.abs(result.afterInput.z)).toBeGreaterThan(0);
 
-  expect(result.afterReset.input).toMatchObject({ x: 0, z: 0 });
-  expect(result.afterReset.x).toBe(0);
-  expect(result.afterReset.z).toBe(0);
+  // resetSliceSave restores player to the kiosk-facing SPAWN (main.js:1509-1510),
+  // not (0, 0) — the slice's boot default is x=-1.8, z=1.15 so the trailing
+  // camera lands behind the player facing the kiosk. Zeroing to (0,0) would
+  // silently rotate the slice away from the served-page contract. Ivy's
+  // non-blocking note called this out (PR #1085): this equality only holds
+  // because this spec uses a dedicated slot (`input-to-render-feel-contract`)
+  // and doesn't share localStorage with another spec that would persist a
+  // different spawn.
+  expect(result.afterReset.input).toMatchObject({ x: 0, z: 0, source: "none" });
+  expect(result.afterReset.x).toBeCloseTo(-1.8, 6);
+  expect(result.afterReset.z).toBeCloseTo(1.15, 6);
 });
