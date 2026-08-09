@@ -42,6 +42,18 @@ type GameSurface = {
   };
 };
 
+type StorySnapshot = {
+  scene?: { beat?: unknown };
+  packet?: { sealed?: unknown };
+  npcs?: {
+    io?: {
+      memory?: unknown;
+      lastLine?: unknown;
+      lastLineMemoryRefs?: unknown;
+    };
+  };
+};
+
 declare global {
   interface Window {
     __game?: GameSurface;
@@ -125,6 +137,16 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     const recognitionLine = returning.npcs.io.lastLine;
     expect(recognitionLine).toContain("blue seal, unbroken");
     expect(recognitionLine).not.toMatch(/memory|system|save/i);
+
+    const recognitionSnapshot = await page.evaluate(
+      () => window.__game!.getSnapshot() as StorySnapshot,
+    );
+
+    expect(recognitionSnapshot.scene?.beat).toBe("io-return-recognition");
+    expect(recognitionSnapshot.packet?.sealed).toBe(true);
+    expect(recognitionSnapshot.npcs?.io?.memory).toEqual(returning.npcs.io.memory);
+    expect(recognitionSnapshot.npcs?.io?.lastLine).toBe(recognitionLine);
+    expect(recognitionSnapshot.npcs?.io?.lastLineMemoryRefs).toEqual([savedFact!.id]);
   });
 
   test("window.__game snapshot/reset restores the exact story beat", async ({ page }) => {

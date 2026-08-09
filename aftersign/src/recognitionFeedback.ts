@@ -79,14 +79,14 @@ export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
 const IO_RECOGNITION_LINES: Record<IoRecognitionOutcome, readonly [string, string, string]> = {
   sealed: [
-    'You brought it back sealed.',
-    'You still leave edges untouched.',
-    'I remember that kind of care.',
+    'You came back.',
+    'So did the blue seal, unbroken.',
+    'That gives me two facts to trust.',
   ],
   opened: [
-    'You opened it before you came.',
-    'You still choose truth over tidy.',
-    'I remember that kind of courage.',
+    'You came back.',
+    'The seal did not.',
+    'I can use one of those facts.',
   ],
 };
 

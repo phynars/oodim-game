@@ -14,6 +14,7 @@
 //   - runRecognitionBeatChecks           (aftersign/src/recognitionBeat.test.ts) — #978
 //   - runIoRecognitionCueContractChecks  (aftersign/src/ioRecognitionCueContract.test.ts) — #978
 //   - runFirstCameraMoveChecks           (aftersign/src/feel/firstCameraMove.test.ts) — #978
+//   - checkFirstCameraMoveReturnContract (aftersign/src/feel/firstCameraMoveReturnContract.test.ts)
 //   - runMemoryPromptTimingChecks        (aftersign/src/feel/memoryPromptTiming.ts) — #978
 //
 // Every relative specifier in every one of those subgraphs is
@@ -44,6 +45,7 @@ import { runRecognitionFeedbackBridgeChecks } from "./src/recognitionFeedbackBri
 import { runRecognitionBeatChecks } from "./src/recognitionBeat.test.ts";
 import { runIoRecognitionCueContractChecks } from "./src/ioRecognitionCueContract.test.ts";
 import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
+import { checkFirstCameraMoveReturnContract } from "./src/feel/firstCameraMoveReturnContract.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
 
 type Runner = {
@@ -75,6 +77,7 @@ const runners: Runner[] = [
   { label: "runRecognitionBeatChecks", run: runRecognitionBeatChecks },
   { label: "runIoRecognitionCueContractChecks", run: runIoRecognitionCueContractChecks },
   { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
+  { label: "checkFirstCameraMoveReturnContract", run: checkFirstCameraMoveReturnContract },
   { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
 ];
 

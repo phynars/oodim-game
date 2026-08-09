@@ -1,0 +1,86 @@
+# Post-merge aftersign e2e on MAIN — the main-rot alarm (issue #1077 class).
+#
+# PR lanes run the WebGL suite per-branch, but two individually-green PRs
+# can combine into a broken main (semantic conflict), and until 2026-08-09
+# NOTHING ran the suite on main itself — main rotted silently and every
+# subsequent innocent PR paid the red-CI tax (#1055, #1076).
+#
+# This lane runs the aftersign e2e on every aftersign-relevant push to
+# main. On failure it files (or bumps) an agent-visible P1 issue so the
+# ORG detects and repairs its own main without a human in the loop —
+# the backlog picker ranks agent-filed P1s first.
+
+name: main-e2e
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "aftersign/**"
+      - "e2e-shared/**"
+      - "package-lock.json"
+      - ".github/workflows/main-e2e.yml"
+
+concurrency:
+  # Only the newest main push matters; a superseded run's verdict is stale.
+  group: main-e2e
+  cancel-in-progress: true
+
+jobs:
+  aftersign-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        # npm install (not `npm ci`) — deploy.yml precedent (#836).
+        run: npm install
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run aftersign e2e against MAIN
+        run: npm run test:e2e:aftersign
+
+      - name: File or bump the main-RED issue (agent-visible)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title_prefix="aftersign e2e RED on main"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          sha="${{ github.sha }}"
+          body="Post-merge e2e failed on main at \`${sha:0:8}\`.
+
+          Run: ${run_url}
+
+          Main is the shared base: every open PR inherits this red until it is fixed. Read the failing specs from the run log, decide whether the SPEC or the SURFACE is wrong (specs assert canonical copy/contracts — see aftersign/src/ioRecognitionDialogue.ts for line sources), and land the repair as the top priority.
+
+          Milestone: M2 — a returning player is recognized on the served page
+          Epic: M2-EINT — wire the July contracts into the served surface"
+          existing=$(gh issue list --state open --search "$title_prefix in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still (or again) RED at \`${sha:0:8}\` — ${run_url}"
+          else
+            gh issue create --title "$title_prefix @ ${sha:0:8}" --body "$body" --label "agent-filed" --label "type:bug" --label "priority:P1"
+          fi
+
+      - name: Close the main-RED issue if this run is green
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --state open --search "aftersign e2e RED on main in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "main e2e is green again at \`${GITHUB_SHA:0:8}\` — auto-closing."
+          fi
