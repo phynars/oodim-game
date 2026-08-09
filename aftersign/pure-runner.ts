@@ -16,6 +16,7 @@
 //   - runFirstCameraMoveChecks           (aftersign/src/feel/firstCameraMove.test.ts) — #978
 //   - checkFirstCameraMoveReturnContract (aftersign/src/feel/firstCameraMoveReturnContract.test.ts)
 //   - runMemoryPromptTimingChecks        (aftersign/src/feel/memoryPromptTiming.ts) — #978
+//   - runPerfBudgetCalibrationChecks     (aftersign/src/perfBudgetCalibration.test.ts)
 //
 // Every relative specifier in every one of those subgraphs is
 // `.ts`-extensioned (verified 2026-08-02 for the first three; verified
@@ -47,6 +48,7 @@ import { runIoRecognitionCueContractChecks } from "./src/ioRecognitionCueContrac
 import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { checkFirstCameraMoveReturnContract } from "./src/feel/firstCameraMoveReturnContract.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
+import { runPerfBudgetCalibrationChecks } from "./src/perfBudgetCalibration.test.ts";
 
 type Runner = {
   label: string;
@@ -79,6 +81,14 @@ const runners: Runner[] = [
   { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
   { label: "checkFirstCameraMoveReturnContract", run: checkFirstCameraMoveReturnContract },
   { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
+  // Perf-budget calibration + its real consumer
+  // (`assertInputAcknowledgeAgainstCalibratedBudget`, which wraps
+  // `measureInputAcknowledgeLatency`). The leaf module
+  // `inputAcknowledgeLatency.ts` has no relative imports; the calibration
+  // module and its check bundle import it via a `.ts`-extensioned
+  // specifier, so the whole subgraph satisfies the extension-resolution
+  // contract documented above.
+  { label: "runPerfBudgetCalibrationChecks", run: runPerfBudgetCalibrationChecks },
 ];
 
 let failed = 0;
