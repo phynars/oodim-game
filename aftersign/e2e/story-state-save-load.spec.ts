@@ -1,153 +1,156 @@
-import { expect, test } from '@playwright/test';
+// Story-state + NPC-memory + durable save/load contract for the
+// aftersign vertical slice — asserted against the REAL served
+// `window.__game` surface published by aftersign/index.html.
+//
+// PRIOR REJECTION (Mara, PR #1097 review):
+//   The first draft of this file waited on
+//   `window.__game.restoreDurableSave / meetNpc / getStoryState /
+//   getRecallTrigger`. Those methods only exist on
+//   `bootAftersignWindowGame` (apps/web/src/aftersign/harness/
+//   bootWindowGame.ts) which is used solely by the JSDOM unit test
+//   windowGameHarnessBoot.test.ts. The served /aftersign/ page (built
+//   from aftersign/index.html + aftersign/main.js) publishes a
+//   different surface: `input.choose / input.forceSave /
+//   input.forceReload / input.waitForStoryIdle / getSnapshot`. Waiting
+//   on the wrong methods hangs the spec to timeout and turns the
+//   aftersign lane red on every PR (same failure mode as the earlier
+//   io-recognition-player-visible-feel.spec.ts). Fixed by re-anchoring
+//   every assertion to the surface the served page ACTUALLY publishes,
+//   as pinned by flagship-reload-beat-regression.spec.ts and
+//   flagship-surface-contract.spec.ts.
+//
+// What this spec pins that isn't already covered elsewhere:
+//   • A single-shot contract test that stitches story-state +
+//     NPC-memory + durable-save into ONE round trip: play → forceSave
+//     → forceReload → assert the story beat, delivery outcome, AND
+//     Io's remembered fact all rehydrate together.
+//   • Existing coverage:
+//       - durable-save-load.spec.ts guards the durable envelope
+//         (slot/revision) across forceSave→forceReload, but does NOT
+//         assert story beat or NPC memory content.
+//       - flagship-reload-beat-regression.spec.ts guards the reloaded
+//         beat + Io recognition line, but the story/state/memory
+//         invariants aren't asserted as a single contract snapshot.
+//     This spec fuses them: one snapshot, one set of expectations,
+//     one failure surface if any leg regresses.
+//
+// State-quiesced — waitForFunction + waitForStoryIdle, no wall-clock
+// waits (per e2e-shared/no-wall-clock-waits).
+import { expect, test, type Page } from "@playwright/test";
 
-/**
- * Contract: the served /aftersign/ page exposes the real
- * `AftersignWindowGameHarness` on `window.__game`, and that harness
- * preserves story beat + NPC memory across a durable-save round trip
- * spanning a page reload.
- *
- * The harness surface we exercise (verbatim from
- * `apps/web/src/aftersign/harness/bootWindowGame.ts`):
- *   - `restoreDurableSave(payload: string): void`
- *   - `meetNpc('io' | 'orra'): void`
- *   - `getStoryState(): AftersignStoryStateSnapshot`
- *   - `getRecallTrigger(): AftersignRecallTrigger | null`
- *
- * The durable-save payload format matches `AftersignDurableSaveEnvelope`
- * from `apps/web/src/aftersign/verticalSliceDurableSave.ts`.
- */
-
-type AftersignNpcSnapshot = {
-  id: 'io' | 'orra';
-  disposition: 'waiting' | 'met-player' | 'recognizes-player';
-  memory: {
-    recognizesPlayer: boolean;
-    packetOutcome?: 'sealed' | 'opened' | null;
-  };
-};
-
-type AftersignStoryStateSnapshot = {
-  story: {
-    beat: string;
-    completedBeats: string[];
-  };
-  state: {
-    save?: { key: string; savedAtTurn: number };
-    npcs: AftersignNpcSnapshot[];
-  };
-};
-
-type AftersignRecallTrigger = { npcId: 'io' | 'orra'; firedAtMs: number } | null;
-
-type AftersignWindowGameHarness = {
-  version: 1;
-  restoreDurableSave: (payload: string) => void;
-  meetNpc: (id: 'io' | 'orra') => void;
-  getStoryState: () => AftersignStoryStateSnapshot;
-  getRecallTrigger: () => AftersignRecallTrigger;
-};
-
+// Narrow Window.__game surface — just the fields this spec touches.
+// TypeScript global augmentations merge across files but Playwright's
+// per-file esbuild transpile strips types, so runtime is unaffected;
+// keeping the type narrow avoids drift with FlagshipGameSurface.
 declare global {
   interface Window {
-    __game?: AftersignWindowGameHarness;
+    __game?: {
+      version?: number;
+      scene: { beat: string };
+      delivery: { outcome: string };
+      npcs: {
+        io: {
+          lastLine?: string | null;
+          memory: Array<{ id?: string; object?: string; action?: string }>;
+        };
+      };
+      input: {
+        choose: (choiceId: string) => void | Promise<void>;
+        forceSave: () => void | Promise<void>;
+        forceReload: (options?: { clearLocalState?: boolean }) => void | Promise<void>;
+        waitForStoryIdle: () => void | Promise<void>;
+      };
+      getSnapshot: () => StorySnapshot;
+    };
   }
 }
 
-const DURABLE_SAVE_PAYLOAD = JSON.stringify({
-  key: 'aftersign.verticalSlice.v1',
-  savedAtTurn: 7,
-  state: {
-    version: 1,
-    packetOutcome: 'sealed',
-    ioHasMetPlayer: true,
-  },
-});
+type StorySnapshot = {
+  scene: { beat: string };
+  delivery: { outcome: string };
+  npcs: {
+    io: {
+      lastLine?: string | null;
+      memory: Array<{ id?: string; object?: string; action?: string }>;
+    };
+  };
+};
 
-async function waitForHarness(page: import('@playwright/test').Page) {
-  await page.goto('/aftersign/');
+const WAIT_MS = 10_000;
+
+async function waitForSurface(page: Page): Promise<void> {
   await page.waitForFunction(
-    () => Boolean(window.__game && window.__game.version === 1 && window.__game.restoreDurableSave),
+    () =>
+      typeof window.__game?.getSnapshot === "function" &&
+      typeof window.__game?.input?.choose === "function" &&
+      typeof window.__game?.input?.forceSave === "function" &&
+      typeof window.__game?.input?.forceReload === "function" &&
+      typeof window.__game?.input?.waitForStoryIdle === "function",
+    undefined,
+    { timeout: WAIT_MS },
   );
 }
 
-function findNpc(
-  snapshot: AftersignStoryStateSnapshot,
-  id: 'io' | 'orra',
-): AftersignNpcSnapshot | undefined {
-  return snapshot.state.npcs.find((npc) => npc.id === id);
+async function idle(page: Page): Promise<void> {
+  await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
-test('served page preserves story state and NPC memory across save/load', async ({ page }) => {
-  await waitForHarness(page);
+async function snapshot(page: Page): Promise<StorySnapshot> {
+  return page.evaluate(() => window.__game!.getSnapshot());
+}
 
-  // Baseline: fresh harness — no save, Io waiting, packet unresolved.
-  const baseline = await page.evaluate(() => {
-    if (!window.__game) throw new Error('window.__game not initialised');
-    return window.__game.getStoryState();
-  });
+test("story beat + Io memory + delivery outcome all rehydrate together after forceSave/forceReload", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await waitForSurface(page);
 
-  expect(baseline.story.beat).toBe('packet-unresolved');
-  expect(baseline.state.save).toBeUndefined();
-  expect(findNpc(baseline, 'io')?.disposition).toBe('waiting');
-  expect(findNpc(baseline, 'io')?.memory.recognizesPlayer).toBe(false);
+  // Baseline: fresh session — nothing delivered, no Io memory.
+  const baseline = await snapshot(page);
+  expect(baseline.delivery.outcome).toBe("unknown");
+  expect(baseline.npcs.io.memory.length).toBe(0);
 
-  // Reload and restore a durable save representing a prior session
-  // where the player sealed the packet and met Io. On the served
-  // page, this proves state survives a full page reload.
-  await page.reload();
-  await page.waitForFunction(
-    () => Boolean(window.__game && window.__game.restoreDurableSave),
-  );
+  // Play the sealed-packet path to the durable "packet-delivered"
+  // beat. These choice ids are the same ones pinned by
+  // flagship-reload-beat-regression.spec.ts.
+  for (const choiceId of ["keep-sealed", "deliver-packet"]) {
+    await page.evaluate((id) => window.__game!.input.choose(id), choiceId);
+    await idle(page);
+  }
 
-  const restored = await page.evaluate((payload) => {
-    if (!window.__game) throw new Error('window.__game not initialised after reload');
-    window.__game.restoreDurableSave(payload);
-    return {
-      snapshot: window.__game.getStoryState(),
-      recallTriggerAfterRestore: window.__game.getRecallTrigger(),
-    };
-  }, DURABLE_SAVE_PAYLOAD);
+  const beforeReload = await snapshot(page);
+  // The 1180ms setTimeout may or may not have promoted us to
+  // "io-return-recognition" by the time we save — both beats are
+  // contract-valid pre-save (see #958 note in
+  // flagship-reload-beat-regression.spec.ts). What must be durable is
+  // the delivery outcome and the Io memory entry recording it.
+  expect(["packet-delivered", "io-return-recognition"]).toContain(beforeReload.scene.beat);
+  expect(beforeReload.delivery.outcome).toBe("sealed");
+  expect(beforeReload.npcs.io.memory.length).toBeGreaterThan(0);
+  expect(beforeReload.npcs.io.memory.some((m) => m.object === "sealed")).toBe(true);
 
-  // Save envelope is surfaced.
-  expect(restored.snapshot.state.save).toEqual({
-    key: 'aftersign.verticalSlice.v1',
-    savedAtTurn: 7,
-  });
+  // Persist and simulate a full page reload — this is the round trip
+  // the vertical slice must survive.
+  await page.evaluate(() => window.__game!.input.forceSave());
+  await page.evaluate(() => window.__game!.input.forceReload());
+  await waitForSurface(page);
+  await idle(page);
 
-  // Io remembers meeting the player, but recognition hasn't re-fired
-  // yet (recognition is a *return*-beat, triggered by meetNpc).
-  const ioAfterRestore = findNpc(restored.snapshot, 'io');
-  expect(ioAfterRestore?.disposition).toBe('met-player');
-  expect(ioAfterRestore?.memory.recognizesPlayer).toBe(false);
-  expect(ioAfterRestore?.memory.packetOutcome).toBe('sealed');
+  // After reload: story-state, delivery-outcome, and NPC-memory all
+  // present, all consistent. This is the contract — three legs of the
+  // vertical slice, ONE snapshot assertion.
+  const afterReload = await snapshot(page);
 
-  // Packet outcome persisted through save/reload/restore.
-  expect(restored.snapshot.story.completedBeats).toContain('packet-sealed');
-  expect(restored.snapshot.story.completedBeats).toContain('io-first-meeting');
+  // Story beat: durable "packet-delivered" OR the recognition beat if
+  // the timer promoted post-reload; both are contract-valid.
+  expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
 
-  // A durable-save restore is a load, not a meet — no recall trigger
-  // fires until the player re-encounters the NPC.
-  expect(restored.recallTriggerAfterRestore).toBeNull();
+  // Delivery outcome survived the round trip.
+  expect(afterReload.delivery.outcome).toBe("sealed");
 
-  // Meeting Io again after restore fires the recognition beat: NPC
-  // memory carries into a new story beat referencing the sealed packet.
-  const afterMeet = await page.evaluate(() => {
-    if (!window.__game) throw new Error('window.__game not initialised');
-    window.__game.meetNpc('io');
-    return {
-      snapshot: window.__game.getStoryState(),
-      recallTrigger: window.__game.getRecallTrigger(),
-    };
-  });
-
-  const ioAfterMeet = findNpc(afterMeet.snapshot, 'io');
-  expect(ioAfterMeet?.disposition).toBe('recognizes-player');
-  expect(ioAfterMeet?.memory.recognizesPlayer).toBe(true);
-  expect(afterMeet.snapshot.story.beat).toBe('io-remembers-sealed-packet');
-  expect(afterMeet.snapshot.story.completedBeats).toContain('io-remembers-sealed-packet');
-
-  // Recognition transition (met → recognizes) fires the recall trigger.
-  expect(afterMeet.recallTrigger).not.toBeNull();
-  expect(afterMeet.recallTrigger?.npcId).toBe('io');
-  expect(typeof afterMeet.recallTrigger?.firedAtMs).toBe('number');
+  // NPC memory survived AND still references the sealed outcome —
+  // this is the "NPC remembers a prior session" invariant the flagship
+  // brief calls out as slice-1 work.
+  expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
+  expect(afterReload.npcs.io.memory.some((m) => m.object === "sealed")).toBe(true);
 });
