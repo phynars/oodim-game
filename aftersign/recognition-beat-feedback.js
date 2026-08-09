@@ -15,6 +15,18 @@ export const IO_RECOGNITION_BEAT_FEEDBACK = Object.freeze({
   stingDurationMs: 180,
   stingGainDb: -9,
   openedWoodenClickDelayMs: 45,
+  impactBurst: Object.freeze({
+    anticipationHoldMs: 120,
+    particleBurstCount: 14,
+    particleBurstStartFrame: 4,
+    particleBurstDurationMs: 260,
+    particleSpreadDegrees: 72,
+    particleSpeedPxPerSecond: 42,
+    chirpFrequencyHz: 880,
+    chirpFrame: 4,
+    chirpDurationMs: 90,
+    eyeOpenAnimationFps: 60,
+  }),
   outcomeCues: Object.freeze({
     sealed: Object.freeze({
       lantern: Object.freeze({
@@ -108,6 +120,57 @@ const easeOutCubic = (value) => 1 - ((1 - clamp01(value)) ** 3);
 const easeInOutSine = (value) => (1 - Math.cos(Math.PI * clamp01(value))) / 2;
 const bellEnvelope = (elapsedMs, durationMs) => Math.sin(Math.PI * clamp01(elapsedMs / durationMs));
 
+const impactBurstAt = (elapsedMs, impactBurst, reducedMotionApplied) => {
+  if (reducedMotionApplied) {
+    return {
+      particles: [],
+      chirp: {
+        shouldTrigger: false,
+        frequencyHz: impactBurst.chirpFrequencyHz,
+        durationMs: impactBurst.chirpDurationMs,
+      },
+    };
+  }
+
+  const frameMs = 1000 / impactBurst.eyeOpenAnimationFps;
+  const burstStartMs =
+    impactBurst.anticipationHoldMs + impactBurst.particleBurstStartFrame * frameMs;
+  const chirpStartMs = impactBurst.anticipationHoldMs + impactBurst.chirpFrame * frameMs;
+
+  const burstElapsedMs = elapsedMs - burstStartMs;
+  const burstProgress = clamp01(burstElapsedMs / impactBurst.particleBurstDurationMs);
+  const burstActive = burstElapsedMs >= 0 && burstElapsedMs <= impactBurst.particleBurstDurationMs;
+  const halfSpread = impactBurst.particleSpreadDegrees / 2;
+  const particles = burstActive
+    ? Array.from({ length: impactBurst.particleBurstCount }, (_, index) => {
+        const angleProgress =
+          impactBurst.particleBurstCount <= 1
+            ? 0
+            : index / (impactBurst.particleBurstCount - 1);
+        const angleDeg = -halfSpread + angleProgress * impactBurst.particleSpreadDegrees;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const distance = impactBurst.particleSpeedPxPerSecond * (burstElapsedMs / 1000);
+        return {
+          index,
+          angleDeg: Number(angleDeg.toFixed(2)),
+          x: Number((Math.cos(angleRad) * distance).toFixed(2)),
+          y: Number((Math.sin(angleRad) * distance).toFixed(2)),
+          alpha: Number((1 - burstProgress).toFixed(3)),
+          scale: Number((0.7 + (1 - burstProgress) * 0.45).toFixed(3)),
+        };
+      })
+    : [];
+
+  return {
+    particles,
+    chirp: {
+      shouldTrigger: elapsedMs >= chirpStartMs && elapsedMs < chirpStartMs + frameMs,
+      frequencyHz: impactBurst.chirpFrequencyHz,
+      durationMs: impactBurst.chirpDurationMs,
+    },
+  };
+};
+
 export const ioRecognitionBeatEnvelopeAt = (
   elapsedMs,
   outcome = "sealed",
@@ -131,6 +194,8 @@ export const ioRecognitionBeatEnvelopeAt = (
       : null;
 
   const safeOutcome = outcome === "opened" ? "opened" : "sealed";
+  const reducedMotionApplied = feedback.durationMs === feedback.reducedMotionDurationMs;
+  const impactBurst = impactBurstAt(safeElapsedMs, feedback.impactBurst, reducedMotionApplied);
 
   return {
     normalized: clamp01(safeElapsedMs / feedback.durationMs),
@@ -147,6 +212,7 @@ export const ioRecognitionBeatEnvelopeAt = (
         ? Math.max(0, safeElapsedMs - (feedback.stingStartMs + feedback.openedWoodenClickDelayMs))
         : null,
     inputLockMs: feedback.inputLockMs,
+    impactBurst,
     ...feedback.outcomeCues[safeOutcome],
   };
 };

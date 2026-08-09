@@ -646,6 +646,7 @@ const publishState = () => {
     interaction: {
       ...clone(state.interaction),
       recognitionDomFeedback: clone(recognitionDomFeedback),
+      impactBurstParticles: clone(impactBurstParticles),
     },
     // Publish the runtime audio surface so the look/sound contract
     // spec can observe playKioskConfirm()'s stamped cue. Without
@@ -698,6 +699,7 @@ const publishState = () => {
       interaction: {
         ...state.interaction,
         recognitionDomFeedback,
+        impactBurstParticles,
       },
     }),
     reset,
@@ -1198,6 +1200,33 @@ const playKioskConfirm = async () => {
   });
 };
 
+const triggerRecognitionImpactChirp = async ({ frequencyHz, durationMs }) => {
+  state._runtime.audio.lastCue = "recognition-impact-chirp";
+  state._runtime.audio.lastCueAt = performance.now();
+  markStateDirty();
+  publishState();
+
+  const unlocked = await enableAudio();
+  if (!unlocked || !audioContext) {
+    return;
+  }
+
+  const now = audioContext.currentTime;
+  impactBurstChirpGain ??= audioContext.createGain();
+  impactBurstChirpGain.connect(audioContext.destination);
+  impactBurstChirpGain.gain.cancelScheduledValues(now);
+  impactBurstChirpGain.gain.setValueAtTime(0.0001, now);
+  impactBurstChirpGain.gain.exponentialRampToValueAtTime(0.07, now + 0.01);
+  impactBurstChirpGain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+
+  const chirp = audioContext.createOscillator();
+  chirp.type = "sine";
+  chirp.frequency.setValueAtTime(frequencyHz, now);
+  chirp.connect(impactBurstChirpGain);
+  chirp.start(now);
+  chirp.stop(now + durationMs / 1000);
+};
+
 const setConfirmCameraKick = ({ worldX = CONFIRM_FEEDBACK.cameraKickWorldX, yawDegrees = CONFIRM_FEEDBACK.cameraKickDeg } = {}) => {
   state.interaction.confirmFeedback.cameraKickWorldX = worldX;
   state.interaction.confirmFeedback.cameraKickDeg = yawDegrees;
@@ -1247,6 +1276,9 @@ const triggerFailureFeedback = (source) => {
 
 let memoryBeatCameraProbe = null;
 let memoryRecognitionBeatStartedAt = null;
+let lastImpactBurstChirpAt = null;
+let impactBurstParticles = [];
+let impactBurstChirpGain = null;
 let recognitionDomFeedback = {
   active: false,
   signGlowPx: 0,
@@ -1283,9 +1315,25 @@ const recognitionMotionAt = (nowMs) => {
     // propagates into the point-light shader and blacks out the scene.
     // The aftersign e2e lane went red on exactly this before we added
     // signGlowBoost to the inactive-branch stub.
-    return { cameraDeltaMeters: 0, cameraYawDegrees: 0, signGlowBoost: 0 };
+    return {
+      cameraDeltaMeters: 0,
+      cameraYawDegrees: 0,
+      signGlowBoost: 0,
+      impactBurst: {
+        particles: [],
+        chirp: {
+          shouldTrigger: false,
+          frequencyHz: 880,
+          durationMs: 90,
+        },
+      },
+    };
   }
-  return recognitionEnvelopeAt(nowMs - memoryRecognitionBeatStartedAt);
+  return recognitionEnvelopeAt(
+    nowMs - memoryRecognitionBeatStartedAt,
+    state.packet.sealed ? "sealed" : "opened",
+    state.interaction.recognitionFeedback,
+  );
 };
 
 const syncRecognitionDomFeedback = (nowMs) => {
@@ -1465,6 +1513,7 @@ const deliverPacket = (source = "hud-button") => {
   const beatStartedAt = performance.now();
   startMemoryBeatCameraProbe(beatStartedAt);
   memoryRecognitionBeatStartedAt = beatStartedAt;
+  lastImpactBurstChirpAt = null;
   playKioskConfirm();
   markStateDirty();
   setBeat("packet-delivered");
@@ -1475,6 +1524,8 @@ const deliverPacket = (source = "hud-button") => {
     const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
     const cameraMotion = finishMemoryBeatCameraProbe();
     memoryRecognitionBeatStartedAt = null;
+    lastImpactBurstChirpAt = null;
+    impactBurstParticles = [];
     state.story.memoryBeat = {
       kind: "io_packet_return",
       outcome: durableOutcome,
@@ -1553,6 +1604,8 @@ const resetSliceSave = async () => {
   state.interaction.recognitionFeedback = {
     ...MEMORY_RECOGNITION_FEEDBACK,
   };
+  impactBurstParticles = [];
+  lastImpactBurstChirpAt = null;
   state.interaction.failureFeedback = {
     ...FAILURE_FEEDBACK,
     active: false,
@@ -1820,6 +1873,14 @@ const tick = (now) => {
   io.position.y = Math.sin(t * 1.7) * 0.025;
   const recognitionMotion = recognitionMotionAt(now);
   syncRecognitionDomFeedback(now);
+  impactBurstParticles = recognitionMotion.impactBurst.particles;
+  if (recognitionMotion.impactBurst.chirp.shouldTrigger) {
+    const chirpKey = Math.round((now - memoryRecognitionBeatStartedAt) * 1000) / 1000;
+    if (lastImpactBurstChirpAt !== chirpKey) {
+      lastImpactBurstChirpAt = chirpKey;
+      triggerRecognitionImpactChirp(recognitionMotion.impactBurst.chirp);
+    }
+  }
   const rig = stepCameraRig(dt);
   camera.position.x = rig.position.x + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
   camera.position.y = rig.position.y;
