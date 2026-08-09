@@ -68,7 +68,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # wrangler 3.x predates assets-only Workers (errors "Missing
           # entry-point"); pin 4.x to match the local deploy.
-          wranglerVersion: "4.100.0"
+          wranglerVersion: "4.120.0"
       # PROD-REACHABILITY PLAY-SMOKE (2026-06-23). After publishing, load the LIVE
       # site in a real browser and assert each game is actually PLAYABLE — not just
       # 200. This is the gate that would have caught the agar WS-404 incident
