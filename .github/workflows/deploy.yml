@@ -87,3 +87,43 @@ jobs:
       - name: Note if deploy skipped
         if: ${{ env.CF_TOKEN == '' }}
         run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."
+
+  # Deploy-failure alarm (2026-08-09): runs #610-#612 failed SILENTLY —
+  # prod fell behind main for hours until a human noticed. On failure,
+  # file (or bump) an agent-visible P1 issue so the org repairs its own
+  # deploy path; auto-close it when a later deploy goes green.
+  notify-failure:
+    needs: deploy
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: File or bump the deploy-RED issue
+        if: ${{ needs.deploy.result == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title_prefix="game.oodim.com deploy RED"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          sha="${{ github.sha }}"
+          existing=$(gh issue list --repo "${{ github.repository }}" --state open --search "$title_prefix in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "${{ github.repository }}" --body "Deploy failed again at \`${sha:0:8}\` — ${run_url}"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$title_prefix @ ${sha:0:8}" --body "The production deploy of game.oodim.com FAILED — merged work is not reaching players until this is fixed. Run: ${run_url}. Read the failing step's log; common causes are the wrangler-action version drifting from the repo's devDependency (keep them aligned) and Cloudflare token/route issues (human-owned)." --label "agent-filed" --label "type:bug" --label "priority:P1"
+          fi
+      - name: Close the deploy-RED issue on a green deploy
+        if: ${{ needs.deploy.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --repo "${{ github.repository }}" --state open --search "game.oodim.com deploy RED in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --repo "${{ github.repository }}" --comment "Deploy is green again at \`${GITHUB_SHA:0:8}\` — auto-closing."
+          fi
