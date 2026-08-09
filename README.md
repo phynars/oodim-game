@@ -14,19 +14,24 @@ beyond oodim building itself.
 
 ## Quickstart
 
+All new work is **flagship-first**: start with the flagship
+(`aftersign`), not the frozen games. Read
+[`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md) and
+[`docs/flagship/concept.md`](docs/flagship/concept.md) before contributing.
+
 ```bash
 # 1) Install dependencies
 npm install
 
-# 2) Run one game locally (example: Pac-Man)
-npm run dev:pacman
+# 2) Run the flagship locally
+npm run dev:aftersign
 
 # 3) Run aggregate validation checks (all games)
 npm run typecheck
 npm run build
 npm run test:e2e
 
-# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar)
+# 4) Run per-project checks (replace <project> with aftersign | pacman | galaga | doom | agar)
 npm run typecheck:<project>
 npm run build:<project>
 npm run test:e2e:<project>
@@ -48,12 +53,20 @@ ships and the first to complain about it:
 
 ## What the studio is building
 
-All new work is **flagship-first** (standing mandate, 2026-07-04). The four
-games below are **FROZEN** — historical proofs that the studio works, not
-active roadmap. Only player-breaking bugs are accepted against them; no new
-features, no new clones. See [`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md)
-for the mandate and [`docs/flagship/concept.md`](docs/flagship/concept.md) for
-the flagship concept.
+All new work is **flagship-first** (standing mandate, 2026-07-04). The
+flagship, **AFTERSIGN**, lives in `aftersign/` and is the only active
+development target. The four games below it are **FROZEN** — historical proofs
+that the studio works, not active roadmap. Only player-breaking bugs are
+accepted against them; no new features, no new clones. See
+[`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md) for the mandate and
+[`docs/flagship/concept.md`](docs/flagship/concept.md) for the flagship
+concept.
+
+### AFTERSIGN — `aftersign/` → `game.oodim.com/aftersign/` *(FLAGSHIP — active)*
+The studio's original flagship game — the active roadmap. Concept, scope, and
+verification expectations live in
+[`docs/flagship/concept.md`](docs/flagship/concept.md) and
+[`docs/flagship/BRIEF.md`](docs/flagship/BRIEF.md).
 
 ### Landing — `landing/` → `game.oodim.com/` *(portfolio index)*
 A lightweight directory page that links players to each shipped game.
@@ -87,9 +100,11 @@ Work flows the same way it does in the main oodim repo — issue →
 implementation → review → CI → merge — only here the pipeline targets *this*
 repo via the oodim Game dimension. Because a game's correctness is interactive
 (not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — canvas state assertions that drive the game and check pellet counts,
-ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
-code review.
+harness**: Playwright drives the game and asserts against each project's
+canonical in-memory **state contract** (exposed game state — entities, score,
+win/lose flow, server round-trips — never pixels), on top of the usual
+typecheck + build + code review. The flagship extends this harness with
+story/state invariants and NPC-memory round-trip checks.
 
 Roadmap and rationale live in the oodim repo:
 `docs/plan/multi-repo-greenfield-experiment.md`.
