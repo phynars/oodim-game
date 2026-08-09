@@ -19,6 +19,21 @@
 //   as pinned by flagship-reload-beat-regression.spec.ts and
 //   flagship-surface-contract.spec.ts.
 //
+// PARALLEL-RUN ISOLATION (PR #1097 iteration 2):
+//   playwright.config.ts sets `fullyParallel: true` and the vite-preview
+//   authoritative-save store is a single per-process `Map<key, payload>`
+//   in aftersign/vite.config.ts (survives page navigations, shared across
+//   all workers pointing at the same preview server). Two specs that
+//   both navigate to `/aftersign/` (default slot=`local`, default
+//   playerId=`local-slice-player`) share ONE server-side save bucket
+//   and race each other's state — the first spec's forceSave writes
+//   the sealed outcome + Io memory that the second spec then boots into,
+//   which breaks any baseline assertion like `memory.length === 0`.
+//   Fix mirrors memory-prior-session.spec.ts and durable-save-load.spec.ts:
+//   key every `page.goto` with a unique `?slot=story-state-save-load-${Date.now()}`
+//   so this spec's authoritative-save bucket is disjoint from every
+//   other parallel spec — deterministic baselines, no cross-spec leak.
+//
 // What this spec pins that isn't already covered elsewhere:
 //   • A single-shot contract test that stitches story-state +
 //     NPC-memory + durable-save into ONE round trip: play → forceSave
@@ -102,7 +117,14 @@ async function snapshot(page: Page): Promise<StorySnapshot> {
 test("story beat + Io memory + delivery outcome all rehydrate together after forceSave/forceReload", async ({
   page,
 }) => {
-  await page.goto("./");
+  // Unique slot per test — see PARALLEL-RUN ISOLATION note at file
+  // top. `?slot=` keys the storage-bucket + endpoint identity; every
+  // other in-process navigate/reload inherits the same slot from
+  // main.js's boot-time URLSearchParams read, so a single query at
+  // the initial goto is sufficient — forceReload does NOT re-parse
+  // the URL, it re-reads the SAME slot binding it captured at boot.
+  const slotKey = `story-state-save-load-${Date.now()}`;
+  await page.goto(`/aftersign/?slot=${slotKey}`, { waitUntil: "load" });
   await waitForSurface(page);
 
   // Baseline: fresh session — nothing delivered, no Io memory.
