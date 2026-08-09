@@ -72,6 +72,7 @@ const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
+const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
 
 const CONFIRM_FEEDBACK = {
   durationMs: 220,
@@ -1370,7 +1371,34 @@ const syncRecognitionDomFeedback = (nowMs) => {
   return recognitionDomFeedback;
 };
 
-// Analytical model of the camera pose the tick loop paints — same
+// #1104: spawn one DOM primitive per particle emitted by the recognition
+  // envelope's impact-burst. Reconciles children to `particles.length` each
+  // frame — 14 nodes during the frame-4 burst window, 0 otherwise (and 0
+  // under reduced-motion, since the envelope returns an empty array).
+  // Anchored to `#recognitionImpactBurst`, positioned near the on-screen
+  // NPC-eye anchor by index.html CSS (top:34vh, left:50%). Kept as DOM
+  // (not canvas) so the io-recognition-return-visual-feel e2e can count
+  // primitives directly with querySelectorAll.
+  const syncImpactBurstDom = (particles) => {
+    if (!impactBurstOverlay) return;
+    const children = impactBurstOverlay.children;
+    while (children.length < particles.length) {
+      const node = document.createElement("div");
+      node.className = "impact-burst-particle";
+      impactBurstOverlay.appendChild(node);
+    }
+    while (children.length > particles.length) {
+      impactBurstOverlay.removeChild(children[children.length - 1]);
+    }
+    for (let i = 0; i < particles.length; i += 1) {
+      const p = particles[i];
+      const node = children[i];
+      node.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) scale(${p.scale})`;
+      node.style.opacity = String(p.alpha);
+    }
+  };
+
+  // Analytical model of the camera pose the tick loop paints — same
 // formula as the tick body below, extracted so we can sample the peak
 // wobble at fixed millisecond intervals INSTEAD of relying on rAF
 // firing during the 220ms confirm window. On cold CI (SwiftShader,
@@ -1874,6 +1902,7 @@ const tick = (now) => {
   const recognitionMotion = recognitionMotionAt(now);
   syncRecognitionDomFeedback(now);
   impactBurstParticles = recognitionMotion.impactBurst.particles;
+    syncImpactBurstDom(impactBurstParticles);
   if (recognitionMotion.impactBurst.chirp.shouldTrigger) {
     const chirpKey = Math.round((now - memoryRecognitionBeatStartedAt) * 1000) / 1000;
     if (lastImpactBurstChirpAt !== chirpKey) {
