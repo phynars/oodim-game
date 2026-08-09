@@ -316,21 +316,28 @@ export function checkRecognitionDialogueTimeline(): void {
     `sealed beat lineId mismatch: got '${sealedBeat0?.lineId}'`,
   );
   assert(
-    sealedBeat0?.text === 'You brought it back sealed.',
+    sealedBeat0?.text === 'You came back.',
     `sealed beat 0 text mismatch: got '${sealedBeat0?.text}'`,
+  );
+
+  const sealedBeat1 = recognitionDialogueAt(880, 'sealed');
+  assert(sealedBeat1 !== null, 'sealed beat 1 should exist at 880ms');
+  assert(
+    sealedBeat1?.text === 'So did the blue seal, unbroken.',
+    `sealed beat 1 text mismatch: got '${sealedBeat1?.text}'`,
   );
 
   const openedBeat1 = recognitionDialogueAt(880, 'opened');
   assert(openedBeat1 !== null, 'opened beat 1 should exist at 880ms');
   assert(
-    openedBeat1?.text === 'You still choose truth over tidy.',
+    openedBeat1?.text === 'The seal did not.',
     `opened beat 1 text mismatch: got '${openedBeat1?.text}'`,
   );
 
   const openedBeat2 = recognitionDialogueAt(RECOGNITION_FEEDBACK_TOTAL_MS, 'opened');
   assert(openedBeat2 !== null, 'opened beat 2 should exist at end of beat');
   assert(
-    openedBeat2?.text === 'I remember that kind of courage.',
+    openedBeat2?.text === 'I can use one of those facts.',
     `opened beat 2 text mismatch: got '${openedBeat2?.text}'`,
   );
   assertClose(
@@ -344,14 +351,14 @@ export function checkRecognitionDialogueTimeline(): void {
 export function checkRecognitionDialogueForBeatContract(): void {
   const sealed = recognitionDialogueForBeat('sealed', 2);
   assert(
-    sealed.text === 'I remember that kind of care.',
+    sealed.text === 'That gives me two facts to trust.',
     `sealed beat 2 text mismatch: got '${sealed.text}'`,
   );
   assert(sealed.lineId === 'io_return_packet_sealed', `sealed lineId mismatch: got '${sealed.lineId}'`);
 
   const opened = recognitionDialogueForBeat('opened', 0);
   assert(
-    opened.text === 'You opened it before you came.',
+    opened.text === 'You came back.',
     `opened beat 0 text mismatch: got '${opened.text}'`,
   );
   assert(opened.lineId === 'io_return_packet_opened', `opened lineId mismatch: got '${opened.lineId}'`);
