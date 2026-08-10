@@ -15,6 +15,13 @@ type PacketIntentSnapshot = {
   };
 };
 
+type PacketIntentEvaluation = {
+  intent: "preserve" | "open" | "cancel";
+  elapsedMs: number;
+  dragPx: number;
+  reason: string;
+};
+
 type PacketFeelSurface = {
   version: 1;
   scene: { ready: boolean; beat: string };
@@ -23,6 +30,7 @@ type PacketFeelSurface = {
   interaction: {
     failureStartedAt: number | null;
     packetIntent: PacketIntentSnapshot;
+    packetIntentEvaluation: PacketIntentEvaluation | null;
   };
   input: {
     choose(choiceId: string): Promise<void>;
@@ -81,12 +89,21 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
         ...start,
         timeMs: start.timeMs + 120,
       });
+      // Snapshot the sample-stream verdict BEFORE deliver-packet advances
+      // the beat — the "quick tap preserves the seal" contract lives on
+      // the fast-tap boundary of the pure evaluator, which the in-file
+      // parity check pins one layer down. This assertion is the e2e half
+      // Soren asked for on PR #1112: the harmonized "sub-preserveHoldMs
+      // low-drag tap → preserve" boundary must not silently regress to
+      // "cancel" the way the pre-#1112 evaluator did.
+      const fastTapEvaluation = window.__game?.interaction.packetIntentEvaluation ?? null;
       await game.input.choose("deliver-packet");
       await game.input.waitForStoryIdle();
 
       return {
         prePressRelease: released,
         tap,
+        fastTapEvaluation,
         beat: window.__game?.scene.beat,
         sealed: window.__game?.packet.sealed,
         delivered: window.__game?.packet.delivered,
@@ -97,6 +114,15 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
     expect(result.prePressRelease.outcome).toBe("unknown");
     expect(result.tap.outcome).toBe("sealed");
     expect(result.tap.progress).toBe(0);
+    // Fast-tap boundary contract (harmonized in PR #1112, matching
+    // resolvePacketIntent's existing preserveTapMaxMs branch): a 120 ms
+    // sub-drift tap on the served surface publishes intent="preserve",
+    // not "cancel". If this ever flips to "cancel" the flagship's first
+    // interaction becomes punitive again — the exact regression the
+    // harmonization guarded against.
+    expect(result.fastTapEvaluation).not.toBeNull();
+    expect(result.fastTapEvaluation?.intent).toBe("preserve");
+    expect(result.fastTapEvaluation?.dragPx).toBeLessThan(42);
     expect(result.beat).toBe("packet-delivered");
     expect(result.sealed).toBe(true);
     expect(result.delivered).toBe(true);
