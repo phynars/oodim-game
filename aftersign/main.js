@@ -5,7 +5,12 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
-import { PacketIntentController, PACKET_OUTCOME } from "./src/packetIntent.js";
+import {
+  DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
+  evaluatePacketIntent,
+  PacketIntentController,
+  PACKET_OUTCOME,
+} from "./src/packetIntent.js";
 import {
   buildPacketOutcomeMemoryFact,
   buildSecondActionMemoryFact,
@@ -253,6 +258,17 @@ const state = {
       remainingMs: 0,
     },
     packetIntent: packetIntent.snapshot(),
+    // Post-release verdict from evaluatePacketIntent (sample-stream
+    // helper, sibling to the live controller). The controller owns the
+    // frame-by-frame outcome pinned by the 450/14 e2e; this field is
+    // the OFF-LINE reduction of the same gesture — one open/preserve/
+    // cancel verdict + reason + measured (elapsedMs, dragPx). Populated
+    // by `packetRelease`; null until the first gesture completes and
+    // reset on `packetIntent.reset()`. Exposed on `window.__game` so
+    // the harness / dev overlays can inspect what the pure evaluator
+    // said about the gesture the controller just committed — divergence
+    // between the two is a feel-drift signal.
+    packetIntentEvaluation: null,
   },
   _runtime: {
     audio: {
@@ -803,7 +819,52 @@ const maybeTriggerFailureFromOutcome = (outcome, source) => {
   lastPacketOutcomeForFailure = outcome;
 };
 
+// Gesture-log for the sample-stream evaluator. The live controller
+// reads press/move/release AS THEY HAPPEN and answers frame-by-frame;
+// this log is the same gesture recorded verbatim so evaluatePacketIntent
+// can hand back a summarised open/preserve/cancel verdict on release
+// (with elapsedMs / dragPx / reason). Kept module-scoped so it doesn't
+// pollute the harness-observed state until release commits it.
+let packetGestureLog = [];
+
+const resetPacketGestureLog = () => {
+  packetGestureLog = [];
+  if (state.interaction.packetIntentEvaluation !== null) {
+    state.interaction.packetIntentEvaluation = null;
+    markStateDirty();
+  }
+};
+
+const recordPacketGestureSample = (action, input) => {
+  packetGestureLog.push({
+    action,
+    timeMs: input.timeMs,
+    x: input.x,
+    y: input.y,
+  });
+};
+
+const publishPacketIntentEvaluation = () => {
+  const evaluation = evaluatePacketIntent(
+    packetGestureLog,
+    DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
+  );
+  // Structural equality check so identical repeat gestures don't
+  // spam markStateDirty on the hot path.
+  const currentSerialized = JSON.stringify(state.interaction.packetIntentEvaluation);
+  const nextSerialized = JSON.stringify(evaluation);
+  if (currentSerialized !== nextSerialized) {
+    state.interaction.packetIntentEvaluation = { ...evaluation };
+    markStateDirty();
+  }
+};
+
 const packetPress = (input) => {
+  // Fresh gesture — drop the previous log so the evaluator sees only
+  // this attempt (mirrors PacketIntentController.press's reset of
+  // its own internal fields).
+  resetPacketGestureLog();
+  recordPacketGestureSample("press", input);
   const snapshot = packetIntent.press(input);
   lastPacketOutcomeForFailure = snapshot.outcome;
   syncPacketIntent(snapshot);
@@ -815,6 +876,7 @@ const isCommittedOutcome = (outcome) =>
   outcome !== null && outcome !== undefined && outcome !== PACKET_OUTCOME.UNKNOWN;
 
 const packetMove = (input) => {
+  recordPacketGestureSample("drag", input);
   const snapshot = packetIntent.move(input);
   syncPacketIntent(snapshot);
   maybeTriggerFailureFromOutcome(snapshot.outcome, "packet-cancelled");
@@ -838,7 +900,15 @@ const packetTick = (timeMs) => {
 };
 
 const packetRelease = (input) => {
+  recordPacketGestureSample("release", input);
   const snapshot = packetIntent.release(input);
+  // Sample-stream evaluator runs AFTER the controller has committed the
+  // frame-by-frame outcome. The controller still owns the live 450/14
+  // e2e-pinned feel; this publishes the pure evaluator's summary verdict
+  // (open/preserve/cancel + elapsedMs + dragPx + reason) on
+  // `state.interaction.packetIntentEvaluation` so the harness can see
+  // what the sibling helper said about the same gesture.
+  publishPacketIntentEvaluation();
   syncPacketIntent(snapshot);
   maybeTriggerFailureFromOutcome(snapshot.outcome, "packet-cancelled");
   if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
@@ -1580,6 +1650,7 @@ const resetSliceSave = async () => {
   window.localStorage.removeItem(storageKey);
   await clearAuthoritativeSave({ slot, playerId: state.player.id });
   packetIntent.reset();
+  resetPacketGestureLog();
   state.scene.beat = "packet-offered";
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;

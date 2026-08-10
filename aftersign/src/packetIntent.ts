@@ -34,6 +34,20 @@
  * gesture, what did the player mean?" and is stricter about requiring
  * both time AND press pressure before declaring an open. The controller
  * still owns the live 450/14 feel numbers pinned by the e2e.
+ *
+ * `evaluatePacketIntent` (bottom of file, added alongside — NOT replacing —
+ * the controller) is a second pure helper that takes an ARRAY of raw
+ * gesture samples (press/hold/drag/release) and returns a coarse
+ * open/preserve/cancel verdict. It's sibling to `resolvePacketIntent` —
+ * the two live together because they read the same gesture shape at two
+ * different abstraction levels (whole-gesture summary vs. sample stream)
+ * and share the controller's feel language. Types are prefixed
+ * `Evaluate*` to avoid claiming the bare `PacketIntent*` names, which
+ * previously belonged to `resolvePacketIntent`'s summary shape (see
+ * PR #1108 review — distinct names for distinct contracts). Consumed
+ * in `aftersign/main.js` where `packetPress/Move/Release` append to
+ * `packetGestureLog` and `packetRelease` runs the evaluator, exposing
+ * `state.interaction.packetIntentEvaluation` on `window.__game`.
  */
 
 export const PACKET_INTENT = Object.freeze({
@@ -376,7 +390,7 @@ export interface PacketGestureSample {
   readonly releaseInsideSeal: boolean;
 }
 
-export interface PacketIntentThresholds {
+export interface ResolvePacketIntentThresholds {
   readonly preserveTapMaxMs: number;
   readonly preserveTapMaxDistancePx: number;
   readonly openHoldMinMs: number;
@@ -384,7 +398,7 @@ export interface PacketIntentThresholds {
   readonly cancelMoveAwayPx: number;
 }
 
-export const DEFAULT_PACKET_INTENT_THRESHOLDS: PacketIntentThresholds = {
+export const DEFAULT_RESOLVE_PACKET_INTENT_THRESHOLDS: ResolvePacketIntentThresholds = {
   preserveTapMaxMs: 180,
   preserveTapMaxDistancePx: 8,
   openHoldMinMs: 420,
@@ -394,7 +408,7 @@ export const DEFAULT_PACKET_INTENT_THRESHOLDS: PacketIntentThresholds = {
 
 export function resolvePacketIntent(
   sample: PacketGestureSample,
-  thresholds: PacketIntentThresholds = DEFAULT_PACKET_INTENT_THRESHOLDS,
+  thresholds: ResolvePacketIntentThresholds = DEFAULT_RESOLVE_PACKET_INTENT_THRESHOLDS,
 ): PacketIntent {
   if (!sample.releaseInsideSeal || sample.movedAwayPx >= thresholds.cancelMoveAwayPx) {
     return 'inspect';
@@ -420,9 +434,95 @@ export function resolvePacketIntent(
 }
 
 // ---------------------------------------------------------------------------
+// evaluatePacketIntent — second pure helper, sample-stream flavor.
+//
+// resolvePacketIntent (above) takes a SUMMARIZED gesture (one struct with
+// elapsedMs / pressDistancePx / etc). evaluatePacketIntent takes an
+// ARRAY of raw samples (press → hold* → release) and reduces them into
+// a coarse open/preserve/cancel verdict for callers that record the
+// stream verbatim. It's additive — the controller still owns the live
+// 450/14 numbers pinned by the e2e; this helper is for after-the-fact
+// gesture-log analysis.
+// ---------------------------------------------------------------------------
+
+// Distinct type names for the sample-stream contract. The bare
+// `PacketIntent*` names historically belonged to resolvePacketIntent's
+// SUMMARY shape (preserveTapMaxMs / openHoldMinMs / etc), so this helper
+// carries an `Evaluate*` prefix — no collision, no tripwire for the next
+// importer expecting the old contract (PR #1108 review — Soren).
+export type EvaluatePacketIntentAction = "hold" | "drag" | "press" | "release";
+
+export interface EvaluatePacketIntentSample {
+  readonly action: EvaluatePacketIntentAction;
+  readonly timeMs: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface EvaluatePacketIntentThresholds {
+  readonly preserveHoldMs: number;
+  readonly openHoldMs: number;
+  readonly openDragPx: number;
+  readonly cancelDriftPx: number;
+}
+
+export interface EvaluatePacketIntentResult {
+  readonly intent: "preserve" | "open" | "cancel";
+  readonly elapsedMs: number;
+  readonly dragPx: number;
+  readonly reason: string;
+}
+
+export const DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS: EvaluatePacketIntentThresholds = {
+  preserveHoldMs: 180,
+  openHoldMs: 420,
+  openDragPx: 42,
+  cancelDriftPx: 96,
+};
+
+function sampleDistance(a: EvaluatePacketIntentSample, b: EvaluatePacketIntentSample): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return Math.hypot(dx, dy);
+}
+
+export function evaluatePacketIntent(
+  samples: readonly EvaluatePacketIntentSample[],
+  thresholds: EvaluatePacketIntentThresholds = DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
+): EvaluatePacketIntentResult {
+  if (samples.length === 0) {
+    return { intent: "cancel", elapsedMs: 0, dragPx: 0, reason: "no input" };
+  }
+
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const elapsedMs = Math.max(0, last.timeMs - first.timeMs);
+  const dragPx = sampleDistance(first, last);
+  const released = last.action === "release";
+
+  if (!released) {
+    return { intent: "cancel", elapsedMs, dragPx, reason: "gesture still active" };
+  }
+
+  if (dragPx >= thresholds.cancelDriftPx) {
+    return { intent: "cancel", elapsedMs, dragPx, reason: "finger drifted outside packet focus" };
+  }
+
+  if (elapsedMs >= thresholds.openHoldMs && dragPx >= thresholds.openDragPx) {
+    return { intent: "open", elapsedMs, dragPx, reason: "long hold plus deliberate seal pull" };
+  }
+
+  if (elapsedMs >= thresholds.preserveHoldMs && dragPx < thresholds.openDragPx) {
+    return { intent: "preserve", elapsedMs, dragPx, reason: "deliberate hold without breaking seal" };
+  }
+
+  return { intent: "cancel", elapsedMs, dragPx, reason: "gesture below commitment threshold" };
+}
+
+// ---------------------------------------------------------------------------
 // Parity checks — pin BOTH the stateful controller feel contract AND the
-// pure resolvePacketIntent helper. If either drifts, one of these fails
-// before the e2e even starts.
+// pure resolvePacketIntent / evaluatePacketIntent helpers. If any of the
+// three drift, one of these fails before the e2e even starts.
 // ---------------------------------------------------------------------------
 
 /**
@@ -452,6 +552,7 @@ export function runPacketIntentChecks(): void {
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
   checkResolveIntentHelper();
+  checkEvaluatePacketIntentHelper();
 }
 
 function checkShortTapPreservesSeal(): void {
@@ -861,6 +962,49 @@ function checkResolveIntentHelper(): void {
     'inspect',
     'releasing outside the seal should never break the packet',
   );
+}
+
+function checkEvaluatePacketIntentHelper(): void {
+  // Sample-stream helper, sibling to resolvePacketIntent. Pins the three
+  // verdicts (open / preserve / cancel) plus the two must-cancel guards
+  // (gesture never released, drift past the outer radius).
+  const openSamples: EvaluatePacketIntentSample[] = [
+    { action: "press", timeMs: 0, x: 120, y: 200 },
+    { action: "hold", timeMs: 240, x: 122, y: 202 },
+    { action: "release", timeMs: 460, x: 168, y: 203 },
+  ];
+  const openResult = evaluatePacketIntent(openSamples);
+  assertEqual(openResult.intent, "open", "long hold + seal pull should evaluate as open");
+
+  const preserveSamples: EvaluatePacketIntentSample[] = [
+    { action: "press", timeMs: 0, x: 120, y: 200 },
+    { action: "hold", timeMs: 120, x: 121, y: 201 },
+    { action: "release", timeMs: 210, x: 122, y: 202 },
+  ];
+  const preserveResult = evaluatePacketIntent(preserveSamples);
+  assertEqual(preserveResult.intent, "preserve", "deliberate hold without seal pull should evaluate as preserve");
+
+  const fastTap = evaluatePacketIntent([
+    { action: "press", timeMs: 0, x: 120, y: 200 },
+    { action: "release", timeMs: 90, x: 121, y: 201 },
+  ]);
+  assertEqual(fastTap.intent, "cancel", "gesture below preserveHold floor should cancel");
+
+  const drift = evaluatePacketIntent([
+    { action: "press", timeMs: 0, x: 120, y: 200 },
+    { action: "hold", timeMs: 300, x: 180, y: 240 },
+    { action: "release", timeMs: 460, x: 230, y: 260 },
+  ]);
+  assertEqual(drift.intent, "cancel", "drift past cancelDriftPx should cancel");
+
+  const empty = evaluatePacketIntent([]);
+  assertEqual(empty.intent, "cancel", "empty sample stream should cancel");
+
+  const stillActive = evaluatePacketIntent([
+    { action: "press", timeMs: 0, x: 120, y: 200 },
+    { action: "hold", timeMs: 500, x: 122, y: 201 },
+  ]);
+  assertEqual(stillActive.intent, "cancel", "unreleased gesture should cancel until release arrives");
 }
 
 function assert(condition: boolean, message: string): asserts condition {
