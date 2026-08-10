@@ -41,7 +41,13 @@
  * open/preserve/cancel verdict. It's sibling to `resolvePacketIntent` —
  * the two live together because they read the same gesture shape at two
  * different abstraction levels (whole-gesture summary vs. sample stream)
- * and share the controller's feel language.
+ * and share the controller's feel language. Types are prefixed
+ * `Evaluate*` to avoid claiming the bare `PacketIntent*` names, which
+ * previously belonged to `resolvePacketIntent`'s summary shape (see
+ * PR #1108 review — distinct names for distinct contracts). Consumed
+ * in `aftersign/main.js` where `packetPress/Move/Release` append to
+ * `packetGestureLog` and `packetRelease` runs the evaluator, exposing
+ * `state.interaction.packetIntentEvaluation` on `window.__game`.
  */
 
 export const PACKET_INTENT = Object.freeze({
@@ -439,46 +445,51 @@ export function resolvePacketIntent(
 // gesture-log analysis.
 // ---------------------------------------------------------------------------
 
-export type PacketIntentAction = "hold" | "drag" | "press" | "release";
+// Distinct type names for the sample-stream contract. The bare
+// `PacketIntent*` names historically belonged to resolvePacketIntent's
+// SUMMARY shape (preserveTapMaxMs / openHoldMinMs / etc), so this helper
+// carries an `Evaluate*` prefix — no collision, no tripwire for the next
+// importer expecting the old contract (PR #1108 review — Soren).
+export type EvaluatePacketIntentAction = "hold" | "drag" | "press" | "release";
 
-export interface PacketIntentSample {
-  readonly action: PacketIntentAction;
+export interface EvaluatePacketIntentSample {
+  readonly action: EvaluatePacketIntentAction;
   readonly timeMs: number;
   readonly x: number;
   readonly y: number;
 }
 
-export interface PacketIntentThresholds {
+export interface EvaluatePacketIntentThresholds {
   readonly preserveHoldMs: number;
   readonly openHoldMs: number;
   readonly openDragPx: number;
   readonly cancelDriftPx: number;
 }
 
-export interface PacketIntentResult {
+export interface EvaluatePacketIntentResult {
   readonly intent: "preserve" | "open" | "cancel";
   readonly elapsedMs: number;
   readonly dragPx: number;
   readonly reason: string;
 }
 
-export const DEFAULT_PACKET_INTENT_THRESHOLDS: PacketIntentThresholds = {
+export const DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS: EvaluatePacketIntentThresholds = {
   preserveHoldMs: 180,
   openHoldMs: 420,
   openDragPx: 42,
   cancelDriftPx: 96,
 };
 
-function sampleDistance(a: PacketIntentSample, b: PacketIntentSample): number {
+function sampleDistance(a: EvaluatePacketIntentSample, b: EvaluatePacketIntentSample): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   return Math.hypot(dx, dy);
 }
 
 export function evaluatePacketIntent(
-  samples: readonly PacketIntentSample[],
-  thresholds: PacketIntentThresholds = DEFAULT_PACKET_INTENT_THRESHOLDS,
-): PacketIntentResult {
+  samples: readonly EvaluatePacketIntentSample[],
+  thresholds: EvaluatePacketIntentThresholds = DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
+): EvaluatePacketIntentResult {
   if (samples.length === 0) {
     return { intent: "cancel", elapsedMs: 0, dragPx: 0, reason: "no input" };
   }
@@ -957,7 +968,7 @@ function checkEvaluatePacketIntentHelper(): void {
   // Sample-stream helper, sibling to resolvePacketIntent. Pins the three
   // verdicts (open / preserve / cancel) plus the two must-cancel guards
   // (gesture never released, drift past the outer radius).
-  const openSamples: PacketIntentSample[] = [
+  const openSamples: EvaluatePacketIntentSample[] = [
     { action: "press", timeMs: 0, x: 120, y: 200 },
     { action: "hold", timeMs: 240, x: 122, y: 202 },
     { action: "release", timeMs: 460, x: 168, y: 203 },
@@ -965,7 +976,7 @@ function checkEvaluatePacketIntentHelper(): void {
   const openResult = evaluatePacketIntent(openSamples);
   assertEqual(openResult.intent, "open", "long hold + seal pull should evaluate as open");
 
-  const preserveSamples: PacketIntentSample[] = [
+  const preserveSamples: EvaluatePacketIntentSample[] = [
     { action: "press", timeMs: 0, x: 120, y: 200 },
     { action: "hold", timeMs: 120, x: 121, y: 201 },
     { action: "release", timeMs: 210, x: 122, y: 202 },
