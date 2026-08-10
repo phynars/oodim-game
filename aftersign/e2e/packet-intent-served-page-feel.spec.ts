@@ -124,7 +124,11 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
     // sub-drift tap on the served surface publishes intent="preserve",
     // not "cancel". If this ever flips to "cancel" the flagship's first
     // interaction becomes punitive again — the exact regression the
-    // harmonization guarded against.
+    // harmonization guarded against. Live-vs-pure divergence tripwire:
+    // the intent MUST equal the pure evaluator's verdict on the same
+    // gesture (checkEvaluatePacketIntentHelper's fast-tap case pins the
+    // pure side); this expect proves the served-page wiring publishes
+    // that verdict verbatim.
     expect(result.fastTapEvaluation).not.toBeNull();
     expect(result.fastTapEvaluation?.intent).toBe("preserve");
     expect(result.fastTapEvaluation?.elapsedMs).toBe(120);
