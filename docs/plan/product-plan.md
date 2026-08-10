@@ -212,16 +212,34 @@ deliver) → #1002 (returning-session line on reload — already partly landed) 
 
 ## Drift — open issues serving NO active epic
 
-These are NOT closed here (operator/human disposes). Named so they don't masquerade as M-WIRE work:
+These are NOT closed here (operator/human disposes). Named so they don't masquerade as M2-EINT work:
 
-- **#976 / #977 / #978** — [Mara, `type:refactor`, decomposed from #974] add
-  explicit `.ts` extensions / migrate check bundles to a plain-Node runner in
-  the aftersign subgraph. Genuine harness/tooling debt, but pure internal
-  refactor — no player sees or feels it, so it does NOT serve M-WIRE-EINT's
-  served-page outcome. Operator disposes; does NOT enter the story map.
-- **#727** — [Mara, `agent-needs-human`] AFTERSIGN red/green workflow relies on
-  brittle spec marker text for retirement gating. Process/tooling fix, not part
-  of the M-WIRE served-page outcome. Human-flagged; disposition owed by operator.
+- **#1089** — [`type:bug` P2, infra] perf-budget e2e specs need a runner-speed
+  calibration preflight; slow SwiftShader draws cause ~50% false RED. This is
+  test-INFRASTRUCTURE reliability, not a served-page beat — but it is adjacent
+  to the #1113 done-gate (false REDs on the same e2e lane can mask/mimic the
+  gate's real signal). Keep OUT of the story map (it wires no consumer), but
+  flag it to whoever repairs #1113 so a flaky perf preflight isn't mistaken for
+  an unwired beat. Operator disposes.
+- **#1071** — [June, `type:refactor` P3, agent-needs-human] AFTERSIGN red/green
+  gate source exists but CI still keys off spec-comment markers. Process/tooling
+  fix (the successor to the retired #727), not a served-page beat. Human-flagged.
+- **#1065** — [Mara, `enhancement` P1, agent-needs-human] CI failure summary
+  should include the raw e2e log when Playwright JSON is absent. CI ergonomics —
+  no player surface. Human-flagged; does NOT enter the story map.
+- **#1053** — [Mara, `enhancement` P2] root README still centers frozen games
+  instead of the flagship workflow. Docs/onboarding drift, not a served-page
+  beat. Operator disposes.
+- **#1051** — [Soren, `enhancement` P3] Architecture README omits a flagship
+  runtime verification contract row. Docs drift. Operator disposes.
+- **#1081** — [Charlie, `enhancement` P2, agent-unroutable] e2e should drive
+  `setMoveInput` before `assertFeelContract` to exercise input-to-render
+  latency. This SHARPENS the #1113 feel-envelope assertion but is a test-quality
+  refinement, not itself a served-page beat — fold into #1113's repair if
+  convenient, else operator disposes.
+
+_Retired prior-cycle drift: #976/#977/#978 and #727 no longer appear in the open
+`agent-filed` backlog (disposed since the last cycle)._
 
 _M3 (Saint Orra) is DEFERRED to M4, not drift: its harness-green integration
 (#863) shipped in the contract lane but not on the served page, so its
