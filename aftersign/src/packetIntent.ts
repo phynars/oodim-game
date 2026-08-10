@@ -53,7 +53,25 @@ export class PacketIntentController {
   public lastPoint: PacketIntentPoint = { x: 0, y: 0 };
   public outcome: PacketOutcome = PACKET_OUTCOME.UNKNOWN;
   public progress = 0;
+  /**
+   * Wall-clock stamp of the moment focus was LAST known-good (i.e. the
+   * `lastAdvanceMs` at the instant the first `hasFocus:false` tick fired).
+   * The next focused tick shifts `startTimeMs` forward by
+   * `(timeMs - hiddenAtMs)` so the entire hidden interval is excluded from
+   * the hold clock. Stamped from `lastAdvanceMs`, NOT the hidden tick's
+   * own clock — visibility events can arrive an arbitrary delta after
+   * focus actually left, and anchoring on the hidden tick would leave
+   * that pre-hidden-tick gap counted as held time. See #714.
+   */
   public hiddenAtMs: number | null = null;
+  /**
+   * Timestamp of the most recent FOCUSED advance (press / focused tick /
+   * move / release). Anchors `hiddenAtMs` on the next hidden tick so the
+   * whole gap from last-focused-advance to resume is credited as hidden
+   * time. Without this anchor, only the sliver between the hidden tick
+   * and resume would be subtracted — the pre-hidden-tick wall-clock gap
+   * would silently commit OPENED on resume (#714).
+   */
   public lastAdvanceMs = 0;
 
   constructor(config: Partial<PacketIntentConfig> = {}) {
@@ -102,6 +120,10 @@ export class PacketIntentController {
   tick(timeMs: number, options: PacketIntentTickOptions = {}): PacketIntentSnapshot {
     if (!this.active || this.isCommitted()) return this.snapshot();
     if (options.hasFocus === false) {
+      // #714: anchor on `lastAdvanceMs`, NOT `timeMs`. The hidden tick can
+      // arrive an arbitrary delta after focus actually left; using its own
+      // clock would leave the pre-hidden-tick gap counted as held time and
+      // silently commit OPENED on resume.
       if (this.hiddenAtMs === null) this.hiddenAtMs = this.lastAdvanceMs;
       return this.snapshot();
     }
@@ -204,6 +226,15 @@ export interface ResolvePacketIntentThresholds {
   readonly cancelMoveAwayPx: number;
 }
 
+// resolvePacketIntent thresholds are DELIBERATELY tighter than the
+// controller's live 450/14 numbers. The controller answers "should this
+// frame's held state trigger an open?"; this helper answers "given this
+// complete gesture, was the player's intent clear?" and defaults ambiguous
+// cases to `inspect` so the story fork is never committed accidentally.
+// Do NOT unify these with PACKET_INTENT.HOLD_TO_OPEN_MS / DRIFT_CANCEL_PX
+// — the e2e pins the controller's live feel numbers, and this helper's
+// numbers pin a stricter "deliberate" bar for after-the-fact intent
+// classification. checkResolveIntentHelper below is the tripwire.
 export const DEFAULT_RESOLVE_PACKET_INTENT_THRESHOLDS: ResolvePacketIntentThresholds = {
   preserveTapMaxMs: 180,
   preserveTapMaxDistancePx: 8,
