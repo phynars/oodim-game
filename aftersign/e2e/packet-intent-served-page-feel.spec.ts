@@ -15,6 +15,13 @@ type PacketIntentSnapshot = {
   };
 };
 
+type PacketIntentEvaluation = {
+  intent: "preserve" | "open" | "cancel";
+  elapsedMs: number;
+  dragPx: number;
+  reason: string;
+};
+
 type PacketFeelSurface = {
   version: 1;
   scene: { ready: boolean; beat: string };
@@ -23,6 +30,7 @@ type PacketFeelSurface = {
   interaction: {
     failureStartedAt: number | null;
     packetIntent: PacketIntentSnapshot;
+    packetIntentEvaluation: PacketIntentEvaluation | null;
   };
   input: {
     choose(choiceId: string): Promise<void>;
@@ -72,6 +80,8 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
       if (!game) throw new Error("window.__game missing after boot");
 
       const start = { timeMs: 1_000, x: 120, y: 140 };
+      // A pre-press release verifies the controller's guard (release
+      // without an active gesture is a no-op — outcome stays UNKNOWN).
       const released = game.input.packetRelease({
         ...start,
         timeMs: start.timeMs + 120,
@@ -81,12 +91,24 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
         ...start,
         timeMs: start.timeMs + 120,
       });
+      // Snapshot the sample-stream verdict IMMEDIATELY after the real tap
+      // release and BEFORE deliver-packet advances the beat — the "quick
+      // tap preserves the seal" contract lives on the fast-tap boundary
+      // of the pure evaluator (harmonized on PR #1112 to match
+      // resolvePacketIntent's preserveTapMaxMs branch and the live
+      // controller's SEALED outcome). Cloning the value here means the
+      // outer expect() sees the tap's verdict even if a later publish
+      // mutates the field.
+      const fastTapEvaluation = window.__game?.interaction.packetIntentEvaluation
+        ? { ...window.__game.interaction.packetIntentEvaluation }
+        : null;
       await game.input.choose("deliver-packet");
       await game.input.waitForStoryIdle();
 
       return {
         prePressRelease: released,
         tap,
+        fastTapEvaluation,
         beat: window.__game?.scene.beat,
         sealed: window.__game?.packet.sealed,
         delivered: window.__game?.packet.delivered,
@@ -97,6 +119,20 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
     expect(result.prePressRelease.outcome).toBe("unknown");
     expect(result.tap.outcome).toBe("sealed");
     expect(result.tap.progress).toBe(0);
+    // Fast-tap boundary contract (harmonized in PR #1112, matching
+    // resolvePacketIntent's existing preserveTapMaxMs branch): a 120 ms
+    // sub-drift tap on the served surface publishes intent="preserve",
+    // not "cancel". If this ever flips to "cancel" the flagship's first
+    // interaction becomes punitive again — the exact regression the
+    // harmonization guarded against. Live-vs-pure divergence tripwire:
+    // the intent MUST equal the pure evaluator's verdict on the same
+    // gesture (checkEvaluatePacketIntentHelper's fast-tap case pins the
+    // pure side); this expect proves the served-page wiring publishes
+    // that verdict verbatim.
+    expect(result.fastTapEvaluation).not.toBeNull();
+    expect(result.fastTapEvaluation?.intent).toBe("preserve");
+    expect(result.fastTapEvaluation?.elapsedMs).toBe(120);
+    expect(result.fastTapEvaluation?.dragPx).toBeLessThan(42);
     expect(result.beat).toBe("packet-delivered");
     expect(result.sealed).toBe(true);
     expect(result.delivered).toBe(true);
