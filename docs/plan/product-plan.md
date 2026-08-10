@@ -168,20 +168,32 @@ tap-preserve / 420ms-hold-open → deliver → reload → return-next-session) a
 asserts each wired beat is FELT on the served page. The epic is DONE when that
 served-page lane is green — not when the individual wiring PRs merge.
 
-**Status:** active. `ioReturningSession` is now PARTIALLY wired — `main.js:38`
-imports `chooseIoReturningSessionLine` and consumes it at lines 1655-1669
-(landed in #980/#985), so the returning-session line is on the surface for the
-sealed/opened outcomes; the remaining bindings (`recognitionFeedback` feel
-envelope, `packetIntent` offer/commit) are NOT yet imported by the served
-entry (#954 founder measurement stands for those two). Contract modules are
-green in isolation. Per #954's CONSUMER RULE, this epic is a pure consumer
-epic — the high-value work is wiring, not new harness (harness-only additions
-need explicit justification).
+**Status:** active — **ALL THREE consumers are now LANDED on the served entry**
+(`aftersign/main.js`, verified 2026-08-10 @ 60b9db25):
+- `packetIntent` — imported lines 9-13 (`evaluatePacketIntent`,
+  `PacketIntentController`, `PACKET_OUTCOME`); `PacketIntentController` is
+  instantiated at `main.js:146` and drives the live tap-preserve / hold-open
+  gesture (`press`/`release` at 868-870), with `evaluatePacketIntent` publishing
+  a post-release verdict at 847-858. WIRED.
+- `recognitionFeedback` — imported at `main.js:31` via
+  `recognitionFeedbackBridge.ts` (`recognitionEnvelopeAt`) and consumed into the
+  served `recognitionFeedback` block at 252-259 as MEASURED motion. WIRED.
+- `ioReturningSession` — `chooseIoReturningSessionLine` imported at `main.js:41`
+  and consumed on the returning-session path. WIRED.
 
-**Integration story (the done-gate):** **#1004** — one e2e that drives the SERVED
-page through offer → tap-preserve / hold-open → deliver → reload →
-return-next-session and asserts the wired beats. Written FIRST, lands LAST.
-EINT is DONE when this lane is green against the deployed surface.
+The founder's zero-consumer measurement is **CLEARED**: the July contract
+library now has live consumers on the served entry. This epic is no longer a
+wiring epic — the only thing between it and player-shippable is a GREEN served
+lane. Per #954's CONSUMER RULE the harness-only ration is untouched (no new
+harness needed).
+
+**Integration story (the done-gate):** the epic's served-page e2e
+(`aftersign/e2e/flagship-surface-contract.spec.ts`) drives offer →
+tap-preserve / hold-open → deliver → reload → return-next-session against the
+deployed surface and asserts each wired beat. **It is currently RED on main
+(#1113, P1)** — post-merge e2e failed @ 60b9db25. EINT is DONE when this lane
+is green again on main; the repair is the top priority (prior red-main repairs
+#1093, #1100 already landed + closed on this same epic).
 
 **Integration story of M2 (reference):** #735 (merged) proved chained memory in
 a MODULE lane. M-WIRE's integration proof is the orthogonal generalization: the
@@ -194,19 +206,20 @@ gap that #954 measured and #863 exposed (M3 harness-green, player-unshipped).
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Integration proof (done-gate)** — one e2e drives the SERVED page offer → preserve/open → deliver → reload → return-next-session, asserts each wired beat | **#1004** | M | integration | filed |
-| Wire `recognitionFeedback` (aftersign/src/recognitionFeedback.ts) into main.js — player FEELS the recognition beat (camera push, sign glow) on deliver | **#1003** | M | consumer — the feel envelope the proof asserts on the surface | filed |
-| Wire the `packetIntent` feel model into the page — tap preserves the seal, 420ms hold opens, with cancel/inspect | **#956** | M | consumer — the offer/commit interaction the proof drives | filed |
-| Wire Io returning-session lines (`ioReturningSession` + `IO_BARE_RETURN_LINE`) into the served scene — a later-session return hears Io remember the packet outcome | **#1002** | M | consumer — the returning-session line the proof asserts | **partially landed** (#980/#985 — main.js:38, 1655-1669) |
+| **Repair the served-page e2e RED on main (done-gate)** — decide SPEC-vs-SURFACE per `aftersign/src/ioRecognitionDialogue.ts`, land the fix so the offer → preserve/open → deliver → reload → return lane is GREEN on main | **#1113** | S/M | integration done-gate | **RED on main (P1) — top priority** |
+| Wire `recognitionFeedback` into main.js — player FEELS the recognition beat on deliver | — | M | consumer (feel envelope) | **✅ LANDED** — `main.js:31` (bridge), consumed 252-259 |
+| Wire the `packetIntent` feel model — tap preserves the seal, hold opens, with cancel/inspect | **#956** | M | consumer (offer/commit) | **✅ LANDED** — `main.js:9-13,146,847-870` |
+| Wire Io returning-session lines (`ioReturningSession`) into the served scene | **#1002** | M | consumer (returning-session line) | **✅ LANDED** — `main.js:41` + #980/#985 |
 
-**Integration-first note:** #1004 (the done-gate) is filed and mapped BEFORE the
-consumer stories because it defines what "M-WIRE-EINT done" means — a green lane
-against the SERVED page. The three consumer stories (#1003 recognition feel /
-#956 packet-intent / #1002 returning-session lines) each give one July module a
-consumer in `main.js`; none alone closes the module-vs-surface gap. Sequence if
-forced: #956 (offer/commit, the entry interaction) → #1003 (recognition feel on
-deliver) → #1002 (returning-session line on reload — already partly landed) →
-#1004 (integration lane asserts the full arc against the deployed surface).
+**Integration-first note (updated 2026-08-10):** the three consumer stories are
+all LANDED — every July module (`recognitionFeedback`, `packetIntent`,
+`ioReturningSession`) now has a live consumer in `aftersign/main.js`, so the
+module-vs-surface gap #954 measured is CLOSED at the import level. The only work
+remaining for M-WIRE-EINT is the done-gate: the served-page e2e must be GREEN on
+main. It is currently RED (#1113, P1) — the epic is DONE the moment that lane is
+repaired. #1004 (the earlier "write the gate first" story) is superseded: the
+gate lane already exists in `flagship-surface-contract.spec.ts`; the task is now
+to keep it green, not to author it.
 
 ---
 
