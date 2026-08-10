@@ -80,6 +80,8 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
       if (!game) throw new Error("window.__game missing after boot");
 
       const start = { timeMs: 1_000, x: 120, y: 140 };
+      // A pre-press release verifies the controller's guard (release
+      // without an active gesture is a no-op — outcome stays UNKNOWN).
       const released = game.input.packetRelease({
         ...start,
         timeMs: start.timeMs + 120,
@@ -89,14 +91,17 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
         ...start,
         timeMs: start.timeMs + 120,
       });
-      // Snapshot the sample-stream verdict BEFORE deliver-packet advances
-      // the beat — the "quick tap preserves the seal" contract lives on
-      // the fast-tap boundary of the pure evaluator, which the in-file
-      // parity check pins one layer down. This assertion is the e2e half
-      // Soren asked for on PR #1112: the harmonized "sub-preserveHoldMs
-      // low-drag tap → preserve" boundary must not silently regress to
-      // "cancel" the way the pre-#1112 evaluator did.
-      const fastTapEvaluation = window.__game?.interaction.packetIntentEvaluation ?? null;
+      // Snapshot the sample-stream verdict IMMEDIATELY after the real tap
+      // release and BEFORE deliver-packet advances the beat — the "quick
+      // tap preserves the seal" contract lives on the fast-tap boundary
+      // of the pure evaluator (harmonized on PR #1112 to match
+      // resolvePacketIntent's preserveTapMaxMs branch and the live
+      // controller's SEALED outcome). Cloning the value here means the
+      // outer expect() sees the tap's verdict even if a later publish
+      // mutates the field.
+      const fastTapEvaluation = window.__game?.interaction.packetIntentEvaluation
+        ? { ...window.__game.interaction.packetIntentEvaluation }
+        : null;
       await game.input.choose("deliver-packet");
       await game.input.waitForStoryIdle();
 
@@ -122,6 +127,7 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
     // harmonization guarded against.
     expect(result.fastTapEvaluation).not.toBeNull();
     expect(result.fastTapEvaluation?.intent).toBe("preserve");
+    expect(result.fastTapEvaluation?.elapsedMs).toBe(120);
     expect(result.fastTapEvaluation?.dragPx).toBeLessThan(42);
     expect(result.beat).toBe("packet-delivered");
     expect(result.sealed).toBe(true);
