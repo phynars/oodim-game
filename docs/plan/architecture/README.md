@@ -66,6 +66,7 @@ brief's "Extend the gameplay harness before the gameplay").
 | **2D canvas, single-player** | `pacman/`, `galaga/` | Playwright drives inputs; assertions read a `window.__game` **state contract** (score, lives, ghost modes, collisions). Never pixels. |
 | **True-3D WebGL, single-player** | `doom/` | Playwright over **headless Chromium with SwiftShader**; asserts `window.__doom` state (player pose, enemies, projectiles, doors). Deterministic fixed-timestep sim decoupled from rendering. |
 | **Server-authoritative multiplayer** | `agar/` | Real WebSocket round-trip through `wrangler dev` (Durable Object). Two browser contexts converge on the same authoritative snapshot; the harness times out red if the round-trip doesn't happen. |
+| **Flagship (AFTERSIGN)** — WebGL + server-authoritative, story-driven | `aftersign/` *(active)* | Inherits the Doom and agar rungs: deterministic fixed-timestep sim, Playwright state-contract assertions (never pixels), and durable save/load round-trips. Extends the harness with story/state invariants and **NPC-memory round-trip** checks (`test:e2e:aftersign:npc-memory`, `test:e2e:aftersign:durable-save`), plus a pure-logic runner (`test:aftersign:pure`) that gates typecheck. Contract source of truth: [`docs/flagship/BRIEF.md`](../../flagship/BRIEF.md) ("Extend the gameplay harness before the gameplay"). |
 
 Common thread: **state assertions, not pixel diffs**. A game's correctness
 is interactive, so the merge gate drives the game and inspects the
