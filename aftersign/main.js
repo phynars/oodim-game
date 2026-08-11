@@ -1997,10 +1997,17 @@ const tick = (now) => {
     }
   }
   if (failureStartedAt !== null) {
-    state.interaction.failureFeedback = {
-      ...state.interaction.failureFeedback,
-      ...failureEnvelope,
-    };
+    // Contract (packet-hold-threshold.spec.ts:42-52): failureFeedback is
+    // `InteractionFeedback & { hudDropPx, flashAlpha, wobbleCycles, easing }`
+    // where flashAlpha is the PINNED feel constant (0.34) — asserted with
+    // `.toBe(0.34)`. Merging the full envelope leaks time-varying scaled
+    // amplitudes (falloff * feel.flashAlpha, wobble, vignetteAlpha, …) into
+    // the contract surface and flips the pinned value. Only fold runtime
+    // *lifecycle* fields into state; the render call site already reads
+    // scaled amplitudes off `failureEnvelope` directly (see failureSting
+    // opacity above), so nothing else needs the per-frame values persisted.
+    state.interaction.failureFeedback.active = failureEnvelope.active;
+    state.interaction.failureFeedback.remainingMs = failureEnvelope.remainingMs;
     if (!failureEnvelope.active) {
       state.interaction.failureStartedAt = null;
     }
