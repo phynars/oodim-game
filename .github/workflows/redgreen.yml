@@ -127,26 +127,15 @@ jobs:
         run: npm install
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      # Preflight: the durable-save spec has been red on main under
-      # Playwright's CI cold-start (SwiftShader init + first WebGL context,
-      # #700/#506/#590/#766). Until the spec lands its
-      # FLAGSHIP_BREAK_MODE=local-only-save conditional guard or the phase-3
-      # fixme marker is removed, retire the green step.
-      - name: Preflight — decide whether the green lane can run yet
+      # Preflight (#1071): lane retirement is keyed on the checked-in config
+      # (aftersign/redgreen.config.json), NOT on grep-able spec markers.
+      - name: Preflight — read lane state from redgreen.config.json
         id: preflight
         shell: bash
         run: |
-          spec=aftersign/e2e/durable-save-load.spec.ts
-          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"local-only-save"' "$spec" > /dev/null; then
-            echo "conditional guard present — green polarity will run (spec live under default mode)."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -q '@redgreen:durable-save-load fixme-pending-phase-3' "$spec"; then
-            echo "@redgreen:durable-save-load fixme-pending-phase-3 marker present — green polarity retired until the spec stabilizes."
-            echo "retired=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "durable-save contract is fully live in the main suite — green polarity will run."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          fi
+          state=$(node -p 'JSON.parse(require("fs").readFileSync("aftersign/redgreen.config.json","utf8"))["durable-save"].green')
+          echo "durable-save green lane: $state (aftersign/redgreen.config.json)"
+          if [ "$state" = "live" ]; then echo "retired=false" >> "$GITHUB_OUTPUT"; else echo "retired=true" >> "$GITHUB_OUTPUT"; fi
       - name: Run AFTERSIGN durable save/load spec in default mode
         if: steps.preflight.outputs.retired == 'false'
         run: npm run test:e2e:aftersign:durable-save
@@ -167,24 +156,25 @@ jobs:
         run: npm install
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Preflight — confirm the guard string still exists
+      - name: Preflight — config state + guard-string sanity
         id: preflight
         shell: bash
         run: |
-          # Whitespace-tolerant search: matches the guard regardless of how
-          # the `test.skip(...)` call is line-wrapped. If the guard is
-          # genuinely gone (durability landed → spec unconditional) we retire.
-          # If it was RENAMED or the sentinel drifted, fail loud.
-          spec=aftersign/e2e/save-load-durable-contract.spec.ts
-          if grep -Pzo '(?s)process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"local-only-save"' "$spec" > /dev/null; then
-            echo "guard present — red polarity will run."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -q 'test\.skip(' "$spec"; then
-            echo "::error::Spec still calls test.skip(...) but the FLAGSHIP_BREAK_MODE=local-only-save guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
-            exit 1
-          else
-            echo "durable save/load contract is fully live in the main suite — red polarity retired."
+          # #1071: the config decides live/retired. The guard-string check
+          # stays as a SAFETY: a lane marked live whose spec lost its
+          # FLAGSHIP_BREAK_MODE guard cannot verify itself — fail loud.
+          state=$(node -p 'JSON.parse(require("fs").readFileSync("aftersign/redgreen.config.json","utf8"))["durable-save"].red')
+          echo "durable-save red lane: $state (aftersign/redgreen.config.json)"
+          if [ "$state" != "live" ]; then
             echo "retired=true" >> "$GITHUB_OUTPUT"
+          else
+            spec=aftersign/e2e/save-load-durable-contract.spec.ts
+            if grep -Pzo '(?s)process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"local-only-save"' "$spec" > /dev/null; then
+              echo "retired=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::redgreen.config.json marks durable-save.red LIVE but the FLAGSHIP_BREAK_MODE=local-only-save guard is missing from $spec — the lane cannot verify itself. Fix the spec or flip the config in the same PR."
+              exit 1
+            fi
           fi
       - name: Run AFTERSIGN durable save/load contract (red polarity — MUST fail)
         if: steps.preflight.outputs.retired == 'false'
@@ -219,21 +209,13 @@ jobs:
         run: npm install
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Preflight — decide whether the green lane can run yet
+      - name: Preflight — read lane state from redgreen.config.json
         id: preflight
         shell: bash
         run: |
-          spec=aftersign/e2e/npc-memory-roundtrip.spec.ts
-          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
-            echo "conditional guard present — green polarity will run (spec live under default mode)."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -q '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' "$spec"; then
-            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present — green polarity retired until the spec stabilizes."
-            echo "retired=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "npc-memory contract is fully live in the main suite — green polarity will run."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          fi
+          state=$(node -p 'JSON.parse(require("fs").readFileSync("aftersign/redgreen.config.json","utf8"))["npc-memory"].green')
+          echo "npc-memory green lane: $state (aftersign/redgreen.config.json)"
+          if [ "$state" = "live" ]; then echo "retired=false" >> "$GITHUB_OUTPUT"; else echo "retired=true" >> "$GITHUB_OUTPUT"; fi
       - name: Run AFTERSIGN NPC memory contract in default mode
         if: steps.preflight.outputs.retired == 'false'
         run: npm run test:e2e:aftersign:npc-memory
@@ -254,27 +236,23 @@ jobs:
         run: npm install
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Preflight — decide whether the red lane can run yet
+      - name: Preflight — config state + guard-string sanity
         id: preflight
         shell: bash
         run: |
-          # Runs once the spec exposes a FLAGSHIP_BREAK_MODE=drop-memory
-          # guard. Until then the spec is either fully live (green lane
-          # sufficient) or unconditionally skipped (Playwright exits 0 —
-          # a naive inversion would fail every PR). Detect both.
-          spec=aftersign/e2e/npc-memory-roundtrip.spec.ts
-          if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
-            echo "conditional guard present — red polarity will run."
-            echo "retired=false" >> "$GITHUB_OUTPUT"
-          elif grep -q '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' "$spec"; then
-            echo "@redgreen:npc-memory-roundtrip fixme-pending-phase-3 marker present — red polarity retired until the spec exposes a conditional guard."
+          # #1071: config decides; guard check is the fail-loud safety.
+          state=$(node -p 'JSON.parse(require("fs").readFileSync("aftersign/redgreen.config.json","utf8"))["npc-memory"].red')
+          echo "npc-memory red lane: $state (aftersign/redgreen.config.json)"
+          if [ "$state" != "live" ]; then
             echo "retired=true" >> "$GITHUB_OUTPUT"
-          elif grep -q 'test\.skip(' "$spec"; then
-            echo "::error::Spec calls test.skip(...) but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing or altered. The red-polarity lane cannot verify itself — update this workflow's preflight if the sentinel intentionally changed."
-            exit 1
           else
-            echo "npc-memory contract is fully live in the main suite — red polarity retired."
-            echo "retired=true" >> "$GITHUB_OUTPUT"
+            spec=aftersign/e2e/npc-memory-roundtrip.spec.ts
+            if grep -Pzo '(?s)test\.skip\(\s*process\.env\.FLAGSHIP_BREAK_MODE\s*!==\s*"drop-memory"' "$spec" > /dev/null; then
+              echo "retired=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::redgreen.config.json marks npc-memory.red LIVE but the FLAGSHIP_BREAK_MODE=drop-memory guard is missing from $spec — the lane cannot verify itself. Fix the spec or flip the config in the same PR."
+              exit 1
+            fi
           fi
       - name: Run AFTERSIGN NPC memory contract in broken mode and require failure
         if: steps.preflight.outputs.retired == 'false'

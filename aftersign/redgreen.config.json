@@ -1,0 +1,11 @@
+{
+  "$comment": "Lane retirement for the aftersign red/green polarity gates (.github/workflows/redgreen.yml). THIS FILE is the source of truth (#1071/#727) - not grep-able marker strings in spec files. 'live' = the lane runs; 'retired' = the lane skips with a log line. Flip a lane here in the SAME PR that makes its spec ready (e.g. adding the FLAGSHIP_BREAK_MODE conditional guard). The workflow still fail-louds if a lane is marked live while its guard string is missing - config cannot silently un-guard a spec. NOTE (2026-08-11): durable-save.red seeded RETIRED \u2014 the FLAGSHIP_BREAK_MODE=local-only-save guard was removed when the durable contract went fully live in the main suite (the lane self-retired under the old marker logic); the fail-loud safety caught an initial bad seed that matched a comment.",
+  "durable-save": {
+    "green": "retired",
+    "red": "retired"
+  },
+  "npc-memory": {
+    "green": "retired",
+    "red": "retired"
+  }
+}
