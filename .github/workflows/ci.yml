@@ -202,7 +202,14 @@ jobs:
         run: npm run test:aftersign:pure
       - run: npx playwright install --with-deps chromium
       - name: Test aftersign WebGL e2e (Playwright)
-        run: npm run test:e2e:aftersign
+        shell: bash
+        # Tee the runner output so the failure-summary step can quote the
+        # RAW log tail when playwright-report/results.json is missing — a
+        # pre-spec crash (webServer boot failure) writes no JSON report,
+        # and without the raw log the summary was useless (#1065).
+        run: |
+          set -o pipefail
+          npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
       - name: Print aftersign failure summary
         if: failure()
         run: |
@@ -279,7 +286,16 @@ jobs:
               ' 2>&1
               echo '```'
             else
-              echo "(playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; check the Playwright run for a crash BEFORE any spec ran, e.g. webServer boot failure)"
+              echo "(playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; the run crashed BEFORE any spec ran, e.g. a webServer boot failure. Raw runner log tail below — #1065.)"
+              if [ -f /tmp/aftersign-e2e-runner.log ]; then
+                echo ""
+                echo "### raw e2e runner log (last 80 lines)"
+                echo '```'
+                tail -n 80 /tmp/aftersign-e2e-runner.log
+                echo '```'
+              else
+                echo "(runner log not captured — the e2e step may not have started)"
+              fi
             fi
           } > "$summary_file"
 
