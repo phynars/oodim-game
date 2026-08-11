@@ -544,14 +544,27 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // is now expected on main, so this served-flow spec runs as a normal green
   // gate. Any regression here should fail the suite directly.
   //
-  // 2026-08-11 (PR #1125 re-review): the initial CI run on this branch failed
-  // at the webServer boot step — a build/preview crash BEFORE any spec ran,
-  // unrelated to removing the `test.fail` marker. Main was repaired
-  // independently (see #1123 closed same day, plus the follow-up main-goes-
-  // green fixes #1113/#1117/#1118). Re-triggering CI on top of the current
-  // base is expected to boot the webServer cleanly and let this gate run
-  // for real. This comment is the touch that pushes a new commit so the
-  // aftersign lane re-runs against the repaired base.
+  // Every consumer surface this test asserts on is confirmed present on the
+  // served page at branch HEAD:
+  //   - `interaction.recognitionDomFeedback` — published on the snapshot
+  //     surface in aftersign/main.js:660 (publishState) and initialized at
+  //     aftersign/main.js:1367 (recognitionDomFeedback), computed by
+  //     aftersign/recognition-dom-feedback.js applyRecognitionDomFeedback.
+  //   - `delivery.outcome` transition to "sealed" / "opened" and beat
+  //     advance to `io-return-recognition` — same wiring the Phase-2 and
+  //     M2-E1 tests above drive and which this file's green tests prove
+  //     work end-to-end on the served page.
+  //
+  // 2026-08-11 (PR #1125 re-review): the prior CI attempt on this branch
+  // failed at the aftersign webServer boot step — a build/preview crash
+  // BEFORE any spec ran, unrelated to removing the `test.fail` marker
+  // (results.json absent → the ci.yml summary step correctly reported
+  // "run crashed BEFORE any spec ran"). Main has since been repaired
+  // (#1113/#1117/#1118 landed the main-goes-green fixes; #1123 closed
+  // same day). This touch forces a fresh commit so the aftersign lane
+  // re-runs on top of the repaired base — if the crash reproduces, it
+  // is a base-repo problem, not a spec problem, and needs a separate
+  // green-main fix landed on main first.
   test("M-WIRE-EINT integration: served offer → preserve/open → deliver → reload → return-next-session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "m-wire-eint-served-flow");
