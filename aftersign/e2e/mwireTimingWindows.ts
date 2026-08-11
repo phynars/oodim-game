@@ -146,17 +146,25 @@ export async function armAndCaptureMwireRecognitionFeel(
 ): Promise<RecognitionDomFeedbackSnapshot> {
   await installFeelHighWaterSampler(page);
 
-  // Dispatch deliver in its own evaluate. Runtime deliverPacket()
-  // stamps memoryRecognitionBeatStartedAt = performance.now()
-  // synchronously (aftersign/main.js:1625).
-  const dispatched = await page.evaluate(async () => {
+  // Dispatch deliver FIRE-AND-FORGET in its own evaluate. Runtime
+  // deliverPacket() stamps memoryRecognitionBeatStartedAt =
+  // performance.now() SYNCHRONOUSLY (aftersign/main.js:1625) — so by
+  // the time input.choose's synchronous prefix returns, the feel
+  // window's clock has already started. We do NOT await the choose()
+  // promise to full resolution because it can hold the node<->page
+  // bridge past the 54ms hapticScale window on SwiftShader, starving
+  // the sampler of rAF frames INSIDE that window (identical failure
+  // mode to the impact-burst spec's advance() await — see comment in
+  // io-recognition-return-visual-feel.spec.ts around line 330).
+  const dispatched = await page.evaluate(() => {
     const game = window.__game as
       | (FlagshipGameSurface & {
           input?: { choose?: (id: string) => void | Promise<void> };
         })
       | undefined;
     if (!game?.input?.choose) return false;
-    await Promise.resolve(game.input.choose("deliver-packet"));
+    // void: intentionally do not await — see rationale above.
+    void game.input.choose("deliver-packet");
     return true;
   });
 

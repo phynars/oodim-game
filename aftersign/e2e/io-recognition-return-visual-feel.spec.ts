@@ -279,6 +279,30 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   test.setTimeout(COLD_START_MS);
   await page.goto("/aftersign/index.html?slot=io-return-impact-burst", { waitUntil: "load" });
 
+  // Run the reload + choice sequence, but hold back the `advance()`
+  // that arms the 260ms impact-burst window (#1128 fix). Previously
+  // driveRecognition() ran `advance()` inside the SAME long-lived
+  // page.evaluate as the reload + choose calls — on SwiftShader
+  // cold-start that evaluate can hold the node<->page bridge for
+  // >260ms, meaning the burst window opens AND closes before the pump
+  // loop below ever gets a chance to drive an outside-rAF frame. The
+  // MutationObserver then legitimately records zero paints and the
+  // spec times out on a healthy build (main went red exactly this way
+  // — issue #1128). Splitting `advance()` into its own tiny evaluate
+  // right before the pump keeps the burst-armed → pump gap under one
+  // bridge hop; the pump then reliably observes the 14-particle paint.
+  //
+  // NOTE (PR #1129 iter 7 fix): the MutationObserver MUST be installed
+  // AFTER `driveRecognitionExceptAdvance` — that helper calls
+  // `input.forceReload()`, which rebuilds the DOM tree wholesale. If we
+  // installed the observer BEFORE forceReload (as prior iterations of
+  // this PR did), it was watching a detached #recognitionImpactBurst
+  // node and never saw a single childList mutation — that's why
+  // domCount stayed at 0 even though the burst was firing. Installing
+  // AFTER forceReload but BEFORE advance() puts the observer on the
+  // LIVE overlay before the burst window arms.
+  await driveRecognitionExceptAdvance(page, "sealed");
+
   // Kick off the recognition beat. `driveRecognition` returns as soon as
   // the last input is dispatched — it does NOT wait for the ~1180ms beat
   // to end. That matters here because the impact-burst window
@@ -293,13 +317,35 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   // sampling timing entirely. The pump loop below only needs to drive
   // frames until the high-water mark reaches 14; it no longer has to land
   // a sample INSIDE the 260ms window (which still flaked at CI speed).
+  await page.waitForFunction(
+    () => Boolean(document.querySelector("#recognitionImpactBurst")),
+    undefined,
+    { timeout: WAIT_MS },
+  );
   await page.evaluate(() => {
     const overlay = document.querySelector("#recognitionImpactBurst");
-    if (!overlay) return;
     const w = window as Window & {
-      __burstHighWater?: { dom: number; publishedAtPeak: number };
+      __burstHighWater?: { dom: number; publishedAtPeak: number; observerAttached: boolean };
     };
-    w.__burstHighWater = { dom: 0, publishedAtPeak: -1 };
+    w.__burstHighWater = { dom: 0, publishedAtPeak: -1, observerAttached: false };
+    if (!overlay) return;
+    // Capture whatever is ALREADY in the overlay at install time — a
+    // childList observer only fires on MUTATIONS after this call, so if
+    // the runtime happened to paint particles between forceReload and
+    // this evaluate we'd miss them without this initial read.
+    const initial = overlay.querySelectorAll(".impact-burst-particle").length;
+    if (initial > w.__burstHighWater!.dom) {
+      const game = (window as Window & {
+        __game?: { interaction?: { impactBurstParticles?: unknown[] } };
+      }).__game;
+      w.__burstHighWater = {
+        dom: initial,
+        publishedAtPeak: Array.isArray(game?.interaction?.impactBurstParticles)
+          ? game!.interaction!.impactBurstParticles!.length
+          : -1,
+        observerAttached: false,
+      };
+    }
     const observer = new MutationObserver(() => {
       const n = overlay.querySelectorAll(".impact-burst-particle").length;
       if (n > w.__burstHighWater!.dom) {
@@ -311,25 +357,13 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
           publishedAtPeak: Array.isArray(game?.interaction?.impactBurstParticles)
             ? game!.interaction!.impactBurstParticles!.length
             : -1,
+          observerAttached: true,
         };
       }
     });
     observer.observe(overlay, { childList: true });
+    w.__burstHighWater.observerAttached = true;
   });
-
-  // Run the reload + choice sequence, but hold back the `advance()`
-  // that arms the 260ms impact-burst window (#1128 fix). Previously
-  // driveRecognition() ran `advance()` inside the SAME long-lived
-  // page.evaluate as the reload + choose calls — on SwiftShader
-  // cold-start that evaluate can hold the node<->page bridge for
-  // >260ms, meaning the burst window opens AND closes before the pump
-  // loop below ever gets a chance to drive an outside-rAF frame. The
-  // MutationObserver then legitimately records zero paints and the
-  // spec times out on a healthy build (main went red exactly this way
-  // — issue #1128). Splitting `advance()` into its own tiny evaluate
-  // right before the pump keeps the burst-armed → pump gap under one
-  // bridge hop; the pump then reliably observes the 14-particle paint.
-  await driveRecognitionExceptAdvance(page, "sealed");
 
   await page.evaluate(async () => {
     const game = (window as Window & {
@@ -358,22 +392,93 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   // failure log shows the true high-water mark instead of the initial
   // sentinel — that's how #1128 originally surfaced as an opaque
   // "Received: 0" without pointing at rAF starvation.
-  let observed = { domCount: 0, published: -1 };
+  //
+  // Each pump tick ALSO reads the overlay directly (not just the
+  // observer high-water) — a childList MutationObserver in some
+  // headless configurations coalesces same-frame add+remove into no
+  // callback at all, which would leave `dom` at 0 while the overlay
+  // truly hit 14 for one frame. Sampling the live DOM per tick catches
+  // that; the observer catches the case where the pump lands between
+  // paints and the overlay is already empty. Take whichever is higher.
+  let observed = {
+    domCount: 0,
+    published: -1,
+    ticks: 0,
+    overlayFound: false,
+    liveMax: 0,
+    publishedMax: 0,
+    observerAttached: false,
+    burstPublishedSeen: false,
+  };
   while (Date.now() < deadline) {
     const sample = await page.evaluate(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const w = window as Window & {
-        __burstHighWater?: { dom: number; publishedAtPeak: number };
+        __burstHighWater?: { dom: number; publishedAtPeak: number; observerAttached?: boolean };
+        __burstPumpDiag?: { ticks: number; liveMax: number; publishedMax: number; burstPublishedSeen: boolean };
       };
+      if (!w.__burstPumpDiag) {
+        w.__burstPumpDiag = { ticks: 0, liveMax: 0, publishedMax: 0, burstPublishedSeen: false };
+      }
+      w.__burstPumpDiag.ticks += 1;
+      const overlay = document.querySelector("#recognitionImpactBurst");
+      const liveDom = overlay ? overlay.querySelectorAll(".impact-burst-particle").length : 0;
+      if (liveDom > w.__burstPumpDiag.liveMax) w.__burstPumpDiag.liveMax = liveDom;
+      // Sample the published array too — this is what the render tick
+      // reads from and reconciles to the DOM. If publishedMax hits 14
+      // but the DOM never does, the runtime is publishing but not
+      // rendering; if publishedMax stays 0 the burst envelope never
+      // opened at all.
+      const game = (window as Window & {
+        __game?: { interaction?: { impactBurstParticles?: unknown[] } };
+      }).__game;
+      const publishedNow = Array.isArray(game?.interaction?.impactBurstParticles)
+        ? game!.interaction!.impactBurstParticles!.length
+        : 0;
+      if (publishedNow > w.__burstPumpDiag.publishedMax) {
+        w.__burstPumpDiag.publishedMax = publishedNow;
+      }
+      if (publishedNow > 0) w.__burstPumpDiag.burstPublishedSeen = true;
+      const hwDom = w.__burstHighWater?.dom ?? 0;
+      const bestDom = Math.max(hwDom, liveDom);
+      // Prefer the observer's paired published count when we're
+      // reporting the DOM peak, but fall back to the live-sampled
+      // published count if the observer never fired.
+      const observerPublished = w.__burstHighWater?.publishedAtPeak ?? -1;
+      const bestPublished = observerPublished > 0
+        ? observerPublished
+        : w.__burstPumpDiag.publishedMax;
       return {
-        domCount: w.__burstHighWater?.dom ?? 0,
-        published: w.__burstHighWater?.publishedAtPeak ?? -1,
+        domCount: bestDom,
+        published: bestPublished,
+        ticks: w.__burstPumpDiag.ticks,
+        overlayFound: overlay !== null,
+        liveMax: w.__burstPumpDiag.liveMax,
+        publishedMax: w.__burstPumpDiag.publishedMax,
+        observerAttached: w.__burstHighWater?.observerAttached === true,
+        burstPublishedSeen: w.__burstPumpDiag.burstPublishedSeen,
       };
     });
     observed = sample;
-    if (sample.domCount === 14) {
+    if (sample.domCount >= 14) {
       break;
     }
+  }
+
+  if (observed.domCount !== 14) {
+    // Diagnostic assertion: surface the true state before the vanilla
+    // expect() fails with "Received: 0". Diagnostics tell us which
+    // stage broke.
+    throw new Error(
+      `impact-burst spec: expected domCount=14, got ${observed.domCount}. `
+        + `Diagnostics: ticks=${observed.ticks}, overlayFound=${observed.overlayFound}, `
+        + `observerAttached=${observed.observerAttached}, liveMax=${observed.liveMax}, `
+        + `publishedMax=${observed.publishedMax}, burstPublishedSeen=${observed.burstPublishedSeen}. `
+        + `If overlayFound=false the #recognitionImpactBurst node was never rebuilt after forceReload. `
+        + `If burstPublishedSeen=false the runtime never opened the 260ms burst window (advance() didn't arm it, `
+        + `or the beat clock jumped past the window). `
+        + `If publishedMax>0 but liveMax=0 the runtime published particles but the render tick did not reconcile them to the DOM.`,
+    );
   }
 
   expect(observed.domCount).toBe(14);
