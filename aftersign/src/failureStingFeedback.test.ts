@@ -28,7 +28,7 @@
 import {
   DEFAULT_FAILURE_STING_FEEL,
   failureStingEnvelopeAt,
-} from "./failureStingFeedback.js";
+} from "./failureStingFeedback.ts";
 
 const assert = (cond: unknown, msg: string): void => {
   if (!cond) {

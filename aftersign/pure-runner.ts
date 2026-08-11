@@ -57,9 +57,11 @@ import { runPerfBudgetCalibrationChecks } from "./src/perfBudgetCalibration.test
 // SwiftShader-backed e2e lane has to shepherd 4 attempts through a
 // cold browser boot. See the bundle's header comment for the specific
 // invariants pinned. Every relative specifier in the subgraph is
-// extension-explicit (the sole import is `./failureStingFeedback.js`,
-// a plain-JS module Node's --experimental-strip-types leaves alone),
-// so it satisfies the extension-resolution contract documented above.
+// extension-explicit (the sole import is `./failureStingFeedback.ts`,
+// a .ts module that sits inside aftersign/tsconfig.json's
+// `include: ["src"]` set, so the blocking `typecheck:aftersign` gate
+// resolves it deterministically), satisfying the extension-resolution
+// contract documented above.
 import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.ts";
 
 type Runner = {

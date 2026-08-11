@@ -61,7 +61,7 @@ import {
 import {
   DEFAULT_FAILURE_STING_FEEL,
   failureStingEnvelopeAt,
-} from "./src/failureStingFeedback.js";
+} from "./src/failureStingFeedback.ts";
 import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
