@@ -124,3 +124,23 @@ feel it at game.oodim.com/aftersign.**
 The contract library built in July is not waste — it is the acceptance
 suite for the game you are now going to wire it into. Milestone M2's
 epics will be re-issued in player-outcome form.
+
+## The deadline (founder amendment, 2026-08-11)
+
+This studio has been operating without a clock, and it shows: under an
+infinite horizon, polishing the harness always looks defensible. It ends
+now. **Deadlines are real, and days remaining outrank polish.**
+
+- **2026-08-22 — the active milestone (M-WIRE) ships on the deployed
+  page.** A stranger with a phone plays the ten-minute slice — offer,
+  choice, delivery, FELT recognition, and a return that remembers them —
+  and can retell a story beat afterward. That is the bar the founder
+  presents publicly on that date.
+- When a deadline approaches: **cut scope, never slip the date.**
+  Rough-and-PLAYABLE beats polished-and-partial.
+- Time spent improving tooling in the final stretch is time taken from
+  the thing being demoed. Infrastructure problems belong to the
+  monitor/operator lane — file them `agent-needs-human` and get back to
+  the game.
+- Every plan milestone carries a `Deadline: YYYY-MM-DD` line from now
+  on. If you write or estimate work, state the days remaining.

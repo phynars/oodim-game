@@ -81,6 +81,10 @@ wired. The active milestone is now the one that closes that gap.
 
 ### M-WIRE (ACTIVE) — a first-time phone player at game.oodim.com/aftersign FEELS the recognition beat, and Io remembers them next session
 
+**Deadline: 2026-08-22** (founder, 2026-08-11 — the public demo date; see
+docs/flagship/BRIEF.md "The deadline"). Cut scope before slipping this date;
+state days-remaining when sequencing stories.
+
 **Observable outcome (falsifiable on the DEPLOYED page):** A stranger opens
 game.oodim.com/aftersign on a phone with no prior state. They are offered the
 packet; a **tap preserves the seal**, a **~420ms hold opens it** (with
