@@ -11,9 +11,8 @@ import {
   type FlagshipGameSurface,
 } from "../../e2e-shared/flagshipStoryStateContract";
 import {
-  armMwireRecognitionFeelWindow,
+  armAndCaptureMwireRecognitionFeel,
   waitForMwireRecognitionBeat,
-  waitForMwireRecognitionFeelWindow,
 } from "./mwireTimingWindows";
 
 // Cold-start budget: SwiftShader init + first WebGL context.
@@ -600,17 +599,19 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
         // rAF starves long enough at cold start that every poll lands
         // OUTSIDE the slice and the test times out on a healthy build.
         //
-        // The fix, mirroring that sibling: install an in-page rAF
-        // high-water sampler BEFORE the deliver click (so it's already
-        // running when `memoryRecognitionBeatStartedAt` is stamped at
-        // main.js:1625), then actively pump rAF frames from the test
-        // harness until the sampler flags a frame that satisfied the
-        // three predicates simultaneously.
-        await armMwireRecognitionFeelWindow(page);
-
-        await clickChoiceViaDom(page, ["deliver-packet", "deliver packet", "deliver"]);
-
-        const recognition = await waitForMwireRecognitionFeelWindow(page, WAIT_MS);
+        // The fix, mirroring that sibling: run the arm/deliver/pump
+        // sequence inside ONE page.evaluate so the sampler is armed,
+        // deliverPacket() stamps `memoryRecognitionBeatStartedAt`
+        // (main.js:1625), and the rAF pump starts driving the runtime
+        // tick — all inside a single browser frame batch. Running
+        // these as three separate page.evaluate calls empirically
+        // leaves ~10-30ms of node<->page round-trip between arm and
+        // the first pump-driven rAF, which on SwiftShader is enough
+        // for rAF to starve past the 54ms hapticScale window.
+        // `armAndCaptureMwireRecognitionFeel` returns as soon as the
+        // sampler captures a frame where all three predicates hold,
+        // matching io-recognition-return-visual-feel.spec.ts:281-313.
+        const recognition = await armAndCaptureMwireRecognitionFeel(page, WAIT_MS);
 
         expect(recognition.active).toBe(true);
         expect(recognition.signGlowPx).toBeGreaterThan(0);
