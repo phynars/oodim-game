@@ -113,25 +113,6 @@ async function installFeelHighWaterSampler(page: Page): Promise<void> {
   });
 }
 
-async function readFeelHighWater(page: Page): Promise<FeelHighWater> {
-  return page.evaluate(() => {
-    const hw = (window as Window & { __mwireFeelHighWater?: FeelHighWater }).__mwireFeelHighWater;
-    if (!hw) {
-      return {
-        captured: false,
-        active: false,
-        signGlowPx: 0,
-        hapticScale: 0,
-        ticks: 0,
-        activeSeen: false,
-        maxHapticScale: 0,
-        maxSignGlowPx: 0,
-      } satisfies FeelHighWater;
-    }
-    return { ...hw };
-  });
-}
-
 async function teardownFeelHighWaterSampler(page: Page): Promise<void> {
   await page.evaluate(() => {
     const w = window as Window & { __mwireFeelHighWater?: FeelHighWater };
@@ -186,16 +167,45 @@ export async function armAndCaptureMwireRecognitionFeel(
     );
   }
 
-  // Pump rAF frames from Playwright's side. Each iteration is its own
-  // evaluate awaiting ONE rAF — this is the SAME shape as the sibling
-  // impact-burst spec's while loop (io-recognition-return-visual-feel.spec.ts:305-316).
+  // Pump rAF frames from Playwright's side. Each iteration is ONE
+  // evaluate that BOTH awaits a rAF AND reads the high-water — the
+  // exact shape as the sibling impact-burst spec's while loop
+  // (io-recognition-return-visual-feel.spec.ts:305-316). Splitting
+  // the rAF-await and the read into two evaluates per iteration
+  // re-introduces ~10-30ms of node<->page round-trip per tick, which
+  // on SwiftShader is enough to starve rAF past the 54ms hapticScale
+  // window — that was the observed defect on PR #1129's earlier
+  // iterations. Fusing them keeps the pump cadence at one bridge hop
+  // per frame.
   const deadline = Date.now() + timeout;
-  let observed = await readFeelHighWater(page);
+  let observed: FeelHighWater = {
+    captured: false,
+    active: false,
+    signGlowPx: 0,
+    hapticScale: 0,
+    ticks: 0,
+    activeSeen: false,
+    maxHapticScale: 0,
+    maxSignGlowPx: 0,
+  };
   while (Date.now() < deadline && !observed.captured) {
-    await page.evaluate(
-      async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-    );
-    observed = await readFeelHighWater(page);
+    observed = await page.evaluate(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const hw = (window as Window & { __mwireFeelHighWater?: FeelHighWater }).__mwireFeelHighWater;
+      if (!hw) {
+        return {
+          captured: false,
+          active: false,
+          signGlowPx: 0,
+          hapticScale: 0,
+          ticks: 0,
+          activeSeen: false,
+          maxHapticScale: 0,
+          maxSignGlowPx: 0,
+        } satisfies FeelHighWater;
+      }
+      return { ...hw };
+    });
   }
 
   await teardownFeelHighWaterSampler(page);
