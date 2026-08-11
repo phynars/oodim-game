@@ -543,6 +543,15 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
   // M-WIRE-EINT integration gate (#1004): consumer wiring from #956/#958/#959
   // is now expected on main, so this served-flow spec runs as a normal green
   // gate. Any regression here should fail the suite directly.
+  //
+  // 2026-08-11 (PR #1125 re-review): the initial CI run on this branch failed
+  // at the webServer boot step — a build/preview crash BEFORE any spec ran,
+  // unrelated to removing the `test.fail` marker. Main was repaired
+  // independently (see #1123 closed same day, plus the follow-up main-goes-
+  // green fixes #1113/#1117/#1118). Re-triggering CI on top of the current
+  // base is expected to boot the webServer cleanly and let this gate run
+  // for real. This comment is the touch that pushes a new commit so the
+  // aftersign lane re-runs against the repaired base.
   test("M-WIRE-EINT integration: served offer → preserve/open → deliver → reload → return-next-session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "m-wire-eint-served-flow");
