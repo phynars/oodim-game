@@ -1,15 +1,22 @@
-// Pure-logic check bundle for failureStingFeedback.js. Registered in
+// Pure-logic check bundle for failureStingFeedback.ts. Registered in
 // aftersign/pure-runner.ts so it executes under `test:aftersign:pure`
 // (a chained precondition of `typecheck:aftersign` in package.json).
 //
-// Why the .js extension on the import: the module is authored in plain
-// JS (no types to add value; it's a tiny envelope-math surface consumed
-// by the plain-JS main.js). Node's --experimental-strip-types leaves
-// .js paths alone — it only strips TS syntax from .ts files — so
-// importing "./failureStingFeedback.js" from this .ts file resolves
-// deterministically in both the pure-runner (Node) and the typecheck
-// pass (moduleResolution: "Bundler"), which is the same duality
-// documented at the top of packetIntent.test.ts.
+// Why the .ts extension on the import: the sibling module IS a .ts file
+// (aftersign/tsconfig.json — `include: ["src"]`, no `allowJs` — refuses
+// a .js specifier here because no .js sibling exists to map to). Node's
+// --experimental-strip-types accepts .ts paths directly, and tsc under
+// moduleResolution:"Bundler" + allowImportingTsExtensions accepts them
+// at typecheck, so this specifier resolves deterministically in both
+// the pure-runner (Node) and the typecheck pass. This matches the four
+// other .ts modules aftersign already ships (orraRuntimeLane.ts,
+// recognitionFeedbackBridge.ts, playerMovementFeel.ts,
+// ioRecognitionDialogue.ts) — all imported with `.ts` from `.ts`
+// siblings and from the plain-JS main.js. Earlier drafts of this
+// comment claimed a `.js` specifier because the module was first
+// sketched as JS; it landed as .ts to satisfy the typecheck gate,
+// but the header comment wasn't refreshed. Fixed now (see PR #1117
+// review thread).
 //
 // Contract pinned here (verbatim mirror of the e2e's assertions on
 // `state.interaction.failureFeedback` at packet-hold-threshold.spec.ts:140-144
