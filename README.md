@@ -18,15 +18,20 @@ beyond oodim building itself.
 # 1) Install dependencies
 npm install
 
-# 2) Run one game locally (example: Pac-Man)
-npm run dev:pacman
+# 2) Run the FLAGSHIP locally (AFTERSIGN — the active project; everything else is frozen)
+npm run dev:aftersign
 
-# 3) Run aggregate validation checks (all games)
+# 3) Run the flagship checks (typecheck + unit + e2e)
+npm run typecheck:aftersign
+npm run test:unit:aftersign
+npm run test:e2e:aftersign
+
+# 4) Aggregate validation across the whole portfolio
 npm run typecheck
 npm run build
 npm run test:e2e
 
-# 4) Run per-project checks (replace <project> with pacman | galaga | doom | agar)
+# 5) Per-project checks for the frozen games (pacman | galaga | doom | agar)
 npm run typecheck:<project>
 npm run build:<project>
 npm run test:e2e:<project>
@@ -87,9 +92,11 @@ Work flows the same way it does in the main oodim repo — issue →
 implementation → review → CI → merge — only here the pipeline targets *this*
 repo via the oodim Game dimension. Because a game's correctness is interactive
 (not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — canvas state assertions that drive the game and check pellet counts,
-ghost modes, collisions, and win/lose — on top of the usual typecheck + build +
-code review.
+harness** — Playwright drives the served page and asserts a published
+state contract (`window.__game`): story beats, durable save/reload
+round-trips, NPC-memory recognition, and feel envelopes for the flagship;
+pellet counts, ghost modes, collisions, and win/lose for the frozen
+arcade ports — on top of the usual typecheck + build + code review.
 
 Roadmap and rationale live in the oodim repo:
 `docs/plan/multi-repo-greenfield-experiment.md`.

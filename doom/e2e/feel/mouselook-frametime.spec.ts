@@ -126,6 +126,31 @@ function summarize(samples: ReadonlyArray<number>): Distribution {
   };
 }
 
+
+// ACTIVELY PUMP frames while waiting on a sample count (#1089/#1113 class):
+// on a starved SwiftShader runner rAF can stop firing entirely, freezing
+// the probe's sample count — a passive waitForFunction then times out on a
+// healthy build. Each iteration forces a frame (evaluate awaits a rAF,
+// which runs the engine tick + probe) and reads the count synchronously.
+async function pumpUntilSamples(
+  page: import("@playwright/test").Page,
+  target: number,
+  timeoutMs: number,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  let count = 0;
+  while (Date.now() < deadline) {
+    count = await page.evaluate(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      return window.__doomInternals?.frameProbe()?.samples.length ?? 0;
+    });
+    if (count >= target) return count;
+  }
+  throw new Error(
+    `frame probe stalled: ${count} samples after ${timeoutMs}ms (target ${target})`,
+  );
+}
+
 test("Doom: render() frame-time stays under budget across a mouselook sweep with combat load", async ({
   page,
 }) => {
@@ -236,11 +261,7 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // stable regardless of SwiftShader's variable render rate (the exact
   // flake this gate already learned to avoid for its sample-count wait
   // below). 20 frames ≈ the old 600ms at SwiftShader's ~30Hz.
-  await page.waitForFunction(
-    () => (window.__doomInternals?.frameProbe()?.samples.length ?? 0) >= 20,
-    null,
-    { timeout: 10_000 },
-  );
+  await pumpUntilSamples(page, 20, 10_000);
   await page.evaluate(() => {
     // baron's id depends on SEED_ENEMIES order (engine.ts ~98) — try the
     // 3rd seeded enemy first, fall back to the first live non-imp.
@@ -259,12 +280,7 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // distinct enemy's hit-flash overlaps the first one's lingering sparks.
   // State-quiesced on a +20-frame delta from the first hit (≈ the old
   // 600ms at SwiftShader's ~30Hz).
-  await page.waitForFunction(
-    (since) =>
-      (window.__doomInternals?.frameProbe()?.samples.length ?? 0) >= since + 20,
-    samplesAtFirstHit,
-    { timeout: 10_000 },
-  );
+  await pumpUntilSamples(page, samplesAtFirstHit + 20, 10_000);
   await page.evaluate(() => {
     const internals = window.__doomInternals!;
     internals.forceHit({ enemyId: 2 });
@@ -284,11 +300,7 @@ test("Doom: render() frame-time stays under budget across a mouselook sweep with
   // too-low) sample count — the flake that dogged this gate. Poll the probe
   // until it has captured a comfortable window (ring holds 240), so the
   // steady-state count after the warmup drop is stable at any render rate.
-  await page.waitForFunction(
-    () => (window.__doomInternals?.frameProbe()?.samples.length ?? 0) >= 80,
-    null,
-    { timeout: 30_000 },
-  );
+  await pumpUntilSamples(page, 80, 30_000);
   await page.keyboard.up("ArrowRight");
 
   // Pull the probe.
