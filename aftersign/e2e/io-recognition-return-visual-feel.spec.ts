@@ -255,6 +255,36 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   // `waitForMemoryBeat` would return. If we waited on the beat to finish,
   // the burst would already be over and the DOM would have zero
   // primitives.
+  // Observation-complete counting (#1113 follow-up): a MutationObserver
+  // records the HIGH-WATER particle count (and the published-array count
+  // captured in the same callback) the moment the DOM changes — immune to
+  // sampling timing entirely. The pump loop below only needs to drive
+  // frames until the high-water mark reaches 14; it no longer has to land
+  // a sample INSIDE the 260ms window (which still flaked at CI speed).
+  await page.evaluate(() => {
+    const overlay = document.querySelector("#recognitionImpactBurst");
+    if (!overlay) return;
+    const w = window as Window & {
+      __burstHighWater?: { dom: number; publishedAtPeak: number };
+    };
+    w.__burstHighWater = { dom: 0, publishedAtPeak: -1 };
+    const observer = new MutationObserver(() => {
+      const n = overlay.querySelectorAll(".impact-burst-particle").length;
+      if (n > w.__burstHighWater!.dom) {
+        const game = (window as Window & {
+          __game?: { interaction?: { impactBurstParticles?: unknown[] } };
+        }).__game;
+        w.__burstHighWater = {
+          dom: n,
+          publishedAtPeak: Array.isArray(game?.interaction?.impactBurstParticles)
+            ? game!.interaction!.impactBurstParticles!.length
+            : -1,
+        };
+      }
+    });
+    observer.observe(overlay, { childList: true });
+  });
+
   await driveRecognition(page, "sealed");
 
   // ACTIVELY PUMP frames instead of passively polling (#1113 CI fix):
@@ -271,23 +301,20 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   while (Date.now() < deadline) {
     const sample = await page.evaluate(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const overlay = document.querySelector("#recognitionImpactBurst");
-      const domCount = overlay
-        ? overlay.querySelectorAll(".impact-burst-particle").length
-        : 0;
-      const game = (window as Window & {
-        __game?: { interaction?: { impactBurstParticles?: unknown[] } };
-      }).__game;
-      const published = Array.isArray(game?.interaction?.impactBurstParticles)
-        ? game!.interaction!.impactBurstParticles!.length
-        : -1;
-      return { domCount, published };
+      const w = window as Window & {
+        __burstHighWater?: { dom: number; publishedAtPeak: number };
+      };
+      return {
+        domCount: w.__burstHighWater?.dom ?? 0,
+        published: w.__burstHighWater?.publishedAtPeak ?? -1,
+      };
     });
     if (sample.domCount === 14) {
       observed = sample;
       break;
     }
   }
+
   expect(observed.domCount).toBe(14);
   // Cross-check: the runtime also publishes the same list on
   // window.__game.interaction.impactBurstParticles. If the DOM has 14 but
