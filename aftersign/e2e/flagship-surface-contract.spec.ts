@@ -11,6 +11,7 @@ import {
   type FlagshipGameSurface,
 } from "../../e2e-shared/flagshipStoryStateContract";
 import {
+  armMwireRecognitionFeelWindow,
   waitForMwireRecognitionBeat,
   waitForMwireRecognitionFeelWindow,
 } from "./mwireTimingWindows";
@@ -588,24 +589,28 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
           await waitForStoryIdle(page);
         }
 
-        // The delivery feel window (hapticScale > 1) is only open for
-        // elapsedMs≈128–182 after deliverPacket stamps
-        // `memoryRecognitionBeatStartedAt` — a ~54ms slice
-        // (recognition-beat-feedback.js:65-70). If we let the deliver
-        // click's story-idle round-trip (~1180ms; main.js:1630-1657)
-        // finish BEFORE we start polling, the window has already closed
-        // and `waitForFunction` will time out at WAIT_MS. So arm the
-        // feel-window poll BEFORE dispatching the deliver click, then
-        // await the snapshot AFTER the click — the poll is already
-        // running in-page when the beat starts and catches the slice.
-        const recognitionPromise = waitForMwireRecognitionFeelWindow(page, WAIT_MS);
-        // Silence unhandled-rejection noise if the click itself throws
-        // before we await the poll below.
-        recognitionPromise.catch(() => {});
+        // The delivery-feel window (hapticScale > 1 AND signGlowPx > 0
+        // AND active) is a ~54ms slice inside the io-return-recognition
+        // beat — elapsedMs≈128–182 for sealed, ≈165–237 for opened
+        // (recognition-beat-feedback.js:65-70 / :99-104). Playwright's
+        // `waitForFunction` polls at ~100ms by default (even
+        // `polling:16` was empirically too coarse on SwiftShader — see
+        // io-recognition-return-visual-feel.spec.ts:290-313 for the
+        // identical fix on the sibling 260ms particle-burst window):
+        // rAF starves long enough at cold start that every poll lands
+        // OUTSIDE the slice and the test times out on a healthy build.
+        //
+        // The fix, mirroring that sibling: install an in-page rAF
+        // high-water sampler BEFORE the deliver click (so it's already
+        // running when `memoryRecognitionBeatStartedAt` is stamped at
+        // main.js:1625), then actively pump rAF frames from the test
+        // harness until the sampler flags a frame that satisfied the
+        // three predicates simultaneously.
+        await armMwireRecognitionFeelWindow(page);
 
         await clickChoiceViaDom(page, ["deliver-packet", "deliver packet", "deliver"]);
 
-        const recognition = await recognitionPromise;
+        const recognition = await waitForMwireRecognitionFeelWindow(page, WAIT_MS);
 
         expect(recognition.active).toBe(true);
         expect(recognition.signGlowPx).toBeGreaterThan(0);

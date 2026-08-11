@@ -1620,6 +1620,19 @@ const deliverPacket = (source = "hud-button") => {
   state.npcs.io.memory = [packetOutcomeFact, secondActionFact];
   state.save.revision += 1;
   state.save.dirty = true;
+  // #1127 (M-WIRE-EINT served-flow timing contract): the delivery
+  // feel window opens HERE — the hapticScale/signGlow cues fire
+  // against `memoryRecognitionBeatStartedAt` (elapsedMs≈128–182 for
+  // sealed, ≈165–237 for opened; see recognition-beat-feedback.js
+  // outcomeCues.*.hapticScale) — while the authored
+  // `setBeat("io-return-recognition")` fires 1180ms LATER inside the
+  // setTimeout at :1656. The two moments do NOT overlap on the same
+  // frame; that is by design (physical delivery-feel first, then
+  // Io's remembered return line). The M-WIRE-EINT e2e proves them as
+  // TWO adjacent waits in aftersign/e2e/flagship-surface-contract.spec.ts
+  // — arm an rAF high-water sampler before this stamp
+  // (armMwireRecognitionFeelWindow), then wait on the beat transition
+  // (waitForMwireRecognitionBeat). See #1127 option 1.
   const beatStartedAt = performance.now();
   startMemoryBeatCameraProbe(beatStartedAt);
   memoryRecognitionBeatStartedAt = beatStartedAt;
