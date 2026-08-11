@@ -1002,6 +1002,25 @@ const choose = async (choiceId) => {
 const advance = async () => {
   if (state.packet.delivered && state.npcs.io.memory.length > 0) {
     markStateDirty();
+    // #1113: the RETURN recognition beat carries the full feel envelope
+    // (glow/DOM feedback/impact burst) — a returning session must FEEL
+    // the recognition, not just read the line. deliverPacket() stamps
+    // this clock for the live delivery beat; the reload→return path
+    // reached the beat with the clock still null, so every envelope
+    // consumer (recognitionEnvelopeAt, syncRecognitionDomFeedback,
+    // impact-burst particles) computed as inactive and the e2e waits
+    // stalled. Same lifecycle as deliverPacket: stamp, reset burst
+    // bookkeeping, null the clock when the beat's window closes.
+    const beatStartedAt = performance.now();
+    memoryRecognitionBeatStartedAt = beatStartedAt;
+    lastImpactBurstChirpAt = null;
+    impactBurstParticles = [];
+    setTimeout(() => {
+      memoryRecognitionBeatStartedAt = null;
+      lastImpactBurstChirpAt = null;
+      impactBurstParticles = [];
+      markStateDirty();
+    }, MEMORY_RECOGNITION_FEEDBACK.durationMs);
     setBeat("io-return-recognition");
   }
 };
