@@ -5,10 +5,10 @@
 // consumer `main.js` both import this via a `.ts` specifier (Node's
 // --experimental-strip-types accepts .ts paths directly; tsc under
 // moduleResolution:"Bundler" + allowImportingTsExtensions accepts
-// them at typecheck), matching the four other `.ts` modules that
-// main.js already consumes (orraRuntimeLane.ts,
-// recognitionFeedbackBridge.ts, playerMovementFeel.ts,
-// ioRecognitionDialogue.ts).
+// them at typecheck; vite's dev/preview + rollup build resolve them
+// via esbuild), matching the four other `.ts` modules that main.js
+// already consumes (orraRuntimeLane.ts, recognitionFeedbackBridge.ts,
+// playerMovementFeel.ts, ioRecognitionDialogue.ts).
 //
 // State-vs-render contract (see failureStingFeedback.test.ts and
 // main.js:1986,2009):
