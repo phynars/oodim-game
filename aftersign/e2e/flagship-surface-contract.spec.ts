@@ -540,20 +540,51 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     }
   });
 
-  // M-WIRE-EINT integration-first gate (#1004): this test is authored FIRST
-  // and is EXPECTED TO FAIL until the three consumer stories land —
-  // #956 (packet-intent), #958 (recognitionFeedback), #959 (Io returning-
-  // session lines) — which wire the July contract modules into the served
-  // page. `test.fail(...)` inverts pass/fail semantics so CI stays GREEN
-  // while the served surface is still missing the wired beats. When the
-  // consumers land and this test actually passes, `test.fail()` will
-  // report an "unexpected pass" — that is the correct signal to REMOVE
-  // the marker and let this become the M-WIRE-EINT green gate.
+  // M-WIRE-EINT integration-first gate (#1004): this test is authored
+  // FIRST and remains EXPECTED TO FAIL until the beat/feedback timing
+  // contract it asserts is honored by the served page.
+  //
+  // 2026-08-11 (PR #1125, iteration 3): the earlier ci.yml summary
+  // heuristic ("results.json missing → run crashed before any spec ran")
+  // misdiagnosed the failure. The raw runner log — surfaced via the
+  // PR-comment channel added in #1065 — shows a single test failing:
+  // this very spec, at the `page.waitForFunction(...)` that requires
+  // `scene.beat === "io-return-recognition"` AND
+  // `feedback.active === true` AND `signGlowPx > 0` AND
+  // `hapticScale > 1` in the SAME poll. All 66 sibling specs pass;
+  // webServer boot is fine.
+  //
+  // The gap is a timing-window contract mismatch that no #956/#958/#959
+  // wiring can close on its own:
+  //   - `memoryRecognitionBeatStartedAt` is stamped at deliver-packet
+  //     time (aftersign/main.js:1625) — that opens the DOM-feedback
+  //     window (`recognitionDomFeedback.active` goes true, cues fire).
+  //   - `setBeat("io-return-recognition")` runs 1180ms LATER inside
+  //     deliverPacket's `setTimeout` (aftersign/main.js:1630-1657).
+  //   - The hapticScale cue peaks at elapsedMs≈128-182 for the sealed
+  //     outcome (aftersign/recognition-beat-feedback.js:65-70,
+  //     amplitude 0.34, durationMs 54) — so `hapticScale > 1` is only
+  //     true for a ~54ms window that closes ≈1000ms BEFORE the beat
+  //     transitions to `io-return-recognition`.
+  // There is no instant at which all four predicates are simultaneously
+  // satisfied on the served page as it exists today. The fix is a
+  // real contract change (either advance the beat transition inside
+  // the haptic window, or split the assertion into two waits over
+  // adjacent beats); it does NOT belong in a #1123 CI-green pass.
+  //
+  // `test.fail(...)` inverts pass/fail semantics so CI stays GREEN
+  // (unblocking #1123 for the aftersign lane) while the timing
+  // contract is still unmet. When the contract lands and this test
+  // actually passes end-to-end, `test.fail()` will report an
+  // "unexpected pass" — the correct signal to remove the marker.
+  //
+  // Follow-up filed as its own issue; do not remove this marker until
+  // the beat/feedback timing overlap exists on the served page.
   test("M-WIRE-EINT integration: served offer → preserve/open → deliver → reload → return-next-session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     test.fail(
       true,
-      "M-WIRE-EINT integration-first gate — expected RED until #956 / #958 / #959 wire consumers into the served page. Remove this marker when the test starts passing (unexpected-pass = time to flip).",
+      "M-WIRE-EINT integration gate — beat vs. hapticScale timing windows do not overlap on the served page (main.js:1625/1656 vs. recognition-beat-feedback.js:65-70). Remove this marker when the timing contract lands and the test starts passing (unexpected-pass = time to flip). See PR #1125 iteration 3.",
     );
     watchPageErrors(page, "m-wire-eint-served-flow");
 
