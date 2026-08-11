@@ -110,6 +110,38 @@ const driveRecognition = async (page: Page, outcome: RecognitionOutcome) => {
   }, outcome);
 };
 
+// Variant used by the impact-burst spec below: runs everything EXCEPT
+// the final `advance()` — the caller dispatches advance() as its own
+// small evaluate right before the rAF pump starts, so the 260ms
+// impact-burst window (armed inside advance()) does not open while a
+// long-lived page.evaluate is blocking Playwright's ability to drive
+// rAF frames from outside. See the pump-loop comment in the
+// impact-burst test for full context (#1128).
+const driveRecognitionExceptAdvance = async (page: Page, outcome: RecognitionOutcome) => {
+  await waitForGame(page);
+  await page.evaluate(async (nextOutcome) => {
+    const game = (window as Window & {
+      __game?: {
+        input?: {
+          choose?: (choiceId: string) => Promise<void>;
+          forceReload?: () => Promise<void>;
+        };
+        story?: { memoryBeat?: unknown };
+      };
+    }).__game;
+    if (!game?.input?.choose || !game.input.forceReload) {
+      throw new Error("window.__game.input is not available");
+    }
+
+    await game.input.forceReload();
+    if (game.story) {
+      game.story.memoryBeat = null;
+    }
+    await game.input.choose(nextOutcome === "sealed" ? "keep-packet-sealed" : "open-packet");
+    await game.input.choose("deliver-packet");
+  }, outcome);
+};
+
 // Wait until state.story.memoryBeat has been populated with the expected
 // outcome. deliverPacket() arms a ~1180ms setTimeout that publishes the
 // beat, so we poll rather than assume any single frame.
@@ -285,7 +317,32 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
     observer.observe(overlay, { childList: true });
   });
 
-  await driveRecognition(page, "sealed");
+  // Run the reload + choice sequence, but hold back the `advance()`
+  // that arms the 260ms impact-burst window (#1128 fix). Previously
+  // driveRecognition() ran `advance()` inside the SAME long-lived
+  // page.evaluate as the reload + choose calls — on SwiftShader
+  // cold-start that evaluate can hold the node<->page bridge for
+  // >260ms, meaning the burst window opens AND closes before the pump
+  // loop below ever gets a chance to drive an outside-rAF frame. The
+  // MutationObserver then legitimately records zero paints and the
+  // spec times out on a healthy build (main went red exactly this way
+  // — issue #1128). Splitting `advance()` into its own tiny evaluate
+  // right before the pump keeps the burst-armed → pump gap under one
+  // bridge hop; the pump then reliably observes the 14-particle paint.
+  await driveRecognitionExceptAdvance(page, "sealed");
+
+  await page.evaluate(async () => {
+    const game = (window as Window & {
+      __game?: { input?: { advance?: () => Promise<void> } };
+    }).__game;
+    if (!game?.input?.advance) throw new Error("window.__game.input.advance is not available");
+    // Do NOT await advance() to completion — advance stamps
+    // memoryRecognitionBeatStartedAt synchronously (main.js:1015) and
+    // schedules the follow-up work via setBeat/setTimeout. The burst
+    // window opens on the very next rAF; we want the pump loop below
+    // to be the code driving that rAF, not this evaluate.
+    void game.input.advance();
+  });
 
   // ACTIVELY PUMP frames instead of passively polling (#1113 CI fix):
   // on SwiftShader after a cold reload, rAF can starve long enough that
@@ -297,6 +354,10 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   // synchronously in the same evaluate — the window cannot be missed
   // by frame starvation, only by the burst genuinely not firing.
   const deadline = Date.now() + WAIT_MS;
+  // Always mirror the LATEST sample (not just the winning one) so a
+  // failure log shows the true high-water mark instead of the initial
+  // sentinel — that's how #1128 originally surfaced as an opaque
+  // "Received: 0" without pointing at rAF starvation.
   let observed = { domCount: 0, published: -1 };
   while (Date.now() < deadline) {
     const sample = await page.evaluate(async () => {
@@ -309,8 +370,8 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
         published: w.__burstHighWater?.publishedAtPeak ?? -1,
       };
     });
+    observed = sample;
     if (sample.domCount === 14) {
-      observed = sample;
       break;
     }
   }
