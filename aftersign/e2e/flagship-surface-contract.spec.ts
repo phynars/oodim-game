@@ -588,17 +588,36 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
           await waitForStoryIdle(page);
         }
 
+        // The delivery feel window (hapticScale > 1) is only open for
+        // elapsedMs≈128–182 after deliverPacket stamps
+        // `memoryRecognitionBeatStartedAt` — a ~54ms slice
+        // (recognition-beat-feedback.js:65-70). If we let the deliver
+        // click's story-idle round-trip (~1180ms; main.js:1630-1657)
+        // finish BEFORE we start polling, the window has already closed
+        // and `waitForFunction` will time out at WAIT_MS. So arm the
+        // feel-window poll BEFORE dispatching the deliver click, then
+        // await the snapshot AFTER the click — the poll is already
+        // running in-page when the beat starts and catches the slice.
+        const recognitionPromise = waitForMwireRecognitionFeelWindow(page, WAIT_MS);
+        // Silence unhandled-rejection noise if the click itself throws
+        // before we await the poll below.
+        recognitionPromise.catch(() => {});
+
         await clickChoiceViaDom(page, ["deliver-packet", "deliver packet", "deliver"]);
-        await waitForStoryIdle(page);
 
-        const delivered = await readSurface(page);
-        expect(delivered.delivery.outcome).toBe(outcome);
-
-        const recognition = await waitForMwireRecognitionFeelWindow(page, WAIT_MS);
+        const recognition = await recognitionPromise;
 
         expect(recognition.active).toBe(true);
         expect(recognition.signGlowPx).toBeGreaterThan(0);
         expect(recognition.hapticScale).toBeGreaterThan(1);
+
+        // Now that the physical feel-window has been proven, let the
+        // story finish its round-trip and confirm the authored beat
+        // transition (published ~1180ms after delivery).
+        await waitForStoryIdle(page);
+
+        const delivered = await readSurface(page);
+        expect(delivered.delivery.outcome).toBe(outcome);
 
         await waitForMwireRecognitionBeat(page, WAIT_MS);
 
