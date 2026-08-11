@@ -49,6 +49,20 @@ import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { checkFirstCameraMoveReturnContract } from "./src/feel/firstCameraMoveReturnContract.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
 import { runPerfBudgetCalibrationChecks } from "./src/perfBudgetCalibration.test.ts";
+// Failure-sting envelope math + flashAlpha-pinning contract. The e2e
+// (packet-hold-threshold.spec.ts:140-144) drives the drift-cancel path
+// end-to-end and asserts `.toBe(0.34)` on the state surface; this
+// bundle pins the ENVELOPE math directly so a regression fails in the
+// deterministic pure lane (retries: 0, seconds to run) BEFORE the
+// SwiftShader-backed e2e lane has to shepherd 4 attempts through a
+// cold browser boot. See the bundle's header comment for the specific
+// invariants pinned. Every relative specifier in the subgraph is
+// extension-explicit (the sole import is `./failureStingFeedback.ts`,
+// a .ts module that sits inside aftersign/tsconfig.json's
+// `include: ["src"]` set, so the blocking `typecheck:aftersign` gate
+// resolves it deterministically), satisfying the extension-resolution
+// contract documented above.
+import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.ts";
 
 type Runner = {
   label: string;
@@ -89,6 +103,7 @@ const runners: Runner[] = [
   // specifier, so the whole subgraph satisfies the extension-resolution
   // contract documented above.
   { label: "runPerfBudgetCalibrationChecks", run: runPerfBudgetCalibrationChecks },
+  { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
 ];
 
 let failed = 0;

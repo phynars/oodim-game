@@ -59,6 +59,10 @@ import {
   checkMobileMovePadFeel,
 } from "./src/mobileMovePad.js";
 import {
+  DEFAULT_FAILURE_STING_FEEL,
+  failureStingEnvelopeAt,
+} from "./src/failureStingFeedback.ts";
+import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
 } from "./src/ioRecognitionDialogue.ts";
@@ -89,16 +93,7 @@ const CONFIRM_FEEDBACK = {
   pulseDecayPerSecond: 3.8,
 };
 const MEMORY_RECOGNITION_FEEDBACK = IO_RECOGNITION_BEAT_FEEDBACK;
-const FAILURE_FEEDBACK = {
-  durationMs: 180,
-  easing: "easeOutQuad",
-  cameraKickDeg: 0.9,
-  cameraKickWorldX: 0.038,
-  hudShakePx: 8,
-  hudDropPx: 2,
-  flashAlpha: 0.34,
-  wobbleCycles: 5,
-};
+const FAILURE_FEEDBACK = DEFAULT_FAILURE_STING_FEEL;
 const MOVEMENT = DEFAULT_PLAYER_MOVEMENT_FEEL;
 const MOBILE_MOVE_PAD = DEFAULT_MOBILE_MOVE_PAD_FEEL;
 
@@ -1488,12 +1483,10 @@ const computeCameraPoseAt = (nowMs) => {
   const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
   const confirmFalloff = 1 - confirmIntensity;
   const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
-  const failureProgress = failureStartedAt === null
-    ? 1
-    : Math.min(Math.max((nowMs - failureStartedAt) / FAILURE_FEEDBACK.durationMs, 0), 1);
-  const failureCurve = 1 - (1 - failureProgress) ** 2;
-  const failureFalloff = 1 - failureCurve;
-  const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
+  const failureEnvelope = failureStartedAt === null
+    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK)
+    : failureStingEnvelopeAt(nowMs - failureStartedAt, FAILURE_FEEDBACK);
+  const failureWobble = failureEnvelope.wobble;
   const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
   const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
   const recognitionMotion = recognitionMotionAt(nowMs);
@@ -1958,12 +1951,11 @@ const tick = (now) => {
   const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
   const confirmFalloff = 1 - confirmIntensity;
   const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
-  const failureProgress = failureStartedAt === null
-    ? 1
-    : Math.min(Math.max((now - failureStartedAt) / FAILURE_FEEDBACK.durationMs, 0), 1);
-  const failureCurve = 1 - (1 - failureProgress) ** 2;
-  const failureFalloff = 1 - failureCurve;
-  const failureWobble = failureFalloff * Math.sin(failureProgress * Math.PI * FAILURE_FEEDBACK.wobbleCycles);
+  const failureEnvelope = failureStartedAt === null
+    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK)
+    : failureStingEnvelopeAt(now - failureStartedAt, FAILURE_FEEDBACK);
+  const failureFalloff = failureEnvelope.falloff;
+  const failureWobble = failureEnvelope.wobble;
 
   playerMesh.position.set(state.player.x, 0, state.player.z);
   playerMesh.rotation.y = state.player.facingRadians;
@@ -1991,7 +1983,7 @@ const tick = (now) => {
   document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
   document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
   if (failureSting) {
-    failureSting.style.opacity = `${(failureFalloff * FAILURE_FEEDBACK.flashAlpha).toFixed(3)}`;
+    failureSting.style.opacity = `${failureEnvelope.flashAlpha.toFixed(3)}`;
   }
   screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
   slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45 + packetProgress * 0.4;
@@ -2005,9 +1997,18 @@ const tick = (now) => {
     }
   }
   if (failureStartedAt !== null) {
-    state.interaction.failureFeedback.active = failureProgress < 1;
-    state.interaction.failureFeedback.remainingMs = Math.max(0, Math.round(FAILURE_FEEDBACK.durationMs - (now - failureStartedAt)));
-    if (failureProgress >= 1) {
+    // Contract (packet-hold-threshold.spec.ts:42-52): failureFeedback is
+    // `InteractionFeedback & { hudDropPx, flashAlpha, wobbleCycles, easing }`
+    // where flashAlpha is the PINNED feel constant (0.34) — asserted with
+    // `.toBe(0.34)`. Merging the full envelope leaks time-varying scaled
+    // amplitudes (falloff * feel.flashAlpha, wobble, vignetteAlpha, …) into
+    // the contract surface and flips the pinned value. Only fold runtime
+    // *lifecycle* fields into state; the render call site already reads
+    // scaled amplitudes off `failureEnvelope` directly (see failureSting
+    // opacity above), so nothing else needs the per-frame values persisted.
+    state.interaction.failureFeedback.active = failureEnvelope.active;
+    state.interaction.failureFeedback.remainingMs = failureEnvelope.remainingMs;
+    if (!failureEnvelope.active) {
       state.interaction.failureStartedAt = null;
     }
   }
