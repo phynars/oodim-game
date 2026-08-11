@@ -257,18 +257,24 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   // primitives.
   await driveRecognition(page, "sealed");
 
-  // Poll aggressively for 14 particles — the burst window is ~260ms, so
-  // a single-RAF miss can slip past it. `polling: 16` samples every frame.
-  // Sample both the DOM child count AND the published surface at the
-  // same instant so we can also assert they were in sync when the burst
-  // was live.
-  const snapshot = await page.waitForFunction(
-    () => {
+  // ACTIVELY PUMP frames instead of passively polling (#1113 CI fix):
+  // on SwiftShader after a cold reload, rAF can starve long enough that
+  // the ~260ms burst window passes with ZERO composited frames — a
+  // waitForFunction poll (even at polling:16) then never observes the
+  // 14 reconciled DOM nodes, and the spec times out on a healthy build.
+  // Each iteration below FORCES a frame (evaluate schedules + awaits a
+  // rAF, which drives tick() and the DOM reconciliation) and samples
+  // synchronously in the same evaluate — the window cannot be missed
+  // by frame starvation, only by the burst genuinely not firing.
+  const deadline = Date.now() + WAIT_MS;
+  let observed = { domCount: 0, published: -1 };
+  while (Date.now() < deadline) {
+    const sample = await page.evaluate(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const overlay = document.querySelector("#recognitionImpactBurst");
       const domCount = overlay
         ? overlay.querySelectorAll(".impact-burst-particle").length
         : 0;
-      if (domCount !== 14) return null;
       const game = (window as Window & {
         __game?: { interaction?: { impactBurstParticles?: unknown[] } };
       }).__game;
@@ -276,15 +282,12 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
         ? game!.interaction!.impactBurstParticles!.length
         : -1;
       return { domCount, published };
-    },
-    undefined,
-    { timeout: WAIT_MS, polling: 16 },
-  );
-
-  const observed = (await snapshot.jsonValue()) as {
-    domCount: number;
-    published: number;
-  };
+    });
+    if (sample.domCount === 14) {
+      observed = sample;
+      break;
+    }
+  }
   expect(observed.domCount).toBe(14);
   // Cross-check: the runtime also publishes the same list on
   // window.__game.interaction.impactBurstParticles. If the DOM has 14 but
