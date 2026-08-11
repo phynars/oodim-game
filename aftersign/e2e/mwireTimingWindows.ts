@@ -20,16 +20,18 @@ export type RecognitionDomFeedbackSnapshot = {
 // build.
 //
 // The proven pattern from the impact-burst spec, generalized here:
-// (1) install an rAF high-water SAMPLER that captures the first frame
-// satisfying the predicate, then (2) dispatch the runtime call that
-// opens the window and (3) actively pump rAF frames — ALL INSIDE ONE
-// page.evaluate — so the sequence "sampler armed → deliverPacket
-// stamps memoryRecognitionBeatStartedAt → runtime tick recomputes
-// syncRecognitionDomFeedback → sampler captures" runs inside a single
-// browser rAF batch. Doing arm/dispatch/pump across three separate
-// page.evaluate calls empirically leaves ~10-30ms of node<->page
-// round-trip latency between arm and the first pump-driven rAF, on
-// SwiftShader that's enough for rAF to starve past the 54ms window.
+// (1) INSTALL an rAF high-water SAMPLER on window — separate evaluate
+// that returns immediately; the sampler keeps running on browser rAF
+// AFTER the evaluate resolves. (2) Dispatch the runtime call that
+// opens the window (`deliverPacket`) in a second evaluate. (3) PUMP
+// frames from Playwright's side in a while-loop where EACH iteration
+// is its own evaluate awaiting ONE rAF — matching the sibling
+// io-recognition-return-visual-feel.spec.ts:305-316. Prior attempts
+// that ran the whole arm+dispatch+pump sequence INSIDE one big
+// page.evaluate blocked the node<->page bridge and empirically
+// starved rAF past the 54ms hapticScale window; the sibling's
+// small-evaluate pump proved that pattern lets rAF fire reliably on
+// SwiftShader.
 
 type FeelHighWater = {
   captured: boolean;
@@ -45,27 +47,20 @@ type FeelHighWater = {
   maxSignGlowPx: number;
 };
 
-export async function armAndCaptureMwireRecognitionFeel(
-  page: Page,
-  timeout: number,
-): Promise<RecognitionDomFeedbackSnapshot> {
-  const observed = await page.evaluate(async (timeoutMs) => {
-    type Feedback = {
-      active?: boolean;
-      signGlowPx?: number;
-      hapticScale?: number;
-    };
-    type HighWater = {
-      captured: boolean;
-      active: boolean;
-      signGlowPx: number;
-      hapticScale: number;
-      ticks: number;
-      activeSeen: boolean;
-      maxHapticScale: number;
-      maxSignGlowPx: number;
-    };
-    const hw: HighWater = {
+declare global {
+  interface Window {
+    __mwireFeelHighWater?: FeelHighWater;
+  }
+}
+
+// Install an rAF high-water sampler on the page that captures the
+// first frame satisfying (active && signGlowPx > 0 && hapticScale > 1)
+// AND tracks maxima for diagnostics. Returns immediately — the
+// sampler keeps running on browser rAF after this evaluate resolves.
+async function installFeelHighWaterSampler(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as Window & { __mwireFeelHighWater?: FeelHighWater };
+    w.__mwireFeelHighWater = {
       captured: false,
       active: false,
       signGlowPx: 0,
@@ -75,14 +70,24 @@ export async function armAndCaptureMwireRecognitionFeel(
       maxHapticScale: 0,
       maxSignGlowPx: 0,
     };
-
-    // Sampler: reads window.__game.interaction.recognitionDomFeedback
-    // (published by aftersign/main.js publishState — the runtime tick
-    // calls syncRecognitionDomFeedback then publishState each frame,
-    // so this surface refreshes at rAF cadence). Runs on browser rAF.
-    let stopped = false;
+    type Feedback = {
+      active?: boolean;
+      signGlowPx?: number;
+      hapticScale?: number;
+    };
+    type FeelHighWater = {
+      captured: boolean;
+      active: boolean;
+      signGlowPx: number;
+      hapticScale: number;
+      ticks: number;
+      activeSeen: boolean;
+      maxHapticScale: number;
+      maxSignGlowPx: number;
+    };
     const sampleTick = () => {
-      if (stopped) return;
+      const hw = (window as Window & { __mwireFeelHighWater?: FeelHighWater }).__mwireFeelHighWater;
+      if (!hw) return; // teardown
       hw.ticks += 1;
       const game = window.__game as
         | (FlagshipGameSurface & { interaction?: { recognitionDomFeedback?: Feedback } })
@@ -105,34 +110,95 @@ export async function armAndCaptureMwireRecognitionFeel(
       requestAnimationFrame(sampleTick);
     };
     requestAnimationFrame(sampleTick);
+  });
+}
 
-    // Dispatch the deliver on the same tick the sampler was armed.
-    // Runtime deliverPacket() stamps memoryRecognitionBeatStartedAt =
-    // performance.now() synchronously (aftersign/main.js:1625), so the
-    // beat clock is set BEFORE the next rAF fires — the very next
-    // runtime tick lands elapsedMs≈16ms (well before the 128ms haptic
-    // window opens), and the pump below walks elapsedMs continuously
-    // through the 54ms slice.
+async function readFeelHighWater(page: Page): Promise<FeelHighWater> {
+  return page.evaluate(() => {
+    const hw = (window as Window & { __mwireFeelHighWater?: FeelHighWater }).__mwireFeelHighWater;
+    if (!hw) {
+      return {
+        captured: false,
+        active: false,
+        signGlowPx: 0,
+        hapticScale: 0,
+        ticks: 0,
+        activeSeen: false,
+        maxHapticScale: 0,
+        maxSignGlowPx: 0,
+      } satisfies FeelHighWater;
+    }
+    return { ...hw };
+  });
+}
+
+async function teardownFeelHighWaterSampler(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as Window & { __mwireFeelHighWater?: FeelHighWater };
+    delete w.__mwireFeelHighWater;
+  });
+}
+
+// Public entrypoint. The caller MUST have already navigated to the
+// packet-offered beat and chosen the outcome (keep-sealed / open-packet)
+// via clickChoiceViaDom / holdChoiceViaDom — this function only handles
+// the deliver step and the feel-window capture.
+//
+// Flow:
+//   1. Install rAF high-water sampler on window (runs on browser rAF).
+//   2. Dispatch `input.choose("deliver-packet")` in its own evaluate —
+//      this stamps `memoryRecognitionBeatStartedAt = performance.now()`
+//      synchronously (aftersign/main.js:1625), opening the DOM-feedback
+//      window. The choose promise resolves once the runtime finishes
+//      one microtask worth of state mutation; the sampler is already
+//      armed on rAF and will observe the very next frame.
+//   3. PUMP frames from Playwright — each iteration is its own tiny
+//      evaluate awaiting one rAF. This mirrors
+//      io-recognition-return-visual-feel.spec.ts:305-316 exactly. The
+//      small-evaluate cadence is what lets rAF actually fire on
+//      SwiftShader; a single long-lived evaluate blocked the frame
+//      loop in earlier attempts.
+//   4. Read + teardown.
+export async function armAndCaptureMwireRecognitionFeel(
+  page: Page,
+  timeout: number,
+): Promise<RecognitionDomFeedbackSnapshot> {
+  await installFeelHighWaterSampler(page);
+
+  // Dispatch deliver in its own evaluate. Runtime deliverPacket()
+  // stamps memoryRecognitionBeatStartedAt = performance.now()
+  // synchronously (aftersign/main.js:1625).
+  const dispatched = await page.evaluate(async () => {
     const game = window.__game as
-      | (FlagshipGameSurface & { input?: { choose?: (id: string) => void | Promise<void> } })
+      | (FlagshipGameSurface & {
+          input?: { choose?: (id: string) => void | Promise<void> };
+        })
       | undefined;
-    if (!game?.input?.choose) {
-      stopped = true;
-      throw new Error("window.__game.input.choose is not available at delivery time");
-    }
+    if (!game?.input?.choose) return false;
     await Promise.resolve(game.input.choose("deliver-packet"));
+    return true;
+  });
 
-    // Pump rAF frames from Playwright's side until the sampler captures
-    // or the timeout expires. Each awaited rAF drives one runtime tick
-    // AND one sampler tick in the same browser frame batch.
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline && !hw.captured) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
+  if (!dispatched) {
+    await teardownFeelHighWaterSampler(page);
+    throw new Error(
+      "armAndCaptureMwireRecognitionFeel: window.__game.input.choose was not available at delivery time",
+    );
+  }
 
-    stopped = true;
-    return hw;
-  }, timeout);
+  // Pump rAF frames from Playwright's side. Each iteration is its own
+  // evaluate awaiting ONE rAF — this is the SAME shape as the sibling
+  // impact-burst spec's while loop (io-recognition-return-visual-feel.spec.ts:305-316).
+  const deadline = Date.now() + timeout;
+  let observed = await readFeelHighWater(page);
+  while (Date.now() < deadline && !observed.captured) {
+    await page.evaluate(
+      async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    observed = await readFeelHighWater(page);
+  }
+
+  await teardownFeelHighWaterSampler(page);
 
   if (!observed.captured) {
     throw new Error(
