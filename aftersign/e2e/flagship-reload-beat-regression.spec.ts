@@ -16,10 +16,17 @@
 //     surface is `test.fixme`'d until Phase 3 (#566) lands the rename.
 //     Until then this spec asserts against the LIVE shape.
 //   • The expected lastLine strings are pinned to lineForBeat() in
-//     aftersign/index.html — the ONLY source publishState() reads. The
-//     earlier draft pinned to constants in aftersign/src/io-dialogue.ts
-//     which index.html doesn't import; that failed on strict equality
-//     because the runtime never emits those strings.
+//     aftersign/main.js — the ONLY source publishState() reads.
+//     After a forceSave→forceReload from a delivered save the #957
+//     returning-session boot override (aftersign/main.js:325-334,
+//     1928-1941) replaces the fresh "clean handoff" copy with the
+//     appropriate returning-session line — asserted per-path via
+//     `path.expectedReloadedDeliveredLine` (sealed→sealedPacketSkippedRoute,
+//     opened→openedPacketSkippedRoute; both paths in this spec skip the
+//     kiosk-acknowledge second action, so route-attention normalizes
+//     to "skipped" at fact-mint). The fresh line is also asserted as a
+//     "must NOT be" negative so a runtime regression that DROPS the
+//     override (Io slides back to the fresh copy on reload) fails here.
 //
 // Guard is state-quiesced (waitForFunction + waitForStoryIdle) — no
 // waitForTimeout, per e2e-shared/no-wall-clock-waits.
@@ -60,10 +67,15 @@ type ReloadSnapshot = {
 
 const WAIT_MS = 10_000;
 
-// The literal strings lineForBeat() emits in aftersign/index.html. If a
-// refactor moves these, update BOTH ends together — the spec's job is to
-// pin the runtime, not describe it in the abstract.
-const DELIVERED_LINE =
+// The fresh-session "clean handoff" line — what lineForBeat() emits
+// at packet-delivered ONLY when NO returning-session boot override
+// applies (i.e. during the live delivery flow, before any reload).
+// After forceSave→forceReload from a delivered save, the #957 override
+// wins and Io speaks a RETURNING-session line instead — see
+// RELOADED_DELIVERED_LINE_* below. This constant is retained so the
+// spec can assert that the fresh line does NOT survive the round trip
+// (i.e. we're proving the runtime replaces it, not preserves it).
+const FRESH_DELIVERED_LINE =
   "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
 // Recognition lines come from the canonical copy module (#595 cleanup,
 // #1077). These flows never acknowledge the kiosk route, so the
@@ -71,6 +83,19 @@ const DELIVERED_LINE =
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
 const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
+// Returning-session boot lines (#957). A reloaded delivered save opens
+// with lineForBeat() returning `ioReturningBootLine`, computed at boot
+// from chooseIoReturningSessionLine({ packetOutcome, routeAttention }).
+// These paths never invoke "acknowledge-kiosk" — normalizeSecondAction
+// maps null→"skipped" at fact-mint (aftersign/main.js:196, 1935-1938),
+// so route-attention resolves to "skipped" for both. The SkippedRoute
+// variants are the exact lines Io speaks at the durable packet-delivered
+// beat AFTER reload, and the assertion below pins them verbatim so a
+// runtime change to the boot override (or a copy edit in
+// packages/aftersign/src/ioReturningSession.ts) fails loudly.
+import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+const SEALED_RELOADED_DELIVERED_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
+const OPENED_RELOADED_DELIVERED_LINE = ioReturningSessionLines.openedPacketSkippedRoute;
 
 type PacketPath = {
   name: string;
@@ -78,6 +103,10 @@ type PacketPath = {
   expectedOutcome: "sealed" | "opened";
   expectedRecognitionLine: string;
   wrongRecognitionLine: string;
+  // The verbatim line Io speaks at scene.beat === "packet-delivered"
+  // AFTER forceSave→forceReload — path-specific, minted by the #957
+  // boot override, NOT the fresh "clean handoff" copy.
+  expectedReloadedDeliveredLine: string;
 };
 
 const PACKET_PATHS: PacketPath[] = [
@@ -87,6 +116,7 @@ const PACKET_PATHS: PacketPath[] = [
     expectedOutcome: "sealed",
     expectedRecognitionLine: SEALED_RECOGNITION_LINE,
     wrongRecognitionLine: OPENED_RECOGNITION_LINE,
+    expectedReloadedDeliveredLine: SEALED_RELOADED_DELIVERED_LINE,
   },
   {
     name: "opened packet",
@@ -94,6 +124,7 @@ const PACKET_PATHS: PacketPath[] = [
     expectedOutcome: "opened",
     expectedRecognitionLine: OPENED_RECOGNITION_LINE,
     wrongRecognitionLine: SEALED_RECOGNITION_LINE,
+    expectedReloadedDeliveredLine: OPENED_RELOADED_DELIVERED_LINE,
   },
 ];
 
@@ -146,16 +177,23 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
 // keeps the assertions byte-identical across callers — future edits
 // touch one place, not two.
 function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
-  // Live impl (aftersign/index.html):
+  // Live impl (aftersign/main.js):
   //   • deliverPacket() persists with beat="packet-delivered" synchronously,
   //     then advances to "io-return-recognition" ~1180ms later. The saved
   //     beat we reload from is "packet-delivered".
   //   • npcs.io.memory is the singular array field. There is no plural
   //     `memories` — asserting on it would always be undefined.
-  //   • At the reloaded beat lineForBeat() emits the SAME
-  //     "Done. Blue route..." string for both paths — the sealed/opened
-  //     split only appears at io-return-recognition. Path is
-  //     distinguished here by delivery.outcome + memory[].object.
+  //   • At the reloaded packet-delivered beat, lineForBeat() no longer
+  //     emits the fresh "Done. Blue route..." copy — the #957 returning-
+  //     session boot override (aftersign/main.js:325-334, 1928-1941)
+  //     replaces it with the RETURNING line minted by
+  //     chooseIoReturningSessionLine from the durable outcome +
+  //     route-attention facts. Sealed→sealedPacketSkippedRoute,
+  //     opened→openedPacketSkippedRoute (these paths never acknowledge
+  //     the kiosk, so route-attention normalizes to "skipped"). Assert
+  //     the path-specific returning line here — a real regression that
+  //     drops the override, or a copy drift in the ioReturningSession
+  //     module, fails loudly on this exact string.
   expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
   // #958 de-flake: deliverPacket() persists beat="packet-delivered"
   // synchronously and a 1180ms setTimeout advances to
@@ -172,7 +210,11 @@ function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): v
     true,
   );
   if (afterReload.scene.beat === "packet-delivered") {
-    expect(afterReload.npcs.io.lastLine).toBe(DELIVERED_LINE);
+    // Post-#957: the returning-session boot override wins at the
+    // durable beat. Path-specific (sealed vs opened) — the fresh
+    // "clean handoff" line must NOT survive the round trip.
+    expect(afterReload.npcs.io.lastLine).toBe(path.expectedReloadedDeliveredLine);
+    expect(afterReload.npcs.io.lastLine).not.toBe(FRESH_DELIVERED_LINE);
   } else {
     expect(afterReload.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
     expect(afterReload.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
