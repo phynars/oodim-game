@@ -78,6 +78,14 @@ export type AftersignIoReturnMemoryThreadInput = {
   returnReason: AftersignReturnReason;
 };
 
+// Compile-time exhaustiveness helper. If a discriminated union grows
+// a new member and any of the selectors below stop covering it, the
+// `never` argument type check fails the build — restoring the guard
+// PR #758 / #789 fought for after the switch-to-ternary drift.
+function assertNever(x: never, hint: string): never {
+  throw new Error(`Aftersign Io voice contract missed case: ${hint} (${String(x)})`);
+}
+
 export function normalizeAftersignPacketOutcome(
   outcome: string | null | undefined,
 ): AftersignPacketOutcome {
@@ -85,19 +93,42 @@ export function normalizeAftersignPacketOutcome(
 }
 
 export function ioPacketReturnLine(outcome: string | null | undefined): AftersignIoLine {
-  return normalizeAftersignPacketOutcome(outcome) === "opened"
-    ? AFTERSIGN_IO_LINES.openedReturn
-    : AFTERSIGN_IO_LINES.sealedReturn;
+  // Normalize FIRST, then switch exhaustively over the concrete union
+  // so a future `AftersignPacketOutcome` member fails the build here
+  // (instead of silently falling to `sealed` through a ternary).
+  const normalized: AftersignPacketOutcome = normalizeAftersignPacketOutcome(outcome);
+  switch (normalized) {
+    case "opened":
+      return AFTERSIGN_IO_LINES.openedReturn;
+    case "sealed":
+      return AFTERSIGN_IO_LINES.sealedReturn;
+    default:
+      return assertNever(normalized, "ioPacketReturnLine");
+  }
 }
 
 export function ioRouteAttentionLine(attention: AftersignRouteAttention): AftersignIoLine {
-  return attention === "skipped" ? AFTERSIGN_IO_LINES.routeSkipped : AFTERSIGN_IO_LINES.routeHeard;
+  switch (attention) {
+    case "heard":
+      return AFTERSIGN_IO_LINES.routeHeard;
+    case "skipped":
+      return AFTERSIGN_IO_LINES.routeSkipped;
+    default:
+      return assertNever(attention, "ioRouteAttentionLine");
+  }
 }
 
 export function ioReturnReasonLine(reason: AftersignReturnReason): AftersignIoLine {
-  if (reason === "evasive") return AFTERSIGN_IO_LINES.evasiveReturn;
-  if (reason === "blunt") return AFTERSIGN_IO_LINES.bluntReturn;
-  return AFTERSIGN_IO_LINES.kindReturn;
+  switch (reason) {
+    case "kind":
+      return AFTERSIGN_IO_LINES.kindReturn;
+    case "evasive":
+      return AFTERSIGN_IO_LINES.evasiveReturn;
+    case "blunt":
+      return AFTERSIGN_IO_LINES.bluntReturn;
+    default:
+      return assertNever(reason, "ioReturnReasonLine");
+  }
 }
 
 export function buildIoMemorySentence(line: AftersignIoLine): string {

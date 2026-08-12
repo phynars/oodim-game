@@ -5,6 +5,12 @@ import {
   type AftersignIoFirstSceneLine,
 } from "./ioFirstSceneDialogue";
 import {
+  buildIoMemorySentence,
+  buildIoReturnMemoryThread,
+  ioPacketReturnLine,
+  type AftersignReturnReason,
+} from "./ioVoiceContract";
+import {
   sampleAftersignIoMemoryBeat,
   sampleAftersignOrraMemoryBeat,
   type AftersignIoMemoryBeat,
@@ -49,6 +55,28 @@ export type AftersignIoDialogueSnapshot = {
   readonly returnBeat?: {
     readonly packetLine: AftersignIoFirstSceneLine;
     readonly routeLine: AftersignIoFirstSceneLine;
+  };
+  /**
+   * Auditable memory sentences Io "remembers" about the player's prior
+   * run, built from the canonical voice contract in `ioVoiceContract.ts`.
+   * Present iff the packet fork has been committed AND a return posture
+   * is known — same gate as `returnBeat`, plus a `returnReason`.
+   *
+   * Two shapes:
+   *   • `packetReturn` — the one-line memory Io names as soon as the
+   *     player is back, keyed off `packetOutcome`. Emitted whenever the
+   *     fork is committed, regardless of whether a `returnReason` is
+   *     known. This is what makes `ioPacketReturnLine` a live consumer.
+   *   • `thread` — the full ordered three-line memory (route + packet
+   *     + return-reason) built by `buildIoReturnMemoryThread`. Requires
+   *     `returnReason` to be supplied by the caller.
+   *
+   * Persisted as plain strings so a `window.__game` consumer can render
+   * them without importing the contract module.
+   */
+  readonly memoryThread?: {
+    readonly packetReturn: string;
+    readonly thread?: readonly string[];
   };
 };
 
@@ -111,6 +139,15 @@ export type AftersignStoryStateOptions = {
    * still get a valid snapshot.
    */
   listenedToRoute?: boolean;
+  /**
+   * Optional posture the player struck when Io asked why they came
+   * back — the third axis on the return beat, per `ioVoiceContract.ts`.
+   * When supplied, the surface emits a full three-line
+   * `ioDialogue.memoryThread.thread` (route + packet + return-reason).
+   * When omitted, only the single-line `packetReturn` memory is
+   * emitted (and the fork must still be committed for either).
+   */
+  returnReason?: AftersignReturnReason;
 };
 
 export type AftersignWindowGameSurface = {
@@ -137,6 +174,7 @@ export function getAftersignStoryState(
     completedBeats: getAftersignCompletedStoryBeats(state),
     ioDialogue: getAftersignIoDialogueSnapshot(state, {
       listenedToRoute: options.listenedToRoute ?? false,
+      returnReason: options.returnReason,
     }),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
@@ -287,7 +325,7 @@ function getAftersignIoDisposition(
  */
 function getAftersignIoDialogueSnapshot(
   state: AftersignVerticalSliceState,
-  options: { listenedToRoute: boolean },
+  options: { listenedToRoute: boolean; returnReason?: AftersignReturnReason },
 ): AftersignIoDialogueSnapshot {
   const kioskLines: readonly AftersignIoFirstSceneLine[] = [
     getAftersignIoFirstSceneLine("arrival"),
@@ -310,14 +348,48 @@ function getAftersignIoDialogueSnapshot(
       listenedToRoute: options.listenedToRoute,
     });
 
+    // Live wiring for the canonical voice contract. `ioPacketReturnLine`
+    // is what makes `ioVoiceContract.ts` a shipped surface, not just a
+    // typed constant with a test — the memory sentence goes into the
+    // window.__game snapshot every time the fork is committed.
+    const packetMemory = buildIoMemorySentence(
+      ioPacketReturnLine(state.packetOutcome),
+    );
+
+    // `buildIoReturnMemoryThread` composes route + packet + reason. It
+    // requires all three, so we only emit `thread` when the caller has
+    // supplied a `returnReason`. The single-line `packetReturn` above
+    // is always safe because packetOutcome is committed on this branch.
+    const thread = options.returnReason
+      ? buildIoReturnMemoryThread({
+          routeAttention: options.listenedToRoute ? "heard" : "skipped",
+          packetOutcome: state.packetOutcome,
+          returnReason: options.returnReason,
+        })
+      : undefined;
+
     return {
       activeLine: returnBeat.packetLine,
       kioskLines,
       returnBeat,
+      memoryThread: thread
+        ? { packetReturn: packetMemory, thread }
+        : { packetReturn: packetMemory },
     };
   }
 
-  return { activeLine: kioskLines[0], kioskLines };
+  // Not on the return branch. `memoryThread` is contractually gated
+  // on a committed packet fork (see the field's doc + the branch
+  // above), so an uncommitted state emits no memory shape — even if
+  // the caller happened to supply a `returnReason`. Papering over
+  // that with a reason-only "packetReturn" would mis-key the field
+  // (packet slot holding a reason sentence) — precisely the drift
+  // this surface exists to prevent. A `returnReason` without a
+  // committed packet is caller error and stays inert here.
+  return {
+    activeLine: kioskLines[0],
+    kioskLines,
+  };
 }
 
 function getAftersignOrraDisposition(
