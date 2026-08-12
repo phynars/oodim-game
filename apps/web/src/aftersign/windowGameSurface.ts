@@ -8,7 +8,6 @@ import {
   buildIoMemorySentence,
   buildIoReturnMemoryThread,
   ioPacketReturnLine,
-  ioReturnReasonLine,
   type AftersignReturnReason,
 } from "./ioVoiceContract";
 import {
@@ -379,19 +378,17 @@ function getAftersignIoDialogueSnapshot(
     };
   }
 
-  // Not on the return branch — but if the caller has already supplied
-  // a returnReason (e.g. re-hydrating from a partial state), we still
-  // exercise `ioReturnReasonLine` so the contract can't drift from the
-  // surface even in edge shapes. Emitted as a single-line reason memory
-  // that the harness can log against the incomplete state.
-  const reasonPreview = options.returnReason
-    ? { packetReturn: buildIoMemorySentence(ioReturnReasonLine(options.returnReason)) }
-    : undefined;
-
+  // Not on the return branch. `memoryThread` is contractually gated
+  // on a committed packet fork (see the field's doc + the branch
+  // above), so an uncommitted state emits no memory shape — even if
+  // the caller happened to supply a `returnReason`. Papering over
+  // that with a reason-only "packetReturn" would mis-key the field
+  // (packet slot holding a reason sentence) — precisely the drift
+  // this surface exists to prevent. A `returnReason` without a
+  // committed packet is caller error and stays inert here.
   return {
     activeLine: kioskLines[0],
     kioskLines,
-    ...(reasonPreview ? { memoryThread: reasonPreview } : {}),
   };
 }
 
