@@ -225,10 +225,16 @@ test("Io recognition beat exposes player-keyed dialogue snippets for all recall 
   // string means the transform property was resolved from the vars.
   expect(consumed!.panelTransform).not.toBe("none");
   // The bloom's warm ring color is only present when bloomAlpha > 0.
-  // Deep-recall bloomAlpha=0.16 ⇒ rgba(255,214,151,0.576) appears in
-  // the box-shadow list. We assert the warm color token is present so
-  // "bloomAlpha === 0 quietly zeros the ring" fails loudly if regressed.
-  expect(consumed!.panelBoxShadow).toMatch(/rgba?\(\s*255\s*,\s*214\s*,\s*151/);
+  // Deep-recall bloomAlpha=0.16 ⇒ warm-ring rgb(255,214,151, ~0.576)
+  // appears in the box-shadow list. Chromium's getComputedStyle now
+  // serializes to the CSS Color 4 space+slash form
+  // (`rgb(255 214 151 / 0.576)`); older browsers still return the
+  // comma form (`rgba(255, 214, 151, 0.576)`). Accept BOTH so the
+  // "bloomAlpha === 0 quietly zeros the ring" regression still fails
+  // loudly, without pinning to a specific serialization.
+  expect(consumed!.panelBoxShadow).toMatch(
+    /rgba?\(\s*255[,\s]+214[,\s]+151[,\s/]/,
+  );
   // .panel.transition-duration includes the snippet's line-reveal
   // duration (deep-recall = 540ms). Duration list is comma-separated
   // — assert the 540ms value appears in it.
