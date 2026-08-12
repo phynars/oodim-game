@@ -49,6 +49,7 @@ import { runFirstCameraMoveChecks } from "./src/feel/firstCameraMove.test.ts";
 import { checkFirstCameraMoveReturnContract } from "./src/feel/firstCameraMoveReturnContract.test.ts";
 import { runMemoryPromptTimingChecks } from "./src/feel/memoryPromptTiming.ts";
 import { runPerfBudgetCalibrationChecks } from "./src/perfBudgetCalibration.test.ts";
+import { runIoRecognitionDialogueContractChecks } from "./src/ioRecognitionDialogueContract.test.ts";
 // Failure-sting envelope math + flashAlpha-pinning contract. The e2e
 // (packet-hold-threshold.spec.ts:140-144) drives the drift-cancel path
 // end-to-end and asserts `.toBe(0.34)` on the state surface; this
@@ -103,6 +104,7 @@ const runners: Runner[] = [
   // specifier, so the whole subgraph satisfies the extension-resolution
   // contract documented above.
   { label: "runPerfBudgetCalibrationChecks", run: runPerfBudgetCalibrationChecks },
+  { label: "runIoRecognitionDialogueContractChecks", run: runIoRecognitionDialogueContractChecks },
   { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
 ];
 
