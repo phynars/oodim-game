@@ -106,6 +106,13 @@ const driveRecognition = async (page: Page, outcome: RecognitionOutcome) => {
     }
     await game.input.choose(nextOutcome === "sealed" ? "keep-packet-sealed" : "open-packet");
     await game.input.choose("deliver-packet");
+
+    // #1134 cold-start guard: arm `advance()` only AFTER at least one
+    // composited frame on this navigation. On SwiftShader cold boots the
+    // first rAF after goto can land >1.2s late; if we arm first, the
+    // recognition impact-burst timeout can expire before any frame ever
+    // reconciles `.impact-burst-particle` DOM nodes.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     await game.input.advance();
   }, outcome);
 };
