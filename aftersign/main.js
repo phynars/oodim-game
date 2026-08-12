@@ -1308,6 +1308,57 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // boot override from the restored memory + beat.
   armReturningSessionBootLine(Boolean(state.packet.delivered));
 
+  // Mara's re-review on PR #1139: `forceReload({ clearLocalState: true })`
+  // was leaving a STALE `recognitionDomFeedback` snapshot on
+  // `window.__game.interaction.recognitionDomFeedback` — the last frame
+  // of the just-finished beat wrote `{ active:false, signGlowPx:8, … }`
+  // (base-8 leak, recognition-dom-feedback.js:70 writes
+  // `8 + kioskSign*18 + lantern*10` for every active instant, so `8`
+  // survives when the two cues drop to zero). The
+  // syncRecognitionDomFeedback inert-baseline guard (above) DOES clear
+  // it on the next RAF tick, but flagship-surface-contract.spec.ts:729-750
+  // waits only for `active === false` — already true stalely — and then
+  // reads `signGlowPx` BEFORE the next frame runs the guard.
+  //
+  // Symmetry fix: reloadFromSave must synchronously zero the same
+  // module-level `recognitionDomFeedback` + DOM cues + beat clock that
+  // `resetSliceSave` zeroes (main.js:~1960). One reset shape, both
+  // reset paths — the harness sees an inert snapshot in the SAME tick
+  // the reload returns, no RAF race.
+  memoryRecognitionBeatStartedAt = null;
+  pendingRecognitionArm = false;
+  lastImpactBurstChirpAt = null;
+  impactBurstParticles = [];
+  framesDuringRecognitionBeat = 0;
+  recognitionDomFeedback = {
+    active: false,
+    signGlowPx: 0,
+    sealGlowPx: 0,
+    rainRimAlpha: 0,
+    hapticScale: 1,
+    warmth: 0,
+  };
+  clearRecognitionDomFeedback({
+    lineNode: line,
+    speakerNode: speaker,
+    stateReadoutNode: stateReadout,
+  });
+  // Also zero the CAMERA-envelope amplitudes in interaction state —
+  // publishState mirrors these on
+  // `window.__game.interaction.recognitionFeedback` and a stale non-zero
+  // would falsely claim the beat is still driving camera motion after
+  // the reload.
+  state.interaction.recognitionFeedback = { ...MEMORY_RECOGNITION_FEEDBACK };
+  // Post-beat analytic report doesn't survive a reload — it described
+  // the previous session's beat, not this one.
+  state.interaction.recognitionBeatReport = null;
+  state.interaction.recognitionSnippetFeelCue = null;
+  // Zero the `--io-recognition-*` CSS custom properties so the shipped
+  // surface's DOM envelope (body::after vignette, .panel translateZ+yaw,
+  // .line reveal timing) drops back to its inert baseline in the same
+  // synchronous tick.
+  applyIoRecognitionFeelCueVars(null);
+
   markStateDirty();
   renderText();
   publishState();
