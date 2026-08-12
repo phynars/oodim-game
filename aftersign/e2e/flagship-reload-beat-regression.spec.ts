@@ -145,6 +145,12 @@ async function idle(page: Page): Promise<void> {
   await page.evaluate(() => window.__game!.input.waitForStoryIdle());
 }
 
+function uniqueSlotKey(path: PacketPath): string {
+  return `flagship-reload-${path.expectedOutcome}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
 async function playSaveReloadPath(page: Page, path: PacketPath) {
   // Only install the break-mode hook when a mode is actually set — the
   // default lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op
@@ -155,8 +161,18 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
       window.__FLAGSHIP_BREAK_MODE = mode;
     }, breakMode);
   }
-  await page.goto("./");
+
+  // Preserve per-test save/load isolation by pinning each run to its own slot
+  // key so forceSave/forceReload storage never cross-talks with parallel specs.
+  const slot = uniqueSlotKey(path);
+  await page.goto(`./?slot=${slot}`);
   await waitForSurface(page);
+
+  // Fresh-session baseline that used to live in story-state-save-load.spec.ts.
+  // Assert BEFORE the first choice mutates state.
+  const baseline = await page.evaluate(() => window.__game!.getSnapshot());
+  expect(baseline.delivery.outcome).toBe("unknown");
+  expect(baseline.npcs.io.memory.length).toBe(0);
 
   for (const choice of path.choices) {
     await page.evaluate((choiceId) => window.__game!.input.choose(choiceId), choice);

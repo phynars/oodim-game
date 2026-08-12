@@ -1011,12 +1011,16 @@ const advance = async () => {
     // impact-burst particles) computed as inactive and the e2e waits
     // stalled. Same lifecycle as deliverPacket: stamp, reset burst
     // bookkeeping, null the clock when the beat's window closes.
+    // #1128: arm the recognition clock in the tick loop (not here),
+    // so cold-CI rAF starvation cannot skip the burst window. See the
+    // pendingRecognitionArm declaration for the full rationale.
     const beatStartedAt = performance.now();
-    memoryRecognitionBeatStartedAt = beatStartedAt;
+    pendingRecognitionArm = true;
     lastImpactBurstChirpAt = null;
     impactBurstParticles = [];
     setTimeout(() => {
       memoryRecognitionBeatStartedAt = null;
+      pendingRecognitionArm = false;
       lastImpactBurstChirpAt = null;
       impactBurstParticles = [];
       markStateDirty();
@@ -1361,6 +1365,23 @@ const triggerFailureFeedback = (source) => {
 
 let memoryBeatCameraProbe = null;
 let memoryRecognitionBeatStartedAt = null;
+// #1128 fix: on cold SwiftShader CI, deliverPacket() and advance() run
+// synchronously from an input.choose() await — the FIRST rAF after that
+// can be starved by >200ms while the WebGL surface warms. Stamping
+// memoryRecognitionBeatStartedAt with performance.now() at that moment
+// makes recognitionMotionAt() see an already-elapsed burst window
+// (particleBurstStartFrame=4 → 67ms) on the very first tick that fires,
+// so impactBurstAt returns particles.length=0 and syncImpactBurstDom
+// never reconciles any nodes. Fix: defer the arm to the tick loop —
+// mark pendingRecognitionArm=true here, and on the next tick, stamp
+// memoryRecognitionBeatStartedAt = rAF's `now` (which is the render
+// clock, not the wall clock). The burst then measures its window from
+// the first frame that ACTUALLY paints, immune to cold-start rAF
+// starvation. The setTimeout(1180) that closes the beat stays on wall
+// clock; a starved-cold beat therefore runs its animation window
+// against tick time and only truncates the tail — which is fine, the
+// tail lands after inputLockMs anyway.
+let pendingRecognitionArm = false;
 let lastImpactBurstChirpAt = null;
 let impactBurstParticles = [];
 let impactBurstChirpGain = null;
@@ -1622,7 +1643,10 @@ const deliverPacket = (source = "hud-button") => {
   state.save.dirty = true;
   const beatStartedAt = performance.now();
   startMemoryBeatCameraProbe(beatStartedAt);
-  memoryRecognitionBeatStartedAt = beatStartedAt;
+  // #1128: defer recognition-clock arm to the tick loop — see the
+  // pendingRecognitionArm declaration. Prevents cold-CI rAF starvation
+  // from swallowing the impact-burst window (frames 4-20 @60fps).
+  pendingRecognitionArm = true;
   lastImpactBurstChirpAt = null;
   playKioskConfirm();
   markStateDirty();
@@ -1634,6 +1658,7 @@ const deliverPacket = (source = "hud-button") => {
     const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
     const cameraMotion = finishMemoryBeatCameraProbe();
     memoryRecognitionBeatStartedAt = null;
+    pendingRecognitionArm = false;
     lastImpactBurstChirpAt = null;
     impactBurstParticles = [];
     state.story.memoryBeat = {
@@ -1723,6 +1748,7 @@ const resetSliceSave = async () => {
     remainingMs: 0,
   };
   memoryRecognitionBeatStartedAt = null;
+  pendingRecognitionArm = false;
   recognitionDomFeedback = {
     active: false,
     signGlowPx: 0,
@@ -1957,6 +1983,16 @@ let last = performance.now();
 const tick = (now) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  // #1128: consume any pending recognition arm on the first tick that
+  // actually fires. Stamping to rAF's `now` (not wall-clock at the
+  // synchronous input.choose() moment) means the burst window is
+  // measured from the FIRST composited frame — cold-start rAF
+  // starvation can no longer make elapsedMs skip past the 67-333ms
+  // burst window before any tick runs.
+  if (pendingRecognitionArm) {
+    memoryRecognitionBeatStartedAt = now;
+    pendingRecognitionArm = false;
+  }
   stepMovementFixed(dt);
   const t = now / 1000;
   const kioskPulse = state.interaction.kioskPulse;
