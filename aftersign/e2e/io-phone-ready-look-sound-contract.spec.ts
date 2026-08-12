@@ -88,52 +88,67 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
     win.__ioPhoneReadyMarks = {};
 
     const initialGame = win.__game;
-    let lastBeat: string | null = initialGame?.scene?.beat ?? null;
-    let lastLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
-    let lastAudioCueAt: number | null = initialGame?._runtime?.audio?.lastCueAt ?? null;
+    const initialLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
+    const initialAudioCueAt: number | null = initialGame?._runtime?.audio?.lastCueAt ?? null;
 
-    const observe = () => {
+    // Shared marking body, driven by BOTH a rAF loop and a MutationObserver
+    // on #line. The observer matters on starved SwiftShader hosts: setBeat →
+    // renderText → audio cue all run synchronously in the beat's setTimeout,
+    // but rAF can be starved for 600ms+ afterwards — an rAF-only probe then
+    // stamps lineSettledAt centuries after the runtime's own audioCueAt and
+    // reports host frame-lag as authored A/V drift (main-e2e red, avDrift
+    // 632ms vs the 50ms contract). MutationObserver callbacks are microtasks
+    // fired at the DOM write itself, so the settle stamp lands at the same
+    // instant the runtime spoke — what the contract actually authored.
+    const stampMarks = () => {
       const game = win.__game;
       const beat = game?.scene?.beat ?? null;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
       const audioCue = game?._runtime?.audio?.lastCue ?? null;
       const audioCueAt = game?._runtime?.audio?.lastCueAt ?? null;
       const marks = win.__ioPhoneReadyMarks;
+      if (!marks) return;
 
-      if (marks) {
-        if (beat === 'io-return-recognition' && lastBeat !== 'io-return-recognition') {
-          marks.recognitionTriggeredAt = performance.now();
-        }
-
-        if (
-          marks.recognitionTriggeredAt !== undefined
-          && marks.lineSettledAt === undefined
-          // Tier-agnostic prefix: this page-side probe only marks WHEN the
-          // recognition line settled; exact copy is asserted node-side
-          // against the canonical module.
-          && lineText.startsWith('I remember you')
-          && lineText !== lastLineText
-        ) {
-          marks.lineSettledAt = performance.now();
-        }
-
-        if (
-          marks.recognitionTriggeredAt !== undefined
-          && marks.audioCueAt === undefined
-          && audioCue === expectedCue
-          && audioCueAt !== null
-          && audioCueAt !== lastAudioCueAt
-        ) {
-          marks.audioCueAt = audioCueAt;
-        }
+      if (marks.recognitionTriggeredAt === undefined && beat === 'io-return-recognition') {
+        marks.recognitionTriggeredAt = performance.now();
       }
 
-      lastBeat = beat;
-      lastLineText = lineText;
-      lastAudioCueAt = audioCueAt;
-      requestAnimationFrame(observe);
+      if (
+        marks.recognitionTriggeredAt !== undefined
+        && marks.lineSettledAt === undefined
+        // Tier-agnostic prefix: this page-side probe only marks WHEN the
+        // recognition line settled; exact copy is asserted node-side
+        // against the canonical module.
+        && lineText.startsWith('I remember you')
+        && lineText !== initialLineText
+      ) {
+        marks.lineSettledAt = performance.now();
+      }
+
+      if (
+        marks.recognitionTriggeredAt !== undefined
+        && marks.audioCueAt === undefined
+        && audioCue === expectedCue
+        && audioCueAt !== null
+        && audioCueAt !== initialAudioCueAt
+      ) {
+        marks.audioCueAt = audioCueAt;
+      }
     };
 
+    const lineNode = document.querySelector('#line');
+    if (lineNode) {
+      new MutationObserver(stampMarks).observe(lineNode, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    }
+
+    const observe = () => {
+      stampMarks();
+      requestAnimationFrame(observe);
+    };
     requestAnimationFrame(observe);
   }, EXPECTED_AUDIO_CUE);
 };
