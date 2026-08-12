@@ -127,12 +127,22 @@
         padding: 16px;
         background: rgba(5, 10, 19, 0.72);
         /* Bloom halo — additive glow modulated by the snippet's
-           bloomAlpha. Off-beat → 0 (invisible). deep-recall → 0.16. */
+           bloomAlpha. Off-beat → 0 (invisible). deep-recall → 0.16.
+           NOTE: legacy `rgba(r,g,b,a)` requires a plain <alpha-value>
+           and REJECTS `calc()` in the alpha slot (CSS Color 3 grammar).
+           If the alpha is `calc(...)` inside `rgba(...)`, the whole
+           `box-shadow` declaration is invalidated and the warm ring
+           vanishes — which is what was reddening the e2e's bloom
+           regex. Fix: use the CSS Color 4 space-separated
+           `rgb(r g b / <alpha>)` form, whose alpha slot DOES accept
+           `calc()`. Deep-recall (bloomAlpha=0.16) then serializes to
+           `rgb(255 214 151 / 0.576)` (or the comma form on older
+           engines) — the spec accepts both. */
         box-shadow:
           0 0 40px rgba(0, 204, 255, 0.12),
           inset 0 0 30px rgba(22, 89, 130, 0.14),
           0 0 calc(var(--io-recognition-bloom-alpha) * 120px)
-            rgba(255, 214, 151, calc(var(--io-recognition-bloom-alpha) * 3.6));
+            rgb(255 214 151 / calc(var(--io-recognition-bloom-alpha) * 3.6));
         backdrop-filter: blur(12px);
         /* Compose the io-recognition camera-dolly + yaw on top of the
            haptic-scale so the recognition-beat feels like the camera
@@ -408,6 +418,19 @@
         button:active,
         .packet-button:active span {
           transform: none;
+        }
+
+        /* io-recognition envelope respects reduced-motion — the
+           snippet-authored dolly/yaw/vignette/bloom timings collapse
+           to instant, so recognition still LANDS (final state is the
+           snippet's numbers) but doesn't ANIMATE. Mara #1139: the new
+           transitions extended the pre-existing reduced-motion gap;
+           this closes it on the same four consumers the e2e checks. */
+        body::after,
+        .panel,
+        .line,
+        .hud {
+          transition: none;
         }
       }
     </style>
