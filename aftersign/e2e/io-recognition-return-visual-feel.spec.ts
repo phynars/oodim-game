@@ -247,6 +247,27 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
   test.setTimeout(COLD_START_MS);
   await page.goto("/aftersign/index.html?slot=io-return-impact-burst", { waitUntil: "load" });
 
+  // #1128 cold-start fix: warm the rAF pipeline BEFORE arming the
+  // observer and driving the beat. On SwiftShader after `goto`, the
+  // first requestAnimationFrame can take >1200ms to fire (shader
+  // compilation, first three.js composite). If that first rAF lands
+  // after the 1220ms beat-clock timeout inside advance() nulls
+  // memoryRecognitionBeatStartedAt, the render loop's next tick sees
+  // an inactive beat, syncImpactBurstDom reconciles to 0 particles,
+  // and the 260ms impact-burst window closes with ZERO DOM primitives
+  // — the exact `domCount: 0, Expected: 14` failure at spec:318.
+  //
+  // Pumping ~30 frames here forces the tick loop to burn through
+  // shader compile + first composite work while the beat clock is
+  // still null (nothing armed yet), so once driveRecognition() stamps
+  // the clock the very next tick lands INSIDE the burst window.
+  await waitForGame(page);
+  for (let i = 0; i < 30; i += 1) {
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+  }
+
   // Kick off the recognition beat. `driveRecognition` returns as soon as
   // the last input is dispatched — it does NOT wait for the ~1180ms beat
   // to end. That matters here because the impact-burst window
