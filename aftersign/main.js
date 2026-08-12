@@ -248,6 +248,21 @@ const state = {
     recognitionFeedback: {
       ...MEMORY_RECOGNITION_FEEDBACK,
     },
+    // Snippet-authored feel cue that came with the SELECTED
+    // recognition-beat line — mirrored here so the harness / dev
+    // overlays can read the exact ms/degrees/alphas that drove the
+    // DOM envelope this beat. Null off-beat; populated by
+    // syncIoLine() when state.scene.beat === "io-return-recognition"
+    // from the SAME snippet that supplied `lastLine` + `lastLineMemoryRefs`
+    // (one snippet, one truth — no drift between line, refs, and feel).
+    // Consumed by:
+    //   1. `--io-recognition-*` CSS custom properties (documentElement),
+    //      which the served surface reads to drive camera-dolly /
+    //      vignette / bloom / line-reveal envelopes;
+    //   2. window.__game.npcs.io.lastLineFeelCue (see publishState) —
+    //      the e2e io-recognition-dialogue-snippets spec asserts the
+    //      shipped tier's numbers against the snippet contract.
+    recognitionSnippetFeelCue: null,
     failureFeedback: {
       ...FAILURE_FEEDBACK,
       active: false,
@@ -487,16 +502,62 @@ const persistAuthoritative = async ({ dirty = false } = {}) => {
   markStateDirty();
 };
 
+// Apply an authored per-tier feel cue (or clear it) as CSS custom
+// properties on documentElement. The served surface's DOM already reads
+// `--recognition-*` custom props for the sign/seal/rain envelopes
+// (see aftersign/index.html + recognition-dom-feedback.js); these
+// `--io-recognition-*` names carry the SNIPPET-side numbers so the
+// tier the dialogue selector chose actually shapes what the player
+// sees. Off-beat we zero them so nothing bleeds out of the beat.
+const applyIoRecognitionFeelCueVars = (cue) => {
+  const root = document.documentElement;
+  if (!cue) {
+    root.style.setProperty("--io-recognition-duration-ms", "0ms");
+    root.style.setProperty("--io-recognition-camera-dolly-cm", "0");
+    root.style.setProperty("--io-recognition-camera-yaw-deg", "0");
+    root.style.setProperty("--io-recognition-vignette-alpha", "0");
+    root.style.setProperty("--io-recognition-bloom-alpha", "0");
+    root.style.setProperty("--io-recognition-line-reveal-delay-ms", "0ms");
+    root.style.setProperty("--io-recognition-line-reveal-duration-ms", "0ms");
+    root.style.setProperty("--io-recognition-easing", "linear");
+    return;
+  }
+  root.style.setProperty("--io-recognition-duration-ms", `${cue.durationMs}ms`);
+  root.style.setProperty("--io-recognition-camera-dolly-cm", `${cue.cameraDollyCm}`);
+  root.style.setProperty("--io-recognition-camera-yaw-deg", `${cue.cameraYawDegrees}`);
+  root.style.setProperty("--io-recognition-vignette-alpha", `${cue.vignetteAlpha}`);
+  root.style.setProperty("--io-recognition-bloom-alpha", `${cue.bloomAlpha}`);
+  root.style.setProperty("--io-recognition-line-reveal-delay-ms", `${cue.lineRevealDelayMs}ms`);
+  root.style.setProperty("--io-recognition-line-reveal-duration-ms", `${cue.lineRevealDurationMs}ms`);
+  root.style.setProperty("--io-recognition-easing", cue.easing);
+};
+
+const feelCueEqual = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.durationMs === b.durationMs
+    && a.holdFrames === b.holdFrames
+    && a.cameraDollyCm === b.cameraDollyCm
+    && a.cameraYawDegrees === b.cameraYawDegrees
+    && a.vignetteAlpha === b.vignetteAlpha
+    && a.bloomAlpha === b.bloomAlpha
+    && a.lineRevealDelayMs === b.lineRevealDelayMs
+    && a.lineRevealDurationMs === b.lineRevealDurationMs
+    && a.easing === b.easing
+  );
+};
+
 const syncIoLine = () => {
-  const nextLine = lineForBeat();
-  // At the recognition beat, memoryRefs come from the SAME snippet
-  // the dialogue module selected to speak — so spoken line and its
-  // memoryRefs are minted from one source of truth. Deep-recall
-  // (both delivery-outcome AND route-attention remembered) carries
-  // two refs; returning carries one; first-meeting carries zero.
-  // The e2e io-recognition-dialogue-snippets spec asserts
-  // lastLineMemoryRefs.toEqual(deepRecall.memoryRefs).
+  // At the recognition beat, line / memoryRefs / feelCue are all
+  // minted from the SAME snippet the dialogue module selected — one
+  // source of truth per tier. Deep-recall (both delivery-outcome AND
+  // route-attention remembered) carries two refs; returning carries
+  // one; first-meeting carries zero. Only at this beat does a feelCue
+  // exist; off-beat it's null and the CSS envelope zeroes out.
   let nextMemoryRefs = [];
+  let nextFeelCue = null;
+  let nextLine;
   if (state.scene.beat === "io-return-recognition") {
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
@@ -505,19 +566,25 @@ const syncIoLine = () => {
       packetSealed: speakAsSealed,
       memory: state.npcs.io.memory,
     });
-    nextMemoryRefs = [
-      ...selectIoRecognitionDialogueLine(snippets, {
-        memory: state.npcs.io.memory,
-      }).memoryRefs,
-    ];
+    const selected = selectIoRecognitionDialogueLine(snippets, {
+      memory: state.npcs.io.memory,
+    });
+    nextLine = selected.line;
+    nextMemoryRefs = [...selected.memoryRefs];
+    nextFeelCue = { ...selected.feelCue };
+  } else {
+    nextLine = lineForBeat();
   }
   if (
     state.npcs.io.lastLine !== nextLine
     || state.npcs.io.lastLineMemoryRefs.length !== nextMemoryRefs.length
     || state.npcs.io.lastLineMemoryRefs.some((ref, index) => ref !== nextMemoryRefs[index])
+    || !feelCueEqual(state.interaction.recognitionSnippetFeelCue, nextFeelCue)
   ) {
     state.npcs.io.lastLine = nextLine;
     state.npcs.io.lastLineMemoryRefs = nextMemoryRefs;
+    state.interaction.recognitionSnippetFeelCue = nextFeelCue;
+    applyIoRecognitionFeelCueVars(nextFeelCue);
     markStateDirty();
   }
 };
@@ -676,13 +743,21 @@ const publishState = () => {
         // Player-keyed recognition dialogue snippets — three tiers
         // (first-meeting / returning / deep-recall) minted from Io's
         // durable memory. Published on every publishState() so the
-        // io-recognition-dialogue-snippets e2e can assert tier order
-        // and per-tier memoryRef counts at the recognition beat.
+        // io-recognition-dialogue-snippets e2e can assert tier order,
+        // per-tier memoryRef counts, AND per-tier feelCue numbers
+        // (durationMs / cameraDollyCm / cameraYawDegrees / etc.) that
+        // drive the DOM envelope at the recognition beat.
         recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
           playerId: state.player.id,
           packetSealed: state.packet.sealed,
           memory: state.npcs.io.memory,
         }),
+        // The feelCue of the snippet the selector CHOSE this beat —
+        // null off-beat, populated by syncIoLine() at
+        // io-return-recognition. Same source as lastLine / lastLineMemoryRefs
+        // so the served surface can't drift between "which line spoke"
+        // and "how the beat felt".
+        lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
       },
       orra: {
         id: "orra",
@@ -730,6 +805,7 @@ const publishState = () => {
           present: true,
           ...state.npcs.io,
           memories: state.npcs.io.memory,
+      lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
           trustPosture: trustPostureForOutcome(state.delivery.outcome),
           recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
             playerId: state.player.id,

@@ -7,7 +7,13 @@ export type IoRecognitionMemoryFact = {
   object?: string;
 };
 
-export type IoRecognitionFeelCue = {
+// Renamed from `IoRecognitionFeelCue` (Mara, PR #1139 review): the name
+// collides with `apps/web/src/aftersign/ioRecognitionFeelLayer.ts`, which
+// exports a differently-shaped `IoRecognitionFeelCue = { packetOutcome,
+// startedAtMs }`. Two contracts under one name is a trap; the snippet-side
+// numbers are per-tier authored motion values, so the type name calls that
+// out (`SnippetFeelCue`) rather than fighting for the generic name.
+export type IoRecognitionSnippetFeelCue = {
   durationMs: number;
   holdFrames: number;
   cameraDollyCm: number;
@@ -25,11 +31,15 @@ export type IoRecognitionDialogueSnippet = {
   npcId: "io";
   tier: IoRecognitionDialogueTier;
   line: string;
-  // Measured recognition-beat motion values travel with the chosen line so
-  // the served surface can make Io's memory feel different from a normal bark.
-  // These are data-only cues: callers remain free to render them as camera,
-  // post, subtitle, or audio envelopes without duplicating the numbers.
-  feelCue: IoRecognitionFeelCue;
+  // Measured recognition-beat motion values that travel with the chosen
+  // line. main.js reads `selectedSnippet.feelCue` at `io-return-recognition`
+  // and (a) mirrors it into `state.interaction.recognitionSnippetFeelCue`
+  // for the harness, (b) writes `--io-recognition-*` CSS custom properties
+  // on `documentElement` so the DOM surface drives its camera-dolly /
+  // vignette / bloom / line-reveal envelopes from THESE authored numbers
+  // — one source of truth per tier, no drift between "which line spoke"
+  // and "how the beat felt".
+  feelCue: IoRecognitionSnippetFeelCue;
   // Memory ids the SPOKEN line legitimately cites for the harness's
   // `assertNpcReferencesPriorMemory` check. The route-attention id is
   // deliberately excluded per docs/flagship/story-state-contract.md
@@ -75,7 +85,7 @@ const DEEP_RECALL_LINES = {
     "I remember you twice: broken seal, half a route, and still you found the handoff.",
 } as const;
 
-const FIRST_MEETING_FEEL_CUE: IoRecognitionFeelCue = {
+const FIRST_MEETING_FEEL_CUE: IoRecognitionSnippetFeelCue = {
   durationMs: 480,
   holdFrames: 4,
   cameraDollyCm: 6,
@@ -87,7 +97,7 @@ const FIRST_MEETING_FEEL_CUE: IoRecognitionFeelCue = {
   easing: "cubic-bezier(.2,.8,.2,1)",
 };
 
-const RETURNING_FEEL_CUE: IoRecognitionFeelCue = {
+const RETURNING_FEEL_CUE: IoRecognitionSnippetFeelCue = {
   durationMs: 820,
   holdFrames: 8,
   cameraDollyCm: 14,
@@ -99,7 +109,7 @@ const RETURNING_FEEL_CUE: IoRecognitionFeelCue = {
   easing: "cubic-bezier(.2,.8,.2,1)",
 };
 
-const DEEP_RECALL_FEEL_CUE: IoRecognitionFeelCue = {
+const DEEP_RECALL_FEEL_CUE: IoRecognitionSnippetFeelCue = {
   durationMs: 1040,
   holdFrames: 12,
   cameraDollyCm: 18,
