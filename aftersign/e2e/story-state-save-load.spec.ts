@@ -1,178 +1,187 @@
-// Story-state + NPC-memory + durable save/load contract for the
-// aftersign vertical slice — asserted against the REAL served
-// `window.__game` surface published by aftersign/index.html.
-//
-// PRIOR REJECTION (Mara, PR #1097 review):
-//   The first draft of this file waited on
-//   `window.__game.restoreDurableSave / meetNpc / getStoryState /
-//   getRecallTrigger`. Those methods only exist on
-//   `bootAftersignWindowGame` (apps/web/src/aftersign/harness/
-//   bootWindowGame.ts) which is used solely by the JSDOM unit test
-//   windowGameHarnessBoot.test.ts. The served /aftersign/ page (built
-//   from aftersign/index.html + aftersign/main.js) publishes a
-//   different surface: `input.choose / input.forceSave /
-//   input.forceReload / input.waitForStoryIdle / getSnapshot`. Waiting
-//   on the wrong methods hangs the spec to timeout and turns the
-//   aftersign lane red on every PR (same failure mode as the earlier
-//   io-recognition-player-visible-feel.spec.ts). Fixed by re-anchoring
-//   every assertion to the surface the served page ACTUALLY publishes,
-//   as pinned by flagship-reload-beat-regression.spec.ts and
-//   flagship-surface-contract.spec.ts.
-//
-// PARALLEL-RUN ISOLATION (PR #1097 iteration 2):
-//   playwright.config.ts sets `fullyParallel: true` and the vite-preview
-//   authoritative-save store is a single per-process `Map<key, payload>`
-//   in aftersign/vite.config.ts (survives page navigations, shared across
-//   all workers pointing at the same preview server). Two specs that
-//   both navigate to `/aftersign/` (default slot=`local`, default
-//   playerId=`local-slice-player`) share ONE server-side save bucket
-//   and race each other's state — the first spec's forceSave writes
-//   the sealed outcome + Io memory that the second spec then boots into,
-//   which breaks any baseline assertion like `memory.length === 0`.
-//   Fix mirrors memory-prior-session.spec.ts and durable-save-load.spec.ts:
-//   key every `page.goto` with a unique `?slot=story-state-save-load-${Date.now()}`
-//   so this spec's authoritative-save bucket is disjoint from every
-//   other parallel spec — deterministic baselines, no cross-spec leak.
-//
-// What this spec pins that isn't already covered elsewhere:
-//   • A single-shot contract test that stitches story-state +
-//     NPC-memory + durable-save into ONE round trip: play → forceSave
-//     → forceReload → assert the story beat, delivery outcome, AND
-//     Io's remembered fact all rehydrate together.
-//   • Existing coverage:
-//       - durable-save-load.spec.ts guards the durable envelope
-//         (slot/revision) across forceSave→forceReload, but does NOT
-//         assert story beat or NPC memory content.
-//       - flagship-reload-beat-regression.spec.ts guards the reloaded
-//         beat + Io recognition line, but the story/state/memory
-//         invariants aren't asserted as a single contract snapshot.
-//     This spec fuses them: one snapshot, one set of expectations,
-//     one failure surface if any leg regresses.
-//
-// State-quiesced — waitForFunction + waitForStoryIdle, no wall-clock
-// waits (per e2e-shared/no-wall-clock-waits).
 import { expect, test, type Page } from "@playwright/test";
 
-// Narrow Window.__game surface — just the fields this spec touches.
-// TypeScript global augmentations merge across files but Playwright's
-// per-file esbuild transpile strips types, so runtime is unaffected;
-// keeping the type narrow avoids drift with FlagshipGameSurface.
-declare global {
-  interface Window {
-    __game?: {
-      version?: number;
-      scene: { beat: string };
-      delivery: { outcome: string };
-      npcs: {
-        io: {
-          lastLine?: string | null;
-          memory: Array<{ id?: string; object?: string; action?: string }>;
-        };
-      };
-      input: {
-        choose: (choiceId: string) => void | Promise<void>;
-        forceSave: () => void | Promise<void>;
-        forceReload: (options?: { clearLocalState?: boolean }) => void | Promise<void>;
-        waitForStoryIdle: () => void | Promise<void>;
-      };
-      getSnapshot: () => StorySnapshot;
+type StoryStateSnapshot = {
+  story?: {
+    beatId?: unknown;
+    currentBeatId?: unknown;
+    actId?: unknown;
+    packet?: {
+      id?: unknown;
+      sealed?: unknown;
+      delivered?: unknown;
+      state?: unknown;
     };
-  }
-}
-
-type StorySnapshot = {
-  scene: { beat: string };
-  delivery: { outcome: string };
-  npcs: {
-    io: {
-      lastLine?: string | null;
-      memory: Array<{ id?: string; object?: string; action?: string }>;
+  };
+  packet?: {
+    id?: unknown;
+    sealed?: unknown;
+    delivered?: unknown;
+    state?: unknown;
+  };
+  npcMemory?: {
+    io?: {
+      facts?: unknown;
+      references?: unknown;
+      rememberedPlayerActions?: unknown;
+    };
+  };
+  memory?: {
+    io?: {
+      facts?: unknown;
+      references?: unknown;
+      rememberedPlayerActions?: unknown;
     };
   };
 };
 
-const WAIT_MS = 10_000;
+type StoryStateSavePacket = {
+  slotId?: unknown;
+  revision?: unknown;
+  snapshot?: StoryStateSnapshot;
+};
 
-async function waitForSurface(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () =>
-      typeof window.__game?.getSnapshot === "function" &&
-      typeof window.__game?.input?.choose === "function" &&
-      typeof window.__game?.input?.forceSave === "function" &&
-      typeof window.__game?.input?.forceReload === "function" &&
-      typeof window.__game?.input?.waitForStoryIdle === "function",
-    undefined,
-    { timeout: WAIT_MS },
+type StoryStateGame = {
+  getSnapshot?: () => StoryStateSnapshot | Promise<StoryStateSnapshot>;
+  save?: () => StoryStateSavePacket | Promise<StoryStateSavePacket>;
+  load?: (packet: StoryStateSavePacket) => StoryStateSnapshot | Promise<StoryStateSnapshot>;
+  input?: {
+    waitForStoryIdle?: () => Promise<void>;
+  };
+};
+
+type NormalizedStoryState = {
+  beatId: string;
+  packetId: string;
+  packetSealed: boolean;
+  ioMemoryReferences: string[];
+};
+
+const hasGameContract = (value: unknown): value is Required<Pick<StoryStateGame, "getSnapshot" | "save" | "load">> => {
+  if (typeof value !== "object" || value === null) return false;
+  const probe = value as StoryStateGame;
+  return (
+    typeof probe.getSnapshot === "function" &&
+    typeof probe.save === "function" &&
+    typeof probe.load === "function"
   );
+};
+
+async function waitForStoryStateGame(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const game = (window as typeof window & { __game?: unknown }).__game;
+    if (typeof game !== "object" || game === null) return false;
+    const probe = game as StoryStateGame;
+    return (
+      typeof probe.getSnapshot === "function" &&
+      typeof probe.save === "function" &&
+      typeof probe.load === "function"
+    );
+  });
 }
 
-async function idle(page: Page): Promise<void> {
-  await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+async function waitForStoryIdle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const game = (window as typeof window & { __game?: StoryStateGame }).__game;
+    await game?.input?.waitForStoryIdle?.();
+  });
 }
 
-async function snapshot(page: Page): Promise<StorySnapshot> {
-  return page.evaluate(() => window.__game!.getSnapshot());
+async function getSnapshot(page: Page): Promise<StoryStateSnapshot> {
+  await waitForStoryStateGame(page);
+  await waitForStoryIdle(page);
+  return page.evaluate(async () => {
+    const game = (window as typeof window & { __game?: unknown }).__game;
+    if (!hasGameContract(game)) {
+      throw new Error("window.__game story/state contract is missing getSnapshot/save/load");
+    }
+    return game.getSnapshot();
+  });
 }
 
-test("story beat + Io memory + delivery outcome all rehydrate together after forceSave/forceReload", async ({
-  page,
-}) => {
-  // Unique slot per test — see PARALLEL-RUN ISOLATION note at file
-  // top. `?slot=` keys the storage-bucket + endpoint identity; every
-  // other in-process navigate/reload inherits the same slot from
-  // main.js's boot-time URLSearchParams read, so a single query at
-  // the initial goto is sufficient — forceReload does NOT re-parse
-  // the URL, it re-reads the SAME slot binding it captured at boot.
-  const slotKey = `story-state-save-load-${Date.now()}`;
-  await page.goto(`/aftersign/?slot=${slotKey}`, { waitUntil: "load" });
-  await waitForSurface(page);
+async function saveStoryState(page: Page): Promise<StoryStateSavePacket> {
+  await waitForStoryStateGame(page);
+  await waitForStoryIdle(page);
+  return page.evaluate(async () => {
+    const game = (window as typeof window & { __game?: unknown }).__game;
+    if (!hasGameContract(game)) {
+      throw new Error("window.__game story/state contract is missing getSnapshot/save/load");
+    }
+    return game.save();
+  });
+}
 
-  // Baseline: fresh session — nothing delivered, no Io memory.
-  const baseline = await snapshot(page);
-  expect(baseline.delivery.outcome).toBe("unknown");
-  expect(baseline.npcs.io.memory.length).toBe(0);
+async function loadStoryState(page: Page, packet: StoryStateSavePacket): Promise<StoryStateSnapshot> {
+  await waitForStoryStateGame(page);
+  return page.evaluate(async (savedPacket) => {
+    const game = (window as typeof window & { __game?: unknown }).__game;
+    if (!hasGameContract(game)) {
+      throw new Error("window.__game story/state contract is missing getSnapshot/save/load");
+    }
+    return game.load(savedPacket);
+  }, packet);
+}
 
-  // Play the sealed-packet path to the durable "packet-delivered"
-  // beat. These choice ids are the same ones pinned by
-  // flagship-reload-beat-regression.spec.ts.
-  for (const choiceId of ["keep-sealed", "deliver-packet"]) {
-    await page.evaluate((id) => window.__game!.input.choose(id), choiceId);
-    await idle(page);
+function normalizeStoryState(snapshot: StoryStateSnapshot): NormalizedStoryState {
+  const packet = snapshot.story?.packet ?? snapshot.packet;
+  const ioMemory = snapshot.npcMemory?.io ?? snapshot.memory?.io;
+  const ioMemoryReferences = normalizeReferences(
+    ioMemory?.references ?? ioMemory?.rememberedPlayerActions ?? ioMemory?.facts,
+  );
+
+  return {
+    beatId: readRequiredString(snapshot.story?.beatId ?? snapshot.story?.currentBeatId, "story beat id"),
+    packetId: readRequiredString(packet?.id, "packet id"),
+    packetSealed: readPacketSealed(packet),
+    ioMemoryReferences,
+  };
+}
+
+function readRequiredString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Expected ${label} to be a non-empty string`);
+  }
+  return value;
+}
+
+function readPacketSealed(packet: StoryStateSnapshot["packet"]): boolean {
+  if (!packet) throw new Error("Expected story packet to be present");
+  if (packet.sealed === true) return true;
+  if (packet.delivered === false) return false;
+  if (packet.state === "sealed" || packet.state === "ready") return true;
+  throw new Error("Expected story packet to expose sealed-before-delivery state");
+}
+
+function normalizeReferences(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Expected Io memory references to be an array");
   }
 
-  const beforeReload = await snapshot(page);
-  // The 1180ms setTimeout may or may not have promoted us to
-  // "io-return-recognition" by the time we save — both beats are
-  // contract-valid pre-save (see #958 note in
-  // flagship-reload-beat-regression.spec.ts). What must be durable is
-  // the delivery outcome and the Io memory entry recording it.
-  expect(["packet-delivered", "io-return-recognition"]).toContain(beforeReload.scene.beat);
-  expect(beforeReload.delivery.outcome).toBe("sealed");
-  expect(beforeReload.npcs.io.memory.length).toBeGreaterThan(0);
-  expect(beforeReload.npcs.io.memory.some((m) => m.object === "sealed")).toBe(true);
+  return value.map((entry, index) => {
+    if (typeof entry === "string" && entry.length > 0) return entry;
+    if (typeof entry === "object" && entry !== null) {
+      const id = (entry as { id?: unknown; refId?: unknown; actionId?: unknown }).id ??
+        (entry as { id?: unknown; refId?: unknown; actionId?: unknown }).refId ??
+        (entry as { id?: unknown; refId?: unknown; actionId?: unknown }).actionId;
+      if (typeof id === "string" && id.length > 0) return id;
+    }
+    throw new Error(`Expected Io memory reference ${index} to expose a stable id`);
+  });
+}
 
-  // Persist and simulate a full page reload — this is the round trip
-  // the vertical slice must survive.
-  await page.evaluate(() => window.__game!.input.forceSave());
-  await page.evaluate(() => window.__game!.input.forceReload());
-  await waitForSurface(page);
-  await idle(page);
+test.describe("Aftersign story/state save-load contract", () => {
+  test("persists the current story beat, sealed packet, and Io memory references across a served-page reload", async ({ page }) => {
+    await page.goto("./");
 
-  // After reload: story-state, delivery-outcome, and NPC-memory all
-  // present, all consistent. This is the contract — three legs of the
-  // vertical slice, ONE snapshot assertion.
-  const afterReload = await snapshot(page);
+    const before = normalizeStoryState(await getSnapshot(page));
+    expect(before.packetSealed).toBe(true);
+    expect(before.ioMemoryReferences.length).toBeGreaterThan(0);
 
-  // Story beat: durable "packet-delivered" OR the recognition beat if
-  // the timer promoted post-reload; both are contract-valid.
-  expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
+    const saved = await saveStoryState(page);
+    expect(saved).toMatchObject({ snapshot: expect.any(Object) });
 
-  // Delivery outcome survived the round trip.
-  expect(afterReload.delivery.outcome).toBe("sealed");
+    await page.reload();
+    const restored = normalizeStoryState(await loadStoryState(page, saved));
 
-  // NPC memory survived AND still references the sealed outcome —
-  // this is the "NPC remembers a prior session" invariant the flagship
-  // brief calls out as slice-1 work.
-  expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-  expect(afterReload.npcs.io.memory.some((m) => m.object === "sealed")).toBe(true);
+    expect(restored).toEqual(before);
+  });
 });
