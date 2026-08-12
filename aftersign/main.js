@@ -528,6 +528,7 @@ const applyIoRecognitionFeelCueVars = (cue) => {
     root.style.setProperty("--io-recognition-camera-yaw-deg", "0");
     root.style.setProperty("--io-recognition-vignette-alpha", "0");
     root.style.setProperty("--io-recognition-bloom-alpha", "0");
+    root.style.setProperty("--io-recognition-bloom-ring-alpha", "0");
     root.style.setProperty("--io-recognition-line-reveal-delay-ms", "0ms");
     root.style.setProperty("--io-recognition-line-reveal-duration-ms", "0ms");
     root.style.setProperty("--io-recognition-easing", "linear");
@@ -538,6 +539,16 @@ const applyIoRecognitionFeelCueVars = (cue) => {
   root.style.setProperty("--io-recognition-camera-yaw-deg", `${cue.cameraYawDegrees}`);
   root.style.setProperty("--io-recognition-vignette-alpha", `${cue.vignetteAlpha}`);
   root.style.setProperty("--io-recognition-bloom-alpha", `${cue.bloomAlpha}`);
+  // Pre-resolve the warm-ring alpha (bloomAlpha * 3.6, clamped) so the
+  // .panel box-shadow can consume a plain number in legacy rgba().
+  // calc() inside a color function's alpha slot invalidates the whole
+  // box-shadow declaration on engines that reject it — the recurring
+  // bloom-regex CI failure on PR #1139. Resolving here keeps the CSS
+  // grammar-safe on every engine.
+  root.style.setProperty(
+    "--io-recognition-bloom-ring-alpha",
+    `${Math.min(1, cue.bloomAlpha * 3.6)}`,
+  );
   root.style.setProperty("--io-recognition-line-reveal-delay-ms", `${cue.lineRevealDelayMs}ms`);
   root.style.setProperty("--io-recognition-line-reveal-duration-ms", `${cue.lineRevealDurationMs}ms`);
   root.style.setProperty("--io-recognition-easing", cue.easing);

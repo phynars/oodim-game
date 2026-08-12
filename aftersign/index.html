@@ -32,6 +32,15 @@
         --io-recognition-camera-yaw-deg: 0;
         --io-recognition-vignette-alpha: 0;
         --io-recognition-bloom-alpha: 0;
+        /* Resolved warm-ring alpha (bloomAlpha * 3.6, clamped to 1) —
+           PRE-MULTIPLIED IN JS (applyIoRecognitionFeelCueVars) so the
+           .panel box-shadow color never needs calc() inside a color
+           function. calc()-in-alpha is not grammar-safe across engines;
+           when the engine rejects it the ENTIRE box-shadow declaration
+           invalidates and the warm ring silently vanishes — the
+           recurring bloom-regex CI failure on PR #1139. A plain number
+           var substitutes cleanly into legacy rgba() everywhere. */
+        --io-recognition-bloom-ring-alpha: 0;
         --io-recognition-line-reveal-delay-ms: 0ms;
         --io-recognition-line-reveal-duration-ms: 0ms;
         --io-recognition-easing: linear;
@@ -128,21 +137,22 @@
         background: rgba(5, 10, 19, 0.72);
         /* Bloom halo — additive glow modulated by the snippet's
            bloomAlpha. Off-beat → 0 (invisible). deep-recall → 0.16.
-           NOTE: legacy `rgba(r,g,b,a)` requires a plain <alpha-value>
-           and REJECTS `calc()` in the alpha slot (CSS Color 3 grammar).
-           If the alpha is `calc(...)` inside `rgba(...)`, the whole
-           `box-shadow` declaration is invalidated and the warm ring
-           vanishes — which is what was reddening the e2e's bloom
-           regex. Fix: use the CSS Color 4 space-separated
-           `rgb(r g b / <alpha>)` form, whose alpha slot DOES accept
-           `calc()`. Deep-recall (bloomAlpha=0.16) then serializes to
-           `rgb(255 214 151 / 0.576)` (or the comma form on older
-           engines) — the spec accepts both. */
+           The warm ring's alpha is PRE-RESOLVED in JS
+           (main.js :: applyIoRecognitionFeelCueVars writes
+           --io-recognition-bloom-ring-alpha = min(1, bloomAlpha*3.6))
+           because calc() inside a color function's alpha slot is not
+           reliably supported: engines that reject it invalidate the
+           WHOLE box-shadow declaration, the warm ring vanishes, and
+           the e2e bloom regex reds out — the recurring CI failure on
+           this PR. A plain-number var in legacy rgba() parses on every
+           engine. Deep-recall (0.16 → 0.576) serializes as
+           `rgba(255, 214, 151, 0.576)` or the Color-4 space/slash form
+           depending on the browser — the spec accepts both. */
         box-shadow:
           0 0 40px rgba(0, 204, 255, 0.12),
           inset 0 0 30px rgba(22, 89, 130, 0.14),
           0 0 calc(var(--io-recognition-bloom-alpha) * 120px)
-            rgb(255 214 151 / calc(var(--io-recognition-bloom-alpha) * 3.6));
+            rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha));
         backdrop-filter: blur(12px);
         /* Compose the io-recognition camera-dolly + yaw on top of the
            haptic-scale so the recognition-beat feels like the camera

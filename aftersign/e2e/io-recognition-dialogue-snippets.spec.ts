@@ -187,6 +187,25 @@ test("Io recognition beat exposes player-keyed dialogue snippets for all recall 
   // consume them. Read the computed styles of the REAL rendered
   // elements the index.html rules touch and prove the snippet-side
   // numbers propagated to what the player sees.
+  // The vignette + bloom + reveal channels TRANSITION into place
+  // (deep-recall: 180ms delay + 540ms duration authored in the
+  // snippet). Sampling computed styles the instant the beat lands
+  // reads mid-flight values — a race that was previously masked by
+  // the bloom-regex failure aborting the test first. Wait for the
+  // vignette to settle at its authored terminus before sampling the
+  // consumers below; opacity is the last channel to land (same
+  // delay + duration as the others), so it's a sufficient sentinel.
+  await page.waitForFunction(
+    (targetAlpha) => {
+      const opacity = parseFloat(
+        getComputedStyle(document.body, "::after").opacity,
+      );
+      return Math.abs(opacity - targetAlpha) < 0.001;
+    },
+    deepRecall.feelCue.vignetteAlpha,
+    { timeout: WAIT_MS },
+  );
+
   const consumed = await page.evaluate(() => {
     const panel = document.querySelector(".panel");
     const line = document.querySelector(".line");
