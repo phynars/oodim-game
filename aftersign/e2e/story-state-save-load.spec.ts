@@ -24,6 +24,19 @@
 //   assertions became byte-identical with the sibling below — the
 //   spec had converged onto duplicate coverage.
 //
+// PR #1130 iteration 3 blocker (Mara, this file's owner-spec CI red):
+//   Retiring this spec is only safe once the coverage-owner is green.
+//   The owner (`flagship-reload-beat-regression.spec.ts`) was itself
+//   red on its `packet-delivered` lastLine assertion because it still
+//   pinned the FRESH "Done. Blue route..." copy — but the #957
+//   returning-session boot override (aftersign/main.js:325-334,
+//   1928-1941) now replaces that copy with the RETURNING line at boot
+//   from a delivered save. Fixed in the owner spec: assert the
+//   path-specific returning line (sealedPacketSkippedRoute /
+//   openedPacketSkippedRoute) at the durable beat, and keep the fresh
+//   copy as a "must NOT be" negative so a runtime regression that
+//   drops the override fails there instead of here.
+//
 // Where the coverage lives now (all three legs, single snapshot):
 //   aftersign/e2e/flagship-reload-beat-regression.spec.ts
 //     • story beat rehydrates after forceSave→forceReload
