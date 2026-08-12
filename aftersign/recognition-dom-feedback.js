@@ -67,7 +67,9 @@ export const computeRecognitionDomFeedback = ({
 
   return {
     active,
-    signGlowPx: Number((8 + kioskSign * 18 + lantern * 10).toFixed(2)),
+    signGlowPx: active
+      ? Number((8 + kioskSign * 18 + lantern * 10).toFixed(2))
+      : 0,
     sealGlowPx: Number((packetSeal * (openedBias ? 11 : 15)).toFixed(2)),
     rainRimAlpha: Number((rainRim * (openedBias ? 0.28 : 0.2)).toFixed(3)),
     hapticScale: Number((1 + haptic * (envelope.hapticScale?.amplitude ?? 0)).toFixed(4)),
