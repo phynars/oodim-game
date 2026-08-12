@@ -503,12 +503,23 @@ const persistAuthoritative = async ({ dirty = false } = {}) => {
 };
 
 // Apply an authored per-tier feel cue (or clear it) as CSS custom
-// properties on documentElement. The served surface's DOM already reads
-// `--recognition-*` custom props for the sign/seal/rain envelopes
-// (see aftersign/index.html + recognition-dom-feedback.js); these
-// `--io-recognition-*` names carry the SNIPPET-side numbers so the
-// tier the dialogue selector chose actually shapes what the player
-// sees. Off-beat we zero them so nothing bleeds out of the beat.
+// properties on documentElement.  These `--io-recognition-*` vars are
+// READ by concrete CSS rules in aftersign/index.html — the ones added
+// alongside this writer in PR #1139 (Mara's review):
+//   • body::after — vignette overlay opacity = vignetteAlpha, fade
+//     transition uses lineRevealDelayMs + lineRevealDurationMs + easing
+//   • .panel — transform composes translateZ(cameraDollyCm * 0.6px) +
+//     rotateY(cameraYawDegrees) with the existing haptic-scale, and
+//     box-shadow's warm ring is modulated by bloomAlpha
+//   • .panel + .line — transition timing reads the reveal window vars
+//   • .hud — background transition reads durationMs (envelope-wide)
+// One snippet, one truth: the tier the dialogue selector chose drives
+// the numbers the shipped surface consumes.  This is NOT the older
+// `--recognition-*` namespace (sign-glow / seal-glow / warmth /
+// rain-rim-alpha / haptic-scale) written by recognition-dom-feedback.js
+// — that's the runtime feedback envelope; the io-recognition-* vars
+// carry the AUTHORED-per-tier motion values.
+// Off-beat we zero them so nothing bleeds out of the beat.
 const applyIoRecognitionFeelCueVars = (cue) => {
   const root = document.documentElement;
   if (!cue) {
