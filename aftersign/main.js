@@ -1348,7 +1348,20 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // `window.__game.interaction.recognitionFeedback` and a stale non-zero
   // would falsely claim the beat is still driving camera motion after
   // the reload.
-  state.interaction.recognitionFeedback = { ...MEMORY_RECOGNITION_FEEDBACK };
+  state.interaction.recognitionFeedback = {
+      // Zero the envelope on reload — DO NOT re-arm to the authored
+      // MEMORY_RECOGNITION_FEEDBACK max. The harness's measured-vs-
+      // canned-literal gate (io-recognition-memory-beat-contract.spec.ts
+      // :163-168) zeros the envelope via setRecognitionCameraEnvelope
+      // ({0,0}) then forceReloads and expects cameraDeltaMeters < 0.24.
+      // Re-arming the authored max un-zeros it and regresses that gate
+      // to 0.32 (Mara, PR #1139 re-review). recognitionFeedback is a
+      // LIVE amplitude — reload restores state, it does NOT re-author
+      // beat intent.
+      ...MEMORY_RECOGNITION_FEEDBACK,
+      cameraDeltaMeters: 0,
+      cameraYawDegrees: 0,
+    };
   // Post-beat analytic report doesn't survive a reload — it described
   // the previous session's beat, not this one.
   state.interaction.recognitionBeatReport = null;
