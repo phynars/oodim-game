@@ -816,7 +816,7 @@ const publishState = () => {
           present: true,
           ...state.npcs.io,
           memories: state.npcs.io.memory,
-      lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
+          lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
           trustPosture: trustPostureForOutcome(state.delivery.outcome),
           recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
             playerId: state.player.id,
@@ -1631,7 +1631,28 @@ const recognitionMotionAt = (nowMs) => {
 
 const syncRecognitionDomFeedback = (nowMs) => {
   if (memoryRecognitionBeatStartedAt === null) {
-    if (recognitionDomFeedback.active) {
+    // Off-beat inert baseline: every recognitionDomFeedback field must
+    // be zero (or `hapticScale: 1`, the neutral scale). The guard used
+    // to trigger only on `active === true`, but
+    // applyRecognitionDomFeedback (recognition-dom-feedback.js:70)
+    // writes `signGlowPx = 8 + kioskSign * 18 + lantern * 10` — the
+    // BASE 8 leaks through on late-beat frames where every cue's
+    // intensity has already dropped to 0 but `normalized` is 0 or 1 (so
+    // `active === false`). When the beat clock nulled, the `active`-only
+    // cleanup was skipped and the stale `signGlowPx: 8` survived across
+    // `forceReload({ clearLocalState: true })` — the flake Mara caught
+    // on PR #1139 review (`resetFeedback.signGlowPx === 8` at
+    // flagship-surface-contract.spec.ts :750). Check the inert
+    // invariant directly: if any field is off-baseline, run the same
+    // clear the `active`-only branch used to.
+    const inert =
+      !recognitionDomFeedback.active
+      && recognitionDomFeedback.signGlowPx === 0
+      && recognitionDomFeedback.sealGlowPx === 0
+      && recognitionDomFeedback.rainRimAlpha === 0
+      && recognitionDomFeedback.hapticScale === 1
+      && recognitionDomFeedback.warmth === 0;
+    if (!inert) {
       clearRecognitionDomFeedback({
         lineNode: line,
         speakerNode: speaker,
