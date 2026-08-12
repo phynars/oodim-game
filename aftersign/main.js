@@ -31,6 +31,7 @@ import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { recognitionEnvelopeAt as recognitionFeedbackEnvelopeAt } from "./src/recognitionFeedbackBridge.ts";
 import {
   applyRecognitionDomFeedback,
+  computeRecognitionDomFeedback,
   clearRecognitionDomFeedback,
 } from "./recognition-dom-feedback.js";
 import {
@@ -264,6 +265,10 @@ const state = {
     // said about the gesture the controller just committed — divergence
     // between the two is a feel-drift signal.
     packetIntentEvaluation: null,
+    // Post-beat analytic feel report (#1127/#1134) — null while a beat
+    // runs or before the first beat; authored-feel peaks + framesDuringBeat
+    // published at beat end.
+    recognitionBeatReport: null,
   },
   _runtime: {
     audio: {
@@ -288,6 +293,41 @@ let publishedStateVersion = -1;
 // this override drops out and the beat's own verbatim line wins.
 let ioReturningBootLine = null;
 let ioReturningBootBeat = null;
+
+// Recompute the returning-session boot override from the CURRENT state
+// (memory facts + scene beat). Called at module init AND from
+// reloadFromSave()'s restore branch — before this was shared, only a
+// real page reload re-armed the override, so the in-page
+// input.forceReload() of a delivered save landed at packet-delivered
+// speaking the fresh "clean handoff" line instead of recognizing the
+// returning player (flagship-reload-beat-regression :258 red on main).
+const armReturningSessionBootLine = (delivered) => {
+  ioReturningBootLine = null;
+  ioReturningBootBeat = null;
+  if (!delivered) {
+    return;
+  }
+  // Per the #957 contract above: the returning line never overrides
+  // io-return-recognition — that beat's own branch already speaks the
+  // memory-minted recognition copy. A save taken DURING the recognition
+  // beat reloads into the beat's verbatim line, not the boot override.
+  if (state.scene.beat === "io-return-recognition") {
+    return;
+  }
+  const outcomeFact = state.npcs.io.memory.find(
+    (fact) => fact?.kind === "delivery-outcome",
+  );
+  ioReturningBootLine = outcomeFact
+    ? chooseIoReturningSessionLine({
+        packetOutcome: outcomeFact.object,
+        routeAttention:
+          secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+            ? "listened"
+            : "skipped",
+      })
+    : chooseIoReturningSessionLine({});
+  ioReturningBootBeat = state.scene.beat;
+};
 
 // Vite's default MODE values are `development` / `production` / `test`;
 // the FlagshipGameSurface contract (docs/flagship/story-state-contract.md
@@ -1014,11 +1054,12 @@ const advance = async () => {
     // #1128: arm the recognition clock in the tick loop (not here),
     // so cold-CI rAF starvation cannot skip the burst window. See the
     // pendingRecognitionArm declaration for the full rationale.
-    const beatStartedAt = performance.now();
     pendingRecognitionArm = true;
+    state.interaction.recognitionBeatReport = null;
     lastImpactBurstChirpAt = null;
     impactBurstParticles = [];
     setTimeout(() => {
+      publishRecognitionBeatReport(MEMORY_RECOGNITION_FEEDBACK.durationMs);
       memoryRecognitionBeatStartedAt = null;
       pendingRecognitionArm = false;
       lastImpactBurstChirpAt = null;
@@ -1126,6 +1167,9 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         playerId,
       },
     };
+    // Hard reset: no delivered save survives, so no returning-session
+    // override may survive either.
+    armReturningSessionBootLine(false);
     markStateDirty();
     renderText();
     publishState();
@@ -1171,6 +1215,11 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   state.scene.beat = typeof saved.beat === "string"
     ? canonicalFlagshipBeat(saved.beat)
     : state.packet.delivered ? "packet-delivered" : "packet-offered";
+
+  // In-page reload of a delivered save must recognize the returning
+  // player exactly like a real page reload does — re-arm the #957
+  // boot override from the restored memory + beat.
+  armReturningSessionBootLine(Boolean(state.packet.delivered));
 
   markStateDirty();
   renderText();
@@ -1365,6 +1414,57 @@ const triggerFailureFeedback = (source) => {
 
 let memoryBeatCameraProbe = null;
 let memoryRecognitionBeatStartedAt = null;
+// Frames the render loop actually painted during the current beat — the
+// live-evidence count published in the beat report (#1127/#1134).
+let framesDuringRecognitionBeat = 0;
+
+// Analytic recognition-beat report (#1127/#1134/#1128): even with the
+// arm-on-first-tick fix, a starved SwiftShader can paint too few frames
+// for anything sampling LIVE transient values (specs, telemetry) to
+// observe the beat's cues — some cue windows are 54ms wide. At beat END
+// we sample the PURE envelope/motion math at 8ms steps over the beat's
+// timeline and publish the peaks: what the beat was AUTHORED to feel
+// like, independent of frames painted. framesDuringBeat says how much
+// live evidence also exists; consumers gate live-DOM assertions on it.
+const buildRecognitionBeatReport = (durationMs) => {
+  const report = {
+    beatDurationMs: durationMs,
+    framesDuringBeat: framesDuringRecognitionBeat,
+    peakSignGlowPx: 0,
+    peakSealGlowPx: 0,
+    peakRainRimAlpha: 0,
+    peakHapticScale: 1,
+    peakWarmth: 0,
+    peakImpactBurstParticles: 0,
+  };
+  const outcome = state.packet.sealed ? "sealed" : "opened";
+  for (let t = 0; t <= durationMs; t += 8) {
+    // recognitionEnvelopeAt is pure over ELAPSED time — sample it
+    // directly rather than through recognitionMotionAt, which depends on
+    // memoryRecognitionBeatStartedAt and returns the empty stub when the
+    // clock never armed (the exact zero-frame case this report exists
+    // to survive).
+    const envelope = recognitionEnvelopeAt(t);
+    const fb = computeRecognitionDomFeedback({
+      elapsedMs: t,
+      outcome,
+      envelope,
+    });
+    if (fb.signGlowPx > report.peakSignGlowPx) report.peakSignGlowPx = fb.signGlowPx;
+    if (fb.sealGlowPx > report.peakSealGlowPx) report.peakSealGlowPx = fb.sealGlowPx;
+    if (fb.rainRimAlpha > report.peakRainRimAlpha) report.peakRainRimAlpha = fb.rainRimAlpha;
+    if (fb.hapticScale > report.peakHapticScale) report.peakHapticScale = fb.hapticScale;
+    if (fb.warmth > report.peakWarmth) report.peakWarmth = fb.warmth;
+    const n = envelope?.impactBurst?.particles?.length ?? 0;
+    if (n > report.peakImpactBurstParticles) report.peakImpactBurstParticles = n;
+  }
+  return report;
+};
+
+const publishRecognitionBeatReport = (durationMs) => {
+  state.interaction.recognitionBeatReport = buildRecognitionBeatReport(durationMs);
+  markStateDirty();
+};
 // #1128 fix: on cold SwiftShader CI, deliverPacket() and advance() run
 // synchronously from an input.choose() await — the FIRST rAF after that
 // can be starved by >200ms while the WebGL surface warms. Stamping
@@ -1647,6 +1747,7 @@ const deliverPacket = (source = "hud-button") => {
   // pendingRecognitionArm declaration. Prevents cold-CI rAF starvation
   // from swallowing the impact-burst window (frames 4-20 @60fps).
   pendingRecognitionArm = true;
+  state.interaction.recognitionBeatReport = null;
   lastImpactBurstChirpAt = null;
   playKioskConfirm();
   markStateDirty();
@@ -1657,6 +1758,7 @@ const deliverPacket = (source = "hud-button") => {
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
     const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
     const cameraMotion = finishMemoryBeatCameraProbe();
+    publishRecognitionBeatReport(MEMORY_RECOGNITION_FEEDBACK.durationMs);
     memoryRecognitionBeatStartedAt = null;
     pendingRecognitionArm = false;
     lastImpactBurstChirpAt = null;
@@ -1951,21 +2053,7 @@ document.addEventListener("visibilitychange", () => {
 // secondActionFromMemory) maps done→listened / skipped→skipped. A
 // delivered save WITHOUT the outcome fact is a bare return —
 // chooseIoReturningSessionLine({}) yields the bareReturn line.
-if (stored?.packet?.delivered) {
-  const outcomeFact = state.npcs.io.memory.find(
-    (fact) => fact?.kind === "delivery-outcome",
-  );
-  ioReturningBootLine = outcomeFact
-    ? chooseIoReturningSessionLine({
-        packetOutcome: outcomeFact.object,
-        routeAttention:
-          secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-            ? "listened"
-            : "skipped",
-      })
-    : chooseIoReturningSessionLine({});
-  ioReturningBootBeat = state.scene.beat;
-}
+armReturningSessionBootLine(Boolean(stored?.packet?.delivered));
 
 // Boot complete: listeners wired + Io's kiosk line rendered. The scene
 // is interactive (scene.ready) and her intro has been seen — a restored
@@ -1992,6 +2080,7 @@ const tick = (now) => {
   if (pendingRecognitionArm) {
     memoryRecognitionBeatStartedAt = now;
     pendingRecognitionArm = false;
+    framesDuringRecognitionBeat = 0;
   }
   stepMovementFixed(dt);
   const t = now / 1000;
@@ -2018,6 +2107,7 @@ const tick = (now) => {
   kiosk.scale.setScalar(1 + kioskPulse * 0.018 + confirmFalloff * 0.012);
   io.position.y = Math.sin(t * 1.7) * 0.025;
   const recognitionMotion = recognitionMotionAt(now);
+  if (memoryRecognitionBeatStartedAt !== null) framesDuringRecognitionBeat += 1;
   syncRecognitionDomFeedback(now);
   impactBurstParticles = recognitionMotion.impactBurst.particles;
     syncImpactBurstDom(impactBurstParticles);

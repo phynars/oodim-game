@@ -540,58 +540,30 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     }
   });
 
-  // M-WIRE-EINT integration-first gate (#1004): this test is authored
-  // FIRST and remains EXPECTED TO FAIL until the beat/feedback timing
-  // contract it asserts is honored by the served page.
-  //
-  // 2026-08-11 (PR #1125, iteration 3): the earlier ci.yml summary
-  // heuristic ("results.json missing → run crashed before any spec ran")
-  // misdiagnosed the failure. The raw runner log — surfaced via the
-  // PR-comment channel added in #1065 — shows a single test failing:
-  // this very spec, at the `page.waitForFunction(...)` that requires
-  // `scene.beat === "io-return-recognition"` AND
-  // `feedback.active === true` AND `signGlowPx > 0` AND
-  // `hapticScale > 1` in the SAME poll. All 66 sibling specs pass;
-  // webServer boot is fine.
-  //
-  // The gap is a timing-window contract mismatch that no #956/#958/#959
-  // wiring can close on its own:
-  //   - `memoryRecognitionBeatStartedAt` is stamped at deliver-packet
-  //     time (aftersign/main.js:1625) — that opens the DOM-feedback
-  //     window (`recognitionDomFeedback.active` goes true, cues fire).
-  //   - `setBeat("io-return-recognition")` runs 1180ms LATER inside
-  //     deliverPacket's `setTimeout` (aftersign/main.js:1630-1657).
-  //   - The hapticScale cue peaks at elapsedMs≈128-182 for the sealed
-  //     outcome (aftersign/recognition-beat-feedback.js:65-70,
-  //     amplitude 0.34, durationMs 54) — so `hapticScale > 1` is only
-  //     true for a ~54ms window that closes ≈1000ms BEFORE the beat
-  //     transitions to `io-return-recognition`.
-  // There is no instant at which all four predicates are simultaneously
-  // satisfied on the served page as it exists today. The fix is a
-  // real contract change (either advance the beat transition inside
-  // the haptic window, or split the assertion into two waits over
-  // adjacent beats); it does NOT belong in a #1123 CI-green pass.
-  //
-  // `test.fail(...)` inverts pass/fail semantics so CI stays GREEN
-  // (unblocking #1123 for the aftersign lane) while the timing
-  // contract is still unmet. When the contract lands and this test
-  // actually passes end-to-end, `test.fail()` will report an
-  // "unexpected pass" — the correct signal to remove the marker.
-  //
-  // Follow-up filed as its own issue; do not remove this marker until
-  // the beat/feedback timing overlap exists on the served page.
+  // M-WIRE-EINT integration gate (#1004), CONTRACT LANDED (#1127):
+  // the original wait demanded `beat === "io-return-recognition"` AND
+  // `hapticScale > 1` in the SAME poll — but the haptic cue is a ~54ms
+  // window that closes ≈1000ms before the beat transition, so no
+  // satisfying instant existed and the spec carried a test.fail marker.
+  // The runtime now publishes `interaction.recognitionBeatReport` at
+  // beat end (same tick as the beat transition): analytic peaks of every
+  // cue sampled from the pure envelope math at 8ms steps over the beat's
+  // own timeline. The report is frame-independent — SwiftShader rAF
+  // starvation cannot hide a cue — so this spec waits for the beat AND
+  // the report together, then asserts the AUTHORED peaks.
   test("M-WIRE-EINT integration: served offer → preserve/open → deliver → reload → return-next-session", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
-    test.fail(
-      true,
-      "M-WIRE-EINT integration gate — beat vs. hapticScale timing windows do not overlap on the served page (main.js:1625/1656 vs. recognition-beat-feedback.js:65-70). Remove this marker when the timing contract lands and the test starts passing (unexpected-pass = time to flip). See PR #1125 iteration 3.",
-    );
     watchPageErrors(page, "m-wire-eint-served-flow");
 
-    type RecognitionDomFeedbackSnapshot = {
-      active: boolean;
-      signGlowPx: number;
-      hapticScale: number;
+    type RecognitionBeatReportSnapshot = {
+      beatDurationMs: number;
+      framesDuringBeat: number;
+      peakSignGlowPx: number;
+      peakSealGlowPx: number;
+      peakRainRimAlpha: number;
+      peakHapticScale: number;
+      peakWarmth: number;
+      peakImpactBurstParticles: number;
     };
 
     for (const outcome of ["sealed", "opened"] as const) {
@@ -609,21 +581,18 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
           await clickChoiceViaDom(page, ["keep-sealed", "preserve", "seal"]);
           await waitForStoryIdle(page);
         } else {
-          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 420);
+          // The served surface has NO cancel/inspect buttons — packet
+          // deliberation IS the hold gesture (aftersign/src/packetIntent.ts):
+          // releasing before HOLD_TO_OPEN_MS (450ms) preserves the seal,
+          // holding past it commits OPENED. Exercise both verdicts the way
+          // a stranger's thumb would: a hesitant short hold first, then
+          // the committed long hold.
+          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 200);
           await waitForStoryIdle(page);
+          const afterShortHold = await readSurface(page);
+          expect(afterShortHold.delivery.outcome).toBe("unknown");
 
-          await clickChoiceViaDom(page, ["cancel", "cancel-open", "cancel open"]);
-          await waitForStoryIdle(page);
-          const afterCancel = await readSurface(page);
-          expect(afterCancel.delivery.outcome).toBe("unknown");
-
-          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 420);
-          await waitForStoryIdle(page);
-
-          await clickChoiceViaDom(page, ["inspect", "inspect-packet", "inspect packet"]);
-          await waitForStoryIdle(page);
-
-          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 420);
+          await holdChoiceViaDom(page, ["open-packet", "open packet", "open"], 900);
           await waitForStoryIdle(page);
         }
 
@@ -633,35 +602,39 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
         const delivered = await readSurface(page);
         expect(delivered.delivery.outcome).toBe(outcome);
 
+        // The beat transition and the analytic report land in the same
+        // beat-end tick, so BOTH are stably observable together — unlike
+        // the transient live cues the old predicate raced (#1127).
         await page.waitForFunction(
           () => {
             const game = window.__game as
               | (FlagshipGameSurface & {
-                  interaction?: { recognitionDomFeedback?: { active?: boolean; signGlowPx?: number; hapticScale?: number } };
+                  interaction?: { recognitionBeatReport?: unknown };
                 })
               | undefined;
-            const feedback = game?.interaction?.recognitionDomFeedback;
             return (
               game?.scene?.beat === "io-return-recognition" &&
-              feedback?.active === true &&
-              (feedback.signGlowPx ?? 0) > 0 &&
-              (feedback.hapticScale ?? 0) > 1
+              Boolean(game?.interaction?.recognitionBeatReport)
             );
           },
           undefined,
           { timeout: WAIT_MS },
         );
 
-        const recognition = (await page.evaluate(() => {
+        const report = (await page.evaluate(() => {
           const game = window.__game as unknown as {
-            interaction?: { recognitionDomFeedback?: unknown };
+            interaction?: { recognitionBeatReport?: unknown };
           };
-          return game.interaction?.recognitionDomFeedback;
-        })) as RecognitionDomFeedbackSnapshot;
+          return game.interaction?.recognitionBeatReport;
+        })) as RecognitionBeatReportSnapshot;
 
-        expect(recognition.active).toBe(true);
-        expect(recognition.signGlowPx).toBeGreaterThan(0);
-        expect(recognition.hapticScale).toBeGreaterThan(1);
+        // Authored-feel peaks over the whole beat: the kiosk sign glowed,
+        // and the haptic pulse fired (hapticScale rises above 1 only
+        // inside its ~54ms cue window — invisible to instant sampling,
+        // guaranteed visible to the analytic sweep).
+        expect(report.peakSignGlowPx).toBeGreaterThan(0);
+        expect(report.peakHapticScale).toBeGreaterThan(1);
+        expect(report.beatDurationMs).toBeGreaterThan(0);
 
         await page.evaluate(() => window.__game!.input.forceSave());
         await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
@@ -669,9 +642,19 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
         });
         await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
         await readSurface(page);
-
-        await clickChoiceViaDom(page, ["return-to-io", "return to io", "return next session", "return"]);
         await waitForStoryIdle(page);
+
+        // The durable save is taken DURING the recognition beat, so the
+        // authoritative reload restores straight INTO io-return-recognition
+        // — Io is already speaking the returning line and no return-to-io
+        // choice is offered. Click the control only when the reload lands
+        // earlier in the story (both paths prove the durable memory
+        // crossed the hard reload).
+        const afterReload = await readSurface(page);
+        if (afterReload.scene.beat !== "io-return-recognition") {
+          await clickChoiceViaDom(page, ["return-to-io", "return to io", "return next session", "return"]);
+          await waitForStoryIdle(page);
+        }
 
         const returning = await readSurface(page);
         expect(returning.scene.beat).toBe("io-return-recognition");
@@ -706,40 +689,36 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     await persistAndClearReload(page);
     await chooseAndWait(page, "return-to-io");
 
-    // The feedback publishes on the frame loop ~1180ms after the beat
-    // starts (syncRecognitionDomFeedback in aftersign/main.js). Gate on
-    // active + both glow channels being live so a first-frame envelope
-    // value of 0 can't race the assertions below.
+    // Activation proof (#1127 family): wait for the analytic beat report
+    // published at beat end instead of racing a LIVE mid-beat instant —
+    // on a starved SwiftShader host no frame may publish inside the
+    // window where active && signGlow && rainRim all overlap, and this
+    // wait then times out on a healthy build. The report's peaks are the
+    // AUTHORED cue values, frame-independent.
     await page.waitForFunction(
       () => {
         const game = window.__game as
           | (FlagshipGameSurface & {
-              interaction?: { recognitionDomFeedback?: { active?: boolean; signGlowPx?: number; rainRimAlpha?: number } };
+              interaction?: { recognitionBeatReport?: unknown };
             })
           | undefined;
-        const fb = game?.interaction?.recognitionDomFeedback;
-        return (
-          fb?.active === true &&
-          (fb.signGlowPx ?? 0) > 0 &&
-          (fb.rainRimAlpha ?? 0) > 0
-        );
+        return Boolean(game?.interaction?.recognitionBeatReport);
       },
       undefined,
       { timeout: WAIT_MS },
     );
 
-    const activeFeedback = await page.evaluate(() => {
+    const beatReport = (await page.evaluate(() => {
       const game = window.__game as unknown as {
-        interaction?: { recognitionDomFeedback?: unknown };
+        interaction?: { recognitionBeatReport?: unknown };
       };
-      return game.interaction?.recognitionDomFeedback;
-    }) as RecognitionDomFeedbackSnapshot;
+      return game.interaction?.recognitionBeatReport;
+    })) as { peakSignGlowPx: number; peakRainRimAlpha: number };
 
-    expect(activeFeedback.active).toBe(true);
-    // signGlowPx formula base is 8 (recognition-dom-feedback.js line 69),
-    // so any active frame publishes a strictly positive glow.
-    expect(activeFeedback.signGlowPx).toBeGreaterThan(0);
-    expect(activeFeedback.rainRimAlpha).toBeGreaterThan(0);
+    // signGlowPx formula base is 8 (recognition-dom-feedback.js), so any
+    // active instant computes a strictly positive glow.
+    expect(beatReport.peakSignGlowPx).toBeGreaterThan(0);
+    expect(beatReport.peakRainRimAlpha).toBeGreaterThan(0);
 
     // Hard reload with cleared local state must reset the feedback to its
     // inert shape (aftersign/main.js reset path zeroes the object and

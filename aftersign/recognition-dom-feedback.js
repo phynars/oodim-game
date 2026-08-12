@@ -37,6 +37,44 @@ export const clearRecognitionDomFeedback = ({
   });
 };
 
+// Pure computation of the DOM-feedback snapshot at an instant — no DOM.
+// Extracted (#1127/#1134) so the runtime's analytic beat report can sample
+// the beat's authored feel at any timestamp without depending on how many
+// frames the host actually painted (SwiftShader cold starts paint ~none).
+export const computeRecognitionDomFeedback = ({
+  elapsedMs = 0,
+  outcome = "sealed",
+  envelope,
+} = {}) => {
+  if (!envelope) {
+    return {
+      active: false,
+      signGlowPx: 0,
+      sealGlowPx: 0,
+      rainRimAlpha: 0,
+      hapticScale: 1,
+      warmth: 0,
+    };
+  }
+  const normalized = clamp01(envelope.normalized ?? 0);
+  const active = normalized > 0 && normalized < 1;
+  const lantern = cueIntensity(envelope.lantern, elapsedMs);
+  const packetSeal = cueIntensity(envelope.packetSeal, elapsedMs);
+  const kioskSign = cueIntensity(envelope.kioskSign, elapsedMs);
+  const rainRim = cueIntensity(envelope.rainRim, elapsedMs);
+  const haptic = cueIntensity(envelope.hapticScale, elapsedMs);
+  const openedBias = outcome === "opened" ? 1 : 0;
+
+  return {
+    active,
+    signGlowPx: Number((8 + kioskSign * 18 + lantern * 10).toFixed(2)),
+    sealGlowPx: Number((packetSeal * (openedBias ? 11 : 15)).toFixed(2)),
+    rainRimAlpha: Number((rainRim * (openedBias ? 0.28 : 0.2)).toFixed(3)),
+    hapticScale: Number((1 + haptic * (envelope.hapticScale?.amplitude ?? 0)).toFixed(4)),
+    warmth: Number((lantern * (openedBias ? 0.68 : 0.48) + packetSeal * 0.32).toFixed(3)),
+  };
+};
+
 export const applyRecognitionDomFeedback = ({
   root = document.documentElement,
   lineNode = null,
@@ -58,19 +96,8 @@ export const applyRecognitionDomFeedback = ({
   }
 
   const normalized = clamp01(envelope.normalized ?? 0);
-  const active = normalized > 0 && normalized < 1;
-  const lantern = cueIntensity(envelope.lantern, elapsedMs);
-  const packetSeal = cueIntensity(envelope.packetSeal, elapsedMs);
-  const kioskSign = cueIntensity(envelope.kioskSign, elapsedMs);
-  const rainRim = cueIntensity(envelope.rainRim, elapsedMs);
-  const haptic = cueIntensity(envelope.hapticScale, elapsedMs);
-  const openedBias = outcome === "opened" ? 1 : 0;
-
-  const signGlowPx = Number((8 + kioskSign * 18 + lantern * 10).toFixed(2));
-  const sealGlowPx = Number((packetSeal * (openedBias ? 11 : 15)).toFixed(2));
-  const rainRimAlpha = Number((rainRim * (openedBias ? 0.28 : 0.2)).toFixed(3));
-  const hapticScale = Number((1 + haptic * (envelope.hapticScale?.amplitude ?? 0)).toFixed(4));
-  const warmth = Number((lantern * (openedBias ? 0.68 : 0.48) + packetSeal * 0.32).toFixed(3));
+  const { active, signGlowPx, sealGlowPx, rainRimAlpha, hapticScale, warmth } =
+    computeRecognitionDomFeedback({ elapsedMs, outcome, envelope });
 
   root.style.setProperty("--recognition-sign-glow", `${signGlowPx}px`);
   root.style.setProperty("--recognition-seal-glow", `${sealGlowPx}px`);
