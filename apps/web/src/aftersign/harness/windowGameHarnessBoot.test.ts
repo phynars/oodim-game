@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { AFTERSIGN_IO_LINES, buildIoMemorySentence } from "../ioVoiceContract";
 import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
 import { AFTERSIGN_MEMORY_RECALL_GLINT_FEEL } from "../memoryRecallGlintFeel";
 import {
@@ -358,5 +359,81 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(reduced!.captionLiftPx).toBeLessThan(full!.captionLiftPx);
     expect(reduced!.cameraYawDeg).toBeLessThan(full!.cameraYawDeg);
     expect(reduced!.hapticMs).toBe(0);
+  });
+
+  // Consumer wiring for the Io VOICE contract (#1131 review): the
+  // `ioVoiceContract.ts` selectors had only test consumers on the
+  // prior submission, so the reviewer's "no runtime surface" grep
+  // was correct. `windowGameSurface.ts` now composes them into a
+  // live `ioDialogue.memoryThread` field on the shipped snapshot,
+  // and the harness exposes `setIoReturnReason` so a caller can
+  // exercise the full three-line thread through `getStoryState()`.
+  //
+  // This assertion runs in the aftersign blocking lane, so the
+  // wiring is guarded end-to-end — if a future refactor unwires
+  // `ioPacketReturnLine` / `buildIoReturnMemoryThread` /
+  // `ioReturnReasonLine` from the surface, THIS test goes red.
+  it("projects the Io voice contract memory thread through the harness surface", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    // Sealed-packet return, no return-reason committed yet: the
+    // single-line packetReturn memory is present (contract's
+    // `ioPacketReturnLine` picked the sealed line), and the full
+    // three-line `thread` is intentionally omitted because the
+    // return-reason posture hasn't been recorded.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        11,
+      ),
+    );
+    game?.meetNpc("io");
+
+    const sealedSnapshot = game?.getStoryState();
+    const sealedThread = sealedSnapshot?.story.ioDialogue.memoryThread;
+    expect(sealedThread?.packetReturn).toBe(
+      buildIoMemorySentence(AFTERSIGN_IO_LINES.sealedReturn),
+    );
+    expect(sealedThread?.thread).toBeUndefined();
+
+    // Setting a return-reason activates the full three-line thread
+    // via `buildIoReturnMemoryThread`. Default harness route is
+    // `listenedToRoute: false` (see HARNESS_PLAYER), so route
+    // memory reads "skipped". Reason "blunt" hits `ioReturnReasonLine`.
+    game?.setIoReturnReason("blunt");
+    const bluntSnapshot = game?.getStoryState();
+    const bluntThread = bluntSnapshot?.story.ioDialogue.memoryThread;
+    expect(bluntThread?.packetReturn).toBe(
+      buildIoMemorySentence(AFTERSIGN_IO_LINES.sealedReturn),
+    );
+    expect(bluntThread?.thread).toEqual([
+      buildIoMemorySentence(AFTERSIGN_IO_LINES.routeSkipped),
+      buildIoMemorySentence(AFTERSIGN_IO_LINES.sealedReturn),
+      buildIoMemorySentence(AFTERSIGN_IO_LINES.bluntReturn),
+    ]);
+
+    // Snapshot must still be JSON-serialisable — memory sentences
+    // are plain strings, so a `window.__game` consumer can render
+    // them without importing the contract module.
+    expect(JSON.parse(JSON.stringify(bluntSnapshot))).toEqual(bluntSnapshot);
+
+    // Clearing the reason drops the thread back to the single-line
+    // shape; the harness state model is honest about what it knows.
+    game?.setIoReturnReason(null);
+    const clearedThread = game?.getStoryState().story.ioDialogue.memoryThread;
+    expect(clearedThread?.thread).toBeUndefined();
+    expect(clearedThread?.packetReturn).toBe(
+      buildIoMemorySentence(AFTERSIGN_IO_LINES.sealedReturn),
+    );
+
+    // Fresh state (no committed packet) has no memoryThread at all —
+    // the surface only emits it when there's an actual memory to name.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    expect(game?.getStoryState().story.ioDialogue.memoryThread).toBeUndefined();
   });
 });

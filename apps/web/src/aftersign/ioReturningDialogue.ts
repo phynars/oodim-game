@@ -1,19 +1,23 @@
 // Io's returning-scene dialogue selector.
 //
-// This module owns line COPY only. The shape of the memory it reads —
-// `AftersignPacketOutcome`, `AftersignRouteAttention` — belongs to the
-// canonical contracts and is re-imported here. Forking either union in
-// this file has been rejected in review (see PR #758, PR #789):
-// the type would drift from `verticalSliceState.ts` / `ioVoiceContract.ts`
-// on the next save-format or scene change, and Io would start remembering
-// facts the rest of the game never records.
+// This module owns SELECTION LOGIC only — every line of COPY it exposes
+// is delegated to `ioVoiceContract.ts`. Forking the copy here has been
+// rejected twice in review (see PR #758, PR #789, PR #1131): a second
+// source of truth drifts on the next scene change and Io ends up
+// remembering different words than the rest of the game records.
 //
-// Single sources of truth:
+// Single sources of truth this module reads:
 //   • AftersignPacketOutcome    ← verticalSliceState.ts
 //   • AftersignRouteAttention   ← ioVoiceContract.ts
+//   • Line COPY (sealed/opened/heard/skipped) ← ioVoiceContract.ts
 
 import type { AftersignPacketOutcome } from "./verticalSliceState";
-import type { AftersignRouteAttention } from "./ioVoiceContract";
+import {
+  AFTERSIGN_IO_LINES,
+  ioPacketReturnLine,
+  ioRouteAttentionLine,
+  type AftersignRouteAttention,
+} from "./ioVoiceContract";
 
 export type AftersignIoMemory = {
   packetOutcome?: AftersignPacketOutcome;
@@ -27,27 +31,35 @@ export type AftersignIoReturningLine = {
   references: string[];
 };
 
+// Line COPY is imported from the contract; only the harness-level
+// `id` + `references` metadata is local. If a copy edit lands in
+// `AFTERSIGN_IO_LINES`, this module inherits it automatically — no
+// two-file rename ever again.
 export const AFTERSIGN_IO_RETURNING_LINES = {
   packetSealed: {
     id: "io-return-packet-sealed",
-    text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+    text: AFTERSIGN_IO_LINES.sealedReturn.text,
     references: ["packetOutcome:sealed", "returnedAfterClose:true"],
   },
   packetOpened: {
     id: "io-return-packet-opened",
-    text: "You came back. The seal did not. I can use one of those facts.",
+    text: AFTERSIGN_IO_LINES.openedReturn.text,
     references: ["packetOutcome:opened", "returnedAfterClose:true"],
   },
   routeSkipped: {
     id: "io-return-route-skipped",
-    text: "You found the box anyway. Next time, let me finish saving your life.",
+    text: AFTERSIGN_IO_LINES.routeSkipped.text,
     references: ["routeAttention:skipped"],
   },
   routeHeard: {
     id: "io-return-route-heard",
-    text: "You listened before you ran. Rare habit. Keep it.",
+    text: AFTERSIGN_IO_LINES.routeHeard.text,
     references: ["routeAttention:heard"],
   },
+  // Fallback stays local — the contract intentionally has no
+  // "nothing-to-remember" line because a fresh runtime state never
+  // reaches Io's return beat. This harness lets tests exercise the
+  // empty-memory arm without teaching the contract about it.
   fallback: {
     id: "io-return-fallback",
     text: "Back again. Good. Vey keeps receipts better than people do.",
@@ -60,61 +72,32 @@ export const AFTERSIGN_IO_RETURNING_LINES = {
  *
  * Contract: every arm of every union in `AftersignIoMemory` must reach a
  * concrete line — either a specific memory line, or the fallback by
- * conscious choice, never by an unhandled case slipping through. If a new
- * value is ever added to `AftersignPacketOutcome` or `AftersignRouteAttention`
- * upstream, TypeScript's exhaustive-switch check below will fail the build
- * until this function is updated to say what Io remembers about it.
+ * conscious choice, never by an unhandled case slipping through. Copy
+ * selection now delegates to `ioVoiceContract.ts` so this module cannot
+ * drift from the surface's `windowGameSurface.ts` memory thread; both
+ * read the same authored lines from `AFTERSIGN_IO_LINES`.
  */
 export function chooseAftersignIoReturningLine(
   memory: AftersignIoMemory,
 ): AftersignIoReturningLine {
-  const packetLine = linePacketOutcome(memory.packetOutcome);
-  if (packetLine) {
-    return packetLine;
+  if (memory.packetOutcome !== undefined) {
+    // Contract selector picks the AftersignIoLine; we wrap it into the
+    // harness's `{ id, text, references }` shape by looking up the
+    // matching AFTERSIGN_IO_RETURNING_LINES entry. This keeps the
+    // harness's `references` audit trail intact while eliminating the
+    // copy-drift risk on `text`.
+    const contractLine = ioPacketReturnLine(memory.packetOutcome);
+    return contractLine === AFTERSIGN_IO_LINES.openedReturn
+      ? AFTERSIGN_IO_RETURNING_LINES.packetOpened
+      : AFTERSIGN_IO_RETURNING_LINES.packetSealed;
   }
 
-  const routeLine = lineRouteAttention(memory.routeAttention);
-  if (routeLine) {
-    return routeLine;
+  if (memory.routeAttention !== undefined) {
+    const contractLine = ioRouteAttentionLine(memory.routeAttention);
+    return contractLine === AFTERSIGN_IO_LINES.routeHeard
+      ? AFTERSIGN_IO_RETURNING_LINES.routeHeard
+      : AFTERSIGN_IO_RETURNING_LINES.routeSkipped;
   }
 
   return AFTERSIGN_IO_RETURNING_LINES.fallback;
-}
-
-function linePacketOutcome(
-  outcome: AftersignPacketOutcome | undefined,
-): AftersignIoReturningLine | null {
-  if (outcome === undefined) {
-    return null;
-  }
-  switch (outcome) {
-    case "sealed":
-      return AFTERSIGN_IO_RETURNING_LINES.packetSealed;
-    case "opened":
-      return AFTERSIGN_IO_RETURNING_LINES.packetOpened;
-    default:
-      return assertNever(outcome);
-  }
-}
-
-function lineRouteAttention(
-  attention: AftersignRouteAttention | undefined,
-): AftersignIoReturningLine | null {
-  if (attention === undefined) {
-    return null;
-  }
-  switch (attention) {
-    case "heard":
-      return AFTERSIGN_IO_RETURNING_LINES.routeHeard;
-    case "skipped":
-      return AFTERSIGN_IO_RETURNING_LINES.routeSkipped;
-    default:
-      return assertNever(attention);
-  }
-}
-
-function assertNever(value: never): never {
-  throw new Error(
-    `chooseAftersignIoReturningLine: unhandled union member ${JSON.stringify(value)}`,
-  );
 }

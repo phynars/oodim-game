@@ -2,6 +2,7 @@ import {
   getMemoryRecallFeel,
   type MemoryRecallFeelFrame,
 } from "../memoryRecallFeel";
+import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
   createAftersignVerticalSliceState,
   getAftersignStoryState,
@@ -48,6 +49,14 @@ export type AftersignWindowGameHarness = {
   version: 1;
   restoreDurableSave: (payload: string) => void;
   meetNpc: (id: "io" | "orra") => void;
+  /**
+   * Record the posture the player struck when Io asked why they came
+   * back — third axis on the return beat, per `ioVoiceContract.ts`.
+   * Populating this makes the next `getStoryState()` snapshot include
+   * the full three-line `ioDialogue.memoryThread.thread` (route +
+   * packet + return-reason). Pass `null` to clear.
+   */
+  setIoReturnReason: (reason: AftersignReturnReason | null) => void;
   getStoryState: () => AftersignStoryStateSnapshot;
   /**
    * The most recent recall trigger captured by `meetNpc`, or `null`
@@ -107,6 +116,7 @@ const nowMs = (): number => {
 export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let state: AftersignVerticalSliceState = createAftersignVerticalSliceState();
   let recallTrigger: AftersignRecallTrigger | null = null;
+  let ioReturnReason: AftersignReturnReason | null = null;
 
   const applyMeet = (
     id: "io" | "orra",
@@ -140,12 +150,21 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       // envelope fires until the player actually re-encounters the
       // NPC via `meetNpc`.
       recallTrigger = null;
+      // Return-reason is a per-encounter posture; a fresh restore
+      // hasn't collected one yet.
+      ioReturnReason = null;
     },
     meetNpc(id) {
       state = applyMeet(id, state);
     },
+    setIoReturnReason(reason) {
+      ioReturnReason = reason;
+    },
     getStoryState() {
-      return getAftersignStoryState(state, HARNESS_PLAYER);
+      return getAftersignStoryState(state, {
+        ...HARNESS_PLAYER,
+        ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
+      });
     },
     getRecallTrigger() {
       return recallTrigger;
