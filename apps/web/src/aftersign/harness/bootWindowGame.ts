@@ -5,6 +5,7 @@ import {
 import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
   createAftersignVerticalSliceState,
+  encodeAftersignDurableSave,
   getAftersignStoryState,
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,
@@ -58,6 +59,24 @@ export type AftersignWindowGameHarness = {
    */
   setIoReturnReason: (reason: AftersignReturnReason | null) => void;
   getStoryState: () => AftersignStoryStateSnapshot;
+  /**
+   * Served-page-compatible alias for the story/state snapshot. E2E
+   * callers should not need to know whether the surface is backed by
+   * the in-memory harness or the runtime page module.
+   */
+  getSnapshot: () => AftersignStoryStateSnapshot;
+  /**
+   * Serialize the current vertical-slice state into the durable-save
+   * envelope used by the runtime page. The harness owns a deterministic
+   * turn counter so save→load round-trips can be asserted without a
+   * browser storage dependency.
+   */
+  save: () => string;
+  /**
+   * Restore a durable-save envelope through the same path as
+   * `restoreDurableSave`, using the shorter served-surface verb.
+   */
+  load: (payload: string) => void;
   /**
    * The most recent recall trigger captured by `meetNpc`, or `null`
    * when no NPC has recognized the player yet this session. A fresh
@@ -117,6 +136,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let state: AftersignVerticalSliceState = createAftersignVerticalSliceState();
   let recallTrigger: AftersignRecallTrigger | null = null;
   let ioReturnReason: AftersignReturnReason | null = null;
+  let savedAtTurn = 0;
 
   const applyMeet = (
     id: "io" | "orra",
@@ -142,17 +162,27 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     return next;
   };
 
+  const snapshot = (): AftersignStoryStateSnapshot =>
+    getAftersignStoryState(state, {
+      ...HARNESS_PLAYER,
+      ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
+    });
+
+  const restorePayload = (payload: string): void => {
+    state = restoreAftersignDurableSave(payload);
+    // A durable-save restore is a load, not a meet — no recall
+    // envelope fires until the player actually re-encounters the
+    // NPC via `meetNpc`.
+    recallTrigger = null;
+    // Return-reason is a per-encounter posture; a fresh restore
+    // hasn't collected one yet.
+    ioReturnReason = null;
+  };
+
   const api: AftersignWindowGameHarness = {
     version: 1,
     restoreDurableSave(payload) {
-      state = restoreAftersignDurableSave(payload);
-      // A durable-save restore is a load, not a meet — no recall
-      // envelope fires until the player actually re-encounters the
-      // NPC via `meetNpc`.
-      recallTrigger = null;
-      // Return-reason is a per-encounter posture; a fresh restore
-      // hasn't collected one yet.
-      ioReturnReason = null;
+      restorePayload(payload);
     },
     meetNpc(id) {
       state = applyMeet(id, state);
@@ -161,10 +191,17 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       ioReturnReason = reason;
     },
     getStoryState() {
-      return getAftersignStoryState(state, {
-        ...HARNESS_PLAYER,
-        ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
-      });
+      return snapshot();
+    },
+    getSnapshot() {
+      return snapshot();
+    },
+    save() {
+      savedAtTurn += 1;
+      return encodeAftersignDurableSave(state, savedAtTurn);
+    },
+    load(payload) {
+      restorePayload(payload);
     },
     getRecallTrigger() {
       return recallTrigger;

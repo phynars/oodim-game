@@ -107,6 +107,53 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(JSON.parse(JSON.stringify(game?.getStoryState()))).toEqual(game?.getStoryState());
   });
 
+  it("round-trips the served-page snapshot verbs through durable save/load", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.getSnapshot).toEqual(expect.any(Function));
+    expect(game?.save).toEqual(expect.any(Function));
+    expect(game?.load).toEqual(expect.any(Function));
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.meetNpc("io");
+    game?.meetNpc("io");
+
+    const savedPayload = game!.save();
+    expect(typeof savedPayload).toBe("string");
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    expect(game?.getSnapshot().story.beat).not.toBe("io-remembers-sealed-packet");
+
+    game?.load(savedPayload);
+    game?.meetNpc("io");
+
+    expect(game?.getSnapshot()).toMatchObject({
+      story: {
+        beat: "io-remembers-sealed-packet",
+      },
+      state: {
+        save: {
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn: 1,
+        },
+        npcs: [
+          {
+            id: "io",
+            disposition: "recognizes-player",
+            memory: {
+              recognizesPlayer: true,
+            },
+          },
+        ],
+      },
+    });
+    expect(JSON.parse(JSON.stringify(game?.getSnapshot()))).toEqual(game?.getSnapshot());
+  });
+
   // Consumer wiring for the memory-recall feel envelope (PR #1020
   // follow-up). `getMemoryRecallFeel` used to live only inside its
   // sibling contract test — an unconsumed pure module. It is now wired
