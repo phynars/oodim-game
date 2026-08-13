@@ -203,6 +203,7 @@ jobs:
         run: npm run test:aftersign:pure
       - run: npx playwright install --with-deps chromium
       - name: Test aftersign WebGL e2e (Playwright)
+        id: e2e
         shell: bash
         # Tee the runner output so the failure-summary step can quote the
         # RAW log tail when playwright-report/results.json is missing — a
@@ -212,7 +213,7 @@ jobs:
           set -o pipefail
           npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
       - name: Print aftersign failure summary
-        if: failure()
+        if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           # Build the failure summary ONCE into a tempfile, then (a) tee it
           # to $GITHUB_STEP_SUMMARY for humans on the run page and (b) export
@@ -311,7 +312,7 @@ jobs:
             echo "${delim}"
           } >> "$GITHUB_ENV"
       - name: Comment aftersign failure summary on PR
-        if: failure() && github.event_name == 'pull_request'
+        if: failure() && steps.e2e.conclusion == 'failure' && github.event_name == 'pull_request'
         uses: actions/github-script@v9
         with:
           script: |
