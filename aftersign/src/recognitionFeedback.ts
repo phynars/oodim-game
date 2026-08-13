@@ -61,7 +61,7 @@ export type IoRecognitionBeatLine = {
 
 export const RECOGNITION_FEEDBACK_TOTAL_MS = 1220;
 export const RECOGNITION_FEEDBACK_REDUCED_MOTION_MS = 160;
-export const RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS = 0.32;
+export const RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS = 0.18;
 export const RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES = 4;
 export const RECOGNITION_FEEDBACK_STING_START_MS = 120;
 export const RECOGNITION_FEEDBACK_STING_DURATION_MS = 180;
@@ -106,7 +106,7 @@ export const RECOGNITION_FEEDBACK_PHASES: readonly RecognitionFeedbackPhase[] = 
     durationMs: 520,
     cameraPushDegrees: RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES,
     screenShakePx: 0.6,
-    vignetteOpacity: 0.32,
+    vignetteOpacity: 0.2,
     audioCue: 'memory-chime',
   },
   {

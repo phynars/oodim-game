@@ -77,13 +77,17 @@ export function checkRememberBloomThenSettle(): void {
     bloom.cameraPushDegrees > 2.5,
     `t=520 cameraPushDegrees: expected > 2.5, got ${bloom.cameraPushDegrees}`,
   );
+  // Post-#1146 feel tuning: peak cameraDeltaMeters is 0.18 (was 0.32);
+  // at t=520 the remember bloom is ~87% eased-in, so ~0.158m.
   assert(
-    bloom.cameraDeltaMeters > 0.2,
-    `t=520 cameraDeltaMeters: expected > 0.2, got ${bloom.cameraDeltaMeters}`,
+    bloom.cameraDeltaMeters > 0.14,
+    `t=520 cameraDeltaMeters: expected > 0.14, got ${bloom.cameraDeltaMeters}`,
   );
+  // vignetteOpacity is now a flat 0.2 across catch+remember (was 0.32
+  // peak in remember); guard against regression below the new floor.
   assert(
-    bloom.vignetteOpacity > 0.24,
-    `t=520 vignetteOpacity: expected > 0.24, got ${bloom.vignetteOpacity}`,
+    bloom.vignetteOpacity >= 0.19,
+    `t=520 vignetteOpacity: expected >= 0.19, got ${bloom.vignetteOpacity}`,
   );
   assert(
     bloom.subtitleScale > 1.04,
@@ -157,7 +161,9 @@ export function checkRecognitionProfileContract(): void {
   assertClose(peak.cameraYawDegrees, RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES, 0.01, 't=700 cameraYawDegrees peak');
   assertClose(peak.cameraPushDegrees, 4, 0.01, 't=700 cameraPushDegrees peak');
   assertClose(peak.cameraDeltaMeters, RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS, 0.01, 't=700 cameraDeltaMeters peak');
-  assertClose(peak.vignetteOpacity, 0.32, 0.01, 't=700 vignette peak');
+  // Post-#1146 feel tuning: remember-phase vignette flattened to 0.2
+  // (matches catch phase — no bloom bump). Peak = phase constant.
+  assertClose(peak.vignetteOpacity, 0.2, 0.01, 't=700 vignette peak');
 }
 
 export function checkRecognitionSpecBands(): void {
@@ -167,9 +173,12 @@ export function checkRecognitionSpecBands(): void {
   );
 
   const peak = recognitionFeedbackAt(700, { outcome: 'sealed' });
+  // Post-#1146 spec band: peak cameraDeltaMeters tightened to 0.18
+  // (was 0.32). Band centered on the constant with ±0.06 slack so
+  // future ±one-notch feel nudges don't false-fail the harness.
   assert(
-    peak.cameraDeltaMeters >= 0.24 && peak.cameraDeltaMeters <= 0.36,
-    `peak cameraDeltaMeters should be 0.24–0.36m, got ${peak.cameraDeltaMeters}`,
+    peak.cameraDeltaMeters >= 0.12 && peak.cameraDeltaMeters <= 0.24,
+    `peak cameraDeltaMeters should be 0.12–0.24m, got ${peak.cameraDeltaMeters}`,
   );
   assert(
     peak.cameraYawDegrees >= 3 && peak.cameraYawDegrees <= 5,
