@@ -44,6 +44,7 @@ jobs:
               - 'agar/**'
             aftersign:
               - 'aftersign/**'
+              - 'apps/web/src/aftersign/**'
               - 'e2e-shared/aftersign/**'
             landing:
               - 'landing/**'
