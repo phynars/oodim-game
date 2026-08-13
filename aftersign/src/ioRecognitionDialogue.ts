@@ -7,12 +7,39 @@ export type IoRecognitionMemoryFact = {
   object?: string;
 };
 
+// Renamed from `IoRecognitionFeelCue` (Mara, PR #1139 review): the name
+// collides with `apps/web/src/aftersign/ioRecognitionFeelLayer.ts`, which
+// exports a differently-shaped `IoRecognitionFeelCue = { packetOutcome,
+// startedAtMs }`. Two contracts under one name is a trap; the snippet-side
+// numbers are per-tier authored motion values, so the type name calls that
+// out (`SnippetFeelCue`) rather than fighting for the generic name.
+export type IoRecognitionSnippetFeelCue = {
+  durationMs: number;
+  holdFrames: number;
+  cameraDollyCm: number;
+  cameraYawDegrees: number;
+  vignetteAlpha: number;
+  bloomAlpha: number;
+  lineRevealDelayMs: number;
+  lineRevealDurationMs: number;
+  easing: "cubic-bezier(.2,.8,.2,1)";
+};
+
 export type IoRecognitionDialogueSnippet = {
   id: string;
   playerId: string;
   npcId: "io";
   tier: IoRecognitionDialogueTier;
   line: string;
+  // Measured recognition-beat motion values that travel with the chosen
+  // line. main.js reads `selectedSnippet.feelCue` at `io-return-recognition`
+  // and (a) mirrors it into `state.interaction.recognitionSnippetFeelCue`
+  // for the harness, (b) writes `--io-recognition-*` CSS custom properties
+  // on `documentElement` so the DOM surface drives its camera-dolly /
+  // vignette / bloom / line-reveal envelopes from THESE authored numbers
+  // — one source of truth per tier, no drift between "which line spoke"
+  // and "how the beat felt".
+  feelCue: IoRecognitionSnippetFeelCue;
   // Memory ids the SPOKEN line legitimately cites for the harness's
   // `assertNpcReferencesPriorMemory` check. The route-attention id is
   // deliberately excluded per docs/flagship/story-state-contract.md
@@ -57,6 +84,42 @@ const DEEP_RECALL_LINES = {
   openedSkipped:
     "I remember you twice: broken seal, half a route, and still you found the handoff.",
 } as const;
+
+const FIRST_MEETING_FEEL_CUE: IoRecognitionSnippetFeelCue = {
+  durationMs: 480,
+  holdFrames: 4,
+  cameraDollyCm: 6,
+  cameraYawDegrees: 1.2,
+  vignetteAlpha: 0.06,
+  bloomAlpha: 0.04,
+  lineRevealDelayMs: 80,
+  lineRevealDurationMs: 260,
+  easing: "cubic-bezier(.2,.8,.2,1)",
+};
+
+const RETURNING_FEEL_CUE: IoRecognitionSnippetFeelCue = {
+  durationMs: 820,
+  holdFrames: 8,
+  cameraDollyCm: 14,
+  cameraYawDegrees: 3.2,
+  vignetteAlpha: 0.14,
+  bloomAlpha: 0.12,
+  lineRevealDelayMs: 140,
+  lineRevealDurationMs: 420,
+  easing: "cubic-bezier(.2,.8,.2,1)",
+};
+
+const DEEP_RECALL_FEEL_CUE: IoRecognitionSnippetFeelCue = {
+  durationMs: 1040,
+  holdFrames: 12,
+  cameraDollyCm: 18,
+  cameraYawDegrees: 4.5,
+  vignetteAlpha: 0.18,
+  bloomAlpha: 0.16,
+  lineRevealDelayMs: 180,
+  lineRevealDurationMs: 540,
+  easing: "cubic-bezier(.2,.8,.2,1)",
+};
 
 function factId(fact: IoRecognitionMemoryFact | undefined): string | null {
   return typeof fact?.id === "string" && fact.id.length > 0 ? fact.id : null;
@@ -123,6 +186,7 @@ export function buildIoRecognitionDialogueSnippets(
       npcId: "io",
       tier: "first-meeting",
       line: FIRST_MEETING_LINE,
+      feelCue: FIRST_MEETING_FEEL_CUE,
       memoryRefs: [],
       sourceMemoryIds: [],
     },
@@ -132,6 +196,7 @@ export function buildIoRecognitionDialogueSnippets(
       npcId: "io",
       tier: "returning",
       line: RETURNING_LINES[outcome],
+      feelCue: RETURNING_FEEL_CUE,
       memoryRefs: deliveryOnlyRefs,
       sourceMemoryIds: deliveryOnlyRefs,
     },
@@ -141,6 +206,7 @@ export function buildIoRecognitionDialogueSnippets(
       npcId: "io",
       tier: "deep-recall",
       line: DEEP_RECALL_LINES[deepKey],
+      feelCue: DEEP_RECALL_FEEL_CUE,
       memoryRefs: deliveryOnlyRefs,
       sourceMemoryIds: deepSourceIds,
     },

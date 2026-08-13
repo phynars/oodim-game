@@ -248,6 +248,21 @@ const state = {
     recognitionFeedback: {
       ...MEMORY_RECOGNITION_FEEDBACK,
     },
+    // Snippet-authored feel cue that came with the SELECTED
+    // recognition-beat line — mirrored here so the harness / dev
+    // overlays can read the exact ms/degrees/alphas that drove the
+    // DOM envelope this beat. Null off-beat; populated by
+    // syncIoLine() when state.scene.beat === "io-return-recognition"
+    // from the SAME snippet that supplied `lastLine` + `lastLineMemoryRefs`
+    // (one snippet, one truth — no drift between line, refs, and feel).
+    // Consumed by:
+    //   1. `--io-recognition-*` CSS custom properties (documentElement),
+    //      which the served surface reads to drive camera-dolly /
+    //      vignette / bloom / line-reveal envelopes;
+    //   2. window.__game.npcs.io.lastLineFeelCue (see publishState) —
+    //      the e2e io-recognition-dialogue-snippets spec asserts the
+    //      shipped tier's numbers against the snippet contract.
+    recognitionSnippetFeelCue: null,
     failureFeedback: {
       ...FAILURE_FEEDBACK,
       active: false,
@@ -487,16 +502,84 @@ const persistAuthoritative = async ({ dirty = false } = {}) => {
   markStateDirty();
 };
 
+// Apply an authored per-tier feel cue (or clear it) as CSS custom
+// properties on documentElement.  These `--io-recognition-*` vars are
+// READ by concrete CSS rules in aftersign/index.html — the ones added
+// alongside this writer in PR #1139 (Mara's review):
+//   • body::after — vignette overlay opacity = vignetteAlpha, fade
+//     transition uses lineRevealDelayMs + lineRevealDurationMs + easing
+//   • .panel — transform composes translateZ(cameraDollyCm * 0.6px) +
+//     rotateY(cameraYawDegrees) with the existing haptic-scale, and
+//     box-shadow's warm ring is modulated by bloomAlpha
+//   • .panel + .line — transition timing reads the reveal window vars
+//   • .hud — background transition reads durationMs (envelope-wide)
+// One snippet, one truth: the tier the dialogue selector chose drives
+// the numbers the shipped surface consumes.  This is NOT the older
+// `--recognition-*` namespace (sign-glow / seal-glow / warmth /
+// rain-rim-alpha / haptic-scale) written by recognition-dom-feedback.js
+// — that's the runtime feedback envelope; the io-recognition-* vars
+// carry the AUTHORED-per-tier motion values.
+// Off-beat we zero them so nothing bleeds out of the beat.
+const applyIoRecognitionFeelCueVars = (cue) => {
+  const root = document.documentElement;
+  if (!cue) {
+    root.style.setProperty("--io-recognition-duration-ms", "0ms");
+    root.style.setProperty("--io-recognition-camera-dolly-cm", "0");
+    root.style.setProperty("--io-recognition-camera-yaw-deg", "0");
+    root.style.setProperty("--io-recognition-vignette-alpha", "0");
+    root.style.setProperty("--io-recognition-bloom-alpha", "0");
+    root.style.setProperty("--io-recognition-bloom-ring-alpha", "0");
+    root.style.setProperty("--io-recognition-line-reveal-delay-ms", "0ms");
+    root.style.setProperty("--io-recognition-line-reveal-duration-ms", "0ms");
+    root.style.setProperty("--io-recognition-easing", "linear");
+    return;
+  }
+  root.style.setProperty("--io-recognition-duration-ms", `${cue.durationMs}ms`);
+  root.style.setProperty("--io-recognition-camera-dolly-cm", `${cue.cameraDollyCm}`);
+  root.style.setProperty("--io-recognition-camera-yaw-deg", `${cue.cameraYawDegrees}`);
+  root.style.setProperty("--io-recognition-vignette-alpha", `${cue.vignetteAlpha}`);
+  root.style.setProperty("--io-recognition-bloom-alpha", `${cue.bloomAlpha}`);
+  // Pre-resolve the warm-ring alpha (bloomAlpha * 3.6, clamped) so the
+  // .panel box-shadow can consume a plain number in legacy rgba().
+  // calc() inside a color function's alpha slot invalidates the whole
+  // box-shadow declaration on engines that reject it — the recurring
+  // bloom-regex CI failure on PR #1139. Resolving here keeps the CSS
+  // grammar-safe on every engine.
+  root.style.setProperty(
+    "--io-recognition-bloom-ring-alpha",
+    `${Math.min(1, cue.bloomAlpha * 3.6)}`,
+  );
+  root.style.setProperty("--io-recognition-line-reveal-delay-ms", `${cue.lineRevealDelayMs}ms`);
+  root.style.setProperty("--io-recognition-line-reveal-duration-ms", `${cue.lineRevealDurationMs}ms`);
+  root.style.setProperty("--io-recognition-easing", cue.easing);
+};
+
+const feelCueEqual = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.durationMs === b.durationMs
+    && a.holdFrames === b.holdFrames
+    && a.cameraDollyCm === b.cameraDollyCm
+    && a.cameraYawDegrees === b.cameraYawDegrees
+    && a.vignetteAlpha === b.vignetteAlpha
+    && a.bloomAlpha === b.bloomAlpha
+    && a.lineRevealDelayMs === b.lineRevealDelayMs
+    && a.lineRevealDurationMs === b.lineRevealDurationMs
+    && a.easing === b.easing
+  );
+};
+
 const syncIoLine = () => {
-  const nextLine = lineForBeat();
-  // At the recognition beat, memoryRefs come from the SAME snippet
-  // the dialogue module selected to speak — so spoken line and its
-  // memoryRefs are minted from one source of truth. Deep-recall
-  // (both delivery-outcome AND route-attention remembered) carries
-  // two refs; returning carries one; first-meeting carries zero.
-  // The e2e io-recognition-dialogue-snippets spec asserts
-  // lastLineMemoryRefs.toEqual(deepRecall.memoryRefs).
+  // At the recognition beat, line / memoryRefs / feelCue are all
+  // minted from the SAME snippet the dialogue module selected — one
+  // source of truth per tier. Deep-recall (both delivery-outcome AND
+  // route-attention remembered) carries two refs; returning carries
+  // one; first-meeting carries zero. Only at this beat does a feelCue
+  // exist; off-beat it's null and the CSS envelope zeroes out.
   let nextMemoryRefs = [];
+  let nextFeelCue = null;
+  let nextLine;
   if (state.scene.beat === "io-return-recognition") {
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
@@ -505,19 +588,25 @@ const syncIoLine = () => {
       packetSealed: speakAsSealed,
       memory: state.npcs.io.memory,
     });
-    nextMemoryRefs = [
-      ...selectIoRecognitionDialogueLine(snippets, {
-        memory: state.npcs.io.memory,
-      }).memoryRefs,
-    ];
+    const selected = selectIoRecognitionDialogueLine(snippets, {
+      memory: state.npcs.io.memory,
+    });
+    nextLine = selected.line;
+    nextMemoryRefs = [...selected.memoryRefs];
+    nextFeelCue = { ...selected.feelCue };
+  } else {
+    nextLine = lineForBeat();
   }
   if (
     state.npcs.io.lastLine !== nextLine
     || state.npcs.io.lastLineMemoryRefs.length !== nextMemoryRefs.length
     || state.npcs.io.lastLineMemoryRefs.some((ref, index) => ref !== nextMemoryRefs[index])
+    || !feelCueEqual(state.interaction.recognitionSnippetFeelCue, nextFeelCue)
   ) {
     state.npcs.io.lastLine = nextLine;
     state.npcs.io.lastLineMemoryRefs = nextMemoryRefs;
+    state.interaction.recognitionSnippetFeelCue = nextFeelCue;
+    applyIoRecognitionFeelCueVars(nextFeelCue);
     markStateDirty();
   }
 };
@@ -676,13 +765,21 @@ const publishState = () => {
         // Player-keyed recognition dialogue snippets — three tiers
         // (first-meeting / returning / deep-recall) minted from Io's
         // durable memory. Published on every publishState() so the
-        // io-recognition-dialogue-snippets e2e can assert tier order
-        // and per-tier memoryRef counts at the recognition beat.
+        // io-recognition-dialogue-snippets e2e can assert tier order,
+        // per-tier memoryRef counts, AND per-tier feelCue numbers
+        // (durationMs / cameraDollyCm / cameraYawDegrees / etc.) that
+        // drive the DOM envelope at the recognition beat.
         recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
           playerId: state.player.id,
           packetSealed: state.packet.sealed,
           memory: state.npcs.io.memory,
         }),
+        // The feelCue of the snippet the selector CHOSE this beat —
+        // null off-beat, populated by syncIoLine() at
+        // io-return-recognition. Same source as lastLine / lastLineMemoryRefs
+        // so the served surface can't drift between "which line spoke"
+        // and "how the beat felt".
+        lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
       },
       orra: {
         id: "orra",
@@ -730,6 +827,7 @@ const publishState = () => {
           present: true,
           ...state.npcs.io,
           memories: state.npcs.io.memory,
+          lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
           trustPosture: trustPostureForOutcome(state.delivery.outcome),
           recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
             playerId: state.player.id,
@@ -1221,6 +1319,69 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // boot override from the restored memory + beat.
   armReturningSessionBootLine(Boolean(state.packet.delivered));
 
+  // Mara's re-review on PR #1139: `forceReload({ clearLocalState: true })`
+  // was leaving a STALE `recognitionDomFeedback` snapshot on
+  // `window.__game.interaction.recognitionDomFeedback` — the last frame
+  // of the just-finished beat wrote `{ active:false, signGlowPx:8, … }`
+  // (base-8 leak, recognition-dom-feedback.js:70 writes
+  // `8 + kioskSign*18 + lantern*10` for every active instant, so `8`
+  // survives when the two cues drop to zero). The
+  // syncRecognitionDomFeedback inert-baseline guard (above) DOES clear
+  // it on the next RAF tick, but flagship-surface-contract.spec.ts:729-750
+  // waits only for `active === false` — already true stalely — and then
+  // reads `signGlowPx` BEFORE the next frame runs the guard.
+  //
+  // Symmetry fix: reloadFromSave must synchronously zero the same
+  // module-level `recognitionDomFeedback` + DOM cues + beat clock that
+  // `resetSliceSave` zeroes (main.js:~1960). One reset shape, both
+  // reset paths — the harness sees an inert snapshot in the SAME tick
+  // the reload returns, no RAF race.
+  memoryRecognitionBeatStartedAt = null;
+  pendingRecognitionArm = false;
+  lastImpactBurstChirpAt = null;
+  impactBurstParticles = [];
+  framesDuringRecognitionBeat = 0;
+  recognitionDomFeedback = {
+    active: false,
+    signGlowPx: 0,
+    sealGlowPx: 0,
+    rainRimAlpha: 0,
+    hapticScale: 1,
+    warmth: 0,
+  };
+  clearRecognitionDomFeedback({
+    lineNode: line,
+    speakerNode: speaker,
+    stateReadoutNode: stateReadout,
+  });
+  // `state.interaction.recognitionFeedback` is deliberately LEFT ALONE
+  // here. It is amplitude CONFIG (what the NEXT beat will do), not beat
+  // activity — the beat clock above going null is what says "no beat is
+  // running". Reload must PRESERVE it, because the specs pin all three
+  // corners of the truth table:
+  //   • zero it on reload (previous iteration) → the returning-session
+  //     beat plays with a dead camera: io-recognition-return-visual-feel
+  //     + io-recognition-memory-beat-contract's range check measure only
+  //     the confirm-kick wobble (~0.12m) against a 0.24m contract floor
+  //     — the exact 2-failure CI red on this PR's last run.
+  //   • re-arm it to the authored MEMORY_RECOGNITION_FEEDBACK → the
+  //     measured-vs-canned gate (io-recognition-memory-beat-contract
+  //     :138-171) breaks: it zeroes via setRecognitionCameraEnvelope,
+  //     and collectBeat() forceReloads BEFORE driving the flat beat, so
+  //     restoring authored amplitudes un-zeroes its override.
+  //   • preserve (this code, = main's semantics) → boot value 0.32 rides
+  //     through normal reloads, the harness's explicit zero rides
+  //     through the gate's reload. Every spec satisfied.
+  // Post-beat analytic report doesn't survive a reload — it described
+  // the previous session's beat, not this one.
+  state.interaction.recognitionBeatReport = null;
+  state.interaction.recognitionSnippetFeelCue = null;
+  // Zero the `--io-recognition-*` CSS custom properties so the shipped
+  // surface's DOM envelope (body::after vignette, .panel translateZ+yaw,
+  // .line reveal timing) drops back to its inert baseline in the same
+  // synchronous tick.
+  applyIoRecognitionFeelCueVars(null);
+
   markStateDirty();
   renderText();
   publishState();
@@ -1544,7 +1705,28 @@ const recognitionMotionAt = (nowMs) => {
 
 const syncRecognitionDomFeedback = (nowMs) => {
   if (memoryRecognitionBeatStartedAt === null) {
-    if (recognitionDomFeedback.active) {
+    // Off-beat inert baseline: every recognitionDomFeedback field must
+    // be zero (or `hapticScale: 1`, the neutral scale). The guard used
+    // to trigger only on `active === true`, but
+    // applyRecognitionDomFeedback (recognition-dom-feedback.js:70)
+    // writes `signGlowPx = 8 + kioskSign * 18 + lantern * 10` — the
+    // BASE 8 leaks through on late-beat frames where every cue's
+    // intensity has already dropped to 0 but `normalized` is 0 or 1 (so
+    // `active === false`). When the beat clock nulled, the `active`-only
+    // cleanup was skipped and the stale `signGlowPx: 8` survived across
+    // `forceReload({ clearLocalState: true })` — the flake Mara caught
+    // on PR #1139 review (`resetFeedback.signGlowPx === 8` at
+    // flagship-surface-contract.spec.ts :750). Check the inert
+    // invariant directly: if any field is off-baseline, run the same
+    // clear the `active`-only branch used to.
+    const inert =
+      !recognitionDomFeedback.active
+      && recognitionDomFeedback.signGlowPx === 0
+      && recognitionDomFeedback.sealGlowPx === 0
+      && recognitionDomFeedback.rainRimAlpha === 0
+      && recognitionDomFeedback.hapticScale === 1
+      && recognitionDomFeedback.warmth === 0;
+    if (!inert) {
       clearRecognitionDomFeedback({
         lineNode: line,
         speakerNode: speaker,

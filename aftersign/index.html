@@ -18,6 +18,32 @@
         --recognition-rain-rim-alpha: 0;
         --recognition-haptic-scale: 1;
         --recognition-warmth: 0;
+        /* --io-recognition-* — snippet-authored per-tier motion values
+           the dialogue selector picks and main.js writes onto this
+           element (see aftersign/main.js :: applyIoRecognitionFeelCueVars).
+           Zeroed off-beat; populated at the io-return-recognition beat
+           from the SAME snippet that supplies lastLine + memoryRefs.
+           The CSS rules below (body::after vignette, .panel dolly/yaw,
+           .line reveal transition) consume them so the tier the
+           selector chose actually shapes what the player sees — not a
+           closed loop, a wired one. */
+        --io-recognition-duration-ms: 0ms;
+        --io-recognition-camera-dolly-cm: 0;
+        --io-recognition-camera-yaw-deg: 0;
+        --io-recognition-vignette-alpha: 0;
+        --io-recognition-bloom-alpha: 0;
+        /* Resolved warm-ring alpha (bloomAlpha * 3.6, clamped to 1) —
+           PRE-MULTIPLIED IN JS (applyIoRecognitionFeelCueVars) so the
+           .panel box-shadow color never needs calc() inside a color
+           function. calc()-in-alpha is not grammar-safe across engines;
+           when the engine rejects it the ENTIRE box-shadow declaration
+           invalidates and the warm ring silently vanishes — the
+           recurring bloom-regex CI failure on PR #1139. A plain number
+           var substitutes cleanly into legacy rgba() everywhere. */
+        --io-recognition-bloom-ring-alpha: 0;
+        --io-recognition-line-reveal-delay-ms: 0ms;
+        --io-recognition-line-reveal-duration-ms: 0ms;
+        --io-recognition-easing: linear;
       }
 
       * {
@@ -46,6 +72,29 @@
         mix-blend-mode: screen;
         z-index: 0;
         transition: none;
+      }
+
+      /* Io-recognition vignette — the snippet-authored vignetteAlpha
+         darkens the screen edges when Io recognizes the returning
+         player. Off-beat --io-recognition-vignette-alpha === 0 ⇒
+         invisible; deep-recall pushes it to 0.18. Fades in over the
+         snippet's line-reveal window so the vignette blooms in step
+         with the line the selector chose. */
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(ellipse at 50% 55%,
+          rgba(0, 0, 0, 0) 40%,
+          rgba(0, 0, 0, 0.9) 100%);
+        opacity: var(--io-recognition-vignette-alpha);
+        z-index: 1;
+        transition:
+          opacity var(--io-recognition-line-reveal-duration-ms)
+            var(--io-recognition-easing)
+            var(--io-recognition-line-reveal-delay-ms);
+        mix-blend-mode: multiply;
       }
 
       canvas {
@@ -80,16 +129,73 @@
       }
 
       .panel {
+        position: relative;
         width: min(680px, 100%);
         border: 1px solid rgba(119, 232, 255, 0.34);
         border-radius: 18px;
         padding: 16px;
         background: rgba(5, 10, 19, 0.72);
-        box-shadow: 0 0 40px rgba(0, 204, 255, 0.12), inset 0 0 30px rgba(22, 89, 130, 0.14);
+        /* Bloom halo — additive glow modulated by the snippet's
+           bloomAlpha. Off-beat → 0 (invisible). deep-recall → 0.16.
+           The warm ring's alpha is PRE-RESOLVED in JS
+           (main.js :: applyIoRecognitionFeelCueVars writes
+           --io-recognition-bloom-ring-alpha = min(1, bloomAlpha*3.6))
+           because calc() inside a color function's alpha slot is not
+           reliably supported: engines that reject it invalidate the
+           WHOLE box-shadow declaration, the warm ring vanishes, and
+           the e2e bloom regex reds out — the recurring CI failure on
+           this PR. A plain-number var in legacy rgba() parses on every
+           engine. Deep-recall (0.16 → 0.576) serializes as
+           `rgba(255, 214, 151, 0.576)` or the Color-4 space/slash form
+           depending on the browser — the spec accepts both. */
+        box-shadow:
+          0 0 40px rgba(0, 204, 255, 0.12),
+          inset 0 0 30px rgba(22, 89, 130, 0.14),
+          0 0 calc(var(--io-recognition-bloom-alpha) * 120px)
+            rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha));
         backdrop-filter: blur(12px);
-        transform: scale(var(--recognition-haptic-scale));
+        /* Compose the io-recognition camera-dolly + yaw on top of the
+           haptic-scale so the recognition-beat feels like the camera
+           pushes in and tilts toward the NPC on the same panel that
+           already carries the haptic pop.  cameraDollyCm → translateZ
+           (px in DOM space; scale 0.6 keeps deep-recall's 18cm value
+           to a ~10px push — perceptible on the panel proxy but not
+           motion-sickness-inducing).  cameraYawDegrees → rotateY.
+           Perspective set on the .hud parent below so the transform
+           reads as depth, not just a 2D shear.  Transition uses the
+           snippet's reveal window so the dolly lands in time with
+           the line copy. */
+        transform:
+          scale(var(--recognition-haptic-scale))
+          translateZ(calc(var(--io-recognition-camera-dolly-cm) * 0.6px))
+          rotateY(calc(var(--io-recognition-camera-yaw-deg) * 1deg));
         transform-origin: 50% 100%;
-        will-change: transform;
+        transition:
+          transform var(--io-recognition-line-reveal-duration-ms)
+            var(--io-recognition-easing)
+            var(--io-recognition-line-reveal-delay-ms),
+          box-shadow var(--io-recognition-line-reveal-duration-ms)
+            var(--io-recognition-easing)
+            var(--io-recognition-line-reveal-delay-ms);
+        will-change: transform, box-shadow;
+      }
+
+      /* .hud gives .panel a perspective context so translateZ + rotateY
+         read as depth. transform-style: preserve-3d is required because
+         .hud itself carries a translate3d(shake), which would otherwise
+         flatten .panel's translateZ back onto the 2D plane. Perspective
+         is modest (1600px) so the yaw stays subtle even at the
+         deep-recall tier's 4.5° authored value.
+
+         The background gradient (rgba warm-underglow) transitions over
+         --io-recognition-duration-ms so the HUD's warmth wash rides the
+         full recognition-beat envelope, not just the line-reveal window. */
+      .hud {
+        perspective: 1600px;
+        perspective-origin: 50% 100%;
+        transform-style: preserve-3d;
+        transition: background var(--io-recognition-duration-ms)
+          var(--io-recognition-easing);
       }
 
       .speaker {
@@ -106,6 +212,21 @@
         font-size: clamp(17px, 3.6vw, 24px);
         line-height: 1.32;
         text-wrap: balance;
+        /* Line-reveal — the snippet's per-tier delay + duration + easing
+           choreograph how the recognition line settles in. Off-beat both
+           values are 0ms so this is a no-op; at the recognition beat the
+           selector-chosen tier's timing lands on the element (deep-recall
+           = 180ms delay + 540ms duration; returning = 140ms + 420ms;
+           first-meeting = 80ms + 260ms). letter-spacing + opacity are
+           the reveal channels — small enough to be tasteful, real
+           enough that CSS consumes ALL three reveal vars. */
+        transition:
+          opacity var(--io-recognition-line-reveal-duration-ms)
+            var(--io-recognition-easing)
+            var(--io-recognition-line-reveal-delay-ms),
+          letter-spacing var(--io-recognition-line-reveal-duration-ms)
+            var(--io-recognition-easing)
+            var(--io-recognition-line-reveal-delay-ms);
       }
 
       .controls {
@@ -307,6 +428,19 @@
         button:active,
         .packet-button:active span {
           transform: none;
+        }
+
+        /* io-recognition envelope respects reduced-motion — the
+           snippet-authored dolly/yaw/vignette/bloom timings collapse
+           to instant, so recognition still LANDS (final state is the
+           snippet's numbers) but doesn't ANIMATE. Mara #1139: the new
+           transitions extended the pre-existing reduced-motion gap;
+           this closes it on the same four consumers the e2e checks. */
+        body::after,
+        .panel,
+        .line,
+        .hud {
+          transition: none;
         }
       }
     </style>

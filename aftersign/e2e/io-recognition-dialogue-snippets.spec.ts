@@ -3,12 +3,36 @@ import { test, expect, Page } from "@playwright/test";
 type Beat = "packet-offered" | "packet-choice" | "packet-delivered" | "io-return-recognition";
 type Tier = "first-meeting" | "returning" | "deep-recall";
 
+// Snippet-authored per-tier motion values (see
+// aftersign/src/ioRecognitionDialogue.ts :: IoRecognitionSnippetFeelCue).
+// The dialogue module authors ms/deg/alpha numbers per tier; main.js
+// mirrors the SELECTED snippet's feelCue into `--io-recognition-*` CSS
+// custom properties AND into `npcs.io.lastLineFeelCue`, so this contract
+// is what the served surface actually feels.
+type SnippetFeelCue = {
+  durationMs: number;
+  holdFrames: number;
+  cameraDollyCm: number;
+  cameraYawDegrees: number;
+  vignetteAlpha: number;
+  bloomAlpha: number;
+  lineRevealDelayMs: number;
+  lineRevealDurationMs: number;
+  easing: "cubic-bezier(.2,.8,.2,1)";
+};
+
 type RecognitionDialogueSnippet = {
   id: string;
   playerId: string;
   npcId: "io";
   tier: Tier;
   line: string;
+  // Per-tier authored feel numbers. First-meeting is the smallest cue
+  // (~480ms), returning is medium (~820ms), deep-recall is the biggest
+  // (~1040ms). We assert those numbers are monotonically bigger tier
+  // over tier — no drift between "how recognized the player feels"
+  // and "how big the beat plays".
+  feelCue: SnippetFeelCue;
   // Citation set — mirrored into `npcs.io.lastLineMemoryRefs` when the
   // tier is spoken. Contract-clean (delivery id only, no route-attention).
   memoryRefs: string[];
@@ -25,6 +49,10 @@ type GameSurface = {
     io: {
       lastLine: string | null;
       lastLineMemoryRefs: string[];
+      // The feelCue of the snippet the selector CHOSE this beat —
+      // null off-beat, populated at `io-return-recognition` from the
+      // SAME snippet that supplied lastLine / lastLineMemoryRefs.
+      lastLineFeelCue: SnippetFeelCue | null;
       recognitionDialogueSnippets: RecognitionDialogueSnippet[];
     };
   };
@@ -95,4 +123,150 @@ test("Io recognition beat exposes player-keyed dialogue snippets for all recall 
   // and mirrors its (delivery-only) memoryRefs into lastLineMemoryRefs.
   expect(snapshot.npcs.io.lastLine).toBe(deepRecall.line);
   expect(snapshot.npcs.io.lastLineMemoryRefs).toEqual(deepRecall.memoryRefs);
+
+  // --- feelCue is a WIRED consumer contract, not decoration -----------
+  // Every snippet carries a well-formed, non-degenerate feelCue with the
+  // shared cubic-bezier easing token. If a tier ever ships zeroed
+  // numbers this catches it.
+  const firstMeeting = snippets.find((snippet) => snippet.tier === "first-meeting")!;
+  for (const snippet of [firstMeeting, returning, deepRecall]) {
+    expect(snippet.feelCue.durationMs).toBeGreaterThan(0);
+    expect(snippet.feelCue.holdFrames).toBeGreaterThan(0);
+    expect(snippet.feelCue.cameraDollyCm).toBeGreaterThan(0);
+    expect(snippet.feelCue.cameraYawDegrees).toBeGreaterThan(0);
+    expect(snippet.feelCue.vignetteAlpha).toBeGreaterThan(0);
+    expect(snippet.feelCue.bloomAlpha).toBeGreaterThan(0);
+    expect(snippet.feelCue.lineRevealDelayMs).toBeGreaterThan(0);
+    expect(snippet.feelCue.lineRevealDurationMs).toBeGreaterThan(0);
+    expect(snippet.feelCue.easing).toBe("cubic-bezier(.2,.8,.2,1)");
+  }
+
+  // Monotonic feel-escalation: the more Io recognizes the player, the
+  // bigger the beat plays. If someone ever authors a deep-recall cue
+  // smaller than the returning cue, this fails.
+  expect(returning.feelCue.durationMs).toBeGreaterThan(firstMeeting.feelCue.durationMs);
+  expect(deepRecall.feelCue.durationMs).toBeGreaterThan(returning.feelCue.durationMs);
+  expect(returning.feelCue.cameraDollyCm).toBeGreaterThan(firstMeeting.feelCue.cameraDollyCm);
+  expect(deepRecall.feelCue.cameraDollyCm).toBeGreaterThan(returning.feelCue.cameraDollyCm);
+  expect(returning.feelCue.cameraYawDegrees).toBeGreaterThan(firstMeeting.feelCue.cameraYawDegrees);
+  expect(deepRecall.feelCue.cameraYawDegrees).toBeGreaterThan(returning.feelCue.cameraYawDegrees);
+
+  // The runtime must publish the SELECTED tier's feelCue into
+  // `npcs.io.lastLineFeelCue` — same source as lastLine — and drive
+  // the `--io-recognition-*` DOM custom properties from those numbers.
+  // If main.js ever drifts back to publishing snippets without wiring
+  // them, both halves of this assertion fail together.
+  expect(snapshot.npcs.io.lastLineFeelCue).toEqual(deepRecall.feelCue);
+
+  const cssVars = await page.evaluate(() => {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+    return {
+      durationMs: style.getPropertyValue("--io-recognition-duration-ms").trim(),
+      cameraDollyCm: style.getPropertyValue("--io-recognition-camera-dolly-cm").trim(),
+      cameraYawDeg: style.getPropertyValue("--io-recognition-camera-yaw-deg").trim(),
+      vignetteAlpha: style.getPropertyValue("--io-recognition-vignette-alpha").trim(),
+      bloomAlpha: style.getPropertyValue("--io-recognition-bloom-alpha").trim(),
+      lineRevealDelayMs: style.getPropertyValue("--io-recognition-line-reveal-delay-ms").trim(),
+      lineRevealDurationMs: style.getPropertyValue("--io-recognition-line-reveal-duration-ms").trim(),
+      easing: style.getPropertyValue("--io-recognition-easing").trim(),
+    };
+  });
+  expect(cssVars.durationMs).toBe(`${deepRecall.feelCue.durationMs}ms`);
+  expect(cssVars.cameraDollyCm).toBe(`${deepRecall.feelCue.cameraDollyCm}`);
+  expect(cssVars.cameraYawDeg).toBe(`${deepRecall.feelCue.cameraYawDegrees}`);
+  expect(cssVars.vignetteAlpha).toBe(`${deepRecall.feelCue.vignetteAlpha}`);
+  expect(cssVars.bloomAlpha).toBe(`${deepRecall.feelCue.bloomAlpha}`);
+  expect(cssVars.lineRevealDelayMs).toBe(`${deepRecall.feelCue.lineRevealDelayMs}ms`);
+  expect(cssVars.lineRevealDurationMs).toBe(`${deepRecall.feelCue.lineRevealDurationMs}ms`);
+  expect(cssVars.easing).toBe(deepRecall.feelCue.easing);
+
+  // --- The DOM envelope is WIRED, not a closed loop ------------------
+  // Mara's #1139 review: writing --io-recognition-* onto documentElement
+  // means nothing unless CSS rules on the shipped surface actually
+  // consume them. Read the computed styles of the REAL rendered
+  // elements the index.html rules touch and prove the snippet-side
+  // numbers propagated to what the player sees.
+  // The vignette + bloom + reveal channels TRANSITION into place
+  // (deep-recall: 180ms delay + 540ms duration authored in the
+  // snippet). Sampling computed styles the instant the beat lands
+  // reads mid-flight values — a race that was previously masked by
+  // the bloom-regex failure aborting the test first. Wait for the
+  // vignette to settle at its authored terminus before sampling the
+  // consumers below; opacity is the last channel to land (same
+  // delay + duration as the others), so it's a sufficient sentinel.
+  await page.waitForFunction(
+    (targetAlpha) => {
+      const opacity = parseFloat(
+        getComputedStyle(document.body, "::after").opacity,
+      );
+      return Math.abs(opacity - targetAlpha) < 0.001;
+    },
+    deepRecall.feelCue.vignetteAlpha,
+    { timeout: WAIT_MS },
+  );
+
+  const consumed = await page.evaluate(() => {
+    const panel = document.querySelector(".panel");
+    const line = document.querySelector(".line");
+    const hud = document.querySelector(".hud");
+    if (!panel || !line || !hud) return null;
+    const panelStyle = getComputedStyle(panel);
+    const lineStyle = getComputedStyle(line);
+    // body::after is the vignette — read pseudo-element styles.
+    const vignetteStyle = getComputedStyle(document.body, "::after");
+    return {
+      // .panel.transform gets the dolly + yaw baked in — non-identity
+      // matrix means CSS is applying the snippet numbers.
+      panelTransform: panelStyle.transform,
+      // Bloom lives in box-shadow's last shadow (the warm ring).
+      panelBoxShadow: panelStyle.boxShadow,
+      // .panel.transition references --io-recognition-line-reveal-*.
+      panelTransition: panelStyle.transitionDuration,
+      panelTransitionDelay: panelStyle.transitionDelay,
+      // .line has its own reveal transition on opacity + letter-spacing.
+      lineTransitionDuration: lineStyle.transitionDuration,
+      lineTransitionDelay: lineStyle.transitionDelay,
+      // body::after (vignette) — opacity should equal vignetteAlpha.
+      vignetteOpacity: vignetteStyle.opacity,
+      // .hud transition-duration list should contain the snippet's
+      // overall durationMs — this proves --io-recognition-duration-ms
+      // is consumed (the other 6 vars are covered by other assertions).
+      hudTransitionDuration: getComputedStyle(hud).transitionDuration,
+    };
+  });
+  expect(consumed).not.toBeNull();
+  // Panel transform is non-identity: haptic-scale is 1 off-recognition
+  // (recognition-dom-feedback.js only writes it during the recognition
+  // feedback envelope), but the snippet's translateZ + rotateY leave a
+  // 3D matrix even when scale === 1. Any of matrix3d(, matrix( with
+  // non-zero z/rotation, or a compound "scale(…) translateZ(…) …"
+  // string means the transform property was resolved from the vars.
+  expect(consumed!.panelTransform).not.toBe("none");
+  // The bloom's warm ring color is only present when bloomAlpha > 0.
+  // Deep-recall bloomAlpha=0.16 ⇒ warm-ring rgb(255,214,151, ~0.576)
+  // appears in the box-shadow list. Chromium's getComputedStyle now
+  // serializes to the CSS Color 4 space+slash form
+  // (`rgb(255 214 151 / 0.576)`); older browsers still return the
+  // comma form (`rgba(255, 214, 151, 0.576)`). Accept BOTH so the
+  // "bloomAlpha === 0 quietly zeros the ring" regression still fails
+  // loudly, without pinning to a specific serialization.
+  expect(consumed!.panelBoxShadow).toMatch(
+    /rgba?\(\s*255[,\s]+214[,\s]+151[,\s/]/,
+  );
+  // .panel.transition-duration includes the snippet's line-reveal
+  // duration (deep-recall = 540ms). Duration list is comma-separated
+  // — assert the 540ms value appears in it.
+  expect(consumed!.panelTransition).toContain(`${deepRecall.feelCue.lineRevealDurationMs / 1000}s`);
+  expect(consumed!.panelTransitionDelay).toContain(`${deepRecall.feelCue.lineRevealDelayMs / 1000}s`);
+  // .line reveal transition — same reveal-duration + delay from the
+  // same snippet, on a DIFFERENT element. Two consumers, one source.
+  expect(consumed!.lineTransitionDuration).toContain(`${deepRecall.feelCue.lineRevealDurationMs / 1000}s`);
+  expect(consumed!.lineTransitionDelay).toContain(`${deepRecall.feelCue.lineRevealDelayMs / 1000}s`);
+  // body::after opacity IS --io-recognition-vignette-alpha (deep-recall
+  // = 0.18). getComputedStyle returns opacity as a numeric string.
+  expect(parseFloat(consumed!.vignetteOpacity)).toBeCloseTo(deepRecall.feelCue.vignetteAlpha, 3);
+  // .hud transition-duration must contain --io-recognition-duration-ms
+  // (deep-recall = 1040ms → "1.04s" in the transition-duration list).
+  expect(consumed!.hudTransitionDuration).toContain(`${deepRecall.feelCue.durationMs / 1000}s`);
 });
