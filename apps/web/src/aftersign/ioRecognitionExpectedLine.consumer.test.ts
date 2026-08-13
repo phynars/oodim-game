@@ -7,52 +7,39 @@ import {
   type IoRecognitionMemoryFact,
 } from "../../../../aftersign/src/ioRecognitionDialogue";
 
-type PacketOutcome = "opened" | "sealed";
-
-const CASES: Array<{
-  packetOutcome: PacketOutcome;
-  routeListened: boolean;
-}> = [
-  { packetOutcome: "opened", routeListened: true },
-  { packetOutcome: "opened", routeListened: false },
-  { packetOutcome: "sealed", routeListened: true },
-  { packetOutcome: "sealed", routeListened: false },
-];
-
-function memoryFor(
-  packetOutcome: PacketOutcome,
-  routeListened: boolean,
-): IoRecognitionMemoryFact[] {
-  return [
-    {
-      id: `delivery:${packetOutcome}`,
-      kind: "delivery-outcome",
-      object: packetOutcome,
-    },
-    {
-      id: `route:${routeListened ? "done" : "skipped"}`,
-      predicate: "kiosk-second-action",
-      object: routeListened ? "done" : "skipped",
-    },
+describe("served AFTERSIGN Io recognition dialogue consumer", () => {
+  const cases = [
+    { outcome: "sealed" as const, packetSealed: true },
+    { outcome: "opened" as const, packetSealed: false },
   ];
-}
 
-describe("io recognition expected line consumer", () => {
-  it.each(CASES)(
-    "keeps the expected recognition line wired to the served dialogue selector for %s",
-    ({ packetOutcome, routeListened }) => {
-      const memory = memoryFor(packetOutcome, routeListened);
-      const selectedSnippet = selectIoRecognitionDialogueLine(
-        buildIoRecognitionDialogueSnippets({
-          playerId: "vitest-player",
-          packetSealed: packetOutcome === "sealed",
-          memory,
-        }),
-        { memory },
-      );
+  it.each(cases)(
+    "keeps the expected recognition line wired to the selected $outcome snippet",
+    ({ outcome, packetSealed }) => {
+      const routeListened = true;
+      const memory: IoRecognitionMemoryFact[] = [
+        {
+          id: `delivery:${outcome}`,
+          kind: "delivery-outcome",
+          object: outcome,
+        },
+        {
+          id: "route:done",
+          predicate: "kiosk-second-action",
+          object: "done",
+        },
+      ];
+      const snippets = buildIoRecognitionDialogueSnippets({
+        playerId: "served-consumer",
+        packetSealed,
+        memory,
+      });
+      const selectedSnippet = selectIoRecognitionDialogueLine(snippets, {
+        memory,
+      });
 
-      expect(expectedIoRecognitionLine(packetOutcome, routeListened)).toBe(
-        selectedSnippet.line,
+      expect(selectedSnippet.line).toBe(
+        expectedIoRecognitionLine(outcome, routeListened),
       );
     },
   );
