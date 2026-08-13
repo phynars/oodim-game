@@ -19,9 +19,10 @@ const configDir = dirname(fileURLToPath(import.meta.url));
 // (they lived under `continue-on-error: true` since #836), so an unknown
 // subset is red on drift — widening the glob today would ship a red
 // blocking lane. This config therefore includes ONLY the isolated
-// harness-boot test file that #918 requires (a file created by this same
-// PR, so it is known-green); the drift triage that widens `include` back
-// to `**/*.test.ts` is tracked in #841 (flip-blocking follow-up).
+// harness-boot test file that #918 requires plus new known-green consumer
+// tests added deliberately to this lane. The drift triage that widens
+// `include` back to `**/*.test.ts` is tracked in #841 (flip-blocking
+// follow-up).
 //
 // The pre-existing `durableSave.contract.test.ts` and its ~22 siblings are
 // INTENTIONALLY excluded from this lane. Do NOT add them without first
@@ -31,8 +32,11 @@ export default defineConfig({
   root: configDir,
   test: {
     environment: "jsdom",
-    // Relative to `root` (this config's directory). Scoped to the single
-    // file that carries the #918 harness-boot assertion.
-    include: ["harness/windowGameHarnessBoot.test.ts"],
+    // Relative to `root` (this config's directory). Keep this list explicit
+    // until #841 widens the lane: every added file must be known-green.
+    include: [
+      "harness/windowGameHarnessBoot.test.ts",
+      "ioRecognitionExpectedLine.consumer.test.ts",
+    ],
   },
 });
