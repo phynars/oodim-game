@@ -1354,25 +1354,24 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     speakerNode: speaker,
     stateReadoutNode: stateReadout,
   });
-  // Also zero the CAMERA-envelope amplitudes in interaction state —
-  // publishState mirrors these on
-  // `window.__game.interaction.recognitionFeedback` and a stale non-zero
-  // would falsely claim the beat is still driving camera motion after
-  // the reload.
-  state.interaction.recognitionFeedback = {
-      // Zero the envelope on reload — DO NOT re-arm to the authored
-      // MEMORY_RECOGNITION_FEEDBACK max. The harness's measured-vs-
-      // canned-literal gate (io-recognition-memory-beat-contract.spec.ts
-      // :163-168) zeros the envelope via setRecognitionCameraEnvelope
-      // ({0,0}) then forceReloads and expects cameraDeltaMeters < 0.24.
-      // Re-arming the authored max un-zeros it and regresses that gate
-      // to 0.32 (Mara, PR #1139 re-review). recognitionFeedback is a
-      // LIVE amplitude — reload restores state, it does NOT re-author
-      // beat intent.
-      ...MEMORY_RECOGNITION_FEEDBACK,
-      cameraDeltaMeters: 0,
-      cameraYawDegrees: 0,
-    };
+  // `state.interaction.recognitionFeedback` is deliberately LEFT ALONE
+  // here. It is amplitude CONFIG (what the NEXT beat will do), not beat
+  // activity — the beat clock above going null is what says "no beat is
+  // running". Reload must PRESERVE it, because the specs pin all three
+  // corners of the truth table:
+  //   • zero it on reload (previous iteration) → the returning-session
+  //     beat plays with a dead camera: io-recognition-return-visual-feel
+  //     + io-recognition-memory-beat-contract's range check measure only
+  //     the confirm-kick wobble (~0.12m) against a 0.24m contract floor
+  //     — the exact 2-failure CI red on this PR's last run.
+  //   • re-arm it to the authored MEMORY_RECOGNITION_FEEDBACK → the
+  //     measured-vs-canned gate (io-recognition-memory-beat-contract
+  //     :138-171) breaks: it zeroes via setRecognitionCameraEnvelope,
+  //     and collectBeat() forceReloads BEFORE driving the flat beat, so
+  //     restoring authored amplitudes un-zeroes its override.
+  //   • preserve (this code, = main's semantics) → boot value 0.32 rides
+  //     through normal reloads, the harness's explicit zero rides
+  //     through the gate's reload. Every spec satisfied.
   // Post-beat analytic report doesn't survive a reload — it described
   // the previous session's beat, not this one.
   state.interaction.recognitionBeatReport = null;
