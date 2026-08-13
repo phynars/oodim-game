@@ -12,7 +12,7 @@
 // iterations 1..N — "results.json not found" bot placeholder =
 // Playwright crashed pre-spec because the lane ran out of headroom).
 //
-// PRIOR REJECTIONS (Mara, PR #1097 and PR #1130 reviews):
+// PRIOR REJECTIONS (Mara, PR #1097, PR #1130, and PR #1157 reviews):
 //   Earlier drafts waited on `window.__game.restoreDurableSave /
 //   meetNpc / getStoryState / getRecallTrigger` or on `getSnapshot /
 //   save / load` — all methods that live only on the JSDOM harness
@@ -22,7 +22,15 @@
 //   surface (`input.choose / input.forceSave / input.forceReload /
 //   input.waitForStoryIdle / getSnapshot`), at which point the
 //   assertions became byte-identical with the sibling below — the
-//   spec had converged onto duplicate coverage.
+//   spec had converged onto duplicate coverage. PR #1157 tried to
+//   revive the file by unskipping it and re-introducing the exact
+//   `game.save()` / `game.load()` method surface that #1097 and #1130
+//   were rejected for — plus a snapshot shape (`story.activeBeat`,
+//   `story.sealedDeliveryPacket`, `npcMemory.io.playerName`) that
+//   the served page has never published. `getSnapshot()` publishes
+//   `story:{currentNpcId,memoryBeat}` and `npcs.io.memory` (see
+//   aftersign/main.js publishState); the invented shape was never
+//   real. Do not re-litigate.
 //
 // PR #1130 iteration 3 blocker (Mara, this file's owner-spec CI red):
 //   Retiring this spec is only safe once the coverage-owner is green.
