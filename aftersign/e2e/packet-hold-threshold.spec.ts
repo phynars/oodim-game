@@ -151,10 +151,14 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   // failureStartedAt is stable across the release (i.e. no new trigger).
   const cancelStartedAt = cancelledSnapshot.interaction.failureStartedAt;
   // Real time must advance between the cancel and the release so a re-trigger
-  // would stamp a strictly-later performance.now(). Wait in the runner instead
-  // of busy-spinning inside the page — the spin blocked the page main thread
-  // and was flagged as a fragile time-sim in review.
-  await page.waitForTimeout(25);
+  // would stamp a strictly-later performance.now(). Gate on the exact
+  // condition the test needs — the page clock strictly past the cancel
+  // stamp — via waitForFunction (polls off-main-thread; no wall-clock
+  // wait, no busy-spin).
+  await page.waitForFunction(
+    (prev) => performance.now() > prev,
+    cancelStartedAt,
+  );
   const afterReleaseSnapshot = await page.evaluate((prev) => {
     window.__game?.input.packetRelease({ timeMs: 8_000 + 90, x: 122, y: 100 });
     return { snapshot: window.__game?.getSnapshot(), prevStartedAt: prev };
