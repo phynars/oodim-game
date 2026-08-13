@@ -150,10 +150,16 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   // 180ms sting a second time — the player would see the flash replay. Assert
   // failureStartedAt is stable across the release (i.e. no new trigger).
   const cancelStartedAt = cancelledSnapshot.interaction.failureStartedAt;
+  // Real time must advance between the cancel and the release so a re-trigger
+  // would stamp a strictly-later performance.now(). Gate on the exact
+  // condition the test needs — the page clock strictly past the cancel
+  // stamp — via waitForFunction (polls off-main-thread; no wall-clock
+  // wait, no busy-spin).
+  await page.waitForFunction(
+    (prev) => performance.now() > prev,
+    cancelStartedAt,
+  );
   const afterReleaseSnapshot = await page.evaluate((prev) => {
-    // Small sleep so a re-trigger would produce a strictly-later performance.now().
-    const before = performance.now();
-    while (performance.now() - before < 20) { /* spin ~20ms */ }
     window.__game?.input.packetRelease({ timeMs: 8_000 + 90, x: 122, y: 100 });
     return { snapshot: window.__game?.getSnapshot(), prevStartedAt: prev };
   }, cancelStartedAt);

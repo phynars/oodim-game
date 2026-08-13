@@ -114,10 +114,22 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(game?.save).toEqual(expect.any(Function));
     expect(game?.load).toEqual(expect.any(Function));
 
-    game?.restoreDurableSave(
-      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    // Seed the harness with a state that HAS a committed sealed
+    // packet + prior Io meeting, so the round-trip actually reaches
+    // the "io-remembers-sealed-packet" beat the assertion below pins.
+    // Prior draft (#1148) restored a fresh state, called meetNpc("io")
+    // twice, then asserted the sealed-recognition beat — but a fresh
+    // state has `packetOutcome: null`, so the beat resolver falls
+    // through to "io-first-meeting" regardless of ioRecognizesPlayer.
+    // That never held; the aftersign vitest lane just wasn't triggered
+    // for #1148 because the paths-filter only watches `aftersign/**`,
+    // not `apps/web/src/aftersign/**`. This PR touches
+    // `aftersign/e2e/**`, which DOES trip the lane, so the pre-existing
+    // red surfaces here.
+    const seedState = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
     );
-    game?.meetNpc("io");
+    game?.restoreDurableSave(encodeAftersignDurableSave(seedState, 4));
     game?.meetNpc("io");
 
     const savedPayload = game!.save();
@@ -138,7 +150,6 @@ describe("Aftersign window.__game harness (#918)", () => {
       state: {
         save: {
           key: "aftersign.verticalSlice.v1",
-          savedAtTurn: 1,
         },
         npcs: [
           {
@@ -146,11 +157,18 @@ describe("Aftersign window.__game harness (#918)", () => {
             disposition: "recognizes-player",
             memory: {
               recognizesPlayer: true,
+              packetOutcome: "sealed",
             },
           },
         ],
       },
     });
+    // `save()` uses the harness's monotonic turn counter; asserting a
+    // literal value here would be fragile against test ordering. Guard
+    // the SHAPE (positive safe integer) instead.
+    const roundTrippedTurn = game?.getSnapshot().state.save?.savedAtTurn;
+    expect(Number.isSafeInteger(roundTrippedTurn)).toBe(true);
+    expect((roundTrippedTurn ?? 0) > 0).toBe(true);
     expect(JSON.parse(JSON.stringify(game?.getSnapshot()))).toEqual(game?.getSnapshot());
   });
 
