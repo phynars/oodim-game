@@ -24,15 +24,6 @@
 //   assertions became byte-identical with the sibling below — the
 //   spec had converged onto duplicate coverage.
 //
-// PR #1143 (this file's history): a subsequent re-anchoring attempt
-//   again reached for `window.__game.save() / load() /
-//   snapshot.{story, npcMemory, save}` — the same JSDOM-only shape
-//   Mara rejected twice. It doesn't exist on the served `/aftersign/`
-//   page (surface: input.forceSave / forceReload / choose +
-//   getSnapshot()→{scene, npcs, delivery}). The lane crashed pre-spec
-//   ("results.json not found") because the assertion boots against a
-//   surface the page never exposes. Re-retired; do NOT re-file.
-//
 // PR #1130 iteration 3 blocker (Mara, this file's owner-spec CI red):
 //   Retiring this spec is only safe once the coverage-owner is green.
 //   The owner (`flagship-reload-beat-regression.spec.ts`) was itself
