@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+const COLD_START_MS = 90_000;
+const WAIT_MS = 60_000;
+
 type PacketIntentProbe = {
   input: {
     packetPress: (input: { timeMs: number; x: number; y: number }) => unknown;
@@ -22,8 +25,15 @@ type PacketIntentProbe = {
 };
 
 const waitForGame = async (page: import("@playwright/test").Page) => {
-  await page.goto("/aftersign/?slot=packet-intent-served-contract");
-  await page.waitForFunction(() => window.__game?.scene?.ready === true);
+  await page.goto("/aftersign/?slot=packet-intent-served-contract", { waitUntil: "load" });
+  await page.waitForFunction(() => window.__game?.scene?.ready === true, undefined, {
+    timeout: WAIT_MS,
+  });
+  await page.waitForFunction(
+    () => typeof window.__game?.input?.waitForStoryIdle === "function",
+    undefined,
+    { timeout: WAIT_MS },
+  );
   await page.evaluate(() => window.__game?.input?.waitForStoryIdle?.());
 };
 
@@ -40,6 +50,7 @@ const readProbe = async (page: import("@playwright/test").Page) =>
 
 test.describe("AFTERSIGN served packet intent feel contract", () => {
   test("fast tap preserves the sealed packet without failure feedback", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
     await waitForGame(page);
 
     await page.evaluate(() => {
@@ -59,6 +70,7 @@ test.describe("AFTERSIGN served packet intent feel contract", () => {
   });
 
   test("deliberate hold opens the packet before release", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
     await waitForGame(page);
 
     const openedSnapshot = await page.evaluate(() => {
@@ -78,6 +90,7 @@ test.describe("AFTERSIGN served packet intent feel contract", () => {
   });
 
   test("drift cancels into a failure sting and leaves the packet sealed", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
     await waitForGame(page);
 
     const cancelledSnapshot = await page.evaluate(() => {
