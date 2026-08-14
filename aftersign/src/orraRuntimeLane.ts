@@ -27,6 +27,29 @@ export const actionForOrraChoice = (choiceId: string): OrraDeliberateAction | nu
     ? ORRA_CHOICE_TO_ACTION[choiceId as OrraChoiceId]
     : null;
 
+const isOrraAction = (value: unknown): value is OrraDeliberateAction =>
+  value === "lit" || value === "spared";
+
+export const isOrraRecognitionMemoryFact = (value: unknown): value is OrraRecognitionMemoryFact => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const fact = value as { action?: unknown };
+  return isOrraAction(fact.action);
+};
+
+// Durable saves are JSON; this coercion keeps only recognizable Orra
+// memory facts so selectOrraRecognitionLine can safely read persisted
+// payloads from localStorage/server without trusting raw shape.
+export const coerceOrraRecognitionMemory = (value: unknown): OrraRecognitionMemoryFact[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(isOrraRecognitionMemoryFact)
+    .map((fact) => ({ ...fact }));
+};
+
 export const latestOrraRecognitionMemory = (
   memory: OrraRecognitionMemoryFact[],
 ): OrraRecognitionMemoryFact | null => (memory.length > 0 ? memory[memory.length - 1] : null);

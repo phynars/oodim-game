@@ -22,6 +22,7 @@ import {
 import {
   actionForOrraChoice,
   buildOrraRecognitionMemoryFact,
+  coerceOrraRecognitionMemory,
   lineCopyForOrraLineId,
   ORRA_FIRST_CONTACT_LINE_ID,
   selectOrraRecognitionLine,
@@ -141,9 +142,7 @@ const stored = await readAuthoritativeSave({
 }).catch(() => null) || localStored;
 const packetIntent = new PacketIntentController();
 
-const orraMemoryFromStored = Array.isArray(stored?.npcs?.orra?.memory)
-  ? clone(stored.npcs.orra.memory)
-  : [];
+const orraMemoryFromStored = coerceOrraRecognitionMemory(stored?.npcs?.orra?.memory);
 const orraLineFromStored = selectOrraRecognitionLine(orraMemoryFromStored);
 
 const state = {
@@ -1298,9 +1297,11 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   state.npcs.io.memory = breakMode === "drop-memory"
     ? []
     : saved.memory ? clone(saved.memory) : [];
-  state.npcs.orra.memory = Array.isArray(saved.npcs?.orra?.memory)
-    ? clone(saved.npcs.orra.memory)
-    : [];
+  // Red-guard hook (M-ORRA done-gate): deliberately drop Orra memory
+  // on restore so the harness can prove recognition-loss goes red.
+  state.npcs.orra.memory = breakMode === "orra-dropped"
+    ? []
+    : coerceOrraRecognitionMemory(saved.npcs?.orra?.memory);
   // publishState no longer re-derives Orra's spoken surface per
   // frame (see the comment above `syncIoLine` in publishState) —
   // stamp lastLineId/lastLine at every load site so the surface
@@ -2103,9 +2104,7 @@ const reset = (snapshot) => {
       : [];
   }
   if (restored.npcs && restored.npcs.orra) {
-    state.npcs.orra.memory = Array.isArray(restored.npcs.orra.memory)
-      ? clone(restored.npcs.orra.memory)
-      : [];
+    state.npcs.orra.memory = coerceOrraRecognitionMemory(restored.npcs.orra.memory);
     // Fall back to deriving lastLine/lastLineId from the restored
     // memory if the persisted payload predates them (or the payload
     // was hand-shaped by a test) — the memory is the source of truth
