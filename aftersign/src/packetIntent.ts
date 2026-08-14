@@ -344,6 +344,7 @@ export function runPacketIntentChecks(): void {
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
   checkOpenPullConstantStaysOutsideCancelGuard();
+  checkPullBoundaryAsymmetryHolds();
   checkResolveIntentHelper();
   checkEvaluatePacketIntentHelper();
 }
@@ -478,6 +479,31 @@ function checkHoldConstantMatches450msSpec(): void {
 
 function checkOpenPullConstantStaysOutsideCancelGuard(): void {
   assert(PACKET_INTENT.OPEN_PULL_MIN_PX < PACKET_INTENT.DRIFT_CANCEL_PX, "open pull must stay inside the live drift guard");
+}
+
+// Pins the boundary asymmetry Soren flagged on PR #1186 review: the cancel
+// guard is STRICT `pullPx > DRIFT_CANCEL_PX` (14px exactly is safe) and the
+// open threshold is INCLUSIVE `pullPx >= OPEN_PULL_MIN_PX` (10px exactly
+// opens). If either comparator drifts (strict-vs-inclusive flip), the
+// (10, 14] window closes and the whole feel contract collapses — this
+// tripwire catches that regression at the exact-pixel boundary rather
+// than one pixel inside the window where the current e2e injections live.
+function checkPullBoundaryAsymmetryHolds(): void {
+  // Exactly OPEN_PULL_MIN_PX must open (inclusive lower bound).
+  const opener = new PacketIntentController();
+  opener.press({ timeMs: 0, x: 0, y: 0 });
+  opener.move({ timeMs: PACKET_INTENT.HOLD_TO_OPEN_MS - 16, x: PACKET_INTENT.OPEN_PULL_MIN_PX, y: 0 });
+  assertEqual(
+    opener.release({ timeMs: PACKET_INTENT.HOLD_TO_OPEN_MS, x: PACKET_INTENT.OPEN_PULL_MIN_PX, y: 0 }).outcome,
+    PACKET_OUTCOME.OPENED,
+    "pull of exactly OPEN_PULL_MIN_PX must open (>=, not strict)",
+  );
+  // Exactly DRIFT_CANCEL_PX must NOT cancel (strict upper bound).
+  const survivor = new PacketIntentController();
+  survivor.press({ timeMs: 0, x: 0, y: 0 });
+  const boundary = survivor.move({ timeMs: 40, x: PACKET_INTENT.DRIFT_CANCEL_PX, y: 0 });
+  assertEqual(boundary.outcome, PACKET_OUTCOME.UNKNOWN, "pull of exactly DRIFT_CANCEL_PX must NOT cancel (strict >, not >=)");
+  assertEqual(boundary.active, true, "gesture at exactly DRIFT_CANCEL_PX must stay active");
 }
 
 function checkResolveIntentHelper(): void {
