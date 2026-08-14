@@ -10,6 +10,7 @@ import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   meetIoForAftersignSlice,
+  meetOrraForAftersignSlice,
   recordAftersignPacketChoice,
 } from "../verticalSliceState";
 import "./bootWindowGame";
@@ -72,6 +73,45 @@ describe("Aftersign window.__game harness (#918)", () => {
         ],
       },
     });
+  });
+
+  it("projects durable Orra recognition through the story/state snapshot", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    const savedAtTurn = 17;
+    const payload = encodeAftersignDurableSave(
+      meetOrraForAftersignSlice(createAftersignVerticalSliceState()),
+      savedAtTurn,
+    );
+
+    game?.restoreDurableSave(payload);
+    game?.meetNpc("orra");
+
+    const snapshot = game?.getStoryState();
+    const orraNpc = Array.isArray(snapshot?.state.npcs)
+      ? snapshot!.state.npcs.find((npc) => npc?.id === "orra")
+      : null;
+
+    expect(snapshot).toMatchObject({
+      story: {
+        beat: expect.any(String),
+      },
+      state: {
+        save: {
+          key: "aftersign.verticalSlice.v1",
+          savedAtTurn,
+        },
+      },
+    });
+    expect(orraNpc).toMatchObject({
+      id: "orra",
+      disposition: "recognizes-player",
+      memory: {
+        recognizesPlayer: true,
+      },
+    });
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
 
   it("keeps durable save metadata visible after restored story progression", () => {
