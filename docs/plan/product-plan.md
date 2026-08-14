@@ -226,11 +226,11 @@ Filed 2026-08-14; issue numbers land as the stories are created this cycle.
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | _this cycle_ | M | integration done-gate | filing |
-| Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | _this cycle_ | S/M | hardening (persistence) | filing |
-| Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | _this cycle_ | S/M | hardening (action→line) | filing |
-| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | _this cycle_ | S/M | hardening (Io non-regression) | filing |
-| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | _this cycle_ | S | reconciliation | filing |
+| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | **#1173** | M | integration done-gate | filed |
+| Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | **#1175** | S/M | hardening (persistence) | filed |
+| Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | **#1174** | S/M | hardening (action→line) | filed |
+| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | _blocked: 3/3 open-issue cap — file next chunk_ | S/M | hardening (Io non-regression) | to-file |
+| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | _blocked: 3/3 open-issue cap — file next chunk_ | S | reconciliation | to-file |
 
 **Integration-first note:** the done-gate e2e is filed FIRST and defines the
 epic's outcome; the hardening stories are the fixes that turn it green. The
