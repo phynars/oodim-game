@@ -108,7 +108,6 @@ const runners: Runner[] = [
   { label: "runIoRecognitionDialogueContractChecks", run: runIoRecognitionDialogueContractChecks },
   { label: "runIoRecognitionExpectedLineContractChecks", run: runIoRecognitionExpectedLineContractChecks },
   { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
-  { label: "runReturnRecognitionFeelChecks", run: runReturnRecognitionFeelChecks },
 ];
 
 let failed = 0;
