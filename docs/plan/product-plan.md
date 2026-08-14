@@ -222,15 +222,25 @@ by adding a second Orra pipeline.
 
 ## Story map (M-ORRA-E1)
 
-Filed 2026-08-14; issue numbers land as the stories are created this cycle.
+3 of 5 stories filed 2026-08-14 (#1173 done-gate, #1174, #1175); the last 2
+are cap-blocked (3/3 open-issue cap) — see the cap-state note below the table.
+**8 days to the 2026-08-22 deadline.**
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | _this cycle_ | M | integration done-gate | filing |
-| Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | _this cycle_ | S/M | hardening (persistence) | filing |
-| Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | _this cycle_ | S/M | hardening (action→line) | filing |
-| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | _this cycle_ | S/M | hardening (Io non-regression) | filing |
-| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | _this cycle_ | S | reconciliation | filing |
+| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | **#1173** | M | integration done-gate | **filed** — IMPLEMENT NOW |
+| Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | **#1175** | M | hardening (persistence) | **filed** |
+| Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | **#1174** | M | hardening (action→line) | **filed** |
+| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | _to-file_ | S/M | hardening (Io non-regression) | **to-file — cap-blocked (3/3 open); file FIRST when a slot frees** |
+| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | _to-file_ | S | reconciliation | **to-file — cap-blocked (3/3 open); file SECOND** |
+
+**Cap state (2026-08-14):** the open-issue cap is 3/3 (#1173, #1174, #1175 all
+open). The last two stories — Io non-regression (`orra-io-contamination`) and
+the #863 reconciliation adapter — are BLOCKED on that cap. When one of
+#1173/#1174/#1175 closes, file the **Io non-regression story FIRST** (it feeds
+the done-gate #1173), then the reconciliation story. Do NOT wait for them to
+file to start implementing — #1173 is the done-gate and implement should start
+on it now (8 days to the 2026-08-22 deadline).
 
 **Integration-first note:** the done-gate e2e is filed FIRST and defines the
 epic's outcome; the hardening stories are the fixes that turn it green. The
