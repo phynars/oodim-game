@@ -54,6 +54,13 @@ export const latestOrraRecognitionMemory = (
   memory: OrraRecognitionMemoryFact[],
 ): OrraRecognitionMemoryFact | null => (memory.length > 0 ? memory[memory.length - 1] : null);
 
+// #1180 M-ORRA-E1 isolation invariant: this selector reads ONLY the
+// Orra memory array handed in — it never touches Io state, and its
+// return value is only ever assigned to `state.npcs.orra.{lastLine,
+// lastLineId,lastLineMemoryRefs}` (see aftersign/main.js). No Orra
+// path in this module writes a shared key Io reads; that's the code
+// half of the guarantee flagship-surface-contract.spec.ts asserts
+// end-to-end via the `orra-io-contamination` red mode.
 export const selectOrraRecognitionLine = (memory: OrraRecognitionMemoryFact[]) =>
   orraRecognitionLineForMemory(latestOrraRecognitionMemory(memory));
 
