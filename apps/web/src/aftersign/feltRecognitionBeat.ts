@@ -74,3 +74,105 @@ export function createAftersignFeltRecognitionLayer(
   layer.textContent = cue.line;
   return layer;
 }
+
+// -- Served-surface consumer wrapper ---------------------------------------
+//
+// The pieces above are the CONTRACT half (pure resolver + layer factory).
+// The pieces below wire that contract into a shipped surface: a served page
+// (or the vertical-slice window surface) can call
+// `resolveAndPlayAftersignFeltRecognitionBeat(memory, { root })` on the
+// NPC recognition beat and get:
+//   - a `.aftersign-felt-recognition` element appended to `root` (default
+//     `document.body`) — same "layer belongs on body" contract as
+//     `aftersignConfirmFeel`;
+//   - an auto-cleanup timer at `feel.durationMs + FELT_RECOGNITION_CLEANUP_TAIL_MS`
+//     that removes the layer (matches the confirm-feel cleanup shape so the
+//     served surface doesn't accumulate dead layers on repeated cues);
+//   - a handle with `dispose()` so a scene-transition/interrupt can rip the
+//     layer down early.
+//
+// Matches the lane precedent (`resolveAndPlayAftersignPacketConfirmInteraction`
+// in verticalSlicePacketInteraction.ts) — resolver + player + one-shot combo.
+
+export const FELT_RECOGNITION_CLEANUP_TAIL_MS = 80;
+
+export type AftersignFeltRecognitionPlayOptions = {
+  root?: HTMLElement;
+  documentRef?: Document;
+  reducedMotion?: boolean;
+  now?: () => number;
+  setTimeoutRef?: typeof setTimeout;
+  clearTimeoutRef?: typeof clearTimeout;
+};
+
+export type AftersignFeltRecognitionHandle = {
+  layer: HTMLElement;
+  cue: AftersignRecognitionCue;
+  feel: AftersignFeltRecognitionBeat;
+  dispose: () => void;
+};
+
+/**
+ * Plays a pre-resolved recognition cue on the served surface: appends the
+ * layer to `root`, and schedules removal at `durationMs + tailMs`.
+ *
+ * `reducedMotion` zeroes the motion-heavy dataset values (camera push,
+ * shoulder lift, shake) that a served renderer would drive CSS from; the
+ * timing / audio metadata are preserved because the beat still needs to
+ * READ (name reveal, memory echo) at the pinned tempo.
+ */
+export function playAftersignFeltRecognitionBeat(
+  cue: AftersignRecognitionCue,
+  options: AftersignFeltRecognitionPlayOptions = {},
+): AftersignFeltRecognitionHandle {
+  const documentRef = options.documentRef ?? document;
+  const root = options.root ?? documentRef.body;
+  const setTimeoutRef = options.setTimeoutRef ?? setTimeout;
+  const clearTimeoutRef = options.clearTimeoutRef ?? clearTimeout;
+
+  const layer = createAftersignFeltRecognitionLayer(cue, documentRef);
+
+  if (options.reducedMotion) {
+    layer.dataset.reducedMotion = "true";
+    layer.dataset.cameraPushPx = "0";
+    layer.dataset.shoulderLiftPx = "0";
+    layer.dataset.shakePx = "0";
+    layer.dataset.shakeFrames = "0";
+  }
+
+  root.appendChild(layer);
+
+  let disposed = false;
+  const timer = setTimeoutRef(() => {
+    if (disposed) return;
+    disposed = true;
+    if (layer.parentNode) layer.parentNode.removeChild(layer);
+  }, cue.feel.durationMs + FELT_RECOGNITION_CLEANUP_TAIL_MS);
+
+  return {
+    layer,
+    cue,
+    feel: cue.feel,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      clearTimeoutRef(timer);
+      if (layer.parentNode) layer.parentNode.removeChild(layer);
+    },
+  };
+}
+
+/**
+ * One-shot: resolve a recognition cue from stored memory AND mount it on
+ * the served surface. This is the entry point a served page's NPC
+ * recognition beat should call — it's the sibling of
+ * `resolveAndPlayAftersignPacketConfirmInteraction` for the felt-recognition
+ * lane.
+ */
+export function resolveAndPlayAftersignFeltRecognitionBeat(
+  memory: AftersignRecognitionMemoryLine,
+  options: AftersignFeltRecognitionPlayOptions = {},
+): AftersignFeltRecognitionHandle {
+  const cue = resolveAftersignFeltRecognitionCue(memory);
+  return playAftersignFeltRecognitionBeat(cue, options);
+}
