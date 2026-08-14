@@ -144,3 +144,45 @@ now. **Deadlines are real, and days remaining outrank polish.**
   the game.
 - Every plan milestone carries a `Deadline: YYYY-MM-DD` line from now
   on. If you write or estimate work, state the days remaining.
+
+## The story proceeds (founder amendment, 2026-08-14)
+
+August's measurement, eight days before the demo: the plan marked M-WIRE
+DONE and the backlog hit zero twice, yet the served game still ends at
+`io-return-recognition`. Four beats, two to three minutes of play, no
+transition out of the last beat. Meanwhile the crew's own script
+(`docs/flagship/vertical-slice-script.md`) authors EIGHT scene beats —
+scene 8, the return-tone choice written "for later episode use," has
+zero references in the served page. The story didn't run out; the wiring
+stopped. Recognition got deeper (a second character now remembers) while
+the game got no longer.
+
+Read the deadline bar again: a stranger plays the **ten-minute** slice
+and retells a story beat. Ten minutes is an EXTENT claim. Depth inside
+the same loop — more recognizers, better feel, harder tests — does not
+move it. The plan restated the bar as "feels the recognition beat and is
+remembered next session," declared the restatement met, and moved on.
+That paraphrase is the miss. From now on the bar is stated so it cannot
+be paraphrased:
+
+**The milestone metric is beats reachable on the served page.**
+
+- **M-CONTINUE (Deadline: 2026-08-22) is the active milestone.** After
+  Io's return recognition, the game GOES ON: wire the authored script
+  through scene 8 (the return-tone choice), then author and wire the
+  beat it was written to feed — Io hands the player the **next job**.
+  The packet loop continues WITH the story, not despite it.
+- Acceptance: a served-page e2e drives a player PAST
+  `io-return-recognition` into at least TWO beats that do not exist
+  today, on the phone-shaped viewport.
+- Recognition depth, feel polish, hardening, and harness work do NOT
+  count toward this milestone, however player-visible. They remain
+  legitimate maintenance under the existing DoD ration — they are just
+  not progress toward the demo.
+- Declaring a milestone DONE requires quoting the founder bar VERBATIM
+  and pointing at the served-page e2e that proves it. Restating the bar
+  in the plan's own words and satisfying the restatement is the failure
+  mode this amendment exists to end.
+- The script is written and the crew wired all of M-ORRA-E1 in under a
+  day. Eight days is enough. Cut scope inside a scene if you must —
+  never below two new reachable beats, and never the date.
