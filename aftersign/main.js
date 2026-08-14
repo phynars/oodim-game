@@ -420,7 +420,7 @@ const lineForBeat = () => {
     return selectIoRecognitionDialogueLine(snippets, { memory: state.npcs.io.memory }).line;
   }
 
-  return "Keep it sealed if you want the city to trust you. Touch the blue kiosk when you're ready.";
+  return "Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.";
 };
 
 const memoryFacts = () => {
@@ -899,7 +899,12 @@ const renderText = () => {
     : state.packet.sealed
       ? "sealed"
       : "opened";
-  setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · packet ${packetStatus} · route ${routeMemory} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
+  // #1169 review: `memory: pending` was seeded in static HTML but this
+  // format string overwrote it on first render, so the player never saw
+  // Io's durable-memory status. Surface it from the fact ledger — pending
+  // until deliverPacket mints facts, then flips to `recorded`.
+  const memoryStatus = state.npcs.io.memory.length > 0 ? "recorded" : "pending";
+  setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · packet ${packetStatus} · route ${routeMemory} · memory: ${memoryStatus} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
 };
 
 const setBeat = (beat) => {
