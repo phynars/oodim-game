@@ -110,9 +110,19 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   await page.evaluate(() => window.__game?.resetSliceSave());
 
   // --- Mid-hold: tick at start + 180ms (100ms of usable hold, below 450ms) ---
+  // Progress is now min(holdProgress, pullProgress). Inject a 5 px pull
+  // (half of OPEN_PULL_MIN_PX=10, well inside the 14 px DRIFT_CANCEL_PX
+  // guard) before the mid-hold tick so pullProgress = 0.5 and the min
+  // collapses to the hold curve we're inspecting. Justification for the
+  // (0, 1) range: after PROGRESS_DEADBAND_MS (80 ms), the usable hold
+  // window is HOLD_TO_OPEN_MS − deadband = 370 ms; ticking at t0+180
+  // gives holdProgress = (180 − 80) / 370 ≈ 0.270. min(0.270, 0.5) ≈
+  // 0.270 — cleanly inside (0, 1). Outcome stays UNKNOWN because tick
+  // can only commit OPENED once holdProgress saturates (heldMs ≥ 450 ms).
   const midHoldSnapshot = await page.evaluate(() => {
     const t0 = 4_000;
     window.__game?.input.packetPress({ timeMs: t0, x: 40, y: 40 });
+    window.__game?.input.packetMove({ timeMs: t0 + 100, x: 45, y: 40 });
     window.__game?.input.packetTick(t0 + 180);
     return window.__game?.getSnapshot();
   });
@@ -125,7 +135,14 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   expect(midHoldSnapshot.interaction.packetIntent.progress).toBeLessThan(1);
 
   // --- Cancellation path (failure sting): drift > 14px should cancel and
-  // trigger failureFeedback with a 180ms envelope + 0.34 flash alpha.
+  // trigger failureFeedback with a 180ms envelope + 0.34 flash alpha. This
+  // is the STRICT `pullPx > DRIFT_CANCEL_PX` guard (14px exactly is safe;
+  // 22px here is well past the boundary). The complementary open path
+  // (pullPx >= OPEN_PULL_MIN_PX=10, inclusive) is exercised by the
+  // heldSnapshot block further down; together they pin the (10, 14] pull
+  // window where a hold+pull commits OPENED without tripping the drift
+  // guard. Unit-level tripwire: checkPullBoundaryAsymmetryHolds in
+  // aftersign/src/packetIntent.ts.
   await page.evaluate(() => window.__game?.resetSliceSave());
   const cancelledSnapshot = await page.evaluate(() => {
     const t0 = 8_000;
@@ -169,8 +186,12 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
     .toBe(afterReleaseSnapshot.prevStartedAt);
 
   // --- Past-threshold: continue the same hold to start + 2000ms ---
+  // Open now requires min(hold, pull): commit a 12 px pull (past
+  // OPEN_PULL_MIN_PX=10, inside the 14 px DRIFT_CANCEL_PX guard) before
+  // ticking past the hold threshold. A hold alone would stay SEALED.
   const heldSnapshot = await page.evaluate(() => {
     window.__game?.input.packetPress({ timeMs: 10_000, x: 40, y: 40 });
+    window.__game?.input.packetMove({ timeMs: 10_000 + 200, x: 40 + 12, y: 40 });
     window.__game?.input.packetTick(10_000 + 2_000);
     return window.__game?.getSnapshot();
   });

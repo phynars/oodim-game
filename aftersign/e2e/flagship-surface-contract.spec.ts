@@ -179,9 +179,23 @@ async function clickChoiceViaDom(page: Page, variants: readonly string[]): Promi
   expect(clicked, `Expected DOM control for one of [${variants.join(", ")}]`).toBe(true);
 }
 
-async function holdChoiceViaDom(page: Page, variants: readonly string[], holdMs: number): Promise<void> {
+// Holds a DOM control for `holdMs` and injects a pointermove with a
+// configurable pull (default 12px) partway through. Open now requires
+// `min(holdProgress, pullProgress)` past both thresholds (aftersign/src/
+// packetIntent.ts): a raw pointerdown → wait → pointerup delivers zero
+// pull, so pullProgress stays 0 and the gesture stays SEALED regardless
+// of hold length. The 12px default sits inside the (10, 14] window:
+// past OPEN_PULL_MIN_PX=10 (inclusive open) and inside DRIFT_CANCEL_PX=14
+// (strict cancel). Callers that want to prove the SEALED path can pass
+// pullPx=0 explicitly.
+async function holdChoiceViaDom(
+  page: Page,
+  variants: readonly string[],
+  holdMs: number,
+  pullPx = 12,
+): Promise<void> {
   const held = await page.evaluate(
-    async ({ candidates, ms }) => {
+    async ({ candidates, ms, pull }) => {
       const nodes = Array.from(
         document.querySelectorAll<HTMLElement>("button, [role='button'], [data-choice-id], [data-choice], [data-choiceid]"),
       );
@@ -206,6 +220,13 @@ async function holdChoiceViaDom(page: Page, variants: readonly string[], holdMs:
         const matches = lowered.some((needle) => attrs.some((hay) => hay.includes(needle)));
         if (!matches) continue;
 
+        // Anchor the pointer at the button's center so the pointermove
+        // delta below is a real pull relative to the press point, not a
+        // sum with the button's own coordinates.
+        const rect = node.getBoundingClientRect();
+        const startX = rect.left + rect.width / 2;
+        const startY = rect.top + rect.height / 2;
+
         node.dispatchEvent(
           new PointerEvent("pointerdown", {
             bubbles: true,
@@ -214,9 +235,33 @@ async function holdChoiceViaDom(page: Page, variants: readonly string[], holdMs:
             buttons: 1,
             pointerType: "touch",
             isPrimary: true,
+            clientX: startX,
+            clientY: startY,
           }),
         );
-        await new Promise((resolve) => setTimeout(resolve, ms));
+
+        // Inject the pull ~halfway through the hold. PacketIntentController
+        // reads distance-from-press, so a single pointermove is enough —
+        // the delta persists until pointerup.
+        if (pull > 0) {
+          await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.floor(ms / 2))));
+          node.dispatchEvent(
+            new PointerEvent("pointermove", {
+              bubbles: true,
+              pointerId: 1,
+              button: 0,
+              buttons: 1,
+              pointerType: "touch",
+              isPrimary: true,
+              clientX: startX + pull,
+              clientY: startY,
+            }),
+          );
+          await new Promise((resolve) => setTimeout(resolve, Math.max(0, ms - Math.floor(ms / 2))));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, ms));
+        }
+
         node.dispatchEvent(
           new PointerEvent("pointerup", {
             bubbles: true,
@@ -225,6 +270,8 @@ async function holdChoiceViaDom(page: Page, variants: readonly string[], holdMs:
             buttons: 0,
             pointerType: "touch",
             isPrimary: true,
+            clientX: startX + (pull > 0 ? pull : 0),
+            clientY: startY,
           }),
         );
         node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -233,7 +280,7 @@ async function holdChoiceViaDom(page: Page, variants: readonly string[], holdMs:
 
       return false;
     },
-    { candidates: variants, ms: holdMs },
+    { candidates: variants, ms: holdMs, pull: pullPx },
   );
 
   expect(held, `Expected holdable DOM control for one of [${variants.join(", ")}]`).toBe(true);
