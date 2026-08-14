@@ -148,6 +148,14 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
 
       const start = { timeMs: 2_000, x: 160, y: 180 };
       const pressed = game.input.packetPress(start);
+      // Open now requires min(hold, pull): a hold alone stays SEALED.
+      // Commit a 12 px pull (past OPEN_PULL_MIN_PX=10, well inside the
+      // 14 px DRIFT_CANCEL_PX guard) before ticking to the hold threshold.
+      game.input.packetMove({
+        timeMs: start.timeMs + pressed.config.HOLD_TO_OPEN_MS - 16,
+        x: start.x + 12,
+        y: start.y,
+      });
       const opened = game.input.packetTick(start.timeMs + pressed.config.HOLD_TO_OPEN_MS);
       await game.input.choose("deliver-packet");
       await game.input.waitForStoryIdle();
@@ -215,10 +223,19 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
 
       const start = { timeMs: 4_000, x: 260, y: 280 };
       const pressed = game.input.packetPress(start);
+      // Progress is now min(holdProgress, pullProgress). Commit a 12 px
+      // pull (past OPEN_PULL_MIN_PX=10, inside the 14 px DRIFT_CANCEL_PX
+      // guard) so pullProgress saturates to 1 and the min collapses to
+      // the hold curve we're inspecting.
+      game.input.packetMove({
+        timeMs: start.timeMs + 100,
+        x: start.x + 12,
+        y: start.y,
+      });
       // Tick at 250ms held. openProgressAt subtracts the 80ms PROGRESS_DEADBAND_MS
       // before dividing by the usable window (HOLD_TO_OPEN_MS − deadband = 370ms),
-      // so progress = (250 − 80) / 370 ≈ 0.459 — cleanly inside the 0.4–0.7 window
-      // that proves the affordance is inspectable mid-hold. Ticking at
+      // so holdProgress = (250 − 80) / 370 ≈ 0.459 — cleanly inside the 0.4–0.7
+      // window that proves the affordance is inspectable mid-hold. Ticking at
       // HOLD_TO_OPEN_MS/2 (225ms) would land at 0.392 and fail the lower bound.
       const midHold = game.input.packetTick(start.timeMs + 250);
       return {
