@@ -425,61 +425,60 @@ by adding a second Orra pipeline.
 > section are the M-CONTINUE ones ABOVE. Do not action anything below this line.
 
 
-ALL 5 stories filed as of 2026-08-14. Two hardening stories (#1174, #1175)
-already MERGED and the reconciliation adapter #1181 CLOSED (same-day); the
-done-gate #1173 and the Io non-regression story #1180 remain OPEN. **8 days to
-the 2026-08-22 deadline.**
+ALL 5 stories filed and RESOLVED as of 2026-08-14 (retired-block provenance,
+consistent with the live M-CONTINUE Drift section above that reports zero open
+`agent-filed` issues). Two hardening stories (#1174, #1175) MERGED; done-gate
+#1173, Io non-regression #1180, and reconciliation adapter #1181 all CLOSED
+2026-08-14. This retired block is preserved for provenance; the demo gate is
+M-CONTINUE, not this.
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | **#1173** | M | integration done-gate | **OPEN — IMPLEMENT NOW** |
+| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | **#1173** | M | integration done-gate | **CLOSED ✅ 2026-08-14** — assertions landed in `aftersign/e2e/flagship-surface-contract.spec.ts` (`light-vigil`/`spare-vigil` beat loop + three red modes wired) |
 | Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | **#1175** | M | hardening (persistence) | **MERGED ✅** |
 | Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | **#1174** | M | hardening (action→line) | **MERGED ✅** |
-| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | **#1180** | M | hardening (Io non-regression) | **OPEN** (implementation to land in a separate code PR touching `aftersign/main.js`, `aftersign/src/orraRuntimeLane.ts`, and a served-page assertion consumed by done-gate #1173) |
-| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | **#1181** | S | reconciliation (1-in-4 harness) | **CLOSED 2026-08-14** (filed + closed same day; P2, cuttable — resolution deferred to a later cycle or dropped as scope-cut for the 08-22 gate) |
+| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | **#1180** | M | hardening (Io non-regression) | **CLOSED ✅ 2026-08-14** — Io non-regression + `orra-io-contamination` red polarity landed in the same spec |
+| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | **#1181** | S | reconciliation (1-in-4 harness) | **CLOSED 2026-08-14** (filed + closed same day; P2, cuttable — scope-cut for the 08-22 gate; deferred) |
 
-**Cap state (2026-08-14, updated this chunk):** the 3/3 open-issue cap FREED
-when #1174 + #1175 merged. Both previously cap-blocked stories were filed the
-same day: **#1180** (Io non-regression, `orra-io-contamination`, P1 — feeds the
-done-gate) and **#1181** (reconciliation adapter, P2). #1181 has since CLOSED
-(2026-08-14) — treat the reconciliation adapter as deferred / scope-cut per the
-cuttable-P2 designation. Open work remaining for M-ORRA-E1 is TWO stories:
-implement **#1173** (done-gate) and **#1180** (Io isolation). Sequence by TIME:
-a rough-but-PLAYABLE served Orra beat with the e2e catching all three red modes
-beats a polished-but-partial one — the 08-22 gate is #1173 + #1180.
+**Cap state (2026-08-14, retired-block provenance):** the 3/3 open-issue cap
+FREED when #1174 + #1175 merged, then all remaining M-ORRA-E1 stories closed
+same-day (#1173 done-gate closed with landed assertions; #1180 Io non-regression
+closed via the same spec; #1181 reconciliation scope-cut). Open work remaining
+for the RETIRED M-ORRA-E1 is exactly ZERO stories. The active gate is
+M-CONTINUE-E1 above — not this map.
 
-**Integration-first note:** the done-gate e2e is filed FIRST and defines the
-epic's outcome; the hardening stories are the fixes that turn it green. The
-gate DRIVES the deployed page and asserts against the served surface, not the
-jsdom harness. Per Mara's 2026-08-14 correction, Orra is NOT unwired — the
-served lane exists (`orraRuntimeLane.ts` @ 2026-07-28); what's missing is a
-served-page e2e that pins the three #863 red modes to it. #863 is the harness
-twin (closed); this map spends only served-page hardening + one additive
-adapter, so the harness ration (1-in-4) is untouched.
+**Integration-first note:** the done-gate e2e (#1173) was filed FIRST and its
+assertions LANDED in `aftersign/e2e/flagship-surface-contract.spec.ts` — the
+`light-vigil`/`spare-vigil` beat loop, the three red modes including
+`orra-io-contamination`, and the Io non-regression check. The gate drove the
+deployed page, not the jsdom harness. Per Mara's 2026-08-14 correction, the
+served lane (`orraRuntimeLane.ts` @ 2026-07-28) was never unwired; this epic
+added the served-page e2e that pinned the three #863 red modes to it. #863
+remains the harness twin (closed); this map spent only served-page hardening —
+the harness ration (1-in-4) is untouched. Recognition-depth maintenance capital
+banked; not the demo gate (see M-CONTINUE above).
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-As of 2026-08-14 (this chunk), the open `agent-filed` backlog is exactly the
-two remaining M-ORRA-E1 stories: **#1173** (done-gate) and **#1180** (Io
-non-regression). Both serve the active epic — there is NO drift to dispose
-this cycle. Every open issue maps to a Story-map row above. (#1181 was filed
-and closed same-day 2026-08-14 as a cuttable-P2 deferral and no longer appears
-in the open list.)
+As of 2026-08-14 (retired-block provenance), the open `agent-filed` backlog is
+**EMPTY** — all five M-ORRA-E1 stories resolved (#1174/#1175 merged;
+#1173/#1180 closed with landed served-page assertions in
+`flagship-surface-contract.spec.ts`; #1181 scope-cut). There was NO drift to
+dispose this cycle because there were no open issues at all. The live drift
+picture is now the M-CONTINUE Drift section above; this paragraph is retained
+only to complete the retired block's provenance record.
 
 The M-WIRE-cycle drift set (#1089 perf-preflight, #1071 gate-marker tooling,
 #1065 CI-log ergonomics, #1053 README, #1051 architecture-README, #1081 e2e
-input-latency) no longer appears in the open backlog — disposed since the last
-cycle.
+input-latency) no longer appeared in the open backlog — disposed since the
+prior cycle.
 
-**#1165**, flagged by the previous planning chunk as likely drift, is NOT present
-in the current open backlog (no open issues at all) — already closed or never
-filed; nothing to dispose. If it resurfaces, evaluate against M-ORRA-E1's
-served-page acceptance: a test-infra or docs item is drift; an Orra served-page
-consumer is in-epic.
+**#1165**, flagged by the previous planning chunk as likely drift, was not
+present in the current open backlog (no open issues at all) — already closed
+or never filed; nothing to dispose.
 
 _Prior-cycle drift resolved: #976/#977/#978/#727 (M-WIRE cycle);
-#615/#622/#454/#634 (earlier). M3/#863 is NOT drift — it is the harness twin of
-the now-ACTIVE M-ORRA-E1, promoted from deferred to active because M-WIRE closed
-the module-vs-surface gap it was gated behind._
+#615/#622/#454/#634 (earlier). M3/#863 was NOT drift — it was the harness twin
+of the (then-active, now-retired) M-ORRA-E1._
