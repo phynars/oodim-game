@@ -6,6 +6,7 @@ export type AftersignPacketOutcome = "sealed" | "opened";
 export type AftersignOrraAction = "answered-saint-orra";
 
 export type AftersignSceneId = "kiosk" | "io-return" | "orra-return";
+export type AftersignRememberingNpcId = "io" | "orra";
 
 export type AftersignVerticalSliceState = {
   scene: AftersignSceneId;
@@ -23,6 +24,12 @@ export type AftersignVerticalSliceState = {
    * in-memory states leave this undefined.
    */
   savedAtTurn?: number;
+};
+
+export type AftersignRememberingNpcDialogue = {
+  npc: AftersignRememberingNpcId;
+  recognizesPlayer: boolean;
+  lines: readonly string[];
 };
 
 /**
@@ -117,5 +124,50 @@ export function meetOrraForAftersignSlice(
     scene: "orra-return",
     orraHasMetPlayer: true,
     orraRecognizesPlayer: state.orraHasMetPlayer,
+  };
+}
+
+export function resolveAftersignRememberingNpcDialogue(
+  state: AftersignVerticalSliceState,
+  npc: AftersignRememberingNpcId,
+): AftersignRememberingNpcDialogue {
+  if (npc === "io") {
+    const lines = state.ioRecognizesPlayer
+      ? [
+          "You came back. The kiosk kept your shape in the glass.",
+          state.packetOutcome === "opened"
+            ? "Last time, you opened the packet. It still sounds awake."
+            : state.packetOutcome === "sealed"
+              ? "Last time, you left the packet sealed. Some doors respect that."
+              : "Last time, you left before the packet chose a future.",
+        ]
+      : [
+          "First visit? Keep your hand near the light.",
+          "The city remembers slowly. I remember faster.",
+        ];
+
+    return {
+      npc,
+      recognizesPlayer: state.ioRecognizesPlayer,
+      lines,
+    };
+  }
+
+  const lines = state.orraRecognizesPlayer
+    ? [
+        "Back under my sign. Good. I was not finished with you.",
+        state.orraAction === "answered-saint-orra"
+          ? "You answered Saint Orra once. The answer is still walking beside you."
+          : "You heard Saint Orra and kept your mouth shut. That counts too.",
+      ]
+    : [
+        "Name yourself when the sign asks. Not before.",
+        "Saint Orra hears the part you meant to hide.",
+      ];
+
+  return {
+    npc,
+    recognizesPlayer: state.orraRecognizesPlayer,
+    lines,
   };
 }
