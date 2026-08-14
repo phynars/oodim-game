@@ -122,4 +122,143 @@ export const runFailureStingFeedbackChecks = (): void => {
   //     spraying NaN across HUD styles.
   const tNaN = failureStingEnvelopeAt(Number.NaN, feel);
   assert(tNaN.active === false, "NaN elapsedMs must yield an inactive envelope");
+
+  // (7) reducedMotion=true zeroes the LATERAL feel channels — wobble,
+  //     cameraKick (yaw+worldX), and hudShake — while preserving the
+  //     non-lateral acknowledgement channels (flashAlpha, vignetteAlpha,
+  //     hudDropY). Sibling envelopes pin this same split:
+  //       feltRecognitionBeat.consumer.test.ts:123
+  //       interactionFeelContract.test.ts:62/126/170
+  //       durableSave.contract.test.ts:522/581
+  //       aftersignConfirmFeel.consumer.test.ts:99
+  //     Rationale: on a phone, lateral shake at failure is nauseating;
+  //     the flash/vignette/drop still land the "you failed" beat crisply
+  //     without motion sickness. The default call path in main.js omits
+  //     `options`, so the shipped envelope stays byte-identical to the
+  //     non-reduced baseline — this test enforces both halves of that
+  //     contract: reducedMotion collapses lateral, and omission does not.
+  const reducedPeak = failureStingEnvelopeAt(0, feel, { reducedMotion: true });
+  const fullPeak = failureStingEnvelopeAt(0, feel);
+
+  // 7a. Lateral channels must be zeroed under reduced motion.
+  assert(reducedPeak.wobble === 0, `reducedMotion must zero wobble (got ${reducedPeak.wobble})`);
+  assert(
+    reducedPeak.cameraKickDeg === 0,
+    `reducedMotion must zero cameraKickDeg (got ${reducedPeak.cameraKickDeg})`,
+  );
+  assert(
+    reducedPeak.cameraKickWorldX === 0,
+    `reducedMotion must zero cameraKickWorldX (got ${reducedPeak.cameraKickWorldX})`,
+  );
+  assert(
+    reducedPeak.hudShakePx === 0,
+    `reducedMotion must zero hudShakePx (got ${reducedPeak.hudShakePx})`,
+  );
+  // Derived per-frame kicks (which multiply the feel constants by wobble)
+  // must fall out as 0 too — pin them explicitly so a future refactor
+  // that stops routing through `wobble` still gets caught.
+  assert(
+    reducedPeak.cameraKickWorldXCurrent === 0,
+    `reducedMotion must zero cameraKickWorldXCurrent (got ${reducedPeak.cameraKickWorldXCurrent})`,
+  );
+  assert(
+    reducedPeak.cameraYawDegreesCurrent === 0,
+    `reducedMotion must zero cameraYawDegreesCurrent (got ${reducedPeak.cameraYawDegreesCurrent})`,
+  );
+  assert(
+    reducedPeak.hudShakeX === 0,
+    `reducedMotion must zero hudShakeX (got ${reducedPeak.hudShakeX})`,
+  );
+
+  // 7b. Non-lateral acknowledgement channels must MATCH the non-reduced
+  //     envelope exactly — the player still feels the failure land.
+  assertClose(
+    reducedPeak.flashAlpha,
+    fullPeak.flashAlpha,
+    1e-9,
+    "reducedMotion must preserve flashAlpha (acknowledgement, not motion)",
+  );
+  assertClose(
+    reducedPeak.vignetteAlpha,
+    fullPeak.vignetteAlpha,
+    1e-9,
+    "reducedMotion must preserve vignetteAlpha",
+  );
+  assertClose(
+    reducedPeak.hudDropY,
+    fullPeak.hudDropY,
+    1e-9,
+    "reducedMotion must preserve hudDropY (vertical drop is not lateral shake)",
+  );
+  assert(
+    reducedPeak.hudDropPx === fullPeak.hudDropPx,
+    "reducedMotion must preserve hudDropPx feel constant",
+  );
+
+  // 7c. Timing/state channels must NOT be affected — the envelope still
+  //     runs for durationMs and reports remainingMs/active identically.
+  assert(
+    reducedPeak.active === fullPeak.active,
+    "reducedMotion must not change active flag at t=0",
+  );
+  assert(
+    reducedPeak.progress === fullPeak.progress,
+    "reducedMotion must not change progress",
+  );
+  assert(
+    reducedPeak.remainingMs === fullPeak.remainingMs,
+    "reducedMotion must not change remainingMs",
+  );
+  assert(
+    reducedPeak.durationMs === fullPeak.durationMs,
+    "reducedMotion must not change durationMs",
+  );
+  assertClose(
+    reducedPeak.falloff,
+    fullPeak.falloff,
+    1e-9,
+    "reducedMotion must not change falloff",
+  );
+  assertClose(
+    reducedPeak.recoveryScale,
+    fullPeak.recoveryScale,
+    1e-9,
+    "reducedMotion must not change recoveryScale",
+  );
+
+  // 7d. Byte-identity of the default call path: omitting `options` must
+  //     produce the same envelope as `{ reducedMotion: false }`. This is
+  //     the guard that keeps the shipped non-reduced envelope unchanged
+  //     by this PR — regressions that flip the default would break it.
+  const defaultCall = failureStingEnvelopeAt(0, feel);
+  const explicitFull = failureStingEnvelopeAt(0, feel, { reducedMotion: false });
+  for (const key of Object.keys(defaultCall) as Array<keyof typeof defaultCall>) {
+    const a = defaultCall[key];
+    const b = explicitFull[key];
+    if (typeof a === "number" && typeof b === "number") {
+      assertClose(a, b, 1e-12, `default vs {reducedMotion:false} drift on ${String(key)}`);
+    } else {
+      assert(
+        a === b,
+        `default vs {reducedMotion:false} drift on ${String(key)} (${String(a)} vs ${String(b)})`,
+      );
+    }
+  }
+
+  // 7e. Mid-window sample — lateral channels stay zeroed across the
+  //     whole envelope, not just at t=0. Catches a regression that
+  //     applies motionScale only to the peak but lets rawWobble leak
+  //     through as t advances.
+  for (const ms of [45, 90, 135, 179]) {
+    const s = failureStingEnvelopeAt(ms, feel, { reducedMotion: true });
+    assert(s.wobble === 0, `reducedMotion mid-window wobble must be 0 (t=${ms}, got ${s.wobble})`);
+    assert(
+      s.cameraKickWorldXCurrent === 0,
+      `reducedMotion mid-window cameraKickWorldXCurrent must be 0 (t=${ms}, got ${s.cameraKickWorldXCurrent})`,
+    );
+    assert(
+      s.hudShakeX === 0,
+      `reducedMotion mid-window hudShakeX must be 0 (t=${ms}, got ${s.hudShakeX})`,
+    );
+  }
 };

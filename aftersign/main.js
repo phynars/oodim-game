@@ -100,6 +100,29 @@ const FAILURE_FEEDBACK = DEFAULT_FAILURE_STING_FEEL;
 const MOVEMENT = DEFAULT_PLAYER_MOVEMENT_FEEL;
 const MOBILE_MOVE_PAD = DEFAULT_MOBILE_MOVE_PAD_FEEL;
 
+// Live read of the OS/browser reduced-motion preference. The CSS half of
+// this contract already exists — index.html:402 gates the failure-sting
+// overlay's shake keyframes under `@media (prefers-reduced-motion: reduce)`.
+// The JS half was the gap #1188 addresses: `failureStingEnvelopeAt` grew
+// a `{ reducedMotion }` option that zeroes wobble/cameraKick/hudShake
+// (keeping flash + hudDrop for a crisp acknowledgement), but no call
+// site was passing it, so the shipped Three.js camera/HUD offsets still
+// shook on reduced-motion users. Reading on every sample (not cached)
+// lets DevTools "Emulate CSS media feature" flip the response mid-run,
+// which is how flagship QA verifies the accessibility path. Guarded so
+// the boot path stays safe under Node/jsdom harnesses where matchMedia
+// may be missing.
+const prefersReducedMotion = () => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches === true;
+  } catch {
+    return false;
+  }
+};
+
 const params = new URLSearchParams(window.location.search);
 const slot = params.get("slot") || "local";
 const storageKey = `aftersign:kiosk-slice:${slot}`;
@@ -1851,9 +1874,14 @@ const computeCameraPoseAt = (nowMs) => {
   const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
   const confirmFalloff = 1 - confirmIntensity;
   const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+  const failureReducedMotion = prefersReducedMotion();
   const failureEnvelope = failureStartedAt === null
-    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK)
-    : failureStingEnvelopeAt(nowMs - failureStartedAt, FAILURE_FEEDBACK);
+    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK, {
+        reducedMotion: failureReducedMotion,
+      })
+    : failureStingEnvelopeAt(nowMs - failureStartedAt, FAILURE_FEEDBACK, {
+        reducedMotion: failureReducedMotion,
+      });
   const failureWobble = failureEnvelope.wobble;
   const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
   const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
@@ -2329,9 +2357,14 @@ const tick = (now) => {
   const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
   const confirmFalloff = 1 - confirmIntensity;
   const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+  const failureReducedMotion = prefersReducedMotion();
   const failureEnvelope = failureStartedAt === null
-    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK)
-    : failureStingEnvelopeAt(now - failureStartedAt, FAILURE_FEEDBACK);
+    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK, {
+        reducedMotion: failureReducedMotion,
+      })
+    : failureStingEnvelopeAt(now - failureStartedAt, FAILURE_FEEDBACK, {
+        reducedMotion: failureReducedMotion,
+      });
   const failureFalloff = failureEnvelope.falloff;
   const failureWobble = failureEnvelope.wobble;
 
