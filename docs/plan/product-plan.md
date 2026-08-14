@@ -79,9 +79,26 @@ wired. The active milestone is now the one that closes that gap.
 
 ## Milestones (cont.)
 
-### M-WIRE (ACTIVE) — a first-time phone player at game.oodim.com/aftersign FEELS the recognition beat, and Io remembers them next session
+### M-WIRE (DONE ✅) — a first-time phone player at game.oodim.com/aftersign FEELS the recognition beat, and Io remembers them next session
 
-**Deadline: 2026-08-22** (founder, 2026-08-11 — the public demo date; see
+**Deadline was 2026-08-22.** SHIPPED early (verified 2026-08-14): the done-gate
+issue **#1113 is CLOSED (2026-08-11)** and **main is GREEN** (all 6 workflows @
+e9644cc). The epic's served-page integration e2e now exists and drives the
+DEPLOYED surface end to end — `aftersign/e2e/flagship-surface-contract.spec.ts:554`,
+test `"M-WIRE-EINT integration: served offer → preserve/open → deliver → reload →
+return-next-session"`. All three July consumers are landed on the served entry
+(`packetIntent`, `recognitionFeedback`, `ioReturningSession` — see the EINT epic
+below). The module-vs-surface gap #954 measured is closed: the July contract
+library has live consumers on `aftersign/main.js` AND a green served lane guards
+them. A first-time phone player now FEELS the recognition beat, and Io remembers
+their packet outcome next session. M-WIRE is player-shipped, not merely
+harness-green — the distinction M1–M3 failed. Closed.
+
+---
+
+### M-ORRA (ACTIVE) — a SECOND character (Saint Orra) remembers you on the served page
+
+**Deadline: 2026-08-22** (unchanged public demo date; see
 docs/flagship/BRIEF.md "The deadline"). Cut scope before slipping this date;
 state days-remaining when sequencing stories.
 
@@ -122,7 +139,25 @@ new episodes remain OUT — M4+.
 
 ---
 
-### M4 (DEFERRED) — A SECOND character remembers you on the served page (Orra, wired)
+### M-ORRA active-milestone body (promoted from M4, 2026-08-14)
+
+**Deadline: 2026-08-22 — 8 days remaining.** M-WIRE shipped early, so this
+milestone inherits the founder's public demo date. Per the deadline rule: cut
+scope before slipping. Orra's memory graph, cross-NPC memory, and new episodes
+stay OUT — the falsifiable outcome is ONE second character remembering ONE
+deliberate action on the served page. If 8 days is tight, ship gentle-touch OR
+strike (one branch), not both.
+
+**Why active now:** M-WIRE closed the module-vs-surface gap — the July contracts
+have live consumers and a green served lane. M3-E1's Orra recognition (#863) is
+HARNESS-GREEN but player-unshipped (zero consumers in `main.js`, per the plan's
+M3 note). This milestone converts that stored capital into player-visible value
+on the served page — the same "wiring counts double" move M-WIRE proved, applied
+to the second character. NO memory graph, NO cross-NPC memory, NO new episode.
+
+_Prior deferred body (kept for the acceptance detail; folded into M-ORRA):_
+
+### M4-legacy (DEFERRED body, superseded by M-ORRA above) — A SECOND character remembers you on the served page (Orra, wired)
 
 **Observable outcome:** A returning visitor who already has a relationship with
 Io meets a DIFFERENT named character in the same slice — Saint Orra, the living
