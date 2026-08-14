@@ -223,8 +223,9 @@ by adding a second Orra pipeline.
 ## Story map (M-ORRA-E1)
 
 ALL 5 stories filed as of 2026-08-14. Two hardening stories (#1174, #1175)
-already MERGED; the done-gate #1173 and the two final hardening/reconciliation
-stories (#1180, #1181) are OPEN. **8 days to the 2026-08-22 deadline.**
+already MERGED and the reconciliation adapter #1181 CLOSED (same-day); the
+done-gate #1173 and the Io non-regression story #1180 remain OPEN. **8 days to
+the 2026-08-22 deadline.**
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
@@ -232,16 +233,17 @@ stories (#1180, #1181) are OPEN. **8 days to the 2026-08-22 deadline.**
 | Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | **#1175** | M | hardening (persistence) | **MERGED ✅** |
 | Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | **#1174** | M | hardening (action→line) | **MERGED ✅** |
 | Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | **#1180** | M | hardening (Io non-regression) | **OPEN — NOT fixed by this PR.** This PR is `Refs #1180` only (docs status-table sync). The fix requires code in `aftersign/main.js` (Io returning-session selection), `aftersign/src/orraRuntimeLane.ts` (no shared selection keys), and `aftersign/e2e/flagship-surface-contract.spec.ts` (served-page assertion feeding done-gate #1173) — filed as a follow-up implementation PR. Do NOT auto-close #1180 on merge. |
-| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | **#1181** | S | reconciliation (1-in-4 harness) | **OPEN — file order 2 of 2, lowest priority (P2), cuttable** |
+| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | **#1181** | S | reconciliation (1-in-4 harness) | **CLOSED 2026-08-14** (filed + closed same day; P2, cuttable — resolution deferred to a later cycle or dropped as scope-cut for the 08-22 gate) |
 
 **Cap state (2026-08-14, updated this chunk):** the 3/3 open-issue cap FREED
-when #1174 + #1175 merged. The two previously cap-blocked stories are now filed:
-**#1180** (Io non-regression, `orra-io-contamination`, P1 — feeds the done-gate)
-and **#1181** (reconciliation adapter, P2 — cuttable if the 08-22 gate is at
-risk). Open work remaining for M-ORRA-E1: implement **#1173** (done-gate),
-**#1180** (Io isolation), then **#1181** (reconciliation). Sequence by TIME: a
-rough-but-PLAYABLE served Orra beat with the e2e catching all three red modes
-beats a polished-but-partial one — cut #1181 before slipping 08-22.
+when #1174 + #1175 merged. Both previously cap-blocked stories were filed the
+same day: **#1180** (Io non-regression, `orra-io-contamination`, P1 — feeds the
+done-gate) and **#1181** (reconciliation adapter, P2). #1181 has since CLOSED
+(2026-08-14) — treat the reconciliation adapter as deferred / scope-cut per the
+cuttable-P2 designation. Open work remaining for M-ORRA-E1 is TWO stories:
+implement **#1173** (done-gate) and **#1180** (Io isolation). Sequence by TIME:
+a rough-but-PLAYABLE served Orra beat with the e2e catching all three red modes
+beats a polished-but-partial one — the 08-22 gate is #1173 + #1180.
 
 **Integration-first note:** the done-gate e2e is filed FIRST and defines the
 epic's outcome; the hardening stories are the fixes that turn it green. The
@@ -257,9 +259,11 @@ adapter, so the harness ration (1-in-4) is untouched.
 ## Drift — open issues serving NO active epic
 
 As of 2026-08-14 (this chunk), the open `agent-filed` backlog is exactly the
-M-ORRA-E1 story set: **#1173** (done-gate), **#1180** (Io non-regression),
-**#1181** (reconciliation adapter). All three serve the active epic — there is
-NO drift to dispose this cycle. Every open issue maps to a Story-map row above.
+two remaining M-ORRA-E1 stories: **#1173** (done-gate) and **#1180** (Io
+non-regression). Both serve the active epic — there is NO drift to dispose
+this cycle. Every open issue maps to a Story-map row above. (#1181 was filed
+and closed same-day 2026-08-14 as a cuttable-P2 deferral and no longer appears
+in the open list.)
 
 The M-WIRE-cycle drift set (#1089 perf-preflight, #1071 gate-marker tooling,
 #1065 CI-log ergonomics, #1053 README, #1051 architecture-README, #1081 e2e
