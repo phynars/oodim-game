@@ -66,6 +66,20 @@ export {
 } from "./verticalSlicePacketInteraction";
 
 export {
+  AFTERSIGN_FELT_RECOGNITION_BEAT,
+  FELT_RECOGNITION_CLEANUP_TAIL_MS,
+  resolveAftersignFeltRecognitionCue,
+  createAftersignFeltRecognitionLayer,
+  playAftersignFeltRecognitionBeat,
+  resolveAndPlayAftersignFeltRecognitionBeat,
+  type AftersignFeltRecognitionBeat,
+  type AftersignRecognitionMemoryLine,
+  type AftersignRecognitionCue,
+  type AftersignFeltRecognitionPlayOptions,
+  type AftersignFeltRecognitionHandle,
+} from "./feltRecognitionBeat";
+
+export {
   AFTERSIGN_KIOSK_SCENE_FEEL,
   sampleAftersignKioskSceneEnvelope,
   type AftersignKioskSceneEnvelope,

@@ -6,6 +6,8 @@ export default defineConfig({
     include: [
       "apps/web/src/aftersign/harness/windowGameHarnessBoot.test.ts",
       "apps/web/src/aftersign/ioRecognitionExpectedLine.consumer.test.ts",
+      "apps/web/src/aftersign/feltRecognitionBeat.test.ts",
+      "apps/web/src/aftersign/feltRecognitionBeat.consumer.test.ts",
     ],
   },
 });
