@@ -65,6 +65,7 @@ import {
   DEFAULT_FAILURE_STING_FEEL,
   failureStingEnvelopeAt,
 } from "./src/failureStingFeedback.ts";
+import { createReducedMotionPreference } from "./src/reducedMotionPreference.js";
 import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
@@ -107,21 +108,17 @@ const MOBILE_MOVE_PAD = DEFAULT_MOBILE_MOVE_PAD_FEEL;
 // a `{ reducedMotion }` option that zeroes wobble/cameraKick/hudShake
 // (keeping flash + hudDrop for a crisp acknowledgement), but no call
 // site was passing it, so the shipped Three.js camera/HUD offsets still
-// shook on reduced-motion users. Reading on every sample (not cached)
-// lets DevTools "Emulate CSS media feature" flip the response mid-run,
-// which is how flagship QA verifies the accessibility path. Guarded so
-// the boot path stays safe under Node/jsdom harnesses where matchMedia
-// may be missing.
-const prefersReducedMotion = () => {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return false;
-  }
-  try {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches === true;
-  } catch {
-    return false;
-  }
-};
+// shook on reduced-motion users.
+//
+// The reader is factored out (aftersign/src/reducedMotionPreference.js)
+// so it can CACHE the current answer and subscribe to the MediaQueryList's
+// `change` event — that's how DevTools "Emulate CSS media feature" toggles
+// land mid-run without re-querying matchMedia (and allocating a new
+// MediaQueryList) every frame. The factory also guards SSR / jsdom
+// environments where matchMedia may be missing, so the boot path stays
+// safe under the pure/typecheck bundles that import main.js transitively.
+const reducedMotionPreference = createReducedMotionPreference();
+const prefersReducedMotion = () => reducedMotionPreference.read();
 
 const params = new URLSearchParams(window.location.search);
 const slot = params.get("slot") || "local";
