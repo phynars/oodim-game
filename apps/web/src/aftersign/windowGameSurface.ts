@@ -31,7 +31,9 @@ export type AftersignStoryBeatId =
   | "io-remembers-sealed-packet"
   | "io-remembers-opened-packet"
   | "orra-first-meeting"
-  | "orra-remembers-answered-saint-orra";
+  | "orra-remembers-answered-saint-orra"
+  | "return-tone-choice"
+  | "io-next-job";
 
 export type AftersignIoDialogueSnapshot = {
   /**
@@ -94,6 +96,17 @@ export type AftersignStoryStateSnapshot = {
     ioMemoryBeat?: AftersignIoMemoryBeat;
     orraMemoryBeat?: AftersignOrraMemoryBeat;
     ioDialogue: AftersignIoDialogueSnapshot;
+  };
+  /**
+   * Scene block with the current beat alongside the scene id, so a
+   * harness can assert `snapshot.scene.beat` per the story-state
+   * contract (`docs/flagship/story-state-contract.md`) without
+   * reaching into `story.beat`. `scene.beat` and `story.beat` are
+   * always the same value — one derivation, two read paths.
+   */
+  scene: {
+    id: AftersignSceneId;
+    beat: AftersignStoryBeatId;
   };
   state: {
     scene: AftersignSceneId;
@@ -167,10 +180,11 @@ export function getAftersignStoryState(
   state: AftersignVerticalSliceState,
   options: AftersignStoryStateOptions,
 ): AftersignStoryStateSnapshot {
+  const currentBeat = getAftersignCurrentStoryBeat(state);
   const story: AftersignStoryStateSnapshot["story"] = {
     id: "aftersign.verticalSlice",
     act: "act-1",
-    beat: getAftersignCurrentStoryBeat(state),
+    beat: currentBeat,
     completedBeats: getAftersignCompletedStoryBeats(state),
     ioDialogue: getAftersignIoDialogueSnapshot(state, {
       listenedToRoute: options.listenedToRoute ?? false,
@@ -189,6 +203,10 @@ export function getAftersignStoryState(
 
   return {
     story,
+    scene: {
+      id: state.scene,
+      beat: currentBeat,
+    },
     state: {
       scene: state.scene,
       player: {
