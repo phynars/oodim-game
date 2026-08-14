@@ -143,9 +143,27 @@ test.describe("served Orra recognition lane", () => {
     test.setTimeout(COLD_START_MS);
     const breakMode = currentBreakMode();
 
+    // #1173 done-gate: the served page reads
+    // `window.__FLAGSHIP_BREAK_MODE || params.get("breakMode")` at boot
+    // (aftersign/main.js:100 `const breakMode = ...`) to decide whether to
+    // fire the three #863 red modes on the DEPLOYED surface. Inject the
+    // window hook via addInitScript BEFORE `page.goto` so the boot-time
+    // read picks up the mode; without this the red modes were purely
+    // process-env test-side and could never activate in the browser.
+    if (breakMode) {
+      await page.addInitScript((mode: string) => {
+        (window as unknown as { __FLAGSHIP_BREAK_MODE?: string }).__FLAGSHIP_BREAK_MODE = mode;
+      }, breakMode);
+    }
+
     for (const choiceId of ["light-vigil", "spare-vigil"] as const) {
       const slot = `orra-served-${choiceId}-${Date.now()}`;
-      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      // Belt-and-braces: also thread breakMode through the URL so a
+      // reload after `forceReload({ clearLocalState: true })` — which
+      // resets in-page state but doesn't wipe addInitScript — still lands
+      // on the intended mode even if the init-script hook is ever removed.
+      const breakQuery = breakMode ? `&breakMode=${encodeURIComponent(breakMode)}` : "";
+      await page.goto(`/aftersign/?slot=${slot}${breakQuery}`, { waitUntil: "load" });
       await waitForVersion(page);
 
       await runIoBeats(page);
@@ -183,6 +201,9 @@ test.describe("served Orra recognition lane", () => {
       assertRecognized();
 
       const controlSlot = `orra-control-${choiceId}-${Date.now()}`;
+      // Control run: NO breakMode — this proves first-contact/recognition split
+      // on a clean served surface (green polarity), independent of the red-mode
+      // branch above.
       await page.goto(`/aftersign/?slot=${controlSlot}`, { waitUntil: "load" });
       await waitForVersion(page);
       await runIoBeats(page);

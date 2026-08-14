@@ -212,6 +212,17 @@ const state = {
       memory: orraMemoryFromStored,
       lastLine: lineCopyForOrraLineId(orraLineFromStored.lineId),
       lastLineId: orraLineFromStored.lineId,
+      // Mirrors npcs.io.lastLineMemoryRefs (docs/flagship/story-state-contract.md
+      // §"npcs.io.lastLineMemoryRefs"): the ids the shipped line CITES, so the
+      // served-page e2e (aftersign/e2e/orra-served-recognition.spec.ts, M-ORRA-E1
+      // done-gate #1173) can assert Orra recognized the vigil action by reference
+      // instead of by English text. On first-contact/no-memory this is [];
+      // on the recognition line it carries the ORRA_RETURN_LINE_BY_ACTION[action]
+      // id (e.g. "orra_return_lit_vigil"). Kept in lockstep with lastLineId at
+      // every mint/select/restore/reset site below.
+      lastLineMemoryRefs: orraLineFromStored.lineId === ORRA_FIRST_CONTACT_LINE_ID
+        ? []
+        : [orraLineFromStored.lineId],
     },
   },
   save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
@@ -456,6 +467,7 @@ const buildPersistPayload = ({ dirty = false } = {}) => ({
       memory: clone(state.npcs.orra.memory),
       lastLine: state.npcs.orra.lastLine,
       lastLineId: state.npcs.orra.lastLineId,
+      lastLineMemoryRefs: [...(state.npcs.orra.lastLineMemoryRefs ?? [])],
     },
   },
   save: {
@@ -1121,6 +1133,10 @@ const choose = async (choiceId) => {
     // `ORRA_RETURN_LINE_BY_ACTION[action]`.
     state.npcs.orra.lastLineId = ORRA_RETURN_LINE_BY_ACTION[orraAction];
     state.npcs.orra.lastLine = lineCopyForOrraLineId(state.npcs.orra.lastLineId);
+    // #1173 done-gate: cite the return-line id as the served refs so the
+    // aftersign/e2e/orra-served-recognition.spec.ts can prove Orra
+    // recognized the vigil action by REFERENCE (not by English text).
+    state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
     markStateDirty();
     await forceSave();
     publishState();
@@ -1131,6 +1147,9 @@ const choose = async (choiceId) => {
     const selected = selectOrraRecognitionLine(state.npcs.orra.memory);
     state.npcs.orra.lastLineId = selected.lineId;
     state.npcs.orra.lastLine = lineCopyForOrraLineId(selected.lineId);
+    state.npcs.orra.lastLineMemoryRefs = selected.lineId === ORRA_FIRST_CONTACT_LINE_ID
+      ? []
+      : [selected.lineId];
     markStateDirty();
     publishState();
     return;
@@ -1307,6 +1326,9 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   const orraLineFromSaved = selectOrraRecognitionLine(state.npcs.orra.memory);
   state.npcs.orra.lastLineId = orraLineFromSaved.lineId;
   state.npcs.orra.lastLine = lineCopyForOrraLineId(orraLineFromSaved.lineId);
+  state.npcs.orra.lastLineMemoryRefs = orraLineFromSaved.lineId === ORRA_FIRST_CONTACT_LINE_ID
+    ? []
+    : [orraLineFromSaved.lineId];
   state.save = { ...emptySave(), ...saved.save, dirty: false };
   state.save.authority = authoritativeSave ? "server" : "local-fallback";
   state.save.lastLoadProof = {
@@ -1999,6 +2021,7 @@ const resetSliceSave = async () => {
   state.npcs.orra.memory = [];
   state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
   state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
+  state.npcs.orra.lastLineMemoryRefs = [];
   state.save = emptySave();
   state.movement.input = { x: 0, z: 0, source: "none", active: false };
   state.movement.lastStepMs = 0;
@@ -2117,6 +2140,13 @@ const reset = (snapshot) => {
     state.npcs.orra.lastLine = typeof restored.npcs.orra.lastLine === "string"
       ? restored.npcs.orra.lastLine
       : lineCopyForOrraLineId(orraLineFromRestored.lineId);
+    // #1173 done-gate: keep lastLineMemoryRefs in lockstep with lastLineId so
+    // the served page exposes Orra's citation on restore just like on mint.
+    state.npcs.orra.lastLineMemoryRefs = Array.isArray(restored.npcs.orra.lastLineMemoryRefs)
+      ? restored.npcs.orra.lastLineMemoryRefs.filter((entry) => typeof entry === "string")
+      : (state.npcs.orra.lastLineId === ORRA_FIRST_CONTACT_LINE_ID
+          ? []
+          : [state.npcs.orra.lastLineId]);
   }
   if (restored.save && typeof restored.save === "object") {
     state.save = { ...emptySave(), ...restored.save };
