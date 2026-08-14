@@ -44,6 +44,10 @@ import { describe, expect, it } from "vitest";
 
 import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel";
 import {
+  fromRuntimeLaneMemory,
+  toRuntimeLaneMemory,
+} from "./orraRecognitionVocabularyAdapter";
+import {
   AFTERSIGN_IO_RECOGNITION_FEEL,
   AFTERSIGN_ORRA_RECOGNITION_FEEL,
   createAftersignVerticalSliceState,
@@ -102,11 +106,35 @@ describe("M3-E1: Orra recognizes the player independently of Io (#863)", () => {
       const returned = reloadAndReturn(playFullFirstSession());
 
       // orra-dropped guard: recognition MUST survive the durable round-trip.
-      expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
+      const harnessBeat = sampleAftersignOrraMemoryBeat(returned);
+      expect(harnessBeat).toEqual({
         kind: "orra-recognition",
         scene: "orra-return",
         recognizesPlayer: true,
         orraAction: "answered-saint-orra",
+        recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+      });
+
+      // #1181 reconciliation guard: harness vocabulary must stay aligned with
+      // served-lane lit/spared memory semantics through an additive adapter.
+      const runtimeMemory = toRuntimeLaneMemory({
+        kind: harnessBeat.kind,
+        scene: harnessBeat.scene,
+        recognizesPlayer: harnessBeat.recognizesPlayer,
+        orraAction: "lit",
+        recognitionFeel: harnessBeat.recognitionFeel,
+      });
+      expect(runtimeMemory).toEqual({
+        remembersPlayer: true,
+        action: "lit",
+      });
+      expect(
+        fromRuntimeLaneMemory(runtimeMemory, harnessBeat.recognitionFeel),
+      ).toEqual({
+        kind: "orra-recognition",
+        scene: "orra-return",
+        recognizesPlayer: true,
+        orraAction: "lit",
         recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
       });
 
