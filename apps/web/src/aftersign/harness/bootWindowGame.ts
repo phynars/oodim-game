@@ -9,7 +9,10 @@ import {
   getAftersignStoryState,
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,
+  resolveAftersignRememberingNpcDialogue,
   restoreAftersignDurableSave,
+  type AftersignRememberingNpcDialogue,
+  type AftersignRememberingNpcId,
   type AftersignStoryStateSnapshot,
   type AftersignVerticalSliceState,
 } from "../verticalSliceState";
@@ -92,6 +95,19 @@ export type AftersignWindowGameHarness = {
    * cameraYawDeg, bloomGain, audioGain, hapticMs, phase.
    */
   recallFeel: (options: AftersignRecallFeelOptions) => MemoryRecallFeelFrame | null;
+  /**
+   * Return the dialogue the remembering NPC (`"io"` or `"orra"`) would
+   * speak against the current runtime state. Sources every string from
+   * `packages/aftersign/src/ioReturningSession.ts` and the web-side
+   * first-session copy — the harness never authors dialogue inline.
+   *
+   * On first contact this returns the NPC's first-session line; on a
+   * post-restore return (`recognizesPlayer === true`) it returns the
+   * canonical returning-session line for the remembered fork.
+   */
+  getRememberingNpcDialogue: (
+    npc: AftersignRememberingNpcId,
+  ) => AftersignRememberingNpcDialogue;
 };
 
 declare global {
@@ -211,6 +227,9 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         return null;
       }
       return getMemoryRecallFeel({ elapsedMs, reducedMotion });
+    },
+    getRememberingNpcDialogue(npc) {
+      return resolveAftersignRememberingNpcDialogue(state, npc);
     },
   };
 
