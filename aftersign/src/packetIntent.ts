@@ -2,6 +2,7 @@ export const PACKET_INTENT = Object.freeze({
   HOLD_TO_OPEN_MS: 450,
   TAP_TO_PRESERVE_MAX_MS: 180,
   DRIFT_CANCEL_PX: 14,
+  OPEN_PULL_MIN_PX: 10,
   PROGRESS_DEADBAND_MS: 80,
 });
 
@@ -9,6 +10,7 @@ export type PacketIntentConfig = {
   HOLD_TO_OPEN_MS: number;
   TAP_TO_PRESERVE_MAX_MS: number;
   DRIFT_CANCEL_PX: number;
+  OPEN_PULL_MIN_PX: number;
   PROGRESS_DEADBAND_MS: number;
 };
 
@@ -106,7 +108,7 @@ export class PacketIntentController {
     if (!this.active || this.isCommitted()) return this.snapshot();
     this.consumeHiddenInterval(input.timeMs);
     this.lastPoint = { x: input.x, y: input.y };
-    if (distancePx(this.startPoint, this.lastPoint) > this.config.DRIFT_CANCEL_PX) {
+    if (this.currentPullPx() > this.config.DRIFT_CANCEL_PX) {
       this.outcome = PACKET_OUTCOME.CANCELLED;
       this.active = false;
       this.progress = 0;
@@ -137,11 +139,14 @@ export class PacketIntentController {
     if (!this.active || this.isCommitted()) return this.snapshot();
     this.consumeHiddenInterval(input.timeMs);
     this.lastPoint = { x: input.x, y: input.y };
-    if (distancePx(this.startPoint, this.lastPoint) > this.config.DRIFT_CANCEL_PX) {
+    const pullPx = this.currentPullPx();
+    if (pullPx > this.config.DRIFT_CANCEL_PX) {
       this.outcome = PACKET_OUTCOME.CANCELLED;
     } else {
       const heldMs = input.timeMs - this.startTimeMs;
-      this.outcome = heldMs < this.config.HOLD_TO_OPEN_MS ? PACKET_OUTCOME.SEALED : PACKET_OUTCOME.OPENED;
+      this.outcome = heldMs >= this.config.HOLD_TO_OPEN_MS && pullPx >= this.config.OPEN_PULL_MIN_PX
+        ? PACKET_OUTCOME.OPENED
+        : PACKET_OUTCOME.SEALED;
     }
     this.active = false;
     this.progress = 0;
@@ -155,7 +160,9 @@ export class PacketIntentController {
   openProgressAt(timeMs: number): number {
     if (!this.active) return 0;
     const heldMs = Math.max(0, timeMs - this.startTimeMs - this.config.PROGRESS_DEADBAND_MS);
-    return clamp01(heldMs / (this.config.HOLD_TO_OPEN_MS - this.config.PROGRESS_DEADBAND_MS));
+    const holdProgress = clamp01(heldMs / (this.config.HOLD_TO_OPEN_MS - this.config.PROGRESS_DEADBAND_MS));
+    const pullProgress = clamp01(this.currentPullPx() / this.config.OPEN_PULL_MIN_PX);
+    return Math.min(holdProgress, pullProgress);
   }
 
   snapshot(): PacketIntentSnapshot {
@@ -174,6 +181,10 @@ export class PacketIntentController {
     if (this.hiddenAtMs === null) return;
     this.startTimeMs += Math.max(0, timeMs - this.hiddenAtMs);
     this.hiddenAtMs = null;
+  }
+
+  private currentPullPx(): number {
+    return distancePx(this.startPoint, this.lastPoint);
   }
 }
 
@@ -321,16 +332,18 @@ export function runPacketIntentChecks(): void {
   checkDeadzoneReleasePreservesSeal();
   checkNearMissReleasePreservesSeal();
   checkRecoverableFalseSealedCanOpen();
-  checkSustainedHoldOpens();
-  checkTickOpensWithoutMove();
-  checkTickMidHoldAdvancesProgressWithoutOpening();
-  checkDriftBeyondFourteenPxCancels();
+  checkSustainedHoldAlonePreservesSeal();
+  checkSustainedHoldPlusPullOpens();
+  checkTickDoesNotOpenWithoutPull();
+  checkTickMidHoldNeedsPullProgress();
+  checkPullPastCancelGuardCancels();
   checkInBoundsWiggleDoesNotCancel();
   checkStickyCancelCannotBeResurrectedByTick();
   checkBackgroundTickCannotOpenPacket();
   checkResetReArmsController();
   checkHarnessMirrorsControllerOutcome();
   checkHoldConstantMatches450msSpec();
+  checkOpenPullConstantStaysOutsideCancelGuard();
   checkResolveIntentHelper();
   checkEvaluatePacketIntentHelper();
 }
@@ -354,25 +367,32 @@ function checkDeadzoneReleasePreservesSeal(): void {
 function checkNearMissReleasePreservesSeal(): void {
   const c = new PacketIntentController();
   c.press({ timeMs: 12_000, x: 48, y: 48 });
-  const s = c.release({ timeMs: 12_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1, x: 48, y: 48 });
+  const s = c.release({ timeMs: 12_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1, x: 48 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 48 });
   assertEqual(s.outcome, PACKET_OUTCOME.SEALED, "near-miss release must preserve the seal");
 }
 
 function checkRecoverableFalseSealedCanOpen(): void {
   const c = new PacketIntentController();
   c.press({ timeMs: 16_000, x: 50, y: 50 });
-  assertEqual(c.release({ timeMs: 16_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1, x: 50, y: 50 }).outcome, PACKET_OUTCOME.SEALED, "near-miss setup");
+  assertEqual(c.release({ timeMs: 16_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 1, x: 50 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 50 }).outcome, PACKET_OUTCOME.SEALED, "near-miss setup");
   c.press({ timeMs: 17_000, x: 50, y: 50 });
-  assertEqual(c.release({ timeMs: 17_000 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 50, y: 50 }).outcome, PACKET_OUTCOME.OPENED, "controller must re-arm after sealed near-miss");
+  assertEqual(c.release({ timeMs: 17_000 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 50 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 50 }).outcome, PACKET_OUTCOME.OPENED, "controller must re-arm after sealed near-miss");
 }
 
-function checkSustainedHoldOpens(): void {
+function checkSustainedHoldAlonePreservesSeal(): void {
   const c = new PacketIntentController();
   c.press({ timeMs: 10_000, x: 40, y: 40 });
-  assertEqual(c.release({ timeMs: 10_000 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 40, y: 40 }).outcome, PACKET_OUTCOME.OPENED, "threshold release opens");
+  assertEqual(c.release({ timeMs: 10_000 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 40, y: 40 }).outcome, PACKET_OUTCOME.SEALED, "hold without pull must preserve");
 }
 
-function checkTickOpensWithoutMove(): void {
+function checkSustainedHoldPlusPullOpens(): void {
+  const c = new PacketIntentController();
+  c.press({ timeMs: 10_000, x: 40, y: 40 });
+  c.move({ timeMs: 10_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 16, x: 40 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 40 });
+  assertEqual(c.release({ timeMs: 10_000 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 40 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 40 }).outcome, PACKET_OUTCOME.OPENED, "threshold hold plus pull opens");
+}
+
+function checkTickDoesNotOpenWithoutPull(): void {
   const c = new PacketIntentController();
   const t0 = 10_000;
   c.press({ timeMs: t0, x: 40, y: 40 });
@@ -381,24 +401,25 @@ function checkTickOpensWithoutMove(): void {
     last = c.tick(t);
     if (last.outcome !== PACKET_OUTCOME.UNKNOWN) break;
   }
-  assertEqual(last.outcome, PACKET_OUTCOME.OPENED, "tick hold must open");
-  assertEqual(last.progress, 1, "open progress must saturate");
+  assertEqual(last.outcome, PACKET_OUTCOME.UNKNOWN, "tick hold without pull must not open");
+  assertEqual(last.progress, 0, "open progress needs pull, not just time");
 }
 
-function checkTickMidHoldAdvancesProgressWithoutOpening(): void {
+function checkTickMidHoldNeedsPullProgress(): void {
   const c = new PacketIntentController();
   const t0 = 20_000;
   c.press({ timeMs: t0, x: 5, y: 5 });
+  c.move({ timeMs: t0 + Math.floor(PACKET_INTENT.HOLD_TO_OPEN_MS / 2), x: 5 + PACKET_INTENT.OPEN_PULL_MIN_PX / 2, y: 5 });
   const s = c.tick(t0 + Math.floor(PACKET_INTENT.HOLD_TO_OPEN_MS / 2));
   assertEqual(s.outcome, PACKET_OUTCOME.UNKNOWN, "mid-hold must not open");
-  assert(s.progress > 0 && s.progress < 1, `mid-hold progress should be in range, got ${s.progress}`);
+  assert(s.progress > 0 && s.progress < 1, `mid-hold pull progress should be in range, got ${s.progress}`);
 }
 
-function checkDriftBeyondFourteenPxCancels(): void {
-  const c = new PacketIntentController();
+function checkPullPastCancelGuardCancels(): void {
+  const c = new PacketIntentController({ OPEN_PULL_MIN_PX: 8 });
   c.press({ timeMs: 0, x: 100, y: 100 });
   const s = c.move({ timeMs: 40, x: 100 + PACKET_INTENT.DRIFT_CANCEL_PX + 1, y: 100 });
-  assertEqual(s.outcome, PACKET_OUTCOME.CANCELLED, "14px drift guard must cancel");
+  assertEqual(s.outcome, PACKET_OUTCOME.CANCELLED, "drift guard must cancel");
 }
 
 function checkInBoundsWiggleDoesNotCancel(): void {
@@ -410,7 +431,7 @@ function checkInBoundsWiggleDoesNotCancel(): void {
 }
 
 function checkStickyCancelCannotBeResurrectedByTick(): void {
-  const c = new PacketIntentController();
+  const c = new PacketIntentController({ OPEN_PULL_MIN_PX: 8 });
   const t0 = 30_000;
   c.press({ timeMs: t0, x: 100, y: 100 });
   c.move({ timeMs: t0 + 50, x: 100 + PACKET_INTENT.DRIFT_CANCEL_PX + 1, y: 100 });
@@ -422,6 +443,7 @@ function checkBackgroundTickCannotOpenPacket(): void {
   const c = new PacketIntentController();
   const t0 = 60_000;
   c.press({ timeMs: t0, x: 64, y: 64 });
+  c.move({ timeMs: t0 + 100, x: 64 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 64 });
   const mid = c.tick(t0 + 100);
   const hidden = c.tick(t0 + PACKET_INTENT.HOLD_TO_OPEN_MS + 600, { hasFocus: false });
   assertEqual(hidden.outcome, PACKET_OUTCOME.UNKNOWN, "hidden tick must not open");
@@ -433,11 +455,12 @@ function checkBackgroundTickCannotOpenPacket(): void {
 }
 
 function checkResetReArmsController(): void {
-  const c = new PacketIntentController();
+  const c = new PacketIntentController({ OPEN_PULL_MIN_PX: 8 });
   c.press({ timeMs: 7_000, x: 50, y: 50 });
   c.move({ timeMs: 7_050, x: 50 + PACKET_INTENT.DRIFT_CANCEL_PX + 1, y: 50 });
   assertEqual(c.reset().outcome, PACKET_OUTCOME.UNKNOWN, "reset clears outcome");
   c.press({ timeMs: 8_000, x: 50, y: 50 });
+  c.move({ timeMs: 8_000 + PACKET_INTENT.HOLD_TO_OPEN_MS - 16, x: 58, y: 50 });
   assertEqual(c.tick(8_000 + PACKET_INTENT.HOLD_TO_OPEN_MS).outcome, PACKET_OUTCOME.OPENED, "reset re-arms open");
 }
 
@@ -451,6 +474,10 @@ function checkHarnessMirrorsControllerOutcome(): void {
 
 function checkHoldConstantMatches450msSpec(): void {
   assertEqual(PACKET_INTENT.HOLD_TO_OPEN_MS, 450, "hold threshold must stay 450ms");
+}
+
+function checkOpenPullConstantStaysOutsideCancelGuard(): void {
+  assert(PACKET_INTENT.OPEN_PULL_MIN_PX < PACKET_INTENT.DRIFT_CANCEL_PX, "open pull must stay inside the live drift guard");
 }
 
 function checkResolveIntentHelper(): void {
