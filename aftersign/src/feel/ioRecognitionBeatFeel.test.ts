@@ -3,16 +3,24 @@
 // under `test:aftersign:pure` (a chained precondition of
 // `typecheck:aftersign` in package.json).
 //
-// Consumer wiring (addresses PR #1164 review):
+// Consumer status (honest disclosure, addresses PR #1164 review):
 //   The module this bundle pins — apps/web/src/aftersign/ioRecognitionBeat.feel.ts
-//   — is ALREADY the shipped feel contract for the return-recognition
-//   beat. The vitest suite `ioRecognitionBeat.feel.test.ts` (sibling
-//   file) reads its exports at unit-test time; this bundle re-pins the
-//   same invariants inside the deterministic pure lane so a regression
-//   fails BEFORE the vitest lane has to catch it. That mirrors the
-//   pattern established by `failureStingFeedback.test.ts` (which
-//   double-pins the state.interaction.failureFeedback envelope the e2e
-//   already covers via `packet-hold-threshold.spec.ts`).
+//   — is NOT wired into the shipped aftersign surface yet. Zero
+//   references from aftersign/main.js; and the vitest lane
+//   (apps/web/src/aftersign/vitest.config.ts) only includes
+//   windowGameHarnessBoot.test.ts + ioRecognitionExpectedLine.consumer.test.ts,
+//   so the sibling `ioRecognitionBeat.feel.test.ts` does NOT execute
+//   there either. The prior review claim that it was "already consumed
+//   by the vitest suite" was wrong; this bundle keeps the feel-envelope
+//   CONSTANTS frozen under the deterministic pure lane so that when
+//   the renderer wiring lands, the phase timing / camera-push peak /
+//   signGlow envelope / subtitle fade / outcome tints / totalMs budget
+//   cannot silently drift underneath it. Follow-up work — wiring
+//   ioRecognitionBeat.feel.ts into the return-recognition beat
+//   renderer — is tracked separately; until then, treat this bundle
+//   as a harness-only pin of the feel math, run because
+//   `test:aftersign:pure` is a chained precondition of
+//   `typecheck:aftersign`.
 //
 // Extension-resolution contract:
 //   The imported module (../../../apps/web/src/aftersign/ioRecognitionBeat.feel.ts)

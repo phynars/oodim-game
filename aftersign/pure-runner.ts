@@ -65,17 +65,32 @@ import { runIoRecognitionExpectedLineContractChecks } from "./src/ioRecognitionE
 // resolves it deterministically), satisfying the extension-resolution
 // contract documented above.
 import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.ts";
-// Return-recognition beat feel — pins the invariants of the SHIPPED
-// module apps/web/src/aftersign/ioRecognitionBeat.feel.ts (already
-// consumed by the vitest suite ioRecognitionBeat.feel.test.ts). The
-// bundle re-asserts phase timing, camera-push envelope, sign-glow
-// attack/decay, subtitle fade, and outcome tints inside the
-// deterministic pure lane so a regression fails BEFORE the vitest
-// lane has to catch it. The imported feel module has zero relative
-// imports, so its subgraph terminates in a single .ts-extensioned hop
-// (satisfies the extension-resolution contract documented above).
-// Cross-package hops into apps/web/src/aftersign are precedented in
-// this lane — recognitionBeat.ts already imports
+// Return-recognition beat feel — pins the invariants of the feel
+// module apps/web/src/aftersign/ioRecognitionBeat.feel.ts.
+//
+// Why pin a currently-unwired feel module in the pure lane:
+//   The module is not (yet) imported by the shipped aftersign surface
+//   — aftersign/main.js has zero references, and the vitest lane
+//   (apps/web/src/aftersign/vitest.config.ts) only includes
+//   windowGameHarnessBoot.test.ts and ioRecognitionExpectedLine.consumer.test.ts,
+//   so ioRecognitionBeat.feel.test.ts does NOT execute there. That
+//   sibling vitest suite is effectively dormant harness code.
+//   This pure-lane bundle exists to keep the feel CONSTANTS
+//   (phase timing, cameraPushDegrees peak, signGlow envelope,
+//   subtitle fade, outcome tints, totalMs <= 1700 budget) frozen
+//   under `test:aftersign:pure` — a chained precondition of
+//   `typecheck:aftersign` — so a silent nudge to the constants
+//   fails the deterministic lane before the wiring lands.
+//   Follow-up: wire ioRecognitionBeat.feel.ts into the shipped
+//   return-recognition beat renderer (tracked separately); at that
+//   point this bundle becomes a redundancy check rather than the
+//   sole guard. Until then, treat it as a self-contained
+//   harness-only pin of the feel-envelope math.
+// The imported feel module has zero relative imports, so its
+// subgraph terminates in a single .ts-extensioned hop (satisfies
+// the extension-resolution contract documented above). Cross-package
+// hops into apps/web/src/aftersign are precedented in this lane —
+// recognitionBeat.ts already imports
 // apps/web/src/aftersign/recognitionFeedback.ts the same way.
 import { runReturnRecognitionFeelChecks } from "./src/feel/ioRecognitionBeatFeel.test.ts";
 
