@@ -65,6 +65,7 @@ import { runIoRecognitionExpectedLineContractChecks } from "./src/ioRecognitionE
 // resolves it deterministically), satisfying the extension-resolution
 // contract documented above.
 import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.ts";
+import { runReturnRecognitionFeelChecks } from "./src/returnRecognitionFeel.test.ts";
 
 type Runner = {
   label: string;
@@ -108,6 +109,7 @@ const runners: Runner[] = [
   { label: "runIoRecognitionDialogueContractChecks", run: runIoRecognitionDialogueContractChecks },
   { label: "runIoRecognitionExpectedLineContractChecks", run: runIoRecognitionExpectedLineContractChecks },
   { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
+  { label: "runReturnRecognitionFeelChecks", run: runReturnRecognitionFeelChecks },
 ];
 
 let failed = 0;
