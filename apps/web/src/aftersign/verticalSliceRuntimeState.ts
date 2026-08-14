@@ -1,6 +1,13 @@
 import {
   DELIVER_PACKET_CONFIRM_FEEL,
 } from "../../../../packages/aftersign/src/interactionConfirm";
+import {
+  chooseIoReturningSessionLine,
+  chooseOrraRecognitionLine,
+  ioReturningSessionLines,
+  orraRecognitionLines,
+} from "../../../../packages/aftersign/src/ioReturningSession";
+import { getIoFirstSessionLine } from "./ioFirstSessionCopy";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 export type AftersignOrraAction = "answered-saint-orra";
@@ -127,6 +134,24 @@ export function meetOrraForAftersignSlice(
   };
 }
 
+/**
+ * Resolve the dialogue a remembering NPC (Io or Orra) speaks for the
+ * given runtime state. Every string returned is SOURCED, not authored:
+ *
+ *   • Io's returning line ← `chooseIoReturningSessionLine` from
+ *     `packages/aftersign/src/ioReturningSession.ts` (the harness
+ *     asserts those strings verbatim — do not paraphrase).
+ *   • Io's first-contact line ← `ioFirstSessionCopy.ts` (the web-side
+ *     first-session module Io already opens with).
+ *   • Orra's returning + first-contact lines ← `orraRecognitionLines`
+ *     from the same aftersign package.
+ *
+ * This module owns SELECTION (which line for which state), never COPY.
+ * If a returning-line rewrite lands, edit the package and both this
+ * resolver and every other consumer inherit it. The parity test in
+ * `verticalSliceRuntimeState.rememberingNpcDialogue.test.ts` locks the
+ * no-drift invariant.
+ */
 export function resolveAftersignRememberingNpcDialogue(
   state: AftersignVerticalSliceState,
   npc: AftersignRememberingNpcId,
@@ -134,17 +159,16 @@ export function resolveAftersignRememberingNpcDialogue(
   if (npc === "io") {
     const lines = state.ioRecognizesPlayer
       ? [
-          "You came back. The kiosk kept your shape in the glass.",
-          state.packetOutcome === "opened"
-            ? "Last time, you opened the packet. It still sounds awake."
-            : state.packetOutcome === "sealed"
-              ? "Last time, you left the packet sealed. Some doors respect that."
-              : "Last time, you left before the packet chose a future.",
+          chooseIoReturningSessionLine({
+            packetOutcome:
+              state.packetOutcome === "opened"
+                ? "opened"
+                : state.packetOutcome === "sealed"
+                  ? "sealed"
+                  : undefined,
+          }),
         ]
-      : [
-          "First visit? Keep your hand near the light.",
-          "The city remembers slowly. I remember faster.",
-        ];
+      : [getIoFirstSessionLine("arrival")];
 
     return {
       npc,
@@ -153,17 +177,7 @@ export function resolveAftersignRememberingNpcDialogue(
     };
   }
 
-  const lines = state.orraRecognizesPlayer
-    ? [
-        "Back under my sign. Good. I was not finished with you.",
-        state.orraAction === "answered-saint-orra"
-          ? "You answered Saint Orra once. The answer is still walking beside you."
-          : "You heard Saint Orra and kept your mouth shut. That counts too.",
-      ]
-    : [
-        "Name yourself when the sign asks. Not before.",
-        "Saint Orra hears the part you meant to hide.",
-      ];
+  const lines = [chooseOrraRecognitionLine(state.orraRecognizesPlayer)];
 
   return {
     npc,
@@ -171,3 +185,10 @@ export function resolveAftersignRememberingNpcDialogue(
     lines,
   };
 }
+
+// Re-export the canonical line tables so consumers can build parity
+// assertions without reaching across the package boundary themselves.
+// The resolver is the only reader that decides WHICH line — but any
+// downstream test that wants to compare `dialogue.lines[0]` to the
+// authored source can import from the same barrel.
+export { ioReturningSessionLines, orraRecognitionLines };

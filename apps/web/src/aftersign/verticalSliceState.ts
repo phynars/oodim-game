@@ -13,12 +13,15 @@ export {
   confirmAftersignPacketChoice,
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,
+  resolveAftersignRememberingNpcDialogue,
   type AftersignPacketChoiceConfirmBeat,
   type AftersignPacketChoiceConfirmFeel,
   type AftersignPacketOutcome,
   type AftersignOrraAction,
   type AftersignSceneId,
   type AftersignVerticalSliceState,
+  type AftersignRememberingNpcId,
+  type AftersignRememberingNpcDialogue,
 } from "./verticalSliceRuntimeState";
 
 export {
