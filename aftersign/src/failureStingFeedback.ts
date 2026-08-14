@@ -67,19 +67,35 @@ export type FailureStingEnvelope = {
   hudDropY: number;
 };
 
+export type FailureStingEnvelopeOptions = {
+  readonly reducedMotion?: boolean;
+};
+
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 export const failureStingEnvelopeAt = (
   elapsedMs: number,
   feel: FailureStingFeel = DEFAULT_FAILURE_STING_FEEL,
+  options: FailureStingEnvelopeOptions = {},
 ): FailureStingEnvelope => {
   const durationMs = Math.max(1, feel.durationMs);
   const finite = Number.isFinite(elapsedMs);
   const progress = finite ? clamp01(elapsedMs / durationMs) : 1;
   const curve = 1 - ((1 - progress) ** 2);
   const falloff = 1 - curve;
-  const wobble = falloff * Math.sin(progress * Math.PI * feel.wobbleCycles);
+  const rawWobble = falloff * Math.sin(progress * Math.PI * feel.wobbleCycles);
   const active = finite && progress < 1;
+
+  // Reduced motion keeps the acknowledgement flash and HUD drop — the
+  // player still gets a crisp failure response — but removes the lateral
+  // camera/HUD shake that can feel nauseating on a phone. Main's default
+  // call path omits this option, so the shipped non-reduced envelope stays
+  // byte-for-byte identical: 180ms, 0.038m kick, 0.9deg yaw, 8px shake.
+  const motionScale = options.reducedMotion ? 0 : 1;
+  const wobble = rawWobble * motionScale;
+  const cameraKickWorldX = feel.cameraKickWorldX * motionScale;
+  const cameraKickDeg = feel.cameraKickDeg * motionScale;
+  const hudShakePx = feel.hudShakePx * motionScale;
 
   return {
     durationMs: feel.durationMs,
@@ -89,9 +105,9 @@ export const failureStingEnvelopeAt = (
     remainingMs: active ? Math.max(0, Math.round(durationMs - elapsedMs)) : 0,
     falloff,
     wobble,
-    cameraKickDeg: feel.cameraKickDeg,
-    cameraKickWorldX: feel.cameraKickWorldX,
-    hudShakePx: feel.hudShakePx,
+    cameraKickDeg,
+    cameraKickWorldX,
+    hudShakePx,
     hudDropPx: feel.hudDropPx,
     flashAlpha: falloff * feel.flashAlpha,
     vignetteAlpha: falloff * feel.vignetteAlpha,
