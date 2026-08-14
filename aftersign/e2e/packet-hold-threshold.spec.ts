@@ -169,8 +169,12 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
     .toBe(afterReleaseSnapshot.prevStartedAt);
 
   // --- Past-threshold: continue the same hold to start + 2000ms ---
+  // Open now requires min(hold, pull): commit a 12 px pull (past
+  // OPEN_PULL_MIN_PX=10, inside the 14 px DRIFT_CANCEL_PX guard) before
+  // ticking past the hold threshold. A hold alone would stay SEALED.
   const heldSnapshot = await page.evaluate(() => {
     window.__game?.input.packetPress({ timeMs: 10_000, x: 40, y: 40 });
+    window.__game?.input.packetMove({ timeMs: 10_000 + 200, x: 40 + 12, y: 40 });
     window.__game?.input.packetTick(10_000 + 2_000);
     return window.__game?.getSnapshot();
   });

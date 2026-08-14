@@ -45,6 +45,10 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
     await window.__game.resetSliceSave();
     const t0 = 2_000;
     window.__game.input.packetPress({ timeMs: t0, x: 24, y: 24 });
+    // Open now requires min(hold, pull): commit a 12 px pull (past
+    // OPEN_PULL_MIN_PX=10, inside the 14 px DRIFT_CANCEL_PX guard) before
+    // ticking to the hold threshold. A hold alone stays SEALED.
+    window.__game.input.packetMove({ timeMs: t0 + 200, x: 24 + 12, y: 24 });
     window.__game.input.packetTick(t0 + 450);
     return window.__game.getSnapshot();
   });
@@ -58,8 +62,10 @@ test('scene exposes packet tap/hold intent through window.__game', async ({ page
     await window.__game.resetSliceSave();
     const t0 = 3_000;
     window.__game.input.packetPress({ timeMs: t0, x: 24, y: 24 });
+    // Same pull-injection pattern as holdSnapshot: min(hold, pull) contract.
+    window.__game.input.packetMove({ timeMs: t0 + 200, x: 24 + 12, y: 24 });
     window.__game.input.packetTick(t0 + 450);
-    window.__game.input.packetRelease({ timeMs: t0 + 470, x: 24, y: 24 });
+    window.__game.input.packetRelease({ timeMs: t0 + 470, x: 24 + 12, y: 24 });
     return window.__game.getSnapshot();
   });
 
