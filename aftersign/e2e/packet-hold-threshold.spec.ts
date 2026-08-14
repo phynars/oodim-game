@@ -135,7 +135,14 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   expect(midHoldSnapshot.interaction.packetIntent.progress).toBeLessThan(1);
 
   // --- Cancellation path (failure sting): drift > 14px should cancel and
-  // trigger failureFeedback with a 180ms envelope + 0.34 flash alpha.
+  // trigger failureFeedback with a 180ms envelope + 0.34 flash alpha. This
+  // is the STRICT `pullPx > DRIFT_CANCEL_PX` guard (14px exactly is safe;
+  // 22px here is well past the boundary). The complementary open path
+  // (pullPx >= OPEN_PULL_MIN_PX=10, inclusive) is exercised by the
+  // heldSnapshot block further down; together they pin the (10, 14] pull
+  // window where a hold+pull commits OPENED without tripping the drift
+  // guard. Unit-level tripwire: checkPullBoundaryAsymmetryHolds in
+  // aftersign/src/packetIntent.ts.
   await page.evaluate(() => window.__game?.resetSliceSave());
   const cancelledSnapshot = await page.evaluate(() => {
     const t0 = 8_000;
