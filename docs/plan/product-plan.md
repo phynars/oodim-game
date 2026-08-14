@@ -58,208 +58,210 @@ machine-guarded. M2 is falsified-negative-proof and closed.
 
 ---
 
-### M3 (HARNESS-GREEN, NOT PLAYER-SHIPPED ⚠️) — A SECOND character remembers you, independently of Io
+### M3 (SUPERSEDED — harness twin of the now-ACTIVE M-ORRA) — A SECOND character remembers you, independently of Io
 
-**Reframed 2026-08-01 (Founder DoD amendment).** M3-E1's done-gate #863 is
-CLOSED and green — but green in the CONTRACT HARNESS (`orraIndependentRecognition.integration.test.ts`,
-jsdom `sampleAftersignOrraMemoryBeat`), NOT on the served page. A `grep` for
-`recognitionFeedback|packetIntent|ioReturningSession` consumers in
-`apps/web/**/main.js` returns ZERO matches. Under the amended Definition of
-Done, Orra's recognition is **stored spec-capital, not shipped value** — a
-player at game.oodim.com/aftersign cannot yet see or feel any of it.
-
-M1, M2, and M3 were all declared DONE against contract tests, not the deployed
-surface. That is precisely the failure the Founder measured (268 commits, 45
-touching the served page, ZERO contract modules imported by it). These
-milestones are NOT re-opened, but their "DONE" is downgraded to
-**harness-green**: the invariants are guarded; the player experience is not yet
-wired. The active milestone is now the one that closes that gap.
+**Reframed 2026-08-01 (Founder DoD amendment), promoted 2026-08-14.** M3-E1's
+done-gate #863 is CLOSED and green in the CONTRACT HARNESS (jsdom
+`sampleAftersignOrraMemoryBeat` / `meetOrraForAftersignSlice`), which is not the
+served page. A separate served Orra recognition lane already exists on
+`aftersign/main.js` via `orraRuntimeLane.ts` (landed 2026-07-28) — so Orra is
+NOT unwired end-to-end; a player who picks `light-vigil` and returns hears Orra
+remember them today. What's still stored-capital is the specific #863 harness
+contract surface and its three red modes (`orra-dropped`, `orra-wrong`,
+`orra-io-contamination`), which are only asserted in jsdom. The active
+milestone **M-ORRA** below promotes those three red modes onto the served-page
+e2e over the existing lane. M3 is not re-opened and not drift — it is the
+harness twin whose served-page hardening + proof M-ORRA-E1 delivers.
 
 ---
 
 ## Milestones (cont.)
 
-### M-WIRE (ACTIVE) — a first-time phone player at game.oodim.com/aftersign FEELS the recognition beat, and Io remembers them next session
+### M-WIRE (DONE ✅) — a first-time phone player at game.oodim.com/aftersign FEELS the recognition beat, and Io remembers them next session
 
-**Deadline: 2026-08-22** (founder, 2026-08-11 — the public demo date; see
-docs/flagship/BRIEF.md "The deadline"). Cut scope before slipping this date;
-state days-remaining when sequencing stories.
+**Shipped 2026-08-11.** All three July contract consumers landed on the served
+entry `aftersign/main.js` (verified @ 60b9db25): `packetIntent` (tap-preserve /
+420ms-hold-open gesture at `main.js:146,847-870`), `recognitionFeedback` (measured
+feel envelope on deliver, `main.js:31` bridge → 252-259), and `ioReturningSession`
+(returning-session line, `main.js:41`). The EINT done-gate — the served-page e2e
+in `flagship-surface-contract.spec.ts` — went RED on main (#1113) post-merge and
+was **repaired + closed 2026-08-11**. The lane now drives
+`game.oodim.com/aftersign` offer → tap-preserve/hold-open → deliver → reload →
+return-next-session and is GREEN on main. The founder's zero-consumer measurement
+is cleared: the July contract library is player-shipped, not stored capital.
+Prior red-main repairs #1093 / #1100 and consumer stories #956 / #1002 / #980 /
+#985 all merged + closed. M-WIRE is falsified-negative-proof and closed.
 
-**Observable outcome (falsifiable on the DEPLOYED page):** A stranger opens
-game.oodim.com/aftersign on a phone with no prior state. They are offered the
-packet; a **tap preserves the seal**, a **~420ms hold opens it** (with
-cancel/inspect), and they FEEL the recognition beat — the camera push, the sign
-glow, the feel envelope the July `recognitionFeedback` contract already asserts.
-They close the page. On a LATER session they return and Io speaks a line that
-remembers their packet outcome (`ioReturningSession` + the `IO_BARE_RETURN`
-family). Every one of those beats is served by wired page code — not a jsdom
-test — and the epic's e2e drives the deployed surface end to end.
+---
 
-**Why this is the next-smallest outcome (and why it is not M4):** M1–M3 proved
-the memory mechanic in the harness. Before a SECOND-character world (M4) or new
-content earns a milestone, the contract library the studio spent July building
-must have a CONSUMER on the page. Per the BRIEF amendment, a contract with no
-consumer is not shippable value, and wiring an existing contract INTO the page
-"counts double." This milestone converts the stored capital (Io recognition,
-packet-intent feel, Orra recognition) into something a player can experience.
-NO new mechanic, NO new character content, NO episode structure — those are M4+.
+### M-ORRA (ACTIVE) — a returning phone player meets a SECOND named character (Saint Orra) who remembers their action, on the served page
+
+**Deadline: 2026-08-22** (founder — the public demo date; see
+docs/flagship/BRIEF.md "The deadline"). **8 days remaining as of 2026-08-14.**
+Cut scope before slipping this date; sequence stories by TIME REMAINING — a
+rough-but-PLAYABLE second-character beat beats a polished-but-partial one.
+
+**Observable outcome (falsifiable on the DEPLOYED page):** A returning phone
+player at game.oodim.com/aftersign — one Io already recognizes (M-WIRE) — meets a
+DIFFERENT named character in the same slice: **Saint Orra**, the living sign over
+the old pharmacy. They perform ONE deliberate action toward Orra
+(**light-vigil** → `lit` vs. **spare-vigil** → `spared`, per
+`aftersign/src/orraRuntimeLane.ts`'s `ORRA_CHOICE_TO_ACTION`), leave, and return
+in a later session. On return **Orra speaks a line that references THAT action**
+(`orra_return_lit_vigil` / `orra_return_spared_vigil`) — proving the memory
+mechanic is a property of the WORLD, not welded to Io. Io's own recognition is
+UNTOUCHED: the same returning player still hears Io's correct returning-session
+line. A control player who never touched Orra hears Orra's first-contact line,
+visibly distinct from the recognition line. Every beat is served by wired page
+code — the epic's e2e drives the deployed surface end to end.
+
+**Why this is the next-smallest outcome:** M-WIRE proved the July contract
+library reaches the PLAYER (Io's recognition felt + remembered on the served
+page). Orra's served page ALREADY HAS a live recognition lane — `main.js`
+imports `actionForOrraChoice` / `buildOrraRecognitionMemoryFact` /
+`selectOrraRecognitionLine` from `orraRuntimeLane.ts` and consumes them at
+`main.js:23-28, 147, 1102-1129, 1303, 2111` (landed 2026-07-28). A player who
+chooses `light-vigil` and returns DOES hear Orra remember them today. What's
+STILL stored-capital is the #863 harness contract surface
+(`meetOrraForAftersignSlice`, `sampleAftersignOrraMemoryBeat`,
+`orraIndependentRecognition.integration.test.ts`) — genuinely unimported by
+`main.js`, and asserting the three red modes (`orra-dropped`, `orra-wrong`,
+`orra-io-contamination`) only in jsdom. This milestone therefore does NOT wire
+Orra from scratch. It (a) HARDENS the existing `orraRuntimeLane` on the served
+page against those three failure modes, (b) proves them with a served-page e2e
+(not the jsdom harness), and (c) reconciles vocabulary — the served lane speaks
+`lit`/`spared`; the #863 harness uses the parallel `kind: "orra-recognition"`
+record shape. It is the smallest honest step toward "a world whose people know
+your name": a SECOND independent recognizer proven ON the deployed surface. A
+memory *graph*, cross-NPC memory (Orra referencing an Io beat), Niko / Maud /
+the Child, and branching episodes remain OUT — M5+.
+
+**Reconciliation with `orraRuntimeLane` (explicit):** M-ORRA-E1 keeps and extends
+`orraRuntimeLane.ts` — it is NOT replaced. Any bridge to the #863 harness shape
+is additive (persistence adapter / test-only sampler), so the served-page
+vocabulary of record stays `lit` / `spared`. If a future story finds the two
+shapes genuinely incompatible, the tie-breaker is: served lane wins, harness
+adapts.
 
 **Definition of done (falsifiable, served-page):**
-- On a phone at game.oodim.com/aftersign: offer → tap-preserve / 420ms-hold-open
-  (with cancel/inspect) → deliver → the recognition beat is FELT (camera push /
-  sign glow / feel envelope from `recognitionFeedback`).
-- Close + return in a later session → Io serves the returning-session line that
-  matches the player's packet outcome (wired `ioReturningSession`).
-- The epic's integration e2e DRIVES THE DEPLOYED PAGE (not a pure module) and
-  asserts the wired offer→feel→return chain; it turns RED if any beat regresses
-  to unwired.
+- On a phone at game.oodim.com/aftersign: complete the Io beats (M-WIRE), meet
+  Saint Orra, perform the Orra action (`light-vigil` → `lit` OR `spare-vigil`
+  → `spared`, per `ORRA_CHOICE_TO_ACTION`), reload → **Orra** serves the
+  matching return line (`orra_return_lit_vigil` / `orra_return_spared_vigil`)
+  on the served page. The existing `orraRuntimeLane.ts` selectors are the
+  consumer, hardened; no new parallel lane is introduced.
+- The SAME returning player still hears Io's correct returning-session line —
+  Orra's memory does not regress or contaminate Io's.
+- A control player who never interacts with Orra hears Orra's first-contact line
+  (`ORRA_FIRST_CONTACT_LINE_ID`), NOT a recognition line.
+- The epic's integration e2e DRIVES THE DEPLOYED PAGE (not the jsdom harness) and
+  turns RED under the three #863 red modes, now asserted on the served surface:
+  `orra-dropped` (recognition lost across reload), `orra-wrong` (return line
+  doesn't match `lit`/`spared`), `orra-io-contamination` (Orra memory perturbs
+  Io's returning-session line).
 - No `harness-only`-labelled PR closes this milestone: the gate is the served
-  surface (harness-only rationed to 1-in-4 per the amendment).
+  surface (harness-only rationed to 1-in-4 per the amendment; #863 already spent
+  the harness — this milestone spends only served-page hardening + e2e).
 
-**LoE budget:** ~1 epic (the #954 M2-EINT wiring epic, re-homed here as the
-active milestone). Orra's served wiring, a memory graph, cross-NPC memory, and
-new episodes remain OUT — M4+.
-
----
-
-### M4 (DEFERRED) — A SECOND character remembers you on the served page (Orra, wired)
-
-**Observable outcome:** A returning visitor who already has a relationship with
-Io meets a DIFFERENT named character in the same slice — Saint Orra, the living
-sign over the old pharmacy — performs one deliberate action toward Orra (touch
-the sign gently vs. strike it to make it speak), leaves, and returns. On return
-Orra speaks a line that references *that* prior action — proving the memory
-mechanic is not welded to one NPC but is a property of the world. Io's own
-recognition is UNTOUCHED: the same returning player still hears Io's correct
-chained line. A player who never touched Orra hears Orra's first-contact line,
-visibly distinct from the recognition line.
-
-**Why this is the next-smallest outcome:** M1 proved one memory; M2 proved two
-memories on ONE NPC. The concept's Act II turns on a SECOND remembering
-character (Saint Orra) with her OWN memory of the player. M3 proves the
-mechanic generalizes to a second independent memory-holder — the smallest honest
-step toward "a world whose people know your name" — WITHOUT yet introducing a
-memory graph, cross-NPC memory sharing, or branching episodes (all M4+).
-
-**Definition of done (falsifiable):**
-- On a phone: complete the Io beats (M1+M2), meet Saint Orra, perform the Orra
-  action (gentle-touch OR strike), reload → Orra speaks a line that references
-  that specific action.
-- The SAME returning player still hears Io's correct chained line — Orra's
-  memory does not regress or contaminate Io's.
-- A control player who never interacts with Orra hears Orra's first-contact
-  line, NOT a recognition line.
-- The e2e lane proves the gentle-vs-strike branch for Orra AND the Io-parallel
-  recognition, and turns RED when: Orra's memory is dropped, the wrong Orra
-  line is served, OR the presence of Orra's memory perturbs Io's line.
-
-**LoE budget:** ~1 epic (E1: prove the second independent NPC memory end to
-end). A memory *graph*, cross-NPC memory (Orra referencing an Io beat), Niko /
-Maud / the Child, and branching episodes remain OUT — they are M4+.
+**LoE budget:** ~1 epic (E1: wire Orra's existing recognition contract into the
+served page and prove it end to end). A memory graph, cross-NPC memory, new
+characters, and branching episodes remain OUT — M5+.
 
 ---
 
-## Active milestone (M-WIRE) — epics
+## Active milestone (M-ORRA) — epics
 
-### EINT (ACTIVE) — every July contract module gains a consumer on the served page (#954)
+### E1 (ACTIVE) — the existing served Orra recognition lane is hardened against the three #863 red modes, on the deployed page, and proven end to end
 
-**Acceptance criteria:** `aftersign/main.js` (the served entry) imports and
-consumes the July contract library — `recognitionFeedback`, the `packetIntent`
-feel model, and the `ioReturningSession` / `IO_BARE_RETURN_LINE` returning-session
-lines — so each beat those modules assert is present on the deployed surface.
-A single integration e2e drives `game.oodim.com/aftersign` end to end (offer →
-tap-preserve / 420ms-hold-open → deliver → reload → return-next-session) and
-asserts each wired beat is FELT on the served page. The epic is DONE when that
-served-page lane is green — not when the individual wiring PRs merge.
+**Acceptance criteria:** the served entry `aftersign/main.js` already consumes
+Orra's recognition via `orraRuntimeLane.ts` (`actionForOrraChoice`,
+`buildOrraRecognitionMemoryFact`, `selectOrraRecognitionLine`, plus the
+`ORRA_LINE_COPY_BY_ID` copy map) — see `main.js:23-28, 147, 1102-1129, 1303,
+2111`. E1 is NOT a from-scratch wiring epic. It:
+1. Hardens that lane so a served-page e2e can turn RED under the three #863 red
+   modes (`orra-dropped`, `orra-wrong`, `orra-io-contamination`), tightening
+   whatever storage / selection paths are fragile today.
+2. Adds ONE integration e2e that drives `game.oodim.com/aftersign` end to end
+   (Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra
+   return line) and asserts each served beat + Io non-regression.
+3. Reconciles the harness surface (`meetOrraForAftersignSlice` /
+   `sampleAftersignOrraMemoryBeat` / the `kind: "orra-recognition"` record
+   under `apps/web/src/aftersign/`) with the served lane's `lit`/`spared`
+   vocabulary — via an additive adapter or test-only sampler if needed. The
+   served lane is authoritative; the harness adapts.
 
-**Status:** active — **ALL THREE consumers are now LANDED on the served entry**
-(`aftersign/main.js`, verified 2026-08-10 @ 60b9db25):
-- `packetIntent` — imported lines 9-13 (`evaluatePacketIntent`,
-  `PacketIntentController`, `PACKET_OUTCOME`); `PacketIntentController` is
-  instantiated at `main.js:146` and drives the live tap-preserve / hold-open
-  gesture (`press`/`release` at 868-870), with `evaluatePacketIntent` publishing
-  a post-release verdict at 847-858. WIRED.
-- `recognitionFeedback` — imported at `main.js:31` via
-  `recognitionFeedbackBridge.ts` (`recognitionEnvelopeAt`) and consumed into the
-  served `recognitionFeedback` block at 252-259 as MEASURED motion. WIRED.
-- `ioReturningSession` — `chooseIoReturningSessionLine` imported at `main.js:41`
-  and consumed on the returning-session path. WIRED.
+The epic is DONE when the served-page lane is green on main — not when the
+individual hardening PRs merge.
 
-The founder's zero-consumer measurement is **CLEARED**: the July contract
-library now has live consumers on the served entry. This epic is no longer a
-wiring epic — the only thing between it and player-shippable is a GREEN served
-lane. Per #954's CONSUMER RULE the harness-only ration is untouched (no new
-harness needed).
+**Status:** active — 8 days to deadline (2026-08-22). Orra's contract is
+harness-green (#863, closed 2026-07-29) AND the served page already has a live
+recognition lane (`orraRuntimeLane.ts`, landed 2026-07-28) — Mara's 2026-08-14
+correction. What's missing is a served-page e2e that pins the three #863 red
+modes to the deployed surface. This is a HARDENING + PROOF epic, not a
+from-scratch wire. Sequence by time: the served offer → Orra-action → reload →
+Orra-line chain is PLAYABLE today; the 08-22 gate is that the e2e catches all
+three regression modes. Polish (feel envelope on the vigil action, sign-glow
+parity with Io) is cuttable scope.
 
-**Integration story (the done-gate):** the epic's served-page e2e
-(`aftersign/e2e/flagship-surface-contract.spec.ts`) drives offer →
-tap-preserve / hold-open → deliver → reload → return-next-session against the
-deployed surface and asserts each wired beat. **It is currently RED on main
-(#1113, P1)** — post-merge e2e failed @ 60b9db25. EINT is DONE when this lane
-is green again on main; the repair is the top priority (prior red-main repairs
-#1093, #1100 already landed + closed on this same epic).
+**Integration story (the done-gate — filed FIRST):** the epic's served-page e2e
+drives Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra
+return line against the DEPLOYED surface, asserts the action-vs-first-contact
+split AND Io non-regression, and turns RED under `orra-dropped` / `orra-wrong`
+/ `orra-io-contamination` on the SERVED page (the #863 red modes, promoted from
+harness to surface). M-ORRA-E1 is DONE when this lane is green on main.
 
-**Integration story of M2 (reference):** #735 (merged) proved chained memory in
-a MODULE lane. M-WIRE's integration proof is the orthogonal generalization: the
-same beats, but driven through the DEPLOYED page — closing the module-vs-surface
-gap that #954 measured and #863 exposed (M3 harness-green, player-unshipped).
+**Reference:** #863 (closed) is the MODULE-lane proof of the same three
+assertions in jsdom, over the `kind: "orra-recognition"` harness record.
+M-ORRA-E1's integration proof is the orthogonal generalization: the same red
+modes, but driven through the DEPLOYED page over the served `orraRuntimeLane`
+vocabulary (`lit` / `spared`). The module-vs-surface gap M-WIRE closed for Io
+is closed here for Orra by pinning the served lane to a page-driven e2e — not
+by adding a second Orra pipeline.
 
 ---
 
-## Story map (M-WIRE-EINT)
+## Story map (M-ORRA-E1)
+
+Filed 2026-08-14; issue numbers land as the stories are created this cycle.
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Repair the served-page e2e RED on main (done-gate)** — decide SPEC-vs-SURFACE per `aftersign/src/ioRecognitionDialogue.ts`, land the fix so the offer → preserve/open → deliver → reload → return lane is GREEN on main | **#1113** | S/M | integration done-gate | **RED on main (P1) — top priority** |
-| Wire `recognitionFeedback` into main.js — player FEELS the recognition beat on deliver | — | M | consumer (feel envelope) | **✅ LANDED** — `main.js:31` (bridge), consumed 252-259 |
-| Wire the `packetIntent` feel model — tap preserves the seal, hold opens, with cancel/inspect | **#956** | M | consumer (offer/commit) | **✅ LANDED** — `main.js:9-13,146,847-870` |
-| Wire Io returning-session lines (`ioReturningSession`) into the served scene | **#1002** | M | consumer (returning-session line) | **✅ LANDED** — `main.js:41` + #980/#985 |
+| **Served-page Orra e2e (done-gate, filed FIRST)** — drive Io beats → meet Orra → `light-vigil` or `spare-vigil` → reload → Orra return line on the deployed page; assert action-vs-first-contact split + Io non-regression; RED under all three #863 modes | _this cycle_ | M | integration done-gate | filing |
+| Harden Orra recognition persistence in `orraRuntimeLane`/main.js against `orra-dropped` — round-trip `OrraRecognitionMemoryFact[]` through save/restore so `selectOrraRecognitionLine` survives reload | _this cycle_ | S/M | hardening (persistence) | filing |
+| Harden `actionForOrraChoice` + return-line selection against `orra-wrong` — served scene must call `light-vigil` / `spare-vigil` through the classifier (no bypasses) and serve `ORRA_RETURN_LINE_BY_ACTION[action]` | _this cycle_ | S/M | hardening (action→line) | filing |
+| Isolate Orra memory from Io on the served page against `orra-io-contamination` — Io's returning-session selection must not read Orra state; add the assertion + fix any coupling | _this cycle_ | S/M | hardening (Io non-regression) | filing |
+| Reconcile the #863 harness surface with the served lane — additive adapter mapping `kind: "orra-recognition"` ↔ `orraRuntimeLane`'s `lit`/`spared` so both stay honest; served lane is authoritative | _this cycle_ | S | reconciliation | filing |
 
-**Integration-first note (updated 2026-08-10):** the three consumer stories are
-all LANDED — every July module (`recognitionFeedback`, `packetIntent`,
-`ioReturningSession`) now has a live consumer in `aftersign/main.js`, so the
-module-vs-surface gap #954 measured is CLOSED at the import level. The only work
-remaining for M-WIRE-EINT is the done-gate: the served-page e2e must be GREEN on
-main. It is currently RED (#1113, P1) — the epic is DONE the moment that lane is
-repaired. #1004 (the earlier "write the gate first" story) is superseded: the
-gate lane already exists in `flagship-surface-contract.spec.ts`; the task is now
-to keep it green, not to author it.
+**Integration-first note:** the done-gate e2e is filed FIRST and defines the
+epic's outcome; the hardening stories are the fixes that turn it green. The
+gate DRIVES the deployed page and asserts against the served surface, not the
+jsdom harness. Per Mara's 2026-08-14 correction, Orra is NOT unwired — the
+served lane exists (`orraRuntimeLane.ts` @ 2026-07-28); what's missing is a
+served-page e2e that pins the three #863 red modes to it. #863 is the harness
+twin (closed); this map spends only served-page hardening + one additive
+adapter, so the harness ration (1-in-4) is untouched.
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-These are NOT closed here (operator/human disposes). Named so they don't masquerade as M2-EINT work:
+The open `agent-filed` backlog is EMPTY as of 2026-08-14 (every M-WIRE story —
+consumers + the #1113 done-gate repair — merged/closed), and `list_issues`
+returns NO open issues at all. So no open issue currently serves no epic —
+there is nothing to dispose this cycle.
 
-- **#1089** — [`type:bug` P2, infra] perf-budget e2e specs need a runner-speed
-  calibration preflight; slow SwiftShader draws cause ~50% false RED. This is
-  test-INFRASTRUCTURE reliability, not a served-page beat — but it is adjacent
-  to the #1113 done-gate (false REDs on the same e2e lane can mask/mimic the
-  gate's real signal). Keep OUT of the story map (it wires no consumer), but
-  flag it to whoever repairs #1113 so a flaky perf preflight isn't mistaken for
-  an unwired beat. Operator disposes.
-- **#1071** — [June, `type:refactor` P3, agent-needs-human] AFTERSIGN red/green
-  gate source exists but CI still keys off spec-comment markers. Process/tooling
-  fix (the successor to the retired #727), not a served-page beat. Human-flagged.
-- **#1065** — [Mara, `enhancement` P1, agent-needs-human] CI failure summary
-  should include the raw e2e log when Playwright JSON is absent. CI ergonomics —
-  no player surface. Human-flagged; does NOT enter the story map.
-- **#1053** — [Mara, `enhancement` P2] root README still centers frozen games
-  instead of the flagship workflow. Docs/onboarding drift, not a served-page
-  beat. Operator disposes.
-- **#1051** — [Soren, `enhancement` P3] Architecture README omits a flagship
-  runtime verification contract row. Docs drift. Operator disposes.
-- **#1081** — [Charlie, `enhancement` P2, agent-unroutable] e2e should drive
-  `setMoveInput` before `assertFeelContract` to exercise input-to-render
-  latency. This SHARPENS the #1113 feel-envelope assertion but is a test-quality
-  refinement, not itself a served-page beat — fold into #1113's repair if
-  convenient, else operator disposes.
+The M-WIRE-cycle drift set (#1089 perf-preflight, #1071 gate-marker tooling,
+#1065 CI-log ergonomics, #1053 README, #1051 architecture-README, #1081 e2e
+input-latency) no longer appears in the open backlog — disposed since the last
+cycle.
 
-_Retired prior-cycle drift: #976/#977/#978 and #727 no longer appear in the open
-`agent-filed` backlog (disposed since the last cycle)._
+**#1165**, flagged by the previous planning chunk as likely drift, is NOT present
+in the current open backlog (no open issues at all) — already closed or never
+filed; nothing to dispose. If it resurfaces, evaluate against M-ORRA-E1's
+served-page acceptance: a test-infra or docs item is drift; an Orra served-page
+consumer is in-epic.
 
-_M3 (Saint Orra) is DEFERRED to M4, not drift: its harness-green integration
-(#863) shipped in the contract lane but not on the served page, so its
-served-page wiring is deliberately gated behind M-WIRE-EINT closing the
-module-vs-surface gap first. Prior-cycle drift (#615/#622/#454/#634) resolved.
-Current drift is #976/#977/#978 + #727 above._
+_Prior-cycle drift resolved: #976/#977/#978/#727 (M-WIRE cycle);
+#615/#622/#454/#634 (earlier). M3/#863 is NOT drift — it is the harness twin of
+the now-ACTIVE M-ORRA-E1, promoted from deferred to active because M-WIRE closed
+the module-vs-surface gap it was gated behind._
