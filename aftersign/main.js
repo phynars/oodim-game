@@ -25,6 +25,7 @@ import {
   coerceOrraRecognitionMemory,
   lineCopyForOrraLineId,
   ORRA_FIRST_CONTACT_LINE_ID,
+  ORRA_RETURN_LINE_BY_ACTION,
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
@@ -1115,14 +1116,11 @@ const choose = async (choiceId) => {
     state.save.revision = nextRevision;
     state.npcs.orra.memory = [nextFact];
     // Keep Orra's spoken surface in lockstep with her memory at the
-    // mint site — publishState no longer re-derives per frame, so
-    // the update has to happen HERE (and at return-to-orra / boot /
-    // reset / restore). Deriving from the freshly-minted fact via
-    // the same `selectOrraRecognitionLine` selector keeps this
-    // consistent with the pure-logic contract.
-    const mintedLine = selectOrraRecognitionLine(state.npcs.orra.memory);
-    state.npcs.orra.lastLineId = mintedLine.lineId;
-    state.npcs.orra.lastLine = lineCopyForOrraLineId(mintedLine.lineId);
+    // mint site — and route the chosen action through the canonical
+    // action→line map so `light-vigil`/`spare-vigil` can never bypass
+    // `ORRA_RETURN_LINE_BY_ACTION[action]`.
+    state.npcs.orra.lastLineId = ORRA_RETURN_LINE_BY_ACTION[orraAction];
+    state.npcs.orra.lastLine = lineCopyForOrraLineId(state.npcs.orra.lastLineId);
     markStateDirty();
     await forceSave();
     publishState();
