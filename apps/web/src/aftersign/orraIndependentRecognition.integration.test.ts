@@ -44,6 +44,11 @@ import { describe, expect, it } from "vitest";
 
 import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel";
 import {
+  fromRuntimeLaneMemory,
+  toRuntimeLaneMemory,
+  type OrraRuntimeLaneActionResolver,
+} from "./orraRecognitionVocabularyAdapter";
+import {
   AFTERSIGN_IO_RECOGNITION_FEEL,
   AFTERSIGN_ORRA_RECOGNITION_FEEL,
   createAftersignVerticalSliceState,
@@ -102,7 +107,57 @@ describe("M3-E1: Orra recognizes the player independently of Io (#863)", () => {
       const returned = reloadAndReturn(playFullFirstSession());
 
       // orra-dropped guard: recognition MUST survive the durable round-trip.
-      expect(sampleAftersignOrraMemoryBeat(returned)).toEqual({
+      const harnessBeat = sampleAftersignOrraMemoryBeat(returned);
+      expect(harnessBeat).toEqual({
+        kind: "orra-recognition",
+        scene: "orra-return",
+        recognizesPlayer: true,
+        orraAction: "answered-saint-orra",
+        recognitionFeel: AFTERSIGN_ORRA_RECOGNITION_FEEL,
+      });
+
+      // #1181 reconciliation guard: harness vocabulary must stay aligned
+      // with served-lane lit/spared memory semantics through an additive
+      // adapter. The record fed to `toRuntimeLaneMemory` is DERIVED from
+      // `harnessBeat.orraAction` (the value the harness actually emits,
+      // typed against `AftersignOrraAction`) — not from a hardcoded
+      // lit/spared literal. If the harness surface ever stopped emitting
+      // `"answered-saint-orra"`, this call fails at typecheck; if the
+      // served lane grew a third action, the resolver's return type
+      // would force us to declare intent for the new case here.
+      const resolveOrraRuntimeLaneAction: OrraRuntimeLaneActionResolver = (
+        harnessAction,
+      ) => {
+        // The full driven playthrough plays the vigil-lit branch, so the
+        // reconciliation lands on `"lit"`. The `harnessAction` argument
+        // is exhaustively narrowed to `"answered-saint-orra"` — a future
+        // growth of `AftersignOrraAction` would force a case here.
+        if (harnessAction === "answered-saint-orra") {
+          return "lit";
+        }
+        // TypeScript-exhaustive fallback: `never` at typecheck today.
+        throw new Error(`Unmapped Orra harness action: ${String(harnessAction)}`);
+      };
+
+      const runtimeMemory = toRuntimeLaneMemory(
+        {
+          kind: harnessBeat.kind,
+          scene: harnessBeat.scene,
+          recognizesPlayer: harnessBeat.recognizesPlayer,
+          orraAction: harnessBeat.orraAction,
+          recognitionFeel: harnessBeat.recognitionFeel,
+        },
+        resolveOrraRuntimeLaneAction,
+      );
+      expect(runtimeMemory).toEqual({
+        remembersPlayer: true,
+        action: "lit",
+      });
+      // Inverse projection collapses lit/spared back onto the harness
+      // marker — same beat shape the harness itself produced.
+      expect(
+        fromRuntimeLaneMemory(runtimeMemory, harnessBeat.recognitionFeel),
+      ).toEqual({
         kind: "orra-recognition",
         scene: "orra-return",
         recognizesPlayer: true,
