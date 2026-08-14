@@ -65,6 +65,19 @@ import { runIoRecognitionExpectedLineContractChecks } from "./src/ioRecognitionE
 // resolves it deterministically), satisfying the extension-resolution
 // contract documented above.
 import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.ts";
+// Return-recognition beat feel — pins the invariants of the SHIPPED
+// module apps/web/src/aftersign/ioRecognitionBeat.feel.ts (already
+// consumed by the vitest suite ioRecognitionBeat.feel.test.ts). The
+// bundle re-asserts phase timing, camera-push envelope, sign-glow
+// attack/decay, subtitle fade, and outcome tints inside the
+// deterministic pure lane so a regression fails BEFORE the vitest
+// lane has to catch it. The imported feel module has zero relative
+// imports, so its subgraph terminates in a single .ts-extensioned hop
+// (satisfies the extension-resolution contract documented above).
+// Cross-package hops into apps/web/src/aftersign are precedented in
+// this lane — recognitionBeat.ts already imports
+// apps/web/src/aftersign/recognitionFeedback.ts the same way.
+import { runReturnRecognitionFeelChecks } from "./src/feel/ioRecognitionBeatFeel.test.ts";
 
 type Runner = {
   label: string;
