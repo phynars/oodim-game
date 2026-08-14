@@ -418,8 +418,28 @@ const lineForBeat = () => {
     // Red-guard hook (#653): wrong-io-line deliberately swaps the
     // recognition line so the harness can prove it would catch a
     // line/outcome mismatch. No-op when breakMode is "".
+    //
+    // Red-guard hook (#1180 M-ORRA-E1): orra-io-contamination COUPLES
+    // Io's returning-session line to Orra memory presence — the exact
+    // contamination the isolation invariant forbids. When active AND
+    // Orra has recognized (lit/spared vigil → state.npcs.orra.memory
+    // non-empty), invert speakAsSealed so the shipped Io line ceases
+    // to match the durable packet outcome. This is the ONLY code path
+    // that ever reads Orra state from an Io-line branch, and it is
+    // strictly gated on the break mode — default lane runs are byte
+    // -identical to pre-#1180 behavior (isolation holds), which is
+    // the property the served-page e2e (flagship-surface-contract.spec.ts)
+    // asserts green by default and RED under this mode. Feeds done-gate
+    // #1173.
     const rememberedSealed = state.packet.sealed;
-    const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
+    const orraContaminated =
+      breakMode === "orra-io-contamination"
+      && Array.isArray(state.npcs.orra?.memory)
+      && state.npcs.orra.memory.length > 0;
+    const speakAsSealed =
+      breakMode === "wrong-io-line" || orraContaminated
+        ? !rememberedSealed
+        : rememberedSealed;
     const snippets = buildIoRecognitionDialogueSnippets({
       playerId: state.player.id,
       packetSealed: speakAsSealed,

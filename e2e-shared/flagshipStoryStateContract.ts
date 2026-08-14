@@ -123,7 +123,15 @@ export type FlagshipGameSurface = {
 export type FlagshipBreakMode =
   | 'drop-memory'
   | 'wrong-io-line'
-  | 'local-only-save';
+  | 'local-only-save'
+  // #1180 M-ORRA-E1: Orra memory perturbs Io's returning-session line
+  // selection on the served page. Promotes the third #863 red mode from
+  // jsdom (orraIndependentRecognition.integration.test.ts) to the served
+  // surface, feeding done-gate #1173. Impl: aftersign/main.js's
+  // io-return-recognition branch inverts `speakAsSealed` iff Orra memory
+  // is non-empty and this mode is active — the exact contamination the
+  // isolation guarantee forbids.
+  | 'orra-io-contamination';
 
 // Canonical recognition lines per prior delivery outcome, ACROSS TIERS
 // (returning + deep-recall) — sourced from the copy module itself

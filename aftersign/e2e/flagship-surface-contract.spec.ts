@@ -48,6 +48,13 @@ const BREAK_MODES: readonly FlagshipBreakMode[] = [
   "drop-memory",
   "wrong-io-line",
   "local-only-save",
+  // #1180 M-ORRA-E1: promotes the `orra-io-contamination` red mode
+  // from the jsdom harness onto the served surface. The default lane
+  // asserts Io's returning-session line is UNPERTURBED by Orra memory
+  // (lit/spared vigil); this mode inverts Io's `speakAsSealed` iff
+  // Orra has recognized, so the same assertion turns RED end-to-end.
+  // Feeds done-gate #1173.
+  "orra-io-contamination",
 ] as const;
 
 type IoPacketOutcome = "sealed" | "opened";
@@ -826,6 +833,138 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
 
     if (breakMode === "wrong-io-line") {
       // This branch intentionally only documents mode ownership.
+    }
+  });
+
+  // #1180 M-ORRA-E1: Io non-regression against `orra-io-contamination`
+  // on the served page. Promotes the third #863 red mode from the jsdom
+  // harness (orraIndependentRecognition.integration.test.ts) onto the
+  // deployed surface, feeding done-gate #1173.
+  //
+  // The isolation guarantee: after the player performs light-vigil OR
+  // spare-vigil, reloads, and returns to Io, Io's returning-session
+  // line must still be the CORRECT one for the durable packet outcome
+  // — Orra memory presence must not perturb it. The exact code path
+  // being guarded is `lineForBeat`'s io-return-recognition branch in
+  // aftersign/main.js: it reads `state.npcs.io.memory` and never
+  // `state.npcs.orra.memory` under normal breakMode="".
+  //
+  // Red polarity (`orra-io-contamination`) inverts Io's `speakAsSealed`
+  // iff Io's line branch has read Orra memory presence — the exact
+  // contamination the isolation invariant forbids — so the same
+  // assertions below turn RED. That proves the served-page e2e will
+  // catch a real regression, not just a hypothetical one.
+  test("M-ORRA-E1 Io non-regression: vigil action does not perturb Io's returning-session line", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    watchPageErrors(page, "orra-io-contamination");
+    const breakMode = currentBreakMode();
+
+    // Inject the breakMode into the served page via window hook AND
+    // URL query — mirrors the pattern in orra-served-recognition.spec.ts.
+    // aftersign/main.js reads `window.__FLAGSHIP_BREAK_MODE ||
+    // params.get("breakMode")` at boot, so both channels are covered
+    // (init-script survives a first goto; the URL query survives any
+    // forceReload({ clearLocalState: true }) that clears in-page state).
+    if (breakMode) {
+      await page.addInitScript((mode: string) => {
+        (window as unknown as { __FLAGSHIP_BREAK_MODE?: string }).__FLAGSHIP_BREAK_MODE = mode;
+      }, breakMode);
+    }
+
+    for (const outcome of ["sealed", "opened"] as const) {
+      for (const vigil of ["light-vigil", "spare-vigil"] as const) {
+        await test.step(`Io line stable for outcome=${outcome} + vigil=${vigil}`, async () => {
+          const slot = `flagship-orra-io-${outcome}-${vigil}-${Date.now()}`;
+          const breakQuery = breakMode ? `&breakMode=${encodeURIComponent(breakMode)}` : "";
+          await page.goto(`/aftersign/?slot=${slot}${breakQuery}`, { waitUntil: "load" });
+          await readSurface(page);
+
+          // Session A: complete the packet beat + perform the vigil action.
+          // `light-vigil`/`spare-vigil` are the direct choice ids the
+          // orra runtime lane recognizes (aftersign/src/orraRuntimeLane.ts
+          // ORRA_CHOICE_TO_ACTION); they mint the Orra recognition memory
+          // fact in state.npcs.orra.memory. Any DOM-only "meet-orra"
+          // affordance is not required to reach that mint.
+          await completePacketBeat(page, outcome, null);
+          await chooseAndWait(page, vigil);
+
+          // Prove Orra memory actually landed — otherwise the
+          // contamination hook has nothing to trip on and the RED
+          // polarity would be a false green.
+          const afterVigil = await readSurface(page);
+          const orraMemory = (afterVigil.npcs as unknown as {
+            orra?: { memory?: unknown[] };
+          }).orra?.memory ?? [];
+          expect(
+            Array.isArray(orraMemory) && orraMemory.length > 0,
+            `[outcome=${outcome} vigil=${vigil}] expected state.npcs.orra.memory to be non-empty after ${vigil}; got ${JSON.stringify(orraMemory)}`,
+          ).toBe(true);
+
+          // Session B: durable-save + clearLocalState reload + return-to-io.
+          // Same durability path the other tests in this file exercise.
+          await persistAndClearReload(page);
+          await chooseAndWait(page, "return-to-io");
+
+          const returning = await readSurface(page);
+          assertSerializableFlagshipSurface(returning);
+
+          // The isolation assertion — Io's returning-session line +
+          // memory-refs must match the DURABLE packet outcome, not
+          // any Orra state. If `orra-io-contamination` is wired
+          // correctly, this throws under that mode and stays green
+          // by default.
+          const assertIoStable = () => {
+            expect(
+              returning.scene.beat,
+              `[outcome=${outcome} vigil=${vigil}] expected scene.beat to advance to io-return-recognition; got '${returning.scene.beat}'`,
+            ).toBe("io-return-recognition");
+            assertNpcReferencesPriorMemory(returning, outcome);
+            expect(
+              IO_RETURN_LINES[outcome],
+              `[outcome=${outcome} vigil=${vigil}] expected Io's lastLine to be a canonical recognition line for the DURABLE outcome; got: ${returning.npcs.io.lastLine}`,
+            ).toContain(returning.npcs.io.lastLine);
+            expect(
+              returning.npcs.io.lastLineMemoryRefs,
+              `[outcome=${outcome} vigil=${vigil}] expected lastLineMemoryRefs to cite '${IO_RETURN_MEMORY_ID[outcome]}' (the DURABLE packet outcome id); got: [${returning.npcs.io.lastLineMemoryRefs.join(", ")}]`,
+            ).toContain(IO_RETURN_MEMORY_ID[outcome]);
+          };
+
+          if (breakMode === "orra-io-contamination") {
+            let didThrow = false;
+            try {
+              assertIoStable();
+            } catch {
+              didThrow = true;
+            }
+            expect(
+              didThrow,
+              `FLAGSHIP_BREAK_MODE=orra-io-contamination must make Io's returning-session assertion fail for outcome=${outcome} vigil=${vigil}; it did not — the break-mode wiring in aftersign/main.js lineForBeat is not tripping.`,
+            ).toBe(true);
+            return;
+          }
+
+          if (breakMode === "drop-memory" || breakMode === "wrong-io-line") {
+            // The other Io-line red modes still take precedence — their
+            // owner tests already assert them, so here we just confirm
+            // they still turn RED under this flow (no free green).
+            let didThrow = false;
+            try {
+              assertIoStable();
+            } catch {
+              didThrow = true;
+            }
+            expect(
+              didThrow,
+              `FLAGSHIP_BREAK_MODE=${breakMode} must make Io's returning-session assertion fail; it did not.`,
+            ).toBe(true);
+            return;
+          }
+
+          // Default lane (breakMode === null): Io's line is unperturbed
+          // by Orra memory presence — the isolation invariant holds.
+          assertIoStable();
+        });
+      }
     }
   });
 });
