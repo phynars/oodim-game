@@ -24,6 +24,23 @@ export type AftersignVerticalSliceState = {
   orraHasMetPlayer: boolean;
   orraRecognizesPlayer: boolean;
   /**
+   * M-CONTINUE-E1 (docs/plan/product-plan.md:194): the returning
+   * player has picked a tone to answer Io in, advancing the story
+   * past `io-return-recognition` into `return-tone-choice`.
+   *
+   * Optional so pre-M-CONTINUE saves round-trip unchanged; the
+   * story-beat selector treats `undefined` and `false` identically.
+   */
+  hasChosenReturnTone?: boolean;
+  /**
+   * M-CONTINUE-E1: the returning player has asked Io for the next
+   * job, advancing into the terminal `io-next-job` beat authored in
+   * `packages/aftersign/next-job-beat.js`.
+   *
+   * Optional for the same round-trip reason as `hasChosenReturnTone`.
+   */
+  hasAskedForNextJob?: boolean;
+  /**
    * Set only when the state came out of a durable-save restore
    * (`restoreAftersignDurableSave`). Carries the turn the envelope was
    * written on so the window-surface snapshot can publish
@@ -109,6 +126,42 @@ export function confirmAftersignPacketChoice(
     packetOutcome: state.packetOutcome,
     confirmedAtMs,
     confirmFeel: AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
+  };
+}
+
+/**
+ * M-CONTINUE-E1: mark the returning player as having picked a tone
+ * to answer Io in. Idempotent; a no-op if already recorded.
+ */
+export function recordAftersignReturnToneChoice(
+  state: AftersignVerticalSliceState,
+): AftersignVerticalSliceState {
+  if (state.hasChosenReturnTone) {
+    return state;
+  }
+  return {
+    ...state,
+    hasChosenReturnTone: true,
+  };
+}
+
+/**
+ * M-CONTINUE-E1: mark the returning player as having asked Io for
+ * the next job — advances into the terminal `io-next-job` beat.
+ * Recording this implies the return-tone choice has been made, so
+ * `hasChosenReturnTone` is also stamped here (single source of
+ * truth: the beat progression cannot skip return-tone-choice).
+ */
+export function recordAftersignAskedForNextJob(
+  state: AftersignVerticalSliceState,
+): AftersignVerticalSliceState {
+  if (state.hasAskedForNextJob) {
+    return state;
+  }
+  return {
+    ...state,
+    hasChosenReturnTone: true,
+    hasAskedForNextJob: true,
   };
 }
 

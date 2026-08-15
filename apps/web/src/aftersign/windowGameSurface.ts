@@ -262,6 +262,18 @@ function getAftersignSaveSnapshot(
 function getAftersignCurrentStoryBeat(
   state: AftersignVerticalSliceState,
 ): AftersignStoryBeatId {
+  // M-CONTINUE-E1 (docs/plan/product-plan.md:194) beats sit at the
+  // TOP of the selector because they represent the furthest-advanced
+  // progression — the player has been recognized AND has chosen a
+  // tone (`return-tone-choice`) or asked for the next job
+  // (`io-next-job`, terminal). Both require `ioRecognizesPlayer`
+  // because the return-tone fork hangs off the recognition beat.
+  if (state.ioRecognizesPlayer && state.hasAskedForNextJob) {
+    return "io-next-job";
+  }
+  if (state.ioRecognizesPlayer && state.hasChosenReturnTone) {
+    return "return-tone-choice";
+  }
   if (state.orraRecognizesPlayer && state.orraAction === "answered-saint-orra") {
     return "orra-remembers-answered-saint-orra";
   }
@@ -311,6 +323,15 @@ function getAftersignCompletedStoryBeats(
   }
   if (state.orraRecognizesPlayer && state.orraAction === "answered-saint-orra") {
     completedBeats.push("orra-remembers-answered-saint-orra");
+  }
+  // M-CONTINUE-E1 tail — order matches the runtime progression
+  // (`return-tone-choice` then `io-next-job`), both gated on Io
+  // having recognized the returning player.
+  if (state.ioRecognizesPlayer && state.hasChosenReturnTone) {
+    completedBeats.push("return-tone-choice");
+  }
+  if (state.ioRecognizesPlayer && state.hasAskedForNextJob) {
+    completedBeats.push("io-next-job");
   }
 
   return completedBeats;

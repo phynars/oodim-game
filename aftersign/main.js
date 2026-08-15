@@ -42,6 +42,7 @@ import {
   writeAuthoritativeSave,
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
+import { AFTERSIGN_NEXT_JOB_BEAT } from "../packages/aftersign/next-job-beat.js";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
   computeKioskCameraTarget,
@@ -432,6 +433,24 @@ const lineForBeat = () => {
 
   if (state.scene.beat === "packet-delivered") {
     return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+  }
+
+  if (state.scene.beat === "return-tone-choice") {
+    // M-CONTINUE-E1 (docs/plan/product-plan.md:194): the beat that
+    // sits between `io-return-recognition` and `io-next-job` — the
+    // player picks the tone they answer Io in, and Io hands them the
+    // next job. The line here is Io setting up the fork; the choices
+    // (`ask-for-next-job` / a future tone-branch id) advance from
+    // here.
+    return "So — do you take the shape you carried, or the one the city gave back?";
+  }
+
+  if (state.scene.beat === "io-next-job") {
+    // Consumer of `packages/aftersign/next-job-beat.js`. Speaking the
+    // authored line here is what makes the module a shipped surface
+    // (not a dead file) — a rewrite of the beat's line lands the
+    // moment the module changes.
+    return AFTERSIGN_NEXT_JOB_BEAT.line;
   }
 
   if (state.scene.beat === "io-return-recognition") {
@@ -1179,6 +1198,32 @@ const choose = async (choiceId) => {
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
     markStateDirty();
     await forceSave();
+    publishState();
+    return;
+  }
+
+  if (choiceId === "choose-return-tone") {
+    // M-CONTINUE-E1: advance from `io-return-recognition` into the
+    // return-tone fork. Only valid once Io has recognized the
+    // returning player — otherwise the tone beat has nothing to
+    // hang off. Silent no-op off-beat (mirrors acknowledge-kiosk).
+    if (state.scene.beat !== "io-return-recognition") {
+      return;
+    }
+    setBeat("return-tone-choice");
+    publishState();
+    return;
+  }
+
+  if (choiceId === "ask-for-next-job") {
+    // M-CONTINUE-E1: advance from `return-tone-choice` into the
+    // next-job beat authored in `packages/aftersign/next-job-beat.js`.
+    // The trigger literal on the beat module (`after-return-tone-choice`)
+    // is the contract this branch honors — same posture, same gate.
+    if (state.scene.beat !== "return-tone-choice") {
+      return;
+    }
+    setBeat("io-next-job");
     publishState();
     return;
   }

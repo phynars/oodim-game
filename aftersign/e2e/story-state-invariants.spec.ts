@@ -56,6 +56,10 @@ const AUTHORED_BEATS: ReadonlySet<FlagshipSceneBeat> = new Set<FlagshipSceneBeat
   'packet-choice',
   'packet-delivered',
   'io-return-recognition',
+  // M-CONTINUE-E1 beats — Io's return-tone fork and the next-job beat
+  // authored in `packages/aftersign/next-job-beat.js`.
+  'return-tone-choice',
+  'io-next-job',
 ]);
 
 const AUTHORED_DELIVERY_OUTCOMES: ReadonlySet<FlagshipDeliveryOutcome> =

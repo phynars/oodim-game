@@ -107,6 +107,11 @@ const BEAT_ALIGNMENT: Record<AftersignStoryBeatId, FlagshipSceneBeat> = {
   "io-remembers-opened-packet": "io-return-recognition",
   "orra-first-meeting": "packet-offered",
   "orra-remembers-answered-saint-orra": "io-return-recognition",
+  // M-CONTINUE-E1 beats map 1:1 into the flagship beat space now that
+  // the shared contract union carries them (see
+  // e2e-shared/flagshipStoryStateContract.ts).
+  "return-tone-choice": "return-tone-choice",
+  "io-next-job": "io-next-job",
 };
 
 // (5) Every aftersign scene plays inside the single flagship scene
