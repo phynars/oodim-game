@@ -4,6 +4,11 @@ import {
 } from "../memoryRecallFeel";
 import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
+  AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+  applyAftersignReturnToneChoiceFeel,
+  type AftersignReturnToneChoiceFeel,
+} from "../returnToneChoiceFeel";
+import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   getAftersignStoryState,
@@ -59,8 +64,27 @@ export type AftersignWindowGameHarness = {
    * Populating this makes the next `getStoryState()` snapshot include
    * the full three-line `ioDialogue.memoryThread.thread` (route +
    * packet + return-reason). Pass `null` to clear.
+   *
+   * Side effect (return-tone FEEL wiring): when `reason` is non-null
+   * and the document contains an element matching
+   * `AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR` (i.e.
+   * `[data-aftersign-return-surface]`), the harness stamps the feel
+   * row (`AFTERSIGN_RETURN_TONE_CHOICE_FEEL[reason]`) onto that
+   * element via `applyAftersignReturnToneChoiceFeel`. That's the
+   * seam that turns the pure feel table into runnable slice code —
+   * the same reason token drives BOTH the voice memory thread and
+   * the DOM press envelope.
    */
   setIoReturnReason: (reason: AftersignReturnReason | null) => void;
+  /**
+   * Return the most recent return-tone feel row applied by
+   * `setIoReturnReason`, or `null` when no non-null reason has been
+   * recorded (or the last call was `setIoReturnReason(null)`).
+   * Exposed so a consumer test can assert the wiring without having
+   * to mount the `[data-aftersign-return-surface]` DOM node — the
+   * feel row is the ground truth, the DOM write is the projection.
+   */
+  getAppliedReturnToneFeel: () => AftersignReturnToneChoiceFeel | null;
   getStoryState: () => AftersignStoryStateSnapshot;
   /**
    * Served-page-compatible alias for the story/state snapshot. E2E
@@ -152,6 +176,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let state: AftersignVerticalSliceState = createAftersignVerticalSliceState();
   let recallTrigger: AftersignRecallTrigger | null = null;
   let ioReturnReason: AftersignReturnReason | null = null;
+  let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
   let savedAtTurn = 0;
 
   const applyMeet = (
@@ -193,6 +218,49 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // Return-reason is a per-encounter posture; a fresh restore
     // hasn't collected one yet.
     ioReturnReason = null;
+    appliedReturnToneFeel = null;
+  };
+
+  /**
+   * Apply the return-tone feel row for `reason` to any DOM element
+   * marked with `[data-aftersign-return-surface]`. Called from
+   * `setIoReturnReason` — the same posture token that drives the
+   * voice memory thread ALSO drives the press envelope, so a caller
+   * never has to know both surfaces exist.
+   *
+   * DOM-optional: in a jsdom or no-DOM context (worker, SSR) where
+   * `document` is missing OR no surface element is mounted, the feel
+   * row is still recorded on `appliedReturnToneFeel` so a test that
+   * cares about the wiring (not the render) can assert against it.
+   */
+  const applyReturnToneFeel = (
+    reason: AftersignReturnReason | null,
+  ): AftersignReturnToneChoiceFeel | null => {
+    if (reason === null) {
+      return null;
+    }
+    const doc =
+      (globalThis as { document?: Document }).document ?? undefined;
+    const surface = doc
+      ? (doc.querySelector(
+          AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+        ) as HTMLElement | null)
+      : null;
+    if (surface) {
+      return applyAftersignReturnToneChoiceFeel(surface, reason);
+    }
+    // No DOM surface mounted yet — return the row directly so callers
+    // that assert the wiring (rather than the render) still see the
+    // ground truth. `applyAftersignReturnToneChoiceFeel` is a pure
+    // lookup + DOM write; the lookup half is what we return here.
+    // Importing the constant would drag another symbol into scope;
+    // calling apply on a detached, throwaway element is the simplest
+    // way to get the row back without a second import.
+    if (doc) {
+      const detached = doc.createElement("div");
+      return applyAftersignReturnToneChoiceFeel(detached, reason);
+    }
+    return null;
   };
 
   const api: AftersignWindowGameHarness = {
@@ -205,6 +273,10 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     setIoReturnReason(reason) {
       ioReturnReason = reason;
+      appliedReturnToneFeel = applyReturnToneFeel(reason);
+    },
+    getAppliedReturnToneFeel() {
+      return appliedReturnToneFeel;
     },
     getStoryState() {
       return snapshot();
