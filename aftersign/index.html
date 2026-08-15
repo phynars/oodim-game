@@ -12,6 +12,8 @@
         color: #edf7ff;
         --confirm-shake-x: 0px;
         --confirm-shake-y: 0px;
+        --confirm-reticle-scale: 1;
+        --confirm-reticle-y: 0px;
         --packet-progress: 0;
         --recognition-sign-glow: 0px;
         --recognition-seal-glow: 0px;
@@ -420,7 +422,7 @@
         position: relative;
         z-index: 1;
         display: inline-block;
-        transform: translate3d(0, 0, 0);
+        transform: translate3d(0, var(--confirm-reticle-y), 0) scale(var(--confirm-reticle-scale));
         transition: transform 84ms cubic-bezier(.2,.8,.2,1);
       }
 
@@ -491,9 +493,12 @@
           transition: none;
         }
 
-        button:active,
-        .packet-button:active span {
+        button:active {
           transform: none;
+        }
+
+        .packet-button:active span {
+          transform: translate3d(0, var(--confirm-reticle-y), 0) scale(var(--confirm-reticle-scale));
         }
 
         /* io-recognition envelope respects reduced-motion — the
