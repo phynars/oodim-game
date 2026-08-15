@@ -1030,12 +1030,55 @@ const renderText = () => {
   syncIoLine();
   setTextContentIfChanged(speaker, "Io");
   setTextContentIfChanged(line, state.npcs.io.lastLine);
-  const routeChoiceVisible = state.scene.beat === "packet-choice";
+  const isPacketChoiceBeat = state.scene.beat === "packet-choice";
+  const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
+  const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
+  const isNextJobBeat = state.scene.beat === "io-next-job";
+  const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat;
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
   }
-  acknowledgeRouteButton.disabled = !routeChoiceVisible;
-  skipRouteButton.disabled = !routeChoiceVisible;
+
+  if (isPacketChoiceBeat) {
+    setTextContentIfChanged(acknowledgeRouteButton, "Acknowledge route");
+    setTextContentIfChanged(skipRouteButton, "Skip acknowledgment");
+    setTextContentIfChanged(deliverButton, "Deliver packet");
+    acknowledgeRouteButton.dataset.choiceId = "acknowledge-kiosk";
+    skipRouteButton.dataset.choiceId = "skip-kiosk-acknowledge";
+    deliverButton.dataset.choiceId = "deliver-packet";
+    acknowledgeRouteButton.disabled = false;
+    skipRouteButton.disabled = false;
+    deliverButton.disabled = false;
+  } else if (isReturnRecognitionBeat) {
+    setTextContentIfChanged(acknowledgeRouteButton, "Kind return");
+    setTextContentIfChanged(skipRouteButton, "Evasive return");
+    setTextContentIfChanged(deliverButton, "Blunt return");
+    acknowledgeRouteButton.dataset.choiceId = "choose-return-tone";
+    skipRouteButton.dataset.choiceId = "choose-return-tone";
+    deliverButton.dataset.choiceId = "choose-return-tone";
+    acknowledgeRouteButton.disabled = false;
+    skipRouteButton.disabled = false;
+    deliverButton.disabled = false;
+  } else if (isReturnToneChoiceBeat) {
+    setTextContentIfChanged(deliverButton, "Ask for next job");
+    deliverButton.dataset.choiceId = "ask-for-next-job";
+    acknowledgeRouteButton.disabled = true;
+    skipRouteButton.disabled = true;
+    deliverButton.disabled = false;
+  } else if (isNextJobBeat) {
+    setTextContentIfChanged(deliverButton, "Deliver next packet");
+    deliverButton.dataset.choiceId = "deliver-packet";
+    acknowledgeRouteButton.disabled = true;
+    skipRouteButton.disabled = true;
+    deliverButton.disabled = false;
+  } else {
+    setTextContentIfChanged(deliverButton, "Deliver packet");
+    deliverButton.dataset.choiceId = "deliver-packet";
+    acknowledgeRouteButton.disabled = true;
+    skipRouteButton.disabled = true;
+    deliverButton.disabled = false;
+  }
+
   const routeMemory = state.player.secondAction === SECOND_ACTION.DONE
     ? "listened"
     : state.player.secondAction === SECOND_ACTION.SKIPPED
@@ -2391,9 +2434,18 @@ packetButton.addEventListener("pointercancel", (event) => {
   event.preventDefault();
   packetMove({ ...packetPointFromEvent(event), x: state.interaction.packetIntent.config.DRIFT_CANCEL_PX + event.clientX + 1 });
 });
-acknowledgeRouteButton.addEventListener("click", () => choose("acknowledge-kiosk"));
-skipRouteButton.addEventListener("click", () => choose("skip-kiosk-acknowledge"));
-deliverButton.addEventListener("click", () => choose("deliver-packet"));
+acknowledgeRouteButton.addEventListener("click", () => {
+  const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
+  choose(choiceId);
+});
+skipRouteButton.addEventListener("click", () => {
+  const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
+  choose(choiceId);
+});
+deliverButton.addEventListener("click", () => {
+  const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
+  choose(choiceId);
+});
 mobileMovePadController = attachMobileMovePad({
   root: movePad,
   knob: movePadKnob,
