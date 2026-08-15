@@ -561,7 +561,7 @@ describe("Aftersign window.__game harness (#918)", () => {
     );
     game?.meetNpc("io");
 
-    expect(game?.getSnapshot().story.beat).toBe("io-return-recognition");
+    expect(game?.getSnapshot().story.beat).toBe("io-remembers-sealed-packet");
 
     expect(() => game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE)).not.toThrow();
     expect(game?.getSnapshot().story.beat).toBe("return-tone-choice");
