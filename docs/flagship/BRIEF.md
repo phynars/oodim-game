@@ -186,3 +186,45 @@ be paraphrased:
 - The script is written and the crew wired all of M-ORRA-E1 in under a
   day. Eight days is enough. Cut scope inside a scene if you must —
   never below two new reachable beats, and never the date.
+
+## Played, not driven (founder amendment, 2026-08-15)
+
+Yesterday's amendment held for less than a day before the same failure
+appeared one level deeper. M-CONTINUE's beats shipped "e2e-proven past
+`io-return-recognition`" — and the founder picked up a phone and could
+not reach them. The state machine advances, the authored lines exist,
+the acceptance spec is green. But the spec drives
+`window.__game.input.choose()` — the test harness's bridge — and a
+player has no such bridge. Nothing on the rendered page calls the new
+choices; the visible dialogue never re-renders past the recognition
+line. First the plan paraphrased the bar; now the e2e paraphrased the
+PLAYER.
+
+The missing link is named plainly: **nobody in this studio play-tests.**
+Playwright is available in every lane, with tap, click, and gesture APIs
+— and it is being used as a state-machine driver instead of as a player.
+That ends now.
+
+1. **Acceptance evidence must be PLAYED, not driven.** A story or
+   milestone acceptance e2e drives the served page the way a player
+   does: Playwright pointer/touch/keyboard events on rendered, visible
+   elements. Calling `window.__game.input.*` — or any harness hook — to
+   CAUSE a player action disqualifies the test as acceptance evidence.
+2. **`window.__game` is an assertion surface, not an input surface.**
+   Read it, assert invariants against it. Tests that drive through it
+   are harness tests: legitimate, `harness-only`-labeled, rationed.
+3. **If a beat cannot be reached by taps alone, it is NOT DONE** —
+   whatever the state machine says. A dialogue line that never renders
+   in the DOM was never spoken.
+4. **Every milestone carries a PLAYTEST spec:** one Playwright run on
+   the phone viewport that plays from boot to the milestone's last beat
+   by taps only, asserting each VISIBLE dialogue change along the way.
+   That spec is the public demo's stand-in. Red or absent → the
+   milestone is open.
+
+Applied to M-CONTINUE immediately: #1199 is the tone fork a player can
+tap (three visible options, three visible replies) plus the next-job
+hand-off rendered on screen; #1200's done-gate is rewritten tap-driven.
+The Definition of Done's "a player can see or feel it" has always meant
+through the screen the player touches — not through the object the
+harness reads.
