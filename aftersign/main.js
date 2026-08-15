@@ -71,6 +71,19 @@ import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
 } from "./src/ioRecognitionDialogue.ts";
+// Return-tone choice feel — pinned 39-value table (3 postures × 13
+// numbers) authored under apps/web/. Wiring it into main.js here is
+// what turns the module from a contract-only design token into a
+// SHIPPED consumer: the served surface exposes
+// `window.__game.applyReturnToneFeel(reason)`, which stamps the
+// press envelope's CSS variables onto the [data-aftersign-return-surface]
+// node in index.html. The same reason token that drives the voice
+// memory thread now also drives the DOM press envelope — one axis,
+// one lookup, no drift between voice and feel.
+import {
+  AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+  applyAftersignReturnToneChoiceFeel,
+} from "../apps/web/src/aftersign/returnToneChoiceFeel.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -945,6 +958,34 @@ const publishState = () => {
     deliverPacket: () => choose("deliver-packet"),
     enableAudio: () => enableAudio(),
     resetSliceSave: () => resetSliceSave(),
+    /**
+     * Return-tone press-envelope writer. Looks up the pinned feel
+     * row for `reason` (one of "kind" / "evasive" / "blunt", the
+     * same posture axis the voice memory thread uses) and stamps
+     * its 11 CSS variables + dataset marker onto the
+     * [data-aftersign-return-surface] node in index.html.
+     *
+     * Returns the applied feel row so a caller can chain (e.g.
+     * schedule the matching audio cue with feel.audioCue.frequencyHz)
+     * without a second lookup, or `null` when the surface node isn't
+     * mounted (stripped DOM / test harness without a surface).
+     *
+     * This is the shipped consumer that turns
+     * apps/web/src/aftersign/returnToneChoiceFeel.ts from a design
+     * contract into runnable slice code — the served /aftersign/
+     * page now writes the same 39 tuned numbers a "why did you come
+     * back?" beat would consume, so the review that shipped the
+     * module can point at a live seam, not a test-only harness.
+     */
+    applyReturnToneFeel: (reason) => {
+      const surface = document.querySelector(
+        AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+      );
+      if (!surface) {
+        return null;
+      }
+      return applyAftersignReturnToneChoiceFeel(surface, reason);
+    },
   };
   publishedStateVersion = statePublishVersion;
   return window.__game;

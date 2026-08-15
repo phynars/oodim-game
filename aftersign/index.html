@@ -452,6 +452,20 @@
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>
     <div id="recognitionImpactBurst" class="impact-burst" aria-hidden="true"></div>
+    <!--
+      Return-tone feel surface. Stamped by main.js ::
+      window.__game.applyReturnToneFeel(reason) — writes the 11 CSS
+      variables + dataset marker authored by
+      apps/web/src/aftersign/returnToneChoiceFeel.ts onto this element
+      so the eventual "why did you come back?" beat can drive its press
+      envelope from ONE tuned table (kind/evasive/blunt).
+      `hidden` here keeps the node out of the layout tree until the beat
+      wires visible chrome to the same [data-aftersign-return-surface]
+      selector; the CSS variables land on the node regardless of the
+      hidden attribute (they're consulted by any descendant styling
+      that opts into them later).
+    -->
+    <div id="aftersignReturnSurface" data-aftersign-return-surface hidden aria-hidden="true"></div>
     <p class="state-readout" id="stateReadout">story: packet-offered · memory: pending</p>
     <section class="hud" aria-live="polite">
       <div class="panel">

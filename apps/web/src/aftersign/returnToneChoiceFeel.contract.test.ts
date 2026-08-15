@@ -15,15 +15,12 @@ import {
 // tweak" PR has to update this test alongside the constant. No silent
 // drift on 13 numbers × 3 postures = 39 tuned values.
 //
-// LANE NOTE: `apps/web/src/aftersign/vitest.config.ts` currently scopes
-// the aftersign vitest lane to a small explicit include list. The
-// paired consumer test (`returnToneChoiceFeel.consumer.test.ts`) IS on
-// that list so it runs in CI. This file follows the convention of ~5
-// other `.contract.test.ts` files in this directory that exist as
-// executable design contracts — they typecheck under
-// `typecheck:aftersign:apps-web` today and will flip into the running
-// lane when #841 lands. A test that pins concrete ms/px is a contract
-// whether or not the harness is currently running it.
+// LANE NOTE: this file IS on the aftersign vitest include list
+// (`apps/web/src/aftersign/vitest.config.ts`) alongside its paired
+// consumer test — the "no silent drift on 39 tuned values" purpose
+// only holds if a `pressMs: 72 → 73` edit reds out CI, not just
+// typecheck. Adding the file to the include list was the second
+// blocker on the review that shipped this module.
 
 const POSTURES: readonly AftersignReturnToneChoice[] = [
   "kind",
