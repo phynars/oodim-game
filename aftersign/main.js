@@ -66,6 +66,10 @@ import {
   DEFAULT_FAILURE_STING_FEEL,
   failureStingEnvelopeAt,
 } from "./src/failureStingFeedback.ts";
+import {
+  INTERACTION_CONFIRM_FEEL,
+  interactionConfirmEnvelopeAt,
+} from "./src/interactionConfirmFeel.js";
 import { createReducedMotionPreference } from "./src/reducedMotionPreference.js";
 import {
   buildIoRecognitionDialogueSnippets,
@@ -101,15 +105,7 @@ const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
 const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
 
-const CONFIRM_FEEDBACK = {
-  durationMs: 220,
-  easing: "easeOutCubic",
-  cameraKickDeg: 1.4,
-  cameraKickWorldX: 0.055,
-  hudShakePx: 10,
-  hudLiftPx: 3,
-  pulseDecayPerSecond: 3.8,
-};
+const CONFIRM_FEEDBACK = INTERACTION_CONFIRM_FEEL;
 const MEMORY_RECOGNITION_FEEDBACK = IO_RECOGNITION_BEAT_FEEDBACK;
 const FAILURE_FEEDBACK = DEFAULT_FAILURE_STING_FEEL;
 const MOVEMENT = DEFAULT_PLAYER_MOVEMENT_FEEL;
@@ -1729,14 +1725,13 @@ const playKioskConfirm = async () => {
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
   gain.connect(audioContext.destination);
 
-  [523.25, 659.25, 987.77].forEach((frequency, index) => {
-    const tone = audioContext.createOscillator();
-    tone.type = index === 2 ? "triangle" : "sine";
-    tone.frequency.setValueAtTime(frequency, now + index * 0.035);
-    tone.connect(gain);
-    tone.start(now + index * 0.035);
-    tone.stop(now + 0.36);
-  });
+  const cue = CONFIRM_FEEDBACK.audioCue;
+  const tone = audioContext.createOscillator();
+  tone.type = "triangle";
+  tone.frequency.setValueAtTime(cue.frequencyHz, now);
+  tone.connect(gain);
+  tone.start(now);
+  tone.stop(now + cue.durationMs / 1000);
 };
 
 const triggerRecognitionImpactChirp = async ({ frequencyHz, durationMs }) => {
@@ -1796,6 +1791,9 @@ const triggerKioskFeedback = (source) => {
     ...state.interaction.confirmFeedback,
     active: true,
     remainingMs: CONFIRM_FEEDBACK.durationMs,
+    reticleScalePeak: CONFIRM_FEEDBACK.reticleScalePeak,
+    reticleLiftPx: CONFIRM_FEEDBACK.reticleLiftPx,
+    audioCue: { ...CONFIRM_FEEDBACK.audioCue },
   };
   markStateDirty();
   publishState();
@@ -2039,12 +2037,10 @@ const syncRecognitionDomFeedback = (nowMs) => {
 const computeCameraPoseAt = (nowMs) => {
   const confirmStartedAt = state.interaction.confirmStartedAt;
   const failureStartedAt = state.interaction.failureStartedAt;
-  const confirmProgress = confirmStartedAt === null
-    ? 1
-    : Math.min(Math.max((nowMs - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
-  const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
-  const confirmFalloff = 1 - confirmIntensity;
-  const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+  const confirmEnvelope = confirmStartedAt === null
+    ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)
+    : interactionConfirmEnvelopeAt(nowMs - confirmStartedAt, CONFIRM_FEEDBACK);
+  const confirmWobble = confirmEnvelope.wobble;
   const failureReducedMotion = prefersReducedMotion();
   const failureEnvelope = failureStartedAt === null
     ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK, {
@@ -2299,6 +2295,8 @@ const resetSliceSave = async () => {
   syncPacketIntent();
   document.documentElement.style.setProperty("--confirm-shake-x", "0px");
   document.documentElement.style.setProperty("--confirm-shake-y", "0px");
+  document.documentElement.style.setProperty("--confirm-reticle-scale", "1");
+  document.documentElement.style.setProperty("--confirm-reticle-y", "0px");
   if (failureSting) {
     failureSting.style.opacity = "0";
   }
@@ -2533,12 +2531,12 @@ const tick = (now) => {
   const failureStartedAt = state.interaction.failureStartedAt;
   const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
   const packetProgress = packetIntentSnapshot.progress;
-  const confirmProgress = confirmStartedAt === null
-    ? 1
-    : Math.min(Math.max((now - confirmStartedAt) / CONFIRM_FEEDBACK.durationMs, 0), 1);
-  const confirmIntensity = 1 - (1 - confirmProgress) ** 3;
-  const confirmFalloff = 1 - confirmIntensity;
-  const confirmWobble = confirmFalloff * Math.sin(confirmProgress * Math.PI * 6);
+  const confirmEnvelope = confirmStartedAt === null
+    ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)
+    : interactionConfirmEnvelopeAt(now - confirmStartedAt, CONFIRM_FEEDBACK);
+  const confirmProgress = confirmEnvelope.progress;
+  const confirmFalloff = confirmEnvelope.falloff;
+  const confirmWobble = confirmEnvelope.wobble;
   const failureReducedMotion = prefersReducedMotion();
   const failureEnvelope = failureStartedAt === null
     ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK, {
@@ -2574,8 +2572,10 @@ const tick = (now) => {
   camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
   camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
   sampleMemoryBeatCameraProbe();
-  document.documentElement.style.setProperty("--confirm-shake-x", `${Math.round(confirmWobble * CONFIRM_FEEDBACK.hudShakePx - failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
-  document.documentElement.style.setProperty("--confirm-shake-y", `${Math.round(-confirmFalloff * CONFIRM_FEEDBACK.hudLiftPx + failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
+  document.documentElement.style.setProperty("--confirm-shake-x", `${confirmEnvelope.hudShakeX - Math.round(failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
+  document.documentElement.style.setProperty("--confirm-shake-y", `${confirmEnvelope.hudLiftY + Math.round(failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
+  document.documentElement.style.setProperty("--confirm-reticle-scale", `${confirmEnvelope.reticleScale.toFixed(3)}`);
+  document.documentElement.style.setProperty("--confirm-reticle-y", `${confirmEnvelope.reticleLiftPx.toFixed(2)}px`);
   if (failureSting) {
     failureSting.style.opacity = `${failureEnvelope.flashAlpha.toFixed(3)}`;
   }
