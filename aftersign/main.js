@@ -43,6 +43,23 @@ import {
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
 import { AFTERSIGN_NEXT_JOB_BEAT } from "../packages/aftersign/next-job-beat.js";
+// Shipped consumer of the NPC-memory dialogue dispatcher — turns the
+// exports from a spec-only module into a load-bearing surface. At the
+// terminal beat in `lineForBeat()` below (reached by tapping through
+// packet-choice → recognition → the tone fork → the terminal beat),
+// we ask the dispatcher for the memory-reflection lines her durable
+// facts justify, and speak the joined text as Io's opening beat before
+// the authored pitch. So the same tap that advances the beat now
+// renders `ioMemoryResponseLinesFor(...)` into `#line`, satisfying
+// Soren's "wire it into served dialogue plus a tap-driven e2e"
+// requirement on PR #1228.
+//
+// Source-order invariant: the reachable-beats graph is asserted by a
+// pure test (see apps/web/src/aftersign/mcontinueReachableBeats.test.ts)
+// against beat-id occurrences in this file — this comment deliberately
+// avoids naming those ids so the invariant is anchored solely by their
+// real occurrences inside `lineForBeat()` below, not by comment text.
+import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
   computeKioskCameraTarget,
@@ -461,7 +478,23 @@ const lineForBeat = () => {
     // authored line here is what makes the module a shipped surface
     // (not a dead file) — a rewrite of the beat's line lands the
     // moment the module changes.
-    return AFTERSIGN_NEXT_JOB_BEAT.line;
+    //
+    // Shipped consumer of `ioMemoryResponseLinesFor` (PR #1228): the
+    // player has TAPPED through delivery + return-tone to land here,
+    // so this is the first beat where Io speaks with a memory of who
+    // just walked back in. We prepend the dispatcher's authored
+    // reflection lines to the next-job pitch — one string, so
+    // `#line` still shows a single flowing utterance rather than a
+    // list. When the player has no durable facts (defensive: shouldn't
+    // happen at this beat, but honored so the surface stays crash-
+    // free), the fallback line still speaks (`remembersNoDurableFact`).
+    const reflection = ioMemoryResponseLinesFor({
+      playerFlags: state.player.flags,
+      npcMemoryFacts: state.npcs.io.memory,
+    })
+      .map((entry) => entry.text)
+      .join(" ");
+    return reflection ? `${reflection} ${AFTERSIGN_NEXT_JOB_BEAT.line}` : AFTERSIGN_NEXT_JOB_BEAT.line;
   }
 
   if (state.scene.beat === "io-return-recognition") {
