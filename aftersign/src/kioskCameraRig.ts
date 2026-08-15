@@ -18,6 +18,7 @@ export type KioskCameraRigConfig = {
   lookAheadMeters: number;
   velocityLookAheadMeters: number;
   dampingPerSecond: number;
+  lookAtDampingPerSecond: number;
   snapEpsilonMeters: number;
 };
 
@@ -37,6 +38,7 @@ export const DEFAULT_KIOSK_CAMERA_RIG: KioskCameraRigConfig = {
   lookAheadMeters: 1.18,
   velocityLookAheadMeters: 0.34,
   dampingPerSecond: 180,
+  lookAtDampingPerSecond: 48,
   snapEpsilonMeters: 0.18,
 };
 
@@ -115,12 +117,18 @@ export const stepKioskCameraRig = (
 ): KioskCameraRigState => {
   const dtSeconds = input.dtSeconds ?? DEFAULT_FIXED_STEP_SECONDS;
   const target = computeKioskCameraTarget(input, config);
-  const lookAt = computeKioskCameraLookAt(input, config);
-  const alpha = 1 - Math.exp(-config.dampingPerSecond * dtSeconds);
+  const targetLookAt = computeKioskCameraLookAt(input, config);
+  const positionAlpha = 1 - Math.exp(-config.dampingPerSecond * dtSeconds);
+  const lookAtAlpha = 1 - Math.exp(-config.lookAtDampingPerSecond * dtSeconds);
   const position = {
-    x: approach(state.position.x, target.x, alpha),
-    y: approach(state.position.y, target.y, alpha),
-    z: approach(state.position.z, target.z, alpha),
+    x: approach(state.position.x, target.x, positionAlpha),
+    y: approach(state.position.y, target.y, positionAlpha),
+    z: approach(state.position.z, target.z, positionAlpha),
+  };
+  const lookAt = {
+    x: approach(state.lookAt.x, targetLookAt.x, lookAtAlpha),
+    y: approach(state.lookAt.y, targetLookAt.y, lookAtAlpha),
+    z: approach(state.lookAt.z, targetLookAt.z, lookAtAlpha),
   };
   const error = length2(position.x - target.x, position.z - target.z);
 
@@ -172,10 +180,48 @@ export function checkKioskCameraRigConvergesWithinTwoFramesAfterDirectionChange(
   );
 
   assert(errorMeters <= config.snapEpsilonMeters, `camera rig missed 2-frame convergence: ${errorMeters.toFixed(3)}m`);
+  const snappedLookAt = computeKioskCameraLookAt({
+    playerX: -1.74,
+    playerZ: 1.15,
+    facingRadians: Math.PI / 2,
+    velocityX: 3.6,
+    velocityZ: 0,
+  }, config);
+
   assert(secondFrame.lookAt.x > -1.74, 'camera lookAt should lead in the movement direction');
+  assert(secondFrame.lookAt.x < snappedLookAt.x - 0.05, 'camera lookAt should ease toward the led point instead of snapping');
   assert(secondFrame.target.x < secondFrame.lookAt.x, 'follow camera should trail behind the led point');
+}
+
+export function checkKioskCameraRigKeepsAimSettledWhenInputStops(): void {
+  const config = DEFAULT_KIOSK_CAMERA_RIG;
+  const moving = createKioskCameraRigState({
+    playerX: -1.8,
+    playerZ: 1.15,
+    facingRadians: Math.PI / 2,
+    velocityX: 3.6,
+    velocityZ: 0,
+  }, config);
+
+  const released = stepKioskCameraRig(moving, {
+    playerX: -1.74,
+    playerZ: 1.15,
+    facingRadians: Math.PI / 2,
+    velocityX: 0,
+    velocityZ: 0,
+  }, config);
+  const snappedLookAt = computeKioskCameraLookAt({
+    playerX: -1.74,
+    playerZ: 1.15,
+    facingRadians: Math.PI / 2,
+    velocityX: 0,
+    velocityZ: 0,
+  }, config);
+
+  assert(released.lookAt.x > snappedLookAt.x + 0.05, 'camera lookAt should retain forward intent for one release frame');
 }
 
 export function runKioskCameraRigChecks(): void {
   checkKioskCameraRigConvergesWithinTwoFramesAfterDirectionChange();
+  checkKioskCameraRigKeepsAimSettledWhenInputStops();
 }
