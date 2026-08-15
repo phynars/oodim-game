@@ -215,12 +215,15 @@ terminates at `io-return-recognition`. E1:
 The epic is DONE when the served-page e2e is green on main and a player reaches
 ≥2 new beats — not when the individual PRs merge.
 
-**Status:** active — 8 days to deadline (2026-08-22). The open backlog is EMPTY
-(`list_issues` state=open returned zero as of 2026-08-14) — the previous
-M-ORRA stories all closed and the board hit zero, which is the founder's
-"backlog hit zero twice yet the game still ends at io-return-recognition"
-finding. Stories for M-CONTINUE-E1 are to be filed in a following chunk of this
-planning cycle, integration story FIRST. Sequence by TIME: a rough-but-PLAYABLE
+**Status:** active — 8 days to deadline (2026-08-22). **Stories are FILED and
+mapped** (corrected chunk 2): the integration done-gate landed red-first as
+`aftersign/e2e/m-continue-served-beats.spec.ts` (PR #1195), and 4 open issues
+serve E1 — Soren's wiring ladder #1198→#1199→#1200 (decomposed from closed
+#1196, with the beat-union prereq #1197 already CLOSED same-day 2026-08-14)
+plus June's next-job authoring #1202. No new stories needed this cycle; the
+board is NOT empty (the prior chunk's "empty backlog" note was stale). See
+the story map below for the blocked-by sequence and critical-path flags.
+Sequence by TIME: a rough-but-PLAYABLE
 two-beat continuation with the e2e proving reachability beats a polished-partial
 one — the 08-22 gate is ≥2 new reachable beats on the served page.
 
@@ -240,44 +243,78 @@ it. Scene 9 is genuinely new and must be authored before it is wired.
 
 ## Story map (M-CONTINUE-E1)
 
-**TO BE FILED next chunk** — the open backlog is empty (verified 2026-08-14).
-Planned stories, integration-first, sized S/M, sequenced by TIME (8 days):
+**ALREADY FILED — mapped, not re-filed (corrected 2026-08-14, chunk 2).** The
+prior chunk's hand-off said the board was empty; `list_issues state=open`
+this chunk returned **4 open issues** that already serve M-CONTINUE-E1. Soren
+filed the wiring epic **#1196 (LoE=L, now CLOSED)** and DECOMPOSED it into the
+integration-first child chain #1197→#1200; the beat-union prereq **#1197
+already CLOSED same-day (2026-08-14)**, leaving the live ladder as
+#1198→#1199→#1200. June filed the next-job authoring story **#1202**. Per the
+no-duplicate constraint, these are MAPPED here, not re-filed. **8 days to
+deadline (2026-08-22).**
 
-| Story | Size | Role | Status |
-|-------|------|------|--------|
-| **Served-page continuation e2e (done-gate, file FIRST)** — drive a returning phone player past `io-return-recognition` into the return-tone beat AND the next-job beat; assert `completedBeats` advances ≥2 and Io recognition unchanged; RED when either new beat is unreachable | M | integration done-gate | PLANNED |
-| Wire scene 8 (return-tone) into the served page — add the `return-tone` beat ID, offer kind/evasive/blunt, CONSUME `RETURN_TONE_BEATS`/`io-memory-lines.ts`, serve the authored tone answer, persist `returnTone` | M | wiring (counts double) | PLANNED |
-| Author + wire scene 9 "the next job" — author the beat in `vertical-slice-script.md` (Io hands a new packet, delivery loop re-opens), add the `next-job` beat ID, wire it to serve after the tone answer | M | authoring + wiring | PLANNED |
-| Persist `returnTone` + next-job entry across reload — round-trip the new story-state keys so the two new beats survive save/restore (fed by the done-gate's reload assertion) | S | hardening (persistence) | PLANNED |
+**The integration done-gate ALREADY EXISTS** as a red-first `test.fail` spec:
+`aftersign/e2e/m-continue-served-beats.spec.ts` (PR #1195, Mara-reviewed). It
+asserts the two new served beats (`return-tone-choice`, `io-next-job`) and is
+`test.fail` today so the lane stays green on main — the flip to a real pass IS
+the epic's done signal. This satisfies "integration story FIRST": the gate
+landed before the wiring, exactly as the plan requires.
 
-Harness ration: zero harness-only stories planned — all four touch the served
-surface. If a fifth (pure-contract) story is needed it is capped at 1-in-4.
+| Story | Issue | Size | Role | Status |
+|-------|-------|------|------|--------|
+| **Done-gate: red-first served-page e2e** (`m-continue-served-beats.spec.ts`, PR #1195) — asserts a phone player advances past `io-return-recognition` into `return-tone-choice` then `io-next-job`; `test.fail` until wiring lands, flip-to-pass IS the done signal | (PR #1195) | M | integration done-gate | **LANDED (red-first)** |
+| Extend `AftersignStoryBeatId` union + expose `scene.beat` in snapshot — add `return-tone-choice` / `io-next-job`; reconcile `snapshot.scene.beat` vs `story.beat` | **#1197** | M | interface (beat IDs) | **CLOSED 2026-08-14** (prereq landed) |
+| Add return-tone + next-job state axes to `AftersignVerticalSliceState` — new posture/flag fields the two beats read+persist | **#1198** | M | data (state axes) | OPEN (prereq #1197 landed; head of live ladder) |
+| Implement `choose-return-tone` + `ask-for-next-job` choice handlers — consume `RETURN_TONE_BEATS`, transition beats, serve authored tone answer | **#1199** | M | rules (choice handlers) | OPEN (blocked-by #1198) |
+| Remove `test.fail` and verify the done-gate spec passes green on main — the epic's DONE flip | **#1200** | S | done-flip | OPEN (blocked-by #1199) |
+| Author + wire Io's next-job (Orra name-debt) beat via the TS module graph — extend `io-recognition-beat.ts` with `IO_NEXT_JOB_OFFER`/`ORRA_NAME_DEBT`, wire through `bootWindowGame.ts`, add served-page assertion | **#1202** | M | authoring + wiring (next-job content) | OPEN |
 
-**Sequencing note (TIME-first, 8 days):** file the done-gate FIRST (it defines
-the outcome and goes RED immediately), then the scene-8 wiring (contract already
-exists — fastest to green), then scene-9 authoring+wiring (the only NEW content
-authoring, so highest risk — front-load it if authoring stalls), then
-persistence hardening. If authoring scene 9 stalls near the date, the cut is a
-MINIMAL next-job stub (Io offers a new packet, one line, loop re-opens) — never
-below two reachable beats, never the date.
+Harness ration: all mapped stories touch the served surface / window.__game
+harness — none is a pure-contract harness-only story. Ration untouched (0-in-5).
+
+**Sequencing note (TIME-first, 8 days):** the done-gate is already RED-first
+(PR #1195) AND the beat-union prereq #1197 landed same-day (2026-08-14), so the
+outcome is pinned and the union shape is fixed. The live Soren chain is
+**#1198→#1199→#1200** — a clean blocked-by ladder ending in the done-flip.
+June's #1202 authors the next-job CONTENT (the only genuinely-new authoring,
+highest risk) and can run in parallel with #1198 since it works the
+`packages/aftersign` module graph + harness, not the state axes.
+**Cut, if authoring #1202 stalls near
+08-22:** a MINIMAL `io-next-job` stub (Io offers one line, loop re-opens) so the
+beats-reachable metric still hits ≥2 — never below two reachable beats, never
+the date. Flag to watch: #1200 cannot go green until #1202's next-job beat is
+reachable, so #1202 is on the critical path to the done-flip, not a parallel
+nicety. (The prior cross-cutting risk — #1197's `scene.beat` vs `story.beat`
+reconciliation — is retired now that #1197 landed 2026-08-14.)
 
 ---
 
 ## Drift — open issues serving NO active epic
 
-As of 2026-08-14 (this chunk), `list_issues` state=open returned **ZERO open
-issues** — the board is empty. There is NO drift to dispose this cycle, and NO
-open story serves any epic yet. M-CONTINUE-E1's stories are to be filed next
-chunk.
+**Corrected 2026-08-14 (chunk 2).** The prior chunk reported zero open issues;
+`list_issues state=open` this chunk returned **4**, and ALL FOUR serve
+M-CONTINUE-E1 — so there is **NO drift** this cycle. Every open issue is mapped
+in the story map above:
+
+- **#1198 / #1199 / #1200** — Soren's live wiring ladder, decomposed from the
+  (closed) wiring epic **#1196**. The beat-union prereq **#1197 already CLOSED
+  same-day (2026-08-14)** and is retained in the story map for provenance; the
+  live blocked-by chain is #1198→#1199→#1200, ending in the done-flip.
+- **#1202** — June's next-job (Orra name-debt) authoring+wiring story. Serves E1
+  (authors the `io-next-job` beat content the done-gate asserts).
+
+**Routing risk to watch (not drift, but flagged):** #1198 and #1202 carry the
+`agent-unroutable` label — the backlog picker may not auto-assign them. They are
+on E1's critical path (#1198 is the head of the live ladder gating
+#1199→#1200; #1202 gates the #1200 done-flip), so if they sit unrouted the
+08-22 gate slips. Operator should hand-route or clear the `agent-unroutable`
+flag on these two.
 
 _Prior-cycle drift resolved / disposed: the M-ORRA story set (#1173, #1180,
 #1181 — all closed) and the M-WIRE-cycle set (#1089/#1071/#1065/#1053/#1051/#1081);
 earlier #976/#977/#978/#727 and #615/#622/#454/#634. M-ORRA is now SUPERSEDED
 recognition-depth, not the active milestone — its merged hardening (#1174,
-#1175) is maintenance capital, not demo progress._ (Backlog snapshot is
-point-in-time as of 2026-08-14; open issues after this chunk are the
-M-CONTINUE-E1 stories still to be filed — check `list_issues` for the
-current state, not this line.)
+#1175) is maintenance capital, not demo progress._
 
 ---
 
