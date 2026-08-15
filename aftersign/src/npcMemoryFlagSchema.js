@@ -47,7 +47,12 @@ export const NPC_MEMORY_FLAG_SCHEMA = Object.freeze({
   factIds: NPC_MEMORY_FACT_ID,
 });
 
-export const npcMemoryFactIdFor = ({ kind, object }) => {
+// Pure lookup: (kind, object) -> factId, or null when the pair is not
+// a known durable memory-fact shape. Used by BOTH the throwing builder
+// below (shipped mint path, where malformed input is a bug we want to
+// surface loudly) AND `isKnownNpcMemoryFact` (a predicate over
+// UNTRUSTED shapes — must return false, not throw, on bad inputs).
+const lookupNpcMemoryFactId = (kind, object) => {
   if (kind === NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME) {
     if (object === NPC_MEMORY_OBJECT.PACKET_SEALED) {
       return NPC_MEMORY_FACT_ID.IO_BLUE_PACKET_SEALED;
@@ -69,15 +74,33 @@ export const npcMemoryFactIdFor = ({ kind, object }) => {
   return null;
 };
 
+// Shipped mint path (memoryFacts.js → main.js:deliverPacket) always
+// passes a valid (kind, object) pair — outcome is derived from
+// `state.packet.sealed ? "sealed" : "opened"` and secondAction from
+// `normalizeSecondAction(...)` (done | skipped). Throwing on unknown
+// pairs converts silent id drift ("io-remembers-blue-packet-undefined")
+// into a runtime error that fails the mint loudly instead of writing
+// a malformed fact into durable memory. See PR #1224 review.
+export const npcMemoryFactIdFor = ({ kind, object }) => {
+  const id = lookupNpcMemoryFactId(kind, object);
+  if (id === null) {
+    throw new Error(
+      `npcMemoryFactIdFor: no fact id for kind=${String(kind)} object=${String(object)} `
+      + `(expected DELIVERY_OUTCOME + sealed|opened, or ROUTE_ATTENTION + done|skipped)`,
+    );
+  }
+  return id;
+};
+
 export const isKnownNpcMemoryFact = (fact) => {
   if (!fact || typeof fact !== "object") {
     return false;
   }
 
-  const expectedId = npcMemoryFactIdFor({
-    kind: fact.kind,
-    object: fact.object,
-  });
+  // Use the raw lookup — this predicate is a VALIDATOR over untrusted
+  // shapes (e.g. a persisted save from an older schema, a hand-built
+  // fixture) and must never throw on malformed input.
+  const expectedId = lookupNpcMemoryFactId(fact.kind, fact.object);
 
   if (!expectedId || fact.id !== expectedId) {
     return false;
