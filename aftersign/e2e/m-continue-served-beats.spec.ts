@@ -71,15 +71,6 @@ async function driveToReturnRecognition(page: Page): Promise<FlagshipSnapshot> {
 test.describe("M-CONTINUE served-page extent", () => {
   test.use({ viewport: PHONE_VIEWPORT });
 
-  // Done-gate for M-CONTINUE-E1 (docs/plan/product-plan.md:194).
-  //
-  // Wiring landed in the same PR that removed the `.fail` marker:
-  // `aftersign/main.js` now handles `choose('choose-return-tone')` →
-  // `setBeat('return-tone-choice')` and `choose('ask-for-next-job')`
-  // → `setBeat('io-next-job')`, and `lineForBeat()` speaks
-  // `AFTERSIGN_NEXT_JOB_BEAT.line` at the terminal beat. The served
-  // page's `scene.beat` publishes both new IDs via the existing
-  // `scene: { ...state.scene }` clone.
   test("phone player can continue past io-return-recognition into return tone and the next job", async ({ page }) => {
     await page.goto("/aftersign/");
 
