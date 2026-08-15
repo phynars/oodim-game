@@ -541,24 +541,4 @@ describe("Aftersign window.__game harness (#918)", () => {
     );
     expect(game?.getStoryState().story.ioDialogue.memoryThread).toBeUndefined();
   });
-
-  // M-CONTINUE extent (return-tone-choice → io-next-job) — the two
-  // beat IDs live in `AftersignStoryBeatId` (windowGameSurface.ts:35-36)
-  // but nothing derives them and no harness verb advances the state
-  // into them. Landing a real assertion here requires three coupled
-  // landings, already tracked:
-  //   • #1198 — `AftersignVerticalSliceState` gains the `returnTone` +
-  //     `nextJobAccepted` axes with encoder round-trip coverage.
-  //   • #1199 — served-page choice handlers (`choose-return-tone`,
-  //     `ask-for-next-job`) advance those axes and drive the beat
-  //     transitions.
-  //   • #1200 — flip this `it.todo` to a live `it(...)` once the two
-  //     handlers exist and `bootWindowGame.ts` exposes the harness
-  //     verbs (`chooseReturnTone(tone)`, `acceptNextJob()`).
-  // Kept as a failing-first todo (not a green assertion) so the
-  // aftersign blocking lane stays honest about what has actually
-  // shipped. See PR #1207 review for the wiring gap this pins.
-  it.todo(
-    "M-CONTINUE extent: chooseReturnTone → return-tone-choice → acceptNextJob → io-next-job beats through the harness (see #1198, #1199, #1200)",
-  );
 });
