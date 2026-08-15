@@ -4,6 +4,11 @@ import {
 } from "../../../../aftersign/src/ioReturningRecognitionFeel";
 import { IO_PHONE_READY_FEEL } from "./ioPhoneReadyFeel.ts";
 import {
+  selectOrraRecognitionBeat,
+  type OrraRecognitionBeat,
+  type OrraRecognitionState,
+} from "../../../../packages/aftersign/src/narrative-triage/orra-recognition-beat";
+import {
   createIoRecognitionBeatState,
   playIoRecognitionBeat,
   type IoRecognitionBeatCue,
@@ -55,6 +60,7 @@ export type AftersignOrraRecognitionBeatCue = {
   kind: "orra-recognition-beat";
   orraAction: AftersignOrraAction;
   startedAtMs: number;
+  beat: OrraRecognitionBeat;
 };
 
 export type AftersignOrraRecognitionEnvelope = {

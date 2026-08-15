@@ -153,9 +153,14 @@ describe("aftersign snapshot ↔ FlagshipGameSurface alignment (vitest twin)", (
       const snapshot = buildSnapshot((state) =>
         recordAftersignPacketChoice(state, outcome),
       );
-      const packetOutcome = snapshot.state.npcs[0].memory.packetOutcome;
+      const ioMemory = snapshot.state.npcs[0].memory;
+      // npcs[0] is Io; the memory union gained Orra's shape when the
+      // beat id union grew (#1197), so narrow before reading Io's field.
+      if (!("packetOutcome" in ioMemory) || ioMemory.packetOutcome === null) {
+        throw new Error(`expected Io packetOutcome memory at npcs[0] for "${outcome}"`);
+      }
+      const packetOutcome = ioMemory.packetOutcome;
       expect(packetOutcome).toBe(outcome);
-      expect(packetOutcome).not.toBeNull();
       expect(OUTCOME_ALIGNMENT[packetOutcome]).toBe(outcome);
     }
   });

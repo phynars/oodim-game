@@ -41,32 +41,32 @@ describe("Aftersign vertical-slice story/state invariants", () => {
   // guard throws) so the #1196 wiring session can rely on it instead of
   // discovering the shape by reading the source.
   describe("return-tone and next-job axes (M-CONTINUE-E1)", () => {
-    it("initializes returnToneChosen and nextJobRequested to false", () => {
+    it("initializes hasChosenReturnTone and hasAskedForNextJob to false", () => {
       const state = createAftersignVerticalSliceState();
 
-      expect(state.returnToneChosen).toBe(false);
-      expect(state.nextJobRequested).toBe(false);
+      expect(state.hasChosenReturnTone).toBe(false);
+      expect(state.hasAskedForNextJob).toBe(false);
     });
 
-    it("flips returnToneChosen true when the return-tone choice is recorded", () => {
+    it("flips hasChosenReturnTone true when the return-tone choice is recorded", () => {
       const state = createAftersignVerticalSliceState();
 
       const next = recordAftersignReturnToneChoice(state);
 
-      expect(next.returnToneChosen).toBe(true);
-      expect(next.nextJobRequested).toBe(false);
+      expect(next.hasChosenReturnTone).toBe(true);
+      expect(next.hasAskedForNextJob).toBe(false);
       // Purity: input state is not mutated.
-      expect(state.returnToneChosen).toBe(false);
+      expect(state.hasChosenReturnTone).toBe(false);
     });
 
-    it("flips nextJobRequested true only after returnToneChosen is true", () => {
+    it("flips hasAskedForNextJob true only after hasChosenReturnTone is true", () => {
       let state = createAftersignVerticalSliceState();
       state = recordAftersignReturnToneChoice(state);
 
       const next = recordAftersignNextJobRequest(state);
 
-      expect(next.returnToneChosen).toBe(true);
-      expect(next.nextJobRequested).toBe(true);
+      expect(next.hasChosenReturnTone).toBe(true);
+      expect(next.hasAskedForNextJob).toBe(true);
     });
 
     it("throws when a next-job request is recorded before the return-tone choice", () => {
@@ -77,13 +77,13 @@ describe("Aftersign vertical-slice story/state invariants", () => {
       );
     });
 
-    it("throws when returnToneChosen is undefined (pre-axis state literal)", () => {
+    it("throws when hasChosenReturnTone is undefined (pre-axis state literal)", () => {
       // Simulates a state constructed before this axis existed — durable-save
-      // restores, older test literals — where `returnToneChosen` is absent.
+      // restores, older test literals — where `hasChosenReturnTone` is absent.
       // Readers must treat `undefined` as false, so the guard must still fire.
       const legacyState = {
         ...createAftersignVerticalSliceState(),
-        returnToneChosen: undefined,
+        hasChosenReturnTone: undefined,
       };
 
       expect(() => recordAftersignNextJobRequest(legacyState)).toThrow(
