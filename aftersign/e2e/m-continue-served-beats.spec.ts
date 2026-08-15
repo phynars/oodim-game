@@ -71,26 +71,16 @@ async function driveToReturnRecognition(page: Page): Promise<FlagshipSnapshot> {
 test.describe("M-CONTINUE served-page extent", () => {
   test.use({ viewport: PHONE_VIEWPORT });
 
-  // Red-first done-gate for M-CONTINUE-E1 (docs/plan/product-plan.md:194).
+  // Done-gate for M-CONTINUE-E1 (docs/plan/product-plan.md:194).
   //
-  // `test.fail` marks this spec as EXPECTED TO FAIL — Playwright reports
-  // it "passed" while it throws, and flips it to a real failure the
-  // moment wiring makes the assertions succeed. That keeps the aftersign
-  // lane green on main (per the plan's "DONE when this lane is green"
-  // contract) while preserving the exact assertion shape the wiring PR
-  // has to satisfy.
-  //
-  // Companion wiring issue: see the PR body's `Refs #N`. When that
-  // issue lands (`choose-return-tone` → `return-tone-choice`,
-  // `ask-for-next-job` → `io-next-job` in the shipped
-  // `AftersignStoryBeatId` union and choose-handler), remove the
-  // `.fail` — the spec flipping green IS the done-gate for the epic.
-  //
-  // Also note: this spec reads `snapshot.scene.beat`, but the current
-  // `getStoryState` surface (apps/web/src/aftersign/windowGameSurface.ts)
-  // returns `.story.beat`. The wiring PR must reconcile that too — either
-  // by adding `scene.beat` to the snapshot or by updating these asserts.
-  test.fail("phone player can continue past io-return-recognition into return tone and the next job", async ({ page }) => {
+  // Wiring landed in the same PR that removed the `.fail` marker:
+  // `aftersign/main.js` now handles `choose('choose-return-tone')` →
+  // `setBeat('return-tone-choice')` and `choose('ask-for-next-job')`
+  // → `setBeat('io-next-job')`, and `lineForBeat()` speaks
+  // `AFTERSIGN_NEXT_JOB_BEAT.line` at the terminal beat. The served
+  // page's `scene.beat` publishes both new IDs via the existing
+  // `scene: { ...state.scene }` clone.
+  test("phone player can continue past io-return-recognition into return tone and the next job", async ({ page }) => {
     await page.goto("/aftersign/");
 
     const recognition = await driveToReturnRecognition(page);

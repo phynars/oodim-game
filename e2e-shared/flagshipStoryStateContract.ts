@@ -17,7 +17,15 @@ export type FlagshipSceneBeat =
   | 'packet-offered'
   | 'packet-choice'
   | 'packet-delivered'
-  | 'io-return-recognition';
+  | 'io-return-recognition'
+  // M-CONTINUE-E1 (docs/plan/product-plan.md:194): the served-page
+  // continuation past `io-return-recognition` into Io's return-tone
+  // fork and the next-job beat authored in
+  // `packages/aftersign/next-job-beat.js`. Reached via
+  // `input.choose('choose-return-tone')` and
+  // `input.choose('ask-for-next-job')`.
+  | 'return-tone-choice'
+  | 'io-next-job';
 
 export type FlagshipDeliveryOutcome =
   | 'unknown'
@@ -30,7 +38,11 @@ export type FlagshipChoiceId =
   | 'keep-sealed'
   | 'open-packet'
   | 'deliver-packet'
-  | 'return-to-io';
+  | 'return-to-io'
+  // M-CONTINUE-E1: advance past `io-return-recognition` into the
+  // return-tone fork, then into `io-next-job`.
+  | 'choose-return-tone'
+  | 'ask-for-next-job';
 
 export type FlagshipAnswerTone = 'kind' | 'evasive' | 'blunt' | 'unset';
 

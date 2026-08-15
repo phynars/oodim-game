@@ -10,6 +10,8 @@ export {
   createAftersignVerticalSliceState,
   recordAftersignPacketChoice,
   recordAftersignOrraAction,
+  recordAftersignReturnToneChoice,
+  recordAftersignAskedForNextJob,
   confirmAftersignPacketChoice,
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,
