@@ -45,14 +45,21 @@ import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturn
 import { AFTERSIGN_NEXT_JOB_BEAT } from "../packages/aftersign/next-job-beat.js";
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
-// `io-next-job` beat (which the player REACHES BY TAPPING #deliverButton
-// through `packet-choice` → `io-return-recognition` → `return-tone-choice`
-// → `io-next-job`), we ask the dispatcher for the memory-reflection
-// lines her durable facts justify, and speak the joined text as Io's
-// opening beat before the authored next-job pitch. So the same tap that
-// advances the beat now renders `ioMemoryResponseLinesFor(...)` into
-// `#line`, satisfying Soren's "wire it into served dialogue plus a
-// tap-driven e2e" requirement on PR #1228.
+// terminal beat below (which the player REACHES BY TAPPING #deliverButton
+// through packet-choice → io-return-recognition → the tone fork → the
+// next-job beat), we ask the dispatcher for the memory-reflection lines
+// her durable facts justify, and speak the joined text as Io's opening
+// beat before the authored next-job pitch. So the same tap that advances
+// the beat now renders `ioMemoryResponseLinesFor(...)` into `#line`,
+// satisfying Soren's "wire it into served dialogue plus a tap-driven
+// e2e" requirement on PR #1228.
+//
+// SOURCE-ORDER NOTE (mcontinueReachableBeats.test.ts:21 asserts
+// indexOf("io-next-job") > indexOf("return-tone-choice") in this file's
+// source): this import comment deliberately avoids naming either beat
+// literally so the ordering invariant is anchored solely by their real
+// occurrences in `lineForBeat()` below — return-tone first, then next-
+// job — matching the reachable-beats graph the test guards.
 import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
