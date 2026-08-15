@@ -262,6 +262,8 @@ const state = {
   save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
   movement: {
     input: { x: 0, z: 0, source: "none", active: false },
+    velocityX: 0,
+    velocityZ: 0,
     lastStepMs: 0,
     lastVelocityMetersPerSecond: 0,
     fixedStepsLastFrame: 0,
@@ -779,6 +781,8 @@ const stepMovement = (dt = MOVEMENT.fixedStepSeconds) => {
     z: state.player.z,
     facingRadians: state.player.facingRadians,
     input: state.movement.input,
+    velocityX: state.movement.velocityX,
+    velocityZ: state.movement.velocityZ,
     lastStepMs: state.movement.lastStepMs,
     lastVelocityMetersPerSecond: state.movement.lastVelocityMetersPerSecond,
   });
@@ -786,6 +790,8 @@ const stepMovement = (dt = MOVEMENT.fixedStepSeconds) => {
   state.player.x = result.state.x;
   state.player.z = result.state.z;
   state.player.facingRadians = result.state.facingRadians;
+  state.movement.velocityX = result.state.velocityX;
+  state.movement.velocityZ = result.state.velocityZ;
   state.movement.lastStepMs = result.state.lastStepMs;
   state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
   // Legacy single-step wrapper: by construction we ran exactly one
@@ -805,6 +811,8 @@ const stepMovementFixed = (frameDt = MOVEMENT.fixedStepSeconds) => {
     z: state.player.z,
     facingRadians: state.player.facingRadians,
     input: state.movement.input,
+    velocityX: state.movement.velocityX,
+    velocityZ: state.movement.velocityZ,
     lastStepMs: state.movement.lastStepMs,
     lastVelocityMetersPerSecond: state.movement.lastVelocityMetersPerSecond,
   });
@@ -812,6 +820,8 @@ const stepMovementFixed = (frameDt = MOVEMENT.fixedStepSeconds) => {
   state.player.x = result.state.x;
   state.player.z = result.state.z;
   state.player.facingRadians = result.state.facingRadians;
+  state.movement.velocityX = result.state.velocityX;
+  state.movement.velocityZ = result.state.velocityZ;
   state.movement.lastStepMs = result.state.lastStepMs;
   state.movement.lastVelocityMetersPerSecond = result.state.lastVelocityMetersPerSecond;
   state.movement.fixedStepsLastFrame = result.steps;
@@ -824,8 +834,8 @@ const cameraRigInput = (dtSeconds = MOVEMENT.fixedStepSeconds) => ({
   playerX: state.player.x,
   playerZ: state.player.z,
   facingRadians: state.player.facingRadians,
-  velocityX: state.movement.input.x * MOVEMENT.speedMetersPerSecond,
-  velocityZ: state.movement.input.z * MOVEMENT.speedMetersPerSecond,
+  velocityX: state.movement.velocityX,
+  velocityZ: state.movement.velocityZ,
   dtSeconds,
 });
 
@@ -2233,6 +2243,8 @@ const resetSliceSave = async () => {
   state.npcs.orra.lastLineMemoryRefs = [];
   state.save = emptySave();
   state.movement.input = { x: 0, z: 0, source: "none", active: false };
+  state.movement.velocityX = 0;
+  state.movement.velocityZ = 0;
   state.movement.lastStepMs = 0;
   state.movement.lastVelocityMetersPerSecond = 0;
   state.movement.fixedStepsLastFrame = 0;

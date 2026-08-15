@@ -4,6 +4,9 @@ export interface PlayerMovementFeelConfig {
   fixedStepSeconds: number;
   targetFrameMs: number;
   speedMetersPerSecond: number;
+  accelerationMetersPerSecondSquared: number;
+  decelerationMetersPerSecondSquared: number;
+  stopSnapMetersPerSecond: number;
   deadzone: number;
   minX: number;
   maxX: number;
@@ -25,6 +28,8 @@ export interface PlayerMovementState {
   z: number;
   facingRadians: number;
   input: PlayerMovementInput;
+  velocityX: number;
+  velocityZ: number;
   lastStepMs: number;
   lastVelocityMetersPerSecond: number;
 }
@@ -35,6 +40,7 @@ export interface PlayerMovementStepResult {
   velocityZ: number;
   movedX: number;
   movedZ: number;
+  accelerationDeltaMetersPerSecond: number;
 }
 
 export interface PlayerMovementFixedUpdateResult {
@@ -62,12 +68,17 @@ export interface PlayerMovementFeelReport {
   droppedStepMsOnSpike: number;
   releaseStopsWithinOneFrame: boolean;
   neutralInputKeepsFacing: boolean;
+  accelerationCurveHeld: boolean;
+  releaseDeceleratesWithinOneFrame: boolean;
 }
 
 export const DEFAULT_PLAYER_MOVEMENT_FEEL: PlayerMovementFeelConfig = {
   fixedStepSeconds: 1 / 60,
   targetFrameMs: 16.67,
   speedMetersPerSecond: 3.6,
+  accelerationMetersPerSecondSquared: 28,
+  decelerationMetersPerSecondSquared: 44,
+  stopSnapMetersPerSecond: 0.08,
   deadzone: 0.08,
   minX: -5.2,
   maxX: 5.2,
@@ -89,6 +100,8 @@ export const createPlayerMovementState = (
     source: partial.input?.source ?? "none",
     active: partial.input?.active ?? false,
   },
+  velocityX: partial.velocityX ?? 0,
+  velocityZ: partial.velocityZ ?? 0,
   lastStepMs: partial.lastStepMs ?? 0,
   lastVelocityMetersPerSecond: partial.lastVelocityMetersPerSecond ?? 0,
 });
@@ -99,6 +112,39 @@ const cloneMovementState = (state: PlayerMovementState): PlayerMovementState => 
   ...state,
   input: { ...state.input },
 });
+
+const moveToward = (current: number, target: number, maxDelta: number) => {
+  if (Math.abs(target - current) <= maxDelta) {
+    return target;
+  }
+  return current + Math.sign(target - current) * maxDelta;
+};
+
+const approachVelocity = (
+  currentX: number,
+  currentZ: number,
+  targetX: number,
+  targetZ: number,
+  inputActive: boolean,
+  dtSeconds: number,
+  config: PlayerMovementFeelConfig,
+) => {
+  const rate = inputActive ? config.accelerationMetersPerSecondSquared : config.decelerationMetersPerSecondSquared;
+  const maxDelta = Math.max(0, rate * dtSeconds);
+  let nextX = moveToward(currentX, targetX, maxDelta);
+  let nextZ = moveToward(currentZ, targetZ, maxDelta);
+
+  if (!inputActive && Math.hypot(nextX, nextZ) <= config.stopSnapMetersPerSecond) {
+    nextX = 0;
+    nextZ = 0;
+  }
+
+  return {
+    x: nextX,
+    z: nextZ,
+    delta: Math.hypot(nextX - currentX, nextZ - currentZ),
+  };
+};
 
 export const normalizeMoveInput = (
   x: number,
@@ -127,25 +173,37 @@ export const stepPlayerMovement = (
   config: PlayerMovementFeelConfig = DEFAULT_PLAYER_MOVEMENT_FEEL,
 ): PlayerMovementStepResult => {
   const state = cloneMovementState(current);
-  const velocityX = state.input.x * config.speedMetersPerSecond;
-  const velocityZ = state.input.z * config.speedMetersPerSecond;
+  const targetVelocityX = state.input.x * config.speedMetersPerSecond;
+  const targetVelocityZ = state.input.z * config.speedMetersPerSecond;
   const startX = state.x;
   const startZ = state.z;
+  const nextVelocity = approachVelocity(
+    state.velocityX,
+    state.velocityZ,
+    targetVelocityX,
+    targetVelocityZ,
+    state.input.active,
+    dtSeconds,
+    config,
+  );
 
-  state.x = clamp(state.x + velocityX * dtSeconds, config.minX, config.maxX);
-  state.z = clamp(state.z + velocityZ * dtSeconds, config.minZ, config.maxZ);
+  state.velocityX = nextVelocity.x;
+  state.velocityZ = nextVelocity.z;
+  state.x = clamp(state.x + state.velocityX * dtSeconds, config.minX, config.maxX);
+  state.z = clamp(state.z + state.velocityZ * dtSeconds, config.minZ, config.maxZ);
   if (state.input.x || state.input.z) {
     state.facingRadians = Math.atan2(state.input.x, state.input.z);
   }
   state.lastStepMs = dtSeconds * 1000;
-  state.lastVelocityMetersPerSecond = Math.hypot(velocityX, velocityZ);
+  state.lastVelocityMetersPerSecond = Math.hypot(state.velocityX, state.velocityZ);
 
   return {
     state,
-    velocityX,
-    velocityZ,
+    velocityX: state.velocityX,
+    velocityZ: state.velocityZ,
     movedX: state.x - startX,
     movedZ: state.z - startZ,
+    accelerationDeltaMetersPerSecond: nextVelocity.delta,
   };
 };
 
@@ -188,12 +246,17 @@ export const checkPlayerMovementFeel = (
   const start = createPlayerMovementState();
   const rightInput = normalizeMoveInput(1, 0, "harness", config);
   const rightStep = stepPlayerMovement({ ...start, input: rightInput }, config.fixedStepSeconds, config);
+  const secondRightStep = stepPlayerMovement(rightStep.state, config.fixedStepSeconds, config);
   const movedThisFrame = rightStep.state.x > start.x && rightStep.state.z === start.z;
   const fixedStepInsideBudget = rightStep.state.lastStepMs <= config.targetFrameMs + 0.01;
 
   const diagonalInput = normalizeMoveInput(1, 1, "harness", config);
   const diagonalStep = stepPlayerMovement({ ...start, input: diagonalInput }, config.fixedStepSeconds, config);
   const diagonalIsNormalized = diagonalStep.state.lastVelocityMetersPerSecond <= config.speedMetersPerSecond + 0.000001;
+  const accelerationCurveHeld = rightStep.state.lastVelocityMetersPerSecond > 0
+    && rightStep.state.lastVelocityMetersPerSecond < config.speedMetersPerSecond
+    && secondRightStep.state.lastVelocityMetersPerSecond > rightStep.state.lastVelocityMetersPerSecond
+    && secondRightStep.accelerationDeltaMetersPerSecond <= (config.accelerationMetersPerSecondSquared * config.fixedStepSeconds) + 0.000001;
 
   const deadzoneInput = normalizeMoveInput(config.deadzone * 0.5, 0, "harness", config);
   const deadzoneStep = stepPlayerMovement({ ...start, input: deadzoneInput }, config.fixedStepSeconds, config);
@@ -220,9 +283,21 @@ export const checkPlayerMovementFeel = (
     config.fixedStepSeconds,
     config,
   );
+  const brakingStep = stepPlayerMovement(
+    {
+      ...movingState,
+      velocityX: config.speedMetersPerSecond,
+      velocityZ: 0,
+      input: normalizeMoveInput(0, 0, "harness", config),
+    },
+    config.fixedStepSeconds,
+    config,
+  );
   const releaseStopsWithinOneFrame = releasedStep.state.x === movingState.x
     && releasedStep.state.z === movingState.z
     && releasedStep.state.lastVelocityMetersPerSecond === 0;
+  const releaseDeceleratesWithinOneFrame = brakingStep.state.lastVelocityMetersPerSecond < config.speedMetersPerSecond
+    && brakingStep.state.lastVelocityMetersPerSecond >= 0;
   const neutralInputKeepsFacing = releasedStep.state.facingRadians === movingState.facingRadians;
 
   return {
@@ -233,7 +308,9 @@ export const checkPlayerMovementFeel = (
       && clampHeld
       && spikeIsCapped
       && releaseStopsWithinOneFrame
-      && neutralInputKeepsFacing,
+      && neutralInputKeepsFacing
+      && accelerationCurveHeld
+      && releaseDeceleratesWithinOneFrame,
     movedThisFrame,
     fixedStepInsideBudget,
     diagonalIsNormalized,
@@ -248,6 +325,8 @@ export const checkPlayerMovementFeel = (
     droppedStepMsOnSpike: spikeStep.droppedSeconds * 1000,
     releaseStopsWithinOneFrame,
     neutralInputKeepsFacing,
+    accelerationCurveHeld,
+    releaseDeceleratesWithinOneFrame,
   };
 };
 
