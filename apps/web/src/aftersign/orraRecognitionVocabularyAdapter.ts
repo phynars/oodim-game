@@ -45,7 +45,10 @@ export type OrraRecognitionHarnessKind = "orra-recognition";
  */
 export type OrraRuntimeLaneAction = OrraDeliberateAction;
 
-export type OrraRecognitionHarnessRecord = {
+// Generic over the feel payload: the adapter never reads it, only
+// carries it, so the harness may thread its structured feel envelope
+// through without the adapter flattening it to a string.
+export type OrraRecognitionHarnessRecord<Feel = string> = {
   kind: OrraRecognitionHarnessKind;
   scene: "orra-return";
   recognizesPlayer: boolean;
@@ -56,7 +59,7 @@ export type OrraRecognitionHarnessRecord = {
    * translate rather than round-trip against itself.
    */
   orraAction: AftersignOrraAction | null;
-  recognitionFeel: string | null;
+  recognitionFeel: Feel | null;
 };
 
 export type OrraRuntimeLaneMemory = {
@@ -76,8 +79,8 @@ export type OrraRuntimeLaneActionResolver = (
   harnessAction: AftersignOrraAction,
 ) => OrraDeliberateAction;
 
-export function toRuntimeLaneMemory(
-  record: OrraRecognitionHarnessRecord,
+export function toRuntimeLaneMemory<Feel>(
+  record: OrraRecognitionHarnessRecord<Feel>,
   resolveRuntimeLaneAction: OrraRuntimeLaneActionResolver,
 ): OrraRuntimeLaneMemory {
   if (!record.recognizesPlayer || record.orraAction === null) {
@@ -101,10 +104,10 @@ export function toRuntimeLaneMemory(
  * `"answered-saint-orra"`, so the projection stays total as the served
  * enum grows.
  */
-export function fromRuntimeLaneMemory(
+export function fromRuntimeLaneMemory<Feel>(
   memory: OrraRuntimeLaneMemory,
-  recognitionFeel: string | null,
-): OrraRecognitionHarnessRecord {
+  recognitionFeel: Feel | null,
+): OrraRecognitionHarnessRecord<Feel> {
   const projectedHarnessAction: AftersignOrraAction | null =
     memory.remembersPlayer && memory.action !== null ? "answered-saint-orra" : null;
 

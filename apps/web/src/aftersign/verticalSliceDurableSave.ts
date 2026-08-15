@@ -100,9 +100,13 @@ export function restoreAftersignVerticalSliceState(
 
 export function restoreAftersignDurableSave(payload: string): AftersignVerticalSliceState {
   const envelope = decodeAftersignDurableSave(payload);
+  const { savedAtTurn } = envelope;
+  if (!isValidSavedAtTurn(savedAtTurn)) {
+    throw new Error("Invalid Aftersign durable save: savedAtTurn must be a safe integer");
+  }
   return {
     ...restoreAftersignVerticalSliceState(envelope.state),
-    savedAtTurn: envelope.savedAtTurn,
+    savedAtTurn,
   };
 }
 
@@ -113,7 +117,7 @@ function assertValidSavedAtTurn(savedAtTurn: number): void {
 }
 
 function isValidSavedAtTurn(savedAtTurn: unknown): savedAtTurn is number {
-  return Number.isSafeInteger(savedAtTurn) && savedAtTurn >= 0;
+  return typeof savedAtTurn === "number" && Number.isSafeInteger(savedAtTurn) && savedAtTurn >= 0;
 }
 
 function isVerticalSliceSave(save: unknown): save is AftersignVerticalSliceSave {
