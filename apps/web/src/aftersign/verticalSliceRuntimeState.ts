@@ -48,6 +48,23 @@ export type AftersignVerticalSliceState = {
    * in-memory states leave this undefined.
    */
   savedAtTurn?: number;
+  /**
+   * Return-tone posture axis (M-CONTINUE-E1, issue #1198). Flips true
+   * when the player commits the `choose-return-tone` choice during
+   * Io's return-recognition beat. Optional (like `savedAtTurn`) so
+   * states constructed before this axis existed — durable-save
+   * restores, test literals — stay type-valid; readers must treat
+   * `undefined` as false. `createAftersignVerticalSliceState` always
+   * initializes it explicitly.
+   */
+  returnToneChosen?: boolean;
+  /**
+   * Next-job progression axis (M-CONTINUE-E1, issue #1198). Flips true
+   * when the player commits the `ask-for-next-job` choice from the
+   * `return-tone-choice` beat. Same optionality contract as
+   * `returnToneChosen`: `undefined` reads as false.
+   */
+  nextJobRequested?: boolean;
 };
 
 export type AftersignRememberingNpcDialogue = {
@@ -84,6 +101,8 @@ export function createAftersignVerticalSliceState(): AftersignVerticalSliceState
     orraAction: null,
     orraHasMetPlayer: false,
     orraRecognizesPlayer: false,
+    returnToneChosen: false,
+    nextJobRequested: false,
   };
 }
 
@@ -104,6 +123,42 @@ export function recordAftersignOrraAction(
   return {
     ...state,
     orraAction,
+  };
+}
+
+/**
+ * Commit the player's return-tone choice (`choose-return-tone`).
+ * Pure transition in the same style as `recordAftersignPacketChoice`.
+ * The choice-handler wiring (issue #1196 decomposition) calls this
+ * when transitioning into the `return-tone-choice` beat.
+ */
+export function recordAftersignReturnToneChoice(
+  state: AftersignVerticalSliceState,
+): AftersignVerticalSliceState {
+  return {
+    ...state,
+    returnToneChosen: true,
+  };
+}
+
+/**
+ * Commit the player's next-job request (`ask-for-next-job`). Guarded:
+ * the M-CONTINUE-E1 flow only offers this choice from the
+ * `return-tone-choice` beat, so requesting a next job before the
+ * return tone is chosen indicates a wiring bug — throw loudly (same
+ * contract style as `confirmAftersignPacketChoice`).
+ */
+export function recordAftersignNextJobRequest(
+  state: AftersignVerticalSliceState,
+): AftersignVerticalSliceState {
+  if (state.returnToneChosen !== true) {
+    throw new Error(
+      "Cannot record Aftersign next-job request: return tone has not been chosen",
+    );
+  }
+  return {
+    ...state,
+    nextJobRequested: true,
   };
 }
 
