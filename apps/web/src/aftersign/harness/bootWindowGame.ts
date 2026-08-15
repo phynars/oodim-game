@@ -1,4 +1,9 @@
 import {
+  IO_NEXT_JOB_OFFER,
+  ORRA_NAME_DEBT,
+  type IoNextJobBeat,
+} from "../../../../../packages/aftersign/src/narrative-triage/io-recognition-beat";
+import {
   getMemoryRecallFeel,
   type MemoryRecallFeelFrame,
 } from "../memoryRecallFeel";
@@ -86,6 +91,22 @@ export type AftersignWindowGameHarness = {
    * feel row is the ground truth, the DOM write is the projection.
    */
   getAppliedReturnToneFeel: () => AftersignReturnToneChoiceFeel | null;
+  /**
+   * Accept Io's next-job offer. The returned beat is the canonical
+   * copy from `io-recognition-beat.ts`; the harness also stores it so
+   * `getStoryState()` / `getSnapshot()` expose the accepted job on the
+   * served-page surface.
+   */
+  acceptNextJob: () => IoNextJobBeat;
+  /**
+   * Served-page style input surface. `choose("accept-next-job")` is an
+   * alias for `acceptNextJob()` so consumers can drive the beat through
+   * a generic choice verb instead of importing harness-only helpers.
+   */
+  input: {
+    choose: (choiceId: "accept-next-job" | string) => IoNextJobBeat | null;
+  };
+  getAcceptedNextJob: () => IoNextJobBeat | null;
   getStoryState: () => AftersignStoryStateSnapshot;
   /**
    * Served-page-compatible alias for the story/state snapshot. E2E
@@ -178,6 +199,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let recallTrigger: AftersignRecallTrigger | null = null;
   let ioReturnReason: AftersignReturnReason | null = null;
   let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
+  let acceptedNextJob: IoNextJobBeat | null = null;
   let savedAtTurn = 0;
 
   const applyMeet = (
@@ -204,11 +226,41 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     return next;
   };
 
-  const snapshot = (): AftersignStoryStateSnapshot =>
-    getAftersignStoryState(state, {
+  const snapshot = (): AftersignStoryStateSnapshot => {
+    const base = getAftersignStoryState(state, {
       ...HARNESS_PLAYER,
       ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
     });
+
+    if (!acceptedNextJob) {
+      return base;
+    }
+
+    return {
+      ...base,
+      story: {
+        ...base.story,
+        nextJob: {
+          accepted: true,
+          offer: {
+            id: IO_NEXT_JOB_OFFER.id,
+            speaker: IO_NEXT_JOB_OFFER.speaker,
+            text: IO_NEXT_JOB_OFFER.text,
+            jobId: IO_NEXT_JOB_OFFER.jobId,
+            claimTag: IO_NEXT_JOB_OFFER.claimTag,
+            nextBeat: IO_NEXT_JOB_OFFER.nextBeat,
+          },
+          beat: {
+            id: ORRA_NAME_DEBT.id,
+            speaker: ORRA_NAME_DEBT.speaker,
+            text: ORRA_NAME_DEBT.text,
+            jobId: ORRA_NAME_DEBT.jobId,
+            claimTag: ORRA_NAME_DEBT.claimTag,
+          },
+        },
+      },
+    } as AftersignStoryStateSnapshot;
+  };
 
   const restorePayload = (payload: string): void => {
     state = restoreAftersignDurableSave(payload);
@@ -216,6 +268,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // envelope fires until the player actually re-encounters the
     // NPC via `meetNpc`.
     recallTrigger = null;
+    acceptedNextJob = null;
     // Return-reason / applied feel row are deliberately NOT reset
     // here — a caller who set a posture BEFORE a durable-save restore
     // may want to carry that posture through the restore (the surface
@@ -275,6 +328,11 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     return feel;
   };
 
+  const acceptNextJob = (): IoNextJobBeat => {
+    acceptedNextJob = ORRA_NAME_DEBT;
+    return IO_NEXT_JOB_OFFER;
+  };
+
   const api: AftersignWindowGameHarness = {
     version: 1,
     restoreDurableSave(payload) {
@@ -289,6 +347,18 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     getAppliedReturnToneFeel() {
       return appliedReturnToneFeel;
+    },
+    acceptNextJob,
+    input: {
+      choose(choiceId) {
+        if (choiceId === "accept-next-job") {
+          return acceptNextJob();
+        }
+        return null;
+      },
+    },
+    getAcceptedNextJob() {
+      return acceptedNextJob;
     },
     getStoryState() {
       return snapshot();

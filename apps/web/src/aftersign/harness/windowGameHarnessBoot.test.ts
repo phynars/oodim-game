@@ -541,4 +541,64 @@ describe("Aftersign window.__game harness (#918)", () => {
     );
     expect(game?.getStoryState().story.ioDialogue.memoryThread).toBeUndefined();
   });
+
+  it("reaches Io's next-job offer and Orra claim tag through window.__game", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.acceptNextJob).toEqual(expect.any(Function));
+    expect(game?.input.choose).toEqual(expect.any(Function));
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        13,
+      ),
+    );
+    game?.meetNpc("io");
+
+    const offer = game?.input.choose("accept-next-job");
+    expect(offer).toMatchObject({
+      id: "io-next-job-offer",
+      speaker: "io",
+      jobId: "orra-name-debt",
+      claimTag: "ORRA-NAME-DEBT",
+      nextBeat: "orra-name-debt",
+      text: expect.stringContaining("Saint Orra"),
+    });
+
+    expect(game?.getAcceptedNextJob()).toMatchObject({
+      id: "orra-name-debt",
+      speaker: "io",
+      jobId: "orra-name-debt",
+      claimTag: "ORRA-NAME-DEBT",
+      text: expect.stringContaining("name"),
+    });
+
+    const snapshot = game?.getSnapshot() as
+      | ({
+          story: {
+            nextJob?: {
+              accepted: boolean;
+              offer: { id: string; nextBeat?: string; claimTag: string };
+              beat: { id: string; claimTag: string };
+            };
+          };
+        } & ReturnType<NonNullable<typeof game>["getSnapshot"]>)
+      | undefined;
+    expect(snapshot?.story.nextJob).toMatchObject({
+      accepted: true,
+      offer: {
+        id: "io-next-job-offer",
+        nextBeat: "orra-name-debt",
+        claimTag: "ORRA-NAME-DEBT",
+      },
+      beat: {
+        id: "orra-name-debt",
+        claimTag: "ORRA-NAME-DEBT",
+      },
+    });
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
 });
