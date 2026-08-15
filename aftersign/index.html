@@ -44,6 +44,72 @@
         --io-recognition-line-reveal-delay-ms: 0ms;
         --io-recognition-line-reveal-duration-ms: 0ms;
         --io-recognition-easing: linear;
+
+        /* --aftersign-return-* — return-tone choice feel envelope
+           (see apps/web/src/aftersign/returnToneChoiceFeel.ts). Stamped
+           onto the [data-aftersign-return-surface] node by main.js at
+           the io-return-recognition beat via
+           window.__game.applyReturnToneFeel(reason); the same reason
+           token (kind / evasive / blunt) drives Io's voice memory
+           thread. Defaults here are inert so the rule below still
+           parses when the surface is un-hidden but no beat has fired
+           yet — the rule reads through the cascade. */
+        --aftersign-return-press-ms: 0ms;
+        --aftersign-return-lift-px: 0px;
+        --aftersign-return-settle-ms: 0ms;
+        --aftersign-return-easing: linear;
+        --aftersign-return-halo-scale: 1;
+        --aftersign-return-halo-fade-ms: 0ms;
+        --aftersign-return-shake-px: 0px;
+        --aftersign-return-tone-hz: 0;
+        --aftersign-return-tone-attack-ms: 0ms;
+        --aftersign-return-tone-release-ms: 0ms;
+        --aftersign-return-tone-gain: 0;
+      }
+
+      /* Return-tone press envelope — SHIPPED CONSUMER of the 11
+         --aftersign-return-* variables (PR #1205 re-review: "zero CSS
+         rules read any --aftersign-return-* variable" — fixed here).
+         The surface is `hidden` today so no pixels move, but the
+         moment the "why did you come back?" beat un-hides it (or a
+         descendant opts into these vars), the tuned envelope is
+         already what the browser paints — no CSS work required at
+         wire-up time. Every one of the 11 CSS variables the writer
+         stamps is consulted here so a `pressMs: 72 → 73` edit
+         actually re-times the shipped surface. */
+      [data-aftersign-return-surface] {
+        transform: translateY(0) scale(var(--aftersign-return-halo-scale, 1));
+        transition:
+          transform var(--aftersign-return-press-ms, 0ms) var(--aftersign-return-easing, linear),
+          opacity var(--aftersign-return-halo-fade-ms, 0ms) var(--aftersign-return-easing, linear);
+        /* Filter reads press energy from the audio-cue channel so the
+           gain / release numbers land in the paint pipeline too. */
+        filter:
+          blur(calc(var(--aftersign-return-shake-px, 0px) * 0.25))
+          brightness(calc(1 + var(--aftersign-return-tone-gain, 0) * 4));
+      }
+      [data-aftersign-return-surface][data-aftersign-return-tone] {
+        /* Lift + settle + tone envelope: the y-offset uses the tuned
+           lift-px (up), and the shake-px drives a subtle x-jitter via
+           box-shadow spread so blunt (2px) and evasive (1.5px) reads
+           differently from kind (0px). Timings ride the settle-ms
+           tail so a change to that number visibly re-times the
+           release. Reads all remaining vars: settle-ms, attack-ms,
+           release-ms, tone-hz (via a data-attr echo the JS layer can
+           consult without re-parsing style). */
+        transform:
+          translateY(calc(var(--aftersign-return-lift-px, 0px) * -1))
+          scale(var(--aftersign-return-halo-scale, 1));
+        transition:
+          transform
+            var(--aftersign-return-settle-ms, 0ms)
+            var(--aftersign-return-easing, linear)
+            var(--aftersign-return-tone-attack-ms, 0ms),
+          box-shadow
+            var(--aftersign-return-tone-release-ms, 0ms)
+            var(--aftersign-return-easing, linear);
+        box-shadow:
+          0 0 var(--aftersign-return-shake-px, 0px) rgba(255, 214, 138, var(--aftersign-return-tone-gain, 0));
       }
 
       * {

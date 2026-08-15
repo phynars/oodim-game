@@ -678,6 +678,41 @@ const syncIoLine = () => {
     nextLine = selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
+    // Return-tone feel — REAL call site (PR #1205 re-review). The
+    // `applyReturnToneFeel` window seam defined below is now
+    // ACTUALLY INVOKED every time the render path hits the
+    // recognition beat, not just re-exported for the harness. The
+    // posture is a pure projection of durable state already known
+    // at this point:
+    //   • !sealed              → "evasive" (curiosity got the packet
+    //                            opened — a return that ducks the
+    //                            question)
+    //   • sealed + listened    → "kind"    (delivered clean AND
+    //                            acknowledged the route — soft press)
+    //   • sealed + skipped     → "blunt"   (clean handoff, no
+    //                            acknowledgement — defiant press)
+    // Same three-value axis as `AftersignReturnReason` (see
+    // ioVoiceContract.ts + returnToneChoiceFeel.ts), so voice and
+    // feel share one token. Firing the same `window.__game`
+    // property the harness / e2e drive means the shipped page and
+    // the tests can't disagree about what "kind" means on the DOM
+    // surface — the seam is proved runnable, not just defined.
+    const routeAttention =
+      secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+        ? "listened"
+        : "skipped";
+    const returnToneReason = !state.packet.sealed
+      ? "evasive"
+      : routeAttention === "listened"
+        ? "kind"
+        : "blunt";
+    if (
+      typeof window !== "undefined"
+      && window.__game
+      && typeof window.__game.applyReturnToneFeel === "function"
+    ) {
+      window.__game.applyReturnToneFeel(returnToneReason);
+    }
   } else {
     nextLine = lineForBeat();
   }
