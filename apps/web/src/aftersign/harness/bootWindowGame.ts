@@ -216,10 +216,14 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // envelope fires until the player actually re-encounters the
     // NPC via `meetNpc`.
     recallTrigger = null;
-    // Return-reason is a per-encounter posture; a fresh restore
-    // hasn't collected one yet.
-    ioReturnReason = null;
-    appliedReturnToneFeel = null;
+    // Return-reason / applied feel row are deliberately NOT reset
+    // here — a caller who set a posture BEFORE a durable-save restore
+    // may want to carry that posture through the restore (the surface
+    // gates `memoryThread.thread` on `packetOutcome`, so if the
+    // restore lands a fresh state the thread naturally disappears
+    // without a harness-side reset). Consumer tests use
+    // `setIoReturnReason(null)` explicitly in `beforeEach` for
+    // deterministic isolation — see `returnToneChoiceFeel.consumer.test.ts`.
   };
 
   /**
