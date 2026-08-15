@@ -82,20 +82,23 @@ describe("returnToneChoiceFeel consumer (setIoReturnReason wiring)", () => {
     // Dataset marker matches the applied posture.
     expect(surface.dataset.aftersignReturnTone).toBe("evasive");
 
+    // JSDOM returns custom-property values with a leading space
+    // (see `aftersignConfirmFeel.consumer.test.ts:114` — the sibling
+    // green test already .trim()s for the same reason). Wrap every
+    // read so equality comparisons aren't tripped by " 0px" vs "0px".
+    const cssVar = (name: string): string =>
+      surface.style.getPropertyValue(name).trim();
+
     // Sample a few variables against the pinned table row. The
     // sibling contract test covers every field per posture; here we
     // just prove the harness routed the write to the surface.
     const evasive = AFTERSIGN_RETURN_TONE_CHOICE_FEEL.evasive;
-    expect(surface.style.getPropertyValue("--aftersign-return-press-ms")).toBe(
-      `${evasive.pressMs}ms`,
-    );
-    expect(surface.style.getPropertyValue("--aftersign-return-halo-scale")).toBe(
+    expect(cssVar("--aftersign-return-press-ms")).toBe(`${evasive.pressMs}ms`);
+    expect(cssVar("--aftersign-return-halo-scale")).toBe(
       `${evasive.haloScale}`,
     );
-    expect(surface.style.getPropertyValue("--aftersign-return-shake-px")).toBe(
-      `${evasive.shakePx}px`,
-    );
-    expect(surface.style.getPropertyValue("--aftersign-return-tone-hz")).toBe(
+    expect(cssVar("--aftersign-return-shake-px")).toBe(`${evasive.shakePx}px`);
+    expect(cssVar("--aftersign-return-tone-hz")).toBe(
       `${evasive.audioCue.frequencyHz}`,
     );
   });
@@ -105,12 +108,16 @@ describe("returnToneChoiceFeel consumer (setIoReturnReason wiring)", () => {
     const game = window.__game;
     expect(game).toBeDefined();
 
+    // Same .trim() wrap as above — jsdom's leading-space quirk.
+    const cssVar = (name: string): string =>
+      surface.style.getPropertyValue(name).trim();
+
     game?.setIoReturnReason("kind");
-    expect(surface.style.getPropertyValue("--aftersign-return-shake-px")).toBe("0px");
+    expect(cssVar("--aftersign-return-shake-px")).toBe("0px");
 
     game?.setIoReturnReason("blunt");
     // Blunt has shakePx=2 — the second stamp must clobber the first.
-    expect(surface.style.getPropertyValue("--aftersign-return-shake-px")).toBe("2px");
+    expect(cssVar("--aftersign-return-shake-px")).toBe("2px");
     expect(surface.dataset.aftersignReturnTone).toBe("blunt");
     // And the applied-row getter tracks the latest.
     expect(game?.getAppliedReturnToneFeel()).toBe(

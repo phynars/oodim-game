@@ -126,56 +126,57 @@ describe("returnToneChoiceFeel — 3 postures × 13 pinned numbers", () => {
     // Dataset marker matches the applied choice.
     expect(el.dataset.aftersignReturnTone).toBe("evasive");
 
+    // JSDOM quirk: `getPropertyValue` on a custom property returns the
+    // value with a leading space (spec-compliant preservation of the
+    // significant-whitespace token). The sibling green test
+    // `aftersignConfirmFeel.consumer.test.ts:114` already .trim()s for
+    // exactly this reason — mirror that pattern here so the raw value
+    // comparison isn't tripped by " 0px" vs "0px".
+    const cssVar = (name: string): string =>
+      el.style.getPropertyValue(name).trim();
+
     // All 11 CSS variables are set to unit-suffixed strings that
     // consuming stylesheets can drop into shorthands verbatim.
-    expect(el.style.getPropertyValue("--aftersign-return-press-ms")).toBe(
-      `${feel.pressMs}ms`,
-    );
-    expect(el.style.getPropertyValue("--aftersign-return-lift-px")).toBe(
-      `${feel.liftPx}px`,
-    );
-    expect(el.style.getPropertyValue("--aftersign-return-settle-ms")).toBe(
-      `${feel.settleMs}ms`,
-    );
-    expect(el.style.getPropertyValue("--aftersign-return-easing")).toBe(
-      feel.easing,
-    );
-    expect(el.style.getPropertyValue("--aftersign-return-halo-scale")).toBe(
-      `${feel.haloScale}`,
-    );
-    expect(el.style.getPropertyValue("--aftersign-return-halo-fade-ms")).toBe(
+    expect(cssVar("--aftersign-return-press-ms")).toBe(`${feel.pressMs}ms`);
+    expect(cssVar("--aftersign-return-lift-px")).toBe(`${feel.liftPx}px`);
+    expect(cssVar("--aftersign-return-settle-ms")).toBe(`${feel.settleMs}ms`);
+    expect(cssVar("--aftersign-return-easing")).toBe(feel.easing);
+    expect(cssVar("--aftersign-return-halo-scale")).toBe(`${feel.haloScale}`);
+    expect(cssVar("--aftersign-return-halo-fade-ms")).toBe(
       `${feel.haloFadeMs}ms`,
     );
-    expect(el.style.getPropertyValue("--aftersign-return-shake-px")).toBe(
-      `${feel.shakePx}px`,
-    );
-    expect(el.style.getPropertyValue("--aftersign-return-tone-hz")).toBe(
+    expect(cssVar("--aftersign-return-shake-px")).toBe(`${feel.shakePx}px`);
+    expect(cssVar("--aftersign-return-tone-hz")).toBe(
       `${feel.audioCue.frequencyHz}`,
     );
-    expect(el.style.getPropertyValue("--aftersign-return-tone-attack-ms")).toBe(
+    expect(cssVar("--aftersign-return-tone-attack-ms")).toBe(
       `${feel.audioCue.attackMs}ms`,
     );
-    expect(el.style.getPropertyValue("--aftersign-return-tone-release-ms")).toBe(
+    expect(cssVar("--aftersign-return-tone-release-ms")).toBe(
       `${feel.audioCue.releaseMs}ms`,
     );
-    expect(el.style.getPropertyValue("--aftersign-return-tone-gain")).toBe(
+    expect(cssVar("--aftersign-return-tone-gain")).toBe(
       `${feel.audioCue.gain}`,
     );
   });
 
   it("overwrites the prior stamp when applied twice with different postures", () => {
     const el = document.createElement("div");
+    // See note above — .trim() around every custom-property read.
+    const cssVar = (name: string): string =>
+      el.style.getPropertyValue(name).trim();
+
     applyAftersignReturnToneChoiceFeel(el, "kind");
     expect(el.dataset.aftersignReturnTone).toBe("kind");
-    expect(el.style.getPropertyValue("--aftersign-return-shake-px")).toBe("0px");
+    expect(cssVar("--aftersign-return-shake-px")).toBe("0px");
 
     applyAftersignReturnToneChoiceFeel(el, "blunt");
     expect(el.dataset.aftersignReturnTone).toBe("blunt");
     // The blunt row has shakePx=2; the write must clobber the prior
     // "0px" — not merge with it.
-    expect(el.style.getPropertyValue("--aftersign-return-shake-px")).toBe("2px");
+    expect(cssVar("--aftersign-return-shake-px")).toBe("2px");
     // And press-ms flips from kind's 72 to blunt's 84.
-    expect(el.style.getPropertyValue("--aftersign-return-press-ms")).toBe("84ms");
+    expect(cssVar("--aftersign-return-press-ms")).toBe("84ms");
   });
 
   it("pins the surface selector string — the harness and stylesheets must agree", () => {
