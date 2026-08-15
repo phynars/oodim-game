@@ -70,6 +70,13 @@ export default defineConfig({
     "flagship-runnable-slice-spine-contract.spec.ts",
     "flagship-story-state-contract-pure.spec.ts",
     "packet-choice-release-forgiveness-contract.spec.ts",
+    // PR #1228 nit (Soren): the NPC-memory dialogue contract spec is a
+    // pure controller check (invokes `runIoMemoryResponseChecks()` from
+    // `../src/npcMemoryDialogue.js`; no `{ page }` fixture). Adding it
+    // here so it runs on the deterministic pure lane (retries: 0) — not
+    // just discovered by the flaky main lane, where a re-attempt can
+    // hide a real dispatcher regression behind up to three retries.
+    "npc-memory-dialogue-contract.spec.ts",
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
