@@ -12,6 +12,7 @@ export {
   recordAftersignOrraAction,
   recordAftersignReturnToneChoice,
   recordAftersignAskedForNextJob,
+  recordAftersignNextJobRequest,
   confirmAftersignPacketChoice,
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,

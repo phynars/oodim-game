@@ -4,6 +4,10 @@ import {
   type IoNextJobBeat,
 } from "../../../../../packages/aftersign/src/narrative-triage/io-recognition-beat";
 import {
+  AFTERSIGN_ASK_FOR_NEXT_JOB,
+  AFTERSIGN_CHOOSE_RETURN_TONE,
+} from "../issue1199ChoiceHandlers";
+import {
   getMemoryRecallFeel,
   type MemoryRecallFeelFrame,
 } from "../memoryRecallFeel";
@@ -20,6 +24,8 @@ import {
   getAftersignStoryState,
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,
+  recordAftersignNextJobRequest,
+  recordAftersignReturnToneChoice,
   resolveAftersignRememberingNpcDialogue,
   restoreAftersignDurableSave,
   type AftersignRememberingNpcDialogue,
@@ -100,11 +106,13 @@ export type AftersignWindowGameHarness = {
   acceptNextJob: () => IoNextJobBeat;
   /**
    * Served-page style input surface. `choose("accept-next-job")` is an
-   * alias for `acceptNextJob()` so consumers can drive the beat through
-   * a generic choice verb instead of importing harness-only helpers.
+   * alias for `acceptNextJob()`. `choose("choose-return-tone")` and
+   * `choose("ask-for-next-job")` advance the M-CONTINUE-E1 beat axis
+   * (`return-tone-choice` → `io-next-job`) through the runtime-state
+   * recorders used by the story beat resolver.
    */
   input: {
-    choose: (choiceId: "accept-next-job" | string) => IoNextJobBeat | null;
+    choose: (choiceId: "accept-next-job" | "choose-return-tone" | "ask-for-next-job" | string) => IoNextJobBeat | null;
   };
   getAcceptedNextJob: () => IoNextJobBeat | null;
   getStoryState: () => AftersignStoryStateSnapshot;
@@ -353,6 +361,14 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       choose(choiceId) {
         if (choiceId === "accept-next-job") {
           return acceptNextJob();
+        }
+        if (choiceId === AFTERSIGN_CHOOSE_RETURN_TONE) {
+          state = recordAftersignReturnToneChoice(state);
+          return null;
+        }
+        if (choiceId === AFTERSIGN_ASK_FOR_NEXT_JOB) {
+          state = recordAftersignNextJobRequest(state);
+          return null;
         }
         return null;
       },
