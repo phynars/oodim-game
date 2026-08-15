@@ -6,6 +6,7 @@ import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
   AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
   applyAftersignReturnToneChoiceFeel,
+  getAftersignReturnToneChoiceFeel,
   type AftersignReturnToneChoiceFeel,
 } from "../returnToneChoiceFeel";
 import {
@@ -239,28 +240,35 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     if (reason === null) {
       return null;
     }
+    // Ground-truth lookup is DOM-free — the feel row is authoritative
+    // whether or not a surface element is mounted. Consumers that only
+    // assert the wiring (not the render) read this directly via
+    // `getAppliedReturnToneFeel()`.
+    const feel = getAftersignReturnToneChoiceFeel(reason);
+    // Best-effort DOM projection: if the document is present AND a
+    // surface element is mounted, stamp the CSS vars onto it. Any
+    // throw from the writer (detached-node quirks, jsdom edge cases,
+    // a stub document without style/dataset) is swallowed — the
+    // ground-truth `feel` still lands on `appliedReturnToneFeel`, so
+    // the harness stays honest and the shipped-voice-thread test
+    // that only cares about `ioReturnReason` remains unaffected by
+    // any DOM-write failure.
     const doc =
       (globalThis as { document?: Document }).document ?? undefined;
-    const surface = doc
-      ? (doc.querySelector(
-          AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
-        ) as HTMLElement | null)
-      : null;
-    if (surface) {
-      return applyAftersignReturnToneChoiceFeel(surface, reason);
-    }
-    // No DOM surface mounted yet — return the row directly so callers
-    // that assert the wiring (rather than the render) still see the
-    // ground truth. `applyAftersignReturnToneChoiceFeel` is a pure
-    // lookup + DOM write; the lookup half is what we return here.
-    // Importing the constant would drag another symbol into scope;
-    // calling apply on a detached, throwaway element is the simplest
-    // way to get the row back without a second import.
     if (doc) {
-      const detached = doc.createElement("div");
-      return applyAftersignReturnToneChoiceFeel(detached, reason);
+      try {
+        const surface = doc.querySelector(
+          AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+        ) as HTMLElement | null;
+        if (surface) {
+          applyAftersignReturnToneChoiceFeel(surface, reason);
+        }
+      } catch {
+        // Swallow — the DOM write is a projection, not the ground
+        // truth. `feel` is returned unconditionally below.
+      }
     }
-    return null;
+    return feel;
   };
 
   const api: AftersignWindowGameHarness = {
