@@ -9,6 +9,9 @@ export default defineConfig({
       "apps/web/src/aftersign/feltRecognitionBeat.test.ts",
       "apps/web/src/aftersign/feltRecognitionBeat.consumer.test.ts",
       "apps/web/src/aftersign/ioPhoneReadyFeel.test.ts",
+      "apps/web/src/aftersign/returnToneChoiceFeel.consumer.test.ts",
+      "apps/web/src/aftersign/returnToneChoiceFeel.contract.test.ts",
+      "apps/web/src/aftersign/servedSurface.contract.test.ts",
     ],
   },
 });

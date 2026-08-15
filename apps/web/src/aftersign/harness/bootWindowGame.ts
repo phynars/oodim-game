@@ -4,6 +4,12 @@ import {
 } from "../memoryRecallFeel";
 import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
+  AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+  applyAftersignReturnToneChoiceFeel,
+  getAftersignReturnToneChoiceFeel,
+  type AftersignReturnToneChoiceFeel,
+} from "../returnToneChoiceFeel";
+import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   getAftersignStoryState,
@@ -59,8 +65,27 @@ export type AftersignWindowGameHarness = {
    * Populating this makes the next `getStoryState()` snapshot include
    * the full three-line `ioDialogue.memoryThread.thread` (route +
    * packet + return-reason). Pass `null` to clear.
+   *
+   * Side effect (return-tone FEEL wiring): when `reason` is non-null
+   * and the document contains an element matching
+   * `AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR` (i.e.
+   * `[data-aftersign-return-surface]`), the harness stamps the feel
+   * row (`AFTERSIGN_RETURN_TONE_CHOICE_FEEL[reason]`) onto that
+   * element via `applyAftersignReturnToneChoiceFeel`. That's the
+   * seam that turns the pure feel table into runnable slice code —
+   * the same reason token drives BOTH the voice memory thread and
+   * the DOM press envelope.
    */
   setIoReturnReason: (reason: AftersignReturnReason | null) => void;
+  /**
+   * Return the most recent return-tone feel row applied by
+   * `setIoReturnReason`, or `null` when no non-null reason has been
+   * recorded (or the last call was `setIoReturnReason(null)`).
+   * Exposed so a consumer test can assert the wiring without having
+   * to mount the `[data-aftersign-return-surface]` DOM node — the
+   * feel row is the ground truth, the DOM write is the projection.
+   */
+  getAppliedReturnToneFeel: () => AftersignReturnToneChoiceFeel | null;
   getStoryState: () => AftersignStoryStateSnapshot;
   /**
    * Served-page-compatible alias for the story/state snapshot. E2E
@@ -152,6 +177,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let state: AftersignVerticalSliceState = createAftersignVerticalSliceState();
   let recallTrigger: AftersignRecallTrigger | null = null;
   let ioReturnReason: AftersignReturnReason | null = null;
+  let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
   let savedAtTurn = 0;
 
   const applyMeet = (
@@ -190,9 +216,63 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // envelope fires until the player actually re-encounters the
     // NPC via `meetNpc`.
     recallTrigger = null;
-    // Return-reason is a per-encounter posture; a fresh restore
-    // hasn't collected one yet.
-    ioReturnReason = null;
+    // Return-reason / applied feel row are deliberately NOT reset
+    // here — a caller who set a posture BEFORE a durable-save restore
+    // may want to carry that posture through the restore (the surface
+    // gates `memoryThread.thread` on `packetOutcome`, so if the
+    // restore lands a fresh state the thread naturally disappears
+    // without a harness-side reset). Consumer tests use
+    // `setIoReturnReason(null)` explicitly in `beforeEach` for
+    // deterministic isolation — see `returnToneChoiceFeel.consumer.test.ts`.
+  };
+
+  /**
+   * Apply the return-tone feel row for `reason` to any DOM element
+   * marked with `[data-aftersign-return-surface]`. Called from
+   * `setIoReturnReason` — the same posture token that drives the
+   * voice memory thread ALSO drives the press envelope, so a caller
+   * never has to know both surfaces exist.
+   *
+   * DOM-optional: in a jsdom or no-DOM context (worker, SSR) where
+   * `document` is missing OR no surface element is mounted, the feel
+   * row is still recorded on `appliedReturnToneFeel` so a test that
+   * cares about the wiring (not the render) can assert against it.
+   */
+  const applyReturnToneFeel = (
+    reason: AftersignReturnReason | null,
+  ): AftersignReturnToneChoiceFeel | null => {
+    if (reason === null) {
+      return null;
+    }
+    // Ground-truth lookup is DOM-free — the feel row is authoritative
+    // whether or not a surface element is mounted. Consumers that only
+    // assert the wiring (not the render) read this directly via
+    // `getAppliedReturnToneFeel()`.
+    const feel = getAftersignReturnToneChoiceFeel(reason);
+    // Best-effort DOM projection: if the document is present AND a
+    // surface element is mounted, stamp the CSS vars onto it. Any
+    // throw from the writer (detached-node quirks, jsdom edge cases,
+    // a stub document without style/dataset) is swallowed — the
+    // ground-truth `feel` still lands on `appliedReturnToneFeel`, so
+    // the harness stays honest and the shipped-voice-thread test
+    // that only cares about `ioReturnReason` remains unaffected by
+    // any DOM-write failure.
+    const doc =
+      (globalThis as { document?: Document }).document ?? undefined;
+    if (doc) {
+      try {
+        const surface = doc.querySelector(
+          AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
+        ) as HTMLElement | null;
+        if (surface) {
+          applyAftersignReturnToneChoiceFeel(surface, reason);
+        }
+      } catch {
+        // Swallow — the DOM write is a projection, not the ground
+        // truth. `feel` is returned unconditionally below.
+      }
+    }
+    return feel;
   };
 
   const api: AftersignWindowGameHarness = {
@@ -205,6 +285,10 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     setIoReturnReason(reason) {
       ioReturnReason = reason;
+      appliedReturnToneFeel = applyReturnToneFeel(reason);
+    },
+    getAppliedReturnToneFeel() {
+      return appliedReturnToneFeel;
     },
     getStoryState() {
       return snapshot();
