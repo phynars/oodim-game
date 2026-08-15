@@ -541,4 +541,54 @@ describe("Aftersign window.__game harness (#918)", () => {
     );
     expect(game?.getStoryState().story.ioDialogue.memoryThread).toBeUndefined();
   });
+
+  it("keeps the M-CONTINUE extent visible through the harness snapshot", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        19,
+      ),
+    );
+    game?.meetNpc("io");
+
+    const recognitionBeat = game?.getStoryState().story.beat;
+    expect(recognitionBeat).toBe("io-remembers-sealed-packet");
+
+    expect(game?.chooseReturnTone).toEqual(expect.any(Function));
+    game?.chooseReturnTone("direct");
+
+    const returnToneSnapshot = game?.getStoryState();
+    expect(returnToneSnapshot).toMatchObject({
+      story: {
+        beat: "io-return-tone-choice",
+      },
+      state: {
+        save: {
+          key: "aftersign.verticalSlice.v1",
+        },
+      },
+    });
+    expect(JSON.parse(JSON.stringify(returnToneSnapshot))).toEqual(returnToneSnapshot);
+
+    expect(game?.acceptNextJob).toEqual(expect.any(Function));
+    game?.acceptNextJob();
+
+    const nextJobSnapshot = game?.getStoryState();
+    expect(nextJobSnapshot).toMatchObject({
+      story: {
+        beat: "io-next-job-offer",
+      },
+      state: {
+        save: {
+          key: "aftersign.verticalSlice.v1",
+        },
+      },
+    });
+    expect(JSON.parse(JSON.stringify(nextJobSnapshot))).toEqual(nextJobSnapshot);
+  });
 });
