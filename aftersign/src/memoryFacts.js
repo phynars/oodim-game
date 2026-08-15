@@ -20,9 +20,17 @@
 // Passing the flag through explicitly keeps this a genuine
 // two-branch player input.
 
+import {
+  NPC_MEMORY_FACT_ID,
+  NPC_MEMORY_FACT_KIND,
+  NPC_MEMORY_OBJECT,
+  NPC_MEMORY_PREDICATE,
+  npcMemoryFactIdFor,
+} from "./npcMemoryFlagSchema.js";
+
 export const SECOND_ACTION = {
-  DONE: "done",
-  SKIPPED: "skipped",
+  DONE: NPC_MEMORY_OBJECT.ROUTE_DONE,
+  SKIPPED: NPC_MEMORY_OBJECT.ROUTE_SKIPPED,
 };
 
 /** Normalize a raw player-input flag (may be `null` / `undefined` /
@@ -32,10 +40,13 @@ export const normalizeSecondAction = (value) => (
 );
 
 export const buildPacketOutcomeMemoryFact = ({ outcome, sessionId }) => ({
-  id: `io-remembers-blue-packet-${outcome}`,
-  kind: "delivery-outcome",
+  id: npcMemoryFactIdFor({
+    kind: NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME,
+    object: outcome,
+  }),
+  kind: NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME,
   subject: "player",
-  predicate: "delivered-blue-packet",
+  predicate: NPC_MEMORY_PREDICATE.DELIVERED_BLUE_PACKET,
   object: outcome,
   deliveryId: "blue-packet",
   sessionId,
@@ -43,22 +54,32 @@ export const buildPacketOutcomeMemoryFact = ({ outcome, sessionId }) => ({
 });
 
 export const buildSecondActionMemoryFact = ({ secondAction, sessionId }) => ({
-  id: `io-remembers-kiosk-second-action-${secondAction}`,
-  kind: "route-attention",
+  id: npcMemoryFactIdFor({
+    kind: NPC_MEMORY_FACT_KIND.ROUTE_ATTENTION,
+    object: secondAction,
+  }),
+  kind: NPC_MEMORY_FACT_KIND.ROUTE_ATTENTION,
   subject: "player",
-  predicate: "kiosk-second-action",
+  predicate: NPC_MEMORY_PREDICATE.KIOSK_SECOND_ACTION,
   object: secondAction,
   sessionId,
   source: "server",
 });
 
 export const secondActionFromMemory = (memory = []) => {
-  const fact = memory.find((entry) => entry.predicate === "kiosk-second-action");
+  const fact = memory.find((entry) => entry.predicate === NPC_MEMORY_PREDICATE.KIOSK_SECOND_ACTION);
   return fact?.object === SECOND_ACTION.DONE ? SECOND_ACTION.DONE : SECOND_ACTION.SKIPPED;
 };
 
 export const memoryRefsFromMemory = (memory = []) => {
-  const packetOutcome = memory.find((entry) => entry.kind === "delivery-outcome")?.id ?? null;
-  const secondAction = memory.find((entry) => entry.predicate === "kiosk-second-action")?.id ?? null;
+  const packetOutcome = memory.find((entry) => entry.kind === NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME)?.id ?? null;
+  const secondAction = memory.find((entry) => entry.predicate === NPC_MEMORY_PREDICATE.KIOSK_SECOND_ACTION)?.id ?? null;
   return { packetOutcome, secondAction };
+};
+
+export {
+  NPC_MEMORY_FACT_ID,
+  NPC_MEMORY_FACT_KIND,
+  NPC_MEMORY_OBJECT,
+  NPC_MEMORY_PREDICATE,
 };
