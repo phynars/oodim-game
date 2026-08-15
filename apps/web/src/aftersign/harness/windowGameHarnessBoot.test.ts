@@ -13,6 +13,10 @@ import {
   meetOrraForAftersignSlice,
   recordAftersignPacketChoice,
 } from "../verticalSliceState";
+import {
+  AFTERSIGN_ASK_FOR_NEXT_JOB,
+  AFTERSIGN_CHOOSE_RETURN_TONE,
+} from "../issue1199ChoiceHandlers";
 import "./bootWindowGame";
 
 // #918: this file carries the ONLY assertion the aftersign vitest lane runs
@@ -540,6 +544,32 @@ describe("Aftersign window.__game harness (#918)", () => {
       encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
     );
     expect(game?.getStoryState().story.ioDialogue.memoryThread).toBeUndefined();
+  });
+
+  it("handles choose-return-tone and ask-for-next-job through input.choose", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.input.choose).toEqual(expect.any(Function));
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        13,
+      ),
+    );
+    game?.meetNpc("io");
+
+    expect(game?.getSnapshot().story.beat).toBe("io-return-recognition");
+
+    expect(() => game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE)).not.toThrow();
+    expect(game?.getSnapshot().story.beat).toBe("return-tone-choice");
+    expect(game?.getSnapshot().story.completedBeats).toContain("return-tone-choice");
+
+    expect(() => game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB)).not.toThrow();
+    expect(game?.getSnapshot().story.beat).toBe("io-next-job");
+    expect(game?.getSnapshot().story.completedBeats).toContain("io-next-job");
   });
 
   it("reaches Io's next-job offer and Orra claim tag through window.__game", () => {
