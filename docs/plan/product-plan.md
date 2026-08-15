@@ -112,9 +112,28 @@ remains, is maintenance — not the demo gate.
 ### M-CONTINUE (ACTIVE) — a phone player is driven PAST `io-return-recognition` into at least TWO new story beats: Io's return-tone answer, then Io hands them the NEXT job
 
 **Deadline: 2026-08-22** (founder — the public demo date; see
-docs/flagship/BRIEF.md "The deadline" + "The story proceeds"). **8 days
-remaining as of 2026-08-14.** Cut scope INSIDE a scene before slipping this
-date — but never below TWO new reachable beats, and never the date.
+docs/flagship/BRIEF.md "The deadline" + "The story proceeds" + "Played, not
+driven"). **7 days remaining as of 2026-08-15.** Cut scope INSIDE a scene
+before slipping this date — but never below TWO new reachable beats, and never
+the date.
+
+**⚠️ REALITY CORRECTION 2026-08-15 (founder amendment "Played, not driven"):
+M-CONTINUE is STILL OPEN — the acceptance spec was driven, not played.** The
+two new beats (`return-tone-choice`, `io-next-job`) now EXIST on the served
+surface (`AftersignStoryBeatId` in
+`apps/web/src/aftersign/windowGameSurface.ts:26-36`; beat derivation at
+`:264-334`) and the done-gate e2e
+(`aftersign/e2e/m-continue-served-beats.spec.ts`) is green — BUT that spec
+drives every action through `window.__game.input.choose(...)`
+(`choose('keep-sealed')` … `choose('choose-return-tone')` …
+`choose('ask-for-next-job')`), the harness INPUT surface. The founder's
+2026-08-15 amendment disqualifies exactly this as acceptance evidence:
+*"Calling `window.__game.input.*` … to CAUSE a player action disqualifies the
+test as acceptance evidence."* A player has no `choose()` bridge — nothing on
+the rendered page taps into these beats. Per the amendment, *"If a beat cannot
+be reached by taps alone, it is NOT DONE."* **The state machine advances; the
+player cannot.** M-CONTINUE's done signal is now a PLAYTEST spec (below), not
+the driven e2e.
 
 **Founder bar, quoted VERBATIM from the 2026-08-14 amendment "The story
 proceeds" in `docs/flagship/BRIEF.md` (declaring DONE requires quoting this and
@@ -164,16 +183,19 @@ contract-covered. The smallest honest step that moves the metric is to wire the
 already-authored scene 8, then author + wire ONE more beat so the loop visibly
 CONTINUES rather than terminates. Two new reachable beats is the founder's floor.
 
-**Definition of done (falsifiable, served-page — quote the founder bar above to
-declare DONE):**
+**Definition of done (falsifiable, served-page, PLAYED not driven — quote the
+founder bar above to declare DONE):**
 - On a phone-shaped viewport at game.oodim.com/aftersign: a returning player
-  reaches `io-return-recognition`, then a served-page e2e drives them into the
-  **return-tone choice** (picks a tone → Io's authored tone-answer serves →
-  `returnTone` persists) and then into **the next-job beat** (Io offers a new
-  packet; the delivery loop re-opens).
-- The served-page e2e asserts the player's `story.beat` / `completedBeats`
-  advance PAST `io-return-recognition` into the two new beat IDs — the
-  beats-reachable metric increases by exactly ≥2 on the DEPLOYED surface.
+  reaches `io-return-recognition`, then a **tap-driven PLAYTEST spec**
+  (Playwright pointer/tap events on rendered, VISIBLE DOM elements — NOT
+  `window.__game.input.*`) taps them into the **return-tone choice** (three
+  visible options render → tap one → Io's authored tone-answer RE-RENDERS in
+  the visible dialogue → `returnTone` persists) and then into **the next-job
+  beat** (Io's new-packet line renders; the delivery loop re-opens on screen).
+- The PLAYTEST spec asserts each VISIBLE dialogue change (rendered DOM text),
+  not just `story.beat`. `window.__game` is read ONLY to assert invariants
+  (`completedBeats` advanced ≥2 past `io-return-recognition`) — never to CAUSE
+  an action. A beat whose line never renders in the DOM was never spoken.
 - Io's existing recognition line is UNCHANGED (no regression on the beats that
   already ship).
 - The return-tone consumer imports the existing contract
@@ -215,13 +237,22 @@ terminates at `io-return-recognition`. E1:
 The epic is DONE when the served-page e2e is green on main and a player reaches
 ≥2 new beats — not when the individual PRs merge.
 
-**Status:** active — 8 days to deadline (2026-08-22). **Stories are FILED and
-mapped** (corrected chunk 2): the integration done-gate landed red-first as
-`aftersign/e2e/m-continue-served-beats.spec.ts` (PR #1195), and 4 open issues
-serve E1 — Soren's wiring ladder #1198→#1199→#1200 (decomposed from closed
-#1196, with the beat-union prereq #1197 already CLOSED same-day 2026-08-14)
-plus June's next-job authoring #1202. No new stories needed this cycle; the
-board is NOT empty (the prior chunk's "empty backlog" note was stale). See
+**Status:** active — 7 days to deadline (2026-08-22). **CORRECTED 2026-08-15
+(chunk 3 — "Played, not driven"):** the driven integration spec
+`aftersign/e2e/m-continue-served-beats.spec.ts` (PR #1195) is GREEN — wiring
+for `return-tone-choice` / `io-next-job` landed via #1198/#1199/#1200 — but it
+drives every action through `window.__game.input.choose(...)`, so under the
+2026-08-15 amendment it is a HARNESS test, not acceptance evidence. **The true
+done-gate is the tap-driven PLAYTEST spec #1216**: it plays boot → `io-next-job`
+by Playwright TAPS on visible DOM elements only, asserting each new dialogue
+line RENDERS in the DOM, reading `window.__game` for invariants only. #1216
+goes RED FIRST if the rendered page has no tappable elements for the new
+choices (likely — nothing on screen calls them today); the WIRING in
+`aftersign/main.js` to render + re-render those beats is the fix. The green
+flip of #1216 IS the epic's done signal. Open issues serving E1: **#1216**
+(PLAYTEST done-gate, true done-flip), Soren's driven wiring ladder
+#1198→#1199→#1200 (decomposed from closed #1196, with the beat-union prereq
+#1197 already CLOSED 2026-08-14) plus June's next-job authoring #1202. See
 the story map below for the blocked-by sequence and critical-path flags.
 Sequence by TIME: a rough-but-PLAYABLE
 two-beat continuation with the e2e proving reachability beats a polished-partial
