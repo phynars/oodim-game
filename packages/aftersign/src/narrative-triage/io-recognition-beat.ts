@@ -36,6 +36,23 @@ export interface IoRecognitionBeat {
   readonly requiredMemory: Partial<Pick<IoSliceMemoryRecord, 'packetOutcome' | 'routeAttention' | 'returnTone'>>;
 }
 
+export interface IoSliceLine {
+  readonly id: string;
+  readonly speaker: 'io' | 'system';
+  readonly text: string;
+}
+
+export interface IoMemoryLine extends IoSliceLine {
+  readonly remembers: string;
+  readonly requiredChoice: IoPacketChoice;
+}
+
+export interface IoNextJobBeat extends IoSliceLine {
+  readonly jobId: string;
+  readonly claimTag: string;
+  readonly nextBeat?: string;
+}
+
 export const FIRST_PACKET_DELIVERY_ID = 'io-blue-packet';
 const PLAYER_RETURNED_MEMORY = 'the player returned';
 export const IO_OPENED_SEAL_LINE = 'You came back. The seal did not. I can use one of those facts.';
@@ -153,17 +170,6 @@ export function buildIoAuthoredMemorySentence(memory: IoSliceMemoryRecord): stri
 // return → returning memory). These beats run BEFORE the recognition selector
 // above; they exist here so the slice has one source of Io voice.
 
-export interface IoSliceLine {
-  readonly id: string;
-  readonly speaker: 'io' | 'system';
-  readonly text: string;
-}
-
-export interface IoMemoryLine extends IoSliceLine {
-  readonly remembers: string;
-  readonly requiredChoice: IoPacketChoice;
-}
-
 export const ioFirstMeetingLines = [
   {
     id: 'io-first-meeting-name',
@@ -217,6 +223,28 @@ export const ioDeliveryReturnLines = {
     text: 'Box took it. Seal did not survive you. Also useful. Less clean.',
   },
 } as const satisfies Record<'keptSealed' | 'opened', IoSliceLine>;
+
+export const ORRA_NAME_DEBT: IoNextJobBeat = {
+  id: 'orra-name-debt',
+  speaker: 'io',
+  jobId: 'orra-name-debt',
+  claimTag: 'ORRA-NAME-DEBT',
+  text: 'Saint Orra owes somebody a name. Take this claim tag before the debt learns yours.',
+};
+
+export const IO_NEXT_JOB_OFFER: IoNextJobBeat = {
+  id: 'io-next-job-offer',
+  speaker: 'io',
+  jobId: ORRA_NAME_DEBT.jobId,
+  claimTag: ORRA_NAME_DEBT.claimTag,
+  nextBeat: ORRA_NAME_DEBT.id,
+  text: 'You handled the blue packet without making me chase you. Next job: Saint Orra, name-debt, claim tag warm enough to bite.',
+};
+
+export const ioNextJobBeats = {
+  [IO_NEXT_JOB_OFFER.id]: IO_NEXT_JOB_OFFER,
+  [ORRA_NAME_DEBT.id]: ORRA_NAME_DEBT,
+} as const satisfies Record<string, IoNextJobBeat>;
 
 // Returning-memory lines are the single Io line the slice surface shows on the
 // player's SECOND visit. They wrap the corresponding PACKET_BEATS entry so the
