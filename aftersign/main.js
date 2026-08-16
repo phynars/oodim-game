@@ -42,7 +42,32 @@ import {
   writeAuthoritativeSave,
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
-import { AFTERSIGN_NEXT_JOB_BEAT } from "../packages/aftersign/next-job-beat.js";
+// Note (PR #1236): the direct import of `AFTERSIGN_NEXT_JOB_BEAT` was
+// removed here — the served-page handoff line is now sourced through
+// `buildIoContinueBeats(reason)[1].line` (see the import right below).
+// The `packages/aftersign/next-job-beat.js` module still owns the
+// canonical beat id/objective and is consumed elsewhere (harness /
+// narrative-triage); this module speaks its line through the story-
+// facing continue-beats builder so REPLY and HANDOFF live on one axis.
+//
+// Shipped consumer of `apps/web/src/aftersign/story/ioContinueBeats.ts`
+// (PR #1236). `buildIoContinueBeats(reason)` returns the two beats Io
+// speaks after the player strikes a return posture:
+//   [0] IoContinueReplyBeat    — Io's reply to the tone the player chose
+//                                (rendered at `return-tone-choice` below)
+//   [1] IoContinueHandoffBeat  — the invariant red-tag → Saint Orra
+//                                handoff line (rendered at `io-next-job`)
+// The three recognition-beat buttons (Kind / Evasive / Blunt) stamp
+// `data-return-reason` (see recognition-beat labeling below), and the
+// click handlers store the picked reason on `state.player.returnReason`
+// so `lineForBeat()` can look up the matching REPLY + HANDOFF lines
+// from this module — not from an inline hardcoded string, and not
+// only from `AFTERSIGN_NEXT_JOB_BEAT`. This closes the "beat the
+// served page never imports" gap Soren flagged on the first draft.
+import {
+  buildIoContinueBeats,
+  IO_RETURN_TONE_OPTIONS,
+} from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -261,6 +286,15 @@ const state = {
     // SKIPPED branch (the two-memory shape is invariant; only the
     // route-attention `object` differs).
     secondAction: stored?.player?.secondAction ?? null,
+    // Return-tone posture the player struck at `io-return-recognition`
+    // (PR #1236 — M-CONTINUE-E1). One of "kind" | "evasive" | "blunt",
+    // captured from `data-return-reason` on the tapped recognition
+    // button, and consulted by `lineForBeat()` at the following two
+    // beats to pick Io's REPLY line and speak the HANDOFF line from
+    // `buildIoContinueBeats(reason)`. `null` until the player picks;
+    // in that (defensive) case `lineForBeat()` anchors to "evasive"
+    // (the middle posture) so a mis-stamped tap doesn't silence Io.
+    returnReason: stored?.player?.returnReason ?? null,
   },
   packet: {
     delivered: Boolean(stored?.packet?.delivered),
@@ -483,20 +517,31 @@ const lineForBeat = () => {
   }
 
   if (state.scene.beat === "return-tone-choice") {
-    // M-CONTINUE-E1 (docs/plan/product-plan.md:194): the beat that
-    // sits between `io-return-recognition` and `io-next-job` — the
-    // player picks the tone they answer Io in, and Io hands them the
-    // next job. The line here is Io setting up the fork; the choices
-    // (`ask-for-next-job` / a future tone-branch id) advance from
-    // here.
-    return "So — do you take the shape you carried, or the one the city gave back?";
+    // M-CONTINUE-E1 (PR #1236): shipped consumer of
+    // `story/ioContinueBeats.ts`. The player has just tapped one of
+    // three recognition-beat tone buttons — that stamped
+    // `state.player.returnReason` on the RECOGNITION click handler.
+    // Here we render Io's REPLY line for that posture (the [0] entry
+    // in `buildIoContinueBeats(reason)`) into `#line`, so the same
+    // reason token that drives the return-tone FEEL surface
+    // (returnToneChoiceFeel.ts) also drives Io's WORDS — one axis,
+    // one lookup, no drift between voice and feel.
+    //
+    // Defensive: if no reason is recorded (shouldn't happen — this
+    // beat is only reachable via a stamped tone tap), anchor to
+    // "evasive" (the middle posture), matching `getIoReturnToneReply`'s
+    // own fallback rule.
+    const reason = state.player.returnReason ?? "evasive";
+    return buildIoContinueBeats(reason)[0].line;
   }
 
   if (state.scene.beat === "io-next-job") {
-    // Consumer of `packages/aftersign/next-job-beat.js`. Speaking the
-    // authored line here is what makes the module a shipped surface
-    // (not a dead file) — a rewrite of the beat's line lands the
-    // moment the module changes.
+    // M-CONTINUE-E1 (PR #1236): shipped consumer of
+    // `story/ioContinueBeats.ts`. The HANDOFF line (Io hands the
+    // player the red tag → Saint Orra) is the [1] entry in
+    // `buildIoContinueBeats(reason)` — invariant across postures,
+    // but sourced through the same module as the reply so a rewrite
+    // of the beat's copy lands the moment the module changes.
     //
     // Shipped consumer of `ioMemoryResponseLinesFor` (PR #1228): the
     // player has TAPPED through delivery + return-tone to land here,
@@ -506,14 +551,16 @@ const lineForBeat = () => {
     // `#line` still shows a single flowing utterance rather than a
     // list. When the player has no durable facts (defensive: shouldn't
     // happen at this beat, but honored so the surface stays crash-
-    // free), the fallback line still speaks (`remembersNoDurableFact`).
+    // free), the handoff line still speaks (`remembersNoDurableFact`).
+    const reason = state.player.returnReason ?? "evasive";
+    const handoffLine = buildIoContinueBeats(reason)[1].line;
     const reflection = ioMemoryResponseLinesFor({
       playerFlags: state.player.flags,
       npcMemoryFacts: state.npcs.io.memory,
     })
       .map((entry) => entry.text)
       .join(" ");
-    return reflection ? `${reflection} ${AFTERSIGN_NEXT_JOB_BEAT.line}` : AFTERSIGN_NEXT_JOB_BEAT.line;
+    return reflection ? `${reflection} ${handoffLine}` : handoffLine;
   }
 
   if (state.scene.beat === "io-return-recognition") {
@@ -1127,14 +1174,41 @@ const renderText = () => {
     stampAftersignChoice(acknowledgeRouteButton, "choose-return-tone");
     stampAftersignChoice(skipRouteButton, "choose-return-tone");
     stampAftersignChoice(deliverButton, "choose-return-tone");
+    // PR #1236 M-CONTINUE-E1: the three tone buttons share the
+    // `choose-return-tone` choice id (so pre-existing tap specs that
+    // read that stamp still work), but each carries a distinct
+    // `data-return-reason` axis-token — the same token used by
+    // `returnToneChoiceFeel.ts` and `story/ioContinueBeats.ts`. The
+    // click handlers below read this attribute off the tapped
+    // button and store it on `state.player.returnReason` so
+    // `lineForBeat()` can look up Io's REPLY + HANDOFF from
+    // `buildIoContinueBeats(reason)`.
+    acknowledgeRouteButton.dataset.returnReason =
+      IO_RETURN_TONE_OPTIONS[0].id; // "kind"
+    skipRouteButton.dataset.returnReason =
+      IO_RETURN_TONE_OPTIONS[1].id; // "evasive"
+    deliverButton.dataset.returnReason =
+      IO_RETURN_TONE_OPTIONS[2].id; // "blunt"
   } else if (isReturnToneChoiceBeat) {
     setTextContentIfChanged(deliverButton, "Ask for next job");
     stampAftersignChoice(deliverButton, "ask-for-next-job");
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
+    // PR #1236: recognition-beat stamps get cleared so a later tap on
+    // deliverButton (now labeled "Ask for next job") can't overwrite
+    // the reason the player just committed via a recognition tap.
+    delete acknowledgeRouteButton.dataset.returnReason;
+    delete skipRouteButton.dataset.returnReason;
+    delete deliverButton.dataset.returnReason;
   } else if (isNextJobBeat) {
     setTextContentIfChanged(deliverButton, "Deliver next packet");
     stampAftersignChoice(deliverButton, "deliver-packet");
+    // PR #1236: same cleanup as above — no recognition-beat stamps
+    // should leak into a beat where the buttons carry different
+    // choice ids.
+    delete acknowledgeRouteButton.dataset.returnReason;
+    delete skipRouteButton.dataset.returnReason;
+    delete deliverButton.dataset.returnReason;
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
   } else {
@@ -2504,15 +2578,30 @@ packetButton.addEventListener("pointercancel", (event) => {
   packetMove({ ...packetPointFromEvent(event), x: state.interaction.packetIntent.config.DRIFT_CANCEL_PX + event.clientX + 1 });
 });
 acknowledgeRouteButton.addEventListener("click", () => {
-  const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
+  const reasonFromAck = acknowledgeRouteButton.dataset.returnReason;
+    if (reasonFromAck && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromAck)) {
+      state.player.returnReason = reasonFromAck;
+      markStateDirty();
+    }
+    const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
   choose(choiceId);
 });
 skipRouteButton.addEventListener("click", () => {
-  const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
+  const reasonFromSkip = skipRouteButton.dataset.returnReason;
+    if (reasonFromSkip && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromSkip)) {
+      state.player.returnReason = reasonFromSkip;
+      markStateDirty();
+    }
+    const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
   choose(choiceId);
 });
 deliverButton.addEventListener("click", () => {
-  const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
+  const reasonFromDeliver = deliverButton.dataset.returnReason;
+    if (reasonFromDeliver && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromDeliver)) {
+      state.player.returnReason = reasonFromDeliver;
+      markStateDirty();
+    }
+    const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
   choose(choiceId);
 });
 mobileMovePadController = attachMobileMovePad({

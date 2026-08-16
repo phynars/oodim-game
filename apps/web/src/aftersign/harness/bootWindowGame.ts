@@ -114,10 +114,16 @@ export type AftersignWindowGameHarness = {
    * (`setIoReturnReason` has never been called with a non-null value,
    * or was last called with `null`).
    *
-   * This is the served-surface consumer of `ioContinueBeats.ts`: a
-   * scene renderer reads these two beats through `window.__game` in
-   * the same session it reads `getAppliedReturnToneFeel()`, so the
-   * posture drives the VOICE and the FEEL in lock-step.
+   * NOTE — the shipped-surface consumer of `ioContinueBeats.ts` is
+   * `aftersign/main.js::lineForBeat()` (PR #1236), which renders the
+   * REPLY line at `return-tone-choice` and the HANDOFF line at
+   * `io-next-job` into `#line`. `main.js` is what publishes
+   * `window.__game` at the served URL; this file is the vitest boot
+   * harness. This snapshot accessor is a TEST-ONLY read of the same
+   * pure module (kept so `ioContinueBeats.consumer.test.ts` can
+   * assert the two-beat sequence without walking the DOM), so the
+   * posture drives the VOICE (main.js) and the FEEL (`getAppliedReturnToneFeel()`)
+   * in lock-step at the served URL and is mirrored here for tests.
    */
   getIoContinueBeats: () =>
     | readonly [IoContinueBeat, IoContinueBeat]
