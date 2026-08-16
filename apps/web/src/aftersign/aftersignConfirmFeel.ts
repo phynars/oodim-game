@@ -73,6 +73,25 @@ export function getAftersignConfirmFeel(
   });
 }
 
+export function getAftersignReducedMotionConfirmFeel(
+  feel: AftersignConfirmFeelSpec,
+): AftersignConfirmFeelSpec {
+  return Object.freeze({
+    ...feel,
+    durationMs: Math.min(feel.durationMs, 180),
+    pulseMs: Math.min(feel.pulseMs, 120),
+    settleMs: Math.min(feel.settleMs, 120),
+    liftPx: 0,
+    squashScaleX: 1,
+    squashScaleY: 1,
+    bloomOpacity: Math.min(feel.bloomOpacity, 0.48),
+    ringScaleStart: 1,
+    ringScaleEnd: 1,
+    shakePx: 0,
+    easing: "linear",
+  });
+}
+
 /**
  * Pure sampler for the confirm bloom. Given elapsed ms since press-down
  * and the feel spec, returns the ring/flash/caption transform values that
@@ -222,12 +241,12 @@ export function installAftersignConfirmFeelStyles(root: Document = document): vo
 
     @keyframes aftersign-confirm-flash {
       0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
-      35% { opacity: 0.96; transform: translate(-50%, -50%) scale(1.08, 0.92); }
+      35% { opacity: 0.96; transform: translate(-50%, -50%) scale(var(--aftersign-confirm-squash-x, 1.08), var(--aftersign-confirm-squash-y, 0.92)); }
       100% { opacity: 0; transform: translate(-50%, -50%) scale(1.62); }
     }
 
     @keyframes aftersign-confirm-caption {
-      0% { opacity: 0; transform: translate(-50%, calc(-50% - 24px)) scale(1.08, 0.92); }
+      0% { opacity: 0; transform: translate(-50%, calc(-50% - 24px)) scale(var(--aftersign-confirm-squash-x, 1.08), var(--aftersign-confirm-squash-y, 0.92)); }
       22% { opacity: 1; transform: translate(-50%, calc(-50% - 34px)) scale(1); }
       100% { opacity: 0; transform: translate(-50%, calc(-50% - 44px)); }
     }
@@ -243,6 +262,7 @@ export type PlayAftersignConfirmFeelOptions = {
   y?: number;
   label?: string;
   feel?: Partial<AftersignConfirmFeelSpec>;
+  reducedMotion?: boolean;
 };
 
 export type AftersignConfirmFeelHandle = {
@@ -250,6 +270,11 @@ export type AftersignConfirmFeelHandle = {
   cleanup: () => void;
   feel: AftersignConfirmFeelSpec;
 };
+
+function rootPrefersReducedMotion(root: Document): boolean {
+  const query = root.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)");
+  return query?.matches === true;
+}
 
 export function playAftersignConfirmFeel(
   options: PlayAftersignConfirmFeelOptions = {},
@@ -260,11 +285,15 @@ export function playAftersignConfirmFeel(
     y = typeof globalThis.innerHeight === "number" ? globalThis.innerHeight / 2 : 0,
     label = "Confirmed",
     feel,
+    reducedMotion = false,
   } = options;
 
   if (!root?.body) return null;
 
-  const tunedFeel = getAftersignConfirmFeel(feel);
+  const baseFeel = getAftersignConfirmFeel(feel);
+  const tunedFeel = reducedMotion || rootPrefersReducedMotion(root)
+    ? getAftersignReducedMotionConfirmFeel(baseFeel)
+    : baseFeel;
   installAftersignConfirmFeelStyles(root);
 
   const layer = root.createElement("div");
@@ -278,6 +307,8 @@ export function playAftersignConfirmFeel(
   layer.style.setProperty("--aftersign-confirm-ring-start", String(tunedFeel.ringScaleStart));
   layer.style.setProperty("--aftersign-confirm-ring-end", String(tunedFeel.ringScaleEnd));
   layer.style.setProperty("--aftersign-confirm-shake", `${tunedFeel.shakePx}px`);
+  layer.style.setProperty("--aftersign-confirm-squash-x", String(tunedFeel.squashScaleX));
+  layer.style.setProperty("--aftersign-confirm-squash-y", String(tunedFeel.squashScaleY));
 
   const ring = root.createElement("div");
   ring.className = "aftersign-confirm-feel__ring";
