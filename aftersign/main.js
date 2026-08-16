@@ -78,6 +78,7 @@ import {
   buildIoContinueBeats,
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
+import { buildIoNextJobDurabilityStamp } from "./src/ioNextJobDurability.js";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -662,6 +663,12 @@ const buildPersistPayload = ({ dirty = false } = {}) => ({
   save: {
     revision: state.save.revision,
     dirty,
+    ioNextJob: buildIoNextJobDurabilityStamp({
+      beat: state.scene.beat,
+      playerId: state.player.id,
+      returnReason: state.player.returnReason,
+      revision: state.save.revision,
+    }),
   },
 });
 
@@ -1510,6 +1517,7 @@ const choose = async (choiceId) => {
       return;
     }
     setBeat("io-next-job");
+    await forceSave();
     publishState();
     return;
   }
