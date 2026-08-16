@@ -19,6 +19,10 @@ import {
   type AftersignReturnToneChoiceFeel,
 } from "../returnToneChoiceFeel";
 import {
+  buildIoContinueBeats,
+  type IoContinueBeat,
+} from "../story/ioContinueBeats";
+import {
   assertAftersignTapChoiceSurfaces,
   type AftersignTapChoiceSurfaceReport,
 } from "../tapChoiceFeel";
@@ -101,6 +105,29 @@ export type AftersignWindowGameHarness = {
    * feel row is the ground truth, the DOM write is the projection.
    */
   getAppliedReturnToneFeel: () => AftersignReturnToneChoiceFeel | null;
+  /**
+   * Return the two-beat continue sequence Io speaks after the player
+   * strikes a return posture: her REPLY line for that posture, then
+   * the invariant NEXT-JOB handoff (red tag → Saint Orra). Sourced
+   * from `story/ioContinueBeats.ts` — the harness never authors the
+   * lines inline. Returns `null` when no posture is recorded yet
+   * (`setIoReturnReason` has never been called with a non-null value,
+   * or was last called with `null`).
+   *
+   * NOTE — the shipped-surface consumer of `ioContinueBeats.ts` is
+   * `aftersign/main.js::lineForBeat()` (PR #1236), which renders the
+   * REPLY line at `return-tone-choice` and the HANDOFF line at
+   * `io-next-job` into `#line`. `main.js` is what publishes
+   * `window.__game` at the served URL; this file is the vitest boot
+   * harness. This snapshot accessor is a TEST-ONLY read of the same
+   * pure module (kept so `ioContinueBeats.consumer.test.ts` can
+   * assert the two-beat sequence without walking the DOM), so the
+   * posture drives the VOICE (main.js) and the FEEL (`getAppliedReturnToneFeel()`)
+   * in lock-step at the served URL and is mirrored here for tests.
+   */
+  getIoContinueBeats: () =>
+    | readonly [IoContinueBeat, IoContinueBeat]
+    | null;
   /**
    * Measure every mounted tap-choice surface
    * (`[data-aftersign-tap-choice]`) against the 44px minimum touch
@@ -373,6 +400,12 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     getAppliedReturnToneFeel() {
       return appliedReturnToneFeel;
+    },
+    getIoContinueBeats() {
+      if (ioReturnReason === null) {
+        return null;
+      }
+      return buildIoContinueBeats(ioReturnReason);
     },
     getTapChoiceFeelReport() {
       // Sourced from the live DOM each call so the report is always

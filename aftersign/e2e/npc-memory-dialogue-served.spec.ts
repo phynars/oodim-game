@@ -45,8 +45,16 @@ const SEALED_PACKET_MEMORY_TEXT =
   "Last time, you kept the blue packet sealed. I noticed the restraint.";
 const KIOSK_SKIPPED_MEMORY_TEXT =
   "You skipped the second kiosk ping. Sometimes speed is just another kind of answer.";
+// PR #1236: the `io-next-job` line rendered into `#line` is now sourced
+// from `story/ioContinueBeats.ts::IO_NEXT_JOB_HANDOFF.line`, not from
+// `packages/aftersign/next-job-beat.js::AFTERSIGN_NEXT_JOB_BEAT.line`
+// — the two modules had drifted (different strings for the same beat),
+// and Soren's review on #1236 pinned the story module as canonical for
+// what the served surface actually speaks. The packages/ module keeps
+// the beat id + objective (still consumed by the narrative-triage and
+// harness layers); this spec updates to the shipped line accordingly.
 const NEXT_JOB_PITCH =
-  "Good. Keep that shape. I have another delivery, and this one will know if you hesitate.";
+  "Take the red tag to Saint Orra. If the pharmacy sign calls you by the wrong name, answer once and only once.";
 
 async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
