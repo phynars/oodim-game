@@ -109,6 +109,21 @@ import {
   AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
   applyAftersignReturnToneChoiceFeel,
 } from "../apps/web/src/aftersign/returnToneChoiceFeel.ts";
+// Tap-choice target feel — pinned 44px minimum on both axes for every
+// button that COMMITS a fork (packet gesture, route-memory forks,
+// delivery). Wiring it into main.js here is what turns
+// `tapChoiceFeel.ts` from a pure primitive into a SHIPPED runtime
+// contract: the served surface exposes
+// `window.__game.getTapChoiceFeelReport()`, which walks every
+// `[data-aftersign-tap-choice]` element in the live DOM and reports
+// per-surface width/height + shortfall. A future renderer regression
+// (a 40px button, a squished packet tap zone) reds
+// servedSurface.contract.test.ts + any dev overlay that reads the
+// report before the player ever mis-taps.
+import {
+  AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
+  assertAftersignTapChoiceSurfaces,
+} from "../apps/web/src/aftersign/tapChoiceFeel.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -1063,6 +1078,21 @@ const publishState = () => {
         return null;
       }
       return applyAftersignReturnToneChoiceFeel(surface, reason);
+    },
+    /**
+     * Measure every mounted tap-choice surface
+     * (`[data-aftersign-tap-choice]`) against the 44px minimum touch
+     * target and return the per-surface report. Runtime consumer of
+     * `apps/web/src/aftersign/tapChoiceFeel.ts` on the SHIPPED page:
+     * the same seam the harness (`getTapChoiceFeelReport` on
+     * `bootAftersignWindowGame`) exposes, but here it reads the real
+     * served DOM — a renderer that ships a 40px button reds this
+     * report before the player ever mis-taps. Fresh measurement each
+     * call so a resize / mount / unmount between beats never sees a
+     * stale rect. Never throws — the caller decides log/warn/fail.
+     */
+    getTapChoiceFeelReport: () => {
+      return assertAftersignTapChoiceSurfaces(document);
     },
   };
   publishedStateVersion = statePublishVersion;

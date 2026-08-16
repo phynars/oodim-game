@@ -65,6 +65,33 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain("data-aftersign-return-surface");
   });
 
+  it("consumes the tap-choice feel table on the shipped surface", () => {
+    // Blocking review on PR #1230: same shape as the return-tone
+    // precedent above — a 44px-minimum table with no consumer on the
+    // served surface is green tests over dead code. main.js must
+    // import the DOM reader + selector and expose the runtime seam
+    // (window.__game.getTapChoiceFeelReport); index.html must stamp
+    // `data-aftersign-tap-choice` on every button that COMMITS a fork
+    // (packet gesture, the two route-memory forks, delivery). Any
+    // future refactor that unwires the seam OR ships a new choice
+    // button without the attribute reds this test.
+    const main = readServedAftersignFile("main.js");
+    expect(main).toContain("assertAftersignTapChoiceSurfaces");
+    expect(main).toContain("AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR");
+    expect(main).toContain("getTapChoiceFeelReport");
+
+    const html = readServedAftersignFile("index.html");
+    // The attribute must be on real served buttons — not a decorative
+    // node the renderer never touches. Pin each of the four fork
+    // commits by choice-id value so accidentally shipping a new
+    // choice button without the attribute (or renaming the id in a
+    // way that drops the attribute) reds here.
+    expect(html).toContain('data-aftersign-tap-choice="packet"');
+    expect(html).toContain('data-aftersign-tap-choice="acknowledge-kiosk"');
+    expect(html).toContain('data-aftersign-tap-choice="skip-kiosk-acknowledge"');
+    expect(html).toContain('data-aftersign-tap-choice="deliver-packet"');
+  });
+
   it("routes player-visible beat + choice stamps through the shared DOM bridge", () => {
     // PR #1231: `renderText()` in main.js used to set
     // `dataset.choiceId` / `disabled` inline on the three visible
