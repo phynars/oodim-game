@@ -78,7 +78,6 @@ import {
   buildIoContinueBeats,
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
-import { buildIoNextJobDurabilityStamp } from "./src/ioNextJobDurability.js";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
