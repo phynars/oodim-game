@@ -54,16 +54,26 @@ import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturn
 // (PR #1236). `buildIoContinueBeats(reason)` returns the two beats Io
 // speaks after the player strikes a return posture:
 //   [0] IoContinueReplyBeat    — Io's reply to the tone the player chose
-//                                (rendered at `return-tone-choice` below)
+//                                (rendered by lineForBeat at the tone-
+//                                reply beat below).
 //   [1] IoContinueHandoffBeat  — the invariant red-tag → Saint Orra
-//                                handoff line (rendered at `io-next-job`)
+//                                handoff line (rendered by lineForBeat
+//                                at the following handoff beat).
 // The three recognition-beat buttons (Kind / Evasive / Blunt) stamp
 // `data-return-reason` (see recognition-beat labeling below), and the
 // click handlers store the picked reason on `state.player.returnReason`
 // so `lineForBeat()` can look up the matching REPLY + HANDOFF lines
 // from this module — not from an inline hardcoded string, and not
-// only from `AFTERSIGN_NEXT_JOB_BEAT`. This closes the "beat the
-// served page never imports" gap Soren flagged on the first draft.
+// only from the packages/aftersign next-job-beat module. This closes
+// the "beat the served page never imports" gap Soren flagged on the
+// first draft.
+//
+// Source-order guard: this comment deliberately avoids naming the beat
+// ids literally — mcontinueReachableBeats.test.ts asserts source-order
+// by `indexOf` on the raw beat-id strings, so a literal quote up here
+// (before the real branches in `lineForBeat`) inverts the ordering and
+// reds the test. Same discipline as the npcMemoryDialogue comment
+// further down.
 import {
   buildIoContinueBeats,
   IO_RETURN_TONE_OPTIONS,
