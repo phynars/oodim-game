@@ -35,7 +35,12 @@ import { test, expect, type Page } from "@playwright/test";
 //      one run.
 //   2. The blunt run continues to `io-next-job` and asserts the
 //      invariant HANDOFF line is contained in `#line` (preserves the
-//      PR #1236 consumer coverage).
+//      PR #1236 consumer coverage). It then reloads the SAME slot
+//      after the awaited forceSave() at `ask-for-next-job` and asserts
+//      the reloaded snapshot is STILL at `state.scene.beat === "io-next-job"`
+//      AND `#line` still carries the HANDOFF line — the load-bearing
+//      proof (Soren PR #1249 review) that the beat is durable through
+//      a full save/reload cycle, not just written once and forgotten.
 //   3. The "kind" run also reloads the same slot after the durable
 //      write (choose-return-tone now forceSave()s — #1234) and
 //      asserts BOTH `player.returnReason === "kind"` on the restored
@@ -134,6 +139,47 @@ test.describe("AFTERSIGN return-tone fork: three authored replies, tone persiste
         // text, so containment — not equality).
         await tapChoice(page, "ask-for-next-job");
         await waitForBeat(page, "io-next-job");
+        await expect(lineNode).toContainText(HANDOFF_LINE, {
+          timeout: WAIT_MS,
+        });
+
+        // Soren PR #1249 review — durability proof for the io-next-job
+        // beat itself. `ask-for-next-job` calls `setBeat("io-next-job")`
+        // followed by `await forceSave()` (main.js), so a reload of the
+        // same slot must still park the player at `io-next-job` and
+        // still speak the invariant HANDOFF line. Without the awaited
+        // forceSave, reload would land at the pre-choice beat and this
+        // assertion goes red — that's the load-bearing proof that
+        // `io-next-job` is durable, not an ornamental payload field.
+        //
+        // Wait for the authoritative write to land before reloading —
+        // same pattern as the kind-run reload above.
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                () =>
+                  (window as unknown as {
+                    __game?: {
+                      save?: { lastLoadProof?: { source: string | null } };
+                    };
+                  }).__game?.save?.lastLoadProof?.source ?? null,
+              ),
+            { timeout: WAIT_MS },
+          )
+          .not.toBeNull();
+
+        await page.reload({ waitUntil: "load" });
+        await waitForBeat(page, "io-next-job");
+
+        const restoredBeat = await page.evaluate(
+          () =>
+            (window as unknown as {
+              __game?: { scene?: { beat?: string | null } };
+            }).__game?.scene?.beat ?? null,
+        );
+        expect(restoredBeat).toBe("io-next-job");
+
         await expect(lineNode).toContainText(HANDOFF_LINE, {
           timeout: WAIT_MS,
         });

@@ -645,6 +645,34 @@ const memoryFacts = () => {
   };
 };
 
+// PR #1249 (Soren review) — durability stamp for the `io-next-job`
+// beat. `choose('ask-for-next-job')` now `await forceSave()`s right
+// after `setBeat('io-next-job')`, so the persisted payload must
+// carry an unambiguous record that the player parked at this beat.
+// The stamp lives under `save.ioNextJob` and is READ back in
+// `reloadFromSave` below: if `parked === true` and `playerId`
+// matches, the restore path snaps `state.scene.beat` to
+// `io-next-job` and re-hydrates `state.player.returnReason` from
+// the stamp — that's what makes the field load-bearing rather than
+// a write-only ornament (Soren's second review point).
+//
+// Pure: no closure over live state; every input is passed by the
+// caller so `buildPersistPayload` remains the single owner of what
+// gets snapshotted.
+const buildIoNextJobDurabilityStamp = ({
+  beat,
+  playerId,
+  returnReason,
+  revision,
+}) => ({
+  parked: beat === "io-next-job",
+  beat: typeof beat === "string" ? beat : null,
+  playerId: typeof playerId === "string" ? playerId : null,
+  returnReason: typeof returnReason === "string" ? returnReason : null,
+  revision: typeof revision === "number" ? revision : null,
+  stampedAt: new Date().toISOString(),
+});
+
 const buildPersistPayload = ({ dirty = false } = {}) => ({
   beat: state.scene.beat,
   player: clone(state.player),
@@ -662,6 +690,12 @@ const buildPersistPayload = ({ dirty = false } = {}) => ({
   save: {
     revision: state.save.revision,
     dirty,
+    ioNextJob: buildIoNextJobDurabilityStamp({
+      beat: state.scene.beat,
+      playerId: state.player.id,
+      returnReason: state.player.returnReason,
+      revision: state.save.revision,
+    }),
   },
 });
 
@@ -1510,6 +1544,7 @@ const choose = async (choiceId) => {
       return;
     }
     setBeat("io-next-job");
+    await forceSave();
     publishState();
     return;
   }
@@ -1710,6 +1745,37 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   state.scene.beat = typeof saved.beat === "string"
     ? canonicalFlagshipBeat(saved.beat)
     : state.packet.delivered ? "packet-delivered" : "packet-offered";
+
+  // PR #1249 (Soren review) — READ the io-next-job durability stamp
+  // written by `buildIoNextJobDurabilityStamp` at save time. This is
+  // what makes `save.ioNextJob` load-bearing rather than a write-only
+  // ornament: if the stamp says the player parked at `io-next-job`
+  // for this same durable playerId, the restored beat snaps to
+  // `io-next-job` (superseding the canonicalFlagshipBeat fallback
+  // for legacy payloads whose `saved.beat` was migrated away from
+  // the current id), and `returnReason` is re-hydrated from the
+  // stamp when the restored `state.player.returnReason` is missing
+  // (older payloads, or a partial write). Guarded by playerId
+  // equality so a stamp from a different slot / migrated identity
+  // can never leak into this restore.
+  const ioNextJobStamp = saved.save && typeof saved.save === "object"
+    ? saved.save.ioNextJob
+    : null;
+  if (
+    ioNextJobStamp
+    && ioNextJobStamp.parked === true
+    && ioNextJobStamp.beat === "io-next-job"
+    && ioNextJobStamp.playerId === state.player.id
+  ) {
+    state.scene.beat = "io-next-job";
+    if (
+      !state.player.returnReason
+      && typeof ioNextJobStamp.returnReason === "string"
+      && IO_RETURN_TONE_OPTIONS.some((o) => o.id === ioNextJobStamp.returnReason)
+    ) {
+      state.player.returnReason = ioNextJobStamp.returnReason;
+    }
+  }
 
   // In-page reload of a delivered save must recognize the returning
   // player exactly like a real page reload does — re-arm the #957
