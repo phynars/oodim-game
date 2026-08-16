@@ -446,10 +446,20 @@ const armReturningSessionBootLine = (delivered) => {
     return;
   }
   // Per the #957 contract above: the returning line never overrides
-  // io-return-recognition — that beat's own branch already speaks the
-  // memory-minted recognition copy. A save taken DURING the recognition
-  // beat reloads into the beat's verbatim line, not the boot override.
-  if (state.scene.beat === "io-return-recognition") {
+  // beats that already speak their own memory-minted copy. Originally
+  // this guard only skipped `io-return-recognition`, but PR #1234 made
+  // `choose-return-tone` durably persist `return-tone-choice` (via
+  // forceSave), and `io-next-job` is reachable from a reload right
+  // after — both beats own their verbatim REPLY / HANDOFF lines out
+  // of `buildIoContinueBeats(reason)`. Without extending the skip
+  // list, a reload at either persisted beat would arm the boot
+  // override and clobber the beat's own line with the returning
+  // recognition copy (Soren PR #1238 review).
+  if (
+    state.scene.beat === "io-return-recognition"
+    || state.scene.beat === "return-tone-choice"
+    || state.scene.beat === "io-next-job"
+  ) {
     return;
   }
   const outcomeFact = state.npcs.io.memory.find(
@@ -1479,6 +1489,14 @@ const choose = async (choiceId) => {
       return;
     }
     setBeat("return-tone-choice");
+    // #1234: the tone the player just struck is marked "for later
+    // episode use" in the script — persist it durably NOW, not at the
+    // next incidental save. Without this, the last write was
+    // deliverPacket()'s persist() at packet-delivered, so a reload
+    // after choosing silently lost both the fork beat and
+    // player.returnReason. forceSave writes local + authoritative
+    // copies (same posture as the Orra mint branch above).
+    await forceSave();
     publishState();
     return;
   }

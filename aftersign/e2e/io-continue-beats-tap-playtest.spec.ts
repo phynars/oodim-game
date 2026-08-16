@@ -1,47 +1,67 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// AFTERSIGN io-continue-beats tap-driven playtest (PR #1236).
+// AFTERSIGN io-continue-beats tap-driven playtest (#1234; supersedes
+// the single-tone PR #1236 spec).
 //
-// Proves the SHIPPED consumer of `ioContinueBeats.ts` is
-// `aftersign/main.js::lineForBeat()`, not the vitest harness. The spec
-// plays boot → `io-next-job` using only visible-DOM taps (no
-// `window.__game.input.*` calls), then asserts that at each of the two
-// visible beats Io speaks the exact lines returned by
-// `buildIoContinueBeats(reason)`:
+// Proves the SHIPPED page speaks Io's THREE distinct authored replies
+// at the return-tone fork — verbatim from the flagship script
+// (docs/flagship/vertical-slice-script.md §8) — and that the chosen
+// tone survives a reload in the durable save.
 //
-//   1. At `return-tone-choice` — the REPLY line for the tone the player
-//      tapped ("blunt" here, via the "Blunt return" recognition
-//      button). Pinned string:
-//        "Correct. I am paying in useful work, which is the only coin
-//         left tonight."
-//      (matches `IO_RETURN_TONE_OPTIONS.find(o => o.id === "blunt").reply`
-//       in apps/web/src/aftersign/story/ioContinueBeats.ts).
+// Played, not driven (BRIEF 2026-08-15): every run reaches the fork by
+// visible-DOM taps only. `window.__game` reads appear exclusively in
+// ASSERTIONS (the persisted-tone check and the save-proof poll) —
+// never to drive input.
 //
-//   2. At `io-next-job` — the HANDOFF line. Pinned string:
-//        "Take the red tag to Saint Orra. If the pharmacy sign calls
-//         you by the wrong name, answer once and only once."
-//      (matches `IO_NEXT_JOB_HANDOFF.line` in the same module.)
-//      The `#line` node may PREPEND memory-reflection text from
-//      `ioMemoryResponseLinesFor(...)` (PR #1228 wiring) — we assert
-//      the handoff line is CONTAINED in `#line`, not equal to it.
+// CI flake note (Soren review, PR #1238): the aftersign lane runs at
+// retries: 3 (aftersign/playwright.config.ts) and can crash BEFORE any
+// spec runs on a SwiftShader webServer-boot hiccup — the failure
+// signature is `playwright-report/results.json not found` posted by
+// ci.yml's summary step. That failure mode is orthogonal to this spec;
+// diagnose from the raw runner log tail (whose stack frames name the
+// crashing file), not from this spec's line numbers.
 //
-// Root-cause of the review that produced this spec: the earlier draft
-// of #1236 wired `ioContinueBeats.ts` only into `bootWindowGame.ts`,
-// which is the vitest harness — `main.js` never imported the module,
-// so the served page never spoke the reply/handoff. Grepping
-// `getIoContinueBeats|buildIoContinueBeats` under `aftersign/main.js`
-// returned zero. This spec is the served-page proof that the fix
-// landed: the shipped `#line` DOM node now shows the module's strings.
+// Cold-start budget: this file drives THREE tests, not four. The
+// reload assertion (Soren PR #1238) is folded into the "kind" tone
+// test so we pay one boot for both proofs — every extra top-level
+// test in this lane pays another vite-preview + SwiftShader boot,
+// and iteration 5 kept the aftersign job red on that surface.
+//
+// Coverage:
+//   1. THREE fresh-save runs, one per tone button (kind / evasive /
+//      blunt). Each asserts `#line` shows THAT tone's verbatim script
+//      reply at `return-tone-choice` — three DIFFERENT texts, so a
+//      regression that collapses the fork to one reply reds all but
+//      one run.
+//   2. The blunt run continues to `io-next-job` and asserts the
+//      invariant HANDOFF line is contained in `#line` (preserves the
+//      PR #1236 consumer coverage).
+//   3. The "kind" run also reloads the same slot after the durable
+//      write (choose-return-tone now forceSave()s — #1234) and
+//      asserts BOTH `player.returnReason === "kind"` on the restored
+//      snapshot AND that `#line` still carries the kind tone's
+//      verbatim reply — without that #line check the guard-skip in
+//      `armReturningSessionBootLine` (Soren PR #1238 review) has no
+//      served-page proof.
 
 const SPEC_TIMEOUT_MS = 120_000;
 const WAIT_MS = 60_000;
 
-// Verbatim copies of the two lines under test. Kept as literals here
-// (rather than imported) so a rewrite of the module strings that
-// forgets to update this spec turns the surface RED — the whole point
-// of a consumer test is to pin the shipped words.
-const BLUNT_REPLY_LINE =
-  "Correct. I am paying in useful work, which is the only coin left tonight.";
+// Verbatim copies of the authored lines under test. Kept as literals
+// here (rather than imported from
+// apps/web/src/aftersign/story/ioContinueBeats.ts) so a rewrite of the
+// module strings that forgets the script turns this surface RED — the
+// whole point of a consumer test is to pin the shipped words.
+const REPLY_BY_TONE = {
+  kind: "Careful. Say that too often and people will start handing you breakable things.",
+  evasive: "Work is a clean word. We can use it until it stains.",
+  blunt: "Good. Wanting is easier to route than pretending.",
+} as const;
+
+type Tone = keyof typeof REPLY_BY_TONE;
+
+const TONES: readonly Tone[] = ["kind", "evasive", "blunt"];
+
 const HANDOFF_LINE =
   "Take the red tag to Saint Orra. If the pharmacy sign calls you by the wrong name, answer once and only once.";
 
@@ -60,10 +80,7 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.click();
 }
 
-async function tapReturnReason(
-  page: Page,
-  reason: "kind" | "evasive" | "blunt",
-): Promise<void> {
+async function tapReturnReason(page: Page, reason: Tone): Promise<void> {
   const button = page
     .locator(`button[data-return-reason="${reason}"]:not([disabled])`)
     .first();
@@ -74,53 +91,102 @@ async function tapReturnReason(
   await button.click();
 }
 
-test.describe("AFTERSIGN io-continue-beats: shipped consumer of ioContinueBeats.ts", () => {
-  test("tapping Blunt return renders the module's REPLY line, then HANDOFF line, into #line", async ({ page }) => {
-    test.setTimeout(SPEC_TIMEOUT_MS);
+// Boot a FRESH save on `slot` and tap (visible DOM only) up to the
+// return-tone fork: packet gesture → second action → deliver →
+// auto-advance into io-return-recognition.
+async function playToToneFork(page: Page, slot: string): Promise<void> {
+  await page.goto(`?slot=${slot}`, { waitUntil: "load" });
+  await waitForBeat(page, "packet-offered");
 
-    await page.goto(`?slot=io-continue-tap-${Date.now()}`, { waitUntil: "load" });
+  await page.locator("#packetButton").click();
+  await waitForBeat(page, "packet-choice");
 
-    // Boot beat — the DOM bridge stamps `[data-beat-id]` on `#line` as
-    // soon as the module's first renderText() runs.
-    await waitForBeat(page, "packet-offered");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-delivered");
 
-    // Commit the packet gesture (tap = preserve seal → packet-choice).
-    await page.locator("#packetButton").click();
-    await waitForBeat(page, "packet-choice");
+  // Auto-advance to recognition (~1180ms setTimeout in deliverPacket()).
+  await waitForBeat(page, "io-return-recognition");
+}
 
-    // Second deliberate action + deliver.
-    await tapChoice(page, "acknowledge-kiosk");
-    await tapChoice(page, "deliver-packet");
-    await waitForBeat(page, "packet-delivered");
+test.describe("AFTERSIGN return-tone fork: three authored replies, tone persisted (#1234)", () => {
+  for (const tone of TONES) {
+    test(`tapping the "${tone}" return renders its verbatim script reply`, async ({ page }) => {
+      test.setTimeout(SPEC_TIMEOUT_MS);
 
-    // Auto-advance to recognition (~1180ms setTimeout in deliverPacket()).
-    await waitForBeat(page, "io-return-recognition");
+      const slot = `io-continue-${tone}-${Date.now()}`;
+      await playToToneFork(page, slot);
+      await tapReturnReason(page, tone);
 
-    // Tap the BLUNT tone button — its `data-return-reason="blunt"`
-    // stamp is what `main.js` reads to store
-    // `state.player.returnReason = "blunt"`. That's the token
-    // `lineForBeat()` then feeds to `buildIoContinueBeats("blunt")`
-    // at the next two beats.
-    await tapReturnReason(page, "blunt");
+      await waitForBeat(page, "return-tone-choice");
+      // Equal (not contained): the return-tone-choice branch of
+      // `lineForBeat()` returns exactly the reply string from
+      // `buildIoContinueBeats(tone)[0].line`.
+      const lineNode = page.locator("#line");
+      await expect(lineNode).toHaveText(REPLY_BY_TONE[tone], {
+        timeout: WAIT_MS,
+      });
 
-    await waitForBeat(page, "return-tone-choice");
-    // Acceptance criterion (1): Io's REPLY line for the "blunt" posture
-    // is what `#line` shows at this beat — sourced from
-    // `story/ioContinueBeats.ts::IO_RETURN_TONE_OPTIONS`, not from an
-    // inline main.js string. Equal (not contained) — the return-tone-choice
-    // branch of `lineForBeat()` returns exactly this string.
-    const lineNode = page.locator("#line");
-    await expect(lineNode).toHaveText(BLUNT_REPLY_LINE, { timeout: WAIT_MS });
+      if (tone === "blunt") {
+        // Preserve the PR #1236 handoff coverage on one run: advance
+        // to io-next-job and assert the invariant HANDOFF line is
+        // CONTAINED in `#line` (PR #1228 may prepend memory-reflection
+        // text, so containment — not equality).
+        await tapChoice(page, "ask-for-next-job");
+        await waitForBeat(page, "io-next-job");
+        await expect(lineNode).toContainText(HANDOFF_LINE, {
+          timeout: WAIT_MS,
+        });
+      }
 
-    // Advance to io-next-job.
-    await tapChoice(page, "ask-for-next-job");
-    await waitForBeat(page, "io-next-job");
+      if (tone === "kind") {
+        // Soren PR #1238 review — durable-save proof, folded into the
+        // "kind" run so it shares this test's cold-start (see file
+        // header). The tone tap triggered an async forceSave() (#1234);
+        // wait for it to land, reload the SAME slot, then assert BOTH
+        // (a) the restored snapshot carries the persisted tone, AND
+        // (b) `#line` still speaks the kind tone's verbatim reply
+        // (without that check the persisted-tone assertion passes even
+        // when the #957 boot override clobbers `#line` with the
+        // returning-recognition copy — the guard-skip in
+        // `armReturningSessionBootLine` is exactly what keeps (b)
+        // true).
+        //
+        // ASSERT-only `window.__game` reads (BRIEF 2026-08-15):
+        // forceSave stamps `save.lastLoadProof.source`, null on the
+        // fresh session until the authoritative write completes.
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                () =>
+                  (window as unknown as {
+                    __game?: {
+                      save?: { lastLoadProof?: { source: string | null } };
+                    };
+                  }).__game?.save?.lastLoadProof?.source ?? null,
+              ),
+            { timeout: WAIT_MS },
+          )
+          .not.toBeNull();
 
-    // Acceptance criterion (2): the HANDOFF line is CONTAINED in
-    // `#line`. Contained (not equal) because PR #1228 prepends
-    // `ioMemoryResponseLinesFor(...)` reflections — the handoff line
-    // is the trailing sentence, but the leading memory reflection
-    // makes the full string longer than the handoff alone.
-    await expect(lineNode).toContainText(HANDOFF_LINE, { timeout: WAIT_MS });
-  });
+        // Reload the SAME slot — the query string survives page.reload
+        // — and assert both proofs.
+        await page.reload({ waitUntil: "load" });
+        await waitForBeat(page, "return-tone-choice");
+
+        const persistedTone = await page.evaluate(
+          () =>
+            (window as unknown as {
+              __game?: { player?: { returnReason?: string | null } };
+            }).__game?.player?.returnReason ?? null,
+        );
+        expect(persistedTone).toBe("kind");
+
+        await expect(lineNode).toHaveText(REPLY_BY_TONE.kind, {
+          timeout: WAIT_MS,
+        });
+      }
+    });
+  }
 });

@@ -78,16 +78,24 @@ test.describe("AFTERSIGN NPC memory dialogue — served surface consumer", () =>
   test.use({ viewport: PHONE_VIEWPORT });
 
   test("tap-driven walk to io-next-job renders ioMemoryResponseLinesFor text into #line", async ({ page }) => {
-    // Clear any prior slot save so we always start at packet-choice.
-    await page.goto("/aftersign/");
-    await page.evaluate(() => {
-      for (const key of Object.keys(window.localStorage)) {
-        if (key.startsWith("aftersign:kiosk-slice:")) {
-          window.localStorage.removeItem(key);
-        }
-      }
+    // ISOLATED SLOT (PR #1238 root-cause fix): this spec used to run on
+    // the DEFAULT slot ("local"), which maps to the SHARED
+    // server-authoritative save key local-slice-player::local on the
+    // vite preview process. The localStorage sweep below only cleared
+    // the BROWSER copy — readAuthoritativeSave still returned whatever
+    // a sibling spec (m-continue-playtest / m-continue-served-beats,
+    // both also on the default slot) had last written to the SERVER
+    // store. Under fullyParallel, once choose-return-tone started
+    // forceSave()ing (#1234 — writing beat="return-tone-choice" to the
+    // server store), this spec could boot into a mid-story beat, its
+    // `#deliverButton` tap silently no-op'd off-beat, and waitForBeat
+    // timed out at :74-75 — the exact stack CI posted on this PR's red
+    // runs. A unique slot per run makes the boot state hermetic (cold
+    // server slot + cold localStorage key), same pattern as every
+    // slot-parameterized sibling spec.
+    await page.goto(`/aftersign/?slot=npc-memory-served-${Date.now()}`, {
+      waitUntil: "load",
     });
-    await page.goto("/aftersign/");
     await waitForGame(page);
 
     // Deliver the packet sealed (default) with no second-action tap —

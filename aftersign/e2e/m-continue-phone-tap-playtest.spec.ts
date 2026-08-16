@@ -76,19 +76,18 @@ test.describe("M-CONTINUE phone tap playtest", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("a phone player taps from packet-offered through io-next-job using only visible affordances", async ({ page }) => {
-    // Clear any prior slot save so we always start at packet-offered
-    // (mirrors the sibling `npc-memory-dialogue-served.spec.ts` pattern —
-    // a stale save would boot into a later beat and skip the surface
-    // we're here to prove).
-    await page.goto("/aftersign/");
-    await page.evaluate(() => {
-      for (const key of Object.keys(window.localStorage)) {
-        if (key.startsWith("aftersign:kiosk-slice:")) {
-          window.localStorage.removeItem(key);
-        }
-      }
+    // ISOLATED SLOT (PR #1238): the old pattern (localStorage sweep +
+    // default slot) only cleared the BROWSER copy of the save — the
+    // default slot also maps to the SHARED server-authoritative key
+    // local-slice-player::local on the vite preview process, which the
+    // sweep never touched. Now that choose-return-tone forceSave()s
+    // (#1234), a parallel default-slot sibling could leave a mid-story
+    // beat in the server store and this spec would boot past
+    // packet-offered, failing the boot assertion below. Unique slot per
+    // run = cold server slot + cold localStorage key, no sweep needed.
+    await page.goto(`/aftersign/?slot=m-continue-phone-tap-${Date.now()}`, {
+      waitUntil: "load",
     });
-    await page.goto("/aftersign/");
     await waitForGame(page);
 
     // Boot beat is `packet-offered`: acknowledge/skip are disabled,
