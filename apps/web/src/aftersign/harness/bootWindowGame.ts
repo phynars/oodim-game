@@ -19,6 +19,10 @@ import {
   type AftersignReturnToneChoiceFeel,
 } from "../returnToneChoiceFeel";
 import {
+  buildIoContinueBeats,
+  type IoContinueBeat,
+} from "../story/ioContinueBeats";
+import {
   assertAftersignTapChoiceSurfaces,
   type AftersignTapChoiceSurfaceReport,
 } from "../tapChoiceFeel";
@@ -101,6 +105,23 @@ export type AftersignWindowGameHarness = {
    * feel row is the ground truth, the DOM write is the projection.
    */
   getAppliedReturnToneFeel: () => AftersignReturnToneChoiceFeel | null;
+  /**
+   * Return the two-beat continue sequence Io speaks after the player
+   * strikes a return posture: her REPLY line for that posture, then
+   * the invariant NEXT-JOB handoff (red tag → Saint Orra). Sourced
+   * from `story/ioContinueBeats.ts` — the harness never authors the
+   * lines inline. Returns `null` when no posture is recorded yet
+   * (`setIoReturnReason` has never been called with a non-null value,
+   * or was last called with `null`).
+   *
+   * This is the served-surface consumer of `ioContinueBeats.ts`: a
+   * scene renderer reads these two beats through `window.__game` in
+   * the same session it reads `getAppliedReturnToneFeel()`, so the
+   * posture drives the VOICE and the FEEL in lock-step.
+   */
+  getIoContinueBeats: () =>
+    | readonly [IoContinueBeat, IoContinueBeat]
+    | null;
   /**
    * Measure every mounted tap-choice surface
    * (`[data-aftersign-tap-choice]`) against the 44px minimum touch
@@ -373,6 +394,12 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     getAppliedReturnToneFeel() {
       return appliedReturnToneFeel;
+    },
+    getIoContinueBeats() {
+      if (ioReturnReason === null) {
+        return null;
+      }
+      return buildIoContinueBeats(ioReturnReason);
     },
     getTapChoiceFeelReport() {
       // Sourced from the live DOM each call so the report is always
