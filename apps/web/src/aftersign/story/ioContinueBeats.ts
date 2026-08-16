@@ -44,23 +44,27 @@ export type IoReturnToneOption = {
 
 export const IO_RETURN_TONE_OPTIONS: readonly IoReturnToneOption[] =
   Object.freeze([
+    // #1234: replies are VERBATIM from the authored scene 8
+    // (docs/flagship/vertical-slice-script.md §8, "Io if kind /
+    // evasive / blunt"). The earlier paraphrases shipped the wiring
+    // but not the words; the tap-driven e2e now pins each line.
     Object.freeze({
       id: "kind",
       label: "I came back because you trusted me.",
       reply:
-        "Careful. That sort of answer makes people hand you worse errands.",
+        "Careful. Say that too often and people will start handing you breakable things.",
     }),
     Object.freeze({
       id: "evasive",
       label: "I had business nearby.",
       reply:
-        "No, you did not. But you came back anyway. I can work with half a truth.",
+        "Work is a clean word. We can use it until it stains.",
     }),
     Object.freeze({
       id: "blunt",
       label: "You still owe me an explanation.",
       reply:
-        "Correct. I am paying in useful work, which is the only coin left tonight.",
+        "Good. Wanting is easier to route than pretending.",
     }),
   ]);
 

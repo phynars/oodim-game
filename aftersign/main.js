@@ -1479,6 +1479,14 @@ const choose = async (choiceId) => {
       return;
     }
     setBeat("return-tone-choice");
+    // #1234: the tone the player just struck is marked "for later
+    // episode use" in the script — persist it durably NOW, not at the
+    // next incidental save. Without this, the last write was
+    // deliverPacket()'s persist() at packet-delivered, so a reload
+    // after choosing silently lost both the fork beat and
+    // player.returnReason. forceSave writes local + authoritative
+    // copies (same posture as the Orra mint branch above).
+    await forceSave();
     publishState();
     return;
   }
