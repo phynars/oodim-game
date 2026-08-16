@@ -172,5 +172,16 @@ test.describe("AFTERSIGN return-tone fork: three authored replies, tone persiste
         }).__game?.player?.returnReason ?? null,
     );
     expect(persistedTone).toBe("kind");
+
+    // Soren PR #1238 review: assert #line ALSO carries the kind tone's
+    // verbatim reply after reload. Without this the persisted-tone
+    // check passes even when the #957 boot override clobbers the beat
+    // and speaks the returning-recognition line instead of Io's tone
+    // reply. The guard in `armReturningSessionBootLine` now skips
+    // `return-tone-choice` (and `io-next-job`) precisely so this
+    // assertion holds.
+    await expect(page.locator("#line")).toHaveText(REPLY_BY_TONE.kind, {
+      timeout: WAIT_MS,
+    });
   });
 });
