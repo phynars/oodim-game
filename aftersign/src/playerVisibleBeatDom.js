@@ -3,7 +3,16 @@
 // Purpose: keep milestone evidence anchored to what a phone player can see
 // and tap, not to window.__game input hooks. main.js owns the actual render
 // loop; this small helper gives that loop one canonical way to stamp the
-// current beat and visible choices onto DOM nodes for Playwright tap specs.
+// current beat and visible choices onto DOM nodes so a phone-facing tap
+// harness can locate them via `[data-beat-id]` / `[data-choice-id]`
+// selectors instead of reaching into the input surface.
+//
+// No Playwright tap spec consumes these attributes yet — the attribute
+// contract lands first so the eventual spec has a stable selector to
+// aim at. Follow-up in #1232 adds the spec and wires it to the shipped
+// slice. Until then the attributes are still load-bearing for the
+// served DOM contract test in
+// `apps/web/src/aftersign/servedSurface.contract.test.ts`.
 
 export const AFTERSIGN_BEAT_ATTRIBUTE = "data-beat-id";
 export const AFTERSIGN_CHOICE_ATTRIBUTE = "data-choice-id";
