@@ -572,6 +572,25 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(game?.getSnapshot().story.completedBeats).toContain("io-next-job");
   });
 
+  it("keeps M-CONTINUE harness choices on the generic assertion/input bridge", () => {
+    const game = window.__game as
+      | (typeof window.__game & {
+          chooseReturnTone?: unknown;
+          askForNextJob?: unknown;
+        })
+      | undefined;
+    expect(game).toBeDefined();
+
+    // The founder's 2026-08-15 amendment makes `window.__game` an assertion
+    // surface, not the acceptance input surface. Keep the harness API narrow:
+    // state-machine verbs may exist under the generic `input.choose` bridge
+    // for harness-only tests, but they must not grow into bespoke public
+    // player-action aliases that a Playwright spec can mistake for UI.
+    expect(game?.input.choose).toEqual(expect.any(Function));
+    expect(game?.chooseReturnTone).toBeUndefined();
+    expect(game?.askForNextJob).toBeUndefined();
+  });
+
   it("reaches Io's next-job offer and Orra claim tag through window.__game", () => {
     const game = window.__game;
     expect(game).toBeDefined();
