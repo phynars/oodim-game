@@ -543,13 +543,23 @@
         <p class="speaker" id="speaker">Io</p>
         <p class="line" id="line">Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.</p>
         <div class="controls">
-          <button id="packetButton" class="packet-button" type="button" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
+          <!--
+            data-aftersign-tap-choice: names the buttons that COMMIT a
+            fork so the harness's `getTapChoiceFeelReport()` can measure
+            each rendered rect against the 44px minimum tap target on
+            the live DOM (see apps/web/src/aftersign/tapChoiceFeel.ts
+            + servedSurface.contract.test.ts). The four buttons below
+            are the choice-commit surfaces — packet gesture, the two
+            route-memory forks, and the delivery commit; sound/reset
+            are utility controls, not forks, and stay unlabeled.
+          -->
+          <button id="packetButton" class="packet-button" type="button" data-aftersign-tap-choice="packet" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
           <div id="routeChoice" class="route-choice" data-visible="false" aria-label="Choose whether you listened to Io's route before delivery">
             <span class="route-choice-label">Route memory</span>
-            <button id="acknowledgeRouteButton" type="button">I listened</button>
-            <button id="skipRouteButton" type="button">I ran early</button>
+            <button id="acknowledgeRouteButton" type="button" data-aftersign-tap-choice="acknowledge-kiosk">I listened</button>
+            <button id="skipRouteButton" type="button" data-aftersign-tap-choice="skip-kiosk-acknowledge">I ran early</button>
           </div>
-          <button id="deliverButton" type="button">Deliver at the blue kiosk</button>
+          <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>
         </div>

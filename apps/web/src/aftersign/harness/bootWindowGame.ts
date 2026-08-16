@@ -19,6 +19,10 @@ import {
   type AftersignReturnToneChoiceFeel,
 } from "../returnToneChoiceFeel";
 import {
+  assertAftersignTapChoiceSurfaces,
+  type AftersignTapChoiceSurfaceReport,
+} from "../tapChoiceFeel";
+import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   getAftersignStoryState,
@@ -97,6 +101,20 @@ export type AftersignWindowGameHarness = {
    * feel row is the ground truth, the DOM write is the projection.
    */
   getAppliedReturnToneFeel: () => AftersignReturnToneChoiceFeel | null;
+  /**
+   * Measure every mounted tap-choice surface
+   * (`[data-aftersign-tap-choice]`) against the 44px minimum touch
+   * target and return the report. This is the consumer that turns
+   * `tapChoiceFeel.ts` from a pure primitive into a runtime contract
+   * on the live DOM — a scene renderer that ships a 40px button
+   * regresses this assertion before the player ever mis-taps.
+   *
+   * DOM-optional: in a worker / SSR / no-document context the
+   * report describes zero surfaces (vacuously ok). Consumer tests
+   * mount real elements with real rects and assert `.ok` /
+   * `.failures[].label`.
+   */
+  getTapChoiceFeelReport: () => AftersignTapChoiceSurfaceReport;
   /**
    * Accept Io's next-job offer. The returned beat is the canonical
    * copy from `io-recognition-beat.ts`; the harness also stores it so
@@ -355,6 +373,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     getAppliedReturnToneFeel() {
       return appliedReturnToneFeel;
+    },
+    getTapChoiceFeelReport() {
+      // Sourced from the live DOM each call so the report is always
+      // a fresh measurement — a renderer that mounts / unmounts /
+      // resizes choice buttons never sees a stale report. The reader
+      // is pure (no state written); safe to call at any beat.
+      const doc =
+        (globalThis as { document?: Document }).document ?? null;
+      return assertAftersignTapChoiceSurfaces(doc);
     },
     acceptNextJob,
     input: {
