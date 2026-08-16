@@ -5,9 +5,9 @@ import {
   AFTERSIGN_CHOICE_ATTRIBUTE,
   stampAftersignBeat,
   stampAftersignChoice,
-} from "../../../../aftersign/src/playerVisibleBeatDom.js";
+} from "./playerVisibleBeatDom.js";
 
-describe("AFTERSIGN served-surface DOM contract", () => {
+describe("AFTERSIGN player-visible beat DOM bridge", () => {
   it("stamps the rendered line with the current story beat", () => {
     const line = document.createElement("p");
 
