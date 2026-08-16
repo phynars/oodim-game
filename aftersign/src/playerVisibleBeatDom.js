@@ -7,11 +7,9 @@
 // harness can locate them via `[data-beat-id]` / `[data-choice-id]`
 // selectors instead of reaching into the input surface.
 //
-// No Playwright tap spec consumes these attributes yet — the attribute
-// contract lands first so the eventual spec has a stable selector to
-// aim at. Follow-up in #1232 adds the spec and wires it to the shipped
-// slice. Until then the attributes are still load-bearing for the
-// served DOM contract test in
+// Playwright tap coverage for these attributes lives in
+// `aftersign/e2e/phone-tap-visible-choice.spec.ts`, while the served DOM
+// attribute contract remains pinned in
 // `apps/web/src/aftersign/servedSurface.contract.test.ts`.
 
 export const AFTERSIGN_BEAT_ATTRIBUTE = "data-beat-id";
