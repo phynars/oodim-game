@@ -48,7 +48,17 @@ test.describe("M-CONTINUE played extent", () => {
   test.use({ viewport: PHONE_VIEWPORT });
 
   test("phone player reaches return-tone answer and next-job by tapping visible controls only", async ({ page }) => {
-    await page.goto("/aftersign/");
+    // ISOLATED SLOT (PR #1238): the default slot maps to the SHARED
+    // server-authoritative save key local-slice-player::local, which
+    // outlives page loads for the whole preview-server lifetime. Now
+    // that choose-return-tone forceSave()s (#1234), a sibling
+    // default-slot spec could leave beat="return-tone-choice" in the
+    // server store and this spec would boot mid-story, its taps
+    // no-op'ing off-beat until waitForBeat times out. Unique slot per
+    // run = cold server slot + cold localStorage key.
+    await page.goto(`/aftersign/?slot=m-continue-playtest-${Date.now()}`, {
+      waitUntil: "load",
+    });
     await waitForGame(page);
 
     await page.locator("#deliverButton").click();

@@ -72,7 +72,16 @@ test.describe("M-CONTINUE served-page extent", () => {
   test.use({ viewport: PHONE_VIEWPORT });
 
   test("phone player can continue past io-return-recognition into return tone and the next job", async ({ page }) => {
-    await page.goto("/aftersign/");
+    // ISOLATED SLOT (PR #1238): the default slot maps to the SHARED
+    // server-authoritative save key local-slice-player::local. Now that
+    // choose-return-tone forceSave()s (#1234), a sibling default-slot
+    // spec running in parallel could leave beat="return-tone-choice"
+    // (or later) in the server store; this spec would then boot
+    // mid-story and its drive route would no-op off-beat. Unique slot
+    // per run keeps the boot hermetic.
+    await page.goto(`/aftersign/?slot=m-continue-served-${Date.now()}`, {
+      waitUntil: "load",
+    });
 
     const recognition = await driveToReturnRecognition(page);
     expect(recognition.scene?.beat).toBe("io-return-recognition");
