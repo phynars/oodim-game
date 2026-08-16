@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+// Served-surface CONTRACT test: this file pins the shipped
+// `aftersign/` vertical slice — the HTML entrypoint, `window.__game`
+// publish shape, and the return-tone feel wiring — via grep-level
+// string assertions against the raw served files. It is deliberately
+// NOT a unit test of any single module. See PR #1205's review: a feel
+// table (or any runtime seam) with no shipped consumer is dead code
+// with green tests; these pins fail loudly if a future refactor
+// unwires the seam.
+//
+// Unit-level coverage of the beat/choice DOM stamps lives next to the
+// module itself, in `aftersign/src/playerVisibleBeatDom.test.js`.
+// Do not duplicate those assertions here — this file's job is the
+// served-page contract, not module behavior.
+
 const readServedAftersignFile = (relativePath: string) =>
   readFileSync(join(process.cwd(), "aftersign", relativePath), "utf8");
 
@@ -49,5 +63,21 @@ describe("Aftersign served surface contract", () => {
 
     const html = readServedAftersignFile("index.html");
     expect(html).toContain("data-aftersign-return-surface");
+  });
+
+  it("routes player-visible beat + choice stamps through the shared DOM bridge", () => {
+    // PR #1231: `renderText()` in main.js used to set
+    // `dataset.choiceId` / `disabled` inline on the three visible
+    // buttons and never stamped the story beat onto the rendered
+    // line. Both are now routed through
+    // `aftersign/src/playerVisibleBeatDom.js` so a Playwright tap
+    // spec can read the current beat + tap the correct choice via
+    // DOM attributes rather than window.__game input hooks. This
+    // pin fails if a refactor drops the import or reverts to the
+    // inline dataset writes.
+    const main = readServedAftersignFile("main.js");
+    expect(main).toContain("stampAftersignBeat");
+    expect(main).toContain("stampAftersignChoice");
+    expect(main).toContain("./src/playerVisibleBeatDom.js");
   });
 });

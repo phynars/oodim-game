@@ -43,6 +43,10 @@ import {
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
 import { AFTERSIGN_NEXT_JOB_BEAT } from "../packages/aftersign/next-job-beat.js";
+import {
+  stampAftersignBeat,
+  stampAftersignChoice,
+} from "./src/playerVisibleBeatDom.js";
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through
@@ -1067,6 +1071,7 @@ const publishState = () => {
 
 const renderText = () => {
   syncIoLine();
+  stampAftersignBeat(line, state.scene.beat);
   setTextContentIfChanged(speaker, "Io");
   setTextContentIfChanged(line, state.npcs.io.lastLine);
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
@@ -1082,40 +1087,31 @@ const renderText = () => {
     setTextContentIfChanged(acknowledgeRouteButton, "Acknowledge route");
     setTextContentIfChanged(skipRouteButton, "Skip acknowledgment");
     setTextContentIfChanged(deliverButton, "Deliver packet");
-    acknowledgeRouteButton.dataset.choiceId = "acknowledge-kiosk";
-    skipRouteButton.dataset.choiceId = "skip-kiosk-acknowledge";
-    deliverButton.dataset.choiceId = "deliver-packet";
-    acknowledgeRouteButton.disabled = false;
-    skipRouteButton.disabled = false;
-    deliverButton.disabled = false;
+    stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");
+    stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
+    stampAftersignChoice(deliverButton, "deliver-packet");
   } else if (isReturnRecognitionBeat) {
     setTextContentIfChanged(acknowledgeRouteButton, "Kind return");
     setTextContentIfChanged(skipRouteButton, "Evasive return");
     setTextContentIfChanged(deliverButton, "Blunt return");
-    acknowledgeRouteButton.dataset.choiceId = "choose-return-tone";
-    skipRouteButton.dataset.choiceId = "choose-return-tone";
-    deliverButton.dataset.choiceId = "choose-return-tone";
-    acknowledgeRouteButton.disabled = false;
-    skipRouteButton.disabled = false;
-    deliverButton.disabled = false;
+    stampAftersignChoice(acknowledgeRouteButton, "choose-return-tone");
+    stampAftersignChoice(skipRouteButton, "choose-return-tone");
+    stampAftersignChoice(deliverButton, "choose-return-tone");
   } else if (isReturnToneChoiceBeat) {
     setTextContentIfChanged(deliverButton, "Ask for next job");
-    deliverButton.dataset.choiceId = "ask-for-next-job";
+    stampAftersignChoice(deliverButton, "ask-for-next-job");
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
-    deliverButton.disabled = false;
   } else if (isNextJobBeat) {
     setTextContentIfChanged(deliverButton, "Deliver next packet");
-    deliverButton.dataset.choiceId = "deliver-packet";
+    stampAftersignChoice(deliverButton, "deliver-packet");
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
-    deliverButton.disabled = false;
   } else {
     setTextContentIfChanged(deliverButton, "Deliver packet");
-    deliverButton.dataset.choiceId = "deliver-packet";
+    stampAftersignChoice(deliverButton, "deliver-packet");
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
-    deliverButton.disabled = false;
   }
 
   const routeMemory = state.player.secondAction === SECOND_ACTION.DONE
