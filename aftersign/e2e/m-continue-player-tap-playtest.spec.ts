@@ -94,7 +94,7 @@ test.describe("M-CONTINUE player-tap playtest", () => {
 
       const tapped = await tapFirstVisibleChoice(page);
       expect(tapped, `No visible tappable choice at step ${step}. Last visible text: ${text}`).toBe(true);
-      await page.waitForTimeout(180);
+      await page.waitForTimeout(180); // pacing — human tap cadence
     }
 
     const playedText = [...seen].join("\n---\n");
