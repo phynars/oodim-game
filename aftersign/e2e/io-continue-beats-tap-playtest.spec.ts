@@ -21,6 +21,12 @@ import { test, expect, type Page } from "@playwright/test";
 // diagnose from the raw runner log tail (whose stack frames name the
 // crashing file), not from this spec's line numbers.
 //
+// Cold-start budget: this file drives THREE tests, not four. The
+// reload assertion (Soren PR #1238) is folded into the "kind" tone
+// test so we pay one boot for both proofs — every extra top-level
+// test in this lane pays another vite-preview + SwiftShader boot,
+// and iteration 5 kept the aftersign job red on that surface.
+//
 // Coverage:
 //   1. THREE fresh-save runs, one per tone button (kind / evasive /
 //      blunt). Each asserts `#line` shows THAT tone's verbatim script
@@ -30,10 +36,13 @@ import { test, expect, type Page } from "@playwright/test";
 //   2. The blunt run continues to `io-next-job` and asserts the
 //      invariant HANDOFF line is contained in `#line` (preserves the
 //      PR #1236 consumer coverage).
-//   3. A reload run: choose "kind", wait for the durable write
-//      (choose-return-tone now forceSave()s — #1234), reload the same
-//      slot, and assert the restored save snapshot carries
-//      `player.returnReason === "kind"`.
+//   3. The "kind" run also reloads the same slot after the durable
+//      write (choose-return-tone now forceSave()s — #1234) and
+//      asserts BOTH `player.returnReason === "kind"` on the restored
+//      snapshot AND that `#line` still carries the kind tone's
+//      verbatim reply — without that #line check the guard-skip in
+//      `armReturningSessionBootLine` (Soren PR #1238 review) has no
+//      served-page proof.
 
 const SPEC_TIMEOUT_MS = 120_000;
 const WAIT_MS = 60_000;
@@ -105,7 +114,8 @@ test.describe("AFTERSIGN return-tone fork: three authored replies, tone persiste
     test(`tapping the "${tone}" return renders its verbatim script reply`, async ({ page }) => {
       test.setTimeout(SPEC_TIMEOUT_MS);
 
-      await playToToneFork(page, `io-continue-${tone}-${Date.now()}`);
+      const slot = `io-continue-${tone}-${Date.now()}`;
+      await playToToneFork(page, slot);
       await tapReturnReason(page, tone);
 
       await waitForBeat(page, "return-tone-choice");
@@ -128,60 +138,55 @@ test.describe("AFTERSIGN return-tone fork: three authored replies, tone persiste
           timeout: WAIT_MS,
         });
       }
+
+      if (tone === "kind") {
+        // Soren PR #1238 review — durable-save proof, folded into the
+        // "kind" run so it shares this test's cold-start (see file
+        // header). The tone tap triggered an async forceSave() (#1234);
+        // wait for it to land, reload the SAME slot, then assert BOTH
+        // (a) the restored snapshot carries the persisted tone, AND
+        // (b) `#line` still speaks the kind tone's verbatim reply
+        // (without that check the persisted-tone assertion passes even
+        // when the #957 boot override clobbers `#line` with the
+        // returning-recognition copy — the guard-skip in
+        // `armReturningSessionBootLine` is exactly what keeps (b)
+        // true).
+        //
+        // ASSERT-only `window.__game` reads (BRIEF 2026-08-15):
+        // forceSave stamps `save.lastLoadProof.source`, null on the
+        // fresh session until the authoritative write completes.
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                () =>
+                  (window as unknown as {
+                    __game?: {
+                      save?: { lastLoadProof?: { source: string | null } };
+                    };
+                  }).__game?.save?.lastLoadProof?.source ?? null,
+              ),
+            { timeout: WAIT_MS },
+          )
+          .not.toBeNull();
+
+        // Reload the SAME slot — the query string survives page.reload
+        // — and assert both proofs.
+        await page.reload({ waitUntil: "load" });
+        await waitForBeat(page, "return-tone-choice");
+
+        const persistedTone = await page.evaluate(
+          () =>
+            (window as unknown as {
+              __game?: { player?: { returnReason?: string | null } };
+            }).__game?.player?.returnReason ?? null,
+        );
+        expect(persistedTone).toBe("kind");
+
+        await expect(lineNode).toHaveText(REPLY_BY_TONE.kind, {
+          timeout: WAIT_MS,
+        });
+      }
     });
   }
-
-  test("the chosen tone survives a reload in the durable save", async ({ page }) => {
-    test.setTimeout(SPEC_TIMEOUT_MS);
-
-    const slot = `io-continue-reload-${Date.now()}`;
-    await playToToneFork(page, slot);
-    await tapReturnReason(page, "kind");
-
-    await waitForBeat(page, "return-tone-choice");
-    await expect(page.locator("#line")).toHaveText(REPLY_BY_TONE.kind, {
-      timeout: WAIT_MS,
-    });
-
-    // The tone tap triggers an async forceSave() (#1234). Wait for the
-    // durable write to land before reloading: forceSave stamps
-    // save.lastLoadProof.source, which is null on this fresh run until
-    // the write completes. ASSERT-only window.__game read.
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () =>
-              (window as unknown as {
-                __game?: { save?: { lastLoadProof?: { source: string | null } } };
-              }).__game?.save?.lastLoadProof?.source ?? null,
-          ),
-        { timeout: WAIT_MS },
-      )
-      .not.toBeNull();
-
-    // Reload the SAME slot (the query string survives page.reload) and
-    // assert the restored save snapshot carries the persisted tone.
-    await page.reload({ waitUntil: "load" });
-    await waitForBeat(page, "return-tone-choice");
-
-    const persistedTone = await page.evaluate(
-      () =>
-        (window as unknown as {
-          __game?: { player?: { returnReason?: string | null } };
-        }).__game?.player?.returnReason ?? null,
-    );
-    expect(persistedTone).toBe("kind");
-
-    // Soren PR #1238 review: assert #line ALSO carries the kind tone's
-    // verbatim reply after reload. Without this the persisted-tone
-    // check passes even when the #957 boot override clobbers the beat
-    // and speaks the returning-recognition line instead of Io's tone
-    // reply. The guard in `armReturningSessionBootLine` now skips
-    // `return-tone-choice` (and `io-next-job`) precisely so this
-    // assertion holds.
-    await expect(page.locator("#line")).toHaveText(REPLY_BY_TONE.kind, {
-      timeout: WAIT_MS,
-    });
-  });
 });
