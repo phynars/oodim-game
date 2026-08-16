@@ -13,6 +13,14 @@ import { test, expect, type Page } from "@playwright/test";
 // ASSERTIONS (the persisted-tone check and the save-proof poll) —
 // never to drive input.
 //
+// CI flake note (Soren review, PR #1238): the aftersign lane runs at
+// retries: 3 (aftersign/playwright.config.ts) and can crash BEFORE any
+// spec runs on a SwiftShader webServer-boot hiccup — the failure
+// signature is `playwright-report/results.json not found` posted by
+// ci.yml's summary step. That failure mode is orthogonal to this spec;
+// diagnose from the raw runner log tail (whose stack frames name the
+// crashing file), not from this spec's line numbers.
+//
 // Coverage:
 //   1. THREE fresh-save runs, one per tone button (kind / evasive /
 //      blunt). Each asserts `#line` shows THAT tone's verbatim script
