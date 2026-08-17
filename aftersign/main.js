@@ -421,6 +421,7 @@ const state = {
 
 let statePublishVersion = 0;
 let publishedStateVersion = -1;
+let kioskSceneInitContract = null;
 
 // #957: Io's returning-session boot line. Computed once at boot (below,
 // after `visibilitychange` wiring) from the durable delivery-outcome
@@ -1070,6 +1071,7 @@ const publishState = () => {
     save: { ...state.save },
     movement: clone(state.movement),
     cameraRig: clone(state.cameraRig),
+    sceneRig: clone(kioskSceneInitContract),
     interaction: {
       ...clone(state.interaction),
       recognitionDomFeedback: clone(recognitionDomFeedback),
@@ -2654,7 +2656,11 @@ const {
   rain,
   kioskHitTargets,
   resize,
-} = createKioskScene(canvas);
+} = (() => {
+  const kioskScene = createKioskScene(canvas);
+  kioskSceneInitContract = kioskScene.sceneInitContract;
+  return kioskScene;
+})();
 
 const handleScenePointer = (event) => {
   const rect = canvas.getBoundingClientRect();
