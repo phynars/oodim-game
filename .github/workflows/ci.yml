@@ -16,6 +16,15 @@ permissions:
 
 on:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_frozen_games:
+        description: "Run archival frozen-game lanes (pacman/galaga/doom/agar)"
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 6 * * 1"
 
 jobs:
   changes:
@@ -69,7 +78,7 @@ jobs:
 
   pacman:
     needs: changes
-    if: ${{ needs.changes.outputs.pacman == 'true' || needs.changes.outputs.shared == 'true' }}
+    if: ${{ needs.changes.outputs.pacman == 'true' || needs.changes.outputs.shared == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_frozen_games == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -93,7 +102,7 @@ jobs:
 
   galaga:
     needs: changes
-    if: ${{ needs.changes.outputs.galaga == 'true' || needs.changes.outputs.shared == 'true' }}
+    if: ${{ needs.changes.outputs.galaga == 'true' || needs.changes.outputs.shared == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_frozen_games == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -117,7 +126,7 @@ jobs:
 
   doom:
     needs: changes
-    if: ${{ needs.changes.outputs.doom == 'true' || needs.changes.outputs.shared == 'true' }}
+    if: ${{ needs.changes.outputs.doom == 'true' || needs.changes.outputs.shared == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_frozen_games == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -53,6 +53,15 @@ on:
       - "agar/**"
       - "e2e-shared/**"
       - ".github/workflows/redgreen.yml"
+  workflow_dispatch:
+    inputs:
+      run_agar_archival:
+        description: "Run frozen agar red/green archival lanes"
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    - cron: "15 6 * * 1"
 
 jobs:
   changes:
@@ -277,7 +286,7 @@ jobs:
   # that invariance IS the proof (agar/docs/desync-broken-fixture-plan.md).
   agar-multiplayer-green:
     needs: changes
-    if: ${{ needs.changes.outputs.agar == 'true' }}
+    if: ${{ needs.changes.outputs.agar == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_agar_archival == 'true') }}
     name: agar multiplayer (green — main DO, spec must pass)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -296,7 +305,7 @@ jobs:
 
   agar-multiplayer-red:
     needs: changes
-    if: ${{ needs.changes.outputs.agar == 'true' }}
+    if: ${{ needs.changes.outputs.agar == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_agar_archival == 'true') }}
     name: agar multiplayer (red — drop-every-7th DO, spec must fail)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -330,7 +339,7 @@ jobs:
   # round-1 wiring bug; do not regress).
   agar-persistence-green:
     needs: changes
-    if: ${{ needs.changes.outputs.agar == 'true' }}
+    if: ${{ needs.changes.outputs.agar == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_agar_archival == 'true') }}
     name: agar persistence-harness (green — default mode)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -349,7 +358,7 @@ jobs:
 
   agar-persistence-red-monotonic:
     needs: changes
-    if: ${{ needs.changes.outputs.agar == 'true' }}
+    if: ${{ needs.changes.outputs.agar == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_agar_archival == 'true') }}
     name: agar persistence (red — non-monotone-persist MUST fail monotonic-persist)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -395,7 +404,7 @@ jobs:
 
   agar-persistence-red-eviction:
     needs: changes
-    if: ${{ needs.changes.outputs.agar == 'true' }}
+    if: ${{ needs.changes.outputs.agar == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_agar_archival == 'true') }}
     name: agar persistence (red — lossy-persist MUST fail eviction-roundtrip)
     runs-on: ubuntu-latest
     timeout-minutes: 15

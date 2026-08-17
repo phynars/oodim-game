@@ -26,6 +26,12 @@ start here, then follow the links into deeper docs.
 - **Frozen games** (`pacman/`, `galaga/`, `doom/`, `agar/`) — archival.
   No new features, no new clones. Touch these only to fix a
   player-breaking bug, and label the issue accordingly.
+  Default PR CI does **not** run frozen-game lanes. Use explicit archival
+  triggers when a frozen-game bugfix needs coverage:
+  - `.github/workflows/ci.yml` → run via `workflow_dispatch` with
+    `run_frozen_games=true` (or wait for the scheduled archival run).
+  - `.github/workflows/redgreen.yml` → run via `workflow_dispatch` with
+    `run_agar_archival=true` (or wait for the scheduled archival run).
 - **Studio-level docs** (this tree) — update when the shape of the
   studio changes (new runtime, new cross-cutting doc).
 
