@@ -28,13 +28,15 @@ const AFTERSIGN_E2E_ROOT = join(REPO_ROOT, "aftersign", "e2e");
 // its own reason to exist.  What we want to enforce is EXISTENCE of
 // shape (1): at least ONE `*playtest*` spec that reaches past
 // `io-return-recognition` into `return-tone`/`next-job`, plays via
-// visible events, and takes NO input through `__game.input`.
+// visible events, asserts the visible UI along the route, and takes NO
+// input through `__game.input`.
 //
 // Scope discriminant: file NAME containing `playtest` (all five
 // M-CONTINUE / IO-CONTINUE played specs at the session commit contain
 // it; the harness-driven `m-continue-served-beats.spec.ts` does not).
 const PLAYTEST_FILE_PATTERN = /playtest\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
+const VISIBLE_ASSERTION_PATTERN = /\b(?:toBeVisible|getByRole|getByText|getByLabelText|locator)\s*\(/;
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const RETURN_RECOGNITION_PATTERN = /io-return-recognition/;
 const CONTINUATION_BEAT_PATTERN = /(?:return-tone|next-job|next job|returnTone|nextJob)/i;
@@ -95,14 +97,15 @@ describe("AFTERSIGN M-CONTINUE played acceptance surface", () => {
     ).not.toEqual([]);
 
     // Step 2: among those, count the ones that qualify as PLAYED — no
-    // harness-input drive AND at least one player-visible event call.
-    // The guard passes if the QUALIFYING set is non-empty.  Individual
-    // playtests may still legitimately mix in a harness sibling
-    // pattern; what matters is that the milestone has a shape-(1)
-    // proof somewhere in the tree.
+    // harness-input drive, at least one player-visible event call, and
+    // at least one visible UI query/assertion.  The last condition is
+    // what catches the failure mode where the state machine advances
+    // but the rendered dialogue never changes for the player.
     const playedProofs = mContinuePlaytests.filter(
       ({ source }) =>
-        !HARNESS_INPUT_PATTERN.test(source) && PLAYER_EVENT_PATTERN.test(source),
+        !HARNESS_INPUT_PATTERN.test(source) &&
+        PLAYER_EVENT_PATTERN.test(source) &&
+        VISIBLE_ASSERTION_PATTERN.test(source),
     );
 
     expect(
@@ -110,7 +113,8 @@ describe("AFTERSIGN M-CONTINUE played acceptance surface", () => {
       [
         "M-CONTINUE has no PLAYED acceptance proof.",
         "At least one *playtest.spec.ts under aftersign/e2e/ that touches io-return-recognition + return-tone/next-job MUST:",
-        "  - drive input via visible events (tap/click/press/pointer/etc.), and",
+        "  - drive input via visible events (tap/click/press/pointer/etc.),",
+        "  - assert visible UI along the route (role/text/locator + visibility), and",
         "  - take NO input through window.__game.input.* (that surface is assertion-only in a played acceptance).",
         "Candidates inspected (m-continue continuation beats present):",
         ...mContinuePlaytests.map(({ repoPath }) => `  - ${repoPath}`),
