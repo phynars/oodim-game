@@ -97,9 +97,12 @@ const runners: Runner[] = [
   { label: "runFirstCameraMoveChecks", run: runFirstCameraMoveChecks },
   { label: "checkFirstCameraMoveReturnContract", run: checkFirstCameraMoveReturnContract },
   { label: "runMemoryPromptTimingChecks", run: runMemoryPromptTimingChecks },
-  // Perf-budget calibration + its real consumer
-  // (`assertInputAcknowledgeAgainstCalibratedBudget`, which wraps
-  // `measureInputAcknowledgeLatency`). The leaf module
+  // Perf-budget calibration + its real consumers: the tap-side wrapper
+  // `assertInputAcknowledgeAgainstCalibratedBudget` (around
+  // `measureInputAcknowledgeLatency`) AND the pointer-to-render wrapper
+  // `assertPointerToRenderAgainstCalibratedBudget` (around
+  // `measurePointerToRenderLatency`) — both live in `perfBudgetCalibration.ts`
+  // and gate on the same `PerfBudgetCalibration`. The leaf module
   // `inputAcknowledgeLatency.ts` has no relative imports; the calibration
   // module and its check bundle import it via a `.ts`-extensioned
   // specifier, so the whole subgraph satisfies the extension-resolution
