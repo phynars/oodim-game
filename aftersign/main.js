@@ -78,6 +78,7 @@ import {
   buildIoContinueBeats,
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
+import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -572,14 +573,13 @@ const lineForBeat = () => {
     // list. When the player has no durable facts (defensive: shouldn't
     // happen at this beat, but honored so the surface stays crash-
     // free), the handoff line still speaks (`remembersNoDurableFact`).
-    const reason = state.player.returnReason ?? "evasive";
-    const handoffLine = buildIoContinueBeats(reason)[1].line;
     const reflection = ioMemoryResponseLinesFor({
       playerFlags: state.player.flags,
       npcMemoryFacts: state.npcs.io.memory,
     })
       .map((entry) => entry.text)
       .join(" ");
+    const handoffLine = ioNextJobLine();
     return reflection ? `${reflection} ${handoffLine}` : handoffLine;
   }
 
