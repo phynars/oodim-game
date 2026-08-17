@@ -3,6 +3,7 @@ import {
   ORRA_NAME_DEBT,
   type IoNextJobBeat,
 } from "../../../../../packages/aftersign/src/narrative-triage/io-recognition-beat";
+import { measurePointerToRenderLatency } from "../../../../../aftersign/src/inputAcknowledgeLatency";
 import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
   AFTERSIGN_CHOOSE_RETURN_TONE,
@@ -77,6 +78,40 @@ export type AftersignRecallFeelOptions = {
    */
   reducedMotion?: boolean;
 };
+
+/**
+ * Pointer-to-render feel-contract sample. Shape is the harness-surface
+ * projection of `PointerToRenderMeasurement` from
+ * `aftersign/src/inputAcknowledgeLatency.ts` — same arithmetic, fields
+ * renamed to the surface vocabulary (`pointerAtMs / renderedAtMs /
+ * deltaMs / withinBudget`) so a consumer test doesn't have to know
+ * about the primitive's `receivedAtMs / withinOneFrame` names.
+ *
+ * `frameBudgetMs` is 16.7 (one 60 Hz frame, physically honest —
+ * 16.6667…ms rounded to one decimal). The primitive's default budget
+ * is 16 (integer), so the harness passes 16.7 explicitly.
+ */
+export type PointerToRenderLatencySample = {
+  pointerAtMs: number;
+  renderedAtMs: number;
+  deltaMs: number;
+  frameBudgetMs: number;
+  withinBudget: boolean;
+};
+
+export type PointerToRenderLatencyReport = {
+  latest?: PointerToRenderLatencySample;
+  worst?: PointerToRenderLatencySample;
+  samples: PointerToRenderLatencySample[];
+};
+
+/**
+ * One 60 Hz frame in milliseconds, one decimal. The primitive's default
+ * (`INPUT_ACKNOWLEDGE_LATENCY.FRAME_BUDGET_MS`) rounds this to 16 — the
+ * harness passes 16.7 explicitly so a 16 ms sample lands INSIDE the
+ * budget (deltaMs=16, withinBudget=true) instead of on the edge.
+ */
+const POINTER_TO_RENDER_FRAME_BUDGET_MS = 16.7;
 
 export type AftersignWindowGameHarness = {
   version: 1;
@@ -172,9 +207,30 @@ export type AftersignWindowGameHarness = {
    * `choose("ask-for-next-job")` advance the M-CONTINUE-E1 beat axis
    * (`return-tone-choice` → `io-next-job`) through the runtime-state
    * recorders used by the story beat resolver.
+   *
+   * Pointer-to-render probe (`resetPointerToRenderLatency`,
+   * `markPointerIntent`, `markPointerRendered`,
+   * `getPointerToRenderLatencyReport`) — a harness-only feel-contract
+   * for the one-frame promise. `markPointerIntent` records the timestamp
+   * at which a pointer event was accepted; `markPointerRendered` closes
+   * the loop when the frame that reflects that pointer's effect ships
+   * pixels. Under the hood this defers to
+   * `measurePointerToRenderLatency` from
+   * `aftersign/src/inputAcknowledgeLatency.ts` with a 16.7 ms budget
+   * (one 60 Hz frame, physically honest), reshapes the primitive's
+   * `receivedAtMs / latencyMs / withinOneFrame` into the surface shape
+   * `pointerAtMs / deltaMs / withinBudget`, and folds the sample into a
+   * running report (`samples[]`, `latest`, `worst` — where worst is the
+   * MAX `deltaMs` seen this session so a regression is loud).
+   * `resetPointerToRenderLatency` drops the samples and any pending
+   * intents.
    */
   input: {
     choose: (choiceId: "accept-next-job" | "choose-return-tone" | "ask-for-next-job" | string) => IoNextJobBeat | null;
+    resetPointerToRenderLatency: () => void;
+    markPointerIntent: (input: { pointerAtMs: number; pointerId: number }) => void;
+    markPointerRendered: (input: { renderedAtMs: number; pointerId: number }) => void;
+    getPointerToRenderLatencyReport: () => PointerToRenderLatencyReport;
   };
   getAcceptedNextJob: () => IoNextJobBeat | null;
   getStoryState: () => AftersignStoryStateSnapshot;
@@ -307,6 +363,71 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
   let acceptedNextJob: IoNextJobBeat | null = null;
   let savedAtTurn = 0;
+
+  // Pointer-to-render probe state. `pendingIntents` matches intent →
+  // render by pointerId (the primitive requires event.id === signal.id;
+  // we stringify the numeric pointerId at the boundary). `latencySamples`
+  // is the running report; `worstLatencySample` is the max-deltaMs seen
+  // so a regression stays loud even after a good sample lands after it.
+  const pendingPointerIntents = new Map<number, number>();
+  let pointerLatencySamples: PointerToRenderLatencySample[] = [];
+  let worstPointerLatencySample: PointerToRenderLatencySample | null = null;
+
+  const resetPointerToRenderLatency = (): void => {
+    pendingPointerIntents.clear();
+    pointerLatencySamples = [];
+    worstPointerLatencySample = null;
+  };
+
+  const markPointerIntent = (input: { pointerAtMs: number; pointerId: number }): void => {
+    pendingPointerIntents.set(input.pointerId, input.pointerAtMs);
+  };
+
+  const markPointerRendered = (input: { renderedAtMs: number; pointerId: number }): void => {
+    const pointerAtMs = pendingPointerIntents.get(input.pointerId);
+    if (pointerAtMs === undefined) {
+      // No matching intent — the render signal is orphaned. Silently
+      // ignore rather than throw: a jittery renderer that fires an
+      // extra `rendered` after a reset shouldn't crash the probe.
+      return;
+    }
+    pendingPointerIntents.delete(input.pointerId);
+
+    const id = `pointer-${input.pointerId}`;
+    const measurement = measurePointerToRenderLatency(
+      { id, receivedAtMs: pointerAtMs },
+      { id, renderedAtMs: input.renderedAtMs },
+      POINTER_TO_RENDER_FRAME_BUDGET_MS,
+    );
+    const sample: PointerToRenderLatencySample = {
+      pointerAtMs: measurement.receivedAtMs,
+      renderedAtMs: measurement.renderedAtMs,
+      deltaMs: measurement.latencyMs,
+      frameBudgetMs: measurement.frameBudgetMs,
+      withinBudget: measurement.withinOneFrame,
+    };
+    pointerLatencySamples.push(sample);
+    if (
+      worstPointerLatencySample === null ||
+      sample.deltaMs > worstPointerLatencySample.deltaMs
+    ) {
+      worstPointerLatencySample = sample;
+    }
+  };
+
+  const getPointerToRenderLatencyReport = (): PointerToRenderLatencyReport => {
+    const latest = pointerLatencySamples[pointerLatencySamples.length - 1];
+    const report: PointerToRenderLatencyReport = {
+      samples: pointerLatencySamples.slice(),
+    };
+    if (latest) {
+      report.latest = latest;
+    }
+    if (worstPointerLatencySample) {
+      report.worst = worstPointerLatencySample;
+    }
+    return report;
+  };
 
   const applyMeet = (
     id: "io" | "orra",
@@ -497,6 +618,10 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         }
         return null;
       },
+      resetPointerToRenderLatency,
+      markPointerIntent,
+      markPointerRendered,
+      getPointerToRenderLatencyReport,
     },
     getAcceptedNextJob() {
       return acceptedNextJob;
