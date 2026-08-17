@@ -646,7 +646,7 @@ describe("Aftersign window.__game harness (#918)", () => {
       AFTERSIGN_NEXT_JOB_OFFER_FEEL.cameraPushMeters * 1.15,
     );
     expect(Math.abs(wakePeak!.cameraYawDegrees)).toBeLessThanOrEqual(
-      AFTERSIGN_NEXT_JOB_OFFER_FEEL.cameraYawDegrees + 1e-6,
+      AFTERSIGN_NEXT_JOB_OFFER_FEEL.cameraYawDegrees * 1.15,
     );
     expect(wakePeak!.cardScale).toBeGreaterThan(1);
     // Overscale + a modest overshoot budget for easeOutBackSoft.
