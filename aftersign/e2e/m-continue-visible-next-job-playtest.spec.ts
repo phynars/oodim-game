@@ -49,7 +49,7 @@ test.describe("AFTERSIGN M-CONTINUE visible next-job playtest", () => {
     await tapChoice("ask-for-next-job");
     await waitForBeat("io-next-job");
 
-    await expect(lineNode).toContainText("Last time, you kept the blue packet sealed", { timeout: WAIT_MS });
+    await expect(lineNode).toContainText("You kept the blue packet sealed", { timeout: WAIT_MS });
     await expect(lineNode).toContainText("Take the red tag to Saint Orra", { timeout: WAIT_MS });
   });
 });

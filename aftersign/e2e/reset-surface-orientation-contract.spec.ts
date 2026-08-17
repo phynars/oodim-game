@@ -158,15 +158,15 @@ test.describe("AFTERSIGN reset orientation contract", () => {
     // acknowledged kiosk) and does NOT regress into the
     // first-meeting "before I knew your name" copy.
     await expect(lineNode).toContainText(
-      "Last time, you kept the blue packet sealed. I noticed the restraint.",
+      "You kept the blue packet sealed. The city remembers closed hands.",
       { timeout: WAIT_MS },
     );
     await expect(lineNode).toContainText(
-      "And you checked the kiosk twice. Most couriers pretend the second signal is static.",
+      "You checked the kiosk twice. Most couriers let the second signal die.",
       { timeout: WAIT_MS },
     );
     await expect(lineNode).not.toContainText(
-      "You came back before I knew your name. That counts for something.",
+      "You came back before I had a name for you. That matters.",
       { timeout: WAIT_MS },
     );
   });
