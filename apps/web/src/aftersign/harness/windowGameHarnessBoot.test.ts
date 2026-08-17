@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AFTERSIGN_IO_LINES, buildIoMemorySentence } from "../ioVoiceContract";
 import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
 import { AFTERSIGN_MEMORY_RECALL_GLINT_FEEL } from "../memoryRecallGlintFeel";
+import { AFTERSIGN_NEXT_JOB_OFFER_FEEL } from "../nextJobOfferFeel";
 import {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
@@ -570,6 +571,121 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(() => game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB)).not.toThrow();
     expect(game?.getSnapshot().story.beat).toBe("io-next-job");
     expect(game?.getSnapshot().story.completedBeats).toContain("io-next-job");
+  });
+
+  // Consumer wiring for the next-job offer feel envelope (#1255 review).
+  // `nextJobOfferFeel.ts` was landing as a pure module with no caller —
+  // exactly the "unconsumed module" pattern this file's other feel
+  // assertions (recallFeel, glint, applied return-tone feel) exist to
+  // prevent. This assertion drives the DOCUMENTED trigger — the
+  // `io-next-job` line appearing via `input.choose("ask-for-next-job")`,
+  // NOT `acceptNextJob()` — and pins the envelope's phases on either
+  // side of the gate. If a refactor unwires `getAftersignNextJobOfferFeel`
+  // from the harness surface OR re-couples the gate to the accept beat,
+  // THIS test goes red in the blocking lane.
+  it("fires the next-job offer feel envelope on ask-for-next-job (io-next-job line trigger)", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.nextJobOfferFeel).toEqual(expect.any(Function));
+
+    // Fresh state, then walk to the `return-tone-choice` beat so
+    // `ask-for-next-job` is legal (recordAftersignNextJobRequest guards
+    // against skipping return-tone).
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        21,
+      ),
+    );
+    game?.meetNpc("io");
+    game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE);
+
+    // Before the `io-next-job` line has been triggered, the feel is
+    // dormant — the offer envelope is what the player sees the MOMENT
+    // Io produces the red tag, not before. Accepting the job later
+    // would be a separate confirm beat, not this envelope.
+    expect(game?.nextJobOfferFeel({ elapsedMs: 0 })).toBeNull();
+    expect(game?.nextJobOfferFeel({ elapsedMs: 200 })).toBeNull();
+
+    // Trigger the `io-next-job` line — this is the DOCUMENTED gate
+    // for the offer envelope.
+    game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
+    expect(game?.getSnapshot().story.beat).toBe("io-next-job");
+
+    // Idle frame at t=0 — envelope is armed but hasn't moved yet.
+    const atZero = game?.nextJobOfferFeel({ elapsedMs: 0 });
+    expect(atZero).not.toBeNull();
+    expect(atZero?.phase).toBe("idle");
+    expect(atZero?.cameraPushMeters).toBe(0);
+    expect(atZero?.cardLiftPx).toBe(0);
+    expect(atZero?.cardScale).toBe(1);
+    expect(atZero?.hapticMs).toBe(0);
+    expect(atZero?.progress).toBe(0);
+
+    // First frame inside the wake sub-phase — haptic tap fires in the
+    // first ~8% of the wake window (per the feel module's wake gate).
+    const firstFrame = game?.nextJobOfferFeel({
+      elapsedMs: Math.max(1, AFTERSIGN_NEXT_JOB_OFFER_FEEL.wakeMs * 0.04),
+    });
+    expect(firstFrame?.phase).toBe("wake");
+    expect(firstFrame?.hapticMs).toBe(AFTERSIGN_NEXT_JOB_OFFER_FEEL.hapticMs);
+    expect(firstFrame!.cardLiftPx).toBeGreaterThan(0);
+
+    // Peak of wake (t === wakeMs - 1 ms, still inside wake): the
+    // card has lifted and the camera has pushed toward Io's hand.
+    const wakePeak = game?.nextJobOfferFeel({
+      elapsedMs: AFTERSIGN_NEXT_JOB_OFFER_FEEL.wakeMs - 1,
+    });
+    expect(wakePeak?.phase).toBe("wake");
+    expect(wakePeak!.cameraPushMeters).toBeGreaterThan(0);
+    // easeOutBackSoft overshoots slightly above 1 mid-wake; allow a
+    // small tolerance above the base amplitude for the "back" bump.
+    expect(wakePeak!.cameraPushMeters).toBeLessThanOrEqual(
+      AFTERSIGN_NEXT_JOB_OFFER_FEEL.cameraPushMeters * 1.15,
+    );
+    expect(Math.abs(wakePeak!.cameraYawDegrees)).toBeLessThanOrEqual(
+      AFTERSIGN_NEXT_JOB_OFFER_FEEL.cameraYawDegrees + 1e-6,
+    );
+    expect(wakePeak!.cardScale).toBeGreaterThan(1);
+    // Overscale + a modest overshoot budget for easeOutBackSoft.
+    expect(wakePeak!.cardScale).toBeLessThanOrEqual(
+      1 + AFTERSIGN_NEXT_JOB_OFFER_FEEL.cardOverscale * 1.15,
+    );
+
+    // Middle of settle: still moving but decaying toward hold.
+    const midSettle = game?.nextJobOfferFeel({
+      elapsedMs:
+        AFTERSIGN_NEXT_JOB_OFFER_FEEL.wakeMs +
+        AFTERSIGN_NEXT_JOB_OFFER_FEEL.settleMs / 2,
+    });
+    expect(midSettle?.phase).toBe("settle");
+    expect(midSettle!.tagGlowAlpha).toBeGreaterThan(0);
+    expect(midSettle!.hapticMs).toBe(0);
+
+    // At durationMs: envelope has fully resolved into hold — no
+    // camera/card motion left, faint glow tail permitted.
+    const held = game?.nextJobOfferFeel({
+      elapsedMs: AFTERSIGN_NEXT_JOB_OFFER_FEEL.durationMs,
+    });
+    expect(held?.phase).toBe("hold");
+    expect(held?.progress).toBe(1);
+    expect(held?.hapticMs).toBe(0);
+
+    // Reduced-motion contract: camera/card motion zeroed, haptic
+    // suppressed, glow trimmed but non-negative — same shape as the
+    // other feel envelopes.
+    const reducedWake = game?.nextJobOfferFeel({
+      elapsedMs: Math.max(1, AFTERSIGN_NEXT_JOB_OFFER_FEEL.wakeMs * 0.04),
+      reducedMotion: true,
+    });
+    expect(reducedWake?.cameraPushMeters).toBe(0);
+    expect(reducedWake?.cameraYawDegrees).toBe(0);
+    expect(reducedWake?.cardLiftPx).toBe(0);
+    expect(reducedWake?.cardScale).toBe(1);
+    expect(reducedWake?.hapticMs).toBe(0);
+    expect(reducedWake!.tagGlowAlpha).toBeGreaterThanOrEqual(0);
   });
 
   it("keeps M-CONTINUE harness choices on the generic assertion/input bridge", () => {

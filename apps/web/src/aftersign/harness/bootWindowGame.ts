@@ -156,8 +156,14 @@ export type AftersignWindowGameHarness = {
   /**
    * Sample the next-job offer envelope that makes Io's red-tag handoff
    * feel like a physical object entering the player's hands. Renderers
-   * call this after the `io-next-job` line appears; tests assert the
-   * same surface without driving story progress through it.
+   * call this after the `io-next-job` line appears — i.e. once the
+   * player has requested the next job via
+   * `input.choose("ask-for-next-job")` (which stamps
+   * `state.hasAskedForNextJob === true` through
+   * `recordAftersignNextJobRequest`). The feel is DECOUPLED from
+   * `acceptNextJob()`: the envelope is what the player sees the
+   * moment Io produces the red tag, not what fires after they
+   * accept it. Returns `null` before the request has been recorded.
    */
   nextJobOfferFeel: (options: { elapsedMs: number; reducedMotion?: boolean }) => AftersignNextJobOfferFeelFrame | null;
   /**
@@ -429,7 +435,13 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     acceptNextJob,
     nextJobOfferFeel({ elapsedMs, reducedMotion }) {
-      if (!acceptedNextJob) {
+      // Gate on the DOCUMENTED trigger: the `io-next-job` line has
+      // appeared iff the player has asked for the next job (which
+      // `recordAftersignNextJobRequest` records as
+      // `state.hasAskedForNextJob = true`). Accepting the job is a
+      // LATER beat; gating on `acceptedNextJob` would delay the
+      // envelope to the wrong frame. See #1255 review.
+      if (state.hasAskedForNextJob !== true) {
         return null;
       }
       return getAftersignNextJobOfferFeel({ elapsedMs, reducedMotion });

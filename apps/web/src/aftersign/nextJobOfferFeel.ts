@@ -88,8 +88,26 @@ export const getAftersignNextJobOfferFeel = ({
   const wake = easeOutBackSoft(wakeProgress);
   const settle = 1 - easeInOutQuad(settleProgress);
   const tail = 1 - easeOutCubic(holdProgress);
-  const visualEnvelope = phase === "wake" ? wake : phase === "settle" ? settle : tail * 0.18;
-  const glowEnvelope = phase === "wake" ? easeOutCubic(wakeProgress) : phase === "settle" ? settle : tail * 0.42;
+  // Idle is TRULY dormant — nothing has fired yet, so no motion or
+  // glow leaks into the frame. Prior draft used the else-branch
+  // (`tail * 0.18`) which — with holdProgress=0 → tail=1 — bled
+  // 18% of the base amplitude into `t=0`, contradicting the phase
+  // label. Explicit idle→0 keeps the contract honest.
+  const isIdle = phase === "idle";
+  const visualEnvelope = isIdle
+    ? 0
+    : phase === "wake"
+      ? wake
+      : phase === "settle"
+        ? settle
+        : tail * 0.18;
+  const glowEnvelope = isIdle
+    ? 0
+    : phase === "wake"
+      ? easeOutCubic(wakeProgress)
+      : phase === "settle"
+        ? settle
+        : tail * 0.42;
 
   if (reducedMotion) {
     return {
