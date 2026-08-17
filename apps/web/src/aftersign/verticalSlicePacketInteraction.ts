@@ -32,16 +32,13 @@ export type AftersignPacketConfirmInteractionEffectsOptions = Omit<
   reducedMotion?: boolean;
 };
 
-export const AFTERSIGN_PACKET_CONFIRM_LABELS: Record<
-  AftersignInteractionConfirmKind,
-  string
-> = {
+const PACKET_CONFIRM_LABELS: Record<AftersignInteractionConfirmKind, string> = {
   packetOpen: "Opened",
   packetPreserve: "Sealed",
   packetInspect: "Inspecting",
 };
 
-export const AFTERSIGN_PACKET_CONFIRM_BLOOM_FEEL: Record<
+const PACKET_CONFIRM_BLOOM_OVERRIDES: Record<
   AftersignInteractionConfirmKind,
   Partial<PlayAftersignConfirmFeelOptions["feel"]>
 > = {
@@ -74,17 +71,11 @@ export const AFTERSIGN_PACKET_CONFIRM_BLOOM_FEEL: Record<
   },
 };
 
-export function resolveAftersignPacketConfirmLabel(
-  kind: AftersignInteractionConfirmKind,
-): string {
-  return AFTERSIGN_PACKET_CONFIRM_LABELS[kind];
-}
-
-export function getAftersignPacketConfirmBloomFeel(
+function getPacketConfirmBloomFeel(
   kind: AftersignInteractionConfirmKind,
   reducedMotion: boolean,
 ): Partial<PlayAftersignConfirmFeelOptions["feel"]> {
-  const feel = AFTERSIGN_PACKET_CONFIRM_BLOOM_FEEL[kind];
+  const feel = PACKET_CONFIRM_BLOOM_OVERRIDES[kind];
 
   if (!reducedMotion) return feel;
 
@@ -134,8 +125,8 @@ export function playAftersignPacketConfirmInteractionFeel(
 
   return playAftersignConfirmFeel({
     ...playOptions,
-    label: label ?? resolveAftersignPacketConfirmLabel(interaction.kind),
-    feel: getAftersignPacketConfirmBloomFeel(interaction.kind, reducedMotion),
+    label: label ?? PACKET_CONFIRM_LABELS[interaction.kind],
+    feel: getPacketConfirmBloomFeel(interaction.kind, reducedMotion),
   });
 }
 
