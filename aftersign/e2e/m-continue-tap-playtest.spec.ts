@@ -1,74 +1,139 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-// M-CONTINUE played acceptance (PR #1250, reviewer fix): the terminal
-// beat is asserted against the SERVED-PAGE published surface —
-// `window.__game.scene.beat` (see aftersign/main.js publishState() at
-// line 1023, and the canonical contract in
-// aftersign/e2e/story-state-surface-contract.spec.ts). The prior draft
-// polled `window.__game.state.story.currentBeat`, which exists on
-// neither the served page nor the harness (harness uses
-// `getSnapshot().story.beat`), so the assertion collapsed to `null` and
-// masked flow regressions — a perpetual-false gate, not a test.
+// M-CONTINUE played acceptance, driven by ACCESSIBLE NAMES.
 //
-// The taps use exact accessible names (regex-anchored with ^...$) so
-// a scene with multiple partial matches can't silently pick the wrong
-// button; no `.first()` — if a button name drifts the spec reds
-// immediately at the tap, not at the terminal poll.
+// The sibling `m-continue-phone-tap-playtest.spec.ts` already proves
+// the same journey via DOM ids (#deliverButton, #acknowledgeRouteButton,
+// #skipRouteButton). Ids are the DEV contract; this spec covers the
+// PLAYER-VISIBLE / SCREEN-READER contract — the accessible names the
+// browser exposes to assistive tech and to Playwright's ARIA snapshot.
+// If a future refactor keeps the ids stable but silently renames a
+// button ("Kind return" → "Kind reply"), the sibling stays green and
+// this spec reds — which is the point.
+//
+// Two other choices that make this spec add signal instead of noise:
+//   1. This spec picks the EVASIVE branch (skipRouteButton →
+//      "Evasive return"). The sibling picks the KIND branch. Between
+//      the two specs the fork's kind + evasive arms are both proven;
+//      the blunt arm is left to a future spec if it earns one.
+//   2. Terminal assertion polls `window.__game.scene.beat` — the SAME
+//      served-page surface that story-state-surface-contract.spec.ts
+//      pins (main.js :: publishState). Reviewer PR #1250 confirmed this
+//      is the correct read path; the earlier draft polled
+//      `window.__game.state.story.currentBeat`, which exists on neither
+//      the served page nor the harness snapshot, and silently returned
+//      null — a perpetual-false gate rather than a test.
+//
+// ACCESSIBLE-NAME SOURCES (verified against aftersign/index.html +
+// aftersign/main.js at the session commit):
+//   - `#deliverButton` at `packet-offered`   → text "Deliver at the
+//     blue kiosk" (index.html:562)
+//   - `#acknowledgeRouteButton` at
+//     `io-return-recognition`                → text "Kind return"
+//     (main.js re-label; see phone-tap sibling line 107)
+//   - `#skipRouteButton` at
+//     `io-return-recognition`                → text "Evasive return"
+//     (sibling line 108)
+//   - `#deliverButton` at `return-tone-choice` → text "Ask for next
+//     job" (sibling line 116; NOT "Ask for THE next job")
+//
+// The regex assertions below are anchored (^...$) and pass through the
+// getByRole exact-name check (`exact: true`). If any button copy drifts,
+// the tapExact call fails at toHaveCount(1) — not at a downstream poll —
+// so the error message points at the drifted string directly.
 
-const phoneViewport = { width: 390, height: 844 };
+type FlagshipSnapshot = {
+  scene?: {
+    beat?: string;
+  };
+};
 
-async function visibleDialogueText(page: import("@playwright/test").Page): Promise<string> {
-  const snapshot = await page.locator("body").innerText();
-  return snapshot.replace(/\s+/g, " ").trim();
+declare global {
+  interface Window {
+    __game?: {
+      version?: number;
+      getSnapshot?: () => FlagshipSnapshot;
+      scene?: { beat?: unknown };
+    };
+  }
 }
 
-async function tapExactOption(page: import("@playwright/test").Page, name: RegExp): Promise<void> {
-  const option = page.getByRole("button", { name });
+const PHONE_VIEWPORT = { width: 390, height: 844 };
+const WAIT_MS = 10_000;
+
+async function waitForGame(page: Page): Promise<void> {
+  await page.waitForFunction(() => window.__game?.version === 1, undefined, {
+    timeout: WAIT_MS,
+  });
+}
+
+async function tapExactByName(page: Page, name: string): Promise<void> {
+  // exact: true → getByRole matches the button whose accessible name
+  // is EXACTLY this string, not a substring. This is stricter than a
+  // regex partial match: if the copy is "Deliver at the blue kiosk"
+  // and we pass "Deliver packet", toHaveCount(1) fails immediately
+  // rather than silently matching some other close button.
+  const option = page.getByRole("button", { name, exact: true });
   await expect(option).toHaveCount(1);
   await expect(option).toBeVisible();
+  await expect(option).toBeEnabled();
   await option.tap();
 }
 
-test.describe("M-CONTINUE played acceptance", () => {
-  test.use({ viewport: phoneViewport, hasTouch: true, isMobile: true });
-
-  test("a phone player can tap past Io's return recognition into the tone fork and next job", async ({ page }) => {
-    await page.goto("/aftersign/");
-
-    // Packet gesture → delivery → return to Io.
-    await tapExactOption(page, /^Tap the packet$/i);
-    await tapExactOption(page, /^Deliver packet$/i);
-    await tapExactOption(page, /^Return to Io$/i);
-
-    await expect.poll(() => visibleDialogueText(page)).toMatch(/remember|sealed|packet/i);
-
-    // M-CONTINUE acceptance must be PLAYED, not driven: the tone fork
-    // is one of the three exact recognition buttons. We commit "steady"
-    // here (the middle/evasive posture) — the assertion below only
-    // cares that the flow lands on `io-next-job`, not which tone was
-    // picked, so any one of the three exact names would do; we pin
-    // one so the spec is deterministic. Switch this line if the
-    // authored button copy moves.
-    await tapExactOption(page, /^Steady$/i);
-    await expect.poll(() => visibleDialogueText(page)).toMatch(/steady|return|remember/i);
-
-    await tapExactOption(page, /^Ask for the next job$/i);
-    await expect.poll(() => visibleDialogueText(page)).toMatch(/next job|another job|red tag|orra/i);
-
-    // Terminal assertion against the SERVED-PAGE contract surface
-    // (aftersign/main.js:1023 publishState() → window.__game.scene.beat).
-    // This is the same read path story-state-surface-contract.spec.ts
-    // uses, so if a future refactor moves the beat field, both specs
-    // red together and the drift can't be silent.
-    await expect
-      .poll(() =>
+async function waitForBeat(page: Page, beat: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
         page.evaluate(() => {
-          const maybeGame = (window as typeof window & {
-            __game?: { scene?: { beat?: unknown } };
-          }).__game;
-          return maybeGame?.scene?.beat ?? null;
+          const maybeGame = window.__game;
+          const raw = maybeGame?.scene?.beat;
+          return typeof raw === "string" ? raw : null;
         }),
-      )
-      .toBe("io-next-job");
+      { timeout: WAIT_MS },
+    )
+    .toBe(beat);
+}
+
+test.describe("M-CONTINUE played acceptance (accessible-name taps)", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
+
+  test("a phone player taps by accessible name from packet-offered through io-next-job on the evasive branch", async ({
+    page,
+  }) => {
+    // ISOLATED SLOT (see PR #1238 + sibling spec at
+    // m-continue-phone-tap-playtest.spec.ts:81). The default slot maps
+    // to a shared server-authoritative key that outlives page loads on
+    // the vite preview process; a parallel default-slot sibling could
+    // leave a mid-story beat in the store and this spec would boot
+    // past `packet-offered`, its first tap no-op'ing off-beat.
+    await page.goto(`/aftersign/?slot=m-continue-tap-name-${Date.now()}`, {
+      waitUntil: "load",
+    });
+    await waitForGame(page);
+
+    // Boot: `packet-offered`. Only `#deliverButton` is enabled; its
+    // rendered text (and therefore its accessible name) is "Deliver at
+    // the blue kiosk".
+    await waitForBeat(page, "packet-offered");
+    await tapExactByName(page, "Deliver at the blue kiosk");
+
+    // The delivery tap advances to `io-return-recognition`, at which
+    // point the three fork buttons re-label to their return-tone
+    // options. We commit the EVASIVE branch — the sibling covers KIND;
+    // between the two specs both arms are proven.
+    await waitForBeat(page, "io-return-recognition");
+    await tapExactByName(page, "Evasive return");
+
+    // `return-tone-choice`: `#deliverButton` re-labels to "Ask for next
+    // job" (NOT "Ask for THE next job" — the reviewer's PR #1250 catch;
+    // the older draft invented the article and never landed a tap).
+    await waitForBeat(page, "return-tone-choice");
+    await tapExactByName(page, "Ask for next job");
+
+    // Terminal assertion — same served-page surface pinned by
+    // story-state-surface-contract.spec.ts. If a future refactor moves
+    // `scene.beat`, both specs red together and the drift can't be
+    // silent.
+    await waitForBeat(page, "io-next-job");
   });
 });
