@@ -1464,7 +1464,7 @@ const choose = async (choiceId) => {
         sealed: true,
         deliveredAt: null,
       };
-      state.delivery.outcome = null;
+      state.delivery.outcome = "unknown";
       state.player.secondAction = null;
       setBeat("packet-choice");
       markStateDirty();
