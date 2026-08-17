@@ -87,6 +87,22 @@ export type AftersignSaveSnapshot = {
   savedAtTurn: number;
 };
 
+/**
+ * Round-trip beat: what a returning NPC speaks when their recognition
+ * of the player references the two axes the harness stores about the
+ * player (name + prior-interaction count). Emitted by the harness
+ * when a recall trigger fires AND player memory has been supplied;
+ * absent otherwise. Kept as an optional field on `story` so consumers
+ * that don't drive `setPlayerMemory` see the same shape they always
+ * did.
+ */
+export type AftersignNpcMemoryRoundTripSnapshot = {
+  npcId: "io" | "orra";
+  playerName: string;
+  interactionCount: number;
+  spokenLine: string;
+};
+
 export type AftersignStoryStateSnapshot = {
   story: {
     id: "aftersign.verticalSlice";
@@ -96,6 +112,7 @@ export type AftersignStoryStateSnapshot = {
     ioMemoryBeat?: AftersignIoMemoryBeat;
     orraMemoryBeat?: AftersignOrraMemoryBeat;
     ioDialogue: AftersignIoDialogueSnapshot;
+    npcMemoryRoundTrip?: AftersignNpcMemoryRoundTripSnapshot;
   };
   /**
    * Scene block with the current beat alongside the scene id, so a
