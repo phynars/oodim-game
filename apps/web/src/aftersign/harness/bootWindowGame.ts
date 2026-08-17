@@ -11,6 +11,10 @@ import {
   getMemoryRecallFeel,
   type MemoryRecallFeelFrame,
 } from "../memoryRecallFeel";
+import {
+  getAftersignNextJobOfferFeel,
+  type AftersignNextJobOfferFeelFrame,
+} from "../nextJobOfferFeel";
 import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
   AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
@@ -149,6 +153,13 @@ export type AftersignWindowGameHarness = {
    * served-page surface.
    */
   acceptNextJob: () => IoNextJobBeat;
+  /**
+   * Sample the next-job offer envelope that makes Io's red-tag handoff
+   * feel like a physical object entering the player's hands. Renderers
+   * call this after the `io-next-job` line appears; tests assert the
+   * same surface without driving story progress through it.
+   */
+  nextJobOfferFeel: (options: { elapsedMs: number; reducedMotion?: boolean }) => AftersignNextJobOfferFeelFrame | null;
   /**
    * Served-page style input surface. `choose("accept-next-job")` is an
    * alias for `acceptNextJob()`. `choose("choose-return-tone")` and
@@ -417,6 +428,12 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       return assertAftersignTapChoiceSurfaces(doc);
     },
     acceptNextJob,
+    nextJobOfferFeel({ elapsedMs, reducedMotion }) {
+      if (!acceptedNextJob) {
+        return null;
+      }
+      return getAftersignNextJobOfferFeel({ elapsedMs, reducedMotion });
+    },
     input: {
       choose(choiceId) {
         if (choiceId === "accept-next-job") {
