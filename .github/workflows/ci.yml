@@ -150,7 +150,7 @@ jobs:
 
   agar:
     needs: changes
-    if: ${{ needs.changes.outputs.agar == 'true' || needs.changes.outputs.shared == 'true' }}
+    if: ${{ needs.changes.outputs.agar == 'true' || needs.changes.outputs.shared == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_frozen_games == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
