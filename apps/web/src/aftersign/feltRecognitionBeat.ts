@@ -14,7 +14,53 @@ export const AFTERSIGN_FELT_RECOGNITION_BEAT = {
     chimeCue: "recognition-chime-c6",
     chimeDelayMs: 160,
   },
+  // RETURN VARIANT — additive sub-envelope for the "returning player" flavor
+  // of the same felt-recognition beat. Same tempo owner as the block above;
+  // when `isReturning` is set on the resolved cue, the layer picks up these
+  // numbers as datasets alongside the base ones (the served renderer chooses
+  // which subset to drive). Kept here (single contract) instead of forking a
+  // parallel juice module — the beat is one beat, in two flavors.
+  returnVariant: {
+    anticipationMs: 48,
+    cardLiftPx: 10,
+    cameraNodDeg: 1.6,
+    shakePx: 3,
+    shakeMs: 90,
+    bloomPulseMs: 180,
+    chipPopPx: 8,
+    chipPopScale: 1.08,
+    easeOutBack: "cubic-bezier(0.18, 0.89, 0.32, 1.28)",
+    easeSettle: "cubic-bezier(0.22, 1, 0.36, 1)",
+  },
 } as const;
+
+export type AftersignFeltRecognitionReturnVariant =
+  typeof AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant;
+
+/**
+ * Reduced-motion projection of the return-variant numbers. Motion-heavy
+ * fields collapse to 0 (lift / camera nod / shake / chip travel); tempo
+ * fields (anticipation, bloom pulse) stay so the beat still reads.
+ *
+ * Kept as a pure function next to the contract so both the DOM layer and
+ * any Playwright / renderer harness produce the same projection.
+ */
+export function projectReturnVariantForReducedMotion(
+  variant: AftersignFeltRecognitionReturnVariant = AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant,
+): AftersignFeltRecognitionReturnVariant {
+  return {
+    anticipationMs: variant.anticipationMs,
+    cardLiftPx: 0,
+    cameraNodDeg: 0,
+    shakePx: 0,
+    shakeMs: 0,
+    bloomPulseMs: Math.min(variant.bloomPulseMs, 120),
+    chipPopPx: 0,
+    chipPopScale: 1,
+    easeOutBack: variant.easeSettle,
+    easeSettle: variant.easeSettle,
+  } as AftersignFeltRecognitionReturnVariant;
+}
 
 export type AftersignFeltRecognitionBeat = typeof AFTERSIGN_FELT_RECOGNITION_BEAT;
 
@@ -22,12 +68,16 @@ export interface AftersignRecognitionMemoryLine {
   playerName: string;
   rememberedAction: string;
   npcName?: string;
+  /** Mark this recognition as the RETURNING-player flavor of the beat. */
+  isReturning?: boolean;
 }
 
 export interface AftersignRecognitionCue {
   line: string;
   ariaLabel: string;
   feel: AftersignFeltRecognitionBeat;
+  /** True when this cue represents the returning-player flavor. */
+  isReturning: boolean;
 }
 
 function cleanSegment(value: string): string {
@@ -41,11 +91,20 @@ export function resolveAftersignFeltRecognitionCue(
   const rememberedAction =
     cleanSegment(memory.rememberedAction) || "what you carried through the static";
   const npcName = cleanSegment(memory.npcName ?? "Mara");
+  const isReturning = memory.isReturning === true;
+
+  const line = isReturning
+    ? `${npcName} remembers you again, ${playerName}: ${rememberedAction}.`
+    : `${npcName} remembers you, ${playerName}: ${rememberedAction}.`;
+  const ariaLabel = isReturning
+    ? `${npcName} recognizes ${playerName} returning and recalls ${rememberedAction}.`
+    : `${npcName} recognizes ${playerName} and recalls ${rememberedAction}.`;
 
   return {
-    line: `${npcName} remembers you, ${playerName}: ${rememberedAction}.`,
-    ariaLabel: `${npcName} recognizes ${playerName} and recalls ${rememberedAction}.`,
+    line,
+    ariaLabel,
     feel: AFTERSIGN_FELT_RECOGNITION_BEAT,
+    isReturning,
   };
 }
 
@@ -71,6 +130,20 @@ export function createAftersignFeltRecognitionLayer(
   layer.dataset.whisperCue = cue.feel.audio.whisperCue;
   layer.dataset.chimeCue = cue.feel.audio.chimeCue;
   layer.dataset.chimeDelayMs = String(cue.feel.audio.chimeDelayMs);
+  if (cue.isReturning) {
+    const rv = cue.feel.returnVariant;
+    layer.dataset.isReturning = "true";
+    layer.dataset.returnAnticipationMs = String(rv.anticipationMs);
+    layer.dataset.returnCardLiftPx = String(rv.cardLiftPx);
+    layer.dataset.returnCameraNodDeg = String(rv.cameraNodDeg);
+    layer.dataset.returnShakePx = String(rv.shakePx);
+    layer.dataset.returnShakeMs = String(rv.shakeMs);
+    layer.dataset.returnBloomPulseMs = String(rv.bloomPulseMs);
+    layer.dataset.returnChipPopPx = String(rv.chipPopPx);
+    layer.dataset.returnChipPopScale = String(rv.chipPopScale);
+    layer.dataset.returnEaseOutBack = rv.easeOutBack;
+    layer.dataset.returnEaseSettle = rv.easeSettle;
+  }
   layer.textContent = cue.line;
   return layer;
 }
@@ -138,6 +211,18 @@ export function playAftersignFeltRecognitionBeat(
     layer.dataset.shoulderLiftPx = "0";
     layer.dataset.shakePx = "0";
     layer.dataset.shakeFrames = "0";
+    if (cue.isReturning) {
+      const rv = projectReturnVariantForReducedMotion(cue.feel.returnVariant);
+      layer.dataset.returnCardLiftPx = String(rv.cardLiftPx);
+      layer.dataset.returnCameraNodDeg = String(rv.cameraNodDeg);
+      layer.dataset.returnShakePx = String(rv.shakePx);
+      layer.dataset.returnShakeMs = String(rv.shakeMs);
+      layer.dataset.returnBloomPulseMs = String(rv.bloomPulseMs);
+      layer.dataset.returnChipPopPx = String(rv.chipPopPx);
+      layer.dataset.returnChipPopScale = String(rv.chipPopScale);
+      layer.dataset.returnEaseOutBack = rv.easeOutBack;
+      layer.dataset.returnEaseSettle = rv.easeSettle;
+    }
   }
 
   root.appendChild(layer);
