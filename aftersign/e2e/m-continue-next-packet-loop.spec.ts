@@ -1,54 +1,65 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 
-const PHONE_VIEWPORT = { width: 390, height: 844 };
+// AFTERSIGN M-CONTINUE next-packet loop (Soren PR #1275 review — the
+// prior rewrite fabricated `window.__game.story.beat`, an authoring-
+// deck `io-return-tone-blunt` beat id, and regex-over-text taps that
+// landed on the "Io" speaker label instead of a control. This revert
+// restores the shipped-surface pattern used by every sibling spec:
+// `#packetButton` for the packet action, `[data-choice-id]` /
+// `[data-return-reason]` for choices, and `[data-beat-id]` to wait
+// for the story to reach a beat. All ids match the served vocabulary
+// (main.js publishState + windowGameSurface.ts AftersignStoryBeatId).
 
-async function tapVisibleControl(page: import('@playwright/test').Page, label: RegExp | string) {
-  const roleButton = page.getByRole('button', { name: label }).first();
-  if (await roleButton.isVisible().catch(() => false)) {
-    await roleButton.tap();
-    return;
-  }
+const WAIT_MS = 10_000;
+const COLD_START_MS = 20_000;
 
-  const textControl = page.getByText(label).first();
-  await expect(textControl).toBeVisible();
-  await textControl.tap();
-}
+test.describe("AFTERSIGN M-CONTINUE next-packet loop", () => {
+  test("io-next-job lets the player start the next packet instead of re-delivering the old one", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
 
-async function expectVisibleBeat(page: import('@playwright/test').Page, beatId: string, text: RegExp | string) {
-  await expect.poll(async () => page.evaluate(() => window.__game?.story?.beat ?? window.__game?.storyState?.beat ?? null)).toBe(beatId);
-  await expect(page.getByText(text).first()).toBeVisible();
-}
+    const slot = `m-continue-next-packet-loop-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
-test.use({
-  viewport: PHONE_VIEWPORT,
-  hasTouch: true,
-  isMobile: true,
-});
+    await page.waitForFunction(
+      () => (window as unknown as { __game?: { scene?: { ready?: boolean } } }).__game?.scene?.ready === true,
+      undefined,
+      { timeout: WAIT_MS },
+    );
 
-test('M-CONTINUE can be played by taps into the next packet loop', async ({ page }) => {
-  await page.goto('/');
+    const waitForBeat = async (beatId: string) => {
+      await expect(
+        page.locator(`[data-beat-id="${beatId}"]`),
+        `story line should visibly reach beat "${beatId}"`,
+      ).toBeVisible({ timeout: WAIT_MS });
+    };
+    const tapChoice = async (choiceId: string) => {
+      const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
+      await expect(choice, `choice "${choiceId}" should be visible and tappable`).toBeVisible({ timeout: WAIT_MS });
+      await choice.click();
+    };
 
-  await tapVisibleControl(page, /packet/i);
-  await expectVisibleBeat(page, 'packet-choice', /blue packet|sealed packet|open/i);
+    await waitForBeat("packet-offered");
+    await page.locator("#packetButton").click();
+    await waitForBeat("packet-choice");
 
-  await tapVisibleControl(page, /keep.*sealed|preserve|do not open/i);
-  await tapVisibleControl(page, /route|listen|continue/i);
-  await tapVisibleControl(page, /deliver/i);
+    await tapChoice("acknowledge-kiosk");
+    await tapChoice("deliver-packet");
+    await waitForBeat("io-return-recognition");
 
-  await expectVisibleBeat(page, 'packet-delivered', /delivered|sign box|blue seal/i);
-  await tapVisibleControl(page, /return|back to io|io/i);
-  await expectVisibleBeat(page, 'io-return-recognition', /came back|returned|seal/i);
+    const toneButton = page.locator('button[data-return-reason="blunt"]:not([disabled])').first();
+    await expect(toneButton, "return-tone button should stay visible after recognition").toBeVisible({
+      timeout: WAIT_MS,
+    });
+    await toneButton.click();
+    await waitForBeat("return-tone-choice");
 
-  await tapVisibleControl(page, /blunt|work|job/i);
-  await expectVisibleBeat(page, 'io-return-tone-blunt', /work|job|facts/i);
+    await tapChoice("ask-for-next-job");
+    await waitForBeat("io-next-job");
 
-  await tapVisibleControl(page, /next job|another job|what now/i);
-  await expectVisibleBeat(page, 'io-next-job', /Orra|Saint Orra|pharmacy|name/i);
+    await tapChoice("deliver-packet");
+    await waitForBeat("packet-choice");
 
-  await tapVisibleControl(page, /deliver next packet|take the packet|start/i);
-  await expectVisibleBeat(page, 'packet-choice', /blue packet|sealed packet|open/i);
-
-  await expect(page.getByRole('button', { name: /open/i }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /keep|sealed|preserve/i }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /inspect|packet/i }).first()).toBeVisible();
+    await expect(page.locator('button[data-choice-id="acknowledge-kiosk"]')).toBeVisible({ timeout: WAIT_MS });
+    await expect(page.locator('button[data-choice-id="deliver-packet"]')).toHaveText(/Deliver packet/i);
+  });
 });
