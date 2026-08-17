@@ -20,10 +20,10 @@ test.describe("AFTERSIGN NPC memory dialogue contract", () => {
 
   test("Io memory authored text remains verbatim for sealed packet and skipped kiosk lines", async () => {
     expect(IO_MEMORY_RESPONSE_LINES.remembersSealedPacket.text).toBe(
-      "Last time, you kept the blue packet sealed. I noticed the restraint.",
+      "You kept the blue packet sealed. The city remembers closed hands.",
     );
     expect(IO_MEMORY_RESPONSE_LINES.remembersSecondActionSkipped.text).toBe(
-      "You skipped the second kiosk ping. Sometimes speed is just another kind of answer.",
+      "You left the second kiosk ping unanswered. Speed has a voice too.",
     );
   });
 });

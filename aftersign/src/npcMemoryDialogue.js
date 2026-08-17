@@ -8,32 +8,32 @@ const IO_LINES = Object.freeze({
   firstMeeting: Object.freeze({
     id: "io-memory-first-meeting",
     speaker: "Io",
-    text: "You came back before I knew your name. That counts for something.",
+    text: "You came back before I had a name for you. That matters.",
   }),
   remembersSealedPacket: Object.freeze({
     id: "io-memory-blue-packet-sealed",
     speaker: "Io",
-    text: "Last time, you kept the blue packet sealed. I noticed the restraint.",
+    text: "You kept the blue packet sealed. The city remembers closed hands.",
   }),
   remembersOpenedPacket: Object.freeze({
     id: "io-memory-blue-packet-opened",
     speaker: "Io",
-    text: "Last time, you opened the blue packet. Curiosity leaves a bright mark.",
+    text: "You opened the blue packet. Curiosity leaves fingerprints in the dark.",
   }),
   remembersSecondActionDone: Object.freeze({
     id: "io-memory-kiosk-second-action-done",
     speaker: "Io",
-    text: "And you checked the kiosk twice. Most couriers pretend the second signal is static.",
+    text: "You checked the kiosk twice. Most couriers let the second signal die.",
   }),
   remembersSecondActionSkipped: Object.freeze({
     id: "io-memory-kiosk-second-action-skipped",
     speaker: "Io",
-    text: "You skipped the second kiosk ping. Sometimes speed is just another kind of answer.",
+    text: "You left the second kiosk ping unanswered. Speed has a voice too.",
   }),
   remembersNoDurableFact: Object.freeze({
     id: "io-memory-intro-seen-no-fact",
     speaker: "Io",
-    text: "I remember your face. The rest is still noise, but the face held.",
+    text: "I remember your face. The rest is static, but the face stayed.",
   }),
 });
 
