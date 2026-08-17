@@ -3,7 +3,12 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const REPO_ROOT = process.cwd();
-const APPS_WEB_ROOT = join(REPO_ROOT, "apps", "web");
+// M-CONTINUE's phone-shaped acceptance specs live at the repo-root
+// `aftersign/e2e/` tree (see `aftersign/e2e/m-continue-tap-playtest.spec.ts`
+// and `m-continue-phone-tap-playtest.spec.ts`), NOT under `apps/web/`.
+// Scanning the wrong tree makes every assertion pass vacuously — the
+// guard would stay green even if both playtests were deleted.
+const AFTERSIGN_E2E_ROOT = join(REPO_ROOT, "aftersign", "e2e");
 
 const ACCEPTANCE_FILE_PATTERN = /(?:playtest|acceptance|e2e).*\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
@@ -32,7 +37,7 @@ function listFiles(root: string): string[] {
 }
 
 function readAcceptanceSpecs() {
-  return listFiles(APPS_WEB_ROOT)
+  return listFiles(AFTERSIGN_E2E_ROOT)
     .filter((path) => ACCEPTANCE_FILE_PATTERN.test(path))
     .map((path) => ({
       path,
