@@ -50,32 +50,16 @@ import {
  * Player-memory the returning NPC references on recognition — the
  * two axes a round-trip beat needs beyond `packetOutcome`: the
  * player's chosen name and the count of prior interactions. Fed in
- * by `setPlayerMemory` and consumed by `getStoryState()` to build
- * `story.npcMemoryRoundTrip`. Kept as its own shape (not folded into
- * `AftersignVerticalSliceState`) because it's a HARNESS-ONLY
- * projection: the shipped runtime state doesn't yet author these
- * fields, but the round-trip beat is testable today from a memory
- * bag the harness owns.
+ * by `setPlayerMemory` and forwarded to
+ * `createAftersignWindowGameSurface` as `options.npcMemoryRoundTrip`
+ * so the SHIPPED surface (not the harness) publishes
+ * `story.npcMemoryRoundTrip`. Kept as its own shape (not folded
+ * into `AftersignVerticalSliceState`) because it's a projection the
+ * harness owns — the runtime state doesn't yet author these fields.
  */
 export type AftersignPlayerMemoryInput = {
   playerName: string;
   interactionCount: number;
-};
-
-/**
- * The round-trip beat published on `story.npcMemoryRoundTrip` when a
- * returning NPC recognizes the player AND `setPlayerMemory` has
- * supplied the two axes. Absent otherwise — a missing field is the
- * signal that no beat is live. `spokenLine` is composed from the
- * canonical returning-session copy (`resolveAftersignRememberingNpcDialogue`)
- * with the player's name and interaction count interpolated, so a
- * consumer can render it as-is without knowing the copy shape.
- */
-export type AftersignNpcMemoryRoundTripBeat = {
-  npcId: AftersignRememberingNpcId;
-  playerName: string;
-  interactionCount: number;
-  spokenLine: string;
 };
 
 /**
@@ -408,61 +392,40 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   };
 
   /**
-   * Compose the round-trip beat: NPC canonical returning line +
-   * player's stored name + interaction count. Emitted only when a
-   * recall trigger has fired AND `playerMemory` has been supplied —
-   * either gate empty and there is no beat to publish. Copy comes
-   * from `resolveAftersignRememberingNpcDialogue`, which sources the
-   * shipped `ioReturningSession` / `orraRecognitionLines` tables, so
-   * the beat inherits any authored-line rewrite without a harness
-   * change.
+   * Build the surface-options bag from the harness's live posture.
+   * `npcMemoryRoundTrip` is forwarded ONLY when a recall trigger has
+   * fired AND `playerMemory` has been supplied — either gate empty
+   * and the shipped surface (`getAftersignStoryState`) simply
+   * omits `story.npcMemoryRoundTrip`. The harness no longer grafts
+   * the field on after the surface returns; the surface itself is
+   * the sole author, sourcing `spokenLine` verbatim from
+   * `resolveAftersignRememberingNpcDialogue` (authored copy).
    */
-  const composeNpcMemoryRoundTrip = (): AftersignNpcMemoryRoundTripBeat | null => {
-    if (!recallTrigger || !playerMemory) {
-      return null;
-    }
-    const dialogue = resolveAftersignRememberingNpcDialogue(state, recallTrigger.npcId);
-    if (!dialogue.recognizesPlayer) {
-      return null;
-    }
-    const canonicalLine = dialogue.lines[0] ?? "";
-    // The line is composed, not authored — the canonical returning
-    // sentence carries the story voice, the two axes are what make
-    // this a memory beat rather than a first meeting. Format is
-    // deliberately trivial (name-prefix + line + interaction tag) so
-    // a shipped renderer can parse or restyle without regex.
-    const spokenLine =
-      `${playerMemory.playerName}. ${canonicalLine} (interaction ${playerMemory.interactionCount})`;
-    return {
-      npcId: recallTrigger.npcId,
-      playerName: playerMemory.playerName,
-      interactionCount: playerMemory.interactionCount,
-      spokenLine,
-    };
-  };
+  const surfaceOptions = () => ({
+    ...HARNESS_PLAYER,
+    ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
+    ...(recallTrigger && playerMemory
+      ? {
+          npcMemoryRoundTrip: {
+            npcId: recallTrigger.npcId,
+            playerName: playerMemory.playerName,
+            interactionCount: playerMemory.interactionCount,
+          },
+        }
+      : {}),
+  });
 
   const snapshot = (): AftersignStoryStateSnapshot => {
-    const base = getAftersignStoryState(state, {
-      ...HARNESS_PLAYER,
-      ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
-    });
-
-    const roundTrip = composeNpcMemoryRoundTrip();
-
-    const storyWithRoundTrip = roundTrip
-      ? { ...base.story, npcMemoryRoundTrip: roundTrip }
-      : base.story;
+    const base = getAftersignStoryState(state, surfaceOptions());
 
     if (!acceptedNextJob) {
-      return roundTrip
-        ? ({ ...base, story: storyWithRoundTrip } as AftersignStoryStateSnapshot)
-        : base;
+      return base;
     }
 
     return {
       ...base,
       story: {
-        ...storyWithRoundTrip,
+        ...base.story,
         nextJob: {
           accepted: true,
           offer: {

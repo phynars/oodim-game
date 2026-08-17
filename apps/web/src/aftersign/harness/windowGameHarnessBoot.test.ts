@@ -809,7 +809,19 @@ describe("Aftersign window.__game harness (#918)", () => {
     });
   });
 
-  it("requires a returning NPC to reference the saved player name and prior interaction count", () => {
+  // Consumer wiring for the NPC memory round-trip contract. The
+  // shipped consumer is `getAftersignStoryState` in
+  // `../windowGameSurface.ts` — it publishes `story.npcMemoryRoundTrip`
+  // when its caller supplies `options.npcMemoryRoundTrip` AND the
+  // referenced NPC recognizes the player on the current state. The
+  // harness feeds that option from its `playerMemory` bag + captured
+  // recall trigger, so this end-to-end assertion pins the wiring
+  // through the shipped surface (not a harness-only projection).
+  //
+  // `spokenLine` is asserted against the authored copy returned by
+  // `resolveAftersignRememberingNpcDialogue` — no name / count
+  // interpolation. The two axes ride alongside the authored voice.
+  it("publishes npcMemoryRoundTrip on the shipped surface with authored copy + player-memory axes", () => {
     const game = window.__game as
       | (typeof window.__game & {
           setPlayerMemory?: (memory: {
@@ -822,47 +834,52 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(game).toBeDefined();
     expect(game?.setPlayerMemory).toEqual(expect.any(Function));
 
-    game?.restoreDurableSave(
-      encodeAftersignDurableSave(
-        meetIoForAftersignSlice(
-          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
-        ),
-        34,
-      ),
+    // Seed: sealed packet + Io first meeting, so a subsequent
+    // `meetNpc("io")` promotes Io to `recognizes-player` (the
+    // recall-transition gate the harness watches for).
+    const seedState = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
     );
+    game?.restoreDurableSave(encodeAftersignDurableSave(seedState, 34));
     game?.setPlayerMemory?.({ playerName: "Signal Runner", interactionCount: 3 });
 
+    // Durable-save round-trip: the memory bag must survive
+    // save() → fresh-boot restore → load().
     const savedPayload = game!.save();
-
     game?.restoreDurableSave(
       encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
     );
     game?.load(savedPayload);
     game?.meetNpc("io");
 
-    const snapshot = game?.getStoryState() as
-      | {
-          story?: {
-            npcMemoryRoundTrip?: {
-              npcId?: string;
-              playerName?: string;
-              interactionCount?: number;
-              spokenLine?: string;
-            };
-          };
-        }
-      | undefined;
+    const snapshot = game?.getStoryState();
+    const roundTrip = snapshot?.story.npcMemoryRoundTrip;
 
-    expect(snapshot?.story?.npcMemoryRoundTrip).toMatchObject({
+    expect(roundTrip).toBeDefined();
+    expect(roundTrip).toMatchObject({
       npcId: "io",
       playerName: "Signal Runner",
       interactionCount: 3,
     });
-    expect(snapshot?.story?.npcMemoryRoundTrip?.spokenLine).toEqual(
-      expect.stringContaining("Signal Runner"),
-    );
-    expect(snapshot?.story?.npcMemoryRoundTrip?.spokenLine).toEqual(
-      expect.stringContaining("3"),
-    );
+
+    // Authored-copy contract: `spokenLine` equals the first line
+    // returned by the shipped dialogue resolver — no interpolation.
+    // If a future rewrite of the returning-session table changes the
+    // line, this assertion follows the source of truth automatically.
+    const authoredLine = game?.getRememberingNpcDialogue("io").lines[0];
+    expect(typeof authoredLine).toBe("string");
+    expect((authoredLine ?? "").length).toBeGreaterThan(0);
+    expect(roundTrip?.spokenLine).toBe(authoredLine);
+    // Explicit anti-interpolation guard: the authored line must
+    // NOT already contain the caller-supplied player name or
+    // interaction count — that would mean the shipped table is
+    // doing the interpolation the reviewer flagged.
+    expect(roundTrip?.spokenLine).not.toContain("Signal Runner");
+    expect(roundTrip?.spokenLine).not.toMatch(/\binteraction 3\b/);
+
+    // Clearing the memory bag drops the beat back to absent, even
+    // while Io still recognizes the player.
+    game?.setPlayerMemory?.(null);
+    expect(game?.getStoryState().story.npcMemoryRoundTrip).toBeUndefined();
   });
 });
