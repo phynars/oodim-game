@@ -221,6 +221,42 @@ const HARNESS_PLAYER = {
   rememberedSessionIds: [] as string[],
 };
 
+const WINDOW_GAME_SAVE_KIND = "aftersign.windowGameHarnessSave.v1";
+
+type AftersignWindowGameSaveEnvelope = {
+  kind: typeof WINDOW_GAME_SAVE_KIND;
+  durableSave: string;
+  acceptedNextJobId: IoNextJobBeat["id"] | null;
+};
+
+const encodeWindowGameSave = (
+  durableSave: string,
+  acceptedNextJob: IoNextJobBeat | null,
+): string =>
+  JSON.stringify({
+    kind: WINDOW_GAME_SAVE_KIND,
+    durableSave,
+    acceptedNextJobId: acceptedNextJob?.id ?? null,
+  } satisfies AftersignWindowGameSaveEnvelope);
+
+const decodeWindowGameSave = (
+  payload: string,
+): { durableSave: string; acceptedNextJob: IoNextJobBeat | null } => {
+  try {
+    const parsed = JSON.parse(payload) as Partial<AftersignWindowGameSaveEnvelope>;
+    if (parsed.kind === WINDOW_GAME_SAVE_KIND && typeof parsed.durableSave === "string") {
+      return {
+        durableSave: parsed.durableSave,
+        acceptedNextJob: parsed.acceptedNextJobId === ORRA_NAME_DEBT.id ? ORRA_NAME_DEBT : null,
+      };
+    }
+  } catch {
+    // Plain durable-save payloads are still accepted below.
+  }
+
+  return { durableSave: payload, acceptedNextJob: null };
+};
+
 const ensureWindow = (): Window => {
   const maybeWindow = (globalThis as { window?: Window }).window;
   if (maybeWindow) {
@@ -444,10 +480,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     save() {
       savedAtTurn += 1;
-      return encodeAftersignDurableSave(state, savedAtTurn);
+      return encodeWindowGameSave(
+        encodeAftersignDurableSave(state, savedAtTurn),
+        acceptedNextJob,
+      );
     },
     load(payload) {
-      restorePayload(payload);
+      const decoded = decodeWindowGameSave(payload);
+      restorePayload(decoded.durableSave);
+      acceptedNextJob = decoded.acceptedNextJob;
     },
     getRecallTrigger() {
       return recallTrigger;

@@ -650,4 +650,46 @@ describe("Aftersign window.__game harness (#918)", () => {
     });
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
+
+  it("keeps the accepted next job durable across save/load", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+        ),
+        21,
+      ),
+    );
+    game?.meetNpc("io");
+    game?.input.choose("accept-next-job");
+
+    const savedPayload = game!.save();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    expect(game?.getSnapshot().story.nextJob).toBeUndefined();
+
+    game?.load(savedPayload);
+
+    expect(game?.getSnapshot().story.nextJob).toMatchObject({
+      accepted: true,
+      offer: {
+        id: "io-next-job-offer",
+        nextBeat: "orra-name-debt",
+        claimTag: "ORRA-NAME-DEBT",
+      },
+      beat: {
+        id: "orra-name-debt",
+        claimTag: "ORRA-NAME-DEBT",
+      },
+    });
+    expect(game?.getAcceptedNextJob()).toMatchObject({
+      id: "orra-name-debt",
+      claimTag: "ORRA-NAME-DEBT",
+    });
+  });
 });
