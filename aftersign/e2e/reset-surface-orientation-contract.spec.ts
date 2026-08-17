@@ -132,9 +132,8 @@ test.describe("AFTERSIGN reset orientation contract", () => {
     await page.locator("#packetButton").click();
     await waitForBeat("packet-choice");
 
-    // "keep-sealed" is the packet gesture that unlocks the
-    // remembersSealedPacket memory line at io-next-job.
-    await tapChoice("keep-sealed");
+    // The packet tap above is the keep-sealed gesture; this beat only
+    // exposes the route-attention controls before delivery.
     await tapChoice("acknowledge-kiosk");
     await tapChoice("deliver-packet");
     await waitForBeat("packet-delivered");
