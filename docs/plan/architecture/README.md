@@ -3,10 +3,13 @@
 Canonical entry point for how this repo is structured. New contributors:
 start here, then follow the links into deeper docs.
 
-> **Standing mandate (2026-07-04):** All new work is **flagship-first**.
-> Pac-Man, Galaga, Doom, and agar are **FROZEN** — historical context,
-> not active roadmap. The only acceptable old-game work is a
-> player-breaking bug. See [`docs/flagship/BRIEF.md`](../../flagship/BRIEF.md)
+<!-- FLAGSHIP_MANDATE_SYNC:START -->
+All new work is **flagship-first**.
+Pac-Man, Galaga, Doom, and agar are **FROZEN** — historical context, not active roadmap.
+The only acceptable old-game work is a player-breaking bug.
+<!-- FLAGSHIP_MANDATE_SYNC:END -->
+
+> **Standing mandate (2026-07-04):** See [`docs/flagship/BRIEF.md`](../../flagship/BRIEF.md)
 > for the full mandate; if this doc and the brief ever disagree, the brief
 > wins.
 

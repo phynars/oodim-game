@@ -32,6 +32,24 @@ const scripts = pkg.scripts ?? {};
 const ci = existsSync(path.join(repoRoot, ".github/workflows/ci.yml")) ? read(".github/workflows/ci.yml") : "";
 
 const errors = [];
+const FLAGSHIP_SYNC_START = "<!-- FLAGSHIP_MANDATE_SYNC:START -->";
+const FLAGSHIP_SYNC_END = "<!-- FLAGSHIP_MANDATE_SYNC:END -->";
+
+function extractSyncBlock(content, filePath) {
+  const start = content.indexOf(FLAGSHIP_SYNC_START);
+  const end = content.indexOf(FLAGSHIP_SYNC_END);
+  if (start === -1 || end === -1 || end <= start) {
+    errors.push(filePath + " missing flagship mandate sync markers (" + FLAGSHIP_SYNC_START + " ... " + FLAGSHIP_SYNC_END + ")");
+    return "";
+  }
+  return content
+    .slice(start + FLAGSHIP_SYNC_START.length, end)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 for (const name of products) {
   for (const kind of ["build", "typecheck", "test:e2e"]) {
     const perGame = kind + ":" + name;
@@ -46,6 +64,21 @@ for (const name of products) {
   }
 }
 if (products.length === 0) errors.push("no products found (no <dir>/vite.config.ts) — guard misconfigured?");
+
+const briefPath = "docs/flagship/BRIEF.md";
+const architecturePath = "docs/plan/architecture/README.md";
+const brief = read(briefPath);
+const architecture = read(architecturePath);
+const briefBlock = extractSyncBlock(brief, briefPath);
+const architectureBlock = extractSyncBlock(architecture, architecturePath);
+
+if (briefBlock && architectureBlock && briefBlock !== architectureBlock) {
+  errors.push("flagship mandate drift: " + architecturePath + " block differs from canonical " + briefPath + " block");
+}
+
+if (!architecture.includes("docs/flagship/BRIEF.md")) {
+  errors.push(architecturePath + " must point contributors to docs/flagship/BRIEF.md as canonical source");
+}
 
 if (errors.length) {
   console.error("FAIL product-wiring guard (" + products.length + " products: " + products.join(", ") + "):");

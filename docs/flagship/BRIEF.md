@@ -61,6 +61,12 @@ The flagship is a *service*, not a file:
 
 ## Ground rules
 
+<!-- FLAGSHIP_MANDATE_SYNC:START -->
+All new work is **flagship-first**.
+Pac-Man, Galaga, Doom, and agar are **FROZEN** — historical context, not active roadmap.
+The only acceptable old-game work is a player-breaking bug.
+<!-- FLAGSHIP_MANDATE_SYNC:END -->
+
 - **The four existing games are FROZEN (2026-07-04 freeze executed).** All
   pre-flagship issues, PRs, and branches were closed (label `pre-flagship`);
   the only acceptable old-game work is a player-breaking bug. No new clones,
