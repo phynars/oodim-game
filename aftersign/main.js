@@ -2445,6 +2445,22 @@ const resetSliceSave = async () => {
   state.story.memoryBeat = null;
   state.player = {
     id: "local-slice-player",
+    // Reset must reproduce the SHAPE of the cold-boot `state.player`
+    // — every field the served-page contract exposes, or downstream
+    // reads land on `undefined` and throw. Missing `flags` was the
+    // load-bearing gap: `publishState()` exposes `state.player` live,
+    // and both `lineForBeat()` and the tap-driven memory-dialogue e2e
+    // (reset-surface-orientation-contract.spec.ts) read
+    // `state.player.flags.io_intro_seen` at the recognition beat.
+    // Without it the reset would leave the returning slice unable to
+    // reach the memory-citing branch (Soren PR #1262 REQUEST_CHANGES).
+    //
+    // `io_intro_seen: true` is intentional here — resetSliceSave is
+    // the "start a fresh RETURNING session" entry point, not a
+    // first-boot mint. The e2e uses it to place the player past
+    // first-meeting so it can drive the memory-citing dialogue on
+    // the shipped page; a cold `false` would branch into the
+    // first-meeting copy and red the walk-through.
     name: null,
     flags: {
       io_intro_seen: true,
