@@ -2445,6 +2445,10 @@ const resetSliceSave = async () => {
   state.story.memoryBeat = null;
   state.player = {
     id: "local-slice-player",
+    name: null,
+    flags: {
+      io_intro_seen: true,
+    },
     x: -1.8,
     z: 1.15,
     // Match the cold-boot kiosk-facing pose. Boot uses π so the
@@ -2455,6 +2459,7 @@ const resetSliceSave = async () => {
     // outcome so a fresh slice cannot silently inherit a prior
     // player's kiosk acknowledgement.
     secondAction: null,
+    returnReason: null,
   };
   state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
   state.delivery = { id: "blue-packet", outcome: "unknown" };
