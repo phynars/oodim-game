@@ -1209,7 +1209,7 @@ const renderText = () => {
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
-  const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat;
+  const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
   }
