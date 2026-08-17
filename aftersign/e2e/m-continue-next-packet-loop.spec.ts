@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+// AFTERSIGN M-CONTINUE next-packet loop (Soren PR #1275 review — the
+// prior rewrite fabricated `window.__game.story.beat`, an authoring-
+// deck `io-return-tone-blunt` beat id, and regex-over-text taps that
+// landed on the "Io" speaker label instead of a control. This revert
+// restores the shipped-surface pattern used by every sibling spec:
+// `#packetButton` for the packet action, `[data-choice-id]` /
+// `[data-return-reason]` for choices, and `[data-beat-id]` to wait
+// for the story to reach a beat. All ids match the served vocabulary
+// (main.js publishState + windowGameSurface.ts AftersignStoryBeatId).
+
 const WAIT_MS = 10_000;
 const COLD_START_MS = 20_000;
 
