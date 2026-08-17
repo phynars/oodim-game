@@ -9,6 +9,10 @@ import {
   type AftersignConfirmFeelHandle,
   type PlayAftersignConfirmFeelOptions,
 } from "./aftersignConfirmFeel";
+import {
+  AFTERSIGN_INTERACTION_CONFIRM_STING,
+  sampleAftersignInteractionConfirmSting,
+} from "./aftersignInteractionConfirmSting";
 import type { AftersignVerticalSliceState } from "./verticalSliceRuntimeState";
 
 export {
@@ -117,17 +121,61 @@ export function resolveAftersignPacketConfirmInteraction(
   );
 }
 
+/**
+ * Stamps the AUDIO-VISUAL sting contract onto the confirm-bloom layer as
+ * `data-sting-*` attributes so the served renderer can plumb them into
+ * WebAudio (chirp) + CSS (bloom pop) without re-reading the module. This
+ * is the runtime consumer of `AFTERSIGN_INTERACTION_CONFIRM_STING` — the
+ * sibling `aftersignConfirmFeel` writes its numbers via CSS vars; this
+ * writes the audio contract via dataset, matching the felt-recognition
+ * lane precedent (see `feltRecognitionBeat.ts::createAftersignFeltRecognitionLayer`).
+ *
+ * The peak sample at 35% of durationMs is stamped alongside the raw spec
+ * so a consumer can read the pinned bloom-pop peak without instantiating
+ * the sampler. Under reducedMotion the chirp gain is zeroed (the ear
+ * still hears the tick's frequency start, at zero gain) — matching the
+ * "layer stays, motion collapses" contract for aftersign feels.
+ */
+function stampAftersignInteractionConfirmStingOnLayer(
+  layer: HTMLElement,
+  reducedMotion: boolean,
+): void {
+  const spec = AFTERSIGN_INTERACTION_CONFIRM_STING;
+  const peakElapsedMs = spec.durationMs * 0.35;
+  const peakSample = sampleAftersignInteractionConfirmSting(peakElapsedMs);
+
+  layer.dataset.stingDurationMs = String(spec.durationMs);
+  layer.dataset.stingChirpDurationMs = String(spec.chirpDurationMs);
+  layer.dataset.stingChirpStartHz = String(spec.chirpStartHz);
+  layer.dataset.stingChirpEndHz = String(spec.chirpEndHz);
+  layer.dataset.stingBloomPopScale = String(spec.bloomPopScale);
+  layer.dataset.stingSettlePx = String(spec.settlePx);
+  layer.dataset.stingEasing = spec.easing;
+  layer.dataset.stingPeakBloomScale = String(peakSample.bloomScale);
+  layer.dataset.stingPeakChirpHz = String(peakSample.chirpHz);
+  layer.dataset.stingPeakChirpGain = reducedMotion ? "0" : String(peakSample.chirpGain);
+  if (reducedMotion) {
+    layer.dataset.stingReducedMotion = "true";
+  }
+}
+
 export function playAftersignPacketConfirmInteractionFeel(
   interaction: AftersignPacketConfirmInteraction,
   options: AftersignPacketConfirmInteractionEffectsOptions = {},
 ): AftersignConfirmFeelHandle | null {
   const { label, reducedMotion = false, ...playOptions } = options;
 
-  return playAftersignConfirmFeel({
+  const handle = playAftersignConfirmFeel({
     ...playOptions,
     label: label ?? PACKET_CONFIRM_LABELS[interaction.kind],
     feel: getPacketConfirmBloomFeel(interaction.kind, reducedMotion),
   });
+
+  if (handle) {
+    stampAftersignInteractionConfirmStingOnLayer(handle.layer, reducedMotion);
+  }
+
+  return handle;
 }
 
 export function resolveAndPlayAftersignPacketConfirmInteraction(
