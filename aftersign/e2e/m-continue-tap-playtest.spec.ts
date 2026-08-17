@@ -24,18 +24,27 @@ import { expect, test, type Page } from "@playwright/test";
 //      the served page nor the harness snapshot, and silently returned
 //      null — a perpetual-false gate rather than a test.
 //
-// ACCESSIBLE-NAME SOURCES (verified against aftersign/index.html +
-// aftersign/main.js at the session commit):
-//   - `#deliverButton` at `packet-offered`   → text "Deliver at the
-//     blue kiosk" (index.html:562)
+// ACCESSIBLE-NAME SOURCES (verified against aftersign/main.js at the
+// session commit — the served DOM is the AUTHORITY, not index.html's
+// initial markup: `renderText()` in main.js:1207-1273 rewrites every
+// button's textContent on first render, so `#deliverButton`'s initial
+// "Deliver at the blue kiosk" (index.html:562) is CLOBBERED to
+// "Deliver packet" by the else-branch at main.js:1269 before the
+// player ever sees the boot beat. The reviewer on PR #1250 verified
+// main.js:1226 + 1247 correctly but cited index.html:562 for the boot
+// label; the served accessible name at `packet-offered` is what
+// main.js writes, not what the static HTML declares.):
+//   - `#deliverButton` at `packet-offered`   → text "Deliver packet"
+//     (main.js:1269, else branch — `packet-offered` isn't any of the
+//     four named beats, so renderText falls through)
 //   - `#acknowledgeRouteButton` at
 //     `io-return-recognition`                → text "Kind return"
-//     (main.js re-label; see phone-tap sibling line 107)
+//     (main.js:1225)
 //   - `#skipRouteButton` at
 //     `io-return-recognition`                → text "Evasive return"
-//     (sibling line 108)
+//     (main.js:1226)
 //   - `#deliverButton` at `return-tone-choice` → text "Ask for next
-//     job" (sibling line 116; NOT "Ask for THE next job")
+//     job" (main.js:1247; NOT "Ask for THE next job")
 //
 // The regex assertions below are anchored (^...$) and pass through the
 // getByRole exact-name check (`exact: true`). If any button copy drifts,
@@ -70,9 +79,9 @@ async function waitForGame(page: Page): Promise<void> {
 async function tapExactByName(page: Page, name: string): Promise<void> {
   // exact: true → getByRole matches the button whose accessible name
   // is EXACTLY this string, not a substring. This is stricter than a
-  // regex partial match: if the copy is "Deliver at the blue kiosk"
-  // and we pass "Deliver packet", toHaveCount(1) fails immediately
-  // rather than silently matching some other close button.
+  // regex partial match: if a future refactor renames "Kind return" to
+  // "Kind reply" and we pass the old string, toHaveCount(1) fails
+  // immediately rather than silently matching some other close button.
   const option = page.getByRole("button", { name, exact: true });
   await expect(option).toHaveCount(1);
   await expect(option).toBeVisible();
@@ -112,10 +121,11 @@ test.describe("M-CONTINUE played acceptance (accessible-name taps)", () => {
     await waitForGame(page);
 
     // Boot: `packet-offered`. Only `#deliverButton` is enabled; its
-    // rendered text (and therefore its accessible name) is "Deliver at
-    // the blue kiosk".
+    // rendered text (and therefore its accessible name) is "Deliver
+    // packet" — main.js:1269 clobbers the initial index.html label at
+    // first render (see ACCESSIBLE-NAME SOURCES above).
     await waitForBeat(page, "packet-offered");
-    await tapExactByName(page, "Deliver at the blue kiosk");
+    await tapExactByName(page, "Deliver packet");
 
     // The delivery tap advances to `io-return-recognition`, at which
     // point the three fork buttons re-label to their return-tone
