@@ -3,12 +3,29 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
+export const KIOSK_SCENE_CAMERA_TRANSFORM = Object.freeze({
+  fov: 62,
+  aspect: 1,
+  near: 0.1,
+  far: 100,
+  position: Object.freeze({ x: 0, y: 2.25, z: 7.6 }),
+});
+
 export const createKioskScene = (canvas) => {
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x07111d, 0.045);
 
-  const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
-  camera.position.set(0, 2.25, 7.6);
+  const camera = new THREE.PerspectiveCamera(
+    KIOSK_SCENE_CAMERA_TRANSFORM.fov,
+    KIOSK_SCENE_CAMERA_TRANSFORM.aspect,
+    KIOSK_SCENE_CAMERA_TRANSFORM.near,
+    KIOSK_SCENE_CAMERA_TRANSFORM.far,
+  );
+  camera.position.set(
+    KIOSK_SCENE_CAMERA_TRANSFORM.position.x,
+    KIOSK_SCENE_CAMERA_TRANSFORM.position.y,
+    KIOSK_SCENE_CAMERA_TRANSFORM.position.z,
+  );
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -25,8 +42,8 @@ export const createKioskScene = (canvas) => {
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.52, 0.55, 0.18);
   composer.addPass(bloomPass);
 
-  const hemi = new THREE.HemisphereLight(0x8ccfff, 0x09111d, 1.4);
-  scene.add(hemi);
+  const ambient = new THREE.AmbientLight(0x8ccfff, 0.62);
+  scene.add(ambient);
 
   const key = new THREE.DirectionalLight(0xc4f4ff, 2.2);
   key.position.set(-4, 6, 5);
@@ -159,9 +176,27 @@ export const createKioskScene = (canvas) => {
     bloomPass.setSize(width, height);
   };
 
+  const sceneInitContract = Object.freeze({
+    camera: Object.freeze({
+      fov: camera.fov,
+      near: camera.near,
+      far: camera.far,
+      position: Object.freeze({
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      }),
+    }),
+    lights: Object.freeze({
+      ambient: scene.children.filter((child) => child.type === "AmbientLight").length,
+      directional: scene.children.filter((child) => child.type === "DirectionalLight").length,
+    }),
+  });
+
   return {
     scene,
     camera,
+    sceneInitContract,
     raycaster,
     pointer,
     renderer,

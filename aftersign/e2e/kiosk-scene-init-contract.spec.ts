@@ -18,6 +18,15 @@ declare global {
         position?: { x?: number; y?: number; z?: number };
         lookAt?: { x?: number; y?: number; z?: number };
       } | null;
+      sceneRig?: {
+        camera?: {
+          fov?: number;
+          near?: number;
+          far?: number;
+          position?: { x?: number; y?: number; z?: number };
+        };
+        lights?: { ambient?: number; directional?: number };
+      } | null;
     };
   }
 }
@@ -53,6 +62,7 @@ test.describe("AFTERSIGN kiosk scene init contract", () => {
       return {
         slug: window.__game?.slug,
         scene: window.__game?.scene,
+        sceneRig: window.__game?.sceneRig,
         canvas: rect
           ? {
               width: Math.round(rect.width),
@@ -77,6 +87,12 @@ test.describe("AFTERSIGN kiosk scene init contract", () => {
     expect(boot.canvas?.webglReady).toBe(true);
     expect(boot.canvas?.width).toBe(boot.viewport.width);
     expect(boot.canvas?.height).toBe(boot.viewport.height);
+    expect(boot.sceneRig?.lights?.ambient).toBe(1);
+    expect(boot.sceneRig?.lights?.directional).toBe(1);
+    expect(boot.sceneRig?.camera?.fov).toBe(62);
+    expect(boot.sceneRig?.camera?.near).toBe(0.1);
+    expect(boot.sceneRig?.camera?.far).toBe(100);
+    expect(boot.sceneRig?.camera?.position).toEqual({ x: 0, y: 2.25, z: 7.6 });
 
     await page.waitForFunction(
       () => {
