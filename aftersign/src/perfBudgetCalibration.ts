@@ -1,7 +1,8 @@
 // AFTERSIGN perf-budget calibration + calibrated evaluator.
 //
-// The harness pins a one-frame budget on input acknowledgement
-// (`inputAcknowledgeLatency.ts`). A budget in wall-clock milliseconds only
+// The harness pins a one-frame budget on input acknowledgement AND on
+// pointer-to-render (`inputAcknowledgeLatency.ts`). A budget in wall-clock
+// milliseconds only
 // tells the truth on a machine whose baseline frame time matches the target
 // device. CI runners drift: a shared-tenant runner under load can spend 30+
 // ms per frame doing nothing while a healthy laptop hits 16. Asserting a
@@ -13,13 +14,15 @@
 //   1. `calibratePerfBudget` produces a `PerfBudgetCalibration` describing
 //      the runner's measured vs baseline frame time and whether timing
 //      budgets should be evaluated at all.
-//   2. `assertInputAcknowledgeAgainstCalibratedBudget` consumes that
-//      calibration when it decides whether to hold a real
-//      `measureInputAcknowledgeLatency` sample to its budget. When the
-//      runner is too slow to judge feel, the assertion is SKIPPED LOUDLY:
-//      the returned measurement carries the calibration's annotation and
-//      `withinOneFrame` still reflects the raw arithmetic (so callers can
-//      log the sample), but no throw is issued for a busted budget.
+//   2. `assertInputAcknowledgeAgainstCalibratedBudget` and its sibling
+//      `assertPointerToRenderAgainstCalibratedBudget` consume that
+//      calibration when they decide whether to hold a real
+//      `measureInputAcknowledgeLatency` / `measurePointerToRenderLatency`
+//      sample to its budget. When the runner is too slow to judge feel,
+//      the assertion is SKIPPED LOUDLY: the returned measurement carries
+//      the calibration's annotation and `withinOneFrame` still reflects
+//      the raw arithmetic (so callers can log the sample), but no throw
+//      is issued for a busted budget.
 //
 // This module is pure — no DOM, no timers — and lives next to
 // `inputAcknowledgeLatency.ts` on purpose: they ship together, they're
@@ -29,9 +32,13 @@
 import {
   INPUT_ACKNOWLEDGE_LATENCY,
   measureInputAcknowledgeLatency,
+  measurePointerToRenderLatency,
   type InputAcknowledgeEvent,
   type InputAcknowledgeMeasurement,
   type InputAcknowledgeSignal,
+  type PointerInputEvent,
+  type PointerRenderSignal,
+  type PointerToRenderMeasurement,
 } from "./inputAcknowledgeLatency.ts";
 
 export type PerfBudgetCalibrationInput = {
@@ -131,6 +138,64 @@ export function assertInputAcknowledgeAgainstCalibratedBudget(
   if (!measurement.withinOneFrame) {
     throw new Error(
       `input acknowledge latency check failed: tap acknowledged in ${measurement.latencyMs}ms, over ${measurement.frameBudgetMs}ms frame budget`,
+    );
+  }
+
+  return {
+    measurement,
+    calibration,
+    evaluated: true,
+    annotation: null,
+  };
+}
+
+// Result of running the calibrated pointer-to-render evaluator against a
+// single sample. Mirrors `CalibratedInputAcknowledgeResult`: `evaluated`
+// distinguishes an assertion that RAN from one skipped because the runner
+// was too slow to judge feel.
+export type CalibratedPointerToRenderResult = {
+  measurement: PointerToRenderMeasurement;
+  calibration: PerfBudgetCalibration;
+  evaluated: boolean;
+  annotation: string | null;
+};
+
+// Real consumer of `calibratePerfBudget` for the pointer-to-render
+// primitive. Mirrors `assertInputAcknowledgeAgainstCalibratedBudget`:
+//
+//   - Healthy calibration → the sample is measured AND the one-frame
+//     budget is enforced. A latency > frameBudgetMs throws with the same
+//     message shape as `assertSyntheticPointerRenderedWithinOneFrame`,
+//     so this API is a drop-in replacement for callers that want the
+//     calibration-aware behaviour.
+//   - Slow-runner calibration → the sample is still measured (so the
+//     latency is visible in returned data / logs), but the throw is
+//     SUPPRESSED. `annotation` surfaces the calibration's reason string
+//     so the caller can log a loud skip instead of silently swallowing.
+export function assertPointerToRenderAgainstCalibratedBudget(
+  event: PointerInputEvent,
+  signal: PointerRenderSignal,
+  calibration: PerfBudgetCalibration,
+  frameBudgetMs: number = INPUT_ACKNOWLEDGE_LATENCY.FRAME_BUDGET_MS,
+): CalibratedPointerToRenderResult {
+  const measurement = measurePointerToRenderLatency(
+    event,
+    signal,
+    frameBudgetMs,
+  );
+
+  if (!calibration.evaluateTimingBudgets) {
+    return {
+      measurement,
+      calibration,
+      evaluated: false,
+      annotation: calibration.annotation,
+    };
+  }
+
+  if (!measurement.withinOneFrame) {
+    throw new Error(
+      `input acknowledge latency check failed: synthetic pointer rendered in ${measurement.latencyMs}ms, over ${measurement.frameBudgetMs}ms frame budget`,
     );
   }
 

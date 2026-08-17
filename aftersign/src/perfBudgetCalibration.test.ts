@@ -6,6 +6,7 @@
 
 import {
   assertInputAcknowledgeAgainstCalibratedBudget,
+  assertPointerToRenderAgainstCalibratedBudget,
   calibratePerfBudget,
   shouldEvaluatePerfBudget,
   type PerfBudgetCalibration,
@@ -14,6 +15,8 @@ import {
   INPUT_ACKNOWLEDGE_LATENCY,
   type InputAcknowledgeEvent,
   type InputAcknowledgeSignal,
+  type PointerInputEvent,
+  type PointerRenderSignal,
 } from "./inputAcknowledgeLatency.ts";
 
 function assert(condition: boolean, message: string): asserts condition {
@@ -52,6 +55,9 @@ export function runPerfBudgetCalibrationChecks(): void {
   checkCalibratedEvaluatorEnforcesBudgetWhenHealthy();
   checkCalibratedEvaluatorThrowsOnOverBudgetWhenHealthy();
   checkCalibratedEvaluatorSkipsBudgetOnSlowRunner();
+  checkCalibratedPointerEvaluatorEnforcesBudgetWhenHealthy();
+  checkCalibratedPointerEvaluatorThrowsOnOverBudgetWhenHealthy();
+  checkCalibratedPointerEvaluatorSkipsBudgetOnSlowRunner();
 }
 
 function checkHealthyRunnerKeepsBudgetsBlocking(): void {
@@ -272,6 +278,136 @@ function checkCalibratedEvaluatorSkipsBudgetOnSlowRunner(): void {
     result.annotation !== null &&
       /runner too slow to judge feel/.test(result.annotation),
     `slow-runner skip must carry the loud annotation, got ${String(
+      result.annotation,
+    )}`,
+  );
+}
+
+// Pointer-to-render mirror of `checkCalibratedEvaluatorEnforcesBudgetWhenHealthy`.
+// The calibrated pointer evaluator wraps `measurePointerToRenderLatency`
+// the same way the tap evaluator wraps `measureInputAcknowledgeLatency` —
+// a healthy runner keeps it strict, and a within-budget sample passes
+// with `evaluated: true` and no annotation.
+function checkCalibratedPointerEvaluatorEnforcesBudgetWhenHealthy(): void {
+  const healthy: PerfBudgetCalibration = calibratePerfBudget({
+    baselineFrameMs: 16,
+    measuredFrameMs: 16,
+    slowRunnerFloor: 1.5,
+  });
+
+  const event: PointerInputEvent = {
+    id: INPUT_ACKNOWLEDGE_LATENCY.SYNTHETIC_POINTER_ID,
+    receivedAtMs: 4_000,
+  };
+  const signal: PointerRenderSignal = {
+    id: INPUT_ACKNOWLEDGE_LATENCY.SYNTHETIC_POINTER_ID,
+    renderedAtMs: 4_012,
+  };
+
+  const result = assertPointerToRenderAgainstCalibratedBudget(
+    event,
+    signal,
+    healthy,
+  );
+
+  assertEqual(
+    result.evaluated,
+    true,
+    "healthy runner must evaluate the pointer budget",
+  );
+  assertEqual(
+    result.measurement.latencyMs,
+    12,
+    "pointer measurement.latencyMs must reflect the sample",
+  );
+  assertEqual(
+    result.measurement.withinOneFrame,
+    true,
+    "12ms pointer render on a 16ms budget must be within one frame",
+  );
+  assertEqual(
+    result.annotation,
+    null,
+    "healthy pointer evaluation must carry no annotation",
+  );
+}
+
+// Pointer-to-render mirror of `checkCalibratedEvaluatorThrowsOnOverBudgetWhenHealthy`.
+// A busted budget on a healthy runner must throw the same-shape error
+// `assertSyntheticPointerRenderedWithinOneFrame` produces, so downstream
+// harness code can rely on a single failure mode for the render primitive.
+function checkCalibratedPointerEvaluatorThrowsOnOverBudgetWhenHealthy(): void {
+  const healthy = calibratePerfBudget({
+    baselineFrameMs: 16,
+    measuredFrameMs: 16,
+    slowRunnerFloor: 1.5,
+  });
+
+  expectThrows(
+    () =>
+      assertPointerToRenderAgainstCalibratedBudget(
+        {
+          id: INPUT_ACKNOWLEDGE_LATENCY.SYNTHETIC_POINTER_ID,
+          receivedAtMs: 5_000,
+        },
+        {
+          id: INPUT_ACKNOWLEDGE_LATENCY.SYNTHETIC_POINTER_ID,
+          renderedAtMs: 5_020,
+        },
+        healthy,
+      ),
+    /synthetic pointer rendered in 20ms, over 16ms frame budget/,
+    "20ms pointer render on a 16ms budget must throw when calibration is healthy",
+  );
+}
+
+// Pointer-to-render mirror of `checkCalibratedEvaluatorSkipsBudgetOnSlowRunner`.
+// The core promise: on a slow runner, the SAME over-budget pointer sample
+// that would throw above must NOT throw — calibration gates the assertion.
+// The measurement still surfaces the raw latency and the annotation makes
+// the skip audible.
+function checkCalibratedPointerEvaluatorSkipsBudgetOnSlowRunner(): void {
+  const slow = calibratePerfBudget({
+    baselineFrameMs: 16,
+    measuredFrameMs: 33,
+    slowRunnerFloor: 1.5,
+  });
+
+  const event: PointerInputEvent = {
+    id: INPUT_ACKNOWLEDGE_LATENCY.SYNTHETIC_POINTER_ID,
+    receivedAtMs: 6_000,
+  };
+  const signal: PointerRenderSignal = {
+    id: INPUT_ACKNOWLEDGE_LATENCY.SYNTHETIC_POINTER_ID,
+    // Deliberately over budget: 20ms > 16ms.
+    renderedAtMs: 6_020,
+  };
+
+  const result = assertPointerToRenderAgainstCalibratedBudget(
+    event,
+    signal,
+    slow,
+  );
+
+  assertEqual(
+    result.evaluated,
+    false,
+    "slow runner must skip the pointer budget assertion",
+  );
+  assertEqual(
+    result.measurement.latencyMs,
+    20,
+    "pointer measurement still reflects the raw latency on skip",
+  );
+  assertEqual(
+    result.measurement.withinOneFrame,
+    false,
+    "raw arithmetic still marks the pointer sample as over budget on skip",
+  );
+  assert(
+    result.annotation !== null &&
+      /runner too slow to judge feel/.test(result.annotation),
+    `slow-runner pointer skip must carry the loud annotation, got ${String(
       result.annotation,
     )}`,
   );
