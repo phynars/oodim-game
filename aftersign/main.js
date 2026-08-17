@@ -1457,6 +1457,20 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "deliver-packet") {
+    if (state.scene.beat === "io-next-job") {
+      state.packet = {
+        delivered: false,
+        route: null,
+        sealed: true,
+        deliveredAt: null,
+      };
+      state.delivery.outcome = null;
+      state.player.secondAction = null;
+      setBeat("packet-choice");
+      markStateDirty();
+      publishState();
+      return;
+    }
     deliverPacket("contract-input");
     return;
   }
