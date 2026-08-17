@@ -160,6 +160,16 @@ import {
   AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
   assertAftersignTapChoiceSurfaces,
 } from "../apps/web/src/aftersign/tapChoiceFeel.ts";
+// Pointer-to-render feel primitive. Wiring it into main.js here is
+// what turns `inputAcknowledgeLatency.ts` from a pure model into a
+// SHIPPED runtime contract: the served page timestamps every real
+// `pointerdown` at `performance.now()`, then closes the loop after
+// `composer.render()` on the next rAF tick — one 60Hz frame budget,
+// measured on the real DOM, exposed on `window.__game.input.
+// getPointerToRenderLatencyReport()`. The harness projection
+// (bootWindowGame.ts) exposes the SAME four methods over the same
+// primitive so vitest and Playwright can pin the seam identically.
+import { measurePointerToRenderLatency } from "./src/inputAcknowledgeLatency.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -422,6 +432,109 @@ const state = {
 let statePublishVersion = 0;
 let publishedStateVersion = -1;
 let kioskSceneInitContract = null;
+
+// Pointer-to-render probe state (SHIPPED consumer of
+// `./src/inputAcknowledgeLatency.ts`). `pendingPointerIntents` maps
+// pointerId → the `performance.now()` at which the real DOM
+// `pointerdown` fired; `pointerLatencySamples` is the running report;
+// `worstPointerLatencySample` keeps the max `deltaMs` seen this
+// session so a regression stays loud even after a good sample lands
+// after it. `pointerFrameBudgetMs` is 16.7 (one 60Hz frame, physically
+// honest — the primitive's default rounds this to 16, so a 16ms
+// sample lands INSIDE the budget with room for the fractional third).
+//
+// This is the "played, not driven" half of the contract: `pointerdown`
+// on the served surface writes into `pendingPointerIntents`, and the
+// render tick drains anything pending after `composer.render()` so
+// every real tap the player performs is measured against the one-
+// frame promise. The `window.__game.input.markPointerIntent /
+// markPointerRendered` methods are the harness-side entry points that
+// let a vitest spec exercise the same seam without dispatching a real
+// PointerEvent — same primitive, same report shape.
+const POINTER_TO_RENDER_FRAME_BUDGET_MS = 16.7;
+const pendingPointerIntents = new Map();
+let pointerLatencySamples = [];
+let worstPointerLatencySample = null;
+
+const resetPointerToRenderLatency = () => {
+  pendingPointerIntents.clear();
+  pointerLatencySamples = [];
+  worstPointerLatencySample = null;
+};
+
+const foldPointerLatencySample = (pointerAtMs, renderedAtMs, pointerId) => {
+  const id = `pointer-${pointerId}`;
+  const measurement = measurePointerToRenderLatency(
+    { id, receivedAtMs: pointerAtMs },
+    { id, renderedAtMs },
+    POINTER_TO_RENDER_FRAME_BUDGET_MS,
+  );
+  const sample = {
+    pointerAtMs: measurement.receivedAtMs,
+    renderedAtMs: measurement.renderedAtMs,
+    deltaMs: measurement.latencyMs,
+    frameBudgetMs: measurement.frameBudgetMs,
+    withinBudget: measurement.withinOneFrame,
+  };
+  pointerLatencySamples.push(sample);
+  if (
+    worstPointerLatencySample === null
+    || sample.deltaMs > worstPointerLatencySample.deltaMs
+  ) {
+    worstPointerLatencySample = sample;
+  }
+  return sample;
+};
+
+const markPointerIntent = (input) => {
+  if (!input || typeof input.pointerAtMs !== "number" || typeof input.pointerId !== "number") {
+    return;
+  }
+  pendingPointerIntents.set(input.pointerId, input.pointerAtMs);
+};
+
+const markPointerRendered = (input) => {
+  if (!input || typeof input.renderedAtMs !== "number" || typeof input.pointerId !== "number") {
+    return;
+  }
+  const pointerAtMs = pendingPointerIntents.get(input.pointerId);
+  if (pointerAtMs === undefined) {
+    // No matching intent — orphaned render signal. Silently ignore;
+    // a jittery renderer firing an extra `rendered` after a reset
+    // shouldn't crash the probe.
+    return;
+  }
+  pendingPointerIntents.delete(input.pointerId);
+  foldPointerLatencySample(pointerAtMs, input.renderedAtMs, input.pointerId);
+};
+
+const drainPointerIntentsForRenderedFrame = (renderedAtMs) => {
+  if (pendingPointerIntents.size === 0) {
+    return;
+  }
+  // Snapshot the pending entries so a fold that mutates the map
+  // doesn't invalidate the iterator on browsers that don't tolerate
+  // in-flight deletion.
+  const drained = Array.from(pendingPointerIntents.entries());
+  pendingPointerIntents.clear();
+  for (const [pointerId, pointerAtMs] of drained) {
+    foldPointerLatencySample(pointerAtMs, renderedAtMs, pointerId);
+  }
+};
+
+const getPointerToRenderLatencyReport = () => {
+  const latest = pointerLatencySamples[pointerLatencySamples.length - 1];
+  const report = {
+    samples: pointerLatencySamples.slice(),
+  };
+  if (latest) {
+    report.latest = latest;
+  }
+  if (worstPointerLatencySample) {
+    report.worst = worstPointerLatencySample;
+  }
+  return report;
+};
 
 // #957: Io's returning-session boot line. Computed once at boot (below,
 // after `visibilitychange` wiring) from the durable delivery-outcome
@@ -1149,6 +1262,24 @@ const publishState = () => {
       packetTick,
       setConfirmCameraKick,
       setRecognitionCameraEnvelope,
+      // Pointer-to-render feel-contract probe. Shape mirrors the
+      // harness projection on `bootAftersignWindowGame` (see
+      // `apps/web/src/aftersign/harness/bootWindowGame.ts`) so a
+      // vitest consumer test and a Playwright played-through spec
+      // read the same seam. `markPointerIntent` /
+      // `markPointerRendered` let a harness caller drive the probe
+      // without dispatching a real PointerEvent; on the shipped page
+      // they're ALSO driven by the real `pointerdown` listener +
+      // render tick installed below (`document.addEventListener
+      // ("pointerdown", ...)` at boot; `drainPointerIntentsForRen-
+      // deredFrame(now)` in the tick after `composer.render()`).
+      // `getPointerToRenderLatencyReport()` returns
+      // `{ samples[], latest?, worst? }` — where `worst` is the MAX
+      // deltaMs seen this session so a regression stays loud.
+      resetPointerToRenderLatency,
+      markPointerIntent,
+      markPointerRendered,
+      getPointerToRenderLatencyReport,
     },
     assertFeelContract,
     deliverPacket: () => choose("deliver-packet"),
@@ -2747,6 +2878,31 @@ mobileMovePadController = attachMobileMovePad({
 });
 syncMobileMovePad();
 canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
+  // Pointer-to-render probe intent-listener (SHIPPED consumer of
+  // `./src/inputAcknowledgeLatency.ts`). Capture-phase on the
+  // document so every real `pointerdown` — canvas taps, the packet
+  // gesture, the four tap-choice buttons, the mobile move-pad —
+  // timestamps its intent at `performance.now()`. The matching
+  // render-side close-out lives in the `tick` below (right after
+  // `composer.render()` calls
+  // `drainPointerIntentsForRenderedFrame(now)`), so any pending
+  // intent is folded into a sample against the rAF frame that
+  // reflects it — one-frame promise, measured against the real DOM.
+  // Capture=true so the listener sees the event before any
+  // bubble-phase `stopPropagation()` drops it.
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!event || typeof event.pointerId !== "number") {
+        return;
+      }
+      markPointerIntent({
+        pointerAtMs: performance.now(),
+        pointerId: event.pointerId,
+      });
+    },
+    { capture: true, passive: true },
+  );
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
   syncKeyboardInput();
@@ -2905,6 +3061,14 @@ const tick = (now) => {
   renderText();
   publishState();
   composer.render();
+  // Pointer-to-render close-out: any `pointerdown` intent that
+  // came in this frame gets folded into a sample against
+  // `performance.now()` NOW that `composer.render()` has flushed
+  // the pixels. This is the "played, not driven" half of the
+  // feel contract — every real tap the player performs is
+  // measured against the one-frame promise via the same primitive
+  // the harness (bootWindowGame.ts) uses for its synthetic drives.
+  drainPointerIntentsForRenderedFrame(performance.now());
   requestAnimationFrame(tick);
 };
 

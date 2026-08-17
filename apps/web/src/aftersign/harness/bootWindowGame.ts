@@ -429,6 +429,39 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     return report;
   };
 
+  // Played-not-driven wiring: attach a capture-phase `pointerdown`
+  // listener to the document so a real `dispatchEvent(new
+  // PointerEvent("pointerdown"))` on a tap surface — the way a
+  // Playwright tap or a jsdom consumer test would drive the seam —
+  // populates the probe automatically, without a harness caller
+  // hand-calling `markPointerIntent`. This mirrors the SHIPPED
+  // wiring in `aftersign/main.js`, where the served page's real
+  // `pointerdown` listener + rAF `composer.render()` drain closes
+  // the loop. `bootAftersignWindowGame` runs at module import in
+  // vitest (`import "./harness/bootWindowGame"` at the top of a
+  // consumer spec), so the listener is armed before any test-side
+  // `dispatchEvent` call. DOM-optional: guarded by
+  // `typeof document !== "undefined"` so worker/SSR imports don't
+  // throw.
+  const boundDocument =
+    (globalThis as { document?: Document }).document ?? null;
+  if (boundDocument && typeof boundDocument.addEventListener === "function") {
+    boundDocument.addEventListener(
+      "pointerdown",
+      (event: Event) => {
+        const pointerEvent = event as PointerEvent;
+        if (typeof pointerEvent.pointerId !== "number") {
+          return;
+        }
+        markPointerIntent({
+          pointerAtMs: nowMs(),
+          pointerId: pointerEvent.pointerId,
+        });
+      },
+      { capture: true, passive: true } as AddEventListenerOptions,
+    );
+  }
+
   const applyMeet = (
     id: "io" | "orra",
     previous: AftersignVerticalSliceState,
