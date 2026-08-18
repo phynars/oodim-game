@@ -105,6 +105,77 @@ export const AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL = {
   audioCueDelayMs: 120,
 } as const satisfies AftersignRememberingNpcRecognitionFeel;
 
+export type AftersignRememberingNpcRecognitionEnvelope = {
+  elapsedMs: number;
+  lineHoldComplete: boolean;
+  portraitPushInPx: number;
+  recognitionRingScale: number;
+  recognitionRingOpacity: number;
+  subtitlePopDistancePx: number;
+  subtitleOpacity: number;
+  audioCueArmed: boolean;
+};
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+function easeOutExpoish(t: number): number {
+  const clamped = clamp01(t);
+  return 1 - Math.pow(1 - clamped, 3);
+}
+
+function easeOutBack(t: number): number {
+  const clamped = clamp01(t);
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(clamped - 1, 3) + c1 * Math.pow(clamped - 1, 2);
+}
+
+/**
+ * Sample the returning-NPC recognition beat at a concrete elapsed time so
+ * the served renderer and tests consume one numeric contract instead of
+ * re-implementing the timing choreography. Negative/non-finite samples
+ * collapse to the opening frame; reduced motion keeps opacity/audio
+ * semantics but removes spatial motion and scale pop.
+ */
+export function sampleAftersignRememberingNpcRecognitionEnvelope(
+  elapsedMs: number,
+  reducedMotion = false,
+): AftersignRememberingNpcRecognitionEnvelope {
+  const feel = AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL;
+  const safeElapsedMs = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const portraitT = clamp01(safeElapsedMs / feel.portraitPushInMs);
+  const ringT = clamp01(
+    (safeElapsedMs - feel.recognitionRingDelayMs) /
+      feel.recognitionRingDurationMs,
+  );
+  const subtitleT = clamp01(
+    (safeElapsedMs - feel.subtitlePopDelayMs) / feel.subtitlePopMs,
+  );
+  const portraitEase = easeOutExpoish(portraitT);
+  const subtitleEase = easeOutBack(subtitleT);
+  const ringFade = Math.sin(ringT * Math.PI);
+
+  return {
+    elapsedMs: safeElapsedMs,
+    lineHoldComplete: safeElapsedMs >= feel.preLineHoldMs,
+    portraitPushInPx: reducedMotion
+      ? 0
+      : feel.portraitPushInPx * portraitEase,
+    recognitionRingScale: reducedMotion
+      ? 1
+      : 1 + (feel.recognitionRingScale - 1) * easeOutExpoish(ringT),
+    recognitionRingOpacity: feel.recognitionRingOpacity * ringFade,
+    subtitlePopDistancePx: reducedMotion
+      ? 0
+      : feel.subtitlePopDistancePx * (1 - subtitleEase),
+    subtitleOpacity: subtitleT,
+    audioCueArmed: safeElapsedMs >= feel.audioCueDelayMs,
+  };
+}
+
 export type AftersignRememberingNpcDialogue = {
   npc: AftersignRememberingNpcId;
   recognizesPlayer: boolean;
