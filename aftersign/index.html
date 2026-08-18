@@ -627,6 +627,77 @@
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>
     <div id="recognitionImpactBurst" class="impact-burst" aria-hidden="true"></div>
+      <!--
+        Remembering-NPC recognition-beat overlay. The served renderer's
+        per-frame `syncRememberingNpcRecognitionDom()` (aftersign/main.js)
+        stamps five CSS custom properties + two dataset markers on this
+        element every tick during `io-return-recognition` /
+        `orra-recognition`, driven by
+        `sampleAftersignRememberingNpcRecognitionBeat` in
+        `apps/web/src/aftersign/verticalSliceRecognitionBeat.ts`. The
+        ring + subtitle children read those variables via CSS below and
+        via matched inline transitions — one element, one clock, one
+        envelope. Off-beat baseline (data-active="false") keeps ring
+        opacity + subtitle opacity at 0 so the overlay stays inert.
+
+        Nested children carry
+        `data-aftersign-remembering-recognition-ring` and
+        `data-aftersign-remembering-recognition-subtitle` so the played
+        contract test `rememberingNpcRecognitionServed.contract.test.ts`
+        can grep the DOM shape and the visible-render pins.
+      -->
+      <div
+        class="remembering-npc-recognition"
+        data-aftersign-remembering-recognition
+        data-active="false"
+        data-audio-armed="false"
+        aria-hidden="true"
+        style="
+          --aftersign-remembering-portrait-push-px: 0px;
+          --aftersign-remembering-ring-scale: 1;
+          --aftersign-remembering-ring-opacity: 0;
+          --aftersign-remembering-subtitle-pop-px: 0px;
+          --aftersign-remembering-subtitle-opacity: 0;
+          position: absolute;
+          left: 50%;
+          top: 30vh;
+          transform: translate3d(-50%, var(--aftersign-remembering-portrait-push-px), 0);
+          pointer-events: none;
+          z-index: 4;
+        "
+      >
+        <div
+          data-aftersign-remembering-recognition-ring
+          style="
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 220, 180, 0.85);
+            box-shadow: 0 0 24px rgba(255, 220, 180, 0.5);
+            opacity: var(--aftersign-remembering-ring-opacity);
+            transform: translate3d(-50%, 0, 0) scale(var(--aftersign-remembering-ring-scale));
+            position: absolute;
+            left: 50%;
+            top: 0;
+            transition: opacity 60ms linear;
+          "
+        ></div>
+        <div
+          data-aftersign-remembering-recognition-subtitle
+          style="
+            position: absolute;
+            top: 108px;
+            left: 50%;
+            transform: translate3d(-50%, var(--aftersign-remembering-subtitle-pop-px), 0);
+            opacity: var(--aftersign-remembering-subtitle-opacity);
+            font-size: 15px;
+            color: rgba(255, 240, 220, 0.95);
+            white-space: nowrap;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+            transition: opacity 60ms linear;
+          "
+        ></div>
+      </div>
     <!--
       Return-tone feel surface. Stamped by main.js ::
       window.__game.applyReturnToneFeel(reason) — writes the 11 CSS

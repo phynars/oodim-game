@@ -199,6 +199,52 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("drainPointerIntentsForRenderedFrame(performance.now())");
   });
 
+  it("consumes the remembering-NPC recognition-beat wrapper on the shipped surface", () => {
+    // Blocking review on PR #1309: same shape as the tap-confirm and
+    // return-tone precedents above — a recognition-beat wrapper with
+    // no consumer on the served surface is green tests over dead
+    // code.  `aftersign/main.js` must import
+    // `sampleAftersignRememberingNpcRecognitionBeat` from
+    // `apps/web/src/aftersign/verticalSliceRecognitionBeat.ts` AND
+    // call it every frame from a tick-driven
+    // `syncRememberingNpcRecognitionDom(now)` invocation (right after
+    // the sibling `syncRecognitionDomFeedback(now)`, so both beats
+    // share `memoryRecognitionBeatStartedAt` and can never drift
+    // apart) so the returning NPC's recognition envelope is measured
+    // on every real frame, not just when a harness caller invokes
+    // it.  Any future refactor that unwires the seam (removes the
+    // import, moves the call out of the tick, drops the overlay
+    // element) reds one of these three pins first.
+    const main = readServedAftersignFile("main.js");
+    expect(main).toContain("sampleAftersignRememberingNpcRecognitionBeat");
+    expect(main).toContain(
+      "../apps/web/src/aftersign/verticalSliceRecognitionBeat.ts",
+    );
+    expect(main).toContain("syncRememberingNpcRecognitionDom(now)");
+    // Ordering pin — the remembering sync must fire AFTER the
+    // recognition-DOM sibling so both beats consume the same tick's
+    // `now` after the halo channels have written.
+    expect(main.indexOf("syncRememberingNpcRecognitionDom(now)")).toBeGreaterThan(
+      main.indexOf("syncRecognitionDomFeedback(now)"),
+    );
+
+    // Served-page DOM pins — the visible overlay + its ring +
+    // subtitle children, plus the five CSS variables the renderer
+    // stamps.  Same discipline as the tap-confirm precedent: every
+    // CSS custom property the renderer writes must have a declared
+    // baseline in the HTML so the page parses cleanly before the
+    // first beat lands.
+    const html = readServedAftersignFile("index.html");
+    expect(html).toContain("data-aftersign-remembering-recognition");
+    expect(html).toContain("data-aftersign-remembering-recognition-ring");
+    expect(html).toContain("data-aftersign-remembering-recognition-subtitle");
+    expect(html).toContain("--aftersign-remembering-portrait-push-px");
+    expect(html).toContain("--aftersign-remembering-ring-scale");
+    expect(html).toContain("--aftersign-remembering-ring-opacity");
+    expect(html).toContain("--aftersign-remembering-subtitle-pop-px");
+    expect(html).toContain("--aftersign-remembering-subtitle-opacity");
+  });
+
   it("routes player-visible beat + choice stamps through the shared DOM bridge", () => {
     // PR #1231: `renderText()` in main.js used to set
     // `dataset.choiceId` / `disabled` inline on the three visible

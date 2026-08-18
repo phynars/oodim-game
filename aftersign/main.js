@@ -187,6 +187,28 @@ import {
 // (bootWindowGame.ts) exposes the SAME four methods over the same
 // primitive so vitest and Playwright can pin the seam identically.
 import { measurePointerToRenderLatency } from "./src/inputAcknowledgeLatency.ts";
+// Remembering-NPC recognition-beat wrapper — sibling to
+// `recognitionFeedbackEnvelopeAt`. `recognitionFeedbackEnvelopeAt`
+// samples the Io PACKET-outcome-driven halo/camera envelope; this
+// wrapper samples the SHARED remembering-NPC choreography (portrait
+// push-in, recognition ring sin-fade, subtitle easeOutBack, audio-cue
+// arm gate) authored in
+// `apps/web/src/aftersign/verticalSliceRuntimeState.ts` +
+// resolved via `verticalSliceRecognitionBeat.ts`. Wiring it into the
+// served render tick here is what turns
+// `sampleAftersignRememberingNpcRecognitionBeat` from a harness-only
+// projection into a SHIPPED consumer: every frame during
+// `io-return-recognition`, `syncRememberingNpcRecognitionDom()` calls
+// the wrapper against a minimal `AftersignVerticalSliceState` adapter
+// built from `state`, then stamps the returned envelope's fields as
+// CSS variables + `data-active` / `data-audio-armed` markers onto
+// `[data-aftersign-remembering-recognition]` — a real element in
+// `index.html` the served page paints, and the recognition ring +
+// subtitle nodes inside it read via CSS variables. The played spec
+// `rememberingNpcRecognitionServed.contract.test.ts` pins the seam.
+import {
+  sampleAftersignRememberingNpcRecognitionBeat,
+} from "../apps/web/src/aftersign/verticalSliceRecognitionBeat.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -203,6 +225,24 @@ const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
 const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
+// Remembering-NPC recognition-beat DOM anchor. Hosts the ring + subtitle
+// nodes the wrapper drives via CSS variables each frame while the
+// returning NPC recognizes the player. Off-beat / first-contact leaves
+// this element inert (data-active="false", ring opacity 0, subtitle
+// opacity 0 — the inert baseline the played contract test asserts).
+const rememberingRecognitionEl = document.querySelector(
+  "[data-aftersign-remembering-recognition]",
+);
+const rememberingRecognitionRingEl = rememberingRecognitionEl
+  ? rememberingRecognitionEl.querySelector(
+      "[data-aftersign-remembering-recognition-ring]",
+    )
+  : null;
+const rememberingRecognitionSubtitleEl = rememberingRecognitionEl
+  ? rememberingRecognitionEl.querySelector(
+      "[data-aftersign-remembering-recognition-subtitle]",
+    )
+  : null;
 
 const CONFIRM_FEEDBACK = INTERACTION_CONFIRM_FEEL;
 const MEMORY_RECOGNITION_FEEDBACK = IO_RECOGNITION_BEAT_FEEDBACK;
@@ -3021,6 +3061,144 @@ renderText();
 publishState();
 resize();
 
+// Remembering-NPC recognition-beat DOM sync (SHIPPED consumer of
+// `sampleAftersignRememberingNpcRecognitionBeat`). Called every rAF
+// tick alongside `syncRecognitionDomFeedback(now)`; while
+// recognitionMotion drives the sign/seal/rim channels of the
+// packet-outcome halo, this drives the shared remembering-NPC
+// choreography (portrait push-in, ring sin-fade, subtitle pop,
+// audio-cue arm) onto the `[data-aftersign-remembering-recognition]`
+// element authored in index.html.
+//
+// The clock is `memoryRecognitionBeatStartedAt` — the SAME clock the
+// Io/Orra halo envelope uses — so the two beats stay lock-stepped:
+// one story moment, one elapsed axis, no drift between "Io's halo
+// lit" and "the ring flashed + subtitle popped".
+//
+// Off-beat / first-contact / no beat clock → inert baseline
+// (data-active="false", ring opacity 0, subtitle opacity 0,
+// audio-armed "false"). Only when the returning NPC recognizes the
+// player AND the beat clock has armed do the wrapper's envelope
+// numbers land on the CSS variables the served page reads.
+let lastRememberingRecognitionBeat = null;
+const buildVerticalSliceStateAdapter = () => ({
+  // Only the fields `resolveAftersignRememberingNpcDialogue` reads
+  // (scene, ioHasMetPlayer/ioRecognizesPlayer, orraHasMetPlayer/
+  // orraRecognizesPlayer, packetOutcome). Derived from the served
+  // main.js state shape (no shared type — this is a compat adapter
+  // pinned by the played contract test).
+  scene:
+    state.scene.id === "orra-return"
+      ? "orra-return"
+      : state.npcs.io.memory.length > 0
+        ? "io-return"
+        : "kiosk",
+  packetOutcome: state.packet.sealed ? "sealed" : "opened",
+  ioHasMetPlayer: state.npcs.io.memory.length > 0,
+  ioRecognizesPlayer: state.npcs.io.memory.length > 0,
+  orraAction: null,
+  orraHasMetPlayer: state.npcs.orra?.memory?.hasMetOrra === true,
+  orraRecognizesPlayer:
+    state.npcs.orra?.memory?.hasMetOrra === true
+    && typeof state.npcs.orra?.memory?.debt === "string",
+});
+const syncRememberingNpcRecognitionDom = (nowMs) => {
+  if (!rememberingRecognitionEl) {
+    lastRememberingRecognitionBeat = null;
+    return;
+  }
+  const beat = state.scene?.beat;
+  const npc = beat === "orra-recognition" ? "orra" : "io";
+  const armed = memoryRecognitionBeatStartedAt !== null;
+  const elapsedMs = armed ? nowMs - memoryRecognitionBeatStartedAt : 0;
+  const sample = sampleAftersignRememberingNpcRecognitionBeat(
+    buildVerticalSliceStateAdapter(),
+    npc,
+    elapsedMs,
+    { reducedMotion: prefersReducedMotion() },
+  );
+  lastRememberingRecognitionBeat = sample;
+  const envelope = sample.envelope;
+  if (!envelope || !armed) {
+    rememberingRecognitionEl.dataset.active = "false";
+    rememberingRecognitionEl.dataset.audioArmed = "false";
+    rememberingRecognitionEl.style.setProperty(
+      "--aftersign-remembering-portrait-push-px",
+      "0px",
+    );
+    rememberingRecognitionEl.style.setProperty(
+      "--aftersign-remembering-ring-scale",
+      "1",
+    );
+    rememberingRecognitionEl.style.setProperty(
+      "--aftersign-remembering-ring-opacity",
+      "0",
+    );
+    rememberingRecognitionEl.style.setProperty(
+      "--aftersign-remembering-subtitle-pop-px",
+      "0px",
+    );
+    rememberingRecognitionEl.style.setProperty(
+      "--aftersign-remembering-subtitle-opacity",
+      "0",
+    );
+    if (rememberingRecognitionSubtitleEl) {
+      rememberingRecognitionSubtitleEl.textContent =
+        sample.dialogue.lines[0] ?? "";
+    }
+    return;
+  }
+  rememberingRecognitionEl.dataset.active = "true";
+  rememberingRecognitionEl.dataset.audioArmed = envelope.audioCueArmed
+    ? "true"
+    : "false";
+  rememberingRecognitionEl.dataset.npc = npc;
+  rememberingRecognitionEl.style.setProperty(
+    "--aftersign-remembering-portrait-push-px",
+    `${envelope.portraitPushInPx.toFixed(2)}px`,
+  );
+  rememberingRecognitionEl.style.setProperty(
+    "--aftersign-remembering-ring-scale",
+    envelope.recognitionRingScale.toFixed(3),
+  );
+  rememberingRecognitionEl.style.setProperty(
+    "--aftersign-remembering-ring-opacity",
+    envelope.recognitionRingOpacity.toFixed(3),
+  );
+  rememberingRecognitionEl.style.setProperty(
+    "--aftersign-remembering-subtitle-pop-px",
+    `${envelope.subtitlePopDistancePx.toFixed(2)}px`,
+  );
+  rememberingRecognitionEl.style.setProperty(
+    "--aftersign-remembering-subtitle-opacity",
+    envelope.subtitleOpacity.toFixed(3),
+  );
+  if (rememberingRecognitionSubtitleEl) {
+    rememberingRecognitionSubtitleEl.textContent =
+      sample.dialogue.lines[0] ?? "";
+  }
+};
+// Expose the last-sampled beat + a direct sampler on
+// `window.__aftersignRememberingRecognition` so the played
+// contract test can read what the FRAME saw (not what a
+// re-computation would say). Kept as a stable side-channel so the
+// broader story-state-surface contract stays untouched.
+if (typeof window !== "undefined") {
+  window.__aftersignRememberingRecognition = {
+    getLastBeat: () => lastRememberingRecognitionBeat,
+    sample: (elapsedMs, options) =>
+      sampleAftersignRememberingNpcRecognitionBeat(
+        buildVerticalSliceStateAdapter(),
+        state.scene?.beat === "orra-recognition" ? "orra" : "io",
+        typeof elapsedMs === "number" ? elapsedMs : 0,
+        { reducedMotion: options?.reducedMotion ?? prefersReducedMotion() },
+      ),
+  };
+}
+// Initial paint of the inert baseline so the element parses with a
+// consistent shape before the first tick fires.
+syncRememberingNpcRecognitionDom(performance.now());
+
 let last = performance.now();
 const tick = (now) => {
   const dt = Math.min((now - last) / 1000, 0.05);
@@ -3068,6 +3246,12 @@ const tick = (now) => {
   const recognitionMotion = recognitionMotionAt(now);
   if (memoryRecognitionBeatStartedAt !== null) framesDuringRecognitionBeat += 1;
   syncRecognitionDomFeedback(now);
+  // Sibling per-frame sync — drives the shared remembering-NPC
+  // recognition choreography (ring + subtitle) via
+  // `sampleAftersignRememberingNpcRecognitionBeat`. Shares the
+  // `memoryRecognitionBeatStartedAt` clock with the halo envelope
+  // above so both beats speak the same elapsed axis.
+  syncRememberingNpcRecognitionDom(now);
   impactBurstParticles = recognitionMotion.impactBurst.particles;
     syncImpactBurstDom(impactBurstParticles);
   if (recognitionMotion.impactBurst.chirp.shouldTrigger) {
