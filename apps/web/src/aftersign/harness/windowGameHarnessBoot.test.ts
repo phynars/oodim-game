@@ -8,6 +8,7 @@ import {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
   AFTERSIGN_KIOSK_SCENE_FEEL,
+  AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL,
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   meetIoForAftersignSlice,
@@ -876,6 +877,18 @@ describe("Aftersign window.__game harness (#918)", () => {
     // doing the interpolation the reviewer flagged.
     expect(roundTrip?.spokenLine).not.toContain("Signal Runner");
     expect(roundTrip?.spokenLine).not.toMatch(/\binteraction 3\b/);
+
+    // Recognition-feel envelope rides alongside the spoken line —
+    // pre-line hold, portrait push-in, ring flash, subtitle pop,
+    // audio cue delay. Sourced verbatim from
+    // `AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL` via the resolver,
+    // so a renderer never has to import the constant separately.
+    // If a future refactor unwires `recognitionFeel` from the
+    // shipped surface, this equality goes red — closing the
+    // "populated, never read, never asserted" gap from #1292.
+    expect(roundTrip?.recognitionFeel).toEqual(
+      AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL,
+    );
 
     // Clearing the memory bag drops the beat back to absent, even
     // while Io still recognizes the player.

@@ -7,6 +7,7 @@
 
 export {
   AFTERSIGN_PACKET_CHOICE_CONFIRM_FEEL,
+  AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL,
   createAftersignVerticalSliceState,
   recordAftersignPacketChoice,
   recordAftersignOrraAction,
@@ -25,6 +26,7 @@ export {
   type AftersignVerticalSliceState,
   type AftersignRememberingNpcId,
   type AftersignRememberingNpcDialogue,
+  type AftersignRememberingNpcRecognitionFeel,
 } from "./verticalSliceRuntimeState";
 
 export {
