@@ -160,6 +160,23 @@ import {
   AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
   assertAftersignTapChoiceSurfaces,
 } from "../apps/web/src/aftersign/tapChoiceFeel.ts";
+// Tap-confirm feel — flagship press envelope stamped on the ONE button
+// the player just committed with (packet, acknowledge/skip route,
+// deliver, ask-for-next-job). Wiring it into main.js here is what
+// turns `tapConfirmFeel.ts` from a pure primitive (with harness-only
+// consumers) into a SHIPPED consumer on the served page: the four
+// click handlers below call
+// `window.__game.applyTapConfirmFeel(choiceId)` BEFORE `choose(...)`
+// so the CSS variables + `data-aftersign-tap-confirm="armed"` marker
+// land on the very element the finger just touched, and only that
+// element (a tray-wide flash would smear the beat). Same file, same
+// choice-id vocabulary as the tap-choice size seam right above — one
+// axis, no drift between "the button is big enough" and "the button
+// felt like it counted".
+import {
+  applyFlagshipTapConfirmFeel,
+  FLAGSHIP_TAP_CONFIRM_FEEL,
+} from "../apps/web/src/aftersign/tapConfirmFeel.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -1327,6 +1344,37 @@ const publishState = () => {
      */
     getTapChoiceFeelReport: () => {
       return assertAftersignTapChoiceSurfaces(document);
+    },
+    /**
+     * Stamp the flagship tap-confirm envelope on the `[data-aftersign-
+     * tap-choice="<choiceId>"]` button in the LIVE served DOM. Called
+     * by each of the four committing click handlers (packet release,
+     * acknowledge-kiosk, skip-kiosk-acknowledge, deliver-packet /
+     * ask-for-next-job) BEFORE `choose(...)`, so the CSS variables
+     * land on the exact element the finger touched — not on every
+     * tap-choice surface in the tray. Returns the applied row for
+     * callers that want to chain (audio cue, telemetry sample) without
+     * a second table lookup; returns `null` when no matching surface
+     * exists so the envelope silently no-ops on transitional beats.
+     * Never throws — the FEEL projection must never break the STATE
+     * update that follows.
+     */
+    applyTapConfirmFeel: (choiceId) => {
+      try {
+        const nodes = document.querySelectorAll(
+          AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
+        );
+        for (const node of nodes) {
+          if (node.getAttribute("data-aftersign-tap-choice") === choiceId) {
+            return applyFlagshipTapConfirmFeel(node);
+          }
+        }
+        // No matching surface — return the row so a caller that just
+        // wants to schedule an audio cue still has the numbers.
+        return FLAGSHIP_TAP_CONFIRM_FEEL;
+      } catch {
+        return null;
+      }
     },
   };
   publishedStateVersion = statePublishVersion;
@@ -2837,6 +2885,13 @@ packetButton.addEventListener("pointermove", (event) => {
 });
 packetButton.addEventListener("pointerup", (event) => {
   event.preventDefault();
+  // Tap-confirm FEEL — stamp the press envelope on the packet
+  // button BEFORE `packetRelease` runs its evaluator + state
+  // update. "packet" is the choice-id pinned on this element
+  // in index.html; see servedSurface contract test.
+  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
+    window.__game.applyTapConfirmFeel("packet");
+  }
   packetRelease(packetPointFromEvent(event));
 });
 packetButton.addEventListener("pointercancel", (event) => {
@@ -2850,6 +2905,12 @@ acknowledgeRouteButton.addEventListener("click", () => {
       markStateDirty();
     }
     const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
+  // Tap-confirm FEEL — stamp the press envelope on THIS button
+  // (the choiceId that just committed) before `choose(...)` runs
+  // the state update.
+  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
+    window.__game.applyTapConfirmFeel(choiceId);
+  }
   choose(choiceId);
 });
 skipRouteButton.addEventListener("click", () => {
@@ -2859,6 +2920,10 @@ skipRouteButton.addEventListener("click", () => {
       markStateDirty();
     }
     const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
+  // Tap-confirm FEEL — see acknowledgeRouteButton handler above.
+  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
+    window.__game.applyTapConfirmFeel(choiceId);
+  }
   choose(choiceId);
 });
 deliverButton.addEventListener("click", () => {
@@ -2868,6 +2933,14 @@ deliverButton.addEventListener("click", () => {
       markStateDirty();
     }
     const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
+  // Tap-confirm FEEL — see acknowledgeRouteButton handler above.
+  // deliverButton retargets to "ask-for-next-job" and back across
+  // beats (see stampAftersignChoice calls in renderText), so we
+  // read the current `dataset.choiceId` — same value `choose()`
+  // gets — so the envelope always lands on the correct id.
+  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
+    window.__game.applyTapConfirmFeel(choiceId);
+  }
   choose(choiceId);
 });
 mobileMovePadController = attachMobileMovePad({

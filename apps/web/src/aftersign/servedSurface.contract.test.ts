@@ -92,6 +92,34 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain('data-aftersign-tap-choice="deliver-packet"');
   });
 
+  it("consumes the tap-confirm feel envelope on the shipped surface", () => {
+    // Blocking review on PR #1299: same shape as the return-tone
+    // and tap-choice precedents above — a per-commit press envelope
+    // with no consumer on the served surface is green tests over
+    // dead code. `aftersign/main.js` must import the writer +
+    // constant from `apps/web/src/aftersign/tapConfirmFeel.ts` AND
+    // expose the runtime seam `window.__game.applyTapConfirmFeel`
+    // AND call that seam from the four committing click handlers
+    // (packet pointerup, acknowledgeRoute, skipRoute, deliver) so
+    // every real tap that COMMITS a fork stamps the envelope on
+    // the exact button the finger touched — not on the whole tray,
+    // and not just in the vitest harness.
+    const main = readServedAftersignFile("main.js");
+    expect(main).toContain("applyFlagshipTapConfirmFeel");
+    expect(main).toContain("FLAGSHIP_TAP_CONFIRM_FEEL");
+    // The imported specifier — a rename in tapConfirmFeel.ts that
+    // drops the file must red this pin.
+    expect(main).toContain("../apps/web/src/aftersign/tapConfirmFeel.ts");
+    // Runtime seam exposed on window.__game — the harness projects
+    // the same shape via getAppliedTapConfirmFeel, so a consumer
+    // spec can drive either surface with the same choice-id.
+    expect(main).toContain("applyTapConfirmFeel");
+    // Played-not-driven pin: at least one committing click handler
+    // must actually invoke the seam. Any refactor that "cleans up"
+    // the call sites reds here.
+    expect(main).toContain('window.__game.applyTapConfirmFeel(');
+  });
+
   it("consumes the pointer-to-render latency probe on the shipped surface", () => {
     // Blocking review on PR #1283: same shape as the return-tone
     // and tap-choice precedents above — a pointer-to-render feel
