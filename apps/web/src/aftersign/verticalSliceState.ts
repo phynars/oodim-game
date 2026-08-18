@@ -52,6 +52,7 @@ export {
   sampleAftersignIoRecognitionEnvelope,
   sampleAftersignOrraRecognitionEnvelope,
   sampleAftersignOrraRecognitionForViewport,
+  sampleAftersignRememberingNpcRecognitionBeat,
   type AftersignIoRecognitionFeel,
   type AftersignOrraRecognitionFeel,
   type AftersignIoMemoryBeat,
@@ -61,6 +62,7 @@ export {
   type AftersignOrraRecognitionEnvelope,
   type AftersignOrraRecognitionViewportEnvelope,
   type AftersignRecognitionViewport,
+  type AftersignRememberingNpcRecognitionBeat,
 } from "./verticalSliceRecognitionBeat";
 
 export {

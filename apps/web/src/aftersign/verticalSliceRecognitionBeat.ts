@@ -18,11 +18,16 @@ import {
   sampleRecognitionFeedbackBeat,
   type RecognitionFeedbackSample,
 } from "./recognitionFeedback.ts";
-import type {
-  AftersignOrraAction,
-  AftersignPacketOutcome,
-  AftersignSceneId,
-  AftersignVerticalSliceState,
+import {
+  resolveAftersignRememberingNpcDialogue,
+  sampleAftersignRememberingNpcRecognitionEnvelope,
+  type AftersignOrraAction,
+  type AftersignPacketOutcome,
+  type AftersignRememberingNpcDialogue,
+  type AftersignRememberingNpcId,
+  type AftersignRememberingNpcRecognitionEnvelope,
+  type AftersignSceneId,
+  type AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
 
 /**
@@ -283,6 +288,51 @@ export function sampleAftersignOrraRecognitionForViewport(
     inputLock: null,
     viewportKind: "desktop",
   };
+}
+
+/**
+ * Combined render-path shape for the returning-NPC recognition beat.
+ * The served renderer consumes ONE object per frame — what the NPC says
+ * (`dialogue`) plus how the choreography should look at `elapsedMs`
+ * (`envelope`). `envelope` is `null` on the first-contact path, where
+ * `resolveAftersignRememberingNpcDialogue` returns `recognitionFeel: null`
+ * — there is no recognition beat to sample when the NPC hasn't met the
+ * player before.
+ */
+export type AftersignRememberingNpcRecognitionBeat = {
+  readonly dialogue: AftersignRememberingNpcDialogue;
+  readonly envelope: AftersignRememberingNpcRecognitionEnvelope | null;
+};
+
+/**
+ * Recognition-beat render entry for the returning-NPC choreography.
+ * Sibling to `sampleAftersignIoRecognitionEnvelope` /
+ * `sampleAftersignOrraRecognitionEnvelope`: those two sample the
+ * PACKET-outcome-driven Io beat and the Orra saint-halo beat; this one
+ * samples the shared REMEMBERING beat (portrait push-in, recognition
+ * ring sin-fade, subtitle easeOutBack, audio-cue arm gate) that both
+ * Io and Orra fall through when they recognize the player on return.
+ *
+ * Returns the resolved dialogue AND the numeric envelope so a served
+ * renderer has one call site per frame. Recognition path → envelope
+ * is a real sample; first-contact path → envelope is `null` (there is
+ * no recognition choreography when the NPC hasn't met the player yet
+ * — dialogue.recognitionFeel is also `null` in that case).
+ */
+export function sampleAftersignRememberingNpcRecognitionBeat(
+  state: AftersignVerticalSliceState,
+  npc: AftersignRememberingNpcId,
+  elapsedMs: number,
+  options: { reducedMotion?: boolean } = {},
+): AftersignRememberingNpcRecognitionBeat {
+  const dialogue = resolveAftersignRememberingNpcDialogue(state, npc);
+  const envelope = dialogue.recognitionFeel
+    ? sampleAftersignRememberingNpcRecognitionEnvelope(
+        elapsedMs,
+        options.reducedMotion,
+      )
+    : null;
+  return { dialogue, envelope };
 }
 
 function clamp01(value: number): number {
