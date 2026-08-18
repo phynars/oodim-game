@@ -44,7 +44,7 @@ jobs:
         # npm install (not `npm ci`) — deploy.yml precedent (#836).
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Run aftersign e2e against MAIN
         run: npm run test:e2e:aftersign
 
