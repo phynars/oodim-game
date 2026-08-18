@@ -67,6 +67,32 @@
         --aftersign-return-tone-attack-ms: 0ms;
         --aftersign-return-tone-release-ms: 0ms;
         --aftersign-return-tone-gain: 0;
+
+        /* --aftersign-tap-confirm-* — flagship per-commit press
+           envelope (see apps/web/src/aftersign/tapConfirmFeel.ts).
+           Stamped onto the tapped [data-aftersign-tap-choice] button
+           by main.js ::  window.__game.applyTapConfirmFeel(choiceId)
+           at the moment a fork COMMITS (packet pointerup, ack/skip
+           route, deliver). Nine numbers, one row: pressScale ·
+           releaseScale · pressMs · releaseMs · releaseEasing · glowPx
+           · glowMs · shakePx · shakeMs. Defaults here are inert
+           (identity transform, zero-duration transitions, no glow)
+           so the base `button` rule's own transform+transition wins
+           until `data-aftersign-tap-confirm="armed"` lands — then the
+           tuned row overrides on the tapped button and only that
+           button. Same discipline as the return-tone precedent above:
+           the CSS layer parses cleanly with or without a beat firing,
+           and a `pressMs: 72 → 73` edit in the JS row actually
+           re-times the shipped surface. */
+        --aftersign-tap-confirm-press-scale: 1;
+        --aftersign-tap-confirm-release-scale: 1;
+        --aftersign-tap-confirm-press-ms: 0ms;
+        --aftersign-tap-confirm-release-ms: 0ms;
+        --aftersign-tap-confirm-release-easing: linear;
+        --aftersign-tap-confirm-glow-px: 0px;
+        --aftersign-tap-confirm-glow-ms: 0ms;
+        --aftersign-tap-confirm-shake-px: 0px;
+        --aftersign-tap-confirm-shake-ms: 0ms;
       }
 
       /* Return-tone press envelope — SHIPPED CONSUMER of the 11
@@ -112,6 +138,70 @@
             var(--aftersign-return-easing, linear);
         box-shadow:
           0 0 var(--aftersign-return-shake-px, 0px) rgba(255, 214, 138, var(--aftersign-return-tone-gain, 0));
+      }
+
+      /* Tap-confirm press envelope — SHIPPED CONSUMER of the 9
+         --aftersign-tap-confirm-* variables (PR #1299 re-review:
+         "zero CSS reads the stamped envelope" — fixed here). Mirrors
+         the return-tone precedent above: the JS writer stamps the
+         nine vars + `data-aftersign-tap-confirm="armed"` onto the
+         single button the finger just touched, and this rule turns
+         those numbers into paint. Base `button` selector already
+         ships a transform+transition; the armed selector below has
+         higher specificity (attribute + tag) so its tuned timing
+         and easing wins during the commit envelope, then decays back
+         to the base rule when the dataset marker is removed.
+
+         Every one of the nine variables is consulted here:
+           press-scale     → :active transform target
+           release-scale   → non-active transform target
+           press-ms        → transform transition on :active
+           release-ms      → transform transition on release
+           release-easing  → shared easing for both directions
+           glow-px         → box-shadow spread on :active
+           glow-ms         → box-shadow transition (both directions)
+           shake-px + shake-ms → tap-confirm-shake keyframes below
+         So a `pressMs: 72 → 73` edit in FLAGSHIP_TAP_CONFIRM_FEEL
+         actually re-times the shipped press, not just a synthetic
+         node in a vitest harness. */
+      button[data-aftersign-tap-confirm="armed"] {
+        transform: translate3d(0, 0, 0) scale(var(--aftersign-tap-confirm-release-scale, 1));
+        transition:
+          transform
+            var(--aftersign-tap-confirm-release-ms, 0ms)
+            var(--aftersign-tap-confirm-release-easing, linear),
+          box-shadow
+            var(--aftersign-tap-confirm-glow-ms, 0ms)
+            var(--aftersign-tap-confirm-release-easing, linear);
+        /* Play the shake once whenever the marker lands. The keyframes
+           use --aftersign-tap-confirm-shake-px, so a 2px→3px edit lands
+           on the shipped shake without re-authoring the rule. */
+        animation:
+          aftersign-tap-confirm-shake
+          var(--aftersign-tap-confirm-shake-ms, 0ms)
+          var(--aftersign-tap-confirm-release-easing, linear)
+          1;
+      }
+      button[data-aftersign-tap-confirm="armed"]:active {
+        transform: translate3d(0, 1px, 0) scale(var(--aftersign-tap-confirm-press-scale, 1));
+        transition:
+          transform
+            var(--aftersign-tap-confirm-press-ms, 0ms)
+            var(--aftersign-tap-confirm-release-easing, linear),
+          box-shadow
+            var(--aftersign-tap-confirm-glow-ms, 0ms)
+            var(--aftersign-tap-confirm-release-easing, linear);
+        box-shadow:
+          0 0 var(--aftersign-tap-confirm-glow-px, 0px) rgba(122, 231, 255, 0.56),
+          inset 0 0 18px rgba(120, 233, 255, 0.12);
+      }
+
+      @keyframes aftersign-tap-confirm-shake {
+        0%   { translate: 0 0; }
+        25%  { translate: var(--aftersign-tap-confirm-shake-px, 0px) 0; }
+        50%  { translate: 0 0; }
+        75%  { translate: calc(var(--aftersign-tap-confirm-shake-px, 0px) * -1) 0; }
+        100% { translate: 0 0; }
       }
 
       * {
@@ -495,6 +585,20 @@
 
         button:active {
           transform: none;
+        }
+
+        /* Tap-confirm envelope respects reduced-motion — the marker
+           still lands (so state-driven CSS elsewhere can key off it)
+           and the glow still paints (a crisp acknowledgement), but
+           the scale + shake channels collapse. Same discipline as
+           the .hud / .panel / .line / body::after block below. */
+        button[data-aftersign-tap-confirm="armed"],
+        button[data-aftersign-tap-confirm="armed"]:active {
+          transform: none;
+          animation: none;
+          transition: box-shadow
+            var(--aftersign-tap-confirm-glow-ms, 0ms)
+            var(--aftersign-tap-confirm-release-easing, linear);
         }
 
         .packet-button:active span {

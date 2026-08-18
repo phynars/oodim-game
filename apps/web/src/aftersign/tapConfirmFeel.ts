@@ -19,12 +19,23 @@
 //      the row onto CSS custom properties + a dataset marker. Called
 //      by `harness/bootWindowGame.ts::input.choose` on the tap-choice
 //      surface whose id matches the committed choice. Covered by
-//      `tapConfirmFeel.consumer.test.ts`.
+//      `tapConfirmFeel.consumer.test.ts`. The CSS half of the contract
+//      is `aftersign/index.html`'s
+//      `button[data-aftersign-tap-confirm="armed"]` rule (+ its
+//      `:active` refinement and `aftersign-tap-confirm-shake` keyframes)
+//      which consumes all 9 stamped variables — so a tuning edit here
+//      re-times the shipped surface, not just a synthetic vitest node.
+//      Reduced-motion is honored in the same stylesheet (the shake +
+//      scale channels collapse; the marker + glow survive so the tap
+//      still lands as a crisp acknowledgement).
 //   3. `attachFlagshipTapConfirmListeners(element)` — imperative
 //      helper that binds pointerdown/pointerup/pointercancel to
 //      animate the press envelope INLINE (no CSS variables needed).
-//      Kept for slice code that hasn't yet moved to CSS-var-driven
-//      animation. Returns a cleanup fn.
+//      Fallback path for slice code that opts out of the CSS-driven
+//      envelope on `[data-aftersign-tap-choice]` buttons; the served
+//      page uses the CSS path (see rule above), so this helper is
+//      unused on the shipped surface today and covered only by unit
+//      tests. Returns a cleanup fn.
 //
 // Numbers (9 pins):
 //   pressScale · releaseScale · pressMs · releaseMs · releaseEasing ·

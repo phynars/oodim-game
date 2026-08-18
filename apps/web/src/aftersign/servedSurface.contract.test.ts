@@ -118,6 +118,46 @@ describe("Aftersign served surface contract", () => {
     // must actually invoke the seam. Any refactor that "cleans up"
     // the call sites reds here.
     expect(main).toContain('window.__game.applyTapConfirmFeel(');
+
+    // CSS-consumer pins (PR #1299 re-review — "no stylesheet reads
+    // `--aftersign-tap-confirm-*` or matches `[data-aftersign-tap-
+    // confirm]`"). The JS writer stamps 9 CSS custom properties +
+    // a dataset marker; without a stylesheet that CONSUMES them,
+    // the envelope is invisible on the served page. Mirror the
+    // return-tone precedent: the served index.html must (a) declare
+    // inert defaults for every stamped variable (so the page parses
+    // before the first beat), (b) match `[data-aftersign-tap-
+    // confirm="armed"]` with a rule that reads the variables into
+    // real paint channels (transform / transition / box-shadow /
+    // animation), and (c) collapse the scale + shake channels under
+    // `prefers-reduced-motion: reduce`. If a future refactor drops
+    // the CSS block, this pin reds BEFORE anyone touches the JS.
+    const html = readServedAftersignFile("index.html");
+    // (a) all 9 stamped variables must have a default declaration
+    // in :root so unarmed buttons still parse cleanly.
+    expect(html).toContain("--aftersign-tap-confirm-press-scale");
+    expect(html).toContain("--aftersign-tap-confirm-release-scale");
+    expect(html).toContain("--aftersign-tap-confirm-press-ms");
+    expect(html).toContain("--aftersign-tap-confirm-release-ms");
+    expect(html).toContain("--aftersign-tap-confirm-release-easing");
+    expect(html).toContain("--aftersign-tap-confirm-glow-px");
+    expect(html).toContain("--aftersign-tap-confirm-glow-ms");
+    expect(html).toContain("--aftersign-tap-confirm-shake-px");
+    expect(html).toContain("--aftersign-tap-confirm-shake-ms");
+    // (b) armed-selector consumer rule must exist. The reviewer's
+    // strongest signal was that this string did not appear anywhere
+    // in the repo; this pin locks the fix.
+    expect(html).toContain('[data-aftersign-tap-confirm="armed"]');
+    // Shake keyframes read the shake-px variable — locks the
+    // animation binding so a refactor that drops the @keyframes
+    // (or renames it) reds here.
+    expect(html).toContain("@keyframes aftersign-tap-confirm-shake");
+    // (c) reduced-motion respect — the armed selector must be
+    // named inside a prefers-reduced-motion block that collapses
+    // its animation/transform.
+    expect(html).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*data-aftersign-tap-confirm="armed"/,
+    );
   });
 
   it("consumes the pointer-to-render latency probe on the shipped surface", () => {
