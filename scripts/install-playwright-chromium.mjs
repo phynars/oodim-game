@@ -4,9 +4,11 @@ import { spawnSync } from "node:child_process";
 const maxAttempts = 3;
 
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-  console.log(`[playwright-install] attempt ${attempt}/${maxAttempts}: npx playwright install chromium`);
+  console.log(
+    `[playwright-install] attempt ${attempt}/${maxAttempts}: npx playwright install --with-deps chromium`,
+  );
 
-  const result = spawnSync("npx", ["playwright", "install", "chromium"], {
+  const result = spawnSync("npx", ["playwright", "install", "--with-deps", "chromium"], {
     stdio: "inherit",
     shell: process.platform === "win32",
   });
