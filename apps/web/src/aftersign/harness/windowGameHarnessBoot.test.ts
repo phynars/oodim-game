@@ -19,6 +19,10 @@ import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
   AFTERSIGN_CHOOSE_RETURN_TONE,
 } from "../issue1199ChoiceHandlers";
+import {
+  IO_NEXT_JOB_HANDOFF,
+  getIoReturnToneReply,
+} from "../story/ioContinueBeats";
 import "./bootWindowGame";
 
 // #918: this file carries the ONLY assertion the aftersign vitest lane runs
@@ -565,13 +569,62 @@ describe("Aftersign window.__game harness (#918)", () => {
 
     expect(game?.getSnapshot().story.beat).toBe("io-remembers-sealed-packet");
 
+    // M-CONTINUE-E2: strike a posture BEFORE choosing, so the tone the
+    // player picked flows through `setIoReturnReason` → durable
+    // `rememberedTone` → `getIoContinueBeats` → the shipped-surface
+    // reply LINE. The line source is `story/ioContinueBeats.ts`
+    // (verbatim from `docs/flagship/vertical-slice-script.md §8`),
+    // read here via `getIoReturnToneReply` so the test tracks the
+    // canonical module — no local copy drift.
+    game?.setIoReturnReason("kind");
     expect(() => game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE)).not.toThrow();
     expect(game?.getSnapshot().story.beat).toBe("return-tone-choice");
     expect(game?.getSnapshot().story.completedBeats).toContain("return-tone-choice");
 
+    const replyBeat = game?.getIoContinueBeats()?.[0];
+    expect(replyBeat?.line).toBe(getIoReturnToneReply("kind"));
+
     expect(() => game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB)).not.toThrow();
     expect(game?.getSnapshot().story.beat).toBe("io-next-job");
     expect(game?.getSnapshot().story.completedBeats).toContain("io-next-job");
+
+    const handoffBeat = game?.getIoContinueBeats()?.[1];
+    expect(handoffBeat?.line).toBe(IO_NEXT_JOB_HANDOFF.line);
+
+    // M-CONTINUE-E2 durability: save the session AFTER the next-job
+    // ask, then restore to a fresh state and reload. The tone axis
+    // (`rememberedTone`) must round-trip — the reply LINE resolves
+    // to "kind" again — while `hasAskedForNextJob` deliberately does
+    // NOT persist, landing the player back at `return-tone-choice`
+    // so they re-ask Io each session.
+    const savedPayload = game?.save();
+    expect(typeof savedPayload).toBe("string");
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.load(savedPayload!);
+    // A durable-save restore intentionally lands `ioRecognizesPlayer:
+    // false` — the player re-meets Io each session to trigger the
+    // recall beat. `meetNpc("io")` on a state where
+    // `ioHasMetPlayer === true` (persisted) flips recognition true,
+    // gating the beat resolver back into the return-tone-choice /
+    // io-next-job branch.
+    game?.meetNpc("io");
+    // `setIoReturnReason` state lives in the harness closure, not the
+    // durable envelope — clear it so the reply LINE assertion below
+    // proves the tone came from `rememberedTone` restored on the
+    // runtime state, not from the still-armed closure token.
+    game?.setIoReturnReason(null);
+    // Re-arm the harness closure so `getIoContinueBeats()` (which is
+    // gated on `ioReturnReason`) returns a beat sequence at all — the
+    // *content* of that sequence is what we're asserting.
+    game?.setIoReturnReason("kind");
+
+    expect(game?.getSnapshot().story.beat).toBe("return-tone-choice");
+    expect(game?.getSnapshot().story.completedBeats).toContain("return-tone-choice");
+    expect(game?.getSnapshot().story.completedBeats).not.toContain("io-next-job");
+    expect(game?.getIoContinueBeats()?.[0].line).toBe(getIoReturnToneReply("kind"));
   });
 
   // Consumer wiring for the next-job offer feel envelope (#1255 review).

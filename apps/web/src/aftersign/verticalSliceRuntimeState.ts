@@ -14,6 +14,16 @@ export type AftersignOrraAction = "answered-saint-orra";
 
 export type AftersignSceneId = "kiosk" | "io-return" | "orra-return";
 export type AftersignRememberingNpcId = "io" | "orra";
+/**
+ * M-CONTINUE-E2: the durable posture the returning player struck when
+ * answering Io. Same three-token axis as
+ * `ioVoiceContract.ts::AftersignReturnReason` and
+ * `story/ioContinueBeats.ts::IoContinueTone`; kept as its own alias so
+ * the runtime-state module doesn't reach across the ioVoiceContract
+ * boundary and consumers can `import type { AftersignRememberedTone }`
+ * directly from the vertical-slice barrel.
+ */
+export type AftersignRememberedTone = "kind" | "evasive" | "blunt";
 
 export type AftersignVerticalSliceState = {
   scene: AftersignSceneId;
@@ -40,6 +50,19 @@ export type AftersignVerticalSliceState = {
    * Optional for the same round-trip reason as `hasChosenReturnTone`.
    */
   hasAskedForNextJob?: boolean;
+  /**
+   * M-CONTINUE-E2: the exact tone the returning player picked when
+   * answering Io after recognition. Set alongside
+   * `hasChosenReturnTone`; read by the harness's `getIoContinueBeats`
+   * (via `story/ioContinueBeats.ts::buildIoContinueBeats`) so Io's
+   * reply LINE matches the posture across a durable-save restore.
+   *
+   * Optional so pre-M-CONTINUE-E2 saves round-trip unchanged; a
+   * legacy state with `hasChosenReturnTone === true` but no
+   * `rememberedTone` falls back through `setIoReturnReason(reason)`
+   * on the harness side.
+   */
+  rememberedTone?: AftersignRememberedTone;
   /**
    * Set only when the state came out of a durable-save restore
    * (`restoreAftersignDurableSave`). Carries the turn the envelope was
@@ -119,6 +142,7 @@ export function createAftersignVerticalSliceState(): AftersignVerticalSliceState
     orraRecognizesPlayer: false,
     hasChosenReturnTone: false,
     hasAskedForNextJob: false,
+    rememberedTone: undefined,
   };
 }
 
@@ -189,18 +213,28 @@ export function confirmAftersignPacketChoice(
 }
 
 /**
- * M-CONTINUE-E1: mark the returning player as having picked a tone
- * to answer Io in. Idempotent; a no-op if already recorded.
+ * M-CONTINUE-E1 / E2: mark the returning player as having picked a
+ * tone to answer Io in. Stamps `hasChosenReturnTone` true and, when
+ * `rememberedTone` is supplied, persists the exact posture on the
+ * runtime state so a `save()` → `load()` round-trip re-emits the
+ * same reply LINE via `story/ioContinueBeats.ts::buildIoContinueBeats`.
+ *
+ * The `rememberedTone` argument defaults to the previously-stamped
+ * value (or `"evasive"`, the mildest posture, when no prior tone is
+ * on the state) so callers that only need the E1 axis — the beat
+ * advance — can invoke this with just `(state)` unchanged.
+ * Re-recording is allowed (no idempotent short-circuit) so a caller
+ * that struck a posture BEFORE choosing (via `setIoReturnReason`)
+ * can commit that posture at choice time.
  */
 export function recordAftersignReturnToneChoice(
   state: AftersignVerticalSliceState,
+  rememberedTone: AftersignRememberedTone = state.rememberedTone ?? "evasive",
 ): AftersignVerticalSliceState {
-  if (state.hasChosenReturnTone) {
-    return state;
-  }
   return {
     ...state,
     hasChosenReturnTone: true,
+    rememberedTone,
   };
 }
 
@@ -220,6 +254,9 @@ export function recordAftersignAskedForNextJob(
   return {
     ...state,
     hasChosenReturnTone: true,
+    // Preserve the E2 posture across the E1 next-job stamp — the beat
+    // advance must not erase the tone the player struck a moment ago.
+    rememberedTone: state.rememberedTone,
     hasAskedForNextJob: true,
   };
 }

@@ -1,6 +1,7 @@
 import type {
   AftersignOrraAction,
   AftersignPacketOutcome,
+  AftersignRememberedTone,
   AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
 
@@ -10,6 +11,23 @@ export type AftersignVerticalSliceSave = {
   ioHasMetPlayer: boolean;
   orraAction?: AftersignOrraAction | null;
   orraHasMetPlayer?: boolean;
+  /**
+   * M-CONTINUE-E2: the returning player has committed a return-tone
+   * choice. Persisted so a fresh boot restore lands back on
+   * `return-tone-choice` (or later) instead of replaying the choice.
+   * Optional so pre-E2 saves round-trip unchanged.
+   */
+  hasChosenReturnTone?: boolean;
+  /**
+   * M-CONTINUE-E2: the exact posture the player struck. Optional so
+   * pre-E2 saves round-trip unchanged; readers treat `undefined` and
+   * a missing `hasChosenReturnTone` identically.
+   *
+   * NOTE — `hasAskedForNextJob` is deliberately NOT persisted. The
+   * next-job request is an in-session beat advance; on restore the
+   * player re-asks Io, but the TONE they struck sticks.
+   */
+  rememberedTone?: AftersignRememberedTone;
 };
 
 export type AftersignDurableSaveEnvelope = {
@@ -32,6 +50,16 @@ export function createAftersignVerticalSliceSave(
       ? {
           orraHasMetPlayer: state.orraHasMetPlayer,
           orraAction: state.orraAction,
+        }
+      : {}),
+    // M-CONTINUE-E2: only stamp the tone axes when the player has
+    // actually committed a choice — pre-E2 saves stay byte-identical.
+    ...(state.hasChosenReturnTone
+      ? {
+          hasChosenReturnTone: true,
+          ...(state.rememberedTone
+            ? { rememberedTone: state.rememberedTone }
+            : {}),
         }
       : {}),
   };
@@ -95,6 +123,12 @@ export function restoreAftersignVerticalSliceState(
     orraAction: save.orraAction ?? null,
     orraHasMetPlayer: save.orraHasMetPlayer ?? false,
     orraRecognizesPlayer: false,
+    // M-CONTINUE-E2: rehydrate the durable tone axes. `hasAskedForNextJob`
+    // is intentionally omitted (see save-shape comment) — restore lands
+    // the player back at `return-tone-choice`, remembering their posture
+    // but re-prompting the next-job request.
+    hasChosenReturnTone: save.hasChosenReturnTone === true,
+    rememberedTone: save.rememberedTone,
   };
 }
 
@@ -130,8 +164,15 @@ function isVerticalSliceSave(save: unknown): save is AftersignVerticalSliceSave 
     isPacketOutcomeOrNull(save.packetOutcome) &&
     typeof save.ioHasMetPlayer === "boolean" &&
     (save.orraAction === undefined || isOrraActionOrNull(save.orraAction)) &&
-    (save.orraHasMetPlayer === undefined || typeof save.orraHasMetPlayer === "boolean")
+    (save.orraHasMetPlayer === undefined || typeof save.orraHasMetPlayer === "boolean") &&
+    (save.hasChosenReturnTone === undefined ||
+      typeof save.hasChosenReturnTone === "boolean") &&
+    (save.rememberedTone === undefined || isRememberedTone(save.rememberedTone))
   );
+}
+
+function isRememberedTone(value: unknown): value is AftersignRememberedTone {
+  return value === "kind" || value === "evasive" || value === "blunt";
 }
 
 function isPacketOutcomeOrNull(
