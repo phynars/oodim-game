@@ -43,7 +43,16 @@ import { expect, test, type Page } from "@playwright/test";
 // `expect(Array.isArray(completed)).toBe(true)`).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-const WAIT_MS = 10_000;
+// Cold-start budget: 20s per beat wait. The sibling
+// `m-continue-playtest.spec.ts` uses 10s, but that spec bypasses the
+// packet-choice branch entirely (single `#deliverButton` click at boot
+// → wait for `io-return-recognition`). This spec is longer — three
+// role-based taps through three beats — and each `getByRole` lookup
+// pays a small extra cost vs a `#id` locator. Playwright's per-test
+// timeout defaults to 30s; a played spec that traverses three beats
+// under SwiftShader can exceed that once cold-start (#700/#506/#590
+// class) lands on top. Explicit `test.setTimeout` below.
+const WAIT_MS = 20_000;
 
 type FlagshipSnapshot = {
   scene?: { beat?: string };
@@ -99,6 +108,11 @@ test.describe("Aftersign M-CONTINUE played acceptance", () => {
   test("a phone player taps by button role from packet-offered into the next-job handoff", async ({
     page,
   }) => {
+    // Cold-start-safe test budget. Three beat transitions × 20s each
+    // (WAIT_MS) plus goto + waitForGame is well under 90s on a warm
+    // runner; the 120s ceiling absorbs SwiftShader-boot flake (#700/
+    // #506/#590 class) without silently truncating a real failure.
+    test.setTimeout(120_000);
     // Isolated slot per run — same rationale as the sibling playtests
     // (PR #1238): the default slot maps to a shared server-authoritative
     // save on the vite preview process, so a sibling default-slot spec
