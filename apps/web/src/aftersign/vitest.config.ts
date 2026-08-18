@@ -21,6 +21,8 @@ export default defineConfig({
       "apps/web/src/aftersign/harness/pointerToRenderLatency.contract.test.ts",
       "apps/web/src/aftersign/tapChoiceFeel.test.ts",
       "apps/web/src/aftersign/tapChoiceFeel.consumer.test.ts",
+      "apps/web/src/aftersign/tapConfirmFeel.consumer.test.ts",
+      "apps/web/src/aftersign/tapConfirmFeel.servedButton.test.ts",
     ],
   },
 });

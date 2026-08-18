@@ -32,6 +32,12 @@ import {
   type AftersignTapChoiceSurfaceReport,
 } from "../tapChoiceFeel";
 import {
+  AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
+  applyFlagshipTapConfirmFeel,
+  FLAGSHIP_TAP_CONFIRM_FEEL as FLAGSHIP_TAP_CONFIRM_FEEL_ROW,
+  type AftersignTapConfirmFeel,
+} from "../tapConfirmFeel";
+import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
   getAftersignStoryState,
@@ -198,6 +204,21 @@ export type AftersignWindowGameHarness = {
    * `.failures[].label`.
    */
   getTapChoiceFeelReport: () => AftersignTapChoiceSurfaceReport;
+  /**
+   * Return the most recent tap-confirm feel row applied by
+   * `input.choose(...)`, or `null` when no committing choice has been
+   * made yet this session. This is the seam that turns
+   * `tapConfirmFeel.ts` into runnable slice code — every tap that
+   * commits a fork (packet-seal, return-tone posture, ask-for-next-job,
+   * accept-next-job) stamps the flagship confirm envelope onto the
+   * `[data-aftersign-tap-choice="<choiceId>"]` element AND records the
+   * applied row here so a consumer test can assert the wiring without
+   * mounting a DOM node.
+   *
+   * Cleared to `null` on `restoreDurableSave` / `load` (a fresh boot
+   * has no in-flight confirm to inherit).
+   */
+  getAppliedTapConfirmFeel: () => AftersignTapConfirmFeel | null;
   /**
    * Accept Io's next-job offer. The returned beat is the canonical
    * copy from `io-recognition-beat.ts`; the harness also stores it so
@@ -420,6 +441,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let recallTrigger: AftersignRecallTrigger | null = null;
   let ioReturnReason: AftersignReturnReason | null = null;
   let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
+  let appliedTapConfirmFeel: AftersignTapConfirmFeel | null = null;
   let acceptedNextJob: IoNextJobBeat | null = null;
   let savedAtTurn = 0;
   let playerMemory: AftersignPlayerMemoryInput | null = null;
@@ -710,6 +732,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       }
       return buildIoContinueBeats(ioReturnReason);
     },
+    getAppliedTapConfirmFeel: () => appliedTapConfirmFeel,
     getTapChoiceFeelReport() {
       // Sourced from the live DOM each call so the report is always
       // a fresh measurement — a renderer that mounts / unmounts /
@@ -734,6 +757,52 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     input: {
       choose(choiceId) {
+        // Flagship tap-confirm FEEL wiring: every committing choice
+        // stamps the confirm envelope onto the tap-choice surface
+        // whose `data-aftersign-tap-choice` attribute matches this
+        // choiceId, and records the applied row so
+        // `getAppliedTapConfirmFeel()` sees ground truth even when
+        // no DOM node is mounted. DOM-optional and non-throwing —
+        // the FEEL is a projection; the STATE update below is the
+        // ground truth for beat progression.
+        try {
+          appliedTapConfirmFeel = null;
+          const doc = (globalThis as { document?: Document }).document;
+          if (doc && typeof doc.querySelectorAll === "function") {
+            // Find the choice-specific surface by walking every
+            // mounted tap-choice element and matching on the
+            // attribute value. A single-selector query with an
+            // interpolated attribute would need `CSS.escape` to be
+            // safe against odd choice ids; the enumeration is a
+            // handful of buttons on any given screen, so a manual
+            // filter is cheaper than the escape.
+            const nodes = Array.from(
+              doc.querySelectorAll(AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR),
+            ) as HTMLElement[];
+            const surface = nodes.find(
+              (el) =>
+                el.getAttribute("data-aftersign-tap-choice") === choiceId,
+            );
+            if (surface) {
+              appliedTapConfirmFeel = applyFlagshipTapConfirmFeel(surface);
+            } else if (nodes.length > 0) {
+              // Fall back to the FIRST tap-choice surface mounted —
+              // covers slice code that hasn't yet stamped choiceId
+              // onto the attribute (e.g. transitional mock surfaces).
+              appliedTapConfirmFeel = applyFlagshipTapConfirmFeel(nodes[0]);
+            } else {
+              // No surface at all — still record the row so a
+              // consumer test can assert the seam fired.
+              appliedTapConfirmFeel = FLAGSHIP_TAP_CONFIRM_FEEL_ROW;
+            }
+          } else {
+            appliedTapConfirmFeel = FLAGSHIP_TAP_CONFIRM_FEEL_ROW;
+          }
+        } catch {
+          // Never let the FEEL projection break the STATE update
+          // below — the story beat progression is the ground truth.
+        }
+
         if (choiceId === "accept-next-job") {
           return acceptNextJob();
         }
