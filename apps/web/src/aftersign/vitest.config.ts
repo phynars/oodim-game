@@ -24,6 +24,9 @@ export default defineConfig({
       "apps/web/src/aftersign/tapConfirmFeel.consumer.test.ts",
       "apps/web/src/aftersign/tapConfirmFeel.servedButton.test.ts",
       "apps/web/src/aftersign/rememberingNpcRecognitionServed.contract.test.ts",
+      "apps/web/src/aftersign/verticalSliceRememberingNpcRecognitionEnvelope.test.ts",
+      "apps/web/src/aftersign/harness/windowGameRememberingNpcRecognitionEnvelope.consumer.test.ts",
+      "apps/web/src/aftersign/verticalSliceRememberingNpcRecognitionBeat.consumer.test.ts",
     ],
   },
 });
