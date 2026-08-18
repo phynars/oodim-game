@@ -56,6 +56,42 @@ describe("Aftersign remembering-NPC recognition beat — served surface contract
     );
   });
 
+  it("adapts the served state shape correctly — Orra memory is an array, not an { hasMetOrra, debt } object", () => {
+    // Blocking review on PR #1309 (Soren): the first draft of
+    // `buildVerticalSliceStateAdapter` in aftersign/main.js read
+    // `state.npcs.orra?.memory?.hasMetOrra` and `.debt`, but the
+    // served state's `npcs.orra.memory` is an ARRAY of
+    // `OrraRecognitionMemoryFact` (aftersign/src/orraRuntimeLane.ts:
+    // `coerceOrraRecognitionMemory` returns `OrraRecognitionMemoryFact[]`;
+    // main.js:1735, 2719, 2830 all assign arrays). Reading
+    // `.hasMetOrra` off an array is `undefined === true → false`, so
+    // `orraRecognizesPlayer` pinned to `false` every frame and the
+    // recognition ring/subtitle never fired for Orra.
+    //
+    // This spec grep-pins the fix: the adapter must read
+    // `Array.isArray(...)` + `.length > 0` (recognition = at least
+    // one lit/spared fact) and must NOT read `.hasMetOrra` / `.debt`
+    // off the memory array again. If a future refactor re-introduces
+    // the object-shape read, this test reds.
+    const main = readServedAftersignFile("main.js");
+    // Adapter reads array shape for both fields.
+    expect(main).toMatch(
+      /orraHasMetPlayer:\s*Array\.isArray\(state\.npcs\.orra\?\.memory\)\s*&&\s*state\.npcs\.orra\.memory\.length\s*>\s*0/,
+    );
+    expect(main).toMatch(
+      /orraRecognizesPlayer:\s*\n?\s*Array\.isArray\(state\.npcs\.orra\?\.memory\)\s*&&\s*state\.npcs\.orra\.memory\.length\s*>\s*0/,
+    );
+    // The broken pattern is gone (the ONLY hits on hasMetOrra / debt
+    // as memory-object keys were inside the adapter — a general
+    // ban would over-fire, so scope the assertion to the adapter
+    // body identified by its unique symbol).
+    const adapterStart = main.indexOf("buildVerticalSliceStateAdapter");
+    expect(adapterStart).toBeGreaterThan(0);
+    const adapterBody = main.slice(adapterStart, adapterStart + 2000);
+    expect(adapterBody).not.toMatch(/state\.npcs\.orra\?\.memory\?\.hasMetOrra/);
+    expect(adapterBody).not.toMatch(/state\.npcs\.orra\?\.memory\?\.debt/);
+  });
+
   it("calls the wrapper every frame inside the render tick", () => {
     const main = readServedAftersignFile("main.js");
     // The per-frame call site — a refactor that moves the call OUT of

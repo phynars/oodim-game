@@ -3096,11 +3096,14 @@ const buildVerticalSliceStateAdapter = () => ({
   packetOutcome: state.packet.sealed ? "sealed" : "opened",
   ioHasMetPlayer: state.npcs.io.memory.length > 0,
   ioRecognizesPlayer: state.npcs.io.memory.length > 0,
-  orraAction: null,
-  orraHasMetPlayer: state.npcs.orra?.memory?.hasMetOrra === true,
+  orraAction: (() => {
+      const memory = Array.isArray(state.npcs.orra?.memory) ? state.npcs.orra.memory : [];
+      const latest = memory.length > 0 ? memory[memory.length - 1] : null;
+      return latest && (latest.action === "lit" || latest.action === "spared") ? latest.action : null;
+    })(),
+  orraHasMetPlayer: Array.isArray(state.npcs.orra?.memory) && state.npcs.orra.memory.length > 0,
   orraRecognizesPlayer:
-    state.npcs.orra?.memory?.hasMetOrra === true
-    && typeof state.npcs.orra?.memory?.debt === "string",
+    Array.isArray(state.npcs.orra?.memory) && state.npcs.orra.memory.length > 0,
 });
 const syncRememberingNpcRecognitionDom = (nowMs) => {
   if (!rememberingRecognitionEl) {
