@@ -27,8 +27,23 @@ import {
   FLAGSHIP_TAP_CONFIRM_FEEL,
 } from "./tapConfirmFeel";
 import { AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR } from "./tapChoiceFeel";
-import { AFTERSIGN_ASK_FOR_NEXT_JOB } from "./issue1199ChoiceHandlers";
+import {
+  AFTERSIGN_ASK_FOR_NEXT_JOB,
+  AFTERSIGN_CHOOSE_RETURN_TONE,
+} from "./issue1199ChoiceHandlers";
 import "./harness/bootWindowGame";
+
+/**
+ * `recordAftersignNextJobRequest` throws when
+ * `hasChosenReturnTone !== true` (verticalSliceRuntimeState.ts:182),
+ * so every consumer test that commits `ask-for-next-job` must first
+ * commit `choose-return-tone` on the same harness boot — mirrors the
+ * beat order in `windowGameHarnessBoot.test.ts:555` ("handles
+ * choose-return-tone and ask-for-next-job through input.choose").
+ */
+function armReturnTone(): void {
+  window.__game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE);
+}
 
 function mountTapChoice(choiceId: string): HTMLElement {
   const el = document.createElement("button");
@@ -58,6 +73,7 @@ describe("tapConfirmFeel consumer (input.choose wiring)", () => {
     // No committing choice yet.
     expect(game?.getAppliedTapConfirmFeel()).toBeNull();
 
+    armReturnTone();
     game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
 
     expect(game?.getAppliedTapConfirmFeel()).toBe(FLAGSHIP_TAP_CONFIRM_FEEL);
@@ -70,6 +86,7 @@ describe("tapConfirmFeel consumer (input.choose wiring)", () => {
     const game = window.__game;
     expect(game).toBeDefined();
 
+    armReturnTone();
     game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
 
     // Dataset marker lands on the choice-specific surface.
@@ -100,6 +117,7 @@ describe("tapConfirmFeel consumer (input.choose wiring)", () => {
     ).toHaveLength(0);
 
     const game = window.__game;
+    armReturnTone();
     game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
     expect(game?.getAppliedTapConfirmFeel()).toBe(FLAGSHIP_TAP_CONFIRM_FEEL);
   });
@@ -114,6 +132,7 @@ describe("tapConfirmFeel consumer (input.choose wiring)", () => {
     bare.setAttribute("data-aftersign-tap-choice", "");
     document.body.append(bare);
 
+    armReturnTone();
     window.__game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
     expect(bare.dataset.aftersignTapConfirm).toBe("armed");
   });
