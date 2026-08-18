@@ -41,6 +41,7 @@ import {
   recordAftersignReturnToneChoice,
   resolveAftersignRememberingNpcDialogue,
   restoreAftersignDurableSave,
+  type AftersignRememberedTone,
   type AftersignRememberingNpcDialogue,
   type AftersignRememberingNpcId,
   type AftersignStoryStateSnapshot,
@@ -688,6 +689,16 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     setIoReturnReason(reason) {
       ioReturnReason = reason;
+      if (reason !== null) {
+        // M-CONTINUE-E2: `AftersignReturnReason` shares its three
+        // tokens with `AftersignRememberedTone`, so the same posture
+        // that drives the voice memory thread + press-envelope also
+        // durably stamps the runtime state — one axis, three consumers.
+        state = recordAftersignReturnToneChoice(
+          state,
+          reason as AftersignRememberedTone,
+        );
+      }
       appliedReturnToneFeel = applyReturnToneFeel(reason);
     },
     getAppliedReturnToneFeel() {
@@ -727,7 +738,16 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
           return acceptNextJob();
         }
         if (choiceId === AFTERSIGN_CHOOSE_RETURN_TONE) {
-          state = recordAftersignReturnToneChoice(state);
+          // Prefer the posture the caller struck via
+          // `setIoReturnReason(reason)`; fall back to `"evasive"` — the
+          // mildest posture — when a caller advances the beat without
+          // striking one. Matches the fallback in
+          // `story/ioContinueBeats.ts::getIoReturnToneReply`.
+          const tone: AftersignRememberedTone =
+            (ioReturnReason as AftersignRememberedTone | null) ??
+            state.rememberedTone ??
+            "evasive";
+          state = recordAftersignReturnToneChoice(state, tone);
           return null;
         }
         if (choiceId === AFTERSIGN_ASK_FOR_NEXT_JOB) {

@@ -27,6 +27,7 @@ export {
   type AftersignRememberingNpcId,
   type AftersignRememberingNpcDialogue,
   type AftersignRememberingNpcRecognitionFeel,
+  type AftersignRememberedTone,
 } from "./verticalSliceRuntimeState";
 
 export {
