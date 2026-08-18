@@ -1,14 +1,37 @@
 import { expect, test } from "@playwright/test";
 
-// AFTERSIGN M-CONTINUE next-packet loop (Soren PR #1275 review — the
-// prior rewrite fabricated `window.__game.story.beat`, an authoring-
-// deck `io-return-tone-blunt` beat id, and regex-over-text taps that
-// landed on the "Io" speaker label instead of a control. This revert
-// restores the shipped-surface pattern used by every sibling spec:
-// `#packetButton` for the packet action, `[data-choice-id]` /
-// `[data-return-reason]` for choices, and `[data-beat-id]` to wait
-// for the story to reach a beat. All ids match the served vocabulary
-// (main.js publishState + windowGameSurface.ts AftersignStoryBeatId).
+// AFTERSIGN M-CONTINUE next-packet loop.
+//
+// History: the previous rewrite (#1303, first pass) traded the shipped-
+// surface `[data-beat-id]` / `[data-choice-id]` / `[data-return-reason]`
+// selectors for `getByRole("button", { name: /blunt|work|job|back|because/i })`
+// and `page.goto("/")`. That version had five blocking defects flagged
+// by review:
+//
+//   1. `page.goto("/")` navigated to the vite-preview root, not the
+//      game — the aftersign build serves at `base: "/aftersign/"`
+//      (vite.config.ts) so every sibling spec uses `/aftersign/?slot=…`.
+//   2. `await game?.input?.waitForStoryIdle?.()` silently no-op'd when
+//      `__game` was undefined (optional-chain → `undefined` → `await
+//      undefined` resolves instantly). The real quiescence gate is
+//      `waitForFunction(() => __game?.scene?.ready === true)`.
+//   3. No `?slot=` → collided with the shared server-authoritative save
+//      (see the m-continue-next-job-played.spec.ts note about this).
+//   4. The recognition-beat regex `/blunt|work|job|back|because/i` did
+//      not match the served labels "Kind return" / "Evasive return" /
+//      "Blunt return" (main.js:1406-1408). Only "blunt" matched at all,
+//      and only inside one label — the other alternates were dialogue
+//      words, not control labels.
+//   5. Terminal assertions were loose visibility-of-buttons checks
+//      instead of a `[data-beat-id="packet-choice"]` re-arrival that
+//      actually proves the loop closed.
+//
+// This is the shipped-surface pattern used by every sibling spec:
+// `#packetButton` for the packet tap, `button[data-choice-id]` for
+// choice buttons, `button[data-return-reason]` for the return-tone
+// fork, and `[data-beat-id]` to gate on story-beat arrival. All ids
+// match the served vocabulary (main.js publishState +
+// windowGameSurface.ts AftersignStoryBeatId).
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 20_000;
