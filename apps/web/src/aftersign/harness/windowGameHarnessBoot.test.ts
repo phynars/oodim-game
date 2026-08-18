@@ -993,4 +993,63 @@ describe("Aftersign window.__game harness (#918)", () => {
       nowSpy.mockRestore();
     }
   });
+
+  // Multi-sample guard for the same player-shaped latency probe. A
+  // single green sample can hide the real regression the public demo
+  // cares about: a later tap that misses the frame budget while the
+  // latest sample is still reported. Worst-sample retention is the
+  // harness's conscience here.
+  it("keeps pointer-to-render latency latest and worst samples distinct", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy
+      .mockReturnValueOnce(2000) // first pointerdown
+      .mockReturnValueOnce(2025) // first render: over budget
+      .mockReturnValueOnce(3000) // second pointerdown
+      .mockReturnValueOnce(3006); // second render: latest, within budget
+
+    const button = document.createElement("button");
+    button.setAttribute("data-aftersign-tap-choice", "return-tone-kind");
+    document.body.appendChild(button);
+
+    try {
+      game?.input.resetPointerToRenderLatency();
+
+      const slowPointerDown = new Event("pointerdown", { bubbles: true });
+      Object.defineProperty(slowPointerDown, "pointerId", { value: 7 });
+      button.dispatchEvent(slowPointerDown);
+      game?.input.markPointerRendered({ pointerId: 7, renderedAtMs: performance.now() });
+
+      const fastPointerDown = new Event("pointerdown", { bubbles: true });
+      Object.defineProperty(fastPointerDown, "pointerId", { value: 8 });
+      button.dispatchEvent(fastPointerDown);
+      game?.input.markPointerRendered({ pointerId: 8, renderedAtMs: performance.now() });
+
+      const report = game?.input.getPointerToRenderLatencyReport();
+      expect(report?.samples).toEqual([
+        {
+          pointerAtMs: 2000,
+          renderedAtMs: 2025,
+          deltaMs: 25,
+          frameBudgetMs: 16.7,
+          withinBudget: false,
+        },
+        {
+          pointerAtMs: 3000,
+          renderedAtMs: 3006,
+          deltaMs: 6,
+          frameBudgetMs: 16.7,
+          withinBudget: true,
+        },
+      ]);
+      expect(report?.latest).toEqual(report?.samples[1]);
+      expect(report?.worst).toEqual(report?.samples[0]);
+    } finally {
+      button.remove();
+      game?.input.resetPointerToRenderLatency();
+      nowSpy.mockRestore();
+    }
+  });
 });
