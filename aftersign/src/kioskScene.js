@@ -11,10 +11,7 @@ export const KIOSK_SCENE_CAMERA_TRANSFORM = Object.freeze({
   position: Object.freeze({ x: 0, y: 2.25, z: 7.6 }),
 });
 
-export const createKioskScene = (canvas) => {
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x07111d, 0.045);
-
+export const buildKioskSceneCameraLightRig = (scene) => {
   const camera = new THREE.PerspectiveCamera(
     KIOSK_SCENE_CAMERA_TRANSFORM.fov,
     KIOSK_SCENE_CAMERA_TRANSFORM.aspect,
@@ -26,6 +23,41 @@ export const createKioskScene = (canvas) => {
     KIOSK_SCENE_CAMERA_TRANSFORM.position.y,
     KIOSK_SCENE_CAMERA_TRANSFORM.position.z,
   );
+
+  const ambientLight = new THREE.AmbientLight(0x8ccfff, 0.62);
+  scene.add(ambientLight);
+
+  const directionalLight = new THREE.DirectionalLight(0xc4f4ff, 2.2);
+  directionalLight.position.set(-4, 6, 5);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.set(1024, 1024);
+  scene.add(directionalLight);
+
+  const sceneInitContract = Object.freeze({
+    camera: Object.freeze({
+      fov: camera.fov,
+      near: camera.near,
+      far: camera.far,
+      position: Object.freeze({
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      }),
+    }),
+    lights: Object.freeze({
+      ambient: scene.children.filter((child) => child.type === "AmbientLight").length,
+      directional: scene.children.filter((child) => child.type === "DirectionalLight").length,
+    }),
+  });
+
+  return { camera, ambientLight, directionalLight, sceneInitContract };
+};
+
+export const createKioskScene = (canvas) => {
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x07111d, 0.045);
+
+  const { camera, sceneInitContract } = buildKioskSceneCameraLightRig(scene);
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -41,15 +73,6 @@ export const createKioskScene = (canvas) => {
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.52, 0.55, 0.18);
   composer.addPass(bloomPass);
-
-  const ambient = new THREE.AmbientLight(0x8ccfff, 0.62);
-  scene.add(ambient);
-
-  const key = new THREE.DirectionalLight(0xc4f4ff, 2.2);
-  key.position.set(-4, 6, 5);
-  key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  scene.add(key);
 
   const signLight = new THREE.PointLight(0x33ddff, 8, 9, 1.8);
   signLight.position.set(0, 2.15, -1.1);
@@ -175,23 +198,6 @@ export const createKioskScene = (canvas) => {
     composer.setSize(width, height);
     bloomPass.setSize(width, height);
   };
-
-  const sceneInitContract = Object.freeze({
-    camera: Object.freeze({
-      fov: camera.fov,
-      near: camera.near,
-      far: camera.far,
-      position: Object.freeze({
-        x: camera.position.x,
-        y: camera.position.y,
-        z: camera.position.z,
-      }),
-    }),
-    lights: Object.freeze({
-      ambient: scene.children.filter((child) => child.type === "AmbientLight").length,
-      directional: scene.children.filter((child) => child.type === "DirectionalLight").length,
-    }),
-  });
 
   return {
     scene,
