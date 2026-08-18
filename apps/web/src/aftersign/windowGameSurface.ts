@@ -20,6 +20,7 @@ import {
   resolveAftersignRememberingNpcDialogue,
   type AftersignOrraAction,
   type AftersignPacketOutcome,
+  type AftersignRememberingNpcRecognitionFeel,
   type AftersignSceneId,
   type AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
@@ -114,6 +115,21 @@ export type AftersignSpokenNpcMemoryRoundTrip = {
   playerName: string;
   interactionCount: number;
   spokenLine: string;
+  /**
+   * Feel envelope the surface should play alongside the spoken line —
+   * pre-line hold, portrait push-in, recognition-ring flash, subtitle
+   * pop, audio-cue delay. Sourced from
+   * `AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL` via
+   * `resolveAftersignRememberingNpcDialogue` so the beat carries the
+   * feel timing on the same shape as the copy — a renderer never has
+   * to import the constant separately from the line it decorates.
+   *
+   * Present iff `dialogue.recognitionFeel` is non-null, which the
+   * resolver gates on `recognizesPlayer`. `buildNpcMemoryRoundTripBeat`
+   * already refuses to emit the beat unless recognition is true, so
+   * `recognitionFeel` is always defined on an emitted round-trip.
+   */
+  recognitionFeel: AftersignRememberingNpcRecognitionFeel;
 };
 
 /**
@@ -334,11 +350,22 @@ function buildNpcMemoryRoundTripBeat(
   if (typeof spokenLine !== "string" || spokenLine.length === 0) {
     return undefined;
   }
+  // `dialogue.recognitionFeel` is gated on `recognizesPlayer` inside
+  // the resolver — the branch above already guarantees recognition,
+  // so this is non-null in practice. The explicit null-guard keeps
+  // the surface honest against a future resolver refactor that
+  // decouples the two axes: if the feel ever goes missing, we omit
+  // the beat rather than shipping a spec-dressed shape (#1163 /
+  // #1171-v1 pattern — populated but unused).
+  if (dialogue.recognitionFeel === null) {
+    return undefined;
+  }
   return {
     npcId: memory.npcId,
     playerName: memory.playerName,
     interactionCount: memory.interactionCount,
     spokenLine,
+    recognitionFeel: dialogue.recognitionFeel,
   };
 }
 
