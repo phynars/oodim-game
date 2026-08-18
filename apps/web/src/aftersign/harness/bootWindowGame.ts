@@ -47,9 +47,11 @@ import {
   recordAftersignReturnToneChoice,
   resolveAftersignRememberingNpcDialogue,
   restoreAftersignDurableSave,
+  sampleAftersignRememberingNpcRecognitionEnvelope,
   type AftersignRememberedTone,
   type AftersignRememberingNpcDialogue,
   type AftersignRememberingNpcId,
+  type AftersignRememberingNpcRecognitionEnvelope,
   type AftersignStoryStateSnapshot,
   type AftersignVerticalSliceState,
 } from "../verticalSliceState";
@@ -305,6 +307,25 @@ export type AftersignWindowGameHarness = {
    * cameraYawDeg, bloomGain, audioGain, hapticMs, phase.
    */
   recallFeel: (options: AftersignRecallFeelOptions) => MemoryRecallFeelFrame | null;
+  /**
+   * Sample the returning-NPC RECOGNITION beat envelope for the active
+   * recall trigger at `elapsedMs`. This is the sister method to
+   * `recallFeel` — while `recallFeel` samples the halo / camera / audio
+   * envelope (`memoryRecallFeel.ts`), this samples the choreography
+   * table declared in `AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL`
+   * (portrait push-in, recognition ring sin-fade, subtitle pop-in,
+   * audio-cue arming). Renderers drive both from the same
+   * `elapsedMs = now - trigger.firedAtMs` clock so the two envelopes
+   * stay lock-stepped without a shared scheduler.
+   *
+   * Returns `null` when no recall trigger is live (first-contact meet
+   * hasn't produced recognition yet, or `meetNpc` cleared the trigger).
+   * `reducedMotion` collapses spatial motion + scale pop while keeping
+   * opacity + audio semantics — same contract as the envelope function.
+   */
+  sampleRecognitionEnvelope: (
+    options: AftersignRecallFeelOptions,
+  ) => AftersignRememberingNpcRecognitionEnvelope | null;
   /**
    * Return the dialogue the remembering NPC (`"io"` or `"orra"`) would
    * speak against the current runtime state. Sources every string from
@@ -864,6 +885,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         return null;
       }
       return getMemoryRecallFeel({ elapsedMs, reducedMotion });
+    },
+    sampleRecognitionEnvelope({ elapsedMs, reducedMotion }) {
+      if (!recallTrigger) {
+        return null;
+      }
+      return sampleAftersignRememberingNpcRecognitionEnvelope(
+        elapsedMs,
+        reducedMotion,
+      );
     },
     getRememberingNpcDialogue(npc) {
       return resolveAftersignRememberingNpcDialogue(state, npc);
