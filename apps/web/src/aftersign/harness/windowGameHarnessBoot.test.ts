@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AFTERSIGN_IO_LINES, buildIoMemorySentence } from "../ioVoiceContract";
 import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
@@ -947,5 +947,50 @@ describe("Aftersign window.__game harness (#918)", () => {
     // while Io still recognizes the player.
     game?.setPlayerMemory?.(null);
     expect(game?.getStoryState().story.npcMemoryRoundTrip).toBeUndefined();
+  });
+
+  // Played-not-driven guard for the pointer-to-render latency probe:
+  // a real DOM `pointerdown` on a visible tap-choice surface must arm
+  // the harness probe without a test hand-calling `markPointerIntent`.
+  // The rendered marker remains explicit here because this unit harness
+  // has no renderer loop; the important boundary is that player input
+  // enters through the DOM event path, not `window.__game.input`.
+  it("records pointer-to-render latency from a real pointerdown event", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValueOnce(1000).mockReturnValue(1012);
+
+    const button = document.createElement("button");
+    button.setAttribute("data-aftersign-tap-choice", "ask-for-next-job");
+    document.body.appendChild(button);
+
+    try {
+      game?.input.resetPointerToRenderLatency();
+
+      const pointerDown = new Event("pointerdown", { bubbles: true });
+      Object.defineProperty(pointerDown, "pointerId", { value: 42 });
+      button.dispatchEvent(pointerDown);
+
+      game?.input.markPointerRendered({ pointerId: 42, renderedAtMs: performance.now() });
+
+      const report = game?.input.getPointerToRenderLatencyReport();
+      expect(report?.samples).toEqual([
+        {
+          pointerAtMs: 1000,
+          renderedAtMs: 1012,
+          deltaMs: 12,
+          frameBudgetMs: 16.7,
+          withinBudget: true,
+        },
+      ]);
+      expect(report?.latest).toEqual(report?.samples[0]);
+      expect(report?.worst).toEqual(report?.samples[0]);
+    } finally {
+      button.remove();
+      game?.input.resetPointerToRenderLatency();
+      nowSpy.mockRestore();
+    }
   });
 });
