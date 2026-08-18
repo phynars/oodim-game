@@ -1,62 +1,99 @@
 import { expect, test } from "@playwright/test";
 
-const appUrl = "/aftersign/?slot=m-continue-next-packet-loop-buttons-enabled";
+// AFTERSIGN M-CONTINUE next-packet loop — BUTTON AFFORDANCE regression.
+//
+// Sibling spec `m-continue-next-packet-loop.spec.ts` asserts the story
+// *reaches* each beat via `[data-beat-id]`. This spec adds the FEEL
+// assertion the sibling doesn't: at every beat, the choice control the
+// player is expected to tap is visibly rendered AND not disabled — i.e.
+// enters that beat in a tappable state, no dead frame between beat
+// stamp and control affordance.
+//
+// Selectors mirror the shipped surface (playerVisibleBeatDom.js,
+// windowGameSurface.ts): `[data-beat-id]` for the story line stamp,
+// `button[data-choice-id]` for choice buttons, `button[data-return-reason]`
+// for the return-tone fork, `#packetButton` for the packet tap.
+// Soren PR #1298 REQUEST_CHANGES: prior draft asserted an invented
+// `data-aftersign-beat` attribute — swapped for the shipped `data-beat-id`
+// idiom the sibling specs already use.
 
-const expectVisibleButtonEnabled = async (page, text: string) => {
-  const button = page.getByRole("button", { name: text });
-  await expect(button).toBeVisible();
-  await expect(button).toBeEnabled();
-  return button;
-};
+const WAIT_MS = 10_000;
+const COLD_START_MS = 20_000;
 
-test.describe("M-CONTINUE next packet loop button affordance", () => {
+test.describe("AFTERSIGN M-CONTINUE next-packet loop — button affordance", () => {
   test.use({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
   });
 
-  test("a player can tap the next packet loop choices after Io hands off the next job", async ({ page }) => {
-    await page.goto(appUrl);
-    await page.evaluate(() => window.localStorage.clear());
-    await page.reload();
+  test("every next-packet-loop beat lands with its expected choice visible AND enabled", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
 
-    const packetButton = page.getByRole("button", { name: /hold packet/i });
-    await expect(packetButton).toBeVisible();
-    await packetButton.tap();
+    const slot = `m-continue-next-packet-loop-buttons-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
-    await (await expectVisibleButtonEnabled(page, "Acknowledge route")).tap();
-    await (await expectVisibleButtonEnabled(page, "Deliver packet")).tap();
-
-    await expect(page.locator("#line")).toHaveAttribute(
-      "data-aftersign-beat",
-      "io-return-recognition",
-      { timeout: 5000 },
+    await page.waitForFunction(
+      () => (window as unknown as { __game?: { scene?: { ready?: boolean } } }).__game?.scene?.ready === true,
+      undefined,
+      { timeout: WAIT_MS },
     );
 
-    await (await expectVisibleButtonEnabled(page, "Blunt return")).tap();
-    await expect(page.locator("#line")).toHaveAttribute(
-      "data-aftersign-beat",
-      "return-tone-choice",
-      { timeout: 5000 },
-    );
+    const waitForBeat = async (beatId: string) => {
+      await expect(
+        page.locator(`[data-beat-id="${beatId}"]`),
+        `story line should visibly reach beat "${beatId}"`,
+      ).toBeVisible({ timeout: WAIT_MS });
+    };
 
-    await (await expectVisibleButtonEnabled(page, "Ask for next job")).tap();
-    await expect(page.locator("#line")).toHaveAttribute(
-      "data-aftersign-beat",
-      "io-next-job",
-      { timeout: 5000 },
-    );
+    const expectChoiceEnabled = async (choiceId: string) => {
+      const choice = page.locator(`button[data-choice-id="${choiceId}"]`).first();
+      await expect(choice, `choice "${choiceId}" should be visible on arrival`).toBeVisible({ timeout: WAIT_MS });
+      await expect(choice, `choice "${choiceId}" should be enabled on arrival (no dead frame)`).toBeEnabled({
+        timeout: WAIT_MS,
+      });
+      return choice;
+    };
 
-    await (await expectVisibleButtonEnabled(page, "Deliver next packet")).tap();
-    await expect(page.locator("#line")).toHaveAttribute(
-      "data-aftersign-beat",
-      "packet-choice",
-      { timeout: 5000 },
-    );
+    const expectReturnReasonEnabled = async (reason: string) => {
+      const button = page.locator(`button[data-return-reason="${reason}"]`).first();
+      await expect(button, `return-reason "${reason}" should be visible on arrival`).toBeVisible({ timeout: WAIT_MS });
+      await expect(button, `return-reason "${reason}" should be enabled on arrival`).toBeEnabled({ timeout: WAIT_MS });
+      return button;
+    };
 
-    await (await expectVisibleButtonEnabled(page, "Acknowledge route")).tap();
-    await (await expectVisibleButtonEnabled(page, "Skip acknowledgment")).tap();
-    await expectVisibleButtonEnabled(page, "Deliver packet");
+    // packet-offered → packet tap is visible + enabled.
+    await waitForBeat("packet-offered");
+    const packetButton = page.locator("#packetButton");
+    await expect(packetButton, "packet button should be visible at packet-offered").toBeVisible({ timeout: WAIT_MS });
+    await expect(packetButton, "packet button should be enabled at packet-offered").toBeEnabled({ timeout: WAIT_MS });
+    await packetButton.click();
+
+    // packet-choice → acknowledge-kiosk visible + enabled.
+    await waitForBeat("packet-choice");
+    await (await expectChoiceEnabled("acknowledge-kiosk")).click();
+
+    // deliver-packet is the next tap in the same beat cluster; it must
+    // stay enabled through the acknowledge transition.
+    await (await expectChoiceEnabled("deliver-packet")).click();
+
+    // io-return-recognition → return-tone "blunt" is enabled the moment
+    // the recognition beat lands.
+    await waitForBeat("io-return-recognition");
+    await (await expectReturnReasonEnabled("blunt")).click();
+
+    // return-tone-choice → ask-for-next-job is enabled.
+    await waitForBeat("return-tone-choice");
+    await (await expectChoiceEnabled("ask-for-next-job")).click();
+
+    // io-next-job → deliver-packet is enabled (starts the SECOND packet).
+    await waitForBeat("io-next-job");
+    await (await expectChoiceEnabled("deliver-packet")).click();
+
+    // Second lap packet-choice → both branches are enabled (real
+    // affordance: player must be able to CHOOSE, not just see one path).
+    await waitForBeat("packet-choice");
+    await expectChoiceEnabled("acknowledge-kiosk");
+    await expectChoiceEnabled("skip-kiosk-acknowledge");
   });
 });
