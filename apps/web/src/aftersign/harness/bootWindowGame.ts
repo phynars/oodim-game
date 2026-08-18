@@ -48,6 +48,22 @@ import {
 } from "../verticalSliceState";
 
 /**
+ * Player-memory the returning NPC references on recognition — the
+ * two axes a round-trip beat needs beyond `packetOutcome`: the
+ * player's chosen name and the count of prior interactions. Fed in
+ * by `setPlayerMemory` and forwarded to
+ * `createAftersignWindowGameSurface` as `options.npcMemoryRoundTrip`
+ * so the SHIPPED surface (not the harness) publishes
+ * `story.npcMemoryRoundTrip`. Kept as its own shape (not folded
+ * into `AftersignVerticalSliceState`) because it's a projection the
+ * harness owns — the runtime state doesn't yet author these fields.
+ */
+export type AftersignPlayerMemoryInput = {
+  playerName: string;
+  interactionCount: number;
+};
+
+/**
  * Recall-beat trigger emitted by `meetNpc` when a *previously-met* NPC
  * transitions from `hasMet` → `recognizesPlayer` on this call. The
  * scene renderer feeds each animation frame's `elapsedMs` (millis since
@@ -280,6 +296,20 @@ export type AftersignWindowGameHarness = {
   getRememberingNpcDialogue: (
     npc: AftersignRememberingNpcId,
   ) => AftersignRememberingNpcDialogue;
+  /**
+   * Record the returning-player memory the NPC recognition beat
+   * references: the player's chosen name and the count of prior
+   * interactions. When set, the next `getStoryState()` snapshot taken
+   * AFTER a recall trigger fires (i.e. `meetNpc` promotes an NPC to
+   * `recognizes-player`) exposes `story.npcMemoryRoundTrip` with the
+   * canonical returning-session line composed against these two
+   * axes. Pass `null` to clear.
+   *
+   * The memory is persisted through `save()` / `load()` so a
+   * durable-save round-trip that carries these fields into a fresh
+   * boot still emits the round-trip beat on the next recognition.
+   */
+  setPlayerMemory: (memory: AftersignPlayerMemoryInput | null) => void;
 };
 
 declare global {
@@ -300,34 +330,62 @@ type AftersignWindowGameSaveEnvelope = {
   kind: typeof WINDOW_GAME_SAVE_KIND;
   durableSave: string;
   acceptedNextJobId: IoNextJobBeat["id"] | null;
+  /**
+   * Persisted so a save() → load() round-trip that carried the
+   * returning-player memory bag re-emits the round-trip beat on the
+   * next recognition meet. Missing / null on saves taken before
+   * `setPlayerMemory` was called.
+   */
+  playerMemory: AftersignPlayerMemoryInput | null;
+};
+
+const isPlayerMemoryInput = (
+  value: unknown,
+): value is AftersignPlayerMemoryInput => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.playerName === "string" &&
+    typeof record.interactionCount === "number" &&
+    Number.isFinite(record.interactionCount)
+  );
 };
 
 const encodeWindowGameSave = (
   durableSave: string,
   acceptedNextJob: IoNextJobBeat | null,
+  playerMemory: AftersignPlayerMemoryInput | null,
 ): string =>
   JSON.stringify({
     kind: WINDOW_GAME_SAVE_KIND,
     durableSave,
     acceptedNextJobId: acceptedNextJob?.id ?? null,
+    playerMemory,
   } satisfies AftersignWindowGameSaveEnvelope);
 
 const decodeWindowGameSave = (
   payload: string,
-): { durableSave: string; acceptedNextJob: IoNextJobBeat | null } => {
+): {
+  durableSave: string;
+  acceptedNextJob: IoNextJobBeat | null;
+  playerMemory: AftersignPlayerMemoryInput | null;
+} => {
   try {
     const parsed = JSON.parse(payload) as Partial<AftersignWindowGameSaveEnvelope>;
     if (parsed.kind === WINDOW_GAME_SAVE_KIND && typeof parsed.durableSave === "string") {
       return {
         durableSave: parsed.durableSave,
         acceptedNextJob: parsed.acceptedNextJobId === ORRA_NAME_DEBT.id ? ORRA_NAME_DEBT : null,
+        playerMemory: isPlayerMemoryInput(parsed.playerMemory) ? parsed.playerMemory : null,
       };
     }
   } catch {
     // Plain durable-save payloads are still accepted below.
   }
 
-  return { durableSave: payload, acceptedNextJob: null };
+  return { durableSave: payload, acceptedNextJob: null, playerMemory: null };
 };
 
 const ensureWindow = (): Window => {
@@ -363,6 +421,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
   let acceptedNextJob: IoNextJobBeat | null = null;
   let savedAtTurn = 0;
+  let playerMemory: AftersignPlayerMemoryInput | null = null;
 
   // Pointer-to-render probe state. `pendingIntents` matches intent →
   // render by pointerId (the primitive requires event.id === signal.id;
@@ -486,11 +545,32 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     return next;
   };
 
+  /**
+   * Build the surface-options bag from the harness's live posture.
+   * `npcMemoryRoundTrip` is forwarded ONLY when a recall trigger has
+   * fired AND `playerMemory` has been supplied — either gate empty
+   * and the shipped surface (`getAftersignStoryState`) simply
+   * omits `story.npcMemoryRoundTrip`. The harness no longer grafts
+   * the field on after the surface returns; the surface itself is
+   * the sole author, sourcing `spokenLine` verbatim from
+   * `resolveAftersignRememberingNpcDialogue` (authored copy).
+   */
+  const surfaceOptions = () => ({
+    ...HARNESS_PLAYER,
+    ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
+    ...(recallTrigger && playerMemory
+      ? {
+          npcMemoryRoundTrip: {
+            npcId: recallTrigger.npcId,
+            playerName: playerMemory.playerName,
+            interactionCount: playerMemory.interactionCount,
+          },
+        }
+      : {}),
+  });
+
   const snapshot = (): AftersignStoryStateSnapshot => {
-    const base = getAftersignStoryState(state, {
-      ...HARNESS_PLAYER,
-      ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
-    });
+    const base = getAftersignStoryState(state, surfaceOptions());
 
     if (!acceptedNextJob) {
       return base;
@@ -529,6 +609,11 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // NPC via `meetNpc`.
     recallTrigger = null;
     acceptedNextJob = null;
+    // Clear the returning-player memory bag on a bare durable-save
+    // restore. The window-game `load()` wrapper re-hydrates it from
+    // the envelope AFTER calling this helper — only a full
+    // window-game envelope carries the memory bag across restores.
+    playerMemory = null;
     // Return-reason / applied feel row are deliberately NOT reset
     // here — a caller who set a posture BEFORE a durable-save restore
     // may want to carry that posture through the restore (the surface
@@ -670,12 +755,17 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       return encodeWindowGameSave(
         encodeAftersignDurableSave(state, savedAtTurn),
         acceptedNextJob,
+        playerMemory,
       );
     },
     load(payload) {
       const decoded = decodeWindowGameSave(payload);
       restorePayload(decoded.durableSave);
       acceptedNextJob = decoded.acceptedNextJob;
+      // `restorePayload` cleared `playerMemory` above so a bare
+      // durable-save load can't leak the previous session's memory
+      // bag. Only a full window-game envelope re-hydrates it.
+      playerMemory = decoded.playerMemory;
     },
     getRecallTrigger() {
       return recallTrigger;
@@ -688,6 +778,24 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     getRememberingNpcDialogue(npc) {
       return resolveAftersignRememberingNpcDialogue(state, npc);
+    },
+    setPlayerMemory(memory) {
+      if (memory === null) {
+        playerMemory = null;
+        return;
+      }
+      if (!isPlayerMemoryInput(memory)) {
+        throw new Error(
+          "Cannot set Aftersign player memory: playerName must be a string and interactionCount a finite number",
+        );
+      }
+      // Freeze the shape at capture time — later mutation of the
+      // caller's object shouldn't retroactively edit what the
+      // recognition beat spoke.
+      playerMemory = {
+        playerName: memory.playerName,
+        interactionCount: memory.interactionCount,
+      };
     },
   };
 

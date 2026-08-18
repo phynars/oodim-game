@@ -17,6 +17,7 @@ import {
   type AftersignOrraMemoryBeat,
 } from "./verticalSliceRecognitionBeat";
 import {
+  resolveAftersignRememberingNpcDialogue,
   type AftersignOrraAction,
   type AftersignPacketOutcome,
   type AftersignSceneId,
@@ -87,6 +88,47 @@ export type AftersignSaveSnapshot = {
   savedAtTurn: number;
 };
 
+/**
+ * Round-trip beat: what a returning NPC speaks when their recognition
+ * of the player references the two axes the surface carries about
+ * the player (name + prior-interaction count). Emitted whenever a
+ * caller supplies `options.npcMemoryRoundTrip` AND the referenced
+ * NPC's disposition on the current state is `recognizes-player` —
+ * otherwise absent, so consumers that don't opt in see the same
+ * shape they always did.
+ *
+ * Renamed from `AftersignNpcMemoryRoundTripSnapshot` to avoid a
+ * package-level type-name collision with the different-shape
+ * `AftersignNpcMemoryRoundTripSnapshot` exported by
+ * `./npcMemoryRoundTrip.ts` (the beat-store contract).
+ *
+ * `spokenLine` is sourced verbatim from
+ * `resolveAftersignRememberingNpcDialogue`'s first line — authored
+ * copy from the `AFTERSIGN_IO_RETURNING_SESSION_LINES` / Orra table.
+ * Not interpolated with `playerName` or `interactionCount`: the
+ * shape's job is to carry the authored voice alongside the two axes
+ * a renderer can compose without mutating the line.
+ */
+export type AftersignSpokenNpcMemoryRoundTrip = {
+  npcId: "io" | "orra";
+  playerName: string;
+  interactionCount: number;
+  spokenLine: string;
+};
+
+/**
+ * Input the surface accepts to publish `story.npcMemoryRoundTrip`.
+ * Split from the output shape so callers pass only the two axes
+ * they own — the surface fills in `spokenLine` from the shipped
+ * dialogue table and derives `npcId` from what actually recognizes
+ * the player on this state.
+ */
+export type AftersignNpcMemoryRoundTripInput = {
+  npcId: "io" | "orra";
+  playerName: string;
+  interactionCount: number;
+};
+
 export type AftersignStoryStateSnapshot = {
   story: {
     id: "aftersign.verticalSlice";
@@ -96,6 +138,7 @@ export type AftersignStoryStateSnapshot = {
     ioMemoryBeat?: AftersignIoMemoryBeat;
     orraMemoryBeat?: AftersignOrraMemoryBeat;
     ioDialogue: AftersignIoDialogueSnapshot;
+    npcMemoryRoundTrip?: AftersignSpokenNpcMemoryRoundTrip;
   };
   /**
    * Scene block with the current beat alongside the scene id, so a
@@ -161,6 +204,20 @@ export type AftersignStoryStateOptions = {
    * emitted (and the fork must still be committed for either).
    */
   returnReason?: AftersignReturnReason;
+  /**
+   * Two-axis player memory the returning-session recognition beat
+   * references. When supplied AND the referenced NPC currently
+   * recognizes the player on this state, the surface publishes
+   * `story.npcMemoryRoundTrip` with `spokenLine` sourced verbatim
+   * from `resolveAftersignRememberingNpcDialogue`'s first line
+   * (authored copy, not interpolated). Absent otherwise.
+   *
+   * This is the shipped consumer of the round-trip contract: any
+   * caller of `createAftersignWindowGameSurface` that carries a
+   * returning-player name + prior-interaction count into the
+   * surface — not just the harness — gets the beat on the snapshot.
+   */
+  npcMemoryRoundTrip?: AftersignNpcMemoryRoundTripInput;
 };
 
 export type AftersignWindowGameSurface = {
@@ -199,6 +256,18 @@ export function getAftersignStoryState(
   }
   if (state.orraHasMetPlayer || state.orraRecognizesPlayer || state.orraAction) {
     story.orraMemoryBeat = sampleAftersignOrraMemoryBeat(state);
+  }
+
+  // Publish the round-trip beat when the caller supplied a memory
+  // bag AND the referenced NPC actually recognizes the player on
+  // this state. Copy comes verbatim from
+  // `resolveAftersignRememberingNpcDialogue` (authored table) — no
+  // interpolation of `playerName` / `interactionCount` into the
+  // line. The two axes ride alongside so a renderer can compose,
+  // but the story voice stays what a writer wrote.
+  const roundTripBeat = buildNpcMemoryRoundTripBeat(state, options.npcMemoryRoundTrip);
+  if (roundTripBeat) {
+    story.npcMemoryRoundTrip = roundTripBeat;
   }
 
   return {
@@ -241,6 +310,35 @@ export function getAftersignStoryState(
           : []),
       ],
     },
+  };
+}
+
+function buildNpcMemoryRoundTripBeat(
+  state: AftersignVerticalSliceState,
+  memory: AftersignNpcMemoryRoundTripInput | undefined,
+): AftersignSpokenNpcMemoryRoundTrip | undefined {
+  if (!memory) {
+    return undefined;
+  }
+  const recognizes =
+    (memory.npcId === "io" && state.ioRecognizesPlayer) ||
+    (memory.npcId === "orra" && state.orraRecognizesPlayer);
+  if (!recognizes) {
+    return undefined;
+  }
+  const dialogue = resolveAftersignRememberingNpcDialogue(state, memory.npcId);
+  if (!dialogue.recognizesPlayer) {
+    return undefined;
+  }
+  const spokenLine = dialogue.lines[0];
+  if (typeof spokenLine !== "string" || spokenLine.length === 0) {
+    return undefined;
+  }
+  return {
+    npcId: memory.npcId,
+    playerName: memory.playerName,
+    interactionCount: memory.interactionCount,
+    spokenLine,
   };
 }
 
