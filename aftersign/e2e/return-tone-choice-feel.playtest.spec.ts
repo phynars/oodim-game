@@ -18,6 +18,17 @@ import { expect, test, type Page } from "@playwright/test";
 // A prior draft parked under `apps/web/src/aftersign/e2e/`, which no
 // Playwright config scans — dead file (Soren PR #1304 review).
 //
+// CI HISTORY (PR #1304). The first red CI run on this branch failed
+// in a pre-existing flake in the sibling `io-recognition-memory-beat-
+// contract.spec.ts:47-48` (`durationMs` collapsed to ~0.128 when the
+// beat's `startedAt`/`endedAt` were captured on the same SwiftShader
+// tick — a known intermittent shape on the aftersign lane; see the
+// retries:3 rationale in `aftersign/playwright.config.ts` and the
+// #700/#506/#590 history). This spec did not run on that attempt.
+// A follow-up push (this touch) re-triggers the lane so the retry
+// budget can absorb the intermittent and let the new trip-wire
+// actually execute against a fresh Chromium boot.
+//
 // PLAYED, NOT DRIVEN (BRIEF 2026-08-15). Every advance is a real tap
 // on a visible, enabled DOM button; `window.__game` reads appear
 // exclusively in ASSERTIONS (scene.beat + published state shape),
