@@ -18,6 +18,7 @@ export {
   meetIoForAftersignSlice,
   meetOrraForAftersignSlice,
   resolveAftersignRememberingNpcDialogue,
+  sampleAftersignRememberingNpcRecognitionEnvelope,
   type AftersignPacketChoiceConfirmBeat,
   type AftersignPacketChoiceConfirmFeel,
   type AftersignPacketOutcome,
@@ -27,6 +28,7 @@ export {
   type AftersignRememberingNpcId,
   type AftersignRememberingNpcDialogue,
   type AftersignRememberingNpcRecognitionFeel,
+  type AftersignRememberingNpcRecognitionEnvelope,
   type AftersignRememberedTone,
 } from "./verticalSliceRuntimeState";
 
