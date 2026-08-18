@@ -50,10 +50,43 @@ export type AftersignVerticalSliceState = {
   savedAtTurn?: number;
 };
 
+export type AftersignRememberingNpcRecognitionFeel = {
+  preLineHoldMs: number;
+  portraitPushInPx: number;
+  portraitPushInMs: number;
+  portraitPushInEasing: "cubic-bezier(0.16, 1, 0.3, 1)";
+  recognitionRingDelayMs: number;
+  recognitionRingDurationMs: number;
+  recognitionRingScale: number;
+  recognitionRingOpacity: number;
+  subtitlePopDelayMs: number;
+  subtitlePopDistancePx: number;
+  subtitlePopMs: number;
+  subtitlePopEasing: "cubic-bezier(0.34, 1.56, 0.64, 1)";
+  audioCueDelayMs: number;
+};
+
+export const AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL = {
+  preLineHoldMs: 120,
+  portraitPushInPx: 14,
+  portraitPushInMs: 260,
+  portraitPushInEasing: "cubic-bezier(0.16, 1, 0.3, 1)",
+  recognitionRingDelayMs: 90,
+  recognitionRingDurationMs: 420,
+  recognitionRingScale: 1.18,
+  recognitionRingOpacity: 0.72,
+  subtitlePopDelayMs: 180,
+  subtitlePopDistancePx: 8,
+  subtitlePopMs: 220,
+  subtitlePopEasing: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+  audioCueDelayMs: 120,
+} as const satisfies AftersignRememberingNpcRecognitionFeel;
+
 export type AftersignRememberingNpcDialogue = {
   npc: AftersignRememberingNpcId;
   recognizesPlayer: boolean;
   lines: readonly string[];
+  recognitionFeel: AftersignRememberingNpcRecognitionFeel | null;
 };
 
 /**
@@ -236,7 +269,8 @@ export function resolveAftersignRememberingNpcDialogue(
   npc: AftersignRememberingNpcId,
 ): AftersignRememberingNpcDialogue {
   if (npc === "io") {
-    const lines = state.ioRecognizesPlayer
+    const recognizesPlayer = state.ioRecognizesPlayer;
+    const lines = recognizesPlayer
       ? [
           chooseIoReturningSessionLine({
             packetOutcome:
@@ -251,17 +285,24 @@ export function resolveAftersignRememberingNpcDialogue(
 
     return {
       npc,
-      recognizesPlayer: state.ioRecognizesPlayer,
+      recognizesPlayer,
       lines,
+      recognitionFeel: recognizesPlayer
+        ? AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL
+        : null,
     };
   }
 
-  const lines = [chooseOrraRecognitionLine(state.orraRecognizesPlayer)];
+  const recognizesPlayer = state.orraRecognizesPlayer;
+  const lines = [chooseOrraRecognitionLine(recognizesPlayer)];
 
   return {
     npc,
-    recognizesPlayer: state.orraRecognizesPlayer,
+    recognizesPlayer,
     lines,
+    recognitionFeel: recognizesPlayer
+      ? AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL
+      : null,
   };
 }
 
