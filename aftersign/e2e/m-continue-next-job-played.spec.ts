@@ -25,16 +25,28 @@ import { expect, test, type Page } from "@playwright/test";
 // from a played spec (file name matching `playtest`), and this file does
 // not match that pattern anyway. Snapshot polling is the same pattern
 // the sibling `waitForBeat` uses.
+//
+// TERMINAL SIGNAL: the acceptance criterion is `scene.beat === "io-next-job"`
+// after tapping through the three beats. Prior revisions of this spec
+// also asserted `story.completedBeats` contained the traversed beats —
+// but that field DOES NOT EXIST on the served snapshot (grep
+// `aftersign/main.js` for `completedBeats`: zero matches; the served
+// `state.story` shape at main.js:274 is `{ currentNpcId, memoryBeat }`
+// only). The unit test `flagshipSurfaceAlignment.test.ts` asserts an
+// `expectedCompletedBeats` derived by a different projection; the
+// SIBLING played spec `m-continue-playtest.spec.ts:100` guards its own
+// completedBeats read with `if (Array.isArray(completed))` — treating
+// it as optional. This spec follows the same rule: the reached terminal
+// beat IS the acceptance signal; asserting a field the served state
+// doesn't populate would fail every run (bot log tail on PR #1288
+// iteration 1: `expect(received).toBe(expected) Expected: true` from
+// `expect(Array.isArray(completed)).toBe(true)`).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 
 type FlagshipSnapshot = {
   scene?: { beat?: string };
-  story?: {
-    beat?: string;
-    completedBeats?: string[];
-  };
 };
 
 declare global {
@@ -116,14 +128,12 @@ test.describe("Aftersign M-CONTINUE played acceptance", () => {
     await tapFirstVisible(page, [/ask for next job/i]);
 
     // Terminal beat. Assert via getSnapshot() (read-only) so the
-    // played-acceptance boundary stays intact.
+    // played-acceptance boundary stays intact. Reaching io-next-job by
+    // role-based taps IS the acceptance signal — no completedBeats
+    // assertion (see header comment: the served snapshot does not
+    // populate that field, and asserting on it was the red on the
+    // prior revision).
     const nextJob = await waitForBeat(page, "io-next-job");
     expect(nextJob.scene?.beat).toBe("io-next-job");
-
-    const completed = nextJob.story?.completedBeats;
-    expect(Array.isArray(completed)).toBe(true);
-    expect(completed).toEqual(
-      expect.arrayContaining(["return-tone-choice", "io-next-job"]),
-    );
   });
 });
