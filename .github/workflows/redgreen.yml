@@ -135,7 +135,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       # Preflight (#1071): lane retirement is keyed on the checked-in config
       # (aftersign/redgreen.config.json), NOT on grep-able spec markers.
       - name: Preflight — read lane state from redgreen.config.json
@@ -164,7 +164,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Preflight — config state + guard-string sanity
         id: preflight
         shell: bash
@@ -217,7 +217,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Preflight — read lane state from redgreen.config.json
         id: preflight
         shell: bash
@@ -244,7 +244,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Preflight — config state + guard-string sanity
         id: preflight
         shell: bash
@@ -299,7 +299,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Run agar multiplayer-convergence spec (green polarity)
         run: npm run test:e2e:agar
 
@@ -318,7 +318,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Run agar multiplayer-convergence spec (red polarity — MUST fail)
         shell: bash
         run: |
@@ -352,7 +352,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       - name: Run agar persistence-harness spec (green polarity)
         run: npm run test:e2e:agar:persistence
 
@@ -371,7 +371,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       # AC3 skip-when-skipped guard: anchored on the test title, `-A 3`
       # window; matches bare `test.skip(` because the spec splits the call
       # across lines (round-1 Mara catch).
@@ -417,7 +417,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-playwright-chromium.mjs
       # eviction-roundtrip is live (slice 3); keep the preflight so an
       # accidental re-skip logs explicitly instead of pretending the
       # lossy-persist polarity was exercised.

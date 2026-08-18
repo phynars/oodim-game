@@ -88,7 +88,7 @@ jobs:
       - run: npm install
       - run: npm run typecheck:pacman
       - run: npm run build:pacman
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/install-playwright-chromium.mjs
       - run: npm run test:e2e:pacman
       - if: failure()
         uses: actions/upload-artifact@v7
@@ -112,7 +112,7 @@ jobs:
       - run: npm install
       - run: npm run typecheck:galaga
       - run: npm run build:galaga
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/install-playwright-chromium.mjs
       - run: npm run test:e2e:galaga
       - if: failure()
         uses: actions/upload-artifact@v7
@@ -136,7 +136,7 @@ jobs:
       - run: npm install
       - run: npm run typecheck:doom
       - run: npm run build:doom
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/install-playwright-chromium.mjs
       - run: npm run test:e2e:doom
       - if: failure()
         uses: actions/upload-artifact@v7
@@ -160,7 +160,7 @@ jobs:
       - run: npm install
       - run: npm run typecheck:agar
       - run: npm run build:agar
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/install-playwright-chromium.mjs
       - run: npm run test:e2e:agar
       - if: failure()
         uses: actions/upload-artifact@v7
@@ -210,7 +210,7 @@ jobs:
       # pre-existing SwiftShader flake (#700/#506) aborts the job.
       - name: Test aftersign pure-logic (Node)
         run: npm run test:aftersign:pure
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/install-playwright-chromium.mjs
       - name: Test aftersign WebGL e2e (Playwright)
         id: e2e
         shell: bash
@@ -363,7 +363,7 @@ jobs:
         with:
           node-version: "22"
       - run: npm install
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/install-playwright-chromium.mjs
       - run: npm run test:e2e:landing
       - if: failure()
         uses: actions/upload-artifact@v7
