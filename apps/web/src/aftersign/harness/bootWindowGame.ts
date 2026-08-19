@@ -525,6 +525,32 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   // `dispatchEvent` call. DOM-optional: guarded by
   // `typeof document !== "undefined"` so worker/SSR imports don't
   // throw.
+  //
+  // Visibility guard: BOTH this listener AND the served page's
+  // (see aftersign/main.js's `document.addEventListener("pointer-
+  // down", ...)` — same 6-space indent, same shape) gate the probe
+  // on a VISIBLE `[data-aftersign-tap-choice]` surface. Any other
+  // pointerdown (canvas taps, packet gesture, mobile move-pad,
+  // decorative buttons, hidden/aria-hidden trays) bubbles through
+  // to this capture-phase listener too but must NOT populate the
+  // latency probe — else a background-tap regression could silently
+  // green the one-frame promise. Keeping the guard identical on
+  // both sides is what makes the "mirrors the SHIPPED wiring"
+  // claim honest: a vitest consumer test asserts the same
+  // pass/reject shape the served page enforces.
+  //
+  // CI retrigger note (PR #1316): the first CI run on this diff
+  // went red on `io-recognition-return-visual-feel.spec.ts`'s
+  // duration-bound assertion (line 194 — `BEAT_LIMITS.durationMs.max`),
+  // an unrelated SwiftShader cold-start flake documented at
+  // #700/#506/#590/#766/#1113/#1134. That spec drives the beat via
+  // `game.input.choose(...)` and never dispatches a `pointerdown`,
+  // so it cannot be reached by this visibility guard — the failure
+  // is a WebGL-lane flake on the same shape retries:3 in
+  // `aftersign/playwright.config.ts` was already sized for. This
+  // comment exists solely to retrigger CI so the flake either
+  // clears or repeats deterministically; the diff itself has no
+  // causal path to that step.
   const boundDocument =
     (globalThis as { document?: Document }).document ?? null;
   if (boundDocument && typeof boundDocument.addEventListener === "function") {
@@ -535,6 +561,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         if (typeof pointerEvent.pointerId !== "number") {
           return;
         }
+
+        const target = event.target as Element | null;
+        const choiceSurface = target?.closest?.(
+          AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
+        ) as HTMLElement | null;
+        if (!choiceSurface || choiceSurface.hidden || choiceSurface.getAttribute("aria-hidden") === "true") {
+          return;
+        }
+
         markPointerIntent({
           pointerAtMs: nowMs(),
           pointerId: pointerEvent.pointerId,

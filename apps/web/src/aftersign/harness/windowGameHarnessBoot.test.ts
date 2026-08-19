@@ -1081,4 +1081,57 @@ describe("Aftersign window.__game harness (#918)", () => {
       nowSpy.mockRestore();
     }
   });
+
+  // Player-shaped input must mean a visible rendered choice, not any
+  // bubbling pointer event the test DOM happens to dispatch. This keeps
+  // the latency probe aligned with the founder's "played, not driven"
+  // boundary: only visible `[data-aftersign-tap-choice]` targets can arm
+  // the pointer-to-render sample.
+  it("ignores hidden or non-choice pointer targets when recording pointer-to-render latency", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.input.resetPointerToRenderLatency();
+
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1012)
+      .mockReturnValueOnce(2000)
+      .mockReturnValueOnce(2012);
+
+    const nonChoiceButton = document.createElement("button");
+    nonChoiceButton.textContent = "decorative button";
+    document.body.appendChild(nonChoiceButton);
+
+    const hiddenChoiceButton = document.createElement("button");
+    hiddenChoiceButton.setAttribute("data-aftersign-tap-choice", "ask-for-next-job");
+    hiddenChoiceButton.hidden = true;
+    document.body.appendChild(hiddenChoiceButton);
+
+    try {
+      const nonChoicePointerDown = new Event("pointerdown", { bubbles: true });
+      Object.defineProperty(nonChoicePointerDown, "pointerId", { value: 101 });
+      nonChoiceButton.dispatchEvent(nonChoicePointerDown);
+      game?.input.markPointerRendered({ pointerId: 101, renderedAtMs: performance.now() });
+
+      const hiddenChoicePointerDown = new Event("pointerdown", { bubbles: true });
+      Object.defineProperty(hiddenChoicePointerDown, "pointerId", { value: 102 });
+      hiddenChoiceButton.dispatchEvent(hiddenChoicePointerDown);
+      game?.input.markPointerRendered({ pointerId: 102, renderedAtMs: performance.now() });
+
+      const report = game?.input.getPointerToRenderLatencyReport();
+      expect(report?.samples).toEqual([]);
+      expect(report?.latest).toBeUndefined();
+      expect(report?.worst).toBeUndefined();
+    } finally {
+      nonChoiceButton.remove();
+      hiddenChoiceButton.remove();
+      game?.input.resetPointerToRenderLatency();
+      nowSpy.mockRestore();
+    }
+  });
 });
