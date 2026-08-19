@@ -160,7 +160,7 @@ import {
   AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
   assertAftersignTapChoiceSurfaces,
 } from "../apps/web/src/aftersign/tapChoiceFeel.ts";
-import { measureTapTargetFeel } from "./src/mobileTapTargetFeel.ts";
+import { measureTapTargetAdjacency } from "../apps/web/src/aftersign/mobileTapTargetFeel.ts";
 // Tap-confirm feel — flagship press envelope stamped on the ONE button
 // the player just committed with (packet, acknowledge/skip route,
 // deliver, ask-for-next-job). Wiring it into main.js here is what
