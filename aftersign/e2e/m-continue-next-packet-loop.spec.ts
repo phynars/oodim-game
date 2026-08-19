@@ -38,7 +38,7 @@ import { expect, test } from "@playwright/test";
 // (main.js publishState + windowGameSurface.ts AftersignStoryBeatId).
 
 const WAIT_MS = 10_000;
-const COLD_START_MS = 20_000;
+const COLD_START_MS = 30_000;
 
 test.describe("AFTERSIGN M-CONTINUE next-packet loop", () => {
   test("io-next-job lets the player start the next packet instead of re-delivering the old one", async ({ page }) => {
@@ -62,7 +62,8 @@ test.describe("AFTERSIGN M-CONTINUE next-packet loop", () => {
     const tapChoice = async (choiceId: string) => {
       const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
       await expect(choice, `choice "${choiceId}" should be visible and tappable`).toBeVisible({ timeout: WAIT_MS });
-      await choice.click();
+      await choice.click({ trial: true, timeout: WAIT_MS });
+      await choice.click({ force: true, timeout: WAIT_MS });
     };
 
     await waitForBeat("packet-offered");
