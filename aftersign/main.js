@@ -79,6 +79,27 @@ import {
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
+// Shipped consumer of `aftersign/src/ioSecondPacketCopy.ts` — the beat
+// immediately after `io-next-job`. Io hands the courier a second packet
+// after directing them to Saint Orra. The module owns the WORDS
+// (three-tone frozen table + `playerName` fallback, contract pinned by
+// `runIoSecondPacketCopyChecks` in `aftersign/pure-runner.ts`); this
+// file is the RENDER SITE. Consumed at two seams inside main.js:
+//   1. `lineForBeat()` at the new `io-second-packet-copy` beat — the
+//      joined `copy.lines` land in `#line`, `copy.speaker` in `#speaker`.
+//   2. `renderText()`'s route-choice branch stamps the two module-
+//      authored choices (`accept-second-packet` / `ask-what-changed`)
+//      onto the acknowledge/skip route buttons via `stampAftersignChoice`,
+//      so a tap-driven e2e can walk to them by `data-aftersign-choice`.
+// The return-tone axis inside this module is `gentle`/`defiant`/
+// `guarded` — a different vocabulary than the shipped
+// `state.player.returnReason` axis (`kind`/`evasive`/`blunt`, see
+// `returnToneChoiceFeel.ts`'s header on why THAT axis stayed). Rather
+// than force-renaming either union, the two are bridged locally by
+// `mapReturnReasonToSecondPacketTone` below — the mapping is the render
+// site's concern, per issue #1322 ("do NOT change any wording in
+// ioSecondPacketCopy.ts").
+import { selectIoSecondPacketCopy } from "./src/ioSecondPacketCopy.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -592,6 +613,11 @@ const armReturningSessionBootLine = (delivered) => {
     state.scene.beat === "io-return-recognition"
     || state.scene.beat === "return-tone-choice"
     || state.scene.beat === "io-next-job"
+    // The `io-second-packet-copy` beat renders module-authored copy
+    // (see `secondPacketCopyForCurrentState` + the beat branch in
+    // `lineForBeat()`); the returning-session boot line must NOT
+    // overwrite it on a reload that lands here.
+    || state.scene.beat === "io-second-packet-copy"
   ) {
     return;
   }
@@ -642,6 +668,36 @@ let rainNoise;
 let rainFilter;
 let kioskHum;
 let kioskHumGain;
+
+// Bridge the shipped return-reason axis (`kind`/`evasive`/`blunt`,
+// captured at `io-return-recognition` and stored on
+// `state.player.returnReason`) onto the second-packet copy module's
+// posture axis (`gentle`/`defiant`/`guarded`, pinned by
+// `runIoSecondPacketCopyChecks`). The tone-copy table lives in
+// `aftersign/src/ioSecondPacketCopy.ts` under the second vocabulary and
+// the shipped return-reason lives under the first (see the module
+// header + `returnToneChoiceFeel.ts` for why neither renames). The
+// mapping is authored by voice: soft answer → gentle; blunt answer →
+// defiant; evasive answer → guarded. `null` / unknown → `guarded`,
+// matching `normalizeReturnTone`'s fallback — a mis-stamped tap can't
+// silence Io.
+const mapReturnReasonToSecondPacketTone = (returnReason) => {
+  if (returnReason === "kind") return "gentle";
+  if (returnReason === "blunt") return "defiant";
+  return "guarded";
+};
+
+// One resolution point for the `io-second-packet-copy` beat's copy —
+// shared by `lineForBeat()` (renders `copy.lines.join(" ")` into
+// `#line`) and `renderText()` (stamps `copy.choices` labels + ids onto
+// the two route buttons + `copy.speaker` into `#speaker`). Sourcing
+// them from a single call site guarantees speaker/lines/choices agree
+// on the same tone → module output.
+const secondPacketCopyForCurrentState = () =>
+  selectIoSecondPacketCopy({
+    returnTone: mapReturnReasonToSecondPacketTone(state.player.returnReason),
+    playerName: state.player.name,
+  });
 
 const lineForBeat = () => {
   // #957: If a returning-session boot line was computed at module init
@@ -713,6 +769,22 @@ const lineForBeat = () => {
       .join(" ");
     const handoffLine = ioNextJobLine();
     return reflection ? `${reflection} ${handoffLine}` : handoffLine;
+  }
+
+  if (state.scene.beat === "io-second-packet-copy") {
+    // Shipped consumer of `aftersign/src/ioSecondPacketCopy.ts`
+    // (closes #1322). The player has tapped through delivery →
+    // return-tone → next-job → deliver-packet to land here; the beat
+    // renders Io's three-tone second-packet offer as one flowing
+    // utterance in `#line`. The return posture is bridged from
+    // `state.player.returnReason` via `mapReturnReasonToSecondPacketTone`
+    // (see helper header above for why the two axes stay distinct),
+    // with the null / unknown case anchored to `guarded` — the
+    // module's own fallback, so a mis-stamped tap doesn't silence Io.
+    // `state.player.name` may be null on fresh slots / harness runs;
+    // the module addresses "courier" as the role fallback (assertion
+    // pinned in `runIoSecondPacketCopyChecks`).
+    return secondPacketCopyForCurrentState().lines.join(" ");
   }
 
   if (state.scene.beat === "io-return-recognition") {
@@ -1407,7 +1479,13 @@ const renderText = () => {
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
-  const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
+  const isSecondPacketOfferBeat = state.scene.beat === "io-second-packet-copy";
+  const routeChoiceVisible =
+    isPacketChoiceBeat
+    || isReturnRecognitionBeat
+    || isReturnToneChoiceBeat
+    || isNextJobBeat
+    || isSecondPacketOfferBeat;
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
   }
@@ -1419,6 +1497,15 @@ const renderText = () => {
     stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");
     stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
     stampAftersignChoice(deliverButton, "deliver-packet");
+    // Re-enable the acknowledge / skip / deliver buttons at
+    // packet-choice — a prior beat (e.g. `io-second-packet-copy`,
+    // which disables `deliverButton` while the two module-authored
+    // choices own the tray) may have left them disabled. Without
+    // this, tapping "accept-second-packet" resets to packet-choice
+    // and the player lands on a tray with three greyed-out affordances.
+    acknowledgeRouteButton.disabled = false;
+    skipRouteButton.disabled = false;
+    deliverButton.disabled = false;
   } else if (isReturnRecognitionBeat) {
     setTextContentIfChanged(acknowledgeRouteButton, "Kind return");
     setTextContentIfChanged(skipRouteButton, "Evasive return");
@@ -1463,6 +1550,30 @@ const renderText = () => {
     delete deliverButton.dataset.returnReason;
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
+  } else if (isSecondPacketOfferBeat) {
+    // Closes #1322: at the `io-second-packet-copy` beat the module
+    // owns BOTH the two choice ids and their labels (see
+    // `selectIoSecondPacketCopy` — pinned in
+    // `runIoSecondPacketCopyChecks`). We stamp them onto the two
+    // route buttons so a tap-driven e2e can walk to them by
+    // `data-aftersign-choice="accept-second-packet"` /
+    // `data-aftersign-choice="ask-what-changed"`. The `deliverButton`
+    // is disabled here — this beat's ONLY affordances are the two
+    // module-authored choices; a leftover deliver stamp from an
+    // earlier beat would be a false third option.
+    const secondPacketCopy = secondPacketCopyForCurrentState();
+    setTextContentIfChanged(speaker, secondPacketCopy.speaker);
+    const [acceptChoice, askChoice] = secondPacketCopy.choices;
+    setTextContentIfChanged(acknowledgeRouteButton, acceptChoice.label);
+    setTextContentIfChanged(skipRouteButton, askChoice.label);
+    stampAftersignChoice(acknowledgeRouteButton, acceptChoice.id);
+    stampAftersignChoice(skipRouteButton, askChoice.id);
+    acknowledgeRouteButton.disabled = false;
+    skipRouteButton.disabled = false;
+    deliverButton.disabled = true;
+    delete acknowledgeRouteButton.dataset.returnReason;
+    delete skipRouteButton.dataset.returnReason;
+    delete deliverButton.dataset.returnReason;
   } else {
     setTextContentIfChanged(deliverButton, "Deliver packet");
     stampAftersignChoice(deliverButton, "deliver-packet");
@@ -1656,20 +1767,80 @@ const choose = async (choiceId) => {
 
   if (choiceId === "deliver-packet") {
     if (state.scene.beat === "io-next-job") {
-      state.packet = {
-        delivered: false,
-        route: null,
-        sealed: true,
-        deliveredAt: null,
-      };
-      state.delivery.outcome = "unknown";
-      state.player.secondAction = null;
-      setBeat("packet-choice");
-      markStateDirty();
+      // Closes #1322: tapping "Deliver next packet" at `io-next-job`
+      // used to collapse straight back into `packet-choice` — the
+      // player never got to READ Io's second-packet offer copy. Now
+      // it advances to the new `io-second-packet-copy` beat where
+      // `lineForBeat()` renders `selectIoSecondPacketCopy(...).lines`
+      // and `renderText()` stamps the two module-authored choices
+      // onto the acknowledge / skip route buttons. The actual
+      // packet-loop reset (below) is deferred until the player taps
+      // "accept-second-packet" at that beat, so the words land
+      // BEFORE the state resets.
+      setBeat("io-second-packet-copy");
+      await forceSave();
       publishState();
       return;
     }
     deliverPacket("contract-input");
+    return;
+  }
+
+  if (choiceId === "accept-second-packet") {
+    // Closes #1322: the "Take the second packet" choice at the
+    // `io-second-packet-copy` beat. Only valid there — a tap from
+    // any other beat is a no-op (mirrors `ask-for-next-job`'s guard
+    // above). Accepting collapses back into the packet-choice loop
+    // with a fresh sealed packet + cleared secondAction, matching
+    // the shape the old `deliver-packet` @ `io-next-job` branch used
+    // to mint inline. Same posture as the return-tone forks: a fresh
+    // slot's SEALED / SKIPPED defaults, so the second packet starts
+    // as a clean slate.
+    if (state.scene.beat !== "io-second-packet-copy") {
+      return;
+    }
+    state.packet = {
+      delivered: false,
+      route: null,
+      sealed: true,
+      deliveredAt: null,
+    };
+    state.delivery.outcome = "unknown";
+    state.player.secondAction = null;
+    setBeat("packet-choice");
+    markStateDirty();
+    await forceSave();
+    publishState();
+    return;
+  }
+
+  if (choiceId === "ask-what-changed") {
+    // Closes #1322: the "Ask what changed" choice at the
+    // `io-second-packet-copy` beat. The module's authored `response`
+    // ("You did. That is the part the route noticed.") is Io's reply
+    // — same shape as the accept branch above but WITHOUT the
+    // packet-loop reset. The beat stays put, but the response line
+    // supersedes the joined offer copy on `#line`. Kept in-beat so
+    // a follow-up tap on `accept-second-packet` still lands the
+    // player back in `packet-choice`; the follow-up module story
+    // (a separate branch beat) is out of scope for #1322.
+    if (state.scene.beat !== "io-second-packet-copy") {
+      return;
+    }
+    const secondPacketCopy = secondPacketCopyForCurrentState();
+    const askChoice = secondPacketCopy.choices.find(
+      (choice) => choice.id === "ask-what-changed",
+    );
+    // Defensive: the module contract pins the ask-what-changed choice
+    // at index 1, but sourcing by id keeps the branch honest against
+    // a future reordering of the tuple. If the module ever drops the
+    // choice entirely, `runIoSecondPacketCopyChecks` will red first.
+    if (askChoice && typeof askChoice.response === "string") {
+      state.npcs.io.lastLine = askChoice.response;
+      setTextContentIfChanged(line, askChoice.response);
+      markStateDirty();
+      publishState();
+    }
     return;
   }
 
