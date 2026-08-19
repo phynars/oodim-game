@@ -65,6 +65,18 @@ import { runIoRecognitionExpectedLineContractChecks } from "./src/ioRecognitionE
 // resolves it deterministically), satisfying the extension-resolution
 // contract documented above.
 import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.ts";
+// Io's second-packet offer copy — pure-lane consumer for the frozen
+// three-tone table + playerName fallback in `ioSecondPacketCopy.ts`.
+// Closes the "no consumers" gap Soren flagged on PR #1319: reviewer
+// grep for `selectIoSecondPacketCopy` / `IO_SECOND_PACKET_COPY_ID`
+// now finds this runner AND the check bundle. The render-site wire-in
+// (main.js io-next-job → beat that stamps these lines onto #line +
+// #speaker with a tap-driven e2e) is tracked as issue #1322 so the
+// copy contract lands under CI before the render-side ships.
+// Every relative specifier in this subgraph is `.ts`-extensioned
+// (the sole import is `./ioSecondPacketCopy.ts`), satisfying the
+// extension-resolution contract documented above.
+import { runIoSecondPacketCopyChecks } from "./src/ioSecondPacketCopy.test.ts";
 
 type Runner = {
   label: string;
@@ -111,6 +123,7 @@ const runners: Runner[] = [
   { label: "runIoRecognitionDialogueContractChecks", run: runIoRecognitionDialogueContractChecks },
   { label: "runIoRecognitionExpectedLineContractChecks", run: runIoRecognitionExpectedLineContractChecks },
   { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
+  { label: "runIoSecondPacketCopyChecks", run: runIoSecondPacketCopyChecks },
 ];
 
 let failed = 0;
