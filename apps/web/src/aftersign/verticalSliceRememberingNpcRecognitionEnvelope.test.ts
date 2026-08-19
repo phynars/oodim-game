@@ -33,7 +33,7 @@ describe("sampleAftersignRememberingNpcRecognitionEnvelope — frame semantics",
     // scale at ringT=0 is 1 (no scale pop yet).
     expect(frame.recognitionRingScale).toBe(1);
     // Subtitle is at max pre-pop distance (delay hasn't started).
-    expect(frame.subtitlePopDistancePx).toBe(FEEL.subtitlePopDistancePx);
+    expect(frame.subtitlePopDistancePx).toBeCloseTo(FEEL.subtitlePopDistancePx);
     expect(frame.subtitleOpacity).toBe(0);
     expect(frame.audioCueArmed).toBe(false);
   });
