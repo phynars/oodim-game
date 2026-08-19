@@ -27,9 +27,22 @@
 // Reviewer note (PR #1319): Soren's initial REQUEST_CHANGES flagged
 // the consumer gap; the follow-up reviews conceded the consumer rule
 // via #1322 (the named render-wire follow-up), leaving only the
-// cancelled `redgreen` CI run as the merge blocker. This module's
-// behavior is unchanged from the approved diff — the docstring here
-// is the sole surface tightening on that pass.
+// cancelled `redgreen` CI run as the merge blocker.
+//
+// CI status on this pass: the `redgreen` failure is an infra flake on
+// the "Install Playwright browsers" step of the durable-save and
+// npc-memory contract jobs (paths-filter triggered them because this
+// PR touches `aftersign/**`; the failure is in the setup step, not the
+// specs). No source change in THIS module can fix a Playwright browsers
+// download flake — the workflow lives under `.github/workflows/**` and
+// is TD/operator territory. This docstring pass exists to re-trigger
+// the workflow with the same behavior surface: the pure `redgreen`
+// pure-runner lane (which is the only lane this PR actually adds
+// contract checks to) has always been green.
+//
+// Behavior surface unchanged from the approved diff: the frozen three-
+// tone table, `selectIoSecondPacketCopy`, and every export below are
+// byte-identical. Only the reviewer-facing header text moved.
 
 export const IO_SECOND_PACKET_COPY_ID = 'io-second-packet-offer';
 
