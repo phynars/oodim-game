@@ -742,6 +742,35 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(reducedWake!.tagGlowAlpha).toBeGreaterThanOrEqual(0);
   });
 
+  it("clears applied tap-confirm feel on restoreDurableSave and load", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.getAppliedTapConfirmFeel).toEqual(expect.any(Function));
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    expect(game?.getAppliedTapConfirmFeel()).toBeNull();
+
+    game?.input.choose("any-committing-choice");
+    expect(game?.getAppliedTapConfirmFeel()).toEqual(expect.any(Object));
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 2),
+    );
+    expect(game?.getAppliedTapConfirmFeel()).toBeNull();
+
+    game?.input.choose("another-committing-choice");
+    expect(game?.getAppliedTapConfirmFeel()).toEqual(expect.any(Object));
+
+    const payload = game!.save();
+    game?.input.choose("stale-confirm-after-save");
+    expect(game?.getAppliedTapConfirmFeel()).toEqual(expect.any(Object));
+
+    game?.load(payload);
+    expect(game?.getAppliedTapConfirmFeel()).toBeNull();
+  });
+
   it("keeps M-CONTINUE harness choices on the generic assertion/input bridge", () => {
     const game = window.__game as
       | (typeof window.__game & {
