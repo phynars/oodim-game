@@ -7,11 +7,32 @@ import { expect, test, type Page } from "@playwright/test";
 // is the JUICE-lane trip-wire: ONE fresh run through the fork,
 // asserting that the visible tap on "Kind return" produces a tactile,
 // on-screen response (the authored reply verbatim, at `#line`) at the
-// `return-tone-choice` beat. If a future feel refactor drops the
-// press-envelope wiring on `applyReturnToneFeel()` and silently
-// clobbers the reply render, this trip-wire reds first because it
-// runs in the phone tap lane (`hasTouch: true` synthesizes touch
-// events; the click-only path would miss a touch-only wiring gap).
+// `return-tone-choice` beat AND that the tuned press-envelope feel
+// numbers land on `[data-aftersign-return-surface]` at
+// `io-return-recognition` — one CSS-var snapshot per posture, pinned
+// against the `kind` row in `returnToneChoiceFeel.ts`. If a future
+// feel refactor drops the press-envelope wiring on
+// `applyReturnToneFeel()` and silently clobbers the reply render OR
+// the stamped CSS variables drift from the pinned row, this trip-wire
+// reds first because it runs in the phone tap lane (`hasTouch: true`
+// synthesizes touch events; the click-only path would miss a
+// touch-only wiring gap).
+//
+// KIND-PATH DISCIPLINE (Soren PR #1314 re-review). The `applyReturnToneFeel`
+// call site in main.js:987 computes the posture from durable state:
+//   const routeAttention = secondActionFromMemory(...) === DONE
+//     ? "listened" : "skipped";
+//   const returnToneReason = !state.packet.sealed
+//     ? "evasive"
+//     : routeAttention === "listened" ? "kind" : "blunt";
+// So to drive the KIND branch (which this trip-wire pins), the play
+// path MUST record `acknowledge-kiosk` at `packet-choice` BEFORE
+// `deliver-packet` mints the route-attention fact. Skipping the
+// kiosk-acknowledge tap lands `routeAttention="skipped"` and the
+// runtime stamps the BLUNT row, red-ing the KIND_RETURN_FEEL
+// assertion. The feel snapshot is taken at `io-return-recognition`
+// (where the applier runs) — after that beat, tapping "Kind return"
+// advances to `return-tone-choice` for the reply proof.
 //
 // LOCATION. Lives at `aftersign/e2e/` — the repo-root tree the
 // `aftersign/playwright.config.ts` `testDir: "e2e"` config scans.
@@ -29,6 +50,11 @@ import { expect, test, type Page } from "@playwright/test";
 //   #acknowledgeRouteButton → "Kind return"
 //   #skipRouteButton        → "Evasive return"
 //   #deliverButton          → "Blunt return"
+// At the preceding `packet-choice` beat the SAME three DOM nodes
+// carry different labels (Acknowledge route / Skip acknowledgment /
+// Deliver packet) and the SAME `#acknowledgeRouteButton` node stamps
+// `data-aftersign-tap-choice="acknowledge-kiosk"` — the label swap
+// is what makes the phone tap-lane trip-wire load-bearing.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
@@ -80,24 +106,40 @@ const tap = async (page: Page, selector: string): Promise<void> => {
 };
 
 const expectKindReturnFeelStamped = async (page: Page): Promise<void> => {
-  const feel = await page.locator("#aftersignReturnSurface").evaluate((node) => {
-    const style = getComputedStyle(node);
-    return {
-      tone: node.getAttribute("data-aftersign-return-tone"),
-      toneHz: style.getPropertyValue("--aftersign-return-tone-hz").trim(),
-      attackMs: style.getPropertyValue("--aftersign-return-tone-attack-ms").trim(),
-      releaseMs: style.getPropertyValue("--aftersign-return-tone-release-ms").trim(),
-      gain: style.getPropertyValue("--aftersign-return-tone-gain").trim(),
-      liftPx: style.getPropertyValue("--aftersign-return-lift-px").trim(),
-      shakePx: style.getPropertyValue("--aftersign-return-shake-px").trim(),
-      easing: style.getPropertyValue("--aftersign-return-easing").trim(),
-    };
-  });
-
-  expect(feel).toEqual({
-    tone: "kind",
-    ...KIND_RETURN_FEEL,
-  });
+  // Poll the applier's output — `applyReturnToneFeel("kind")` fires
+  // inside `syncIoLine()` on the render tick that lands
+  // `io-return-recognition`, and the CSS variables are written
+  // synchronously on the [data-aftersign-return-surface] node. Polling
+  // (rather than a one-shot read) tolerates the render lag between
+  // `waitForBeat` returning and the applier finishing its stamp.
+  await expect
+    .poll(
+      () =>
+        page.locator("#aftersignReturnSurface").evaluate((node) => {
+          const style = getComputedStyle(node);
+          return {
+            tone: node.getAttribute("data-aftersign-return-tone"),
+            toneHz: style.getPropertyValue("--aftersign-return-tone-hz").trim(),
+            attackMs: style
+              .getPropertyValue("--aftersign-return-tone-attack-ms")
+              .trim(),
+            releaseMs: style
+              .getPropertyValue("--aftersign-return-tone-release-ms")
+              .trim(),
+            gain: style.getPropertyValue("--aftersign-return-tone-gain").trim(),
+            liftPx: style.getPropertyValue("--aftersign-return-lift-px").trim(),
+            shakePx: style
+              .getPropertyValue("--aftersign-return-shake-px")
+              .trim(),
+            easing: style.getPropertyValue("--aftersign-return-easing").trim(),
+          };
+        }),
+      { timeout: WAIT_MS },
+    )
+    .toEqual({
+      tone: "kind",
+      ...KIND_RETURN_FEEL,
+    });
 };
 
 test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
@@ -111,10 +153,29 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
     });
     await waitForGame(page);
 
+    // packet-offered → tap packet (gesture with no drag preserves the
+    // seal) → packet-choice.
     await waitForBeat(page, "packet-offered");
+    await tap(page, "#packetButton");
+
+    // packet-choice: at THIS beat `#acknowledgeRouteButton` stamps
+    // `data-aftersign-tap-choice="acknowledge-kiosk"` and records
+    // `state.player.secondAction = "acknowledge-kiosk"` (SECOND_ACTION
+    // .DONE) BEFORE `deliver-packet` mints the route-attention fact.
+    // That is what drives `routeAttention === "listened"` at the
+    // recognition beat, which — with the sealed packet — routes
+    // `returnToneReason` to "kind" in main.js:987. Skip this tap
+    // and the applier stamps the "blunt" row instead.
+    await waitForBeat(page, "packet-choice");
+    await tap(page, "#acknowledgeRouteButton");
     await tap(page, "#deliverButton");
 
+    // deliverPacket() mints the fact + auto-advances (~1180ms
+    // setTimeout in main.js) to `io-return-recognition`.
     await waitForBeat(page, "io-return-recognition");
+
+    // Button labels swap at this beat: same three DOM nodes, new
+    // text — asserted verbatim against the served render.
     await expect(page.locator("#acknowledgeRouteButton")).toContainText(
       /^\s*Kind return\s*$/,
     );
@@ -124,6 +185,9 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
     await expect(page.locator("#deliverButton")).toContainText(
       /^\s*Blunt return\s*$/,
     );
+
+    // Feel-stamp proof — the applier ran because sealed=true +
+    // routeAttention="listened" → returnToneReason="kind".
     await expectKindReturnFeelStamped(page);
 
     await tap(page, "#acknowledgeRouteButton");
