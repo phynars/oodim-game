@@ -535,6 +535,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         if (typeof pointerEvent.pointerId !== "number") {
           return;
         }
+
+        const target = event.target as Element | null;
+        const choiceSurface = target?.closest?.(
+          AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
+        ) as HTMLElement | null;
+        if (!choiceSurface || choiceSurface.hidden || choiceSurface.getAttribute("aria-hidden") === "true") {
+          return;
+        }
+
         markPointerIntent({
           pointerAtMs: nowMs(),
           pointerId: pointerEvent.pointerId,
