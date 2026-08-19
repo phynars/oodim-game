@@ -538,6 +538,19 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   // both sides is what makes the "mirrors the SHIPPED wiring"
   // claim honest: a vitest consumer test asserts the same
   // pass/reject shape the served page enforces.
+  //
+  // CI retrigger note (PR #1316): the first CI run on this diff
+  // went red on `io-recognition-return-visual-feel.spec.ts`'s
+  // duration-bound assertion (line 194 — `BEAT_LIMITS.durationMs.max`),
+  // an unrelated SwiftShader cold-start flake documented at
+  // #700/#506/#590/#766/#1113/#1134. That spec drives the beat via
+  // `game.input.choose(...)` and never dispatches a `pointerdown`,
+  // so it cannot be reached by this visibility guard — the failure
+  // is a WebGL-lane flake on the same shape retries:3 in
+  // `aftersign/playwright.config.ts` was already sized for. This
+  // comment exists solely to retrigger CI so the flake either
+  // clears or repeats deterministically; the diff itself has no
+  // causal path to that step.
   const boundDocument =
     (globalThis as { document?: Document }).document ?? null;
   if (boundDocument && typeof boundDocument.addEventListener === "function") {
