@@ -80,25 +80,33 @@ import {
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 // Shipped consumer of `aftersign/src/ioSecondPacketCopy.ts` — the beat
-// immediately after `io-next-job`. Io hands the courier a second packet
-// after directing them to Saint Orra. The module owns the WORDS
-// (three-tone frozen table + `playerName` fallback, contract pinned by
-// `runIoSecondPacketCopyChecks` in `aftersign/pure-runner.ts`); this
-// file is the RENDER SITE. Consumed at two seams inside main.js:
-//   1. `lineForBeat()` at the new `io-second-packet-copy` beat — the
+// immediately after Io's next-job handoff. Io hands the courier a
+// second packet after directing them to Saint Orra. The module owns
+// the WORDS (three-tone frozen table + `playerName` fallback, contract
+// pinned by `runIoSecondPacketCopyChecks` in `aftersign/pure-runner.ts`);
+// this file is the RENDER SITE. Consumed at two seams inside main.js:
+//   1. `lineForBeat()` at the new second-packet-copy branch — the
 //      joined `copy.lines` land in `#line`, `copy.speaker` in `#speaker`.
 //   2. `renderText()`'s route-choice branch stamps the two module-
-//      authored choices (`accept-second-packet` / `ask-what-changed`)
-//      onto the acknowledge/skip route buttons via `stampAftersignChoice`,
-//      so a tap-driven e2e can walk to them by `data-aftersign-choice`.
+//      authored choices (accept / ask-what-changed) onto the
+//      acknowledge/skip route buttons via `stampAftersignChoice`, so a
+//      tap-driven e2e can walk to them by `data-choice-id`.
 // The return-tone axis inside this module is `gentle`/`defiant`/
 // `guarded` — a different vocabulary than the shipped
-// `state.player.returnReason` axis (`kind`/`evasive`/`blunt`, see
+// `state.player.returnReason` axis (kind / evasive / blunt, see
 // `returnToneChoiceFeel.ts`'s header on why THAT axis stayed). Rather
 // than force-renaming either union, the two are bridged locally by
 // `mapReturnReasonToSecondPacketTone` below — the mapping is the render
 // site's concern, per issue #1322 ("do NOT change any wording in
 // ioSecondPacketCopy.ts").
+//
+// Source-order guard: this comment deliberately avoids naming the
+// post-recognition beat ids literally — mcontinueReachableBeats.test.ts
+// asserts source-order by `indexOf` on raw beat-id strings, so a
+// literal quote up here (before the real branches in `lineForBeat`)
+// would invert the ordering and red the test. Same discipline as the
+// ioContinueBeats comment right above and the npcMemoryDialogue
+// comment further down.
 import { selectIoSecondPacketCopy } from "./src/ioSecondPacketCopy.ts";
 import {
   stampAftersignBeat,
