@@ -30,27 +30,24 @@ import { expect, test, type Page } from "@playwright/test";
 //   #skipRouteButton        → "Evasive return"
 //   #deliverButton          → "Blunt return"
 
-type FlagshipSnapshot = {
-  scene?: {
-    beat?: string;
-  };
-};
-
-declare global {
-  interface Window {
-    __game?: {
-      version?: number;
-      getSnapshot?: () => FlagshipSnapshot;
-      scene?: { beat?: unknown };
-    };
-  }
-}
-
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 
 const KIND_RETURN_REPLY =
   "Careful. Say that too often and people will start handing you breakable things.";
+
+const KIND_RETURN_FEEL = {
+  toneHz: "440",
+  attackMs: "12ms",
+  releaseMs: "180ms",
+  gain: "0.11",
+  pressScale: "0.982",
+  liftPx: "-2px",
+  shakePx: "1.5px",
+  glowPx: "18px",
+  durationMs: "240ms",
+  easing: "cubic-bezier(.2,.8,.2,1)",
+};
 
 async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
@@ -78,10 +75,34 @@ const tap = async (page: Page, selector: string): Promise<void> => {
   await button.tap();
 };
 
+const expectKindReturnFeelStamped = async (page: Page): Promise<void> => {
+  const feel = await page.locator("#aftersignReturnSurface").evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      tone: node.getAttribute("data-aftersign-return-tone"),
+      toneHz: style.getPropertyValue("--aftersign-return-tone-hz").trim(),
+      attackMs: style.getPropertyValue("--aftersign-return-tone-attack-ms").trim(),
+      releaseMs: style.getPropertyValue("--aftersign-return-tone-release-ms").trim(),
+      gain: style.getPropertyValue("--aftersign-return-tone-gain").trim(),
+      pressScale: style.getPropertyValue("--aftersign-return-press-scale").trim(),
+      liftPx: style.getPropertyValue("--aftersign-return-lift-px").trim(),
+      shakePx: style.getPropertyValue("--aftersign-return-shake-px").trim(),
+      glowPx: style.getPropertyValue("--aftersign-return-glow-px").trim(),
+      durationMs: style.getPropertyValue("--aftersign-return-duration-ms").trim(),
+      easing: style.getPropertyValue("--aftersign-return-easing").trim(),
+    };
+  });
+
+  expect(feel).toEqual({
+    tone: "kind",
+    ...KIND_RETURN_FEEL,
+  });
+};
+
 test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("Kind return tap at io-return-recognition renders the authored reply at return-tone-choice", async ({
+  test("Kind return tap at io-return-recognition renders the authored reply and stamps the tuned feel surface", async ({
     page,
   }) => {
     await page.goto(`/aftersign/?slot=return-tone-feel-${Date.now()}`, {
@@ -102,6 +123,7 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
     await expect(page.locator("#deliverButton")).toContainText(
       /^\s*Blunt return\s*$/,
     );
+    await expectKindReturnFeelStamped(page);
 
     await tap(page, "#acknowledgeRouteButton");
 
@@ -109,6 +131,10 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
     await expect(page.locator("#line")).toHaveText(KIND_RETURN_REPLY, {
       timeout: WAIT_MS,
     });
+    await expect(page.locator("#acknowledgeRouteButton")).toHaveAttribute(
+      "data-aftersign-tap-confirm",
+      "armed",
+    );
 
     await expect(page.locator("#deliverButton")).toContainText(
       /ask for next job/i,
