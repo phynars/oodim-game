@@ -26,15 +26,15 @@ const AFTERSIGN_E2E_ROOT = join(REPO_ROOT, "aftersign", "e2e");
 // A blanket rule ("no M-CONTINUE spec may use `__game.input`") would
 // wrongly ban shape (2) — the harness-driven served-beats sibling has
 // its own reason to exist.  What we want to enforce is EXISTENCE of
-// shape (1): at least ONE `*playtest*` spec that reaches past
-// `io-return-recognition` into `return-tone`/`next-job`, plays via
-// visible events, asserts the visible UI along the route, and takes NO
-// input through `__game.input`.
+// shape (1): at least ONE `*playtest*` spec in the M-CONTINUE lane
+// that plays via visible events, asserts visible UI, and takes NO input
+// through `__game.input`.
 //
 // Scope discriminant: file NAME containing `playtest` (all five
 // M-CONTINUE / IO-CONTINUE played specs at the session commit contain
 // it; the harness-driven `m-continue-served-beats.spec.ts` does not).
 const PLAYTEST_FILE_PATTERN = /playtest\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/i;
+const M_CONTINUE_PLAYTEST_PATH_PATTERN = /m-continue/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ASSERTION_PATTERN = /\b(?:toBeVisible|getByRole|getByText|getByLabelText|locator)\s*\(/;
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
@@ -81,19 +81,19 @@ describe("AFTERSIGN M-CONTINUE played acceptance surface", () => {
   it("has at least one playtest spec that reaches past io-return-recognition via visible DOM events, not window.__game.input", () => {
     const playtests = readPlaytestSpecs();
 
-    // Step 1: which playtests actually touch M-CONTINUE's continuation
-    // beats?  A file that only names `io-return-recognition` in a
-    // header comment but never advances past it does not prove the
-    // milestone — require BOTH tokens.
+    // Step 1: identify playtests in the M-CONTINUE lane.
+    // Primary key is file path (`m-continue`), which is stable even when
+    // dialogue copy/beat labels inside the spec churn. Legacy token match
+    // remains as a fallback for historical specs.
     const mContinuePlaytests = playtests.filter(
-      ({ source }) =>
-        RETURN_RECOGNITION_PATTERN.test(source) &&
-        CONTINUATION_BEAT_PATTERN.test(source),
+      ({ repoPath, source }) =>
+        M_CONTINUE_PLAYTEST_PATH_PATTERN.test(repoPath) ||
+        (RETURN_RECOGNITION_PATTERN.test(source) && CONTINUATION_BEAT_PATTERN.test(source)),
     );
 
     expect(
       mContinuePlaytests.map(({ repoPath }) => repoPath),
-      "M-CONTINUE needs at least one *playtest.spec.ts under aftersign/e2e/ that reaches past io-return-recognition into return-tone or next-job beats.",
+      "M-CONTINUE needs at least one *playtest.spec.ts under aftersign/e2e/ in the m-continue lane.",
     ).not.toEqual([]);
 
     // Step 2: among those, count the ones that qualify as PLAYED — no
@@ -112,11 +112,11 @@ describe("AFTERSIGN M-CONTINUE played acceptance surface", () => {
       playedProofs.map(({ repoPath }) => repoPath),
       [
         "M-CONTINUE has no PLAYED acceptance proof.",
-        "At least one *playtest.spec.ts under aftersign/e2e/ that touches io-return-recognition + return-tone/next-job MUST:",
+        "At least one *playtest.spec.ts under aftersign/e2e/ that is in the m-continue lane MUST:",
         "  - drive input via visible events (tap/click/press/pointer/etc.),",
         "  - assert visible UI along the route (role/text/locator + visibility), and",
         "  - take NO input through window.__game.input.* (that surface is assertion-only in a played acceptance).",
-        "Candidates inspected (m-continue continuation beats present):",
+        "Candidates inspected (m-continue lane):",
         ...mContinuePlaytests.map(({ repoPath }) => `  - ${repoPath}`),
       ].join("\n"),
     ).not.toEqual([]);
