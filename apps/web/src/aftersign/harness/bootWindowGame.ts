@@ -637,6 +637,11 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // the envelope AFTER calling this helper — only a full
     // window-game envelope carries the memory bag across restores.
     playerMemory = null;
+    // A fresh boot/load has no in-flight tap-confirm envelope to
+    // inherit. Keep this aligned with the public surface contract on
+    // `getAppliedTapConfirmFeel()` so stale press feedback from a
+    // prior choice cannot leak across restore boundaries.
+    appliedTapConfirmFeel = null;
     // Return-reason / applied feel row are deliberately NOT reset
     // here — a caller who set a posture BEFORE a durable-save restore
     // may want to carry that posture through the restore (the surface
