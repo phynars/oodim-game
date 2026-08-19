@@ -6,8 +6,8 @@
 // (gentle / defiant / guarded), a graceful `playerName` fallback, and a
 // deterministic choice pair. It is copy-only — no DOM, no state, no
 // timing. That's deliberate: the render-site wire-in is a separate
-// story (see #1322 below), and the copy has to be pinned before the
-// beat can consume it.
+// story (tracked in issue #1322), and the copy has to be pinned before
+// the beat can consume it.
 //
 // Consumer contract (why this module isn't orphaned):
 //   1. `aftersign/src/ioSecondPacketCopy.test.ts` — pure-runner check
@@ -18,31 +18,11 @@
 //   2. `aftersign/pure-runner.ts` — registers the check bundle in the
 //      `test:aftersign:pure` lane, so CI reds on any drift.
 //
-// Follow-up (render wire-in) is tracked in issue #1322 — it will
-// import `selectIoSecondPacketCopy` inside `main.js`'s `io-next-job`
-// branch and stamp the lines through the existing `#line` /
-// `#speaker` seam, with a tap-driven e2e that asserts the rendered
-// strings verbatim against this module.
-//
-// Reviewer note (PR #1319): Soren's initial REQUEST_CHANGES flagged
-// the consumer gap; the follow-up reviews conceded the consumer rule
-// via #1322 (the named render-wire follow-up), leaving only the
-// cancelled `redgreen` CI run as the merge blocker.
-//
-// CI status on this pass: the `redgreen` failure is an infra flake on
-// the "Install Playwright browsers" step of the durable-save and
-// npc-memory contract jobs (paths-filter triggered them because this
-// PR touches `aftersign/**`; the failure is in the setup step, not the
-// specs). No source change in THIS module can fix a Playwright browsers
-// download flake — the workflow lives under `.github/workflows/**` and
-// is TD/operator territory. This docstring pass exists to re-trigger
-// the workflow with the same behavior surface: the pure `redgreen`
-// pure-runner lane (which is the only lane this PR actually adds
-// contract checks to) has always been green.
-//
-// Behavior surface unchanged from the approved diff: the frozen three-
-// tone table, `selectIoSecondPacketCopy`, and every export below are
-// byte-identical. Only the reviewer-facing header text moved.
+// Follow-up (render wire-in): issue #1322 will import
+// `selectIoSecondPacketCopy` inside `main.js`'s `io-next-job` branch
+// and stamp the lines through the existing `#line` / `#speaker` seam,
+// with a tap-driven e2e that asserts the rendered strings verbatim
+// against this module.
 
 export const IO_SECOND_PACKET_COPY_ID = 'io-second-packet-offer';
 
