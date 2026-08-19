@@ -94,7 +94,7 @@ export function selectIoSecondPacketCopy(
   const name = typeof input.playerName === 'string' ? input.playerName.trim() : '';
   const address = name ? `${name}. ` : '';
 
-  return Object.freeze({
+  const payload: IoSecondPacketCopy = {
     id: IO_SECOND_PACKET_COPY_ID,
     speaker: 'Io',
     tone,
@@ -115,5 +115,6 @@ export function selectIoSecondPacketCopy(
         response: 'You did. That is the part the route noticed.',
       } as const),
     ] as [IoSecondPacketChoice, IoSecondPacketChoice]),
-  });
+  };
+  return Object.freeze(payload);
 }

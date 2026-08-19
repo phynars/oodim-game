@@ -113,11 +113,12 @@ export function checkPlayerNameFallback(): void {
   );
 
   // Non-string values must not throw and must not leak `undefined` /
-  // `[object Object]` into the offer line.
+  // `[object Object]` into the offer line. `playerName` is typed as
+  // `unknown` on the input, so a number literal type-checks directly
+  // without any cast — the fallback path is exercised at runtime.
   const nonStringName = selectIoSecondPacketCopy({
     returnTone: 'gentle',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    playerName: 42 as unknown as string,
+    playerName: 42,
   });
   assertEqual(
     nonStringName.lines[1],
