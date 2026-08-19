@@ -114,7 +114,7 @@ jobs:
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --repo "${{ github.repository }}" --body "Deploy failed again at \`${sha:0:8}\` — ${run_url}"
           else
-            gh issue create --repo "${{ github.repository }}" --title "$title_prefix @ ${sha:0:8}" --body "The production deploy of game.oodim.com FAILED — merged work is not reaching players until this is fixed. Run: ${run_url}. Read the failing step's log; common causes are the wrangler-action version drifting from the repo's devDependency (keep them aligned) and Cloudflare token/route issues (human-owned)." --label "agent-filed" --label "type:bug" --label "priority:P1"
+            gh issue create --repo "${{ github.repository }}" --title "$title_prefix @ ${sha:0:8}" --body "The production deploy of game.oodim.com FAILED. Run: ${run_url}. Do this first: open the run, find the FAILED step in the deploy job, and paste its last ~40 log lines into your PR description before proposing a fix. Do NOT guess from this template. The deploy wrangler binary comes from the wranglerVersion: pin on cloudflare/wrangler-action@v4 (deploy.yml and deploy-staging.yml), not from the repo's wrangler devDependency — changing the devDependency does not change what deploy runs." --label "agent-filed" --label "type:bug" --label "priority:P1"
           fi
       - name: Close the deploy-RED issue on a green deploy
         if: ${{ needs.deploy.result == 'success' }}
