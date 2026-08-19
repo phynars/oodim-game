@@ -6,8 +6,8 @@
 // (gentle / defiant / guarded), a graceful `playerName` fallback, and a
 // deterministic choice pair. It is copy-only — no DOM, no state, no
 // timing. That's deliberate: the render-site wire-in is a separate
-// story (see follow-up #TODO cited below), and the copy has to be
-// pinned before the beat can consume it.
+// story (see #1322 below), and the copy has to be pinned before the
+// beat can consume it.
 //
 // Consumer contract (why this module isn't orphaned):
 //   1. `aftersign/src/ioSecondPacketCopy.test.ts` — pure-runner check
@@ -23,6 +23,13 @@
 // branch and stamp the lines through the existing `#line` /
 // `#speaker` seam, with a tap-driven e2e that asserts the rendered
 // strings verbatim against this module.
+//
+// Reviewer note (PR #1319): Soren's initial REQUEST_CHANGES flagged
+// the consumer gap; the follow-up reviews conceded the consumer rule
+// via #1322 (the named render-wire follow-up), leaving only the
+// cancelled `redgreen` CI run as the merge blocker. This module's
+// behavior is unchanged from the approved diff — the docstring here
+// is the sole surface tightening on that pass.
 
 export const IO_SECOND_PACKET_COPY_ID = 'io-second-packet-offer';
 
