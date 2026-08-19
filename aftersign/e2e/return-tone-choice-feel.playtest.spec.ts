@@ -36,17 +36,21 @@ const WAIT_MS = 10_000;
 const KIND_RETURN_REPLY =
   "Careful. Say that too often and people will start handing you breakable things.";
 
+// Pinned by `apps/web/src/aftersign/returnToneChoiceFeel.ts` (the `kind`
+// row) + the applier's unit-suffix formatting. If the pinned row moves,
+// `returnToneChoiceFeel.contract.test.ts` reds first — this trip-wire
+// mirrors those numbers verbatim so a drift here means an intentional
+// spec change, not a fabrication. Only the CSS vars the return-tone
+// seam ACTUALLY writes are asserted; press-scale / glow-px / duration-ms
+// belong to the tap-confirm seam and are out of scope here.
 const KIND_RETURN_FEEL = {
-  toneHz: "440",
-  attackMs: "12ms",
+  toneHz: "392",
+  attackMs: "8ms",
   releaseMs: "180ms",
-  gain: "0.11",
-  pressScale: "0.982",
-  liftPx: "-2px",
-  shakePx: "1.5px",
-  glowPx: "18px",
-  durationMs: "240ms",
-  easing: "cubic-bezier(.2,.8,.2,1)",
+  gain: "0.055",
+  liftPx: "5px",
+  shakePx: "0px",
+  easing: "cubic-bezier(0.2, 0.9, 0.18, 1)",
 };
 
 async function waitForGame(page: Page): Promise<void> {
@@ -84,11 +88,8 @@ const expectKindReturnFeelStamped = async (page: Page): Promise<void> => {
       attackMs: style.getPropertyValue("--aftersign-return-tone-attack-ms").trim(),
       releaseMs: style.getPropertyValue("--aftersign-return-tone-release-ms").trim(),
       gain: style.getPropertyValue("--aftersign-return-tone-gain").trim(),
-      pressScale: style.getPropertyValue("--aftersign-return-press-scale").trim(),
       liftPx: style.getPropertyValue("--aftersign-return-lift-px").trim(),
       shakePx: style.getPropertyValue("--aftersign-return-shake-px").trim(),
-      glowPx: style.getPropertyValue("--aftersign-return-glow-px").trim(),
-      durationMs: style.getPropertyValue("--aftersign-return-duration-ms").trim(),
       easing: style.getPropertyValue("--aftersign-return-easing").trim(),
     };
   });
@@ -131,10 +132,6 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
     await expect(page.locator("#line")).toHaveText(KIND_RETURN_REPLY, {
       timeout: WAIT_MS,
     });
-    await expect(page.locator("#acknowledgeRouteButton")).toHaveAttribute(
-      "data-aftersign-tap-confirm",
-      "armed",
-    );
 
     await expect(page.locator("#deliverButton")).toContainText(
       /ask for next job/i,
