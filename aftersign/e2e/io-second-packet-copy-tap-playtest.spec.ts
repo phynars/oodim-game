@@ -126,6 +126,41 @@ test.describe("AFTERSIGN io second packet copy is rendered from module contract"
     await expect(acceptButton).toHaveText(acceptChoice.label);
     await expect(askButton).toHaveText(askChoice.label);
 
+    // Tap "Ask what changed" and prove Io's authored `response`
+    // PERSISTS on `#line` — not just for the frame the click handler
+    // ran. Soren's fourth review on this PR: the first draft wrote
+    // `lastLine` directly and the very next rAF's renderText() →
+    // syncIoLine() → lineForBeat() clobbered it back to the offer
+    // copy, so the player read the reply for exactly one frame. The
+    // fix routes the reply through a module-scoped override that
+    // lineForBeat() itself consults; this assertion drives real rAF
+    // ticks between the two reads so a regression back to the
+    // one-frame behavior reds here.
+    await askButton.click();
+    await expect(page.locator("#line")).toHaveText(askChoice.response, { timeout: WAIT_MS });
+    // Let the render loop run several REAL frames, then re-assert —
+    // this is the anti-clobber gate. A single toHaveText pass could
+    // green on the one lucky frame; the double-rAF wait guarantees
+    // at least two full renderText() passes ran in between.
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await expect(page.locator("#line")).toHaveText(askChoice.response);
+    const observedAfterAsk = await page.evaluate(
+      () =>
+        (window as unknown as { __game?: { npcs?: { io?: { lastLine?: string | null } } } })
+          .__game?.npcs?.io?.lastLine ?? null,
+    );
+    expect(observedAfterAsk).toBe(askChoice.response);
+    // The beat stays put after asking — both choices remain live, so
+    // the follow-up accept tap below still exits through the same
+    // affordance a non-asking player would use.
+    await waitForBeat(page, "io-second-packet-copy");
+    await expect(acceptButton).toBeVisible();
+
     // Tap the "accept" affordance and prove the packet-loop actually
     // resets — the beat drops back to `packet-choice` with a fresh
     // sealed packet. This is the CLOSING invariant the deferred

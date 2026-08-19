@@ -707,6 +707,19 @@ const secondPacketCopyForCurrentState = () =>
     playerName: state.player.name,
   });
 
+// Io's ask-what-changed reply, module-scoped so it survives the
+// rAF render loop. While non-null (set by the ask branch in
+// `choose()`), the second-packet beat's branch in `lineForBeat()`
+// speaks THIS string instead of the joined offer copy. Without the
+// guard, the ask handler's direct `lastLine` write was clobbered one
+// frame later: publishState() → syncIoLine() fell through to
+// lineForBeat(), re-derived the offer copy, and overwrote the
+// response synchronously (Soren's fourth review on PR #1325).
+// Cleared on every ENTRY into the beat (the deliver branch that
+// transitions here), on accept, and on reload / reset — a stale
+// reply can never leak into a fresh offer.
+let secondPacketAskResponse = null;
+
 const lineForBeat = () => {
   // #957: If a returning-session boot line was computed at module init
   // (delivered save, restored via readAuthoritativeSave / readStored),
@@ -792,6 +805,16 @@ const lineForBeat = () => {
     // `state.player.name` may be null on fresh slots / harness runs;
     // the module addresses "courier" as the role fallback (assertion
     // pinned in `runIoSecondPacketCopyChecks`).
+    //
+    // Ask-what-changed persistence: while the player's last tap at
+    // this beat was the ask choice, Io speaks the module's authored
+    // `response` — NOT the offer copy. This guard is what makes the
+    // reply survive the rAF loop: renderText()/publishState() call
+    // syncIoLine() → this function every frame, so a reply written
+    // anywhere else gets clobbered by the offer copy one frame later.
+    if (secondPacketAskResponse !== null) {
+      return secondPacketAskResponse;
+    }
     return secondPacketCopyForCurrentState().lines.join(" ");
   }
 
@@ -1785,6 +1808,7 @@ const choose = async (choiceId) => {
       // packet-loop reset (below) is deferred until the player taps
       // "accept-second-packet" at that beat, so the words land
       // BEFORE the state resets.
+      secondPacketAskResponse = null;
       setBeat("io-second-packet-copy");
       await forceSave();
       publishState();
@@ -1807,6 +1831,7 @@ const choose = async (choiceId) => {
     if (state.scene.beat !== "io-second-packet-copy") {
       return;
     }
+    secondPacketAskResponse = null;
     state.packet = {
       delivered: false,
       route: null,
@@ -1843,10 +1868,21 @@ const choose = async (choiceId) => {
     // at index 1, but sourcing by id keeps the branch honest against
     // a future reordering of the tuple. If the module ever drops the
     // choice entirely, `runIoSecondPacketCopyChecks` will red first.
+    //
+    // Soren's fourth review on PR #1325: a direct `lastLine` write here
+    // survived exactly one frame — publishState() → syncIoLine() →
+    // lineForBeat() re-derived the OFFER copy at this beat and clobbered
+    // the response synchronously; the next rAF's renderText() reverted
+    // `#line` to the offer. The durable channel is the module-scoped
+    // `secondPacketAskResponse` override, which lineForBeat() itself
+    // consults at this beat — so every downstream frame re-derives the
+    // RESPONSE, not the offer. renderText() then paints `#line` through
+    // the normal `state.npcs.io.lastLine` path; no direct DOM write
+    // needed here.
     if (askChoice && typeof askChoice.response === "string") {
-      state.npcs.io.lastLine = askChoice.response;
-      setTextContentIfChanged(line, askChoice.response);
+      secondPacketAskResponse = askChoice.response;
       markStateDirty();
+      renderText();
       publishState();
     }
     return;
@@ -2020,6 +2056,11 @@ const forceSave = async () => {
 
 const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   const playerId = state.player.id;
+  // The ask-what-changed reply is a transient, in-memory override —
+  // it is not persisted, so no restored payload can legitimately
+  // carry it. Clear before any branch so a reload at the second-
+  // packet beat re-speaks the offer copy, never a stale reply.
+  secondPacketAskResponse = null;
 
   if (clearLocalState) {
     window.localStorage.removeItem(storageKey);
@@ -2831,6 +2872,7 @@ const resetSliceSave = async () => {
   await clearAuthoritativeSave({ slot, playerId: state.player.id });
   packetIntent.reset();
   resetPacketGestureLog();
+  secondPacketAskResponse = null;
   state.scene.beat = "packet-offered";
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;
