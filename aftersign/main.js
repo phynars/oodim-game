@@ -1360,7 +1360,7 @@ const publishState = () => {
           };
         },
       );
-      return measureTapTargetFeel(targets);
+      return measureTapTargetAdjacency(targets);
     },
     /**
      * Stamp the flagship tap-confirm envelope on the `[data-aftersign-

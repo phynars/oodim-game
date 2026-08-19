@@ -115,6 +115,15 @@ describe("Aftersign served surface contract", () => {
     // committing button ship with `data-aftersign-tap-choice` set
     // and still miss the adjacency check.
     expect(main).toContain("AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR");
+    // Bind-through pin (Soren's review on this PR): the earlier
+    // `toContain("measureTapTargetAdjacency")` is satisfied by the
+    // import alone — a rename that updates the call site to
+    // something else (e.g. `measureTapTargetFeel`) still passes.
+    // Assert the exact CALL token so the imported binding is the
+    // one actually invoked inside the seam.
+    expect(main).toMatch(
+      /getMobileTapTargetFeelReport:[\s\S]{0,600}measureTapTargetAdjacency\(/,
+    );
   });
 
   it("consumes the tap-confirm feel envelope on the shipped surface", () => {
