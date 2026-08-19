@@ -525,6 +525,19 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   // `dispatchEvent` call. DOM-optional: guarded by
   // `typeof document !== "undefined"` so worker/SSR imports don't
   // throw.
+  //
+  // Visibility guard: BOTH this listener AND the served page's
+  // (see aftersign/main.js's `document.addEventListener("pointer-
+  // down", ...)` — same 6-space indent, same shape) gate the probe
+  // on a VISIBLE `[data-aftersign-tap-choice]` surface. Any other
+  // pointerdown (canvas taps, packet gesture, mobile move-pad,
+  // decorative buttons, hidden/aria-hidden trays) bubbles through
+  // to this capture-phase listener too but must NOT populate the
+  // latency probe — else a background-tap regression could silently
+  // green the one-frame promise. Keeping the guard identical on
+  // both sides is what makes the "mirrors the SHIPPED wiring"
+  // claim honest: a vitest consumer test asserts the same
+  // pass/reject shape the served page enforces.
   const boundDocument =
     (globalThis as { document?: Document }).document ?? null;
   if (boundDocument && typeof boundDocument.addEventListener === "function") {

@@ -2986,6 +2986,28 @@ canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
       if (!event || typeof event.pointerId !== "number") {
         return;
       }
+      // Played-not-driven boundary: pointer-to-render only arms on a
+      // VISIBLE `[data-aftersign-tap-choice]` surface. Any other
+      // pointerdown (canvas taps, packet gesture, move-pad, decorative
+      // buttons, hidden/aria-hidden trays) bubbles here too but must
+      // NOT populate the latency probe — else a background-tap
+      // regression could silently green the one-frame promise. This
+      // guard mirrors the harness listener in
+      // `apps/web/src/aftersign/harness/bootWindowGame.ts` so the
+      // vitest probe and the shipped page arm the sample on the same
+      // shape.
+      const pointerTarget = event.target;
+      const pointerChoiceSurface =
+        pointerTarget && typeof pointerTarget.closest === "function"
+          ? pointerTarget.closest(AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR)
+          : null;
+      if (
+        !pointerChoiceSurface
+        || pointerChoiceSurface.hidden
+        || pointerChoiceSurface.getAttribute("aria-hidden") === "true"
+      ) {
+        return;
+      }
       markPointerIntent({
         pointerAtMs: performance.now(),
         pointerId: event.pointerId,
