@@ -160,6 +160,7 @@ import {
   AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
   assertAftersignTapChoiceSurfaces,
 } from "../apps/web/src/aftersign/tapChoiceFeel.ts";
+import { measureTapTargetFeel } from "./src/mobileTapTargetFeel.ts";
 // Tap-confirm feel — flagship press envelope stamped on the ONE button
 // the player just committed with (packet, acknowledge/skip route,
 // deliver, ask-for-next-job). Wiring it into main.js here is what
@@ -1344,6 +1345,22 @@ const publishState = () => {
      */
     getTapChoiceFeelReport: () => {
       return assertAftersignTapChoiceSurfaces(document);
+    },
+    getMobileTapTargetFeelReport: () => {
+      const targets = Array.from(
+        document.querySelectorAll(AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR),
+        (node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute("data-aftersign-tap-choice") ?? "tap-choice",
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        },
+      );
+      return measureTapTargetFeel(targets);
     },
     /**
      * Stamp the flagship tap-confirm envelope on the `[data-aftersign-
