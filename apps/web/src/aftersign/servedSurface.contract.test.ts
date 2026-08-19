@@ -92,6 +92,40 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain('data-aftersign-tap-choice="deliver-packet"');
   });
 
+  it("consumes the mobile tap-target adjacency feel on the shipped surface", () => {
+    // Blocking review on PR #1313: same shape as the tap-choice
+    // precedent above — an adjacency (overlap + too-close) contract
+    // with no consumer on the served surface is green tests over
+    // dead code. main.js must import the pure primitive from
+    // `apps/web/src/aftersign/mobileTapTargetFeel.ts`, walk the same
+    // `AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR` the size contract
+    // uses (one source of truth for "what counts as a tap
+    // target"), and expose the runtime seam
+    // `window.__game.getMobileTapTargetFeelReport`. Any future
+    // refactor that drops the import, renames the seam, or forks
+    // the selector reds this pin.
+    const main = readServedAftersignFile("main.js");
+    expect(main).toContain("measureTapTargetAdjacency");
+    expect(main).toContain(
+      "../apps/web/src/aftersign/mobileTapTargetFeel.ts",
+    );
+    expect(main).toContain("getMobileTapTargetFeelReport");
+    // Selector reuse: the adjacency probe MUST feed off the same
+    // selector the size probe uses. A fork here would let a new
+    // committing button ship with `data-aftersign-tap-choice` set
+    // and still miss the adjacency check.
+    expect(main).toContain("AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR");
+    // Bind-through pin (Soren's review on this PR): the earlier
+    // `toContain("measureTapTargetAdjacency")` is satisfied by the
+    // import alone — a rename that updates the call site to
+    // something else (e.g. `measureTapTargetFeel`) still passes.
+    // Assert the exact CALL token so the imported binding is the
+    // one actually invoked inside the seam.
+    expect(main).toMatch(
+      /getMobileTapTargetFeelReport:[\s\S]{0,600}measureTapTargetAdjacency\(/,
+    );
+  });
+
   it("consumes the tap-confirm feel envelope on the shipped surface", () => {
     // Blocking review on PR #1299: same shape as the return-tone
     // and tap-choice precedents above — a per-commit press envelope
