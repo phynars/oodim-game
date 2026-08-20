@@ -4,7 +4,7 @@ import { selectIoSecondPacketCopyForReturnReason } from '../src/ioSecondPacketCo
 const WAIT_MS = 15_000;
 
 const tapChoice = async (page, choiceId: string) => {
-  await page.locator(`[data-aftersign-choice="${choiceId}"]`).click();
+  await page.locator(`button[data-choice-id="${choiceId}"]`).click();
 };
 
 const waitForBeat = async (page, beat: string) => {
@@ -23,12 +23,9 @@ const playToSecondPacketOffer = async (page, returnTone: 'kind' | 'evasive' | 'b
   await tapChoice(page, 'deliver-packet');
   await waitForBeat(page, 'io-return-recognition');
 
-  const toneChoice = returnTone === 'kind'
-    ? page.locator('[data-aftersign-choice="choose-return-tone"][data-return-reason="kind"]')
-    : returnTone === 'evasive'
-      ? page.locator('[data-aftersign-choice="choose-return-tone"][data-return-reason="evasive"]')
-      : page.locator('[data-aftersign-choice="choose-return-tone"][data-return-reason="blunt"]');
-  await toneChoice.click();
+  await page
+    .locator(`button[data-choice-id="choose-return-tone"][data-return-reason="${returnTone}"]`)
+    .click();
   await waitForBeat(page, 'return-tone-choice');
   await tapChoice(page, 'ask-for-next-job');
   await waitForBeat(page, 'io-next-job');
@@ -43,10 +40,10 @@ for (const returnTone of ['kind', 'evasive', 'blunt'] as const) {
     await expect(page.locator('#speaker')).toHaveText(copy.speaker);
     await expect(line).toContainText(copy.lines.join(' '));
 
-    await expect(page.locator(`[data-aftersign-choice="${copy.choices[0].id}"]`)).toHaveText(copy.choices[0].label);
-    await expect(page.locator(`[data-aftersign-choice="${copy.choices[1].id}"]`)).toHaveText(copy.choices[1].label);
+    await expect(page.locator(`button[data-choice-id="${copy.choices[0].id}"]`)).toHaveText(copy.choices[0].label);
+    await expect(page.locator(`button[data-choice-id="${copy.choices[1].id}"]`)).toHaveText(copy.choices[1].label);
 
-    await page.locator(`[data-aftersign-choice="${copy.choices[0].id}"]`).click();
+    await page.locator(`button[data-choice-id="${copy.choices[0].id}"]`).click();
     await expect(line).toHaveText(copy.choices[0].response);
   });
 }
