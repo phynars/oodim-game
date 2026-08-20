@@ -58,12 +58,30 @@ const DEFAULT_TONE: IoSecondPacketReturnTone = 'guarded';
 export const IO_SECOND_PACKET_RETURN_TONES: readonly IoSecondPacketReturnTone[] =
   Object.freeze(['gentle', 'defiant', 'guarded'] as const);
 
+export type IoReturnReason = 'kind' | 'evasive' | 'blunt';
+
+const RETURN_REASON_TO_SECOND_PACKET_TONE: Readonly<Record<IoReturnReason, IoSecondPacketReturnTone>> =
+  Object.freeze({
+    kind: 'gentle',
+    evasive: 'guarded',
+    blunt: 'defiant',
+  });
+
 export function normalizeReturnTone(
   returnTone: unknown,
 ): IoSecondPacketReturnTone {
   return typeof returnTone === 'string'
     && Object.prototype.hasOwnProperty.call(RETURN_TONE_LINES, returnTone)
     ? (returnTone as IoSecondPacketReturnTone)
+    : DEFAULT_TONE;
+}
+
+export function secondPacketToneForReturnReason(
+  returnReason: unknown,
+): IoSecondPacketReturnTone {
+  return typeof returnReason === 'string'
+    && Object.prototype.hasOwnProperty.call(RETURN_REASON_TO_SECOND_PACKET_TONE, returnReason)
+    ? RETURN_REASON_TO_SECOND_PACKET_TONE[returnReason as IoReturnReason]
     : DEFAULT_TONE;
 }
 
@@ -83,6 +101,11 @@ export interface IoSecondPacketCopy {
 
 export interface SelectIoSecondPacketCopyInput {
   readonly returnTone?: unknown;
+  readonly playerName?: unknown;
+}
+
+export interface SelectIoSecondPacketCopyForReturnReasonInput {
+  readonly returnReason?: unknown;
   readonly playerName?: unknown;
 }
 
@@ -117,4 +140,13 @@ export function selectIoSecondPacketCopy(
     ] as [IoSecondPacketChoice, IoSecondPacketChoice]),
   };
   return Object.freeze(payload);
+}
+
+export function selectIoSecondPacketCopyForReturnReason(
+  input: SelectIoSecondPacketCopyForReturnReasonInput = {},
+): IoSecondPacketCopy {
+  return selectIoSecondPacketCopy({
+    returnTone: secondPacketToneForReturnReason(input.returnReason),
+    playerName: input.playerName,
+  });
 }
