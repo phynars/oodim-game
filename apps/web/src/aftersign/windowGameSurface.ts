@@ -11,6 +11,10 @@ import {
   type AftersignReturnReason,
 } from "./ioVoiceContract";
 import {
+  findAftersignNpcMemoryRecallLine,
+  type AftersignNpcMemoryRecallLine,
+} from "./npcMemoryRecallDialogue";
+import {
   sampleAftersignIoMemoryBeat,
   sampleAftersignOrraMemoryBeat,
   type AftersignIoMemoryBeat,
@@ -130,6 +134,31 @@ export type AftersignSpokenNpcMemoryRoundTrip = {
    * `recognitionFeel` is always defined on an emitted round-trip.
    */
   recognitionFeel: AftersignRememberingNpcRecognitionFeel;
+  /**
+   * Specific memory-recall line the returning NPC speaks about the
+   * player's remembered choice — sourced verbatim from
+   * `AFTERSIGN_NPC_MEMORY_RECALL_DIALOGUE` via
+   * `findAftersignNpcMemoryRecallLine`. Populated when the current
+   * scene has an authored recall line for the remembered fork:
+   *
+   *   • `io-return` + `packetOutcome === "opened"` →
+   *     `io-return-opened`
+   *   • `io-return` + `packetOutcome === "sealed"` →
+   *     `io-return-sealed`
+   *   • `orra-return` + `orraAction === "answered-saint-orra"` →
+   *     `orra-return-answered-saint-orra`
+   *
+   * Present alongside `spokenLine` — the two carry different jobs.
+   * `spokenLine` is the recognition GREETING (authored copy from
+   * the returning-session table); `recallLine.line` is the CHOICE-
+   * REFERENCING follow-up (authored copy from the recall table),
+   * and `recallLine.assertionText` is the short substring a
+   * consumer / e2e test can grep in the rendered DOM to prove the
+   * memory beat actually reached the player. Absent when no recall
+   * line is authored for the remembered fork (defensive — the
+   * matrix above covers every currently-committable memory).
+   */
+  recallLine?: AftersignNpcMemoryRecallLine;
 };
 
 /**
@@ -360,13 +389,51 @@ function buildNpcMemoryRoundTripBeat(
   if (dialogue.recognitionFeel === null) {
     return undefined;
   }
+  // Consumer wiring for `findAftersignNpcMemoryRecallLine`: attach the
+  // authored recall line for the remembered fork so a scene renderer
+  // that consumes `story.npcMemoryRoundTrip` can display the CHOICE-
+  // REFERENCING follow-up alongside the recognition GREETING. Absent
+  // when there's no committed choice to reference (defensive — the
+  // recognition branches above already require `recognizesPlayer`,
+  // which the recorders only set once the fork is committed, so in
+  // practice a matching recall line exists for every emitted beat).
+  const recallLine = resolveNpcMemoryRecallLine(state, memory.npcId);
   return {
     npcId: memory.npcId,
     playerName: memory.playerName,
     interactionCount: memory.interactionCount,
     spokenLine,
     recognitionFeel: dialogue.recognitionFeel,
+    ...(recallLine ? { recallLine } : {}),
   };
+}
+
+function resolveNpcMemoryRecallLine(
+  state: AftersignVerticalSliceState,
+  npcId: "io" | "orra",
+): AftersignNpcMemoryRecallLine | null {
+  if (npcId === "io") {
+    if (state.packetOutcome === "opened") {
+      return findAftersignNpcMemoryRecallLine({
+        npcId: "io",
+        remembers: "packet-opened",
+      });
+    }
+    if (state.packetOutcome === "sealed") {
+      return findAftersignNpcMemoryRecallLine({
+        npcId: "io",
+        remembers: "packet-sealed",
+      });
+    }
+    return null;
+  }
+  if (state.orraAction === "answered-saint-orra") {
+    return findAftersignNpcMemoryRecallLine({
+      npcId: "orra",
+      remembers: "answered-saint-orra",
+    });
+  }
+  return null;
 }
 
 function getAftersignSaveSnapshot(
