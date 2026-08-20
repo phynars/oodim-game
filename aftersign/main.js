@@ -2307,6 +2307,8 @@ const buildRecognitionBeatReport = (durationMs) => {
     peakHapticScale: 1,
     peakWarmth: 0,
     peakImpactBurstParticles: 0,
+    peakCameraDeltaMeters: 0,
+    peakCameraYawDegrees: 0,
   };
   const outcome = state.packet.sealed ? "sealed" : "opened";
   for (let t = 0; t <= durationMs; t += 8) {

@@ -350,9 +350,18 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
       __game?: { interaction?: { recognitionBeatReport?: unknown } };
     }).__game;
     return game?.interaction?.recognitionBeatReport;
-  })) as { framesDuringBeat: number; peakImpactBurstParticles: number };
+  })) as {
+    framesDuringBeat: number;
+    peakImpactBurstParticles: number;
+    peakCameraDeltaMeters: number;
+    peakCameraYawDegrees: number;
+  };
 
   expect(report.peakImpactBurstParticles).toBe(14);
+  expect(report.peakCameraDeltaMeters).toBeGreaterThanOrEqual(BEAT_LIMITS.cameraDeltaMeters.min);
+  expect(report.peakCameraDeltaMeters).toBeLessThanOrEqual(BEAT_LIMITS.cameraDeltaMeters.max);
+  expect(report.peakCameraYawDegrees).toBeGreaterThanOrEqual(BEAT_LIMITS.cameraYawDegrees.min);
+  expect(report.peakCameraYawDegrees).toBeLessThanOrEqual(BEAT_LIMITS.cameraYawDegrees.max);
 
   // SECONDARY live-DOM cross-check: whenever the render loop painted ANY
   // particles, the DOM high-water must reach exactly 14 and match the
