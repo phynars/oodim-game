@@ -28,8 +28,9 @@ const PLAYTEST_FILE_PATTERN = /playtest\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/i;
 // Any read/write of `__game.input` — direct property access, bracket
 // access, or inside a `page.evaluate` string body — is disallowed in a
 // played acceptance.  We keep the pattern intentionally broad to catch
-// evasions like `w["__game"].input` or template-string harness drives.
-const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*(?:\.|\[)\s*["']?input["']?/;
+// evasions like `window["__game"].input`, `w["__game"].input`, and
+// template-string harness drives.
+const HARNESS_INPUT_PATTERN = /(?:(?:window|w)\s*(?:\.\s*__game|\[\s*["']__game["']\s*\])|__game)\s*(?:\.\s*input|\[\s*["']input["']\s*\])/;
 
 function walkFiles(root: string): string[] {
   if (!existsSync(root)) {
@@ -86,6 +87,12 @@ function readPlaytestSpecs(): Array<{ path: string; repoPath: string; source: st
 }
 
 describe('AFTERSIGN played acceptance boundary', () => {
+  it('recognizes direct and bracketed harness-input access', () => {
+    expect(HARNESS_INPUT_PATTERN.test('window.__game.input.choose()')).toBe(true);
+    expect(HARNESS_INPUT_PATTERN.test('window["__game"].input.choose()')).toBe(true);
+    expect(HARNESS_INPUT_PATTERN.test("w['__game']['input'].choose()")).toBe(true);
+  });
+
   it('locates the aftersign/e2e/ tree (guard is not vacuous)', () => {
     // Fail loudly if the scan target moved.  Without this, deleting
     // or renaming `aftersign/e2e/` would silently make the boundary
