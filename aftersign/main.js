@@ -178,6 +178,21 @@ import {
   applyFlagshipTapConfirmFeel,
   FLAGSHIP_TAP_CONFIRM_FEEL,
 } from "../apps/web/src/aftersign/tapConfirmFeel.ts";
+// Orra's first-name dialogue — the pharmacy-sign beat where Saint
+// Orra hands the courier a sealed name-case. Wiring it into main.js
+// here is what turns `orraFirstNameDialogue.ts` from a contract-only
+// data module into a SHIPPED consumer: the served surface exposes
+// `window.__game.renderOrraFirstNameDialogue(choiceId)`, which
+// resolves the beat and stamps `#speaker` / `#line` with the joined
+// lines + `data-beat-id="orra-first-name"` + `data-choice-id`. A
+// tap harness can locate the beat via attribute selectors (same
+// vocabulary as `stampAftersignBeat` / `stampAftersignChoice`), and
+// a player sees Orra's voice land in the shipped `#line` paragraph.
+// Sibling `orraFirstNameDialogue.servedButton.test.ts` drives every
+// choice against the real served `index.html` and pins the stamps.
+import {
+  renderOrraFirstNameDialogue,
+} from "../apps/web/src/aftersign/orraFirstNameDialogue.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -1395,6 +1410,24 @@ const publishState = () => {
     },
   };
   publishedStateVersion = statePublishVersion;
+  // Expose the Orra first-name dialogue seam on the published
+  // `window.__game`. Attached OUTSIDE the object literal so it
+  // does not interfere with the `publishState()` re-emission
+  // guard (`publishedStateVersion === statePublishVersion`) —
+  // the seam is a stable function reference; it never needs to
+  // rebuild per publish. Runtime consumer of
+  // `apps/web/src/aftersign/orraFirstNameDialogue.ts`: resolves
+  // the beat, stamps `#speaker` + `#line` with the joined lines,
+  // and marks `[data-beat-id="orra-first-name"]` +
+  // `[data-choice-id]` so a tap harness can locate the beat by
+  // attribute (same vocabulary as `stampAftersignBeat` /
+  // `stampAftersignChoice`). Returns the resolved beat (frozen)
+  // so a caller can also read the `remembered` sentence for the
+  // durable memory lane. Throws with a specific message on an
+  // unknown choice — a garbled caller papered over here would
+  // hide the bug before the beat lands.
+  window.__game.renderOrraFirstNameDialogue = (choiceId) =>
+    renderOrraFirstNameDialogue(document, choiceId);
   return window.__game;
 };
 

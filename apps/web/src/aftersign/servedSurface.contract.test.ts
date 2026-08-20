@@ -233,6 +233,33 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("drainPointerIntentsForRenderedFrame(performance.now())");
   });
 
+  it("renders Saint Orra's first-name dialogue on the shipped surface", () => {
+    // Blocking review on PR #1331: same shape as the return-tone /
+    // tap-choice / tap-confirm precedents above — a frozen dialogue
+    // contract with no consumer on the served surface is green tests
+    // over dead code. `aftersign/main.js` must import
+    // `renderOrraFirstNameDialogue` from
+    // `apps/web/src/aftersign/orraFirstNameDialogue.ts` and expose
+    // the runtime seam `window.__game.renderOrraFirstNameDialogue`
+    // so a beat that reaches Saint Orra's pharmacy sign stamps her
+    // voice into the shipped `#speaker` / `#line` nodes and stamps
+    // `data-beat-id="orra-first-name"` + `data-choice-id` on the
+    // rendered beat — the same DOM contract every other visible
+    // beat satisfies. A refactor that unwires the import or renames
+    // the seam reds this pin BEFORE any player-visible drift.
+    const main = readServedAftersignFile("main.js");
+    // The imported specifier — a rename in orraFirstNameDialogue.ts
+    // that drops the file must red this pin.
+    expect(main).toContain(
+      "../apps/web/src/aftersign/orraFirstNameDialogue.ts",
+    );
+    expect(main).toContain("renderOrraFirstNameDialogue");
+    // Runtime seam attached to window.__game — the harness / a
+    // Playwright driver can invoke the same shape a vitest spec
+    // does with the same choice-id vocabulary.
+    expect(main).toContain("window.__game.renderOrraFirstNameDialogue");
+  });
+
   it("routes player-visible beat + choice stamps through the shared DOM bridge", () => {
     // PR #1231: `renderText()` in main.js used to set
     // `dataset.choiceId` / `disabled` inline on the three visible
