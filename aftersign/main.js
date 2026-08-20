@@ -2307,6 +2307,8 @@ const buildRecognitionBeatReport = (durationMs) => {
     peakHapticScale: 1,
     peakWarmth: 0,
     peakImpactBurstParticles: 0,
+    peakCameraDeltaMeters: 0,
+    peakCameraYawDegrees: 0,
   };
   const outcome = state.packet.sealed ? "sealed" : "opened";
   for (let t = 0; t <= durationMs; t += 8) {
@@ -2328,6 +2330,21 @@ const buildRecognitionBeatReport = (durationMs) => {
     if (fb.warmth > report.peakWarmth) report.peakWarmth = fb.warmth;
     const n = envelope?.impactBurst?.particles?.length ?? 0;
     if (n > report.peakImpactBurstParticles) report.peakImpactBurstParticles = n;
+    // Camera envelope peaks (absolute magnitude — the envelope emits
+    // signed motion, but the assertions in
+    // io-recognition-return-visual-feel.spec.ts:361-364 test the peak
+    // amplitude reached during the beat against a positive band
+    // [0.24, 0.36] m and [3, 5] deg). Without this fold both fields
+    // stay 0 and the new spec reds, because the loop above only
+    // records DOM-cue peaks (glow/rim/haptic/warmth/particles).
+    const cameraDelta = Math.abs(envelope?.cameraDeltaMeters ?? 0);
+    if (cameraDelta > report.peakCameraDeltaMeters) {
+      report.peakCameraDeltaMeters = cameraDelta;
+    }
+    const cameraYaw = Math.abs(envelope?.cameraYawDegrees ?? 0);
+    if (cameraYaw > report.peakCameraYawDegrees) {
+      report.peakCameraYawDegrees = cameraYaw;
+    }
   }
   return report;
 };
