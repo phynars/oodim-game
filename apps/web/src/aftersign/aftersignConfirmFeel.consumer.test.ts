@@ -14,6 +14,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AFTERSIGN_CONFIRM_FEEL } from "./aftersignConfirmFeel";
 import {
+  AFTERSIGN_INTERACTION_CONFIRM_STING,
+  sampleAftersignInteractionConfirmSting,
+} from "./aftersignInteractionConfirmSting";
+import {
   resolveAftersignPacketConfirmInteraction,
   resolveAndPlayAftersignPacketConfirmInteraction,
 } from "./verticalSlicePacketInteraction";
@@ -96,6 +100,34 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     expect(layers()).toHaveLength(0);
   });
 
+  it("stamps the audio-visual sting numbers onto the live bloom layer", () => {
+    resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("opened"),
+      "commit",
+      { reducedMotion: false },
+    );
+
+    const layer = layers()[0] as HTMLElement | undefined;
+    expect(layer).toBeDefined();
+
+    const spec = AFTERSIGN_INTERACTION_CONFIRM_STING;
+    const peak = sampleAftersignInteractionConfirmSting(spec.durationMs * 0.35);
+
+    expect(layer!.dataset.stingDurationMs).toBe(String(spec.durationMs));
+    expect(layer!.dataset.stingChirpDurationMs).toBe(
+      String(spec.chirpDurationMs),
+    );
+    expect(layer!.dataset.stingChirpStartHz).toBe(String(spec.chirpStartHz));
+    expect(layer!.dataset.stingChirpEndHz).toBe(String(spec.chirpEndHz));
+    expect(layer!.dataset.stingBloomPopScale).toBe(String(spec.bloomPopScale));
+    expect(layer!.dataset.stingSettlePx).toBe(String(spec.settlePx));
+    expect(layer!.dataset.stingEasing).toBe(spec.easing);
+    expect(layer!.dataset.stingPeakBloomScale).toBe(String(peak.bloomScale));
+    expect(layer!.dataset.stingPeakChirpHz).toBe(String(peak.chirpHz));
+    expect(layer!.dataset.stingPeakChirpGain).toBe(String(peak.chirpGain));
+    expect(layer!.dataset.stingReducedMotion).toBeUndefined();
+  });
+
   it("suppresses the shake CSS variable under reducedMotion but still shows the layer", () => {
     resolveAndPlayAftersignPacketConfirmInteraction(
       committedState("sealed"),
@@ -114,6 +146,8 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
       .getPropertyValue("--aftersign-confirm-shake")
       .trim();
     expect(shake).toBe("0px");
+    expect(layer!.dataset.stingPeakChirpGain).toBe("0");
+    expect(layer!.dataset.stingReducedMotion).toBe("true");
   });
 
   it("throws when resolving a commit on an uncommitted packetOutcome", () => {
