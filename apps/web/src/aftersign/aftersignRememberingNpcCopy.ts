@@ -1,12 +1,14 @@
 export type AftersignRememberingNpcLineKind =
   | "firstMeeting"
   | "returningPlayer"
-  | "packetRecovered"
-  | "packetLost";
+  | "packetSealed"
+  | "packetOpened"
+  | "routeSkipped"
+  | "routeHeard";
 
 export type AftersignRememberingNpcLine = Readonly<{
   kind: AftersignRememberingNpcLineKind;
-  speaker: "Mira";
+  speaker: "Io";
   text: string;
 }>;
 
@@ -27,26 +29,38 @@ export const getAftersignRememberingNpcLine = (
     case "firstMeeting":
       return {
         kind,
-        speaker: "Mira",
-        text: `${name}. If that is what you answer to, I will keep it safe.`,
+        speaker: "Io",
+        text: `${name}. If that is what you answer to, I will put it on the route sheet.`,
       };
     case "returningPlayer":
       return {
         kind,
-        speaker: "Mira",
-        text: `You came back, ${name}. The station did not expect that. I did.`,
+        speaker: "Io",
+        text: `You came back, ${name}. Good. The city dislikes loose ends.`,
       };
-    case "packetRecovered":
+    case "packetSealed":
       return {
         kind,
-        speaker: "Mira",
-        text: `I remember the packet in your hands, ${name}. Small thing. Whole sky bent around it.`,
+        speaker: "Io",
+        text: `You came back. So did the blue seal, unbroken. That gives me two facts to trust, ${name}.`,
       };
-    case "packetLost":
+    case "packetOpened":
       return {
         kind,
-        speaker: "Mira",
-        text: `Last time, the packet went dark. I remember that too, ${name}. We do not get clean ghosts here.`,
+        speaker: "Io",
+        text: `You came back. The seal did not. I can use one of those facts, ${name}.`,
+      };
+    case "routeSkipped":
+      return {
+        kind,
+        speaker: "Io",
+        text: `You found the box anyway, ${name}. Next time, let me finish saving your life.`,
+      };
+    case "routeHeard":
+      return {
+        kind,
+        speaker: "Io",
+        text: `You listened before you ran, ${name}. Rare habit. Keep it.`,
       };
   }
 };
