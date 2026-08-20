@@ -79,6 +79,7 @@ import {
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
+import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -579,6 +580,7 @@ const getPointerToRenderLatencyReport = () => {
 // this override drops out and the beat's own verbatim line wins.
 let ioReturningBootLine = null;
 let ioReturningBootBeat = null;
+let ioSecondPacketResponseLine = null;
 
 // Recompute the returning-session boot override from the CURRENT state
 // (memory facts + scene beat). Called at module init AND from
@@ -704,6 +706,9 @@ const lineForBeat = () => {
   }
 
   if (state.scene.beat === "io-next-job") {
+    if (ioSecondPacketResponseLine) {
+      return ioSecondPacketResponseLine;
+    }
     // M-CONTINUE-E1 (PR #1236): shipped consumer of
     // `story/ioContinueBeats.ts`. The HANDOFF line (Io hands the
     // player the red tag → Saint Orra) is the [1] entry in
@@ -720,6 +725,12 @@ const lineForBeat = () => {
     // list. When the player has no durable facts (defensive: shouldn't
     // happen at this beat, but honored so the surface stays crash-
     // free), the handoff line still speaks (`remembersNoDurableFact`).
+    //
+    // Shipped consumer of `ioSecondPacketCopy.ts` (#1322): after the
+    // handoff, Io now visibly offers the second packet on the served
+    // page. The player's return posture maps to the copy module's
+    // gentle / guarded / defiant variants, and the same player name
+    // already persisted on state is threaded into the address line.
     const reflection = ioMemoryResponseLinesFor({
       playerFlags: state.player.flags,
       npcMemoryFacts: state.npcs.io.memory,
@@ -727,7 +738,12 @@ const lineForBeat = () => {
       .map((entry) => entry.text)
       .join(" ");
     const handoffLine = ioNextJobLine();
-    return reflection ? `${reflection} ${handoffLine}` : handoffLine;
+    const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
+      returnReason: state.player.returnReason,
+      playerName: state.player.name,
+    });
+    const secondPacketLine = secondPacketCopy.lines.join(" ");
+    return [reflection, handoffLine, secondPacketLine].filter(Boolean).join(" ");
   }
 
   if (state.scene.beat === "io-return-recognition") {
@@ -1486,7 +1502,15 @@ const renderText = () => {
     delete skipRouteButton.dataset.returnReason;
     delete deliverButton.dataset.returnReason;
   } else if (isNextJobBeat) {
+    const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
+      returnReason: state.player.returnReason,
+      playerName: state.player.name,
+    });
+    setTextContentIfChanged(acknowledgeRouteButton, secondPacketCopy.choices[0].label);
+    setTextContentIfChanged(skipRouteButton, secondPacketCopy.choices[1].label);
     setTextContentIfChanged(deliverButton, "Deliver next packet");
+    stampAftersignChoice(acknowledgeRouteButton, secondPacketCopy.choices[0].id);
+    stampAftersignChoice(skipRouteButton, secondPacketCopy.choices[1].id);
     stampAftersignChoice(deliverButton, "deliver-packet");
     // PR #1236: same cleanup as above — no recognition-beat stamps
     // should leak into a beat where the buttons carry different
@@ -1494,8 +1518,8 @@ const renderText = () => {
     delete acknowledgeRouteButton.dataset.returnReason;
     delete skipRouteButton.dataset.returnReason;
     delete deliverButton.dataset.returnReason;
-    acknowledgeRouteButton.disabled = true;
-    skipRouteButton.disabled = true;
+    acknowledgeRouteButton.disabled = false;
+    skipRouteButton.disabled = false;
   } else {
     setTextContentIfChanged(deliverButton, "Deliver packet");
     stampAftersignChoice(deliverButton, "deliver-packet");
@@ -1525,6 +1549,9 @@ const setBeat = (beat) => {
   const canonicalBeat = canonicalFlagshipBeat(beat);
   if (state.scene.beat !== canonicalBeat) {
     state.scene.beat = canonicalBeat;
+    if (canonicalBeat !== "io-next-job") {
+      ioSecondPacketResponseLine = null;
+    }
     markStateDirty();
   }
   const nextNpcId = canonicalBeat === "io-return-recognition" ? "io" : null;
@@ -1689,6 +1716,7 @@ const choose = async (choiceId) => {
 
   if (choiceId === "deliver-packet") {
     if (state.scene.beat === "io-next-job") {
+      ioSecondPacketResponseLine = null;
       state.packet = {
         delivered: false,
         route: null,
@@ -1791,6 +1819,26 @@ const choose = async (choiceId) => {
     setBeat("io-next-job");
     await forceSave();
     publishState();
+    return;
+  }
+
+  if (choiceId === "accept-second-packet" || choiceId === "ask-what-changed") {
+    if (state.scene.beat !== "io-next-job") {
+      return;
+    }
+    const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
+      returnReason: state.player.returnReason,
+      playerName: state.player.name,
+    });
+    const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
+    if (selectedChoice) {
+      ioSecondPacketResponseLine = selectedChoice.response;
+      state.npcs.io.lastLine = selectedChoice.response;
+      state.npcs.io.lastLineMemoryRefs = [];
+      markStateDirty();
+      renderText();
+      publishState();
+    }
     return;
   }
 
@@ -2703,6 +2751,7 @@ const resetSliceSave = async () => {
   packetIntent.reset();
   resetPacketGestureLog();
   state.scene.beat = "packet-offered";
+  ioSecondPacketResponseLine = null;
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;
   state.player = {
