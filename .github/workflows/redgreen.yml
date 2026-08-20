@@ -45,6 +45,7 @@ on:
       - "aftersign/**"
       - "agar/**"
       - "e2e-shared/**"
+      - "scripts/install-playwright-chromium.mjs"
       - ".github/workflows/redgreen.yml"
   push:
     branches: [main]
@@ -52,6 +53,7 @@ on:
       - "aftersign/**"
       - "agar/**"
       - "e2e-shared/**"
+      - "scripts/install-playwright-chromium.mjs"
       - ".github/workflows/redgreen.yml"
   workflow_dispatch:
     inputs:
@@ -78,10 +80,12 @@ jobs:
             aftersign:
               - "aftersign/**"
               - "e2e-shared/**"
+              - "scripts/install-playwright-chromium.mjs"
               - ".github/workflows/redgreen.yml"
             agar:
               - "agar/**"
               - "e2e-shared/**"
+              - "scripts/install-playwright-chromium.mjs"
               - ".github/workflows/redgreen.yml"
 
   # ---------------------------------------------------------------- shared
