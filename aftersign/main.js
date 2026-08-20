@@ -101,6 +101,19 @@ import {
 // avoids naming those ids so the invariant is anchored solely by their
 // real occurrences inside `lineForBeat()` below, not by comment text.
 import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
+// Shipped consumer of the NPC memory-recall dialogue module (PR #1343 —
+// Soren's second review). The vitest harness surface at
+// `apps/web/src/aftersign/windowGameSurface.ts` wires
+// `findAftersignNpcMemoryRecallLine` into a "roundTrip" beat, but that
+// surface is imported ONLY by `bootWindowGame.ts` — the served
+// `aftersign/main.js` never touched the module, so the authored recall
+// line never reached the real `#line` DOM node. Same shape as the
+// #1228 fix: prepend the recall line to the `io-next-job` beat's
+// joined utterance below, so the same tap that lands the player at
+// `io-next-job` also renders the recall assertion text into `#line`.
+// Sibling `aftersign/e2e/npc-memory-recall-dialogue-served.spec.ts`
+// drives the served page and asserts the assertion text is present.
+import { findAftersignNpcMemoryRecallLine } from "../apps/web/src/aftersign/npcMemoryRecallDialogue.ts";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
   computeKioskCameraTarget,
@@ -737,13 +750,27 @@ const lineForBeat = () => {
     })
       .map((entry) => entry.text)
       .join(" ");
+    // Shipped consumer of `findAftersignNpcMemoryRecallLine` (PR #1343).
+    // Io's authored recall line for the packet fork the player just
+    // committed — "You opened it..." vs "Still sealed. Good..." —
+    // rides on the SAME join as `reflection` + `handoffLine`, so the
+    // same tap that stamps `#line` at `io-next-job` also renders the
+    // recall assertion text on the served page. `state.packet.sealed`
+    // is the durable fork the module keys on (see the dialogue table
+    // in `apps/web/src/aftersign/npcMemoryRecallDialogue.ts`).
+    const recallRemembers = state.packet.sealed ? "packet-sealed" : "packet-opened";
+    const recallEntry = findAftersignNpcMemoryRecallLine({
+      npcId: "io",
+      remembers: recallRemembers,
+    });
+    const recallLine = recallEntry ? recallEntry.line : null;
     const handoffLine = ioNextJobLine();
     const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
       returnReason: state.player.returnReason,
       playerName: state.player.name,
     });
     const secondPacketLine = secondPacketCopy.lines.join(" ");
-    return [reflection, handoffLine, secondPacketLine].filter(Boolean).join(" ");
+    return [reflection, recallLine, handoffLine, secondPacketLine].filter(Boolean).join(" ");
   }
 
   if (state.scene.beat === "io-return-recognition") {
