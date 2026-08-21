@@ -93,6 +93,12 @@ describe('AFTERSIGN played acceptance boundary', () => {
     expect(HARNESS_INPUT_PATTERN.test("w['__game']['input'].choose()")).toBe(true);
   });
 
+  it('allows assertion-only reads from window.__game outside the input bridge', () => {
+    expect(HARNESS_INPUT_PATTERN.test('window.__game.state.currentBeat')).toBe(false);
+    expect(HARNESS_INPUT_PATTERN.test('window["__game"].story.beatId')).toBe(false);
+    expect(HARNESS_INPUT_PATTERN.test('const surface = await page.evaluate(() => window.__game.state)')).toBe(false);
+  });
+
   it('locates the aftersign/e2e/ tree (guard is not vacuous)', () => {
     // Fail loudly if the scan target moved.  Without this, deleting
     // or renaming `aftersign/e2e/` would silently make the boundary
