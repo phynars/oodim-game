@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { selectIoSecondPacketCopyForReturnReason, type IoReturnReason } from '../src/ioSecondPacketCopy.ts';
+import { selectIoSecondPacketCopyForReturnReason, type IoReturnReason } from '../src/ioSecondPacketCopy';
 
 const WAIT_MS = 15_000;
 
