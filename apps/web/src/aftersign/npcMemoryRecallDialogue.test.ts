@@ -18,6 +18,13 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+// `import "./harness/bootWindowGame"` MUST run before the local imports:
+// its side-effect installs `window.__game` on the shared jsdom `window`,
+// and the surface-wiring `describe` block below reads it in `beforeEach`.
+// Keeping the side-effect import first also matches the sibling pattern
+// in `harness/windowGameHarnessBoot.test.ts`, so a shared harness fix
+// lands in the same shape across both test surfaces.
+import "./harness/bootWindowGame";
 import {
   AFTERSIGN_NPC_MEMORY_RECALL_DIALOGUE,
   findAftersignNpcMemoryRecallLine,
@@ -30,7 +37,6 @@ import {
   recordAftersignOrraAction,
   recordAftersignPacketChoice,
 } from "./verticalSliceState";
-import "./harness/bootWindowGame";
 
 describe("Aftersign NPC memory recall dialogue (contract)", () => {
   it("keeps one assertable spoken line for each returning memory beat", () => {
