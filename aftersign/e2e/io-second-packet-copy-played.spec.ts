@@ -42,10 +42,18 @@ async function waitForBeat(page: Page, beatId: string): Promise<void> {
 // (`io-second-packet-copy-served.spec.ts`,
 // `io-continue-beats-tap-playtest.spec.ts`,
 // `m-continue-next-packet-loop.spec.ts`) all target it directly.
+//
+// Uses `.click()`, not `.tap()`: this spec runs on the default Desktop
+// Chrome project (no `test.use({ hasTouch: true })`), and Playwright
+// throws "page.tap: The page does not support tap" without a touch
+// context. Every sibling `.tap()` in `aftersign/e2e/` is inside a
+// phone-viewport block that opts into `hasTouch: true` — see
+// `m-continue-phone-tap-playtest.spec.ts` for the pattern. Served-page
+// specs (`io-second-packet-copy-served.spec.ts`) use `.click()`.
 async function tapChoice(page: Page, choiceId: string): Promise<void> {
   const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
-  await choice.tap();
+  await choice.click();
 }
 
 // Return-tone buttons carry BOTH `data-choice-id="choose-return-tone"` and
@@ -56,7 +64,7 @@ async function tapReturnReason(page: Page, reason: IoReturnReason): Promise<void
     .locator(`button[data-choice-id="choose-return-tone"][data-return-reason="${reason}"]:not([disabled])`)
     .first();
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
-  await choice.tap();
+  await choice.click();
 }
 
 async function playToSecondPacket(page: Page, slot: string, reason: IoReturnReason): Promise<void> {
@@ -68,7 +76,7 @@ async function playToSecondPacket(page: Page, slot: string, reason: IoReturnReas
   // there is no `data-choice-id="packet"` node at that beat.
   const packetButton = page.locator('#packetButton');
   await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
-  await packetButton.tap();
+  await packetButton.click();
   await waitForBeat(page, 'packet-choice');
 
   await tapChoice(page, 'acknowledge-kiosk');
