@@ -88,6 +88,11 @@ test.describe("AFTERSIGN M-CONTINUE next-packet loop", () => {
     await waitForBeat("packet-choice");
 
     await expect(page.locator('button[data-choice-id="acknowledge-kiosk"]')).toBeVisible({ timeout: WAIT_MS });
-    await expect(page.locator('button[data-choice-id="deliver-packet"]')).toHaveText(/Deliver packet/i);
+    const nextPacketDeliver = page.locator('button[data-choice-id="deliver-packet"]:not([disabled])').first();
+    await expect(nextPacketDeliver, "fresh packet deliver choice should be visible after the loop resets").toBeVisible({
+      timeout: WAIT_MS,
+    });
+    await expect(nextPacketDeliver).toHaveText(/Deliver packet/i);
+    await nextPacketDeliver.click({ trial: true, timeout: WAIT_MS });
   });
 });
