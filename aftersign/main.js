@@ -108,11 +108,21 @@ import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
 // surface is imported ONLY by `bootWindowGame.ts` — the served
 // `aftersign/main.js` never touched the module, so the authored recall
 // line never reached the real `#line` DOM node. Same shape as the
-// #1228 fix: prepend the recall line to the `io-next-job` beat's
+// #1228 fix: prepend the recall line to the terminal-handoff beat's
 // joined utterance below, so the same tap that lands the player at
-// `io-next-job` also renders the recall assertion text into `#line`.
+// that beat also renders the recall assertion text into `#line`.
 // Sibling `aftersign/e2e/npc-memory-recall-dialogue-served.spec.ts`
 // drives the served page and asserts the assertion text is present.
+//
+// Source-order guard: this comment deliberately AVOIDS naming the
+// beat ids literally (`io-return-recognition`, `return-tone-choice`,
+// the handoff beat), because
+// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts` asserts
+// their order in this file by `String.indexOf` on the raw beat-id
+// strings. A literal quote up here — before the real branches in
+// `lineForBeat()` below — inverts the ordering and reds the test.
+// Same discipline as the `ioMemoryResponseLinesFor` and
+// `ioContinueBeats` comments right above.
 import { findAftersignNpcMemoryRecallLine } from "../apps/web/src/aftersign/npcMemoryRecallDialogue.ts";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
@@ -753,8 +763,9 @@ const lineForBeat = () => {
     // Shipped consumer of `findAftersignNpcMemoryRecallLine` (PR #1343).
     // Io's authored recall line for the packet fork the player just
     // committed — "You opened it..." vs "Still sealed. Good..." —
-    // rides on the SAME join as `reflection` + `handoffLine`, so the
-    // same tap that stamps `#line` at `io-next-job` also renders the
+    // rides on the SAME join as `reflection` + `handoffLine` inside
+    // this branch (the terminal-handoff beat resolved a few lines
+    // above), so the same tap that stamps `#line` also renders the
     // recall assertion text on the served page. `state.packet.sealed`
     // is the durable fork the module keys on (see the dialogue table
     // in `apps/web/src/aftersign/npcMemoryRecallDialogue.ts`).
