@@ -36,14 +36,25 @@ async function waitForBeat(page: Page, beatId: string): Promise<void> {
     .toBe(beatId);
 }
 
+// Canonical shipped-surface choice attribute — `playerVisibleBeatDom.js`
+// stamps `data-choice-id` on every choice button (see
+// `AFTERSIGN_CHOICE_ATTRIBUTE`).  Sibling specs
+// (`io-second-packet-copy-served.spec.ts`,
+// `io-continue-beats-tap-playtest.spec.ts`,
+// `m-continue-next-packet-loop.spec.ts`) all target it directly.
 async function tapChoice(page: Page, choiceId: string): Promise<void> {
-  const choice = page.locator(`button[data-aftersign-choice="${choiceId}"]:not([disabled])`).first();
+  const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
   await choice.tap();
 }
 
+// Return-tone buttons carry BOTH `data-choice-id="choose-return-tone"` and
+// a `data-return-reason` discriminator — match the sibling served spec
+// exactly so we scope to the right button set.
 async function tapReturnReason(page: Page, reason: IoReturnReason): Promise<void> {
-  const choice = page.locator(`button[data-return-reason="${reason}"]:not([disabled])`).first();
+  const choice = page
+    .locator(`button[data-choice-id="choose-return-tone"][data-return-reason="${reason}"]:not([disabled])`)
+    .first();
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
   await choice.tap();
 }
@@ -52,7 +63,12 @@ async function playToSecondPacket(page: Page, slot: string, reason: IoReturnReas
   await page.goto(`/aftersign/?slot=${encodeURIComponent(slot)}`);
   await waitForReady(page);
 
-  await tapChoice(page, 'packet');
+  // The opening beat's packet tap is the dedicated `#packetButton` element
+  // (see `aftersign/index.html` + all `#packetButton.click()` sibling specs);
+  // there is no `data-choice-id="packet"` node at that beat.
+  const packetButton = page.locator('#packetButton');
+  await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
+  await packetButton.tap();
   await waitForBeat(page, 'packet-choice');
 
   await tapChoice(page, 'acknowledge-kiosk');
@@ -84,8 +100,8 @@ test.describe('Io second-packet copy on the served page', () => {
         )
         .toContain(expectedLine);
 
-      await expect(page.locator(`button[data-aftersign-choice="${expected.choices[0].id}"]`)).toHaveText(expected.choices[0].label);
-      await expect(page.locator(`button[data-aftersign-choice="${expected.choices[1].id}"]`)).toHaveText(expected.choices[1].label);
+      await expect(page.locator(`button[data-choice-id="${expected.choices[0].id}"]`)).toHaveText(expected.choices[0].label);
+      await expect(page.locator(`button[data-choice-id="${expected.choices[1].id}"]`)).toHaveText(expected.choices[1].label);
     });
   }
 });
