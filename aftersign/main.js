@@ -227,6 +227,18 @@ import {
 // (bootWindowGame.ts) exposes the SAME four methods over the same
 // primitive so vitest and Playwright can pin the seam identically.
 import { measurePointerToRenderLatency } from "./src/inputAcknowledgeLatency.ts";
+import { createStoragePersistence } from "./src/runtime/persistence.js";
+import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
+import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import {
+  createStoragePersistence,
+  emptySave,
+  createPersistenceRuntime,
+} from "./src/runtime/persistence.js";
+import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
+import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import { buildWindowGameSurface } from "./src/runtime/gameSurface.js";
+import { createPersistHelpers } from "./src/runtime/persistence.js";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -277,18 +289,10 @@ const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const readStored = () => {
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeStored = (payload) => {
-  window.localStorage.setItem(storageKey, JSON.stringify(payload));
-};
+const { readStored, writeStored } = createStoragePersistence({
+  storage: window.localStorage,
+  storageKey,
+});
 
 // Io's trust posture is a pure function of the delivery outcome
 // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
@@ -296,14 +300,6 @@ const writeStored = (payload) => {
 const trustPostureForOutcome = (outcome) =>
   outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
 
-const emptySave = () => ({
-  slot: "default",
-  revision: 0,
-  lastPersistedAt: null,
-  dirty: false,
-  authority: "local-fallback",
-  lastLoadProof: { source: null, revision: null, playerId: null },
-});
 const localStored = readStored();
 const bootstrapPlayerId = localStored?.player?.id || "local-slice-player";
 const stored = await readAuthoritativeSave({
@@ -860,83 +856,14 @@ const memoryFacts = () => {
 // Pure: no closure over live state; every input is passed by the
 // caller so `buildPersistPayload` remains the single owner of what
 // gets snapshotted.
-const buildIoNextJobDurabilityStamp = ({
-  beat,
-  playerId,
-  returnReason,
-  revision,
-}) => ({
-  parked: beat === "io-next-job",
-  beat: typeof beat === "string" ? beat : null,
-  playerId: typeof playerId === "string" ? playerId : null,
-  returnReason: typeof returnReason === "string" ? returnReason : null,
-  revision: typeof revision === "number" ? revision : null,
-  stampedAt: new Date().toISOString(),
+const { buildPersistPayload, persist, persistAuthoritative } = createPersistHelpers({
+  state,
+  slot,
+  clone,
+  markStateDirty,
+  writeStored,
+  writeAuthoritativeSave,
 });
-
-const buildPersistPayload = ({ dirty = false } = {}) => ({
-  beat: state.scene.beat,
-  player: clone(state.player),
-  packet: clone(state.packet),
-  delivery: clone(state.delivery),
-  memory: clone(state.npcs.io.memory),
-  npcs: {
-    orra: {
-      memory: clone(state.npcs.orra.memory),
-      lastLine: state.npcs.orra.lastLine,
-      lastLineId: state.npcs.orra.lastLineId,
-      lastLineMemoryRefs: [...(state.npcs.orra.lastLineMemoryRefs ?? [])],
-    },
-  },
-  save: {
-    revision: state.save.revision,
-    dirty,
-    ioNextJob: buildIoNextJobDurabilityStamp({
-      beat: state.scene.beat,
-      playerId: state.player.id,
-      returnReason: state.player.returnReason,
-      revision: state.save.revision,
-    }),
-  },
-});
-
-const persist = ({ dirty = false } = {}) => {
-  // #741: stamp durability time into the payload so it round-trips
-  // through reload (`{ ...emptySave(), ...saved.save }` picks it up),
-  // but only mirror it into live state AFTER writeStored succeeds —
-  // a throwing write must not claim the save was persisted. Same
-  // timestamp source as packet.deliveredAt (new Date().toISOString()).
-  const payload = buildPersistPayload({ dirty });
-  payload.save.lastPersistedAt = new Date().toISOString();
-  writeStored(payload);
-  state.save.lastPersistedAt = payload.save.lastPersistedAt;
-  if (state.save.dirty !== dirty) {
-    state.save.dirty = dirty;
-  }
-  markStateDirty();
-};
-
-const persistAuthoritative = async ({ dirty = false } = {}) => {
-  const payload = buildPersistPayload({ dirty });
-  payload.save = {
-    ...payload.save,
-    // #741: stamped pre-write so the SERVER copy carries it; mirrored
-    // into live state only after writeAuthoritativeSave resolves.
-    lastPersistedAt: new Date().toISOString(),
-    authority: "server",
-  };
-  await writeAuthoritativeSave({
-    slot,
-    playerId: state.player.id,
-    payload,
-  });
-  state.save.authority = "server";
-  state.save.lastPersistedAt = payload.save.lastPersistedAt;
-  if (state.save.dirty !== dirty) {
-    state.save.dirty = dirty;
-  }
-  markStateDirty();
-};
 
 // Apply an authored per-tier feel cue (or clear it) as CSS custom
 // properties on documentElement.  These `--io-recognition-*` vars are
@@ -2609,48 +2536,18 @@ const syncRecognitionDomFeedback = (nowMs) => {
 // while still reading LIVE state (cameraKickWorldX / cameraKickDeg /
 // state.player.x/z) so an override like setConfirmCameraKick({0,0})
 // still zeros the reported motion.
-const computeCameraPoseAt = (nowMs) => {
-  const confirmStartedAt = state.interaction.confirmStartedAt;
-  const failureStartedAt = state.interaction.failureStartedAt;
-  const confirmEnvelope = confirmStartedAt === null
-    ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)
-    : interactionConfirmEnvelopeAt(nowMs - confirmStartedAt, CONFIRM_FEEDBACK);
-  const confirmWobble = confirmEnvelope.wobble;
-  const failureReducedMotion = prefersReducedMotion();
-  const failureEnvelope = failureStartedAt === null
-    ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK, {
-        reducedMotion: failureReducedMotion,
-      })
-    : failureStingEnvelopeAt(nowMs - failureStartedAt, FAILURE_FEEDBACK, {
-        reducedMotion: failureReducedMotion,
-      });
-  const failureWobble = failureEnvelope.wobble;
-  const cameraKickWorldX = state.interaction.confirmFeedback.cameraKickWorldX;
-  const cameraKickDeg = state.interaction.confirmFeedback.cameraKickDeg;
-  const recognitionMotion = recognitionMotionAt(nowMs);
-  // Base pose = the rig's DETERMINISTIC resting pose (velocity=0 →
-  // rig converges to computeKioskCameraTarget). Must match the render
-  // loop, which paints rig.position + wobbles; probing the old
-  // player.x*0.12 / 7.6+player.z*0.12 line drifted from what's on
-  // screen the moment the rig landed and made this probe measure a
-  // ghost camera. Wobbles (recognition dolly, confirm kick, failure
-  // shake) stack on top exactly as the render loop stacks them.
-  const restingPose = computeKioskCameraTarget(
-    {
-      playerX: state.player.x,
-      playerZ: state.player.z,
-      facingRadians: state.player.facingRadians,
-      velocityX: 0,
-      velocityZ: 0,
-    },
-    DEFAULT_KIOSK_CAMERA_RIG,
-  );
-  return {
-    x: restingPose.x + recognitionMotion.cameraDeltaMeters + confirmWobble * cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX,
-    z: restingPose.z,
-    rotationZ: THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg),
-  };
-};
+const { computeCameraPoseAt } = createCameraPoseSampler({
+  state,
+  CONFIRM_FEEDBACK,
+  FAILURE_FEEDBACK,
+  prefersReducedMotion,
+  interactionConfirmEnvelopeAt,
+  failureStingEnvelopeAt,
+  recognitionMotionAt,
+  computeKioskCameraTarget,
+  DEFAULT_KIOSK_CAMERA_RIG,
+  THREE,
+});
 
 const startMemoryBeatCameraProbe = (startedAt) => {
   // Anchor the probe to the DETERMINISTIC "resting" camera pose (the
@@ -3020,83 +2917,6 @@ const syncKeyboardInput = () => {
   setMoveInput(x, z, x || z ? "keyboard" : "none");
 };
 
-const packetPointFromEvent = (event) => ({
-  timeMs: performance.now(),
-  x: event.clientX,
-  y: event.clientY,
-});
-
-packetButton.addEventListener("pointerdown", (event) => {
-  event.preventDefault();
-  packetButton.setPointerCapture(event.pointerId);
-  packetPress(packetPointFromEvent(event));
-});
-packetButton.addEventListener("pointermove", (event) => {
-  if (state.interaction.packetIntent.active) {
-    event.preventDefault();
-    packetMove(packetPointFromEvent(event));
-  }
-});
-packetButton.addEventListener("pointerup", (event) => {
-  event.preventDefault();
-  // Tap-confirm FEEL — stamp the press envelope on the packet
-  // button BEFORE `packetRelease` runs its evaluator + state
-  // update. "packet" is the choice-id pinned on this element
-  // in index.html; see servedSurface contract test.
-  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
-    window.__game.applyTapConfirmFeel("packet");
-  }
-  packetRelease(packetPointFromEvent(event));
-});
-packetButton.addEventListener("pointercancel", (event) => {
-  event.preventDefault();
-  packetMove({ ...packetPointFromEvent(event), x: state.interaction.packetIntent.config.DRIFT_CANCEL_PX + event.clientX + 1 });
-});
-acknowledgeRouteButton.addEventListener("click", () => {
-  const reasonFromAck = acknowledgeRouteButton.dataset.returnReason;
-    if (reasonFromAck && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromAck)) {
-      state.player.returnReason = reasonFromAck;
-      markStateDirty();
-    }
-    const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
-  // Tap-confirm FEEL — stamp the press envelope on THIS button
-  // (the choiceId that just committed) before `choose(...)` runs
-  // the state update.
-  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
-    window.__game.applyTapConfirmFeel(choiceId);
-  }
-  choose(choiceId);
-});
-skipRouteButton.addEventListener("click", () => {
-  const reasonFromSkip = skipRouteButton.dataset.returnReason;
-    if (reasonFromSkip && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromSkip)) {
-      state.player.returnReason = reasonFromSkip;
-      markStateDirty();
-    }
-    const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
-  // Tap-confirm FEEL — see acknowledgeRouteButton handler above.
-  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
-    window.__game.applyTapConfirmFeel(choiceId);
-  }
-  choose(choiceId);
-});
-deliverButton.addEventListener("click", () => {
-  const reasonFromDeliver = deliverButton.dataset.returnReason;
-    if (reasonFromDeliver && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromDeliver)) {
-      state.player.returnReason = reasonFromDeliver;
-      markStateDirty();
-    }
-    const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
-  // Tap-confirm FEEL — see acknowledgeRouteButton handler above.
-  // deliverButton retargets to "ask-for-next-job" and back across
-  // beats (see stampAftersignChoice calls in renderText), so we
-  // read the current `dataset.choiceId` — same value `choose()`
-  // gets — so the envelope always lands on the correct id.
-  if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
-    window.__game.applyTapConfirmFeel(choiceId);
-  }
-  choose(choiceId);
-});
 mobileMovePadController = attachMobileMovePad({
   root: movePad,
   knob: movePadKnob,
@@ -3104,54 +2924,26 @@ mobileMovePadController = attachMobileMovePad({
   feel: MOBILE_MOVE_PAD,
 });
 syncMobileMovePad();
-canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
-  // Pointer-to-render probe intent-listener (SHIPPED consumer of
-  // `./src/inputAcknowledgeLatency.ts`). Capture-phase on the
-  // document so every real `pointerdown` — canvas taps, the packet
-  // gesture, the four tap-choice buttons, the mobile move-pad —
-  // timestamps its intent at `performance.now()`. The matching
-  // render-side close-out lives in the `tick` below (right after
-  // `composer.render()` calls
-  // `drainPointerIntentsForRenderedFrame(now)`), so any pending
-  // intent is folded into a sample against the rAF frame that
-  // reflects it — one-frame promise, measured against the real DOM.
-  // Capture=true so the listener sees the event before any
-  // bubble-phase `stopPropagation()` drops it.
-  document.addEventListener(
-    "pointerdown",
-    (event) => {
-      if (!event || typeof event.pointerId !== "number") {
-        return;
-      }
-      // Played-not-driven boundary: pointer-to-render only arms on a
-      // VISIBLE `[data-aftersign-tap-choice]` surface. Any other
-      // pointerdown (canvas taps, packet gesture, move-pad, decorative
-      // buttons, hidden/aria-hidden trays) bubbles here too but must
-      // NOT populate the latency probe — else a background-tap
-      // regression could silently green the one-frame promise. This
-      // guard mirrors the harness listener in
-      // `apps/web/src/aftersign/harness/bootWindowGame.ts` so the
-      // vitest probe and the shipped page arm the sample on the same
-      // shape.
-      const pointerTarget = event.target;
-      const pointerChoiceSurface =
-        pointerTarget && typeof pointerTarget.closest === "function"
-          ? pointerTarget.closest(AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR)
-          : null;
-      if (
-        !pointerChoiceSurface
-        || pointerChoiceSurface.hidden
-        || pointerChoiceSurface.getAttribute("aria-hidden") === "true"
-      ) {
-        return;
-      }
-      markPointerIntent({
-        pointerAtMs: performance.now(),
-        pointerId: event.pointerId,
-      });
-    },
-    { capture: true, passive: true },
-  );
+
+attachRuntimeInputAdapters({
+  packetButton,
+  acknowledgeRouteButton,
+  skipRouteButton,
+  deliverButton,
+  canvas,
+  document,
+  window,
+  state,
+  IO_RETURN_TONE_OPTIONS,
+  AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
+  packetPress,
+  packetMove,
+  packetRelease,
+  handleScenePointer,
+  choose,
+  markStateDirty,
+  markPointerIntent,
+});
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
   syncKeyboardInput();
