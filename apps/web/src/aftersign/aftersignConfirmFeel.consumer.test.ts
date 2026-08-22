@@ -100,6 +100,28 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     expect(layers()).toHaveLength(0);
   });
 
+  it("keeps sequential packet-confirm blooms isolated after the cleanup deadline", () => {
+    const { durationMs } = AFTERSIGN_CONFIRM_FEEL;
+
+    resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("opened"),
+      "commit",
+      { x: 120, y: 240 },
+    );
+    vi.advanceTimersByTime(durationMs + 80);
+    expect(layers()).toHaveLength(0);
+
+    const secondInteraction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("sealed"),
+      "commit",
+      { x: 60, y: 80 },
+    );
+
+    expect(secondInteraction.kind).toBe("packetPreserve");
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]!.textContent).toContain("Sealed");
+  });
+
   it("stamps the audio-visual sting numbers onto the live bloom layer", () => {
     resolveAndPlayAftersignPacketConfirmInteraction(
       committedState("opened"),
