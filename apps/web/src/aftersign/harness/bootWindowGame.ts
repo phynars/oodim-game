@@ -12,6 +12,7 @@ import {
   getMemoryRecallFeel,
   type MemoryRecallFeelFrame,
 } from "../memoryRecallFeel";
+import { playAftersignRememberingNpcRecognitionFeel } from "../verticalSliceRememberingNpcInteraction";
 import {
   getAftersignNextJobOfferFeel,
   type AftersignNextJobOfferFeelFrame,
@@ -906,7 +907,25 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       return getMemoryRecallFeel({ elapsedMs, reducedMotion });
     },
     getRememberingNpcDialogue(npc) {
-      return resolveAftersignRememberingNpcDialogue(state, npc);
+      const dialogue = resolveAftersignRememberingNpcDialogue(state, npc);
+      // Runnable slice wiring: the pure resolver stamps the FEEL row
+      // onto `dialogue.recognitionFeel`; this side-effect mounts the
+      // recognition layer (portrait push-in, ring, subtitle pop,
+      // audio-cue delay) onto the live DOM so the beat is observable
+      // through the same hook both the served surface and vitest
+      // consumer specs drive. DOM-optional: no-ops in worker / SSR.
+      // Reduced-motion is sensed via `prefers-reduced-motion` so a
+      // scene renderer inherits the OS preference without an extra
+      // flag threaded through every caller.
+      const media =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function"
+          ? window.matchMedia("(prefers-reduced-motion: reduce)")
+          : null;
+      playAftersignRememberingNpcRecognitionFeel(dialogue, {
+        reducedMotion: media?.matches === true,
+      });
+      return dialogue;
     },
     setPlayerMemory(memory) {
       if (memory === null) {
