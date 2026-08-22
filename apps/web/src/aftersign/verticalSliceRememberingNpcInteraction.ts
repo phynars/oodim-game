@@ -1,10 +1,28 @@
+// Runnable side-effect for the remembering-NPC recognition beat.
+//
+// PURPOSE — the pure resolver (`resolveAftersignRememberingNpcDialogue`
+// in verticalSliceRuntimeState.ts) already stamps the FEEL row
+// (`recognitionFeel`) onto the returned dialogue when
+// `recognizesPlayer === true`. That's the DATA. This module is the
+// runnable side-effect that turns that data into a live DOM layer the
+// scene renderer (and jsdom consumer tests) can actually observe — the
+// portrait-push-in distance, the recognition ring, the subtitle pop,
+// and the audio-cue delay are all stamped onto CSS custom properties
+// and dataset attributes on a single `.aftersign-remembering-npc-
+// recognition` layer, then torn down after the beat's max envelope
+// duration + an 80 ms cleanup buffer.
+//
+// WIRING — called from `harness/bootWindowGame.ts::
+// getRememberingNpcDialogue` as a side-effect of the same hook the
+// shipped surface (`bootAftersignWindowGame` on `window.__game`) and
+// the vitest consumer specs both use. The pure resolver stays a pure
+// function; the DOM effect lives here so a worker / SSR import of the
+// resolver doesn't drag a `document.createElement` call along.
+
 import {
   AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL,
-  resolveAftersignRememberingNpcDialogue,
   type AftersignRememberingNpcDialogue,
-  type AftersignRememberingNpcId,
   type AftersignRememberingNpcRecognitionFeel,
-  type AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
 
 export type AftersignRememberingNpcRecognitionHandle = {
@@ -13,12 +31,29 @@ export type AftersignRememberingNpcRecognitionHandle = {
 };
 
 export type PlayAftersignRememberingNpcRecognitionOptions = {
+  /**
+   * Where to append the recognition layer. Defaults to
+   * `document.body`. A scene renderer that owns a portrait mount
+   * point passes that element so the ring / subtitle can layer
+   * against the portrait rather than the page root.
+   */
   target?: HTMLElement;
+  /**
+   * Copy used for the visible caption + accessible name. Defaults to
+   * `"{Io|Orra} remembers you"` — the neutral recognition label the
+   * ring animates into. A future author-controlled line can be piped
+   * in here without touching the feel envelope.
+   */
   label?: string;
+  /**
+   * When true, motion distance (portrait push-in px, ring scale,
+   * subtitle pop distance) collapses to 0 and the audio-cue delay
+   * is zeroed. The layer still mounts + tears down on the same
+   * timeline so the beat REMAINS observable — reduced-motion is a
+   * motion-and-audio suppression, not a beat suppression.
+   */
   reducedMotion?: boolean;
 };
-
-export type AftersignRememberingNpcInteraction = AftersignRememberingNpcDialogue;
 
 const REMEMBERING_NPC_RECOGNITION_CLASS =
   "aftersign-remembering-npc-recognition";
@@ -75,16 +110,32 @@ function setRecognitionFeelVariables(
   }
 }
 
+/**
+ * Mount the recognition layer for a dialogue whose
+ * `recognitionFeel` is non-null. Returns `null` when the dialogue
+ * has no feel (first-session contact — the resolver only stamps a
+ * feel row on a returning-recognition dialogue) OR when no DOM is
+ * available (worker / SSR import path). A caller that receives
+ * `null` should simply proceed with the dialogue lines — a missing
+ * recognition beat is not an error.
+ */
 export function playAftersignRememberingNpcRecognitionFeel(
   dialogue: AftersignRememberingNpcDialogue,
   options: PlayAftersignRememberingNpcRecognitionOptions = {},
 ): AftersignRememberingNpcRecognitionHandle | null {
-  const { target = document.body, label, reducedMotion = false } = options;
   const feel = dialogue.recognitionFeel;
-
   if (!feel) return null;
 
-  const layer = document.createElement("div");
+  const boundDocument =
+    (globalThis as { document?: Document }).document ?? null;
+  if (!boundDocument) return null;
+
+  const target = options.target ?? boundDocument.body;
+  if (!target) return null;
+
+  const { label, reducedMotion = false } = options;
+
+  const layer = boundDocument.createElement("div");
   layer.className = REMEMBERING_NPC_RECOGNITION_CLASS;
   layer.setAttribute("role", "status");
   layer.setAttribute("aria-live", "polite");
@@ -102,29 +153,28 @@ export function playAftersignRememberingNpcRecognitionFeel(
     feel.audioCueDelayMs,
   ) + REMEMBERING_NPC_RECOGNITION_CLEANUP_BUFFER_MS;
 
-  const cleanupTimer = window.setTimeout(() => {
+  const timerHost =
+    (globalThis as { window?: Window }).window ??
+    (globalThis as unknown as Window);
+  const cleanupTimer = timerHost.setTimeout(() => {
     layer.remove();
   }, cleanupDelayMs);
 
   return {
     layer,
     remove: () => {
-      window.clearTimeout(cleanupTimer);
+      timerHost.clearTimeout(cleanupTimer);
       layer.remove();
     },
   };
 }
 
-export function resolveAndPlayAftersignRememberingNpcInteraction(
-  state: AftersignVerticalSliceState,
-  npc: AftersignRememberingNpcId,
-  options: PlayAftersignRememberingNpcRecognitionOptions = {},
-): AftersignRememberingNpcInteraction {
-  const dialogue = resolveAftersignRememberingNpcDialogue(state, npc);
-  playAftersignRememberingNpcRecognitionFeel(dialogue, options);
-  return dialogue;
-}
-
+/**
+ * The pure feel row exposed as a getter so a consumer test can read
+ * the canonical envelope timings without importing
+ * `verticalSliceRuntimeState` directly. Same object identity as
+ * `AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL`.
+ */
 export function getAftersignRememberingNpcRecognitionFeel(): AftersignRememberingNpcRecognitionFeel {
   return AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL;
 }
