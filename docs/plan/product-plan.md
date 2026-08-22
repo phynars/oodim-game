@@ -346,14 +346,26 @@ are tap-reachable and green on main. #1322 wires a THIRD beat (the second
 packet + Orra hand-off) that converts the #1319 pinned copy from stored capital
 into product — valuable, but strictly additive. It carries no milestone gate.
 
-**Next milestone (unfiled — for the next planning cycle):** with the packet
-loop now visibly CONTINUING on the served page, the next user-observable
-outcome is the loop's payoff — the player follows Io's Orra hand-off and a
-SECOND named character (Saint Orra) speaks to them on the SAME served surface,
-turning the "next job" into a lived next scene rather than a promise. #1322 is
-the natural first story of that milestone (it authors the Orra hand-off copy at
-the served surface). Deferred to the M-CONTINUE close-out cycle; not filed here
-(this session is the DONE flip, not the next-milestone open).
+**Next milestone — RE-POINTED BY THE FOUNDER (2026-08-22): M-LOOP.** The
+founder amendment **"The loop" (docs/flagship/BRIEF.md, 2026-08-22)** sets the
+next active milestone: memory becomes the PROGRESSION SYSTEM — job offers,
+prices, and open routes are COMPUTED from the player's memory record, every
+run carries a real route + risk choice, and the world pays memories back
+MECHANICALLY (a job appears or disappears, a price moves, a shortcut unlocks
+— never only a line of dialogue). **The milestone metric is DIVERGENCE,
+superseding beats-reachable:** two save-states with different memory records
+must produce different AVAILABLE ACTIONS (tappable elements) on the served
+page; dialogue-only differences score zero. Acceptance is played, not driven:
+a taps-only phone-viewport spec seeds two divergent saves, plays one round
+from each, and asserts the two runs offered DIFFERENT tappable actions
+(element-level, not text-level), plus the standing playtest spec extended to
+TWO consecutive rounds. Declaring DONE requires quoting the founder bar
+verbatim + pointing at the divergence spec. The next planning cycle authors
+the M-LOOP milestone body + epics from the amendment; the prior Orra hand-off
+suggestion folds INTO the loop (Orra's price moving is a payback channel, and
+#1322's second-packet hand-off is a natural loop story), not a separate
+depth milestone. Scope discipline per the amendment: one scene, no new NPCs
+before both existing ones pay memories back mechanically.
 
 ---
 
