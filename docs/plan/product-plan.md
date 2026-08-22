@@ -346,26 +346,206 @@ are tap-reachable and green on main. #1322 wires a THIRD beat (the second
 packet + Orra hand-off) that converts the #1319 pinned copy from stored capital
 into product — valuable, but strictly additive. It carries no milestone gate.
 
-**Next milestone — RE-POINTED BY THE FOUNDER (2026-08-22): M-LOOP.** The
-founder amendment **"The loop" (docs/flagship/BRIEF.md, 2026-08-22)** sets the
-next active milestone: memory becomes the PROGRESSION SYSTEM — job offers,
-prices, and open routes are COMPUTED from the player's memory record, every
-run carries a real route + risk choice, and the world pays memories back
-MECHANICALLY (a job appears or disappears, a price moves, a shortcut unlocks
-— never only a line of dialogue). **The milestone metric is DIVERGENCE,
-superseding beats-reachable:** two save-states with different memory records
-must produce different AVAILABLE ACTIONS (tappable elements) on the served
-page; dialogue-only differences score zero. Acceptance is played, not driven:
-a taps-only phone-viewport spec seeds two divergent saves, plays one round
-from each, and asserts the two runs offered DIFFERENT tappable actions
-(element-level, not text-level), plus the standing playtest spec extended to
-TWO consecutive rounds. Declaring DONE requires quoting the founder bar
-verbatim + pointing at the divergence spec. The next planning cycle authors
-the M-LOOP milestone body + epics from the amendment; the prior Orra hand-off
-suggestion folds INTO the loop (Orra's price moving is a payback channel, and
-#1322's second-packet hand-off is a natural loop story), not a separate
-depth milestone. Scope discipline per the amendment: one scene, no new NPCs
-before both existing ones pay memories back mechanically.
+**Next milestone — RE-POINTED BY THE FOUNDER (2026-08-22): M-LOOP (now ACTIVE, authored below).**
+
+---
+
+## Milestones (cont.) — M-LOOP
+
+### M-LOOP (ACTIVE 2026-08-22) — a phone player finishes round one and can answer "what will you do differently next round?" — because memory changed which ACTIONS are available, not just what Io says
+
+**Deadline: 2026-09-05** (spec-writer estimate — set 2 weeks past the 08-22
+demo, as no founder date exists for M-LOOP in `docs/flagship/BRIEF.md`; the
+founder's "The loop" amendment carries no date. **OPEN QUESTION for the
+founder: confirm or set the M-LOOP demo date.**). **14 days remaining as of
+2026-08-22.** Cut scope INSIDE the loop before slipping the date — but never
+below the divergence bar (see below), and never the date. Sequence stories by
+TIME REMAINING: a rough-but-PLAYABLE one-channel payback (e.g. a job appears
+or disappears) with the divergence spec green beats a polished multi-channel
+loop that isn't reachable by taps.
+
+**Founder bar, quoted VERBATIM from the 2026-08-22 amendment "The loop" in
+`docs/flagship/BRIEF.md` (declaring DONE requires quoting this and pointing at
+the divergence spec):**
+> **M-LOOP metric: divergence.** Two save-states with different memory
+> records MUST produce different AVAILABLE ACTIONS on the served page —
+> different job offers, prices, or open routes; dialogue-only differences
+> score zero.
+>
+> **Acceptance (played, not driven):** a taps-only phone-viewport spec seeds
+> two divergent saves, plays one round from each, and asserts the two runs
+> offered DIFFERENT tappable actions (element-level, not text-level). Plus
+> the standing playtest spec extended to complete TWO consecutive rounds.
+>
+> **Definition of DONE for the milestone:** a stranger finishes round one and
+> can answer "what will you do differently next round?" — the retell bar
+> upgraded to a replay bar.
+
+**The milestone METRIC is DIVERGENCE** (the founder's word — it SUPERSEDES
+beats-reachable from this amendment forward). Dialogue-only differences score
+ZERO. The two standing guard rules (beats-reachable, played-not-driven) carry
+over unchanged as guard rules; divergence is the milestone gate.
+
+**The core loop the milestone must make reachable (one round ≈ 2–3 min, from
+the amendment):**
+1. **TAKE A JOB.** Io offers 1–3 delivery jobs; WHICH jobs exist is COMPUTED
+   from the player's memory record (trust posture, prior outcomes, debts). A
+   first-time player sees one safe job; a trusted courier sees riskier/stranger
+   ones.
+2. **RUN THE ROUTE.** The delivery is a real traversal with ONE risk choice per
+   run (long lit stair vs short dark cut; wait out the bell vs move through it).
+   Risk taken/avoided is recorded as a FACT.
+3. **DELIVER AND ANSWER.** Outcome + tone recorded (already built —
+   `return-tone-choice` / recognition are shipped).
+4. **THE WORLD PAYS IT BACK.** On return (this run or later) a memory
+   MECHANICALLY matters: a job appears/disappears, Orra's price moves, a
+   shortcut unlocks, an opened packet comes back as a consequence. NEVER only a
+   line of dialogue.
+
+**What exists today vs. the gap (grep-confirmed @ 014612d):** the served page
+terminates at `io-next-job` — an offer beat — but the offer is FIXED, not
+computed from memory. There is no `availableJobs` / `selectJobs` derivation
+keyed on the memory record, no route-traversal-with-risk-choice, and no
+risk-fact recording on the served surface (grep for
+`availableJobs|selectJobs|routeChoice` in `apps/web/src/aftersign/` returns
+only the fixed `io-next-job`/`nextJobOfferFeel` offer plumbing — no
+memory-computed job set, no route/risk axis). **That absence IS M-LOOP:** wire
+the job set to be COMPUTED from memory (channel 1: TAKE A JOB), and add ONE
+route risk choice recorded as a fact that changes a later round's available
+actions (channels 2 + 4). Channel 3 is already shipped.
+
+**Observable outcome (falsifiable on the DEPLOYED page):** Two phone players
+with DIFFERENT memory records (one first-time / low-trust, one who ran a risky
+route and delivered) reach the job-offer beat and are offered DIFFERENT
+TAPPABLE actions — a different job set, a different price, or a different open
+route — at the element level, not just different Io lines. A single player who
+completes a round and returns finds their available actions CHANGED by what
+they did (a job appeared/disappeared, a price moved, or a shortcut unlocked).
+
+**Why this is the next-smallest outcome:** M-CONTINUE proved the story
+CONTINUES to an offer beat; the offer is inert (same for everyone). The
+smallest honest step that satisfies DIVERGENCE is to make ONE channel of the
+offer computed from memory (job set) plus ONE route risk fact that feeds back
+into a later round's available actions. That is the minimum that makes two
+divergent saves produce different tappable actions. A full memory graph,
+multi-channel payback (price AND route AND packet-callback all at once),
+Orra's price economy, and new NPCs remain OUT — later milestones.
+
+**Definition of done (falsifiable, served-page, PLAYED not driven — quote the
+founder bar above to declare DONE):**
+- On a phone-shaped viewport at game.oodim.com/aftersign: a **taps-only
+  DIVERGENCE spec** (Playwright pointer/tap on rendered VISIBLE DOM elements —
+  NOT `window.__game.input.*`) seeds TWO saves with different memory records,
+  plays one round from each, and asserts the two runs offered DIFFERENT
+  tappable actions at the ELEMENT level (different job buttons / prices / open
+  routes — a text-only difference FAILS the spec).
+- The **standing PLAYTEST spec** is extended to complete TWO consecutive rounds
+  by taps only (take job → run route with a risk choice → deliver → return →
+  the world's payback is a changed available action), asserting each visible
+  dialogue change AND the changed available action after round one.
+- `window.__game` is read ONLY to assert invariants (the memory record differs
+  between the two seeded saves; a risk fact was recorded) — NEVER to CAUSE an
+  action.
+- No regression: Io's recognition line and the `return-tone-choice` /
+  `io-next-job` beats already shipping stay reachable by taps.
+- No `harness-only`-labelled PR closes this milestone: the gate is the served
+  surface and the metric is DIVERGENCE.
+- Human playtest evidence (a stranger answers "what will you do differently
+  next round?") is recorded in the devlog per the amendment — not CI-able, but
+  required for the milestone DONE flip alongside the green divergence spec.
+
+**LoE budget:** ~1 epic (E1: memory-computed job set + one recorded route-risk
+fact that changes a later round's available actions, proven by a served-page
+divergence spec). Multi-channel payback, Orra's price economy, a memory graph,
+cross-NPC memory, and new NPCs are OUT — later milestones. Scope discipline
+per the amendment: ONE scene; NO new NPCs before both existing ones pay
+memories back mechanically.
+
+---
+
+## Active milestone (M-LOOP) — epics
+
+### E1 (ACTIVE) — the served page's job offer is COMPUTED from the player's memory record, and one route-risk fact changes a later round's available actions — proven by a taps-only divergence spec
+
+**Acceptance criteria:** the served entry (`apps/web/aftersign/main.js` +
+`apps/web/src/aftersign/`) today serves a FIXED `io-next-job` offer. E1:
+1. Wires the job offer at the `io-next-job` beat to be **computed from the
+   memory record** — a first-time / low-trust player sees one (safe) job; a
+   player whose record shows a delivered risky run sees a different job set,
+   price, or open route. The computed set renders as DIFFERENT tappable DOM
+   elements per save.
+2. Adds ONE **route risk choice** on the delivery run (e.g. long-lit vs
+   short-dark) that renders as tappable options and records the choice as a
+   FACT in the memory record on the served page.
+3. Wires ONE **payback channel** so that recorded risk fact CHANGES a later
+   round's available actions (a job appears/disappears, a price moves, or a
+   shortcut unlocks) — a mechanical change to tappable elements, never only a
+   dialogue line.
+4. Adds the **divergence integration spec** (the done-gate, filed FIRST): a
+   taps-only phone-viewport Playwright spec seeds two divergent saves, plays a
+   round from each, and asserts the two runs offer DIFFERENT tappable actions
+   at the element level; `window.__game` read-only for invariants.
+
+The epic is DONE when the served-page divergence spec is green on main and two
+divergent saves produce different available actions by taps — NOT when the
+individual wiring PRs merge.
+
+**Status:** active — 14 days to deadline (2026-09-05, spec-writer estimate,
+founder to confirm). No E1 stories filed yet (this planning chunk authored the
+milestone + epic; the NEXT chunk files the integration story FIRST, then 3–7
+S/M implementation + playtest stories). #1322 (June, open) folds INTO this epic
+as a natural loop story — Io's second-packet hand-off can become a
+memory-computed job — and should be re-scoped or mapped, not left as
+M-CONTINUE polish.
+
+**Integration story (the done-gate — to be filed FIRST next chunk):** the
+epic's served-page taps-only DIVERGENCE spec seeds two saves with different
+memory records, plays one round from each on the phone viewport, and asserts
+the two runs offered DIFFERENT tappable actions (element-level), reading
+`window.__game` for invariants only. M-LOOP-E1 is DONE when this lane is green
+on main.
+
+**Reference:** the recorded-outcome + tone plumbing (channel 3) already ships
+(`return-tone-choice`, recognition). E1 adds channels 1 (memory-computed job
+set), 2 (route risk fact), and 4 (mechanical payback) — the wiring that makes
+persistence LOAD-BEARING rather than a recognition trick.
+
+---
+
+## Story map (M-LOOP-E1) — TO BE FILED (next planning chunk)
+
+**Not yet filed.** The next chunk of this planning cycle files the integration
+story (#4 above) FIRST, then the implementation + playtest stories. Every story
+MUST carry at the TOP of its body:
+
+```
+Milestone: M-LOOP — a phone player finishes round one and can answer "what will you do differently next round?" (divergence, not dialogue)
+Epic: M-LOOP-E1 — the served job offer is computed from memory + one route-risk fact changes a later round's available actions
+```
+
+Planned story shape (next chunk to file, 3–7 S/M, ≤1 harness-only in 4):
+1. **Integration DONE-gate (filed FIRST, M)** — taps-only divergence spec: two
+   seeded saves → different tappable actions on the served page.
+2. **Memory-computed job set (M)** — wire the `io-next-job` offer to derive the
+   job set from the memory record; render divergent tappable job buttons.
+3. **Route risk choice + fact recording (M)** — one tappable risk fork on the
+   delivery run, recorded as a fact in the memory record on the served page.
+4. **Payback channel (M)** — the recorded risk fact changes a later round's
+   available actions (job appears/disappears OR price moves OR shortcut unlocks).
+5. **PLAYTEST spec extended to TWO rounds (M)** — the standing playtest plays
+   two consecutive rounds by taps, asserting the changed available action.
+6. (optional) **#1322 re-scope** — fold Io's second-packet hand-off into a
+   memory-computed job rather than inert copy.
+
+---
+
+## M-CONTINUE closed-out record [provenance — see M-LOOP above for the active milestone]
+
+_The M-CONTINUE milestone body, E1 epic, and DONE ✅ story map above this
+line are the closed-out record for the 08-22 demo milestone. The ACTIVE
+milestone is M-LOOP (authored above). #1322 remains open as M-CONTINUE polish
+but is re-homed into M-LOOP-E1 as a loop story (see E1 status). Do not action
+M-CONTINUE as active — it is DONE._
 
 ---
 
