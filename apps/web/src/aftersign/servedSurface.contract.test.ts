@@ -19,6 +19,16 @@ import { join } from "node:path";
 const readServedAftersignFile = (relativePath: string) =>
   readFileSync(join(process.cwd(), "aftersign", relativePath), "utf8");
 
+// #1358: the raw `pointerdown` capture-phase listener + the four
+// committing tap-choice click handlers moved verbatim out of
+// `main.js` into `aftersign/src/runtime/inputAdapters.js`. main.js
+// now imports `attachRuntimeInputAdapters` and calls it at boot with
+// the DOM refs + game callbacks. The served-surface contract still
+// holds — the shipped page consumes the same primitives — so pin the
+// call site in main.js AND the moved literals in inputAdapters.js.
+const readServedAftersignInputAdaptersSource = () =>
+  readServedAftersignFile("src/runtime/inputAdapters.js");
+
 describe("Aftersign served surface contract", () => {
   it("boots the served vertical slice through its module entrypoint", () => {
     const html = readServedAftersignFile("index.html");
@@ -151,7 +161,14 @@ describe("Aftersign served surface contract", () => {
     // Played-not-driven pin: at least one committing click handler
     // must actually invoke the seam. Any refactor that "cleans up"
     // the call sites reds here.
-    expect(main).toContain('window.__game.applyTapConfirmFeel(');
+    // #1358: the click handlers moved from main.js into
+    // aftersign/src/runtime/inputAdapters.js; main.js now calls
+    // `attachRuntimeInputAdapters(...)` at boot to wire them. Pin
+    // the call site on main.js AND the actual invocation on the
+    // adapters module — both must hold.
+    expect(main).toContain("attachRuntimeInputAdapters(");
+    const inputAdapters = readServedAftersignInputAdaptersSource();
+    expect(inputAdapters).toContain('window.__game.applyTapConfirmFeel(');
 
     // CSS-consumer pins (PR #1299 re-review — "no stylesheet reads
     // `--aftersign-tap-confirm-*` or matches `[data-aftersign-tap-
@@ -229,7 +246,19 @@ describe("Aftersign served surface contract", () => {
     // strings must be present so a refactor that "cleans up" the
     // pointerdown listener OR moves the drain out of the tick reds
     // the seam.
-    expect(main).toContain('document.addEventListener(\n    "pointerdown"');
+    // #1358: the raw `document.addEventListener("pointerdown", ...)`
+    // capture-phase listener moved from main.js into
+    // aftersign/src/runtime/inputAdapters.js. main.js now wires it
+    // via `attachRuntimeInputAdapters(...)` at boot. Pin the call
+    // site on main.js AND the literal listener install on the
+    // adapters module — the seam still holds if either would-be
+    // regression (dropping the call site OR dropping the listener)
+    // reds the test.
+    expect(main).toContain("attachRuntimeInputAdapters(");
+    const inputAdaptersForPointer = readServedAftersignInputAdaptersSource();
+    expect(inputAdaptersForPointer).toContain(
+      'document.addEventListener(\n    "pointerdown"',
+    );
     expect(main).toContain("drainPointerIntentsForRenderedFrame(performance.now())");
   });
 
