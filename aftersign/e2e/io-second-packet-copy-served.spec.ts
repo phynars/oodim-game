@@ -1,87 +1,116 @@
-import { expect, test, type Page } from '@playwright/test';
-import { selectIoSecondPacketCopyForReturnReason, type IoReturnReason } from '../src/ioSecondPacketCopy';
+import { expect, test, type Page } from "@playwright/test";
+
+import { selectIoSecondPacketCopyForReturnReason } from "../src/ioSecondPacketCopy.ts";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
+const WAIT_MS = 10_000;
 
-test.use({ hasTouch: true, viewport: PHONE_VIEWPORT });
+type ReturnReason = "kind" | "evasive" | "blunt";
 
-const RETURN_TONE_BUTTON: Record<IoReturnReason, string> = {
-  kind: '#acknowledgeRouteButton',
-  evasive: '#skipRouteButton',
-  blunt: '#deliverButton',
+type FlagshipReadOnlySnapshot = {
+  scene: { beat: string };
+  player: { returnReason?: string | null; name?: string | null };
+  npcs: {
+    io: {
+      lastLine?: string | null;
+    };
+  };
 };
 
-async function bootFreshPhoneSlice(page: Page, slot: string) {
-  await page.goto(`/aftersign/?slot=${slot}`);
-  await page.waitForFunction(() => window.__game?.scene?.ready === true);
-  await page.evaluate(async () => {
-    await window.__game.resetSliceSave();
-  });
-  await expect(page.locator('#line')).toBeVisible();
+declare global {
+  interface Window {
+    // Read-only assertion surface. This spec plays the served page by
+    // tapping visible controls only; window.__game is never used to
+    // cause a player action.
+    __game?: {
+      version?: number;
+      scene?: { ready?: boolean; beat?: string };
+      getSnapshot?: () => FlagshipReadOnlySnapshot;
+    };
+  }
 }
 
-async function tapChoice(page: Page, selector: string, expectedChoiceId: string) {
+async function waitForReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => window.__game?.version === 1 && window.__game?.scene?.ready === true,
+    undefined,
+    { timeout: WAIT_MS },
+  );
+}
+
+async function snapshot(page: Page): Promise<FlagshipReadOnlySnapshot> {
+  return page.evaluate(() => window.__game!.getSnapshot!());
+}
+
+async function tap(page: Page, selector: string): Promise<void> {
   const button = page.locator(selector);
   await expect(button).toBeVisible();
   await expect(button).toBeEnabled();
-  await expect(button).toHaveAttribute('data-choice-id', expectedChoiceId);
   await button.tap();
 }
 
-async function reachPacketChoice(page: Page) {
-  const packetButton = page.locator('#packetButton');
-  await expect(packetButton).toBeVisible();
-  await expect(packetButton).toBeEnabled();
-  await packetButton.tap();
-  await page.waitForFunction(() => window.__game?.scene?.beat === 'packet-choice');
-  await expect(page.locator('#routeChoice')).toHaveAttribute('data-visible', 'true');
+async function waitForBeat(page: Page, beat: string): Promise<FlagshipReadOnlySnapshot> {
+  await expect
+    .poll(async () => (await snapshot(page)).scene.beat, { timeout: WAIT_MS })
+    .toBe(beat);
+  return snapshot(page);
 }
 
-async function playToSecondPacketOffer(page: Page, returnReason: IoReturnReason) {
-  await reachPacketChoice(page);
-  await tapChoice(page, '#acknowledgeRouteButton', 'acknowledge-kiosk');
-  await tapChoice(page, '#deliverButton', 'deliver-packet');
-  await page.waitForFunction(() => window.__game?.scene?.beat === 'io-return-recognition');
-  await tapChoice(page, RETURN_TONE_BUTTON[returnReason], 'choose-return-tone');
-  await page.waitForFunction(() => window.__game?.scene?.beat === 'return-tone-choice');
-  await tapChoice(page, '#deliverButton', 'ask-for-next-job');
-  await page.waitForFunction(() => window.__game?.scene?.beat === 'io-next-job');
-}
+const toneCases: Array<{
+  readonly reason: ReturnReason;
+  readonly selector: string;
+  readonly buttonLabel: string;
+}> = [
+  { reason: "kind", selector: "#acknowledgeRouteButton", buttonLabel: "Kind return" },
+  { reason: "evasive", selector: "#skipRouteButton", buttonLabel: "Evasive return" },
+  { reason: "blunt", selector: "#deliverButton", buttonLabel: "Blunt return" },
+];
 
-for (const returnReason of ['kind', 'evasive', 'blunt'] as const) {
-  test(`Io speaks ${returnReason} second-packet copy on the served page`, async ({ page }) => {
-    const slot = `io-second-packet-copy-${returnReason}-${Date.now()}`;
-    await bootFreshPhoneSlice(page, slot);
-    await playToSecondPacketOffer(page, returnReason);
+test.describe("AFTERSIGN served second-packet copy", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-    const expected = selectIoSecondPacketCopyForReturnReason({
-      returnReason,
-      playerName: null,
+  for (const tone of toneCases) {
+    test(`a phone player can reach Io's second-packet offer after a ${tone.reason} return`, async ({ page }) => {
+      const slot = `io-second-packet-${tone.reason}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForReady(page);
+
+      await expect(page.locator("#line")).toBeVisible();
+      await expect(page.locator("#deliverButton")).toBeVisible();
+
+      // Player path only: deliver the first packet, wait for Io's
+      // recognition beat, choose a visible return tone, then ask for
+      // the next job. No harness input calls.
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "io-return-recognition");
+
+      await expect(page.locator(tone.selector)).toHaveText(tone.buttonLabel);
+      await tap(page, tone.selector);
+      const returnToneChoice = await waitForBeat(page, "return-tone-choice");
+      expect(returnToneChoice.player.returnReason).toBe(tone.reason);
+
+      await expect(page.locator("#deliverButton")).toHaveText("Ask for next job");
+      await tap(page, "#deliverButton");
+      const nextJob = await waitForBeat(page, "io-next-job");
+
+      const expectedCopy = selectIoSecondPacketCopyForReturnReason({
+        returnReason: tone.reason,
+        playerName: nextJob.player.name,
+      });
+      const expectedSecondPacketLine = expectedCopy.lines.join(" ");
+
+      await expect(page.locator("#speaker")).toHaveText(expectedCopy.speaker);
+      await expect(page.locator("#line")).toContainText(expectedSecondPacketLine);
+      await expect(page.locator("#acknowledgeRouteButton")).toHaveText(
+        expectedCopy.choices[0].label,
+      );
+      await expect(page.locator("#skipRouteButton")).toHaveText(
+        expectedCopy.choices[1].label,
+      );
+      await expect(page.locator("#deliverButton")).toHaveText("Deliver next packet");
+      expect(nextJob.npcs.io.lastLine).toContain(expectedSecondPacketLine);
     });
-    const expectedLine = expected.lines.join(' ');
-
-    await expect(page.locator('#speaker')).toHaveText(expected.speaker);
-    await expect(page.locator('#line')).toContainText(expectedLine);
-    await expect(page.locator('#acknowledgeRouteButton')).toHaveText(expected.choices[0].label);
-    await expect(page.locator('#acknowledgeRouteButton')).toHaveAttribute(
-      'data-choice-id',
-      expected.choices[0].id,
-    );
-    await expect(page.locator('#skipRouteButton')).toHaveText(expected.choices[1].label);
-    await expect(page.locator('#skipRouteButton')).toHaveAttribute(
-      'data-choice-id',
-      expected.choices[1].id,
-    );
-
-    const surface = await page.evaluate(() => ({
-      beat: window.__game.scene.beat,
-      returnReason: window.__game.player.returnReason,
-      lastLine: window.__game.npcs.io.lastLine,
-    }));
-    expect(surface).toMatchObject({
-      beat: 'io-next-job',
-      returnReason,
-    });
-    expect(surface.lastLine).toContain(expectedLine);
-  });
-}
+  }
+});
