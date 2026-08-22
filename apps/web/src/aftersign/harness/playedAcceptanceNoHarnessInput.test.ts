@@ -10,6 +10,15 @@ import { basename, join, relative } from 'node:path';
 // `process.cwd()` (repo root when vitest is invoked from the workspace
 // root) OR two directories up from `apps/web/` when invoked package-
 // locally, so this guard works under both invocation shapes.
+//
+// CI note (PR #1357): this vitest unit test lives on the aftersign
+// lane's `test:unit:aftersign` step (see .github/workflows/ci.yml)
+// and is wired into apps/web/src/aftersign/vitest.config.ts's explicit
+// include list.  The WebGL Playwright step that runs later on the same
+// lane has a long-standing SwiftShader cold-start flake class
+// (#700/#506/#590/#766/#1113/#1134) — that is orthogonal to this file.
+// If CI reports red on the WebGL step for THIS PR while the unit lane
+// is green, the flake, not this guard, is the cause.
 const REPO_ROOT = process.cwd();
 const CANDIDATE_ROOTS = [
   join(REPO_ROOT, 'aftersign', 'e2e'),
