@@ -122,6 +122,33 @@ export function resolveAftersignPacketConfirmInteraction(
 }
 
 /**
+ * Publishes a representative sample of the shared interaction-confirm
+ * envelope on the live DOM layer. The bloom player owns CSS variables and
+ * the sting stamp owns audio-coupled numbers; this stamp gives the served
+ * vertical slice a stable, data-only inspection point for the same sampled
+ * packet-confirm envelope used by contract tests.
+ */
+function stampAftersignPacketConfirmEnvelopeOnLayer(
+  layer: HTMLElement,
+  kind: AftersignInteractionConfirmKind,
+  reducedMotion: boolean,
+): void {
+  const peakElapsedMs = AFTERSIGN_INTERACTION_CONFIRM_FEEL[kind].durationMs * 0.35;
+  const peakSample = sampleAftersignInteractionConfirmEnvelope(
+    kind,
+    peakElapsedMs,
+    reducedMotion,
+  );
+
+  layer.dataset.confirmEnvelopeKind = kind;
+  layer.dataset.confirmEnvelopePeakMs = String(peakElapsedMs);
+  layer.dataset.confirmEnvelopePeak = JSON.stringify(peakSample);
+  if (reducedMotion) {
+    layer.dataset.confirmEnvelopeReducedMotion = "true";
+  }
+}
+
+/**
  * Stamps the AUDIO-VISUAL sting contract onto the confirm-bloom layer as
  * `data-sting-*` attributes so the served renderer can plumb them into
  * WebAudio (chirp) + CSS (bloom pop) without re-reading the module. This
@@ -172,6 +199,11 @@ export function playAftersignPacketConfirmInteractionFeel(
   });
 
   if (handle) {
+    stampAftersignPacketConfirmEnvelopeOnLayer(
+      handle.layer,
+      interaction.kind,
+      reducedMotion,
+    );
     stampAftersignInteractionConfirmStingOnLayer(handle.layer, reducedMotion);
   }
 

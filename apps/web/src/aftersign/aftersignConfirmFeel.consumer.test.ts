@@ -17,6 +17,7 @@ import {
   AFTERSIGN_INTERACTION_CONFIRM_STING,
   sampleAftersignInteractionConfirmSting,
 } from "./aftersignInteractionConfirmSting";
+import { sampleAftersignInteractionConfirmEnvelope } from "./interactionFeelContract";
 import {
   resolveAftersignPacketConfirmInteraction,
   resolveAndPlayAftersignPacketConfirmInteraction,
@@ -122,6 +123,29 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     expect(layers()[0]!.textContent).toContain("Sealed");
   });
 
+  it("stamps a sampled packet-confirm envelope onto the live bloom layer", () => {
+    const interaction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("opened"),
+      "commit",
+      { reducedMotion: false },
+    );
+
+    const layer = layers()[0] as HTMLElement | undefined;
+    expect(layer).toBeDefined();
+
+    const peakMs = interaction.feel.durationMs * 0.35;
+    const peak = sampleAftersignInteractionConfirmEnvelope(
+      interaction.kind,
+      peakMs,
+      false,
+    );
+
+    expect(layer!.dataset.confirmEnvelopeKind).toBe("packetOpen");
+    expect(layer!.dataset.confirmEnvelopePeakMs).toBe(String(peakMs));
+    expect(layer!.dataset.confirmEnvelopePeak).toBe(JSON.stringify(peak));
+    expect(layer!.dataset.confirmEnvelopeReducedMotion).toBeUndefined();
+  });
+
   it("stamps the audio-visual sting numbers onto the live bloom layer", () => {
     resolveAndPlayAftersignPacketConfirmInteraction(
       committedState("opened"),
@@ -168,6 +192,7 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
       .getPropertyValue("--aftersign-confirm-shake")
       .trim();
     expect(shake).toBe("0px");
+    expect(layer!.dataset.confirmEnvelopeReducedMotion).toBe("true");
     expect(layer!.dataset.stingPeakChirpGain).toBe("0");
     expect(layer!.dataset.stingReducedMotion).toBe("true");
   });
