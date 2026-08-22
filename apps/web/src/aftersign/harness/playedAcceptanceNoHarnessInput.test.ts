@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 // The M-CONTINUE / IO-CONTINUE played-acceptance specs live at the
 // repo-root `aftersign/e2e/` tree — NOT under `apps/web/`.  The sibling
@@ -16,14 +16,44 @@ const CANDIDATE_ROOTS = [
   join(REPO_ROOT, '..', '..', 'aftersign', 'e2e'),
 ];
 
-// A PLAYED acceptance spec proves a phone player can reach a beat via
-// the visible DOM.  Its file name conveys that intent — the surface it
-// exercises is what a player would tap.  We enforce the boundary on
-// files that self-identify as PLAYED (name contains `playtest`); the
-// harness-driven `*-served-beats.spec.ts` siblings are allowed to
-// drive `window.__game.input.*` because they pin the state machine
-// independently of DOM copy.
-const PLAYTEST_FILE_PATTERN = /playtest\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/i;
+// PLAYED-NOT-DRIVEN acceptance taxonomy.  Three categories self-identify
+// as specs that must prove a beat is reachable via the visible DOM (not
+// via the harness input seam):
+//
+//   *.playtest.spec.ts        — playtest acceptance (tap / pointer)
+//   *-served*.spec.ts         — served-surface acceptance
+//   *-played.spec.ts          — played-beat acceptance
+//
+// Contract specs (`*-contract.spec.ts`, save-load, regression) are NOT
+// in this taxonomy — they legitimately pin the input seam itself.
+//
+// We check EACH category for vacuity independently.  If any category
+// ever empties out, the OR-across-basenames check would silently pass
+// on the surviving categories alone, masking the exact regression this
+// guard exists to catch.  Per-category `.toBeGreaterThan(0)` closes that.
+type PlayedCategory = {
+  key: 'playtest' | 'served' | 'played';
+  label: string;
+  matches: (fileBasename: string) => boolean;
+};
+
+const PLAYED_CATEGORIES: PlayedCategory[] = [
+  {
+    key: 'playtest',
+    label: '*.playtest.spec.ts',
+    matches: (name) => /\.playtest\.spec\.[cm]?tsx?$/i.test(name),
+  },
+  {
+    key: 'served',
+    label: '*-served*.spec.ts',
+    matches: (name) => /-served[^/]*\.spec\.[cm]?tsx?$/i.test(name),
+  },
+  {
+    key: 'played',
+    label: '*-played.spec.ts',
+    matches: (name) => /-played\.spec\.[cm]?tsx?$/i.test(name),
+  },
+];
 
 // Any read/write of `__game.input` — direct property access, bracket
 // access, or inside a `page.evaluate` string body — is disallowed in a
@@ -68,22 +98,37 @@ function resolveAftersignE2eRoot(): string | null {
   return null;
 }
 
-function readPlaytestSpecs(): Array<{ path: string; repoPath: string; source: string }> {
+type PlayedSpec = {
+  path: string;
+  repoPath: string;
+  source: string;
+  category: PlayedCategory['key'];
+};
+
+function readPlayedSpecs(): PlayedSpec[] {
   const root = resolveAftersignE2eRoot();
   if (!root) {
     return [];
   }
 
-  return walkFiles(root)
-    .filter((path) => PLAYTEST_FILE_PATTERN.test(path))
-    .map((path) => ({
+  const specs: PlayedSpec[] = [];
+  for (const path of walkFiles(root)) {
+    const name = basename(path);
+    const category = PLAYED_CATEGORIES.find(({ matches }) => matches(name));
+    if (!category) {
+      continue;
+    }
+    specs.push({
       path,
       // Report paths relative to the repo root even when we resolved
       // via the `../../` candidate — so failure messages are stable
       // regardless of vitest's cwd.
       repoPath: relative(join(root, '..', '..'), path),
       source: readFileSync(path, 'utf8'),
-    }));
+      category: category.key,
+    });
+  }
+  return specs;
 }
 
 describe('AFTERSIGN played acceptance boundary', () => {
@@ -107,26 +152,34 @@ describe('AFTERSIGN played acceptance boundary', () => {
     expect(resolveAftersignE2eRoot(), 'aftersign/e2e/ not found under REPO_ROOT or ../../ from cwd').not.toBeNull();
   });
 
-  it('finds at least one *playtest* spec under aftersign/e2e/', () => {
-    // Second vacuity guard: even if the tree exists, an empty result
-    // set would let the boundary check below pass trivially.
-    const specs = readPlaytestSpecs();
-    expect(
-      specs.map(({ repoPath }) => repoPath),
-      'expected at least one *playtest.spec.ts under aftersign/e2e/',
-    ).not.toEqual([]);
-  });
+  // PER-CATEGORY vacuity guards.  If ANY of the three played-not-driven
+  // basename categories ever empties out (e.g. someone renames every
+  // `*-served-*.spec.ts` to a different pattern), the OR-across-categories
+  // boundary check below would silently pass on the surviving categories
+  // alone.  We check each one independently so the corpus of every
+  // category is proven non-empty before we trust the boundary check.
+  for (const category of PLAYED_CATEGORIES) {
+    it(`finds at least one ${category.label} spec under aftersign/e2e/`, () => {
+      const specs = readPlayedSpecs().filter((spec) => spec.category === category.key);
+      expect(
+        specs.map(({ repoPath }) => repoPath),
+        `expected at least one ${category.label} under aftersign/e2e/`,
+      ).not.toEqual([]);
+    });
+  }
 
-  it('no *playtest* spec drives player input through window.__game.input', () => {
-    const offenders = readPlaytestSpecs()
+  it('no played/served/playtest spec drives player input through window.__game.input', () => {
+    const offenders = readPlayedSpecs()
       .filter(({ source }) => HARNESS_INPUT_PATTERN.test(source))
-      .map(({ repoPath }) => repoPath);
+      .map(({ repoPath, category }) => `${repoPath} [${category}]`);
 
     expect(
       offenders,
       [
-        'Played acceptance specs must drive input via visible DOM events (tap/click/press/pointer/etc.),',
-        'not through window.__game.input.*  — that surface is assertion-only in a played acceptance.',
+        'Played acceptance specs (playtest / *-served* / *-played) must drive input via',
+        'visible DOM events (tap/click/press/pointer/etc.), not through window.__game.input.*',
+        '— that surface is assertion-only in a played acceptance.  If you need to pin the',
+        'input SEAM itself, put that assertion in a *-contract.spec.ts (allowed by design).',
         'Offenders:',
         ...offenders.map((path) => `  - ${path}`),
       ].join('\n'),
