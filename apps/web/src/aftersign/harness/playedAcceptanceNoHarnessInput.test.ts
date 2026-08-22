@@ -25,7 +25,15 @@ const CANDIDATE_ROOTS = [
 //   *-played.spec.ts          — played-beat acceptance
 //
 // Contract specs (`*-contract.spec.ts`, save-load, regression) are NOT
-// in this taxonomy — they legitimately pin the input seam itself.
+// in this taxonomy — they legitimately pin the input seam itself.  The
+// `served` matcher below uses `-served[^/]*` and would otherwise catch
+// `*-served-*-contract.spec.ts` files (e.g. `story-state-served-page-contract.spec.ts`
+// which drives `window.__game.input.forceReload / choose / forceSave`
+// to prove the seam's contract), so its regex explicitly EXCLUDES the
+// `-contract.spec.ts` basename suffix.  The `playtest` and `played`
+// matchers require `.spec` to sit directly after their category token
+// (`.playtest.spec` / `-played.spec`), so they cannot catch a
+// `-contract` variant by construction.
 //
 // We check EACH category for vacuity independently.  If any category
 // ever empties out, the OR-across-basenames check would silently pass
@@ -45,8 +53,18 @@ const PLAYED_CATEGORIES: PlayedCategory[] = [
   },
   {
     key: 'served',
-    label: '*-served*.spec.ts',
-    matches: (name) => /-served[^/]*\.spec\.[cm]?tsx?$/i.test(name),
+    // `*-served*.spec.ts` EXCLUDING `*-contract.spec.ts`.  A contract
+    // spec legitimately pins the input seam itself (see the header
+    // note above) — e.g. `story-state-served-page-contract.spec.ts`
+    // drives `window.__game.input.forceReload / choose / forceSave`
+    // to prove the contract of that seam.  Contract specs are OUT of
+    // the played-not-driven taxonomy by design; the matcher must
+    // reflect that or the boundary test would false-positive on
+    // legitimate contract drives.
+    label: '*-served*.spec.ts (excluding *-contract.spec.ts)',
+    matches: (name) =>
+      /-served[^/]*\.spec\.[cm]?tsx?$/i.test(name) &&
+      !/-contract\.spec\.[cm]?tsx?$/i.test(name),
   },
   {
     key: 'played',
@@ -191,6 +209,36 @@ describe('AFTERSIGN played acceptance boundary', () => {
     // string literal preceded by `:` should not be treated as a
     // line-comment start.
     expect(stripComments('const u = "http://example";')).toContain('http://example');
+  });
+
+  it('contract specs are OUT of the played taxonomy — no category matcher catches a *-contract.spec.ts basename', () => {
+    // Regression guard for the `served` matcher: a prior revision used
+    // `/-served[^/]*\.spec\.[cm]?tsx?$/` which happily matched
+    // `story-state-served-page-contract.spec.ts` — a contract spec
+    // that legitimately drives `window.__game.input.*`.  Contract
+    // specs are OUT of the played-not-driven taxonomy by design; if
+    // any category matcher ever starts catching a `-contract` basename
+    // again, the boundary test would false-positive on legitimate
+    // seam-pinning drives.
+    const contractBasenames = [
+      'story-state-served-page-contract.spec.ts',
+      'some-served-flow-contract.spec.ts',
+      'story-state-served-page-contract.spec.mts',
+      'some-played-flow-contract.spec.tsx',
+      'foo.playtest-contract.spec.ts',
+    ];
+    for (const name of contractBasenames) {
+      const hit = PLAYED_CATEGORIES.find(({ matches }) => matches(name));
+      expect(
+        hit,
+        `contract spec ${name} must not fall into the played taxonomy (matched by ${hit?.key})`,
+      ).toBeUndefined();
+    }
+    // Sanity: the non-contract variants of the same shapes DO still
+    // fall into their categories — the exclusion is scoped, not blanket.
+    expect(PLAYED_CATEGORIES.find(({ matches }) => matches('story-state-served-page.spec.ts'))?.key).toBe('served');
+    expect(PLAYED_CATEGORIES.find(({ matches }) => matches('m-continue-next-job-played.spec.ts'))?.key).toBe('played');
+    expect(PLAYED_CATEGORIES.find(({ matches }) => matches('cold-start.playtest.spec.ts'))?.key).toBe('playtest');
   });
 
   it('demoted harness-only specs are named — allowlist is non-vacuous, members exist, and each really drives the harness input', () => {
