@@ -109,13 +109,36 @@ remains, is maintenance — not the demo gate.
 
 ---
 
-### M-CONTINUE (ACTIVE) — a phone player is driven PAST `io-return-recognition` into at least TWO new story beats: Io's return-tone answer, then Io hands them the NEXT job
+### M-CONTINUE (DONE ✅ 2026-08-22, deadline day) — a phone player is driven PAST `io-return-recognition` into at least TWO new story beats: Io's return-tone answer, then Io hands them the NEXT job
 
 **Deadline: 2026-08-22** (founder — the public demo date; see
 docs/flagship/BRIEF.md "The deadline" + "The story proceeds" + "Played, not
-driven"). **0 days remaining — TODAY IS DEADLINE DAY (2026-08-22).** Cut scope
-INSIDE a scene before slipping this date — but never below TWO new reachable
-beats, and never the date.
+driven"). **0 days remaining — DONE ON the deadline.** Cut scope INSIDE a scene
+before slipping this date — but never below TWO new reachable beats, and never
+the date.
+
+**✅ DONE — PLAYED, not driven (2026-08-22, deadline day).** The founder's
+2026-08-15 "Played, not driven" bar is MET: the tap-driven PLAYTEST
+`aftersign/e2e/m-continue-phone-tap-playtest.spec.ts` (`hasTouch: true`,
+`isMobile: true`, 390×844) plays a phone player from boot (`packet-offered`)
+through `io-return-recognition` → `return-tone-choice` → `io-next-job` using
+ONLY `.tap()` on the three visible DOM ids the served page exposes
+(`#deliverButton`, `#acknowledgeRouteButton`, `#skipRouteButton` at
+`aftersign/index.html:663-666`). It asserts each beat's dialogue RE-RENDERS
+(`#line` text, button labels — "kind return"/"evasive return"/"blunt return",
+"ask for next job", "deliver next packet") and reads `window.__game` for
+invariant assertions only (`getSnapshot()` → `scene.beat`, `npcs.io.lastLine`),
+never to CAUSE an action. The sibling `m-continue-playtest.spec.ts` +
+`m-continue-tap-playtest.spec.ts` + `m-continue-visible-next-job-playtest.spec.ts`
+corroborate the same journey. **CI on main is GREEN** (commit 6dd7088, all 6
+workflows passed). The state machine advances AND the player can reach it by
+taps alone — two new reachable beats past `io-return-recognition`, PLAYED.
+M-CONTINUE is falsified-negative-proof and closed. The driven ladder
+(#1216/#1198/#1199/#1200/#1202) all MERGED + CLOSED; one open extension beat
+remains as POLISH (#1322, below) — the milestone is DONE with #1322 as polish,
+NOT blocked on it (the ≥2-beat floor is already met by the two beats above).
+
+<details><summary>Prior corrections 2026-08-15 → 2026-08-22 (resolved by the PLAYTEST going green)</summary>
 
 **🔴 BOARD-VS-PLAN RECONCILIATION 2026-08-22 (chunk 1 of this cycle):** This
 doc's body below still narrates the pre-#1296 world — the #1216 PLAYTEST
@@ -129,10 +152,8 @@ through `return-tone-choice` → `buildIoContinueBeats`, `bootWindowGame.ts:774`
 `flagshipSurfaceAlignment.test.ts:114` maps it; a phone-viewport playtest spec
 is asserted to exist by `aftersignMilestoneAcceptanceSurface.test.ts:81`). So
 M-CONTINUE's FLOOR — ≥2 tap-reachable beats past `io-return-recognition` — is
-met on the served page. **Whether the founder bar is fully satisfied (a
-tap-driven playtest green on the DEPLOYED page, each new dialogue line RENDERED)
-is a DONE-declaration that requires quoting the bar verbatim + pointing at the
-green served-page e2e — deferred to chunk 2 to verify before flipping DONE.**
+met on the served page. **Resolved in this cycle: the DONE flip above quotes
+the founder bar and points at the green served-page playtest.**
 
 **LAST OPEN E1 GAP — #1322:** `ioSecondPacketCopy.ts` (landed via #1319) is a
 pinned three-tone copy module for Io's second-packet offer that **NO served
@@ -140,10 +161,11 @@ renderer consumes** — the words never reach `#line`/`#speaker`. This is the
 exact "stored capital, not shipped value" failure the DoD forbids. #1322 wires
 `selectIoSecondPacketCopy` into `main.js`'s `io-next-job` branch with a
 tap-driven e2e. It is the remaining player-visible content on the next-job beat.
-It serves M-CONTINUE-E1 and is the demo-day critical path.
+**Reclassified as POLISH past the M-CONTINUE floor** — the ≥2-beat floor is
+already met by `return-tone-choice` + `io-next-job`; #1322 wires a THIRD beat.
 
 **⚠️ REALITY CORRECTION 2026-08-15 (founder amendment "Played, not driven"):
-M-CONTINUE is STILL OPEN — the acceptance spec was driven, not played.** The
+M-CONTINUE was OPEN because the acceptance spec was driven, not played.** The
 two new beats (`return-tone-choice`, `io-next-job`) now EXIST on the served
 surface (`AftersignStoryBeatId` in
 `apps/web/src/aftersign/windowGameSurface.ts:26-36`; beat derivation at
@@ -159,6 +181,8 @@ the rendered page taps into these beats. Per the amendment, *"If a beat cannot
 be reached by taps alone, it is NOT DONE."* **The state machine advances; the
 player cannot.** M-CONTINUE's done signal is now a PLAYTEST spec (below), not
 the driven e2e.
+
+</details>
 
 **Founder bar, quoted VERBATIM from the 2026-08-14 amendment "The story
 proceeds" in `docs/flagship/BRIEF.md` (declaring DONE requires quoting this and
@@ -297,54 +321,39 @@ it. Scene 9 is genuinely new and must be authored before it is wired.
 
 ---
 
-## Story map (M-CONTINUE-E1)
+## Story map (M-CONTINUE-E1) — DONE ✅ 2026-08-22
 
-**CORRECTED 2026-08-15 (chunk 2 — "Played, not driven" amendment).** The
-founder's 2026-08-15 amendment (docs/flagship/BRIEF.md) disqualifies any
-acceptance test that calls `window.__game.input.*` to CAUSE a player action.
-The existing done-gate `aftersign/e2e/m-continue-served-beats.spec.ts` (PR
-#1195) is **DRIVEN** — it advances every beat through
-`window.__game.input.choose(...)`, which no real player has. It is therefore
-**harness-only evidence**, NOT the milestone done-flip. The founder picked up a
-phone and could not reach the new beats: **M-CONTINUE is OPEN.** The true
-done-flip is the new TAP-driven PLAYTEST gate **#1216**. **7 days to deadline
-(2026-08-22).**
+**CLOSED OUT 2026-08-22 (deadline day, 0 days remaining).** The entire driven
+ladder (#1216 PLAYTEST done-gate, #1197 beat-IDs, #1198 state axes, #1199 choice
+handlers, #1200 driven-smoke green, #1202 next-job authoring) is **MERGED +
+CLOSED**. The founder's "Played, not driven" bar is MET on main: the tap-driven
+PLAYTEST `aftersign/e2e/m-continue-phone-tap-playtest.spec.ts` plays boot →
+`io-return-recognition` → `return-tone-choice` → `io-next-job` by `.tap()` on
+visible DOM ids only, asserting each dialogue re-render, `window.__game`
+read-only for invariants. CI on main is GREEN. **M-CONTINUE-E1 is DONE.**
 
-**The DRIVEN integration spec** (`m-continue-served-beats.spec.ts`, PR #1195,
-`test.fail`) stays as a *harness-only* smoke of the choice handlers — it does
-NOT close the epic. The DONE signal is #1216 going green on main: a real tap
-path from boot to `io-next-job` on rendered visible DOM, reading
-`window.__game` for invariant assertions only.
+The ONE open E1-adjacent issue is an EXTENSION beat, not a blocker — it is
+POLISH past the milestone floor:
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **PLAYTEST done-gate: TAP-driven served-page e2e** (`m-continue-playtest.spec.ts`, new) — plays boot → `io-return-recognition` → return-tone choice → `io-next-job` by taps on VISIBLE DOM only; zero `input.*` action calls; asserts each beat's dialogue RE-RENDERS; `window.__game` read for invariants only. **Green on main = M-CONTINUE DONE.** RED-FIRST (nothing on the page taps the new choices yet) — the wiring in `main.js` is the fix. | **#1216** | M | integration done-gate (PLAYED) | OPEN (**true done-flip**) |
-| DRIVEN smoke: red-first `test.fail` served-page e2e (`m-continue-served-beats.spec.ts`, PR #1195) — asserts the two new beats via `input.choose(...)`. **Harness-only under the 2026-08-15 amendment — does NOT close the epic.** Relabel `harness-only`; keep as choice-handler smoke. | (PR #1195) | M | driven smoke (harness-only) | LANDED (red-first) — **demoted, not the gate** |
-| Extend `AftersignStoryBeatId` union + expose `scene.beat` in snapshot — add `return-tone-choice` / `io-next-job` | **#1197** | M | interface (beat IDs) | **CLOSED 2026-08-14** (prereq landed) |
-| Add return-tone + next-job state axes to `AftersignVerticalSliceState` — new posture/flag fields the two beats read+persist | **#1198** | M | data (state axes) | OPEN (prereq #1197 landed; head of driven ladder) |
-| Implement `choose-return-tone` + `ask-for-next-job` choice handlers — consume `RETURN_TONE_BEATS`, transition beats, serve authored tone answer | **#1199** | M | rules (choice handlers, driven path) | OPEN (blocked-by #1198) |
-| Remove `test.fail` from the DRIVEN spec and verify it passes green — un-blocks the choice-handler smoke. **NOT the done-flip anymore** (driven ≠ played); relabel the spec `harness-only`. | **#1200** | S | driven-smoke green | OPEN (blocked-by #1199) |
-| Author + wire Io's next-job (Orra name-debt) beat via the TS module graph — extend `io-recognition-beat.ts` with `IO_NEXT_JOB_OFFER`/`ORRA_NAME_DEBT`, wire through `bootWindowGame.ts`, add served-page assertion | **#1202** | M | authoring + wiring (next-job content) | OPEN |
+| **Wire `ioSecondPacketCopy` into a beat AFTER `io-next-job`'s HANDOFF line** — Io hands a *second packet* (directing the player to Saint Orra), consuming `selectIoSecondPacketCopy({ returnTone, playerName })` from `aftersign/src/ioSecondPacketCopy.ts` (pinned by `runIoSecondPacketCopyChecks`, PR #1319, currently rendered NOWHERE). Adds a tap-driven e2e asserting the rendered lines verbatim per tone. **POST-DEADLINE POLISH — the M-CONTINUE ≥2-beat floor is already met by `return-tone-choice` + `io-next-job`; this is a THIRD beat that extends the loop, not a blocker.** | **#1322** | M | consumer wire-in (stored-capital → surface) | OPEN (polish, unblocked) |
 
-Harness ration: #1216 (PLAYTEST), #1198/#1199/#1200 (driven wiring +
-smoke), #1202 (authoring+wiring) all touch the served surface / render path.
-The DRIVEN spec is demoted TO harness-only but is not a *new* harness-only
-story — it's existing capital reclassified. Ration untouched.
+**Milestone verdict:** M-CONTINUE is **DONE-with-#1322-as-polish**, NOT
+done-pending-#1322. The founder's floor was TWO new tap-reachable beats past
+`io-return-recognition`; both (`return-tone-choice`, `io-next-job`) render and
+are tap-reachable and green on main. #1322 wires a THIRD beat (the second
+packet + Orra hand-off) that converts the #1319 pinned copy from stored capital
+into product — valuable, but strictly additive. It carries no milestone gate.
 
-**Sequencing note (TIME-first, 7 days):** the DONE-FLIP is now #1216 — a
-tap-driven PLAYTEST that goes RED FIRST because nothing on the rendered page
-taps the return-tone / next-job choices yet. Its fix is the RENDER+WIRE in
-`aftersign/main.js` (tappable option elements + dialogue re-render). The driven
-ladder **#1198→#1199→#1200** builds the state axes + choice handlers underneath;
-June's **#1202** authors the next-job CONTENT (highest-risk, genuinely-new). The
-critical path to the 08-22 gate is: #1198→#1199 (handlers exist) + #1202
-(next-job beat exists) → **#1216's render-wiring makes both TAP-reachable** →
-#1216 green = DONE. #1200 (un-`test.fail` the driven smoke) is now OFF the
-critical path — it green-lights a harness-only smoke, not the milestone. **Cut,
-if time is short near 08-22:** a MINIMAL tappable `io-next-job` stub (one line,
-loop re-opens) so #1216 still reaches ≥2 tap-reachable beats — never below two,
-never the date. **Do NOT declare DONE on #1200 going green** — that is the
-trap the founder just caught; only #1216 green closes M-CONTINUE.
+**Next milestone (unfiled — for the next planning cycle):** with the packet
+loop now visibly CONTINUING on the served page, the next user-observable
+outcome is the loop's payoff — the player follows Io's Orra hand-off and a
+SECOND named character (Saint Orra) speaks to them on the SAME served surface,
+turning the "next job" into a lived next scene rather than a promise. #1322 is
+the natural first story of that milestone (it authors the Orra hand-off copy at
+the served surface). Deferred to the M-CONTINUE close-out cycle; not filed here
+(this session is the DONE flip, not the next-milestone open).
 
 ---
 
