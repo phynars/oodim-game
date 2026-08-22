@@ -2,7 +2,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const AFTERSIGN_E2E_DIR = join(process.cwd(), "apps/web/src/aftersign/e2e");
+// Playtest specs live at repo-root `aftersign/e2e/`, not under apps/web.
+// Sibling guard `aftersignMilestoneAcceptanceSurface.test.ts` documents this
+// trap: scanning the wrong tree makes the assertion pass vacuously (empty
+// list → find() undefined → toBeDefined fails on every CI run).
+const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
 
 const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
