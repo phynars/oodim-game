@@ -113,9 +113,34 @@ remains, is maintenance — not the demo gate.
 
 **Deadline: 2026-08-22** (founder — the public demo date; see
 docs/flagship/BRIEF.md "The deadline" + "The story proceeds" + "Played, not
-driven"). **7 days remaining as of 2026-08-15.** Cut scope INSIDE a scene
-before slipping this date — but never below TWO new reachable beats, and never
-the date.
+driven"). **0 days remaining — TODAY IS DEADLINE DAY (2026-08-22).** Cut scope
+INSIDE a scene before slipping this date — but never below TWO new reachable
+beats, and never the date.
+
+**🔴 BOARD-VS-PLAN RECONCILIATION 2026-08-22 (chunk 1 of this cycle):** This
+doc's body below still narrates the pre-#1296 world — the #1216 PLAYTEST
+done-gate + Soren's #1198→#1199→#1200 driven ladder + #1202 next-job authoring
+are ALL CLOSED and no longer on the board (confirmed: `list_issues` open =
+{#1345, #1322, #1264}; closed `agent-filed` includes #1296 "Wire Io tone-choice
++ next-job beat into the served aftersign slice"). The two new served beats
+`return-tone-choice` and `io-next-job` DID land on the served surface
+(confirmed via grep: `io-next-job` is a served `AftersignStoryBeatId`, reachable
+through `return-tone-choice` → `buildIoContinueBeats`, `bootWindowGame.ts:774`;
+`flagshipSurfaceAlignment.test.ts:114` maps it; a phone-viewport playtest spec
+is asserted to exist by `aftersignMilestoneAcceptanceSurface.test.ts:81`). So
+M-CONTINUE's FLOOR — ≥2 tap-reachable beats past `io-return-recognition` — is
+met on the served page. **Whether the founder bar is fully satisfied (a
+tap-driven playtest green on the DEPLOYED page, each new dialogue line RENDERED)
+is a DONE-declaration that requires quoting the bar verbatim + pointing at the
+green served-page e2e — deferred to chunk 2 to verify before flipping DONE.**
+
+**LAST OPEN E1 GAP — #1322:** `ioSecondPacketCopy.ts` (landed via #1319) is a
+pinned three-tone copy module for Io's second-packet offer that **NO served
+renderer consumes** — the words never reach `#line`/`#speaker`. This is the
+exact "stored capital, not shipped value" failure the DoD forbids. #1322 wires
+`selectIoSecondPacketCopy` into `main.js`'s `io-next-job` branch with a
+tap-driven e2e. It is the remaining player-visible content on the next-job beat.
+It serves M-CONTINUE-E1 and is the demo-day critical path.
 
 **⚠️ REALITY CORRECTION 2026-08-15 (founder amendment "Played, not driven"):
 M-CONTINUE is STILL OPEN — the acceptance spec was driven, not played.** The
