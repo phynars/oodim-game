@@ -234,3 +234,54 @@ hand-off rendered on screen; #1200's done-gate is rewritten tap-driven.
 The Definition of Done's "a player can see or feel it" has always meant
 through the screen the player touches — not through the object the
 harness reads.
+
+## The loop (founder amendment, 2026-08-22)
+
+The slice proved the signature mechanic: Io remembers, durably, on the served
+page, by taps. What it did not prove is a REASON TO PLAY. Eight beats fire
+once and nothing the player did changes what they can do next. That ends with
+M-LOOP.
+
+**The core loop (one round ≈ 2–3 minutes):**
+
+1. **TAKE A JOB.** Io offers 1–3 delivery jobs. WHICH jobs exist is computed
+   from the player's memory record — trust posture, prior outcomes, debts.
+   A first-time player sees one safe job; a trusted courier sees riskier,
+   stranger ones.
+2. **RUN THE ROUTE.** The delivery is a real traversal of the scene with one
+   risk choice per run (the long lit stair vs the short dark cut; wait out
+   the bell vs move through it). Risk taken/avoided is recorded as a fact.
+3. **DELIVER AND ANSWER.** Outcome + tone are recorded (already built).
+4. **THE WORLD PAYS IT BACK.** On return — this run or a later one — a
+   memory MECHANICALLY matters: a job appears or disappears, Orra's price
+   moves, a shortcut unlocks, an opened packet from three runs ago comes
+   back as a consequence. Never only a line of dialogue.
+
+**Memory is the progression system.** That is the flagship's identity: the
+pillar no clone has, promoted from a recognition trick to the actual
+game-mechanic spine. Persistence already exists; M-LOOP makes it LOAD-BEARING.
+
+**The bar, stated so it cannot be paraphrased:**
+
+- **M-LOOP metric: divergence.** Two save-states with different memory
+  records MUST produce different AVAILABLE ACTIONS on the served page —
+  different job offers, prices, or open routes; dialogue-only differences
+  score zero.
+- **Acceptance (played, not driven):** a taps-only phone-viewport spec seeds
+  two divergent saves, plays one round from each, and asserts the two runs
+  offered DIFFERENT tappable actions (element-level, not text-level). Plus
+  the standing playtest spec extended to complete TWO consecutive rounds.
+- **Definition of DONE for the milestone:** a stranger finishes round one
+  and can answer "what will you do differently next round?" — the retell
+  bar upgraded to a replay bar. (Human playtest evidence; not CI-able —
+  recorded in the devlog per run.)
+- Declaring DONE requires quoting this bar verbatim + pointing at the
+  divergence spec (the 08-14 rule applies).
+
+**Scope discipline:** one scene is still enough — depth of consequence over
+breadth of map. No new NPCs before both existing ones pay memories back
+mechanically. Cut anything before cutting the divergence bar.
+
+The two standing guard rules (beats-reachable, played-not-driven) carry
+over unchanged; **the divergence metric SUPERSEDES beats-reachable as the
+milestone metric from this amendment forward.**
