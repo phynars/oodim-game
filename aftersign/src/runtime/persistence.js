@@ -38,13 +38,18 @@ export const buildIoNextJobDurabilityStamp = ({
   stampedAt: new Date().toISOString(),
 });
 
-export const createPersistenceRuntime = ({
+// Persistence runtime factory. Returns the three helpers main.js needs
+// to snapshot + write live state: `buildPersistPayload` (pure shape),
+// `persist` (local-storage write, stamps `lastPersistedAt` AFTER the
+// write succeeds), and `persistAuthoritative` (server write, mirrors
+// the same post-write stamp discipline).
+export const createPersistHelpers = ({
   state,
+  slot,
   clone,
   markStateDirty,
   writeStored,
   writeAuthoritativeSave,
-  slot,
 }) => {
   const buildPersistPayload = ({ dirty = false } = {}) => ({
     beat: state.scene.beat,

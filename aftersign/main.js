@@ -227,18 +227,19 @@ import {
 // (bootWindowGame.ts) exposes the SAME four methods over the same
 // primitive so vitest and Playwright can pin the seam identically.
 import { measurePointerToRenderLatency } from "./src/inputAcknowledgeLatency.ts";
-import { createStoragePersistence } from "./src/runtime/persistence.js";
-import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
-import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+// Runtime seam extractions (PR #1358) — the served page consumes the
+// same primitives the harness's bootWindowGame.ts pins in tests. Import
+// each symbol EXACTLY ONCE from its owning module (ES module rule; a
+// duplicate binding is a parse-time SyntaxError that would black-screen
+// the page). `createPersistHelpers` is the persistence-runtime factory
+// that returns { buildPersistPayload, persist, persistAuthoritative }.
 import {
   createStoragePersistence,
+  createPersistHelpers,
   emptySave,
-  createPersistenceRuntime,
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
-import { buildWindowGameSurface } from "./src/runtime/gameSurface.js";
-import { createPersistHelpers } from "./src/runtime/persistence.js";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
