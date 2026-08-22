@@ -52,7 +52,7 @@ describe("AFTERSIGN durable save/load played acceptance surface", () => {
       matchingPlaytest?.path,
       [
         "M-WIRE/M-CONTINUE durable save/load acceptance must be played, not driven.",
-        "Add or update an apps/web/src/aftersign/e2e/*playtest*.spec.ts that:",
+        "Add or update an aftersign/e2e/*playtest*.spec.ts (repo-root, NOT under apps/web) that:",
         "  - uses a phone-shaped/mobile viewport,",
         "  - drives the served page only through visible player events (tap/click/press/pointer/etc.),",
         "  - asserts visible UI for the save and return-session load/recognition path,",
