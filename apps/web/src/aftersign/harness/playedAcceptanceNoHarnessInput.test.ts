@@ -55,12 +55,45 @@ const PLAYED_CATEGORIES: PlayedCategory[] = [
   },
 ];
 
+// Demoted harness-only specs.  A file whose basename matches one of the
+// PLAYED_CATEGORIES above but which the founder amendment explicitly
+// KEEPS harness-driven — because it exists to pin the state-machine
+// extent independently of DOM copy — must be allowlisted here.  It's
+// still counted for the vacuity guards (its basename is a real member
+// of the corpus) but exempt from the no-harness-input offender check.
+//
+// The allowlist is a SET of basenames, not a regex, so a new demotion
+// requires a named entry with a citation — no accidental widening.
+//
+// Current entries:
+//   - m-continue-served-beats.spec.ts — PR #1195; docs/plan/product-plan.md
+//     records under the 2026-08-15 "Played, not driven" amendment that
+//     this spec is HARNESS-ONLY (drives via `window.__game.input.choose`)
+//     and does NOT count as played acceptance.  The played sibling for
+//     the same milestone is `m-continue-next-job-played.spec.ts`.
+const HARNESS_ONLY_ALLOWLIST = new Set<string>([
+  'm-continue-served-beats.spec.ts',
+]);
+
 // Any read/write of `__game.input` — direct property access, bracket
 // access, or inside a `page.evaluate` string body — is disallowed in a
 // played acceptance.  We keep the pattern intentionally broad to catch
 // evasions like `window["__game"].input`, `w["__game"].input`, and
 // template-string harness drives.
 const HARNESS_INPUT_PATTERN = /(?:(?:window|w)\s*(?:\.\s*__game|\[\s*["']__game["']\s*\])|__game)\s*(?:\.\s*input|\[\s*["']input["']\s*\])/;
+
+// Strip `// line` and `/* block */` comments before running
+// HARNESS_INPUT_PATTERN.  A played spec is allowed to REFERENCE
+// `__game.input` in its own commentary (explaining WHY it doesn't
+// drive that seam) without tripping the guard — the boundary is
+// about executable code, not documentation.  String literals stay
+// intact so `page.evaluate("... __game.input ...")` template drives
+// are still caught.
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
 
 function walkFiles(root: string): string[] {
   if (!existsSync(root)) {
@@ -101,6 +134,7 @@ function resolveAftersignE2eRoot(): string | null {
 type PlayedSpec = {
   path: string;
   repoPath: string;
+  basename: string;
   source: string;
   category: PlayedCategory['key'];
 };
@@ -124,6 +158,7 @@ function readPlayedSpecs(): PlayedSpec[] {
       // via the `../../` candidate — so failure messages are stable
       // regardless of vitest's cwd.
       repoPath: relative(join(root, '..', '..'), path),
+      basename: name,
       source: readFileSync(path, 'utf8'),
       category: category.key,
     });
@@ -142,6 +177,43 @@ describe('AFTERSIGN played acceptance boundary', () => {
     expect(HARNESS_INPUT_PATTERN.test('window.__game.state.currentBeat')).toBe(false);
     expect(HARNESS_INPUT_PATTERN.test('window["__game"].story.beatId')).toBe(false);
     expect(HARNESS_INPUT_PATTERN.test('const surface = await page.evaluate(() => window.__game.state)')).toBe(false);
+  });
+
+  it('strips line and block comments before checking the harness-input pattern', () => {
+    // A played spec is free to REFERENCE the harness-input surface in
+    // its own commentary — explaining why it does not drive that seam.
+    // Only executable code should trip the boundary check.
+    expect(HARNESS_INPUT_PATTERN.test(stripComments('// this spec must not touch window.__game.input.choose'))).toBe(false);
+    expect(HARNESS_INPUT_PATTERN.test(stripComments('/* forbidden: __game.input.* */'))).toBe(false);
+    // Executable code with the same tokens still matches.
+    expect(HARNESS_INPUT_PATTERN.test(stripComments('await window.__game.input.choose("x");'))).toBe(true);
+    // Guard against eating URL schemes (http://) — a `//` inside a
+    // string literal preceded by `:` should not be treated as a
+    // line-comment start.
+    expect(stripComments('const u = "http://example";')).toContain('http://example');
+  });
+
+  it('demoted harness-only specs are named — allowlist is non-vacuous, members exist, and each really drives the harness input', () => {
+    // If an allowlist entry ever stops existing under aftersign/e2e/,
+    // fail loudly.  A dangling name here would silently exempt
+    // nothing — which is fine — but the drift is worth catching so
+    // the allowlist stays honest to the tree.
+    expect(HARNESS_ONLY_ALLOWLIST.size, 'allowlist must name at least one demoted spec').toBeGreaterThan(0);
+    const specs = readPlayedSpecs();
+    const byBasename = new Map(specs.map((spec) => [spec.basename, spec]));
+    for (const name of HARNESS_ONLY_ALLOWLIST) {
+      const spec = byBasename.get(name);
+      expect(spec, `allowlisted spec ${name} not found under aftersign/e2e/`).toBeDefined();
+      // A file only earns a slot on the allowlist if it ACTUALLY drives
+      // the harness input surface.  If someone rewrites the file to
+      // play through the DOM (no more `window.__game.input.*`), the
+      // allowlist entry is dead weight — remove it, don't leave it
+      // masking a future regression.
+      expect(
+        HARNESS_INPUT_PATTERN.test(stripComments(spec!.source)),
+        `allowlisted spec ${name} no longer drives window.__game.input — remove it from HARNESS_ONLY_ALLOWLIST`,
+      ).toBe(true);
+    }
   });
 
   it('locates the aftersign/e2e/ tree (guard is not vacuous)', () => {
@@ -170,7 +242,8 @@ describe('AFTERSIGN played acceptance boundary', () => {
 
   it('no played/served/playtest spec drives player input through window.__game.input', () => {
     const offenders = readPlayedSpecs()
-      .filter(({ source }) => HARNESS_INPUT_PATTERN.test(source))
+      .filter(({ basename: name }) => !HARNESS_ONLY_ALLOWLIST.has(name))
+      .filter(({ source }) => HARNESS_INPUT_PATTERN.test(stripComments(source)))
       .map(({ repoPath, category }) => `${repoPath} [${category}]`);
 
     expect(
@@ -179,7 +252,9 @@ describe('AFTERSIGN played acceptance boundary', () => {
         'Played acceptance specs (playtest / *-served* / *-played) must drive input via',
         'visible DOM events (tap/click/press/pointer/etc.), not through window.__game.input.*',
         '— that surface is assertion-only in a played acceptance.  If you need to pin the',
-        'input SEAM itself, put that assertion in a *-contract.spec.ts (allowed by design).',
+        'input SEAM itself, put that assertion in a *-contract.spec.ts (allowed by design),',
+        'or add the file to HARNESS_ONLY_ALLOWLIST with a citation to the amendment that',
+        'demoted it (see docs/plan/product-plan.md, 2026-08-15 "Played, not driven").',
         'Offenders:',
         ...offenders.map((path) => `  - ${path}`),
       ].join('\n'),
