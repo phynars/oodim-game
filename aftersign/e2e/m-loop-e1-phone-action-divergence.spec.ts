@@ -72,10 +72,10 @@ type FlagshipSnapshot = {
   scene?: { beat?: string };
   packet?: { delivered?: boolean; sealed?: boolean };
   delivery?: { outcome?: string };
+  player?: { returnReason?: string | null };
   npcs?: {
     io?: {
       lastLine?: string | null;
-      memory?: Array<{ id?: string; object?: string; action?: string }>;
     };
   };
 };
@@ -213,17 +213,19 @@ describeGate("M-LOOP E1: memory changes the actions a phone player can take", ()
     const saveA = await playRoundThenReload(browser, "kind", "#acknowledgeRouteButton");
     const saveB = await playRoundThenReload(browser, "evasive", "#skipRouteButton");
 
-    // INVARIANT — the two runs actually diverged the memory record.
-    // Read-only snapshot access; never drives play. If this fails the
-    // divergent-actions assertion below is meaningless, so we assert
-    // it first and give a clear signal.
-    const toneA = saveA.memory.npcs?.io?.memory?.find((fact) => fact?.action === "returned")?.object
-      ?? saveA.memory.npcs?.io?.lastLine;
-    const toneB = saveB.memory.npcs?.io?.memory?.find((fact) => fact?.action === "returned")?.object
-      ?? saveB.memory.npcs?.io?.lastLine;
-    expect(toneA).toBeDefined();
-    expect(toneB).toBeDefined();
-    expect(toneA).not.toEqual(toneB);
+    // INVARIANT — the two runs actually diverged the durable record.
+    // Read-only snapshot access; never drives play. The picked tone
+    // is stored on `state.player.returnReason` by the recognition
+    // click handler (`aftersign/main.js:64,713-724,1450-1457`) and
+    // re-hydrated from the durable save on returning-session boot
+    // (`aftersign/main.js:372,853`). SAVE A tapped Kind → "kind";
+    // SAVE B tapped Evasive → "evasive". Dialogue-only fields
+    // (`npcs.io.lastLine`) are explicitly NOT consulted — the M-LOOP
+    // metric treats dialogue-only differences as zero.
+    const toneA = saveA.memory.player?.returnReason;
+    const toneB = saveB.memory.player?.returnReason;
+    expect(toneA).toBe("kind");
+    expect(toneB).toBe("evasive");
 
     // THE GATE — DIVERGENCE AT THE TAPPABLE-ELEMENT LEVEL.
     // Compare the set of visible + enabled button ids (and their
