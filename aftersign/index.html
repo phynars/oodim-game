@@ -663,6 +663,16 @@
             <button id="acknowledgeRouteButton" type="button" data-aftersign-tap-choice="acknowledge-kiosk">I listened</button>
             <button id="skipRouteButton" type="button" data-aftersign-tap-choice="skip-kiosk-acknowledge">I ran early</button>
           </div>
+          <!-- M-LOOP-E1 route/risk choice (#1372). Two tappable route
+               options ("fast" vs "safe") stamped every run at the
+               packet-choice beat by `renderRouteRiskChoice` (see
+               apps/web/src/aftersign/routeRiskMemory.ts). The pick
+               writes `state.player.routeRisk`, which the persist
+               payload clones — so the fact round-trips across reload
+               and feeds `computeOfferedActions` on the next run. -->
+          <div id="routeRiskChoice" class="route-choice" data-visible="false" data-aftersign-route-risk-surface aria-label="Choose a fast or safe route for this delivery run">
+            <span class="route-choice-label">Route risk</span>
+          </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>

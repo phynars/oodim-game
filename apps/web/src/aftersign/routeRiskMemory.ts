@@ -30,12 +30,21 @@
 //     "fast + succeeded" run offers a different set than a
 //     "safe + failed" run.
 //
-// Follow-up (out of scope for this module):
-//   - Mounting the container inside the served `aftersign/index.html`
-//     + wiring `main.js` to call `renderRouteRiskChoice` at the right
-//     beat + persisting the memory fact across reload. Tracked
-//     separately so this module can land as a self-contained,
-//     tap-tested contract.
+// Shipped consumer:
+//   `aftersign/index.html` hosts `<div id="routeRiskChoice"
+//    data-aftersign-route-risk-surface>` inside the packet-choice
+//   controls tray; `aftersign/main.js` imports `renderRouteRiskChoice`
+//   + `computeOfferedActions` + `recordRouteRun`, restores
+//   `state.player.routeRisk` from the durable save, exposes
+//   `window.__game.renderRouteRiskChoice()` and
+//   `window.__game.getOfferedActions()`, and re-renders the buttons
+//   at every beat re-render + on each tap. The durable persist path
+//   (`buildPersistPayload` in `aftersign/src/runtime/persistence.js`)
+//   clones `state.player`, so the memory fact round-trips across
+//   reload for free. The sibling `routeRiskMemory.consumer.test.ts`
+//   drives the REAL served `aftersign/index.html` in jsdom and pins
+//   both halves — DOM render + persist-payload round-trip — so a
+//   refactor that unwires either half reds.
 
 export type AftersignRoute = "fast" | "safe";
 
