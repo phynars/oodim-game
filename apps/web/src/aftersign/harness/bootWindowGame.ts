@@ -910,6 +910,55 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       // surface already publishes a fresh array per call.
       return snapshot().story.offeredJobIds;
     },
+    renderOfferedJobs() {
+      // DOM-optional, same contract as the other feel/projection
+      // seams in this harness: no document → no render, no throw.
+      const doc =
+        (globalThis as { document?: Document }).document ?? null;
+      if (!doc || typeof doc.createElement !== "function" || !doc.body) {
+        return [];
+      }
+      let container = doc.querySelector(
+        "[data-aftersign-job-offers]",
+      ) as HTMLElement | null;
+      if (!container) {
+        const created = doc.createElement("div");
+        created.setAttribute("data-aftersign-job-offers", "");
+        doc.body.appendChild(created);
+        container = created;
+      }
+      const host = container;
+      // Full re-render: a stale job-offer element from the prior
+      // memory posture must not survive divergence — the element set
+      // IS the player-visible surface #1383 asks for.
+      while (host.firstChild) {
+        host.removeChild(host.firstChild);
+      }
+      // Read through the shipped surface (same derivation as
+      // `getOfferedJobIds`), capped at the 1–3 elements the offer
+      // screen presents.
+      const offeredJobIds = snapshot().story.offeredJobIds.slice(0, 3);
+      return offeredJobIds.map((jobId) => {
+        const el = doc.createElement("button");
+        el.id = `job-offer-${jobId}`;
+        el.setAttribute("data-job-id", jobId);
+        // Job-offer taps are real tap-choice surfaces: the capture-
+        // phase pointerdown probe and the 44px minimum-target report
+        // both key off this attribute.
+        el.setAttribute("data-aftersign-tap-choice", `job-offer-${jobId}`);
+        // Human-readable label derived deterministically from the id
+        // ("orra-name-debt" → "Orra Name Debt") — the primitive owns
+        // ids, not display copy, so the projection derives rather
+        // than authors.
+        el.textContent = jobId
+          .split("-")
+          .filter((word) => word.length > 0)
+          .map((word) => word.slice(0, 1).toUpperCase() + word.slice(1))
+          .join(" ");
+        host.appendChild(el);
+        return el;
+      });
+    },
     getStoryState() {
       return snapshot();
     },

@@ -619,6 +619,83 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(game?.getOfferedJobIds()).toEqual([SAFE_DEFAULT_JOB_ID]);
   });
 
+  // Element-level consumer for the offered-jobs projection (#1383).
+  // `story.offeredJobIds` proved the DERIVATION is wired; nothing yet
+  // proved a PLAYER-VISIBLE element existed (grep for `data-job-id` /
+  // `job-offer-` was empty repo-wide). `renderOfferedJobs()` closes
+  // that gap: 1–3 tappable elements with the stable id contract
+  // (`id="job-offer-{jobId}"`, `data-job-id`, a label), re-rendered
+  // fully so divergence is observable in the DOM, not just on the
+  // snapshot array.
+  it("renders tappable job-offer elements that diverge with player memory (#1383)", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.renderOfferedJobs).toEqual(expect.any(Function));
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.setPlayerMemory(null);
+
+    try {
+      // Fresh boot: one safe-default element with the full contract.
+      const freshElements = game!.renderOfferedJobs();
+      expect(freshElements.map((el) => el.id)).toEqual([
+        `job-offer-${SAFE_DEFAULT_JOB_ID}`,
+      ]);
+      const freshEl = document.getElementById(
+        `job-offer-${SAFE_DEFAULT_JOB_ID}`,
+      );
+      expect(freshEl).not.toBeNull();
+      expect(freshEl?.getAttribute("data-job-id")).toBe(SAFE_DEFAULT_JOB_ID);
+      expect(freshEl?.getAttribute("data-aftersign-tap-choice")).toBe(
+        `job-offer-${SAFE_DEFAULT_JOB_ID}`,
+      );
+      // Label is real display copy, not the raw id.
+      expect((freshEl?.textContent ?? "").length).toBeGreaterThan(0);
+      expect(freshEl?.textContent).not.toBe(SAFE_DEFAULT_JOB_ID);
+
+      // Returning player: the ELEMENT set diverges to the completed-
+      // loop jobs (capped at 3), and the stale safe-default element
+      // does not survive the re-render.
+      game?.setPlayerMemory({
+        playerName: "Returning Player",
+        interactionCount: 2,
+      });
+      const divergedElements = game!.renderOfferedJobs();
+      const expectedIds = [...COMPLETED_JOB_IDS].slice(0, 3);
+      expect(divergedElements.length).toBeGreaterThanOrEqual(1);
+      expect(divergedElements.length).toBeLessThanOrEqual(3);
+      expect(
+        divergedElements.map((el) => el.getAttribute("data-job-id")),
+      ).toEqual(expectedIds);
+      expect(divergedElements.map((el) => el.id)).not.toEqual([
+        `job-offer-${SAFE_DEFAULT_JOB_ID}`,
+      ]);
+      if (!expectedIds.includes(SAFE_DEFAULT_JOB_ID)) {
+        expect(
+          document.getElementById(`job-offer-${SAFE_DEFAULT_JOB_ID}`),
+        ).toBeNull();
+      }
+      // Every job-offer element is a real tap-choice surface, so the
+      // 44px target report and pointer-to-render probe cover it.
+      for (const el of divergedElements) {
+        expect(el.getAttribute("data-aftersign-tap-choice")).toBe(
+          `job-offer-${el.getAttribute("data-job-id")}`,
+        );
+      }
+      // All elements live inside the single offers container.
+      const container = document.querySelector(
+        "[data-aftersign-job-offers]",
+      );
+      expect(container).not.toBeNull();
+      expect(container?.children.length).toBe(expectedIds.length);
+    } finally {
+      document.querySelector("[data-aftersign-job-offers]")?.remove();
+      game?.setPlayerMemory(null);
+    }
+  });
+
   it("handles choose-return-tone and ask-for-next-job through input.choose", () => {
     const game = window.__game;
     expect(game).toBeDefined();
