@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMPLETED_JOB_IDS,
   computeOfferedJobs,
+  deriveOfferedJobsPlayerMemory,
   SAFE_DEFAULT_JOB_ID,
   TRUSTED_COURIER_JOB_IDS,
   type PlayerMemory,
@@ -39,5 +41,42 @@ describe("computeOfferedJobs", () => {
 
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
+  });
+
+  describe("deriveOfferedJobsPlayerMemory", () => {
+    it("returns undefined for null/undefined input", () => {
+      expect(deriveOfferedJobsPlayerMemory(null)).toBeUndefined();
+      expect(deriveOfferedJobsPlayerMemory(undefined)).toBeUndefined();
+    });
+
+    it("maps interactionCount >= 1 to priorOutcome: completed and drives divergence", () => {
+      const memory = deriveOfferedJobsPlayerMemory({
+        playerName: "Player",
+        interactionCount: 1,
+      });
+
+      expect(memory).toEqual({ priorOutcome: "completed" });
+      expect(computeOfferedJobs(memory)).toEqual([...COMPLETED_JOB_IDS]);
+      expect(computeOfferedJobs(memory)).not.toEqual([SAFE_DEFAULT_JOB_ID]);
+    });
+
+    it("leaves priorOutcome unset for zero prior interactions", () => {
+      const memory = deriveOfferedJobsPlayerMemory({
+        playerName: "Player",
+        interactionCount: 0,
+      });
+
+      expect(memory).toEqual({});
+      expect(computeOfferedJobs(memory)).toEqual([SAFE_DEFAULT_JOB_ID]);
+    });
+
+    it("ignores non-finite interactionCount values", () => {
+      const memory = deriveOfferedJobsPlayerMemory({
+        playerName: "Player",
+        interactionCount: Number.NaN,
+      });
+
+      expect(memory).toEqual({});
+    });
   });
 });

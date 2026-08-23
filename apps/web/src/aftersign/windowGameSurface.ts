@@ -1,4 +1,10 @@
 import {
+  computeOfferedJobs,
+  deriveOfferedJobsPlayerMemory,
+  type OfferedJobsPlayerMemoryInput,
+  type PlayerMemory as OfferedJobsPlayerMemory,
+} from "../../../../packages/aftersign/src/computeOfferedJobs";
+import {
   AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
   composeAftersignIoReturnBeat,
   getAftersignIoFirstSceneLine,
@@ -190,6 +196,23 @@ export type AftersignStoryStateSnapshot = {
     orraMemoryBeat?: AftersignOrraMemoryBeat;
     ioDialogue: AftersignIoDialogueSnapshot;
     npcMemoryRoundTrip?: AftersignSpokenNpcMemoryRoundTrip;
+    /**
+     * Ordered job-id set the memory-divergence primitive
+     * (`packages/aftersign/src/computeOfferedJobs.ts`) selects from
+     * the current player memory. Present on every snapshot — a fresh
+     * boot with no recorded memory publishes the single-element
+     * safe-default list, and a returning boot with a completed prior
+     * loop publishes the divergent set.
+     *
+     * This is the SHIPPED consumer of #1382's `computeOfferedJobs`:
+     * a served-page renderer / e2e assertion reads
+     * `snapshot.story.offeredJobIds` to know which job cards to
+     * surface, and the harness proves the wiring via
+     * `harness.getOfferedJobIds()`. Fresh arrays each call (the
+     * primitive spreads its readonly tables), so mutating the
+     * returned array doesn't leak into the next snapshot.
+     */
+    offeredJobIds: string[];
   };
   /**
    * Scene block with the current beat alongside the scene id, so a
@@ -269,6 +292,24 @@ export type AftersignStoryStateOptions = {
    * surface — not just the harness — gets the beat on the snapshot.
    */
   npcMemoryRoundTrip?: AftersignNpcMemoryRoundTripInput;
+  /**
+   * Player memory the surface pipes into
+   * `computeOfferedJobs(deriveOfferedJobsPlayerMemory(...))` so
+   * `story.offeredJobIds` reflects prior-loop divergence at the
+   * served-page surface. Two accepted shapes so callers pick the
+   * one that matches what they already carry:
+   *
+   *   • `OfferedJobsPlayerMemory` — the primitive's own shape
+   *     (`trustPosture` / `priorOutcome`), for callers that
+   *     compose the two axes directly.
+   *   • `OfferedJobsPlayerMemoryInput` — the harness-side bag
+   *     (`playerName` / `interactionCount`), mapped through
+   *     `deriveOfferedJobsPlayerMemory` (interactionCount >= 1
+   *     ⇒ `priorOutcome: "completed"`).
+   *
+   * Absent → the surface publishes `[SAFE_DEFAULT_JOB_ID]`.
+   */
+  offeredJobsMemory?: OfferedJobsPlayerMemory | OfferedJobsPlayerMemoryInput;
 };
 
 export type AftersignWindowGameSurface = {
@@ -298,6 +339,9 @@ export function getAftersignStoryState(
       listenedToRoute: options.listenedToRoute ?? false,
       returnReason: options.returnReason,
     }),
+    offeredJobIds: computeOfferedJobs(
+      resolveOfferedJobsMemory(options.offeredJobsMemory),
+    ),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
   const save = getAftersignSaveSnapshot(state);
@@ -362,6 +406,27 @@ export function getAftersignStoryState(
       ],
     },
   };
+}
+
+/**
+ * Normalize either accepted shape of `options.offeredJobsMemory` into
+ * the primitive's `PlayerMemory` shape. Passes the primitive-shape
+ * through untouched; runs the harness-shape through
+ * `deriveOfferedJobsPlayerMemory`. Undefined input → undefined output,
+ * which makes `computeOfferedJobs` return the safe default.
+ */
+function resolveOfferedJobsMemory(
+  input: OfferedJobsPlayerMemory | OfferedJobsPlayerMemoryInput | undefined,
+): OfferedJobsPlayerMemory | undefined {
+  if (!input) {
+    return undefined;
+  }
+  // Primitive-shape: at least one of the two axes named. If neither
+  // is present we treat it as the harness bag and try the derive path.
+  if ("trustPosture" in input || "priorOutcome" in input) {
+    return input as OfferedJobsPlayerMemory;
+  }
+  return deriveOfferedJobsPlayerMemory(input as OfferedJobsPlayerMemoryInput);
 }
 
 function buildNpcMemoryRoundTripBeat(

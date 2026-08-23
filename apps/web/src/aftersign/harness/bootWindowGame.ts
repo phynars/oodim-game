@@ -272,6 +272,21 @@ export type AftersignWindowGameHarness = {
     getPointerToRenderLatencyReport: () => PointerToRenderLatencyReport;
   };
   getAcceptedNextJob: () => IoNextJobBeat | null;
+  /**
+   * Return the deterministic job-id set the memory-divergence
+   * primitive (`packages/aftersign/src/computeOfferedJobs.ts`)
+   * derives from the currently-recorded `playerMemory`. Mirrors
+   * `snapshot.story.offeredJobIds` — same call, exposed as a
+   * top-level accessor so a consumer test can assert #1382's
+   * primitive is actually wired to a player-visible surface
+   * without walking the whole snapshot.
+   *
+   * Fresh boot (no `setPlayerMemory` yet) → `[SAFE_DEFAULT_JOB_ID]`.
+   * Returning boot with `interactionCount >= 1` → the completed-
+   * loop divergent set. Same freshness / determinism guarantees
+   * as the primitive.
+   */
+  getOfferedJobIds: () => string[];
   getStoryState: () => AftersignStoryStateSnapshot;
   /**
    * Served-page-compatible alias for the story/state snapshot. E2E
@@ -617,6 +632,20 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   const surfaceOptions = () => ({
     ...HARNESS_PLAYER,
     ...(ioReturnReason ? { returnReason: ioReturnReason } : {}),
+    ...(playerMemory
+      ? {
+          // Feed the same harness memory bag through to
+          // `computeOfferedJobs` so `story.offeredJobIds` reflects
+          // divergent selection whenever `setPlayerMemory` has been
+          // called this session. The surface's
+          // `deriveOfferedJobsPlayerMemory` mapping owns the
+          // interactionCount → priorOutcome translation.
+          offeredJobsMemory: {
+            playerName: playerMemory.playerName,
+            interactionCount: playerMemory.interactionCount,
+          },
+        }
+      : {}),
     ...(recallTrigger && playerMemory
       ? {
           npcMemoryRoundTrip: {
@@ -873,6 +902,13 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     getAcceptedNextJob() {
       return acceptedNextJob;
+    },
+    getOfferedJobIds() {
+      // Read through the shipped surface so the harness accessor and
+      // the served-page snapshot share ONE derivation — a divergence
+      // here would silently green a test that shouldn't pass. The
+      // surface already publishes a fresh array per call.
+      return snapshot().story.offeredJobIds;
     },
     getStoryState() {
       return snapshot();
