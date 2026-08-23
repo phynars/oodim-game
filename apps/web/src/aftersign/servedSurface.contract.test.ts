@@ -283,6 +283,10 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("renderRouteRiskChoice");
     expect(main).toContain("computeOfferedActions");
     expect(main).toContain("recordRouteRun");
+    // Selector token from `routeRiskMemory.ts` — main.js imports
+    // it alongside the writer + primitives, so a rename in the
+    // module (or a refactor that drops the import) reds here.
+    expect(main).toContain("AFTERSIGN_ROUTE_RISK_SURFACE_SELECTOR");
     // Durable-save restore path: the memory fact must be pulled off
     // `stored?.player?.routeRisk` so the persist payload's
     // `clone(state.player)` round-trips it across reload without a
@@ -292,6 +296,14 @@ describe("Aftersign served surface contract", () => {
     // uses to drive the beat.
     expect(main).toContain("window.__game.renderRouteRiskChoice");
     expect(main).toContain("window.__game.getOfferedActions");
+    // Bind-through pin: the imported writer must actually be
+    // INVOKED inside main.js against the shipped
+    // `#routeRiskChoice` container — a rename that updates the
+    // import but drops the call site (or forks the container ref)
+    // still reds here.
+    expect(main).toMatch(
+      /renderRouteRiskChoice\(\{[\s\S]{0,600}container: routeRiskChoice,/,
+    );
 
     // Served DOM container — the writer stamps buttons into a node
     // marked with `data-aftersign-route-risk-surface`, so the shipped
