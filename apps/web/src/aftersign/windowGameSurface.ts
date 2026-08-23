@@ -11,6 +11,10 @@ import {
   type AftersignReturnReason,
 } from "./ioVoiceContract";
 import {
+  getAftersignIoLoopCopy,
+  type AftersignIoLoopCopy,
+} from "./ioLoopCopy";
+import {
   findAftersignNpcMemoryRecallLine,
   type AftersignNpcMemoryRecallLine,
 } from "./npcMemoryRecallDialogue";
@@ -55,6 +59,8 @@ export type AftersignIoDialogueSnapshot = {
    * the scene renderer and the durable-save layer see the same words.
    */
   readonly kioskLines: readonly AftersignIoFirstSceneLine[];
+  /** Copy for Io's visible repeat-job affordance, resolved from packet outcome. */
+  readonly loopCopy: AftersignIoLoopCopy;
   /**
    * Return-beat pair (packet + route memory) Io speaks when the player
    * comes back — emitted only when the player has committed a packet
@@ -602,6 +608,7 @@ function getAftersignIoDialogueSnapshot(
     return {
       activeLine: returnBeat.packetLine,
       kioskLines,
+      loopCopy: getAftersignIoLoopCopy(state),
       returnBeat,
       memoryThread: thread
         ? { packetReturn: packetMemory, thread }
@@ -620,6 +627,7 @@ function getAftersignIoDialogueSnapshot(
   return {
     activeLine: kioskLines[0],
     kioskLines,
+    loopCopy: getAftersignIoLoopCopy(state),
   };
 }
 
