@@ -28,6 +28,10 @@ import {
   type AftersignSceneId,
   type AftersignVerticalSliceState,
 } from "./verticalSliceRuntimeState";
+import {
+  computeOfferedActions,
+  type AftersignOfferedAction,
+} from "./offeredActions";
 
 export type AftersignStoryBeatId =
   | "packet-unresolved"
@@ -183,6 +187,8 @@ export type AftersignStoryStateSnapshot = {
     ioMemoryBeat?: AftersignIoMemoryBeat;
     orraMemoryBeat?: AftersignOrraMemoryBeat;
     ioDialogue: AftersignIoDialogueSnapshot;
+    /** Job actions the served renderer must expose as distinct tappable controls. */
+    offeredActions: readonly AftersignOfferedAction[];
     npcMemoryRoundTrip?: AftersignSpokenNpcMemoryRoundTrip;
   };
   /**
@@ -291,6 +297,10 @@ export function getAftersignStoryState(
     ioDialogue: getAftersignIoDialogueSnapshot(state, {
       listenedToRoute: options.listenedToRoute ?? false,
       returnReason: options.returnReason,
+    }),
+    offeredActions: computeOfferedActions({
+      packetOutcome: state.packetOutcome,
+      orraAction: state.orraAction,
     }),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
