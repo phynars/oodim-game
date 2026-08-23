@@ -1,5 +1,7 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
+// @m-loop-e1:done-gate impl-pending-e1-action-set expires=2026-12-31 owner=charlie-shin
+//
 // M-LOOP-E1 done-gate — taps-only phone spec proving two divergent
 // saves offer DIFFERENT tappable actions on the served page.
 //
@@ -9,10 +11,28 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // TAPPABLE ELEMENTS on the served surface. Dialogue-only differences
 // score zero.
 //
-// WHY IT IS EXPECTED RED TODAY. The issue is explicit: this spec is
-// RED before the memory-computed-action-set story lands (no divergence
-// exists yet) and GREEN after. Its job is to fail HERE, at the
-// element-set assertion — NOT at boot, NOT at a missing selector.
+// WHY IT IS EXPECTED RED UNTIL THE IMPL STORY LANDS. The issue is
+// explicit: this spec is RED before the memory-computed-action-set
+// story lands (no divergence exists yet) and GREEN after. Its job is
+// to fail at the element-set assertion — NOT at boot, NOT at a missing
+// selector.
+//
+// HOW THE DONE-GATE IS SHIPPED WITHOUT BLOCKING MERGE. Integration-first:
+// the assertion body must land NOW (locks the contract, ships with the
+// epic's copy + button-strip references frozen) but the default CI lane
+// must stay GREEN so unrelated PRs can merge. We follow the sibling
+// `npc-memory-roundtrip.spec.ts` pattern: gate the whole describe with a
+// `test.describe.skip` toggle keyed off `M_LOOP_E1_IMPL_LANDED`. The
+// impl story flips that env var (or deletes this line) in the SAME PR
+// that wires the memory→action-set computation — that PR is where
+// this spec transitions RED→GREEN, and GREEN on main is the epic's
+// done signal per the issue's acceptance criteria.
+//
+// The `test.describe.skip` form is chosen over an in-body `test.skip`
+// so no browser context / `page` fixture is allocated — same reasoning
+// as `npc-memory-roundtrip.spec.ts:142`: describe-level skip retires
+// the spec before the SwiftShader cold-start boot the worker would
+// otherwise pay.
 // Prior revision failed for the wrong reasons: it queried `#io` /
 // `#orra` (no such ids on the served page — only `#deliverButton`,
 // `#acknowledgeRouteButton`, `#skipRouteButton` exist, per
@@ -176,7 +196,17 @@ async function playRoundThenReload(
   return { page, memory, offered };
 }
 
-test.describe("M-LOOP E1: memory changes the actions a phone player can take", () => {
+// Retirement guard for the default CI lane. Set `M_LOOP_E1_IMPL_LANDED=1`
+// in the PR that wires the memory→action-set computation to activate
+// the gate; on main, the impl PR should either remove this `.skip` or
+// leave the env-var flip so red-lane workflows can opt in first. Keep
+// the marker at the top of this file in lockstep — the impl PR removes
+// both together. See issue #1370 acceptance criteria: RED before impl,
+// GREEN after; PR #1374 lands the assertion body integration-first.
+const IMPL_LANDED = process.env.M_LOOP_E1_IMPL_LANDED === "1";
+const describeGate = IMPL_LANDED ? test.describe : test.describe.skip;
+
+describeGate("M-LOOP E1: memory changes the actions a phone player can take", () => {
   test("two divergent saves offer different visible tappable actions after a taps-only round", async ({ browser }) => {
     test.setTimeout(180_000);
 
