@@ -217,6 +217,24 @@ import {
 import {
   renderOrraFirstNameDialogue,
 } from "../apps/web/src/aftersign/orraFirstNameDialogue.ts";
+// M-LOOP-E1 (#1372) — route/risk choice each run, recorded as a
+// memory fact that feeds the next run. Wiring it into main.js here
+// turns `routeRiskMemory.ts` from a pure contract into a SHIPPED
+// consumer: the served surface stamps two tappable buttons into
+// `[data-aftersign-route-risk-surface]` during the packet-choice
+// beat, each tap records `state.player.routeRisk` (piggybacks on
+// `buildPersistPayload`'s `player` clone, so it round-trips across
+// reload with zero new persistence code), and the runtime seams
+// `window.__game.renderRouteRiskChoice()` +
+// `window.__game.getOfferedActions()` expose the same shape to the
+// harness. The action set diverges next run — the "loop" input the
+// sibling `computeOfferedActions` consumer needs.
+import {
+  AFTERSIGN_ROUTE_RISK_SURFACE_SELECTOR,
+  computeOfferedActions,
+  recordRouteRun,
+  renderRouteRiskChoice,
+} from "../apps/web/src/aftersign/routeRiskMemory.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -250,6 +268,12 @@ const packetButton = document.querySelector("#packetButton");
 const routeChoice = document.querySelector("#routeChoice");
 const acknowledgeRouteButton = document.querySelector("#acknowledgeRouteButton");
 const skipRouteButton = document.querySelector("#skipRouteButton");
+// #1372: the M-LOOP-E1 route/risk surface. The writer
+// `renderRouteRiskChoice` stamps one `<button
+// data-aftersign-tap-choice="…">` per offered action into this
+// container on every renderText() pass while the packet-choice beat
+// is live; the surface stays hidden (data-visible="false") off-beat.
+const routeRiskChoice = document.querySelector("#routeRiskChoice");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
@@ -370,6 +394,17 @@ const state = {
     // in that (defensive) case `lineForBeat()` anchors to "evasive"
     // (the middle posture) so a mis-stamped tap doesn't silence Io.
     returnReason: stored?.player?.returnReason ?? null,
+    // Route/risk memory fact (#1372 — M-LOOP-E1). Populated when
+    // the player taps one of the offered-action buttons stamped by
+    // `renderRouteRiskChoice` during the packet-choice beat; shape
+    // is `AftersignRouteRiskMemory` from `routeRiskMemory.ts`
+    // ({ lastRoute: "fast" | "safe", succeeded: boolean }) or null
+    // before the first pick. Piggybacks on the persist payload's
+    // `clone(state.player)` (see aftersign/src/runtime/persistence.js
+    // :: buildPersistPayload), so the fact round-trips across reload
+    // for free — no new persistence branch. `computeOfferedActions`
+    // reads it on the next run to diverge the offered-action set.
+    routeRisk: stored?.player?.routeRisk ?? null,
   },
   packet: {
     delivered: Boolean(stored?.packet?.delivered),
@@ -1410,6 +1445,39 @@ const publishState = () => {
   // hide the bug before the beat lands.
   window.__game.renderOrraFirstNameDialogue = (choiceId) =>
     renderOrraFirstNameDialogue(document, choiceId);
+  // #1372 — M-LOOP-E1 seams. `renderRouteRiskChoice` mounts /
+  // re-mounts the two tappable route buttons against the shipped
+  // `#routeRiskChoice` container, using the CURRENT
+  // `state.player.routeRisk` fact to pick the offered-action set.
+  // Callers (harness, dev overlays, or the served renderText loop)
+  // get the same divergent set that the played surface renders.
+  // `getOfferedActions` exposes the pure primitive so a caller can
+  // pin the divergence without touching the DOM.
+  window.__game.renderRouteRiskChoice = () => {
+    if (!routeRiskChoice) return [];
+    return renderRouteRiskChoice({
+      container: routeRiskChoice,
+      memory: state.player.routeRisk,
+      onChoose: (action) => {
+        let route = state.player.routeRisk?.lastRoute ?? "safe";
+        let succeeded = true;
+        if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+          route = "fast";
+          succeeded = true;
+        } else if (action === "take-the-long-way") {
+          route = "safe";
+          succeeded = true;
+        } else if (action === "repair-the-loss") {
+          succeeded = false;
+        }
+        state.player.routeRisk = recordRouteRun({ route, succeeded });
+        markStateDirty();
+        persist({ dirty: true });
+      },
+    });
+  };
+  window.__game.getOfferedActions = () =>
+    computeOfferedActions(state.player.routeRisk);
   return window.__game;
 };
 
@@ -1425,6 +1493,55 @@ const renderText = () => {
   const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
+  }
+
+  // #1372 — M-LOOP-E1: the ROUTE/RISK choice is only offered at
+  // the packet-choice beat (same beat as the route-memory
+  // "listened / ran early" fork above). Off-beat the container is
+  // hidden and its children cleared. On-beat the writer stamps one
+  // `<button data-aftersign-tap-choice="<action>">` per offered
+  // action, keyed off `state.player.routeRisk` (null on the first
+  // run → two "recovery" actions; after a fast/safe pick the set
+  // diverges). Each tap records the run + persists + re-renders.
+  if (routeRiskChoice) {
+    const routeRiskVisible = isPacketChoiceBeat;
+    if (routeRiskChoice.dataset.visible !== String(routeRiskVisible)) {
+      routeRiskChoice.dataset.visible = String(routeRiskVisible);
+    }
+    if (routeRiskVisible) {
+      renderRouteRiskChoice({
+        container: routeRiskChoice,
+        memory: state.player.routeRisk,
+        onChoose: (action) => {
+          // Map the offered action back to the {route, succeeded}
+          // shape the memory fact wants. "take-the-shortcut" and
+          // "carry-a-fragile-packet" record a successful fast run;
+          // "take-the-long-way" a successful safe run;
+          // "repair-the-loss" records a failed run on whatever
+          // route the last one used (default: safe — the recovery
+          // path).
+          let route = state.player.routeRisk?.lastRoute ?? "safe";
+          let succeeded = true;
+          if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+            route = "fast";
+            succeeded = true;
+          } else if (action === "take-the-long-way") {
+            route = "safe";
+            succeeded = true;
+          } else if (action === "repair-the-loss") {
+            succeeded = false;
+          }
+          state.player.routeRisk = recordRouteRun({ route, succeeded });
+          markStateDirty();
+          persist({ dirty: true });
+          renderText();
+        },
+      });
+    } else if (routeRiskChoice.firstChild) {
+      while (routeRiskChoice.firstChild) {
+        routeRiskChoice.removeChild(routeRiskChoice.firstChild);
+      }
+    }
   }
 
   if (isPacketChoiceBeat) {

@@ -262,6 +262,46 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("drainPointerIntentsForRenderedFrame(performance.now())");
   });
 
+  it("renders the route/risk memory choice on the shipped surface (#1372, M-LOOP-E1)", () => {
+    // Blocking review on PR #1375: same shape as the tap-choice /
+    // return-tone / Orra first-name precedents above — a
+    // `routeRiskMemory.ts` contract with no consumer on the served
+    // surface is green tests over dead code. `aftersign/main.js`
+    // must import the writer + the pure primitives from
+    // `apps/web/src/aftersign/routeRiskMemory.ts`, restore
+    // `state.player.routeRisk` from the durable save so the memory
+    // fact round-trips across reload, render the two tappable route
+    // buttons into `#routeRiskChoice` at the packet-choice beat, and
+    // expose `window.__game.renderRouteRiskChoice` +
+    // `window.__game.getOfferedActions` so a harness / dev overlay
+    // sees the SAME divergent action-set the played surface does.
+    const main = readServedAftersignFile("main.js");
+    // Imported specifier — a rename in routeRiskMemory.ts must red.
+    expect(main).toContain(
+      "../apps/web/src/aftersign/routeRiskMemory.ts",
+    );
+    expect(main).toContain("renderRouteRiskChoice");
+    expect(main).toContain("computeOfferedActions");
+    expect(main).toContain("recordRouteRun");
+    // Durable-save restore path: the memory fact must be pulled off
+    // `stored?.player?.routeRisk` so the persist payload's
+    // `clone(state.player)` round-trips it across reload without a
+    // new persistence branch.
+    expect(main).toContain("stored?.player?.routeRisk");
+    // Runtime seams on window.__game — same vocabulary a harness
+    // uses to drive the beat.
+    expect(main).toContain("window.__game.renderRouteRiskChoice");
+    expect(main).toContain("window.__game.getOfferedActions");
+
+    // Served DOM container — the writer stamps buttons into a node
+    // marked with `data-aftersign-route-risk-surface`, so the shipped
+    // `index.html` must host that surface. A refactor that drops the
+    // container leaves the writer with nowhere to render.
+    const html = readServedAftersignFile("index.html");
+    expect(html).toContain('id="routeRiskChoice"');
+    expect(html).toContain("data-aftersign-route-risk-surface");
+  });
+
   it("renders Saint Orra's first-name dialogue on the shipped surface", () => {
     // Blocking review on PR #1331: same shape as the return-tone /
     // tap-choice / tap-confirm precedents above — a frozen dialogue
