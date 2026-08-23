@@ -696,6 +696,72 @@ describe("Aftersign window.__game harness (#918)", () => {
     }
   });
 
+  // #1383 re-review (Soren): the prior test drives
+  // `renderOfferedJobs()` DIRECTLY — "played, not driven" fails because
+  // no `pointerdown` on a visible `#job-offer-*` button was ever
+  // dispatched. This test closes that gap: after rendering, we look up
+  // the visible button in the DOM by id (the same lookup the served
+  // `aftersign/main.js` renderText loop stamps under `#offeredJobs` at
+  // the `packet-offered` beat), assert it's a real tap-choice surface
+  // (data-aftersign-tap-choice present, matching the container's
+  // 44px-target + pointer-to-render probes), then dispatch a bubbling
+  // `pointerdown` on it and confirm the event actually reaches the
+  // button (target === the button, no stopPropagation upstream).
+  // JSDOM's Event constructor requires the low-level `Event` name for
+  // pointerdown here — the pattern already used by the sibling latency
+  // tests further below (search: `new Event("pointerdown"`).
+  it("dispatches a real pointerdown through the visible job-offer button (#1383 tap-driven)", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    // Fresh boot → single safe-default button rendered into the
+    // [data-aftersign-job-offers] container.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.setPlayerMemory(null);
+    game!.renderOfferedJobs();
+
+    try {
+      const button = document.getElementById(
+        `job-offer-${SAFE_DEFAULT_JOB_ID}`,
+      );
+      expect(button, "renderOfferedJobs must have stamped a visible #job-offer-* button")
+        .not.toBeNull();
+      // The button lives INSIDE the shipped container — the same
+      // container aftersign/index.html hosts at `#offeredJobs`.
+      const container = document.querySelector("[data-aftersign-job-offers]");
+      expect(container).not.toBeNull();
+      expect(container?.contains(button)).toBe(true);
+      // Every job-offer button is a real tap-choice surface — the
+      // 44px minimum-target guard + pointer-to-render probe both key
+      // off `data-aftersign-tap-choice`.
+      expect(button?.getAttribute("data-aftersign-tap-choice")).toBe(
+        `job-offer-${SAFE_DEFAULT_JOB_ID}`,
+      );
+      expect(button?.getAttribute("data-job-id")).toBe(SAFE_DEFAULT_JOB_ID);
+
+      // Drive a real bubbling `pointerdown` at the visible button.
+      // Capture the target so we prove the event reached the button
+      // (not just fired on an ancestor). Same event-construction
+      // pattern the pointer-to-render latency test uses below.
+      let observedTarget: EventTarget | null = null;
+      const capture = (event: Event) => {
+        if (!observedTarget) observedTarget = event.target;
+      };
+      button!.addEventListener("pointerdown", capture);
+      const pointerDown = new Event("pointerdown", { bubbles: true });
+      Object.defineProperty(pointerDown, "pointerId", { value: 1383 });
+      button!.dispatchEvent(pointerDown);
+      button!.removeEventListener("pointerdown", capture);
+
+      expect(observedTarget).toBe(button);
+    } finally {
+      document.querySelector("[data-aftersign-job-offers]")?.remove();
+      game?.setPlayerMemory(null);
+    }
+  });
+
   it("handles choose-return-tone and ask-for-next-job through input.choose", () => {
     const game = window.__game;
     expect(game).toBeDefined();

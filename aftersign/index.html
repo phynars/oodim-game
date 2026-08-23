@@ -445,6 +445,24 @@
         display: flex;
       }
 
+      /* #1383 M-LOOP job-offer slots. Mirrors .route-choice's
+         data-visible gate so the offered-jobs surface stays hidden
+         off `packet-offered` — the beat-gated visibility discipline
+         that keeps stale offers from surviving a beat advance. Uses
+         flex-wrap so 1, 2, or 3 buttons all lay out cleanly without
+         layout breakage (per #1383's acceptance criterion). */
+      .job-offers {
+        display: none;
+        flex-basis: 100%;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .job-offers[data-visible="true"] {
+        display: flex;
+      }
+
       .route-choice-label {
         margin-right: 2px;
         font-weight: 750;
@@ -673,6 +691,23 @@
           <div id="routeRiskChoice" class="route-choice" data-visible="false" data-aftersign-route-risk-surface aria-label="Choose a fast or safe route for this delivery run">
             <span class="route-choice-label">Route risk</span>
           </div>
+          <!-- #1383 M-LOOP job offers. One-to-three tappable job
+               buttons stamped by `renderOfferedJobs()` in
+               aftersign/main.js at the `packet-offered` beat, one
+               per id returned by
+               `computeOfferedJobs(deriveOfferedJobsPlayerMemory(...))`
+               (see packages/aftersign/src/computeOfferedJobs.ts).
+               A fresh boot renders one `#job-offer-job-safe-delivery`
+               button; a returning boot (state.packet.delivered was
+               true on the prior run → priorOutcome: "completed")
+               diverges to the completed set. Each rendered element
+               carries `id="job-offer-{jobId}"`, `data-job-id="{jobId}"`,
+               and `data-aftersign-tap-choice="job-offer-{jobId}"`
+               so the same 44px tap-target guard + pointer-to-render
+               probe that covers the other fork surfaces covers
+               these too. Hidden off-beat via `data-visible="false"`
+               (same discipline as #routeRiskChoice above). -->
+          <div id="offeredJobs" class="job-offers" data-visible="false" data-aftersign-job-offers aria-label="Available jobs for this run"></div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>

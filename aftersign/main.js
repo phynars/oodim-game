@@ -42,6 +42,27 @@ import {
   writeAuthoritativeSave,
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
+// #1383 M-LOOP job offers — SHIPPED CONSUMER of #1382's
+// `computeOfferedJobs`. Wiring it into main.js here is what turns
+// `packages/aftersign/src/computeOfferedJobs.ts` from a primitive
+// with harness-only DOM consumers (bootWindowGame.ts::renderOfferedJobs)
+// into a served-page surface: at the `packet-offered` beat the
+// renderText loop below stamps one `<button id="job-offer-{jobId}"
+// data-job-id="{jobId}" data-aftersign-tap-choice="job-offer-{jobId}">`
+// per id the primitive returns into the `#offeredJobs` container
+// hosted by index.html. `deriveOfferedJobsPlayerMemory` maps the
+// harness-shape bag (playerName / interactionCount) into the
+// primitive's shape (trustPosture / priorOutcome); the served side
+// derives `priorOutcome: "completed"` from `state.packet.delivered`
+// on the RESTORED save — a returning boot whose prior run finished
+// a delivery diverges to the completed-set jobs, a fresh boot lands
+// on the single safe-default id. The runtime seam
+// `window.__game.renderOfferedJobs()` exposes the SAME re-render a
+// dev overlay / harness / e2e can drive against the visible surface.
+import {
+  computeOfferedJobs,
+  deriveOfferedJobsPlayerMemory,
+} from "../packages/aftersign/src/computeOfferedJobs";
 // Note (PR #1236): the direct import of `AFTERSIGN_NEXT_JOB_BEAT` was
 // removed here — the served-page handoff line is now sourced through
 // `buildIoContinueBeats(reason)[1].line` (see the import right below).
@@ -274,6 +295,13 @@ const skipRouteButton = document.querySelector("#skipRouteButton");
 // container on every renderText() pass while the packet-choice beat
 // is live; the surface stays hidden (data-visible="false") off-beat.
 const routeRiskChoice = document.querySelector("#routeRiskChoice");
+// #1383 M-LOOP job-offer container. The writer `renderOfferedJobs`
+// (below) stamps one `<button data-aftersign-tap-choice="…">` per
+// job id into this node on every renderText() pass while the
+// packet-offered beat is live; the surface stays hidden
+// (data-visible="false") off-beat, same discipline as
+// `#routeRiskChoice` above.
+const offeredJobs = document.querySelector("#offeredJobs");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
@@ -1453,6 +1481,74 @@ const publishState = () => {
   // get the same divergent set that the played surface renders.
   // `getOfferedActions` exposes the pure primitive so a caller can
   // pin the divergence without touching the DOM.
+  // #1383 M-LOOP-JOBS seam. Renders one tappable job-offer button
+  // per id `computeOfferedJobs` returns into the shipped
+  // `#offeredJobs` container, using memory derived from the CURRENT
+  // `state.packet.delivered` fact (delivered on the prior run →
+  // `priorOutcome: "completed"` → divergent job set; else safe-default
+  // single-element set). Callers (renderText loop, harness, dev
+  // overlays, e2e specs) all see the same job set the played
+  // surface renders. Returns the created button elements so a caller
+  // can assert on the shape without re-querying the DOM.
+  window.__game.renderOfferedJobs = () => {
+    if (!offeredJobs) return [];
+    // Full re-render: a stale job-offer element from the prior
+    // memory posture must not survive divergence — the element set
+    // IS the player-visible surface #1383 asks for. Matches the
+    // #routeRiskChoice discipline just above.
+    while (offeredJobs.firstChild) {
+      offeredJobs.removeChild(offeredJobs.firstChild);
+    }
+    // Derive player memory from the durable-save signal the served
+    // surface already carries. `state.packet.delivered` flips true
+    // inside `deliverPacket()` and rides through the persist payload,
+    // so a returning boot arrives here with `interactionCount: 1`
+    // (mapped to `priorOutcome: "completed"` by the shared
+    // `deriveOfferedJobsPlayerMemory` helper). Fresh boot passes
+    // undefined → primitive returns [SAFE_DEFAULT_JOB_ID].
+    const memory = deriveOfferedJobsPlayerMemory(
+      state.packet.delivered
+        ? { playerName: state.player.name ?? "", interactionCount: 1 }
+        : undefined,
+    );
+    const jobIds = computeOfferedJobs(memory).slice(0, 3);
+    const buttons = jobIds.map((jobId) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = `job-offer-${jobId}`;
+      button.dataset.jobId = jobId;
+      // Every job-offer button is a real tap-choice surface — the
+      // 44px minimum-target guard and the pointer-to-render probe
+      // both key off `data-aftersign-tap-choice`.
+      button.dataset.aftersignTapChoice = `job-offer-${jobId}`;
+      button.className = "job-offer-button";
+      // Human-readable label derived deterministically from the id
+      // ("job-safe-delivery" → "Job Safe Delivery"). The primitive
+      // owns ids, not display copy, so the projection derives
+      // rather than authors — matches the harness projection's
+      // labeling discipline.
+      button.textContent = jobId
+        .split("-")
+        .filter((word) => word.length > 0)
+        .map((word) => word.slice(0, 1).toUpperCase() + word.slice(1))
+        .join(" ");
+      button.addEventListener("click", () => {
+        // Record the pick on state so the persist payload carries
+        // it and a future beat can react. Deliberately narrow: the
+        // full "accepted job → run" beat is out of scope for #1383
+        // (which asks for tappable slot rendering, not the accept
+        // handler); this stamp keeps the tap non-inert and lets a
+        // sibling issue grow the accept flow without re-wiring the
+        // surface.
+        state.player.offeredJobId = jobId;
+        markStateDirty();
+        persist({ dirty: true });
+      });
+      offeredJobs.appendChild(button);
+      return button;
+    });
+    return buttons;
+  };
   window.__game.renderRouteRiskChoice = () => {
     if (!routeRiskChoice) return [];
     return renderRouteRiskChoice({
@@ -1540,6 +1636,30 @@ const renderText = () => {
     } else if (routeRiskChoice.firstChild) {
       while (routeRiskChoice.firstChild) {
         routeRiskChoice.removeChild(routeRiskChoice.firstChild);
+      }
+    }
+  }
+
+  // #1383 M-LOOP job-offer visibility gate. The offered-jobs
+  // container is visible ONLY at the `packet-offered` beat — the
+  // beat #1383 explicitly names ("At `packet-offered` beat,
+  // `computeOfferedJobs()` is called with current `player.memory`").
+  // Off-beat: hide the container AND drain any stale buttons so a
+  // beat advance can't leave orphan job offers behind. On-beat:
+  // re-render through the same runtime seam a harness / e2e drives,
+  // so the divergence the primitive produces reaches the DOM every
+  // pass. Mirrors the #routeRiskChoice discipline just above.
+  const isPacketOfferedBeat = state.scene.beat === "packet-offered";
+  if (offeredJobs) {
+    const offeredJobsVisible = isPacketOfferedBeat;
+    if (offeredJobs.dataset.visible !== String(offeredJobsVisible)) {
+      offeredJobs.dataset.visible = String(offeredJobsVisible);
+    }
+    if (offeredJobsVisible) {
+      window.__game.renderOfferedJobs();
+    } else if (offeredJobs.firstChild) {
+      while (offeredJobs.firstChild) {
+        offeredJobs.removeChild(offeredJobs.firstChild);
       }
     }
   }

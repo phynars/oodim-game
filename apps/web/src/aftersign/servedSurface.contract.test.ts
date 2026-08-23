@@ -314,6 +314,62 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain("data-aftersign-route-risk-surface");
   });
 
+  it("renders offered-jobs slots on the shipped surface at packet-offered (#1383, M-LOOP)", () => {
+    // Blocking review on PR #1390: same shape as the routeRisk
+    // precedent right above — `computeOfferedJobs` with no served-
+    // page consumer is green tests over dead code. `aftersign/
+    // main.js` must import the primitive + the harness-shape
+    // deriver from
+    // `packages/aftersign/src/computeOfferedJobs.ts`, gate an
+    // `#offeredJobs` render on the `packet-offered` beat, stamp
+    // 1–3 tappable buttons with the stable id contract
+    // (`id="job-offer-{id}"`, `data-job-id="{id}"`,
+    // `data-aftersign-tap-choice="job-offer-{id}"`), and expose
+    // `window.__game.renderOfferedJobs`. index.html hosts the
+    // `#offeredJobs` container marked with `data-aftersign-job-
+    // offers`. Any future refactor that unwires the seam reds
+    // this pin before the player-visible surface drifts.
+    const main = readServedAftersignFile("main.js");
+    // Imported specifier — a rename in computeOfferedJobs.ts must red.
+    expect(main).toContain(
+      "../packages/aftersign/src/computeOfferedJobs",
+    );
+    expect(main).toContain("computeOfferedJobs");
+    expect(main).toContain("deriveOfferedJobsPlayerMemory");
+    // Runtime seam on window.__game — same shape the harness
+    // publishes (bootWindowGame.ts::renderOfferedJobs), so a
+    // driver of either surface uses the same vocabulary.
+    expect(main).toContain("window.__game.renderOfferedJobs");
+    // Beat-gated visibility: the render only fires at
+    // `packet-offered`, matching #1383's acceptance criterion
+    // ("At `packet-offered` beat, `computeOfferedJobs()` is
+    // called").
+    expect(main).toContain('state.scene.beat === "packet-offered"');
+    // Bind-through pin: the imported primitive must actually be
+    // INVOKED inside main.js — a rename that updates the import
+    // but drops the call site still reds here.
+    expect(main).toMatch(
+      /window\.__game\.renderOfferedJobs = \(\)[\s\S]{0,1200}computeOfferedJobs\(/,
+    );
+    // Each rendered element carries the stable id contract #1383
+    // requires. Grep on the id-template literal + attribute
+    // stamps so a rename here (or a refactor that authors ids
+    // externally) reds the pin.
+    expect(main).toContain("job-offer-");
+    expect(main).toContain("data-job-id");
+    // Every job-offer button is a real tap-choice surface, so
+    // the 44px minimum-target guard covers them.
+    expect(main).toMatch(/data-aftersign-tap-choice[\s\S]{0,80}job-offer-/);
+
+    // Served DOM container — the writer stamps buttons into a
+    // node marked with `data-aftersign-job-offers`, so index.html
+    // must host that surface. A refactor that drops the container
+    // leaves the writer with nowhere to render.
+    const html = readServedAftersignFile("index.html");
+    expect(html).toContain('id="offeredJobs"');
+    expect(html).toContain("data-aftersign-job-offers");
+  });
+
   it("renders Saint Orra's first-name dialogue on the shipped surface", () => {
     // Blocking review on PR #1331: same shape as the return-tone /
     // tap-choice / tap-confirm precedents above — a frozen dialogue
