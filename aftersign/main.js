@@ -240,6 +240,22 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+// Memory-derived offered ACTION SET (M-LOOP-E1, #1371). Wiring the
+// pure map into main.js here turns `offeredActions.ts` from a
+// contract-only module into a SHIPPED renderer: the served page
+// reads the player's persisted memory record (packetOutcome,
+// orraAction, and the return tone the player struck), asks the
+// pure function which action ids to expose, and reconciles a
+// tray of `<button data-offered-action="<id>">` children into the
+// DOM on every publishState() tick. Two divergent saves surface
+// two DIFFERENT tappable id sets — the divergence axis M-LOOP-E1
+// measures, proven end-to-end by the sibling done-gate spec
+// (aftersign/e2e/m-loop-divergence-phone-tap-playtest.spec.ts,
+// #1370). Same discipline as every other cross-package consumer
+// in this file: the mapping lives in `apps/web/src/aftersign/`
+// so vitest can unit-test the pure function, and this module is
+// the runtime that renders it.
+import { computeOfferedActions } from "../apps/web/src/aftersign/offeredActions.ts";
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -256,6 +272,16 @@ const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
 const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
+// M-LOOP-E1 (#1371) — served consumer of the memory-derived OFFERED
+// ACTION SET. The tray element is authored inert in index.html
+// (`<div id="offeredActions" data-empty="true">`); `renderOfferedActions()`
+// (declared alongside publishState below) reconciles child buttons
+// against `snapshot.story.offeredActions` on every publish, so two
+// divergent memory records expose two DIFFERENT `[data-offered-action]`
+// element sets on the live DOM. That's the ELEMENT-LEVEL divergence
+// the #1370 done-gate spec asserts (a button-id present in run A and
+// absent in run B — not a re-labeled or hidden control).
+const offeredActionsTray = document.querySelector("#offeredActions");
 
 const CONFIRM_FEEDBACK = INTERACTION_CONFIRM_FEEL;
 const MEMORY_RECOGNITION_FEEDBACK = IO_RECOGNITION_BEAT_FEEDBACK;
@@ -1131,8 +1157,137 @@ const assertFeelContract = () => {
   return checkPlayerMovementFeel(MOVEMENT);
 };
 
+// M-LOOP-E1 (#1371) — reconcile the memory-derived offered ACTION
+// SET into `#offeredActions` on every publishState() tick.
+//
+// Contract:
+//   • Reads the same three axes the pure map (`computeOfferedActions`)
+//     keys on: `packetOutcome` (from Io's durable memory facts),
+//     `orraAction` (from Orra's memory), and `returnTone`
+//     (mapped from `state.player.returnReason`: kind→warm,
+//     evasive→plain, blunt→cold — the tone-vocabulary alias documented
+//     on the pure map's `AftersignReturnTone`).
+//   • Reconciles the tray's children to the pure map's output:
+//     each returned action becomes a real `<button>` with
+//     `data-offered-action="<id>"` and
+//     `data-aftersign-tap-choice="offered-action"`. Non-offered
+//     actions are ABSENT from the DOM — that's the divergence axis
+//     the done-gate spec (#1370) asserts (element-present-vs-absent,
+//     not text-different).
+//   • Empty set collapses the tray via `data-empty="true"` so an
+//     uncommitted memory record shows no phantom controls.
+//
+// Taps: the buttons are real tappable elements that stamp
+// `window.__game.lastOfferedActionTap = { id, tappedAt }` when
+// pressed. That's the divergence RECEIPT — a taps-only phone spec
+// can confirm both that a tap landed AND that the id it landed on
+// is the id the memory record predicted. The tap does NOT drive the
+// existing state machine (which owns its own deliver/route buttons);
+// it's the M-LOOP element-level signal, not a replacement for the
+// packet-fork wiring.
+const readMemoryRecordForOfferedActions = () => {
+  const packetOutcome =
+    state.delivery.outcome === "sealed"
+      ? "sealed"
+      : state.delivery.outcome === "opened"
+        ? "opened"
+        : null;
+  // The served page's Orra recognition memory is a facts array keyed
+  // on the pharmacy-vigil action vocabulary (`"lit"` / `"spared"`,
+  // from `orraRecognitionMemory.ts`), not the pure map's higher-level
+  // "answered-saint-orra" label. The `answer-for-orra*` branch of the
+  // offered-actions map is what the vitest surface consumes; the
+  // served page keeps `orraAction: null` here so the packet-outcome
+  // branch stays the served divergence axis. When a future story
+  // beat mints an "answered-saint-orra" fact directly, this reader
+  // can lift it — same shape.
+  const orraAction = null;
+  const returnTone =
+    state.player.returnReason === "kind"
+      ? "warm"
+      : state.player.returnReason === "blunt"
+        ? "cold"
+        : state.player.returnReason === "evasive"
+          ? "plain"
+          : undefined;
+  return { packetOutcome, orraAction, returnTone };
+};
+
+const renderOfferedActions = () => {
+  if (!offeredActionsTray) return [];
+  const record = readMemoryRecordForOfferedActions();
+  // Fresh boot with no committed memory (packetOutcome null, no
+  // orraAction): the memory record hasn't diverged yet, so the tray
+  // stays empty. The pure map has a permissive fall-through for
+  // uncommitted records (unit-tested that a bare `{packetOutcome:
+  // null}` still returns a default sealed action), but on the served
+  // surface we prefer the honest reading — an uncommitted save shows
+  // no phantom controls, and the #1370 done-gate seeds committed
+  // records that pass this guard.
+  const offered =
+    record.packetOutcome === null && record.orraAction === null
+      ? []
+      : computeOfferedActions(record);
+  const wantedIds = new Set(offered.map((action) => action.id));
+
+  // Remove any child button whose id is no longer offered — this is
+  // what makes non-offered actions ABSENT (not merely hidden) and
+  // therefore what the #1370 spec's element-level assertion reads.
+  for (const child of Array.from(offeredActionsTray.children)) {
+    const id = child.getAttribute && child.getAttribute("data-offered-action");
+    if (!id || !wantedIds.has(id)) {
+      child.remove();
+    }
+  }
+
+  // Insert / update the buttons the pure map DID offer. Keyed on id
+  // so a tick that returns the same set is idempotent (existing
+  // buttons keep their event listeners).
+  for (const action of offered) {
+    let button = offeredActionsTray.querySelector(
+      `button[data-offered-action="${action.id}"]`,
+    );
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("data-offered-action", action.id);
+      // Reuse the shared tap-choice attribute so the 44px min-target
+      // report walks these buttons like every other committed fork.
+      button.setAttribute("data-aftersign-tap-choice", "offered-action");
+      button.addEventListener("click", () => {
+        // Divergence RECEIPT — a taps-only spec can prove the tap
+        // landed on the id the memory record predicted (the pure
+        // map returned).
+        window.__game = window.__game || {};
+        window.__game.lastOfferedActionTap = {
+          id: action.id,
+          tappedAt:
+            typeof performance !== "undefined" && typeof performance.now === "function"
+              ? performance.now()
+              : Date.now(),
+        };
+      });
+      offeredActionsTray.appendChild(button);
+    }
+    if (button.textContent !== action.label) {
+      button.textContent = action.label;
+    }
+  }
+
+  offeredActionsTray.setAttribute(
+    "data-empty",
+    offered.length === 0 ? "true" : "false",
+  );
+  return offered;
+};
+
 const publishState = () => {
   syncIoLine();
+  // M-LOOP-E1 (#1371) — reconcile the memory-derived offered ACTION
+  // SET into the DOM on every publish tick. Captured into a local so
+  // the `window.__game.getSnapshot()` payload below can expose the
+  // predicted id set alongside the live DOM (one axis, one source).
+  const currentOfferedActions = renderOfferedActions();
   syncPacketIntent();
   // NOTE: Orra's lastLine/lastLineId are updated at the two places
   // that actually change Orra's memory or the player's beat with
@@ -1221,7 +1376,13 @@ const publishState = () => {
       slug: state.slug,
       build: { slug: state.slug, mode: buildMode },
       scene: state.scene,
-      story: state.story,
+      // M-LOOP-E1 (#1371): expose the memory-derived offered action
+      // set on `story.offeredActions` so a taps-only Playwright spec
+      // (the #1370 done-gate) can assert element-level divergence
+      // between two saves without re-implementing the pure map. The
+      // renderer above reconciles the same list into `#offeredActions`
+      // on every publish tick, so DOM and snapshot never disagree.
+      story: { ...state.story, offeredActions: currentOfferedActions },
       player: state.player,
       packet: state.packet,
       delivery: {

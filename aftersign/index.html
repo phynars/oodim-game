@@ -395,6 +395,26 @@
         pointer-events: auto;
       }
 
+      /* Offered-actions tray (M-LOOP-E1 #1371) — the memory-derived
+         job board. Children are appended by main.js's
+         `renderOfferedActions()` from `snapshot.story.offeredActions`;
+         each child is a real <button> tappable that stamps
+         `data-offered-action="<id>"`. The tray collapses (via the
+         [data-empty="true"] rule below) when the map returns no
+         offers, so an empty snapshot still parses cleanly and takes
+         zero vertical space on the HUD. */
+      .offered-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+        pointer-events: auto;
+      }
+
+      .offered-actions[data-empty="true"] {
+        display: none;
+      }
+
       .move-pad {
         position: fixed;
         left: max(18px, env(safe-area-inset-left));
@@ -646,6 +666,18 @@
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
         <p class="line" id="line">Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.</p>
+          <!--
+            M-LOOP-E1 (#1371): memory-derived OFFERED ACTION SET.
+            Rendered as distinct tappable elements by main.js from
+            snapshot.story.offeredActions (pure map in
+            apps/web/src/aftersign/offeredActions.ts). Empty by
+            default; the renderer reconciles children on every
+            publishState() so two divergent memory records expose
+            two distinct sets of [data-offered-action] buttons.
+            Non-offered actions are ABSENT from the DOM, not merely
+            hidden — that's the divergence gate spec #1370 asserts.
+          -->
+          <div id="offeredActions" class="offered-actions" data-empty="true" aria-label="Job actions offered by memory"></div>
         <div class="controls">
           <!--
             data-aftersign-tap-choice: names the buttons that COMMIT a

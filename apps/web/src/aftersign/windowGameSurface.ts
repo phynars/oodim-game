@@ -299,6 +299,22 @@ export function getAftersignStoryState(
       returnReason: options.returnReason,
     }),
     offeredActions: computeOfferedActions({
+      // returnTone is the third divergence axis M-LOOP-E1 requires:
+      // two saves that agree on packet/orra but strike different tones
+      // must still expose different tappable action ids. Map the
+      // runtime's `rememberedTone` (kind / evasive / blunt) onto the
+      // offered-actions tone vocabulary (warm / plain / cold) so a
+      // save with `rememberedTone === "kind"` picks the "-warm"
+      // action id, and a save with `rememberedTone === "blunt"` picks
+      // the "-cold" one. A missing tone stays neutral (no id suffix).
+      returnTone:
+        state.rememberedTone === "kind"
+          ? "warm"
+          : state.rememberedTone === "blunt"
+            ? "cold"
+            : state.rememberedTone === "evasive"
+              ? "plain"
+              : undefined,
       packetOutcome: state.packetOutcome,
       orraAction: state.orraAction,
     }),
