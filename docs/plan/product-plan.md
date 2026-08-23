@@ -512,30 +512,34 @@ persistence LOAD-BEARING rather than a recognition trick.
 
 ---
 
-## Story map (M-LOOP-E1) — TO BE FILED (next planning chunk)
+## Story map (M-LOOP-E1)
 
-**Not yet filed.** The next chunk of this planning cycle files the integration
-story (#4 above) FIRST, then the implementation + playtest stories. Every story
-MUST carry at the TOP of its body:
+**Cap note (2026-08-22):** open-issue cap is HARD 4/3. #1370/#1371/#1372 are
+filed + header-lined. The **payback-channel** story and the **two-rounds
+PLAYTEST** story are DRAFTED but cap-BLOCKED — they cannot be filed until the
+polish issue **#1322** (M-CONTINUE second-packet wire-in, folds into the loop) is
+CLOSED or a slot otherwise frees. The operator must dispose #1322 (recommended:
+close-as-folded-in — its second-packet hand-off is now a M-LOOP payback channel).
+
+Every story carries at the TOP of its body:
 
 ```
 Milestone: M-LOOP — a phone player finishes round one and can answer "what will you do differently next round?" (divergence, not dialogue)
 Epic: M-LOOP-E1 — the served job offer is computed from memory + one route-risk fact changes a later round's available actions
 ```
 
-Planned story shape (next chunk to file, 3–7 S/M, ≤1 harness-only in 4):
-1. **Integration DONE-gate (filed FIRST, M)** — taps-only divergence spec: two
-   seeded saves → different tappable actions on the served page.
-2. **Memory-computed job set (M)** — wire the `io-next-job` offer to derive the
-   job set from the memory record; render divergent tappable job buttons.
-3. **Route risk choice + fact recording (M)** — one tappable risk fork on the
-   delivery run, recorded as a fact in the memory record on the served page.
-4. **Payback channel (M)** — the recorded risk fact changes a later round's
-   available actions (job appears/disappears OR price moves OR shortcut unlocks).
-5. **PLAYTEST spec extended to TWO rounds (M)** — the standing playtest plays
-   two consecutive rounds by taps, asserting the changed available action.
-6. (optional) **#1322 re-scope** — fold Io's second-packet hand-off into a
-   memory-computed job rather than inert copy.
+| Story | Issue | Size | Role | Status |
+|-------|-------|------|------|--------|
+| **Taps-only DIVERGENCE done-gate (filed FIRST)** — seed two divergent memory saves, play one round each on a phone viewport by taps, assert element-level action-set divergence; `window.__game` invariant-only | **#1370** | M | integration done-gate | filed |
+| **Compute the served run's action SET from the memory record** — derive which offer/route/price tappables render from the record so the action set can diverge | **#1371** | M | consumer wire-in (record → action set) | filed |
+| **Add a real route + risk choice with a persisted consequence** — two tappable route options in the run, consequence persisted into the memory record | **#1372** | M | consumer wire-in (route/risk axis) | filed |
+| **Mechanical payback channel — price-moves / offer-appears from the memory record** — consume `selectIoSecondPacketCopy` (`aftersign/src/ioSecondPacketCopy.ts`) as a payback whose TAPPABLE presence diverges by record; element-level divergence gate | **#1322 (folds in)** | M | consumer wire-in (payback channel) | **DRAFTED — cap-blocked on #1322 disposal** |
+| **Two-rounds PLAYTEST** — extend `m-continue-phone-tap-playtest.spec.ts` boot→round1→round2 taps-only; assert round-1 payback visible as a tappable element in round 2 (≤1-in-4 harness-adjacent) | — | M | playtest (2-round loop) | **DRAFTED — cap-blocked** |
+
+**Integration-first note:** #1370 (the divergence done-gate) was filed BEFORE the
+implementation stories, per the integration-first rule. #1371/#1372 build the
+record→action-set derivation + route/risk axis it asserts. The payback-channel +
+two-round playtest stories complete the map once the cap frees.
 
 ---
 
