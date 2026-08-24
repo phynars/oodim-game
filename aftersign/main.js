@@ -235,6 +235,11 @@ import {
   recordRouteRun,
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
+import {
+  computeOfferedJobs,
+  deriveOfferedJobsPlayerMemory,
+  SAFE_DEFAULT_JOB_ID,
+} from "../packages/aftersign/src/computeOfferedJobs.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -274,6 +279,7 @@ const skipRouteButton = document.querySelector("#skipRouteButton");
 // container on every renderText() pass while the packet-choice beat
 // is live; the surface stays hidden (data-visible="false") off-beat.
 const routeRiskChoice = document.querySelector("#routeRiskChoice");
+const offeredJobs = document.querySelector("#offeredJobs");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
@@ -405,6 +411,7 @@ const state = {
     // for free — no new persistence branch. `computeOfferedActions`
     // reads it on the next run to diverge the offered-action set.
     routeRisk: stored?.player?.routeRisk ?? null,
+    interactionCount: stored?.player?.interactionCount ?? 0,
   },
   packet: {
     delivered: Boolean(stored?.packet?.delivered),
@@ -1503,6 +1510,28 @@ const renderText = () => {
   // action, keyed off `state.player.routeRisk` (null on the first
   // run → two "recovery" actions; after a fast/safe pick the set
   // diverges). Each tap records the run + persists + re-renders.
+  if (offeredJobs) {
+    const jobIds = state.scene.beat === "packet-offered"
+      ? computeOfferedJobs(deriveOfferedJobsPlayerMemory({
+          interactionCount: state.player.interactionCount,
+        }))
+      : [];
+    const expectedIds = jobIds.map((jobId) =>
+      jobId === SAFE_DEFAULT_JOB_ID ? "job-offer-safe-default" : `job-offer-${jobId}`,
+    );
+    if (
+      Array.from(offeredJobs.children, (node) => node.id).join("|") !== expectedIds.join("|")
+    ) {
+      offeredJobs.replaceChildren(...jobIds.map((jobId) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = jobId === SAFE_DEFAULT_JOB_ID ? "job-offer-safe-default" : `job-offer-${jobId}`;
+        button.textContent = jobId === SAFE_DEFAULT_JOB_ID ? "Take the waiting job" : "Take this job";
+        return button;
+      }));
+    }
+  }
+
   if (routeRiskChoice) {
     const routeRiskVisible = isPacketChoiceBeat;
     if (routeRiskChoice.dataset.visible !== String(routeRiskVisible)) {
@@ -1808,7 +1837,7 @@ const choose = async (choiceId) => {
       };
       state.delivery.outcome = "unknown";
       state.player.secondAction = null;
-      setBeat("packet-choice");
+      setBeat("packet-offered");
       markStateDirty();
       publishState();
       return;
@@ -2750,6 +2779,7 @@ const deliverPacket = (source = "hud-button") => {
   state.packet.route = "blue rainline";
   state.packet.deliveredAt = new Date().toISOString();
   state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
+  state.player.interactionCount += 1;
   const { packetOutcomeFact, secondActionFact } = memoryFacts();
   state.npcs.io.memory = [packetOutcomeFact, secondActionFact];
   state.save.revision += 1;
@@ -2840,6 +2870,7 @@ const resetSliceSave = async () => {
     // player's kiosk acknowledgement.
     secondAction: null,
     returnReason: null,
+    interactionCount: 0,
   };
   state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
   state.delivery = { id: "blue-packet", outcome: "unknown" };
