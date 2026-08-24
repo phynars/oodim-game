@@ -84,7 +84,17 @@ test.describe("AFTERSIGN M-CONTINUE next-packet loop", () => {
     await tapChoice("ask-for-next-job");
     await waitForBeat("io-next-job");
 
+    // PR #1396 / #1395: `deliver-packet` from `io-next-job` re-enters
+    // the loop at the FRESH `packet-offered` beat (not `packet-choice`)
+    // — the next-packet loop is a new packet-tap gesture, not a
+    // route-choice re-run. This is the served path where a returning
+    // player's completed-set offered-jobs render lands
+    // (`aftersign/e2e/job-offers-played.spec.ts` asserts the divergent
+    // set at this exact beat). The player then taps `#packetButton`
+    // again to reach `packet-choice`.
     await tapChoice("deliver-packet");
+    await waitForBeat("packet-offered");
+    await page.locator("#packetButton").click();
     await waitForBeat("packet-choice");
 
     await expect(page.locator('button[data-choice-id="acknowledge-kiosk"]')).toBeVisible({ timeout: WAIT_MS });
