@@ -90,6 +90,20 @@ test.describe("AFTERSIGN M-CONTINUE next-packet loop — button affordance", () 
     await waitForBeat("io-next-job");
     await (await expectChoiceEnabled("deliver-packet")).click();
 
+    // PR #1398: the next-packet loop-back now resets to `packet-offered`
+    // (not `packet-choice`) so the `#offeredJobs` render pipeline —
+    // gated on that beat — re-opens visibly on lap 2. So the second lap
+    // MUST first prove the packet tap is visible + enabled again, then
+    // land on `packet-choice` with both branches tappable.
+    await waitForBeat("packet-offered");
+    await expect(packetButton, "packet button should be visible on lap 2 packet-offered").toBeVisible({
+      timeout: WAIT_MS,
+    });
+    await expect(packetButton, "packet button should be enabled on lap 2 packet-offered").toBeEnabled({
+      timeout: WAIT_MS,
+    });
+    await packetButton.click();
+
     // Second lap packet-choice → both branches are enabled (real
     // affordance: player must be able to CHOOSE, not just see one path).
     await waitForBeat("packet-choice");
