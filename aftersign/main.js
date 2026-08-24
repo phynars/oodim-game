@@ -3223,8 +3223,8 @@ if (!state.player.flags.io_intro_seen) {
   state.player.flags.io_intro_seen = true;
   markStateDirty();
 }
-renderText();
 publishState();
+renderText();
 resize();
 
 let last = performance.now();
