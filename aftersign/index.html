@@ -673,6 +673,23 @@
           <div id="routeRiskChoice" class="route-choice" data-visible="false" data-aftersign-route-risk-surface aria-label="Choose a fast or safe route for this delivery run">
             <span class="route-choice-label">Route risk</span>
           </div>
+          <!-- #1395 M-CONTINUE — computeOfferedJobs served surface.
+               At the packet-offered beat, main.js's renderText() stamps
+               one `<button id="job-offer-<jobId>" data-aftersign-tap-choice="offer-<jobId>">`
+               into this container per id returned by
+               `computeOfferedJobs(memory)` (packages/aftersign/src/computeOfferedJobs.ts).
+               First-visit players get `[SAFE_DEFAULT_JOB_ID]` → one
+               `#job-offer-job-safe-delivery` button. A returning
+               player (state.packet.delivered → priorOutcome:"completed")
+               gets the completed set (`#job-offer-job-night-transfer`
+               + `#job-offer-job-signed-receipt`), and the safe-default
+               button is absent — the divergent render #1393 asked for.
+               Off-beat the surface stays hidden (data-visible="false")
+               and its children are cleared; same discipline as the
+               sibling #routeRiskChoice surface just above. -->
+          <div id="offeredJobs" class="route-choice" data-visible="false" data-aftersign-offered-jobs-surface aria-label="Choose the next packet Io hands you">
+            <span class="route-choice-label">Offered jobs</span>
+          </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
           <button id="resetButton" type="button">Reset slice save</button>

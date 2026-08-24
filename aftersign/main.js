@@ -235,6 +235,21 @@ import {
   recordRouteRun,
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
+// #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
+// here is what closes the gap Ivy filed in #1393/#1395: the primitive
+// (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
+// harness surface (apps/web/src/aftersign/windowGameSurface.ts) consumes
+// it, but the SERVED aftersign/main.js never rendered its output — so
+// a returning player who reaches `packet-offered` saw only the packet-
+// tap button, not the completed-set job offers. At renderText() below
+// the packet-offered beat now derives PlayerMemory from the durable
+// `state.packet.delivered` flag (delivered → `priorOutcome:"completed"`,
+// undelivered → undefined → safe default) and stamps one
+// `<button id="job-offer-<jobId>" data-aftersign-tap-choice="offer-<jobId>">`
+// per selected id into `#offeredJobs`. Sibling e2e
+// `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
+// completed-set render.
+import { computeOfferedJobs } from "../packages/aftersign/src/computeOfferedJobs";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -274,6 +289,10 @@ const skipRouteButton = document.querySelector("#skipRouteButton");
 // container on every renderText() pass while the packet-choice beat
 // is live; the surface stays hidden (data-visible="false") off-beat.
 const routeRiskChoice = document.querySelector("#routeRiskChoice");
+// #1395: served-page container for computeOfferedJobs. renderText()
+// stamps one `<button id="job-offer-<jobId>">` per selected job id at
+// the packet-offered beat; hidden + cleared off-beat.
+const offeredJobs = document.querySelector("#offeredJobs");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
@@ -1540,6 +1559,67 @@ const renderText = () => {
     } else if (routeRiskChoice.firstChild) {
       while (routeRiskChoice.firstChild) {
         routeRiskChoice.removeChild(routeRiskChoice.firstChild);
+      }
+    }
+  }
+
+  // #1395 — computeOfferedJobs served render.
+  //
+  // Mirrors the #routeRiskChoice surface right above: on-beat we
+  // stamp one button per id `computeOfferedJobs(memory)` returns
+  // into `#offeredJobs`; off-beat the surface is hidden and its
+  // children cleared. The `PlayerMemory` we hand the primitive is
+  // derived from the durable `state.packet.delivered` flag — a
+  // returning player who already completed a delivery reaches
+  // `priorOutcome:"completed"` and the primitive returns
+  // `COMPLETED_JOB_IDS` (`job-night-transfer` +
+  // `job-signed-receipt`); a first-visit player passes undefined
+  // memory and the primitive returns `[SAFE_DEFAULT_JOB_ID]`
+  // (`job-safe-delivery`). Same discipline as the sibling
+  // route-risk surface — no new persistence branch, no drift with
+  // the harness's `deriveOfferedJobsPlayerMemory` mapping
+  // (`interactionCount >= 1 → priorOutcome:"completed"` is the
+  // same "returning player" signal, expressed here directly
+  // against the durable delivery flag the served state already
+  // carries).
+  //
+  // The button id is `job-offer-<jobId>` — the exact selector
+  // shape the sibling e2e (aftersign/e2e/job-offers-played.spec.ts)
+  // asserts. `data-aftersign-tap-choice="offer-<jobId>"` slots the
+  // button into the shipped tap-choice vocabulary so a tap harness
+  // walking that selector picks these up without a fork.
+  const isPacketOfferedBeat = state.scene.beat === "packet-offered";
+  if (offeredJobs) {
+    if (offeredJobs.dataset.visible !== String(isPacketOfferedBeat)) {
+      offeredJobs.dataset.visible = String(isPacketOfferedBeat);
+    }
+    if (isPacketOfferedBeat) {
+      const offeredJobsMemory = state.packet.delivered
+        ? { priorOutcome: "completed" }
+        : undefined;
+      const offeredJobIds = computeOfferedJobs(offeredJobsMemory);
+      // Idempotent re-render: clear then re-stamp so repeated
+      // renderText() passes at the same beat produce the same
+      // button set (same discipline as renderRouteRiskChoice).
+      while (offeredJobs.firstChild) {
+        offeredJobs.removeChild(offeredJobs.firstChild);
+      }
+      const label = document.createElement("span");
+      label.className = "route-choice-label";
+      label.textContent = "Offered jobs";
+      offeredJobs.appendChild(label);
+      for (const jobId of offeredJobIds) {
+        const button = document.createElement("button");
+        button.setAttribute("type", "button");
+        button.setAttribute("id", `job-offer-${jobId}`);
+        button.setAttribute("data-aftersign-tap-choice", `offer-${jobId}`);
+        button.setAttribute("data-offered-job-id", jobId);
+        button.textContent = jobId;
+        offeredJobs.appendChild(button);
+      }
+    } else if (offeredJobs.firstChild) {
+      while (offeredJobs.firstChild) {
+        offeredJobs.removeChild(offeredJobs.firstChild);
       }
     }
   }
