@@ -2118,9 +2118,12 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     revision: state.save.revision,
     playerId: state.player.id,
   };
+  // A delivered save is a returning player's next offer, not a terminal
+  // delivery screen. Preserve the completed memory while restoring the
+  // offer beat so its divergent completed-set actions can render.
   state.scene.beat = typeof saved.beat === "string"
     ? canonicalFlagshipBeat(saved.beat)
-    : state.packet.delivered ? "packet-delivered" : "packet-offered";
+    : "packet-offered";
 
   // PR #1249 (Soren review) — READ the io-next-job durability stamp
   // written by `buildIoNextJobDurabilityStamp` at save time. This is
