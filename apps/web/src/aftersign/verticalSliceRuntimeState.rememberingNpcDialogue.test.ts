@@ -24,6 +24,7 @@ import {
 } from "../../../../packages/aftersign/src/ioReturningSession";
 import { bootAftersignWindowGame } from "./harness/bootWindowGame";
 import { getIoFirstSessionLine } from "./ioFirstSessionCopy";
+import { AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL } from "./verticalSliceRuntimeState";
 import {
   createAftersignVerticalSliceState,
   encodeAftersignDurableSave,
@@ -139,21 +140,35 @@ describe("bootAftersignWindowGame — remembering-NPC dialogue is a shipped surf
     // to the package's bareReturn — exactly what the resolver contract
     // above locks in.
     expect(after.lines).toEqual([ioReturningSessionLines.bareReturn]);
+    expect(after.recognitionFeel).toEqual(AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL);
+    expect(after.recognitionFeel).toMatchObject({
+      preLineHoldMs: 120,
+      portraitPushInPx: 14,
+      portraitPushInMs: 260,
+      recognitionRingDelayMs: 90,
+      recognitionRingDurationMs: 420,
+      recognitionRingScale: 1.18,
+      recognitionRingOpacity: 0.72,
+      subtitlePopDelayMs: 180,
+      subtitlePopDistancePx: 8,
+      subtitlePopMs: 220,
+      audioCueDelayMs: 120,
+    });
   });
 
   it("routes Orra through the same shipped surface", () => {
     const harness = bootAftersignWindowGame();
 
-    expect(harness.getRememberingNpcDialogue("orra").lines).toEqual([
-      orraRecognitionLines.firstContact,
-    ]);
+    const before = harness.getRememberingNpcDialogue("orra");
+    expect(before.lines).toEqual([orraRecognitionLines.firstContact]);
+    expect(before.recognitionFeel).toBeNull();
 
     harness.meetNpc("orra");
     harness.load(harness.save());
     harness.meetNpc("orra");
 
-    expect(harness.getRememberingNpcDialogue("orra").lines).toEqual([
-      orraRecognitionLines.recognition,
-    ]);
+    const after = harness.getRememberingNpcDialogue("orra");
+    expect(after.lines).toEqual([orraRecognitionLines.recognition]);
+    expect(after.recognitionFeel).toEqual(AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL);
   });
 });
