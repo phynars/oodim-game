@@ -117,6 +117,15 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
     await page.locator("#packetButton").click();
     await waitForBeat(page, "packet-choice");
 
+    // Off the packet-offered beat, the offer surface must clear —
+    // job offers are an opening-beat surface, not a persistent tray.
+    // (The `#job-offer-*` id space belongs to the packet-offered
+    // render only; any leak into packet-choice is a real regression.)
+    await expect(
+      page.locator('[id^="job-offer-"]'),
+      "job-offer buttons must not persist past the packet-offered beat",
+    ).toHaveCount(0, { timeout: WAIT_MS });
+
     await tapChoice(page, "acknowledge-kiosk");
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
