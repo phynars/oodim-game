@@ -1808,7 +1808,15 @@ const choose = async (choiceId) => {
       };
       state.delivery.outcome = "unknown";
       state.player.secondAction = null;
-      setBeat("packet-choice");
+      // #1395: the next-packet loop is a NEW packet-tap gesture, not a
+      // route-choice re-run. `ask-for-next-job` → `io-next-job` →
+      // `deliver-packet` here must re-enter at `packet-offered` (the
+      // fresh packet-tap beat), NOT `packet-choice` (the post-tap
+      // route-memory fork). Routing back into `packet-choice` skipped
+      // the packet-tap surface — which is where the completed-set
+      // job-offer UI has to land for a returning player. See
+      // #1393 / #1395 for the full trace.
+      setBeat("packet-offered");
       markStateDirty();
       publishState();
       return;
