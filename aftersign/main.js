@@ -1594,7 +1594,24 @@ const renderText = () => {
       offeredJobs.dataset.visible = String(isPacketOfferedBeat);
     }
     if (isPacketOfferedBeat) {
-      const offeredJobsMemory = state.packet.delivered
+      // Soren review on PR #1396: the signal source must be a CAREER
+      // signal ("has the player ever completed a delivery"), not the
+      // per-packet `state.packet.delivered` flag ("is THIS packet
+      // delivered"). The next-packet loop branch (~line 1899 below)
+      // resets `state.packet = { delivered: false, ... }` BEFORE
+      // `setBeat("packet-offered")`, so at the re-entered
+      // `packet-offered` beat `state.packet.delivered` is already
+      // false → `computeOfferedJobs(undefined)` returns the safe-
+      // default set instead of the completed set. Inverts the spec's
+      // second-lap assertions deterministically.
+      //
+      // `state.npcs.io.memory` accumulates memory facts on delivery
+      // (packet-outcome fact minted by deliverPacket) and is NOT wiped
+      // by the loop reset — matching the harness's
+      // `deriveOfferedJobsPlayerMemory` (`interactionCount >= 1`),
+      // which is exactly this career-level "player has interacted"
+      // signal. One axis, no drift with the harness mapping.
+      const offeredJobsMemory = state.npcs.io.memory.length > 0
         ? { priorOutcome: "completed" }
         : undefined;
       const offeredJobIds = computeOfferedJobs(offeredJobsMemory);
