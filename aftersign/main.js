@@ -250,6 +250,7 @@ import {
 // `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
 // completed-set render.
 import { computeOfferedJobs } from "../packages/aftersign/src/computeOfferedJobs";
+import { stampJobOfferData } from "./src/jobOfferDom.js";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -1630,6 +1631,7 @@ const renderText = () => {
         button.setAttribute("type", "button");
         button.setAttribute("id", `job-offer-${jobId}`);
         button.setAttribute("data-aftersign-tap-choice", `offer-${jobId}`);
+        stampJobOfferData(button, jobId);
         button.setAttribute("data-offered-job-id", jobId);
         button.textContent = jobId;
         offeredJobs.appendChild(button);
