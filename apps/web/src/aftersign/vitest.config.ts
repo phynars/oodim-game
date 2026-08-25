@@ -18,7 +18,7 @@ export default defineConfig({
       "apps/web/src/aftersign/mcontinueReachableBeats.test.ts",
       "apps/web/src/aftersign/aftersignMilestoneAcceptanceSurface.test.ts",
       "apps/web/src/aftersign/aftersignDurableSaveLoadPlaytestSurface.test.ts",
-      "apps/web/src/aftersign/**/memory-divergence-phone-playtest.spec.ts",
+      "apps/web/src/aftersign/aftersignMemoryDivergencePlaytestSurface.test.ts",
       "apps/web/src/aftersign/aftersignPlayedAcceptanceNaming.test.ts",
       "apps/web/src/aftersign/mContinueVisibleButtons.contract.test.ts",
       "apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts",
