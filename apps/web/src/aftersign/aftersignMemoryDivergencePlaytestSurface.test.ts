@@ -37,11 +37,33 @@ import { describe, expect, it } from "vitest";
 // CI run).
 const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
 
-const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true)/i;
+// Phone context — either an explicit phone-viewport signal in the spec
+// itself, OR a `page.goto("/aftersign/...")` (the served aftersign page
+// is the phone-shaped surface; its viewport is supplied by the
+// Playwright project config, not by every individual spec). Loosened
+// after PR #1405 review: `job-offers-played.spec.ts` uses the default
+// project fixture and would otherwise be rejected despite being the
+// canonical played-divergence proof.
+const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true|page\.goto\(\s*["'`]\/aftersign\/)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ASSERTION_PATTERN = /\b(?:toBeVisible|getByRole|getByText|getByLabelText|locator)\s*\(/;
+// Harness-input rejection must fire on CODE, not on prose. A spec whose
+// header comment says "Nothing drives play through `__game.input.*`"
+// (m-loop-e1-phone-action-divergence.spec.ts) documents its own
+// abstinence and must not be rejected for saying so. Strip //-comments,
+// /* ... */ comments, and string/template literals before testing.
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
+
+function stripCommentsAndStrings(source: string): string {
+  // Order matters: block comments before line comments before strings.
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
+    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|[^`\\])*`/g, "``")
+    .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
+    .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
+}
 
 // Memory-divergence-specific signals. A memory-divergence phone
 // playtest proves that two runs with DIFFERENT durable-memory records
@@ -87,13 +109,19 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
 }
 
 function matchesMemoryDivergencePlaytest(source: string): boolean {
+  // The harness-input rejection must ignore comments and string
+  // literals (a spec is allowed to document its abstinence in prose).
+  // The other signals stay on the raw source — a `toBeVisible` inside
+  // a comment is unusual and still evidence of intent.
+  const code = stripCommentsAndStrings(source);
+
   // Base contract — same as the sibling durable-save guard.
   const isPhonePlaytest =
     PHONE_VIEWPORT_PATTERN.test(source) &&
     PLAYER_EVENT_PATTERN.test(source) &&
     VISIBLE_ASSERTION_PATTERN.test(source) &&
     HARNESS_READ_PATTERN.test(source) &&
-    !HARNESS_INPUT_PATTERN.test(source);
+    !HARNESS_INPUT_PATTERN.test(code);
   if (!isPhonePlaytest) {
     return false;
   }
