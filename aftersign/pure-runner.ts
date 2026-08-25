@@ -77,6 +77,16 @@ import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.t
 // (the sole import is `./ioSecondPacketCopy.ts`), satisfying the
 // extension-resolution contract documented above.
 import { runIoSecondPacketCopyChecks } from "./src/ioSecondPacketCopy.test.ts";
+// M-LOOP route/risk FEEL pins over the SHIPPED contract
+// (`apps/web/src/aftersign/routeRiskMemory.ts` — the module main.js
+// renders through `#routeRiskChoice`). Closes the "nothing consumes
+// this" gap Soren blocked PR #1403 on: the bundle now imports the
+// wired contract (no parallel vocabulary) and this runner is its CI
+// consumer in the blocking pure lane. Extension contract holds: the
+// bundle's sole relative import is `.ts`-extensioned and the leaf
+// (`routeRiskMemory.ts`) has ZERO relative imports, so the subgraph
+// resolves under `node --experimental-strip-types`.
+import { runRouteRiskFeelChecks } from "./src/routeRiskFeel.test.ts";
 
 type Runner = {
   label: string;
