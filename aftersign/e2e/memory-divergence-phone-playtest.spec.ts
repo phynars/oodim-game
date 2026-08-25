@@ -25,11 +25,11 @@ import { expect, test, type Page } from "@playwright/test";
 // review on PR #1396), which boot hydrates from the payload's
 // top-level `memory` array.
 //
-// Each slot then plays a tap-only interaction on the phone viewport
-// (packet tap → the offer surface clears off-beat), and slot A plays
-// a full first round through delivery to the recognition beat —
-// proving the divergent surfaces are PLAYABLE at phone size, not just
-// rendered.
+// Each slot then plays a FULL tap-only round on the phone viewport
+// (packet tap → route ack → deliver → recognition → return tone),
+// per #1384's "plays one complete round from EACH save via taps
+// only" criterion — proving both divergent surfaces are PLAYABLE at
+// phone size, not just rendered.
 //
 // Selectors match the shipped surface (`aftersign/main.js` renderText's
 // computeOfferedJobs block + `playerVisibleBeatDom.js`):
@@ -250,13 +250,23 @@ test.describe("AFTERSIGN memory divergence — phone playtest", () => {
     expect(idsB, "divergent saves must offer divergent job sets").not.toEqual(idsA);
     expect(idsB).not.toContain("job-safe-delivery");
 
-    // Tap-only playability at phone size on the divergent lane too:
-    // the packet tap advances the beat and clears the offer tray.
+    // Complete tap-only round at phone size on the divergent lane too
+    // (#1384: "plays one complete round from the second save via taps
+    // only"): packet tap → route ack → deliver → recognition beat →
+    // return tone. Same lane as slot A — deliver-packet at the
+    // packet-choice beat runs the full delivery + recognition flow
+    // regardless of the seeded prior-delivery state.
     await page.locator("#packetButton").click();
     await waitForBeat(page, "packet-choice");
     await expect(
       page.locator('[id^="job-offer-"]'),
       "job-offer buttons must not persist past the packet-offered beat",
     ).toHaveCount(0, { timeout: WAIT_MS });
+
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+    await tapReturnReason(page, "kind");
+    await waitForBeat(page, "return-tone-choice");
   });
 });
