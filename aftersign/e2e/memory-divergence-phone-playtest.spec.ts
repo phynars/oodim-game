@@ -31,9 +31,19 @@ import { expect, test, type Page } from "@playwright/test";
 //   - `#packetButton` for the packet tap at `packet-offered`
 //   - `button[data-choice-id="<id>"]` for choice buttons
 //   - `#offeredJobs [data-job-id]` for the computeOfferedJobs render
-
-const WAIT_MS = 10_000;
-const PLAYTEST_TIMEOUT_MS = 60_000;
+//
+// COLD-START BUDGET (why WAIT_MS is 60s and the test timeout 180s):
+// this lane boots three.js under SwiftShader's software renderer.
+// Sibling specs (io-recognition-memory-beat-contract.spec.ts header)
+// document that first-WebGL-context init can exceed Playwright's 30s
+// default on cold CI runners — the 10s waits in the first draft of
+// this spec were the lane's red: `waitForReady` raced the deferred
+// module boot and timed out before `scene.ready` ever flipped. Same
+// numbers as the sibling contract specs: 60s per wait, wide test
+// budget for the two full boot cycles this spec performs (this spec
+// navigates twice — two SwiftShader cold boots in one test).
+const WAIT_MS = 60_000;
+const PLAYTEST_TIMEOUT_MS = 180_000;
 
 // Phone-sized viewport — the divergence must hold on the mobile
 // surface the slice is tuned for (44px tap targets, movePad, etc.).
@@ -95,8 +105,18 @@ async function snapshotIoMemoryCount(page: Page): Promise<number> {
 // One played delivery round, taps only: packet tap at packet-offered
 // → route fork → deliver → the recognition beat lands. Proves the
 // divergent boot state is PLAYABLE, not just rendered.
+//
+// The packet tap is a plain `.click()` — the exact drive the merged,
+// green sibling `job-offers-played.spec.ts` uses on `#packetButton`
+// at this same beat; a quick tap commits the sealed outcome and
+// advances to `packet-choice`.
 async function playOneDeliveryRound(page: Page): Promise<void> {
-  await page.locator("#packetButton").click();
+  const packetButton = page.locator("#packetButton");
+  await expect(
+    packetButton,
+    "packet button should be visible at packet-offered",
+  ).toBeVisible({ timeout: WAIT_MS });
+  await packetButton.click();
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
@@ -104,10 +124,15 @@ async function playOneDeliveryRound(page: Page): Promise<void> {
 }
 
 // Trusted-courier seed: the exact persisted shape
-// `buildPersistPayload` writes (persistence.js) — a completed sealed
-// delivery with both durable memory facts recorded. `memory.length > 0`
-// is the career signal renderText's packet-offered block maps to
-// `{ priorOutcome: "completed" }`.
+// `buildPersistPayload` writes (aftersign/src/runtime/persistence.js)
+// — a completed sealed delivery with both durable memory facts
+// recorded. `memory.length > 0` is the career signal renderText's
+// packet-offered block maps to `{ priorOutcome: "completed" }`
+// (main.js: `state.npcs.io.memory.length > 0 → priorOutcome:
+// "completed"`). Memory-fact shapes match the builders in
+// aftersign/src/memoryFacts.js (buildPacketOutcomeMemoryFact /
+// buildSecondActionMemoryFact): delivery-outcome carries the packet
+// outcome, route-attention carries the second action.
 const trustedCourierSave = {
   beat: "packet-offered",
   player: {
