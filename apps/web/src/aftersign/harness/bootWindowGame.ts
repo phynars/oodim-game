@@ -3,6 +3,19 @@ import {
   ORRA_NAME_DEBT,
   type IoNextJobBeat,
 } from "../../../../../packages/aftersign/src/narrative-triage/io-recognition-beat";
+// Memory-branched job-offer copy. Selected here so the served-surface
+// snapshot at `story.nextJob.offer.copy` carries the flagship strings
+// (title / ioLine / actionLabel / summary / risk prompt / route labels)
+// the consuming scene renderer paints — a fresh boot sees the safe
+// first-run copy, a sealed-packet return sees the "trusted" branch,
+// an opened-packet return sees the "wax debt" branch. Kept as a JS
+// module so the frozen copy stays legible to non-TS reviewers; the
+// harness is the sole importer and this file is the ship-side consumer
+// #1404's reviewer asked for.
+import {
+  chooseAftersignJobOfferCopy,
+  type AftersignJobOfferCopy,
+} from "../aftersignJobOfferCopy.js";
 import { measurePointerToRenderLatency } from "../../../../../aftersign/src/inputAcknowledgeLatency";
 import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
@@ -677,6 +690,17 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
             jobId: IO_NEXT_JOB_OFFER.jobId,
             claimTag: IO_NEXT_JOB_OFFER.claimTag,
             nextBeat: IO_NEXT_JOB_OFFER.nextBeat,
+              // Memory-branched flagship copy for the next-job handoff.
+              // Selected against the current vertical-slice state so
+              // the served-page consumer paints the "safe first run",
+              // "trusted return", or "wax debt repair" strings without
+              // the harness authoring lines inline. Copy source lives
+              // in `aftersignJobOfferCopy.js` (frozen).
+              copy: chooseAftersignJobOfferCopy({
+                firstPacketOutcome: state.packetOutcome,
+                packetOpened: state.packetOutcome === "opened",
+                deliveredSealed: state.packetOutcome === "sealed",
+              }),
           },
           beat: {
             id: ORRA_NAME_DEBT.id,

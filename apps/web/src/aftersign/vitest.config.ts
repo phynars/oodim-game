@@ -28,6 +28,7 @@ export default defineConfig({
       "apps/web/src/aftersign/tapConfirmFeel.consumer.test.ts",
       "apps/web/src/aftersign/tapConfirmFeel.servedButton.test.ts",
       "apps/web/src/aftersign/routeRiskMemory.consumer.test.ts",
+      "apps/web/src/aftersign/aftersignJobOfferCopy.consumer.test.ts",
     ],
   },
 });
