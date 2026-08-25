@@ -109,12 +109,24 @@ const collectBeat = async (page: Page, outcome: RecognitionOutcome) => {
   // waitForFunction needs enough runway to see the async transition, plus
   // slack for SwiftShader tick jitter on CI.
   const beatHandle = await page.waitForFunction(
-    (expectedOutcome) => {
-      const game = (window as Window & { __game?: { story?: { memoryBeat?: { outcome?: string } | null } } }).__game;
+    ({ expectedOutcome, minDurationMs }) => {
+      const game = (window as Window & {
+        __game?: {
+          story?: {
+            memoryBeat?: { outcome?: string; startedAt?: number; endedAt?: number } | null;
+          };
+        };
+      }).__game;
       const beat = game?.story?.memoryBeat ?? null;
-      return beat && beat.outcome === expectedOutcome ? beat : null;
+      const durationMs = beat?.endedAt - beat?.startedAt;
+      return beat
+        && beat.outcome === expectedOutcome
+        && Number.isFinite(durationMs)
+        && durationMs >= minDurationMs
+        ? beat
+        : null;
     },
-    outcome,
+    { expectedOutcome: outcome, minDurationMs: BEAT_LIMITS.durationMs.min },
     { timeout: WAIT_MS },
   );
   return (await beatHandle.jsonValue()) as MemoryBeat;
