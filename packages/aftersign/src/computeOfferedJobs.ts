@@ -10,17 +10,55 @@ export interface PlayerMemory {
   priorOutcome?: PriorOutcome;
 }
 
-export const SAFE_DEFAULT_JOB_ID = "job-safe-delivery";
+export interface IoJobOffer {
+  id: string;
+  label: string;
+  routeRisk: "safe" | "risky" | "repair";
+}
+
+export const SAFE_DEFAULT_JOB_ID: IoJobOffer = {
+  id: "job-safe-delivery",
+  label: "Safe delivery",
+  routeRisk: "safe",
+};
 export const TRUSTED_COURIER_JOB_IDS = [
-  "job-sealed-return",
-  "job-private-ledger",
-] as const;
+  {
+    id: "job-sealed-return",
+    label: "Sealed return",
+    routeRisk: "risky",
+  },
+  {
+    id: "job-private-ledger",
+    label: "Private ledger",
+    routeRisk: "risky",
+  },
+] as const satisfies readonly IoJobOffer[];
 export const COMPLETED_JOB_IDS = [
-  "job-night-transfer",
-  "job-signed-receipt",
-] as const;
-export const GUARDED_JOB_IDS = ["job-low-risk-errand"] as const;
-export const FAILED_JOB_IDS = ["job-redemption-route"] as const;
+  {
+    id: "job-night-transfer",
+    label: "Night transfer",
+    routeRisk: "risky",
+  },
+  {
+    id: "job-signed-receipt",
+    label: "Signed receipt",
+    routeRisk: "risky",
+  },
+] as const satisfies readonly IoJobOffer[];
+export const GUARDED_JOB_IDS = [
+  {
+    id: "job-low-risk-errand",
+    label: "Low-risk errand",
+    routeRisk: "safe",
+  },
+] as const satisfies readonly IoJobOffer[];
+export const FAILED_JOB_IDS = [
+  {
+    id: "job-redemption-route",
+    label: "Redemption route",
+    routeRisk: "repair",
+  },
+] as const satisfies readonly IoJobOffer[];
 
 /**
  * Shape the harness-side player memory carries — `playerName` and
@@ -66,10 +104,10 @@ export function deriveOfferedJobsPlayerMemory(
 }
 
 /**
- * Selects deterministic job IDs from the player's remembered posture and outcome.
+ * Selects deterministic job offers from the player's remembered posture and outcome.
  * It never mutates the supplied memory or retains state between calls.
  */
-export function computeOfferedJobs(memory?: PlayerMemory): string[] {
+export function computeOfferedJobs(memory?: PlayerMemory): IoJobOffer[] {
   if (memory?.trustPosture === "trusted-courier") {
     return [...TRUSTED_COURIER_JOB_IDS];
   }
