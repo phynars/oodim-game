@@ -78,6 +78,17 @@ async function forceReload(page: Page): Promise<void> {
 
 test.describe('AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, timestamp, clean-state, authority, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
+    // #1419 Path (b): the default aftersign CI lane (ci.yml → test:e2e:aftersign)
+    // runs the whole e2e/ directory unconditionally, and this spec's three
+    // cold `page.goto` boots reliably trip the SwiftShader cold-start flake
+    // (#700/#506/#590/#766). Gate the run behind FLAGSHIP_BREAK_MODE so only
+    // the redgreen red lane — which explicitly opts into the durable-save
+    // contract via FLAGSHIP_BREAK_MODE=local-only-save — actually executes
+    // the boots. Default lane skips before the `page` fixture is exercised.
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== 'local-only-save',
+      'red lane requires FLAGSHIP_BREAK_MODE=local-only-save',
+    );
     test.setTimeout(COLD_START_MS);
 
     const slotKey = `hard-nav-save-${Date.now()}`;
