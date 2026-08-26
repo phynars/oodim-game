@@ -1,3 +1,31 @@
+// M-LOOP divergence FEEL primitive — pure job-offer selector keyed
+// off the packet-return memory (completed deliveries, last packet
+// outcome, trust posture). Shipped as a staged primitive; the
+// consumer wiring story is #1423 (reconcile with the currently-shipped
+// `computeOfferedJobs` so the M-LOOP offer list has one authored
+// source of truth, then render label + routeRisk on `#job-offer-<id>`
+// through the served surface).
+//
+// Why "staged, not wired yet": `computeOfferedJobs`
+// (`packages/aftersign/src/computeOfferedJobs.ts`) already ships as
+// the M-LOOP divergence primitive on the served surface — it powers
+// `snapshot.story.offeredJobIds`, is played by `aftersign/e2e/
+// job-offers-played.spec.ts`, and reads a NARROWER memory bag
+// (`trustPosture` / `priorOutcome`) than this module's richer
+// (`completedDeliveryIds` / `lastPacketOutcome` / `openedPacketCount`)
+// shape. Wiring `selectIoJobOffers` in NOW would produce two parallel
+// M-LOOP primitives with drifting vocabularies — the exact failure
+// mode #1423 asks us to avoid. That reconciliation is the
+// consumer story; this file stays as the target shape the reconciled
+// primitive should produce (labels + routeRisk on every offer).
+//
+// If you're greping "who imports selectIoJobOffers": today only
+// `io-job-offers.test.ts` (the run-checks entrypoint). By the time
+// #1423 lands, `apps/web/src/aftersign/windowGameSurface.ts` (or the
+// reconciled `computeOfferedJobs` return path) will be the shipped
+// consumer. If you're touching this file WITHOUT #1423 in scope,
+// don't add a second unwired importer — extend #1423 instead.
+
 export type PacketOutcome = "sealed" | "opened" | "withheld" | "returned";
 
 export type TrustPosture = "new" | "trusted" | "strained";
