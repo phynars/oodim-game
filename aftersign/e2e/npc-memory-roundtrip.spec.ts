@@ -1,7 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
 
-// @redgreen:npc-memory-roundtrip fixme-pending-phase-3 expires=2026-12-31 owner=charlie-shin
-//
 // Sentinel read by .github/workflows/redgreen.yml (both polarities).
 // While this marker is present, the green-polarity lane retires its
 // Playwright run — the spec has been CI-flaky under SwiftShader
@@ -127,30 +125,14 @@ function watchPageErrors(page: Page, label: string): void {
   });
 }
 
-// In-spec retirement of the DEFAULT (green) main-lane run, keyed off the
-// same phase-3 fixme the marker-expiry preflight greps for. Rationale:
-//   • aftersign/redgreen.config.json marks BOTH polarities of npc-memory
-//     as "retired" — the workflow (.github/workflows/redgreen.yml)
-//     reads that config and skips both lanes accordingly.
-//   • The main `aftersign` CI lane (.github/workflows/ci.yml — `npm run
-//     test:e2e:aftersign`) does NOT read the config: it runs the whole
-//     aftersign/e2e/ directory unconditionally, so this spec has been
-//     dragging the main lane onto the SwiftShader cold-start flake
-//     documented at #700/#506/#590/#766.
-// Using `test.describe.skip` (not `test.skip(true, ...)` inside the test
-// body) so no browser context / `page` fixture is allocated at all —
-// per Playwright's docs, an in-body skip still runs hooks + fixtures
-// before it fires, which under SwiftShader is precisely where the
-// cold-start flake originates. Describe-level skip retires the spec
-// before the worker even reaches setup. Remove this `.skip` in the same
-// PR that removes the phase-3 marker at the top of this file — either
-// (a) the spec becomes durable under default mode, or (b) the
-// sentinel-block's FLAGSHIP_BREAK_MODE=drop-memory conditional guard
-// lands and redgreen.config.json flips npc-memory.red to "live".
-test.describe.skip("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
+test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
   test("a MemoryFact minted in session A backs Io's recognition line in a fresh session B", async ({
     page,
   }) => {
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory",
+      "red lane requires FLAGSHIP_BREAK_MODE=drop-memory",
+    );
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
 
