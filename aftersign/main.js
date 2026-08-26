@@ -251,6 +251,7 @@ import {
 // completed-set render.
 import { computeOfferedJobs } from "../packages/aftersign/src/computeOfferedJobs";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
+import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -1414,6 +1415,7 @@ const publishState = () => {
       );
       return measureTapTargetAdjacency(targets);
     },
+    getJobOfferFeel: () => ({ ...JOB_OFFER_FEEL }),
     /**
      * Stamp the flagship tap-confirm envelope on the `[data-aftersign-
      * tap-choice="<choiceId>"]` button in the LIVE served DOM. Called
@@ -1634,6 +1636,12 @@ const renderText = () => {
         stampJobOfferData(button, jobId);
         button.setAttribute("data-offered-job-id", jobId);
         button.textContent = jobId;
+        armJobOfferFeel(button, () => {
+          state.interaction.lastAction = `job-offer:${jobId}`;
+          state.interaction.confirmCount += 1;
+          markStateDirty();
+          publishState();
+        });
         offeredJobs.appendChild(button);
       }
     } else if (offeredJobs.firstChild) {
