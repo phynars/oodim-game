@@ -249,7 +249,17 @@ import {
 // per selected id into `#offeredJobs`. Sibling e2e
 // `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
 // completed-set render.
-import { computeOfferedJobs } from "../packages/aftersign/src/computeOfferedJobs";
+import { selectIoJobOffers } from "../packages/aftersign/src/computeOfferedJobs";
+// PR #1422 — per-jobId M-LOOP action authoring layered on TOP of the
+// `selectIoJobOffers` output. `selectIoJobOffers` owns which jobIds are
+// offered and the visible `label · risk` text; this module owns the
+// memory-gated action id that rides on `lastAction` and the
+// `data-mloop-*` attributes stamped on each button so a played-through
+// e2e can pin the memory posture the tap committed under.
+import {
+  getMloopAvailableAction,
+  selectMloopJobCopy,
+} from "./mloop-copy.js";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
@@ -1617,43 +1627,111 @@ const renderText = () => {
       const offeredJobsMemory = state.npcs.io.memory.length > 0
         ? { priorOutcome: "completed" }
         : undefined;
-      const offeredJobIds = computeOfferedJobs(offeredJobsMemory);
-      // Idempotent re-render: clear then re-stamp so repeated
-      // renderText() passes at the same beat produce the same
-      // button set (same discipline as renderRouteRiskChoice).
-      while (offeredJobs.firstChild) {
-        offeredJobs.removeChild(offeredJobs.firstChild);
-      }
-      const label = document.createElement("span");
-      label.className = "route-choice-label";
-      label.textContent = "Offered jobs";
-      offeredJobs.appendChild(label);
-      // PR #1430 review (Soren): computeOfferedJobs widened from string[]
-          // to IoJobOffer[] ({ id, label, routeRisk }) — this loop now
-          // iterates full offer objects. offer.id drives every selector
-          // + action key the e2e reads as a string ([data-job-id],
-          // `job-offer:<id>`, data-aftersign-tap-choice="offer-<id>"),
-          // and offer.label is the human-facing button text.
-          for (const offer of offeredJobIds) {
-        const button = document.createElement("button");
-        button.setAttribute("type", "button");
-        button.setAttribute("id", `job-offer-${offer.id}`);
-        button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
-        stampJobOfferData(button, offer.id);
-        button.setAttribute("data-offered-job-id", offer.id);
-        button.textContent = offer.label;
-        armJobOfferFeel(button, () => {
-          state.interaction.lastAction = `job-offer:${offer.id}`;
-          state.interaction.confirmCount += 1;
-          markStateDirty();
-          publishState();
-        });
-        offeredJobs.appendChild(button);
+      const offers = selectIoJobOffers(offeredJobsMemory);
+      // PR #1422 — M-LOOP memory posture consumed by
+      // `mloop-copy.js`. Different axis than `offeredJobsMemory`
+      // above (that one gates SELECTION — which jobIds are offered;
+      // this one gates the per-offer ACTION AUTHORING — fresh /
+      // returning / deep-recall — off the durable delivery outcome).
+      // A durable delivery-outcome fact exists → returning /
+      // deep-recall; no memory yet → fresh (via the module's
+      // `memoryGateFor` default).
+      const packetOutcomeFactObject = state.npcs.io.memory.find(
+        (fact) => fact?.kind === "delivery-outcome",
+      )?.object;
+      const mloopMemory = packetOutcomeFactObject
+        ? { packetOutcome: packetOutcomeFactObject }
+        : {};
+      // Signature-gated re-render: renderText() runs on EVERY rAF tick
+      // (~60Hz, see the tick loop that calls renderText()+publishState()
+      // per frame). A naive wipe-and-rebuild replaces the
+      // `<button id="job-offer-*">` DOM nodes every ~16ms. That churn
+      // broke Playwright's actionability stability check on the sibling
+      // `job-offers-played.spec.ts` `safeOffer.click()` — the locator
+      // resolves each retry to a fresh node with a fresh bounding box,
+      // so "same position across two consecutive frames" never converges
+      // and the click times out (Soren's #1424 blocking review —
+      // "webServer boot" was a false diagnosis; the run reached the
+      // click, timed out, and retries:3 exhausted before results.json
+      // was flushed, which is why the failure-summary step reported
+      // "results.json not found").
+      //
+      // Fix: compute an offer signature (`id:risk` pairs joined) and
+      // only wipe + rebuild when it CHANGES. Same idempotency shape
+      // `renderRouteRiskChoice` intends but expressed at the callsite
+      // because that primitive is imported (not editable from here) and
+      // doesn't cache its own signature. The gate makes the `<button>`
+      // DOM nodes stable across ticks — the click's actionability check
+      // now converges on the first stability window instead of chasing
+      // a moving reference.
+      // PR #1422 — include the mloop memory gate in the signature so
+      // a memory-posture flip that doesn't change the offer SET (e.g.
+      // a hypothetical fresh → returning transition with the same
+      // jobIds) still re-stamps `data-mloop-memory-gate` / `aria-label`
+      // / composed `lastAction`. Today the selection axis and the
+      // posture axis change together (safe-default → completed set on
+      // the first delivery), so this is defense-in-depth against a
+      // future authoring change that could decouple them.
+      const mloopGateForSignature = getMloopAvailableAction(
+        offers[0]?.id ?? "",
+        mloopMemory,
+      ).memoryGate;
+      const nextSignature = offers
+        .map((offer) => `${offer.id}:${offer.routeRisk}`)
+        .concat(`gate:${mloopGateForSignature}`)
+        .join("|");
+      if (offeredJobs.dataset.offerSignature !== nextSignature) {
+        offeredJobs.dataset.offerSignature = nextSignature;
+        while (offeredJobs.firstChild) {
+          offeredJobs.removeChild(offeredJobs.firstChild);
+        }
+        const label = document.createElement("span");
+        label.className = "route-choice-label";
+        label.textContent = "Offered jobs";
+        offeredJobs.appendChild(label);
+        for (const offer of offers) {
+          // PR #1422 — per-jobId M-LOOP copy + memory-gated action.
+          // `selectMloopJobCopy` currently mirrors the visible label
+          // the selector already authors, so the shipped text stays
+          // `label · risk` (job-offers-played.spec.ts asserts that
+          // exact string). `getMloopAvailableAction` gates the ACTION
+          // id + accessible label off the durable memory posture,
+          // and the id rides on `lastAction` composed with the
+          // underlying jobId — one axis, no drift between the label
+          // the player saw and the fact the game records.
+          const mloopCopy = selectMloopJobCopy(offer.id, mloopMemory);
+          const mloopAction = getMloopAvailableAction(offer.id, mloopMemory);
+          const button = document.createElement("button");
+          button.setAttribute("type", "button");
+          button.setAttribute("id", `job-offer-${offer.id}`);
+          button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
+          button.setAttribute("data-offered-job-id", offer.id);
+          button.setAttribute("data-offered-job-risk", offer.routeRisk);
+          button.setAttribute("data-mloop-job-id", mloopCopy.id);
+          button.setAttribute("data-mloop-memory-gate", mloopAction.memoryGate);
+          button.setAttribute("aria-label", mloopAction.label);
+          stampJobOfferData(button, offer.id);
+          button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
+          armJobOfferFeel(button, () => {
+            // Compose the M-LOOP action id with the underlying
+            // offered jobId so BOTH axes ride on `lastAction`. Old
+            // shape (`job-offer:${offer.id}`) is superseded — a
+            // downstream consumer that split on `:` still gets the
+            // jobId as the tail token, and now also gets the mloop
+            // action id (memory-gated) as the head.
+            state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;
+            state.interaction.confirmCount += 1;
+            markStateDirty();
+            publishState();
+          });
+          offeredJobs.appendChild(button);
+        }
       }
     } else if (offeredJobs.firstChild) {
       while (offeredJobs.firstChild) {
         offeredJobs.removeChild(offeredJobs.firstChild);
       }
+      delete offeredJobs.dataset.offerSignature;
     }
   }
 

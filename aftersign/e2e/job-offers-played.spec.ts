@@ -94,10 +94,15 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
     // render and the completed-set buttons must be absent.
     // ─────────────────────────────────────────────────────────────
     await waitForBeat(page, "packet-offered");
+    const safeOffer = page.locator("#job-offer-job-safe-delivery");
     await expect(
-      page.locator("#job-offer-job-safe-delivery"),
+      safeOffer,
       "safe-default offered job should render on the first visit",
     ).toBeVisible({ timeout: WAIT_MS });
+    await expect(safeOffer, "safe offer label and risk must come from the selector").toHaveText(
+      "Safe delivery · low risk",
+    );
+    await safeOffer.click();
     await expect(
       page.locator("#job-offer-job-night-transfer"),
       "completed-set offer should NOT render before any delivery",
@@ -146,10 +151,16 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
     // page to prove.
     // ─────────────────────────────────────────────────────────────
     await waitForBeat(page, "packet-offered");
+    const nightTransferOffer = page.locator("#job-offer-job-night-transfer");
     await expect(
-      page.locator("#job-offer-job-night-transfer"),
+      nightTransferOffer,
       "completed-set night-transfer offer should render after a delivery",
     ).toBeVisible({ timeout: WAIT_MS });
+    await expect(
+      nightTransferOffer,
+      "completed offer label and risk must diverge from the first-visit selector result",
+    ).toHaveText("Night transfer · medium risk");
+    await nightTransferOffer.click();
     await expect(
       page.locator("#job-offer-job-signed-receipt"),
       "completed-set signed-receipt offer should render after a delivery",

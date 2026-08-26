@@ -1,6 +1,7 @@
 import {
   computeOfferedJobs,
   deriveOfferedJobsPlayerMemory,
+  selectIoJobOffers,
   type IoJobOffer,
   type OfferedJobsPlayerMemoryInput,
   type PlayerMemory as OfferedJobsPlayerMemory,
@@ -213,7 +214,9 @@ export type AftersignStoryStateSnapshot = {
      * primitive spreads its readonly tables), so mutating the
      * returned array doesn't leak into the next snapshot.
      */
-    offeredJobIds: IoJobOffer[];
+    offeredJobIds: string[];
+    /** Labelled offer details from the same canonical selector as offeredJobIds. */
+    offeredJobs: IoJobOffer[];
   };
   /**
    * Scene block with the current beat alongside the scene id, so a
@@ -331,6 +334,7 @@ export function getAftersignStoryState(
   options: AftersignStoryStateOptions,
 ): AftersignStoryStateSnapshot {
   const currentBeat = getAftersignCurrentStoryBeat(state);
+  const offeredJobsMemory = resolveOfferedJobsMemory(options.offeredJobsMemory);
   const story: AftersignStoryStateSnapshot["story"] = {
     id: "aftersign.verticalSlice",
     act: "act-1",
@@ -340,9 +344,8 @@ export function getAftersignStoryState(
       listenedToRoute: options.listenedToRoute ?? false,
       returnReason: options.returnReason,
     }),
-    offeredJobIds: computeOfferedJobs(
-      resolveOfferedJobsMemory(options.offeredJobsMemory),
-    ),
+    offeredJobIds: computeOfferedJobs(offeredJobsMemory),
+    offeredJobs: selectIoJobOffers(offeredJobsMemory),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
   const save = getAftersignSaveSnapshot(state);
