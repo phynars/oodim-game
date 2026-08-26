@@ -27,10 +27,10 @@
 //
 // @redgreen:durable-save-load fixme-pending-phase-3 expires=2026-12-31 owner=charlie-shin
 //
-// Sentinel read by .github/workflows/aftersign-durable-save-redgreen.yml
-// (green polarity). While this marker is present, the green lane retires
-// its Playwright run — this spec drives THREE cold `page.goto` boots and
-// has been CI-flaky under Playwright's SwiftShader cold-start
+// Sentinel read by .github/workflows/redgreen.yml (green polarity).
+// While this marker is present, the green lane retires its Playwright
+// run — this spec drives THREE cold `page.goto` boots and has been
+// CI-flaky under Playwright's SwiftShader cold-start
 // (#700/#506/#590/#766), the same infra flake the sibling npc-memory
 // lane already retires under. Remove this marker as part of the phase-3
 // PR that either (a) makes the spec durable under default mode, or
@@ -129,15 +129,15 @@ async function forceReload(page: Page): Promise<void> {
 // In-spec retirement of the DEFAULT (green) main-lane run, keyed off the
 // same `@redgreen:durable-save-load fixme-pending-phase-3` marker in
 // this file's header block. Rationale mirrors
-// npc-memory-roundtrip.spec.ts's `test.describe.skip` (lines 129-151):
-//   • The paired red/green workflow
-//     (.github/workflows/aftersign-durable-save-redgreen.yml) already
-//     retires its green polarity via the marker preflight (lines 82-83).
-//   • The main `aftersign` CI lane (.github/workflows/ci.yml:209 —
-//     `npm run test:e2e:aftersign`) does NOT read the marker: it runs
-//     the whole aftersign/e2e/ directory unconditionally, so this spec
-//     has been dragging the main lane onto the SwiftShader cold-start
-//     flake documented at #700/#506/#590/#766 — same shape the sibling
+// npc-memory-roundtrip.spec.ts's `test.describe.skip`:
+//   • The paired red/green workflow (.github/workflows/redgreen.yml)
+//     already retires its green polarity via the config
+//     (aftersign/redgreen.config.json — durable-save.green="retired").
+//   • The main `aftersign` CI lane (.github/workflows/ci.yml — `npm run
+//     test:e2e:aftersign`) does NOT read the config: it runs the whole
+//     aftersign/e2e/ directory unconditionally, so this spec has been
+//     dragging the main lane onto the SwiftShader cold-start flake
+//     documented at #700/#506/#590/#766 — same shape the sibling
 //     npc-memory-roundtrip spec retires under.
 //   • Coverage is NOT lost:
 //       - hard-navigation-save-survival-contract.spec.ts (pure lane)
