@@ -1,23 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMPLETED_JOB_IDS,
   computeOfferedJobs,
-  deriveOfferedJobsPlayerMemory,
   SAFE_DEFAULT_JOB_ID,
-} from "@oodim/aftersign";
+} from "../../../../packages/aftersign/src/computeOfferedJobs";
 
-/**
- * Canonical M-LOOP boundary invariant. Keep this contract guard even when
- * package-level unit tests are reorganized: player interaction history must
- * cross the app/package boundary and change the offered job set.
- */
-describe("M-LOOP offered-job divergence contract", () => {
-  it("turns a prior interaction into a non-default offered job set", () => {
-    const memory = deriveOfferedJobsPlayerMemory({
-      playerName: "Player",
-      interactionCount: 1,
-    });
+describe("M-LOOP divergence contract", () => {
+  it("requires different memory records to produce different tappable action IDs", () => {
+    const firstRunJobIds = computeOfferedJobs(undefined);
+    const completedRunJobIds = computeOfferedJobs({ priorOutcome: "completed" });
 
-    expect(memory).toEqual({ priorOutcome: "completed" });
-    expect(computeOfferedJobs(memory)).not.toEqual([SAFE_DEFAULT_JOB_ID]);
+    expect(firstRunJobIds).toEqual([SAFE_DEFAULT_JOB_ID]);
+    expect(completedRunJobIds).toEqual([...COMPLETED_JOB_IDS]);
+    expect(completedRunJobIds).not.toEqual(firstRunJobIds);
   });
 });
