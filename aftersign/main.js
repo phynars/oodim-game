@@ -1628,16 +1628,22 @@ const renderText = () => {
       label.className = "route-choice-label";
       label.textContent = "Offered jobs";
       offeredJobs.appendChild(label);
-      for (const jobId of offeredJobIds) {
+      // PR #1430 review (Soren): computeOfferedJobs widened from string[]
+          // to IoJobOffer[] ({ id, label, routeRisk }) — this loop now
+          // iterates full offer objects. offer.id drives every selector
+          // + action key the e2e reads as a string ([data-job-id],
+          // `job-offer:<id>`, data-aftersign-tap-choice="offer-<id>"),
+          // and offer.label is the human-facing button text.
+          for (const offer of offeredJobIds) {
         const button = document.createElement("button");
         button.setAttribute("type", "button");
-        button.setAttribute("id", `job-offer-${jobId}`);
-        button.setAttribute("data-aftersign-tap-choice", `offer-${jobId}`);
-        stampJobOfferData(button, jobId);
-        button.setAttribute("data-offered-job-id", jobId);
-        button.textContent = jobId;
+        button.setAttribute("id", `job-offer-${offer.id}`);
+        button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
+        stampJobOfferData(button, offer.id);
+        button.setAttribute("data-offered-job-id", offer.id);
+        button.textContent = offer.label;
         armJobOfferFeel(button, () => {
-          state.interaction.lastAction = `job-offer:${jobId}`;
+          state.interaction.lastAction = `job-offer:${offer.id}`;
           state.interaction.confirmCount += 1;
           markStateDirty();
           publishState();
