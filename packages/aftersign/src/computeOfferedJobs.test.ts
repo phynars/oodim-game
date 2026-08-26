@@ -3,6 +3,8 @@ import {
   COMPLETED_JOB_IDS,
   computeOfferedJobs,
   deriveOfferedJobsPlayerMemory,
+  FAILED_JOB_IDS,
+  GUARDED_JOB_IDS,
   SAFE_DEFAULT_JOB_ID,
   TRUSTED_COURIER_JOB_IDS,
   type PlayerMemory,
@@ -28,8 +30,8 @@ describe("computeOfferedJobs", () => {
     const guarded: PlayerMemory = { trustPosture: "guarded" };
     const failed: PlayerMemory = { priorOutcome: "failed" };
 
-    expect(computeOfferedJobs(guarded)).toEqual(["job-low-risk-errand"]);
-    expect(computeOfferedJobs(failed)).toEqual(["job-redemption-route"]);
+    expect(computeOfferedJobs(guarded)).toEqual([...GUARDED_JOB_IDS]);
+    expect(computeOfferedJobs(failed)).toEqual([...FAILED_JOB_IDS]);
     expect(computeOfferedJobs(guarded)).not.toEqual(computeOfferedJobs(failed));
     expect(guarded).toEqual({ trustPosture: "guarded" });
     expect(failed).toEqual({ priorOutcome: "failed" });
