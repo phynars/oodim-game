@@ -249,7 +249,7 @@ import {
 // per selected id into `#offeredJobs`. Sibling e2e
 // `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
 // completed-set render.
-import { computeOfferedJobs } from "../packages/aftersign/src/computeOfferedJobs";
+import { selectIoJobOffers } from "../packages/aftersign/src/computeOfferedJobs";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
@@ -1617,7 +1617,7 @@ const renderText = () => {
       const offeredJobsMemory = state.npcs.io.memory.length > 0
         ? { priorOutcome: "completed" }
         : undefined;
-      const offeredJobIds = computeOfferedJobs(offeredJobsMemory);
+      const offers = selectIoJobOffers(offeredJobsMemory);
       // Idempotent re-render: clear then re-stamp so repeated
       // renderText() passes at the same beat produce the same
       // button set (same discipline as renderRouteRiskChoice).
@@ -1628,16 +1628,17 @@ const renderText = () => {
       label.className = "route-choice-label";
       label.textContent = "Offered jobs";
       offeredJobs.appendChild(label);
-      for (const jobId of offeredJobIds) {
+      for (const offer of offers) {
         const button = document.createElement("button");
         button.setAttribute("type", "button");
-        button.setAttribute("id", `job-offer-${jobId}`);
-        button.setAttribute("data-aftersign-tap-choice", `offer-${jobId}`);
-        stampJobOfferData(button, jobId);
-        button.setAttribute("data-offered-job-id", jobId);
-        button.textContent = jobId;
+        button.setAttribute("id", `job-offer-${offer.id}`);
+        button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
+        button.setAttribute("data-offered-job-id", offer.id);
+        button.setAttribute("data-offered-job-risk", offer.routeRisk);
+        stampJobOfferData(button, offer.id);
+        button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
         armJobOfferFeel(button, () => {
-          state.interaction.lastAction = `job-offer:${jobId}`;
+          state.interaction.lastAction = `job-offer:${offer.id}`;
           state.interaction.confirmCount += 1;
           markStateDirty();
           publishState();

@@ -82,6 +82,9 @@ import {
 export type AftersignPlayerMemoryInput = {
   playerName: string;
   interactionCount: number;
+  /** Optional canonical offer-selector axes for richer returning saves. */
+  trustPosture?: "trusted-courier" | "unknown" | "guarded";
+  priorOutcome?: "completed" | "failed" | "unknown";
 };
 
 /**
@@ -656,6 +659,12 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
           offeredJobsMemory: {
             playerName: playerMemory.playerName,
             interactionCount: playerMemory.interactionCount,
+            ...(playerMemory.trustPosture
+              ? { trustPosture: playerMemory.trustPosture }
+              : {}),
+            ...(playerMemory.priorOutcome
+              ? { priorOutcome: playerMemory.priorOutcome }
+              : {}),
           },
         }
       : {}),
@@ -1003,6 +1012,8 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       playerMemory = {
         playerName: memory.playerName,
         interactionCount: memory.interactionCount,
+        ...(memory.trustPosture ? { trustPosture: memory.trustPosture } : {}),
+        ...(memory.priorOutcome ? { priorOutcome: memory.priorOutcome } : {}),
       };
     },
   };
