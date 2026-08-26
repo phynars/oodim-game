@@ -1,6 +1,7 @@
 import {
   computeOfferedJobs,
   deriveOfferedJobsPlayerMemory,
+  type IoJobOffer,
   type OfferedJobsPlayerMemoryInput,
   type PlayerMemory as OfferedJobsPlayerMemory,
 } from "../../../../packages/aftersign/src/computeOfferedJobs";
@@ -212,7 +213,7 @@ export type AftersignStoryStateSnapshot = {
      * primitive spreads its readonly tables), so mutating the
      * returned array doesn't leak into the next snapshot.
      */
-    offeredJobIds: string[];
+    offeredJobIds: IoJobOffer[];
   };
   /**
    * Scene block with the current beat alongside the scene id, so a

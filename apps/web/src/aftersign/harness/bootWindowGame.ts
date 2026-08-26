@@ -67,6 +67,7 @@ import {
   type AftersignStoryStateSnapshot,
   type AftersignVerticalSliceState,
 } from "../verticalSliceState";
+import type { IoJobOffer } from "../../../../../packages/aftersign/src/computeOfferedJobs";
 
 /**
  * Player-memory the returning NPC references on recognition — the
@@ -299,7 +300,7 @@ export type AftersignWindowGameHarness = {
    * loop divergent set. Same freshness / determinism guarantees
    * as the primitive.
    */
-  getOfferedJobIds: () => string[];
+  getOfferedJobIds: () => IoJobOffer[];
   getStoryState: () => AftersignStoryStateSnapshot;
   /**
    * Served-page-compatible alias for the story/state snapshot. E2E
