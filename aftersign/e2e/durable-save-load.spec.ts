@@ -78,10 +78,6 @@ async function forceReload(page: Page): Promise<void> {
 
 test.describe('AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, timestamp, clean-state, authority, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
-    test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== 'local-only-save',
-      'red lane requires FLAGSHIP_BREAK_MODE=local-only-save',
-    );
     test.setTimeout(COLD_START_MS);
 
     const slotKey = `hard-nav-save-${Date.now()}`;

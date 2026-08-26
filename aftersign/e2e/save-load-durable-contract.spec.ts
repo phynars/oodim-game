@@ -132,7 +132,11 @@ test.describe("AFTERSIGN durable save/load contract", () => {
   // survival ACROSS a local-state wipe, which the prior-session test
   // does not exercise.
   test("Io memory + revision survive a local-state wipe reload", async ({ page }) => {
-    // Guard retired: the server-authoritative HTTP save path landed
+    test.skip(
+      process.env.FLAGSHIP_BREAK_MODE !== "local-only-save",
+      'red lane requires FLAGSHIP_BREAK_MODE=local-only-save',
+    );
+    // Server-authoritative HTTP save path landed
     // (aftersign/server-authoritative-save.js talks to the vite middleware
     // in aftersign/vite.config.ts, which holds the store in the Node
     // process — genuinely out of the browser). reloadFromSave() now
