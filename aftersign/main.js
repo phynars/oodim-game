@@ -249,7 +249,7 @@ import {
 // per selected id into `#offeredJobs`. Sibling e2e
 // `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
 // completed-set render.
-import { computeOfferedJobs } from "../packages/aftersign/src/computeOfferedJobs";
+import { selectIoJobOffers } from "../packages/aftersign/src/computeOfferedJobs";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
@@ -1617,37 +1617,64 @@ const renderText = () => {
       const offeredJobsMemory = state.npcs.io.memory.length > 0
         ? { priorOutcome: "completed" }
         : undefined;
-      const offeredJobIds = computeOfferedJobs(offeredJobsMemory);
-      // Idempotent re-render: clear then re-stamp so repeated
-      // renderText() passes at the same beat produce the same
-      // button set (same discipline as renderRouteRiskChoice).
-      while (offeredJobs.firstChild) {
-        offeredJobs.removeChild(offeredJobs.firstChild);
-      }
-      const label = document.createElement("span");
-      label.className = "route-choice-label";
-      label.textContent = "Offered jobs";
-      offeredJobs.appendChild(label);
-      for (const jobId of offeredJobIds) {
-        const button = document.createElement("button");
-        button.setAttribute("type", "button");
-        button.setAttribute("id", `job-offer-${jobId}`);
-        button.setAttribute("data-aftersign-tap-choice", `offer-${jobId}`);
-        stampJobOfferData(button, jobId);
-        button.setAttribute("data-offered-job-id", jobId);
-        button.textContent = jobId;
-        armJobOfferFeel(button, () => {
-          state.interaction.lastAction = `job-offer:${jobId}`;
-          state.interaction.confirmCount += 1;
-          markStateDirty();
-          publishState();
-        });
-        offeredJobs.appendChild(button);
+      const offers = selectIoJobOffers(offeredJobsMemory);
+      // Signature-gated re-render: renderText() runs on EVERY rAF tick
+      // (~60Hz, see the tick loop that calls renderText()+publishState()
+      // per frame). A naive wipe-and-rebuild replaces the
+      // `<button id="job-offer-*">` DOM nodes every ~16ms. That churn
+      // broke Playwright's actionability stability check on the sibling
+      // `job-offers-played.spec.ts` `safeOffer.click()` — the locator
+      // resolves each retry to a fresh node with a fresh bounding box,
+      // so "same position across two consecutive frames" never converges
+      // and the click times out (Soren's #1424 blocking review —
+      // "webServer boot" was a false diagnosis; the run reached the
+      // click, timed out, and retries:3 exhausted before results.json
+      // was flushed, which is why the failure-summary step reported
+      // "results.json not found").
+      //
+      // Fix: compute an offer signature (`id:risk` pairs joined) and
+      // only wipe + rebuild when it CHANGES. Same idempotency shape
+      // `renderRouteRiskChoice` intends but expressed at the callsite
+      // because that primitive is imported (not editable from here) and
+      // doesn't cache its own signature. The gate makes the `<button>`
+      // DOM nodes stable across ticks — the click's actionability check
+      // now converges on the first stability window instead of chasing
+      // a moving reference.
+      const nextSignature = offers
+        .map((offer) => `${offer.id}:${offer.routeRisk}`)
+        .join("|");
+      if (offeredJobs.dataset.offerSignature !== nextSignature) {
+        offeredJobs.dataset.offerSignature = nextSignature;
+        while (offeredJobs.firstChild) {
+          offeredJobs.removeChild(offeredJobs.firstChild);
+        }
+        const label = document.createElement("span");
+        label.className = "route-choice-label";
+        label.textContent = "Offered jobs";
+        offeredJobs.appendChild(label);
+        for (const offer of offers) {
+          const button = document.createElement("button");
+          button.setAttribute("type", "button");
+          button.setAttribute("id", `job-offer-${offer.id}`);
+          button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
+          button.setAttribute("data-offered-job-id", offer.id);
+          button.setAttribute("data-offered-job-risk", offer.routeRisk);
+          stampJobOfferData(button, offer.id);
+          button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
+          armJobOfferFeel(button, () => {
+            state.interaction.lastAction = `job-offer:${offer.id}`;
+            state.interaction.confirmCount += 1;
+            markStateDirty();
+            publishState();
+          });
+          offeredJobs.appendChild(button);
+        }
       }
     } else if (offeredJobs.firstChild) {
       while (offeredJobs.firstChild) {
         offeredJobs.removeChild(offeredJobs.firstChild);
       }
+      delete offeredJobs.dataset.offerSignature;
     }
   }
 
