@@ -1225,14 +1225,19 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(game?.ioJobOfferSelectFeel({ elapsedMs: 0 })).toBeNull();
     expect(game?.ioJobOfferSelectFeel({ elapsedMs: 200 })).toBeNull();
 
-    // Ask for the job then accept it — the accept gate is what arms
-    // the SELECT envelope (distinct from `nextJobOfferFeel`, which
-    // arms on ask). Meet Io first so the story-beat prerequisite for
-    // `io-next-job` is honestly satisfied — the accept path doesn't
-    // strictly require it (`acceptNextJob()` just sets the
-    // acceptedNextJob slot), but driving the beat sequence honestly
-    // makes the seam runnable slice code, not a shortcut.
+    // Walk the FULL legal beat sequence to the accept: meet Io,
+    // strike a return tone, ask for the next job, then accept it.
+    // The return-tone choose is NOT optional — `input.choose(
+    // AFTERSIGN_ASK_FOR_NEXT_JOB)` routes through
+    // `recordAftersignNextJobRequest`, which THROWS when
+    // `state.hasChosenReturnTone !== true` (see
+    // verticalSliceRuntimeState.ts's beat guard). The accept gate is
+    // what arms the SELECT envelope (distinct from
+    // `nextJobOfferFeel`, which arms on ask); driving the beat
+    // sequence honestly makes the seam runnable slice code, not a
+    // shortcut.
     game?.meetNpc("io");
+    game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE);
     game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
     const accepted = game?.input.choose("accept-next-job");
     expect(accepted).not.toBeNull();
