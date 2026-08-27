@@ -23,10 +23,7 @@ import {
   IO_NEXT_JOB_HANDOFF,
   getIoReturnToneReply,
 } from "../story/ioContinueBeats";
-import {
-  COMPLETED_JOB_IDS,
-  SAFE_DEFAULT_JOB_ID,
-} from "../../../../../packages/aftersign/src/computeOfferedJobs";
+import { selectIoJobOffers } from "../../../../../packages/aftersign/src/computeOfferedJobs";
 import "./bootWindowGame";
 
 // #918: this file carries the ONLY assertion the aftersign vitest lane runs
@@ -556,67 +553,46 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(game?.getStoryState().story.ioDialogue.memoryThread).toBeUndefined();
   });
 
-  // Consumer wiring for `computeOfferedJobs` (#1382 / PR #1388
-  // REQUEST_CHANGES). The primitive is pure and unit-tested at
-  // `packages/aftersign/src/computeOfferedJobs.test.ts`, but the
-  // reviewer's grep was correct: nothing outside its own test
-  // imported it. `windowGameSurface.ts` now feeds `playerMemory`
-  // (via `deriveOfferedJobsPlayerMemory`) into `computeOfferedJobs`
-  // and publishes the result at `snapshot.story.offeredJobIds`.
-  // The harness exposes `getOfferedJobIds()` as a top-level accessor
-  // that reads through the same derivation.
-  //
-  // Assertion shape:
-  //   1. Fresh boot (no `setPlayerMemory`) → safe-default single job.
-  //   2. Setting a returning-player memory (interactionCount >= 1)
-  //      diverges the offered set to the completed-loop list.
-  //   3. Both accessors (snapshot field + top-level getter) return
-  //      the SAME set — no drift between the served-page shape and
-  //      the harness accessor.
-  //   4. Fresh arrays each call — mutating one snapshot's list
-  //      doesn't leak into the next.
-  it("projects computeOfferedJobs through story.offeredJobIds and getOfferedJobIds", () => {
+  // Consumer wiring for the canonical structured offer selector. The
+  // shipped surface publishes `IoJobOffer[]` at `story.offeredJobs`; the
+  // legacy-named harness getter reads that same array without stripping
+  // metadata.
+  it("projects structured IoJobOffer values through story.offeredJobs and getOfferedJobIds", () => {
     const game = window.__game;
     expect(game).toBeDefined();
 
-    // (1) Fresh boot: no player memory yet → safe default.
     game?.restoreDurableSave(
       encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
     );
     game?.setPlayerMemory(null);
 
+    const freshOffers = selectIoJobOffers();
     const freshSnapshot = game?.getStoryState();
-    expect(freshSnapshot?.story.offeredJobIds).toEqual([SAFE_DEFAULT_JOB_ID]);
-    expect(game?.getOfferedJobIds()).toEqual([SAFE_DEFAULT_JOB_ID]);
+    expect(freshSnapshot?.story.offeredJobs).toEqual(freshOffers);
+    expect(game?.getOfferedJobIds()).toEqual(freshOffers);
+    expect(freshSnapshot?.story.offeredJobs[0]).toMatchObject({ id: SAFE_DEFAULT_JOB_ID });
 
-    // (2) Returning player: `interactionCount >= 1` maps to
-    // `priorOutcome: "completed"` via `deriveOfferedJobsPlayerMemory`,
-    // and the primitive diverges to `COMPLETED_JOB_IDS`.
     game?.setPlayerMemory({ playerName: "Returning Player", interactionCount: 2 });
 
+    const returningOffers = selectIoJobOffers({ priorOutcome: "completed" });
     const returningSnapshot = game?.getStoryState();
-    expect(returningSnapshot?.story.offeredJobIds).toEqual([...COMPLETED_JOB_IDS]);
-    // (3) Same set from the top-level accessor — no drift.
-    expect(game?.getOfferedJobIds()).toEqual([...COMPLETED_JOB_IDS]);
-    // (3, contd) Divergence is real, not a shape-only publish.
-    expect(returningSnapshot?.story.offeredJobIds).not.toEqual([
-      SAFE_DEFAULT_JOB_ID,
+    expect(returningSnapshot?.story.offeredJobs).toEqual(returningOffers);
+    expect(game?.getOfferedJobIds()).toEqual(returningOffers);
+    expect(returningSnapshot?.story.offeredJobs.map((offer) => offer.id)).toEqual([
+      ...COMPLETED_JOB_IDS,
     ]);
+    expect(returningSnapshot?.story.offeredJobs).not.toEqual(freshOffers);
 
-    // (4) Fresh arrays each call — mutating the returned list must
-    // not leak into a subsequent read.
     const firstRead = game!.getOfferedJobIds();
-    firstRead.push("job-should-not-persist");
-    expect(game?.getOfferedJobIds()).toEqual([...COMPLETED_JOB_IDS]);
+    firstRead.pop();
+    expect(game?.getOfferedJobIds()).toEqual(returningOffers);
 
-    // Snapshot stays JSON-serialisable (plain string ids).
     expect(JSON.parse(JSON.stringify(returningSnapshot))).toEqual(
       returningSnapshot,
     );
 
-    // Clearing player memory returns the surface to the safe default.
     game?.setPlayerMemory(null);
-    expect(game?.getOfferedJobIds()).toEqual([SAFE_DEFAULT_JOB_ID]);
+    expect(game?.getOfferedJobIds()).toEqual(freshOffers);
   });
 
   it("handles choose-return-tone and ask-for-next-job through input.choose", () => {
