@@ -39,7 +39,13 @@ export function resolveIoJobOfferSelectFeel(
   elapsedMs: number,
   spec: IoJobOfferSelectFeelSpec = IO_JOB_OFFER_SELECT_FEEL,
 ): IoJobOfferSelectFeelEnvelope {
-  const elapsed = Math.max(0, elapsedMs);
+  // Defensive: NaN / -Infinity inputs collapse to the press-start
+  // frame instead of poisoning downstream `t` calculations (NaN
+  // propagates silently through the easing curves and would show
+  // up as `NaN` in every field of the envelope). `Math.max(0, NaN)`
+  // is NaN in JS — the isFinite guard is the fix.
+  const safeElapsed = Number.isFinite(elapsedMs) ? elapsedMs : 0;
+  const elapsed = Math.max(0, safeElapsed);
   const commitEnd = spec.pressMs + spec.commitMs;
   const settleEnd = commitEnd + spec.settleMs;
 
