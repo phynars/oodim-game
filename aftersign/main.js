@@ -262,6 +262,7 @@ import {
 } from "./mloop-copy.js";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
+import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -1676,10 +1677,9 @@ const renderText = () => {
         offers[0]?.id ?? "",
         mloopMemory,
       ).memoryGate;
-      const nextSignature = offers
-        .map((offer) => `${offer.id}:${offer.routeRisk}`)
-        .concat(`gate:${mloopGateForSignature}`)
-        .join("|");
+      const nextSignature = buildMloopJobOfferSignature(offers, {
+        memoryGate: mloopGateForSignature,
+      });
       if (offeredJobs.dataset.offerSignature !== nextSignature) {
         offeredJobs.dataset.offerSignature = nextSignature;
         while (offeredJobs.firstChild) {
