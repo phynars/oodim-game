@@ -1707,8 +1707,6 @@ const renderText = () => {
           button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
           button.setAttribute("data-offered-job-id", offer.id);
           button.setAttribute("data-offered-job-risk", offer.routeRisk);
-          button.setAttribute("data-route-risk", offer.routeRisk);
-          button.setAttribute("data-route-risk", offer.routeRisk);
           button.setAttribute("data-mloop-job-id", mloopCopy.id);
           button.setAttribute("data-mloop-memory-gate", mloopAction.memoryGate);
           button.setAttribute("aria-label", mloopAction.label);
