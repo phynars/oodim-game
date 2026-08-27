@@ -67,6 +67,15 @@ export function resolveIoJobOfferSelectFeel(
       glowAlpha: spec.maxGlowAlpha * t,
       ringAlpha: spec.maxRingAlpha * t,
       hudNudgePx: spec.maxHudNudgePx * t,
+      // Intentional: `audioGain` peaks MID-COMMIT (triangle in `t`,
+      // apex at t=0.5) rather than climbing monotonically like the
+      // visual fields. The confirm chirp is a struck-bell impulse —
+      // it swells INTO the commit peak and decays out with the
+      // easeOutBack overshoot, so the ear hears one round hit
+      // instead of a step at phase-end. Visual and audio share the
+      // same peak instant (t=0.5 lines up with the easeOutBack
+      // apex on the visual fields) but different curves: the ear
+      // wants a triangle, the eye wants a settle.
       audioGain: spec.maxAudioGain * (1 - Math.abs(0.5 - t)),
     };
   }
