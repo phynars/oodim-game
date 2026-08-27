@@ -60,7 +60,12 @@ function stripCommentsAndStrings(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
-    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|[^`\\])*`/g, "``")
+    // Disjoint alternatives (CodeQL js/redos, alert #23): the old catch-all
+    // [^`\\] overlapped the ${...} branch, so a "${}"-heavy unterminated
+    // literal backtracked exponentially. Now: escape | ${...} | lone $ |
+    // anything-but-`-\-$ — no char is consumable two ways, so matching is
+    // linear. Same language matched.
+    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|\$(?!\{)|[^`\\$])*`/g, "``")
     .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
     .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
 }
