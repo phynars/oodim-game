@@ -1,5 +1,4 @@
 import {
-  computeOfferedJobs,
   deriveOfferedJobsPlayerMemory,
   selectIoJobOffers,
   type IoJobOffer,
@@ -199,23 +198,12 @@ export type AftersignStoryStateSnapshot = {
     ioDialogue: AftersignIoDialogueSnapshot;
     npcMemoryRoundTrip?: AftersignSpokenNpcMemoryRoundTrip;
     /**
-     * Ordered job-id set the memory-divergence primitive
-     * (`packages/aftersign/src/computeOfferedJobs.ts`) selects from
-     * the current player memory. Present on every snapshot — a fresh
-     * boot with no recorded memory publishes the single-element
-     * safe-default list, and a returning boot with a completed prior
-     * loop publishes the divergent set.
-     *
-     * This is the SHIPPED consumer of #1382's `computeOfferedJobs`:
-     * a served-page renderer / e2e assertion reads
-     * `snapshot.story.offeredJobIds` to know which job cards to
-     * surface, and the harness proves the wiring via
-     * `harness.getOfferedJobIds()`. Fresh arrays each call (the
-     * primitive spreads its readonly tables), so mutating the
-     * returned array doesn't leak into the next snapshot.
+     * Labelled offer details selected from the current player memory.
+     * Present on every snapshot — a fresh boot publishes the safe-default
+     * offer, and a returning boot with a completed prior loop publishes
+     * the divergent set. The full `IoJobOffer` shape is preserved for
+     * renderers and harness consumers; no offer metadata is discarded.
      */
-    offeredJobIds: string[];
-    /** Labelled offer details from the same canonical selector as offeredJobIds. */
     offeredJobs: IoJobOffer[];
   };
   /**
@@ -297,9 +285,9 @@ export type AftersignStoryStateOptions = {
    */
   npcMemoryRoundTrip?: AftersignNpcMemoryRoundTripInput;
   /**
-   * Player memory the surface pipes into
-   * `computeOfferedJobs(deriveOfferedJobsPlayerMemory(...))` so
-   * `story.offeredJobIds` reflects prior-loop divergence at the
+   * Player memory the surface pipes into the canonical offer selector
+   * (`selectIoJobOffers(deriveOfferedJobsPlayerMemory(...))`) so
+   * `story.offeredJobs` reflects prior-loop divergence at the
    * served-page surface. Two accepted shapes so callers pick the
    * one that matches what they already carry:
    *
@@ -344,7 +332,6 @@ export function getAftersignStoryState(
       listenedToRoute: options.listenedToRoute ?? false,
       returnReason: options.returnReason,
     }),
-    offeredJobIds: computeOfferedJobs(offeredJobsMemory),
     offeredJobs: selectIoJobOffers(offeredJobsMemory),
   };
   const rememberedSessionIds = [...(options.rememberedSessionIds ?? [])];
@@ -417,7 +404,7 @@ export function getAftersignStoryState(
  * the primitive's `PlayerMemory` shape. Passes the primitive-shape
  * through untouched; runs the harness-shape through
  * `deriveOfferedJobsPlayerMemory`. Undefined input → undefined output,
- * which makes `computeOfferedJobs` return the safe default.
+ * which makes `selectIoJobOffers` return the safe default.
  */
 function resolveOfferedJobsMemory(
   input: OfferedJobsPlayerMemory | OfferedJobsPlayerMemoryInput | undefined,
