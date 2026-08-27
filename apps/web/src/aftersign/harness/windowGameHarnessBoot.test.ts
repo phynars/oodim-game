@@ -4,6 +4,7 @@ import { AFTERSIGN_IO_LINES, buildIoMemorySentence } from "../ioVoiceContract";
 import { MEMORY_RECALL_FEEL } from "../memoryRecallFeel";
 import { AFTERSIGN_MEMORY_RECALL_GLINT_FEEL } from "../memoryRecallGlintFeel";
 import { AFTERSIGN_NEXT_JOB_OFFER_FEEL } from "../nextJobOfferFeel";
+import { IO_JOB_OFFER_SELECT_FEEL } from "../ioJobOfferSelectFeel";
 import {
   AFTERSIGN_INTERACTION_CONFIRM_FEEL,
   AFTERSIGN_IO_RECOGNITION_FEEL,
@@ -1180,5 +1181,127 @@ describe("Aftersign window.__game harness (#918)", () => {
       game?.input.resetPointerToRenderLatency();
       nowSpy.mockRestore();
     }
+  });
+
+  // Consumer wiring for `ioJobOfferSelectFeel.ts` (#1433 review):
+  // the pure envelope had zero shipped-surface importers on its first
+  // submission. `bootWindowGame.ts` now exposes it as
+  // `window.__game.ioJobOfferSelectFeel({ elapsedMs })`, gated on
+  // acceptance — the envelope is dormant until the player commits an
+  // offered job through `input.choose("accept-next-job")` (which is
+  // the alias `acceptNextJob` recorder). If a refactor unwires
+  // `resolveIoJobOfferSelectFeel` from the harness, THIS test goes
+  // red in the blocking lane.
+  it("fires the io-job-offer select envelope only after the player commits an offer", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+    expect(game?.ioJobOfferSelectFeel).toEqual(expect.any(Function));
+
+    // Fresh boot: no acceptance has been recorded, so the envelope
+    // is dormant regardless of elapsedMs.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    expect(game?.ioJobOfferSelectFeel({ elapsedMs: 0 })).toBeNull();
+    expect(game?.ioJobOfferSelectFeel({ elapsedMs: 200 })).toBeNull();
+
+    // Walk the FULL legal beat sequence to the accept: meet Io,
+    // strike a return tone, ask for the next job, then accept it.
+    // The return-tone choose is NOT optional — `input.choose(
+    // AFTERSIGN_ASK_FOR_NEXT_JOB)` routes through
+    // `recordAftersignNextJobRequest`, which THROWS when
+    // `state.hasChosenReturnTone !== true` (see
+    // verticalSliceRuntimeState.ts's beat guard). The accept gate is
+    // what arms the SELECT envelope (distinct from
+    // `nextJobOfferFeel`, which arms on ask); driving the beat
+    // sequence honestly makes the seam runnable slice code, not a
+    // shortcut.
+    game?.meetNpc("io");
+    game?.input.choose(AFTERSIGN_CHOOSE_RETURN_TONE);
+    game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
+    const accepted = game?.input.choose("accept-next-job");
+    expect(accepted).not.toBeNull();
+    expect(game?.getAcceptedNextJob()).not.toBeNull();
+
+    // Phase boundaries per `IO_JOB_OFFER_SELECT_FEEL`:
+    // press:  0 … 84   (pressMs)
+    // commit: 84 … 240 (pressMs + commitMs)
+    // settle: 240 … 520 (+ settleMs)
+    // idle:   > 520
+    const pressEnd = IO_JOB_OFFER_SELECT_FEEL.pressMs;
+    const commitEnd = pressEnd + IO_JOB_OFFER_SELECT_FEEL.commitMs;
+    const settleEnd = commitEnd + IO_JOB_OFFER_SELECT_FEEL.settleMs;
+
+    const atPressStart = game?.ioJobOfferSelectFeel({ elapsedMs: 0 });
+    expect(atPressStart?.phase).toBe("press");
+    // t=0 → every field is 0 (eased envelope multiplied by 0).
+    expect(atPressStart?.liftPx).toBe(0);
+    expect(atPressStart?.glowAlpha).toBe(0);
+    expect(atPressStart?.audioGain).toBe(0);
+
+    const atCommitMid = game?.ioJobOfferSelectFeel({
+      elapsedMs: pressEnd + IO_JOB_OFFER_SELECT_FEEL.commitMs / 2,
+    });
+    expect(atCommitMid?.phase).toBe("commit");
+    // Mid-commit the easeOutBack overshoots past 1 (~1.088 at raw
+    // t=0.5), so the card lift & scale ride at or above their
+    // "flat max" targets. Bounded checks (no exact equality — the
+    // overshoot magnitude is tuned in the pure module, not here).
+    expect(Math.abs(atCommitMid!.liftPx)).toBeGreaterThan(
+      IO_JOB_OFFER_SELECT_FEEL.maxLiftPx * 0.95,
+    );
+    expect(atCommitMid!.scale).toBeGreaterThan(1);
+    // audioGain is a triangle in the EASED `t`, peaking at t=0.5.
+    // Under easeOutBack, raw x=0.5 → t≈1.088 → audio ≈ maxAudio · 0.41.
+    // Just assert the field is bounded to [0, max] and non-zero.
+    expect(atCommitMid!.audioGain).toBeGreaterThan(0);
+    expect(atCommitMid!.audioGain).toBeLessThanOrEqual(
+      IO_JOB_OFFER_SELECT_FEEL.maxAudioGain,
+    );
+
+    // audioGain PEAKS where eased-t = 0.5 (triangle apex). Under
+    // easeOutBack that lands near raw x ≈ 0.13 of the commit
+    // phase. Sample there and verify audioGain equals maxAudioGain
+    // to the tolerance of the eased-t vs 0.5 gap.
+    const audioPeakElapsedMs = pressEnd + IO_JOB_OFFER_SELECT_FEEL.commitMs * 0.13;
+    const atAudioPeak = game?.ioJobOfferSelectFeel({ elapsedMs: audioPeakElapsedMs });
+    expect(atAudioPeak?.phase).toBe("commit");
+    // audioGain apex sits at raw x≈0.13 (eased t≈0.509, so |0.5 − t|
+    // ≈ 0.009 → gain ≈ maxAudio · 0.991 ≈ 0.218). Assert with
+    // digits=1 (tolerance 0.05) — the intent is "audio rides its
+    // peak here", not a curve-shape pin. A digits=2 assertion
+    // (tolerance 0.005) is technically satisfied by the arithmetic
+    // but leaves no headroom for future overshoot-magnitude tuning
+    // in `easeOutBack`.
+    expect(atAudioPeak!.audioGain).toBeCloseTo(
+      IO_JOB_OFFER_SELECT_FEEL.maxAudioGain,
+      1,
+    );
+
+    const atSettleMid = game?.ioJobOfferSelectFeel({
+      elapsedMs: commitEnd + IO_JOB_OFFER_SELECT_FEEL.settleMs / 2,
+    });
+    expect(atSettleMid?.phase).toBe("settle");
+    // Settle is a decay — magnitudes are positive but strictly
+    // below their commit-phase peaks.
+    expect(atSettleMid!.glowAlpha).toBeGreaterThan(0);
+    expect(atSettleMid!.glowAlpha).toBeLessThan(IO_JOB_OFFER_SELECT_FEEL.maxGlowAlpha);
+    expect(Math.abs(atSettleMid!.liftPx)).toBeLessThan(IO_JOB_OFFER_SELECT_FEEL.maxLiftPx);
+
+    const atIdle = game?.ioJobOfferSelectFeel({ elapsedMs: settleEnd + 40 });
+    expect(atIdle?.phase).toBe("idle");
+    // Idle is fully at rest — no leftover motion or audio.
+    expect(atIdle?.liftPx).toBe(0);
+    expect(atIdle?.scale).toBe(1);
+    expect(atIdle?.glowAlpha).toBe(0);
+    expect(atIdle?.ringAlpha).toBe(0);
+    expect(atIdle?.hudNudgePx).toBe(0);
+    expect(atIdle?.audioGain).toBe(0);
+
+    // Negative elapsed clamps to t=0 (defensive against clock jitter
+    // where the renderer's `now - firedAtMs` briefly reads negative).
+    const atNegative = game?.ioJobOfferSelectFeel({ elapsedMs: -50 });
+    expect(atNegative?.phase).toBe("press");
+    expect(atNegative?.elapsedMs).toBe(0);
   });
 });

@@ -12,10 +12,7 @@ import {
 // module so the frozen copy stays legible to non-TS reviewers; the
 // harness is the sole importer and this file is the ship-side consumer
 // #1404's reviewer asked for.
-import {
-  chooseAftersignJobOfferCopy,
-  type AftersignJobOfferCopy,
-} from "../aftersignJobOfferCopy.js";
+import { chooseAftersignJobOfferCopy } from "../aftersignJobOfferCopy.js";
 import { measurePointerToRenderLatency } from "../../../../../aftersign/src/inputAcknowledgeLatency";
 import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
@@ -30,6 +27,11 @@ import {
   getAftersignNextJobOfferFeel,
   type AftersignNextJobOfferFeelFrame,
 } from "../nextJobOfferFeel";
+import {
+  IO_JOB_OFFER_SELECT_FEEL,
+  resolveIoJobOfferSelectFeel,
+  type IoJobOfferSelectFeelEnvelope,
+} from "../ioJobOfferSelectFeel";
 import type { AftersignReturnReason } from "../ioVoiceContract";
 import {
   AFTERSIGN_RETURN_TONE_SURFACE_SELECTOR,
@@ -257,6 +259,19 @@ export type AftersignWindowGameHarness = {
    * accept it. Returns `null` before the request has been recorded.
    */
   nextJobOfferFeel: (options: { elapsedMs: number; reducedMotion?: boolean }) => AftersignNextJobOfferFeelFrame | null;
+  /**
+   * Sample the CONFIRM-SELECT envelope Io's red-tag handoff plays the
+   * moment the player commits — i.e. picks the offered job. Distinct
+   * from `nextJobOfferFeel`, which fires when Io PRODUCES the tag
+   * (envelope armed by `hasAskedForNextJob`); this one is armed by
+   * ACCEPTANCE (`getAcceptedNextJob() !== null`) and paints the
+   * press → commit → settle → idle progression the offer TILE runs
+   * under the finger: press (0–84 ms), easeOutBack commit
+   * (84–240 ms), easeOutQuad settle (240–520 ms), then idle.
+   * Returns `null` before the accept has been recorded — the
+   * envelope is dormant until the tap that commits the job lands.
+   */
+  ioJobOfferSelectFeel: (options: { elapsedMs: number }) => IoJobOfferSelectFeelEnvelope | null;
   /**
    * Served-page style input surface. `choose("accept-next-job")` is an
    * alias for `acceptNextJob()`. `choose("choose-return-tone")` and
@@ -855,6 +870,19 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         return null;
       }
       return getAftersignNextJobOfferFeel({ elapsedMs, reducedMotion });
+    },
+    ioJobOfferSelectFeel({ elapsedMs }) {
+      // Gate on ACCEPTANCE, not the earlier ask. This envelope
+      // paints the SELECT / commit beat — the finger has just
+      // landed on the offer tile and the game has recorded the
+      // acceptance via `acceptNextJob` (or `input.choose(
+      // "accept-next-job")`, which aliases to the same recorder).
+      // Sampling before that point would paint a phantom commit
+      // for a job the player hasn't picked.
+      if (acceptedNextJob === null) {
+        return null;
+      }
+      return resolveIoJobOfferSelectFeel(elapsedMs, IO_JOB_OFFER_SELECT_FEEL);
     },
     input: {
       choose(choiceId) {
