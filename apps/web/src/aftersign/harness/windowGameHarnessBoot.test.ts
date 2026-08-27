@@ -23,7 +23,11 @@ import {
   IO_NEXT_JOB_HANDOFF,
   getIoReturnToneReply,
 } from "../story/ioContinueBeats";
-import { selectIoJobOffers } from "../../../../../packages/aftersign/src/computeOfferedJobs";
+import {
+  COMPLETED_JOB_IDS,
+  SAFE_DEFAULT_JOB_ID,
+  selectIoJobOffers,
+} from "../../../../../packages/aftersign/src/computeOfferedJobs";
 import "./bootWindowGame";
 
 // #918: this file carries the ONLY assertion the aftersign vitest lane runs
