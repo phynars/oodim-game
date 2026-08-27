@@ -1706,7 +1706,13 @@ const renderText = () => {
           button.setAttribute("id", `job-offer-${offer.id}`);
           button.setAttribute("data-aftersign-tap-choice", `offer-${offer.id}`);
           button.setAttribute("data-offered-job-id", offer.id);
-          button.setAttribute("data-offered-job-risk", offer.routeRisk);
+          // #1428 acceptance criterion: expose `IoJobOffer.routeRisk`
+          // ("low" | "medium" | "high") on the DOM under the
+          // issue-spec attribute name `data-route-risk`. Supersedes
+          // the older write-only `data-offered-job-risk` (removed in
+          // this PR — grep confirmed no readers anywhere in the
+          // repo). Label rendering is handled below via
+          // `button.textContent = "${offer.label} · ${offer.routeRisk} risk"`.
           button.setAttribute("data-route-risk", offer.routeRisk);
           button.setAttribute("data-mloop-job-id", mloopCopy.id);
           button.setAttribute("data-mloop-memory-gate", mloopAction.memoryGate);
