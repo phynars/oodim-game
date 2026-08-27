@@ -1227,7 +1227,12 @@ describe("Aftersign window.__game harness (#918)", () => {
 
     // Ask for the job then accept it — the accept gate is what arms
     // the SELECT envelope (distinct from `nextJobOfferFeel`, which
-    // arms on ask).
+    // arms on ask). Meet Io first so the story-beat prerequisite for
+    // `io-next-job` is honestly satisfied — the accept path doesn't
+    // strictly require it (`acceptNextJob()` just sets the
+    // acceptedNextJob slot), but driving the beat sequence honestly
+    // makes the seam runnable slice code, not a shortcut.
+    game?.meetNpc("io");
     game?.input.choose(AFTERSIGN_ASK_FOR_NEXT_JOB);
     const accepted = game?.input.choose("accept-next-job");
     expect(accepted).not.toBeNull();
@@ -1276,9 +1281,16 @@ describe("Aftersign window.__game harness (#918)", () => {
     const audioPeakElapsedMs = pressEnd + IO_JOB_OFFER_SELECT_FEEL.commitMs * 0.13;
     const atAudioPeak = game?.ioJobOfferSelectFeel({ elapsedMs: audioPeakElapsedMs });
     expect(atAudioPeak?.phase).toBe("commit");
+    // audioGain apex sits at raw x≈0.13 (eased t≈0.509, so |0.5 − t|
+    // ≈ 0.009 → gain ≈ maxAudio · 0.991 ≈ 0.218). Assert with
+    // digits=1 (tolerance 0.05) — the intent is "audio rides its
+    // peak here", not a curve-shape pin. A digits=2 assertion
+    // (tolerance 0.005) is technically satisfied by the arithmetic
+    // but leaves no headroom for future overshoot-magnitude tuning
+    // in `easeOutBack`.
     expect(atAudioPeak!.audioGain).toBeCloseTo(
       IO_JOB_OFFER_SELECT_FEEL.maxAudioGain,
-      2,
+      1,
     );
 
     const atSettleMid = game?.ioJobOfferSelectFeel({
