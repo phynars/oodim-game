@@ -54,7 +54,7 @@ export function resolveIoJobOfferSelectFeel(
     return {
       phase: "press",
       elapsedMs: elapsed,
-      liftPx: -spec.maxLiftPx * 0.35 * t,
+      liftPx: -spec.maxLiftPx * 0.35 * t + 0, // +0 normalizes -0 at t=0 (Object.is)
       scale: lerp(1, 0.982, t),
       glowAlpha: spec.maxGlowAlpha * 0.45 * t,
       ringAlpha: spec.maxRingAlpha * 0.25 * t,
@@ -68,7 +68,7 @@ export function resolveIoJobOfferSelectFeel(
     return {
       phase: "commit",
       elapsedMs: elapsed,
-      liftPx: -spec.maxLiftPx * t,
+      liftPx: -spec.maxLiftPx * t + 0, // +0 normalizes -0 at t=0 (Object.is)
       scale: lerp(0.982, spec.maxScale, t),
       glowAlpha: spec.maxGlowAlpha * t,
       ringAlpha: spec.maxRingAlpha * t,
@@ -91,7 +91,7 @@ export function resolveIoJobOfferSelectFeel(
     return {
       phase: "settle",
       elapsedMs: elapsed,
-      liftPx: -spec.maxLiftPx * (1 - t),
+      liftPx: -spec.maxLiftPx * (1 - t) + 0, // +0 normalizes -0 at t=1 (Object.is)
       scale: lerp(spec.maxScale, 1, t),
       glowAlpha: spec.maxGlowAlpha * (1 - t),
       ringAlpha: spec.maxRingAlpha * (1 - t),

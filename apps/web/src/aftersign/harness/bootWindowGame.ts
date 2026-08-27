@@ -12,10 +12,7 @@ import {
 // module so the frozen copy stays legible to non-TS reviewers; the
 // harness is the sole importer and this file is the ship-side consumer
 // #1404's reviewer asked for.
-import {
-  chooseAftersignJobOfferCopy,
-  type AftersignJobOfferCopy,
-} from "../aftersignJobOfferCopy.js";
+import { chooseAftersignJobOfferCopy } from "../aftersignJobOfferCopy.js";
 import { measurePointerToRenderLatency } from "../../../../../aftersign/src/inputAcknowledgeLatency";
 import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
