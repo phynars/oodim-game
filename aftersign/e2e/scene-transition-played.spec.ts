@@ -102,38 +102,72 @@ test.describe("AFTERSIGN scene-transition juice — served surface consumer", ()
     // The second setBeat crosses the scene boundary → the writer
     // mounts `.aftersign-scene-transition`.
     await page.locator("#deliverButton").click();
-    await waitForBeat(page, "io-return-recognition");
 
-    // The layer must actually be in the shipped DOM (not just a
-    // vitest jsdom fixture). It's a transient decoration — the
-    // dispose timer clears it after totalDurationMs +
-    // SCENE_TRANSITION_CLEANUP_TAIL_MS — so read the count while
-    // the beat is fresh. On CI runners the beat lands ~1180ms
-    // after the tap and the layer holds for ~620ms; a poll of
-    // "at least one" during that window is the play-evidence.
-    const layer = page.locator(LAYER_SELECTOR).first();
-    await expect(layer).toBeVisible({ timeout: WAIT_MS });
+    // RACE FIX (Soren PR #1523 review 4): the layer auto-disposes
+    // at `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS` =
+    // 540 + 80 = 620ms after mount. A sequential
+    // `waitForBeat → toBeVisible → getAttribute` sequence can lose
+    // the layer between steps on a slow runner (beat catches after
+    // the cleanup timer fires). Fold the whole read into a SINGLE
+    // page.evaluate poll — snapshot beat + layer + attributes in
+    // one synchronous tick so we can't miss the window.
+    type LayerRead = {
+      beat: string | undefined;
+      layerCount: number;
+      totalMs: string | null;
+      fromScene: string | null;
+      toScene: string | null;
+    };
+    const readInOneTick = async (): Promise<LayerRead> =>
+      page.evaluate((selector) => {
+        const el = document.querySelector<HTMLElement>(selector);
+        return {
+          beat: window.__game?.getSnapshot?.()?.scene?.beat,
+          layerCount: document.querySelectorAll(selector).length,
+          totalMs: el?.getAttribute("data-total-duration-ms") ?? null,
+          fromScene: el?.getAttribute("data-from-scene") ?? null,
+          toScene: el?.getAttribute("data-to-scene") ?? null,
+        };
+      }, LAYER_SELECTOR);
 
-    // Dataset carries the actual feel numbers the spec table
-    // pins — not a placeholder. `totalDurationMs` on the layer
-    // must equal `AFTERSIGN_SCENE_TRANSITION_FEEL.totalDurationMs`
-    // OR its reduced-motion variant (some CI runners advertise
-    // `prefers-reduced-motion: reduce`). Either read is
-    // spec-driven; a "0" or "" here would be dead-data drift.
-    const totalMs = await layer.getAttribute("data-total-duration-ms");
+    // Poll for the moment the beat has crossed AND the layer is
+    // present. `expect.poll` retries until every attribute matches
+    // in the SAME tick — no re-evaluate after the DOM has moved on.
+    // The feel numbers we compare against are fetched once up-front.
     const feel = await page.evaluate(() =>
       window.__game!.getSceneTransitionFeel!(),
     );
-    expect([
+    const acceptedTotalMs = new Set([
       String(feel.totalDurationMs),
       String(feel.reducedMotionDurationMs),
-    ]).toContain(totalMs);
+    ]);
 
-    // The scene direction — from `kiosk`, to `io-return` — must
-    // agree with the beat→scene mapping in `main.js`. A refactor
-    // that lets any other scene id ride through here reds.
-    await expect(layer).toHaveAttribute("data-from-scene", "kiosk");
-    await expect(layer).toHaveAttribute("data-to-scene", "io-return");
+    let captured: LayerRead | null = null;
+    await expect
+      .poll(
+        async () => {
+          const read = await readInOneTick();
+          if (
+            read.beat === "io-return-recognition" &&
+            read.layerCount >= 1 &&
+            read.fromScene === "kiosk" &&
+            read.toScene === "io-return" &&
+            read.totalMs !== null &&
+            acceptedTotalMs.has(read.totalMs)
+          ) {
+            captured = read;
+            return "ok";
+          }
+          return `beat=${read.beat} layers=${read.layerCount} from=${read.fromScene} to=${read.toScene} totalMs=${read.totalMs}`;
+        },
+        { timeout: WAIT_MS, intervals: [50, 75, 100] },
+      )
+      .toBe("ok");
+
+    // Sanity: the poll body enforces every pin already, but keep
+    // an explicit non-null check so a future edit that loosens
+    // the poll condition still trips a named assertion.
+    expect(captured).not.toBeNull();
   });
 
   test("window.__game.playSceneTransition mounts the layer on the served DOM", async ({
@@ -152,14 +186,27 @@ test.describe("AFTERSIGN scene-transition juice — served surface consumer", ()
 
     await expect(page.locator(LAYER_SELECTOR)).toHaveCount(0);
 
-    const mounted = await page.evaluate(() =>
-      window.__game!.playSceneTransition!("kiosk", "io-return"),
-    );
-    expect(mounted).toBe(true);
+    // RACE FIX (Soren PR #1523 review 4): same 620ms window as the
+    // tap path. Trigger the seam AND read attributes in ONE
+    // page.evaluate call — no chance for the auto-cleanup timer to
+    // fire between mount + read.
+    const seamResult = await page.evaluate((selector) => {
+      const mounted = window.__game!.playSceneTransition!(
+        "kiosk",
+        "io-return",
+      );
+      const el = document.querySelector<HTMLElement>(selector);
+      return {
+        mounted,
+        layerCount: document.querySelectorAll(selector).length,
+        fromScene: el?.getAttribute("data-from-scene") ?? null,
+        toScene: el?.getAttribute("data-to-scene") ?? null,
+      };
+    }, LAYER_SELECTOR);
 
-    const layer = page.locator(LAYER_SELECTOR).first();
-    await expect(layer).toBeVisible({ timeout: WAIT_MS });
-    await expect(layer).toHaveAttribute("data-from-scene", "kiosk");
-    await expect(layer).toHaveAttribute("data-to-scene", "io-return");
+    expect(seamResult.mounted).toBe(true);
+    expect(seamResult.layerCount).toBeGreaterThanOrEqual(1);
+    expect(seamResult.fromScene).toBe("kiosk");
+    expect(seamResult.toScene).toBe("io-return");
   });
 });
