@@ -134,6 +134,14 @@ const runners: Runner[] = [
   { label: "runIoRecognitionExpectedLineContractChecks", run: runIoRecognitionExpectedLineContractChecks },
   { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
   { label: "runIoSecondPacketCopyChecks", run: runIoSecondPacketCopyChecks },
+  // M-LOOP route/risk FEEL — pins over the SHIPPED contract
+  // (`apps/web/src/aftersign/routeRiskMemory.ts`, rendered via
+  // `#routeRiskChoice`). Imported above but was omitted from this
+  // array in the initial wire-up, so the bundle typechecked but never
+  // ran in CI. Registering it here closes the gap Soren flagged on
+  // the #1528 re-review — "even the correct bundle isn't executed
+  // today."
+  { label: "runRouteRiskFeelChecks", run: runRouteRiskFeelChecks },
 ];
 
 let failed = 0;
