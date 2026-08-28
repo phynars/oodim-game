@@ -1788,8 +1788,9 @@ const renderText = () => {
           button.setAttribute("data-offered-job-id", offer.id);
           button.setAttribute("data-offered-job-risk", offer.routeRisk);
           // #1428 (Phase B.5): expose the IoJobOffer routeRisk on the
-          // canonical `data-route-risk` attribute ("safe"|"risky"|
-          // "repair") alongside the legacy `data-offered-job-risk`
+          // canonical `data-route-risk` attribute ("low"|"medium"|
+          // "high", per packages/aftersign/src/computeOfferedJobs.ts)
+          // alongside the legacy `data-offered-job-risk`
           // stamp above — kept for the existing e2e selectors; new
           // consumers should read `data-route-risk`.
           button.setAttribute("data-route-risk", offer.routeRisk);
