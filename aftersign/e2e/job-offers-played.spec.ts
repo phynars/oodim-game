@@ -14,7 +14,17 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 //
 // Metadata guard: each served offer button must preserve its authored
 // player-facing label and expose its authored route-risk tier through the
-// canonical `data-route-risk` attribute.
+// `data-route-risk` attribute.
+//
+// #1526 review — the served renderer (aftersign/main.js:1795/1800) stamps
+// `data-route-risk` from `IoJobOffer.routeRisk`, whose current authored
+// vocabulary is `"low" | "medium" | "high"` (packages/aftersign/src/
+// computeOfferedJobs.ts). The button's textContent is the composite
+// `"<label> · <routeRisk> risk"` — Ivy's Phase B.5 (#1428) added the
+// canonical attribute alongside the composite label rather than replacing
+// the label. These assertions pin the SHIPPED DOM as-is; a future
+// canonical-token mapping (safe/risky/repair) is a separate change that
+// would flip both the served renderer AND this spec together.
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 30_000;
@@ -60,14 +70,20 @@ async function tapReturnReason(page: Page, reason: string): Promise<void> {
 
 async function expectOfferMetadata(
   offer: Locator,
-  expected: { text: string; routeRisk: "safe" | "risky" | "repair" },
+  expected: { label: string; routeRisk: "low" | "medium" | "high" },
 ): Promise<void> {
-  await expect(offer, "offer label must come from the authored job row").toHaveText(
-    expected.text,
-  );
+  // The served renderer stamps textContent as
+  // `${offer.label} · ${offer.routeRisk} risk` (aftersign/main.js:1800),
+  // so the authored label is one axis of the composite string. Assert
+  // the full string so a drift on EITHER axis (label rename, risk
+  // relabel, separator change) reds the spec.
   await expect(
     offer,
-    "offer must expose the authored route-risk token for runtime consumers",
+    "offer text must combine the authored label with the authored route-risk token",
+  ).toHaveText(`${expected.label} · ${expected.routeRisk} risk`);
+  await expect(
+    offer,
+    "offer must expose the authored route-risk token via data-route-risk",
   ).toHaveAttribute("data-route-risk", expected.routeRisk);
 }
 
@@ -88,8 +104,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "safe-default offered job should render on the first visit",
     ).toBeVisible({ timeout: WAIT_MS });
     await expectOfferMetadata(safeOffer, {
-      text: "Safe delivery",
-      routeRisk: "safe",
+      label: "Safe delivery",
+      routeRisk: "low",
     });
     await safeOffer.click();
     await expect(
@@ -125,8 +141,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "completed-set night-transfer offer should render after a delivery",
     ).toBeVisible({ timeout: WAIT_MS });
     await expectOfferMetadata(nightTransferOffer, {
-      text: "Night transfer",
-      routeRisk: "risky",
+      label: "Night transfer",
+      routeRisk: "medium",
     });
 
     const signedReceiptOffer = page.locator("#job-offer-job-signed-receipt");
@@ -135,8 +151,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "completed-set signed-receipt offer should render after a delivery",
     ).toBeVisible({ timeout: WAIT_MS });
     await expectOfferMetadata(signedReceiptOffer, {
-      text: "Signed receipt",
-      routeRisk: "repair",
+      label: "Signed receipt",
+      routeRisk: "low",
     });
 
     await expect(
