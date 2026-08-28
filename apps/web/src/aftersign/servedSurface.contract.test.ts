@@ -341,6 +341,68 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("window.__game.renderOrraFirstNameDialogue");
   });
 
+  it("consumes the scene-transition feel envelope on the shipped surface", () => {
+    // Blocking review on PR #1523: same shape as the return-tone /
+    // tap-choice / tap-confirm / route-risk precedents above — an
+    // `aftersignSceneTransitionFeel.ts` module imported ONLY by the
+    // vitest boot harness (`apps/web/src/aftersign/harness/bootWindowGame.ts`)
+    // was green tests over dead code. `aftersign/main.js` must
+    // import the resolver + the pinned feel table from the module,
+    // derive a scene id from every setBeat-mutated beat, and mount
+    // `.aftersign-scene-transition` under
+    // `[data-aftersign-scene-transition-surface]` on every real
+    // scene boundary (kiosk → io-return, io-return → orra-return).
+    // The runtime seams `window.__game.playSceneTransition` +
+    // `window.__game.getSceneTransitionFeel` project the same
+    // vocabulary a harness / dev overlay drives, and the sibling
+    // e2e `aftersign/e2e/scene-transition-played.spec.ts` plays a
+    // real tap and asserts the layer lands on the served DOM.
+    const main = readServedAftersignFile("main.js");
+    // Imported specifier — a rename in aftersignSceneTransitionFeel.ts
+    // that drops the file must red this pin.
+    expect(main).toContain(
+      "../apps/web/src/aftersign/aftersignSceneTransitionFeel.ts",
+    );
+    // Both bindings must be imported — the writer AND the pinned
+    // table. Missing either leaves the seam half-wired.
+    expect(main).toContain("resolveAndPlayAftersignSceneTransition");
+    expect(main).toContain("AFTERSIGN_SCENE_TRANSITION_FEEL");
+    // Runtime seams on window.__game — same vocabulary the harness
+    // projects; a rename here reds the played-page consumer.
+    expect(main).toContain("window.__game.playSceneTransition");
+    expect(main).toContain("window.__game.getSceneTransitionFeel");
+    // Bind-through pin: the beat→scene mapping must actually FEED
+    // the resolver — a "cleanup" refactor that keeps the helper but
+    // drops the invocation from setBeat leaves the seam ornamental.
+    // Assert setBeat calls the transition wiring so the played page
+    // gets a layer on every real beat advance.
+    expect(main).toContain("sceneIdForBeat");
+    expect(main).toContain("playSceneTransitionForBeatChange(");
+
+    // Served DOM container — the writer stamps
+    // `.aftersign-scene-transition` under a node marked with
+    // `data-aftersign-scene-transition-surface`, so the shipped
+    // `index.html` must host that surface AND declare a consuming
+    // CSS rule + inert :root defaults (same shape as the
+    // tap-confirm block above).
+    const html = readServedAftersignFile("index.html");
+    expect(html).toContain('id="aftersignSceneTransitionSurface"');
+    expect(html).toContain("data-aftersign-scene-transition-surface");
+    // Inert defaults so the rule parses before the first beat.
+    expect(html).toContain("--aftersign-scene-transition-total-ms");
+    expect(html).toContain("--aftersign-scene-transition-camera-drift-px");
+    expect(html).toContain("--aftersign-scene-transition-camera-roll-deg");
+    expect(html).toContain("--aftersign-scene-transition-vignette-alpha");
+    expect(html).toContain("--aftersign-scene-transition-bloom-alpha");
+    // Consumer rule + reduced-motion collapse — the writer's dataset
+    // stamps are drained INTO these channels; without the rule the
+    // envelope stays invisible on the served page.
+    expect(html).toContain(".aftersign-scene-transition {");
+    expect(html).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.aftersign-scene-transition/,
+    );
+  });
+
   it("routes player-visible beat + choice stamps through the shared DOM bridge", () => {
     // PR #1231: `renderText()` in main.js used to set
     // `dataset.choiceId` / `disabled` inline on the three visible
