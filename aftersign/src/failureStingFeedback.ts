@@ -73,6 +73,14 @@ export type FailureStingEnvelopeOptions = {
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
+const quantizeFrameMs = (elapsedMs: number, frameMs = 1000 / 60): number => {
+  if (!Number.isFinite(elapsedMs)) {
+    return elapsedMs;
+  }
+
+  return Math.max(0, Math.round(elapsedMs / frameMs) * frameMs);
+};
+
 export const failureStingEnvelopeAt = (
   elapsedMs: number,
   feel: FailureStingFeel = DEFAULT_FAILURE_STING_FEEL,
@@ -80,7 +88,8 @@ export const failureStingEnvelopeAt = (
 ): FailureStingEnvelope => {
   const durationMs = Math.max(1, feel.durationMs);
   const finite = Number.isFinite(elapsedMs);
-  const progress = finite ? clamp01(elapsedMs / durationMs) : 1;
+  const sampledElapsedMs = quantizeFrameMs(elapsedMs);
+  const progress = finite ? clamp01(sampledElapsedMs / durationMs) : 1;
   const curve = 1 - ((1 - progress) ** 2);
   const falloff = 1 - curve;
   const rawWobble = falloff * Math.sin(progress * Math.PI * feel.wobbleCycles);
@@ -102,7 +111,7 @@ export const failureStingEnvelopeAt = (
     easing: feel.easing,
     active,
     progress,
-    remainingMs: active ? Math.max(0, Math.round(durationMs - elapsedMs)) : 0,
+    remainingMs: active ? Math.max(0, Math.round(durationMs - sampledElapsedMs)) : 0,
     falloff,
     wobble,
     cameraKickDeg,
