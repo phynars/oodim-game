@@ -2,47 +2,19 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 // AFTERSIGN — `computeOfferedJobs` served-page divergence, real-tap.
 //
-// This is the spec issue #1395 explicitly requires: a played path
-// (no harness input, no `__game.input.setPlayerMemory`, no
-// `forceReload`) that reaches `packet-offered` with a completed prior
-// delivery in memory, and asserts the divergent `computeOfferedJobs`
-// render lands on the served DOM:
+// This plays the served packet loop rather than mutating game state:
 //
 //   FIRST VISIT (packet.delivered === false)
 //     `computeOfferedJobs(undefined)` → `[SAFE_DEFAULT_JOB_ID]`
-//     → `#job-offer-job-safe-delivery` is visible; the completed-set
-//        buttons are absent.
+//     → `#job-offer-job-safe-delivery` is visible.
 //
 //   RETURNING PLAYER (packet.delivered === true after the first loop)
 //     `computeOfferedJobs({ priorOutcome: "completed" })` →
-//     `["job-night-transfer", "job-signed-receipt"]`
 //     → `#job-offer-job-night-transfer` + `#job-offer-job-signed-receipt`
-//        are both visible; the safe-default button is absent.
 //
-// Reviewer feedback on PR #1396 first pass:
-//   • The `computeOfferedJobs` primitive already ships and is
-//     consumed by the vitest harness surface
-//     (`apps/web/src/aftersign/windowGameSurface.ts`), but the
-//     SERVED `aftersign/main.js` never rendered its output.
-//   • This spec drives the shipped `#offeredJobs` DOM node stamped
-//     by `renderText()` at the `packet-offered` beat, so a real
-//     regression that unwires either half — the render OR the
-//     `packet-offered` re-entry after `io-next-job → deliver-packet`
-//     — reds here.
-//
-// Metadata guard: every rendered offer button must expose the authored
-// risk tier through the served DOM and keep the player-facing label in
-// sync with that tier. This preserves the contract Phase B.5 is renaming
-// from `data-offered-job-risk` to `data-route-risk` without waiting to
-// prove the player-visible text/risk pairing in the played loop.
-//
-// Selectors match the shipped surface exactly (`playerVisibleBeatDom.js`
-// + `aftersign/main.js` renderText's `computeOfferedJobs` block):
-//   - `[data-beat-id="<id>"]` for story-beat arrival gate
-//   - `#packetButton` for the packet tap at `packet-offered`
-//   - `button[data-choice-id="<id>"]` for choice buttons
-//   - `button[data-return-reason="<tone>"]` for the return-tone fork
-//   - `#job-offer-<jobId>` for the computeOfferedJobs render
+// Metadata guard: each served offer button must preserve its authored
+// player-facing label and expose its authored route-risk tier through the
+// canonical `data-route-risk` attribute.
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 30_000;
@@ -88,15 +60,15 @@ async function tapReturnReason(page: Page, reason: string): Promise<void> {
 
 async function expectOfferMetadata(
   offer: Locator,
-  expected: { text: string; offeredJobRisk: "low" | "medium" },
+  expected: { text: string; routeRisk: "safe" | "risky" | "repair" },
 ): Promise<void> {
-  await expect(offer, "offer label and risk must come from the authored job row").toHaveText(
+  await expect(offer, "offer label must come from the authored job row").toHaveText(
     expected.text,
   );
   await expect(
     offer,
-    "offer must expose the authored risk token for runtime consumers",
-  ).toHaveAttribute("data-offered-job-risk", expected.offeredJobRisk);
+    "offer must expose the authored route-risk token for runtime consumers",
+  ).toHaveAttribute("data-route-risk", expected.routeRisk);
 }
 
 test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () => {
@@ -107,12 +79,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
 
-    // ─────────────────────────────────────────────────────────────
-    // FIRST VISIT — packet.delivered is false, so `computeOfferedJobs`
-    // returns `[SAFE_DEFAULT_JOB_ID]`.  The safe-default button must
-    // render with its authored label/risk metadata and the completed-set
-    // buttons must be absent.
-    // ─────────────────────────────────────────────────────────────
+    // FIRST VISIT — the safe-default button must render with its authored
+    // label and route-risk metadata; completed-set buttons must be absent.
     await waitForBeat(page, "packet-offered");
     const safeOffer = page.locator("#job-offer-job-safe-delivery");
     await expect(
@@ -120,8 +88,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "safe-default offered job should render on the first visit",
     ).toBeVisible({ timeout: WAIT_MS });
     await expectOfferMetadata(safeOffer, {
-      text: "Safe delivery · low risk",
-      offeredJobRisk: "low",
+      text: "Safe delivery",
+      routeRisk: "safe",
     });
     await safeOffer.click();
     await expect(
@@ -133,20 +101,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "completed-set offer should NOT render before any delivery",
     ).toHaveCount(0);
 
-    // Play through: packet tap → route ack → deliver → recognition →
-    // blunt tone → ask-for-next-job → deliver.  After the second
-    // deliver-packet the flow re-enters `packet-offered` (PR #1396 —
-    // the next-packet loop is a fresh packet-tap gesture, not a
-    // route-choice re-run), and `state.packet.delivered` is true from
-    // the first delivery, so `computeOfferedJobs` returns the
-    // completed set.
     await page.locator("#packetButton").click();
     await waitForBeat(page, "packet-choice");
-
-    // Off the packet-offered beat, the offer surface must clear —
-    // job offers are an opening-beat surface, not a persistent tray.
-    // (The `#job-offer-*` id space belongs to the packet-offered
-    // render only; any leak into packet-choice is a real regression.)
     await expect(
       page.locator('[id^="job-offer-"]'),
       "job-offer buttons must not persist past the packet-offered beat",
@@ -155,22 +111,13 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
     await tapChoice(page, "acknowledge-kiosk");
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
-
     await tapReturnReason(page, "blunt");
     await waitForBeat(page, "return-tone-choice");
-
     await tapChoice(page, "ask-for-next-job");
     await waitForBeat(page, "io-next-job");
-
     await tapChoice(page, "deliver-packet");
 
-    // ─────────────────────────────────────────────────────────────
-    // LOOPED RETURN — after the loop the served page lands back at
-    // `packet-offered` with `state.packet.delivered === true`, so the
-    // completed-set buttons render with their authored label/risk
-    // metadata and the safe-default button is absent.  This is the exact
-    // divergence #1395 asks the served page to prove.
-    // ─────────────────────────────────────────────────────────────
+    // LOOPED RETURN — the completed set replaces the safe default.
     await waitForBeat(page, "packet-offered");
     const nightTransferOffer = page.locator("#job-offer-job-night-transfer");
     await expect(
@@ -178,8 +125,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "completed-set night-transfer offer should render after a delivery",
     ).toBeVisible({ timeout: WAIT_MS });
     await expectOfferMetadata(nightTransferOffer, {
-      text: "Night transfer · medium risk",
-      offeredJobRisk: "medium",
+      text: "Night transfer",
+      routeRisk: "risky",
     });
 
     const signedReceiptOffer = page.locator("#job-offer-job-signed-receipt");
@@ -188,8 +135,8 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "completed-set signed-receipt offer should render after a delivery",
     ).toBeVisible({ timeout: WAIT_MS });
     await expectOfferMetadata(signedReceiptOffer, {
-      text: "Signed receipt · low risk",
-      offeredJobRisk: "low",
+      text: "Signed receipt",
+      routeRisk: "repair",
     });
 
     await expect(
