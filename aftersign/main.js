@@ -235,6 +235,42 @@ import {
   recordRouteRun,
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
+// Scene-transition juice — the three-phase envelope (recognition-
+// settle → job-offer-rise → route-commit) that plays when the beat
+// crosses a scene boundary (kiosk → io-return, io-return → orra-
+// return). Wiring it into `main.js` here turns
+// `aftersignSceneTransitionFeel.ts` from a harness-only spec
+// (imported previously ONLY by bootWindowGame.ts, the vitest boot
+// harness) into a SHIPPED consumer on the served page: setBeat
+// derives the AftersignSceneId of the previous + next beat, and
+// when the id flips it disposes any in-flight transition layer and
+// mounts a fresh one via `resolveAndPlayAftersignSceneTransition`,
+// which appends `.aftersign-scene-transition` under
+// `[data-aftersign-scene-transition-surface]` with every feel number
+// stamped as `dataset.*`. The served CSS in `index.html` reads those
+// custom-property mirrors to drive the vignette + bloom + camera
+// drift on the same envelope the harness pins. Same shape as the
+// `applyReturnToneFeel` / `applyTapConfirmFeel` / `renderRouteRiskChoice`
+// seams above — a runtime seam on `window.__game` a harness or
+// dev overlay can drive with the same vocabulary the served DOM
+// consumes.
+//
+// Beat → scene lookup: the beat ids `main.js` uses map to the three
+// `AftersignSceneId` values as follows —
+//   packet-offered / packet-choice / packet-delivered / arrival →
+//     kiosk (the counter, before the player leaves for the return leg).
+//   io-return-recognition / return-tone-choice / io-next-job →
+//     io-return (Io's return-session dialogue).
+//   (Orra's dedicated beats live behind the harness surface only
+//    today; when the served page grows them, add an "orra-return"
+//    row here — the resolver already knows the id.)
+// A beat we don't recognize returns null → the transition is a
+// no-op, matching the resolver's "scene didn't change → null"
+// early-out. That's the same shape sibling seams use to fail safe.
+import {
+  AFTERSIGN_SCENE_TRANSITION_FEEL,
+  resolveAndPlayAftersignSceneTransition,
+} from "../apps/web/src/aftersign/aftersignSceneTransitionFeel.ts";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
 // (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
@@ -1486,6 +1522,50 @@ const publishState = () => {
   // get the same divergent set that the played surface renders.
   // `getOfferedActions` exposes the pure primitive so a caller can
   // pin the divergence without touching the DOM.
+
+  /**
+   * Scene-transition juice runtime seam. Drives the same three-phase
+   * envelope `setBeat` mounts when a beat crosses a scene boundary,
+   * but callable from a harness / dev overlay with an explicit
+   * `previous → next` scene pair. Same shape as `applyTapConfirmFeel`
+   * / `applyReturnToneFeel` — a decorative FEEL projection that
+   * MUST NEVER throw (the STATE update that follows must not be
+   * gated on a rendered flourish). Returns `true` when the layer
+   * was mounted, `false` on any early-out (scene unchanged, no
+   * surface, or a swallowed error). The e2e
+   * `aftersign/e2e/scene-transition-played.spec.ts` drives this
+   * seam AND `setBeat` — the two entry points converge on one
+   * writer (`resolveAndPlayAftersignSceneTransition`), so a
+   * harness-side pin and a real tap pin ride the same DOM output.
+   */
+  window.__game.playSceneTransition = (previousScene, nextScene) => {
+    try {
+      const surface = document.querySelector(
+        "[data-aftersign-scene-transition-surface]",
+      );
+      if (!surface) return false;
+      if (!previousScene || !nextScene) return false;
+      if (previousScene === nextScene) return false;
+      sceneTransitionHandle?.dispose();
+      sceneTransitionHandle = resolveAndPlayAftersignSceneTransition(
+        { scene: previousScene },
+        { scene: nextScene },
+        { root: surface, reducedMotion: prefersReducedMotion() },
+      );
+      return sceneTransitionHandle !== null;
+    } catch (_err) {
+      return false;
+    }
+  };
+
+  /**
+   * Pinned scene-transition feel contract — same shape as
+   * `FLAGSHIP_TAP_CONFIRM_FEEL` above. Exposed so a harness or
+   * dev overlay can render the ms/px/dB/Hz numbers without
+   * re-importing the spec module.
+   */
+  window.__game.getSceneTransitionFeel = () => AFTERSIGN_SCENE_TRANSITION_FEEL;
+
   window.__game.renderRouteRiskChoice = () => {
     if (!routeRiskChoice) return [];
     return renderRouteRiskChoice({
@@ -1819,14 +1899,81 @@ const renderText = () => {
   setTextContentIfChanged(stateReadout, `story: ${state.scene.beat} · packet ${packetStatus} · route ${routeMemory} · memory: ${memoryStatus} · player ${state.player.x.toFixed(1)},${state.player.z.toFixed(1)}`);
 };
 
+// Beat → AftersignSceneId lookup: `main.js`'s beat vocabulary
+// (flagship canonical) maps onto the three-scene axis the
+// scene-transition feel spec speaks. `null` = no scene change
+// (the resolver early-outs on null → the played surface stays
+// still). See the module-import comment above for the mapping
+// rationale; keep this table in lockstep with SCENE_ALIGNMENT
+// in apps/web/src/aftersign/flagshipSurfaceAlignment.test.ts so
+// a beat rename over there reds a real seam here.
+const sceneIdForBeat = (beat) => {
+  switch (beat) {
+    case "arrival":
+    case "packet-choice":
+    case "packet-offered":
+    case "packet-delivered":
+      return "kiosk";
+    case "io-return-recognition":
+    case "return-tone-choice":
+    case "io-next-job":
+      return "io-return";
+    default:
+      return null;
+  }
+};
+
+// In-flight scene-transition layer. `setBeat` disposes any
+// previous handle before mounting a fresh one so back-to-back
+// beat advances (e.g. a rapid packet-delivered → io-return-
+// recognition) don't stack overlapping envelopes on the DOM —
+// same discipline as `sceneTransitionHandle` in
+// apps/web/src/aftersign/harness/bootWindowGame.ts.
+let sceneTransitionHandle = null;
+
+const playSceneTransitionForBeatChange = (previousBeat, nextBeat) => {
+  const previousScene = sceneIdForBeat(previousBeat);
+  const nextScene = sceneIdForBeat(nextBeat);
+  if (!previousScene || !nextScene) return null;
+  if (previousScene === nextScene) return null;
+  const surface = document.querySelector(
+    "[data-aftersign-scene-transition-surface]",
+  );
+  if (!surface) return null;
+  sceneTransitionHandle?.dispose();
+  sceneTransitionHandle = resolveAndPlayAftersignSceneTransition(
+    { scene: previousScene },
+    { scene: nextScene },
+    { root: surface, reducedMotion: prefersReducedMotion() },
+  );
+  return sceneTransitionHandle;
+};
+
 const setBeat = (beat) => {
   const canonicalBeat = canonicalFlagshipBeat(beat);
   if (state.scene.beat !== canonicalBeat) {
+    const previousBeat = state.scene.beat;
     state.scene.beat = canonicalBeat;
     if (canonicalBeat !== "io-next-job") {
       ioSecondPacketResponseLine = null;
     }
     markStateDirty();
+    // Scene-transition juice — mount the three-phase envelope
+    // on the served surface whenever the beat crosses a scene
+    // boundary. Kept AFTER the `state.scene.beat` mutation so
+    // the resolver reads from an authoritative previous → next
+    // pair, and BEFORE `renderText()` so the layer is already
+    // in the DOM when the beat text lands. Failures never throw
+    // (the FEEL projection must never break the STATE update
+    // that follows — same posture as `applyTapConfirmFeel`).
+    try {
+      playSceneTransitionForBeatChange(previousBeat, canonicalBeat);
+    } catch (err) {
+      // Swallow — a broken transition layer can't be allowed to
+      // gate story progression. The seam is a decoration, not a
+      // prerequisite.
+      void err;
+    }
   }
   const nextNpcId = canonicalBeat === "io-return-recognition" ? "io" : null;
   if (state.story.currentNpcId !== nextNpcId) {
