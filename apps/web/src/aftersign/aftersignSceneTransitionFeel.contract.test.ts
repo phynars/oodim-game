@@ -1,3 +1,9 @@
+// Contract test for AFTERSIGN_SCENE_TRANSITION_FEEL — pins the
+// concrete ms/px/dB/Hz numbers so a drift breaks CI. The sibling
+// `.consumer.test.ts` proves the numbers actually reach a mounted DOM
+// layer on the served surface; this file locks the shape they must
+// take before that mount happens.
+
 import { describe, expect, it } from "vitest";
 import {
   AFTERSIGN_SCENE_TRANSITION_FEEL,
@@ -44,5 +50,16 @@ describe("AFTERSIGN_SCENE_TRANSITION_FEEL", () => {
     expect(getAftersignSceneTransitionPhase("recognition-settle").durationMs).toBe(180);
     expect(getAftersignSceneTransitionPhase("job-offer-rise").cameraDriftPx).toBe(9);
     expect(getAftersignSceneTransitionPhase("route-commit").delayMs).toBe(360);
+  });
+
+  it("keeps phase delays + durations consistent with totalDurationMs", () => {
+    // The route-commit phase starts at delayMs=360 and runs 180ms →
+    // ends at 540ms, which must equal totalDurationMs. This is the
+    // internal-coherence check that turned out fine on review —
+    // pinning it here so a future edit can't silently drift.
+    const routeCommit = getAftersignSceneTransitionPhase("route-commit");
+    expect(routeCommit.delayMs + routeCommit.durationMs).toBe(
+      AFTERSIGN_SCENE_TRANSITION_FEEL.totalDurationMs,
+    );
   });
 });

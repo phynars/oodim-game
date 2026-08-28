@@ -22,6 +22,12 @@ import {
   getMemoryRecallFeel,
   type MemoryRecallFeelFrame,
 } from "../memoryRecallFeel";
+import {
+  AFTERSIGN_SCENE_TRANSITION_FEEL,
+  resolveAndPlayAftersignSceneTransition,
+  type AftersignSceneTransitionFeel,
+  type AftersignSceneTransitionHandle,
+} from "../aftersignSceneTransitionFeel";
 import { playAftersignRememberingNpcRecognitionFeel } from "../verticalSliceRememberingNpcInteraction";
 import {
   getAftersignNextJobOfferFeel,
@@ -377,6 +383,25 @@ export type AftersignWindowGameHarness = {
    * boot still emits the round-trip beat on the next recognition.
    */
   setPlayerMemory: (memory: AftersignPlayerMemoryInput | null) => void;
+  /**
+   * Return the handle of the most recent scene-transition layer
+   * mounted by `meetNpc` (kiosk → io-return, io-return → orra-return),
+   * or `null` when no scene has changed yet this session (or the last
+   * meet was a same-scene no-op, or the transition was disposed).
+   * The handle exposes the mounted DOM `layer` (with dataset entries
+   * driven by `AFTERSIGN_SCENE_TRANSITION_FEEL`), the resolved `cue`,
+   * and the pinned `feel` spec. This is the seam that turns the
+   * scene-transition feel spec into runnable slice code — the
+   * served-surface consumer test asserts the layer really appended
+   * to `document.body` with the expected phase numbers.
+   */
+  getSceneTransitionHandle: () => AftersignSceneTransitionHandle | null;
+  /**
+   * Return the pinned scene-transition feel contract. Convenience
+   * accessor so a consumer test asserting `getSceneTransitionHandle`'s
+   * dataset payload doesn't have to re-import the spec module.
+   */
+  getSceneTransitionFeel: () => AftersignSceneTransitionFeel;
 };
 
 declare global {
@@ -490,6 +515,17 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let acceptedNextJob: IoNextJobBeat | null = null;
   let savedAtTurn = 0;
   let playerMemory: AftersignPlayerMemoryInput | null = null;
+
+  // Scene-transition juice: the most recent transition mounted on the
+  // served surface by `applyMeet` (kiosk → io-return, or io-return →
+  // orra-return). Exposed via `getSceneTransitionHandle` so a consumer
+  // test can assert the `.aftersign-scene-transition` layer really
+  // landed on `document.body` with dataset numbers driven from
+  // `AFTERSIGN_SCENE_TRANSITION_FEEL` — turning the feel spec from a
+  // green-by-construction contract into runnable slice code with a
+  // rendered implementor. Cleared on `restoreDurableSave` (fresh boot
+  // has no in-flight transition to inherit).
+  let sceneTransitionHandle: AftersignSceneTransitionHandle | null = null;
 
   // Pointer-to-render probe state. `pendingIntents` matches intent →
   // render by pointerId (the primitive requires event.id === signal.id;
@@ -645,6 +681,30 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       recallTrigger = { npcId: id, firedAtMs: nowMs() };
     }
 
+    // Scene-transition juice: when the scene actually changed
+    // (kiosk → io-return, io-return → orra-return, …) mount the
+    // three-phase transition layer on document.body so a served
+    // camera / vignette / audio component can read the pinned feel
+    // numbers off its dataset and drive an animation. This is the
+    // rendered consumer of `AFTERSIGN_SCENE_TRANSITION_FEEL` —
+    // without it the feel spec has no implementor. Guarded on
+    // `typeof document` so worker / SSR contexts stay no-op.
+    if (
+      previous.scene !== next.scene &&
+      typeof document !== "undefined" &&
+      typeof document.body !== "undefined" &&
+      document.body !== null
+    ) {
+      // Tear down any in-flight transition first — the scene
+      // shouldn't have two overlapping envelopes fighting for the
+      // camera. `dispose()` is idempotent, so double-dispose is safe.
+      sceneTransitionHandle?.dispose();
+      sceneTransitionHandle = resolveAndPlayAftersignSceneTransition(
+        previous,
+        next,
+      );
+    }
+
     return next;
   };
 
@@ -740,8 +800,13 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     state = restoreAftersignDurableSave(payload);
     // A durable-save restore is a load, not a meet — no recall
     // envelope fires until the player actually re-encounters the
-    // NPC via `meetNpc`.
+    // NPC via `meetNpc`. Same shape for the scene-transition
+    // handle: tear down any in-flight transition and drop the
+    // reference so the next meet is the trigger that arms a new
+    // one.
     recallTrigger = null;
+    sceneTransitionHandle?.dispose();
+    sceneTransitionHandle = null;
     acceptedNextJob = null;
     // Clear the returning-player memory bag on a bare durable-save
     // restore. The window-game `load()` wrapper re-hydrates it from
@@ -1041,6 +1106,12 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         ...(memory.trustPosture ? { trustPosture: memory.trustPosture } : {}),
         ...(memory.priorOutcome ? { priorOutcome: memory.priorOutcome } : {}),
       };
+    },
+    getSceneTransitionHandle() {
+      return sceneTransitionHandle;
+    },
+    getSceneTransitionFeel() {
+      return AFTERSIGN_SCENE_TRANSITION_FEEL;
     },
   };
 
