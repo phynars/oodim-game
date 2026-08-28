@@ -76,6 +76,59 @@ describe("aftersignSceneTransitionFeel consumer (scene-change wiring)", () => {
     expect(layers()).toHaveLength(0);
   });
 
+  it("mirrors peak feel numbers into `style.setProperty` so the served CSS reads real values, not `:root` zeros", () => {
+    // Regression pin for Soren's blocking review on PR #1523: the
+    // writer previously stamped `dataset.*` but never mirrored the
+    // numbers onto the six shipped `--aftersign-scene-transition-*`
+    // custom properties the CSS in `aftersign/index.html` reads.
+    // That left the mounted layer transparent (0px drift, 0 alpha,
+    // 0ms duration) and `toBeVisible` passed over a dead bridge.
+    // These assertions red the moment a refactor drops the CSS-var
+    // mirror — regardless of what happens to `dataset.*`.
+    resolveAndPlayAftersignSceneTransition(state("kiosk"), state("io-return"));
+    const layer = layers()[0] as HTMLElement;
+
+    // Peak drift is the job-offer-rise phase (9px). Peak |roll| is
+    // job-offer-rise (0.5deg). Peak vignette is job-offer-rise (0.18).
+    // Peak bloom is job-offer-rise (0.26). Easing follows the peak-
+    // drift phase → cubic-bezier(0.2, 0.8, 0.2, 1).
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-total-ms"))
+      .toBe(`${AFTERSIGN_SCENE_TRANSITION_FEEL.totalDurationMs}ms`);
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-camera-drift-px"))
+      .toBe("9px");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-camera-roll-deg"))
+      .toBe("0.5deg");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-vignette-alpha"))
+      .toBe("0.18");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-bloom-alpha"))
+      .toBe("0.26");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-easing"))
+      .toBe("cubic-bezier(0.2, 0.8, 0.2, 1)");
+  });
+
+  it("zeroes the mirrored drift + roll CSS vars under reducedMotion but keeps vignette + bloom + timing", () => {
+    // Motion channels collapse; the vignette (which the reduced-
+    // motion CSS block deliberately keeps) survives, so the player
+    // still gets "the scene changed" without the camera shake.
+    resolveAndPlayAftersignSceneTransition(
+      state("kiosk"),
+      state("io-return"),
+      { reducedMotion: true },
+    );
+    const layer = layers()[0] as HTMLElement;
+
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-camera-drift-px"))
+      .toBe("0px");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-camera-roll-deg"))
+      .toBe("0deg");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-vignette-alpha"))
+      .toBe("0.18");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-bloom-alpha"))
+      .toBe("0.26");
+    expect(layer.style.getPropertyValue("--aftersign-scene-transition-total-ms"))
+      .toBe(`${AFTERSIGN_SCENE_TRANSITION_FEEL.reducedMotionDurationMs}ms`);
+  });
+
   it("carries the pinned scene-transition contract on the mounted layer's dataset", () => {
     resolveAndPlayAftersignSceneTransition(state("kiosk"), state("io-return"));
 

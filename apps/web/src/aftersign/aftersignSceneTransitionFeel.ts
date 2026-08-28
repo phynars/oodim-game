@@ -237,9 +237,10 @@ export function createAftersignSceneTransitionLayer(
   layer.dataset.ariaLabel = cue.ariaLabel;
   layer.dataset.fromScene = cue.from;
   layer.dataset.toScene = cue.to;
-  layer.dataset.totalDurationMs = String(
-    reducedMotion ? cue.feel.reducedMotionDurationMs : cue.feel.totalDurationMs,
-  );
+  const resolvedTotalMs = reducedMotion
+    ? cue.feel.reducedMotionDurationMs
+    : cue.feel.totalDurationMs;
+  layer.dataset.totalDurationMs = String(resolvedTotalMs);
   layer.dataset.reducedMotion = reducedMotion ? "true" : "false";
 
   layer.dataset.audioRecognitionSettleHz = String(
@@ -256,6 +257,73 @@ export function createAftersignSceneTransitionLayer(
   for (const phase of cue.feel.phases) {
     writePhaseDataset(layer, phase, reducedMotion);
   }
+
+  // -----------------------------------------------------------------
+  // CSS-variable MIRROR — this is the half the sibling
+  // `aftersignConfirmFeel.ts` gets right and the earlier revision of
+  // this writer skipped. `dataset.*` alone leaves the served CSS in
+  // `aftersign/index.html` reading its inert `:root` fallbacks (0px
+  // drift, 0 vignette alpha, 0ms duration, `linear` easing) — the
+  // rendered `.aftersign-scene-transition` layer stays transparent
+  // and the played e2e `toBeVisible` check passes over a dead bridge.
+  // Stamp every one of the six shipped `--aftersign-scene-transition-*`
+  // custom properties so the paint pipeline reads real, contract-
+  // backed numbers.
+  //
+  // The CSS is authored for a SINGLE envelope (total duration, one
+  // drift/roll/vignette/bloom value each) — the three-phase spec has
+  // per-phase numbers, so pick the peak: max drift px, max |roll| deg,
+  // max vignette alpha, max bloom alpha. That's the beat the
+  // returning-player-facing camera envelope commits to. Reduced motion
+  // zeroes drift + roll to match the dataset behavior AND the
+  // belt-and-suspenders `@media (prefers-reduced-motion: reduce)`
+  // rule already in `index.html`.
+  const peakCameraDriftPx = Math.max(
+    ...cue.feel.phases.map((phase) => phase.cameraDriftPx),
+  );
+  const peakCameraRollDeg = cue.feel.phases.reduce((acc, phase) => {
+    return Math.abs(phase.cameraRollDeg) > Math.abs(acc)
+      ? phase.cameraRollDeg
+      : acc;
+  }, 0);
+  const peakVignetteAlpha = Math.max(
+    ...cue.feel.phases.map((phase) => phase.vignetteAlpha),
+  );
+  const peakBloomAlpha = Math.max(
+    ...cue.feel.phases.map((phase) => phase.bloomPulseAlpha),
+  );
+  // Pick the easing off the phase that carries the peak drift — that's
+  // the beat driving the visible motion. Falls back to the first
+  // phase's easing when all drifts are equal (deterministic).
+  const peakDriftPhase =
+    cue.feel.phases.find((phase) => phase.cameraDriftPx === peakCameraDriftPx) ??
+    cue.feel.phases[0];
+  const peakEasing = peakDriftPhase?.easing ?? "linear";
+
+  layer.style.setProperty(
+    "--aftersign-scene-transition-total-ms",
+    `${resolvedTotalMs}ms`,
+  );
+  layer.style.setProperty(
+    "--aftersign-scene-transition-camera-drift-px",
+    `${reducedMotion ? 0 : peakCameraDriftPx}px`,
+  );
+  layer.style.setProperty(
+    "--aftersign-scene-transition-camera-roll-deg",
+    `${reducedMotion ? 0 : peakCameraRollDeg}deg`,
+  );
+  layer.style.setProperty(
+    "--aftersign-scene-transition-vignette-alpha",
+    String(peakVignetteAlpha),
+  );
+  layer.style.setProperty(
+    "--aftersign-scene-transition-bloom-alpha",
+    String(peakBloomAlpha),
+  );
+  layer.style.setProperty(
+    "--aftersign-scene-transition-easing",
+    peakEasing,
+  );
 
   return layer;
 }
