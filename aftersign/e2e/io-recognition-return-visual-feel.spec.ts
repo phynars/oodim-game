@@ -1,23 +1,24 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 
 // Visual-feel spec for Io's returning-session recognition beat.
 //
-// This spec is deliberately anchored to the SAME surface the runtime
-// actually publishes from aftersign/main.js `publishState`:
+// PLAYED, NOT DRIVEN (#1544): every input in this spec is a tap on a
+// visible, rendered dialogue control at a phone viewport. `window.__game`
+// is used exclusively as an ASSERTION surface (state reads) — never to
+// dispatch `input.choose()`, `input.advance()`, or `input.forceReload()`.
+// The pattern mirrors aftersign/e2e/io-continue-beats-tap-playtest.spec.ts:
+// wait for `[data-beat-id=…]` to become visible, click the rendered
+// button (`#packetButton`, `button[data-choice-id=…]`), then wait for
+// the next beat's DOM to reconcile.
+//
+// Runtime state assertions still read from window.__game.publishState:
 //   - scene.beat                            (top-level)
 //   - story.memoryBeat.{kind,outcome,startedAt,endedAt,
 //                       cameraDeltaMeters,cameraYawDegrees,inputLockMs,lineId}
 //   - npcs.io.lastLine / npcs.io.lastLineMemoryRefs
 //   - interaction.recognitionFeedback.{durationMs,cameraDeltaMeters,cameraYawDegrees}
-//
-// It does NOT read a `recognition` object, a `debug` object, or a
-// top-level `lastNpcLine` — none of those exist on window.__game.
-// It drives the beat the way the sibling
-// io-recognition-memory-beat-contract.spec.ts does: navigate with
-// ?slot=…, wait for window.__game.input, then
-// choose('keep-packet-sealed') → choose('deliver-packet') → advance().
-// The seeded-save mechanism keys off ?slot= (localStorage key
-// `aftersign:kiosk-slice:${slot}`), not ?player=/?seed=.
+//   - interaction.recognitionBeatReport (impact-burst analytic peak)
+//   - interaction.impactBurstParticles   (live particle list)
 
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
@@ -64,62 +65,163 @@ const EXPECTED_LINE_ID: Record<RecognitionOutcome, string> = {
   opened: "io_return_packet_opened",
 };
 
-const waitForGame = async (page: Page) => {
-  await page.waitForFunction(
-    () =>
-      Boolean(
-        (window as Window & {
-          __game?: { input?: { choose?: unknown; advance?: unknown; forceReload?: unknown } };
-        }).__game?.input?.choose
-          && (window as Window & {
-            __game?: { input?: { advance?: unknown } };
-          }).__game?.input?.advance
-          && (window as Window & {
-            __game?: { input?: { forceReload?: unknown } };
-          }).__game?.input?.forceReload,
-      ),
-    undefined,
-    { timeout: WAIT_MS },
-  );
-};
+// ---------- Rendered-control tap helpers ----------
+//
+// Same visible-DOM surface used by io-continue-beats-tap-playtest.spec.ts.
+// If the served page ever stops rendering these buttons, THIS spec goes
+// red — which is the whole point: no rendered control ⇒ no player path.
+//
+// Sealed vs. opened is chosen by the PACKET GESTURE, not by a separate
+// `data-choice-id` button — `keep-packet-sealed`/`open-packet` are
+// dispatch-only ids inside `choose()` (aftersign/main.js:2126) and are
+// NEVER stamped on a visible button. The played surface is `#packetButton`:
+//   - short tap → PacketIntentController never crosses OPEN thresholds →
+//     `commitPacketOutcome(SEALED)` fires → `state.packet.sealed = true`.
+//   - hold-and-pull → holdProgress + pullProgress cross the OPEN window
+//     → `commitPacketOutcome(OPENED)` fires → `state.packet.sealed = false`.
+// This mirrors `holdChoiceViaDom` in flagship-surface-contract.spec.ts:644
+// (pull=12px sits inside (OPEN_PULL_MIN_PX=10, DRIFT_CANCEL_PX=14]).
 
-const driveRecognition = async (page: Page, outcome: RecognitionOutcome) => {
-  await waitForGame(page);
-  await page.evaluate(async (nextOutcome) => {
-    const game = (window as Window & {
-      __game?: {
-        input?: {
-          choose?: (choiceId: string) => Promise<void>;
-          advance?: () => Promise<void>;
-          forceReload?: () => Promise<void>;
-        };
-        story?: { memoryBeat?: unknown };
-      };
-    }).__game;
-    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) {
-      throw new Error("window.__game.input is not available");
-    }
+async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
+  const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
+  await expect(
+    beatNode,
+    `story line should reach beat "${beatId}"`,
+  ).toBeVisible({ timeout: WAIT_MS });
+  return beatNode;
+}
 
-    await game.input.forceReload();
-    if (game.story) {
-      game.story.memoryBeat = null;
-    }
-    await game.input.choose(nextOutcome === "sealed" ? "keep-packet-sealed" : "open-packet");
-    await game.input.choose("deliver-packet");
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const choice = page
+    .locator(`button[data-choice-id="${choiceId}"]:not([disabled])`)
+    .first();
+  await expect(
+    choice,
+    `visible dialogue control for "${choiceId}" should be present`,
+  ).toBeVisible({ timeout: WAIT_MS });
+  await choice.click();
+}
 
-    // #1134 cold-start guard: arm `advance()` only AFTER at least one
-    // composited frame on this navigation. On SwiftShader cold boots the
-    // first rAF after goto can land >1.2s late; if we arm first, the
-    // recognition impact-burst timeout can expire before any frame ever
-    // reconciles `.impact-burst-particle` DOM nodes.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    await game.input.advance();
-  }, outcome);
-};
+// Perform the packet gesture on the visible `#packetButton`. Sealed is a
+// plain tap (Playwright `click()` synthesizes a fast pointerdown→up).
+// Opened is a hold with a mid-hold pointermove pull — same shape as
+// `holdChoiceViaDom` in flagship-surface-contract.spec.ts. Both go
+// through the PacketIntentController, so `state.packet.sealed` flips
+// via the real intent-recognition path, not a scripted dispatch.
+async function performPacketGesture(
+  page: Page,
+  outcome: RecognitionOutcome,
+): Promise<void> {
+  const packet = page.locator("#packetButton");
+  await expect(packet, "#packetButton should be visible at packet-offered").toBeVisible({
+    timeout: WAIT_MS,
+  });
+
+  if (outcome === "sealed") {
+    await packet.click();
+    return;
+  }
+
+  // OPENED — hold ~900ms with a 12px pull injected halfway through.
+  await page.evaluate(async () => {
+    const node = document.querySelector<HTMLElement>("#packetButton");
+    if (!node) throw new Error("#packetButton not found");
+    const rect = node.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    const pullPx = 12;
+    const holdMs = 900;
+
+    node.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX,
+        clientY: startY,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, Math.floor(holdMs / 2)));
+
+    node.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX + pullPx,
+        clientY: startY,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, holdMs - Math.floor(holdMs / 2)));
+
+    node.dispatchEvent(
+      new PointerEvent("pointerup", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 0,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX + pullPx,
+        clientY: startY,
+      }),
+    );
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+// Play from a fresh save at `slot` to the recognition beat, using only
+// rendered controls:
+//   1. `#packetButton` — tap (sealed) or hold+pull (opened)
+//   2. `[data-choice-id="skip-kiosk-acknowledge"]` — records the second
+//      action as "skipped". CRITICAL: the RETURNING tier speaks only when
+//      the route was NOT listened to. Tapping `acknowledge-kiosk` here
+//      would set `secondAction = "done"`, deliverPacket() would mint the
+//      route-attention fact with `object: "done"`, and
+//      `selectIoRecognitionDialogueLine` would speak the deep-recall
+//      tier instead — falsifying `expectedIoRecognitionLine(outcome,
+//      false)` on both `#line` and `ioLastLine`. `skip-kiosk-acknowledge`
+//      is a rendered visible control (proved by
+//      m-continue-next-packet-loop-buttons-enabled.spec.ts and the
+//      servedSurface.contract.test.ts grep-pin), so this is still a
+//      played tap — just the branch that keeps routeListened=false.
+//   3. `[data-choice-id="deliver-packet"]` — advances to packet-delivered
+// The runtime then auto-advances into `io-return-recognition` on
+// deliverPacket()'s ~1180ms setTimeout.
+async function playToRecognition(
+  page: Page,
+  slot: string,
+  outcome: RecognitionOutcome,
+): Promise<void> {
+  // Phone viewport — the flagship brief targets a phone-shaped page.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
+
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, outcome);
+
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "skip-kiosk-acknowledge");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-delivered");
+
+  // The runtime auto-advances into the recognition beat after
+  // deliverPacket()'s ~1180ms setTimeout — no additional tap needed.
+  await waitForBeat(page, "io-return-recognition");
+}
 
 // Wait until state.story.memoryBeat has been populated with the expected
 // outcome. deliverPacket() arms a ~1180ms setTimeout that publishes the
-// beat, so we poll rather than assume any single frame.
+// beat, so we poll rather than assume any single frame. ASSERTION-ONLY
+// read of window.__game (#1544 boundary).
 const waitForMemoryBeat = async (page: Page, outcome: RecognitionOutcome) => {
   const handle = await page.waitForFunction(
     (expected) => {
@@ -148,6 +250,7 @@ type FeelSnapshot = {
   };
 };
 
+// ASSERTION-ONLY read of window.__game (#1544 boundary).
 const readFeelSnapshot = async (page: Page): Promise<FeelSnapshot> => {
   return page.evaluate(() => {
     const game = (window as Window & {
@@ -222,21 +325,32 @@ const assertVisualFeel = (snapshot: FeelSnapshot, outcome: RecognitionOutcome) =
   expect(feel.cameraYawDegrees!).toBeLessThanOrEqual(BEAT_LIMITS.cameraYawDegrees.max);
 };
 
-test("io return recognition publishes readable visual-feel numbers (sealed)", async ({ page }) => {
+test("io return recognition, played by taps: sealed branch publishes readable visual-feel numbers", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/aftersign/index.html?slot=io-return-visual-feel-sealed", { waitUntil: "load" });
 
-  await driveRecognition(page, "sealed");
+  await playToRecognition(page, `io-return-visual-feel-sealed-${Date.now()}`, "sealed");
+
+  // Visible-DOM proof of the recognition transition: Io's line for the
+  // sealed outcome must render in `#line` after the auto-advance —
+  // NOT read from window.__game.
+  await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
+    timeout: WAIT_MS,
+  });
+
   await waitForMemoryBeat(page, "sealed");
   const snapshot = await readFeelSnapshot(page);
   assertVisualFeel(snapshot, "sealed");
 });
 
-test("io return recognition publishes readable visual-feel numbers (opened)", async ({ page }) => {
+test("io return recognition, played by taps: opened branch publishes readable visual-feel numbers", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/aftersign/index.html?slot=io-return-visual-feel-opened", { waitUntil: "load" });
 
-  await driveRecognition(page, "opened");
+  await playToRecognition(page, `io-return-visual-feel-opened-${Date.now()}`, "opened");
+
+  await expect(page.locator("#line")).toHaveText(OPENED_RECOGNITION_LINE, {
+    timeout: WAIT_MS,
+  });
+
   await waitForMemoryBeat(page, "opened");
   const snapshot = await readFeelSnapshot(page);
   assertVisualFeel(snapshot, "opened");
@@ -247,27 +361,23 @@ test("io return recognition publishes readable visual-feel numbers (opened)", as
 // window is active. The envelope emits 14 particles at frame 4 (≈187ms
 // after beat start) for a 260ms window; the render tick reconciles child
 // `.impact-burst-particle` nodes under `#recognitionImpactBurst`. This
-// spec drives recognition, then polls the DOM until the burst window
-// paints — proving the published `interaction.impactBurstParticles` list
-// has been consumed by an actual render path, not merely computed.
-test("io return recognition spawns 14 particle primitives during the impact-burst window", async ({ page }) => {
+// spec drives recognition VIA TAPS, then polls the DOM until the burst
+// window paints — proving the published `interaction.impactBurstParticles`
+// list has been consumed by an actual render path, not merely computed.
+test("io return recognition, played by taps: spawns 14 particle primitives during the impact-burst window", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/aftersign/index.html?slot=io-return-impact-burst", { waitUntil: "load" });
 
-  // Kick off the recognition beat. `driveRecognition` returns as soon as
-  // the last input is dispatched — it does NOT wait for the ~1180ms beat
-  // to end. That matters here because the impact-burst window
-  // (particleBurstStartFrame=4 @60fps → ~67ms after anticipation hold →
-  // ~187ms after beat start, for a 260ms duration) closes long before
-  // `waitForMemoryBeat` would return. If we waited on the beat to finish,
-  // the burst would already be over and the DOM would have zero
-  // primitives.
-  // Observation-complete counting (#1113 follow-up): a MutationObserver
-  // records the HIGH-WATER particle count (and the published-array count
-  // captured in the same callback) the moment the DOM changes — immune to
-  // sampling timing entirely. The pump loop below only needs to drive
-  // frames until the high-water mark reaches 14; it no longer has to land
-  // a sample INSIDE the 260ms window (which still flaked at CI speed).
+  // Phone viewport BEFORE navigation so the served page lays out for a
+  // phone from the first paint.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/aftersign/index.html?slot=io-return-impact-burst-${Date.now()}`, {
+    waitUntil: "load",
+  });
+
+  // Prime the MutationObserver BEFORE the recognition beat fires so we
+  // capture the high-water particle count regardless of sampling
+  // timing. `#recognitionImpactBurst` is a static overlay stamped by
+  // the served page shell — it exists from first paint.
   await page.evaluate(() => {
     const overlay = document.querySelector("#recognitionImpactBurst");
     if (!overlay) return;
@@ -292,7 +402,24 @@ test("io return recognition spawns 14 particle primitives during the impact-burs
     observer.observe(overlay, { childList: true });
   });
 
-  await driveRecognition(page, "sealed");
+  // Play to recognition via rendered controls (sealed branch — outcome
+  // is orthogonal to the burst, and sealed matches the pre-#1544 spec).
+  // Sealed = a plain tap on `#packetButton` (the PacketIntentController
+  // stays under OPEN thresholds → `commitPacketOutcome(SEALED)`), then
+  // the visible `skip-kiosk-acknowledge` / `deliver-packet` chain. We
+  // tap `skip-kiosk-acknowledge` (not `acknowledge-kiosk`) for the same
+  // reason `playToRecognition` does: keep `routeListened=false` so the
+  // RETURNING tier speaks; the burst envelope itself is orthogonal to
+  // the recognition tier, but staying on one branch keeps this spec
+  // consistent with the two feel-number tests above.
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, "sealed");
+
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "skip-kiosk-acknowledge");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-delivered");
+  await waitForBeat(page, "io-return-recognition");
 
   // ACTIVELY PUMP frames instead of passively polling (#1113 CI fix):
   // on SwiftShader after a cold reload, rAF can starve long enough that
