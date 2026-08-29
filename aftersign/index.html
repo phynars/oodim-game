@@ -777,7 +777,24 @@
                button is absent — the divergent render #1393 asked for.
                Off-beat the surface stays hidden (data-visible="false")
                and its children are cleared; same discipline as the
-               sibling #routeRiskChoice surface just above. -->
+               sibling #routeRiskChoice surface just above.
+
+           #1549 aftersign-job-take feel — each offer button ALSO
+           carries:
+             data-aftersign-job-take         "ready" | "armed"
+             data-aftersign-job-take-action  the memory-gated mloop
+                                             action id (e.g.
+                                             "mloop-safe-delivery-take")
+           stamped by main.js's
+           `applyAftersignJobTakeFeelToButton()` via
+           `resolveAftersignJobTakeFeel({actionId, route, risk})`.
+           The `[data-aftersign-job-take]` locator is what the
+           sibling e2e `aftersign-job-take-feel.playtest.spec.ts`
+           real-taps (played, not driven) and what CSS overlays
+           can consume via the `--aftersign-job-take-*` custom
+           properties this writer stamps alongside the marker.
+           Ready at render, armed on tap — same shape as the
+           tap-confirm seam a few nodes up. -->
           <div id="offeredJobs" class="route-choice" data-visible="false" data-aftersign-offered-jobs-surface aria-label="Choose the next packet Io hands you">
             <span class="route-choice-label">Offered jobs</span>
           </div>
