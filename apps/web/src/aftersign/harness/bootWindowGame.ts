@@ -13,6 +13,19 @@ import {
 // harness is the sole importer and this file is the ship-side consumer
 // #1404's reviewer asked for.
 import { chooseAftersignJobOfferCopy } from "../aftersignJobOfferCopy.js";
+// Take-job tactile envelope. Resolved here so the served-surface tap
+// that COMMITS the next-job branch (`take-job-blue-seal-safe` /
+// `take-job-orra-name-risk` / `take-job-wax-debt-repair`, or the
+// generic `accept-next-job` alias) stamps the pinned feel row onto a
+// `[data-aftersign-job-take="<actionId>"]` surface and records the
+// applied row on the harness so `getAppliedJobTakeFeel()` sees ground
+// truth. This is the seam that turns `aftersignJobTakeFeel.js` into
+// runnable slice code — the ship-side consumer #1549's reviewer asked
+// for.
+import {
+  resolveAftersignJobTakeFeel,
+  type AftersignJobTakeFeelRow,
+} from "../aftersignJobTakeFeel.js";
 import { measurePointerToRenderLatency } from "../../../../../aftersign/src/inputAcknowledgeLatency";
 import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
@@ -245,6 +258,20 @@ export type AftersignWindowGameHarness = {
    * has no in-flight confirm to inherit).
    */
   getAppliedTapConfirmFeel: () => AftersignTapConfirmFeel | null;
+  /**
+   * Return the most recent job-take feel row applied by
+   * `input.choose("take-job-*")` (or the `accept-next-job` alias), or
+   * `null` when no take-job branch has committed this session.
+   * `aftersignJobTakeFeel.js` pins the tactile envelope numbers
+   * (durationMs, scaleFrom/Peak, glow opacities, shadow lift,
+   * easings, audio cue); the harness resolves the row against the
+   * tapped branch's route/risk copy and stamps it onto the
+   * `[data-aftersign-job-take="<actionId>"]` surface. Consumer tests
+   * assert this accessor plus the dataset attributes on the mounted
+   * DOM node — the feel row is ground truth, the DOM write is the
+   * projection. Cleared to `null` on `restoreDurableSave` / `load`.
+   */
+  getAppliedJobTakeFeel: () => AftersignJobTakeFeelRow | null;
   /**
    * Accept Io's next-job offer. The returned beat is the canonical
    * copy from `io-recognition-beat.ts`; the harness also stores it so
@@ -512,6 +539,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
   let ioReturnReason: AftersignReturnReason | null = null;
   let appliedReturnToneFeel: AftersignReturnToneChoiceFeel | null = null;
   let appliedTapConfirmFeel: AftersignTapConfirmFeel | null = null;
+  let appliedJobTakeFeel: AftersignJobTakeFeelRow | null = null;
   let acceptedNextJob: IoNextJobBeat | null = null;
   let savedAtTurn = 0;
   let playerMemory: AftersignPlayerMemoryInput | null = null;
@@ -818,6 +846,10 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     // `getAppliedTapConfirmFeel()` so stale press feedback from a
     // prior choice cannot leak across restore boundaries.
     appliedTapConfirmFeel = null;
+    // Same rationale for the take-job feel row — a fresh boot has
+    // no in-flight commit to inherit; consumer test asserts this via
+    // `getAppliedJobTakeFeel()` returning `null` post-restore.
+    appliedJobTakeFeel = null;
     // Return-reason / applied feel row are deliberately NOT reset
     // here — a caller who set a posture BEFORE a durable-save restore
     // may want to carry that posture through the restore (the surface
@@ -914,6 +946,7 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
       return buildIoContinueBeats(ioReturnReason);
     },
     getAppliedTapConfirmFeel: () => appliedTapConfirmFeel,
+    getAppliedJobTakeFeel: () => appliedJobTakeFeel,
     getTapChoiceFeelReport() {
       // Sourced from the live DOM each call so the report is always
       // a fresh measurement — a renderer that mounts / unmounts /
@@ -1006,6 +1039,68 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
           choiceId === "accept-next-job" ||
           choiceId === offeredCopy.tappableActionId
         ) {
+          // Job-take FEEL wiring: resolve the pinned tactile envelope
+          // against the tapped branch's action id + route/risk copy
+          // and stamp it onto the `[data-aftersign-job-take="<id>"]`
+          // surface. The row is also recorded on
+          // `appliedJobTakeFeel` so a consumer test can assert the
+          // seam fired even without mounting a DOM node — the feel
+          // row is ground truth, the DOM write is the projection.
+          try {
+            const resolvedActionId =
+              choiceId === "accept-next-job"
+                ? offeredCopy.tappableActionId
+                : choiceId;
+            const takeRow = resolveAftersignJobTakeFeel({
+              actionId: resolvedActionId,
+              route: offeredCopy.route,
+              risk: offeredCopy.risk,
+            });
+            appliedJobTakeFeel = takeRow;
+            const doc = (globalThis as { document?: Document }).document;
+            if (doc && typeof doc.querySelectorAll === "function") {
+              const takeNodes = Array.from(
+                doc.querySelectorAll("[data-aftersign-job-take]"),
+              ) as HTMLElement[];
+              const takeSurface =
+                takeNodes.find(
+                  (el) =>
+                    el.getAttribute("data-aftersign-job-take") ===
+                    resolvedActionId,
+                ) ?? takeNodes[0];
+              if (takeSurface) {
+                takeSurface.dataset.aftersignJobTakeKind = takeRow.kind;
+                takeSurface.dataset.aftersignJobTakeActionId =
+                  takeRow.actionId;
+                takeSurface.dataset.aftersignJobTakeDurationMs = String(
+                  takeRow.durationMs,
+                );
+                takeSurface.dataset.aftersignJobTakeHoldMs = String(
+                  takeRow.holdMs,
+                );
+                takeSurface.dataset.aftersignJobTakeScaleFrom = String(
+                  takeRow.scaleFrom,
+                );
+                takeSurface.dataset.aftersignJobTakeScalePeak = String(
+                  takeRow.scalePeak,
+                );
+                takeSurface.dataset.aftersignJobTakeGlowPeakOpacity =
+                  String(takeRow.glowPeakOpacity);
+                takeSurface.dataset.aftersignJobTakeAudioCue =
+                  takeRow.audio.cue;
+                takeSurface.dataset.aftersignJobTakeEasingPress =
+                  takeRow.easing.press;
+                takeSurface.setAttribute(
+                  "aria-label",
+                  takeRow.ariaLabel,
+                );
+              }
+            }
+          } catch {
+            // A DOM error in a hostile jsdom shouldn't tank the beat.
+            // The feel row already captured above stays authoritative
+            // for the consumer test's row-only assertion.
+          }
           return acceptNextJob();
         }
         if (choiceId === AFTERSIGN_CHOOSE_RETURN_TONE) {

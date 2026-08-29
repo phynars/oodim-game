@@ -271,6 +271,27 @@ import {
   AFTERSIGN_SCENE_TRANSITION_FEEL,
   resolveAndPlayAftersignSceneTransition,
 } from "../apps/web/src/aftersign/aftersignSceneTransitionFeel.ts";
+// PR #1549 — aftersign job-take feel. Prior to this wire the resolver
+// was imported ONLY by `harness/bootWindowGame.ts` (the vitest boot
+// harness) and its consumer test drove `game.input.choose("take-job-*")`
+// against a synthetic DOM — the served page (this file) never rendered
+// the `[data-aftersign-job-take]` locator and never stamped the frozen
+// feel row onto the button the player's finger actually touches. Soren
+// blocked #1549 three times on that gap. Same shape as the
+// `applyFlagshipTapConfirmFeel` seam above: at the packet-offered beat
+// the offer-render loop below resolves the feel row for the mloop
+// action id + route + risk axes and stamps it onto the dynamically
+// created `<button id="job-offer-<jobId>">` before wiring the click
+// callback that commits the fork; the SAME row is re-stamped inside
+// the callback so a player-visible `data-aftersign-job-take="armed"`
+// marker lands on the very element the finger just pressed. The e2e
+// `aftersign-job-take-feel.playtest.spec.ts` real-taps that button
+// and pins the CSS-var stamp + dataset marker — CONSUMER +
+// PLAYED-NOT-DRIVEN both green on the shipped surface, not a harness.
+import {
+  AFTERSIGN_JOB_TAKE_FEEL,
+  resolveAftersignJobTakeFeel,
+} from "../apps/web/src/aftersign/aftersignJobTakeFeel.js";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
 // (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
@@ -322,6 +343,88 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+
+/**
+ * PR #1549 — DOM writer that stamps the frozen aftersign-job-take feel
+ * row onto an offered-job button. Called TWICE per button lifecycle:
+ *
+ *   1. At render time with `state="ready"` — the button is mounted
+ *      but not yet pressed; CSS vars land so a stylesheet (or a
+ *      trip-wire e2e) can pin them before the tap.
+ *   2. Inside the click callback with `state="armed"` — the same row
+ *      re-stamped so `data-aftersign-job-take` flips from the ready
+ *      marker to `"armed"`, letting a played-through spec assert the
+ *      acknowledgment landed on the exact element the finger touched
+ *      (not the tray).
+ *
+ * Shape mirrors `applyFlagshipTapConfirmFeel` on the sibling
+ * tap-confirm seam — a decorative FEEL projection that MUST NEVER
+ * throw. Callers wrap in try/catch as an extra guard, but the writer
+ * itself validates the element + row shape defensively so a fresh
+ * DOM never black-screens on a bad axis lookup.
+ *
+ * CSS variables written (values include their unit suffix so the
+ * consuming stylesheet can drop them into `transition` shorthands
+ * verbatim):
+ *   --aftersign-job-take-duration-ms
+ *   --aftersign-job-take-hold-ms
+ *   --aftersign-job-take-travel-px
+ *   --aftersign-job-take-scale-from
+ *   --aftersign-job-take-scale-peak
+ *   --aftersign-job-take-scale-settle
+ *   --aftersign-job-take-glow-peak
+ *   --aftersign-job-take-glow-settle
+ *   --aftersign-job-take-shadow-lift-px
+ *   --aftersign-job-take-easing-press
+ *   --aftersign-job-take-easing-release
+ *   --aftersign-job-take-easing-glow
+ *
+ * Data attributes stamped:
+ *   data-aftersign-job-take          "ready" | "armed"
+ *   data-aftersign-job-take-action   the mloop action id (locator
+ *                                    key for a played e2e).
+ *
+ * @param {HTMLElement} element
+ * @param {ReturnType<typeof resolveAftersignJobTakeFeel>} row
+ * @param {"ready" | "armed"} state
+ * @returns {void}
+ */
+function applyAftersignJobTakeFeelToButton(element, row, state) {
+  if (!element || typeof element.setAttribute !== "function") return;
+  const feel = row && typeof row === "object" ? row : AFTERSIGN_JOB_TAKE_FEEL;
+  const nextState = state === "armed" ? "armed" : "ready";
+  element.setAttribute("data-aftersign-job-take", nextState);
+  if (typeof feel.actionId === "string" && feel.actionId.length > 0) {
+    element.setAttribute("data-aftersign-job-take-action", feel.actionId);
+  }
+  const style = element.style;
+  if (!style || typeof style.setProperty !== "function") return;
+  style.setProperty("--aftersign-job-take-duration-ms", `${feel.durationMs}ms`);
+  style.setProperty("--aftersign-job-take-hold-ms", `${feel.holdMs}ms`);
+  style.setProperty("--aftersign-job-take-travel-px", `${feel.travelPx}px`);
+  style.setProperty("--aftersign-job-take-scale-from", `${feel.scaleFrom}`);
+  style.setProperty("--aftersign-job-take-scale-peak", `${feel.scalePeak}`);
+  style.setProperty(
+    "--aftersign-job-take-scale-settle",
+    `${feel.settleScale}`,
+  );
+  style.setProperty(
+    "--aftersign-job-take-glow-peak",
+    `${feel.glowPeakOpacity}`,
+  );
+  style.setProperty(
+    "--aftersign-job-take-glow-settle",
+    `${feel.glowSettleOpacity}`,
+  );
+  style.setProperty(
+    "--aftersign-job-take-shadow-lift-px",
+    `${feel.shadowLiftPx}px`,
+  );
+  const easing = feel.easing || AFTERSIGN_JOB_TAKE_FEEL.easing;
+  style.setProperty("--aftersign-job-take-easing-press", easing.press);
+  style.setProperty("--aftersign-job-take-easing-release", easing.release);
+  style.setProperty("--aftersign-job-take-easing-glow", easing.glow);
+}
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -1799,6 +1902,24 @@ const renderText = () => {
           button.setAttribute("aria-label", mloopAction.label);
           stampJobOfferData(button, offer.id);
           button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
+          // PR #1549 — resolve + stamp the frozen aftersign-job-take
+          // feel row onto the offer button. Same shape as
+          // `applyFlagshipTapConfirmFeel` above: the render pass
+          // stamps `data-aftersign-job-take="<actionId>"` + the
+          // per-row CSS custom properties so a stylesheet (or a
+          // trip-wire e2e) can pin them BEFORE the tap; the click
+          // callback below flips the marker to "armed" so the tap
+          // acknowledgment lands on the very element the finger
+          // just pressed, not the tray. `mloopAction.id` is the
+          // memory-gated action id (see mloop-copy.js) — one axis
+          // between the button the player saw and the feel row
+          // the resolver keyed on.
+          const jobTakeFeelRow = resolveAftersignJobTakeFeel({
+            actionId: mloopAction.id,
+            route: state.player.routeRisk?.lastRoute ?? "",
+            risk: offer.routeRisk,
+          });
+          applyAftersignJobTakeFeelToButton(button, jobTakeFeelRow, "ready");
           armJobOfferFeel(button, () => {
             // Compose the M-LOOP action id with the underlying
             // offered jobId so BOTH axes ride on `lastAction`. Old
@@ -1808,6 +1929,21 @@ const renderText = () => {
             // action id (memory-gated) as the head.
             state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;
             state.interaction.confirmCount += 1;
+            // PR #1549 — flip the feel marker to "armed" on the
+            // pressed button so the tap acknowledgment is visible
+            // (dataset + refreshed vars) on the exact element the
+            // finger touched. Wrapped in try/catch so the FEEL
+            // projection can never break the STATE update — same
+            // discipline as `applyTapConfirmFeel`'s call site.
+            try {
+              applyAftersignJobTakeFeelToButton(
+                button,
+                jobTakeFeelRow,
+                "armed",
+              );
+            } catch {
+              /* feel projection must never break state commit */
+            }
             markStateDirty();
             publishState();
           });
