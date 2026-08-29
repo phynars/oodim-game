@@ -123,14 +123,33 @@ export const runFailureStingFeedbackChecks = (): void => {
   const tNaN = failureStingEnvelopeAt(Number.NaN, feel);
   assert(tNaN.active === false, "NaN elapsedMs must yield an inactive envelope");
 
-  // (6b) Frame sampling is floor-quantized, not nearest-frame rounded.
-  //      At ~171.7ms the 180ms sting still has one visible 60Hz frame
-  //      left; rounding to the next frame would incorrectly collapse it
-  //      to inactive/progress=1 and snap off the final pop.
-  const lastVisibleFrame = failureStingEnvelopeAt(171.7, feel);
-  assert(lastVisibleFrame.active === true, "171.7ms must keep the final visible failure-sting frame active");
-  assert(lastVisibleFrame.remainingMs > 0, "171.7ms must report remaining sting time");
-  assert(lastVisibleFrame.progress < 1, "171.7ms must not round up to completed progress");
+  // (6b) Frame sampling is floor-quantized, not nearest-frame rounded —
+  //      but the envelope-end gate reads RAW elapsedMs, so the boundary
+  //      contract (test 2/3: t=durationMs → flashAlpha=0, active=false)
+  //      stays intact. Pick a sample that actually distinguishes the two
+  //      quantizations: at 179.5ms, floor(179.5/16.667)=10 → sampled
+  //      progress ≈ 0.926 (last visible frame survives), while a round()
+  //      would give 11 → sampled progress=1.0 (snaps off the final pop).
+  //      171.7ms rounds+floors to the same frame and would pass on the
+  //      old round-based code too, so it wouldn't pin the regression.
+  const lastVisibleFrame = failureStingEnvelopeAt(179.5, feel);
+  assert(lastVisibleFrame.active === true, "179.5ms must keep the final visible failure-sting frame active");
+  assert(lastVisibleFrame.remainingMs > 0, "179.5ms must report remaining sting time");
+  assert(lastVisibleFrame.progress < 1, "179.5ms must not round up to completed progress");
+  assert(
+    lastVisibleFrame.flashAlpha > 0,
+    "179.5ms must still emit a visible flash — final-frame pop must not be quantized away",
+  );
+
+  // (6c) Boundary exactness — the envelope-end contract (tests 2 and 3)
+  //      must hold on the RAW clock, not the frame-quantized one. If a
+  //      future refactor accidentally routes `active`/`progress` through
+  //      the floor-sampled clock, t=180 would report progress≈0.926 /
+  //      active=true / flashAlpha>0 and this trips.
+  const tBoundary = failureStingEnvelopeAt(feel.durationMs, feel);
+  assert(tBoundary.progress === 1, `t=durationMs must clamp progress to 1 on raw clock (got ${tBoundary.progress})`);
+  assert(tBoundary.active === false, "t=durationMs must be inactive on raw clock, not floor-sampled clock");
+  assertClose(tBoundary.flashAlpha, 0, 1e-9, "t=durationMs flashAlpha must be exactly 0 on raw clock");
 
   // (7) reducedMotion=true zeroes the LATERAL feel channels — wobble,
   //     cameraKick (yaw+worldX), and hudShake — while preserving the
