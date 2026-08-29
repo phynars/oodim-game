@@ -16,6 +16,10 @@ const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 const SAVE_SIGNAL_PATTERN = /(?:save|saved|persist|durable|localStorage|sessionStorage|returning|remembered|recall)/i;
 const LOAD_SIGNAL_PATTERN = /(?:reload|goto\s*\(|newContext|newPage|returning|restored|loaded|remembered|recall)/i;
 const PRIOR_SESSION_ASSERTION_PATTERN = /(?:previous session|last time|again|returning|remembered|recall|restored|saved)/i;
+const DIVERGENT_SAVE_SIGNAL_PATTERN = /(?:two|2|first|second|baseline|trusted|risky|safe|different|divergent)\s+(?:save|state|saves|memory|record|records|profile|profiles)/i;
+const MEMORY_SEED_PATTERN = /(?:seed|set|write|prime|mock|fixture|storageState|localStorage|sessionStorage|route\s*\(|fulfill\s*\()\b[\s\S]{0,240}(?:memory|trust|debt|outcome|risk|prior|opened|delivered)/i;
+const AVAILABLE_ACTION_PATTERN = /(?:job|offer|price|route|shortcut|stair|cut|action|button|option|choice)/i;
+const DIFFERENT_TAPPABLE_ACTIONS_PATTERN = /(?:not\.toEqual|not\.toStrictEqual|toHaveCount|toContain|toBeGreaterThan|different|differs|diverge|unavailable|available|enabled|disabled)/i;
 
 function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
   if (!existsSync(AFTERSIGN_E2E_DIR)) {
@@ -43,6 +47,20 @@ function matchesDurableSaveLoadPlaytest(source: string): boolean {
   );
 }
 
+function matchesDivergentMemoryActionsPlaytest(source: string): boolean {
+  return (
+    PHONE_VIEWPORT_PATTERN.test(source) &&
+    PLAYER_EVENT_PATTERN.test(source) &&
+    VISIBLE_ASSERTION_PATTERN.test(source) &&
+    HARNESS_READ_PATTERN.test(source) &&
+    !HARNESS_INPUT_PATTERN.test(source) &&
+    DIVERGENT_SAVE_SIGNAL_PATTERN.test(source) &&
+    MEMORY_SEED_PATTERN.test(source) &&
+    AVAILABLE_ACTION_PATTERN.test(source) &&
+    DIFFERENT_TAPPABLE_ACTIONS_PATTERN.test(source)
+  );
+}
+
 describe("AFTERSIGN durable save/load played acceptance surface", () => {
   it("has a phone playtest that proves a return session through visible player actions, with window.__game read-only", () => {
     const playtests = readAftersignPlaytestSpecs();
@@ -58,6 +76,27 @@ describe("AFTERSIGN durable save/load played acceptance surface", () => {
         "  - asserts visible UI for the save and return-session load/recognition path,",
         "  - reads window.__game only as an assertion surface, and",
         "  - takes no input through window.__game.input.*.",
+        `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
+      ].join("\n"),
+    ).toBeDefined();
+  });
+
+  it("has a phone playtest proving divergent memory records produce different tappable actions", () => {
+    const playtests = readAftersignPlaytestSpecs();
+    const matchingPlaytest = playtests.find(({ source }) => matchesDivergentMemoryActionsPlaytest(source));
+
+    expect(
+      matchingPlaytest?.path,
+      [
+        "M-LOOP acceptance is divergence, played through the served page.",
+        "Add or update an aftersign/e2e/*playtest*.spec.ts (repo-root, NOT under apps/web) that:",
+        "  - uses a phone-shaped/mobile viewport,",
+        "  - seeds or loads two saves with different memory records,",
+        "  - plays each save only through visible player events (tap/click/press/pointer/etc.),",
+        "  - asserts the available tappable actions differ at the element/action level,",
+        "  - reads window.__game only as an assertion surface, and",
+        "  - takes no input through window.__game.input.*.",
+        "Dialogue-only differences are not enough; the offered jobs, prices, routes, shortcuts, or other tappable actions must diverge.",
         `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
       ].join("\n"),
     ).toBeDefined();
