@@ -181,9 +181,18 @@ async function performPacketGesture(
 // Play from a fresh save at `slot` to the recognition beat, using only
 // rendered controls:
 //   1. `#packetButton` — tap (sealed) or hold+pull (opened)
-//   2. `[data-choice-id="acknowledge-kiosk"]` — records the second action
-//      (same choice the sibling continue-beats spec uses; deliver-packet
-//      normalizes null→"skipped" but a played run picks one deliberately)
+//   2. `[data-choice-id="skip-kiosk-acknowledge"]` — records the second
+//      action as "skipped". CRITICAL: the RETURNING tier speaks only when
+//      the route was NOT listened to. Tapping `acknowledge-kiosk` here
+//      would set `secondAction = "done"`, deliverPacket() would mint the
+//      route-attention fact with `object: "done"`, and
+//      `selectIoRecognitionDialogueLine` would speak the deep-recall
+//      tier instead — falsifying `expectedIoRecognitionLine(outcome,
+//      false)` on both `#line` and `ioLastLine`. `skip-kiosk-acknowledge`
+//      is a rendered visible control (proved by
+//      m-continue-next-packet-loop-buttons-enabled.spec.ts and the
+//      servedSurface.contract.test.ts grep-pin), so this is still a
+//      played tap — just the branch that keeps routeListened=false.
 //   3. `[data-choice-id="deliver-packet"]` — advances to packet-delivered
 // The runtime then auto-advances into `io-return-recognition` on
 // deliverPacket()'s ~1180ms setTimeout.
@@ -200,7 +209,7 @@ async function playToRecognition(
   await performPacketGesture(page, outcome);
 
   await waitForBeat(page, "packet-choice");
-  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "skip-kiosk-acknowledge");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-delivered");
 
@@ -397,13 +406,17 @@ test("io return recognition, played by taps: spawns 14 particle primitives durin
   // is orthogonal to the burst, and sealed matches the pre-#1544 spec).
   // Sealed = a plain tap on `#packetButton` (the PacketIntentController
   // stays under OPEN thresholds → `commitPacketOutcome(SEALED)`), then
-  // the same visible `acknowledge-kiosk` / `deliver-packet` chain the
-  // sibling continue-beats spec plays.
+  // the visible `skip-kiosk-acknowledge` / `deliver-packet` chain. We
+  // tap `skip-kiosk-acknowledge` (not `acknowledge-kiosk`) for the same
+  // reason `playToRecognition` does: keep `routeListened=false` so the
+  // RETURNING tier speaks; the burst envelope itself is orthogonal to
+  // the recognition tier, but staying on one branch keeps this spec
+  // consistent with the two feel-number tests above.
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, "sealed");
 
   await waitForBeat(page, "packet-choice");
-  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "skip-kiosk-acknowledge");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-delivered");
   await waitForBeat(page, "io-return-recognition");
