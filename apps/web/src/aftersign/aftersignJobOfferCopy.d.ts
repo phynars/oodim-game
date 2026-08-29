@@ -37,6 +37,8 @@ export type AftersignJobOfferMemory = {
  */
 export type AftersignJobOfferCopy = {
   readonly id: string;
+  /** Explicit input token for accepting this memory-branched offer. */
+  readonly tappableActionId: string;
   readonly title: string;
   readonly actionLabel: string;
   readonly summary: string;
@@ -44,6 +46,10 @@ export type AftersignJobOfferCopy = {
   readonly riskPrompt: string;
   readonly safeRouteLabel: string;
   readonly riskyRouteLabel: string;
+  /** One-line route instruction Io gives with the tag. */
+  readonly route: string;
+  /** One-line risk summary Io gives with the tag. */
+  readonly risk: string;
 };
 
 export type AftersignJobOfferCopyTable = {

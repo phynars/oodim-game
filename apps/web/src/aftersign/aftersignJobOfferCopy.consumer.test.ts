@@ -43,6 +43,9 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
       AFTERSIGN_JOB_OFFER_COPY.opened,
     ]) {
       expect(branch.id).toEqual(expect.any(String));
+      expect(branch.tappableActionId).toEqual(expect.any(String));
+      expect(branch.route.length).toBeGreaterThan(0);
+      expect(branch.risk.length).toBeGreaterThan(0);
       expect(branch.title.length).toBeGreaterThan(0);
       expect(branch.ioLine.length).toBeGreaterThan(0);
       expect(branch.actionLabel.length).toBeGreaterThan(0);
@@ -73,6 +76,15 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
       | { copy?: unknown }
       | undefined;
     expect(offer?.copy).toEqual(AFTERSIGN_JOB_OFFER_COPY.firstRun);
+    expect((offer?.copy as { tappableActionId?: string } | undefined)?.tappableActionId).toBe(
+      "take-job-blue-seal-safe",
+    );
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.input.choose("take-job-blue-seal-safe");
+    expect(game?.getAcceptedNextJob()).not.toBeNull();
+    expect(game?.getAppliedTapConfirmFeel()).not.toBeNull();
     // Cross-check: the selector called directly with the same shape
     // returns the same row — proves the harness is calling THIS
     // primitive, not authoring copy inline.
@@ -100,6 +112,23 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
       | { copy?: unknown }
       | undefined;
     expect(offer?.copy).toEqual(AFTERSIGN_JOB_OFFER_COPY.trusted);
+    expect((offer?.copy as { tappableActionId?: string } | undefined)?.tappableActionId).toBe(
+      "take-job-orra-name-risk",
+    );
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(
+            createAftersignVerticalSliceState(),
+            "sealed",
+          ),
+        ),
+        4,
+      ),
+    );
+    game?.input.choose("take-job-orra-name-risk");
+    expect(game?.getAcceptedNextJob()).not.toBeNull();
+    expect(game?.getAppliedTapConfirmFeel()).not.toBeNull();
     expect(offer?.copy).toEqual(
       chooseAftersignJobOfferCopy({
         firstPacketOutcome: "sealed",
@@ -129,6 +158,23 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
       | { copy?: unknown }
       | undefined;
     expect(offer?.copy).toEqual(AFTERSIGN_JOB_OFFER_COPY.opened);
+    expect((offer?.copy as { tappableActionId?: string } | undefined)?.tappableActionId).toBe(
+      "take-job-wax-debt-repair",
+    );
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(
+            createAftersignVerticalSliceState(),
+            "opened",
+          ),
+        ),
+        6,
+      ),
+    );
+    game?.input.choose("take-job-wax-debt-repair");
+    expect(game?.getAcceptedNextJob()).not.toBeNull();
+    expect(game?.getAppliedTapConfirmFeel()).not.toBeNull();
     expect(offer?.copy).toEqual(
       chooseAftersignJobOfferCopy({
         firstPacketOutcome: "opened",
