@@ -294,8 +294,8 @@ export interface EvaluatePacketIntentResult {
 export const DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS: EvaluatePacketIntentThresholds = {
   preserveHoldMs: 180,
   openHoldMs: 420,
-  openDragPx: 42,
-  cancelDriftPx: 96,
+  openDragPx: PACKET_INTENT.OPEN_PULL_MIN_PX,
+  cancelDriftPx: PACKET_INTENT.DRIFT_CANCEL_PX + 1,
 };
 
 export function evaluatePacketIntent(
@@ -347,6 +347,7 @@ export function runPacketIntentChecks(): void {
   checkPullBoundaryAsymmetryHolds();
   checkResolveIntentHelper();
   checkEvaluatePacketIntentHelper();
+  checkEvaluatePacketIntentMatchesLiveControllerWindow();
 }
 
 function checkShortTapPreservesSeal(): void {
@@ -518,7 +519,7 @@ function checkEvaluatePacketIntentHelper(): void {
   assertEqual(evaluatePacketIntent([
     { action: "press", timeMs: 0, x: 120, y: 200 },
     { action: "hold", timeMs: 240, x: 122, y: 202 },
-    { action: "release", timeMs: 460, x: 168, y: 203 },
+    { action: "release", timeMs: 460, x: 130, y: 200 },
   ]).intent, "open", "long hold + seal pull should evaluate as open");
   assertEqual(evaluatePacketIntent([
     { action: "press", timeMs: 0, x: 120, y: 200 },
@@ -531,14 +532,35 @@ function checkEvaluatePacketIntentHelper(): void {
   ]).intent, "preserve", "fast tap without seal pull should preserve instead of canceling");
   assertEqual(evaluatePacketIntent([
     { action: "press", timeMs: 0, x: 120, y: 200 },
-    { action: "hold", timeMs: 300, x: 180, y: 240 },
-    { action: "release", timeMs: 460, x: 230, y: 260 },
+    { action: "hold", timeMs: 300, x: 128, y: 200 },
+    { action: "release", timeMs: 460, x: 135, y: 200 },
   ]).intent, "cancel", "drift past cancelDriftPx should cancel");
   assertEqual(evaluatePacketIntent([]).intent, "cancel", "empty stream should cancel");
   assertEqual(evaluatePacketIntent([
     { action: "press", timeMs: 0, x: 120, y: 200 },
     { action: "hold", timeMs: 500, x: 122, y: 201 },
   ]).intent, "cancel", "unreleased gesture should cancel until release arrives");
+}
+
+function checkEvaluatePacketIntentMatchesLiveControllerWindow(): void {
+  const canonicalOpen = [
+    { action: "press", timeMs: 0, x: 40, y: 40 },
+    { action: "drag", timeMs: PACKET_INTENT.HOLD_TO_OPEN_MS - 16, x: 40 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 40 },
+    { action: "release", timeMs: PACKET_INTENT.HOLD_TO_OPEN_MS, x: 40 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 40 },
+  ] as const;
+  assertEqual(evaluatePacketIntent(canonicalOpen).intent, "open", "offline evaluator must call the live threshold-open gesture open");
+
+  const exactCancel = [
+    { action: "press", timeMs: 0, x: 40, y: 40 },
+    { action: "drag", timeMs: 40, x: 40 + PACKET_INTENT.DRIFT_CANCEL_PX + 1, y: 40 },
+    { action: "release", timeMs: 64, x: 40 + PACKET_INTENT.DRIFT_CANCEL_PX + 1, y: 40 },
+  ] as const;
+  assertEqual(evaluatePacketIntent(exactCancel).intent, "cancel", "offline evaluator must cancel the first pixel outside the live drift guard");
+
+  assert(
+    DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS.openDragPx <= PACKET_INTENT.DRIFT_CANCEL_PX,
+    "offline evaluator open threshold must remain reachable inside the live controller cancel guard",
+  );
 }
 
 function assert(condition: boolean, message: string): asserts condition {
