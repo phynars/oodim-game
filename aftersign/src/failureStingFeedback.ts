@@ -78,7 +78,10 @@ const quantizeFrameMs = (elapsedMs: number, frameMs = 1000 / 60): number => {
     return elapsedMs;
   }
 
-  return Math.max(0, Math.round(elapsedMs / frameMs) * frameMs);
+  // Sample at the frame boundary the renderer has actually reached, not
+  // the nearest future frame. Rounding made a 180ms sting report progress=1
+  // around 171.7ms, stealing the last visible frame from the failure pop.
+  return Math.max(0, Math.floor(elapsedMs / frameMs) * frameMs);
 };
 
 export const failureStingEnvelopeAt = (

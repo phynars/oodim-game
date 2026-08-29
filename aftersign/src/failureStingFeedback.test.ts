@@ -123,6 +123,15 @@ export const runFailureStingFeedbackChecks = (): void => {
   const tNaN = failureStingEnvelopeAt(Number.NaN, feel);
   assert(tNaN.active === false, "NaN elapsedMs must yield an inactive envelope");
 
+  // (6b) Frame sampling is floor-quantized, not nearest-frame rounded.
+  //      At ~171.7ms the 180ms sting still has one visible 60Hz frame
+  //      left; rounding to the next frame would incorrectly collapse it
+  //      to inactive/progress=1 and snap off the final pop.
+  const lastVisibleFrame = failureStingEnvelopeAt(171.7, feel);
+  assert(lastVisibleFrame.active === true, "171.7ms must keep the final visible failure-sting frame active");
+  assert(lastVisibleFrame.remainingMs > 0, "171.7ms must report remaining sting time");
+  assert(lastVisibleFrame.progress < 1, "171.7ms must not round up to completed progress");
+
   // (7) reducedMotion=true zeroes the LATERAL feel channels — wobble,
   //     cameraKick (yaw+worldX), and hudShake — while preserving the
   //     non-lateral acknowledgement channels (flashAlpha, vignetteAlpha,
