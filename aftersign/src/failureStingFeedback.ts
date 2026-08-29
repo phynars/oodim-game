@@ -78,7 +78,10 @@ const quantizeFrameMs = (elapsedMs: number, frameMs = 1000 / 60): number => {
     return elapsedMs;
   }
 
-  return Math.max(0, Math.round(elapsedMs / frameMs) * frameMs);
+  // Sample at the frame boundary the renderer has actually reached, not
+  // the nearest future frame. Rounding made a 180ms sting report progress=1
+  // around 171.7ms, stealing the last visible frame from the failure pop.
+  return Math.max(0, Math.floor(elapsedMs / frameMs) * frameMs);
 };
 
 export const failureStingEnvelopeAt = (
@@ -88,12 +91,24 @@ export const failureStingEnvelopeAt = (
 ): FailureStingEnvelope => {
   const durationMs = Math.max(1, feel.durationMs);
   const finite = Number.isFinite(elapsedMs);
+  // Two clocks intentionally: the SAMPLE clock is floor-quantized so the
+  // renderer reads the last-reached 60Hz frame (preserving the final
+  // visible pop around ~179ms of a 180ms sting instead of snapping it
+  // to progress=1 one frame early). The ENVELOPE-END clock is the raw
+  // elapsedMs — `active` and the progress clamp gate on it so t=durationMs
+  // still lands active=false / progress=1 / falloff=0 exactly, matching
+  // the e2e contract (`.toBe(0.34)` on state, flashAlpha=0 on render).
   const sampledElapsedMs = quantizeFrameMs(elapsedMs);
-  const progress = finite ? clamp01(sampledElapsedMs / durationMs) : 1;
+  const rawProgress = finite ? clamp01(elapsedMs / durationMs) : 1;
+  const sampledProgress = finite ? clamp01(sampledElapsedMs / durationMs) : 1;
+  // Use the raw clamp at the boundary so falloff collapses to 0 exactly
+  // at t=durationMs; otherwise use the sampled progress so mid-window
+  // frames sit on real 60Hz frame boundaries.
+  const progress = rawProgress >= 1 ? 1 : sampledProgress;
   const curve = 1 - ((1 - progress) ** 2);
   const falloff = 1 - curve;
   const rawWobble = falloff * Math.sin(progress * Math.PI * feel.wobbleCycles);
-  const active = finite && progress < 1;
+  const active = finite && rawProgress < 1;
 
   // Reduced motion keeps the acknowledgement flash and HUD drop — the
   // player still gets a crisp failure response — but removes the lateral
