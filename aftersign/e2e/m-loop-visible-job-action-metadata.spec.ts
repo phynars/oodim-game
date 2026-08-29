@@ -7,15 +7,17 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 // on a phone sees the safe-default offered job with:
 //   • its authored player-facing label ("Safe delivery")
 //   • its authored route-risk token exposed via `data-route-risk="low"`
-//     (aftersign/main.js:1795 — `IoJobOffer.routeRisk` → attribute)
+//     (aftersign/main.js:1796 — `IoJobOffer.routeRisk` → attribute)
 //
 // Beyond the metadata pin, the spec drives the loop with the same
 // deterministic primitives as `job-offers-played.spec.ts`:
 // `waitForBeat` on the visible `[data-beat-id]` node + `tapChoice`
 // on `button[data-choice-id]`, and asserts loop completion by the
 // visible presence of the `io-return-recognition` beat node — NOT
-// via `window.__game.getSnapshot()`. No harness hooks, no timing
-// races, no dead-id branches.
+// via `window.__game.getSnapshot()`. That's the player-outcome
+// evidence contract the review on #1540 restored: a beat node that
+// the player actually sees is proof the loop ran; a harness snapshot
+// read is not. No harness hooks, no timing races, no dead-id branches.
 
 const PHONE = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
@@ -72,7 +74,11 @@ async function expectOfferMetadata(
   // The served renderer stamps textContent as
   // `${offer.label} · ${offer.routeRisk} risk` (aftersign/main.js:1796)
   // and stamps `data-route-risk` from the authored token. Assert both
-  // so drift on either axis reds the spec.
+  // so drift on either axis reds the spec. The canonical attribute is
+  // `data-route-risk` — the legacy `data-offered-job-risk` still gets
+  // stamped alongside for back-compat (aftersign/main.js:1789), but
+  // consumers assert on the canonical one so a future removal of the
+  // legacy attribute doesn't red this spec.
   await expect(
     offer,
     "offer text must combine the authored label with the authored route-risk token",
@@ -113,14 +119,20 @@ test.describe("M-LOOP played job actions (phone)", () => {
     await safeOffer.tap();
 
     // Deterministic drive of the served packet loop via visible
-    // affordances — same primitives as job-offers-played.spec.ts.
+    // affordances — same primitives + same choice ids as
+    // job-offers-played.spec.ts. Do NOT loosen these to
+    // `getByRole(...).first()` with regex alternations; specific
+    // `data-choice-id` locators pin the shipped affordance vocabulary
+    // and red the spec if a choice is renamed or reordered.
     await tapSelector(page, "#packetButton");
     await waitForBeat(page, "packet-choice");
     await tapChoice(page, "acknowledge-kiosk");
     await tapChoice(page, "deliver-packet");
 
     // Loop completion is asserted through the DOM: the beat node for
-    // `io-return-recognition` becomes visible. No harness snapshot read.
+    // `io-return-recognition` becomes visible. No harness snapshot
+    // read — a player-outcome story earns its assertion from what the
+    // player actually sees on the page.
     await waitForBeat(page, "io-return-recognition");
   });
 });
