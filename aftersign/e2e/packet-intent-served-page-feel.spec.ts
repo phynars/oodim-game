@@ -132,7 +132,8 @@ test.describe("AFTERSIGN packet-intent served-page feel", () => {
     expect(result.fastTapEvaluation).not.toBeNull();
     expect(result.fastTapEvaluation?.intent).toBe("preserve");
     expect(result.fastTapEvaluation?.elapsedMs).toBe(120);
-    expect(result.fastTapEvaluation?.dragPx).toBeLessThan(42);
+    // PACKET_INTENT.OPEN_PULL_MIN_PX is the live 10 px preserve boundary.
+    expect(result.fastTapEvaluation?.dragPx).toBeLessThan(10);
     expect(result.beat).toBe("packet-delivered");
     expect(result.sealed).toBe(true);
     expect(result.delivered).toBe(true);
