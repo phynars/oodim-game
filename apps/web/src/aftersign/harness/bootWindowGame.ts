@@ -997,7 +997,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
           // below — the story beat progression is the ground truth.
         }
 
-        if (choiceId === "accept-next-job") {
+        const offeredCopy = chooseAftersignJobOfferCopy({
+          firstPacketOutcome: state.packetOutcome,
+          packetOpened: state.packetOutcome === "opened",
+          deliveredSealed: state.packetOutcome === "sealed",
+        });
+        if (
+          choiceId === "accept-next-job" ||
+          choiceId === offeredCopy.tappableActionId
+        ) {
           return acceptNextJob();
         }
         if (choiceId === AFTERSIGN_CHOOSE_RETURN_TONE) {
