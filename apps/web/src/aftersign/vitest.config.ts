@@ -32,6 +32,7 @@ export default defineConfig({
       "apps/web/src/aftersign/routeRiskMemory.consumer.test.ts",
       "apps/web/src/aftersign/aftersignJobOfferCopy.consumer.test.ts",
       "apps/web/src/aftersign/aftersignJobTakeFeel.test.ts",
+      "apps/web/src/aftersign/aftersignJobTakeFeel.consumer.test.ts",
     ],
   },
 });
