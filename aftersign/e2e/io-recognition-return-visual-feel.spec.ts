@@ -70,6 +70,17 @@ const EXPECTED_LINE_ID: Record<RecognitionOutcome, string> = {
 // Same visible-DOM surface used by io-continue-beats-tap-playtest.spec.ts.
 // If the served page ever stops rendering these buttons, THIS spec goes
 // red — which is the whole point: no rendered control ⇒ no player path.
+//
+// Sealed vs. opened is chosen by the PACKET GESTURE, not by a separate
+// `data-choice-id` button — `keep-packet-sealed`/`open-packet` are
+// dispatch-only ids inside `choose()` (aftersign/main.js:2126) and are
+// NEVER stamped on a visible button. The played surface is `#packetButton`:
+//   - short tap → PacketIntentController never crosses OPEN thresholds →
+//     `commitPacketOutcome(SEALED)` fires → `state.packet.sealed = true`.
+//   - hold-and-pull → holdProgress + pullProgress cross the OPEN window
+//     → `commitPacketOutcome(OPENED)` fires → `state.packet.sealed = false`.
+// This mirrors `holdChoiceViaDom` in flagship-surface-contract.spec.ts:644
+// (pull=12px sits inside (OPEN_PULL_MIN_PX=10, DRIFT_CANCEL_PX=14]).
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
@@ -91,11 +102,91 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.click();
 }
 
-// Play from a fresh save at `slot` to the recognition beat, choosing
-// either the sealed (`keep-packet-sealed` → `deliver-packet`) or opened
-// (`open-packet` → `deliver-packet`) branch, using only rendered
-// controls. Asserts the visible dialogue transitions along the way:
-//   packet-offered → packet-choice → packet-delivered → io-return-recognition
+// Perform the packet gesture on the visible `#packetButton`. Sealed is a
+// plain tap (Playwright `click()` synthesizes a fast pointerdown→up).
+// Opened is a hold with a mid-hold pointermove pull — same shape as
+// `holdChoiceViaDom` in flagship-surface-contract.spec.ts. Both go
+// through the PacketIntentController, so `state.packet.sealed` flips
+// via the real intent-recognition path, not a scripted dispatch.
+async function performPacketGesture(
+  page: Page,
+  outcome: RecognitionOutcome,
+): Promise<void> {
+  const packet = page.locator("#packetButton");
+  await expect(packet, "#packetButton should be visible at packet-offered").toBeVisible({
+    timeout: WAIT_MS,
+  });
+
+  if (outcome === "sealed") {
+    await packet.click();
+    return;
+  }
+
+  // OPENED — hold ~900ms with a 12px pull injected halfway through.
+  await page.evaluate(async () => {
+    const node = document.querySelector<HTMLElement>("#packetButton");
+    if (!node) throw new Error("#packetButton not found");
+    const rect = node.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    const pullPx = 12;
+    const holdMs = 900;
+
+    node.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX,
+        clientY: startY,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, Math.floor(holdMs / 2)));
+
+    node.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX + pullPx,
+        clientY: startY,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, holdMs - Math.floor(holdMs / 2)));
+
+    node.dispatchEvent(
+      new PointerEvent("pointerup", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 0,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX + pullPx,
+        clientY: startY,
+      }),
+    );
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+// Play from a fresh save at `slot` to the recognition beat, using only
+// rendered controls:
+//   1. `#packetButton` — tap (sealed) or hold+pull (opened)
+//   2. `[data-choice-id="acknowledge-kiosk"]` — records the second action
+//      (same choice the sibling continue-beats spec uses; deliver-packet
+//      normalizes null→"skipped" but a played run picks one deliberately)
+//   3. `[data-choice-id="deliver-packet"]` — advances to packet-delivered
+// The runtime then auto-advances into `io-return-recognition` on
+// deliverPacket()'s ~1180ms setTimeout.
 async function playToRecognition(
   page: Page,
   slot: string,
@@ -106,14 +197,10 @@ async function playToRecognition(
   await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
 
   await waitForBeat(page, "packet-offered");
-  await page.locator("#packetButton").click();
+  await performPacketGesture(page, outcome);
 
   await waitForBeat(page, "packet-choice");
-  await tapChoice(
-    page,
-    outcome === "sealed" ? "keep-packet-sealed" : "open-packet",
-  );
-
+  await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-delivered");
 
@@ -308,11 +395,15 @@ test("io return recognition, played by taps: spawns 14 particle primitives durin
 
   // Play to recognition via rendered controls (sealed branch — outcome
   // is orthogonal to the burst, and sealed matches the pre-#1544 spec).
+  // Sealed = a plain tap on `#packetButton` (the PacketIntentController
+  // stays under OPEN thresholds → `commitPacketOutcome(SEALED)`), then
+  // the same visible `acknowledge-kiosk` / `deliver-packet` chain the
+  // sibling continue-beats spec plays.
   await waitForBeat(page, "packet-offered");
-  await page.locator("#packetButton").click();
+  await performPacketGesture(page, "sealed");
 
   await waitForBeat(page, "packet-choice");
-  await tapChoice(page, "keep-packet-sealed");
+  await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-delivered");
   await waitForBeat(page, "io-return-recognition");
