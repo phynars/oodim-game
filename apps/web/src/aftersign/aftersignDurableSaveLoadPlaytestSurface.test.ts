@@ -16,10 +16,6 @@ const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 const SAVE_SIGNAL_PATTERN = /(?:save|saved|persist|durable|localStorage|sessionStorage|returning|remembered|recall)/i;
 const LOAD_SIGNAL_PATTERN = /(?:reload|goto\s*\(|newContext|newPage|returning|restored|loaded|remembered|recall)/i;
 const PRIOR_SESSION_ASSERTION_PATTERN = /(?:previous session|last time|again|returning|remembered|recall|restored|saved)/i;
-const DIVERGENT_SAVE_SIGNAL_PATTERN = /(?:two|2|first|second|baseline|trusted|risky|safe|different|divergent)\s+(?:save|state|saves|memory|record|records|profile|profiles)/i;
-const MEMORY_SEED_PATTERN = /(?:seed|set|write|prime|mock|fixture|storageState|localStorage|sessionStorage|route\s*\(|fulfill\s*\()\b[\s\S]{0,240}(?:memory|trust|debt|outcome|risk|prior|opened|delivered)/i;
-const AVAILABLE_ACTION_PATTERN = /(?:job|offer|price|route|shortcut|stair|cut|action|button|option|choice)/i;
-const DIFFERENT_TAPPABLE_ACTIONS_PATTERN = /(?:not\.toEqual|not\.toStrictEqual|toHaveCount|toContain|toBeGreaterThan|different|differs|diverge|unavailable|available|enabled|disabled)/i;
 
 function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
   if (!existsSync(AFTERSIGN_E2E_DIR)) {
