@@ -122,60 +122,18 @@ async function performPacketGesture(
     return;
   }
 
-  // OPENED — hold ~900ms with a 12px pull injected halfway through.
-  await page.evaluate(async () => {
-    const node = document.querySelector<HTMLElement>("#packetButton");
-    if (!node) throw new Error("#packetButton not found");
-    const rect = node.getBoundingClientRect();
-    const startX = rect.left + rect.width / 2;
-    const startY = rect.top + rect.height / 2;
-    const pullPx = 12;
-    const holdMs = 900;
-
-    node.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        bubbles: true,
-        pointerId: 1,
-        button: 0,
-        buttons: 1,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: startX,
-        clientY: startY,
-      }),
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, Math.floor(holdMs / 2)));
-
-    node.dispatchEvent(
-      new PointerEvent("pointermove", {
-        bubbles: true,
-        pointerId: 1,
-        button: 0,
-        buttons: 1,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: startX + pullPx,
-        clientY: startY,
-      }),
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, holdMs - Math.floor(holdMs / 2)));
-
-    node.dispatchEvent(
-      new PointerEvent("pointerup", {
-        bubbles: true,
-        pointerId: 1,
-        button: 0,
-        buttons: 0,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: startX + pullPx,
-        clientY: startY,
-      }),
-    );
-    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+  // OPENED — a real pointer hold with a 12px pull, performed against the
+  // rendered packet control rather than dispatching events from page context.
+  const box = await packet.boundingBox();
+  if (!box) throw new Error("#packetButton has no visible bounds");
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.waitForTimeout(450);
+  await page.mouse.move(startX + 12, startY);
+  await page.waitForTimeout(450);
+  await page.mouse.up();
 }
 
 // Play from a fresh save at `slot` to the recognition beat, using only

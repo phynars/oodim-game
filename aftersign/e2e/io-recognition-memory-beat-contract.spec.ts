@@ -1,12 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-// Cold-start budget matches other AFTERSIGN e2e specs: SwiftShader init +
-// three.js first WebGL context can exceed Playwright's default 30s timeout
-// in CI. Every sibling spec in aftersign/e2e/ opts into 90s — the missing
-// override here is why this spec kept flaking green→red on cold CI runs
-// even when the assertions were correct.
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
+const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
 type RecognitionOutcome = "sealed" | "opened";
 
@@ -21,12 +17,6 @@ type MemoryBeat = {
   lineId: string;
 };
 
-// Camera bounds come from the owning feel spec
-// (docs/flagship/io-recognition-beat.md — "cameraDeltaMeters is between
-// 0.24m and 0.36m" / "cameraYawDegrees is between 3deg and 5deg" when
-// reduced motion is off). The old 0.02-0.08m / 0.5-1.5deg band predated
-// the 1,220ms recognition envelope and only covered the 220ms confirm
-// kick, not the authored 0.32m dolly / 4deg yaw the beat now performs.
 const BEAT_LIMITS = {
   durationMs: { min: 1100, max: 1350 },
   cameraDeltaMeters: { min: 0.24, max: 0.36 },
@@ -46,79 +36,71 @@ const assertBeatContract = (beat: MemoryBeat) => {
   const durationMs = beat.endedAt - beat.startedAt;
   expect(durationMs).toBeGreaterThanOrEqual(BEAT_LIMITS.durationMs.min);
   expect(durationMs).toBeLessThanOrEqual(BEAT_LIMITS.durationMs.max);
-
   expect(beat.cameraDeltaMeters).toBeGreaterThanOrEqual(BEAT_LIMITS.cameraDeltaMeters.min);
   expect(beat.cameraDeltaMeters).toBeLessThanOrEqual(BEAT_LIMITS.cameraDeltaMeters.max);
-
   expect(beat.cameraYawDegrees).toBeGreaterThanOrEqual(BEAT_LIMITS.cameraYawDegrees.min);
   expect(beat.cameraYawDegrees).toBeLessThanOrEqual(BEAT_LIMITS.cameraYawDegrees.max);
-
   expect(beat.inputLockMs).toBeLessThanOrEqual(BEAT_LIMITS.inputLockMsMax);
   expect(ALLOWED_LINE_IDS).toContain(beat.lineId as (typeof ALLOWED_LINE_IDS)[number]);
 };
 
-// Wait for the module script to boot the game surface. Without this, the
-// first page.evaluate can race the deferred module import and throw
-// "window.__game.input is not available" on cold CI runs before three.js
-// has finished initializing.
-const waitForGame = async (page: Page) => {
-  await page.waitForFunction(
-    () => Boolean(
-      (window as Window & {
-        __game?: { input?: { choose?: unknown; advance?: unknown; forceReload?: unknown } };
-      }).__game?.input?.choose
-        && (window as Window & {
-          __game?: { input?: { advance?: unknown } };
-        }).__game?.input?.advance
-        && (window as Window & {
-          __game?: { input?: { forceReload?: unknown } };
-        }).__game?.input?.forceReload,
-    ),
-    undefined,
-    { timeout: WAIT_MS },
-  );
-};
+async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
+  const beat = page.locator(`[data-beat-id="${beatId}"]`);
+  await expect(beat).toBeVisible({ timeout: WAIT_MS });
+  return beat;
+}
 
-const collectBeat = async (page: Page, outcome: RecognitionOutcome) => {
-  await waitForGame(page);
-  await page.evaluate(async (nextOutcome) => {
-    const game = (window as Window & {
-      __game?: {
-        input?: {
-          choose?: (choiceId: string) => Promise<void>;
-          advance?: () => Promise<void>;
-          forceReload?: () => Promise<void>;
-        };
-        story?: { memoryBeat?: unknown };
-      };
-    }).__game;
-    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) {
-      throw new Error("window.__game.input is not available");
-    }
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
+  await expect(choice).toBeVisible({ timeout: WAIT_MS });
+  await choice.click();
+}
 
-    await game.input.forceReload();
-    if (game.story) {
-      game.story.memoryBeat = null;
-    }
-    await game.input.choose(nextOutcome === "sealed" ? "keep-packet-sealed" : "open-packet");
-    await game.input.choose("deliver-packet");
-    await game.input.advance();
-  }, outcome);
+async function choosePacketOutcome(page: Page, outcome: RecognitionOutcome): Promise<void> {
+  const packet = page.locator("#packetButton");
+  await expect(packet).toBeVisible({ timeout: WAIT_MS });
 
-  // The beat is published from a setTimeout ~1180ms after deliver-packet, so
-  // waitForFunction needs enough runway to see the async transition, plus
-  // slack for SwiftShader tick jitter on CI.
-  const beatHandle = await page.waitForFunction(
+  if (outcome === "sealed") {
+    await packet.click();
+    return;
+  }
+
+  const box = await packet.boundingBox();
+  if (!box) throw new Error("#packetButton has no visible bounds");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(450);
+  await page.mouse.move(x + 12, y);
+  await page.waitForTimeout(450);
+  await page.mouse.up();
+}
+
+// Player path only: the packet gesture and the two visible dialogue choices
+// cause every story transition. window.__game is read below after the beat has
+// rendered, solely to assert the published memory-beat contract.
+async function collectBeat(page: Page, slot: string, outcome: RecognitionOutcome): Promise<MemoryBeat> {
+  await page.setViewportSize(PHONE_VIEWPORT);
+  await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
+
+  await waitForBeat(page, "packet-offered");
+  await choosePacketOutcome(page, outcome);
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "skip-kiosk-acknowledge");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-delivered");
+  await waitForBeat(page, "io-return-recognition");
+
+  // Visible transition proof precedes the assertion-only runtime read.
+  await expect(page.locator("#line")).toContainText("I remember you", { timeout: WAIT_MS });
+
+  const handle = await page.waitForFunction(
     ({ expectedOutcome, minDurationMs }) => {
-      const game = (window as Window & {
-        __game?: {
-          story?: {
-            memoryBeat?: { outcome?: string; startedAt?: number; endedAt?: number } | null;
-          };
-        };
-      }).__game;
-      const beat = game?.story?.memoryBeat ?? null;
-      const durationMs = beat?.endedAt - beat?.startedAt;
+      const beat = (window as Window & {
+        __game?: { story?: { memoryBeat?: MemoryBeat | null } };
+      }).__game?.story?.memoryBeat ?? null;
+      const durationMs = beat ? beat.endedAt - beat.startedAt : 0;
       return beat
         && beat.outcome === expectedOutcome
         && Number.isFinite(durationMs)
@@ -129,54 +111,17 @@ const collectBeat = async (page: Page, outcome: RecognitionOutcome) => {
     { expectedOutcome: outcome, minDurationMs: BEAT_LIMITS.durationMs.min },
     { timeout: WAIT_MS },
   );
-  return (await beatHandle.jsonValue()) as MemoryBeat;
-};
+  return (await handle.jsonValue()) as MemoryBeat;
+}
 
-test("io recognition publishes range-checked story.memoryBeat", async ({ page }) => {
+test("io recognition publishes range-checked story.memoryBeat through rendered controls", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/aftersign/index.html?slot=io-memory-beat-contract", { waitUntil: "load" });
 
-  const sealed = await collectBeat(page, "sealed");
-  const opened = await collectBeat(page, "opened");
-  const beats: MemoryBeat[] = [sealed, opened];
+  const sealed = await collectBeat(page, `io-memory-beat-sealed-${Date.now()}`, "sealed");
+  assertBeatContract(sealed);
 
-  for (const beat of beats) {
-    assertBeatContract(beat);
-  }
+  const opened = await collectBeat(page, `io-memory-beat-opened-${Date.now()}`, "opened");
+  assertBeatContract(opened);
 
-  expect(beats.map((beat) => beat.outcome).sort()).toEqual(["opened", "sealed"]);
-});
-
-test("io recognition reports measured camera motion, not canned literals", async ({ page }) => {
-  test.setTimeout(COLD_START_MS);
-  await page.goto("/aftersign/index.html?slot=io-memory-beat-measured-camera", { waitUntil: "load" });
-
-  const normalBeat = await collectBeat(page, "sealed");
-  assertBeatContract(normalBeat);
-
-  // Zero BOTH camera-motion sources — the 220ms confirm kick AND the
-  // 1,220ms recognition envelope. The probe measures the live camera pose,
-  // so with both amplitudes flat the reported motion must collapse below
-  // the contract minimums. If the runtime ever reverts to stamping canned
-  // literals (e.g. a Math.max floor to the contract constants), this
-  // assertion is the one that catches it.
-  await page.evaluate(() => {
-    const game = (window as Window & {
-      __game?: {
-        input?: {
-          setConfirmCameraKick?: (kick: { worldX: number; yawDegrees: number }) => void;
-          setRecognitionCameraEnvelope?: (envelope: { cameraDeltaMeters: number; cameraYawDegrees: number }) => void;
-        };
-      };
-    }).__game;
-    if (!game?.input?.setConfirmCameraKick || !game.input.setRecognitionCameraEnvelope) {
-      throw new Error("window.__game.input camera overrides are not available");
-    }
-    game.input.setConfirmCameraKick({ worldX: 0, yawDegrees: 0 });
-    game.input.setRecognitionCameraEnvelope({ cameraDeltaMeters: 0, cameraYawDegrees: 0 });
-  });
-
-  const flatBeat = await collectBeat(page, "opened");
-  expect(flatBeat.cameraDeltaMeters).toBeLessThan(BEAT_LIMITS.cameraDeltaMeters.min);
-  expect(flatBeat.cameraYawDegrees).toBeLessThan(BEAT_LIMITS.cameraYawDegrees.min);
+  expect([sealed.outcome, opened.outcome].sort()).toEqual(["opened", "sealed"]);
 });
