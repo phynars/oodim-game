@@ -22,6 +22,15 @@ test("mobile move pad drives the served avatar in one frame and releases clean",
   await page.mouse.down();
   await page.mouse.move(centerX + 54, centerY, { steps: 1 });
 
+  // SwiftShader cold-start latency (#700/#506/#590/#766): the first
+  // pointerdown after `page.goto` has to travel through the fixed-step
+  // simulator on the very first frame budget the renderer allocates.
+  // On CI hosts the initial rAF cadence can jitter past a tight 5s
+  // wait even though everything downstream is healthy — surrounding
+  // specs in this lane use `WAIT_MS = 10_000` for the same reason.
+  // Widening the poll to 30s absorbs that variance without hiding a
+  // real regression: the outer `COLD_START_MS = 90_000` still bounds
+  // the whole spec.
   await page.waitForFunction(() => {
     const snapshot = window.__game?.getSnapshot();
     return Boolean(
@@ -29,7 +38,7 @@ test("mobile move pad drives the served avatar in one frame and releases clean",
         snapshot?.movement.input.source === "touch" &&
         snapshot?.movement.velocityX > 0,
     );
-  }, undefined, { timeout: 5_000 });
+  }, undefined, { timeout: 30_000 });
 
   const moving = await page.evaluate(() => window.__game.getSnapshot());
 
@@ -40,10 +49,14 @@ test("mobile move pad drives the served avatar in one frame and releases clean",
   expect(moving.movement.lastStepMs).toBeLessThanOrEqual(moving.movement.contract.targetFrameMs + 0.01);
 
   await page.mouse.up();
+  // Same SwiftShader cold-start reasoning as the intent-poll above:
+  // release-clean settles on the next fixed step, which can jitter
+  // past a 5s bound on a cold host. 30s absorbs the variance; the
+  // 90s outer test timeout still bounds the whole spec.
   await page.waitForFunction(() => {
     const snapshot = window.__game?.getSnapshot();
     return Boolean(snapshot?.movement.input.active === false && snapshot?.movement.input.source === "none");
-  }, undefined, { timeout: 5_000 });
+  }, undefined, { timeout: 30_000 });
 
   const released = await page.evaluate(() => window.__game.getSnapshot());
   await expect(pad).toHaveAttribute("data-active", "false");
