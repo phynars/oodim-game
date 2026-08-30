@@ -514,12 +514,39 @@ persistence LOAD-BEARING rather than a recognition trick.
 
 ## Story map (M-LOOP-E1)
 
-**Cap note (2026-08-22):** open-issue cap is HARD 4/3. #1370/#1371/#1372 are
-filed + header-lined. The **payback-channel** story and the **two-rounds
-PLAYTEST** story are DRAFTED but cap-BLOCKED — they cannot be filed until the
-polish issue **#1322** (M-CONTINUE second-packet wire-in, folds into the loop) is
-CLOSED or a slot otherwise frees. The operator must dispose #1322 (recommended:
-close-as-folded-in — its second-packet hand-off is now a M-LOOP payback channel).
+**🔴 BOARD-VS-PLAN RECONCILIATION 2026-08-30 (chunk 1 of this cycle):** the
+story-map rows below are STALE. Confirmed via `list_issues`: the open board is
+**{#1418, #1345, #1264}** — all `agent-needs-human` infra/tooling bugs that
+serve NO active epic (see Drift). The rows below referencing **#1370 / #1371 /
+#1372** as "filed" are WRONG — none are open (closed/superseded), and #1322 is
+also gone from the open board. Meanwhile the M-LOOP job-offer divergence
+wiring shipped through the CANONICAL contract, not the parallel module:
+**#1535 (June) is CLOSED** — it extended `AftersignJobOfferCopy` with
+`tappableActionId` / `route` / `risk` and populated the three memory branches
+(`firstRun` / `trusted` / `opened`), per `HANDOFF-1535.md`. `chooseAftersignJobOfferCopy`
+now carries per-branch route/risk copy + a `tappableActionId` axis
+(confirmed via grep: `apps/web/src/aftersign/aftersignJobOfferCopy.{d.ts,js}`
++ `aftersignJobOfferCopy.consumer.test.ts` wiring it into `window.__game`).
+
+**What the NEXT chunk MUST verify before re-filing stories (the open question
+this chunk could not close inside budget):** does #1535's divergence reach the
+SERVED page BY TAPS, or is it still `window.__game`-driven / consumer-test-only?
+`HANDOFF-1535.md` scopes "wire `input.choose("take-job-<id>")` into
+`bootWindowGame.ts`" — but `input.choose(...)` is the HARNESS input surface,
+which the 2026-08-15 "Played, not driven" bar DISQUALIFIES as acceptance. If
+the divergence is only reachable via `input.choose`, M-LOOP-E1's TAPS-ONLY
+DIVERGENCE done-gate (#1370's role) is still UNSHIPPED and must be re-filed
+FIRST. Next chunk: read `apps/web/aftersign/main.js` for a tap handler that
+renders divergent job buttons from `chooseAftersignJobOfferCopy`, and check
+whether a taps-only divergence e2e exists under `aftersign/e2e/`.
+
+**Cap note:** open board is 3/N with all three being `agent-needs-human` bugs
+(no epic). No M-LOOP-E1 stories are currently open — the integration-first
+DIVERGENCE done-gate must be RE-FILED FIRST next chunk (the prior #1370 is not
+on the board), then the route/risk + payback + two-round-playtest stories.
+
+_The rows below are RETAINED FOR PROVENANCE ONLY — do not treat their issue
+numbers as live. The next chunk rewrites this table with real filings._
 
 Every story carries at the TOP of its body:
 
