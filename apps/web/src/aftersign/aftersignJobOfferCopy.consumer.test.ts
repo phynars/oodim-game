@@ -183,6 +183,50 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
     );
   });
 
+  it("keeps the visible offer copy divergent between first and looped runs", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.acceptNextJob();
+    const firstRunCopy = game?.getSnapshot().story.nextJob?.offer?.copy as
+      | { route: string; risk: string }
+      | undefined;
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(
+            createAftersignVerticalSliceState(),
+            "sealed",
+          ),
+        ),
+        4,
+      ),
+    );
+    game?.acceptNextJob();
+    const trustedCopy = game?.getSnapshot().story.nextJob?.offer?.copy as
+      | { route: string; risk: string }
+      | undefined;
+
+    expect(firstRunCopy?.route).toBe(
+      "Take the lit stair. Do not stop under the bell rope.",
+    );
+    expect(firstRunCopy?.risk).toBe(
+      "Low risk. Long route. Io can see most of it from the kiosk.",
+    );
+    expect(trustedCopy?.route).toBe(
+      "Cross behind the shuttered pharmacy before the bells count twice.",
+    );
+    expect(trustedCopy?.risk).toBe(
+      "Short route. Unlit. Better pay because Io trusts your hands.",
+    );
+    expect(trustedCopy?.route).not.toBe(firstRunCopy?.route);
+    expect(trustedCopy?.risk).not.toBe(firstRunCopy?.risk);
+  });
+
   // JSON serialisability guard — the copy must survive a
   // `postMessage`/localStorage round-trip a scene renderer might
   // stage. Object.freeze doesn't affect JSON.stringify, but the

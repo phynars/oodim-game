@@ -292,6 +292,7 @@ import {
   AFTERSIGN_JOB_TAKE_FEEL,
   resolveAftersignJobTakeFeel,
 } from "../apps/web/src/aftersign/aftersignJobTakeFeel.js";
+import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersignJobOfferCopy.js";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
 // (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
@@ -1872,6 +1873,15 @@ const renderText = () => {
         label.className = "route-choice-label";
         label.textContent = "Offered jobs";
         offeredJobs.appendChild(label);
+        const offerCopy = chooseAftersignJobOfferCopy({
+          firstPacketOutcome: packetOutcomeFactObject ?? null,
+          packetOpened: packetOutcomeFactObject === "opened",
+          deliveredSealed: packetOutcomeFactObject === "sealed",
+        });
+        const routeRiskCopy = document.createElement("p");
+        routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
+        routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
+        offeredJobs.appendChild(routeRiskCopy);
         for (const offer of offers) {
           // PR #1422 — per-jobId M-LOOP copy + memory-gated action.
           // `selectMloopJobCopy` currently mirrors the visible label
