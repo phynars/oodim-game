@@ -32,11 +32,17 @@ import { expect, test, type Page } from "@playwright/test";
 // the API layer by the consumer test above; this spec proves the
 // served-page projection is real, visible DOM text on a played boot.
 //
-// Cold-start / wait budgets match the sibling
-// `m-loop-divergence.playtest.spec.ts` (which drives an equivalent
-// first-visit boot on this lane and passes SwiftShader cold-start):
-const WAIT_MS = 10_000;
-const COLD_START_MS = 45_000;
+// Cold-start / wait budgets are the aftersign flagship-tier defaults
+// (matching `movement-feel-contract.spec.ts` and the widened bounds
+// in `mobile-move-pad-served-feel.spec.ts`). SwiftShader + esm.sh
+// three.js imports on CI regularly exceed a 10s wait during the
+// aftersign lane's cold boot (#700/#506/#590/#766/#1551 review 4), so
+// each locator poll gets 30s and the outer spec timeout gets 90s.
+// A real regression still reds within one attempt; a boot hiccup
+// gets absorbed inside the same attempt instead of tripping the
+// retry surface.
+const WAIT_MS = 30_000;
+const COLD_START_MS = 90_000;
 
 const firstRoute = "Take the lit stair. Do not stop under the bell rope.";
 const firstRisk = "Low risk. Long route. Io can see most of it from the kiosk.";

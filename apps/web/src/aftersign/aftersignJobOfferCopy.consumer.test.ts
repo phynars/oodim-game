@@ -187,13 +187,19 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
     const game = window.__game;
     expect(game).toBeDefined();
 
+    // Snapshot copy fields into locals immediately (deep-clone via
+    // JSON round-trip) so a stateful harness that later rebuilds the
+    // snapshot on `restoreDurableSave` can't retroactively mutate the
+    // first-run reference we're comparing against.
     game?.restoreDurableSave(
       encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
     );
     game?.acceptNextJob();
-    const firstRunCopy = game?.getSnapshot().story.nextJob?.offer?.copy as
+    const firstRunCopyLive = game?.getSnapshot().story.nextJob?.offer?.copy as
       | { route: string; risk: string }
       | undefined;
+    const firstRunRoute = firstRunCopyLive?.route;
+    const firstRunRisk = firstRunCopyLive?.risk;
 
     game?.restoreDurableSave(
       encodeAftersignDurableSave(
@@ -207,24 +213,26 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
       ),
     );
     game?.acceptNextJob();
-    const trustedCopy = game?.getSnapshot().story.nextJob?.offer?.copy as
+    const trustedCopyLive = game?.getSnapshot().story.nextJob?.offer?.copy as
       | { route: string; risk: string }
       | undefined;
+    const trustedRoute = trustedCopyLive?.route;
+    const trustedRisk = trustedCopyLive?.risk;
 
-    expect(firstRunCopy?.route).toBe(
+    expect(firstRunRoute).toBe(
       "Take the lit stair. Do not stop under the bell rope.",
     );
-    expect(firstRunCopy?.risk).toBe(
+    expect(firstRunRisk).toBe(
       "Low risk. Long route. Io can see most of it from the kiosk.",
     );
-    expect(trustedCopy?.route).toBe(
+    expect(trustedRoute).toBe(
       "Cross behind the shuttered pharmacy before the bells count twice.",
     );
-    expect(trustedCopy?.risk).toBe(
+    expect(trustedRisk).toBe(
       "Short route. Unlit. Better pay because Io trusts your hands.",
     );
-    expect(trustedCopy?.route).not.toBe(firstRunCopy?.route);
-    expect(trustedCopy?.risk).not.toBe(firstRunCopy?.risk);
+    expect(trustedRoute).not.toBe(firstRunRoute);
+    expect(trustedRisk).not.toBe(firstRunRisk);
   });
 
   // JSON serialisability guard — the copy must survive a
