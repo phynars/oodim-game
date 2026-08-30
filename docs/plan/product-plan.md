@@ -490,13 +490,24 @@ The epic is DONE when the served-page divergence spec is green on main and two
 divergent saves produce different available actions by taps — NOT when the
 individual wiring PRs merge.
 
-**Status:** active — 14 days to deadline (2026-09-05, spec-writer estimate,
-founder to confirm). No E1 stories filed yet (this planning chunk authored the
-milestone + epic; the NEXT chunk files the integration story FIRST, then 3–7
-S/M implementation + playtest stories). #1322 (June, open) folds INTO this epic
-as a natural loop story — Io's second-packet hand-off can become a
-memory-computed job — and should be re-scoped or mapped, not left as
-M-CONTINUE polish.
+**Status:** active — **6 days to deadline (2026-09-05, spec-writer estimate,
+founder to confirm; as of 2026-08-30)**. The divergence DONE-GATE is PARTIAL
+on the served surface: guard `aftersignMemoryDivergencePlaytestSurface.test.ts`
+plus the taps-only spec `job-offers-played.spec.ts` run in the default CI lane
+and assert element-level action-set divergence between two seeded saves. The
+sibling spec `m-loop-e1-phone-action-divergence.spec.ts` is `test.describe.skip`
+gated on `M_LOOP_E1_IMPL_LANDED=1` and its own header calls itself "RED until
+the impl story lands" — it does NOT count toward the gate today. The action-id
+divergence wiring (#1535, closed) landed the `firstRun`/`trusted`/`opened`
+offer branches through the canonical `input.choose("take-job-<id>")` path.
+What remains for E1: make that divergence LEGIBLE to a tapping player
+(route/risk copy visible on the offer — #1551), stitch the two divergence
+beats into ONE boot→round1→return→round2 taps-only journey (#1552), and land
+the impl that flips `m-loop-e1-phone-action-divergence.spec.ts` from skipped
+to green in the default lane. #1322 (June) folded into M-CONTINUE polish and
+CLOSED 2026-08-24 — Io's second-packet copy is no longer an open E1 payback
+channel; a fresh, memory-computed second-packet story would need to be filed
+if we want that payback in-loop.
 
 **Integration story (the done-gate — to be filed FIRST next chunk):** the
 epic's served-page taps-only DIVERGENCE spec seeds two saves with different
@@ -512,61 +523,48 @@ persistence LOAD-BEARING rather than a recognition trick.
 
 ---
 
-## Story map (M-LOOP-E1)
+## Story map (M-LOOP-E1) — **6 days to deadline (as of 2026-08-30)**
 
-**🔴 BOARD-VS-PLAN RECONCILIATION 2026-08-30 (chunk 1 of this cycle):** the
-story-map rows below are STALE. Confirmed via `list_issues`: the open board is
-**{#1418, #1345, #1264}** — all `agent-needs-human` infra/tooling bugs that
-serve NO active epic (see Drift). The rows below referencing **#1370 / #1371 /
-#1372** as "filed" are WRONG — none are open (closed/superseded), and #1322 is
-also gone from the open board. Meanwhile the M-LOOP job-offer divergence
-wiring shipped through the CANONICAL contract, not the parallel module:
-**#1535 (June) is CLOSED** — it extended `AftersignJobOfferCopy` with
-`tappableActionId` / `route` / `risk` and populated the three memory branches
-(`firstRun` / `trusted` / `opened`), per `HANDOFF-1535.md`. `chooseAftersignJobOfferCopy`
-now carries per-branch route/risk copy + a `tappableActionId` axis
-(confirmed via grep: `apps/web/src/aftersign/aftersignJobOfferCopy.{d.ts,js}`
-+ `aftersignJobOfferCopy.consumer.test.ts` wiring it into `window.__game`).
-
-**What the NEXT chunk MUST verify before re-filing stories (the open question
-this chunk could not close inside budget):** does #1535's divergence reach the
-SERVED page BY TAPS, or is it still `window.__game`-driven / consumer-test-only?
-`HANDOFF-1535.md` scopes "wire `input.choose("take-job-<id>")` into
-`bootWindowGame.ts`" — but `input.choose(...)` is the HARNESS input surface,
-which the 2026-08-15 "Played, not driven" bar DISQUALIFIES as acceptance. If
-the divergence is only reachable via `input.choose`, M-LOOP-E1's TAPS-ONLY
-DIVERGENCE done-gate (#1370's role) is still UNSHIPPED and must be re-filed
-FIRST. Next chunk: read `apps/web/aftersign/main.js` for a tap handler that
-renders divergent job buttons from `chooseAftersignJobOfferCopy`, and check
-whether a taps-only divergence e2e exists under `aftersign/e2e/`.
-
-**Cap note:** open board is 3/N with all three being `agent-needs-human` bugs
-(no epic). No M-LOOP-E1 stories are currently open — the integration-first
-DIVERGENCE done-gate must be RE-FILED FIRST next chunk (the prior #1370 is not
-on the board), then the route/risk + payback + two-round-playtest stories.
-
-_The rows below are RETAINED FOR PROVENANCE ONLY — do not treat their issue
-numbers as live. The next chunk rewrites this table with real filings._
+**Reality reconciliation (2026-08-30):** the divergence DONE-GATE is NOT a
+pending #1370 — it PARTIALLY exists on the served surface. Guard
+`aftersignMemoryDivergencePlaytestSurface.test.ts` + the taps-only spec
+`job-offers-played.spec.ts` run in the default CI lane and assert two seeded
+saves produce element-level DIFFERENT tappable actions. The sibling spec
+`m-loop-e1-phone-action-divergence.spec.ts` is `test.describe.skip` gated on
+`M_LOOP_E1_IMPL_LANDED=1` — RED-until-impl, not counted toward the gate today.
+The action-id divergence wiring landed via **#1535 (closed)** — the
+`firstRun`/`trusted`/`opened` offer branches route through the canonical
+`input.choose("take-job-<id>")` path. The prior chunk's #1370/#1371/#1372 map
+rows are SUPERSEDED by that landed work (do not re-derive; verify against the
+guard + `job-offers-played.spec.ts`). With 6 days left, sequence the remaining
+stories by TIME: make the divergence LEGIBLE (#1551), stitch the two-round
+journey (#1552), and land the impl that un-skips
+`m-loop-e1-phone-action-divergence.spec.ts` in the default lane.
 
 Every story carries at the TOP of its body:
 
 ```
-Milestone: M-LOOP — a phone player finishes round one and can answer "what will you do differently next round?" (divergence, not dialogue)
-Epic: M-LOOP-E1 — the served job offer is computed from memory + one route-risk fact changes a later round's available actions
+Milestone: M-LOOP — a phone visitor can complete a job for Io, leave, return, and see the loop remember them (offers diverge on the second run)
+Epic: M-LOOP-E1 — the served aftersign page offers a DIFFERENT visible action set on a looped return than on first run, driven only by taps
 ```
 
 | Story | Issue | Size | Role | Status |
 |-------|-------|------|------|--------|
-| **Taps-only DIVERGENCE done-gate (filed FIRST)** — seed two divergent memory saves, play one round each on a phone viewport by taps, assert element-level action-set divergence; `window.__game` invariant-only | **#1370** | M | integration done-gate | filed |
-| **Compute the served run's action SET from the memory record** — derive which offer/route/price tappables render from the record so the action set can diverge | **#1371** | M | consumer wire-in (record → action set) | filed |
-| **Add a real route + risk choice with a persisted consequence** — two tappable route options in the run, consequence persisted into the memory record | **#1372** | M | consumer wire-in (route/risk axis) | filed |
-| **Mechanical payback channel — price-moves / offer-appears from the memory record** — consume `selectIoSecondPacketCopy` (`aftersign/src/ioSecondPacketCopy.ts`) as a payback whose TAPPABLE presence diverges by record; element-level divergence gate | **#1322 (folds in)** | M | consumer wire-in (payback channel) | **DRAFTED — cap-blocked on #1322 disposal** |
-| **Two-rounds PLAYTEST** — extend `m-continue-phone-tap-playtest.spec.ts` boot→round1→round2 taps-only; assert round-1 payback visible as a tappable element in round 2 (≤1-in-4 harness-adjacent) | — | M | playtest (2-round loop) | **DRAFTED — cap-blocked** |
+| **Divergence done-gate (partially shipped)** — element-level action-set divergence between two seeded saves, taps-only, `window.__game` invariant-only | guard `aftersignMemoryDivergencePlaytestSurface.test.ts` + `job-offers-played.spec.ts` (running); `m-loop-e1-phone-action-divergence.spec.ts` (skipped, gated on `M_LOOP_E1_IMPL_LANDED=1`) | M | integration done-gate | **PARTIAL** — guard + `job-offers-played.spec.ts` green in default CI lane; skipped sibling un-skips when the un-skip impl lands |
+| **Action-id divergence wiring** — `firstRun`/`trusted`/`opened` offer branches through canonical `input.choose("take-job-<id>")` | **#1535** | M | consumer wire-in (record → action set) | **CLOSED ✅** |
+| **Surface route + risk copy on the served offer (make divergence LEGIBLE)** — render each branch's `route`/`risk` copy as VISIBLE text so a phone player READS the loop diverge across `firstRun`/`trusted`/`opened`; consumer assertion via `getByText`/`getByRole` | **#1551** | M | consumer wire-in (copy → surface) | **filed 2026-08-30** |
+| **Two-round phone PLAYTEST (boot→round1→return→round2)** — one taps-only phone-viewport spec stitches the two divergence beats into a single journey; asserts round-2 offer set VISIBLY differs from round-1 and each visible change along the way (≤1-in-4 harness-adjacent) | **#1552** | M | playtest (2-round loop) | **filed 2026-08-30** |
+| **Mechanical payback channel — Io second-packet hand-off diverges by record** — consume `selectIoSecondPacketCopy` (`aftersign/src/ioSecondPacketCopy.ts`) as a payback whose TAPPABLE presence diverges by memory record | ~~#1322~~ (CLOSED 2026-08-24 as M-CONTINUE polish; not an open E1 payback story) | M | consumer wire-in (payback channel) | **CLOSED** — no open story today; file a fresh memory-computed second-packet story if we want this payback in-loop |
 
-**Integration-first note:** #1370 (the divergence done-gate) was filed BEFORE the
-implementation stories, per the integration-first rule. #1371/#1372 build the
-record→action-set derivation + route/risk axis it asserts. The payback-channel +
-two-round playtest stories complete the map once the cap frees.
+**Integration-first note:** the done-gate LEADS partially — the guard +
+`job-offers-played.spec.ts` are green on the served surface in the default
+CI lane, so the integration-first rule is satisfied by that landed work for
+the shipped surface. `m-loop-e1-phone-action-divergence.spec.ts` remains
+`test.describe.skip` (`M_LOOP_E1_IMPL_LANDED=1`) and un-skips when its impl
+story lands. #1551 makes the divergence a human can READ; #1552 is the
+milestone PLAYTEST (boot→two rounds, taps only). #1322 is CLOSED (M-CONTINUE
+polish) — if we want a memory-computed Io second-packet payback in-loop, it
+needs a fresh story filed against E1, not a re-open.
 
 ---
 
