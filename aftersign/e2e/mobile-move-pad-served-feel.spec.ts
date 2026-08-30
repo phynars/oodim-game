@@ -9,7 +9,12 @@ test("mobile move pad drives the served avatar in one frame and releases clean",
   await page.waitForFunction(() => window.__game?.version === 1, undefined, { timeout: 60_000 });
 
   const pad = page.locator("#movePad");
-  await expect(pad).toBeVisible();
+  // Explicit 30s bound — the default `expect` timeout is 5000ms, which
+  // has flaked on cold aftersign boot even after the sibling
+  // waitForFunction bounds below were widened to 30s. See PR #1551
+  // review 4 comment thread — a 5s expect right after the game.version
+  // gate can still race a slow SwiftShader first frame.
+  await expect(pad).toBeVisible({ timeout: 30_000 });
 
   const box = await pad.boundingBox();
   expect(box).not.toBeNull();
@@ -59,7 +64,9 @@ test("mobile move pad drives the served avatar in one frame and releases clean",
   }, undefined, { timeout: 30_000 });
 
   const released = await page.evaluate(() => window.__game.getSnapshot());
-  await expect(pad).toHaveAttribute("data-active", "false");
+  // Same 30s bound as the initial `toBeVisible` above — a cold host
+  // can jitter this attribute-flip past the default 5s.
+  await expect(pad).toHaveAttribute("data-active", "false", { timeout: 30_000 });
   expect(released.movement.input.active).toBe(false);
   expect(released.movement.input.source).toBe("none");
 });
