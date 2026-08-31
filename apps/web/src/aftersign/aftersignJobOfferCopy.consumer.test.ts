@@ -183,6 +183,58 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
     );
   });
 
+  it("keeps the visible offer copy divergent between first and looped runs", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    // Snapshot copy fields into locals immediately (deep-clone via
+    // JSON round-trip) so a stateful harness that later rebuilds the
+    // snapshot on `restoreDurableSave` can't retroactively mutate the
+    // first-run reference we're comparing against.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    game?.acceptNextJob();
+    const firstRunCopyLive = game?.getSnapshot().story.nextJob?.offer?.copy as
+      | { route: string; risk: string }
+      | undefined;
+    const firstRunRoute = firstRunCopyLive?.route;
+    const firstRunRisk = firstRunCopyLive?.risk;
+
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(
+        meetIoForAftersignSlice(
+          recordAftersignPacketChoice(
+            createAftersignVerticalSliceState(),
+            "sealed",
+          ),
+        ),
+        4,
+      ),
+    );
+    game?.acceptNextJob();
+    const trustedCopyLive = game?.getSnapshot().story.nextJob?.offer?.copy as
+      | { route: string; risk: string }
+      | undefined;
+    const trustedRoute = trustedCopyLive?.route;
+    const trustedRisk = trustedCopyLive?.risk;
+
+    expect(firstRunRoute).toBe(
+      "Take the lit stair. Do not stop under the bell rope.",
+    );
+    expect(firstRunRisk).toBe(
+      "Low risk. Long route. Io can see most of it from the kiosk.",
+    );
+    expect(trustedRoute).toBe(
+      "Cross behind the shuttered pharmacy before the bells count twice.",
+    );
+    expect(trustedRisk).toBe(
+      "Short route. Unlit. Better pay because Io trusts your hands.",
+    );
+    expect(trustedRoute).not.toBe(firstRunRoute);
+    expect(trustedRisk).not.toBe(firstRunRisk);
+  });
+
   // JSON serialisability guard — the copy must survive a
   // `postMessage`/localStorage round-trip a scene renderer might
   // stage. Object.freeze doesn't affect JSON.stringify, but the
