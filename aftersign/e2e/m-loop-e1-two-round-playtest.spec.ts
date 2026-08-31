@@ -15,9 +15,18 @@ import { expect, test, type Page } from "@playwright/test";
 //   - Divergence assertion is `not.toEqual` on the visible `#job-offer-*`
 //     id set snapshotted at each round's `packet-offered` beat.
 //   - `window.__game` is read as an assertion surface only — never
-//     `window.__game.input.*`. `assertNoHarnessInputDriver` proves the
-//     input surface is ABSENT (either the `input` bag doesn't exist, or
-//     it exists but is empty) so no harness could have driven this run.
+//     the harness-driver bridge on that object. The "played, not
+//     driven" contract is enforced STATICALLY by
+//     `apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts`,
+//     which matches this file via the `*.playtest.spec.ts` category
+//     and scans the source for the harness-driver access pattern —
+//     so an accidental introduction of that seam in this spec would
+//     red the unit lane before Playwright ever ran. That guard is
+//     the correct enforcer (the seam legitimately exists on the
+//     shipped `window.__game` for contract specs and probes — see
+//     `aftersign/main.js` — so a RUNTIME "surface is absent" check
+//     would red on the shipped page, as Soren flagged on the
+//     previous revision of this spec).
 //
 // The runtime beat chain from round-1 `packet-offered` to round-2
 // `packet-offered` (documented in `job-offers-played.spec.ts`):
@@ -89,26 +98,6 @@ async function snapshotOfferedIds(page: Page): Promise<string[]> {
   return ids.slice().sort();
 }
 
-// `window.__game.input.*` is the harness-only driver. If it EXISTS on
-// the runtime `__game`, some test rig has wired a scripted-input surface
-// and the "real taps only" contract is broken. This helper proves the
-// driver is ABSENT — matches its name and the M-LOOP-E1 rule.
-async function assertNoHarnessInputDriver(page: Page): Promise<void> {
-  const hasHarnessInput = await page.evaluate(() => {
-    const game = (window as typeof window & {
-      __game?: { input?: Record<string, unknown> };
-    }).__game;
-    if (!game) return false;
-    if (!("input" in game) || game.input == null) return false;
-    return Object.keys(game.input).length > 0;
-  });
-
-  expect(
-    hasHarnessInput,
-    "window.__game.input must not expose a harness-driven input surface",
-  ).toBe(false);
-}
-
 test.describe("M-LOOP-E1 two-round played phone loop", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -124,7 +113,6 @@ test.describe("M-LOOP-E1 two-round played phone loop", () => {
       .slice(2, 8)}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
-    await assertNoHarnessInputDriver(page);
 
     // ROUND 1 — first-visit `packet-offered`. `computeOfferedJobs(undefined)`
     // returns the safe default `[SAFE_DEFAULT_JOB_ID]`, so the only
@@ -225,9 +213,5 @@ test.describe("M-LOOP-E1 two-round played phone loop", () => {
       readOnly!.ioMemoryLength,
       "round-2 offer divergence is driven by state.npcs.io.memory.length > 0 (main.js:1811) — after one completed loop Io holds >=1 durable memory fact",
     ).toBeGreaterThan(0);
-
-    // Final harness-input check after the played chain, so any late
-    // installation of a scripted-input bag would still red this spec.
-    await assertNoHarnessInputDriver(page);
   });
 });
