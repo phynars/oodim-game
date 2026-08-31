@@ -2,99 +2,69 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Structural guard for the M-LOOP memory-divergence phone playtest.
-// Mirrors the sibling `aftersignDurableSaveLoadPlaytestSurface.test.ts`
-// almost line-for-line — same repo-root scan of `aftersign/e2e/`, same
-// played-not-driven contract, one extra signal (divergent action sets
-// / offer surface) that separates a memory-divergence proof from any
-// other phone playtest.
-//
-// WHY IT LIVES HERE (and NOT as a vitest `include` glob). The prior
-// pass (#1385 first attempt) added a glob
-// `apps/web/src/aftersign/**/memory-divergence-phone-playtest.spec.ts`
-// to `vitest.config.ts`. That was wrong on three counts caught by
-// review (see PR #1405 CHANGES_REQUESTED):
-//   1) The target file does not exist — the glob is a no-op, CI
-//      never runs anything for it, so the "guard" guards nothing.
-//   2) Playtest specs live at repo-root `aftersign/e2e/`, NOT under
-//      `apps/web/src/aftersign/**` — the sibling durable-save
-//      guard's file-header comment documents this trap explicitly
-//      ("scanning the wrong tree makes the assertion pass
-//      vacuously"). The include glob points at the wrong tree.
-//   3) Playtests are Playwright specs (`import ... from
-//      "@playwright/test"`), not vitest tests — even if the glob
-//      matched a real file, vitest would fail to load `@playwright/
-//      test` and the assertion would blow up for the wrong reason.
-// The correct shape — matching the sibling — is a VITEST test that
-// scans the Playwright tree from repo-root and asserts SHAPE. That's
-// this file. Any regression that deletes or degrades the memory-
-// divergence playtest reds this suite loudly and specifically.
-
-// Playtest specs live at repo-root `aftersign/e2e/`, not under apps/web.
-// Sibling guard `aftersignDurableSaveLoadPlaytestSurface.test.ts`
-// documents this trap: scanning the wrong tree makes the assertion pass
-// vacuously (empty list → find() undefined → toBeDefined fails on every
-// CI run).
+// M-LOOP acceptance must be played on the served AFTERSIGN page, not driven
+// through the harness bridge. Playtest specs live at repo-root
+// `aftersign/e2e/`, not under apps/web.
 const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
 
-// Phone context — either an explicit phone-viewport signal in the spec
-// itself, OR a `page.goto("/aftersign/...")` (the served aftersign page
-// is the phone-shaped surface; its viewport is supplied by the
-// Playwright project config, not by every individual spec). Loosened
-// after PR #1405 review: `job-offers-played.spec.ts` uses the default
-// project fixture and would otherwise be rejected despite being the
-// canonical played-divergence proof.
-const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true|page\.goto\(\s*["'`]\/aftersign\/)/i;
+const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ASSERTION_PATTERN = /\b(?:toBeVisible|getByRole|getByText|getByLabelText|locator)\s*\(/;
-// Harness-input rejection must fire on CODE, not on prose. A spec whose
-// header comment says "Nothing drives play through `__game.input.*`"
-// (m-loop-e1-phone-action-divergence.spec.ts) documents its own
-// abstinence and must not be rejected for saying so. Strip //-comments,
-// /* ... */ comments, and string/template literals before testing.
+// Harness-input rejection must fire on CODE, not on prose. Sibling playtest
+// specs (`m-loop-e1-two-round-playtest.spec.ts:19`,
+// `m-loop-divergence.playtest.spec.ts:19`) document their abstinence in a
+// header comment that contains the literal `window.__game.input.*` — that
+// substring would trip this pattern on raw source and reject the very spec
+// the guard is meant to admit. Strip //-comments, /* ... */ comments, and
+// string/template literals before applying HARNESS_INPUT_PATTERN. The other
+// signals stay on the raw source — a `toBeVisible` inside a comment is
+// unusual and still evidence of intent.
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 
 function stripCommentsAndStrings(source: string): string {
   // Order matters: block comments before line comments before strings.
+  // Disjoint alternatives inside the template-literal branch (CodeQL
+  // js/redos, alert #23): escape | ${...} | lone $ | anything-but-`-\-$
+  // — no char is consumable two ways, so matching is linear.
   return source
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
-    // Disjoint alternatives (CodeQL js/redos, alert #23): the old catch-all
-    // [^`\\] overlapped the ${...} branch, so a "${}"-heavy unterminated
-    // literal backtracked exponentially. Now: escape | ${...} | lone $ |
-    // anything-but-`-\-$ — no char is consumable two ways, so matching is
-    // linear. Same language matched.
     .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|\$(?!\{)|[^`\\$])*`/g, "``")
     .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
     .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
 }
 
-// Memory-divergence-specific signals. A memory-divergence phone
-// playtest proves that two runs with DIFFERENT durable-memory records
-// produce DIFFERENT visible action sets on the served page. Any one of
-// these signals is enough — they're OR'd, not AND'd — because the
-// concrete proofs we ship today take slightly different shapes:
+// Memory-divergence overlay — OR'd signals, not AND'd. The prior AND'd
+// four-gate shape (PR #1559 first push) was unsatisfiable: no spec in
+// `aftersign/e2e/` contained tokens like "two consecutive rounds" /
+// "world pays it back" — those phrases live in `docs/flagship/BRIEF.md`
+// and `docs/plan/product-plan.md`, so ROUND_COMPLETION_PATTERN could
+// never match a real spec and the guard reddened vacuously.
 //
-//   • `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts` uses
-//     `expect(saveA.offered).not.toEqual(saveB.offered)` — a direct
-//     set-difference assertion between two played runs.
-//   • `aftersign/e2e/job-offers-played.spec.ts` uses the
-//     `computeOfferedJobs` render surface (`#job-offer-<jobId>`)
-//     and asserts the safe-default and completed-set branches
-//     render on the appropriate first-visit / looped-return beats.
-//
-// A future dedicated `memory-divergence-phone-playtest.spec.ts` will
-// share at least one of these signals; the guard admits any of them.
-const DIVERGENCE_SET_ASSERTION_PATTERN = /not\s*\.\s*toEqual\s*\(/;
-const OFFER_SURFACE_PATTERN = /(?:computeOfferedJobs|#job-offer|offeredJobs|offeredJobIds)/;
-const DIVERGENCE_KEYWORD_PATTERN = /(?:divergen|memory[-\s]?record|different\s+(?:tappable|visible|action|button|offer))/i;
+// The overlay we actually want is: (any divergence signal) AND (any
+// memory-round signal). Each group is OR'd against tokens that DO
+// exist in the shipped specs — checked against
+// `m-loop-e1-two-round-playtest.spec.ts` and
+// `m-loop-divergence.playtest.spec.ts` before landing.
 
-// A memory-divergence proof must actually EXERCISE two memory branches.
-// Grep for at least two mentions of a memory-branching axis (packet
-// outcome, return-reason/tone, prior-outcome) — a spec that touches
-// only one branch cannot prove divergence.
-const MEMORY_BRANCH_AXIS_PATTERN = /(?:packet\.delivered|priorOutcome|returnReason|returnAnswerTone|packetOutcome|kind|evasive|blunt|completed|guarded|failed)/gi;
+// Any assertion / phrasing that names the divergence-across-memories
+// proof directly. `not.toEqual` is the load-bearing assertion in
+// `m-loop-e1-two-round-playtest.spec.ts` and `m-loop-divergence.playtest.spec.ts`;
+// the offer-surface tokens (`computeOfferedJobs` / `#job-offer` /
+// `offeredJobs`) are the served render surface both specs read; the
+// keyword branch admits future specs that use different assertion
+// shapes but still name the divergence in prose or ids.
+const DIVERGENCE_SIGNAL_PATTERN = /not\s*\.\s*toEqual\s*\(|computeOfferedJobs|#job-offer|offeredJobs|offeredJobIds|divergen|(?:different|differing|different-)\s+(?:memory|memories|record|offer|offer\s*set|action|actions|tappable|visible|button|job|route|price)/i;
+
+// Any signal that the spec exercises MEMORY as progression across
+// rounds — the "M-LOOP" contract. Two round-labels ("ROUND 1"/"ROUND 2",
+// "round-1"/"round-2"), the "looped return" phrasing both specs use,
+// the `priorOutcome`/`packet.delivered` memory-branch axis names, and
+// the "safe default"/"completed set" branch names all count. A spec
+// that satisfies the base contract AND this pattern AND a divergence
+// signal is a memory-divergence phone playtest.
+const MEMORY_ROUND_PATTERN = /round\s*[12]\b|round-[12]\b|two[-\s]?round|looped\s+return|priorOutcome|packet\.delivered|completed\s+set|safe[-\s]?default|first[-\s]visit|returnReason|returnAnswerTone|packetOutcome/i;
 
 function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
   if (!existsSync(AFTERSIGN_E2E_DIR)) {
@@ -102,11 +72,7 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
   }
 
   return readdirSync(AFTERSIGN_E2E_DIR)
-    .filter((fileName) =>
-      /(?:playtest|played|divergence).*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$/i.test(
-        fileName,
-      ),
-    )
+    .filter((fileName) => /playtest.*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$/i.test(fileName))
     .map((fileName) => ({
       path: join(AFTERSIGN_E2E_DIR, fileName),
       source: readFileSync(join(AFTERSIGN_E2E_DIR, fileName), "utf8"),
@@ -114,13 +80,13 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
 }
 
 function matchesMemoryDivergencePlaytest(source: string): boolean {
-  // The harness-input rejection must ignore comments and string
-  // literals (a spec is allowed to document its abstinence in prose).
-  // The other signals stay on the raw source — a `toBeVisible` inside
-  // a comment is unusual and still evidence of intent.
+  // Only the harness-input rejection needs comment/string stripping — the
+  // other signals stay on raw source (see helper doc above).
   const code = stripCommentsAndStrings(source);
 
-  // Base contract — same as the sibling durable-save guard.
+  // Base contract — same as the sibling durable-save guard: phone
+  // context, real player events, visible assertions, `window.__game`
+  // read only (no `__game.input.*` puppeteering).
   const isPhonePlaytest =
     PHONE_VIEWPORT_PATTERN.test(source) &&
     PLAYER_EVENT_PATTERN.test(source) &&
@@ -131,27 +97,21 @@ function matchesMemoryDivergencePlaytest(source: string): boolean {
     return false;
   }
 
-  // Memory-divergence overlay — any one of the three divergence
-  // signals AND at least two mentions of a memory-branch axis
-  // (otherwise a single-branch spec would sneak through).
-  const hasDivergenceSignal =
-    DIVERGENCE_SET_ASSERTION_PATTERN.test(source) ||
-    OFFER_SURFACE_PATTERN.test(source) ||
-    DIVERGENCE_KEYWORD_PATTERN.test(source);
-  if (!hasDivergenceSignal) {
-    return false;
-  }
-
-  const branchMentions = source.match(MEMORY_BRANCH_AXIS_PATTERN) ?? [];
-  return branchMentions.length >= 2;
+  // Memory-divergence overlay — any divergence signal AND any memory-
+  // round signal. AND'ing four exact-phrase patterns (the shape this
+  // guard shipped with on the first push of #1559) was unsatisfiable;
+  // OR'ing within each group and AND'ing the two groups keeps the
+  // guard specific to memory-divergence proofs without red-vacuously.
+  return (
+    DIVERGENCE_SIGNAL_PATTERN.test(source) &&
+    MEMORY_ROUND_PATTERN.test(source)
+  );
 }
 
-describe("AFTERSIGN memory-divergence phone playtest surface", () => {
-  it("has a phone playtest that proves two divergent memory records offer different visible actions, with window.__game read-only", () => {
+describe("AFTERSIGN M-LOOP memory divergence played acceptance surface", () => {
+  it("has a taps-only phone playtest proving divergent memories create different tappable actions", () => {
     const playtests = readAftersignPlaytestSpecs();
-    const matchingPlaytest = playtests.find(({ source }) =>
-      matchesMemoryDivergencePlaytest(source),
-    );
+    const matchingPlaytest = playtests.find(({ source }) => matchesMemoryDivergencePlaytest(source));
 
     expect(
       matchingPlaytest?.path,
@@ -163,10 +123,10 @@ describe("AFTERSIGN memory-divergence phone playtest surface", () => {
         "  - asserts visible UI for the divergent action set,",
         "  - reads window.__game only as an assertion surface,",
         "  - takes no input through window.__game.input.*,",
-        "  - proves that two different memory records (packet outcome, return tone,",
-        "    prior-outcome, etc.) yield DIFFERENT visible action sets (via",
-        "    `not.toEqual`, the `#job-offer-*` / `computeOfferedJobs` surface, or an",
-        "    equivalent divergence assertion).",
+        "  - names a divergence signal (`not.toEqual`, `computeOfferedJobs`, `#job-offer`,",
+        "    `offeredJobs`, or a `different memory/offer/action` phrasing), AND",
+        "  - names a memory-round axis (`ROUND 1`/`ROUND 2`, `looped return`, `priorOutcome`,",
+        "    `packet.delivered`, `safe default` / `completed set`, or an equivalent).",
         `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
       ].join("\n"),
     ).toBeDefined();
