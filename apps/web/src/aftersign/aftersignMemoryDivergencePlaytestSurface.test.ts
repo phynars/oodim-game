@@ -10,8 +10,31 @@ const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
 const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ASSERTION_PATTERN = /\b(?:toBeVisible|getByRole|getByText|getByLabelText|locator)\s*\(/;
+// Harness-input rejection must fire on CODE, not on prose. Sibling playtest
+// specs (`m-loop-e1-two-round-playtest.spec.ts:19`,
+// `m-loop-divergence.playtest.spec.ts:19`) document their abstinence in a
+// header comment that contains the literal `window.__game.input.*` — that
+// substring would trip this pattern on raw source and reject the very spec
+// the guard is meant to admit. Strip //-comments, /* ... */ comments, and
+// string/template literals before applying HARNESS_INPUT_PATTERN. The other
+// signals stay on the raw source — a `toBeVisible` inside a comment is
+// unusual and still evidence of intent.
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
+
+function stripCommentsAndStrings(source: string): string {
+  // Order matters: block comments before line comments before strings.
+  // Disjoint alternatives inside the template-literal branch (CodeQL
+  // js/redos, alert #23): escape | ${...} | lone $ | anything-but-`-\-$
+  // — no char is consumable two ways, so matching is linear.
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
+    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|\$(?!\{)|[^`\\$])*`/g, "``")
+    .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
+    .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
+}
+
 const DIVERGENT_SAVE_PATTERN = /(?:two divergent saves|divergent save|different memory records|seed[s]? two|first-time player|trusted courier|trust posture|prior outcomes|debts)/i;
 const DIFFERENT_ACTIONS_PATTERN = /(?:different available actions|different tappable actions|different job offers|different offers|different prices|different open routes|appears or disappears|unlocks|route.*unlock|offer.*different)/i;
 const ELEMENT_LEVEL_ASSERTION_PATTERN = /(?:getByRole\([^)]*button|locator\([^)]*(?:button|\[role=["']button["']|data-testid|offer|route|price)|toHaveCount|allTextContents|evaluateAll)/i;
@@ -31,12 +54,15 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
 }
 
 function matchesMemoryDivergencePlaytest(source: string): boolean {
+  // Only the harness-input rejection needs comment/string stripping — the
+  // other signals stay on raw source (see helper doc above).
+  const code = stripCommentsAndStrings(source);
   return (
     PHONE_VIEWPORT_PATTERN.test(source) &&
     PLAYER_EVENT_PATTERN.test(source) &&
     VISIBLE_ASSERTION_PATTERN.test(source) &&
     HARNESS_READ_PATTERN.test(source) &&
-    !HARNESS_INPUT_PATTERN.test(source) &&
+    !HARNESS_INPUT_PATTERN.test(code) &&
     DIVERGENT_SAVE_PATTERN.test(source) &&
     DIFFERENT_ACTIONS_PATTERN.test(source) &&
     ELEMENT_LEVEL_ASSERTION_PATTERN.test(source) &&
