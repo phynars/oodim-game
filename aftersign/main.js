@@ -319,6 +319,26 @@ import {
 } from "./mloop-copy.js";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
+// PR #1556 — io job-offer SELECT feel, served-page consumer. Prior to
+// this wire the resolver was imported ONLY by
+// `harness/bootWindowGame.ts` (the vitest boot harness), where
+// `ioJobOfferSelectFeel({ elapsedMs })` gates on the harness's own
+// acceptance recorder — the served page never consumed the envelope,
+// so the press → commit → settle numbers the spec pins never reached
+// the button a player's finger actually commits on. Same shape as the
+// `resolveAftersignJobTakeFeel` seam right below in the offer loop:
+// the click callback samples the envelope at its COMMIT APEX
+// (pressMs + commitMs/2 — where the easeOutBack visual peak and the
+// triangle audio peak coincide, per the module's own comment) and
+// stamps the sampled fields as CSS custom properties + a
+// `data-io-job-offer-select="<phase>"` marker on the tapped button.
+// A stylesheet (or a played e2e) can pin the stamp; the runtime seam
+// `window.__game.getIoJobOfferSelectFeel(elapsedMs)` exposes the same
+// pure resolver so harness and served page can't drift.
+import {
+  IO_JOB_OFFER_SELECT_FEEL,
+  resolveIoJobOfferSelectFeel,
+} from "../apps/web/src/aftersign/ioJobOfferSelectFeel.ts";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -425,6 +445,55 @@ function applyAftersignJobTakeFeelToButton(element, row, state) {
   style.setProperty("--aftersign-job-take-easing-release", easing.release);
   style.setProperty("--aftersign-job-take-easing-glow", easing.glow);
 }
+
+/**
+ * PR #1556 — DOM writer for the io job-offer SELECT envelope. Samples
+ * `resolveIoJobOfferSelectFeel` at `elapsedMs` and stamps the sampled
+ * frame onto the tapped offer button as CSS custom properties plus a
+ * `data-io-job-offer-select="<phase>"` marker. Decorative FEEL
+ * projection — MUST NEVER throw (validates the element defensively,
+ * callers additionally wrap in try/catch), same discipline as
+ * `applyAftersignJobTakeFeelToButton` above.
+ *
+ * CSS variables written (unit suffixes included so a stylesheet can
+ * consume them verbatim):
+ *   --io-job-offer-select-lift-px
+ *   --io-job-offer-select-scale
+ *   --io-job-offer-select-glow-alpha
+ *   --io-job-offer-select-ring-alpha
+ *   --io-job-offer-select-hud-nudge-px
+ *   --io-job-offer-select-audio-gain
+ *
+ * Returns the sampled envelope so a caller can chain (e.g. schedule
+ * the commit chirp off `audioGain`) without a second resolve, or
+ * `null` on a bad element.
+ *
+ * @param {HTMLElement} element
+ * @param {number} elapsedMs
+ * @returns {ReturnType<typeof resolveIoJobOfferSelectFeel> | null}
+ */
+const applyIoJobOfferSelectFeelToButton = (element, elapsedMs) => {
+  if (!element || typeof element.setAttribute !== "function") return null;
+  const frame = resolveIoJobOfferSelectFeel(elapsedMs, IO_JOB_OFFER_SELECT_FEEL);
+  element.setAttribute("data-io-job-offer-select", frame.phase);
+  const style = element.style;
+  if (style && typeof style.setProperty === "function") {
+    style.setProperty("--io-job-offer-select-lift-px", `${frame.liftPx}px`);
+    style.setProperty("--io-job-offer-select-scale", `${frame.scale}`);
+    style.setProperty("--io-job-offer-select-glow-alpha", `${frame.glowAlpha}`);
+    style.setProperty("--io-job-offer-select-ring-alpha", `${frame.ringAlpha}`);
+    style.setProperty("--io-job-offer-select-hud-nudge-px", `${frame.hudNudgePx}px`);
+    style.setProperty("--io-job-offer-select-audio-gain", `${frame.audioGain}`);
+  }
+  return frame;
+};
+
+// Commit-apex elapsed time for the select envelope: mid-commit is
+// where the easeOutBack visual peak and the triangle audio peak
+// coincide (see the module's audioGain comment) — the honest single
+// sample for a one-shot DOM stamp on the tap that commits the offer.
+const IO_JOB_OFFER_SELECT_COMMIT_APEX_MS =
+  IO_JOB_OFFER_SELECT_FEEL.pressMs + IO_JOB_OFFER_SELECT_FEEL.commitMs / 2;
 
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
@@ -1567,6 +1636,17 @@ const publishState = () => {
     },
     getJobOfferFeel: () => ({ ...JOB_OFFER_FEEL }),
     /**
+     * PR #1556 — io job-offer SELECT envelope, runtime seam. Samples
+     * the same pure resolver the served click handler stamps from
+     * (`resolveIoJobOfferSelectFeel` at the commit apex), so a
+     * harness / e2e / dev overlay reads the exact press → commit →
+     * settle numbers the shipped button consumed — one resolver, no
+     * drift between the vitest boot harness's `ioJobOfferSelectFeel`
+     * projection and the served page. Pure read; never throws.
+     */
+    getIoJobOfferSelectFeel: (elapsedMs) =>
+      resolveIoJobOfferSelectFeel(elapsedMs, IO_JOB_OFFER_SELECT_FEEL),
+    /**
      * Stamp the flagship tap-confirm envelope on the `[data-aftersign-
      * tap-choice="<choiceId>"]` button in the LIVE served DOM. Called
      * by each of the four committing click handlers (packet release,
@@ -1940,6 +2020,20 @@ const renderText = () => {
                 button,
                 jobTakeFeelRow,
                 "armed",
+              );
+            } catch {
+              /* feel projection must never break state commit */
+            }
+            // PR #1556 — stamp the io job-offer SELECT envelope at its
+            // commit apex on the very button the finger just pressed.
+            // This is the served-page consumer of
+            // `ioJobOfferSelectFeel.ts` (previously harness-only via
+            // bootWindowGame.ts). Same never-break-state discipline
+            // as the job-take stamp above.
+            try {
+              applyIoJobOfferSelectFeelToButton(
+                button,
+                IO_JOB_OFFER_SELECT_COMMIT_APEX_MS,
               );
             } catch {
               /* feel projection must never break state commit */
