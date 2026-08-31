@@ -4,7 +4,12 @@ import {
   computeOfferedJobs,
   deriveOfferedJobsPlayerMemory,
   SAFE_DEFAULT_JOB_ID,
+  selectIoJobOffers,
 } from "../../../../packages/aftersign/src/computeOfferedJobs";
+import {
+  collectTappableJobOfferKeys,
+  ioJobOffersDiverge,
+} from "../../../../packages/aftersign/src/jobOfferActionFingerprint";
 
 /**
  * Canonical M-LOOP boundary invariant.
@@ -47,5 +52,45 @@ describe("M-LOOP offered-job app/package boundary contract", () => {
     // `undefined` for a missing bag.
     expect(deriveOfferedJobsPlayerMemory(undefined)).toBeUndefined();
     expect(computeOfferedJobs(undefined)).toEqual([SAFE_DEFAULT_JOB_ID]);
+  });
+
+  // Founder amendment 2026-08-22: "element-level, not text-level".
+  // The id-list equality checks above are necessary but not sufficient
+  // for the M-LOOP metric — they would still pass if a rebalance moved
+  // an offer's risk tier without renaming it. The fingerprint primitive
+  // (`ioJobOffersDiverge`) is the load-bearing predicate; wiring it
+  // here makes the boundary contract a live consumer of it, so a
+  // silent unwire goes red at the served-surface seam.
+  it("proves memory-driven divergence at the tappable-action fingerprint level", () => {
+    const freshOffers = selectIoJobOffers(undefined);
+    const returningOffers = selectIoJobOffers(
+      deriveOfferedJobsPlayerMemory({
+        playerName: "Player",
+        interactionCount: 1,
+      }),
+    );
+
+    // The fingerprint predicate agrees with the id-list evidence above.
+    expect(ioJobOffersDiverge(freshOffers, returningOffers)).toBe(true);
+
+    // And the semantic keys — id + risk tier — are what actually
+    // differ, so a copy-only relabel of either side would NOT flip
+    // this to green.
+    const freshKeys = collectTappableJobOfferKeys(freshOffers);
+    const returningKeys = collectTappableJobOfferKeys(returningOffers);
+    expect(returningKeys).not.toEqual(freshKeys);
+    expect(freshKeys).toEqual([`${SAFE_DEFAULT_JOB_ID}#low`]);
+  });
+
+  it("keeps the fingerprint predicate stable for a copy-only label edit", () => {
+    // Guard against the failure mode the founder's bar rules out:
+    // "dialogue-only differences score zero". A relabel of every
+    // offer must NOT flip `ioJobOffersDiverge` to true.
+    const offers = selectIoJobOffers({ priorOutcome: "completed" });
+    const relabeled = offers.map((offer) => ({
+      ...offer,
+      label: `${offer.label} (revised)`,
+    }));
+    expect(ioJobOffersDiverge(offers, relabeled)).toBe(false);
   });
 });
