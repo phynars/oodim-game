@@ -293,6 +293,21 @@ import {
   resolveAftersignJobTakeFeel,
 } from "../apps/web/src/aftersign/aftersignJobTakeFeel.js";
 import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersignJobOfferCopy.js";
+// PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
+// module). `packetInteractionCopy.js` authors the three-state copy
+// for the `#packetButton` surface (idle before the gesture, sealed
+// after a plain tap, opened after a hold+pull). Wiring it in main.js
+// here is what turns the module from a "correct in isolation" export
+// into a SHIPPED consumer on the served page: `applyPacketButtonCopy`
+// writes the visible `<span>` text + a `data-packet-button-copy-state`
+// stamp onto the very button the finger touches, called once on boot
+// with `"idle"` and inside `commitPacketOutcome` when the
+// PacketIntentController lands SEALED / OPENED — the ONE funnel where
+// the tap-driven outcome commits. Sibling
+// `packetInteractionCopy.consumer.test.ts` mounts the exact index.html
+// markup, simulates the tap-driven commit, and asserts the visible
+// text + data-attr both flip.
+import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteractionCopy.js";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
 // (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
@@ -433,6 +448,14 @@ const speaker = document.querySelector("#speaker");
 const stateReadout = document.querySelector("#stateReadout");
 const failureSting = document.querySelector(".failure-sting");
 const packetButton = document.querySelector("#packetButton");
+// #1563 — stamp the idle label + hint on the packet button at boot,
+// before any tap. `applyPacketButtonCopy` is null-safe, so a jsdom
+// mount without this button (unit-test harness) is a no-op.
+try {
+  applyPacketButtonCopy(packetButton, "idle");
+} catch {
+  /* copy writes are decorative and MUST NEVER black-screen boot */
+}
 const routeChoice = document.querySelector("#routeChoice");
 const acknowledgeRouteButton = document.querySelector("#acknowledgeRouteButton");
 const skipRouteButton = document.querySelector("#skipRouteButton");
@@ -2138,6 +2161,18 @@ const setBeat = (beat) => {
 };
 
 const commitPacketOutcome = (outcome) => {
+    // #1563 — flip the visible `#packetButton` copy the same frame
+    // the tap-driven outcome commits. Sibling
+    // `packetInteractionCopy.consumer.test.ts` pins this so a future
+    // regression (SEALED lands but the button still reads the idle
+    // hint) reds the consumer test, not the shipped surface. Wrapped
+    // in try/catch because copy writes are decorative and MUST NEVER
+    // interrupt the state commit that follows.
+    if (outcome === PACKET_OUTCOME.SEALED) {
+      try { applyPacketButtonCopy(packetButton, "sealed"); } catch { /* decorative */ }
+    } else if (outcome === PACKET_OUTCOME.OPENED) {
+      try { applyPacketButtonCopy(packetButton, "opened"); } catch { /* decorative */ }
+    }
   if (outcome === PACKET_OUTCOME.SEALED) {
     if (!state.packet.sealed) {
       state.packet.sealed = true;
