@@ -215,9 +215,10 @@ jobs:
         id: e2e
         shell: bash
         # Tee the runner output so the failure-summary step can quote the
-        # RAW log tail when playwright-report/results.json is missing — a
-        # pre-spec crash (webServer boot failure) writes no JSON report,
-        # and without the raw log the summary was useless (#1065).
+        # RAW log tail when aftersign/playwright-report/results.json is
+        # missing — a pre-spec crash (webServer boot failure) writes no
+        # JSON report, and without the raw log the summary was useless
+        # (#1065).
         run: |
           set -o pipefail
           npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
@@ -230,8 +231,16 @@ jobs:
           # relay it to a PR comment. Keeping both readers off the same
           # source avoids the "step summary and PR comment disagree" drift.
           #
-          # SINGLE INPUT: playwright-report/results.json, produced by the
-          # `json` reporter configured in aftersign/playwright.config.ts.
+          # SINGLE INPUT: aftersign/playwright-report/results.json, produced
+          # by the `json` reporter configured in aftersign/playwright.config.ts.
+          # The aftersign/ prefix is not optional: Playwright resolves a
+          # reporter's relative `outputFile` against the CONFIG FILE's
+          # directory, while `test-results/` (outputDir) lands at the
+          # runner's cwd (repo root). This step read the repo-root path
+          # until PR #1555's red run proved the relay had been posting the
+          # "(results.json not found → webServer boot failure)" placeholder
+          # on runs where the suite HAD executed — sending review agents
+          # chasing a boot failure that never happened (7 blind rounds).
           # Prior iterations of this step also tried to read
           # `test-results/**/error-context.md` and grep for
           # `[aftersign globalSetup]` lines under those dirs — NEITHER file
@@ -246,12 +255,12 @@ jobs:
             echo "## aftersign WebGL e2e — failure summary"
             echo ""
 
-            if [ -f playwright-report/results.json ]; then
-              echo "### first failing spec (from playwright-report/results.json)"
+            if [ -f aftersign/playwright-report/results.json ]; then
+              echo "### first failing spec (from aftersign/playwright-report/results.json)"
               echo '```'
               node -e '
                 const fs = require("node:fs");
-                const report = JSON.parse(fs.readFileSync("playwright-report/results.json", "utf8"));
+                const report = JSON.parse(fs.readFileSync("aftersign/playwright-report/results.json", "utf8"));
 
                 function findFirstFailingSpec(node) {
                   if (!node || typeof node !== "object") return null;
@@ -292,12 +301,12 @@ jobs:
                   console.log("error:");
                   console.log(first.message.split("\\n").slice(0, 20).join("\\n"));
                 } else {
-                  console.log("(no failing test recorded in playwright-report/results.json)");
+                  console.log("(no failing test recorded in aftersign/playwright-report/results.json)");
                 }
               ' 2>&1
               echo '```'
             else
-              echo "(playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; the run crashed BEFORE any spec ran, e.g. a webServer boot failure. Raw runner log tail below — #1065.)"
+              echo "(aftersign/playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; the run crashed BEFORE any spec ran, e.g. a webServer boot failure. Raw runner log tail below — #1065.)"
               if [ -f /tmp/aftersign-e2e-runner.log ]; then
                 echo ""
                 echo "### raw e2e runner log (last 80 lines)"
@@ -350,6 +359,7 @@ jobs:
           path: |
             test-results/
             playwright-report/
+            aftersign/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
 
