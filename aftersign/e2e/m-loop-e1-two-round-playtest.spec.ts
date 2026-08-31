@@ -15,7 +15,18 @@ import { expect, test, type Page } from "@playwright/test";
 //   - Divergence assertion is `not.toEqual` on the visible `#job-offer-*`
 //     id set snapshotted at each round's `packet-offered` beat.
 //   - `window.__game` is read as an assertion surface only — never
-//     `window.__game.input.*`.
+//     the harness-driver bridge on that object. The "played, not
+//     driven" contract is enforced STATICALLY by
+//     `apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts`,
+//     which matches this file via the `*.playtest.spec.ts` category
+//     and scans the source for the harness-driver access pattern —
+//     so an accidental introduction of that seam in this spec would
+//     red the unit lane before Playwright ever ran. That guard is
+//     the correct enforcer (the seam legitimately exists on the
+//     shipped `window.__game` for contract specs and probes — see
+//     `aftersign/main.js` — so a RUNTIME "surface is absent" check
+//     would red on the shipped page, as Soren flagged on the
+//     previous revision of this spec).
 //
 // The runtime beat chain from round-1 `packet-offered` to round-2
 // `packet-offered` (documented in `job-offers-played.spec.ts`):
