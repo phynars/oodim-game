@@ -3545,6 +3545,39 @@ mobileMovePadController = attachMobileMovePad({
 });
 syncMobileMovePad();
 
+// Keep the move pad clear of the bottom .hud panel. The panel's height
+// varies per beat (dialogue lines + choice trays), it paints ABOVE the
+// pad, and its `.controls` re-enable pointer-events — so a panel tall
+// enough to reach the pad turns the pad into dead chrome: still
+// visible through the translucent panel, but every touch lands on the
+// controls instead (PR #1555: the offered-jobs route/risk copy grew
+// the panel past the pad's static 146px clearance on CI font metrics).
+// --aftersign-hud-height feeds the pad's `bottom: max(...)` in
+// index.html. borderBoxSize (not getBoundingClientRect) so the
+// confirm-shake translate on .hud can't jitter the measurement — the
+// observer only fires on real layout growth. Mid-drag safety: the pad
+// captures the pointer and snapshots its rect at pointerdown
+// (mobileMovePad.ts), so a beat change repositioning the pad does not
+// break an active drag.
+const hudPanelForClearance = document.querySelector(".hud");
+if (hudPanelForClearance && typeof ResizeObserver === "function") {
+  const applyHudClearance = (heightPx) => {
+    document.documentElement.style.setProperty(
+      "--aftersign-hud-height",
+      `${Math.ceil(heightPx)}px`,
+    );
+  };
+  applyHudClearance(hudPanelForClearance.offsetHeight);
+  new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const boxSize = entry.borderBoxSize?.[0];
+      applyHudClearance(
+        boxSize ? boxSize.blockSize : entry.target.offsetHeight,
+      );
+    }
+  }).observe(hudPanelForClearance);
+}
+
 attachRuntimeInputAdapters({
   packetButton,
   acknowledgeRouteButton,

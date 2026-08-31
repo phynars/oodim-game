@@ -21,6 +21,31 @@ test("mobile move pad drives the served avatar in one frame and releases clean",
 
   const centerX = box!.x + box!.width / 2;
   const centerY = box!.y + box!.height / 2;
+
+  // The pad must OWN its own center point. The bottom .hud panel paints
+  // above the pad and its .controls re-enable pointer-events, so a
+  // beat's dialogue/tray content growing the panel over the pad leaves
+  // the pad visible (toBeVisible passes) but dead — every tap lands on
+  // the controls and the touch-intent poll below times out with no
+  // signal about why. That exact regression shipped in PR #1555 (the
+  // offered-jobs route/risk copy) and burned 7 blind review rounds as
+  // presumed SwiftShader flake. elementFromPoint names the thief
+  // directly instead.
+  const tapPointOwner = await page.evaluate(
+    ([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      return {
+        padOwnsPoint: Boolean(el?.closest("#movePad")),
+        actualOwner: el ? `${el.tagName.toLowerCase()}#${el.id || "(no id)"}.${el.className || "(no class)"}` : "(nothing)",
+      };
+    },
+    [centerX, centerY] as const,
+  );
+  expect(
+    tapPointOwner.padOwnsPoint,
+    `the move pad's center must be tappable — hit ${tapPointOwner.actualOwner} instead (is the .hud panel covering the pad?)`,
+  ).toBe(true);
+
   const start = await page.evaluate(() => window.__game.getSnapshot());
 
   await page.mouse.move(centerX, centerY);

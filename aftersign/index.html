@@ -467,7 +467,23 @@
       .move-pad {
         position: fixed;
         left: max(18px, env(safe-area-inset-left));
-        bottom: max(146px, calc(env(safe-area-inset-bottom) + 146px));
+        /* The pad must clear the bottom .hud panel or the panel's
+           `.controls` (pointer-events: auto) swallow the drag that is
+           supposed to start on the pad — the .hud paints above the pad
+           (later in DOM order, both fixed, no z-index) and its height
+           varies per beat with dialogue + tray content. 146px was the
+           static clearance tuned for the #1029-era panel; the panel
+           has since outgrown it (PR #1555's route/risk copy pushed
+           `.controls` over the pad's center on CI font metrics — pad
+           visible, taps dead). --aftersign-hud-height is kept live by
+           the ResizeObserver in main.js (syncMovePadClearance); the
+           146px terms stay as the floor for the pre-boot frame and
+           any environment without ResizeObserver. */
+        bottom: max(
+          146px,
+          calc(env(safe-area-inset-bottom) + 146px),
+          calc(var(--aftersign-hud-height, 128px) + 14px)
+        );
         width: 116px;
         height: 116px;
         border: 1px solid rgba(173, 242, 255, 0.32);
