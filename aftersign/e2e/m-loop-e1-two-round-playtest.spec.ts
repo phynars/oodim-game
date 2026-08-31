@@ -169,30 +169,38 @@ test.describe("M-LOOP-E1 two-round played phone loop", () => {
     ]);
 
     // window.__game is an ASSERTION surface only — never driven. Mirror-
-    // check the played divergence against the harness snapshot: after
-    // one completed loop, `packet.delivered` is true (the memory-branch
-    // axis that drives the offer divergence).
+    // check the played divergence against the harness snapshot on the
+    // RIGHT axis: the offer branch in `aftersign/main.js:1811` gates on
+    // `state.npcs.io.memory.length > 0`, not on `state.packet.delivered`
+    // (which is reset to `false` per packet at `main.js:2285/2544` and
+    // is therefore `false` again at round-2 `packet-offered`). After one
+    // completed loop, Io has accumulated the delivery-outcome +
+    // second-action facts, so `memory.length` is > 0 — that is what
+    // makes `computeOfferedJobs` pick the completed-set pair.
     const readOnly = await page.evaluate(() => {
       const game = (
         window as unknown as {
           __game?: {
             scene?: { ready?: boolean };
-            getSnapshot?: () => { packet?: { delivered?: boolean } };
+            getSnapshot?: () => {
+              npcs?: { io?: { memory?: readonly unknown[] } };
+            };
           };
         }
       ).__game;
       if (!game) return null;
       const snap = game.getSnapshot?.();
+      const memory = snap?.npcs?.io?.memory;
       return {
         ready: game.scene?.ready === true,
-        packetDelivered: snap?.packet?.delivered ?? null,
+        ioMemoryLength: Array.isArray(memory) ? memory.length : null,
       };
     });
     expect(readOnly, "window.__game must expose a read-only assertion surface").not.toBeNull();
     expect(readOnly!.ready).toBe(true);
     expect(
-      readOnly!.packetDelivered,
-      "round-2 offer divergence is driven by packet.delivered === true (priorOutcome=completed)",
-    ).toBe(true);
+      readOnly!.ioMemoryLength,
+      "round-2 offer divergence is driven by state.npcs.io.memory.length > 0 (main.js:1811) — after one completed loop Io holds >=1 durable memory fact",
+    ).toBeGreaterThan(0);
   });
 });
