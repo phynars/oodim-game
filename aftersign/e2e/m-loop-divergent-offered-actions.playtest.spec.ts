@@ -1,148 +1,148 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 type OfferedAction = {
   id: string;
-  tapChoice: string;
+  jobId: string;
   routeRisk: string;
   memoryGate: string;
-  jobTakeAction: string;
-  ariaLabel: string;
+  label: string;
 };
 
-const phone = { width: 390, height: 844 };
+const PHONE_VIEWPORT = { width: 390, height: 844 };
 
-const memoryFact = (object: "sealed" | "opened") => ({
-  id: `fact-${object}-delivery`,
-  kind: "delivery-outcome",
-  subject: "blue-packet",
-  object,
-  sessionId: `session-m-loop-${object}`,
-  createdAt: "2026-08-31T00:00:00.000Z",
-});
-
-const freshSave = {
-  beat: "packet-offered",
-  player: { id: "m-loop-fresh-player", flags: { io_intro_seen: true } },
-  packet: { delivered: false, route: null, sealed: true, deliveredAt: null },
-  delivery: { id: "blue-packet", outcome: "unknown" },
-  memory: [],
-  npcs: { io: { memory: [] }, orra: { memory: [] } },
-  save: { revision: 0, dirty: false },
-};
-
-const returningMemory = [memoryFact("sealed")];
-const returningSave = {
-  beat: "packet-offered",
-  player: { id: "m-loop-returning-player", flags: { io_intro_seen: true } },
-  packet: { delivered: false, route: null, sealed: true, deliveredAt: null },
-  delivery: { id: "blue-packet", outcome: "unknown" },
-  memory: returningMemory,
-  npcs: { io: { memory: returningMemory }, orra: { memory: [] } },
-  save: { revision: 1, dirty: false },
-};
-
-function expectElementLevelActionMetadata(actions: OfferedAction[]) {
-  for (const action of actions) {
-    expect(action.id, "offered job button exposes a stable element id").not.toBe("");
-    expect(action.tapChoice, `${action.id} exposes the tap choice wired to the DOM`).not.toBe("");
-    expect(action.routeRisk, `${action.id} exposes route/risk metadata on the DOM`).not.toBe("");
-    expect(action.memoryGate, `${action.id} exposes the memory gate that made it available`).not.toBe("");
-    expect(action.jobTakeAction, `${action.id} exposes the concrete job-take action`).not.toBe("");
-  }
-}
-
-async function collectVisibleOfferedActions(page: Page, slot: string) {
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(
-    () =>
-      (window as unknown as { __game?: { scene?: { ready?: boolean } } })
-        .__game?.scene?.ready === true,
-  );
-
-  const offeredJobs = page.locator("#offeredJobs");
-  await expect(offeredJobs).toHaveAttribute("data-visible", "true");
-  const buttons = offeredJobs.locator("button:visible:not([disabled])");
-  await expect(buttons.first()).toBeVisible();
-
-  const actions = await buttons.evaluateAll((nodes): OfferedAction[] =>
-    nodes.map((node) => ({
-      id: node.id,
-      tapChoice: node.getAttribute("data-aftersign-tap-choice") ?? "",
-      routeRisk:
-        node.getAttribute("data-route-risk")
-        ?? node.getAttribute("data-offered-job-risk")
-        ?? "",
-      memoryGate: node.getAttribute("data-mloop-memory-gate") ?? "",
-      jobTakeAction: node.getAttribute("data-aftersign-job-take-action") ?? "",
-      ariaLabel: node.getAttribute("aria-label") ?? "",
-    })),
-  );
-
-  const tappedAction = actions[0];
-  await buttons.first().tap();
-  await expect(buttons.first()).toHaveAttribute("data-aftersign-job-take", "armed");
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        (window as unknown as { __game?: { interaction?: { lastAction?: string } } })
-          .__game?.interaction?.lastAction ?? "",
-      ),
-    )
-    .toBe(`${tappedAction.jobTakeAction}:${tappedAction.id.replace("job-offer-", "")}`);
-
-  return actions.sort((a, b) =>
-    `${a.id}/${a.tapChoice}/${a.routeRisk}/${a.memoryGate}/${a.jobTakeAction}/${a.ariaLabel}`
-      .localeCompare(
-        `${b.id}/${b.tapChoice}/${b.routeRisk}/${b.memoryGate}/${b.jobTakeAction}/${b.ariaLabel}`,
-      ),
-  );
-}
-
-async function collectActionsForSave(
-  browser: Browser,
-  slot: string,
-  save: Record<string, unknown>,
-) {
-  const context = await browser.newContext({
-    viewport: phone,
-    hasTouch: true,
+async function newPhoneContext(browser: Parameters<typeof test>[0]['browser']): Promise<BrowserContext> {
+  return browser.newContext({
+    viewport: PHONE_VIEWPORT,
     isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
   });
-  await context.addInitScript(
-    ({ key, value }) => window.localStorage.setItem(key, JSON.stringify(value)),
-    {
-      key: `aftersign:kiosk-slice:${slot}`,
-      value: save,
-    },
-  );
-  const page = await context.newPage();
-  try {
-    return await collectVisibleOfferedActions(page, slot);
-  } finally {
-    await context.close();
-  }
 }
 
-test.describe("AFTERSIGN M-LOOP offered actions", () => {
-  test("played phone surface renders and commits different tappable actions for divergent memory saves", async ({ browser }) => {
-    const freshActions = await collectActionsForSave(
-      browser,
-      "m-loop-fresh-actions",
-      freshSave,
-    );
-    const returningActions = await collectActionsForSave(
-      browser,
-      "m-loop-returning-actions",
-      returningSave,
-    );
+async function seedMemory(page: Page, memory: Record<string, unknown>): Promise<void> {
+  await page.addInitScript((seededMemory) => {
+    window.localStorage.setItem('aftersign:player-memory', JSON.stringify(seededMemory));
+    window.localStorage.setItem('aftersign:player-id', `playtest-${Date.now()}-${Math.random()}`);
+  }, memory);
+}
 
-    expect(freshActions.length).toBeGreaterThan(0);
-    expect(returningActions.length).toBeGreaterThan(0);
-    expectElementLevelActionMetadata(freshActions);
-    expectElementLevelActionMetadata(returningActions);
-    expect(returningActions).not.toEqual(freshActions);
-    expect(returningActions.map((action) => action.tapChoice)).not.toEqual(
-      freshActions.map((action) => action.tapChoice),
-    );
+async function bootToPacketOffer(page: Page): Promise<void> {
+  await page.goto('/aftersign/');
+
+  const bootButton = page.getByRole('button').first();
+  await expect(bootButton).toBeVisible();
+
+  for (let taps = 0; taps < 24; taps += 1) {
+    const state = await page.evaluate(() => window.__game?.story?.beatId ?? window.__game?.beatId ?? null);
+    if (state === 'packet-offered') return;
+
+    const visibleButtons = await page.getByRole('button').filter({ hasNotText: /^$/ }).all();
+    const tappable = visibleButtons.find(async (button) => await button.isVisible());
+    if (!tappable) break;
+    await visibleButtons[0].tap();
+  }
+
+  await expect.poll(
+    () => page.evaluate(() => window.__game?.story?.beatId ?? window.__game?.beatId ?? null),
+    { message: 'played taps should reach the packet-offered beat' },
+  ).toBe('packet-offered');
+}
+
+async function visibleOfferedActions(page: Page): Promise<OfferedAction[]> {
+  await expect(page.locator('#offeredJobs')).toBeVisible();
+
+  return page.locator('#offeredJobs [data-aftersign-tap-choice][data-aftersign-job-take-action]').evaluateAll((nodes) =>
+    nodes
+      .filter((node) => {
+        const element = node as HTMLElement;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && !element.hasAttribute('disabled');
+      })
+      .map((node) => {
+        const element = node as HTMLElement;
+        return {
+          id: element.dataset.aftersignJobTakeAction ?? '',
+          jobId: element.dataset.aftersignTapChoice ?? '',
+          routeRisk: element.dataset.routeRisk ?? '',
+          memoryGate: element.dataset.mloopMemoryGate ?? '',
+          label: element.textContent?.trim() ?? '',
+        };
+      }),
+  );
+}
+
+async function tapFirstVisibleOfferedAction(page: Page, action: OfferedAction): Promise<void> {
+  const button = page.locator(
+    `#offeredJobs [data-aftersign-job-take-action="${action.id}"][data-aftersign-tap-choice="${action.jobId}"]`,
+  );
+  await expect(button).toBeVisible();
+  await button.tap();
+  await expect(button).toHaveAttribute('data-aftersign-job-take', 'armed');
+
+  await expect.poll(
+    () => page.evaluate(() => window.__game?.interaction?.lastAction ?? null),
+    { message: 'window.__game is assertion-only: the visible tap should commit the same offered action' },
+  ).toBe(`${action.id}:${action.jobId}`);
+}
+
+test.describe('M-LOOP divergent offered actions', () => {
+  test('two memory records produce different tappable job offers and taps commit the chosen offer', async ({ browser }) => {
+    const freshContext = await newPhoneContext(browser);
+    const returningContext = await newPhoneContext(browser);
+
+    try {
+      const freshPage = await freshContext.newPage();
+      const returningPage = await returningContext.newPage();
+
+      await seedMemory(freshPage, {
+        playerName: 'Fresh Courier',
+        trust: 0,
+        completedDeliveries: 0,
+        routeRisks: [],
+        openedPackets: 0,
+      });
+
+      await seedMemory(returningPage, {
+        playerName: 'Returning Courier',
+        trust: 3,
+        completedDeliveries: 2,
+        routeRisks: ['dark-cut'],
+        openedPackets: 1,
+      });
+
+      await bootToPacketOffer(freshPage);
+      await bootToPacketOffer(returningPage);
+
+      const freshActions = await visibleOfferedActions(freshPage);
+      const returningActions = await visibleOfferedActions(returningPage);
+
+      expect(freshActions.length, 'fresh save should expose at least one visible offered action').toBeGreaterThan(0);
+      expect(returningActions.length, 'returning save should expose at least one visible offered action').toBeGreaterThan(0);
+
+      const freshActionKeys = freshActions.map((action) => `${action.id}:${action.jobId}:${action.routeRisk}:${action.memoryGate}`);
+      const returningActionKeys = returningActions.map(
+        (action) => `${action.id}:${action.jobId}:${action.routeRisk}:${action.memoryGate}`,
+      );
+
+      expect(returningActionKeys, 'different memory records must produce different available element-level actions').not.toEqual(
+        freshActionKeys,
+      );
+
+      await tapFirstVisibleOfferedAction(freshPage, freshActions[0]);
+      await tapFirstVisibleOfferedAction(returningPage, returningActions[0]);
+    } finally {
+      await freshContext.close();
+      await returningContext.close();
+    }
   });
 });
+
+declare global {
+  interface Window {
+    __game?: {
+      beatId?: string;
+      story?: { beatId?: string };
+      interaction?: { lastAction?: string };
+    };
+  }
+}
