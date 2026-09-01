@@ -323,6 +323,17 @@ import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteracti
 // `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
 // completed-set render.
 import { selectIoJobOffers } from "../packages/aftersign/src/computeOfferedJobs";
+// #1568 — element-level M-LOOP fingerprint stamped on the offer button
+// the player actually taps. `fingerprintJobOfferAction` is the same
+// primitive `jobOfferActionFingerprint.consumer.test.ts` drives
+// against `story.offeredJobs` and the M-LOOP contract test asserts
+// against `computeOfferedJobs`; wiring it into the served renderer
+// closes Soren's "load-bearing at the DOM the player taps" gap by
+// putting `semanticKey` (`<id>#<risk>`) on the button as
+// `data-offer-fingerprint`, so a taps-only e2e can prove divergence
+// element-level (not text-level) without touching
+// `window.__game.getSnapshot()`.
+import { fingerprintJobOfferAction } from "../packages/aftersign/src/jobOfferActionFingerprint";
 // PR #1422 — per-jobId M-LOOP action authoring layered on TOP of the
 // `selectIoJobOffers` output. `selectIoJobOffers` owns which jobIds are
 // offered and the visible `label · risk` text; this module owns the
@@ -1930,7 +1941,11 @@ const renderText = () => {
           // stamp above — kept for the existing e2e selectors; new
           // consumers should read `data-route-risk`.
           button.setAttribute("data-route-risk", offer.routeRisk);
-          button.setAttribute("data-mloop-job-id", mloopCopy.id);
+          button.setAttribute(
+        "data-offer-fingerprint",
+        fingerprintJobOfferAction(offer).semanticKey,
+      );
+      button.setAttribute("data-mloop-job-id", mloopCopy.id);
           button.setAttribute("data-mloop-memory-gate", mloopAction.memoryGate);
           button.setAttribute("aria-label", mloopAction.label);
           stampJobOfferData(button, offer.id);
