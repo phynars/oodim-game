@@ -34,6 +34,7 @@ export default defineConfig({
       "apps/web/src/aftersign/aftersignJobTakeFeel.test.ts",
       "apps/web/src/aftersign/aftersignJobTakeFeel.consumer.test.ts",
       "apps/web/src/aftersign/jobOfferActionFingerprint.consumer.test.ts",
+      "apps/web/src/aftersign/twoRoundOfferTapDivergence.consumer.test.ts",
     ],
   },
 });
