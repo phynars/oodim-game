@@ -41,6 +41,16 @@ const returningSave = {
   save: { revision: 1, dirty: false },
 };
 
+function expectElementLevelActionMetadata(actions: OfferedAction[]) {
+  for (const action of actions) {
+    expect(action.id, "offered job button exposes a stable element id").not.toBe("");
+    expect(action.tapChoice, `${action.id} exposes the tap choice wired to the DOM`).not.toBe("");
+    expect(action.routeRisk, `${action.id} exposes route/risk metadata on the DOM`).not.toBe("");
+    expect(action.memoryGate, `${action.id} exposes the memory gate that made it available`).not.toBe("");
+    expect(action.jobTakeAction, `${action.id} exposes the concrete job-take action`).not.toBe("");
+  }
+}
+
 async function collectVisibleOfferedActions(page: Page, slot: string) {
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(
@@ -116,6 +126,8 @@ test.describe("AFTERSIGN M-LOOP offered actions", () => {
 
     expect(freshActions.length).toBeGreaterThan(0);
     expect(returningActions.length).toBeGreaterThan(0);
+    expectElementLevelActionMetadata(freshActions);
+    expectElementLevelActionMetadata(returningActions);
     expect(returningActions).not.toEqual(freshActions);
     expect(returningActions.map((action) => action.tapChoice)).not.toEqual(
       freshActions.map((action) => action.tapChoice),
