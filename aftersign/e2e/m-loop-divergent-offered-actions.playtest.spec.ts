@@ -78,6 +78,18 @@ async function collectVisibleOfferedActions(page: Page, slot: string) {
     })),
   );
 
+  const tappedAction = actions[0];
+  await buttons.first().tap();
+  await expect(buttons.first()).toHaveAttribute("data-aftersign-job-take", "armed");
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        (window as unknown as { __game?: { interaction?: { lastAction?: string } } })
+          .__game?.interaction?.lastAction ?? "",
+      ),
+    )
+    .toBe(`${tappedAction.jobTakeAction}:${tappedAction.id.replace("job-offer-", "")}`);
+
   return actions.sort((a, b) =>
     `${a.id}/${a.tapChoice}/${a.routeRisk}/${a.memoryGate}/${a.jobTakeAction}/${a.ariaLabel}`
       .localeCompare(
@@ -112,7 +124,7 @@ async function collectActionsForSave(
 }
 
 test.describe("AFTERSIGN M-LOOP offered actions", () => {
-  test("played phone surface renders different tappable actions for divergent memory saves", async ({ browser }) => {
+  test("played phone surface renders and commits different tappable actions for divergent memory saves", async ({ browser }) => {
     const freshActions = await collectActionsForSave(
       browser,
       "m-loop-fresh-actions",
