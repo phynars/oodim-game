@@ -1,27 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
 
-// Sentinel read by .github/workflows/redgreen.yml (both polarities).
-// While this marker is present, the green-polarity lane retires its
-// Playwright run — the spec has been CI-flaky under SwiftShader
-// cold-start (#700/#506/#590/#766) and no drop-memory conditional guard
-// has landed yet, so neither polarity has a stable signal to gate merges
-// on. Remove this marker as part of the phase-3 PR that either (a)
-// makes the spec durable under default mode, or (b) introduces the
-// `test.skip(process.env.FLAGSHIP_BREAK_MODE !== "drop-memory", ...)`
-// guard the red lane's preflight already looks for. The workflow will
-// then run both polarities on their own merit.
-//
-// #727 tracked migrating this marker-based gate to an explicit config
-// file (aftersign/redgreen.config.json). #1071 shipped that config — it
-// is now the workflow's source of truth. This header comment is kept
-// for the marker-expiry preflight (.github/workflows/redgreen.yml —
-// marker-expiry job) which still greps every aftersign spec for
-// `@redgreen:* fixme-pending-phase-3` and enforces the `expires=` +
-// `owner=` metadata contract. Do NOT remove the marker until the spec
-// is durable under default mode OR the drop-memory conditional guard
-// lands — flipping the config to "live" without one of those changes
-// re-introduces a known SwiftShader-flaky spec to the merge gate.
-
 // NPC-memory ROUND-TRIP across a hard session boundary.
 //
 // Differentiator vs siblings (each spec owns one invariant):
@@ -129,10 +107,6 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
   test("a MemoryFact minted in session A backs Io's recognition line in a fresh session B", async ({
     page,
   }) => {
-    test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory",
-      "red lane requires FLAGSHIP_BREAK_MODE=drop-memory",
-    );
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
 
@@ -181,7 +155,7 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
     const sessionB = await game(page);
 
     // Persisted beat is either "packet-delivered" (durable delivery beat)
-    // or "io-return-recognition" if session A's 1180ms setBeat fired before
+    // or "io-return-recognition" if session A's 1180ms timer fired before
     // forceSave() persisted. Either is a valid saved state; the memory
     // round-trip is what matters.
     expect(
