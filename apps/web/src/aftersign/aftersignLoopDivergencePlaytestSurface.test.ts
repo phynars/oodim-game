@@ -1,80 +1,109 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
-// M-LOOP is not a dialogue-depth milestone. The founder bar is divergence:
-// two different memory records must produce different AVAILABLE ACTIONS on the
-// served page, proven by a taps-only phone playtest. Keep this guard near the
-// served-surface tests so a pure state-machine proof cannot pass acceptance.
-const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
+const repoRoot = path.resolve(__dirname, "../../../..");
+const e2eDir = path.join(repoRoot, "aftersign/e2e");
 
-const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true)/i;
-const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
-const VISIBLE_ASSERTION_PATTERN = /\b(?:toBeVisible|getByRole|getByText|getByLabelText|locator)\s*\(/;
-const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
-const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
-const MEMORY_SEED_PATTERN = /(?:seed|storageState|localStorage|sessionStorage|memory|save|returning|trusted|debt|outcome|prior|priorOutcome|packet\.delivered)/i;
-const DIVERGENCE_PATTERN = /(?:divergen|different|not\s*\.\s*toEqual\s*\(|not\s*\.\s*toBe\s*\(|toHaveCount|available actions|job offers|tappable actions|prices|routes|computeOfferedJobs|offeredJobs|offeredJobIds)/i;
-const ELEMENT_LEVEL_ACTION_PATTERN = /(?:getByRole\s*\(\s*["']button|getByLabelText|data-testid|#job-offer|offeredJobs|offeredJobIds|computeOfferedJobs|locator\s*\(\s*["'][^"']*(?:button|option|choice|job|route|price|offer|action))/i;
-const TWO_ROUND_PATTERN = /(?:round\s*[12]\b|round-[12]\b|second round|two consecutive|complete two|next round|roundTwo|round-2|two[-\s]?round|looped\s+return)/i;
+function readPlaytestSpecs(): Array<{ path: string; source: string }> {
+  if (!fs.existsSync(e2eDir)) return [];
+
+  return fs
+    .readdirSync(e2eDir)
+    .filter((entry) => /playtest.*\.spec\.ts$/i.test(entry))
+    .map((entry) => {
+      const specPath = path.join(e2eDir, entry);
+      return {
+        path: specPath,
+        source: fs.readFileSync(specPath, "utf8"),
+      };
+    });
+}
 
 function stripCommentsAndStrings(source: string): string {
   return source
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
-    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|\$(?!\{)|[^`\\$])*`/g, "``")
-    .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
-    .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "")
+    .replace(/`(?:\\[\s\S]|[^`\\])*`/g, "``")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''");
 }
 
-function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
-  if (!existsSync(AFTERSIGN_E2E_DIR)) {
-    return [];
-  }
-
-  return readdirSync(AFTERSIGN_E2E_DIR)
-    .filter((fileName) => /playtest.*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$/i.test(fileName))
-    .map((fileName) => ({
-      path: join(AFTERSIGN_E2E_DIR, fileName),
-      source: readFileSync(join(AFTERSIGN_E2E_DIR, fileName), "utf8"),
-    }));
+function has(pattern: RegExp, source: string): boolean {
+  return pattern.test(source);
 }
 
-function matchesLoopDivergencePlaytest(source: string): boolean {
-  const code = stripCommentsAndStrings(source);
-
-  return (
-    PHONE_VIEWPORT_PATTERN.test(source) &&
-    PLAYER_EVENT_PATTERN.test(source) &&
-    VISIBLE_ASSERTION_PATTERN.test(source) &&
-    HARNESS_READ_PATTERN.test(source) &&
-    !HARNESS_INPUT_PATTERN.test(code) &&
-    MEMORY_SEED_PATTERN.test(source) &&
-    DIVERGENCE_PATTERN.test(source) &&
-    ELEMENT_LEVEL_ACTION_PATTERN.test(source) &&
-    TWO_ROUND_PATTERN.test(source)
-  );
-}
-
-describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
-  it("has a phone playtest proving memory changes available tappable actions, not just dialogue", () => {
-    const playtests = readAftersignPlaytestSpecs();
-    const matchingPlaytest = playtests.find(({ source }) => matchesLoopDivergencePlaytest(source));
+describe("M-LOOP divergence playtest surface", () => {
+  it("requires a played, phone-viewport acceptance spec for memory-driven divergent tappable actions", () => {
+    const specs = readPlaytestSpecs();
 
     expect(
-      matchingPlaytest?.path,
+      specs.length,
+      "Expected at least one aftersign/e2e/*playtest*.spec.ts file to carry the played acceptance evidence.",
+    ).toBeGreaterThan(0);
+
+    const matchingSpecs = specs.filter(({ source }) => {
+      const executable = stripCommentsAndStrings(source);
+
+      const mobileViewport =
+        has(/isMobile\s*:\s*true/i, source) ||
+        has(/hasTouch\s*:\s*true/i, source) ||
+        has(/viewport\s*:\s*\{\s*width\s*:\s*(3[0-9]{2}|4[0-9]{2})/i, source);
+
+      const visiblePlayerInput =
+        has(/\.tap\s*\(/i, source) ||
+        has(/touchscreen\.tap\s*\(/i, source) ||
+        has(/\.click\s*\(/i, source) ||
+        has(/keyboard\.press\s*\(/i, source);
+
+      const visibleAssertion =
+        has(/toBeVisible\s*\(/i, source) ||
+        has(/getBy(Role|Text|TestId|LabelText)\s*\(/i, source) ||
+        has(/locator\s*\(/i, source);
+
+      const readsWindowGame = has(/window\.__game/i, source);
+      const drivesWindowGameInput = has(/window\s*\.\s*__game\s*\.\s*input\s*\./i, executable);
+
+      const twoMemoryStates =
+        has(/memory[^\n]*(first|safe|new|fresh)[\s\S]*memory[^\n]*(trust|trusted|opened|risk|debt)/i, source) ||
+        has(/seed[^\n]*(first|safe|new|fresh)[\s\S]*seed[^\n]*(trust|trusted|opened|risk|debt)/i, source) ||
+        has(/save[^\n]*(first|safe|new|fresh)[\s\S]*save[^\n]*(trust|trusted|opened|risk|debt)/i, source);
+
+      const divergentAvailableActions =
+        has(/diverg(ent|ence)|different\s+(available\s+)?(tappable\s+)?actions?/i, source) &&
+        has(/data-(action|choice|job)|role\s*:\s*["']button|button/i, source);
+
+      const elementLevelEvidence =
+        has(/data-(action|choice|job)/i, source) ||
+        has(/getByRole\s*\(\s*["']button/i, source);
+
+      const twoRoundCoverage =
+        has(/two\s+(consecutive\s+)?rounds|round\s*2|second\s+round|complete[^\n]*round[\s\S]*complete[^\n]*round/i, source);
+
+      return (
+        mobileViewport &&
+        visiblePlayerInput &&
+        visibleAssertion &&
+        readsWindowGame &&
+        !drivesWindowGameInput &&
+        twoMemoryStates &&
+        divergentAvailableActions &&
+        elementLevelEvidence &&
+        twoRoundCoverage
+      );
+    });
+
+    expect(
+      matchingSpecs.map((spec) => path.relative(repoRoot, spec.path)),
       [
-        "M-LOOP acceptance must prove divergence on the served page, played not driven.",
-        "Add or update an aftersign/e2e/*playtest*.spec.ts (repo-root, NOT under apps/web) that:",
-        "  - uses a phone-shaped/mobile viewport,",
-        "  - drives the served page only through visible player events (tap/click/press/pointer/etc.),",
-        "  - seeds or creates two different memory/save states,",
-        "  - asserts different AVAILABLE TAPPABLE ACTIONS at the element level (jobs, prices, or routes),",
-        "  - extends the standing playtest through two consecutive rounds,",
-        "  - reads window.__game only as an assertion surface, and",
-        "  - takes no input through window.__game.input.*.",
-        `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
+        "Expected an aftersign playtest spec that proves the founder's M-LOOP bar:",
+        "- phone/mobile viewport",
+        "- player actions via visible tap/click/key events, never window.__game.input.*",
+        "- window.__game used only as an assertion surface",
+        "- two divergent memory/save states",
+        "- different AVAILABLE tappable actions proven at element level",
+        "- standing playtest extended through two consecutive rounds",
       ].join("\n"),
-    ).toBeDefined();
+    ).not.toHaveLength(0);
   });
 });
