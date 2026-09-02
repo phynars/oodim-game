@@ -16,7 +16,7 @@ const KIOSK_SURFACE_PATTERN = /\b(?:kiosk|io\s+booth|service\s+window|packet\s+c
 const PLAYER_ACTIVATION_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const KEYBOARD_ACTIVATION_PATTERN = /\b(?:press|keyboard)\s*\(\s*["'`](?:Enter|Space|KeyE|E| )/i;
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
-const GAME_EVENT_READ_PATTERN = /(?:window\.)?__game\b[\s\S]{0,320}(?:events|eventLog|lastEvent|storyEvent|interaction\s*\.\s*lastAction)/i;
+const GAME_EVENT_READ_PATTERN = /(?:window\.)?__game\b[\s\S]{0,320}(?:events|eventLog|lastEvent|storyEvent|interaction\s*\??\.\s*lastAction)/i;
 const DETERMINISTIC_KIOSK_EVENT_PATTERN = /(?:lastAction|event|activated|activation|interact|interaction|emit|emitted|dispatch)[\s\S]{0,520}(?:SAFE_DELIVERY_EVENT_ID|["'`][a-z][a-z0-9]*(?:[.:_-][a-z0-9]+)+["'`])/i;
 const ASSERTION_PATTERN = /(?:expect\s*\(|toEqual\s*\(|toBe\s*\(|toContain\s*\(|toMatchObject\s*\()/;
 
