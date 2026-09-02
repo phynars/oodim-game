@@ -1,98 +1,65 @@
-// Aftersign packet-button copy — the words the player reads on the
-// `#packetButton` surface across its three visible states (idle before
-// they gesture, sealed after a plain tap, opened after a hold+pull).
-// The button itself is authored in `aftersign/index.html`
-// (id="packetButton", class="packet-button"). The served-page consumer
-// is `aftersign/main.js`:
-//   - on boot, calls `applyPacketButtonCopy(packetButton, "idle")` so
-//     the initial `<span>` reads label + hint;
-//   - inside `commitPacketOutcome(outcome)` — the ONE funnel where
-//     PACKET_OUTCOME.SEALED / PACKET_OUTCOME.OPENED lands from the
-//     PacketIntentController — calls `applyPacketButtonCopy(...,
-//     "sealed" | "opened")` so the visible span flips to the outcome
-//     line the same frame the state commits.
-// The sibling `packetInteractionCopy.consumer.test.ts` mounts the
-// exact `<button id="packetButton"><span>…</span></button>` markup
-// from `index.html`, simulates a tap-driven commit, and asserts the
-// visible text + `data-packet-button-copy-state` update. So this
-// module is now a shipped consumer of a rendered surface — not a
-// pure module reviewed in isolation.
+// AFTERSIGN — packet interaction copy for the served #packetButton surface.
+//
+// This module is deliberately tiny and DOM-facing: aftersign/main.js imports
+// applyPacketButtonCopy() and calls it at boot plus inside the packet-outcome
+// commit funnel. The words here are player-visible slice code, not a harness
+// note. Keep Io's ledger voice nearby: a fact, then the consequence.
 
-export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
-  id: "packetButton",
-  idleLabel: "Blue packet",
-  idleHint: "Tap to keep the seal. Hold and pull to break it.",
-  sealedResult: "Io can trust the work wider now.",
-  openedResult: "Io can still use you. Not the same way.",
+export const PACKET_BUTTON_COPY = Object.freeze({
+  idle: Object.freeze({
+    state: "idle",
+    label: "Blue packet",
+    hint: "Tap to keep the seal. Hold and pull to break it.",
+    ariaLabel: "Blue packet. Tap to keep the seal. Hold and pull to break it.",
+  }),
+  sealed: Object.freeze({
+    state: "sealed",
+    label: "Seal intact.",
+    hint: "Io can trust the work wider now.",
+    ariaLabel: "Seal intact. Io can trust the work wider now.",
+  }),
+  opened: Object.freeze({
+    state: "opened",
+    label: "Seal broken.",
+    hint: "Io can still use you. Not the same way.",
+    ariaLabel: "Seal broken. Io can still use you. Not the same way.",
+  }),
 });
 
-/**
- * Resolve the label + hint pair for a packet-button state.
- *
- * @param {"idle" | "sealed" | "opened"} [packetState="idle"]
- * @returns {{ buttonId: string, label: string, hint: string }}
- */
-export function getPacketButtonCopy(packetState = "idle") {
-  if (packetState === "sealed") {
-    return {
-      buttonId: AFTERSIGN_PACKET_BUTTON_COPY.id,
-      label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-      hint: AFTERSIGN_PACKET_BUTTON_COPY.sealedResult,
-    };
+export const getPacketButtonCopy = (state) =>
+  PACKET_BUTTON_COPY[state] || PACKET_BUTTON_COPY.idle;
+
+const findCopyNodes = (button) => {
+  const spans = Array.from(button.querySelectorAll("span"));
+  const label =
+    button.querySelector("[data-packet-button-label]")
+    || spans[0]
+    || button;
+  const hint =
+    button.querySelector("[data-packet-button-hint]")
+    || spans[1]
+    || null;
+  return { label, hint };
+};
+
+export const applyPacketButtonCopy = (button, state = "idle") => {
+  if (!button || typeof button.setAttribute !== "function") {
+    return getPacketButtonCopy(state);
   }
 
-  if (packetState === "opened") {
-    return {
-      buttonId: AFTERSIGN_PACKET_BUTTON_COPY.id,
-      label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-      hint: AFTERSIGN_PACKET_BUTTON_COPY.openedResult,
-    };
+  const copy = getPacketButtonCopy(state);
+  const { label, hint } = findCopyNodes(button);
+
+  if (label && label.textContent !== copy.label) {
+    label.textContent = copy.label;
+  }
+  if (hint && hint.textContent !== copy.hint) {
+    hint.textContent = copy.hint;
   }
 
-  return {
-    buttonId: AFTERSIGN_PACKET_BUTTON_COPY.id,
-    label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-    hint: AFTERSIGN_PACKET_BUTTON_COPY.idleHint,
-  };
-}
+  button.setAttribute("data-packet-button-copy-state", copy.state);
+  button.setAttribute("aria-label", copy.ariaLabel);
+  button.setAttribute("data-aftersign-tap-choice", "packet-button");
 
-/**
- * Write the resolved copy onto the rendered `#packetButton` element.
- * The button's authored markup is `<button id="packetButton" …>
- * <span>…</span></button>` (see aftersign/index.html); the span is
- * the ONLY child the player reads, so this writer targets it
- * specifically. If the span is missing (test scaffold, degraded
- * markup) we fall back to `element.textContent`, so a caller that
- * hands us a bare button still gets a visible update.
- *
- * Stamps `data-packet-button-copy-state` so a played-through spec
- * or dev overlay can pin the visible state without parsing text.
- *
- * MUST NOT THROW — copy writes are decorative and run in a hot input
- * path. A null element or a hostile shape early-returns.
- *
- * @param {Element | null | undefined} element
- * @param {"idle" | "sealed" | "opened"} [packetState="idle"]
- * @returns {void}
- */
-export function applyPacketButtonCopy(element, packetState = "idle") {
-  if (!element || typeof element.setAttribute !== "function") return;
-  const copy = getPacketButtonCopy(packetState);
-  const nextState =
-    packetState === "sealed" || packetState === "opened" ? packetState : "idle";
-  element.setAttribute("data-packet-button-copy-state", nextState);
-  const visibleText = `${copy.label} — ${copy.hint}`;
-  const span =
-    typeof element.querySelector === "function"
-      ? element.querySelector("span")
-      : null;
-  if (span) {
-    if (span.textContent !== visibleText) {
-      span.textContent = visibleText;
-    }
-    return;
-  }
-  if (element.textContent !== visibleText) {
-    element.textContent = visibleText;
-  }
-}
+  return copy;
+};
