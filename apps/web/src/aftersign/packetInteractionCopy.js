@@ -1,98 +1,117 @@
-// Aftersign packet-button copy — the words the player reads on the
-// `#packetButton` surface across its three visible states (idle before
-// they gesture, sealed after a plain tap, opened after a hold+pull).
-// The button itself is authored in `aftersign/index.html`
-// (id="packetButton", class="packet-button"). The served-page consumer
-// is `aftersign/main.js`:
-//   - on boot, calls `applyPacketButtonCopy(packetButton, "idle")` so
-//     the initial `<span>` reads label + hint;
-//   - inside `commitPacketOutcome(outcome)` — the ONE funnel where
-//     PACKET_OUTCOME.SEALED / PACKET_OUTCOME.OPENED lands from the
-//     PacketIntentController — calls `applyPacketButtonCopy(...,
-//     "sealed" | "opened")` so the visible span flips to the outcome
-//     line the same frame the state commits.
-// The sibling `packetInteractionCopy.consumer.test.ts` mounts the
-// exact `<button id="packetButton"><span>…</span></button>` markup
-// from `index.html`, simulates a tap-driven commit, and asserts the
-// visible text + `data-packet-button-copy-state` update. So this
-// module is now a shipped consumer of a rendered surface — not a
-// pure module reviewed in isolation.
+// AFTERSIGN — packet interaction copy for the served `#packetButton` surface.
+//
+// This module is deliberately tiny and DOM-facing: `aftersign/main.js`
+// imports `applyPacketButtonCopy()` and calls it at boot (`"idle"`) plus
+// inside the packet-outcome commit funnel (`"sealed"` / `"opened"`).
+// The words here are player-visible slice code, not a harness note. Keep
+// Io's ledger voice nearby: a fact, then the consequence.
+//
+// Contract (pinned by `packetInteractionCopy.consumer.test.ts` against
+// the served `aftersign/index.html` markup):
+//
+//   • The served `#packetButton` hosts a SINGLE `<span>` child. The
+//     writer joins `label` and `hint` with " — " and writes the whole
+//     line into that one span so no beat of Io's voice is dropped on
+//     the played surface.
+//   • The button already carries the authored
+//     `data-aftersign-tap-choice="packet"` — that's the choice-id the
+//     `bootWindowGame.ts` tap-confirm envelope stamps against. This
+//     writer MUST NOT overwrite it, or the choose-by-choiceId lookup
+//     silently misses.
+//   • Unknown states normalize to `idle` — a stale enum from a future
+//     caller renders the idle line, never a raw hostile string.
+//   • Null-safe: a null element, an undefined element, or a bare
+//     `<button>` without a `<span>` child all resolve without throwing.
+//     Bare buttons receive the copy on `element.textContent` so the
+//     writer degrades gracefully in unit-test harnesses.
 
+// Single source of truth for the three-line vocabulary. The consumer
+// test reads these fields DIRECTLY to build its expected strings, so
+// any rename here needs a matching update in the test — that coupling
+// is intentional: it stops copy drift from ever landing silently.
 export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
-  id: "packetButton",
   idleLabel: "Blue packet",
   idleHint: "Tap to keep the seal. Hold and pull to break it.",
   sealedResult: "Io can trust the work wider now.",
   openedResult: "Io can still use you. Not the same way.",
 });
 
+const PACKET_BUTTON_ID = "packetButton";
+
+const STATE_TO_HINT = Object.freeze({
+  idle: AFTERSIGN_PACKET_BUTTON_COPY.idleHint,
+  sealed: AFTERSIGN_PACKET_BUTTON_COPY.sealedResult,
+  opened: AFTERSIGN_PACKET_BUTTON_COPY.openedResult,
+});
+
+const normalizeState = (state) =>
+  Object.prototype.hasOwnProperty.call(STATE_TO_HINT, state) ? state : "idle";
+
 /**
- * Resolve the label + hint pair for a packet-button state.
+ * Resolve the copy shape for a packet-button state. The label stays
+ * constant across all three states (the object on the tray never
+ * renames itself) — what changes is the second clause, the consequence
+ * of the player's gesture. Unknown states fall back to `idle`.
  *
- * @param {"idle" | "sealed" | "opened"} [packetState="idle"]
+ * @param {"idle"|"sealed"|"opened"} [state="idle"]
  * @returns {{ buttonId: string, label: string, hint: string }}
  */
-export function getPacketButtonCopy(packetState = "idle") {
-  if (packetState === "sealed") {
-    return {
-      buttonId: AFTERSIGN_PACKET_BUTTON_COPY.id,
-      label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-      hint: AFTERSIGN_PACKET_BUTTON_COPY.sealedResult,
-    };
-  }
-
-  if (packetState === "opened") {
-    return {
-      buttonId: AFTERSIGN_PACKET_BUTTON_COPY.id,
-      label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-      hint: AFTERSIGN_PACKET_BUTTON_COPY.openedResult,
-    };
-  }
-
+export const getPacketButtonCopy = (state = "idle") => {
+  const resolved = normalizeState(state);
   return {
-    buttonId: AFTERSIGN_PACKET_BUTTON_COPY.id,
+    buttonId: PACKET_BUTTON_ID,
     label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-    hint: AFTERSIGN_PACKET_BUTTON_COPY.idleHint,
+    hint: STATE_TO_HINT[resolved],
   };
-}
+};
+
+const composeLine = (copy) => `${copy.label} — ${copy.hint}`;
 
 /**
- * Write the resolved copy onto the rendered `#packetButton` element.
- * The button's authored markup is `<button id="packetButton" …>
- * <span>…</span></button>` (see aftersign/index.html); the span is
- * the ONLY child the player reads, so this writer targets it
- * specifically. If the span is missing (test scaffold, degraded
- * markup) we fall back to `element.textContent`, so a caller that
- * hands us a bare button still gets a visible update.
+ * Write the resolved copy for `state` into `button`.
  *
- * Stamps `data-packet-button-copy-state` so a played-through spec
- * or dev overlay can pin the visible state without parsing text.
+ * The served `#packetButton` has ONE `<span>` — we write the joined
+ * "label — hint" line into it so both beats of Io's voice land on the
+ * visible surface. When no `<span>` exists (unit-test harness with a
+ * bare `<button>`), we fall back to `element.textContent`.
  *
- * MUST NOT THROW — copy writes are decorative and run in a hot input
- * path. A null element or a hostile shape early-returns.
+ * The `data-aftersign-tap-choice` attribute is left untouched: the
+ * served markup authors it as `"packet"` and `bootWindowGame.ts`
+ * looks up the tap-confirm envelope by that choice-id. Rewriting it
+ * here would silently break the lookup on the very button the finger
+ * touches.
  *
- * @param {Element | null | undefined} element
- * @param {"idle" | "sealed" | "opened"} [packetState="idle"]
- * @returns {void}
+ * @param {HTMLElement|null|undefined} button
+ * @param {"idle"|"sealed"|"opened"} [state="idle"]
+ * @returns {{ buttonId: string, label: string, hint: string }} the resolved copy
  */
-export function applyPacketButtonCopy(element, packetState = "idle") {
-  if (!element || typeof element.setAttribute !== "function") return;
-  const copy = getPacketButtonCopy(packetState);
-  const nextState =
-    packetState === "sealed" || packetState === "opened" ? packetState : "idle";
-  element.setAttribute("data-packet-button-copy-state", nextState);
-  const visibleText = `${copy.label} — ${copy.hint}`;
+export const applyPacketButtonCopy = (button, state = "idle") => {
+  const copy = getPacketButtonCopy(state);
+  const line = composeLine(copy);
+  const resolvedState = normalizeState(state);
+
+  if (!button || typeof button.setAttribute !== "function") {
+    return copy;
+  }
+
+  // Single-span served surface: write the joined line so the hint
+  // never gets dropped. Falls back to the button's own textContent
+  // when no span exists (bare-button harness).
   const span =
-    typeof element.querySelector === "function"
-      ? element.querySelector("span")
-      : null;
+    (typeof button.querySelector === "function"
+      ? button.querySelector("span")
+      : null);
   if (span) {
-    if (span.textContent !== visibleText) {
-      span.textContent = visibleText;
+    if (span.textContent !== line) {
+      span.textContent = line;
     }
-    return;
+  } else if ("textContent" in button) {
+    if (button.textContent !== line) {
+      button.textContent = line;
+    }
   }
-  if (element.textContent !== visibleText) {
-    element.textContent = visibleText;
-  }
-}
+
+  button.setAttribute("data-packet-button-copy-state", resolvedState);
+
+  return copy;
+};
