@@ -1,35 +1,51 @@
-// AFTERSIGN — packet interaction copy for the served `#packetButton` surface.
+// Packet-button copy writer.
 //
-// This module is deliberately tiny and DOM-facing: `aftersign/main.js`
-// imports `applyPacketButtonCopy()` and calls it at boot (`"idle"`) plus
-// inside the packet-outcome commit funnel (`"sealed"` / `"opened"`).
-// The words here are player-visible slice code, not a harness note. Keep
-// Io's ledger voice nearby: a fact, then the consequence.
+// The player's only interaction on the packet beat is the single served
+// `<button id="packetButton" class="packet-button" data-aftersign-tap-choice="packet">`
+// in `aftersign/index.html` — hosting one bare `<span>` child that shows
+// the visible line. This module owns the WORDS on that span through the
+// three states the beat moves it through: idle (before the gesture),
+// sealed (a plain tap), opened (hold + pull).
 //
-// Contract (pinned by `packetInteractionCopy.consumer.test.ts` against
-// the served `aftersign/index.html` markup):
+// Contract (pinned by `packetInteractionCopy.consumer.test.ts`, which
+// drives the REAL served `aftersign/index.html` in JSDOM):
 //
-//   • The served `#packetButton` hosts a SINGLE `<span>` child. The
-//     writer joins `label` and `hint` with " — " and writes the whole
-//     line into that one span so no beat of Io's voice is dropped on
-//     the played surface.
-//   • The button already carries the authored
-//     `data-aftersign-tap-choice="packet"` — that's the choice-id the
-//     `bootWindowGame.ts` tap-confirm envelope stamps against. This
-//     writer MUST NOT overwrite it, or the choose-by-choiceId lookup
-//     silently misses.
-//   • Unknown states normalize to `idle` — a stale enum from a future
-//     caller renders the idle line, never a raw hostile string.
-//   • Null-safe: a null element, an undefined element, or a bare
-//     `<button>` without a `<span>` child all resolve without throwing.
-//     Bare buttons receive the copy on `element.textContent` so the
-//     writer degrades gracefully in unit-test harnesses.
+//   • Primitive `AFTERSIGN_PACKET_BUTTON_COPY` exposes the four editable
+//     fields — `idleLabel`, `idleHint`, `sealedResult`, `openedResult` —
+//     so a writer and a played e2e read the SAME strings.
+//   • `getPacketButtonCopy(state?)` returns the resolved
+//     `{ buttonId, label, hint }` for a given state; unknown / missing
+//     state normalizes to `"idle"`.
+//   • `applyPacketButtonCopy(element, state)` is POSITIONAL — the served
+//     surface calls it as `applyPacketButtonCopy(packetButton, "sealed")`.
+//     It writes `${label} — ${hint}` into the button's `<span>` child, or
+//     falls back to the element's `textContent` if no span is present
+//     (so a fresh DOM without a span never black-screens boot). It
+//     stamps `data-packet-button-copy-state` with the RESOLVED state
+//     (unknowns normalize to `"idle"`) so a played spec can trust the
+//     seam. Null / undefined element is a no-op — MUST NEVER throw.
+//   • It DOES NOT touch `data-aftersign-tap-choice` — the served HTML
+//     stamps that as `"packet"` and the harness matches on that exact
+//     value (see `bootWindowGame.ts` tap-confirm envelope path).
+//   • It DOES NOT stamp `aria-label`. The served `index.html` authors
+//     `aria-label="Tap the packet to preserve the seal, or hold to
+//     open it"` — the only string on the packet button carrying the
+//     word "open" — and the e2e helper `holdChoiceViaDom(["open-packet",
+//     "open packet", "open"], …)` in
+//     `aftersign/e2e/flagship-surface-contract.spec.ts` locates the
+//     holdable control by matching those needles against `aria-label`,
+//     `textContent`, or `id`. Overwriting the authored aria-label
+//     with the resolved copy (which never contains "open") reds the
+//     M-WIRE-EINT e2e. The authored aria-label is load-bearing for
+//     the spec as written — leave it alone.
+//
+// Scope guard: this module ONLY writes copy. It does not attach click
+// handlers, does not compute packet outcome, does not decide when to
+// call itself — those live at the call site (played specs + the harness
+// wire). Keeping this module inert is what lets it be tested against
+// the real served DOM without booting the scene graph.
 
-// Single source of truth for the three-line vocabulary. The consumer
-// test reads these fields DIRECTLY to build its expected strings, so
-// any rename here needs a matching update in the test — that coupling
-// is intentional: it stops copy drift from ever landing silently.
-export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
+const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
   idleLabel: "Blue packet",
   idleHint: "Tap to keep the seal. Hold and pull to break it.",
   sealedResult: "Io can trust the work wider now.",
@@ -38,80 +54,79 @@ export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
 
 const PACKET_BUTTON_ID = "packetButton";
 
-const STATE_TO_HINT = Object.freeze({
-  idle: AFTERSIGN_PACKET_BUTTON_COPY.idleHint,
-  sealed: AFTERSIGN_PACKET_BUTTON_COPY.sealedResult,
-  opened: AFTERSIGN_PACKET_BUTTON_COPY.openedResult,
-});
+const VALID_STATES = new Set(["idle", "sealed", "opened"]);
 
-const normalizeState = (state) =>
-  Object.prototype.hasOwnProperty.call(STATE_TO_HINT, state) ? state : "idle";
+function normalizePacketState(state) {
+  return VALID_STATES.has(state) ? state : "idle";
+}
+
+function resolveHintForState(state) {
+  switch (state) {
+    case "sealed":
+      return AFTERSIGN_PACKET_BUTTON_COPY.sealedResult;
+    case "opened":
+      return AFTERSIGN_PACKET_BUTTON_COPY.openedResult;
+    case "idle":
+    default:
+      return AFTERSIGN_PACKET_BUTTON_COPY.idleHint;
+  }
+}
 
 /**
- * Resolve the copy shape for a packet-button state. The label stays
- * constant across all three states (the object on the tray never
- * renames itself) — what changes is the second clause, the consequence
- * of the player's gesture. Unknown states fall back to `idle`.
+ * Resolve the copy shape for a given packet state.
  *
- * @param {"idle"|"sealed"|"opened"} [state="idle"]
- * @returns {{ buttonId: string, label: string, hint: string }}
+ * Returns `{ buttonId, label, hint }`. Unknown states normalize to
+ * `"idle"`. Called with no argument — treated as idle.
  */
-export const getPacketButtonCopy = (state = "idle") => {
-  const resolved = normalizeState(state);
+export function getPacketButtonCopy(state) {
+  const resolved = normalizePacketState(state);
   return {
     buttonId: PACKET_BUTTON_ID,
     label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-    hint: STATE_TO_HINT[resolved],
+    hint: resolveHintForState(resolved),
   };
-};
-
-const composeLine = (copy) => `${copy.label} — ${copy.hint}`;
+}
 
 /**
- * Write the resolved copy for `state` into `button`.
+ * Write the packet-button copy for `state` into `element`'s `<span>`
+ * child (or fall back to `element.textContent` if no span is present).
  *
- * The served `#packetButton` has ONE `<span>` — we write the joined
- * "label — hint" line into it so both beats of Io's voice land on the
- * visible surface. When no `<span>` exists (unit-test harness with a
- * bare `<button>`), we fall back to `element.textContent`.
+ * Positional signature — matches the call site the served surface uses:
+ *   applyPacketButtonCopy(packetButton, "idle" | "sealed" | "opened")
  *
- * The `data-aftersign-tap-choice` attribute is left untouched: the
- * served markup authors it as `"packet"` and `bootWindowGame.ts`
- * looks up the tap-confirm envelope by that choice-id. Rewriting it
- * here would silently break the lookup on the very button the finger
- * touches.
- *
- * @param {HTMLElement|null|undefined} button
- * @param {"idle"|"sealed"|"opened"} [state="idle"]
- * @returns {{ buttonId: string, label: string, hint: string }} the resolved copy
+ * Null / undefined `element` is a no-op. Unknown `state` normalizes to
+ * `"idle"` (visible text AND `data-packet-button-copy-state` stamp).
+ * The writer NEVER throws — the served-DOM contract test pins that
+ * so a fresh boot without the expected span never black-screens.
  */
-export const applyPacketButtonCopy = (button, state = "idle") => {
-  const copy = getPacketButtonCopy(state);
-  const line = composeLine(copy);
-  const resolvedState = normalizeState(state);
-
-  if (!button || typeof button.setAttribute !== "function") {
-    return copy;
+export function applyPacketButtonCopy(element, state) {
+  if (!element || typeof element.querySelector !== "function") {
+    return null;
   }
 
-  // Single-span served surface: write the joined line so the hint
-  // never gets dropped. Falls back to the button's own textContent
-  // when no span exists (bare-button harness).
-  const span =
-    (typeof button.querySelector === "function"
-      ? button.querySelector("span")
-      : null);
+  const resolvedState = normalizePacketState(state);
+  const copy = getPacketButtonCopy(resolvedState);
+  const visibleText = `${copy.label} — ${copy.hint}`;
+
+  const span = element.querySelector("span");
   if (span) {
-    if (span.textContent !== line) {
-      span.textContent = line;
-    }
-  } else if ("textContent" in button) {
-    if (button.textContent !== line) {
-      button.textContent = line;
-    }
+    span.textContent = visibleText;
+  } else {
+    // Bare button (no <span> child) — write into the element itself
+    // rather than throwing. The served surface DOES host a span, but
+    // this fallback keeps the writer safe against a fresh DOM in
+    // tests and future refactors.
+    element.textContent = visibleText;
   }
 
-  button.setAttribute("data-packet-button-copy-state", resolvedState);
+  if (typeof element.setAttribute === "function") {
+    element.setAttribute("data-packet-button-copy-state", resolvedState);
+    // Intentionally do NOT stamp aria-label — see module header. The
+    // authored aria-label in the served index.html carries the "open"
+    // needle that the M-WIRE-EINT e2e's holdChoiceViaDom depends on.
+  }
 
   return copy;
-};
+}
+
+export { AFTERSIGN_PACKET_BUTTON_COPY };
