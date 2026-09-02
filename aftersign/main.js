@@ -142,7 +142,7 @@ import {
   DEFAULT_MOBILE_MOVE_PAD_FEEL,
   attachMobileMovePad,
   checkMobileMovePadFeel,
-} from "./src/mobileMovePad.js";
+} from "./src/mobileMovePad.ts";
 import {
   DEFAULT_FAILURE_STING_FEEL,
   failureStingEnvelopeAt,
