@@ -1,38 +1,119 @@
-const PACKET_BUTTON_COPY = {
-  idle: {
-    label: "Blue packet",
-    hint: "Tap to keep the seal. Hold and pull to break it.",
-  },
-  sealed: {
-    label: "Seal intact.",
-    hint: "Io can trust the work wider now.",
-  },
-  opened: {
-    label: "Seal broken.",
-    hint: "Io can still use you. Not the same way.",
-  },
-};
+// Packet-button copy writer.
+//
+// The player's only interaction on the packet beat is the single served
+// `<button id="packetButton" class="packet-button" data-aftersign-tap-choice="packet">`
+// in `aftersign/index.html` — hosting one bare `<span>` child that shows
+// the visible line. This module owns the WORDS on that span through the
+// three states the beat moves it through: idle (before the gesture),
+// sealed (a plain tap), opened (hold + pull).
+//
+// Contract (pinned by `packetInteractionCopy.consumer.test.ts`, which
+// drives the REAL served `aftersign/index.html` in JSDOM):
+//
+//   • Primitive `AFTERSIGN_PACKET_BUTTON_COPY` exposes the four editable
+//     fields — `idleLabel`, `idleHint`, `sealedResult`, `openedResult` —
+//     so a writer and a played e2e read the SAME strings.
+//   • `getPacketButtonCopy(state?)` returns the resolved
+//     `{ buttonId, label, hint }` for a given state; unknown / missing
+//     state normalizes to `"idle"`.
+//   • `applyPacketButtonCopy(element, state)` is POSITIONAL — the served
+//     surface calls it as `applyPacketButtonCopy(packetButton, "sealed")`.
+//     It writes `${label} — ${hint}` into the button's `<span>` child, or
+//     falls back to the element's `textContent` if no span is present
+//     (so a fresh DOM without a span never black-screens boot). It
+//     stamps `data-packet-button-copy-state` with the RESOLVED state
+//     (unknowns normalize to `"idle"`) so a played spec can trust the
+//     seam. Null / undefined element is a no-op — MUST NEVER throw.
+//   • It DOES NOT touch `data-aftersign-tap-choice` — the served HTML
+//     stamps that as `"packet"` and the harness matches on that exact
+//     value (see `bootWindowGame.ts` tap-confirm envelope path).
+//
+// Scope guard: this module ONLY writes copy. It does not attach click
+// handlers, does not compute packet outcome, does not decide when to
+// call itself — those live at the call site (played specs + the harness
+// wire). Keeping this module inert is what lets it be tested against
+// the real served DOM without booting the scene graph.
 
-function resolvePacketButtonCopy(state) {
-  return PACKET_BUTTON_COPY[state] ?? PACKET_BUTTON_COPY.idle;
+const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
+  idleLabel: "Blue packet",
+  idleHint: "Tap to keep the seal. Hold and pull to break it.",
+  sealedResult: "Io can trust the work wider now.",
+  openedResult: "Io can still use you. Not the same way.",
+});
+
+const PACKET_BUTTON_ID = "packetButton";
+
+const VALID_STATES = new Set(["idle", "sealed", "opened"]);
+
+function normalizePacketState(state) {
+  return VALID_STATES.has(state) ? state : "idle";
 }
 
-export function applyPacketButtonCopy({ documentRef = document, state = "idle" } = {}) {
-  const packetButton = documentRef.querySelector("#packetButton");
-  if (!packetButton) return null;
+function resolveHintForState(state) {
+  switch (state) {
+    case "sealed":
+      return AFTERSIGN_PACKET_BUTTON_COPY.sealedResult;
+    case "opened":
+      return AFTERSIGN_PACKET_BUTTON_COPY.openedResult;
+    case "idle":
+    default:
+      return AFTERSIGN_PACKET_BUTTON_COPY.idleHint;
+  }
+}
 
-  const copy = resolvePacketButtonCopy(state);
-  const label = packetButton.querySelector(".packet-button__label");
-  const hint = packetButton.querySelector(".packet-button__hint");
+/**
+ * Resolve the copy shape for a given packet state.
+ *
+ * Returns `{ buttonId, label, hint }`. Unknown states normalize to
+ * `"idle"`. Called with no argument — treated as idle.
+ */
+export function getPacketButtonCopy(state) {
+  const resolved = normalizePacketState(state);
+  return {
+    buttonId: PACKET_BUTTON_ID,
+    label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
+    hint: resolveHintForState(resolved),
+  };
+}
 
-  if (label) label.textContent = copy.label;
-  if (hint) hint.textContent = copy.hint;
+/**
+ * Write the packet-button copy for `state` into `element`'s `<span>`
+ * child (or fall back to `element.textContent` if no span is present).
+ *
+ * Positional signature — matches the call site the served surface uses:
+ *   applyPacketButtonCopy(packetButton, "idle" | "sealed" | "opened")
+ *
+ * Null / undefined `element` is a no-op. Unknown `state` normalizes to
+ * `"idle"` (visible text AND `data-packet-button-copy-state` stamp).
+ * The writer NEVER throws — the served-DOM contract test pins that
+ * so a fresh boot without the expected span never black-screens.
+ */
+export function applyPacketButtonCopy(element, state) {
+  if (!element || typeof element.querySelector !== "function") {
+    return null;
+  }
 
-  packetButton.dataset.packetButtonCopyState = state;
-  packetButton.dataset.aftersignTapChoice = "packet-button";
-  packetButton.setAttribute("aria-label", `${copy.label} ${copy.hint}`);
+  const resolvedState = normalizePacketState(state);
+  const copy = getPacketButtonCopy(resolvedState);
+  const visibleText = `${copy.label} — ${copy.hint}`;
+
+  const span = element.querySelector("span");
+  if (span) {
+    span.textContent = visibleText;
+  } else {
+    // Bare button (no <span> child) — write into the element itself
+    // rather than throwing. The served surface DOES host a span, but
+    // this fallback keeps the writer safe against a fresh DOM in
+    // tests and future refactors.
+    element.textContent = visibleText;
+  }
+
+  if (typeof element.setAttribute === "function") {
+    element.setAttribute("data-packet-button-copy-state", resolvedState);
+    element.setAttribute("aria-label", visibleText);
+  }
 
   return copy;
 }
 
-export { PACKET_BUTTON_COPY };
+export { AFTERSIGN_PACKET_BUTTON_COPY };
