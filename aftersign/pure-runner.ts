@@ -87,6 +87,15 @@ import { runIoSecondPacketCopyChecks } from "./src/ioSecondPacketCopy.test.ts";
 // (`routeRiskMemory.ts`) has ZERO relative imports, so the subgraph
 // resolves under `node --experimental-strip-types`.
 import { runRouteRiskFeelChecks } from "./src/routeRiskFeel.test.ts";
+// Failure-sting AUDIO-VISUAL COUPLING pin — scoped to a claim the
+// sibling `failureStingFeedback.test.ts` does NOT pin: on the frame
+// the tone one-shot fires (t=0), the visual envelope has already
+// landed at peak (`flashAlpha === feel.flashAlpha`), and the visual
+// decays to zero by durationMs so the audio tail cannot outlive the
+// flash. The bundle's sole relative import is `./failureStingFeedback.ts`
+// (.ts-extensioned, `include: ["src"]` reachable), satisfying the
+// pure-runner extension-resolution contract documented above.
+import { runFailureStingCouplingChecks } from "./src/failureStingCoupling.test.ts";
 
 type Runner = {
   label: string;
@@ -142,6 +151,13 @@ const runners: Runner[] = [
   // the #1528 re-review — "even the correct bundle isn't executed
   // today."
   { label: "runRouteRiskFeelChecks", run: runRouteRiskFeelChecks },
+  // Failure-sting AUDIO-VISUAL COUPLING — pins the t=0 coupling frame
+  // (flashAlpha at peak on the tone-fire frame) and the visual ceiling
+  // for the audio tail (flashAlpha=0 by durationMs). Complements the
+  // sibling `runFailureStingFeedbackChecks` which covers the envelope
+  // math and reduced-motion split but does not claim audio-visual
+  // simultaneity.
+  { label: "runFailureStingCouplingChecks", run: runFailureStingCouplingChecks },
 ];
 
 let failed = 0;
