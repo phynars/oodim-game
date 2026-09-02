@@ -27,6 +27,17 @@
 //   • It DOES NOT touch `data-aftersign-tap-choice` — the served HTML
 //     stamps that as `"packet"` and the harness matches on that exact
 //     value (see `bootWindowGame.ts` tap-confirm envelope path).
+//   • It DOES NOT stamp `aria-label`. The served `index.html` authors
+//     `aria-label="Tap the packet to preserve the seal, or hold to
+//     open it"` — the only string on the packet button carrying the
+//     word "open" — and the e2e helper `holdChoiceViaDom(["open-packet",
+//     "open packet", "open"], …)` in
+//     `aftersign/e2e/flagship-surface-contract.spec.ts` locates the
+//     holdable control by matching those needles against `aria-label`,
+//     `textContent`, or `id`. Overwriting the authored aria-label
+//     with the resolved copy (which never contains "open") reds the
+//     M-WIRE-EINT e2e. The authored aria-label is load-bearing for
+//     the spec as written — leave it alone.
 //
 // Scope guard: this module ONLY writes copy. It does not attach click
 // handlers, does not compute packet outcome, does not decide when to
@@ -110,7 +121,9 @@ export function applyPacketButtonCopy(element, state) {
 
   if (typeof element.setAttribute === "function") {
     element.setAttribute("data-packet-button-copy-state", resolvedState);
-    element.setAttribute("aria-label", visibleText);
+    // Intentionally do NOT stamp aria-label — see module header. The
+    // authored aria-label in the served index.html carries the "open"
+    // needle that the M-WIRE-EINT e2e's holdChoiceViaDom depends on.
   }
 
   return copy;
