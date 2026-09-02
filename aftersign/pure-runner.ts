@@ -176,6 +176,13 @@ const runners: Runner[] = [
   // `failure-sting.test.js` which covers the audio envelope shape.
   // Neither of those pins the cross-table inequality.
   { label: "runFailureStingCouplingChecks", run: runFailureStingCouplingChecks },
+  // Frame-driven grounded-movement responsiveness — pins the render-loop
+  // accumulator path (`stepPlayerMovementFixedUpdate`) that one 60Hz
+  // frame's worth of `frameDt` consumes ≥ 1 fixed step, produces
+  // forward motion, and reports `lastStepMs` inside `targetFrameMs`.
+  // Imported above but was omitted from this array in the initial
+  // wire-up — same gap Soren flagged on #1528 for `runRouteRiskFeelChecks`.
+  { label: "runPlayerMovementResponsivenessChecks", run: runPlayerMovementResponsivenessChecks },
 ];
 
 let failed = 0;
