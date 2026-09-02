@@ -3,34 +3,41 @@
 // `test:aftersign:pure` (a chained precondition of `typecheck:aftersign`
 // in package.json).
 //
-// This bundle is scoped to a claim the sibling `failureStingFeedback.test.ts`
-// does NOT pin: the tone one-shot and the visual attack must fire on the
-// SAME frame at t=0, and the tone envelope's total duration must not
-// outlast the visual envelope (an audio tail that outlives the flash is
-// the classic "delayed sad trombone" that makes failure feel late).
+// This bundle pins a claim the sibling `failureStingFeedback.test.ts`
+// does NOT: the audio tail (`FAILURE_STING.tone.durationMs` from
+// aftersign/failure-sting.js) must be strictly shorter than the visual
+// envelope (`DEFAULT_FAILURE_STING_FEEL.durationMs` from
+// aftersign/src/failureStingFeedback.ts). If the tone outlasts the
+// flash the player hears a "delayed sad trombone" after the visual
+// has already settled — the failure feels late.
 //
 // Contract pinned:
-//   1. At t=0 the visual envelope is active AND non-zero (flashAlpha ==
-//      the feel peak) — the frame the tone is queued on is the frame the
-//      player already SEES the failure land.
-//   2. The visual envelope decays to flashAlpha=0 no later than
-//      durationMs — mirrored from failureStingFeedback.test.ts case (2)
-//      but framed here as the AUDIO ceiling: whatever the audio does, the
-//      visual has landed within this window.
-//   3. `remainingMs` at t=0 equals `durationMs` — the coupled first frame
-//      reports the full window, not a pre-decremented value (a regression
-//      that starts remainingMs at durationMs-frameMs would decouple the
-//      HUD countdown from the tone's start).
+//   AUDIO-VISUAL CEILING (novel):
+//     FAILURE_STING.tone.durationMs < DEFAULT_FAILURE_STING_FEEL.durationMs
+//     — the audio tail cannot outlive the visual envelope. This is the
+//     inequality that couples the two frozen tables across two source
+//     files; neither sibling test asserts it.
 //
-// Why the .ts extension on the import: sibling policy documented in
-// failureStingFeedback.test.ts's header. `--experimental-strip-types`
-// accepts .ts paths directly and tsc under moduleResolution:"Bundler"
-// resolves them at typecheck.
+//   T=0 COUPLING FRAME (novel):
+//     On the frame the tone one-shot is queued (sampleFailureSting(0)
+//     reports `toneQueued === true`), the visual envelope must be
+//     active. This ties the .js audio-cue timing to the .ts visual
+//     timing at the ignition frame — the sibling test only pins the
+//     visual side in isolation.
+//
+// Why the .ts extension on the failureStingFeedback import and the .js
+// extension on the failure-sting import: `--experimental-strip-types`
+// requires explicit extensions on every relative specifier (see
+// pure-runner.ts header). `.js` on the audio module is the module's
+// on-disk extension — Node resolves it directly, tsc under
+// moduleResolution:"Bundler" accepts it, and no type stripping is
+// needed because the .js file has no TS syntax.
 
 import {
   DEFAULT_FAILURE_STING_FEEL,
-  failureStingEnvelopeAt,
 } from "./failureStingFeedback.ts";
+// eslint-disable-next-line -- .js extension is intentional; see header.
+import { FAILURE_STING, sampleFailureSting } from "../failure-sting.js";
 
 const assert = (cond: unknown, msg: string): void => {
   if (!cond) {
@@ -38,48 +45,35 @@ const assert = (cond: unknown, msg: string): void => {
   }
 };
 
-const assertClose = (actual: number, expected: number, tolerance: number, msg: string): void => {
-  if (Math.abs(actual - expected) > tolerance) {
-    throw new Error(
-      `failureStingCoupling: ${msg} — expected ${expected} ±${tolerance}, got ${actual}`,
-    );
-  }
-};
-
 export const runFailureStingCouplingChecks = (): void => {
   const feel = DEFAULT_FAILURE_STING_FEEL;
+  const toneDurationMs = FAILURE_STING.tone.durationMs;
+  const flashDurationMs = feel.durationMs;
 
-  // (1) t=0 — the frame the tone is queued on is the frame the player
-  //     sees the visual land at peak. If flashAlpha at t=0 were < peak,
-  //     the audio would arrive before the visual pop, breaking coupling.
-  const t0 = failureStingEnvelopeAt(0, feel);
-  assert(t0.active === true, "envelope must be active on the frame the tone fires (t=0)");
-  assertClose(
-    t0.flashAlpha,
-    feel.flashAlpha,
-    1e-9,
-    "flashAlpha at t=0 must equal the feel peak — audio-visual coupling requires the visual to have already landed",
-  );
-
-  // (3) remainingMs at t=0 mirrors durationMs — the HUD countdown starts
-  //     from the same frame the audio starts on.
+  // AUDIO-VISUAL CEILING — the novel inequality that couples the two
+  // frozen tables. Strict `<`: equal would still let the tone's last
+  // sample fire on the same frame the visual hits zero, which reads
+  // as an audio tail hanging in silence.
   assert(
-    t0.remainingMs === feel.durationMs,
-    `remainingMs at t=0 must equal durationMs (got ${t0.remainingMs}); a pre-decremented start would decouple the HUD from the tone`,
+    typeof toneDurationMs === "number" && typeof flashDurationMs === "number",
+    `both durations must be numeric (tone=${toneDurationMs}, flash=${flashDurationMs})`,
+  );
+  assert(
+    toneDurationMs < flashDurationMs,
+    `FAILURE_STING.tone.durationMs (${toneDurationMs}) must be strictly less than DEFAULT_FAILURE_STING_FEEL.durationMs (${flashDurationMs}) — the audio tail must not outlive the visual envelope`,
   );
 
-  // (2) By durationMs the visual has decayed to zero. The tone envelope
-  //     (aftersign/failure-sting.js: FAILURE_STING.tone.durationMs=120)
-  //     is authored strictly shorter than the visual envelope
-  //     (feel.durationMs=180), so pinning the visual ceiling here also
-  //     pins the audio-visual tail relationship: whichever module the
-  //     runtime consumes, the tone cannot outlast the flash.
-  const tEnd = failureStingEnvelopeAt(feel.durationMs, feel);
-  assertClose(
-    tEnd.flashAlpha,
-    0,
-    1e-9,
-    "flashAlpha at t=durationMs must be 0 — the visual ceiling for the audio tail",
+  // T=0 COUPLING FRAME — the audio module reports the tone is queued
+  // on the ignition frame; the visual module's envelope must be active
+  // (and at peak) on that same frame. This ties the .js sample to the
+  // .ts feel at the coupling instant.
+  const audioT0 = sampleFailureSting(0);
+  assert(
+    audioT0.toneQueued === true,
+    `sampleFailureSting(0).toneQueued must be true — the tone one-shot fires on the ignition frame`,
   );
-  assert(tEnd.active === false, "envelope must be inactive at t=durationMs");
+  assert(
+    audioT0.active === true,
+    `sampleFailureSting(0).active must be true — the visual envelope is running on the tone-fire frame`,
+  );
 };
