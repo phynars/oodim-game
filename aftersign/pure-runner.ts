@@ -87,14 +87,16 @@ import { runIoSecondPacketCopyChecks } from "./src/ioSecondPacketCopy.test.ts";
 // (`routeRiskMemory.ts`) has ZERO relative imports, so the subgraph
 // resolves under `node --experimental-strip-types`.
 import { runRouteRiskFeelChecks } from "./src/routeRiskFeel.test.ts";
-// Failure-sting AUDIO-VISUAL COUPLING pin — scoped to a claim the
-// sibling `failureStingFeedback.test.ts` does NOT pin: on the frame
-// the tone one-shot fires (t=0), the visual envelope has already
-// landed at peak (`flashAlpha === feel.flashAlpha`), and the visual
-// decays to zero by durationMs so the audio tail cannot outlive the
-// flash. The bundle's sole relative import is `./failureStingFeedback.ts`
-// (.ts-extensioned, `include: ["src"]` reachable), satisfying the
-// pure-runner extension-resolution contract documented above.
+// Failure-sting AUDIO-VISUAL COUPLING pin — scoped to a claim NEITHER
+// sibling test asserts: FAILURE_STING.tone.durationMs (120ms audio tail,
+// pinned locally in the bundle as a mirror of the frozen table in
+// aftersign/failure-sting.js) must be strictly less than
+// DEFAULT_FAILURE_STING_FEEL.durationMs (180ms visual envelope) by at
+// least one 60Hz frame — the audio must not outlive the flash. The
+// bundle's sole relative import is `./failureStingFeedback.ts`
+// (.ts-extensioned, `include: ["src"]` reachable, no allowJs required),
+// satisfying the pure-runner extension-resolution contract documented
+// above and keeping the `typecheck:aftersign` blocking gate green.
 import { runFailureStingCouplingChecks } from "./src/failureStingCoupling.test.ts";
 
 type Runner = {
@@ -151,12 +153,13 @@ const runners: Runner[] = [
   // the #1528 re-review — "even the correct bundle isn't executed
   // today."
   { label: "runRouteRiskFeelChecks", run: runRouteRiskFeelChecks },
-  // Failure-sting AUDIO-VISUAL COUPLING — pins the t=0 coupling frame
-  // (flashAlpha at peak on the tone-fire frame) and the visual ceiling
-  // for the audio tail (flashAlpha=0 by durationMs). Complements the
-  // sibling `runFailureStingFeedbackChecks` which covers the envelope
-  // math and reduced-motion split but does not claim audio-visual
-  // simultaneity.
+  // Failure-sting AUDIO-VISUAL COUPLING — pins the audio-tail vs
+  // visual-envelope inequality (tone.durationMs < feel.durationMs, with
+  // one-frame headroom). Complements the sibling
+  // `runFailureStingFeedbackChecks` which covers the visual envelope
+  // math and reduced-motion split, and the node:test-based
+  // `failure-sting.test.js` which covers the audio envelope shape.
+  // Neither of those pins the cross-table inequality.
   { label: "runFailureStingCouplingChecks", run: runFailureStingCouplingChecks },
 ];
 
