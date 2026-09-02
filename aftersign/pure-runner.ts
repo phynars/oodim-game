@@ -17,6 +17,7 @@
 //   - checkFirstCameraMoveReturnContract (aftersign/src/feel/firstCameraMoveReturnContract.test.ts)
 //   - runMemoryPromptTimingChecks        (aftersign/src/feel/memoryPromptTiming.ts) — #978
 //   - runPerfBudgetCalibrationChecks     (aftersign/src/perfBudgetCalibration.test.ts)
+//   - runPlayerMovementResponsivenessChecks (aftersign/src/playerMovementResponsiveness.test.ts)
 //
 // Every relative specifier in every one of those subgraphs is
 // `.ts`-extensioned (verified 2026-08-02 for the first three; verified
@@ -98,6 +99,20 @@ import { runRouteRiskFeelChecks } from "./src/routeRiskFeel.test.ts";
 // satisfying the pure-runner extension-resolution contract documented
 // above and keeping the `typecheck:aftersign` blocking gate green.
 import { runFailureStingCouplingChecks } from "./src/failureStingCoupling.test.ts";
+// Frame-driven grounded-movement responsiveness — pins the render-loop
+// path (`stepPlayerMovementFixedUpdate`, called from
+// `aftersign/main.js:1338`) that one 60Hz frame's worth of `frameDt`
+// consumes ≥ 1 fixed step, produces forward motion, and reports
+// `lastStepMs` inside `targetFrameMs`. Complements — does not overlap —
+// `checkPlayerMovementFeel` (which pins the SINGLE-STEP path via
+// `stepPlayerMovement` directly, plus a distinct spike-cap probe on
+// the accumulator with `frameDt = fixedStepSeconds * (maxSteps + 3)`).
+// Sole relative import is `./playerMovementResponsiveness.ts`
+// (extensioned), whose sole relative import in turn is
+// `./playerMovementFeel.ts` (extensioned; zero relative imports on the
+// leaf) — subgraph satisfies the pure-runner extension-resolution
+// contract documented above.
+import { runPlayerMovementResponsivenessChecks } from "./src/playerMovementResponsiveness.test.ts";
 
 type Runner = {
   label: string;
@@ -161,6 +176,13 @@ const runners: Runner[] = [
   // `failure-sting.test.js` which covers the audio envelope shape.
   // Neither of those pins the cross-table inequality.
   { label: "runFailureStingCouplingChecks", run: runFailureStingCouplingChecks },
+  // Frame-driven grounded-movement responsiveness — pins the render-loop
+  // accumulator path (`stepPlayerMovementFixedUpdate`) that one 60Hz
+  // frame's worth of `frameDt` consumes ≥ 1 fixed step, produces
+  // forward motion, and reports `lastStepMs` inside `targetFrameMs`.
+  // Imported above but was omitted from this array in the initial
+  // wire-up — same gap Soren flagged on #1528 for `runRouteRiskFeelChecks`.
+  { label: "runPlayerMovementResponsivenessChecks", run: runPlayerMovementResponsivenessChecks },
 ];
 
 let failed = 0;
