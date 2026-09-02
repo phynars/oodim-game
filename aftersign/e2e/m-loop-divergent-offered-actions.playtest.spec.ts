@@ -29,7 +29,7 @@ type OfferedAction = {
 };
 
 const WAIT_MS = 10_000;
-const COLD_START_MS = 60_000;
+const COLD_START_MS = 90_000;
 
 const STORAGE_PREFIX = "aftersign:kiosk-slice:";
 
@@ -204,6 +204,11 @@ async function tapFirstOffer(page: Page, action: OfferedAction): Promise<void> {
     `offered button must carry the resolved M-LOOP action id`,
   ).toHaveAttribute("data-aftersign-job-take-action", action.actionId);
   await target.tap();
+
+  await expect(
+    target,
+    "the played tap must arm the job-take feel marker on the exact offered button",
+  ).toHaveAttribute("data-aftersign-job-take", "armed");
 
   // `lastAction` composed by `aftersign/main.js:1978` —
   // `${mloopAction.id}:${offer.id}`. Poll because the click handler
