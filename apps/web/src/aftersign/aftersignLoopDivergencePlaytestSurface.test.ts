@@ -64,10 +64,23 @@ describe("M-LOOP divergence playtest surface", () => {
       const readsWindowGame = has(/window\.__game/i, source);
       const drivesWindowGameInput = has(/window\s*\.\s*__game\s*\.\s*input\s*\./i, executable);
 
+      // Two divergent memory/save states — the shipped specs pair a
+      // memory/save/seed/slot token with a "first-visit" adjective
+      // (fresh/safe/new/first/empty) somewhere in the file, and a
+      // "returning-visit" adjective (returning/trusted/opened/risk/
+      // debt/completed/prior/looped/second/delivered/sealed) somewhere
+      // else. Requiring the two occurrences to be on the SAME line
+      // rejected `m-loop-divergent-offered-actions.playtest.spec.ts`
+      // (which uses `FRESH_SAVE` / `RETURNING_SAVE` constants) and
+      // `m-loop-e1-two-round-playtest.spec.ts` (which distinguishes
+      // rounds via `?slot=` + first-visit vs looped-return comments).
+      // Match order-free across the whole source so either shape works.
+      const firstVisitToken =
+        /\b(?:memory|seed|save|slot|round[\s_-]?1|first[\s_-]?(?:visit|round)|fresh[\s_-]?save|safe[\s_-]?default)[\s\S]{0,120}?\b(?:fresh|safe|new|first|empty)\b/i;
+      const returnVisitToken =
+        /\b(?:memory|seed|save|slot|round[\s_-]?2|second[\s_-]?round|returning[\s_-]?save|looped[\s_-]?return)[\s\S]{0,120}?\b(?:returning|trust|trusted|opened|risk|debt|completed|prior|looped|second|delivered|sealed)\b/i;
       const twoMemoryStates =
-        has(/memory[^\n]*(first|safe|new|fresh)[\s\S]*memory[^\n]*(trust|trusted|opened|risk|debt)/i, source) ||
-        has(/seed[^\n]*(first|safe|new|fresh)[\s\S]*seed[^\n]*(trust|trusted|opened|risk|debt)/i, source) ||
-        has(/save[^\n]*(first|safe|new|fresh)[\s\S]*save[^\n]*(trust|trusted|opened|risk|debt)/i, source);
+        has(firstVisitToken, source) && has(returnVisitToken, source);
 
       const divergentAvailableActions =
         has(/diverg(ent|ence)|different\s+(available\s+)?(tappable\s+)?actions?/i, source) &&
