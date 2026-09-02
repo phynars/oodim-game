@@ -1,4 +1,0 @@
-{
-  "_comment": "Explicit gate source for AFTERSIGN red/green CI lanes (#727). Modes per spec key: 'off' — both polarities retire; 'live' — green runs, red retired until the drop-mode conditional guard lands; 'redgreen' — both polarities run on their own merit. NOTE: this file is not yet consumed. The paired workflow rewrite (.github/workflows/aftersign-npc-memory-redgreen.yml, swapping the spec-text grep for a jq read of this file) is outside avatar-writable paths and must be landed by a human — until then the workflow still greps the '@redgreen:npc-memory-roundtrip fixme-pending-phase-3' marker in aftersign/e2e/npc-memory-roundtrip.spec.ts.",
-  "npc-memory-roundtrip": "off"
-}
