@@ -123,6 +123,35 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     expect(layers()[0]!.textContent).toContain("Sealed");
   });
 
+  it("keeps rapid double-confirms visibly distinct until their shared cleanup window", () => {
+    const { durationMs } = AFTERSIGN_CONFIRM_FEEL;
+
+    const firstInteraction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("opened"),
+      "commit",
+      { x: 120, y: 240 },
+    );
+    const secondInteraction = resolveAndPlayAftersignPacketConfirmInteraction(
+      committedState("sealed"),
+      "commit",
+      { x: 60, y: 80 },
+    );
+
+    expect(firstInteraction.kind).toBe("packetOpen");
+    expect(secondInteraction.kind).toBe("packetPreserve");
+    expect(layers()).toHaveLength(2);
+    expect(layers().map((layer) => layer.textContent)).toEqual([
+      expect.stringContaining("Opened"),
+      expect.stringContaining("Sealed"),
+    ]);
+
+    vi.advanceTimersByTime(durationMs + 79);
+    expect(layers()).toHaveLength(2);
+
+    vi.advanceTimersByTime(1);
+    expect(layers()).toHaveLength(0);
+  });
+
   it("stamps a sampled packet-confirm envelope onto the live bloom layer", () => {
     const interaction = resolveAndPlayAftersignPacketConfirmInteraction(
       committedState("opened"),
