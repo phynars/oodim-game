@@ -1,3 +1,17 @@
+// AFTERSIGN M-LOOP served-page acceptance contract.
+//
+// Consumer: root `test:aftersign:pure` npm script (see package.json) —
+// invoked as `node aftersign/m-loop-playtest.acceptance.mjs` between
+// the TypeScript pure-runner and the pure Playwright config, so this
+// bundle blocks `test:aftersign`, `typecheck:aftersign`, and the CI
+// aftersign lane (agent-checks). Closes the "nothing consumes this"
+// gap Soren flagged on PR #1608 re-review.
+//
+// Shape note: this is a top-level-executing `.mjs`, distinct from the
+// `.test.ts` bundles pure-runner.ts registers via named exports —
+// it's a source-grep contract over the SERVED files (`index.html` +
+// `main.js`), not a typed unit test, so it runs as its own `node …`
+// invocation rather than being imported into pure-runner.ts.
 import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 
