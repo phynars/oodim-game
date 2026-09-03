@@ -1848,6 +1848,26 @@ const renderText = () => {
         ? { priorOutcome: "completed" }
         : undefined;
       const offers = selectIoJobOffers(offeredJobsMemory);
+      // PR #1614 — mirror the rendered offer set into
+      // `state.story.offeredJobs` so the served-page snapshot read
+      // (`window.__game.getSnapshot()`) matches the DOM the player
+      // taps. The e2e helper `storyOfferFingerprints` (aftersign/
+      // e2e/m-loop-e1-two-round-playtest.spec.ts) reads
+      // `state.story.offeredJobs[i].semanticKey`; the SAME primitive
+      // that stamps `data-offer-fingerprint` on each button below
+      // (`fingerprintJobOfferAction(offer).semanticKey`) sources the
+      // key here, so the DOM attribute and the snapshot array are
+      // ONE derivation — no way for the two views to drift.
+      const nextOfferedJobs = offers.map((offer) => ({
+        semanticKey: fingerprintJobOfferAction(offer).semanticKey,
+      }));
+      if (
+        JSON.stringify(state.story.offeredJobs) !==
+        JSON.stringify(nextOfferedJobs)
+      ) {
+        state.story.offeredJobs = nextOfferedJobs;
+        markStateDirty();
+      }
       // PR #1422 — M-LOOP memory posture consumed by
       // `mloop-copy.js`. Different axis than `offeredJobsMemory`
       // above (that one gates SELECTION — which jobIds are offered;
@@ -2004,6 +2024,16 @@ const renderText = () => {
         offeredJobs.removeChild(offeredJobs.firstChild);
       }
       delete offeredJobs.dataset.offerSignature;
+      // PR #1614 — the surface just hid; drop the snapshot array too
+      // so `window.__game.getSnapshot().story.offeredJobs` mirrors the
+      // (now empty) DOM instead of a stale set from the previous beat.
+      // Same reason the fingerprint write above stays symmetric with
+      // `data-offer-fingerprint` on the buttons — the two views are
+      // ONE derivation, and hide is part of that derivation.
+      if (state.story.offeredJobs.length > 0) {
+        state.story.offeredJobs = [];
+        markStateDirty();
+      }
     }
   }
 
