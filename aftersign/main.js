@@ -323,6 +323,22 @@ import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteracti
 // `aftersign/e2e/job-offers-played.spec.ts` plays the loop and pins the
 // completed-set render.
 import { selectIoJobOffers } from "../packages/aftersign/src/computeOfferedJobs";
+// PR #1624 (Soren's third REQUEST_CHANGES) — served-page derivation
+// of the third mechanical M-LOOP axis. Before this the served
+// renderer collapsed `state.npcs.io.memory.length > 0` into
+// `priorOutcome:"completed"`, so the debt-held branch was
+// unreachable through the shipped surface even though the primitive
+// (`computeOfferedJobs.ts`) handled it and the harness surface
+// wiring (`resolveOfferedJobsMemory` guard) accepted it. The module
+// mints the SAME `PlayerMemory` shape the primitive consumes,
+// keying on Io's delivery-outcome facts:
+//   sealed history → `{ priorOutcome: "completed" }`
+//   opened-only history → `{ debtHeld: <count of opened facts> }`
+//   otherwise → `undefined`
+// Consumed once at `packet-offered` render time below (search for
+// `offeredJobsMemoryFromIoMemory(` — the ONE call site the
+// consumer test also drives).
+import { offeredJobsMemoryFromIoMemory } from "./src/offeredJobsMemoryFromIoMemory.js";
 // #1568 — element-level M-LOOP fingerprint stamped on the offer button
 // the player actually taps. `fingerprintJobOfferAction` is the same
 // primitive `jobOfferActionFingerprint.consumer.test.ts` drives
@@ -1840,13 +1856,21 @@ const renderText = () => {
       //
       // `state.npcs.io.memory` accumulates memory facts on delivery
       // (packet-outcome fact minted by deliverPacket) and is NOT wiped
-      // by the loop reset — matching the harness's
-      // `deriveOfferedJobsPlayerMemory` (`interactionCount >= 1`),
-      // which is exactly this career-level "player has interacted"
-      // signal. One axis, no drift with the harness mapping.
-      const offeredJobsMemory = state.npcs.io.memory.length > 0
-        ? { priorOutcome: "completed" }
-        : undefined;
+      // by the loop reset. PR #1624 (Soren's third REQUEST_CHANGES)
+      // splits Io's memory stream by delivery-outcome `object`:
+      // sealed → completed / opened-only → debtHeld / else undefined,
+      // so the third mechanical M-LOOP axis is reachable through
+      // the served surface. See
+      // `aftersign/src/offeredJobsMemoryFromIoMemory.js` for the
+      // rule; the consumer test at
+      // `apps/web/src/aftersign/offeredJobsDebtHeldServedSurface.consumer.test.ts`
+      // drives THIS function against real Io-memory shapes, and the
+      // e2e `aftersign/e2e/job-offer-debt-held-played.spec.ts` plays
+      // an opened-packet loop and taps the rendered
+      // `#job-offer-job-wax-debt-repair` that lands because of it.
+      const offeredJobsMemory = offeredJobsMemoryFromIoMemory(
+        state.npcs.io.memory,
+      );
       const offers = selectIoJobOffers(offeredJobsMemory);
       // PR #1614 — mirror the rendered offer set into
       // `state.story.offeredJobs` so the served-page snapshot read
