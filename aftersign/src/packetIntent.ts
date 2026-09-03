@@ -332,6 +332,7 @@ export function runPacketIntentChecks(): void {
   checkNearMissReleasePreservesSeal();
   checkRecoverableFalseSealedCanOpen();
   checkSustainedHoldAlonePreservesSeal();
+  checkLongSustainedHoldAloneStillPreservesSeal();
   checkSustainedHoldPlusPullOpens();
   checkTickDoesNotOpenWithoutPull();
   checkTickMidHoldNeedsPullProgress();
@@ -384,6 +385,32 @@ function checkSustainedHoldAlonePreservesSeal(): void {
   const c = new PacketIntentController();
   c.press({ timeMs: 10_000, x: 40, y: 40 });
   assertEqual(c.release({ timeMs: 10_000 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 40, y: 40 }).outcome, PACKET_OUTCOME.SEALED, "hold without pull must preserve");
+}
+
+// Tripwire against a "hold-alone opens after some longer threshold" feel
+// model (the 260ms hold-only variant Soren flagged on PR #1617). The live
+// contract is TWO-AXIS: opening requires BOTH `HOLD_TO_OPEN_MS` elapsed
+// AND `OPEN_PULL_MIN_PX` traveled. A hold of any duration with zero pull
+// must stay SEALED — including holds an order of magnitude past the
+// threshold, with focused ticks throughout (a real player leaning on the
+// button while thinking). If a future refactor quietly adds a hold-only
+// commit path, this check fails at the exact regression vector.
+function checkLongSustainedHoldAloneStillPreservesSeal(): void {
+  const c = new PacketIntentController();
+  const t0 = 11_000;
+  c.press({ timeMs: t0, x: 40, y: 40 });
+  // Simulate focused RAF ticks every 16ms for 10× the hold threshold with
+  // zero pointer movement — the controller must never commit OPENED off
+  // ticks alone.
+  const endMs = t0 + PACKET_INTENT.HOLD_TO_OPEN_MS * 10;
+  for (let tMs = t0 + 16; tMs <= endMs; tMs += 16) {
+    const s = c.tick(tMs, { hasFocus: true });
+    assertEqual(s.outcome, PACKET_OUTCOME.UNKNOWN, "long hold-alone tick must not commit OPENED");
+    if (s.progress >= 1) {
+      throw new Error("long hold-alone progress must not saturate to 1 without pull");
+    }
+  }
+  assertEqual(c.release({ timeMs: endMs + 16, x: 40, y: 40 }).outcome, PACKET_OUTCOME.SEALED, "long hold without pull must still preserve on release");
 }
 
 function checkSustainedHoldPlusPullOpens(): void {
