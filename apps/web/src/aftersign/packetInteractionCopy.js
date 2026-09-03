@@ -1,78 +1,73 @@
-const PACKET_BUTTON_COPY = Object.freeze({
-  idle: Object.freeze({
-    label: "Blue packet",
-    hint: "Tap to keep the seal. Hold and pull to break it.",
-  }),
-  sealed: Object.freeze({
-    label: "Seal intact.",
-    hint: "Io can trust the work wider now.",
-  }),
-  opened: Object.freeze({
-    label: "Seal broken.",
-    hint: "Io can still use you. Not the same way.",
-  }),
+// Three-state copy writer for the served `#packetButton` on
+// `aftersign/index.html`. Owns ONLY the visible text the player
+// reads and a `data-packet-button-copy-state` stamp — never touches
+// the button's shipped `data-aftersign-tap-choice` (the harness
+// matches `=== "packet"` — see bootWindowGame.ts:1011 and
+// aftersign/main.js:1624) nor the served `aria-label` (pinned by
+// `servedSurface.contract.test.ts`). Consumer contract lives in
+// `packetInteractionCopy.consumer.test.ts`; boot + commit call
+// sites are `aftersign/main.js` :: init (idle) and
+// `commitPacketOutcome` (sealed | opened).
+
+export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
+  idleLabel: "Blue packet",
+  idleHint: "Tap to keep the seal. Hold and pull to open it.",
+  sealedResult: "Io can trust the work wider now.",
+  openedResult: "Io can still use you. Not the same way.",
 });
 
-function normalizePacketButtonCopyState(state) {
+const PACKET_BUTTON_ID = "packetButton";
+
+function normalizePacketState(state) {
   if (state === "sealed" || state === "opened") {
     return state;
   }
-
   return "idle";
 }
 
-function ensurePacketButtonHint(button) {
-  let hint = button.querySelector("[data-packet-button-hint]");
-
-  if (!hint) {
-    hint = document.createElement("span");
-    hint.dataset.packetButtonHint = "true";
-    hint.className = "packet-button__hint";
-    button.appendChild(hint);
-  }
-
-  return hint;
-}
-
-function ensurePacketButtonLabel(button) {
-  let label = button.querySelector("[data-packet-button-label]");
-
-  if (!label) {
-    label = document.createElement("span");
-    label.dataset.packetButtonLabel = "true";
-    label.className = "packet-button__label";
-
-    if (button.firstChild) {
-      button.insertBefore(label, button.firstChild);
-    } else {
-      button.appendChild(label);
-    }
-  }
-
-  return label;
+function resolveHint(normalizedState) {
+  if (normalizedState === "sealed") return AFTERSIGN_PACKET_BUTTON_COPY.sealedResult;
+  if (normalizedState === "opened") return AFTERSIGN_PACKET_BUTTON_COPY.openedResult;
+  return AFTERSIGN_PACKET_BUTTON_COPY.idleHint;
 }
 
 export function getPacketButtonCopy(state = "idle") {
-  return PACKET_BUTTON_COPY[normalizePacketButtonCopyState(state)];
+  const normalized = normalizePacketState(state);
+  return {
+    buttonId: PACKET_BUTTON_ID,
+    label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
+    hint: resolveHint(normalized),
+  };
 }
 
+// Null-safe writer. Writes `"${label} — ${hint}"` into the button's
+// `<span>` child; if the caller passes a bare button with no span,
+// falls back to `element.textContent` so a fresh DOM never
+// black-screens boot. Never touches `data-aftersign-tap-choice`
+// (harness key) or `aria-label` (served contract).
 export function applyPacketButtonCopy(button, state = "idle") {
-  if (!button) {
-    return null;
+  if (!button) return null;
+
+  const normalized = normalizePacketState(state);
+  const label = AFTERSIGN_PACKET_BUTTON_COPY.idleLabel;
+  const hint = resolveHint(normalized);
+  const text = `${label} — ${hint}`;
+
+  const span = typeof button.querySelector === "function"
+    ? button.querySelector("span")
+    : null;
+
+  if (span) {
+    span.textContent = text;
+  } else {
+    button.textContent = text;
   }
 
-  const normalizedState = normalizePacketButtonCopyState(state);
-  const copy = PACKET_BUTTON_COPY[normalizedState];
-  const label = ensurePacketButtonLabel(button);
-  const hint = ensurePacketButtonHint(button);
+  if (button.dataset) {
+    button.dataset.packetButtonCopyState = normalized;
+  } else if (typeof button.setAttribute === "function") {
+    button.setAttribute("data-packet-button-copy-state", normalized);
+  }
 
-  label.textContent = copy.label;
-  hint.textContent = copy.hint;
-  button.dataset.packetButtonCopyState = normalizedState;
-  button.dataset.aftersignTapChoice = "packet-button";
-  button.setAttribute("aria-label", `${copy.label} ${copy.hint}`);
-
-  return copy;
+  return { buttonId: PACKET_BUTTON_ID, label, hint };
 }
-
-export { PACKET_BUTTON_COPY as packetButtonCopy };
