@@ -412,9 +412,20 @@ function resolveOfferedJobsMemory(
   if (!input) {
     return undefined;
   }
-  // Primitive-shape: at least one of the two axes named. If neither
+  // Primitive-shape: at least one of the three axes named. If none
   // is present we treat it as the harness bag and try the derive path.
-  if ("trustPosture" in input || "priorOutcome" in input) {
+  // `debtHeld` was added as the third mechanical axis on the primitive
+  // (see `computeOfferedJobs.ts`); the guard has to include it or a
+  // `{ debtHeld: 1 }` bag falls through to `deriveOfferedJobsPlayerMemory`
+  // (which reads only `interactionCount`), the axis is dropped, and
+  // the surface silently returns the safe default. That gap is what
+  // makes `story.offeredJobs` unreachable for debt-held saves through
+  // the served surface even though `computeOfferedJobs` handles it.
+  if (
+    "trustPosture" in input ||
+    "priorOutcome" in input ||
+    "debtHeld" in input
+  ) {
     return input as OfferedJobsPlayerMemory;
   }
   return deriveOfferedJobsPlayerMemory(input as OfferedJobsPlayerMemoryInput);
