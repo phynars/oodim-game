@@ -39,7 +39,3 @@ be pinned in CI by both `runPacketIntentChecks()` via
 `aftersign/e2e/packet-intent-contract.spec.ts` and
 `aftersign/e2e/packet-hold-threshold.spec.ts`. Do not re-introduce a
 parallel copy.
-
-Note: `apps/web/src/aftersign/packetIntentPressureFeel.ts` is a separate,
-still-live module (pressure-based decision feel) and was intentionally left
-untouched.
