@@ -1,128 +1,78 @@
-// Copy contract for the served-page `#packetButton` surface.
-//
-// Consumers of this module (grep before touching):
-//   - `aftersign/main.js`               — boot + `commitPacketOutcome`
-//     both call `applyPacketButtonCopy(packetButton, state)` (POSITIONAL:
-//     element FIRST, state SECOND). Any signature flip here is a
-//     regression Soren blocks — main.js is the shipped served page.
-//   - `aftersign/index.html`            — the button element itself,
-//     already carries `data-aftersign-tap-choice="packet"` and an
-//     `aria-label` containing the word "open" that the flagship
-//     surface contract spec matches on (holdChoiceViaDom, line 644).
-//     This writer MUST NOT overwrite either attribute.
-//   - `apps/web/src/aftersign/packetInteractionCopy.consumer.test.ts`
-//     — jsdom-mounts the real index.html, imports the three named
-//     exports below, and drives the three states through a real
-//     `<span>` child.
-//
-// Copy shape (frozen — the consumer test pins every field):
-//   idleLabel     — "Blue packet" (constant across states; the label
-//                   half of the visible line stays STABLE so the
-//                   returning player recognizes the same object even
-//                   after the seal changes).
-//   idleHint      — pre-tap instruction.
-//   sealedResult  — post-tap line for SEALED.
-//   openedResult  — post-tap line for OPENED.
-//
-// Visible line format (rendered into the `<span>` child):
-//   `${idleLabel} — ${hint-or-result}`
-//
-// The em-dash separator is intentional: the returning player scans
-// the whole line in one saccade; a hyphen would read as two clauses.
-
-export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
-  idleLabel: "Blue packet",
-  idleHint: "Tap to keep the seal. Hold and pull to break it.",
-  sealedResult: "Io can trust the work wider now.",
-  openedResult: "Io can still use you. Not the same way.",
+const PACKET_BUTTON_COPY = Object.freeze({
+  idle: Object.freeze({
+    label: "Blue packet",
+    hint: "Tap to keep the seal. Hold and pull to break it.",
+  }),
+  sealed: Object.freeze({
+    label: "Seal intact.",
+    hint: "Io can trust the work wider now.",
+  }),
+  opened: Object.freeze({
+    label: "Seal broken.",
+    hint: "Io can still use you. Not the same way.",
+  }),
 });
 
-const PACKET_BUTTON_ID = "packetButton";
-
-const HINT_FOR_STATE = Object.freeze({
-  idle: AFTERSIGN_PACKET_BUTTON_COPY.idleHint,
-  sealed: AFTERSIGN_PACKET_BUTTON_COPY.sealedResult,
-  opened: AFTERSIGN_PACKET_BUTTON_COPY.openedResult,
-});
-
-/**
- * Normalize an incoming state to the three the writer knows how to
- * render. An unknown / stale enum value falls back to "idle" — the
- * consumer test pins this so a future caller passing a hostile
- * string still renders a legible line rather than an empty `<span>`.
- */
-function normalizePacketState(state) {
-  if (state === "sealed" || state === "opened" || state === "idle") {
+function normalizePacketButtonCopyState(state) {
+  if (state === "sealed" || state === "opened") {
     return state;
   }
+
   return "idle";
 }
 
-/**
- * Pure copy shape for a packet-button state. Same buttonId + label
- * across all three states — only the hint half changes.
- *
- * Called with no argument → returns the idle copy.
- */
-export function getPacketButtonCopy(state) {
-  const normalized = normalizePacketState(state ?? "idle");
-  return {
-    buttonId: PACKET_BUTTON_ID,
-    label: AFTERSIGN_PACKET_BUTTON_COPY.idleLabel,
-    hint: HINT_FOR_STATE[normalized],
-  };
-}
+function ensurePacketButtonHint(button) {
+  let hint = button.querySelector("[data-packet-button-hint]");
 
-/**
- * Write the packet-button copy for `state` onto `element`.
- *
- * Positional signature: (element, state). main.js calls
- * `applyPacketButtonCopy(packetButton, "idle" | "sealed" | "opened")`
- * — element FIRST. Do not flip this without updating every consumer.
- *
- * Behavior:
- *   - Null/undefined element → no-op (main.js wraps in try/catch, but
- *     the writer defends anyway so a bootless jsdom mount can't
- *     black-screen).
- *   - Element with a `<span>` child → the `<span>`'s textContent
- *     receives the composed line.
- *   - Element without a `<span>` child → the element's own textContent
- *     receives the composed line (bare-button fallback pinned by the
- *     consumer test).
- *   - Stamps `data-packet-button-copy-state` with the normalized
- *     state so a played spec can pin the transition.
- *   - Does NOT overwrite `data-aftersign-tap-choice` (already set to
- *     `"packet"` on the served element — the harness at
- *     bootWindowGame.ts:1011 matches on that value).
- *   - Does NOT overwrite `aria-label` (the served element already
- *     ships an aria-label containing "open", which
- *     flagship-surface-contract.spec.ts:644 matches on via
- *     holdChoiceViaDom).
- */
-export function applyPacketButtonCopy(element, state) {
-  if (!element) return;
-
-  const normalized = normalizePacketState(state);
-  const copy = getPacketButtonCopy(normalized);
-  const line = `${copy.label} — ${copy.hint}`;
-
-  const span =
-    typeof element.querySelector === "function"
-      ? element.querySelector("span")
-      : null;
-  const target = span ?? element;
-
-  try {
-    target.textContent = line;
-  } catch {
-    /* decorative — must never throw */
+  if (!hint) {
+    hint = document.createElement("span");
+    hint.dataset.packetButtonHint = "true";
+    hint.className = "packet-button__hint";
+    button.appendChild(hint);
   }
 
-  if (element.setAttribute) {
-    try {
-      element.setAttribute("data-packet-button-copy-state", normalized);
-    } catch {
-      /* decorative */
+  return hint;
+}
+
+function ensurePacketButtonLabel(button) {
+  let label = button.querySelector("[data-packet-button-label]");
+
+  if (!label) {
+    label = document.createElement("span");
+    label.dataset.packetButtonLabel = "true";
+    label.className = "packet-button__label";
+
+    if (button.firstChild) {
+      button.insertBefore(label, button.firstChild);
+    } else {
+      button.appendChild(label);
     }
   }
+
+  return label;
 }
+
+export function getPacketButtonCopy(state = "idle") {
+  return PACKET_BUTTON_COPY[normalizePacketButtonCopyState(state)];
+}
+
+export function applyPacketButtonCopy(button, state = "idle") {
+  if (!button) {
+    return null;
+  }
+
+  const normalizedState = normalizePacketButtonCopyState(state);
+  const copy = PACKET_BUTTON_COPY[normalizedState];
+  const label = ensurePacketButtonLabel(button);
+  const hint = ensurePacketButtonHint(button);
+
+  label.textContent = copy.label;
+  hint.textContent = copy.hint;
+  button.dataset.packetButtonCopyState = normalizedState;
+  button.dataset.aftersignTapChoice = "packet-button";
+  button.setAttribute("aria-label", `${copy.label} ${copy.hint}`);
+
+  return copy;
+}
+
+export { PACKET_BUTTON_COPY as packetButtonCopy };
