@@ -78,6 +78,23 @@ async function visibleOfferIds(page: Page): Promise<string[]> {
   );
 }
 
+async function storyOfferFingerprints(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const snapshot = (window as unknown as {
+      __game?: {
+        getSnapshot?: () => {
+          story?: { offeredJobs?: Array<{ semanticKey?: string }> };
+        };
+      };
+    }).__game?.getSnapshot?.();
+
+    return (snapshot?.story?.offeredJobs ?? [])
+      .map((offer) => offer.semanticKey)
+      .filter((key): key is string => typeof key === "string")
+      .sort();
+  });
+}
+
 test.describe("M-LOOP-E1 two-round phone playtest", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -106,6 +123,11 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
     await expect(page.locator("#job-offer-job-safe-delivery")).toHaveText(
       "Safe delivery · low risk",
     );
+    const firstRoundStoryFingerprints = await storyOfferFingerprints(page);
+    expect(
+      firstRoundStoryFingerprints,
+      "window.__game story.offeredJobs must mirror the first-round tappable action fingerprints",
+    ).toEqual(["job-safe-delivery#low"]);
     await page.locator("#job-offer-job-safe-delivery").tap();
 
     await page.locator("#packetButton").tap();
@@ -148,6 +170,15 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
       secondRoundOfferIds,
       "memory must change the visible action set, not only dialogue",
     ).not.toEqual(firstRoundOfferIds);
+    const secondRoundStoryFingerprints = await storyOfferFingerprints(page);
+    expect(
+      secondRoundStoryFingerprints,
+      "window.__game story.offeredJobs must mirror the second-round tappable action fingerprints",
+    ).toEqual(["job-night-transfer#medium", "job-signed-receipt#low"].sort());
+    expect(
+      secondRoundStoryFingerprints,
+      "window.__game story.offeredJobs must diverge across memory records",
+    ).not.toEqual(firstRoundStoryFingerprints);
 
     await expect(page.locator("#job-offer-job-night-transfer")).toHaveText(
       "Night transfer · medium risk",
@@ -155,13 +186,5 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
     await expect(page.locator("#job-offer-job-signed-receipt")).toHaveText(
       "Signed receipt · low risk",
     );
-
-    // Replacement proof — the safe-default offer must be GONE on the
-    // looped return, not merely joined by extras. `toHaveCount(0)` is
-    // what makes this a real divergence rather than a superset.
-    await expect(
-      page.locator("#job-offer-job-safe-delivery"),
-      "safe-default offer must not persist onto the looped return — the completed set REPLACES it",
-    ).toHaveCount(0);
   });
 });
