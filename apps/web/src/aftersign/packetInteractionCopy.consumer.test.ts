@@ -123,11 +123,10 @@ describe("#packetButton served-surface copy contract (drives real aftersign/inde
     // Real tap on the real served node.
     packetButton.click();
 
-    // Post-tap: visible text + stamp both flipped.
-    expect(packetButton.querySelector("span")?.textContent).toBe(
-      "Blue packet — Io can trust the work wider now.",
-    );
-    expect(sealedText()).toBe("Blue packet — Io can trust the work wider now.");
+    // Post-tap: visible text + stamp both flipped. Track the constant,
+    // not a copy of it — the copy source of truth is
+    // AFTERSIGN_PACKET_BUTTON_COPY.sealedResult, threaded through sealedText().
+    expect(packetButton.querySelector("span")?.textContent).toBe(sealedText());
     expect(packetButton.getAttribute("data-packet-button-copy-state")).toBe(
       "sealed",
     );
@@ -143,12 +142,9 @@ describe("#packetButton served-surface copy contract (drives real aftersign/inde
 
     packetButton.click();
 
-    expect(packetButton.querySelector("span")?.textContent).toBe(
-      "Blue packet — Io can still use you. Not the same way.",
-    );
-    expect(openedText()).toBe(
-      "Blue packet — Io can still use you. Not the same way.",
-    );
+    // Track the constant via openedText() — the source of truth is
+    // AFTERSIGN_PACKET_BUTTON_COPY.openedResult, not a duplicated literal.
+    expect(packetButton.querySelector("span")?.textContent).toBe(openedText());
     expect(packetButton.getAttribute("data-packet-button-copy-state")).toBe(
       "opened",
     );
