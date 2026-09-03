@@ -558,6 +558,7 @@ const state = {
   story: {
     currentNpcId: null,
     memoryBeat: null,
+    offeredJobs: [],
   },
   delivery: {
     id: "blue-packet",
