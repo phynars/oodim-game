@@ -18,19 +18,28 @@ import { expect, test, type Page } from "@playwright/test";
 //
 // which made the branch UNREACHABLE at the shipped surface — every
 // player with any delivery history got routed to the completed set.
-// Soren's block:
+// Soren blocked #1624 four times; the final blocker (2026-09-03):
 //
-//     "wire `debtHeld` into `main.js`'s derivation (from the durable
-//     save or a real player-memory axis), and add a tap-driven e2e
-//     that boots the served page and clicks the rendered
-//     `#job-offer-job-wax-debt-repair`."
+//     "openPacketViaChoose drives the debt-repair offer via
+//     window.__game.input.choose('open-packet'), not a tap on a
+//     rendered affordance. The final tap on the debt-repair button
+//     is real, but it rides on a non-player driver upstream. Replace
+//     the choose() call with a tap on the actual open-packet
+//     affordance, or expose one that's tappable."
 //
-// The wire lands in `aftersign/src/offeredJobsMemoryFromIoMemory.js`
+// Fix: `openPacketByGesture` below performs the REAL pointer
+// hold-and-pull sequence on the visible `#packetButton` — the same
+// PacketIntentController path a phone thumb drives (mirrors
+// `performPacketGesture(page, "opened")` in
+// `io-recognition-return-visual-feel.spec.ts`). No `input.choose()`
+// anywhere; every fork is committed by a rendered-DOM event.
+//
+// The derivation wire lands in `aftersign/src/offeredJobsMemoryFromIoMemory.js`
 // (called at the `packet-offered` render site in main.js). This
 // spec is the corresponding played proof: NO harness reach-in, NO
-// jsdom mirror — the player taps the packet's open gesture,
-// delivers, walks the return-line beats, asks for the next job,
-// delivers again, and the SECOND `packet-offered` beat renders
+// jsdom mirror — the player HOLD+PULLS the packet open, delivers,
+// walks the return-line beats, asks for the next job, delivers
+// again, and the SECOND `packet-offered` beat renders
 // `#job-offer-job-wax-debt-repair` because Io's durable memory
 // now carries one delivery-outcome fact with `object === "opened"`.
 // The spec then real-taps that button and asserts the tap-choice
@@ -84,25 +93,81 @@ async function tapReturnReason(page: Page, reason: string): Promise<void> {
   await button.click();
 }
 
-// Deterministic "open the packet" seam — same shape as
-// `npc-memory-recall-dialogue-served.spec.ts` and
-// `io-recognition-return-visual-feel.spec.ts`. A packet-drag hold
-// gesture is timing-sensitive under Playwright, so every played
-// spec that needs the OPENED fork reaches through the shipped
-// `input.choose("open-packet")` handler — the SAME handler
-// `commitPacketOutcome(PACKET_OUTCOME.OPENED)` and the pointer
-// gesture converge on inside main.js.
-async function openPacketViaChoose(page: Page): Promise<void> {
+// Perform the OPENED packet gesture on the visible `#packetButton` —
+// the load-bearing player action. Sealed is a plain `click()`; OPENED
+// is a hold + mid-hold 12px pull, because the served surface exposes
+// NO separate "open-packet" button — packet deliberation IS the hold
+// gesture (aftersign/src/packetIntent.ts). This mirrors
+// `performPacketGesture(page, "opened")` in
+// `io-recognition-return-visual-feel.spec.ts` and `holdChoiceViaDom` in
+// `flagship-surface-contract.spec.ts:644` (pull=12px sits inside the
+// OPEN_PULL_MIN_PX=10 / DRIFT_CANCEL_PX=14 window; hold=900ms exceeds
+// HOLD_TO_OPEN_MS=450). Both events go through PacketIntentController,
+// so `commitPacketOutcome(PACKET_OUTCOME.OPENED)` fires via the real
+// intent-recognition path — no `input.choose()` reach-in.
+async function openPacketByGesture(page: Page): Promise<void> {
+  const packet = page.locator("#packetButton");
+  await expect(
+    packet,
+    "#packetButton should be visible at packet-offered",
+  ).toBeVisible({ timeout: WAIT_MS });
+
   await page.evaluate(async () => {
-    const input = (window as unknown as {
-      __game?: {
-        input?: {
-          choose: (choiceId: string) => Promise<void> | void;
-        };
-      };
-    }).__game?.input;
-    if (!input) throw new Error("window.__game.input not available");
-    await input.choose("open-packet");
+    const node = document.querySelector<HTMLElement>("#packetButton");
+    if (!node) throw new Error("#packetButton not found");
+    const rect = node.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    const pullPx = 12;
+    const holdMs = 900;
+
+    node.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX,
+        clientY: startY,
+      }),
+    );
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.floor(holdMs / 2)),
+    );
+
+    node.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX + pullPx,
+        clientY: startY,
+      }),
+    );
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, holdMs - Math.floor(holdMs / 2)),
+    );
+
+    node.dispatchEvent(
+      new PointerEvent("pointerup", {
+        bubbles: true,
+        pointerId: 1,
+        button: 0,
+        buttons: 0,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: startX + pullPx,
+        clientY: startY,
+      }),
+    );
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 }
 
@@ -133,9 +198,13 @@ test.describe("AFTERSIGN debt-held offered job — real-tap played divergence", 
     ).toHaveCount(0);
     await safeOffer.click();
 
-    // Open the packet — the durable fork that will mint a
-    // `delivery-outcome{ object: "opened" }` fact on delivery.
-    await openPacketViaChoose(page);
+    // Open the packet — REAL player gesture on the visible affordance,
+    // NOT `input.choose("open-packet")` (Soren's #1624 blocker: the
+    // final tap on `#job-offer-job-wax-debt-repair` must ride on a
+    // player-outcome upstream, not a harness driver). Hold + 12px pull
+    // through PacketIntentController → `commitPacketOutcome(OPENED)` →
+    // mints the durable `delivery-outcome{ object: "opened" }` fact.
+    await openPacketByGesture(page);
     await waitForBeat(page, "packet-choice");
 
     // Walk the same played funnel as `job-offers-played.spec.ts`
