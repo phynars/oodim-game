@@ -319,6 +319,34 @@ export function checkPacketChoiceReleaseForgiveness(
   )
 }
 
+export function checkPreArmSwipeCancels(
+  config: PacketChoiceReleaseForgivenessConfig = DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS,
+): void {
+  const origin = { x: 120, y: 320 }
+  let intent = startPacketChoiceReleaseIntent('open', 0, origin, true)
+
+  intent = stepPacketChoiceIntentWithReleaseForgiveness(
+    intent,
+    { nowMs: 0, pointer: origin, pressed: true },
+    config,
+  )
+  intent = stepPacketChoiceIntentWithReleaseForgiveness(
+    intent,
+    {
+      nowMs: config.openHoldMs - 1,
+      pointer: { x: origin.x + config.cancelRadiusPx + 1, y: origin.y },
+      pressed: true,
+    },
+    config,
+  )
+
+  assertPacketChoiceRelease(
+    intent.phase === 'cancelled',
+    'a swipe beyond cancelRadiusPx before the open arm window cancels',
+  )
+}
+
 export function runPacketChoiceReleaseForgivenessChecks(): void {
   checkPacketChoiceReleaseForgiveness()
+  checkPreArmSwipeCancels()
 }
