@@ -8,6 +8,13 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // each must commit the composed M-LOOP `lastAction` axis (Soren's
 // blocking requirement on PR #1422: `${mloopAction.id}:${offer.id}`).
 //
+// This spec also pins the DOM ↔ story-state mirror that the player can
+// actually regress against: every offered button's element-level
+// `data-offer-fingerprint` must match the published
+// `story.offeredJobs[].semanticKey` snapshot for the same seeded save.
+// That keeps the harness's state contract honest without replacing the
+// played tap path.
+//
 // Storage key (from `aftersign/main.js:517`):
 //   `aftersign:kiosk-slice:${slot}`
 // The slot is passed via `?slot=<slot>` on the URL so each save is
@@ -26,6 +33,7 @@ type OfferedAction = {
   actionId: string;
   memoryGate: string;
   ariaLabel: string;
+  offerFingerprint: string;
 };
 
 const WAIT_MS = 10_000;
@@ -92,6 +100,11 @@ declare global {
     __game?: {
       scene?: { ready?: boolean };
       interaction?: { lastAction?: string | null };
+      getSnapshot?: () => {
+        story?: {
+          offeredJobs?: Array<{ semanticKey?: string }>;
+        };
+      };
     };
   }
 }
@@ -121,6 +134,7 @@ async function collectOfferedActions(
   page: Page;
   context: Awaited<ReturnType<typeof newPhoneContext>>;
   actions: OfferedAction[];
+  snapshotFingerprints: string[];
 }> {
   const context = await newPhoneContext(browser);
   await context.addInitScript(
@@ -164,11 +178,17 @@ async function collectOfferedActions(
             actionId: el.getAttribute("data-aftersign-job-take-action") ?? "",
             memoryGate: el.getAttribute("data-mloop-memory-gate") ?? "",
             ariaLabel: el.getAttribute("aria-label") ?? "",
+            offerFingerprint: el.getAttribute("data-offer-fingerprint") ?? "",
           };
         }),
     );
 
-  return { page, context, actions };
+  const snapshotFingerprints = await page.evaluate(() =>
+    window.__game?.getSnapshot?.().story?.offeredJobs
+      ?.map((job) => job.semanticKey ?? "") ?? [],
+  );
+
+  return { page, context, actions, snapshotFingerprints };
 }
 
 function assertActionShape(actions: OfferedAction[], label: string) {
@@ -187,13 +207,29 @@ function assertActionShape(actions: OfferedAction[], label: string) {
       action.ariaLabel,
       `${label}: aria-label must be authored non-empty`,
     ).not.toBe("");
+    expect(
+      action.offerFingerprint,
+      `${label}: data-offer-fingerprint must be set on the tappable DOM node`,
+    ).not.toBe("");
   }
+}
+
+function assertSnapshotMirrorsDomFingerprints(
+  actions: OfferedAction[],
+  snapshotFingerprints: string[],
+  label: string,
+) {
+  const domFingerprints = actions.map((a) => a.offerFingerprint).sort();
+  expect(
+    snapshotFingerprints.filter(Boolean).sort(),
+    `${label}: story.offeredJobs semantic keys must mirror the offered-button fingerprints`,
+  ).toEqual(domFingerprints);
 }
 
 async function tapFirstOffer(page: Page, action: OfferedAction): Promise<void> {
   // The served page renders exactly one `#job-offer-<jobId>` per
-  // offered action (aftersign/main.js:1934), and the M-LOOP action
-  // id is stamped on the same node via `data-aftersign-job-take-action`.
+  // offered action, and the M-LOOP action id is stamped on the same
+  // node via `data-aftersign-job-take-action`.
   const target = page.locator(`#job-offer-${action.jobId}`);
   await expect(
     target,
@@ -203,6 +239,10 @@ async function tapFirstOffer(page: Page, action: OfferedAction): Promise<void> {
     target,
     `offered button must carry the resolved M-LOOP action id`,
   ).toHaveAttribute("data-aftersign-job-take-action", action.actionId);
+  await expect(
+    target,
+    `offered button must carry the same semantic fingerprint collected from the DOM`,
+  ).toHaveAttribute("data-offer-fingerprint", action.offerFingerprint);
   await target.tap();
 
   await expect(
@@ -210,7 +250,7 @@ async function tapFirstOffer(page: Page, action: OfferedAction): Promise<void> {
     "the played tap must arm the job-take feel marker on the exact offered button",
   ).toHaveAttribute("data-aftersign-job-take", "armed");
 
-  // `lastAction` composed by `aftersign/main.js:1978` —
+  // `lastAction` composed by `aftersign/main.js` —
   // `${mloopAction.id}:${offer.id}`. Poll because the click handler
   // stamps it asynchronously after the rAF-scheduled render pass.
   await expect
@@ -240,6 +280,16 @@ test.describe("AFTERSIGN M-LOOP divergent offered actions", () => {
     try {
       assertActionShape(fresh.actions, "fresh save");
       assertActionShape(returning.actions, "returning save");
+      assertSnapshotMirrorsDomFingerprints(
+        fresh.actions,
+        fresh.snapshotFingerprints,
+        "fresh save",
+      );
+      assertSnapshotMirrorsDomFingerprints(
+        returning.actions,
+        returning.snapshotFingerprints,
+        "returning save",
+      );
 
       // Divergence — element-level (jobId × actionId × memoryGate),
       // not just text-level. `data-mloop-memory-gate` MUST flip
@@ -255,6 +305,17 @@ test.describe("AFTERSIGN M-LOOP divergent offered actions", () => {
         returningKeys,
         "divergent seeded memory must produce a different element-level offered-action set",
       ).not.toEqual(freshKeys);
+
+      const freshFingerprintKeys = fresh.actions
+        .map((a) => a.offerFingerprint)
+        .sort();
+      const returningFingerprintKeys = returning.actions
+        .map((a) => a.offerFingerprint)
+        .sort();
+      expect(
+        returningFingerprintKeys,
+        "divergent seeded memory must also produce a different story/DOM fingerprint set",
+      ).not.toEqual(freshFingerprintKeys);
 
       const freshGates = new Set(fresh.actions.map((a) => a.memoryGate));
       const returningGates = new Set(returning.actions.map((a) => a.memoryGate));
