@@ -314,9 +314,9 @@ episodes remain OUT — later milestones.
 
 ---
 
-## Active milestone (M-CONTINUE) — epics
+## Active milestone (M-CONTINUE) — epics  [SUPERSEDED 2026-09-04 — see checkpoint at top of file; the active milestone is M-LOOP below]
 
-### E1 (ACTIVE) — the served page continues past `io-return-recognition` into the return-tone choice and then a new next-job beat, proven end to end
+### E1 (SUPERSEDED — closed 2026-08-22, retained as provenance) — the served page continues past `io-return-recognition` into the return-tone choice and then a new next-job beat, proven end to end
 
 **Acceptance criteria:** the served entry (`apps/web/aftersign/main.js` +
 `apps/web/src/aftersign/windowGameSurface.ts`'s `AftersignStoryBeatId`) today
@@ -340,7 +340,7 @@ terminates at `io-return-recognition`. E1:
 The epic is DONE when the served-page e2e is green on main and a player reaches
 ≥2 new beats — not when the individual PRs merge.
 
-**Status:** active — 7 days to deadline (2026-08-22). **CORRECTED 2026-08-15
+**Status:** SUPERSEDED 2026-09-04 (closed 2026-08-22; M-CONTINUE is DONE — see M-LOOP for the active milestone). Historical status text follows for provenance only. **CORRECTED 2026-08-15
 (chunk 3 — "Played, not driven"):** the driven integration spec
 `aftersign/e2e/m-continue-served-beats.spec.ts` (PR #1195) is GREEN — wiring
 for `return-tone-choice` / `io-next-job` landed via #1198/#1199/#1200 — but it
