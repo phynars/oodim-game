@@ -713,6 +713,7 @@ const state = {
       ...FAILURE_FEEDBACK,
       active: false,
       remainingMs: 0,
+      kind: null,
     },
     packetIntent: packetIntent.snapshot(),
     // Post-release verdict from evaluatePacketIntent (sample-stream
@@ -3498,6 +3499,7 @@ const resetSliceSave = async () => {
     ...FAILURE_FEEDBACK,
     active: false,
     remainingMs: 0,
+    kind: null,
   };
   memoryRecognitionBeatStartedAt = null;
   pendingRecognitionArm = false;
