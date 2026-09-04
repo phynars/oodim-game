@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   COMPLETED_JOB_IDS,
   computeOfferedJobs,
+  DEBT_HELD_JOB_IDS,
   deriveOfferedJobsPlayerMemory,
   FAILED_JOB_IDS,
   GUARDED_JOB_IDS,
@@ -35,6 +36,25 @@ describe("computeOfferedJobs", () => {
     expect(computeOfferedJobs(guarded)).not.toEqual(computeOfferedJobs(failed));
     expect(guarded).toEqual({ trustPosture: "guarded" });
     expect(failed).toEqual({ priorOutcome: "failed" });
+  });
+
+  it("routes a debt-held save through the wax-debt repair run", () => {
+    const debtHeld: PlayerMemory = { debtHeld: 1 };
+    const zeroDebt: PlayerMemory = { debtHeld: 0 };
+
+    expect(computeOfferedJobs(debtHeld)).toEqual([...DEBT_HELD_JOB_IDS]);
+    // A zero (or absent) debt does not fabricate the branch — the
+    // predicate is `> 0`, not "field defined".
+    expect(computeOfferedJobs(zeroDebt)).toEqual([SAFE_DEFAULT_JOB_ID]);
+    // Trusted-courier / completed histories outrank the debt axis;
+    // a proven courier is NOT demoted to debt-repair by a stale
+    // wax debt they've long since worked off.
+    expect(
+      computeOfferedJobs({ trustPosture: "trusted-courier", debtHeld: 3 }),
+    ).toEqual([...TRUSTED_COURIER_JOB_IDS]);
+    expect(
+      computeOfferedJobs({ priorOutcome: "completed", debtHeld: 3 }),
+    ).toEqual([...COMPLETED_JOB_IDS]);
   });
 
   it("returns fresh deterministic arrays", () => {

@@ -82,6 +82,25 @@ describe("M-LOOP offered-job app/package boundary contract", () => {
     expect(freshKeys).toEqual([`${SAFE_DEFAULT_JOB_ID}#low`]);
   });
 
+  it("diverges at the fingerprint level for a debt-held save vs a fresh save", () => {
+    // Third mechanical axis — a durable wax-seal debt carried in
+    // from a prior loop must swap the tappable action set at the
+    // served surface, not just relabel the safe-default offer.
+    // The fingerprint predicate is the load-bearing check ("id +
+    // route-risk", label ignored), so if this ever goes green
+    // without the debt-held branch actually landing in
+    // `computeOfferedJobs`, the boundary is broken.
+    const freshOffers = selectIoJobOffers(undefined);
+    const debtHeldOffers = selectIoJobOffers({ debtHeld: 1 });
+
+    expect(ioJobOffersDiverge(freshOffers, debtHeldOffers)).toBe(true);
+
+    const freshKeys = collectTappableJobOfferKeys(freshOffers);
+    const debtHeldKeys = collectTappableJobOfferKeys(debtHeldOffers);
+    expect(debtHeldKeys).not.toEqual(freshKeys);
+    expect(debtHeldKeys).toEqual(["job-wax-debt-repair#medium"]);
+  });
+
   it("keeps the fingerprint predicate stable for a copy-only label edit", () => {
     // Guard against the failure mode the founder's bar rules out:
     // "dialogue-only differences score zero". A relabel of every
