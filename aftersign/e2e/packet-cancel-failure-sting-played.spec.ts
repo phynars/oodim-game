@@ -39,6 +39,7 @@ async function pollForCancelSnapshot(
     });
     last = snapshot;
     if (snapshot.lastAction === "packet-cancelled") return snapshot;
+    // pacing
     await page.waitForTimeout(intervalMs);
   }
   throw new Error(
