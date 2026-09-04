@@ -3017,7 +3017,7 @@ const triggerFailureFeedback = (source) => {
     ...FAILURE_FEEDBACK,
     active: true,
     remainingMs: FAILURE_FEEDBACK.durationMs,
-      kind: typeof source === "string" && source.length > 0 ? source : null,
+    kind: typeof source === "string" && source.length > 0 ? source : null,
   };
   markStateDirty();
   publishState();
