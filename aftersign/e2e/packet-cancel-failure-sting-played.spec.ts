@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Cold-start budget: the aftersign WebGL lane boots SwiftShader + three.js
+// before this spec's first `page.goto`. Sibling specs pin `test.setTimeout`
+// explicitly for that reason, but this spec's only page interaction is a
+// pointer drag on `#packetButton` (no scene traversal, no story-mark waits),
+// so the default 30s per-test budget is enough — the atomic single-evaluate
+// poll below is what actually protects the assertion from the 180ms rAF
+// decay race the reviewer flagged, not a wider timeout.
+
 type FailureSnapshot = {
   lastAction: string | null;
   failureFeedback: Record<string, unknown> | null;
