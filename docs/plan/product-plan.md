@@ -1,5 +1,59 @@
 # AFTERSIGN — product plan
 
+## Planning checkpoint — 2026-09-04 (cycle chunk 1; reconciliation incomplete)
+
+**Active milestone: M-LOOP. Active epic: M-LOOP-E1.** These are the only
+active items; older ACTIVE headings below are stale historical text, not
+work authorization.
+
+**Deadline: 2026-09-05** — existing planning target, NOT founder-confirmed.
+**1 day remaining as of 2026-09-04.** The founder's 2026-08-22 "The loop"
+amendment supplies the divergence bar but no M-LOOP deadline. Founder date
+confirmation remains required; do not silently move the existing target.
+
+### Confirmed this cycle
+
+- Read `docs/flagship/BRIEF.md` and this plan. The operative bar is different
+  AVAILABLE ACTIONS for divergent memories, taps-only phone acceptance for a
+  round from each save, a continuous two-round PLAYTEST, and recorded human
+  replay-bar evidence. Dialogue variation alone is not progress.
+- The entire open board returned three issues: #1418 (SwiftShader cold-start
+  investigation), #1345 (review-log authentication), and #1264 (orphaned task
+  queue jobs). All carry `agent-needs-human`. None is an active epic's player
+  story; keep them in the operator lane, do not close them here.
+- #1551 and #1552 are absent from the open board. Absence is NOT acceptance
+  evidence. Their old "filed" map status needs reconciliation before any
+  replacement story is filed.
+- History of `aftersign/main.js` at session snapshot `841b11bdef77` lists
+  recent landed changes #1629, #1626, #1624, #1614, #1595, #1569, #1563,
+  and #1555. The #1555 commit subject links route/risk copy to #1551.
+  PR #1595 is confirmed merged on 2026-09-02; its review describes a
+  mobileMovePad import-path repair. Neither history nor approval proves
+  milestone acceptance. `apps/web/aftersign/main.js` returned no history;
+  use the confirmed root-level served entry when investigating.
+
+### Next planning chunk — deadline-first
+
+1. Read #1552 to locate the two-round PLAYTEST and its closing PR; inspect
+   actual acceptance evidence before deciding which integration gap remains.
+2. Confirm the divergence lane is enabled and plays a complete round per
+   save by visible taps; verify the two-round lane asserts visible dialogue
+   changes and seek recorded human replay-bar evidence. No DONE claim yet.
+3. Replace the contradictory historical plan with a compact Vision → dated
+   milestones → active epic → story map. Preserve history as history; add
+   explicit deadline provenance and LoE budgets. Ask the founder to confirm
+   the missing M-LOOP date rather than inventing authority for the target.
+4. Reuse an existing integration issue if its scope matches; otherwise file
+   that outcome gate FIRST. Only then map/file the remaining S/M player
+   stories (3–7 total). At one day remaining, prioritize a playable complete
+   loop and evidence over copy/feel polish or another payback channel.
+
+This checkpoint does not re-verify the older code/CI claims below. They are
+historical assertions pending reconciliation, not current acceptance proof.
+No new stories were filed in chunk 1.
+
+---
+
 **Owner of this doc:** spec-writer (Charlie). Updated per planning cycle.
 **Sources of truth:** `docs/flagship/BRIEF.md`, `docs/flagship/concept.md`,
 `docs/flagship/io-first-memory-beat-plan.md`, `docs/flagship/story-state-contract.md`.
@@ -260,9 +314,9 @@ episodes remain OUT — later milestones.
 
 ---
 
-## Active milestone (M-CONTINUE) — epics
+## Active milestone (M-CONTINUE) — epics  [SUPERSEDED 2026-09-04 — see checkpoint at top of file; the active milestone is M-LOOP below]
 
-### E1 (ACTIVE) — the served page continues past `io-return-recognition` into the return-tone choice and then a new next-job beat, proven end to end
+### E1 (SUPERSEDED — closed 2026-08-22, retained as provenance) — the served page continues past `io-return-recognition` into the return-tone choice and then a new next-job beat, proven end to end
 
 **Acceptance criteria:** the served entry (`apps/web/aftersign/main.js` +
 `apps/web/src/aftersign/windowGameSurface.ts`'s `AftersignStoryBeatId`) today
@@ -286,7 +340,7 @@ terminates at `io-return-recognition`. E1:
 The epic is DONE when the served-page e2e is green on main and a player reaches
 ≥2 new beats — not when the individual PRs merge.
 
-**Status:** active — 7 days to deadline (2026-08-22). **CORRECTED 2026-08-15
+**Status:** SUPERSEDED 2026-09-04 (closed 2026-08-22; M-CONTINUE is DONE — see M-LOOP for the active milestone). Historical status text follows for provenance only. **CORRECTED 2026-08-15
 (chunk 3 — "Played, not driven"):** the driven integration spec
 `aftersign/e2e/m-continue-served-beats.spec.ts` (PR #1195) is GREEN — wiring
 for `return-tone-choice` / `io-next-job` landed via #1198/#1199/#1200 — but it
