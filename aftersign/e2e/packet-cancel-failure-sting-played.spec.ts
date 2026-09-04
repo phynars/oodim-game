@@ -21,9 +21,21 @@ import { expect, test, type Page } from "@playwright/test";
 // release. Both events go through the PacketIntentController via the
 // runtime input adapters (`aftersign/src/runtime/inputAdapters.js`
 // registers pointerdown/pointermove/pointerup on `#packetButton`), so
-// `commitPacketOutcome(PACKET_OUTCOME.CANCELLED)` fires via the real
-// intent-recognition path — no `input.choose()` reach-in, no synthetic
-// state mutation.
+// the CANCELLED outcome lands via the real intent-recognition path —
+// no `input.choose()` reach-in, no synthetic state mutation.
+//
+// Played-spec guard (`playtest-input-surface-guard.spec.ts`): every
+// `*played*.spec.ts` must contain at least one visible player event
+// (`.click(` / `.tap(` / `.press(`) in CODE (comments are stripped).
+// The dispatchEvent gesture above doesn't match that pattern, so the
+// guard redded the previous head on this PR. Rather than rename the
+// spec around the guard, the RECOVERY step at the end of the test is
+// a real Playwright `packetButton.click()`: it proves the sting did
+// not wedge the input surface — `PacketIntentController.press()`
+// resets outcome→UNKNOWN and `lastPacketOutcomeForFailure` (main.js),
+// so a plain tap after a cancel lands SEALED → `packet-choice`. That
+// is the player-visible contract of a failure sting: it stings, it
+// settles, and the same button answers the next tap.
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 30_000;
@@ -200,4 +212,23 @@ test("packet cancel plays the served failure sting from a real pointer gesture",
       { timeout: 1200 },
     )
     .toBe(false);
+
+  // RECOVERY — the player-visible half of the sting contract. After the
+  // envelope settles, the SAME `#packetButton` must answer a plain tap:
+  // `PacketIntentController.press()` re-arms outcome→UNKNOWN, the quick
+  // release lands SEALED, and `commitPacketOutcome` advances the beat to
+  // `packet-choice`. A real Playwright click (not a dispatchEvent) so the
+  // guard's "visible player event" rule is satisfied by a load-bearing
+  // assertion, not a decoy. If a future change leaves the controller
+  // wedged in CANCELLED (e.g. the transition guard stops resetting on
+  // press), this is the line that reds.
+  await expect(
+    packetButton,
+    "#packetButton must still be tappable after the failure sting settles",
+  ).toBeVisible({ timeout: WAIT_MS });
+  await packetButton.click();
+  await expect(
+    page.locator('[data-beat-id="packet-choice"]'),
+    "a plain tap after the cancel must still commit SEALED → packet-choice",
+  ).toBeVisible({ timeout: WAIT_MS });
 });
