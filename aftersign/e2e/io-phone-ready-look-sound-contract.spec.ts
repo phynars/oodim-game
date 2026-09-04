@@ -296,14 +296,17 @@ test.describe('Io phone-ready look/sound contract', () => {
 
     await driveToSealedRecognitionBeat(page);
 
-    await page.waitForFunction(
-      (expected) => {
-        const node = document.querySelector('#line');
-        return Boolean(node && (node.textContent ?? '').includes(expected));
-      },
-      IO_SEALED_RECOGNITION_LINE,
-      { timeout: WAIT_MS },
-    );
+    await expect
+      .poll(() => measurePhoneReadyProbe(page), {
+        timeout: WAIT_MS,
+        intervals: [100, 250, 500, 1000],
+      })
+      .toMatchObject({
+        lineText: expect.stringContaining(IO_SEALED_RECOGNITION_LINE),
+        lineVisible: true,
+        lineReadable: true,
+        audioLastCue: EXPECTED_AUDIO_CUE,
+      });
 
     const probe = await measurePhoneReadyProbe(page);
 
