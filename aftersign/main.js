@@ -3447,6 +3447,10 @@ const resetSliceSave = async () => {
     // player's kiosk acknowledgement.
     secondAction: null,
     returnReason: null,
+    // M-LOOP route/risk is progression memory. Resetting the slice
+    // must clear it with the rest of the player-input axes; otherwise
+    // a fresh run can inherit the prior route posture.
+    routeRisk: null,
   };
   state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
   state.delivery = { id: "blue-packet", outcome: "unknown" };
