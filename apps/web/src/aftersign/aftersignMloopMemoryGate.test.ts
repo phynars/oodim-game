@@ -77,9 +77,9 @@ describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
   it("fresh Io memory (no delivery-outcome facts) folds to the 'fresh' gate", () => {
     // The served page builds `mloopMemory = {}` when no
     // delivery-outcome fact exists in `state.npcs.io.memory`.
-    // `memoryGateFor({})` falls through past debtHeld / priorOutcome
-    // / packetOutcome and returns "fresh" — the default posture the
-    // action-table's `fresh` row is authored for.
+    // `memoryGateFor({})` has no packetOutcome and returns "fresh" —
+    // the default posture the action-table's `fresh` row is authored
+    // for.
     const bag = servedPageMloopMemoryBag([]);
     expect(bag).toEqual({});
     const action = getMloopAvailableAction(JOB_ID, bag);
