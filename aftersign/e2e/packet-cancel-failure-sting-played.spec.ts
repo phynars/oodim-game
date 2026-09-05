@@ -271,33 +271,32 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       )
       .toBe(false);
 
-    // After the sting resolves, the cancelled packet must re-enable the
-    // choice beat so the player can recover.  Assert `packet-choice`
-    // becomes visible in its RECOVERED state.
-    const packetChoice = page.locator('[data-beat-id="packet-choice"]');
-    await expect(packetChoice).toBeVisible({ timeout: WAIT_MS });
-
-    // Soren's #1641 REQUEST_CHANGES (lost recovery assertion): the
-    // pre-#1641 spec's `packetButton.click()` was load-bearing — it
-    // proved the controller wasn't wedged in CANCELLED by showing the
-    // click actually ANSWERED with a state change.  Restore that:
-    // tap the packet button and assert `interaction.lastAction`
-    // transitions away from `packet-cancelled` (into `packet-pressed`,
-    // `packet-opened`, or whatever the recovered beat routes to).
-    // If the controller were wedged in CANCELLED, the click would be
-    // a no-op and `lastAction` would still read `packet-cancelled` —
-    // this poll would time out red.  That is the exact wedge signal
-    // the earlier revision watched for.
+    // Soren's #1641 iter-5 REQUEST_CHANGES (structural, not probe-timing):
+    // CANCELLED does NOT advance the beat.  In `aftersign/main.js`,
+    // `packetMove`/`packetTick` fire the failure sting via
+    // `maybeTriggerFailureFromOutcome`, then gate `commitPacketOutcome`
+    // behind `isCommittedOutcome` — CANCELLED isn't committed, only
+    // SEALED/OPENED call `setBeat("packet-choice")`.  So after a
+    // cancel gesture the beat stays `packet-offered`;
+    // `[data-beat-id="packet-choice"]` is NOT visible yet.  The prior
+    // revision asserted `packetChoice.toBeVisible` BEFORE the recovery
+    // click, which timed out at 15s (that was the CI red).
+    //
+    // Correct sequence: the recovery `packetButton.click()` is what
+    // produces `packet-choice` (tap → SEALED → `commitPacketOutcome` →
+    // `setBeat("packet-choice")`).  So we click FIRST, then assert
+    // both the state transition off of `packet-cancelled` AND
+    // `[data-beat-id="packet-choice"]` visibility — the click is the
+    // load-bearing gesture that proves the controller wasn't wedged
+    // in CANCELLED (a wedged controller = click is a no-op, both
+    // polls red).
     //
     // Citation note: the played-acceptance boundary is enforced by
     // `apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts`
     // which forbids reads/writes of `window.__game.input.*` in any
-    // `*-played.spec.ts` (it does NOT require a specific input
-    // primitive to be present — Soren's #1641 called out the earlier
-    // header's phantom `playtest-input-surface-guard` reference as
-    // fabricated).  This spec complies with the real guard because it
-    // drives input via dispatched `PointerEvent`s and a `.click()`,
-    // never through `__game.input`.
+    // `*-played.spec.ts`.  This spec complies because it drives input
+    // via dispatched `PointerEvent`s and a `.click()`, never through
+    // `__game.input`.
     await packetButton.click({ force: true });
     await expect
       .poll(
@@ -309,6 +308,13 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
         { timeout: WAIT_MS },
       )
       .not.toBe('packet-cancelled');
+
+    // After the recovery click has advanced the outcome (SEALED or
+    // OPENED), the beat has flipped to `packet-choice`.  Assert on
+    // that AFTER the click — this is the actual recovery signal, not
+    // a false pre-click precondition.
+    const packetChoice = page.locator('[data-beat-id="packet-choice"]');
+    await expect(packetChoice).toBeVisible({ timeout: WAIT_MS });
   });
 });
 
