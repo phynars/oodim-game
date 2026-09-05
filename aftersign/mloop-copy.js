@@ -42,7 +42,16 @@
 // `lastAction` axis.
 
 /** @typedef {Object} MloopMemory
- *  @property {string=} packetOutcome  — sealed / opened / unknown
+ *  @property {string=} packetOutcome  — sealed / opened / unknown (legacy
+ *    consumer-test shape; still honored so the existing consumer suites
+ *    keep pinning the same posture the served page derives).
+ *  @property {string=} priorOutcome   — served-page shape emitted by
+ *    `offeredJobsMemoryFromIoMemory`: "completed" when Io's durable
+ *    memory carries at least one `sealed` delivery-outcome fact.
+ *  @property {number=} debtHeld       — served-page shape emitted by
+ *    `offeredJobsMemoryFromIoMemory`: count of unresolved `opened`
+ *    delivery-outcome facts. Any positive value means the player is
+ *    a RETURNING courier who opened a packet on a prior loop.
  */
 
 /** @typedef {"fresh"|"returning"|"deep-recall"|"default"} MloopMemoryGate */
@@ -158,15 +167,47 @@ const DEFAULT_ACTION = Object.freeze({
 /**
  * Derive the memory gate from an `MloopMemory` shape. Kept exported-
  * shape-free (an internal helper) so the two public seams share one
- * rule: a delivery outcome is known → returning; the outcome is
- * `opened` → deep-recall (the player already saw inside); no outcome
- * → fresh/default.
+ * rule.
+ *
+ * READS THREE INPUT SHAPES — the same object the served page hands
+ * `getMloopAvailableAction` at `packet-offered` render time is the
+ * bag `offeredJobsMemoryFromIoMemory(state.npcs.io.memory)` returns,
+ * and its shape is `{ priorOutcome: "completed" } | { debtHeld: n } |
+ * undefined` — NEVER `{ packetOutcome }`. The prior derivation only
+ * read `packetOutcome`, so the served-page bag fell through to
+ * "fresh"/"default" for BOTH the fresh and returning seeds and the
+ * e2e divergence assertion (`m-loop-divergent-offered-actions.playtest.spec.ts`)
+ * failed on identical `data-mloop-memory-gate` sets. Soren pinned
+ * this as the second blocker on PR #1642.
+ *
+ * Rule (each branch is a proper superset of the prior "packetOutcome
+ * only" derivation so the existing consumer suites keep passing):
+ *   - `debtHeld > 0`             → "deep-recall"  (player opened a
+ *                                   packet on a prior loop and hasn't
+ *                                   worked off the debt — same posture
+ *                                   as `packetOutcome:"opened"`).
+ *   - `priorOutcome === "completed"` → "returning" (proven courier —
+ *                                   same posture as `packetOutcome:
+ *                                   "sealed"`).
+ *   - `packetOutcome === "opened"`   → "deep-recall" (legacy consumer
+ *                                   test shape).
+ *   - `packetOutcome === "sealed"`   → "returning" (legacy consumer
+ *                                   test shape).
+ *   - null / undefined / object     → "default" / "fresh".
  *
  * @param {MloopMemory | null | undefined} mloopMemory
  * @returns {MloopMemoryGate}
  */
 function memoryGateFor(mloopMemory) {
   if (!mloopMemory || typeof mloopMemory !== "object") return "default";
+  // Served-page shape — from `offeredJobsMemoryFromIoMemory`.
+  if (typeof mloopMemory.debtHeld === "number" && mloopMemory.debtHeld > 0) {
+    return "deep-recall";
+  }
+  if (mloopMemory.priorOutcome === "completed") {
+    return "returning";
+  }
+  // Legacy consumer-test shape.
   const outcome = mloopMemory.packetOutcome;
   if (outcome === "opened") return "deep-recall";
   if (outcome === "sealed") return "returning";
