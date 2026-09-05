@@ -536,10 +536,16 @@ const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const { readStored, writeStored } = createStoragePersistence({
+// Browser storage is deliberately not part of the player-memory authority
+// path. The backend receives every durable mutation; this no-op writer keeps
+// the persistence factory's synchronous cache seam from blocking a tap frame.
+const { writeStored: writeCachedSnapshot } = createStoragePersistence({
   storage: window.localStorage,
   storageKey,
 });
+const writeStored = () => {
+  void writeCachedSnapshot;
+};
 
 // Io's trust posture is a pure function of the delivery outcome
 // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
@@ -547,12 +553,28 @@ const { readStored, writeStored } = createStoragePersistence({
 const trustPostureForOutcome = (outcome) =>
   outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
 
-const localStored = readStored();
-const bootstrapPlayerId = localStored?.player?.id || "local-slice-player";
+const bootstrapPlayerId = "local-slice-player";
+// PR #1642 follow-up (Soren's second REQUEST_CHANGES). The prior
+// `.catch(() => null)` swallowed EVERY boot-read failure silently —
+// which is exactly the trap the migration is supposed to close.
+// Cold slot is still a null (server returns 404 → `readAuthoritativeSave`
+// resolves to null without throwing), so the null-guard downstream
+// keeps working. The remaining branch — a REAL fetch or server
+// error — now surfaces on `console.error`, which Playwright specs
+// can capture via `page.on("console", ...)` to diagnose a silent
+// boot regression instead of watching two slots hydrate identical
+// empty state and reporting "divergence failed".
 const stored = await readAuthoritativeSave({
   slot,
   playerId: bootstrapPlayerId,
-}).catch(() => null) || localStored;
+}).catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[aftersign boot] readAuthoritativeSave failed — booting with empty state",
+    { slot, playerId: bootstrapPlayerId, error: err?.message ?? String(err) },
+  );
+  return null;
+});
 const packetIntent = new PacketIntentController();
 
 const orraMemoryFromStored = coerceOrraRecognitionMemory(stored?.npcs?.orra?.memory);
@@ -637,7 +659,22 @@ const state = {
   },
   npcs: {
     io: {
-      memory: stored?.memory ? clone(stored.memory) : [],
+      // Accept both persist-payload shapes: flat top-level `memory`
+      // (what `buildPersistPayload` writes today) AND nested
+      // `npcs.io.memory` (what `applyRestoredState` reads at ~3613
+      // and what an authoritative seed produced by an older slot
+      // writer may carry). Without the fallback a payload that only
+      // carries the nested shape hydrates empty memory here, and
+      // `offeredJobsMemoryFromIoMemory(state.npcs.io.memory)` at
+      // packet-offered render time collapses to `undefined` even
+      // though the seed round-trip GET showed a non-empty array —
+      // the "seeded slots hydrate identical offered-actions" failure
+      // Soren pinned on PR #1642.
+      memory: Array.isArray(stored?.memory) && stored.memory.length > 0
+        ? clone(stored.memory)
+        : Array.isArray(stored?.npcs?.io?.memory)
+        ? clone(stored.npcs.io.memory)
+        : [],
       lastLine: null,
       lastLineMemoryRefs: [],
     },
@@ -1741,7 +1778,7 @@ const publishState = () => {
         }
         state.player.routeRisk = recordRouteRun({ route, succeeded });
         markStateDirty();
-        persist({ dirty: true });
+        void persistAuthoritative({ dirty: true });
       },
     });
   };
@@ -1802,7 +1839,13 @@ const renderText = () => {
           }
           state.player.routeRisk = recordRouteRun({ route, succeeded });
           markStateDirty();
-          persist({ dirty: true });
+          // Route-attention commit — authoritative writer, same as
+          // the harness seam ~1749. `persist` writes only to the
+          // in-memory cache today (writeStored is a deliberate no-op),
+          // so the tap MUST call `persistAuthoritative` or route-
+          // attention never crosses the network boundary. Soren
+          // blocked #1642 on this half-migration.
+          void persistAuthoritative({ dirty: true });
           renderText();
         },
       });
@@ -2582,9 +2625,30 @@ const waitForStoryIdle = async () => {
 };
 
 const forceSave = async () => {
-  persist({ dirty: false });
+  // #1642 follow-up: `persist({ dirty: false })` here was a no-op —
+  // `writeStored` is deliberately stubbed (the backend is the
+  // authority). The two branches below now each own their durable
+  // write explicitly: the `local-only-save` red probe writes to
+  // localStorage via `writeCachedSnapshot` (so the probe saves
+  // SOMEWHERE — that's what makes it a fallback, not silent data
+  // loss), and the default branch awaits `persistAuthoritative`.
 
   if (breakMode === "local-only-save") {
+    // Local-only red probe: write the built payload to localStorage
+    // directly. This is the ONLY path in the runtime that touches
+    // browser storage; every other write goes to the authoritative
+    // endpoint. Without this call the red probe silently discards
+    // the save.
+    const localPayload = buildPersistPayload({ dirty: false });
+    localPayload.save.lastPersistedAt = new Date().toISOString();
+    localPayload.save.authority = "local-fallback";
+    try {
+      writeCachedSnapshot(localPayload);
+    } catch {
+      // A storage-quota / privacy-mode failure must not black-screen
+      // the served page; the red probe is a diagnostic surface.
+    }
+    state.save.lastPersistedAt = localPayload.save.lastPersistedAt;
     state.save.authority = "local-fallback";
     state.save.lastLoadProof = {
       source: "local-fallback",
@@ -2621,7 +2685,7 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         slot,
         playerId,
       }).catch(() => null);
-  const saved = authoritativeSave || (clearLocalState ? null : readStored());
+  const saved = authoritativeSave;
 
   if (!saved) {
     // Two shapes reach this branch:
@@ -2663,7 +2727,16 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
       deliveredAt: null,
     };
     state.delivery = { id: "blue-packet", outcome: "unknown" };
-    state.npcs.io.memory = [];
+    // Deliberately DO NOT pre-clear `state.npcs.io.memory` here.
+    // The saved-branch below (~2750) authoritatively re-hydrates it
+    // from `saved.memory` / `saved.npcs.io.memory`, and any code
+    // reached between this point and that assignment
+    // (`markStateDirty`, publishState mirrors, or a `renderText()`
+    // that touches `offeredJobsMemoryFromIoMemory`) must see the
+    // memory the seed carried — not `[]`. Soren pinned this at
+    // aftersign/main.js:2715 on the third PR #1642 review: an
+    // unconditional wipe here made two seeded slots hydrate
+    // identical (empty) offered-action sets at render time.
     state.save = {
       ...emptySave(),
       authority: authoritativeSave ? "server" : "local-fallback",
@@ -2700,7 +2773,11 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // catch a dropped-memory regression. No-op when breakMode is "".
   state.npcs.io.memory = breakMode === "drop-memory"
     ? []
-    : saved.memory ? clone(saved.memory) : [];
+    : (Array.isArray(saved.memory) && saved.memory.length > 0
+        ? clone(saved.memory)
+        : Array.isArray(saved.npcs?.io?.memory)
+          ? clone(saved.npcs.io.memory)
+          : []);
   // Red-guard hook (M-ORRA done-gate): deliberately drop Orra memory
   // on restore so the harness can prove recognition-loss goes red.
   state.npcs.orra.memory = breakMode === "orra-dropped"
@@ -3404,7 +3481,7 @@ const deliverPacket = (source = "hud-button") => {
     markStateDirty();
     setBeat("io-return-recognition");
   }, 1180);
-  persist({ dirty: true });
+  void persistAuthoritative({ dirty: true });
 };
 
 const resetSliceSave = async () => {
