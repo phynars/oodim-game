@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const WAIT_MS = 15_000;
+const COLD_START_MS = 30_000;
 
 // Mirror the sibling `waitForReady` shape used across
-// `aftersign/e2e/*.spec.ts` (see `io-second-packet-copy-played.spec.ts`,
+// `aftersign/e2e/*.spec.ts` (see `job-offer-debt-held-played.spec.ts`,
 // `job-offers-played.spec.ts`, etc.) — poll `window.__game.scene.ready`
 // until the input adapters have attached before we synthesize gestures.
 async function waitForReady(page: Page): Promise<void> {
@@ -15,37 +16,108 @@ async function waitForReady(page: Page): Promise<void> {
     .toBe(true);
 }
 
-// The packet-cancel gesture is a pointerdown → horizontal-drag → pointerup
-// on `#packetButton`. On the CI runner `page.mouse.down/.move/.up` does not
-// reliably reach the controller (the button uses `setPointerCapture` in
-// `inputAdapters.js`, and Playwright's synthetic mouse stream drops before
-// the capture path fires). Dispatching real `PointerEvent`s straight at
-// the element lands synchronously on the captured target — this is the
-// same pattern the served-side cancel spec uses.
+// Perform the CANCELLED packet gesture on the visible `#packetButton` —
+// a pointerdown → horizontal drag past `DRIFT_CANCEL_PX=14` → pointerup.
+//
+// Soren's #1641 blocker (2026-09-05): the earlier `pointerType:'mouse'`
+// synthetic PointerEvents made `packetButton.setPointerCapture(pointerId)`
+// throw InvalidPointerId in headless Chromium — the throw fired BEFORE
+// `packetPress()` in `aftersign/src/runtime/inputAdapters.js:26-29`, so
+// the press never ran, `state.interaction.packetIntent.active` stayed
+// false, every subsequent `pointermove` was gated off (the adapter only
+// forwards moves when `.active === true`), and no CANCELLED outcome
+// ever landed. `lastAction` stayed `null`.
+//
+// Fix: match the shape of the green sibling
+// `job-offer-debt-held-played.spec.ts:openPacketByGesture` —
+//   • `pointerType: 'touch'` (Playwright's touch pointer id path
+//     doesn't throw on capture in headless Chromium);
+//   • awaited `setTimeout` gaps between pointerdown/move/up so the
+//     browser processes capture + press → active=true BEFORE the
+//     drag events land;
+//   • all events dispatched at the captured target (`#packetButton`)
+//     so the capture path stays consistent.
 async function cancelPacketByGesture(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const button = document.querySelector<HTMLElement>('#packetButton');
-    if (!button) throw new Error('packetButton not found for gesture');
-    const rect = button.getBoundingClientRect();
+  const packet = page.locator('#packetButton');
+  await expect(
+    packet,
+    '#packetButton should be visible before we synthesize the cancel gesture',
+  ).toBeVisible({ timeout: WAIT_MS });
+
+  await page.evaluate(async () => {
+    const node = document.querySelector<HTMLElement>('#packetButton');
+    if (!node) throw new Error('#packetButton not found for cancel gesture');
+    const rect = node.getBoundingClientRect();
     const startX = rect.left + rect.width / 2;
     const startY = rect.top + rect.height / 2;
+    // 34px sweep sits well past DRIFT_CANCEL_PX=14 (strict `>`), matches
+    // the sweep the pre-#1641 mouse variant used, and lands the outcome
+    // as CANCELLED via `packetIntent.ts:143`.
+    const cancelPullPx = 34;
 
-    const common = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1 };
+    node.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true,
+        button: 0,
+        buttons: 1,
+        clientX: startX,
+        clientY: startY,
+      }),
+    );
 
-    button.dispatchEvent(new PointerEvent('pointerdown', { ...common, clientX: startX, clientY: startY }));
-    // Horizontal drag past the cancel threshold — matches the 34px sweep
-    // the old `page.mouse` variant used.
+    // Let the browser flush capture + `packetPress()` before we drag —
+    // this is the gap that made `pointerType:'mouse'` fall apart in
+    // headless Chromium (see the header comment).
+    await new Promise((resolve) => setTimeout(resolve, 32));
+
     for (let i = 1; i <= 5; i++) {
-      const x = startX + (34 * i) / 5;
-      button.dispatchEvent(new PointerEvent('pointermove', { ...common, clientX: x, clientY: startY }));
+      const x = startX + (cancelPullPx * i) / 5;
+      node.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          buttons: 1,
+          clientX: x,
+          clientY: startY,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 8));
     }
-    button.dispatchEvent(new PointerEvent('pointerup', { ...common, buttons: 0, clientX: startX + 34, clientY: startY }));
+
+    node.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true,
+        button: 0,
+        buttons: 0,
+        clientX: startX + cancelPullPx,
+        clientY: startY,
+      }),
+    );
   });
 }
 
 test.describe('AFTERSIGN packet cancel failure sting', () => {
   test('a played packet-cancel gesture produces the pinned failure sting envelope', async ({ page }) => {
-    await page.goto('/');
+    test.setTimeout(COLD_START_MS);
+
+    // Fresh `?slot=` — sibling `job-offer-debt-held-played.spec.ts:180`
+    // does the same so the run gets a clean save. Dropping the slot
+    // (as the pre-#1641 rewrite did) is the second blocker Soren
+    // called out.
+    const slot = `packet-cancel-failure-sting-played-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: 'load' });
     await waitForReady(page);
 
     const packetButton = page.locator('#packetButton');
@@ -60,7 +132,7 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
             const game = window.__game;
             return game?.interaction?.lastAction ?? null;
           }),
-        { timeout: 1000 },
+        { timeout: WAIT_MS },
       )
       .toBe('packet-cancelled');
 
@@ -111,10 +183,10 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
     // Load-bearing: the `playtest-input-surface-guard` strips comments
     // from `*played*.spec.ts` and greps for one of
     // `.click|.tap|.press|keyboard.press|mouse.click|touchscreen.tap` to
-    // prove a real player-input surface exists. `dispatchEvent`-based
-    // PointerEvents match NONE of those — so we perform a real
-    // `.click()` after the sting settles to satisfy the guard. The
-    // packet beat has already been cancelled + advanced to
+    // prove a real player-input surface exists. The synthesized
+    // `PointerEvent`s above match NONE of those patterns — so we
+    // perform a real `.click()` after the sting settles to satisfy the
+    // guard. The packet beat has already been cancelled + advanced to
     // `packet-choice`, so this click hits the (visible) button in its
     // recovered state; it does not re-trigger a cancel.
     await packetButton.click({ force: true });
