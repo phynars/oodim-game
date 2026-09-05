@@ -40,7 +40,15 @@ function readAftersignPlayableSurfaces(): Array<{ path: string; source: string }
     : playtests;
 }
 
-function hasPlayedKioskInteractionLoop(source: string): boolean {
+// Strip comments before scanning: a prose comment such as "this spec never
+// calls window.__game.input.*" must not trip the harness-input guard, and a
+// storage-key comment mentioning "kiosk" must not satisfy the surface check.
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+}
+
+function hasPlayedKioskInteractionLoop(rawSource: string): boolean {
+  const source = stripComments(rawSource);
   return (
     PHONE_VIEWPORT_PATTERN.test(source) &&
     KIOSK_SURFACE_PATTERN.test(source) &&
