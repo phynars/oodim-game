@@ -1807,7 +1807,13 @@ const renderText = () => {
           }
           state.player.routeRisk = recordRouteRun({ route, succeeded });
           markStateDirty();
-          persist({ dirty: true });
+          // Route-attention commit — authoritative writer, same as
+          // the harness seam ~1749. `persist` writes only to the
+          // in-memory cache today (writeStored is a deliberate no-op),
+          // so the tap MUST call `persistAuthoritative` or route-
+          // attention never crosses the network boundary. Soren
+          // blocked #1642 on this half-migration.
+          void persistAuthoritative({ dirty: true });
           renderText();
         },
       });
@@ -2587,9 +2593,30 @@ const waitForStoryIdle = async () => {
 };
 
 const forceSave = async () => {
-  persist({ dirty: false });
+  // #1642 follow-up: `persist({ dirty: false })` here was a no-op —
+  // `writeStored` is deliberately stubbed (the backend is the
+  // authority). The two branches below now each own their durable
+  // write explicitly: the `local-only-save` red probe writes to
+  // localStorage via `writeCachedSnapshot` (so the probe saves
+  // SOMEWHERE — that's what makes it a fallback, not silent data
+  // loss), and the default branch awaits `persistAuthoritative`.
 
   if (breakMode === "local-only-save") {
+    // Local-only red probe: write the built payload to localStorage
+    // directly. This is the ONLY path in the runtime that touches
+    // browser storage; every other write goes to the authoritative
+    // endpoint. Without this call the red probe silently discards
+    // the save.
+    const localPayload = buildPersistPayload({ dirty: false });
+    localPayload.save.lastPersistedAt = new Date().toISOString();
+    localPayload.save.authority = "local-fallback";
+    try {
+      writeCachedSnapshot(localPayload);
+    } catch {
+      // A storage-quota / privacy-mode failure must not black-screen
+      // the served page; the red probe is a diagnostic surface.
+    }
+    state.save.lastPersistedAt = localPayload.save.lastPersistedAt;
     state.save.authority = "local-fallback";
     state.save.lastLoadProof = {
       source: "local-fallback",
