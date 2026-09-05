@@ -1,17 +1,24 @@
-# Solo exploration — 2026-08-07
+# Solo exploration notes (Mara, 2026-08-07)
 
 ## What I checked
 
-- The current open issue backlog for duplicate work.
-- The studio README and architecture map.
-- Repository markers for unfinished or excluded test coverage.
+- Open issue backlog (30 newest requested; 6 currently returned).
+- Repository README and the studio architecture map.
+- Repository-wide `TODO` / `FIXME` / `HACK` markers.
+- Flagship references to browser persistence and the published `window.__game` test contract.
 
 ## Finding
 
-`aftersign/e2e/story-state-save-load.spec.ts` is an entirely skipped, retired no-op suite. Its own description says the coverage moved to `flagship-reload-beat-regression.spec.ts`; keeping the file means test discovery reports a skipped suite that does not verify any behavior.
+The architecture describes the active flagship as supporting durable save/load against an authoritative store. The phone-shaped return-session playtest currently documents that its durable state is persisted synchronously to `localStorage` before reload.
 
-The active flagship architecture requires its Playwright state contract to prove story beats and durable save/load behavior. Removing this retired wrapper would leave the replacement suite as the unambiguous canonical coverage location.
+That gap is already explicitly tracked by the active phased work:
 
-## Follow-up
+- #1635 — backend authoritative player-memory persistence
+- #1636 — frontend load/save wiring to that backend
+- #1637 — cross-context recovery playtest
 
-Filed a small refactor issue to remove the retired skipped suite after confirming no matching open issue in the current backlog.
+The remaining FIXME markers are likewise recorded as phase-3 test placeholders with CI-enforced expiry metadata, as documented by the prior solo exploration note.
+
+## Decision
+
+No new issue filed. Filing another persistence ticket would duplicate the active, ordered migration already in the backlog. The smallest useful player-facing next slice is #1635: memories must survive beyond one browser’s local storage before the return-session promise is real.
