@@ -536,10 +536,16 @@ const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const { readStored, writeStored } = createStoragePersistence({
+// Browser storage is deliberately not part of the player-memory authority
+// path. The backend receives every durable mutation; this no-op writer keeps
+// the persistence factory's synchronous cache seam from blocking a tap frame.
+const { writeStored: writeCachedSnapshot } = createStoragePersistence({
   storage: window.localStorage,
   storageKey,
 });
+const writeStored = () => {
+  void writeCachedSnapshot;
+};
 
 // Io's trust posture is a pure function of the delivery outcome
 // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
@@ -547,12 +553,11 @@ const { readStored, writeStored } = createStoragePersistence({
 const trustPostureForOutcome = (outcome) =>
   outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
 
-const localStored = readStored();
-const bootstrapPlayerId = localStored?.player?.id || "local-slice-player";
+const bootstrapPlayerId = "local-slice-player";
 const stored = await readAuthoritativeSave({
   slot,
   playerId: bootstrapPlayerId,
-}).catch(() => null) || localStored;
+}).catch(() => null);
 const packetIntent = new PacketIntentController();
 
 const orraMemoryFromStored = coerceOrraRecognitionMemory(stored?.npcs?.orra?.memory);
@@ -1741,7 +1746,7 @@ const publishState = () => {
         }
         state.player.routeRisk = recordRouteRun({ route, succeeded });
         markStateDirty();
-        persist({ dirty: true });
+        void persistAuthoritative({ dirty: true });
       },
     });
   };
@@ -2621,7 +2626,7 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         slot,
         playerId,
       }).catch(() => null);
-  const saved = authoritativeSave || (clearLocalState ? null : readStored());
+  const saved = authoritativeSave;
 
   if (!saved) {
     // Two shapes reach this branch:
@@ -3404,7 +3409,7 @@ const deliverPacket = (source = "hud-button") => {
     markStateDirty();
     setBeat("io-return-recognition");
   }, 1180);
-  persist({ dirty: true });
+  void persistAuthoritative({ dirty: true });
 };
 
 const resetSliceSave = async () => {
