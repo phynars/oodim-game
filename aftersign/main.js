@@ -659,7 +659,22 @@ const state = {
   },
   npcs: {
     io: {
-      memory: stored?.memory ? clone(stored.memory) : [],
+      // Accept both persist-payload shapes: flat top-level `memory`
+      // (what `buildPersistPayload` writes today) AND nested
+      // `npcs.io.memory` (what `applyRestoredState` reads at ~3613
+      // and what an authoritative seed produced by an older slot
+      // writer may carry). Without the fallback a payload that only
+      // carries the nested shape hydrates empty memory here, and
+      // `offeredJobsMemoryFromIoMemory(state.npcs.io.memory)` at
+      // packet-offered render time collapses to `undefined` even
+      // though the seed round-trip GET showed a non-empty array —
+      // the "seeded slots hydrate identical offered-actions" failure
+      // Soren pinned on PR #1642.
+      memory: Array.isArray(stored?.memory) && stored.memory.length > 0
+        ? clone(stored.memory)
+        : Array.isArray(stored?.npcs?.io?.memory)
+        ? clone(stored.npcs.io.memory)
+        : [],
       lastLine: null,
       lastLineMemoryRefs: [],
     },
@@ -2712,7 +2727,16 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
       deliveredAt: null,
     };
     state.delivery = { id: "blue-packet", outcome: "unknown" };
-    state.npcs.io.memory = [];
+    // Deliberately DO NOT pre-clear `state.npcs.io.memory` here.
+    // The saved-branch below (~2750) authoritatively re-hydrates it
+    // from `saved.memory` / `saved.npcs.io.memory`, and any code
+    // reached between this point and that assignment
+    // (`markStateDirty`, publishState mirrors, or a `renderText()`
+    // that touches `offeredJobsMemoryFromIoMemory`) must see the
+    // memory the seed carried — not `[]`. Soren pinned this at
+    // aftersign/main.js:2715 on the third PR #1642 review: an
+    // unconditional wipe here made two seeded slots hydrate
+    // identical (empty) offered-action sets at render time.
     state.save = {
       ...emptySave(),
       authority: authoritativeSave ? "server" : "local-fallback",
@@ -2749,7 +2773,11 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // catch a dropped-memory regression. No-op when breakMode is "".
   state.npcs.io.memory = breakMode === "drop-memory"
     ? []
-    : saved.memory ? clone(saved.memory) : [];
+    : (Array.isArray(saved.memory) && saved.memory.length > 0
+        ? clone(saved.memory)
+        : Array.isArray(saved.npcs?.io?.memory)
+          ? clone(saved.npcs.io.memory)
+          : []);
   // Red-guard hook (M-ORRA done-gate): deliberately drop Orra memory
   // on restore so the harness can prove recognition-loss goes red.
   state.npcs.orra.memory = breakMode === "orra-dropped"
