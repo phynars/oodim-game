@@ -1,47 +1,49 @@
 // AFTERSIGN — pin the served-page mloop memory-gate derivation.
 //
-// PR #1642 blocker (Soren's second REQUEST_CHANGES). The e2e
-// `aftersign/e2e/m-loop-divergent-offered-actions.playtest.spec.ts`
-// asserts that a FRESH seed and a RETURNING seed produce divergent
-// `data-mloop-memory-gate` attribute sets. The served-page renderer
-// derives the memory bag it hands `getMloopAvailableAction` via
-// `offeredJobsMemoryFromIoMemory(state.npcs.io.memory)`, whose
-// output shape is:
+// PR #1642 follow-up. This file's job is to pin the derivation path
+// the SERVED PAGE actually runs — not a related-but-different one.
 //
-//   fresh (empty memory)                    → undefined
-//   memory with a `sealed` outcome fact     → { priorOutcome: "completed" }
-//   memory with only `opened` outcome facts → { debtHeld: <count> }
+// The served page (`aftersign/main.js` ~line 1947) builds its mloop
+// memory bag inline like this:
 //
-// The prior `memoryGateFor` in `aftersign/mloop-copy.js` only read
-// `packetOutcome`, which those bags NEVER carry — so both fresh and
-// returning seeds fell through to `"fresh"`/`"default"` at render
-// time and the divergence assertion failed.
+//   const packetOutcomeFactObject = state.npcs.io.memory.find(
+//     (fact) => fact?.kind === "delivery-outcome",
+//   )?.object;
+//   const mloopMemory = packetOutcomeFactObject
+//     ? { packetOutcome: packetOutcomeFactObject }
+//     : {};
+//   ...
+//   const mloopAction = getMloopAvailableAction(offer.id, mloopMemory);
 //
-// This test feeds the three shapes `offeredJobsMemoryFromIoMemory`
-// can emit straight through `getMloopAvailableAction` and pins the
-// gate flip. A regression that quietly reverts `memoryGateFor` back
-// to `packetOutcome`-only reading will collapse the three assertions
-// below to a single "fresh" gate — an unmissable red.
+// The bag shape the gate consumes is therefore
+//   { packetOutcome: "sealed" } → returning
+//   { packetOutcome: "opened" } → deep-recall
+//   {}                          → fresh
+// — the LEGACY consumer-test shape, not the
+// `offeredJobsMemoryFromIoMemory` output (`{ priorOutcome } | { debtHeld }`)
+// which feeds `selectIoJobOffers` on a separate axis.
+//
+// Soren's non-blocking concern on the prior draft of this file was
+// exactly that: the earlier test drove the FEED-INTO-selectIoJobOffers
+// shape through `getMloopAvailableAction`, which is not what the
+// served page ever does. Rewriting the test around the actual
+// `packetOutcomeFactObject` → `mloopMemory` transform locks the
+// real served-page derivation.
 //
 // Kept apart from `aftersignMloopDivergence.contract.test.ts` (which
 // pins the SELECTION axis via `selectIoJobOffers`) because this file
 // pins the ACTION-GATE axis via `getMloopAvailableAction`. They are
 // two different consumers of the same underlying memory posture and
-// both need to diverge for the e2e to go green.
+// both need to diverge for the e2e
+// `aftersign/e2e/m-loop-divergent-offered-actions.playtest.spec.ts`
+// to go green.
 
 import { describe, expect, it } from "vitest";
-// The served page (`aftersign/main.js`) imports both these modules
-// straight from `aftersign/`. This test does the same so a reshape
-// of either import contract lights up here.
+// The served page (`aftersign/main.js`) imports this module straight
+// from `aftersign/`. This test does the same so a reshape of the
+// import contract lights up here.
 // eslint-disable-next-line import/no-relative-parent-imports
 import { getMloopAvailableAction } from "../../../../aftersign/mloop-copy.js";
-// eslint-disable-next-line import/no-relative-parent-imports
-import { offeredJobsMemoryFromIoMemory } from "../../../../aftersign/src/offeredJobsMemoryFromIoMemory.js";
-// eslint-disable-next-line import/no-relative-parent-imports
-import {
-  NPC_MEMORY_FACT_KIND,
-  NPC_MEMORY_OBJECT,
-} from "../../../../aftersign/src/npcMemoryFlagSchema.js";
 
 // A representative jobId from the mloop-copy action table so the row
 // exists and the returned `memoryGate` is the axis under test (not a
@@ -49,80 +51,137 @@ import {
 // all four gates (default / fresh / returning / deep-recall).
 const JOB_ID = "job-safe-delivery";
 
-describe("mloop memoryGate — served-page memory bag → gate", () => {
-  it("maps a fresh (empty) Io memory to the 'fresh' gate", () => {
-    const bag = offeredJobsMemoryFromIoMemory([]);
-    expect(bag).toBeUndefined();
+/**
+ * Replicate the served-page mloop-memory-bag derivation from
+ * `aftersign/main.js` (search for `packetOutcomeFactObject` — the
+ * ONE call site on the served page). Kept as a local helper so a
+ * refactor that extracts this shape into its own module can update
+ * both the served page and this test in one hop, and the test still
+ * pins the SAME transform the served page runs at render time.
+ *
+ * @param {Array<{ kind?: string, object?: string }>} ioMemory
+ * @returns {{ packetOutcome: string } | Record<string, never>}
+ */
+function servedPageMloopMemoryBag(
+  ioMemory: Array<{ kind?: string; object?: string }>,
+): { packetOutcome: string } | Record<string, never> {
+  const packetOutcomeFactObject = ioMemory.find(
+    (fact) => fact?.kind === "delivery-outcome",
+  )?.object;
+  return packetOutcomeFactObject
+    ? { packetOutcome: packetOutcomeFactObject }
+    : {};
+}
+
+describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
+  it("fresh Io memory (no delivery-outcome facts) folds to the 'fresh' gate", () => {
+    // The served page builds `mloopMemory = {}` when no
+    // delivery-outcome fact exists in `state.npcs.io.memory`.
+    // `memoryGateFor({})` falls through past debtHeld / priorOutcome
+    // / packetOutcome and returns "fresh" — the default posture the
+    // action-table's `fresh` row is authored for.
+    const bag = servedPageMloopMemoryBag([]);
+    expect(bag).toEqual({});
     const action = getMloopAvailableAction(JOB_ID, bag);
-    // An `undefined` bag folds to the default posture, which the
-    // action-table's `default` row is authored for and which the
-    // e2e treats as fresh-equivalent.
-    expect(action.memoryGate).toBe("default");
+    expect(action.memoryGate).toBe("fresh");
+    // The `fresh` row's action id must actually be authored — a
+    // future refactor that drops the row would flip this to the
+    // default fallback id and red here.
+    expect(action.id).toBe("mloop-safe-delivery-take");
   });
 
-  it("maps a returning (sealed-outcome) Io memory to the 'returning' gate", () => {
-    const bag = offeredJobsMemoryFromIoMemory([
+  it("a sealed delivery-outcome fact folds to the 'returning' gate", () => {
+    // Real seed shape used by the e2e
+    // `m-loop-divergent-offered-actions.playtest.spec.ts` — a durable
+    // fact whose `kind === "delivery-outcome"` and `object === "sealed"`.
+    // Additional fact fields (id / subject / sessionId) are ignored by
+    // the served-page derivation; only kind + object matter.
+    const bag = servedPageMloopMemoryBag([
       {
-        kind: NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME,
-        object: NPC_MEMORY_OBJECT.PACKET_SEALED,
+        kind: "delivery-outcome",
+        object: "sealed",
       },
     ]);
-    expect(bag).toEqual({ priorOutcome: "completed" });
+    expect(bag).toEqual({ packetOutcome: "sealed" });
     const action = getMloopAvailableAction(JOB_ID, bag);
     expect(action.memoryGate).toBe("returning");
+    expect(action.id).toBe("mloop-safe-delivery-again");
   });
 
-  it("maps a debt-held (opened-outcome) Io memory to the 'deep-recall' gate", () => {
-    const bag = offeredJobsMemoryFromIoMemory([
+  it("an opened delivery-outcome fact folds to the 'deep-recall' gate", () => {
+    const bag = servedPageMloopMemoryBag([
       {
-        kind: NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME,
-        object: NPC_MEMORY_OBJECT.PACKET_OPENED,
+        kind: "delivery-outcome",
+        object: "opened",
       },
     ]);
-    expect(bag).toEqual({ debtHeld: 1 });
+    expect(bag).toEqual({ packetOutcome: "opened" });
+    const action = getMloopAvailableAction(JOB_ID, bag);
+    expect(action.memoryGate).toBe("deep-recall");
+    // Deep-recall reuses the same "again" copy as returning today
+    // (both are "already seen the packet"); if a future authoring
+    // pass splits them, THIS assertion is what tells you to update
+    // the action table.
+    expect(action.id).toBe("mloop-safe-delivery-again");
+  });
+
+  it("ignores non-delivery-outcome facts when deriving the bag", () => {
+    // The served page's `find` is keyed strictly on
+    // `kind === "delivery-outcome"`. A route-attention fact (the
+    // OTHER durable fact kind Io ever emits — see
+    // `aftersign/src/npcMemoryFlagSchema.js` NPC_MEMORY_FACT_KIND)
+    // must NOT drift the gate to a returning posture.
+    const bag = servedPageMloopMemoryBag([
+      {
+        kind: "route-attention",
+        object: "done",
+      },
+    ]);
+    expect(bag).toEqual({});
+    const action = getMloopAvailableAction(JOB_ID, bag);
+    expect(action.memoryGate).toBe("fresh");
+  });
+
+  it("uses the FIRST delivery-outcome fact when multiple exist", () => {
+    // The served page uses `Array.prototype.find` — first match wins.
+    // A durable memory that carries an opened THEN a sealed outcome
+    // (a player who redeemed a wax-debt on a later loop) resolves to
+    // the FIRST recorded outcome. If a future ordering rule changes
+    // (e.g. "most recent wins"), THIS test is where the intent flips
+    // — do not silently update the assertion; update the served
+    // derivation and this test in one hop.
+    const bag = servedPageMloopMemoryBag([
+      { kind: "delivery-outcome", object: "opened" },
+      { kind: "delivery-outcome", object: "sealed" },
+    ]);
+    expect(bag).toEqual({ packetOutcome: "opened" });
     const action = getMloopAvailableAction(JOB_ID, bag);
     expect(action.memoryGate).toBe("deep-recall");
   });
 
-  it("pins the three gates as three DISTINCT values", () => {
-    // The e2e's load-bearing assertion is `returningKeys !=== freshKeys`
-    // at the fingerprint level, and the fingerprint includes
-    // `gate:${memoryGate}`. If any two of these ever collapse to
-    // the same string, the divergence assertion goes red — pin the
-    // distinctness explicitly so a future edit to `memoryGateFor`
-    // cannot silently flatten the axis.
-    const freshBag = offeredJobsMemoryFromIoMemory([]);
-    const returningBag = offeredJobsMemoryFromIoMemory([
-      {
-        kind: NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME,
-        object: NPC_MEMORY_OBJECT.PACKET_SEALED,
-      },
+  it("pins fresh / returning / deep-recall as three DISTINCT gates", () => {
+    // The e2e's load-bearing assertion at
+    // `m-loop-divergent-offered-actions.playtest.spec.ts` requires
+    // `returningKeys !=== freshKeys` at the element level, and the
+    // key includes `gate:${memoryGate}`. If any two of these ever
+    // collapse to the same string on the served derivation, the
+    // divergence goes red — pin the distinctness explicitly.
+    const freshBag = servedPageMloopMemoryBag([]);
+    const returningBag = servedPageMloopMemoryBag([
+      { kind: "delivery-outcome", object: "sealed" },
     ]);
-    const debtHeldBag = offeredJobsMemoryFromIoMemory([
-      {
-        kind: NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME,
-        object: NPC_MEMORY_OBJECT.PACKET_OPENED,
-      },
+    const openedBag = servedPageMloopMemoryBag([
+      { kind: "delivery-outcome", object: "opened" },
     ]);
 
     const gates = new Set([
       getMloopAvailableAction(JOB_ID, freshBag).memoryGate,
       getMloopAvailableAction(JOB_ID, returningBag).memoryGate,
-      getMloopAvailableAction(JOB_ID, debtHeldBag).memoryGate,
+      getMloopAvailableAction(JOB_ID, openedBag).memoryGate,
     ]);
     expect(gates.size).toBe(3);
-  });
-
-  it("still honors the legacy packetOutcome consumer-test shape", () => {
-    // The existing consumer suites (`aftersignConfirmFeel.consumer.test.ts`
-    // and friends) construct `{ packetOutcome: "sealed"|"opened" }`
-    // bags directly. `memoryGateFor` reads BOTH shapes so this
-    // migration does not force a rewrite of those tests.
-    expect(
-      getMloopAvailableAction(JOB_ID, { packetOutcome: "sealed" }).memoryGate,
-    ).toBe("returning");
-    expect(
-      getMloopAvailableAction(JOB_ID, { packetOutcome: "opened" }).memoryGate,
-    ).toBe("deep-recall");
+    expect(gates.has("fresh")).toBe(true);
+    expect(gates.has("returning")).toBe(true);
+    expect(gates.has("deep-recall")).toBe(true);
   });
 });
