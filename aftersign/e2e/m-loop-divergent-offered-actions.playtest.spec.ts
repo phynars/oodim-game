@@ -161,6 +161,22 @@ async function collectOfferedActions(
   const context = await newPhoneContext(browser);
   const page = await context.newPage();
 
+  // Capture any browser console.error emitted during boot. The runtime
+  // now (PR #1642 follow-up) logs `[aftersign boot] readAuthoritativeSave
+  // failed …` on a real fetch/middleware error instead of swallowing it
+  // silently. If two slots ever hydrate identical empty state (Soren's
+  // hypothesis on the first CI red), this array carries the actual
+  // error message the divergence assertion couldn't see before.
+  const bootConsoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      const text = msg.text();
+      if (text.includes("[aftersign boot]")) {
+        bootConsoleErrors.push(text);
+      }
+    }
+  });
+
   // Seed the authoritative store BEFORE navigating to the served
   // page — boot fires a single GET against
   //   /aftersign/save/${BOOTSTRAP_PLAYER_ID}/${slot}
@@ -180,8 +196,44 @@ async function collectOfferedActions(
     `seed PUT for slot ${slot} must succeed (HTTP ${seedResponse.status()})`,
   ).toBe(true);
 
+  // Round-trip verify: read back the seed through the SAME endpoint
+  // the served page boot will hit. If this GET returns the wrong
+  // payload (null / stripped memory / different id encoding), boot
+  // will hydrate empty state and the divergence assertion fails with
+  // an opaque "actions equal" — this check catches the middleware /
+  // encoding bug at the seed step, where the error message names the
+  // slot instead of hiding behind DOM equality.
+  const verifyResponse = await page.request.get(
+    `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(BOOTSTRAP_PLAYER_ID)}/${encodeURIComponent(slot)}`,
+    { headers: { accept: "application/json" } },
+  );
+  expect(
+    verifyResponse.ok(),
+    `seed round-trip GET for slot ${slot} must succeed (HTTP ${verifyResponse.status()})`,
+  ).toBe(true);
+  const verifyBody = (await verifyResponse.json()) as {
+    payload?: { memory?: unknown } | null;
+  };
+  expect(
+    verifyBody?.payload,
+    `seed round-trip GET for slot ${slot} must return the payload the served page will read at boot`,
+  ).not.toBeNull();
+  expect(
+    Array.isArray(verifyBody?.payload?.memory),
+    `seed round-trip payload for slot ${slot} must carry a memory array (fresh: length 0; returning: length > 0)`,
+  ).toBe(true);
+
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
   await waitForReady(page);
+
+  // If boot logged a load failure, surface it BEFORE the divergence
+  // assertion — an error message like "readAuthoritativeSave failed"
+  // is the actual diagnostic; two empty slots' identical DOM is the
+  // symptom that hides it.
+  expect(
+    bootConsoleErrors,
+    `boot must not log an [aftersign boot] readAuthoritativeSave failure for slot ${slot}`,
+  ).toEqual([]);
 
   await expect(
     page.locator('[data-beat-id="packet-offered"]'),

@@ -554,10 +554,27 @@ const trustPostureForOutcome = (outcome) =>
   outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
 
 const bootstrapPlayerId = "local-slice-player";
+// PR #1642 follow-up (Soren's second REQUEST_CHANGES). The prior
+// `.catch(() => null)` swallowed EVERY boot-read failure silently —
+// which is exactly the trap the migration is supposed to close.
+// Cold slot is still a null (server returns 404 → `readAuthoritativeSave`
+// resolves to null without throwing), so the null-guard downstream
+// keeps working. The remaining branch — a REAL fetch or server
+// error — now surfaces on `console.error`, which Playwright specs
+// can capture via `page.on("console", ...)` to diagnose a silent
+// boot regression instead of watching two slots hydrate identical
+// empty state and reporting "divergence failed".
 const stored = await readAuthoritativeSave({
   slot,
   playerId: bootstrapPlayerId,
-}).catch(() => null);
+}).catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[aftersign boot] readAuthoritativeSave failed — booting with empty state",
+    { slot, playerId: bootstrapPlayerId, error: err?.message ?? String(err) },
+  );
+  return null;
+});
 const packetIntent = new PacketIntentController();
 
 const orraMemoryFromStored = coerceOrraRecognitionMemory(stored?.npcs?.orra?.memory);
