@@ -270,11 +270,14 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       if (probe.flashOpacity > peakFlashOpacity) {
         peakFlashOpacity = probe.flashOpacity;
       }
-      // pacing: fixed 10ms gap between peak-sampling probes across the
-      // ~180ms live-sting window — this is deliberate wall-clock
-      // spacing to catch multiple sine crests within the falloff
-      // envelope, not a state wait.  See e2e-shared/no-wall-clock-waits.
-      await page.waitForTimeout(peakSampleIntervalMs);
+      // Fixed 10ms gap between peak-sampling probes across the ~180ms
+      // live-sting window — deliberate wall-clock spacing to catch
+      // multiple sine crests within the falloff envelope, not a state
+      // wait.  The no-wall-clock-waits guard (e2e-shared/
+      // no-wall-clock-waits/check.mjs) only honours a marker on the
+      // call line or the line immediately above it, so the `// pacing`
+      // marker MUST sit on the call line below — do not move it.
+      await page.waitForTimeout(peakSampleIntervalMs); // pacing — sampling cadence across the live sting window
     }
 
     expect(captured.feedback).toMatchObject({
