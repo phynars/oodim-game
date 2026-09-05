@@ -18,7 +18,13 @@
   },
   "durable_objects": {
     "bindings": [
-      { "name": "ECHO_ROOM", "class_name": "EchoRoom" }
+      { "name": "ECHO_ROOM", "class_name": "EchoRoom" },
+      // AFTERSIGN authoritative player-memory (issue #1635). One DO instance
+      // per stable player identity (idFromName(x-player-id header)); persists
+      // delivery-outcome + route-attention facts durably so records survive
+      // any client-side localStorage clear. Class exported from src/server.ts
+      // (re-export of apps/web/src/aftersign/playerMemoryBackend.ts).
+      { "name": "PLAYER_MEMORY", "class_name": "AftersignPlayerMemory" }
     ]
   },
   // Per-IP throttle on the unauthenticated /ws upgrade (2026-07-09 hardening):
@@ -28,7 +34,12 @@
     { "name": "WS_RATELIMIT", "namespace_id": "1101", "simple": { "limit": 20, "period": 60 } }
   ],
   "migrations": [
-    { "tag": "v1", "new_classes": ["EchoRoom"] }
+    { "tag": "v1", "new_classes": ["EchoRoom"] },
+    // AFTERSIGN player-memory (issue #1635) — new DO class introduced by
+    // this migration. Deploy-only concern; no data migration since the
+    // class is new. Persisted storage is per-instance
+    // (state.storage.get/put) and starts empty.
+    { "tag": "v2", "new_classes": ["AftersignPlayerMemory"] }
   ],
   "routes": [
     { "pattern": "game.oodim.com", "custom_domain": true }
