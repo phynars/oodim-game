@@ -21,6 +21,15 @@
 
 export { EchoRoom } from "../agar/server/worker";
 
+// AFTERSIGN authoritative player-memory backend (issue #1635). The DO
+// class is re-exported so wrangler can locate it during bundle/deploy;
+// the router is called from the fetch handler below. The `/player-memory`
+// endpoint accepts GET (read) and POST (merge-upsert) keyed by the
+// `x-player-id` header — a durable record that outlives any client-side
+// localStorage clear.
+export { AftersignPlayerMemory } from "../apps/web/src/aftersign/playerMemoryBackend";
+import { handlePlayerMemoryRequest } from "../apps/web/src/aftersign/playerMemoryBackend";
+
 /** True when a browser-sent Origin is allowed to open the /ws socket. Only a
  *  PRESENT, non-allowed origin is rejected by the caller (absent → allowed). */
 export function isAllowedWsOrigin(origin: string): boolean {
@@ -43,6 +52,15 @@ interface Env {
     idFromName: (name: string) => unknown;
     get: (id: unknown) => { fetch: (request: Request) => Promise<Response> };
   };
+  // AFTERSIGN player-memory DO namespace (wrangler.jsonc [[durable_objects]]).
+  // Bound as `PLAYER_MEMORY`; class `AftersignPlayerMemory`. Handles GET/POST
+  // to `/player-memory`, keyed by the `x-player-id` request header.
+  PLAYER_MEMORY: {
+    idFromName: (name: string) => { toString(): string };
+    get: (id: { toString(): string }) => {
+      fetch: (request: Request) => Promise<Response>;
+    };
+  };
   // Workers Rate Limiting binding (wrangler.jsonc [[ratelimits]]). Best-effort
   // per-key limiter enforced at the edge; a no-op in `wrangler dev`. Optional
   // so a config without it (or local dev) still routes.
@@ -52,6 +70,14 @@ interface Env {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // AFTERSIGN authoritative player-memory endpoint (issue #1635).
+    // Routes /player-memory GET/POST to the DO stub keyed by the
+    // `x-player-id` header. Non-matching URLs return null so we fall
+    // through to /ws + ASSETS below.
+    const playerMemoryResponse = await handlePlayerMemoryRequest(request, env);
+    if (playerMemoryResponse !== null) return playerMemoryResponse;
+
     if (url.pathname === "/ws") {
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedWsOrigin(origin)) {
