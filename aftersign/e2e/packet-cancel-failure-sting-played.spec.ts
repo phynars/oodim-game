@@ -199,30 +199,46 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
     // (sin() zero-crossings + Math.round quantization).  The gate
     // still fires when the FIRST pass sees lastAction+active+flash;
     // the peaks give the assertion block real amplitude to check.
+    // Soren's #1641 iter-6 REQUEST_CHANGES (peak still reads 0):
+    // The previous version accumulated `peakShakeXAbs` INSIDE the
+    // `expect.poll` predicate — but `expect.poll` resolves on the
+    // first frame the predicate returns `true`, which is the FIRST
+    // frame where `lastAction === 'packet-cancelled' && active &&
+    // flashOpacity > 0`.  That first passing frame is progress≈0,
+    // where `sin(0)=0` → `hudShakeX=0` → `peakShakeXAbs=0`, and
+    // then the poll STOPS.  A "peak" was never accumulated across
+    // the live window; it was a single-frame read dressed as a
+    // peak.  Fix: split the wait into TWO phases —
+    //   (1) an `expect.poll` gate that resolves as soon as we see
+    //       the first live-sting frame + stamps `snapshot` (so the
+    //       `toMatchObject` assertion has a live moment to pin to);
+    //   (2) a dedicated peak-sampling loop that keeps sampling for
+    //       the rest of the ~180ms live window at short intervals,
+    //       accumulating `peakShakeXAbs` and `peakFlashOpacity`
+    //       across ALL frames.  The crest near progress≈0.1 lands
+    //       inside this loop, so the peak necessarily stamps
+    //       non-zero (|falloff * sin(0.1π * 5)| = |0.9 * sin(π/2)|
+    //       ≈ 0.9 → hudShakeX ≈ Math.round(0.9 * 8) = 7).
     let snapshot: CancelSnapshot | null = null;
     let peakShakeXAbs = 0;
     let peakFlashOpacity = 0;
+
+    // Phase 1: gate — resolve on the first live-sting frame.
     await expect
       .poll(
         async () => {
           const next = await readCancelSnapshot(page);
-          if (next.feedback?.active === true) {
-            const shakeXAbs = Math.abs(next.hudShakeX);
-            if (shakeXAbs > peakShakeXAbs) peakShakeXAbs = shakeXAbs;
-            if (next.flashOpacity > peakFlashOpacity) {
-              peakFlashOpacity = next.flashOpacity;
-            }
-          }
-          // Only stamp `snapshot` once we have a passing frame — that
-          // pins the toMatchObject assertion below to a live-sting
-          // moment (active === true), the same guarantee the pre-edit
-          // gate provided.
           if (
             next.lastAction === 'packet-cancelled' &&
             next.feedback?.active === true &&
             next.flashOpacity > 0
           ) {
             snapshot = next;
+            const shakeXAbs = Math.abs(next.hudShakeX);
+            if (shakeXAbs > peakShakeXAbs) peakShakeXAbs = shakeXAbs;
+            if (next.flashOpacity > peakFlashOpacity) {
+              peakFlashOpacity = next.flashOpacity;
+            }
             return true;
           }
           return false;
@@ -235,6 +251,27 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
     // without a snapshot with `feedback.active === true`).
     if (!snapshot) throw new Error('cancel snapshot never captured');
     const captured: CancelSnapshot = snapshot;
+
+    // Phase 2: peak-sampling loop.  Sting duration is 180ms; the gate
+    // above resolved somewhere in the first ~16-32ms, so we still have
+    // ~150ms of live window to sample.  Sample at ~10ms intervals for
+    // up to 220ms (safety margin past durationMs) — this catches
+    // multiple sine crests within the falloff envelope.  We stop as
+    // soon as `active` goes false (sting decayed) OR the budget
+    // elapses, whichever comes first.
+    const peakSamplingBudgetMs = 220;
+    const peakSampleIntervalMs = 10;
+    const peakSamplingStart = Date.now();
+    while (Date.now() - peakSamplingStart < peakSamplingBudgetMs) {
+      const probe = await readCancelSnapshot(page);
+      if (probe.feedback?.active !== true) break;
+      const shakeXAbs = Math.abs(probe.hudShakeX);
+      if (shakeXAbs > peakShakeXAbs) peakShakeXAbs = shakeXAbs;
+      if (probe.flashOpacity > peakFlashOpacity) {
+        peakFlashOpacity = probe.flashOpacity;
+      }
+      await page.waitForTimeout(peakSampleIntervalMs);
+    }
 
     expect(captured.feedback).toMatchObject({
       active: true,
