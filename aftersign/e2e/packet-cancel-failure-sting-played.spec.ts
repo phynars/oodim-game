@@ -270,6 +270,10 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       if (probe.flashOpacity > peakFlashOpacity) {
         peakFlashOpacity = probe.flashOpacity;
       }
+      // pacing: fixed 10ms gap between peak-sampling probes across the
+      // ~180ms live-sting window — this is deliberate wall-clock
+      // spacing to catch multiple sine crests within the falloff
+      // envelope, not a state wait.  See e2e-shared/no-wall-clock-waits.
       await page.waitForTimeout(peakSampleIntervalMs);
     }
 
