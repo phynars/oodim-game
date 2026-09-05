@@ -118,6 +118,10 @@ async function newPhoneContext(browser: Browser) {
   });
 }
 
+function uniqueSlotSuffix(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
     () => window.__game?.scene?.ready === true,
@@ -270,7 +274,7 @@ test.describe("AFTERSIGN M-LOOP divergent offered actions", () => {
   }) => {
     test.setTimeout(COLD_START_MS);
 
-    const stamp = Date.now();
+    const stamp = uniqueSlotSuffix();
     const freshSlot = `m-loop-divergent-fresh-${stamp}`;
     const returningSlot = `m-loop-divergent-returning-${stamp}`;
 
