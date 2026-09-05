@@ -38,6 +38,7 @@ export default defineConfig({
       "apps/web/src/aftersign/jobOfferActionFingerprint.consumer.test.ts",
       "apps/web/src/aftersign/twoRoundOfferTapDivergence.consumer.test.ts",
       "apps/web/src/aftersign/aftersignKioskInteractionLoopSurface.test.ts",
+      "apps/web/src/aftersign/playerMemoryBackend.test.ts",
     ],
   },
 });
