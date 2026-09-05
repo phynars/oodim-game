@@ -134,6 +134,25 @@ type CancelSnapshot = {
 // One `page.evaluate` per poll pass keeps the snapshot atomic; we
 // re-poll until `lastAction === 'packet-cancelled'` AND the sting is
 // still live, then assert on the returned snapshot directly.
+//
+// Soren's #1641 iter-4 REQUEST_CHANGES (shake probe times to zero):
+// `--confirm-shake-x` is written every render frame as
+// `${confirmEnvelope.hudShakeX - Math.round(failureWobble * hudShakePx)}px`
+// (aftersign/main.js:3820). `failureWobble = falloff * sin(progress *
+// π * wobbleCycles)` with `wobbleCycles=5` — a sine that crosses ZERO
+// at progress=0, 0.2, 0.4, 0.6, 0.8, 1.0 (six times across the 180ms
+// window).  Plus the `Math.round` snaps any `|failureWobble * 8| <
+// 0.5` frame to 0.  So a single-snapshot read is not a reliable probe
+// of "the shake shipped": the sting IS shaking, but the CSS var reads
+// 0 at any zero-crossing or subthreshold frame.
+//
+// Fix: instead of asserting on ONE snapshot's `hudShakeX`, accumulate
+// the PEAK |hudShakeX| observed across every poll pass while the sting
+// is live, then assert on the peak.  The peak necessarily rides the
+// oscillation crests (|falloff * sin| ≈ 1 * hudShakePx=8 near
+// progress≈0.1) and stays non-zero through Math.round.  This matches
+// Soren's second option: "retime the shake probe" — we now sample it
+// across the whole live window rather than at a single moment.
 async function readCancelSnapshot(page: Page): Promise<CancelSnapshot> {
   return page.evaluate((): CancelSnapshot => {
     const game = window.__game;
@@ -173,18 +192,42 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
     // there is no way the 180ms rAF decay can settle `active` between
     // the two reads — the prior split-read version could red exactly
     // that way (see readCancelSnapshot header).
+    //
+    // We ALSO track the peak |hudShakeX| and peak flashOpacity across
+    // every poll pass — see readCancelSnapshot's header comment for
+    // why the shake probe cannot be asserted on a single snapshot
+    // (sin() zero-crossings + Math.round quantization).  The gate
+    // still fires when the FIRST pass sees lastAction+active+flash;
+    // the peaks give the assertion block real amplitude to check.
     let snapshot: CancelSnapshot | null = null;
+    let peakShakeXAbs = 0;
+    let peakFlashOpacity = 0;
     await expect
       .poll(
         async () => {
-          snapshot = await readCancelSnapshot(page);
-          return (
-            snapshot.lastAction === 'packet-cancelled' &&
-            snapshot.feedback?.active === true &&
-            snapshot.flashOpacity > 0
-          );
+          const next = await readCancelSnapshot(page);
+          if (next.feedback?.active === true) {
+            const shakeXAbs = Math.abs(next.hudShakeX);
+            if (shakeXAbs > peakShakeXAbs) peakShakeXAbs = shakeXAbs;
+            if (next.flashOpacity > peakFlashOpacity) {
+              peakFlashOpacity = next.flashOpacity;
+            }
+          }
+          // Only stamp `snapshot` once we have a passing frame — that
+          // pins the toMatchObject assertion below to a live-sting
+          // moment (active === true), the same guarantee the pre-edit
+          // gate provided.
+          if (
+            next.lastAction === 'packet-cancelled' &&
+            next.feedback?.active === true &&
+            next.flashOpacity > 0
+          ) {
+            snapshot = next;
+            return true;
+          }
+          return false;
         },
-        { timeout: WAIT_MS },
+        { timeout: WAIT_MS, intervals: [16, 32, 64] },
       )
       .toBe(true);
 
@@ -202,10 +245,16 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       hudDropPx: 2,
       flashAlpha: 0.34,
     });
-    expect(Math.abs(captured.hudShakeX)).toBeGreaterThan(0);
+    // Assert on the PEAK shake accumulated across the live window, not
+    // on the snapshot-time value — the sting IS shaking (peak ≈ 8px on
+    // the first oscillation crest at progress≈0.1) but the CSS var
+    // reads 0 at sine zero-crossings and at sub-integer wobble frames
+    // after Math.round.  See readCancelSnapshot header for the math.
+    expect(peakShakeXAbs).toBeGreaterThan(0);
     expect(captured.hudShakeY).toBeGreaterThanOrEqual(0);
     expect(captured.flashOpacity).toBeGreaterThan(0);
-    expect(captured.flashOpacity).toBeLessThanOrEqual(0.34);
+    expect(peakFlashOpacity).toBeGreaterThan(0);
+    expect(peakFlashOpacity).toBeLessThanOrEqual(0.34);
 
     // Wait for the sting to decay — this proves the 180ms rAF window
     // completes.  Kept as a separate poll because the assertion is
