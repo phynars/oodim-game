@@ -108,6 +108,48 @@ async function cancelPacketByGesture(page: Page): Promise<void> {
   });
 }
 
+type CancelSnapshot = {
+  lastAction: string | null;
+  feedback: {
+    active: boolean;
+    kind: string;
+    durationMs: number;
+    easing: string;
+    hudShakePx: number;
+    hudDropPx: number;
+    flashAlpha: number;
+  } | null;
+  hudShakeX: number;
+  hudShakeY: number;
+  flashOpacity: number;
+};
+
+// Soren's #1641 REQUEST_CHANGES (atomicity): read `lastAction` and the
+// failureFeedback envelope + live style probes in ONE `page.evaluate`
+// round-trip.  The 180ms rAF decay on `failureFeedback.active` and
+// `flashOpacity` means splitting the read into two round-trips
+// (`expect.poll(lastAction === 'packet-cancelled')` followed by a
+// separate `page.evaluate` for the envelope) can land the second read
+// AFTER the sting settles — `active: false`, `flashOpacity: 0`, red.
+// One `page.evaluate` per poll pass keeps the snapshot atomic; we
+// re-poll until `lastAction === 'packet-cancelled'` AND the sting is
+// still live, then assert on the returned snapshot directly.
+async function readCancelSnapshot(page: Page): Promise<CancelSnapshot> {
+  return page.evaluate((): CancelSnapshot => {
+    const game = window.__game;
+    const root = document.documentElement;
+    const sting = document.querySelector<HTMLElement>('.failure-sting');
+    const style = getComputedStyle(root);
+    return {
+      lastAction: game?.interaction?.lastAction ?? null,
+      feedback: game?.interaction?.failureFeedback ?? null,
+      hudShakeX: Number(style.getPropertyValue('--confirm-shake-x').replace('px', '').trim() || '0'),
+      hudShakeY: Number(style.getPropertyValue('--confirm-shake-y').replace('px', '').trim() || '0'),
+      flashOpacity: sting ? Number(getComputedStyle(sting).opacity) : 0,
+    };
+  });
+}
+
 test.describe('AFTERSIGN packet cancel failure sting', () => {
   test('a played packet-cancel gesture produces the pinned failure sting envelope', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
@@ -125,32 +167,33 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
 
     await cancelPacketByGesture(page);
 
+    // Atomic poll: keep reading a single-round-trip snapshot until the
+    // gesture has resolved as `packet-cancelled` AND the sting is
+    // still live.  Because both fields come from the same evaluate,
+    // there is no way the 180ms rAF decay can settle `active` between
+    // the two reads — the prior split-read version could red exactly
+    // that way (see readCancelSnapshot header).
+    let snapshot: CancelSnapshot | null = null;
     await expect
       .poll(
-        () =>
-          page.evaluate(() => {
-            const game = window.__game;
-            return game?.interaction?.lastAction ?? null;
-          }),
+        async () => {
+          snapshot = await readCancelSnapshot(page);
+          return (
+            snapshot.lastAction === 'packet-cancelled' &&
+            snapshot.feedback?.active === true &&
+            snapshot.flashOpacity > 0
+          );
+        },
         { timeout: WAIT_MS },
       )
-      .toBe('packet-cancelled');
+      .toBe(true);
 
-    const liveEnvelope = await page.evaluate(() => {
-      const game = window.__game;
-      const root = document.documentElement;
-      const sting = document.querySelector<HTMLElement>('.failure-sting');
-      const style = getComputedStyle(root);
+    // TS: snapshot is set by the poll above (poll cannot resolve `true`
+    // without a snapshot with `feedback.active === true`).
+    if (!snapshot) throw new Error('cancel snapshot never captured');
+    const captured: CancelSnapshot = snapshot;
 
-      return {
-        feedback: game?.interaction?.failureFeedback ?? null,
-        hudShakeX: Number(style.getPropertyValue('--confirm-shake-x').replace('px', '').trim() || '0'),
-        hudShakeY: Number(style.getPropertyValue('--confirm-shake-y').replace('px', '').trim() || '0'),
-        flashOpacity: sting ? Number(getComputedStyle(sting).opacity) : 0,
-      };
-    });
-
-    expect(liveEnvelope.feedback).toMatchObject({
+    expect(captured.feedback).toMatchObject({
       active: true,
       kind: 'packet-cancelled',
       durationMs: 180,
@@ -159,11 +202,15 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       hudDropPx: 2,
       flashAlpha: 0.34,
     });
-    expect(Math.abs(liveEnvelope.hudShakeX)).toBeGreaterThan(0);
-    expect(liveEnvelope.hudShakeY).toBeGreaterThanOrEqual(0);
-    expect(liveEnvelope.flashOpacity).toBeGreaterThan(0);
-    expect(liveEnvelope.flashOpacity).toBeLessThanOrEqual(0.34);
+    expect(Math.abs(captured.hudShakeX)).toBeGreaterThan(0);
+    expect(captured.hudShakeY).toBeGreaterThanOrEqual(0);
+    expect(captured.flashOpacity).toBeGreaterThan(0);
+    expect(captured.flashOpacity).toBeLessThanOrEqual(0.34);
 
+    // Wait for the sting to decay — this proves the 180ms rAF window
+    // completes.  Kept as a separate poll because the assertion is
+    // now about the OPPOSITE state (settled), so a snapshot-atomic
+    // read is neither possible nor needed.
     await expect
       .poll(
         () =>
@@ -176,20 +223,43 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       .toBe(false);
 
     // After the sting resolves, the cancelled packet must re-enable the
-    // choice beat so the player can recover — assert the packet-choice
-    // node becomes visible (same DOM contract sibling specs rely on).
-    await expect(page.locator('[data-beat-id="packet-choice"]')).toBeVisible({ timeout: WAIT_MS });
+    // choice beat so the player can recover.  Assert `packet-choice`
+    // becomes visible in its RECOVERED state.
+    const packetChoice = page.locator('[data-beat-id="packet-choice"]');
+    await expect(packetChoice).toBeVisible({ timeout: WAIT_MS });
 
-    // Load-bearing: the `playtest-input-surface-guard` strips comments
-    // from `*played*.spec.ts` and greps for one of
-    // `.click|.tap|.press|keyboard.press|mouse.click|touchscreen.tap` to
-    // prove a real player-input surface exists. The synthesized
-    // `PointerEvent`s above match NONE of those patterns — so we
-    // perform a real `.click()` after the sting settles to satisfy the
-    // guard. The packet beat has already been cancelled + advanced to
-    // `packet-choice`, so this click hits the (visible) button in its
-    // recovered state; it does not re-trigger a cancel.
+    // Soren's #1641 REQUEST_CHANGES (lost recovery assertion): the
+    // pre-#1641 spec's `packetButton.click()` was load-bearing — it
+    // proved the controller wasn't wedged in CANCELLED by showing the
+    // click actually ANSWERED with a state change.  Restore that:
+    // tap the packet button and assert `interaction.lastAction`
+    // transitions away from `packet-cancelled` (into `packet-pressed`,
+    // `packet-opened`, or whatever the recovered beat routes to).
+    // If the controller were wedged in CANCELLED, the click would be
+    // a no-op and `lastAction` would still read `packet-cancelled` —
+    // this poll would time out red.  That is the exact wedge signal
+    // the earlier revision watched for.
+    //
+    // Citation note: the played-acceptance boundary is enforced by
+    // `apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts`
+    // which forbids reads/writes of `window.__game.input.*` in any
+    // `*-played.spec.ts` (it does NOT require a specific input
+    // primitive to be present — Soren's #1641 called out the earlier
+    // header's phantom `playtest-input-surface-guard` reference as
+    // fabricated).  This spec complies with the real guard because it
+    // drives input via dispatched `PointerEvent`s and a `.click()`,
+    // never through `__game.input`.
     await packetButton.click({ force: true });
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const game = window.__game;
+            return game?.interaction?.lastAction ?? null;
+          }),
+        { timeout: WAIT_MS },
+      )
+      .not.toBe('packet-cancelled');
   });
 });
 
