@@ -4,9 +4,35 @@ import { expect, test } from "@playwright/test";
 // M-LOOP uses player.routeRisk as load-bearing progression input; if the
 // reset surface leaves it behind, a fresh slice can inherit the prior run's
 // divergent offered actions.
+//
+// Seed vector — server-authoritative endpoint (PR #1636 / #1642).
+//
+// The served page no longer boots from `localStorage`. `aftersign/main.js`
+// calls `readAuthoritativeSave({ slot, playerId: "local-slice-player" })`
+// at boot; the response wins and the prior `readStored()` fallback is
+// gone (PR #1642). Any seed MUST be PUT into the same authoritative
+// store the served page will read:
+//   PUT /aftersign/save/${BOOTSTRAP_PLAYER_ID}/${slot}
+//   body: { payload: <persist payload shape> }
+// (Endpoint owner: aftersign/vite.config.ts →
+// aftersignAuthoritativeSaveMiddleware.)
+//
+// The bootstrap playerId is the fixed `"local-slice-player"` string
+// hardcoded in `aftersign/main.js` around line 556 — it is NOT the
+// `player.id` inside the seeded payload. Once the seed is loaded
+// state.player.id becomes the payload's id, but the READ path uses
+// the bootstrap constant, so the seed MUST be PUT under it.
+//
+// Sibling specs on the same migration:
+//   - `memory-divergence-phone-playtest.spec.ts`
+//   - `m-loop-divergent-offered-actions.playtest.spec.ts`
 
 const WAIT_MS = 10_000;
-const STORAGE_PREFIX = "aftersign:kiosk-slice:";
+
+// See boot in aftersign/main.js (~line 556): the read is always keyed
+// on this fixed bootstrap id. Any seed must be PUT under it.
+const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 const RETURNING_ROUTE_RISK_SAVE = {
   beat: "packet-offered",
@@ -54,15 +80,51 @@ test.describe("AFTERSIGN reset route-risk isolation", () => {
     });
     const page = await context.newPage();
     const slot = `reset-route-risk-${Date.now()}`;
-    await page.addInitScript(
-      ({ key, value }) => {
-        window.localStorage.setItem(key, value);
-      },
-      {
-        key: `${STORAGE_PREFIX}${slot}`,
-        value: JSON.stringify(RETURNING_ROUTE_RISK_SAVE),
-      },
-    );
+
+    // Seed the authoritative store BEFORE navigating. The served page
+    // now reads exclusively from
+    //   /aftersign/save/${BOOTSTRAP_PLAYER_ID}/${slot}
+    // at boot (PR #1642 dropped the `readStored()` localStorage
+    // fallback). Without this PUT the boot resolves null → cold
+    // packet-offered with `player.routeRisk = null`, and the first
+    // `toEqual({ lastRoute: "fast", succeeded: true })` assertion
+    // fails before the reset button is even tapped.
+    const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(
+      BOOTSTRAP_PLAYER_ID,
+    )}/${encodeURIComponent(slot)}`;
+    const seedResponse = await page.request.put(saveUrl, {
+      data: { payload: RETURNING_ROUTE_RISK_SAVE },
+      headers: { "content-type": "application/json" },
+    });
+    expect(
+      seedResponse.ok(),
+      `seed PUT for slot ${slot} must succeed before page boot (HTTP ${seedResponse.status()})`,
+    ).toBe(true);
+
+    // Round-trip verify through the SAME endpoint the served page
+    // boot will hit. If this GET returns the wrong payload (null /
+    // stripped routeRisk / different id encoding), boot will
+    // hydrate empty state and the first assertion fails with an
+    // opaque `null !== { lastRoute: "fast", succeeded: true }`
+    // instead of a named seed-step failure.
+    const verifyResponse = await page.request.get(saveUrl, {
+      headers: { accept: "application/json" },
+    });
+    expect(
+      verifyResponse.ok(),
+      `seed round-trip GET for slot ${slot} must succeed before page boot (HTTP ${verifyResponse.status()})`,
+    ).toBe(true);
+    const verifyBody = (await verifyResponse.json()) as {
+      payload?: { player?: { routeRisk?: unknown } | null } | null;
+    };
+    expect(
+      verifyBody?.payload,
+      `seed round-trip GET for slot ${slot} must return the payload the served page will read at boot`,
+    ).not.toBeNull();
+    expect(
+      verifyBody?.payload?.player?.routeRisk,
+      `seed round-trip payload for slot ${slot} must carry the returning routeRisk the reset spec asserts on`,
+    ).toEqual({ lastRoute: "fast", succeeded: true });
 
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await page.waitForFunction(
