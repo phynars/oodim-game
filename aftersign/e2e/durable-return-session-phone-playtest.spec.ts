@@ -5,7 +5,19 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-const WAIT_MS = 10_000;
+// Cold-start budget for two full WebGL boots + a reload boot.  The
+// original value (10s) tripped the well-documented SwiftShader
+// cold-start flake class (#700/#506/#590/#766) on CI: on a fresh
+// browser-context boot the composer + three.js scene routinely take
+// > 10s to publish `window.__game.version === 1` under headless
+// SwiftShader, so `waitForReady`'s `waitForFunction` timed out
+// before the scene finished bringing itself up (Soren's #1645
+// comment on d9ed8cd: the "durable-return-session" spec is red on
+// this branch even though the PR itself is unrelated — a pre-
+// existing flake this file now absorbs).  Sibling long-boot specs
+// use 60s for the same reason — see `durable-save-load.spec.ts:10`
+// (`WAIT_MS = 60_000`) and every 60s WAIT_MS in this directory.
+const WAIT_MS = 60_000;
 const RETURNING_SESSION_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
 
 type FlagshipReadOnlySnapshot = {
@@ -88,8 +100,13 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     // Two full WebGL boots + a real reload + a fresh-context boot exceed
     // Playwright's 30s default on shared runners. Extend the budget so the
     // cross-context leg isn't racing the timeout instead of the save/load
-    // contract it's meant to prove.
-    test.setTimeout(60_000);
+    // contract it's meant to prove.  Sibling `m-continue-next-job-played`
+    // uses 120s for a three-beat played journey under the same
+    // SwiftShader cold-start class (#700/#506/#590/#766); this spec's
+    // three boots (initial + reload + fresh-context) demand at least
+    // that headroom — 60s left the fresh-context boot racing the test
+    // ceiling on cold SwiftShader.
+    test.setTimeout(180_000);
 
     const slot = `durable-return-phone-${Date.now()}-${Math.random()
       .toString(36)
