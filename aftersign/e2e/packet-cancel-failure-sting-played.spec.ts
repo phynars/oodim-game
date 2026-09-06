@@ -16,6 +16,133 @@ async function waitForReady(page: Page): Promise<void> {
     .toBe(true);
 }
 
+// Install an in-page rAF collector BEFORE the gesture fires.  The
+// failure sting is a 180ms envelope written every render frame as
+// `--confirm-shake-x = -Math.round(wobble * 8)px` in aftersign/main.js.
+// A CDP-polled peak sampler (the design shipped through #1641 iter-6)
+// races the render loop: on SwiftShader in CI, each `page.evaluate`
+// round-trip can take 40-100ms, so the entire 180ms window can be
+// missed with fewer than four probes — and the sub-integer wobble
+// frames + `Math.round` snap those probes to 0, timing the assertion
+// out on a healthy build.  The fix: sample IN the page on every rAF
+// tick, accumulate the peak into `window.__cancelStingHighWater`, and
+// read the accumulator once when the sting has settled.  This is the
+// same pattern the sibling `io-recognition-return-visual-feel.spec.ts`
+// uses for the impact-burst window (a MutationObserver + rAF pump on
+// the recognition beat), adapted for the failure-sting CSS-var write.
+type StingHighWater = {
+  peakShakeXAbs: number;
+  peakShakeY: number;
+  peakFlashOpacity: number;
+  sampleCount: number;
+  liveFrames: number;
+  everActive: boolean;
+  everDecayed: boolean;
+  lastActive: boolean;
+  lastLineFeedback: {
+    active: boolean;
+    kind: string;
+    durationMs: number;
+    easing: string;
+    hudShakePx: number;
+    hudDropPx: number;
+    flashAlpha: number;
+  } | null;
+  lastAction: string | null;
+};
+
+async function installStingHighWater(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as Window & {
+      __cancelStingHighWater?: StingHighWater;
+      __cancelStingRafId?: number;
+      __game?: {
+        interaction?: {
+          lastAction?: string;
+          failureFeedback?: {
+            active: boolean;
+            kind: string;
+            durationMs: number;
+            easing: string;
+            hudShakePx: number;
+            hudDropPx: number;
+            flashAlpha: number;
+          };
+        };
+      };
+    };
+    // Reset if a prior test in the same worker installed one.
+    if (typeof w.__cancelStingRafId === 'number') {
+      cancelAnimationFrame(w.__cancelStingRafId);
+    }
+    w.__cancelStingHighWater = {
+      peakShakeXAbs: 0,
+      peakShakeY: 0,
+      peakFlashOpacity: 0,
+      sampleCount: 0,
+      liveFrames: 0,
+      everActive: false,
+      everDecayed: false,
+      lastActive: false,
+      lastLineFeedback: null,
+      lastAction: null,
+    };
+    const highWater = w.__cancelStingHighWater!;
+    const root = document.documentElement;
+    const sting = document.querySelector('.failure-sting');
+    const step = () => {
+      highWater.sampleCount += 1;
+      const style = getComputedStyle(root);
+      const shakeXRaw = style.getPropertyValue('--confirm-shake-x').replace('px', '').trim();
+      const shakeYRaw = style.getPropertyValue('--confirm-shake-y').replace('px', '').trim();
+      const shakeX = Number(shakeXRaw || '0');
+      const shakeY = Number(shakeYRaw || '0');
+      const flashOpacity = sting ? Number(getComputedStyle(sting).opacity) : 0;
+      const feedback = w.__game?.interaction?.failureFeedback ?? null;
+      const active = feedback?.active === true;
+      highWater.lastActive = active;
+      highWater.lastAction = w.__game?.interaction?.lastAction ?? null;
+      if (feedback) {
+        // Snapshot the feedback shape whenever we see one; the assertion
+        // block reads this at the end.  Cloning is important because
+        // the runtime mutates the same object in place across frames
+        // (see aftersign/main.js:3927).
+        highWater.lastLineFeedback = {
+          active,
+          kind: feedback.kind,
+          durationMs: feedback.durationMs,
+          easing: feedback.easing,
+          hudShakePx: feedback.hudShakePx,
+          hudDropPx: feedback.hudDropPx,
+          flashAlpha: feedback.flashAlpha,
+        };
+      }
+      if (active) {
+        highWater.everActive = true;
+        highWater.liveFrames += 1;
+        const shakeXAbs = Math.abs(shakeX);
+        if (shakeXAbs > highWater.peakShakeXAbs) highWater.peakShakeXAbs = shakeXAbs;
+        if (shakeY > highWater.peakShakeY) highWater.peakShakeY = shakeY;
+        if (flashOpacity > highWater.peakFlashOpacity) highWater.peakFlashOpacity = flashOpacity;
+      } else if (highWater.everActive) {
+        highWater.everDecayed = true;
+      }
+      w.__cancelStingRafId = requestAnimationFrame(step);
+    };
+    w.__cancelStingRafId = requestAnimationFrame(step);
+  });
+}
+
+async function readStingHighWater(page: Page): Promise<StingHighWater> {
+  return page.evaluate(() => {
+    const w = window as Window & { __cancelStingHighWater?: StingHighWater };
+    if (!w.__cancelStingHighWater) {
+      throw new Error('cancel sting high-water was not installed');
+    }
+    return { ...w.__cancelStingHighWater };
+  });
+}
+
 // Perform the CANCELLED packet gesture on the visible `#packetButton` —
 // a pointerdown → horizontal drag past `DRIFT_CANCEL_PX=14` → pointerup.
 //
@@ -108,67 +235,6 @@ async function cancelPacketByGesture(page: Page): Promise<void> {
   });
 }
 
-type CancelSnapshot = {
-  lastAction: string | null;
-  feedback: {
-    active: boolean;
-    kind: string;
-    durationMs: number;
-    easing: string;
-    hudShakePx: number;
-    hudDropPx: number;
-    flashAlpha: number;
-  } | null;
-  hudShakeX: number;
-  hudShakeY: number;
-  flashOpacity: number;
-};
-
-// Soren's #1641 REQUEST_CHANGES (atomicity): read `lastAction` and the
-// failureFeedback envelope + live style probes in ONE `page.evaluate`
-// round-trip.  The 180ms rAF decay on `failureFeedback.active` and
-// `flashOpacity` means splitting the read into two round-trips
-// (`expect.poll(lastAction === 'packet-cancelled')` followed by a
-// separate `page.evaluate` for the envelope) can land the second read
-// AFTER the sting settles — `active: false`, `flashOpacity: 0`, red.
-// One `page.evaluate` per poll pass keeps the snapshot atomic; we
-// re-poll until `lastAction === 'packet-cancelled'` AND the sting is
-// still live, then assert on the returned snapshot directly.
-//
-// Soren's #1641 iter-4 REQUEST_CHANGES (shake probe times to zero):
-// `--confirm-shake-x` is written every render frame as
-// `${confirmEnvelope.hudShakeX - Math.round(failureWobble * hudShakePx)}px`
-// (aftersign/main.js:3820). `failureWobble = falloff * sin(progress *
-// π * wobbleCycles)` with `wobbleCycles=5` — a sine that crosses ZERO
-// at progress=0, 0.2, 0.4, 0.6, 0.8, 1.0 (six times across the 180ms
-// window).  Plus the `Math.round` snaps any `|failureWobble * 8| <
-// 0.5` frame to 0.  So a single-snapshot read is not a reliable probe
-// of "the shake shipped": the sting IS shaking, but the CSS var reads
-// 0 at any zero-crossing or subthreshold frame.
-//
-// Fix: instead of asserting on ONE snapshot's `hudShakeX`, accumulate
-// the PEAK |hudShakeX| observed across every poll pass while the sting
-// is live, then assert on the peak.  The peak necessarily rides the
-// oscillation crests (|falloff * sin| ≈ 1 * hudShakePx=8 near
-// progress≈0.1) and stays non-zero through Math.round.  This matches
-// Soren's second option: "retime the shake probe" — we now sample it
-// across the whole live window rather than at a single moment.
-async function readCancelSnapshot(page: Page): Promise<CancelSnapshot> {
-  return page.evaluate((): CancelSnapshot => {
-    const game = window.__game;
-    const root = document.documentElement;
-    const sting = document.querySelector<HTMLElement>('.failure-sting');
-    const style = getComputedStyle(root);
-    return {
-      lastAction: game?.interaction?.lastAction ?? null,
-      feedback: game?.interaction?.failureFeedback ?? null,
-      hudShakeX: Number(style.getPropertyValue('--confirm-shake-x').replace('px', '').trim() || '0'),
-      hudShakeY: Number(style.getPropertyValue('--confirm-shake-y').replace('px', '').trim() || '0'),
-      flashOpacity: sting ? Number(getComputedStyle(sting).opacity) : 0,
-    };
-  });
-}
-
 test.describe('AFTERSIGN packet cancel failure sting', () => {
   test('a played packet-cancel gesture produces the pinned failure sting envelope', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
@@ -184,104 +250,53 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
     const packetButton = page.locator('#packetButton');
     await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
 
+    // Install the in-page rAF sampler BEFORE the cancel gesture.  The
+    // sting fires DURING `pointermove` (the first move that crosses
+    // DRIFT_CANCEL_PX = 14 triggers `maybeTriggerFailureFromOutcome`
+    // — see aftersign/main.js:2386), so a large chunk of the 180ms
+    // envelope elapses inside `cancelPacketByGesture` itself.  The
+    // sampler must be running before that first crossing frame or
+    // the crest is gone by the time we start reading — see the
+    // Soren #1644 review for the full race analysis.
+    await installStingHighWater(page);
+
     await cancelPacketByGesture(page);
 
-    // Atomic poll: keep reading a single-round-trip snapshot until the
-    // gesture has resolved as `packet-cancelled` AND the sting is
-    // still live.  Because both fields come from the same evaluate,
-    // there is no way the 180ms rAF decay can settle `active` between
-    // the two reads — the prior split-read version could red exactly
-    // that way (see readCancelSnapshot header).
+    // Wait for the sting to have BOTH lit up AND decayed.  The in-page
+    // rAF loop pumps every ~16ms; the failure envelope is 180ms
+    // (aftersign/src/failureStingFeedback.ts DEFAULT_FAILURE_STING_FEEL),
+    // so the collector observes ~11 live frames plus a decayed frame
+    // in under ~250ms even on a slow SwiftShader host.  We poll the
+    // page-side accumulator directly instead of racing CDP round
+    // trips against the envelope math.
     //
-    // We ALSO track the peak |hudShakeX| and peak flashOpacity across
-    // every poll pass — see readCancelSnapshot's header comment for
-    // why the shake probe cannot be asserted on a single snapshot
-    // (sin() zero-crossings + Math.round quantization).  The gate
-    // still fires when the FIRST pass sees lastAction+active+flash;
-    // the peaks give the assertion block real amplitude to check.
-    // Soren's #1641 iter-6 REQUEST_CHANGES (peak still reads 0):
-    // The previous version accumulated `peakShakeXAbs` INSIDE the
-    // `expect.poll` predicate — but `expect.poll` resolves on the
-    // first frame the predicate returns `true`, which is the FIRST
-    // frame where `lastAction === 'packet-cancelled' && active &&
-    // flashOpacity > 0`.  That first passing frame is progress≈0,
-    // where `sin(0)=0` → `hudShakeX=0` → `peakShakeXAbs=0`, and
-    // then the poll STOPS.  A "peak" was never accumulated across
-    // the live window; it was a single-frame read dressed as a
-    // peak.  Fix: split the wait into TWO phases —
-    //   (1) an `expect.poll` gate that resolves as soon as we see
-    //       the first live-sting frame + stamps `snapshot` (so the
-    //       `toMatchObject` assertion has a live moment to pin to);
-    //   (2) a dedicated peak-sampling loop that keeps sampling for
-    //       the rest of the ~180ms live window at short intervals,
-    //       accumulating `peakShakeXAbs` and `peakFlashOpacity`
-    //       across ALL frames.  The crest near progress≈0.1 lands
-    //       inside this loop, so the peak necessarily stamps
-    //       non-zero (|falloff * sin(0.1π * 5)| = |0.9 * sin(π/2)|
-    //       ≈ 0.9 → hudShakeX ≈ Math.round(0.9 * 8) = 7).
-    let snapshot: CancelSnapshot | null = null;
-    let peakShakeXAbs = 0;
-    let peakFlashOpacity = 0;
-
-    // Phase 1: gate — resolve on the first live-sting frame.
+    // The `lastAction === 'packet-cancelled'` gate here is the same
+    // proof-of-cancel as the earlier snapshot design: without it, the
+    // sting-active window could belong to a stale trigger from a
+    // prior test run (there isn't one in this fresh-slot spec, but
+    // gating is cheap insurance against harness pollution).
     await expect
       .poll(
         async () => {
-          const next = await readCancelSnapshot(page);
-          if (
-            next.lastAction === 'packet-cancelled' &&
-            next.feedback?.active === true &&
-            next.flashOpacity > 0
-          ) {
-            snapshot = next;
-            const shakeXAbs = Math.abs(next.hudShakeX);
-            if (shakeXAbs > peakShakeXAbs) peakShakeXAbs = shakeXAbs;
-            if (next.flashOpacity > peakFlashOpacity) {
-              peakFlashOpacity = next.flashOpacity;
-            }
-            return true;
-          }
-          return false;
+          const hw = await readStingHighWater(page);
+          return (
+            hw.lastAction === 'packet-cancelled' &&
+            hw.everActive === true &&
+            hw.everDecayed === true
+          );
         },
-        { timeout: WAIT_MS, intervals: [16, 32, 64] },
+        { timeout: WAIT_MS },
       )
       .toBe(true);
 
-    // TS: snapshot is set by the poll above (poll cannot resolve `true`
-    // without a snapshot with `feedback.active === true`).
-    if (!snapshot) throw new Error('cancel snapshot never captured');
-    const captured: CancelSnapshot = snapshot;
+    const highWater = await readStingHighWater(page);
 
-    // Phase 2: peak-sampling loop.  Sting duration is 180ms; the gate
-    // above resolved somewhere in the first ~16-32ms, so we still have
-    // ~150ms of live window to sample.  Sample at ~10ms intervals for
-    // up to 220ms (safety margin past durationMs) — this catches
-    // multiple sine crests within the falloff envelope.  We stop as
-    // soon as `active` goes false (sting decayed) OR the budget
-    // elapses, whichever comes first.
-    const peakSamplingBudgetMs = 220;
-    const peakSampleIntervalMs = 10;
-    const peakSamplingStart = Date.now();
-    while (Date.now() - peakSamplingStart < peakSamplingBudgetMs) {
-      const probe = await readCancelSnapshot(page);
-      if (probe.feedback?.active !== true) break;
-      const shakeXAbs = Math.abs(probe.hudShakeX);
-      if (shakeXAbs > peakShakeXAbs) peakShakeXAbs = shakeXAbs;
-      if (probe.flashOpacity > peakFlashOpacity) {
-        peakFlashOpacity = probe.flashOpacity;
-      }
-      // Fixed 10ms gap between peak-sampling probes across the ~180ms
-      // live-sting window — deliberate wall-clock spacing to catch
-      // multiple sine crests within the falloff envelope, not a state
-      // wait.  The no-wall-clock-waits guard (e2e-shared/
-      // no-wall-clock-waits/check.mjs) only honours a marker on the
-      // call line or the line immediately above it, so the `// pacing`
-      // marker MUST sit on the call line below — do not move it.
-      await page.waitForTimeout(peakSampleIntervalMs); // pacing — sampling cadence across the live sting window
-    }
-
-    expect(captured.feedback).toMatchObject({
-      active: true,
+    // The envelope shape assertion — pinned FAILURE_FEEDBACK constants
+    // (see aftersign/src/failureStingFeedback.ts DEFAULT_FAILURE_STING_FEEL).
+    // We assert on the LAST feedback snapshot the sampler captured while
+    // the sting was live (rather than a single snapshot-time read),
+    // because the runtime mutates the state object in place.
+    expect(highWater.lastLineFeedback).toMatchObject({
       kind: 'packet-cancelled',
       durationMs: 180,
       easing: 'easeOutQuad',
@@ -289,31 +304,24 @@ test.describe('AFTERSIGN packet cancel failure sting', () => {
       hudDropPx: 2,
       flashAlpha: 0.34,
     });
-    // Assert on the PEAK shake accumulated across the live window, not
-    // on the snapshot-time value — the sting IS shaking (peak ≈ 8px on
-    // the first oscillation crest at progress≈0.1) but the CSS var
-    // reads 0 at sine zero-crossings and at sub-integer wobble frames
-    // after Math.round.  See readCancelSnapshot header for the math.
-    expect(peakShakeXAbs).toBeGreaterThan(0);
-    expect(captured.hudShakeY).toBeGreaterThanOrEqual(0);
-    expect(captured.flashOpacity).toBeGreaterThan(0);
-    expect(peakFlashOpacity).toBeGreaterThan(0);
-    expect(peakFlashOpacity).toBeLessThanOrEqual(0.34);
 
-    // Wait for the sting to decay — this proves the 180ms rAF window
-    // completes.  Kept as a separate poll because the assertion is
-    // now about the OPPOSITE state (settled), so a snapshot-atomic
-    // read is neither possible nor needed.
-    await expect
-      .poll(
-        () =>
-          page.evaluate(() => {
-            const game = window.__game;
-            return game?.interaction?.failureFeedback?.active ?? false;
-          }),
-        { timeout: 1200 },
-      )
-      .toBe(false);
+    // Peak shake accumulated across the FULL live window on the page
+    // side.  With wobbleCycles=5 the sine crests at
+    // progress ≈ 0.1 / 0.3 / 0.5 / 0.7 / 0.9, so a rAF-driven collector
+    // running for ~11 frames across the 180ms window CANNOT miss all
+    // five crests — `Math.round(0.98 * 8) = 8` on the first, more
+    // than enough to clear `> 0`.
+    expect(highWater.peakShakeXAbs).toBeGreaterThan(0);
+    expect(highWater.peakShakeY).toBeGreaterThanOrEqual(0);
+    // Flash opacity peaks at falloff * 0.34 near progress=0, decays to 0.
+    expect(highWater.peakFlashOpacity).toBeGreaterThan(0);
+    expect(highWater.peakFlashOpacity).toBeLessThanOrEqual(0.34);
+    // Sanity: the collector observed at least a handful of live frames
+    // — if this is 0 the whole assertion above is vacuous.  On a
+    // healthy 180ms envelope with rAF at ~16.7ms we expect ~10-11
+    // live frames; require at least 3 as a floor that still catches
+    // "sting fired but instantly decayed" regressions.
+    expect(highWater.liveFrames).toBeGreaterThanOrEqual(3);
 
     // Soren's #1641 iter-5 REQUEST_CHANGES (structural, not probe-timing):
     // CANCELLED does NOT advance the beat.  In `aftersign/main.js`,
