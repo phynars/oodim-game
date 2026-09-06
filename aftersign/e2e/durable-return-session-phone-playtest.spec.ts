@@ -85,6 +85,12 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("a phone player recovers delivery facts and Io's returning-session line in a fresh browser context", async ({ browser, page }) => {
+    // Two full WebGL boots + a real reload + a fresh-context boot exceed
+    // Playwright's 30s default on shared runners. Extend the budget so the
+    // cross-context leg isn't racing the timeout instead of the save/load
+    // contract it's meant to prove.
+    test.setTimeout(60_000);
+
     const slot = `durable-return-phone-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;
