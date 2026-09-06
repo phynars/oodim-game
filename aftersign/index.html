@@ -980,14 +980,95 @@
           } catch (_err) {
             return;
           }
+
+          // PR #1649 re-review (Soren): the click handler in
+          // main.js (`onOfferClick` → `applyAftersignJobTakeFeelToButton`
+          // at main.js:2076) synchronously re-stamps
+          // `data-aftersign-job-take="armed"` within ~1ms of
+          // pointerdown under Playwright's `touchscreen.tap()`, so
+          // the CSS transition toward `scale-from` is interrupted
+          // before it can travel meaningfully. The prior fix only
+          // guarded the *restore* path — nothing prevented the
+          // click-time "armed" write from clobbering "pressing"
+          // mid-hold.
+          //
+          // Defer the "armed" transition until the compression has
+          // held for its full 96ms. During the hold window we:
+          //   (a) observe attribute mutations on this button via
+          //       MutationObserver. Any external writer that flips
+          //       `data-aftersign-job-take` to a non-"pressing"
+          //       value has its intent recorded on `pendingIntent`
+          //       and the attribute is re-stamped to "pressing"
+          //       synchronously inside the observer callback. The
+          //       observer callback runs as a microtask BEFORE
+          //       style/layout/paint (HTML spec: the "perform a
+          //       microtask checkpoint" step happens before the
+          //       rendering steps of the event loop), so the browser
+          //       never paints the interrupted state — the CSS
+          //       transition toward scale-from runs uninterrupted.
+          //   (b) once holdMs elapses, disconnect the observer and
+          //       apply the pending intent (or restore `prior` if
+          //       nothing else asked to write during the hold).
+          //
+          // The click callback in main.js still runs its side effects
+          // (state transitions, memory writes, next beat) — only the
+          // DOM marker's compression window is protected. This
+          // implements Soren's proposed "stamp 'armed' after holdMs"
+          // fix at the DOM layer so no coupling with main.js's writer
+          // is needed.
+          var pendingIntent = null;
+          var observer = null;
+          if (typeof MutationObserver === "function") {
+            observer = new MutationObserver(function (records) {
+              try {
+                for (var i = 0; i < records.length; i += 1) {
+                  var record = records[i];
+                  if (record.attributeName !== "data-aftersign-job-take") continue;
+                  var value = button.getAttribute("data-aftersign-job-take");
+                  if (value === "pressing" || value === null) continue;
+                  // External writer tried to flip us out of the
+                  // compression window. Remember its intent for
+                  // post-hold, and re-assert "pressing" before the
+                  // frame paints.
+                  pendingIntent = value;
+                  button.setAttribute("data-aftersign-job-take", "pressing");
+                }
+              } catch (_err) {
+                /* observer callback MUST NOT throw */
+              }
+            });
+            try {
+              observer.observe(button, {
+                attributes: true,
+                attributeFilter: ["data-aftersign-job-take"],
+              });
+            } catch (_err) {
+              observer = null;
+            }
+          }
+
           setTimeout(function () {
             try {
+              if (observer && typeof observer.disconnect === "function") {
+                observer.disconnect();
+              }
               var current = button.getAttribute("data-aftersign-job-take");
-              // Only restore if we're still holding the marker WE
-              // set. A concurrent writer (main.js click callback
-              // flipping to "armed") wins the race and its value
-              // stands.
-              if (current === "pressing") {
+              // Priority order for the post-hold state:
+              //   1. Pending intent from a deferred external write
+              //      (e.g. click flipped to "armed" during the hold).
+              //      Apply it now — the beat has already advanced in
+              //      main.js, we're only catching up the DOM marker
+              //      so the recovery paint runs and the e2e's
+              //      recovered-scale sample lands on the intended
+              //      final state.
+              //   2. If nothing external wrote and we're still
+              //      "pressing", restore the prior marker so the
+              //      button decays back to its at-rest scale.
+              //   3. If external writes landed AFTER the observer
+              //      disconnected (a very late click), leave them.
+              if (pendingIntent !== null) {
+                button.setAttribute("data-aftersign-job-take", pendingIntent);
+              } else if (current === "pressing") {
                 button.setAttribute("data-aftersign-job-take", prior);
               }
             } catch (_err) {
