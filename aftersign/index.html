@@ -307,7 +307,19 @@
          on the button and a `setTimeout(holdMs)` restores the prior
          value. Contact duration no longer gates compression depth —
          the CSS transition runs to completion inside the holdMs
-         window because the marker is held there. */
+         window because the marker is held there.
+
+         PR #1649 re-review round 6 (Soren): naming divergence noted —
+         the JS row's `settleScale: 1` field in
+         apps/web/src/aftersign/aftersignJobTakeFeel.js maps to the
+         `--aftersign-job-take-scale-settle` CSS var (main.js:451-452
+         does the field → var-name translation). The divergence is
+         cosmetic and intentional; do NOT rename either side in this
+         PR — chasing it would touch the frozen feel row's public
+         shape and the sibling
+         aftersign-job-take-feel.playtest.spec.ts assertions. Left
+         here so a future janitor doesn't "fix" the mismatch and
+         cascade a rename through the harness surface. */
       button[data-aftersign-job-take="ready"],
       button[data-aftersign-job-take="armed"] {
         transform: scale(var(--aftersign-job-take-scale-settle, 1));
