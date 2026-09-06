@@ -42,7 +42,15 @@
 // `lastAction` axis.
 
 /** @typedef {Object} MloopMemory
- *  @property {string=} packetOutcome  — sealed / opened / unknown
+ *  @property {string=} packetOutcome  — sealed / opened / unknown. This
+ *    is the ACTUAL shape the served page feeds `getMloopAvailableAction`
+ *    at `packet-offered` render time (see `aftersign/main.js` ~1950:
+ *    `mloopMemory = packetOutcomeFactObject ? { packetOutcome: … } : {}`).
+ *    The served page derives it inline from
+ *    `state.npcs.io.memory.find(fact => fact.kind === "delivery-outcome")
+ *    ?.object` — it does NOT reuse `offeredJobsMemoryFromIoMemory`'s
+ *    output (that bag feeds `selectIoJobOffers` on the SELECTION axis
+ *    at main.js:1918, a different consumer).
  */
 
 /** @typedef {"fresh"|"returning"|"deep-recall"|"default"} MloopMemoryGate */
@@ -158,15 +166,43 @@ const DEFAULT_ACTION = Object.freeze({
 /**
  * Derive the memory gate from an `MloopMemory` shape. Kept exported-
  * shape-free (an internal helper) so the two public seams share one
- * rule: a delivery outcome is known → returning; the outcome is
- * `opened` → deep-recall (the player already saw inside); no outcome
- * → fresh/default.
+ * rule.
+ *
+ * Input shape is the one the SERVED PAGE actually feeds (see
+ * `aftersign/main.js` ~1950): `{ packetOutcome: "sealed"|"opened" } | {}`,
+ * derived inline from
+ * `state.npcs.io.memory.find(fact => fact.kind === "delivery-outcome")
+ * ?.object`. The served page does NOT reuse
+ * `offeredJobsMemoryFromIoMemory`'s output for this axis — that bag
+ * (`{ priorOutcome } | { debtHeld }`) feeds `selectIoJobOffers` on the
+ * SELECTION axis at main.js:1918, a different consumer. The e2e
+ * divergence (`m-loop-divergent-offered-actions.playtest.spec.ts`)
+ * rides on this shape end-to-end and the unit spec
+ * `apps/web/src/aftersign/aftersignMloopMemoryGate.test.ts` pins the
+ * same transform.
+ *
+ * Rule:
+ *   - `packetOutcome === "opened"` → "deep-recall"
+ *   - `packetOutcome === "sealed"` → "returning"
+ *   - any other object            → "fresh"
+ *   - null / undefined / non-object → "default"
  *
  * @param {MloopMemory | null | undefined} mloopMemory
  * @returns {MloopMemoryGate}
  */
 function memoryGateFor(mloopMemory) {
   if (!mloopMemory || typeof mloopMemory !== "object") return "default";
+  // ONE input shape: `{ packetOutcome } | {}`. The served page
+  // (`aftersign/main.js` ~1950) builds this inline from the
+  // delivery-outcome fact in `state.npcs.io.memory`; the unit spec
+  // `apps/web/src/aftersign/aftersignMloopMemoryGate.test.ts` pins the
+  // same transform. PR #1642 briefly grew `debtHeld` / `priorOutcome`
+  // branches here (the `offeredJobsMemoryFromIoMemory` output shape);
+  // no production caller fed them and they silently re-gated every
+  // existing consumer that passes the SELECTION bag through this seam
+  // — so they are gone, not "reserved". If the served page ever
+  // switches to the selection bag, add the branch + a served-path
+  // test in the same PR.
   const outcome = mloopMemory.packetOutcome;
   if (outcome === "opened") return "deep-recall";
   if (outcome === "sealed") return "returning";

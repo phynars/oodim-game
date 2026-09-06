@@ -15,12 +15,27 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // That keeps the harness's state contract honest without replacing the
 // played tap path.
 //
-// Storage key (from `aftersign/main.js:517`):
-//   `aftersign:kiosk-slice:${slot}`
+// Seed vector — server-authoritative endpoint (PR #1636 / #1642).
+//
+// The served page no longer boots from `localStorage`. `aftersign/main.js`
+// calls `readAuthoritativeSave({ slot, playerId: "local-slice-player" })`
+// at boot; the response wins. So to seed divergent memory this spec
+// PUTs the payload into the same store the served page will read:
+//   PUT /aftersign/save/local-slice-player/${slot}
+//   body: { payload: <persist payload shape> }
+// (Endpoint owner: aftersign/vite.config.ts →
+// aftersignAuthoritativeSaveMiddleware.)
+//
 // The slot is passed via `?slot=<slot>` on the URL so each save is
 // slot-scoped and cannot bleed into a sibling spec (Soren's second
 // blocking item on PR #1579 — the prior rewrite seeded a
 // non-existent `aftersign:player-memory` key and dropped `?slot=`).
+//
+// The bootstrap playerId is the fixed `"local-slice-player"` string
+// hardcoded in `aftersign/main.js` around line 556 — it is NOT the
+// `player.id` inside the seeded payload. Once the seed is loaded
+// state.player.id becomes the payload's id, but the READ path uses
+// the bootstrap constant, so the seed MUST be PUT under it.
 //
 // Sibling reference specs (same seed vocabulary):
 //   - `memory-divergence-phone-playtest.spec.ts` (offered-id set
@@ -39,7 +54,10 @@ type OfferedAction = {
 const WAIT_MS = 10_000;
 const COLD_START_MS = 90_000;
 
-const STORAGE_PREFIX = "aftersign:kiosk-slice:";
+// See boot in aftersign/main.js (~line 556): the read is always keyed
+// on this fixed bootstrap id. Any seed must be PUT under it.
+const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 
@@ -141,15 +159,81 @@ async function collectOfferedActions(
   snapshotFingerprints: string[];
 }> {
   const context = await newPhoneContext(browser);
-  await context.addInitScript(
-    ({ key, value }) => {
-      window.localStorage.setItem(key, value);
-    },
-    { key: `${STORAGE_PREFIX}${slot}`, value: JSON.stringify(save) },
-  );
   const page = await context.newPage();
+
+  // Capture any browser console.error emitted during boot. The runtime
+  // now (PR #1642 follow-up) logs `[aftersign boot] readAuthoritativeSave
+  // failed …` on a real fetch/middleware error instead of swallowing it
+  // silently. If two slots ever hydrate identical empty state (Soren's
+  // hypothesis on the first CI red), this array carries the actual
+  // error message the divergence assertion couldn't see before.
+  const bootConsoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      const text = msg.text();
+      if (text.includes("[aftersign boot]")) {
+        bootConsoleErrors.push(text);
+      }
+    }
+  });
+
+  // Seed the authoritative store BEFORE navigating to the served
+  // page — boot fires a single GET against
+  //   /aftersign/save/${BOOTSTRAP_PLAYER_ID}/${slot}
+  // and there is no localStorage fallback anymore. The PUT below is
+  // the ONLY thing that will make the served renderer boot at
+  // `packet-offered` with the seeded memory. A missed PUT = both
+  // cold slots load empty state = the divergence assertion fails.
+  const seedResponse = await page.request.put(
+    `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(BOOTSTRAP_PLAYER_ID)}/${encodeURIComponent(slot)}`,
+    {
+      data: { payload: save },
+      headers: { "content-type": "application/json" },
+    },
+  );
+  expect(
+    seedResponse.ok(),
+    `seed PUT for slot ${slot} must succeed (HTTP ${seedResponse.status()})`,
+  ).toBe(true);
+
+  // Round-trip verify: read back the seed through the SAME endpoint
+  // the served page boot will hit. If this GET returns the wrong
+  // payload (null / stripped memory / different id encoding), boot
+  // will hydrate empty state and the divergence assertion fails with
+  // an opaque "actions equal" — this check catches the middleware /
+  // encoding bug at the seed step, where the error message names the
+  // slot instead of hiding behind DOM equality.
+  const verifyResponse = await page.request.get(
+    `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(BOOTSTRAP_PLAYER_ID)}/${encodeURIComponent(slot)}`,
+    { headers: { accept: "application/json" } },
+  );
+  expect(
+    verifyResponse.ok(),
+    `seed round-trip GET for slot ${slot} must succeed (HTTP ${verifyResponse.status()})`,
+  ).toBe(true);
+  const verifyBody = (await verifyResponse.json()) as {
+    payload?: { memory?: unknown } | null;
+  };
+  expect(
+    verifyBody?.payload,
+    `seed round-trip GET for slot ${slot} must return the payload the served page will read at boot`,
+  ).not.toBeNull();
+  expect(
+    Array.isArray(verifyBody?.payload?.memory),
+    `seed round-trip payload for slot ${slot} must carry a memory array (fresh: length 0; returning: length > 0)`,
+  ).toBe(true);
+
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
   await waitForReady(page);
+
+  // If boot logged a load failure, surface it BEFORE the divergence
+  // assertion — an error message like "readAuthoritativeSave failed"
+  // is the actual diagnostic; two empty slots' identical DOM is the
+  // symptom that hides it.
+  expect(
+    bootConsoleErrors,
+    `boot must not log an [aftersign boot] readAuthoritativeSave failure for slot ${slot}`,
+  ).toEqual([]);
 
   await expect(
     page.locator('[data-beat-id="packet-offered"]'),

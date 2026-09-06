@@ -17,13 +17,13 @@ import { expect, test, type Page } from "@playwright/test";
 //     → both completed-set buttons render; the safe default is absent.
 //
 // Divergence is seeded through the REAL persistence lane: each slot's
-// payload is written into `localStorage` under the exact key
-// `aftersign/main.js` reads at boot (`aftersign:kiosk-slice:<slot>`),
-// via `page.addInitScript` BEFORE navigation — no harness setters, no
-// `forceReload`. The offered-set signal is the career-level
-// `state.npcs.io.memory.length > 0` check in renderText() (Soren's
-// review on PR #1396), which boot hydrates from the payload's
-// top-level `memory` array.
+// payload is PUT into the server-authoritative endpoint that
+// `aftersign/main.js` reads at boot:
+//   /aftersign/save/local-slice-player/<slot>
+// There is no browser-local fallback in the normal lane; a localStorage
+// seed would be invisible to boot. The offered-set signal is Io's
+// durable top-level `memory` array, which boot hydrates into
+// `state.npcs.io.memory` before renderText() derives the offer list.
 //
 // Each slot then plays a FULL tap-only round on the phone viewport
 // (packet tap → route ack → deliver → recognition → return tone),
@@ -41,7 +41,8 @@ import { expect, test, type Page } from "@playwright/test";
 const WAIT_MS = 10_000;
 const COLD_START_MS = 60_000;
 
-const STORAGE_PREFIX = "aftersign:kiosk-slice:";
+const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 // Phone playtest: iPhone-class portrait viewport. Every interaction in
 // this spec is a tap on the served DOM at this size.
@@ -88,24 +89,61 @@ async function tapReturnReason(page: Page, reason: string): Promise<void> {
 
 /** Read the offered-job id set stamped on the served #offeredJobs tray. */
 async function offeredJobIds(page: Page): Promise<string[]> {
-  return page
-    .locator("#offeredJobs [data-job-id]")
-    .evaluateAll((nodes) =>
-      nodes
-        .map((node) => node.getAttribute("data-job-id") ?? "")
-        .filter((id) => id.length > 0)
-        .sort(),
-    );
+  return page.locator("#offeredJobs [data-job-id]").evaluateAll((nodes) =>
+    nodes
+      .map((node) => node.getAttribute("data-job-id") ?? "")
+      .filter((id) => id.length > 0)
+      .sort(),
+  );
 }
 
 /** Durable memory-fact count as the served snapshot reports it. */
 async function snapshotMemoryCount(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const game = (window as unknown as {
-      __game?: { getSnapshot?: () => { npcs?: { io?: { memories?: unknown[] } } } };
-    }).__game;
+    const game = (
+      window as unknown as {
+        __game?: {
+          getSnapshot?: () => { npcs?: { io?: { memories?: unknown[] } } };
+        };
+      }
+    ).__game;
     return game?.getSnapshot?.().npcs?.io?.memories?.length ?? -1;
   });
+}
+
+async function seedAuthoritativeSave(
+  page: Page,
+  slot: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const encodedPlayerId = encodeURIComponent(BOOTSTRAP_PLAYER_ID);
+  const encodedSlot = encodeURIComponent(slot);
+  const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodedPlayerId}/${encodedSlot}`;
+
+  const putResponse = await page.request.put(saveUrl, {
+    data: { payload },
+    headers: { "content-type": "application/json" },
+  });
+  expect(
+    putResponse.ok(),
+    `seed PUT for slot ${slot} must succeed before page boot (HTTP ${putResponse.status()})`,
+  ).toBe(true);
+
+  const verifyResponse = await page.request.get(saveUrl, {
+    headers: { accept: "application/json" },
+  });
+  expect(
+    verifyResponse.ok(),
+    `seed round-trip GET for slot ${slot} must succeed before page boot (HTTP ${verifyResponse.status()})`,
+  ).toBe(true);
+
+  const verifyBody = (await verifyResponse.json()) as {
+    payload?: { memory?: unknown } | null;
+  };
+  expect(
+    Array.isArray(verifyBody.payload?.memory),
+    `seed round-trip payload for slot ${slot} must carry top-level Io memory`,
+  ).toBe(true);
 }
 
 // Payload shapes mirror what `buildPersistPayload` writes and boot in
@@ -115,7 +153,11 @@ const EMPTY_MEMORY_SAVE = {
   beat: "packet-offered",
   packet: { delivered: false, route: null, sealed: true, deliveredAt: null },
   delivery: { outcome: "unknown" },
-  player: { id: "local-slice-player", name: null, flags: { io_intro_seen: true } },
+  player: {
+    id: "local-slice-player",
+    name: null,
+    flags: { io_intro_seen: true },
+  },
   memory: [],
   save: { revision: 0 },
 };
@@ -129,7 +171,11 @@ const COMPLETED_MEMORY_SAVE = {
     deliveredAt: "2026-01-01T00:00:00.000Z",
   },
   delivery: { outcome: "sealed" },
-  player: { id: "local-slice-player", name: null, flags: { io_intro_seen: true } },
+  player: {
+    id: "local-slice-player",
+    name: null,
+    flags: { io_intro_seen: true },
+  },
   memory: [
     {
       id: "fact-delivery-outcome-seeded",
@@ -150,27 +196,21 @@ const COMPLETED_MEMORY_SAVE = {
 };
 
 test.describe("AFTERSIGN memory divergence — phone playtest", () => {
-  test("divergent saved memories offer divergent job sets, tap-playable at phone size", async ({ page }) => {
+  test("divergent saved memories offer divergent job sets, tap-playable at phone size", async ({
+    page,
+  }) => {
     test.setTimeout(COLD_START_MS);
 
     const stamp = Date.now();
     const slotA = `memdiv-empty-${stamp}`;
     const slotB = `memdiv-completed-${stamp}`;
 
-    // Seed BOTH divergent saves before any navigation — the keys are
-    // slot-scoped so the two payloads cannot interfere.
-    await page.addInitScript(
-      ({ key, value }) => {
-        window.localStorage.setItem(key, value);
-      },
-      { key: `${STORAGE_PREFIX}${slotA}`, value: JSON.stringify(EMPTY_MEMORY_SAVE) },
-    );
-    await page.addInitScript(
-      ({ key, value }) => {
-        window.localStorage.setItem(key, value);
-      },
-      { key: `${STORAGE_PREFIX}${slotB}`, value: JSON.stringify(COMPLETED_MEMORY_SAVE) },
-    );
+    // Seed BOTH divergent saves before navigation — the slot-scoped
+    // server endpoint is the same authority the served page reads at
+    // boot, so the two payloads cannot interfere and cannot be faked by
+    // browser-local state.
+    await seedAuthoritativeSave(page, slotA, EMPTY_MEMORY_SAVE);
+    await seedAuthoritativeSave(page, slotB, COMPLETED_MEMORY_SAVE);
 
     // ─────────────────────────────────────────────────────────────
     // SLOT A — empty memory. The safe-default job is the only offer.
@@ -247,7 +287,9 @@ test.describe("AFTERSIGN memory divergence — phone playtest", () => {
     ).toBeGreaterThan(0);
 
     // THE divergence assertion: the two slots' offered id-sets differ.
-    expect(idsB, "divergent saves must offer divergent job sets").not.toEqual(idsA);
+    expect(idsB, "divergent saves must offer divergent job sets").not.toEqual(
+      idsA,
+    );
     expect(idsB).not.toContain("job-safe-delivery");
 
     // Complete tap-only round at phone size on the divergent lane too

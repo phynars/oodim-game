@@ -22,6 +22,7 @@ export default defineConfig({
       "apps/web/src/aftersign/aftersignMemoryDivergencePlaytestSurface.test.ts",
       "apps/web/src/aftersign/aftersignLoopDivergencePlaytestSurface.test.ts",
       "apps/web/src/aftersign/aftersignMloopDivergence.contract.test.ts",
+      "apps/web/src/aftersign/aftersignMloopMemoryGate.test.ts",
       "apps/web/src/aftersign/aftersignPlayedAcceptanceNaming.test.ts",
       "apps/web/src/aftersign/mContinueVisibleButtons.contract.test.ts",
       "apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts",
