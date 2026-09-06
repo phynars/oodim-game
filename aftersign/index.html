@@ -290,14 +290,26 @@
          scaleDrop >= 0.015 assertion catches a genuinely painted
          envelope, not a stamped-but-invisible one.
 
-         Base state (marker=ready, finger up):
+         Base state (marker=ready or armed, finger up):
            transform: scale(scale-settle)  → identity at 1.0
-         Pressed (marker=ready, :active while finger down):
+         Pressed (marker="pressing", held by JS for holdMs):
            transform: scale(scale-from)    → compressed to 0.97
-         Transition rides press-ms + press easing; releasing the
-         finger unwinds along scale-settle + release-ms envelope
-         via the fallback second transition slot. */
-      button[data-aftersign-job-take="ready"] {
+
+         PR #1649 re-review (Soren): `:active` cannot drive this
+         envelope. Playwright's `touchscreen.tap()` dispatches
+         touchstart+touchend in ~1ms, so `:active` lasts ~1ms — the
+         transition toward scale-from barely starts (moves <1%)
+         before `:active` ends and the return transition begins from
+         ~0.9997, not 0.97. The e2e's 64ms sample landed on ~0
+         scaleDrop. Fix is the JS `pressing` marker below (see the
+         inline delegated pointerdown listener at end of <body>):
+         `pointerdown` stamps `data-aftersign-job-take="pressing"`
+         on the button and a `setTimeout(holdMs)` restores the prior
+         value. Contact duration no longer gates compression depth —
+         the CSS transition runs to completion inside the holdMs
+         window because the marker is held there. */
+      button[data-aftersign-job-take="ready"],
+      button[data-aftersign-job-take="armed"] {
         transform: scale(var(--aftersign-job-take-scale-settle, 1));
         transition:
           transform
@@ -308,7 +320,7 @@
             var(--aftersign-job-take-easing-glow, linear);
         will-change: transform;
       }
-      button[data-aftersign-job-take="ready"]:active {
+      button[data-aftersign-job-take="pressing"] {
         transform: scale(var(--aftersign-job-take-scale-from, 1));
         transition:
           transform
@@ -322,6 +334,7 @@
             calc(var(--aftersign-job-take-shadow-lift-px, 0px) * 2)
             rgba(122, 231, 255, 0.32),
           inset 0 0 18px rgba(120, 233, 255, 0.14);
+        will-change: transform;
       }
       @media (prefers-reduced-motion: reduce) {
         /* Reduced-motion users still get a state marker (so
@@ -329,7 +342,8 @@
            scale channel collapses — no compression paint. The
            press-juice spec is not gated on this branch. */
         button[data-aftersign-job-take="ready"],
-        button[data-aftersign-job-take="ready"]:active {
+        button[data-aftersign-job-take="armed"],
+        button[data-aftersign-job-take="pressing"] {
           transform: none;
           transition: box-shadow
             var(--aftersign-job-take-hold-ms, 0ms)
@@ -885,6 +899,118 @@
       </div>
     </section>
 
+    <!--
+      PR #1649 re-review (Soren) — JS `pressing` marker.
+
+      Why: the CSS press envelope for `[data-aftersign-job-take]`
+      cannot be triggered by `:active` on a Playwright
+      `touchscreen.tap()`. The tap dispatches touchstart+touchend
+      in ~1ms, so `:active` lasts ~1ms — the transition toward
+      scale-from barely starts before the return begins. The e2e
+      trip-wire `aftersign-job-offer-press-juice.playtest.spec.ts`
+      samples at 64ms and needs the button to still be compressed;
+      that requires the pressed marker to be held for `holdMs`
+      (96ms in `aftersignJobTakeFeel`), independent of finger
+      contact duration.
+
+      What: a delegated `pointerdown` listener on `document`.
+      When the target is a `[data-aftersign-job-take]` button, we
+      save the prior state (`ready` or `armed`), stamp
+      `data-aftersign-job-take="pressing"`, and schedule a
+      restore via `setTimeout(holdMs)`. The CSS rule for
+      `[data-aftersign-job-take="pressing"]` above holds
+      `transform: scale(scale-from)` for the full window, so the
+      e2e's 64ms sample lands INSIDE the compressed envelope.
+
+      Held state precedence: if `applyAftersignJobTakeFeelToButton()`
+      re-stamps the marker to `"armed"` DURING the press window
+      (the click handler in main.js does this), the restore-to-
+      prior at holdMs would clobber `"armed"` back to `"ready"`.
+      We read the CURRENT `data-aftersign-job-take` at restore
+      time — if the value is still `"pressing"` we restore to the
+      prior we captured; if it's already something else (armed,
+      or removed), we leave it. Read on restore, not on
+      pointerdown.
+
+      Reduced motion: the CSS rule already collapses transform
+      for `prefers-reduced-motion: reduce`, so this listener still
+      runs (state marker stays consistent for any dependent CSS)
+      but paints no compression. The press-juice spec is not
+      gated on the reduced-motion branch.
+
+      Why inline: this must run before the very first tap; a
+      user could theoretically tap the offer within one frame of
+      `main.js`'s `resolveAftersignJobTakeFeel(...)` stamping the
+      button. An inline listener wins that race with zero import
+      cost.
+
+      hold-ms lookup: the writer stamps
+      `--aftersign-job-take-hold-ms` as `<n>ms` on the element's
+      inline style (see `applyAftersignJobTakeFeelToButton` in
+      main.js). We `parseFloat` it via `getPropertyValue()`; if
+      missing (unstamped button, defensive fallback), we use the
+      frozen `AFTERSIGN_JOB_TAKE_FEEL.holdMs` of 96ms.
+    -->
+    <script>
+      (function () {
+        var FALLBACK_HOLD_MS = 96;
+
+        function resolveHoldMs(el) {
+          try {
+            var raw = el.style && typeof el.style.getPropertyValue === "function"
+              ? el.style.getPropertyValue("--aftersign-job-take-hold-ms")
+              : "";
+            var n = parseFloat(raw);
+            if (Number.isFinite(n) && n > 0) return n;
+          } catch (_err) {
+            /* fall through */
+          }
+          return FALLBACK_HOLD_MS;
+        }
+
+        function armPressing(button) {
+          if (!button || typeof button.getAttribute !== "function") return;
+          var prior = button.getAttribute("data-aftersign-job-take");
+          // Only meaningful states — ignore already-pressing (a
+          // second pointerdown inside the hold) and empty/unknown.
+          if (prior !== "ready" && prior !== "armed") return;
+          var holdMs = resolveHoldMs(button);
+          try {
+            button.setAttribute("data-aftersign-job-take", "pressing");
+          } catch (_err) {
+            return;
+          }
+          setTimeout(function () {
+            try {
+              var current = button.getAttribute("data-aftersign-job-take");
+              // Only restore if we're still holding the marker WE
+              // set. A concurrent writer (main.js click callback
+              // flipping to "armed") wins the race and its value
+              // stands.
+              if (current === "pressing") {
+                button.setAttribute("data-aftersign-job-take", prior);
+              }
+            } catch (_err) {
+              /* swallow — feel projection MUST NOT throw */
+            }
+          }, holdMs);
+        }
+
+        function onPointerDown(event) {
+          var target = event.target;
+          if (!target || typeof target.closest !== "function") return;
+          var button = target.closest("button[data-aftersign-job-take]");
+          if (!button) return;
+          armPressing(button);
+        }
+
+        // Use pointerdown (fires for touch + mouse + pen); passive
+        // so we never delay scroll. Delegated on document so
+        // dynamically rendered offer buttons are covered without a
+        // rewire on every render.
+        document.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
+      })();
+    </script>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
