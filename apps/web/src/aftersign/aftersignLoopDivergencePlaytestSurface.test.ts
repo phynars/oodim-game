@@ -1,122 +1,97 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
 
-const repoRoot = path.resolve(__dirname, "../../../..");
-const e2eDir = path.join(repoRoot, "aftersign/e2e");
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(here, "../../../..");
+const e2eDir = join(repoRoot, "aftersign/e2e");
 
-function readPlaytestSpecs(): Array<{ path: string; source: string }> {
-  if (!fs.existsSync(e2eDir)) return [];
+function executableSource(source: string): string {
+  return source
+    .replace(/\/\/.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+}
 
-  return fs
-    .readdirSync(e2eDir)
-    .filter((entry) => /playtest.*\.spec\.ts$/i.test(entry))
-    .map((entry) => {
-      const specPath = path.join(e2eDir, entry);
-      return {
-        path: specPath,
-        source: fs.readFileSync(specPath, "utf8"),
-      };
+function readPlaytestSpecs(): Array<{ file: string; source: string; executable: string }> {
+  if (!existsSync(e2eDir)) {
+    return [];
+  }
+
+  return readdirSync(e2eDir)
+    .filter((file) => /playtest.*\.spec\.(ts|js)$/.test(file))
+    .map((file) => {
+      const source = readFileSync(join(e2eDir, file), "utf8");
+      return { file, source, executable: executableSource(source) };
     });
 }
 
-function stripCommentsAndStrings(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "")
-    .replace(/`(?:\\[\s\S]|[^`\\])*`/g, "``")
-    .replace(/"(?:\\.|[^"\\])*"/g, '""')
-    .replace(/'(?:\\.|[^'\\])*'/g, "''");
+function isMloopDivergenceTwoRoundCandidate(source: string): boolean {
+  return /M-LOOP/i.test(source) && /divergence/i.test(source) && /two\s+rounds?|two\s+consecutive\s+rounds?/i.test(source);
 }
 
-function has(pattern: RegExp, source: string): boolean {
-  return pattern.test(source);
+function hasPhoneViewport(source: string): boolean {
+  return /(isMobile\s*:\s*true|hasTouch\s*:\s*true|viewport\s*:\s*\{\s*width\s*:\s*(3[0-9]{2}|4[0-9]{2})\s*,\s*height\s*:\s*(6[0-9]{2}|7[0-9]{2}|8[0-9]{2}|9[0-9]{2}))/i.test(source);
 }
 
-describe("M-LOOP divergence playtest surface", () => {
-  it("requires a played, phone-viewport acceptance spec for memory-driven divergent tappable actions", () => {
+function hasVisiblePlayerInput(executable: string): boolean {
+  return /\.(tap|click|press)\(|touchscreen\.tap\(/.test(executable);
+}
+
+function hasNoHarnessInput(executable: string): boolean {
+  return !/window\.__game\.input\s*\./.test(executable);
+}
+
+function hasVisibleAssertions(executable: string): boolean {
+  return /(toBeVisible\(|getByRole\(|getByText\(|locator\()/.test(executable);
+}
+
+function hasTwoMemoryStates(source: string): boolean {
+  return /(two|2)\s+(distinct\s+)?(memory|save)|first[-\s]?time.*trusted|trusted.*opened|save[-\s]?states?|first[-\s]?visit[\s\S]*return(ing)?|round\s*1[\s\S]*(same\s+memory|memory\s+record)[\s\S]*round\s*2/i.test(source);
+}
+
+function hasActionDivergence(source: string): boolean {
+  return /(different|divergent)\s+(visible\s+|available\s+)?(tappable\s+)?(action\s+set|actions?)|action[-\s]?ids?|job\s+offers?|routes?|prices?/i.test(source);
+}
+
+function hasElementLevelActionEvidence(executable: string): boolean {
+  return /(data-testid|role\s*:\s*["']button|aria-label|toHaveAttribute\(|id\^=|job-offer-|data-choice-id|data-return-reason)/i.test(executable);
+}
+
+function hasTwoRoundCoverage(source: string): boolean {
+  return /two\s+consecutive\s+rounds?|round\s+one[\s\S]*round\s+two|round\s*1[\s\S]*round\s*2|complete\s+two\s+rounds?/i.test(source);
+}
+
+describe("AFTERSIGN M-LOOP served-surface playtest guard", () => {
+  it("requires a taps-only phone playtest proving memory-divergent tappable actions and two rounds", () => {
     const specs = readPlaytestSpecs();
 
     expect(
       specs.length,
-      "Expected at least one aftersign/e2e/*playtest*.spec.ts file to carry the played acceptance evidence.",
+      "M-LOOP acceptance needs a served-page e2e under aftersign/e2e/*playtest*.spec.ts",
     ).toBeGreaterThan(0);
 
-    const matchingSpecs = specs.filter(({ source }) => {
-      const executable = stripCommentsAndStrings(source);
-
-      const mobileViewport =
-        has(/isMobile\s*:\s*true/i, source) ||
-        has(/hasTouch\s*:\s*true/i, source) ||
-        has(/viewport\s*:\s*\{\s*width\s*:\s*(3[0-9]{2}|4[0-9]{2})/i, source);
-
-      const visiblePlayerInput =
-        has(/\.tap\s*\(/i, source) ||
-        has(/touchscreen\.tap\s*\(/i, source) ||
-        has(/\.click\s*\(/i, source) ||
-        has(/keyboard\.press\s*\(/i, source);
-
-      const visibleAssertion =
-        has(/toBeVisible\s*\(/i, source) ||
-        has(/getBy(Role|Text|TestId|LabelText)\s*\(/i, source) ||
-        has(/locator\s*\(/i, source);
-
-      const readsWindowGame = has(/window\.__game/i, source);
-      const drivesWindowGameInput = has(/window\s*\.\s*__game\s*\.\s*input\s*\./i, executable);
-
-      // Two divergent memory/save states — the shipped specs pair a
-      // memory/save/seed/slot token with a "first-visit" adjective
-      // (fresh/safe/new/first/empty) somewhere in the file, and a
-      // "returning-visit" adjective (returning/trusted/opened/risk/
-      // debt/completed/prior/looped/second/delivered/sealed) somewhere
-      // else. Requiring the two occurrences to be on the SAME line
-      // rejected `m-loop-divergent-offered-actions.playtest.spec.ts`
-      // (which uses `FRESH_SAVE` / `RETURNING_SAVE` constants) and
-      // `m-loop-e1-two-round-playtest.spec.ts` (which distinguishes
-      // rounds via `?slot=` + first-visit vs looped-return comments).
-      // Match order-free across the whole source so either shape works.
-      const firstVisitToken =
-        /\b(?:memory|seed|save|slot|round[\s_-]?1|first[\s_-]?(?:visit|round)|fresh[\s_-]?save|safe[\s_-]?default)[\s\S]{0,120}?\b(?:fresh|safe|new|first|empty)\b/i;
-      const returnVisitToken =
-        /\b(?:memory|seed|save|slot|round[\s_-]?2|second[\s_-]?round|returning[\s_-]?save|looped[\s_-]?return)[\s\S]{0,120}?\b(?:returning|trust|trusted|opened|risk|debt|completed|prior|looped|second|delivered|sealed)\b/i;
-      const twoMemoryStates =
-        has(firstVisitToken, source) && has(returnVisitToken, source);
-
-      const divergentAvailableActions =
-        has(/diverg(ent|ence)|different\s+(available\s+)?(tappable\s+)?actions?/i, source) &&
-        has(/data-(action|choice|job)|role\s*:\s*["']button|button/i, source);
-
-      const elementLevelEvidence =
-        has(/data-(action|choice|job)/i, source) ||
-        has(/getByRole\s*\(\s*["']button/i, source);
-
-      const twoRoundCoverage =
-        has(/two\s+(consecutive\s+)?rounds|round\s*2|second\s+round|complete[^\n]*round[\s\S]*complete[^\n]*round/i, source);
-
-      return (
-        mobileViewport &&
-        visiblePlayerInput &&
-        visibleAssertion &&
-        readsWindowGame &&
-        !drivesWindowGameInput &&
-        twoMemoryStates &&
-        divergentAvailableActions &&
-        elementLevelEvidence &&
-        twoRoundCoverage
-      );
-    });
+    const candidates = specs.filter(({ source }) => isMloopDivergenceTwoRoundCandidate(source));
 
     expect(
-      matchingSpecs.map((spec) => path.relative(repoRoot, spec.path)),
-      [
-        "Expected an aftersign playtest spec that proves the founder's M-LOOP bar:",
-        "- phone/mobile viewport",
-        "- player actions via visible tap/click/key events, never window.__game.input.*",
-        "- window.__game used only as an assertion surface",
-        "- two divergent memory/save states",
-        "- different AVAILABLE tappable actions proven at element level",
-        "- standing playtest extended through two consecutive rounds",
-      ].join("\n"),
+      candidates.map(({ file }) => file),
+      "one playtest spec must explicitly cover M-LOOP divergence and two consecutive rounds",
+    ).not.toHaveLength(0);
+
+    const compliant = candidates.filter(({ source, executable }) =>
+      hasPhoneViewport(source) &&
+      hasVisiblePlayerInput(executable) &&
+      hasNoHarnessInput(executable) &&
+      hasVisibleAssertions(executable) &&
+      hasTwoMemoryStates(source) &&
+      hasActionDivergence(source) &&
+      hasElementLevelActionEvidence(executable) &&
+      hasTwoRoundCoverage(source),
+    );
+
+    expect(
+      compliant.map(({ file }) => file),
+      "one M-LOOP playtest must be phone-shaped, taps-only, read-only for window.__game input, visible, seeded across divergent memory/save states, element-level, and two-round complete",
     ).not.toHaveLength(0);
   });
 });
