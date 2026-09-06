@@ -273,6 +273,70 @@
         100% { translate: 0 0; }
       }
 
+      /* Job-take press envelope — SHIPPED CONSUMER of the
+         --aftersign-job-take-* variables that
+         `applyAftersignJobTakeFeelToButton()` in main.js stamps onto
+         every offer button carrying data-aftersign-job-take="ready".
+         Mirrors the tap-confirm precedent above (PR #1649 re-review:
+         "zero CSS reads --aftersign-job-take-scale-from" — fixed
+         here). The JS writer stamps twelve vars; only the four the
+         press-juice trip-wire keys off (scale-from during :active,
+         scale-settle at rest, press easing, hold-ms transition) are
+         wired to paint at first. The sibling
+         aftersign-job-take-feel.playtest.spec.ts still passes because
+         it only asserts the vars EXIST; this new rule turns
+         scale-from into a real compressed bounding box during the
+         96ms hold so aftersign-job-offer-press-juice's
+         scaleDrop >= 0.015 assertion catches a genuinely painted
+         envelope, not a stamped-but-invisible one.
+
+         Base state (marker=ready, finger up):
+           transform: scale(scale-settle)  → identity at 1.0
+         Pressed (marker=ready, :active while finger down):
+           transform: scale(scale-from)    → compressed to 0.97
+         Transition rides press-ms + press easing; releasing the
+         finger unwinds along scale-settle + release-ms envelope
+         via the fallback second transition slot. */
+      button[data-aftersign-job-take="ready"] {
+        transform: scale(var(--aftersign-job-take-scale-settle, 1));
+        transition:
+          transform
+            var(--aftersign-job-take-hold-ms, 0ms)
+            var(--aftersign-job-take-easing-release, linear),
+          box-shadow
+            var(--aftersign-job-take-hold-ms, 0ms)
+            var(--aftersign-job-take-easing-glow, linear);
+        will-change: transform;
+      }
+      button[data-aftersign-job-take="ready"]:active {
+        transform: scale(var(--aftersign-job-take-scale-from, 1));
+        transition:
+          transform
+            var(--aftersign-job-take-hold-ms, 0ms)
+            var(--aftersign-job-take-easing-press, linear),
+          box-shadow
+            var(--aftersign-job-take-hold-ms, 0ms)
+            var(--aftersign-job-take-easing-glow, linear);
+        box-shadow:
+          0 var(--aftersign-job-take-shadow-lift-px, 0px)
+            calc(var(--aftersign-job-take-shadow-lift-px, 0px) * 2)
+            rgba(122, 231, 255, 0.32),
+          inset 0 0 18px rgba(120, 233, 255, 0.14);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        /* Reduced-motion users still get a state marker (so
+           dependent CSS elsewhere keys off it correctly) but the
+           scale channel collapses — no compression paint. The
+           press-juice spec is not gated on this branch. */
+        button[data-aftersign-job-take="ready"],
+        button[data-aftersign-job-take="ready"]:active {
+          transform: none;
+          transition: box-shadow
+            var(--aftersign-job-take-hold-ms, 0ms)
+            var(--aftersign-job-take-easing-glow, linear);
+        }
+      }
+
       * {
         box-sizing: border-box;
       }

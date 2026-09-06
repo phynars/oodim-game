@@ -142,7 +142,11 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // envelope. Waiting past the hold lets the release phase drive
     // scale back through 1 into the 1.025 peak, which would fail
     // the `>= 0.015` scaleDrop floor.
-    await page.waitForTimeout(PRESS_FEEL.pressSampleMs);
+    // pacing: sample the press envelope inside its 96ms hold — the
+    // compression is a paint state with no beat / DOM signal to
+    // quiesce on; wall-clock is the correct oracle for "we are
+    // 64ms into the 96ms hold".
+    await page.waitForTimeout(PRESS_FEEL.pressSampleMs); // pacing
 
     const pressed = await measureButton(jobButton);
     const pressedScaleX = pressed.width / before.width;
@@ -166,7 +170,10 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // already been detached, `measureButton` throws and the spec
     // reds with a clear cause rather than a phantom recovered
     // scale.
-    await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs);
+    // pacing: outlive the 96ms hold + 420ms release envelope so
+    // the recovery sample lands after transform has unwound to
+    // scale-settle; no beat signals paint completion.
+    await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs); // pacing
 
     const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
     const recoveredCount = await recoveryLocator.count();
