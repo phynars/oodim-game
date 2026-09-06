@@ -61,6 +61,13 @@ async function tap(page: Page, selector: string): Promise<void> {
   await button.tap();
 }
 
+async function clearLocalStorage(page: Page): Promise<void> {
+  await page.evaluate(() => window.localStorage.clear());
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.length), { timeout: WAIT_MS })
+    .toBe(0);
+}
+
 async function expectRestoredReturningSession(page: Page): Promise<void> {
   await waitForReady(page);
   await expect(page.locator("#line")).toBeVisible();
@@ -134,6 +141,12 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
 
     // Existing reload path: same context, a real document reload.
     await page.reload({ waitUntil: "load" });
+    await expectRestoredReturningSession(page);
+
+    // Storage-loss path: a returning identified player must recover from the
+    // backend record after origin-local storage is explicitly cleared.
+    await clearLocalStorage(page);
+    await page.goto(url, { waitUntil: "load" });
     await expectRestoredReturningSession(page);
 
     // Cross-context path: no cookies or localStorage are carried over. The
