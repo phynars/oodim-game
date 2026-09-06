@@ -2292,6 +2292,7 @@ const commitPacketOutcome = (outcome) => {
       state.packet.sealed = true;
       markStateDirty();
     }
+    state.interaction.lastAction = "packet-sealed";
     setBeat("packet-choice");
   }
 
@@ -2300,6 +2301,7 @@ const commitPacketOutcome = (outcome) => {
       state.packet.sealed = false;
       markStateDirty();
     }
+    state.interaction.lastAction = "packet-opened";
     setBeat("packet-choice");
   }
 };
