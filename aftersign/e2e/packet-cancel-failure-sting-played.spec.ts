@@ -39,7 +39,7 @@ test.describe("packet cancel failure sting", () => {
       if (!feedback) return null;
       return {
         active: feedback.active,
-        reason: feedback.reason,
+        kind: feedback.kind,
         durationMs: feedback.durationMs,
         hudShakePx: feedback.hudShakePx,
         hudDropPx: feedback.hudDropPx,
@@ -50,7 +50,7 @@ test.describe("packet cancel failure sting", () => {
 
     expect(failureFeedback).toMatchObject({
       active: true,
-      reason: "packet-cancelled",
+      kind: "packet-cancelled",
       ...FAILURE_STING_FEEL,
     });
 
@@ -95,7 +95,7 @@ declare global {
         lastAction?: string;
         failureFeedback?: {
           active?: boolean;
-          reason?: string;
+          kind?: string;
           durationMs?: number;
           hudShakePx?: number;
           hudDropPx?: number;
