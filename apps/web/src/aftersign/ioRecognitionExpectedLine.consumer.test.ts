@@ -5,7 +5,7 @@ import {
   expectedIoRecognitionLine,
   selectIoRecognitionDialogueLine,
   type IoRecognitionMemoryFact,
-} from "../../../../aftersign/src/ioRecognitionDialogue";
+} from "./ioRecognitionDialogue";
 
 describe("served AFTERSIGN Io recognition dialogue consumer", () => {
   const cases = [

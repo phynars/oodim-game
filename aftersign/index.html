@@ -320,8 +320,28 @@
          aftersign-job-take-feel.playtest.spec.ts assertions. Left
          here so a future janitor doesn't "fix" the mismatch and
          cascade a rename through the harness surface. */
-      button[data-aftersign-job-take="ready"],
-      button[data-aftersign-job-take="armed"] {
+      /* SPECIFICITY NOTE (PR #1662 fix for #1661 press-juice RED).
+         The base `button { transform: translate3d(0,0,0) scale(1); }`
+         rule (below) and `button:active { transform: ... scale(0.975) }`
+         BOTH declare `transform` and BOTH appear LATER in source order
+         than these job-take rules. Under CSS cascade tie-breaking,
+         same-specificity rules resolve by source order — so a plain
+         `button[data-aftersign-job-take="pressing"]` selector
+         (specificity 0,1,1) LOSES to `button:active` (also 0,1,1)
+         because :active is declared later. The result: the compressed
+         `scale(scale-from)` never lands on paint during the hold
+         window, and the press-juice e2e sees `scaleDrop === 0`.
+
+         Fix: double-qualify the attribute selector to raise
+         specificity to (0,2,1). Now the pressing/ready/armed rules
+         authoritatively beat both `button` (0,0,1) and `button:active`
+         (0,1,1) regardless of source order. Written as
+         `[data-aftersign-job-take][data-aftersign-job-take="X"]` so
+         the exact-value match is preserved — the same attribute is
+         referenced twice, the first time as a presence check, the
+         second time as the value gate. */
+      button[data-aftersign-job-take][data-aftersign-job-take="ready"],
+      button[data-aftersign-job-take][data-aftersign-job-take="armed"] {
         transform: scale(var(--aftersign-job-take-scale-settle, 1));
         transition:
           transform
@@ -332,7 +352,7 @@
             var(--aftersign-job-take-easing-glow, linear);
         will-change: transform;
       }
-      button[data-aftersign-job-take="pressing"] {
+      button[data-aftersign-job-take][data-aftersign-job-take="pressing"] {
         transform: scale(var(--aftersign-job-take-scale-from, 1));
         /* #1663: `hold-ms` keeps the marker alive for the full press
            envelope; it cannot also be the press-in duration. A touch
@@ -356,10 +376,15 @@
         /* Reduced-motion users still get a state marker (so
            dependent CSS elsewhere keys off it correctly) but the
            scale channel collapses — no compression paint. The
-           press-juice spec is not gated on this branch. */
-        button[data-aftersign-job-take="ready"],
-        button[data-aftersign-job-take="armed"],
-        button[data-aftersign-job-take="pressing"] {
+           press-juice spec is not gated on this branch.
+
+           Same specificity discipline as the animated rules above
+           (double-qualified attribute selector, 0,2,1) so the
+           motion collapse still authoritatively beats
+           `button:active`'s 0,1,1 transform under reduced motion. */
+        button[data-aftersign-job-take][data-aftersign-job-take="ready"],
+        button[data-aftersign-job-take][data-aftersign-job-take="armed"],
+        button[data-aftersign-job-take][data-aftersign-job-take="pressing"] {
           transform: none;
           transition: box-shadow
             var(--aftersign-job-take-hold-ms, 0ms)

@@ -78,6 +78,39 @@ const hasJobTakePressLayer = (button) =>
       button.hasAttribute("data-aftersign-job-take"),
   );
 
+// PR #1662 — resolve the tuned press-hold in ms for the deferred
+// `onChoose` scheduler below. Mirrors the shape of `resolveHoldMs`
+// in `aftersign/index.html`'s inline armPressing block: read the
+// `--aftersign-job-take-hold-ms` CSS variable that
+// `applyAftersignJobTakeFeelToButton` stamps on the button at
+// render time; parse the `<number>ms` suffix; fall back to 96
+// (the frozen `holdMs` in `apps/web/src/aftersign/aftersignJobTakeFeel.js`)
+// when the stamp is missing or unparseable. Returns 0 only when
+// there is no button/style to read at all, which keeps the caller's
+// setTimeout guard on `holdMs > 0` safe.
+const FALLBACK_JOB_TAKE_HOLD_MS = 96;
+const readJobTakeHoldMs = (button) => {
+  if (
+    !button ||
+    typeof button.ownerDocument === "undefined" ||
+    typeof getComputedStyle !== "function"
+  ) {
+    return FALLBACK_JOB_TAKE_HOLD_MS;
+  }
+  try {
+    const raw = getComputedStyle(button)
+      .getPropertyValue("--aftersign-job-take-hold-ms")
+      .trim();
+    if (raw) {
+      const parsed = Number.parseFloat(raw);
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    }
+  } catch (_err) {
+    /* fall through */
+  }
+  return FALLBACK_JOB_TAKE_HOLD_MS;
+};
+
 export const armJobOfferFeel = (button, onChoose, feel = JOB_OFFER_FEEL) => {
   if (!button) return null;
   setFeelVars(button, feel);
@@ -93,13 +126,51 @@ export const armJobOfferFeel = (button, onChoose, feel = JOB_OFFER_FEEL) => {
   });
   button.addEventListener("click", () => {
     if (hasJobTakePressLayer(button)) {
-      // The inline listener already flipped the marker to "pressing"
-      // on the preceding pointerdown, installed the MutationObserver,
-      // and scheduled the return to "armed" after the 96ms hold. Our
-      // only job here is to forward the choice — the state commit +
-      // beat advance run against the CSS envelope that's already
-      // painting.
-      if (typeof onChoose === "function") onChoose({ ...feel });
+      // PR #1662 (fix for #1661 press-juice RED).
+      //
+      // The inline capture-phase pointerdown listener in
+      // `aftersign/index.html` (`armPressing`) already flipped the
+      // marker to "pressing" and installed the MutationObserver
+      // that protects the marker for the 96ms hold. The CSS press
+      // rule (now specificity 0,2,1 after this same PR) is painting
+      // `transform: scale(var(--aftersign-job-take-scale-from))`
+      // — the compressed 0.97 bounding box the e2e samples at 64ms.
+      //
+      // The bug the specificity fix alone did NOT close: firing
+      // `onChoose(...)` synchronously here advances state (main.js
+      // calls `choose(action)`), which triggers `renderText()` and
+      // rewrites `#offeredJobs.innerHTML`. The pressing button node
+      // can be DETACHED from the DOM in the same task, and the
+      // replacement node (if any) is a fresh "ready" button at
+      // scale 1. The `#1658` inFlight same-id inherit map in
+      // index.html *does* re-stamp the replacement to "pressing" for
+      // the remaining hold budget — but the compressed transform is
+      // painted via the CSS transition, which restarts on the newly
+      // attached node from the base rule's identity scale. During
+      // the same task that swaps the DOM, the inline capture-phase
+      // stamp on the OLD node has already been discarded. Deferring
+      // `onChoose` by `hold-ms` sidesteps all of that: the original
+      // pressing node stays attached through the full 96ms
+      // compression window; only after paint has resolved on the
+      // original node do we advance state and let the re-render
+      // happen. The 64ms sample lands cleanly; the 480ms recovery
+      // sample lands on whichever node the writer produced next.
+      //
+      // The setTimeout reads the resolved hold from the SAME CSS var
+      // the press rule + the inline `resolveHoldMs` consume, with a
+      // `getComputedStyle` fallback so a caller that stamped only
+      // the feel row (not the JS-side row) still gets the tuned
+      // hold. Read once at click time; the tap has already committed
+      // intent, we're just letting the paint finish.
+      const holdMs = readJobTakeHoldMs(button);
+      const invoke = () => {
+        if (typeof onChoose === "function") onChoose({ ...feel });
+      };
+      if (holdMs > 0 && typeof setTimeout === "function") {
+        setTimeout(invoke, holdMs);
+      } else {
+        invoke();
+      }
       return;
     }
     const applied = applyJobOfferFeel(button, feel);
