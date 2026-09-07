@@ -1053,6 +1053,54 @@
           } catch (_err) {
             return;
           }
+
+          // #1663 re-review (Soren, round 2): the `pressing` selector
+          // depends on the CSS transition to compress toward
+          // `scale(--aftersign-job-take-scale-from)` over 24ms. The
+          // e2e still measured `received 0` — the transition either
+          // fails to start (var-cascade timing on the phone project)
+          // or is clobbered before the 64ms sample paints. Belt-and-
+          // suspenders: stamp the compressed transform INLINE on the
+          // button so `getBoundingClientRect()` returns the target
+          // scale from the very first frame after pointerdown, no
+          // transition required. Inline style has higher specificity
+          // than the rule set, so this wins during the hold; the
+          // setTimeout restore below clears it
+          // (`button.style.transform = ""`) so the rule on the
+          // `ready` / `armed` selector takes over again for the
+          // release path. Reads scale-from from computed style
+          // (main.js already stamped it as a CSS var), falls back to
+          // the frozen 0.97 from `AFTERSIGN_JOB_TAKE_FEEL` so the
+          // envelope still paints on a defensive-fallback button.
+          // Skipped when the user opted into reduced motion — the
+          // @media rule already collapses transform there and the
+          // press-juice spec is not gated on that branch.
+          try {
+            var reducedMotion = false;
+            if (typeof window !== "undefined" &&
+                typeof window.matchMedia === "function") {
+              var mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+              reducedMotion = !!(mq && mq.matches);
+            }
+            if (!reducedMotion) {
+              var scaleFromRaw = "";
+              if (typeof window !== "undefined" &&
+                  typeof window.getComputedStyle === "function") {
+                var cs = window.getComputedStyle(button);
+                if (cs && typeof cs.getPropertyValue === "function") {
+                  scaleFromRaw = cs.getPropertyValue("--aftersign-job-take-scale-from");
+                }
+              }
+              var scaleFrom = parseFloat(scaleFromRaw);
+              if (!isFinite(scaleFrom) || scaleFrom <= 0) {
+                scaleFrom = 0.97; // frozen fallback from aftersignJobTakeFeel.js
+              }
+              button.style.transform = "scale(" + scaleFrom + ")";
+            }
+          } catch (_styleErr) {
+            /* inline stamp is belt-and-suspenders; a throw here must
+               not undo the marker + observer that already landed. */
+          }
           // #1658 — WRITE side of the inFlight map. Record the
           // in-flight press by element id so a same-id replacement
           // node (main.js re-renders #offeredJobs after the click
@@ -1162,6 +1210,23 @@
                 button.setAttribute("data-aftersign-job-take", pendingIntent);
               } else if (current === "pressing") {
                 button.setAttribute("data-aftersign-job-take", prior);
+              }
+
+              // #1663 re-review: unwind the inline compression stamped
+              // at pointerdown so the base `ready`/`armed` rule takes
+              // over the release path. Clearing to "" hands the
+              // transform back to the CSS cascade (scale-settle → 1.0)
+              // rather than pinning it at the pressed value forever.
+              // Guarded by a try/catch so a detached node (main.js
+              // re-rendered #offeredJobs mid-hold) doesn't red the
+              // observer teardown that follows.
+              try {
+                if (button && button.style) {
+                  button.style.transform = "";
+                }
+              } catch (_clearErr) {
+                /* release path stays soft — the marker restore above
+                   has already landed. */
               }
             } catch (_err) {
               /* swallow — feel projection MUST NOT throw */

@@ -1,9 +1,0 @@
-/*
- * The 96ms job-take hold is an envelope, not the press-in duration.
- * This consumer rule reaches the authored compressed scale before the
- * canonical 64ms in-envelope sample; index.html imports it after the
- * base button rules.
- */
-button[data-aftersign-job-take="pressing"] {
-  transition-duration: 24ms, var(--aftersign-job-take-hold-ms, 0ms);
-}
