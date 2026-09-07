@@ -967,6 +967,33 @@
       (function () {
         var FALLBACK_HOLD_MS = 96;
 
+        // #1658 — same-id replacement inherit map. main.js re-renders
+        // `#offeredJobs` after the click advances state; the physical
+        // <button> node whose pointerdown we just stamped can be
+        // detached and replaced by a fresh node reusing the same
+        // `id` before the holdMs window elapses. Without this map,
+        // the replacement mounts at identity scale (no
+        // `data-aftersign-job-take="pressing"` marker) and
+        // scaleDrop momentarily reads 0 — exactly what
+        // aftersign-job-offer-press-juice.playtest.spec.ts flagged.
+        //
+        // Shape: { [buttonId]: { until: epochMs, prior: "ready" | "armed" } }
+        // - `until`  → epoch ms when the original hold expires; a
+        //   same-id inherit uses `Math.max(0, until - now)` as its
+        //   remaining hold budget, so total compression time across
+        //   the swap equals a single holdMs window (not doubled).
+        // - `prior`  → the state we captured from the ORIGINAL node
+        //   at pointerdown. The replacement's own attribute may read
+        //   `ready` again (main.js writes it fresh); we restore to
+        //   the ORIGINAL prior so a mid-hold transition (e.g.
+        //   ready→armed) still lands after the compression envelope.
+        //
+        // Cleanup: the setTimeout below deletes the entry when the
+        // hold expires, so a stale record can't shadow a later press
+        // on the same id.  `Object.create(null)` avoids prototype
+        // key collisions with an id like "toString".
+        var inFlight = Object.create(null);
+
         function resolveHoldMs(el) {
           try {
             var raw = el.style && typeof el.style.getPropertyValue === "function"
@@ -987,17 +1014,50 @@
           // second pointerdown inside the hold) and empty/unknown.
           if (prior !== "ready" && prior !== "armed") return;
           var holdMs = resolveHoldMs(button);
+
+          // #1658 — READ side of the inFlight map. If a prior press
+          // on a node with the SAME id is still mid-hold (main.js
+          // re-rendered #offeredJobs and mounted a fresh node whose
+          // pointerdown we're now seeing, OR the same physical node
+          // is being re-pressed after a swap), inherit two things
+          // from the original press:
+          //   1. `prior` — restore to the ORIGINAL captured state
+          //      when the compression window ends, not the fresh
+          //      node's current attr (which main.js just wrote to
+          //      "ready" and would otherwise clobber an "armed"
+          //      intent that predated the swap).
+          //   2. remaining hold budget — so the total compressed
+          //      envelope across the swap equals a single holdMs
+          //      window, not two stacked windows (which would
+          //      over-hold the pressing marker and delay the
+          //      restore visibly past the design 96ms).
+          // If the entry has already expired (defensive: setTimeout
+          // hasn't fired yet due to event loop scheduling), fall
+          // through to a normal fresh press.
+          var now = Date.now();
+          if (button.id && inFlight[button.id]) {
+            var live = inFlight[button.id];
+            var remaining = live.until - now;
+            if (remaining > 0) {
+              prior = live.prior;
+              holdMs = remaining;
+            }
+          }
+
           try {
             button.setAttribute("data-aftersign-job-take", "pressing");
           } catch (_err) {
             return;
           }
-          // #1658 — record the in-flight press by element id so a
-          // same-id replacement node (main.js re-renders #offeredJobs
-          // after the click advances state) inherits the remaining
-          // hold instead of appearing at identity scale mid-hold.
+          // #1658 — WRITE side of the inFlight map. Record the
+          // in-flight press by element id so a same-id replacement
+          // node (main.js re-renders #offeredJobs after the click
+          // advances state) inherits the remaining hold + original
+          // prior via the READ block above, instead of appearing at
+          // identity scale mid-hold. The setTimeout at the tail of
+          // this function deletes the entry when the hold expires.
           if (button.id) {
-            inFlight[button.id] = { until: Date.now() + holdMs, prior: prior };
+            inFlight[button.id] = { until: now + holdMs, prior: prior };
           }
 
           // PR #1649 re-review (Soren): the click handler in
@@ -1070,6 +1130,15 @@
             try {
               if (observer && typeof observer.disconnect === "function") {
                 observer.disconnect();
+              }
+              // #1658 — release the inFlight slot for this id so a
+              // later press on the same id starts a fresh envelope
+              // rather than inheriting an expired remaining-hold of
+              // ~0ms (which would render the press marker invisibly
+              // short). Guarded on button.id to match the write
+              // site's guard above.
+              if (button.id && inFlight[button.id]) {
+                delete inFlight[button.id];
               }
               var current = button.getAttribute("data-aftersign-job-take");
               // Priority order for the post-hold state:
