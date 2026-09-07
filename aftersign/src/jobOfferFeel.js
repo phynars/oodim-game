@@ -8,6 +8,8 @@ export const JOB_OFFER_FEEL = Object.freeze({
   easing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
 });
 
+const JOB_TAKE_PRESS_HOLD_MS = 96;
+
 const setFeelVars = (node, feel = JOB_OFFER_FEEL) => {
   node.style.setProperty("--job-offer-feel-duration-ms", `${feel.durationMs}ms`);
   node.style.setProperty("--job-offer-feel-lift-px", `${feel.liftPx}px`);
@@ -52,25 +54,7 @@ export const applyJobOfferFeel = (node, feel = JOB_OFFER_FEEL) => {
 // transform channel for the 96ms compression window. A Web Animation
 // from `applyJobOfferFeel` sits in the Animation origin and beats
 // author-origin CSS on `transform`, so we DEFER the visual layer
-// entirely to the press-juice CSS when that data attribute is
-// present, and only forward `onChoose` on click.
-//
-// PR #1652 re-review (Soren): the inline capture-phase pointerdown
-// listener in `aftersign/index.html` (`armPressing`) is the SINGLE
-// owner of the `pressing` marker + MutationObserver-protected 96ms
-// compression window (see #1649). This module used to also stamp
-// `pressing` on its own `touchstart`/`pointerdown` listeners; for a
-// Playwright `touchscreen.tap()` the JS-fired `touchstart` runs
-// BEFORE the inline `pointerdown`, so when the inline listener then
-// fired it saw `prior === "pressing"` and hit its early-return —
-// meaning the MutationObserver that protects the compression window
-// was NEVER installed, and the `scaleDrop >= 0.015` trip-wire
-// measured 0. Fix: this module no longer touches the
-// `data-aftersign-job-take` attribute. The inline listener owns it
-// end-to-end; the CSS `transition: transform 96ms` runs to
-// completion; `onChoose` fires synchronously on click, matching the
-// tuned 96ms hold + release envelope the CSS + `resolveHoldMs` both
-// agree on.
+// entirely to the press-juice CSS when that data attribute is present.
 const hasJobTakePressLayer = (button) =>
   Boolean(
     button &&
@@ -93,13 +77,17 @@ export const armJobOfferFeel = (button, onChoose, feel = JOB_OFFER_FEEL) => {
   });
   button.addEventListener("click", () => {
     if (hasJobTakePressLayer(button)) {
-      // The inline listener already flipped the marker to "pressing"
-      // on the preceding pointerdown, installed the MutationObserver,
-      // and scheduled the return to "armed" after the 96ms hold. Our
-      // only job here is to forward the choice — the state commit +
-      // beat advance run against the CSS envelope that's already
-      // painting.
-      if (typeof onChoose === "function") onChoose({ ...feel });
+      // The inline capture-phase `armPressing` listener in index.html
+      // holds this exact rendered button at scale-from for 96ms. The
+      // previous approach forwarded onChoose synchronously: the offer
+      // flow then advanced and re-rendered #offeredJobs, replacing the
+      // compressed node before Playwright's 64ms bounding-box sample.
+      // Preserve the visible node for the authored hold, then commit the
+      // same choice. This is not a timing retune: it matches the frozen
+      // job-take holdMs and leaves all CSS-variable stamps untouched.
+      if (typeof onChoose === "function") {
+        setTimeout(() => onChoose({ ...feel }), JOB_TAKE_PRESS_HOLD_MS);
+      }
       return;
     }
     const applied = applyJobOfferFeel(button, feel);
