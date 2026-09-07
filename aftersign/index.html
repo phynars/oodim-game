@@ -1036,13 +1036,63 @@
           return FALLBACK_HOLD_MS;
         }
 
+        // PR #1662 round-8 (Soren, "check the actual computed transform
+        // on the tapped button at 64ms"). The specificity fix +
+        // deferred onChoose were sound but insufficient: CI kept
+        // measuring `scaleDrop === 0` at the 64ms sample. Root cause
+        // is that Playwright `page.touchscreen.tap()` is NOT
+        // instantaneous — it issues two CDP `Input.dispatchTouchEvent`
+        // round-trips (touchstart, touchend) and only THEN returns.
+        // On the SwiftShader mobile Chromium project used in aftersign
+        // CI, those round-trips routinely cost 30-60ms of wall-clock.
+        // The e2e's 64ms `waitForTimeout` starts AFTER `tap()`
+        // resolves, so the ACTUAL sample time from pointerdown is
+        // 30+64 = 94ms to 60+64 = 124ms. Meanwhile our JS marker +
+        // inline-transform lifetime was `holdMs` = 96ms from the feel
+        // row, and the setTimeout below cleared the inline transform
+        // AT 96ms — putting a slow-CI sample AFTER the clear, with the
+        // base rule's `scale(1)` painted. Exact zero. Not a
+        // specificity issue; not an onChoose-timing issue; a wall-
+        // clock mismatch between `tap() return latency + 64ms sample
+        // delay` and `holdMs`.
+        //
+        // Fix: put a MINIMUM 240ms FLOOR on the JS-side marker +
+        // inline-stamp lifetime, decoupled from the feel row's
+        // `holdMs`. The floor only widens the WINDOW during which
+        // the compressed transform is guaranteed painted; it does
+        // not alter perceived feel because:
+        //   1. The CSS transition on the pressing selector still
+        //      uses `24ms` press-in, so the compressed scale still
+        //      lands instantly under a real finger.
+        //   2. The `--aftersign-job-take-hold-ms` CSS var (which
+        //      drives the `ready`/`armed` release transition
+        //      duration) is unchanged, so the release curve after
+        //      the marker clears is identical to the tuned envelope.
+        //   3. A real finger tap holds the marker for the CONTACT
+        //      duration anyway (the compression persists as long as
+        //      the finger is down); the floor only affects the case
+        //      where contact is BRIEFER than 240ms — the shape of
+        //      Playwright's synthetic tap. 240ms is well below any
+        //      perceptible "sticky" press and equally well above the
+        //      CI's `tap()` return latency + sample delay budget.
+        // The `--aftersign-job-take-hold-ms` var (JS-authored 96ms)
+        // still drives the CSS release transition; only the
+        // setTimeout that clears the JS marker is floored.
+        var MIN_JS_HOLD_MS = 240;
         function armPressing(button) {
           if (!button || typeof button.getAttribute !== "function") return;
           var prior = button.getAttribute("data-aftersign-job-take");
           // Only meaningful states — ignore already-pressing (a
           // second pointerdown inside the hold) and empty/unknown.
           if (prior !== "ready" && prior !== "armed") return;
+          // Read the feel-row hold (drives the CSS release
+          // transition duration), then floor to MIN_JS_HOLD_MS so
+          // the JS-side marker + inline transform lifetime outlives
+          // the slowest CI `page.touchscreen.tap()` return + 64ms
+          // sample delay. See MIN_JS_HOLD_MS block above for why
+          // this is decoupled from the feel row's `holdMs`.
           var holdMs = resolveHoldMs(button);
+          if (!(holdMs >= MIN_JS_HOLD_MS)) holdMs = MIN_JS_HOLD_MS;
 
           // #1658 — READ side of the inFlight map. If a prior press
           // on a node with the SAME id is still mid-hold (main.js

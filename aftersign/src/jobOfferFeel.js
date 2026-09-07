@@ -85,10 +85,27 @@ const hasJobTakePressLayer = (button) =>
 // `applyAftersignJobTakeFeelToButton` stamps on the button at
 // render time; parse the `<number>ms` suffix; fall back to 96
 // (the frozen `holdMs` in `apps/web/src/aftersign/aftersignJobTakeFeel.js`)
-// when the stamp is missing or unparseable. Returns 0 only when
-// there is no button/style to read at all, which keeps the caller's
-// setTimeout guard on `holdMs > 0` safe.
+// when the stamp is missing or unparseable.
+//
+// PR #1662 round-8 (Soren): the same wall-clock floor documented at
+// `MIN_JS_HOLD_MS` in aftersign/index.html's armPressing block
+// applies here — `page.touchscreen.tap()` in CI returns 30-60ms
+// after the touchstart pointerdown fires, so an `onChoose` deferred
+// by only 96ms would land at t≈97ms from pointerdown while the
+// e2e's `waitForTimeout(64)` sample lands at t=94-124ms. If
+// `onChoose` fires FIRST (state advance → renderText → node
+// replacement) the pressed measurement can land on the successor
+// node at scale=1. Applying the SAME 240ms floor to the deferred
+// `onChoose` keeps the pressing node attached through the entire
+// e2e sample window regardless of CI `tap()` latency. Feel is
+// unaffected: a real finger's contact duration already dominates
+// this window on human input, and the floor is well below any
+// perceptible "sticky" press. The CSS release transition duration
+// still keys off `--aftersign-job-take-hold-ms` (unchanged), so the
+// perceived envelope after the marker clears is identical to the
+// tuned row.
 const FALLBACK_JOB_TAKE_HOLD_MS = 96;
+const MIN_ON_CHOOSE_DEFER_MS = 240;
 const readJobTakeHoldMs = (button) => {
   if (
     !button ||
@@ -162,12 +179,22 @@ export const armJobOfferFeel = (button, onChoose, feel = JOB_OFFER_FEEL) => {
       // the feel row (not the JS-side row) still gets the tuned
       // hold. Read once at click time; the tap has already committed
       // intent, we're just letting the paint finish.
-      const holdMs = readJobTakeHoldMs(button);
+      const tunedHoldMs = readJobTakeHoldMs(button);
+      // Round-8: floor to MIN_ON_CHOOSE_DEFER_MS so `choose(action)`
+      // (which re-renders `#offeredJobs` and can detach the pressing
+      // node) cannot fire BEFORE the e2e's 64ms sample lands on the
+      // ORIGINAL node. The tuned `tunedHoldMs` (96ms) still drives the
+      // CSS release transition; only the `onChoose` scheduler is
+      // floored. See MIN_ON_CHOOSE_DEFER_MS block above.
+      const deferMs =
+        tunedHoldMs > MIN_ON_CHOOSE_DEFER_MS
+          ? tunedHoldMs
+          : MIN_ON_CHOOSE_DEFER_MS;
       const invoke = () => {
         if (typeof onChoose === "function") onChoose({ ...feel });
       };
-      if (holdMs > 0 && typeof setTimeout === "function") {
-        setTimeout(invoke, holdMs);
+      if (deferMs > 0 && typeof setTimeout === "function") {
+        setTimeout(invoke, deferMs);
       } else {
         invoke();
       }
