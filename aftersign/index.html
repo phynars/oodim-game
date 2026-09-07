@@ -334,10 +334,14 @@
       }
       button[data-aftersign-job-take="pressing"] {
         transform: scale(var(--aftersign-job-take-scale-from, 1));
+        /* #1663: `hold-ms` keeps the marker alive for the full press
+           envelope; it cannot also be the press-in duration. A touch
+           tap returns after touchend, leaving the canonical 64ms sample
+           mid-transition when compression takes all 96ms. Reach the
+           authored scale in 24ms; preserve the existing 96ms hold and
+           release path. */
         transition:
-          transform
-            var(--aftersign-job-take-hold-ms, 0ms)
-            var(--aftersign-job-take-easing-press, linear),
+          transform 24ms var(--aftersign-job-take-easing-press, linear),
           box-shadow
             var(--aftersign-job-take-hold-ms, 0ms)
             var(--aftersign-job-take-easing-glow, linear);
