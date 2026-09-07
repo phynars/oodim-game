@@ -7,12 +7,6 @@ export type IoRecognitionMemoryFact = {
   object?: string;
 };
 
-// Renamed from `IoRecognitionFeelCue` (Mara, PR #1139 review): the name
-// collides with `apps/web/src/aftersign/ioRecognitionFeelLayer.ts`, which
-// exports a differently-shaped `IoRecognitionFeelCue = { packetOutcome,
-// startedAtMs }`. Two contracts under one name is a trap; the snippet-side
-// numbers are per-tier authored motion values, so the type name calls that
-// out (`SnippetFeelCue`) rather than fighting for the generic name.
 export type IoRecognitionSnippetFeelCue = {
   durationMs: number;
   holdFrames: number;
@@ -31,35 +25,13 @@ export type IoRecognitionDialogueSnippet = {
   npcId: "io";
   tier: IoRecognitionDialogueTier;
   line: string;
-  // Measured recognition-beat motion values that travel with the chosen
-  // line. main.js reads `selectedSnippet.feelCue` at `io-return-recognition`
-  // and (a) mirrors it into `state.interaction.recognitionSnippetFeelCue`
-  // for the harness, (b) writes `--io-recognition-*` CSS custom properties
-  // on `documentElement` so the DOM surface drives its camera-dolly /
-  // vignette / bloom / line-reveal envelopes from THESE authored numbers
-  // — one source of truth per tier, no drift between "which line spoke"
-  // and "how the beat felt".
   feelCue: IoRecognitionSnippetFeelCue;
-  // Memory ids the SPOKEN line legitimately cites for the harness's
-  // `assertNpcReferencesPriorMemory` check. The route-attention id is
-  // deliberately excluded per docs/flagship/story-state-contract.md
-  // ("its id must not appear in `lastLineMemoryRefs`") — the deep-recall
-  // wording DRAWS on the route memory (that's the tier distinction),
-  // but the only ref carried into `lastLineMemoryRefs` is the durable
-  // delivery-outcome id, regardless of tier.
   memoryRefs: string[];
-  // Provenance snippet: which memory facts influenced the LINE choice
-  // (as opposed to the citation set above). Consumers that want to
-  // show "Io recalls two things" affordances read this, not memoryRefs.
   sourceMemoryIds: string[];
 };
 
 export type IoRecognitionDialogueInput = {
   playerId: string;
-  // Authoritative outcome signal at the recognition beat — the caller
-  // owns this. Optional so pure unit tests can build snippets from
-  // memory alone; runtime callers ALWAYS pass it (and the red-polarity
-  // wrong-io-line break flips it here to force a line/outcome mismatch).
   packetSealed?: boolean;
   memory?: readonly IoRecognitionMemoryFact[];
 };
@@ -134,14 +106,6 @@ function findRouteAttention(memory: readonly IoRecognitionMemoryFact[]): IoRecog
 }
 
 function rememberedOutcome(input: IoRecognitionDialogueInput): "sealed" | "opened" {
-  // packetSealed is the authoritative signal from the caller at the
-  // recognition beat — main.js passes `state.packet.sealed` here (or,
-  // under the `wrong-io-line` break mode, its deliberate flip). The
-  // durable delivery-outcome memory is only consulted as a fallback
-  // when the caller did not supply packetSealed (input built without
-  // live scene state, e.g. pure unit tests). If we read memory first,
-  // the red-polarity break can't flip the line and the harness's
-  // wrong-io-line assertion silently passes when it should fail.
   if (typeof input.packetSealed === "boolean") {
     return input.packetSealed ? "sealed" : "opened";
   }
@@ -169,11 +133,6 @@ export function buildIoRecognitionDialogueSnippets(
     ? listened ? "sealedListened" : "sealedSkipped"
     : listened ? "openedListened" : "openedSkipped";
 
-  // memoryRefs is the CITATION set carried into `lastLineMemoryRefs`
-  // — contract-clean, delivery id only. sourceMemoryIds is the wider
-  // provenance (delivery + route-attention for deep-recall) that the
-  // UI can use to describe "Io recalls two things" without polluting
-  // the citation set the harness inspects.
   const deliveryOnlyRefs = deliveryRef ? [deliveryRef] : [];
   const deepSourceIds = [deliveryRef, routeRef].filter(
     (ref): ref is string => ref !== null,
@@ -213,21 +172,16 @@ export function buildIoRecognitionDialogueSnippets(
   ];
 }
 
-/** Every canonical line Io may speak at the recognition beat for a given
- *  durable delivery outcome, across tiers. Harness/e2e assertions should
- *  check membership here instead of pinning copy literals (#595 cleanup,
- *  #1077 — two merges evolved line selection and every duplicated literal
- *  went stale on main). Copy evolves in THIS module only. */
+/** Every canonical returning line Io may speak at the recognition beat for a
+ *  delivery outcome. Copy evolves in this module only. */
 export function ioRecognitionLinesFor(outcome: "sealed" | "opened"): readonly string[] {
   return outcome === "sealed"
-    ? [RETURNING_LINES.sealed, DEEP_RECALL_LINES.sealedListened, DEEP_RECALL_LINES.sealedSkipped]
-    : [RETURNING_LINES.opened, DEEP_RECALL_LINES.openedListened, DEEP_RECALL_LINES.openedSkipped];
+    ? [RETURNING_LINES.sealed, DEEP_RECALL_LINES.sealedListened]
+    : [RETURNING_LINES.opened, DEEP_RECALL_LINES.openedListened];
 }
 
 /** The exact line selectIoRecognitionDialogueLine yields for a delivery
- *  outcome + route-attention state — for specs that drive a known flow and
- *  want verbatim equality without duplicating copy. Mirrors the selection
- *  gate: deep-recall speaks ONLY when the route was listened. */
+ *  outcome + route-attention state. Deep recall requires listening. */
 export function expectedIoRecognitionLine(
   outcome: "sealed" | "opened",
   routeListened: boolean,
@@ -244,25 +198,15 @@ export function selectIoRecognitionDialogueLine(
   snippets: readonly IoRecognitionDialogueSnippet[],
   input?: { memory?: readonly IoRecognitionMemoryFact[] },
 ): IoRecognitionDialogueSnippet {
-  // Deep-recall is gated on a SECOND-ACTION distinction, not on the
-  // mere presence of both memory facts. Post-delivery the two facts
-  // are always present (the shape is invariant per memoryFacts()), so
-  // memoryRefs.length >= 2 was constant — it shadowed the returning
-  // tier and broke the contract-required fragment in `lastLine`.
-  //
-  // The genuine distinction: did the player acknowledge the kiosk's
-  // second beat (route-attention `object === "done"`)? If yes, Io
-  // recalls twice — the deep-recall tier speaks. Otherwise the
-  // returning tier speaks and its line carries the harness fragment.
   const routeFact = (input?.memory ?? []).find(
     (fact) => fact.predicate === "kiosk-second-action",
   );
-  const routeListened = routeFact?.object === "done";
+  const listened = routeListened(routeFact);
 
   const returning = snippets.find((snippet) => snippet.tier === "returning");
   const deepRecall = snippets.find((snippet) => snippet.tier === "deep-recall");
 
-  if (routeListened && deepRecall) return deepRecall;
+  if (listened && deepRecall) return deepRecall;
   if (returning && returning.memoryRefs.length >= 1) return returning;
 
   const firstMeeting = snippets.find((snippet) => snippet.tier === "first-meeting");
