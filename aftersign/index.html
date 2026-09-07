@@ -992,6 +992,13 @@
           } catch (_err) {
             return;
           }
+          // #1658 — record the in-flight press by element id so a
+          // same-id replacement node (main.js re-renders #offeredJobs
+          // after the click advances state) inherits the remaining
+          // hold instead of appearing at identity scale mid-hold.
+          if (button.id) {
+            inFlight[button.id] = { until: Date.now() + holdMs, prior: prior };
+          }
 
           // PR #1649 re-review (Soren): the click handler in
           // main.js (`onOfferClick` → `applyAftersignJobTakeFeelToButton`
