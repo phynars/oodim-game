@@ -9,6 +9,11 @@
 # main. On failure it files (or bumps) an agent-visible P1 issue so the
 # ORG detects and repairs its own main without a human in the loop —
 # the backlog picker ranks agent-filed P1s first.
+#
+# The failure summary (first failing spec + error from results.json, or
+# the raw runner log tail) is INLINED into the issue body/comment: agents
+# cannot fetch run logs (job-logs endpoint 401s on the dead token, #1345),
+# so a bare run URL left the main-RED issue undiagnosable (#1665).
 
 name: main-e2e
 
@@ -46,7 +51,93 @@ jobs:
       - name: Install Playwright browsers
         run: node scripts/install-playwright-chromium.mjs
       - name: Run aftersign e2e against MAIN
-        run: npm run test:e2e:aftersign
+        id: e2e
+        shell: bash
+        # Tee the runner output so the failure-summary step can quote the
+        # RAW log tail when aftersign/playwright-report/results.json is
+        # missing (pre-spec crash, e.g. webServer boot failure) — mirrors
+        # ci.yml (#1065).
+        run: |
+          set -o pipefail
+          npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
+
+      - name: Build aftersign failure summary
+        if: failure() && steps.e2e.conclusion == 'failure'
+        shell: bash
+        # Same walker as ci.yml's "Print aftersign failure summary" (#1665).
+        # SINGLE INPUT: aftersign/playwright-report/results.json — the
+        # aftersign/ prefix is not optional: Playwright resolves a reporter's
+        # relative `outputFile` against the CONFIG FILE's directory (PR #1555).
+        run: |
+          summary_file=/tmp/aftersign-failure-summary.md
+
+          {
+            echo "## aftersign WebGL e2e — failure summary"
+            echo ""
+
+            if [ -f aftersign/playwright-report/results.json ]; then
+              echo "### first failing spec (from aftersign/playwright-report/results.json)"
+              echo '```'
+              node -e '
+                const fs = require("node:fs");
+                const report = JSON.parse(fs.readFileSync("aftersign/playwright-report/results.json", "utf8"));
+
+                function findFirstFailingSpec(node) {
+                  if (!node || typeof node !== "object") return null;
+
+                  if (Array.isArray(node.specs)) {
+                    for (const spec of node.specs) {
+                      const title = spec.title || spec.file || "(unknown spec)";
+                      if (Array.isArray(spec.tests)) {
+                        for (const test of spec.tests) {
+                          if (!Array.isArray(test.results)) continue;
+                          for (const result of test.results) {
+                            if (!Array.isArray(result.errors)) continue;
+                            for (const err of result.errors) {
+                              if ((err && err.message) || err) {
+                                const message = String((err && err.message) || err || "");
+                                return { title, message };
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  if (Array.isArray(node.suites)) {
+                    for (const suite of node.suites) {
+                      const found = findFirstFailingSpec(suite);
+                      if (found) return found;
+                    }
+                  }
+
+                  return null;
+                }
+
+                const first = findFirstFailingSpec(report);
+                if (first) {
+                  console.log(`spec: ${first.title}`);
+                  console.log("error:");
+                  console.log(first.message.split("\\n").slice(0, 20).join("\\n"));
+                } else {
+                  console.log("(no failing test recorded in aftersign/playwright-report/results.json)");
+                }
+              ' 2>&1
+              echo '```'
+            else
+              echo "(aftersign/playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; the run crashed BEFORE any spec ran, e.g. a webServer boot failure. Raw runner log tail below — #1065.)"
+              if [ -f /tmp/aftersign-e2e-runner.log ]; then
+                echo '```'
+                tail -n 80 /tmp/aftersign-e2e-runner.log
+                echo '```'
+              else
+                echo "(runner log /tmp/aftersign-e2e-runner.log not found either)"
+              fi
+            fi
+          } > "$summary_file"
+
+          cat "$summary_file" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: File or bump the main-RED issue (agent-visible)
         if: failure()
@@ -58,19 +149,42 @@ jobs:
           title_prefix="aftersign e2e RED on main"
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           sha="${{ github.sha }}"
-          body="Post-merge e2e failed on main at \`${sha:0:8}\`.
 
-          Run: ${run_url}
+          # Fallback FIRST so a missing summary (e.g. install/browser step
+          # failed before the e2e step ran) never aborts under `set -e`.
+          summary_file=/tmp/aftersign-failure-summary.md
+          if [ ! -f "$summary_file" ]; then
+            echo "(no failure summary — the e2e step did not run; an earlier step failed. See run: ${run_url})" > "$summary_file"
+          fi
 
-          Main is the shared base: every open PR inherits this red until it is fixed. Read the failing specs from the run log, decide whether the SPEC or the SURFACE is wrong (specs assert canonical copy/contracts — see aftersign/src/ioRecognitionDialogue.ts for line sources), and land the repair as the top priority.
+          body_file="$(mktemp)"
+          {
+            echo "Post-merge e2e failed on main at \`${sha:0:8}\`."
+            echo ""
+            echo "Run: ${run_url}"
+            echo ""
+            echo "The first failing spec and its error are inlined below because run logs are NOT agent-fetchable (job-logs endpoint 401s on the dead token — #1345)."
+            echo ""
+            echo "Main is the shared base: every open PR inherits this red until it is fixed. Decide whether the SPEC or the SURFACE is wrong (specs assert canonical copy/contracts — see aftersign/src/ioRecognitionDialogue.ts for line sources), and land the repair as the top priority."
+            echo ""
+            echo "Milestone: M2 — a returning player is recognized on the served page"
+            echo "Epic: M2-EINT — wire the July contracts into the served surface"
+            echo ""
+            cat "$summary_file"
+          } > "$body_file"
 
-          Milestone: M2 — a returning player is recognized on the served page
-          Epic: M2-EINT — wire the July contracts into the served surface"
+          comment_file="$(mktemp)"
+          {
+            echo "Still (or again) RED at \`${sha:0:8}\` — ${run_url}"
+            echo ""
+            cat "$summary_file"
+          } > "$comment_file"
+
           existing=$(gh issue list --state open --search "$title_prefix in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Still (or again) RED at \`${sha:0:8}\` — ${run_url}"
+            gh issue comment "$existing" --body-file "$comment_file"
           else
-            gh issue create --title "$title_prefix @ ${sha:0:8}" --body "$body" --label "agent-filed" --label "type:bug" --label "priority:P1"
+            gh issue create --title "$title_prefix @ ${sha:0:8}" --body-file "$body_file" --label "agent-filed" --label "type:bug" --label "priority:P1"
           fi
 
       - name: Close the main-RED issue if this run is green
