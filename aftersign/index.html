@@ -1014,9 +1014,19 @@
         function armPressing(button) {
           if (!button || typeof button.getAttribute !== "function") return;
           var prior = button.getAttribute("data-aftersign-job-take");
-          // Only meaningful states — ignore already-pressing (a
-          // second pointerdown inside the hold) and empty/unknown.
-          if (prior !== "ready" && prior !== "armed") return;
+          // #1681 — the marker's REST value is not a closed enum.
+          // main.js's writer (`applyAftersignJobTakeFeelToButton`,
+          // see main.js ~:2046) stamps the memory-gated action id
+          // (e.g. "mloop-safe-delivery-take") onto
+          // `data-aftersign-job-take` for the harness's
+          // `[data-aftersign-job-take="<actionId>"]` surface, so a
+          // strict `ready|armed` allow-list here silently returned
+          // before stamping "pressing" — the press channel never
+          // fired and the e2e recorder read minScale == 1 (main red
+          // @e4f0563e). Accept ANY non-empty rest value; the only
+          // states we must refuse are "pressing" (a second pointerdown
+          // inside the hold) and a missing marker.
+          if (prior === null || prior === "" || prior === "pressing") return;
           var holdMs = resolveHoldMs(button);
 
           // #1658 — READ side of the inFlight map. If a prior press
