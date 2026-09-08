@@ -363,6 +363,27 @@ import {
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
+// PR #1676 (Soren's fourth REQUEST_CHANGES on #1674). The compression
+// envelope the press-juice e2e reads via `getComputedStyle(button).
+// transform` is authored by `ioJobOfferActionFeel.ts` and gated on
+// TWO selectors — `[data-aftersign-job-risk].is-aftersign-job-offer-
+// pressing`. `bootWindowGame.ts` stamps `data-aftersign-job-take` on
+// the take-surface, but the served renderer here never stamped
+// `data-aftersign-job-risk` on the same `<button id="job-offer-*">`
+// node the spec taps, and never toggled the pressed class either. So
+// `transform` read `none` → `parseScale → 1` → `scaleDrop = 0` →
+// `Received: 1`, regardless of how many matrix shapes the recorder
+// learned. Wiring it into main.js here is what turns the feel module
+// from a consumer-test-only export into a SHIPPED consumer on the
+// served page: install the stylesheet once at boot, and at every
+// offer-render below stamp the risk-tone attributes + pointerdown/up
+// press-class toggle on the SAME element the spec (and the player)
+// touches.
+import {
+  AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS,
+  applyAftersignJobOfferActionFeel,
+  installAftersignJobOfferActionFeelStyles,
+} from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -2059,6 +2080,42 @@ const renderText = () => {
           });
           applyAftersignJobTakeFeelToButton(button, jobTakeFeelRow, "ready");
           attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
+          // #1676 — stamp the risk-tone attributes + CSS vars that
+          // `ioJobOfferActionFeel.ts` authors, and wire the pressed
+          // class on the SAME node the played-not-driven press-juice
+          // spec taps. Risk-tone axis (safe/risky/consequence) is
+          // derived from the offer's routeRisk (low/medium/high) —
+          // low→safe (subtle press), medium→risky (warmer press),
+          // high→consequence (heaviest press). Defensive try/catch
+          // matches the surrounding FEEL projections: a decorative
+          // stamp must never black-screen the served page.
+          try {
+            const riskTone =
+              offer.routeRisk === "high"
+                ? "consequence"
+                : offer.routeRisk === "medium"
+                ? "risky"
+                : "safe";
+            installAftersignJobOfferActionFeelStyles(document);
+            applyAftersignJobOfferActionFeel(button, riskTone);
+            const setPressed = (pressed) => {
+              button.classList.toggle(
+                AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS,
+                pressed,
+              );
+            };
+            const onDown = () => setPressed(true);
+            const onUp = () => setPressed(false);
+            const onLeave = () => setPressed(false);
+            button.addEventListener("pointerdown", onDown);
+            button.addEventListener("pointerup", onUp);
+            button.addEventListener("pointercancel", onLeave);
+            button.addEventListener("pointerleave", onLeave);
+          } catch {
+            // FEEL projection — swallow so a bad risk axis never
+            // black-screens the served page. The spec will red with
+            // a diagnostic message if the stamp truly failed.
+          }
           armJobOfferFeel(button, () => {
             // Compose the M-LOOP action id with the underlying
             // offered jobId so BOTH axes ride on `lastAction`. Old
