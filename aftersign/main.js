@@ -388,10 +388,11 @@ import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 // comment for the diagnostic trail). The shim below is authored as
 // plain JS inside `aftersign/src/` — the tree the aftersign vite
 // build already bundles cleanly — and carries the SAME data-attribute
-// + CSS-var vocabulary the sibling TS consumer test in
-// `apps/web/src/aftersign/ioJobOfferActionFeel.consumer.test.ts`
-// pins, so a drift between the two authoring surfaces reds a unit
-// test long before it reaches the served page.
+// + CSS-var vocabulary the sibling TS module authors. NOTE: there is
+// currently NO automated equality test between the two authorings
+// (the TS consumer test only drives the TS module). Treat the TS
+// module as the source of truth and copy tweaks by hand until a
+// drift guard lands.
 import {
   applyAftersignJobOfferActionFeel,
   attachAftersignJobOfferActionPressFloor,
@@ -2111,26 +2112,29 @@ const renderText = () => {
                 : "safe";
             installAftersignJobOfferActionFeelStyles(document);
             applyAftersignJobOfferActionFeel(button, riskTone);
-            // PR #1676 (Soren's 5th REQUEST_CHANGES). Prior wire relied on
-            // synchronous pointerdown→pointerup toggling PLUS a `:active`
-            // fallback in the CSS. Under Playwright's headless `tap()` both
-            // events fire within a single frame on SwiftShader — the class
-            // arrives on pointerdown and is stripped on pointerup BEFORE
-            // the in-page 8ms recorder polls `getComputedStyle().transform`
-            // even once, and `:active`'s paint isn't guaranteed to land
-            // inside the same tap frame either. Both paths produced
-            // `Received: 1` on the recorded minScale.
+            // PR #1676 (Soren's 7th REQUEST_CHANGES). Two compounding
+            // failures kept this red across six iterations:
+            //   1. `attachJobOfferPressFeedback` (wired one line above at
+            //      main.js:2097) writes an INLINE
+            //      `element.style.transform = "scale(0.97)"` on pointerdown.
+            //      Inline outranks stylesheet — the shim's CSS
+            //      `[data-aftersign-job-risk].is-pressing { transform: ... }`
+            //      rule could never be the value the recorder observed.
+            //   2. But the inline transform itself never survived into the
+            //      recorder's first 8ms sample either — Playwright's
+            //      `page.tap()` under `test.use({ hasTouch: true })` fires
+            //      `touchstart`/`touchend`, NOT `pointerdown`/`pointerup`.
+            //      `attachJobOfferPressFeedback`'s pointerdown handler
+            //      NEVER FIRES under the spec's tap.
             //
-            // Fix: hold the pressed class for a FLOOR duration (~120ms) via
-            // a deferred release (see `attachAftersignJobOfferActionPressFloor`
-            // in the shim). On pointerdown the class lands immediately and
-            // a setTimeout arms; pointerup / pointercancel / pointerleave
-            // do NOT strip the class — the timer owns release, so the
-            // recorder is guaranteed to sample at least one compressed
-            // frame regardless of how tightly the harness collapses
-            // down/up. This matches the 96ms `holdMs` on
-            // `aftersignJobTakeFeel` (see comment on that seam above)
-            // with a small margin to survive rAF starvation.
+            // Fix (in the shim): `attachAftersignJobOfferActionPressFloor`
+            // listens on BOTH `touchstart` and `pointerdown`, writes the
+            // compression as an INLINE `element.style.transform =
+            // "scale(pressScale)"` (same channel — beats every author-origin
+            // competitor), and owns release via a 120ms floor timer.
+            // pointerup/touchend/pointercancel/pointerleave do NOT clear
+            // the transform — the timer is the release path, guaranteeing
+            // the 8ms recorder samples at least one compressed frame.
             attachAftersignJobOfferActionPressFloor(button, 120);
           } catch {
             // FEEL projection — swallow so a bad risk axis never

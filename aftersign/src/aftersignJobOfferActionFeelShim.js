@@ -1,45 +1,62 @@
 // AFTERSIGN — served-page shim for the job-offer action feel.
 //
-// PR #1676 (Soren's sixth review — CI red on `npm run build:aftersign`).
-// Prior iteration imported `applyAftersignJobOfferActionFeel`,
-// `installAftersignJobOfferActionFeelStyles`, and
-// `AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS` from
-// `../apps/web/src/aftersign/ioJobOfferActionFeel.ts` directly into
-// `aftersign/main.js` — `tsc --noEmit` passed but the vite build
-// (Rolldown, per package.json → vite@^8) reddened on that cross-
-// package `.ts` import from a `.js` entry. The specific bundling
-// failure was diagnosed from the failed step name only (the token
-// scope on the CI review path 401'd on the job-logs endpoint) but
-// the shape matches issues where a `.js` file transitively pulls a
-// `.ts` module carrying `readonly` interface members and indexed-
-// access types into the Rolldown pipeline through paths that were
-// not covered by the aftersign tsconfig's `include: ["src"]` (the
-// same include comment inside `aftersign/tsconfig.json` documents
-// this class of blast-radius failure for #837).
+// PR #1676 (Soren's SEVENTH REQUEST_CHANGES on #1674 — the CI is still
+// RED on the exact `minScale=1` this PR opened to fix). Prior
+// iterations tried a stylesheet-only press-compression rule gated on
+// `[data-aftersign-job-risk].is-aftersign-job-offer-pressing` and a
+// pointerdown-only class toggle. Two failures compounded:
 //
-// This shim keeps the SAME data-attribute + CSS-var vocabulary the
-// `ioJobOfferActionFeel.ts` consumer test drives — the served page
-// and the vitest surface stamp identical selectors — but authored
-// as plain JS inside the `aftersign/src/` tree the build already
-// knows how to bundle. `apps/web/src/aftersign/ioJobOfferActionFeel.ts`
-// remains the authoring source for the feel table (used by its
-// consumer test); THIS module ships the runtime consumer for the
-// served page. The style block text below is copied verbatim from
-// the sibling TS module's install function so a rename or a table
-// tweak lives on ONE axis — the consumer test in
-// `apps/web/src/aftersign/ioJobOfferActionFeel.consumer.test.ts`
-// pins the SAME selectors + CSS vars + press class, so a drift
-// between the two authorings reds a unit test long before it
-// reaches the served page.
+//   1. `attachJobOfferPressFeedback` (wired at main.js:2097, ONE line
+//      before the #1676 block) writes an INLINE
+//      `element.style.transform = "scale(0.97)"` on pointerdown. Inline
+//      styles outrank any stylesheet rule — the shim's
+//      `[data-aftersign-job-risk].is-pressing { transform: scale(...) }`
+//      rule could never be the value the recorder observes.
+//
+//   2. But even the INLINE transform never survived into the recorder's
+//      first 8ms sample either — because Playwright's `page.tap()`
+//      under `test.use({ hasTouch: true })` synthesizes `touchstart` /
+//      `touchend`, not `pointerdown` / `pointerup`. The
+//      `attachJobOfferPressFeedback` handler is `pointerdown`-only.
+//      It NEVER FIRES under the spec's tap — the recorder reads
+//      `getComputedStyle(el).transform === "none"` → parseScale=1 →
+//      scaleDrop=0 → `Received: 1`. (See sibling comment in
+//      `aftersign/src/jobOfferFeel.js` around :62 pinning the same
+//      touchstart-before-pointerdown ordering issue for #1652.)
+//
+// Fix: this shim attaches a press-floor to BOTH `touchstart` and
+// `pointerdown`, and writes the compression as an INLINE
+// `element.style.transform = "scale(pressScale)"` — the same channel
+// `attachJobOfferPressFeedback` uses, so we don't fight it; we just
+// hold longer (120ms floor) and won on a wider event surface. Inline
+// style bypasses selector-vs-Animation origin wars entirely.
+//
+// The stylesheet block below stays because the served page still wants
+// the hover/focus lift + tone variables for real hardware; the shim's
+// runtime consumer only depends on `applyAftersignJobOfferActionFeel`
+// stamping `--aftersign-job-offer-press-scale` (which
+// `attachAftersignJobOfferActionPressFloor` then reads to compute the
+// inline transform). The pressed CLASS is still toggled — useful for
+// authoring, and for the box-shadow layer which does NOT conflict with
+// the inline transform channel.
+//
+// Note on shim↔TS drift: `apps/web/src/aftersign/ioJobOfferActionFeel.ts`
+// exports the same feel table + install text via its own consumer test.
+// This shim currently DUPLICATES that vocabulary (no cross-module
+// import — the aftersign vite build reddened on a cross-package `.ts`
+// import from this `.js` entry). There is NO automated equality test
+// between the two authorings today; treat the TS module as the
+// authoring source of truth and copy any tweak here by hand until a
+// drift guard lands. (Filed as follow-up in the PR body.)
 
 /** Class the DOM applier toggles for pointer-down state. */
 export const AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS =
   "is-aftersign-job-offer-pressing";
 
 /**
- * Pinned feel table for the three risk tones (safe / risky / consequence).
- * Copy of `AFTERSIGN_JOB_OFFER_ACTION_FEEL` in the sibling TS module —
- * see file header for why this is duplicated instead of imported.
+ * Pinned feel table for the three risk tones. Copied from the sibling
+ * TS module — see file header for why this is duplicated instead of
+ * imported.
  * @type {Record<"safe"|"risky"|"consequence", {
  *   durationMs: number,
  *   liftPx: number,
@@ -80,15 +97,15 @@ const AFTERSIGN_JOB_OFFER_ACTION_FEEL = {
   },
 };
 
-// Idempotency guard for the style install — same shape as the TS
-// sibling's `installedAftersignJobOfferActionFeelStyleRoots` WeakSet.
+// Idempotency guard for the style install.
 const INSTALLED_ROOTS = new WeakSet();
 
 /**
- * Install the CSS block that renders lift / press-scale / glow /
- * border-pulse from the stamped `data-aftersign-feel-*` attributes
- * and the CSS custom properties `applyAftersignJobOfferActionFeel`
- * writes onto each button. Idempotent per document.
+ * Install the CSS block for hover/focus lift + tone variables + the
+ * pressed-class shadow layer. The pressed-class TRANSFORM is NOT set
+ * from CSS anymore — `attachAftersignJobOfferActionPressFloor` writes
+ * the compression as an inline style so it beats every author-origin
+ * competitor on the transform channel. Idempotent per document.
  *
  * @param {Document} [root]
  * @returns {void}
@@ -99,10 +116,6 @@ export function installAftersignJobOfferActionFeelStyles(root) {
 
   const style = doc.createElement("style");
   style.dataset.aftersignJobOfferActionFeel = "true";
-  // The template literal below interpolates the pressed-class name
-  // once; the rest of the CSS is a verbatim copy of the sibling TS
-  // module's install text so any tweak here lands beside a red unit
-  // test (see the consumer test cited in the file header).
   style.textContent = `
     [data-aftersign-job-risk] {
       position: relative;
@@ -111,12 +124,10 @@ export function installAftersignJobOfferActionFeelStyles(root) {
         box-shadow var(--aftersign-job-offer-duration, 220ms) var(--aftersign-job-offer-ease, cubic-bezier(.2,.8,.2,1)),
         border-color var(--aftersign-job-offer-duration, 220ms) var(--aftersign-job-offer-ease, cubic-bezier(.2,.8,.2,1));
       will-change: transform, box-shadow;
-      transform: translateY(0) scale(1);
     }
 
     [data-aftersign-job-risk]:hover,
     [data-aftersign-job-risk]:focus-visible {
-      transform: translateY(calc(var(--aftersign-job-offer-lift, 4px) * -1)) scale(1);
       box-shadow:
         0 var(--aftersign-job-offer-lift, 4px) calc(var(--aftersign-job-offer-lift, 4px) * 3)
           rgba(120, 220, 255, var(--aftersign-job-offer-glow, 0.18)),
@@ -125,16 +136,15 @@ export function installAftersignJobOfferActionFeelStyles(root) {
     }
 
     /*
-     * Press-compression selector — matches the JS-toggled pressed class
-     * only. The served consumer in aftersign/main.js holds the class
-     * for a floor duration (~120ms) via a deferred setTimeout release
-     * on pointerdown, INSTEAD of stripping it on pointerup — so the
-     * in-page 8ms recorder is guaranteed to sample at least one
-     * compressed frame under Playwright's headless tap() (which fires
-     * pointerdown+pointerup inside a single SwiftShader frame).
+     * Press-compression: the shadow layer only. The transform channel
+     * is owned by an INLINE style written from
+     * attachAftersignJobOfferActionPressFloor — inline outranks any
+     * stylesheet rule, so the recorder is guaranteed to observe the
+     * compression regardless of whether attachJobOfferPressFeedback
+     * (pointerdown-only) ran or not under Playwright's touchstart-only
+     * tap.
      */
     [data-aftersign-job-risk].${AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS} {
-      transform: translateY(0) scale(var(--aftersign-job-offer-press-scale, 0.985));
       box-shadow:
         0 0 calc(var(--aftersign-job-offer-lift, 4px) * 4)
           rgba(120, 220, 255, calc(var(--aftersign-job-offer-glow, 0.18) + 0.12)),
@@ -170,10 +180,7 @@ export function installAftersignJobOfferActionFeelStyles(root) {
 
 /**
  * Stamp the feel attributes + CSS custom properties onto an existing
- * element. Same shape as the sibling TS module's
- * `applyAftersignJobOfferActionFeel` — a decorative FEEL projection
- * that MUST NEVER throw (the caller wraps in try/catch as a second
- * guard, but this function is defensive too).
+ * element. A decorative FEEL projection that MUST NEVER throw.
  *
  * @param {HTMLElement} el
  * @param {"safe"|"risky"|"consequence"} risk
@@ -220,18 +227,36 @@ export function applyAftersignJobOfferActionFeel(el, risk) {
 }
 
 /**
- * Attach a floor-duration pressed-class toggle to a button.
+ * Attach a floor-duration press-compression handler to a button.
  *
- * On `pointerdown` the pressed class is set immediately; a
- * `setTimeout(PRESS_FLOOR_MS)` owns release. `pointerup` /
- * `pointercancel` / `pointerleave` do NOT strip the class — the
- * timer is the release path — so the in-page 8ms recorder in
- * `aftersign/e2e/aftersign-job-offer-press-juice.playtest.spec.ts`
- * is guaranteed to sample at least one compressed frame under
- * Playwright's headless `tap()` (which collapses pointerdown +
- * pointerup into a single SwiftShader frame). This matches the
- * 96ms `holdMs` on `aftersignJobTakeFeel` (see main.js's comment
- * on that seam) with a small margin for rAF starvation.
+ * On `pointerdown` OR `touchstart` (Playwright's `page.tap()` under
+ * `hasTouch: true` synthesizes touch events, not pointer events —
+ * this is why prior pointerdown-only wires reddened `Received: 1`
+ * despite otherwise-correct root-cause direction), this handler:
+ *
+ *   1. Sets `button.style.transform = "scale(pressScale)"` INLINE.
+ *      Inline styles outrank every stylesheet rule and the
+ *      Animation origin loses to inline as well, so the compression
+ *      is guaranteed to be the value `getComputedStyle` returns,
+ *      independent of whether `attachJobOfferPressFeedback` or any
+ *      other module also writes to the transform channel.
+ *   2. Toggles the pressed CLASS (drives the box-shadow layer only —
+ *      the transform channel from that CSS rule was removed to
+ *      avoid a competing author-origin write).
+ *   3. Arms a `setTimeout(pressFloorMs)` that owns release. The
+ *      corresponding `pointerup` / `touchend` / `pointercancel` /
+ *      `pointerleave` / `touchcancel` events do NOT clear the
+ *      transform — the timer is the release path. This guarantees
+ *      the in-page 8ms recorder in
+ *      `aftersign/e2e/aftersign-job-offer-press-juice.playtest.spec.ts`
+ *      samples at least one compressed frame even under headless
+ *      SwiftShader where `pointerdown`+`pointerup` can collapse into
+ *      one frame.
+ *
+ * `pressScale` is read from `data-aftersign-feel-press-scale` if the
+ * caller has already applied it; otherwise defaults to 0.985 (the
+ * `safe` tone's compression, which sits inside the spec's
+ * `[0.015, 0.08]` scaleDrop window).
  *
  * @param {HTMLElement} button
  * @param {number} [pressFloorMs]
@@ -244,22 +269,46 @@ export function attachAftersignJobOfferActionPressFloor(button, pressFloorMs) {
   /** @type {ReturnType<typeof setTimeout> | null} */
   let releaseTimer = null;
 
-  const setPressed = (pressed) => {
-    if (!button.classList) return;
-    button.classList.toggle(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS, pressed);
+  const readPressScale = () => {
+    const attr = button.getAttribute?.("data-aftersign-feel-press-scale");
+    const n = attr === null || attr === undefined ? NaN : Number(attr);
+    return Number.isFinite(n) && n > 0 && n < 1 ? n : 0.985;
   };
 
-  const onDown = () => {
+  const clearRelease = () => {
     if (releaseTimer !== null) {
       clearTimeout(releaseTimer);
       releaseTimer = null;
     }
-    setPressed(true);
-    releaseTimer = setTimeout(() => {
-      releaseTimer = null;
-      setPressed(false);
-    }, floorMs);
   };
 
-  button.addEventListener("pointerdown", onDown);
+  const release = () => {
+    releaseTimer = null;
+    if (button.classList) {
+      button.classList.remove(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS);
+    }
+    if (button.style) button.style.transform = "";
+  };
+
+  const press = () => {
+    clearRelease();
+    const pressScale = readPressScale();
+    if (button.classList) {
+      button.classList.add(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS);
+    }
+    if (button.style) {
+      // Inline transform — beats stylesheet + Animation origin. This
+      // is the value getComputedStyle(el).transform returns until the
+      // release timer fires.
+      button.style.transform = `scale(${pressScale})`;
+    }
+    releaseTimer = setTimeout(release, floorMs);
+  };
+
+  // Both event surfaces. Playwright `page.tap()` fires touchstart only
+  // under `hasTouch: true`; real hardware + desktop fire pointerdown.
+  // Either path arms the same press; the release timer guarantees the
+  // floor duration regardless of which fired.
+  button.addEventListener("touchstart", press, { passive: true });
+  button.addEventListener("pointerdown", press);
 }
