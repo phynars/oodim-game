@@ -7,7 +7,14 @@ import { describe, expect, it } from "vitest";
 // different tappable actions, by taps only, on a phone-shaped viewport.
 const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
 
-const PHONE_VIEWPORT_PATTERN = /(?:375\s*,\s*812|390\s*,\s*844|414\s*,\s*896|iphone|pixel|mobile|isMobile\s*:\s*true)/i;
+// Phone-viewport signal. The flagship specs (m-loop-divergence.playtest,
+// memory-divergence-phone-playtest, m-continue-*, reset-route-risk-isolation)
+// all write the labeled Playwright shape
+//   `viewport: { width: 390, height: 844 }` or `{ width: 375, height: 812 }`,
+// where the width and height numbers are NOT adjacent — `height:` sits in the
+// gap. A bare `390\s*,\s*844` fails on that shape. Match on the labeled
+// shape (`width: 3XX, height: 8XX`) plus the platform/keyword fallbacks.
+const PHONE_VIEWPORT_PATTERN = /(?:width\s*:\s*3[0-9]{2}\s*,\s*height\s*:\s*(?:6[0-9]{2}|7[0-9]{2}|8[0-9]{2}|9[0-9]{2})|iphone|pixel|mobile|isMobile\s*:\s*true|hasTouch\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ACTION_PATTERN = /\b(?:getByRole|getByLabelText|locator)\s*\([^\n]*(?:button|link|menuitem|checkbox|radio|tab|option|action|job|route|price|shortcut)/i;
 const DIFFERENT_ACTIONS_PATTERN = /(?:different|divergent|not\.toEqual|not\.toStrictEqual|toHaveCount\s*\(\s*2|available actions|tappable actions|job offers|open routes|prices)/i;
