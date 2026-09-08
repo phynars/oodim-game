@@ -46,7 +46,85 @@ jobs:
       - name: Install Playwright browsers
         run: node scripts/install-playwright-chromium.mjs
       - name: Run aftersign e2e against MAIN
-        run: npm run test:e2e:aftersign
+        id: e2e
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
+
+      - name: Build aftersign failure summary
+        if: failure() && steps.e2e.conclusion == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary_file=/tmp/aftersign-failure-summary.md
+          {
+            echo "## aftersign WebGL e2e — failure summary"
+            echo ""
+            if [ -f aftersign/playwright-report/results.json ]; then
+              echo "### first failing spec (from aftersign/playwright-report/results.json)"
+              echo '```'
+              node -e '
+                const fs = require("node:fs");
+                const report = JSON.parse(fs.readFileSync("aftersign/playwright-report/results.json", "utf8"));
+
+                function findFirstFailingSpec(node) {
+                  if (!node || typeof node !== "object") return null;
+
+                  if (Array.isArray(node.specs)) {
+                    for (const spec of node.specs) {
+                      const title = spec.title || spec.file || "(unknown spec)";
+                      if (Array.isArray(spec.tests)) {
+                        for (const test of spec.tests) {
+                          if (!Array.isArray(test.results)) continue;
+                          for (const result of test.results) {
+                            if (!Array.isArray(result.errors)) continue;
+                            for (const err of result.errors) {
+                              if ((err && err.message) || err) {
+                                const message = String((err && err.message) || err || "");
+                                return { title, message };
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  if (Array.isArray(node.suites)) {
+                    for (const suite of node.suites) {
+                      const found = findFirstFailingSpec(suite);
+                      if (found) return found;
+                    }
+                  }
+
+                  return null;
+                }
+
+                const first = findFirstFailingSpec(report);
+                if (first) {
+                  console.log(`spec: ${first.title}`);
+                  console.log("error:");
+                  console.log(first.message.split("\\n").slice(0, 20).join("\\n"));
+                } else {
+                  console.log("(no failing test recorded in aftersign/playwright-report/results.json)");
+                }
+              ' 2>&1
+              echo '```'
+            else
+              echo "(aftersign/playwright-report/results.json not found; raw runner log tail below.)"
+              if [ -f /tmp/aftersign-e2e-runner.log ]; then
+                echo ""
+                echo "### raw e2e runner log (last 80 lines)"
+                echo '```'
+                tail -n 80 /tmp/aftersign-e2e-runner.log
+                echo '```'
+              else
+                echo "(runner log not captured — the e2e step may not have started)"
+              fi
+            fi
+          } > "$summary_file"
+          cat "$summary_file" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: File or bump the main-RED issue (agent-visible)
         if: failure()
@@ -58,19 +136,29 @@ jobs:
           title_prefix="aftersign e2e RED on main"
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           sha="${{ github.sha }}"
-          body="Post-merge e2e failed on main at \`${sha:0:8}\`.
-
-          Run: ${run_url}
-
-          Main is the shared base: every open PR inherits this red until it is fixed. Read the failing specs from the run log, decide whether the SPEC or the SURFACE is wrong (specs assert canonical copy/contracts — see aftersign/src/ioRecognitionDialogue.ts for line sources), and land the repair as the top priority.
-
-          Milestone: M2 — a returning player is recognized on the served page
-          Epic: M2-EINT — wire the July contracts into the served surface"
+          summary_file=/tmp/aftersign-failure-summary.md
+          if [ ! -f "$summary_file" ]; then
+            printf '%s\n' '## aftersign WebGL e2e — failure summary' '' '(no failure context captured; see run logs)' > "$summary_file"
+          fi
+          body_file=$(mktemp)
+          comment_file=$(mktemp)
+          {
+            printf 'Post-merge e2e failed on main at `%s`.\n\n' "${sha:0:8}"
+            printf 'Run: %s\n\n' "$run_url"
+            printf '%s\n\n' 'Main is the shared base: every open PR inherits this red until it is fixed. The failing spec and error are inlined below because run logs are not agent-fetchable (#1345).'
+            printf '%s\n' 'Milestone: M2 — a returning player is recognized on the served page'
+            printf '%s\n\n' 'Epic: M2-EINT — wire the July contracts into the served surface'
+            cat "$summary_file"
+          } > "$body_file"
+          {
+            printf 'Still (or again) RED at `%s` — %s\n\n' "${sha:0:8}" "$run_url"
+            cat "$summary_file"
+          } > "$comment_file"
           existing=$(gh issue list --state open --search "$title_prefix in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Still (or again) RED at \`${sha:0:8}\` — ${run_url}"
+            gh issue comment "$existing" --body-file "$comment_file"
           else
-            gh issue create --title "$title_prefix @ ${sha:0:8}" --body "$body" --label "agent-filed" --label "type:bug" --label "priority:P1"
+            gh issue create --title "$title_prefix @ ${sha:0:8}" --body-file "$body_file" --label "agent-filed" --label "type:bug" --label "priority:P1"
           fi
 
       - name: Close the main-RED issue if this run is green
