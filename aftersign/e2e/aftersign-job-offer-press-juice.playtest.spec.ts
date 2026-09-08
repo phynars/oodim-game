@@ -175,16 +175,33 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // spec then asserts on the recorded peak. Input stays a REAL tap;
     // the recorder only reads the DOM (window.__game untouched) —
     // played, not driven.
+    //
+    // #1674 — the recorder must survive the SAME-ID NODE SWAP. The
+    // tap's click advances the beat and main.js re-renders
+    // #offeredJobs, replacing the pressed <button> with a fresh node
+    // reusing the same id (the #1658/#1661 adoption path in
+    // index.html re-stamps `pressing` + the inline compression onto
+    // that replacement). The previous recorder (a) held the ORIGINAL
+    // element reference, so every post-swap sample hit a detached
+    // node (rect 0x0 → skipped) and (b) parked the record ON that
+    // element, so the by-id locator's `evaluate` below read the NEW
+    // node, found no recorder, and returned the `?? 1` default —
+    // "Received: 1" exactly, regardless of what painted. Fix: park
+    // the record on `window` and re-resolve the live node by id on
+    // every sample so the adopted replacement's compression counts.
     await jobButton.evaluate((element) => {
-      const h = element as HTMLElement & {
-        __pressJuiceRecorder?: { minScale: number; maxTravel: number; samples: number };
-      };
+      const h = element as HTMLElement;
+      const liveId = h.id;
       const base = h.getBoundingClientRect();
       const rec = { minScale: 1, maxTravel: 0, samples: 0 };
-      h.__pressJuiceRecorder = rec;
+      (window as unknown as {
+        __aftersignPressJuiceRecorder?: typeof rec;
+      }).__aftersignPressJuiceRecorder = rec;
       const t0 = performance.now();
       const sample = () => {
-        const r = h.getBoundingClientRect();
+        const live =
+          (liveId ? document.getElementById(liveId) : null) ?? h;
+        const r = live.getBoundingClientRect();
         if (r.width > 0 && base.width > 0) {
           const s = Math.min(r.width / base.width, r.height / base.height);
           if (s < rec.minScale) rec.minScale = s;
@@ -214,24 +231,20 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // recorded peak until the compression shows up (bounded by the
     // recorder's own 600ms window + margin). No wall-clock sampling —
     // the recorder caught the envelope whenever it painted.
-    await expect
-      .poll(
+    // #1674: read the recorder from `window`, not the (possibly
+    // swapped-out) element — see the recorder comment above.
+    type PressJuiceRecord = { minScale: number; maxTravel: number; samples: number };
+    const readRecorder = () =>
+      page.evaluate(
         () =>
-          jobButton.evaluate(
-            (element) =>
-              (element as HTMLElement & { __pressJuiceRecorder?: { minScale: number } })
-                .__pressJuiceRecorder?.minScale ?? 1,
-          ),
-        { timeout: 2_000 },
-      )
+          (window as unknown as { __aftersignPressJuiceRecorder?: PressJuiceRecord })
+            .__aftersignPressJuiceRecorder ?? { minScale: 1, maxTravel: 0, samples: 0 },
+      );
+    await expect
+      .poll(async () => (await readRecorder()).minScale, { timeout: 2_000 })
       .toBeLessThanOrEqual(1 - PRESS_FEEL.minPressedScaleDrop);
 
-    const recorded = await jobButton.evaluate(
-      (element) =>
-        (element as HTMLElement & {
-          __pressJuiceRecorder?: { minScale: number; maxTravel: number; samples: number };
-        }).__pressJuiceRecorder ?? { minScale: 1, maxTravel: 0, samples: 0 },
-    );
+    const recorded = await readRecorder();
     const scaleDrop = 1 - recorded.minScale;
     expect(scaleDrop).toBeGreaterThanOrEqual(PRESS_FEEL.minPressedScaleDrop);
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxPressedScaleDrop);
