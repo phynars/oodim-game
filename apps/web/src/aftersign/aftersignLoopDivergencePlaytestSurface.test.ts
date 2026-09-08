@@ -140,17 +140,27 @@ describe("stripCommentsAndStrings ordering", () => {
 // Synthetic 8-gate-satisfying fixture. Each line is annotated with the
 // gate it exercises so a future edit that removes a gate-hit is visible
 // at the point of change (not two files away in the pattern list).
+//
+// Two traps this fixture deliberately avoids (both bit an earlier revision):
+//   - `textContent` in DIALOGUE_ONLY_PATTERN is case-insensitive and matches
+//     INSIDE `allTextContents()`, so a text-readout followed by `not.toEqual`
+//     within 200 chars reads as a dialogue-only diff. Read an element-level
+//     attribute (`getAttribute('data-offer-fingerprint')`) instead — that is
+//     also what the real flagship spec does.
+//   - PLAYER_EVENT_PATTERN runs on raw source (a `.tap()` in a comment is
+//     still evidence of intent), so the abstinence comment must NOT contain
+//     `click(` or the PLAYER_EVENT negative case below would still admit.
 const FIXTURE_COMPLIANT_SPEC = [
-  "// M-LOOP divergence playtest — abstains from window.__game.input.click().", //   HARNESS_INPUT (in comment, must be stripped)
+  "// M-LOOP divergence playtest — abstains from window.__game.input.* channels.", // HARNESS_INPUT (in comment, must be stripped)
   "import { expect, test } from '@playwright/test';",
-  "test.use({ viewport: { width: 390, height: 844 } });", //                         PHONE_VIEWPORT (390,844)
+  "test.use({ viewport: { width: 390, height: 844 } });", //                         PHONE_VIEWPORT (width: 390, height: 844)
   "test('two memory records produce different tappable actions', async ({ page }) => {",
   "  await page.goto('/aftersign/?slot=A');",
-  "  const first = await page.locator(`button[data-aftersign-job-take]`).allTextContents();", // VISIBLE_ACTION (locator(`button…`))
+  "  const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');", // VISIBLE_ACTION (locator(`button…`)), element-level (not textContent)
   "  await page.getByRole('button', { name: /accept/i }).tap();", //                 PLAYER_EVENT (.tap()) + VISIBLE_ACTION (getByRole button)
   "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", // TWO_SAVE_STATES (priorOutcome/packet.delivered/looped return/safe-default/completed set)
   "  await page.goto('/aftersign/?slot=B');",
-  "  const second = await page.locator(`button[data-aftersign-job-take]`).allTextContents();",
+  "  const second = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
   "  expect(first).not.toEqual(second); // different tappable actions", //           DIFFERENT_ACTIONS (not.toEqual + 'different')
   "  const beat = await page.evaluate(() => window.__game?.scene?.beat);", //        HARNESS_READ (__game) — read-only
   "  expect(beat).toBeDefined();",
@@ -232,7 +242,7 @@ describe("matchesLoopDivergencePlaytest contract", () => {
             "  const beat = 'packet-offered';",
           )
           .replace(
-            "// M-LOOP divergence playtest — abstains from window.__game.input.click().",
+            "// M-LOOP divergence playtest — abstains from window.__game.input.* channels.",
             "// M-LOOP divergence playtest — abstains from harness input.",
           ),
     },
