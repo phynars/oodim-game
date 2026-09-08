@@ -150,7 +150,20 @@ export function installAftersignJobOfferActionFeelStyles(
           rgba(180, 240, 255, calc(var(--aftersign-job-offer-glow, 0.18) + 0.2));
     }
 
-    [data-aftersign-job-risk].${AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS} {
+    /*
+     * Press-compression selector — matches BOTH the JS-toggled pressed
+     * class (for the consumer test's synthetic pointerdown/pointerup,
+     * where the class lives across both events) AND the built-in
+     * :active pseudo (for Playwright's tap(), which fires pointerdown
+     * → pointerup within one frame — too fast for the in-page 8ms
+     * recorder to catch a compressed frame if we relied on the class
+     * alone, because our pointerup handler strips it before the next
+     * sample). :active is held by the browser across the full tap,
+     * independent of our synthetic-up handler, so the recorder sees
+     * scale(0.985) painted at least once. See PR #1676 review.
+     */
+    [data-aftersign-job-risk].${AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS},
+    [data-aftersign-job-risk]:active {
       transform: translateY(0) scale(var(--aftersign-job-offer-press-scale, 0.985));
       box-shadow:
         0 0 calc(var(--aftersign-job-offer-lift, 4px) * 4)
