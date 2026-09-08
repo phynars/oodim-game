@@ -1014,8 +1014,6 @@
         function armPressing(button) {
           if (!button || typeof button.getAttribute !== "function") return;
           var prior = button.getAttribute("data-aftersign-job-take");
-          // DIAG3 #1661 (temporary): entry + early-return visibility.
-          try { console.error("[press-juice-diag3] armPressing id=" + (button.id || "?") + " prior=" + prior); } catch (_d) {}
           // Only meaningful states — ignore already-pressing (a
           // second pointerdown inside the hold) and empty/unknown.
           if (prior !== "ready" && prior !== "armed") return;
@@ -1238,12 +1236,6 @@
 
         function onPointerDown(event) {
           var target = event.target;
-          // DIAG3 #1661 (temporary): prove pointerdown delivery + target.
-          try {
-            console.error("[press-juice-diag3] pointerdown tag=" + ((target && target.tagName) || "?") +
-              " id=" + ((target && target.id) || "-") +
-              " type=" + event.pointerType);
-          } catch (_d) {}
           if (!target || typeof target.closest !== "function") return;
           var button = target.closest("button[data-aftersign-job-take]");
           if (!button) return;
