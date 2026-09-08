@@ -362,6 +362,7 @@ import {
 } from "./mloop-copy.js";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
+import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -2057,6 +2058,7 @@ const renderText = () => {
             risk: offer.routeRisk,
           });
           applyAftersignJobTakeFeelToButton(button, jobTakeFeelRow, "ready");
+          attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
           armJobOfferFeel(button, () => {
             // Compose the M-LOOP action id with the underlying
             // offered jobId so BOTH axes ride on `lastAction`. Old
