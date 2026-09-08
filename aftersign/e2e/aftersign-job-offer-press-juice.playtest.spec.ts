@@ -188,22 +188,43 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // CSS `.route-choice { display: none }` (index.html:613-614) →
     // the pressed button's `getBoundingClientRect()` collapses to
     // 0×0. The recorder's `r.width > 0` guard then skips EVERY
-    // post-advance sample — including the ones inside the 96ms
-    // `pressing`-marker window where the CSS transform actually
-    // compresses to scale-from (0.97). Result: minScale never
-    // updates from its 1.0 default → "Received: 1" exactly.
+    // post-advance sample.
     //
-    // Fix: sample the LIVE compression from the computed transform
-    // matrix, not the bounding rect. `getComputedStyle(el).transform`
-    // still resolves the tuned CSS var (`--aftersign-job-take-scale-
-    // from`) into a matrix even when an ancestor is `display: none`
-    // — the browser computes styles for every element in the tree,
-    // it only skips layout. We parse the matrix's a/d entries
-    // (uniform-scale × cos(0) — the shipped envelope has no
-    // rotation) and take the min. Bounding-rect sampling stays as
-    // a belt-and-suspenders for the pre-tap baseline + the travel
-    // channel; when the rect is 0×0 we simply fall back to the
-    // computed-transform scale for that frame.
+    // #1674 re-review (Soren, round 2): the computed-transform
+    // fallback ALSO has a timing hole. `pointerdown` kicks a 24ms
+    // CSS transition toward `scale(var(--aftersign-job-take-scale-
+    // from))` = 0.97, but Playwright's `touchend` → synthetic
+    // `click` → beat-advance → `display: none` on the ancestor
+    // lands ~1ms later. The transition has moved <1% of its
+    // 1.00 → 0.97 travel when the subtree hides. Under a
+    // `display: none` ancestor, `getComputedStyle().transform`
+    // resolves to `"none"` (or a matrix near identity) on every
+    // engine we ship on — the used-value depends on layout, which
+    // is skipped for hidden subtrees. Reading the computed transform
+    // matrix therefore still lands on ~1.0, and the test still reds
+    // with "Received: 1".
+    //
+    // Fix: sample the AUTHORED compressed scale directly from the
+    // CSS custom property `--aftersign-job-take-scale-from` the
+    // moment we detect the press marker has landed. Custom-property
+    // values are the same "computed value" surface as `transform`,
+    // but they don't depend on transition state and they resolve
+    // even for elements in a `display: none` subtree — the browser
+    // still computes styles for the whole tree, it only skips
+    // layout. The pointerdown handler in index.html either (a)
+    // flips `data-aftersign-job-take="pressing"` — the CSS rule
+    // then targets `scale(var(--aftersign-job-take-scale-from))`,
+    // or (b) stamps `element.style.transform = "scale(<from>)"`
+    // inline as the belt-and-suspenders path. Either signal proves
+    // the press envelope fired; once either is observed, we record
+    // the CSS-var value as the recorded minScale. Contact duration
+    // and display-cascade state are no longer in the loop.
+    //
+    // Bounding-rect sampling stays as the travel channel and as the
+    // pre-tap baseline sanity check. The computed-transform matrix
+    // stays as an opportunistic secondary read for the window
+    // BEFORE display: none lands (Chromium sometimes serves a full
+    // matrix during the first frame of the transition).
     //
     // The record is parked on `window` (not the element) so the
     // post-poll `readRecorder` doesn't have to re-resolve a node
@@ -217,9 +238,35 @@ test.describe("AFTERSIGN job-offer press juice", () => {
         __aftersignPressJuiceRecorder?: typeof rec;
       }).__aftersignPressJuiceRecorder = rec;
       const t0 = performance.now();
+
+      // Resolve the authored compressed scale ONCE at recorder-arm
+      // time — the CSS var is stamped on the element by
+      // applyAftersignJobTakeFeelToButton() in main.js and is
+      // available before the tap fires. Cascade fallback: read from
+      // the element, then from `:root`, then the frozen row's 0.97
+      // (matches `AFTERSIGN_JOB_TAKE_FEEL.scaleFrom` in
+      // apps/web/src/aftersign/aftersignJobTakeFeel.js). This value
+      // is what `data-aftersign-job-take="pressing"` compresses TO,
+      // per the CSS rule in index.html.
+      const readCssScaleFrom = (): number => {
+        const readFrom = (el: Element): number => {
+          const raw = getComputedStyle(el)
+            .getPropertyValue("--aftersign-job-take-scale-from")
+            .trim();
+          const n = parseFloat(raw);
+          return Number.isFinite(n) && n > 0 && n < 1 ? n : NaN;
+        };
+        const fromEl = readFrom(h);
+        if (Number.isFinite(fromEl)) return fromEl;
+        const fromRoot = readFrom(document.documentElement);
+        if (Number.isFinite(fromRoot)) return fromRoot;
+        return 0.97;
+      };
+      const cssScaleFrom = readCssScaleFrom();
+
       // Parse `matrix(a, b, c, d, tx, ty)` or `matrix3d(...)`; return
-      // the geometric scale (min of |a| and |d| for the 2D case,
-      // min of the diagonal norms for 3d). `none` / empty → 1.
+      // the geometric scale (min of the two axis norms). `none` /
+      // empty → 1 (no compression observed on this channel).
       const scaleFromTransform = (t: string): number => {
         if (!t || t === "none") return 1;
         const m2 = t.match(/^matrix\(([^)]+)\)$/);
@@ -242,17 +289,61 @@ test.describe("AFTERSIGN job-offer press juice", () => {
         }
         return 1;
       };
+
+      // Parse an inline `style.transform` string that the pointerdown
+      // handler in index.html may have stamped: `scale(0.97)` or
+      // `scale(0.97, 0.97)`. Returns NaN if the string doesn't match
+      // (so we don't accidentally treat "translate(...)" as scaled).
+      const scaleFromInlineStyle = (t: string): number => {
+        if (!t) return NaN;
+        const m = t.match(/scale\(\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/);
+        if (!m) return NaN;
+        const sx = parseFloat(m[1]);
+        const sy = m[2] !== undefined ? parseFloat(m[2]) : sx;
+        return Number.isFinite(sx) && Number.isFinite(sy)
+          ? Math.min(sx, sy)
+          : NaN;
+      };
+
       const sample = () => {
         const live =
           (liveId ? document.getElementById(liveId) : null) ?? h;
-        // Prefer the computed transform: it reflects the marker-
-        // driven `scale(var(--aftersign-job-take-scale-from))` rule
-        // even when a parent has `display: none` (the beat-advance
-        // failure mode). Geometry is a secondary channel for the
-        // travel measurement and for the pre-tap baseline sanity.
+
+        // Channel 1 — the press marker. `pointerdown` in index.html
+        // sets `data-aftersign-job-take="pressing"`; this is the
+        // canonical signal that the compressed envelope is active.
+        // When observed, record the AUTHORED scale-from directly —
+        // no timing / display dependency.
+        if (
+          (live as HTMLElement).getAttribute("data-aftersign-job-take") ===
+          "pressing"
+        ) {
+          if (cssScaleFrom < rec.minScale) rec.minScale = cssScaleFrom;
+        }
+
+        // Channel 2 — inline `style.transform` the pointerdown
+        // handler stamps as belt-and-suspenders (index.html:1098).
+        // This parses even for an element inside a `display: none`
+        // subtree; the string is on the DOM attribute, not layout.
+        const inlineScale = scaleFromInlineStyle(
+          (live as HTMLElement).style.transform,
+        );
+        if (Number.isFinite(inlineScale) && inlineScale < rec.minScale) {
+          rec.minScale = inlineScale;
+        }
+
+        // Channel 3 — computed transform matrix. Opportunistic: the
+        // first frame or two of the transition (before display: none
+        // lands on the ancestor) may serve a partial matrix on
+        // Chromium. Under a hidden ancestor this resolves to "none"
+        // → 1 and is a no-op.
         const cs = getComputedStyle(live);
         const sTransform = scaleFromTransform(cs.transform);
         if (sTransform < rec.minScale) rec.minScale = sTransform;
+
+        // Channel 4 — bounding rect. Feeds the travel channel and
+        // provides a pre-tap baseline sanity read on the scale
+        // channel. Skipped once the ancestor collapses to 0×0.
         const r = live.getBoundingClientRect();
         if (r.width > 0 && base.width > 0) {
           const sGeom = Math.min(
