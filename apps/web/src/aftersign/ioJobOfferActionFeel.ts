@@ -151,19 +151,18 @@ export function installAftersignJobOfferActionFeelStyles(
     }
 
     /*
-     * Press-compression selector — matches BOTH the JS-toggled pressed
-     * class (for the consumer test's synthetic pointerdown/pointerup,
-     * where the class lives across both events) AND the built-in
-     * :active pseudo (for Playwright's tap(), which fires pointerdown
-     * → pointerup within one frame — too fast for the in-page 8ms
-     * recorder to catch a compressed frame if we relied on the class
-     * alone, because our pointerup handler strips it before the next
-     * sample). :active is held by the browser across the full tap,
-     * independent of our synthetic-up handler, so the recorder sees
-     * scale(0.985) painted at least once. See PR #1676 review.
+     * Press-compression selector — matches the JS-toggled pressed class
+     * only. The served consumer in aftersign/main.js holds the class
+     * for a floor duration (~120ms) via a deferred setTimeout release
+     * on pointerdown, INSTEAD of stripping it on pointerup — so the
+     * in-page 8ms recorder is guaranteed to sample at least one
+     * compressed frame under Playwright's headless tap() (which fires
+     * pointerdown+pointerup inside a single SwiftShader frame). An
+     * earlier draft also matched `:active`, but its paint isn't
+     * guaranteed to land within a single tap frame either, so the
+     * class-with-floor is the only reliable path. See PR #1676 review.
      */
-    [data-aftersign-job-risk].${AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS},
-    [data-aftersign-job-risk]:active {
+    [data-aftersign-job-risk].${AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS} {
       transform: translateY(0) scale(var(--aftersign-job-offer-press-scale, 0.985));
       box-shadow:
         0 0 calc(var(--aftersign-job-offer-lift, 4px) * 4)

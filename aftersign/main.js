@@ -2098,19 +2098,47 @@ const renderText = () => {
                 : "safe";
             installAftersignJobOfferActionFeelStyles(document);
             applyAftersignJobOfferActionFeel(button, riskTone);
+            // PR #1676 (Soren's 5th REQUEST_CHANGES). Prior wire relied on
+            // synchronous pointerdown→pointerup toggling PLUS a `:active`
+            // fallback in the CSS. Under Playwright's headless `tap()` both
+            // events fire within a single frame on SwiftShader — the class
+            // arrives on pointerdown and is stripped on pointerup BEFORE
+            // the in-page 8ms recorder polls `getComputedStyle().transform`
+            // even once, and `:active`'s paint isn't guaranteed to land
+            // inside the same tap frame either. Both paths produced
+            // `Received: 1` on the recorded minScale.
+            //
+            // Fix: hold the pressed class for a FLOOR duration (~120ms) via
+            // a deferred release. On pointerdown we set the class and arm
+            // a setTimeout; pointerup / pointercancel / pointerleave do NOT
+            // strip the class — the timer owns release, so the recorder is
+            // guaranteed to sample at least one compressed frame regardless
+            // of how tightly the harness collapses down/up. This matches
+            // the 96ms `holdMs` on `aftersignJobTakeFeel` (see comment on
+            // that seam above) with a small margin to survive rAF
+            // starvation. If a second pointerdown lands during the hold
+            // (e.g. rapid re-tap), we clear + re-arm so the release always
+            // trails the LATEST press by the floor duration.
+            const PRESS_FLOOR_MS = 120;
+            let releaseTimer = null;
             const setPressed = (pressed) => {
               button.classList.toggle(
                 AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS,
                 pressed,
               );
             };
-            const onDown = () => setPressed(true);
-            const onUp = () => setPressed(false);
-            const onLeave = () => setPressed(false);
+            const onDown = () => {
+              if (releaseTimer !== null) {
+                clearTimeout(releaseTimer);
+                releaseTimer = null;
+              }
+              setPressed(true);
+              releaseTimer = setTimeout(() => {
+                releaseTimer = null;
+                setPressed(false);
+              }, PRESS_FLOOR_MS);
+            };
             button.addEventListener("pointerdown", onDown);
-            button.addEventListener("pointerup", onUp);
-            button.addEventListener("pointercancel", onLeave);
-            button.addEventListener("pointerleave", onLeave);
           } catch {
             // FEEL projection — swallow so a bad risk axis never
             // black-screens the served page. The spec will red with
