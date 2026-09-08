@@ -109,26 +109,83 @@ test.describe("AFTERSIGN job-offer press juice", () => {
       `tap point is owned by ${hitOwner}, not the job-offer button — a covering/reflowed element`,
     ).toBe(jobButtonDescriptor);
 
-    // getBoundingClientRect reports layout dimensions, which deliberately
-    // exclude CSS transforms. Record the rendered matrix instead so this
-    // observes the scale the player sees during the real touch envelope.
+    // getBoundingClientRect reports LAYOUT dimensions, which deliberately
+    // exclude CSS transforms — the compression envelope on ioJobOfferActionFeel
+    // (`transform: translateY(0) scale(0.985)` at :154, with `will-change:
+    // transform` at :139) shows up only in the rendered matrix. Parse the
+    // computed transform in ALL shapes the browser may emit — `none`,
+    // `matrix(a,b,c,d,e,f)`, `matrix3d(...)`, and the pre-normalized shorthand
+    // strings — and capture the first-seen non-identity string so the diag
+    // trail names the actual shape when CI reds. The prior anchored regex
+    // `/^matrix\(([^)]+)\)$/` fell through to `scale=1` on `matrix3d(...)` (the
+    // shape headless promotes to under `will-change: transform`), which is
+    // exactly the "Received: 1" red on this branch.
     await jobButton.evaluate((element) => {
       const h = element as HTMLElement & {
-        __pressJuiceRecorder?: { minScale: number; maxTravel: number; samples: number };
+        __pressJuiceRecorder?: {
+          minScale: number;
+          maxTravel: number;
+          samples: number;
+          firstNonIdentityTransform: string | null;
+          lastTransform: string | null;
+        };
       };
       const base = h.getBoundingClientRect();
-      const rec = { minScale: 1, maxTravel: 0, samples: 0 };
+      const rec = {
+        minScale: 1,
+        maxTravel: 0,
+        samples: 0,
+        firstNonIdentityTransform: null as string | null,
+        lastTransform: null as string | null,
+      };
       h.__pressJuiceRecorder = rec;
-      const t0 = performance.now();
+      const parseScale = (t: string): number => {
+        // `none` (or empty) — identity.
+        if (!t || t === "none") return 1;
+        // 2D matrix — matrix(a, b, c, d, e, f). Scale = min(|col1|, |col2|).
+        const m2 = t.match(/^matrix\(\s*([^)]+)\)\s*$/);
+        if (m2) {
+          const v = m2[1].split(",").map((s) => Number(s.trim()));
+          if (v.length === 6 && v.every((n) => Number.isFinite(n))) {
+            return Math.min(Math.hypot(v[0], v[1]), Math.hypot(v[2], v[3]));
+          }
+        }
+        // 3D matrix — matrix3d(m11..m44). Scale is derived from the first two
+        // basis columns (m11,m12,m13 and m21,m22,m23); for a pure 2D press
+        // this collapses to |col1|/|col2| of the 3D form.
+        const m3 = t.match(/^matrix3d\(\s*([^)]+)\)\s*$/);
+        if (m3) {
+          const v = m3[1].split(",").map((s) => Number(s.trim()));
+          if (v.length === 16 && v.every((n) => Number.isFinite(n))) {
+            const sx = Math.hypot(v[0], v[1], v[2]);
+            const sy = Math.hypot(v[4], v[5], v[6]);
+            return Math.min(sx, sy);
+          }
+        }
+        // Shorthand `scale(x[,y])` / `scale3d(...)` — some engines leave the
+        // author string un-normalized on very fast reads. Extract the smallest
+        // scale factor present.
+        const s2 = t.match(/scale(?:3d)?\(\s*([^)]+)\)/);
+        if (s2) {
+          const nums = s2[1].split(",").map((s) => Number(s.trim())).filter((n) =>
+            Number.isFinite(n),
+          );
+          if (nums.length > 0) return Math.min(...nums);
+        }
+        // Unknown shape — return NaN so the caller doesn't silently pin to 1.
+        return Number.NaN;
+      };
       const sample = () => {
         const r = h.getBoundingClientRect();
         const transform = getComputedStyle(h).transform;
-        const matrix = transform.match(/^matrix\(([^)]+)\)$/);
-        const values = matrix?.[1].split(",").map(Number);
-        const scale = values && values.length === 6
-          ? Math.min(Math.hypot(values[0], values[1]), Math.hypot(values[2], values[3]))
-          : 1;
-        if (scale < rec.minScale) rec.minScale = scale;
+        rec.lastTransform = transform;
+        const scale = parseScale(transform);
+        if (Number.isFinite(scale)) {
+          if (scale < rec.minScale) rec.minScale = scale;
+          if (scale < 1 && rec.firstNonIdentityTransform === null) {
+            rec.firstNonIdentityTransform = transform;
+          }
+        }
         const travel = Math.hypot(
           r.left + r.width / 2 - (base.left + base.width / 2),
           r.top + r.height / 2 - (base.top + base.height / 2),
@@ -136,6 +193,7 @@ test.describe("AFTERSIGN job-offer press juice", () => {
         if (travel > rec.maxTravel) rec.maxTravel = travel;
         rec.samples += 1;
       };
+      const t0 = performance.now();
       const interval = setInterval(() => {
         sample();
         if (performance.now() - t0 > 600) clearInterval(interval);
@@ -165,11 +223,33 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     const recorded = await jobButton.evaluate(
       (element) =>
         (element as HTMLElement & {
-          __pressJuiceRecorder?: { minScale: number; maxTravel: number; samples: number };
-        }).__pressJuiceRecorder ?? { minScale: 1, maxTravel: 0, samples: 0 },
+          __pressJuiceRecorder?: {
+            minScale: number;
+            maxTravel: number;
+            samples: number;
+            firstNonIdentityTransform: string | null;
+            lastTransform: string | null;
+          };
+        }).__pressJuiceRecorder ?? {
+          minScale: 1,
+          maxTravel: 0,
+          samples: 0,
+          firstNonIdentityTransform: null,
+          lastTransform: null,
+        },
     );
     const scaleDrop = 1 - recorded.minScale;
-    expect(scaleDrop).toBeGreaterThanOrEqual(PRESS_FEEL.minPressedScaleDrop);
+    // If the recorder never observed a compressed frame, surface the actual
+    // computed-transform shape it *did* see so a future red names the paint
+    // it's missing (identity `none`, an un-promoted `matrix(...)`, the
+    // 3D-promoted `matrix3d(...)`, or an unknown shorthand) instead of the
+    // opaque `Received: 1` this branch red on.
+    expect(
+      scaleDrop,
+      `no compressed frame observed — samples=${recorded.samples} ` +
+        `lastTransform=${JSON.stringify(recorded.lastTransform)} ` +
+        `firstNonIdentity=${JSON.stringify(recorded.firstNonIdentityTransform)}`,
+    ).toBeGreaterThanOrEqual(PRESS_FEEL.minPressedScaleDrop);
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxPressedScaleDrop);
     expect(recorded.maxTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
 
