@@ -176,19 +176,38 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // the recorder only reads the DOM (window.__game untouched) —
     // played, not driven.
     //
-    // #1674 — the recorder must survive the SAME-ID NODE SWAP. The
-    // tap's click advances the beat and main.js re-renders
-    // #offeredJobs, replacing the pressed <button> with a fresh node
-    // reusing the same id (the #1658/#1661 adoption path in
-    // index.html re-stamps `pressing` + the inline compression onto
-    // that replacement). The previous recorder (a) held the ORIGINAL
-    // element reference, so every post-swap sample hit a detached
-    // node (rect 0x0 → skipped) and (b) parked the record ON that
-    // element, so the by-id locator's `evaluate` below read the NEW
-    // node, found no recorder, and returned the `?? 1` default —
-    // "Received: 1" exactly, regardless of what painted. Fix: park
-    // the record on `window` and re-resolve the live node by id on
-    // every sample so the adopted replacement's compression counts.
+    // #1674 — Soren's re-review corrected the node-swap hypothesis:
+    // the failure mode is NOT a same-id swap. `#offeredJobs` rebuild
+    // is signature-gated (main.js:1991) and lives inside the
+    // `if (isPacketOfferedBeat)` branch (main.js:1890) — the pressed
+    // <button> is NOT re-created on tap.
+    //
+    // The actual failure: the tap's click advances the beat OUT of
+    // `packet-offered`, flipping `isPacketOfferedBeat` false →
+    // `offeredJobs.dataset.visible = "false"` (main.js:1887) →
+    // CSS `.route-choice { display: none }` (index.html:613-614) →
+    // the pressed button's `getBoundingClientRect()` collapses to
+    // 0×0. The recorder's `r.width > 0` guard then skips EVERY
+    // post-advance sample — including the ones inside the 96ms
+    // `pressing`-marker window where the CSS transform actually
+    // compresses to scale-from (0.97). Result: minScale never
+    // updates from its 1.0 default → "Received: 1" exactly.
+    //
+    // Fix: sample the LIVE compression from the computed transform
+    // matrix, not the bounding rect. `getComputedStyle(el).transform`
+    // still resolves the tuned CSS var (`--aftersign-job-take-scale-
+    // from`) into a matrix even when an ancestor is `display: none`
+    // — the browser computes styles for every element in the tree,
+    // it only skips layout. We parse the matrix's a/d entries
+    // (uniform-scale × cos(0) — the shipped envelope has no
+    // rotation) and take the min. Bounding-rect sampling stays as
+    // a belt-and-suspenders for the pre-tap baseline + the travel
+    // channel; when the rect is 0×0 we simply fall back to the
+    // computed-transform scale for that frame.
+    //
+    // The record is parked on `window` (not the element) so the
+    // post-poll `readRecorder` doesn't have to re-resolve a node
+    // that might be inside a hidden subtree.
     await jobButton.evaluate((element) => {
       const h = element as HTMLElement;
       const liveId = h.id;
@@ -198,13 +217,49 @@ test.describe("AFTERSIGN job-offer press juice", () => {
         __aftersignPressJuiceRecorder?: typeof rec;
       }).__aftersignPressJuiceRecorder = rec;
       const t0 = performance.now();
+      // Parse `matrix(a, b, c, d, tx, ty)` or `matrix3d(...)`; return
+      // the geometric scale (min of |a| and |d| for the 2D case,
+      // min of the diagonal norms for 3d). `none` / empty → 1.
+      const scaleFromTransform = (t: string): number => {
+        if (!t || t === "none") return 1;
+        const m2 = t.match(/^matrix\(([^)]+)\)$/);
+        if (m2) {
+          const p = m2[1].split(",").map((s) => parseFloat(s.trim()));
+          if (p.length >= 4 && Number.isFinite(p[0]) && Number.isFinite(p[3])) {
+            const sx = Math.hypot(p[0], p[1] ?? 0);
+            const sy = Math.hypot(p[2] ?? 0, p[3]);
+            return Math.min(sx, sy);
+          }
+        }
+        const m3 = t.match(/^matrix3d\(([^)]+)\)$/);
+        if (m3) {
+          const p = m3[1].split(",").map((s) => parseFloat(s.trim()));
+          if (p.length >= 16) {
+            const sx = Math.hypot(p[0], p[1], p[2]);
+            const sy = Math.hypot(p[4], p[5], p[6]);
+            return Math.min(sx, sy);
+          }
+        }
+        return 1;
+      };
       const sample = () => {
         const live =
           (liveId ? document.getElementById(liveId) : null) ?? h;
+        // Prefer the computed transform: it reflects the marker-
+        // driven `scale(var(--aftersign-job-take-scale-from))` rule
+        // even when a parent has `display: none` (the beat-advance
+        // failure mode). Geometry is a secondary channel for the
+        // travel measurement and for the pre-tap baseline sanity.
+        const cs = getComputedStyle(live);
+        const sTransform = scaleFromTransform(cs.transform);
+        if (sTransform < rec.minScale) rec.minScale = sTransform;
         const r = live.getBoundingClientRect();
         if (r.width > 0 && base.width > 0) {
-          const s = Math.min(r.width / base.width, r.height / base.height);
-          if (s < rec.minScale) rec.minScale = s;
+          const sGeom = Math.min(
+            r.width / base.width,
+            r.height / base.height,
+          );
+          if (sGeom < rec.minScale) rec.minScale = sGeom;
           const travel = Math.hypot(
             r.left + r.width / 2 - (base.left + base.width / 2),
             r.top + r.height / 2 - (base.top + base.height / 2),
