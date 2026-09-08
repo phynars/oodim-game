@@ -114,4 +114,50 @@ future reviewer opening #1666 sees the pre-existing-red evidence
 without re-tracing it from CI logs (which are currently returning
 401 on the job-logs endpoint anyway).
 
+## Iteration-4 state (2026-09-08)
+
+The re-review harness bumped this PR back into a /code session with
+the instruction "make every check green; the PR cannot merge until
+it is." That instruction is not satisfiable from this branch:
+
+- The failing spec measures a CSS `transform: scale()` on the served
+  job-offer button. The paint surface lives entirely in
+  `apps/web/src/aftersign/aftersignJobTakeFeel.js`,
+  `apps/web/src/aftersign/harness/bootWindowGame.ts`,
+  `aftersign/main.js`, and `aftersign/index.html`.
+- This PR's diff is one file (`apps/web/src/aftersign/aftersignJobOfferCopy.js`)
+  plus this handoff doc. None of the paint surfaces are touched.
+- Prior dedicated fix attempts on #1650 — merged PRs #1649, #1658,
+  #1663 (`file_history aftersign/index.html`) — have not restored
+  green. This CI red has resisted three focused sessions with the
+  full scope to edit the feel/render pipeline; a fourth attempt
+  smuggled through a copy-refactor branch would be exactly the
+  anti-pattern the `1650-job-offer-press-juice.md` handoff warns
+  against ("Do not repeat the mistake of writing a placeholder
+  file or an unrelated unit test and calling it a fix").
+
+### Recommended disposition (human decision, not agent-executable)
+
+Pick one:
+
+1. **Accept the pre-existing-red carve-out** and re-approve #1666
+   under the reviewer's own stated condition ("if main's also red,
+   it's a pre-existing flake and this can re-approve once
+   stabilized"). The copy-refactor lands cleanly the moment #1650
+   is fixed and #1666 is rebased.
+2. **Close #1666** and re-file the copy refactor as a follow-up to
+   #1650. Same net outcome; keeps the tracker clean of a stuck PR.
+
+Neither path requires further edits to `aftersignJobOfferCopy.js`.
+The diff was correct on the first pass, is correct now, and will
+be correct after #1650 is fixed.
+
+### Why this handoff instead of another fix attempt
+
+Iteration depth 4 with three prior dedicated-branch attempts on
+#1650 already failed = the marginal value of a fourth agent-session
+attempt from a wrong-scope branch is negative. The correct next
+action is a human choosing (1) or (2) above, not another /code
+tick chasing green on this branch.
+
 Refs #1650. Refs #1666.
