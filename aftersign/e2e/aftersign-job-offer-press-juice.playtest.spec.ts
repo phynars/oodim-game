@@ -173,7 +173,7 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxPressedScaleDrop);
     expect(recorded.maxTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
 
-    await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs);
+    await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs); // pacing
 
     const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
     const recoveredCount = await recoveryLocator.count();
