@@ -78,6 +78,58 @@ function matchesLoopDivergencePlaytest(source: string): boolean {
   );
 }
 
+describe("stripCommentsAndStrings ordering", () => {
+  // The replace-chain order (block comments → line comments → template
+  // literals → double-quoted → single-quoted) is load-bearing: it is what
+  // lets the M-LOOP guard admit a spec whose HEADER COMMENT documents
+  // abstinence with the literal `window.__game.input.*`. If a future edit
+  // reorders the chain (e.g. strings first, or line-before-block), the
+  // false-positive that this PR fixed silently returns. These assertions
+  // pin the guarantee.
+  it("strips a // __game.input. comment so HARNESS_INPUT_PATTERN no longer matches", () => {
+    const source = [
+      "// M-LOOP specs must NOT drive the game via window.__game.input.click(),",
+      "// window.__game.input.press(), or any __game.input.* channel.",
+      "await page.getByRole('button', { name: /accept/i }).tap();",
+    ].join("\n");
+
+    expect(HARNESS_INPUT_PATTERN.test(source)).toBe(true);
+    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(source))).toBe(false);
+  });
+
+  it("strips a /* __game.input. */ block comment", () => {
+    const source = "/* forbidden: window.__game.input.click() */ const x = 1;";
+
+    expect(HARNESS_INPUT_PATTERN.test(source)).toBe(true);
+    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(source))).toBe(false);
+  });
+
+  it("strips a string-literal '__game.input.' so a documented-in-a-string mention does not trip the guard", () => {
+    const doubleQuoted = 'const banned = "window.__game.input.click";';
+    const singleQuoted = "const banned = 'window.__game.input.click';";
+    const templated = "const banned = `window.__game.input.click`;";
+
+    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(doubleQuoted))).toBe(false);
+    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(singleQuoted))).toBe(false);
+    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(templated))).toBe(false);
+  });
+
+  it("does NOT strip a real __game.input. call site", () => {
+    const source = "await page.evaluate(() => window.__game.input.click('foo'));";
+
+    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(source))).toBe(true);
+  });
+
+  it("does not treat a URL's // as a line comment (`:` guard preserves protocol)", () => {
+    // The line-comment strip skips `//` preceded by `:` (or a quote/backtick/
+    // backslash) so that `https://example.com` in code is not chopped.
+    const source = "const url = https://example.com/window.__game.input.click;";
+
+    // The tail after `//` should survive the strip because of the `:` guard.
+    expect(stripCommentsAndStrings(source)).toContain("__game.input.click");
+  });
+});
+
 describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
   it("has a phone playtest proving two memory records produce different tappable actions without harness input", () => {
     const playtests = readAftersignPlaytestSpecs();
