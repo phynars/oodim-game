@@ -153,6 +153,22 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // 64ms into the 96ms hold".
     await page.waitForTimeout(PRESS_FEEL.pressSampleMs); // pacing
 
+    // DIAG2 #1661 (temporary — remove before merge): dump the button's
+    // exact state at the sample moment so the CI log shows WHY the
+    // measured scale is identity there while local passes.
+    const diag2 = await jobButton.evaluate((el) => {
+      const h = el as HTMLElement;
+      return {
+        id: h.id,
+        marker: h.getAttribute("data-aftersign-job-take"),
+        inlineTransform: h.style.transform,
+        computedTransform: getComputedStyle(h).transform,
+        scaleFromVar: getComputedStyle(h).getPropertyValue("--aftersign-job-take-scale-from"),
+        connected: h.isConnected,
+      };
+    });
+    console.error("[press-juice-diag2] at-sample " + JSON.stringify(diag2));
+
     const pressed = await measureButton(jobButton);
     const pressedScaleX = pressed.width / before.width;
     const pressedScaleY = pressed.height / before.height;
