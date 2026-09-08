@@ -130,13 +130,18 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     expect(before.width).toBeGreaterThan(32);
     expect(before.height).toBeGreaterThan(24);
 
-    const center = {
-      x: before.left + before.width / 2,
-      y: before.top + before.height / 2,
-    };
-
     // Real phone tap on the shipped locator (played, not driven).
-    await page.touchscreen.tap(center.x, center.y);
+    // #1661: tap the LOCATOR, not raw coordinates. On CI (SwiftShader
+    // boot still settling) a late re-render can shift the tray between
+    // the measure above and a coordinate tap, landing the tap on an
+    // adjacent unstamped button — the press marker then never fires
+    // and scaleDrop reads 0 deterministically (diag run 34181126093:
+    // pointerdown tag=BUTTON matchedButton=none). locator.tap() is
+    // still a genuine pointer/touch tap on the visible element (the
+    // taps-only bar holds); it just waits for the node's bounding box
+    // to be stable before dispatching, so the tap follows the button
+    // instead of racing the layout.
+    await jobButton.tap();
 
     // Sample INSIDE the 96ms hold — the compressed portion of the
     // envelope. Waiting past the hold lets the release phase drive
