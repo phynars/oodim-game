@@ -1053,6 +1053,13 @@
           } catch (_err) {
             return;
           }
+          // DIAG #1661 (temporary): confirm the stamp landed + what the
+          // inline-transform branch decides on CI.
+          try {
+            console.error("[press-juice-diag] armPressing id=" + (button.id || "no-id") +
+              " prior=" + prior + " holdMs=" + holdMs +
+              " rectW=" + (button.getBoundingClientRect ? button.getBoundingClientRect().width.toFixed(1) : "?"));
+          } catch (_d) {}
 
           // #1663 re-review (Soren, round 2): the `pressing` selector
           // depends on the CSS transition to compress toward
@@ -1238,9 +1245,28 @@
           var target = event.target;
           if (!target || typeof target.closest !== "function") return;
           var button = target.closest("button[data-aftersign-job-take]");
+          // DIAG #1661 (temporary — remove before merge): CI-only red;
+          // passes on local Windows. Prove on CI whether pointerdown
+          // reaches the offer button and what armPressing sees.
+          try {
+            console.error("[press-juice-diag] pointerdown tag=" + (target.tagName || "?") +
+              " matchedButton=" + (button ? (button.id || "no-id") : "none") +
+              " marker=" + (button ? button.getAttribute("data-aftersign-job-take") : "-"));
+          } catch (_d) {}
           if (!button) return;
           armPressing(button);
         }
+        // DIAG #1661: does the touch sequence fire at all, and do we
+        // ever see pointer events on CI chromium+touch?
+        try {
+          document.addEventListener("touchstart", function (e) {
+            try {
+              var t = e.target;
+              console.error("[press-juice-diag] touchstart tag=" + ((t && t.tagName) || "?") +
+                " isOffer=" + !!(t && t.closest && t.closest("button[data-aftersign-job-take]")));
+            } catch (_d) {}
+          }, { passive: true, capture: true });
+        } catch (_d) {}
 
         // Use pointerdown (fires for touch + mouse + pen); passive
         // so we never delay scroll. Delegated on document so
