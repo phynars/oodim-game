@@ -379,11 +379,24 @@ import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 // offer-render below stamp the risk-tone attributes + pointerdown/up
 // press-class toggle on the SAME element the spec (and the player)
 // touches.
+//
+// PR #1676 (Soren's SIXTH REQUEST_CHANGES — build red on
+// `npm run build:aftersign`). The prior iteration imported these
+// symbols directly from `../apps/web/src/aftersign/ioJobOfferActionFeel.ts`;
+// `tsc --noEmit` passed but the vite build reddened on that cross-
+// package `.ts` import from THIS `.js` entry (see the shim's header
+// comment for the diagnostic trail). The shim below is authored as
+// plain JS inside `aftersign/src/` — the tree the aftersign vite
+// build already bundles cleanly — and carries the SAME data-attribute
+// + CSS-var vocabulary the sibling TS consumer test in
+// `apps/web/src/aftersign/ioJobOfferActionFeel.consumer.test.ts`
+// pins, so a drift between the two authoring surfaces reds a unit
+// test long before it reaches the served page.
 import {
-  AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS,
   applyAftersignJobOfferActionFeel,
+  attachAftersignJobOfferActionPressFloor,
   installAftersignJobOfferActionFeelStyles,
-} from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
+} from "./src/aftersignJobOfferActionFeelShim.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -2109,36 +2122,16 @@ const renderText = () => {
             // `Received: 1` on the recorded minScale.
             //
             // Fix: hold the pressed class for a FLOOR duration (~120ms) via
-            // a deferred release. On pointerdown we set the class and arm
-            // a setTimeout; pointerup / pointercancel / pointerleave do NOT
-            // strip the class — the timer owns release, so the recorder is
-            // guaranteed to sample at least one compressed frame regardless
-            // of how tightly the harness collapses down/up. This matches
-            // the 96ms `holdMs` on `aftersignJobTakeFeel` (see comment on
-            // that seam above) with a small margin to survive rAF
-            // starvation. If a second pointerdown lands during the hold
-            // (e.g. rapid re-tap), we clear + re-arm so the release always
-            // trails the LATEST press by the floor duration.
-            const PRESS_FLOOR_MS = 120;
-            let releaseTimer = null;
-            const setPressed = (pressed) => {
-              button.classList.toggle(
-                AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS,
-                pressed,
-              );
-            };
-            const onDown = () => {
-              if (releaseTimer !== null) {
-                clearTimeout(releaseTimer);
-                releaseTimer = null;
-              }
-              setPressed(true);
-              releaseTimer = setTimeout(() => {
-                releaseTimer = null;
-                setPressed(false);
-              }, PRESS_FLOOR_MS);
-            };
-            button.addEventListener("pointerdown", onDown);
+            // a deferred release (see `attachAftersignJobOfferActionPressFloor`
+            // in the shim). On pointerdown the class lands immediately and
+            // a setTimeout arms; pointerup / pointercancel / pointerleave
+            // do NOT strip the class — the timer owns release, so the
+            // recorder is guaranteed to sample at least one compressed
+            // frame regardless of how tightly the harness collapses
+            // down/up. This matches the 96ms `holdMs` on
+            // `aftersignJobTakeFeel` (see comment on that seam above)
+            // with a small margin to survive rAF starvation.
+            attachAftersignJobOfferActionPressFloor(button, 120);
           } catch {
             // FEEL projection — swallow so a bad risk axis never
             // black-screens the served page. The spec will red with
