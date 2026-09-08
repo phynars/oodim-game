@@ -1247,6 +1247,58 @@
         // dynamically rendered offer buttons are covered without a
         // rewire on every render.
         document.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
+
+        // #1661 — ADOPTION side of the inFlight map (the missing half
+        // of the #1658/#1660 inherit design). The click that follows
+        // pointerdown advances the beat and main.js re-renders
+        // #offeredJobs, REPLACING the pressed node mid-hold. The
+        // replacement mounts at identity scale with marker "ready";
+        // the inherit map only activated on a SECOND pointerdown that
+        // never comes, and the #1663 inline transform sits on the
+        // now-DETACHED original — so the e2e's 64ms same-id sample
+        // reads scaleDrop 0 (the exact red on main this fixes).
+        // Watch childList mutations; when a button whose id is
+        // mid-hold in `inFlight` mounts, run it through armPressing —
+        // whose existing inherit path stamps the pressing marker +
+        // inline compression for the REMAINING hold budget and
+        // restores the ORIGINAL prior afterward. Feel-only: the
+        // observer callback must never throw.
+        if (typeof MutationObserver === "function") {
+          var mountObserver = new MutationObserver(function (records) {
+            try {
+              var now = Date.now();
+              for (var i = 0; i < records.length; i += 1) {
+                var added = records[i].addedNodes;
+                for (var j = 0; j < added.length; j += 1) {
+                  var node = added[j];
+                  if (!node || node.nodeType !== 1) continue;
+                  var candidates = [];
+                  if (typeof node.matches === "function" &&
+                      node.matches("button[data-aftersign-job-take]")) {
+                    candidates.push(node);
+                  }
+                  if (typeof node.querySelectorAll === "function") {
+                    var inner = node.querySelectorAll("button[data-aftersign-job-take]");
+                    for (var k = 0; k < inner.length; k += 1) candidates.push(inner[k]);
+                  }
+                  for (var c = 0; c < candidates.length; c += 1) {
+                    var btn = candidates[c];
+                    if (btn.id && inFlight[btn.id] && inFlight[btn.id].until > now) {
+                      armPressing(btn);
+                    }
+                  }
+                }
+              }
+            } catch (_err) {
+              /* adoption is a feel projection — MUST NOT throw */
+            }
+          });
+          try {
+            mountObserver.observe(document.body, { childList: true, subtree: true });
+          } catch (_err) {
+            /* no adoption on an exotic DOM — pointerdown path still works */
+          }
+        }
       })();
     </script>
     <script type="module" src="./main.js"></script>
