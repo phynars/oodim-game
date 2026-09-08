@@ -130,6 +130,122 @@ describe("stripCommentsAndStrings ordering", () => {
   });
 });
 
+// Synthetic 8-gate-satisfying fixture. Each line is annotated with the
+// gate it exercises so a future edit that removes a gate-hit is visible
+// at the point of change (not two files away in the pattern list).
+const FIXTURE_COMPLIANT_SPEC = [
+  "// M-LOOP divergence playtest — abstains from window.__game.input.click().", //   HARNESS_INPUT (in comment, must be stripped)
+  "import { expect, test } from '@playwright/test';",
+  "test.use({ viewport: { width: 390, height: 844 } });", //                         PHONE_VIEWPORT (390,844)
+  "test('two memory records produce different tappable actions', async ({ page }) => {",
+  "  await page.goto('/aftersign/?slot=A');",
+  "  const first = await page.locator(`button[data-aftersign-job-take]`).allTextContents();", // VISIBLE_ACTION (locator(`button…`))
+  "  await page.getByRole('button', { name: /accept/i }).tap();", //                 PLAYER_EVENT (.tap()) + VISIBLE_ACTION (getByRole button)
+  "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", // TWO_SAVE_STATES (priorOutcome/packet.delivered/looped return/safe-default/completed set)
+  "  await page.goto('/aftersign/?slot=B');",
+  "  const second = await page.locator(`button[data-aftersign-job-take]`).allTextContents();",
+  "  expect(first).not.toEqual(second); // different tappable actions", //           DIFFERENT_ACTIONS (not.toEqual + 'different')
+  "  const beat = await page.evaluate(() => window.__game?.scene?.beat);", //        HARNESS_READ (__game) — read-only
+  "  expect(beat).toBeDefined();",
+  "});",
+].join("\n");
+
+describe("matchesLoopDivergencePlaytest contract", () => {
+  // Positive fixture: an 8-gate-compliant spec must admit. Without this
+  // test, every gate could silently drift (e.g. a pattern edit that
+  // stops matching real flagship vocabulary) and the FS-scan test below
+  // would just say "no compliant spec found" without pinpointing the
+  // regressed gate. The negative-fixture matrix below then proves each
+  // gate is INDIVIDUALLY load-bearing.
+  it("admits a synthetic spec that satisfies every gate", () => {
+    expect(matchesLoopDivergencePlaytest(FIXTURE_COMPLIANT_SPEC)).toBe(true);
+  });
+
+  // Negative-fixture matrix. Each mutation removes exactly one gate's
+  // evidence from the compliant fixture; the guard must reject. If a
+  // future refactor collapses two gates into one, the case for the
+  // removed gate will start FAILING (admit=true) — a visible signal
+  // that the gate is no longer independently enforced.
+  it.each([
+    // Strip phone viewport line.
+    { gate: "PHONE_VIEWPORT", mutate: (s: string) => s.replace(/test\.use\([^\n]*\n/, "") },
+    // Strip .tap() and getByRole('button'...) call — kills PLAYER_EVENT.
+    // The remaining locator(`button…`) still satisfies VISIBLE_ACTION.
+    {
+      gate: "PLAYER_EVENT",
+      mutate: (s: string) => s.replace(/  await page\.getByRole[^\n]*\n/, ""),
+    },
+    // Strip both locator(`button…`) calls AND the getByRole button call
+    // — kills VISIBLE_ACTION. PLAYER_EVENT still satisfied by tap()…
+    // wait, tap was on getByRole; drop that too and re-add a raw touchscreen.tap.
+    {
+      gate: "VISIBLE_ACTION",
+      mutate: (s: string) =>
+        s
+          .replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])")
+          .replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)"),
+    },
+    // Kill DIFFERENT_ACTIONS tokens (`different`, `not.toEqual`, and the
+    // `tappable actions` phrase in the test title).
+    {
+      gate: "DIFFERENT_ACTIONS",
+      mutate: (s: string) =>
+        s
+          .replace(
+            "expect(first).not.toEqual(second); // different tappable actions",
+            "expect(first).toBeDefined();",
+          )
+          .replace(
+            "two memory records produce different tappable actions",
+            "two memory records land on the packet-offered beat",
+          ),
+    },
+    // Strip every TWO_SAVE_STATES token in the fixture (both the
+    // comment tokens AND the "memory records" phrase in the test title).
+    {
+      gate: "TWO_SAVE_STATES",
+      mutate: (s: string) =>
+        s
+          .replace(
+            "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set",
+            "  // outcome recorded, return visit: default action reshuffled",
+          )
+          .replace(
+            "two memory records produce different tappable actions",
+            "two visits produce different tappable actions",
+          ),
+    },
+    // Kill __game evaluate — HARNESS_READ gate.
+    {
+      gate: "HARNESS_READ",
+      mutate: (s: string) =>
+        s
+          .replace(
+            "  const beat = await page.evaluate(() => window.__game?.scene?.beat);",
+            "  const beat = 'packet-offered';",
+          )
+          .replace(
+            "// M-LOOP divergence playtest — abstains from window.__game.input.click().",
+            "// M-LOOP divergence playtest — abstains from harness input.",
+          ),
+    },
+    // Move the __game.input.click into REAL code (not a comment) — must reject.
+    {
+      gate: "HARNESS_INPUT (as code, not comment)",
+      mutate: (s: string) => s + "\nawait page.evaluate(() => window.__game.input.click('foo'));\n",
+    },
+    // Add a dialogue-only divergence assertion — DIALOGUE_ONLY_PATTERN kills.
+    {
+      gate: "DIALOGUE_ONLY",
+      mutate: (s: string) =>
+        s + "\nawait expect(page.getByText('accept the job')).not.toEqual(page.getByText('reject'));\n",
+    },
+  ])("rejects when the $gate gate is not satisfied", ({ mutate }) => {
+    const mutated = mutate(FIXTURE_COMPLIANT_SPEC);
+    expect(matchesLoopDivergencePlaytest(mutated)).toBe(false);
+  });
+});
+
 describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
   it("has a phone playtest proving two memory records produce different tappable actions without harness input", () => {
     const playtests = readAftersignPlaytestSpecs();
