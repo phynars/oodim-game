@@ -17,25 +17,23 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 // beat gate here. A fresh `?slot=` param guarantees the first-visit
 // path so the safe-default offer lands at `packet-offered`.
 //
-// PRESS-WINDOW DISCIPLINE. The feel row in
+// PRESS-WINDOW DISCIPLINE (#1661). The feel row in
 // `apps/web/src/aftersign/aftersignJobTakeFeel.js` (pinned by the
 // sibling spec above) has `holdMs: "96ms"` — the compressed portion
-// of the envelope. Measuring after 120ms outlives the hold and the
-// button can already have crossed back through scale 1 into the
-// scalePeak 1.025 phase, driving `scaleDrop` to zero (or negative)
-// against the `>= 0.015` floor. We sample INSIDE the hold at 64ms
-// (2/3 of the 96ms hold) so the compression is still on the DOM.
-// The tap also flips the marker to "armed" and schedules an
-// auto-advance out of `packet-offered`; the recovery sample is
-// taken via a bounded poll that re-measures the SAME node before
-// the beat can tear it down.
+// of the envelope. The envelope is measured by an IN-PAGE recorder
+// armed BEFORE the tap (dual rAF + 8ms interval, 600ms window):
+// harness-clock sampling ("64ms after tap() resolves") raced the
+// protocol roundtrip and landed past the hold on slow runners —
+// the deterministic CI red @1143b53c. The recorder catches the
+// peak whenever it paints, frame-independent (the #1136
+// recognitionBeatReport cure, applied at the spec layer). The tap
+// also flips the marker to "armed" and schedules an auto-advance
+// out of `packet-offered`; the recovery sample re-measures the
+// SAME node after the release envelope.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 const PRESS_FEEL = {
-  // 2/3 of the 96ms hold from aftersignJobTakeFeel.js — inside the
-  // compressed window, outside the tap-flush frame.
-  pressSampleMs: 64,
   // Envelope hold+release budget; sibling uses 420ms durationMs.
   recoveryWindowMs: 480,
   minPressedScaleDrop: 0.015,
@@ -126,62 +124,118 @@ test.describe("AFTERSIGN job-offer press juice", () => {
       { timeout: WAIT_MS },
     );
 
+    // #1661: settle the two layout-shift sources that raced the tap on
+    // CI before ANY geometry is captured. (a) Web-font swap: CI loads
+    // Inter late; the swap reflows the whole .hud panel, so coordinates
+    // captured pre-swap dispatch onto whatever occupies that spot
+    // post-swap — diag runs 34181126099/34189057892 caught pointerdown
+    // landing on #packetButton / #deliverButton while this spec tapped
+    // the job offer. fonts.ready is a real page signal (a player taps
+    // a settled page), not harness driving. (b) One rAF so the settled
+    // layout has painted.
+    await page.evaluate(async () => {
+      await (document as unknown as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+
     const before = await measureButton(jobButton);
     expect(before.width).toBeGreaterThan(32);
     expect(before.height).toBeGreaterThan(24);
 
+    // #1555-style interceptor guard: if ANOTHER element owns the tap
+    // point, fail NAMING it — a static overlap must never resurface as
+    // an inscrutable scaleDrop=0.
+    const hitOwner = await page.evaluate(
+      ({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return el ? `${el.tagName.toLowerCase()}#${el.id || "?"}` : "nothing";
+      },
+      { x: before.left + before.width / 2, y: before.top + before.height / 2 },
+    );
+    const jobButtonDescriptor = await jobButton.evaluate(
+      (el) => `${el.tagName.toLowerCase()}#${(el as HTMLElement).id || "?"}`,
+    );
+    expect(
+      hitOwner,
+      `tap point is owned by ${hitOwner}, not the job-offer button — a covering/reflowed element`,
+    ).toBe(jobButtonDescriptor);
+
+    // #1661 — measure IN-PAGE, not on the harness clock. The old shape
+    // (`await jobButton.tap()` then `waitForTimeout(64)`) sampled 64ms
+    // after tap() RESOLVED — but tap() resolves only after protocol
+    // roundtrips, so on a slow runner the sample landed PAST the 96ms
+    // hold: the marker had already restored to "armed", transform was
+    // identity, and scaleDrop read 0 (the deterministic CI red on main
+    // @1143b53c; local diag proved the page held "pressing" for a full
+    // 0→98ms with the observer deferring the armed write correctly).
+    // Same cure as the #1136 recognitionBeatReport precedent: record
+    // the envelope IN the page, frame-independent of the harness.
+    // A dual rAF + 8ms-interval sampler (interval survives SwiftShader
+    // rAF starvation) records min scale + max travel for 600ms; the
+    // spec then asserts on the recorded peak. Input stays a REAL tap;
+    // the recorder only reads the DOM (window.__game untouched) —
+    // played, not driven.
+    await jobButton.evaluate((element) => {
+      const h = element as HTMLElement & {
+        __pressJuiceRecorder?: { minScale: number; maxTravel: number; samples: number };
+      };
+      const base = h.getBoundingClientRect();
+      const rec = { minScale: 1, maxTravel: 0, samples: 0 };
+      h.__pressJuiceRecorder = rec;
+      const t0 = performance.now();
+      const sample = () => {
+        const r = h.getBoundingClientRect();
+        if (r.width > 0 && base.width > 0) {
+          const s = Math.min(r.width / base.width, r.height / base.height);
+          if (s < rec.minScale) rec.minScale = s;
+          const travel = Math.hypot(
+            r.left + r.width / 2 - (base.left + base.width / 2),
+            r.top + r.height / 2 - (base.top + base.height / 2),
+          );
+          if (travel > rec.maxTravel) rec.maxTravel = travel;
+        }
+        rec.samples += 1;
+      };
+      const interval = setInterval(() => {
+        sample();
+        if (performance.now() - t0 > 600) clearInterval(interval);
+      }, 8);
+      const raf = () => {
+        sample();
+        if (performance.now() - t0 <= 600) requestAnimationFrame(raf);
+      };
+      requestAnimationFrame(raf);
+    });
+
     // Real phone tap on the shipped locator (played, not driven).
-    // #1661: tap the LOCATOR, not raw coordinates. On CI (SwiftShader
-    // boot still settling) a late re-render can shift the tray between
-    // the measure above and a coordinate tap, landing the tap on an
-    // adjacent unstamped button — the press marker then never fires
-    // and scaleDrop reads 0 deterministically (diag run 34181126093:
-    // pointerdown tag=BUTTON matchedButton=none). locator.tap() is
-    // still a genuine pointer/touch tap on the visible element (the
-    // taps-only bar holds); it just waits for the node's bounding box
-    // to be stable before dispatching, so the tap follows the button
-    // instead of racing the layout.
     await jobButton.tap();
 
-    // Sample INSIDE the 96ms hold — the compressed portion of the
-    // envelope. Waiting past the hold lets the release phase drive
-    // scale back through 1 into the 1.025 peak, which would fail
-    // the `>= 0.015` scaleDrop floor.
-    // pacing: sample the press envelope inside its 96ms hold — the
-    // compression is a paint state with no beat / DOM signal to
-    // quiesce on; wall-clock is the correct oracle for "we are
-    // 64ms into the 96ms hold".
-    await page.waitForTimeout(PRESS_FEEL.pressSampleMs); // pacing
+    // The recorder needs the hold (96ms) to elapse in-page; poll the
+    // recorded peak until the compression shows up (bounded by the
+    // recorder's own 600ms window + margin). No wall-clock sampling —
+    // the recorder caught the envelope whenever it painted.
+    await expect
+      .poll(
+        () =>
+          jobButton.evaluate(
+            (element) =>
+              (element as HTMLElement & { __pressJuiceRecorder?: { minScale: number } })
+                .__pressJuiceRecorder?.minScale ?? 1,
+          ),
+        { timeout: 2_000 },
+      )
+      .toBeLessThanOrEqual(1 - PRESS_FEEL.minPressedScaleDrop);
 
-    // DIAG2 #1661 (temporary — remove before merge): dump the button's
-    // exact state at the sample moment so the CI log shows WHY the
-    // measured scale is identity there while local passes.
-    const diag2 = await jobButton.evaluate((el) => {
-      const h = el as HTMLElement;
-      return {
-        id: h.id,
-        marker: h.getAttribute("data-aftersign-job-take"),
-        inlineTransform: h.style.transform,
-        computedTransform: getComputedStyle(h).transform,
-        scaleFromVar: getComputedStyle(h).getPropertyValue("--aftersign-job-take-scale-from"),
-        connected: h.isConnected,
-      };
-    });
-    console.error("[press-juice-diag2] at-sample " + JSON.stringify(diag2));
-
-    const pressed = await measureButton(jobButton);
-    const pressedScaleX = pressed.width / before.width;
-    const pressedScaleY = pressed.height / before.height;
-    const pressedScale = Math.min(pressedScaleX, pressedScaleY);
-    const scaleDrop = 1 - pressedScale;
-    const pressedTravel = Math.hypot(
-      pressed.centerX - before.centerX,
-      pressed.centerY - before.centerY,
+    const recorded = await jobButton.evaluate(
+      (element) =>
+        (element as HTMLElement & {
+          __pressJuiceRecorder?: { minScale: number; maxTravel: number; samples: number };
+        }).__pressJuiceRecorder ?? { minScale: 1, maxTravel: 0, samples: 0 },
     );
-
+    const scaleDrop = 1 - recorded.minScale;
     expect(scaleDrop).toBeGreaterThanOrEqual(PRESS_FEEL.minPressedScaleDrop);
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxPressedScaleDrop);
-    expect(pressedTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
+    expect(recorded.maxTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
 
     // The tap flips the marker to "armed" and schedules a
     // setTimeout-driven auto-advance out of `packet-offered`. Take
