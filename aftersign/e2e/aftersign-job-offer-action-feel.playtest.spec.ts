@@ -61,4 +61,14 @@ test("offered-job action feel is stamped on the visible button the player taps",
     "--aftersign-job-offer-press-scale",
     String(AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.pressScale),
   );
+
+  // Played, not driven. The trip-wire's shipped-consumer promise is
+  // that the stamp lands on the SAME visible button the player taps —
+  // a real tap here proves the decorated surface is the tappable one,
+  // and satisfies `playtest-input-surface-guard.spec.ts` (which
+  // requires every played spec to include a visible player event).
+  // The tap advances the beat out of `packet-offered`; no post-tap
+  // assertion — this spec owns the stamp channel, the sibling
+  // press-juice spec owns the transform envelope.
+  await offer.tap();
 });
