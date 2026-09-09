@@ -293,6 +293,8 @@ import {
   resolveAftersignJobTakeFeel,
 } from "../apps/web/src/aftersign/aftersignJobTakeFeel.js";
 import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersignJobOfferCopy.js";
+import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
+import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
 // module). `packetInteractionCopy.js` authors the three-state copy
 // for the `#packetButton` surface (idle before the gesture, sealed
@@ -2058,6 +2060,12 @@ const renderText = () => {
             risk: offer.routeRisk,
           });
           applyAftersignJobTakeFeelToButton(button, jobTakeFeelRow, "ready");
+          // Decorative action-feel stamp only: press feedback below remains
+          // the transform authority for the button's real pointer gesture.
+          applyAftersignJobOfferActionFeel(
+            button,
+            aftersignRouteRiskToJobTone(offer.routeRisk),
+          );
           attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
           armJobOfferFeel(button, () => {
             // Compose the M-LOOP action id with the underlying
