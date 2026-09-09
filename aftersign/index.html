@@ -1246,7 +1246,10 @@
         // so we never delay scroll. Delegated on document so
         // dynamically rendered offer buttons are covered without a
         // rewire on every render.
-        document.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
+        // Direct per-offer listeners in jobOfferPressing.js own the served
+        // touch surface. Keep this diagnostic helper inert: delegated
+        // capture target resolution was the delivery failure under Playwright.
+        void onPointerDown;
 
         // #1661 — ADOPTION side of the inFlight map (the missing half
         // of the #1658/#1660 inherit design). The click that follows
@@ -1301,6 +1304,7 @@
         }
       })();
     </script>
+    <script type="module" src="./jobOfferPressing.js"></script>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
