@@ -31,8 +31,8 @@ type PressJuiceRecord = {
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
     () =>
-      (window as unknown as { __game?: { scene?: { ready?: boolean } } })
-        .__game?.scene?.ready === true,
+      (window as unknown as { __game?: { scene?: { ready?: boolean } } }).__game
+        ?.scene?.ready === true,
     undefined,
     { timeout: WAIT_MS },
   );
@@ -166,14 +166,16 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     const readRecorder = () =>
       page.evaluate(
         () =>
-          (window as unknown as { __aftersignPressJuiceRecorder?: PressJuiceRecord })
-            .__aftersignPressJuiceRecorder ?? { minScale: 1, maxTravel: 0, samples: 0 },
+          (
+            window as unknown as {
+              __aftersignPressJuiceRecorder?: PressJuiceRecord;
+            }
+          ).__aftersignPressJuiceRecorder ?? null,
       );
     await expect
-      .poll(async () => (await readRecorder()).minScale, { timeout: 2_000 })
+      .poll(async () => (await readRecorder())?.minScale ?? 1, { timeout: WAIT_MS })
       .toBeLessThanOrEqual(1 - PRESS_FEEL.minPressedScaleDrop);
-
-    const recorded = await readRecorder();
+    const recorded = (await readRecorder()) as PressJuiceRecord;
     const scaleDrop = 1 - recorded.minScale;
     expect(scaleDrop).toBeGreaterThanOrEqual(PRESS_FEEL.minPressedScaleDrop);
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxPressedScaleDrop);
