@@ -3898,7 +3898,32 @@ const tick = (now) => {
   camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
   camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
   sampleMemoryBeatCameraProbe();
-  document.documentElement.style.setProperty("--confirm-shake-x", `${confirmEnvelope.hudShakeX - Math.round(failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
+  // Reduced-motion contract (PR #1688, Soren): the served page must
+  // clamp ALL lateral shake — not just failure-sting shake — to zero
+  // when `prefers-reduced-motion: reduce` is on. Two independent
+  // envelopes write `--confirm-shake-x` per frame:
+  //   1. `interactionConfirmEnvelopeAt` (packet-press confirm) —
+  //      `hudShakeX = Math.round(wobble * 10)`, NOT reduced-motion
+  //      aware in the pure primitive (it stays a decorative feel
+  //      spec authored under apps/web/). Under normal motion it
+  //      oscillates ±10px inside the first ~220ms of the press.
+  //   2. `failureStingEnvelopeAt` (packet-cancel sting) — already
+  //      reduced-motion aware: `failureWobble = rawWobble * 0 = 0`
+  //      under the flag, so the second term is 0 by construction.
+  // The first term is the residual that reds `peakShakeXAbs === 0`
+  // in `packet-cancel-reduced-motion-failure-sting-played.spec.ts`:
+  // the drag-cancel gesture fires a `packetPress` that starts the
+  // confirm envelope, then the drag exceeds the DRIFT_CANCEL_PX
+  // threshold while the confirm envelope is still active — the rAF
+  // sampler catches a frame where `confirmEnvelope.hudShakeX = 2`
+  // and the assertion reds. Zeroing the confirm contribution here
+  // (at the CSS-var write, not in the pure primitive) preserves
+  // `interactionConfirmEnvelopeAt`'s existing consumer contracts
+  // (harness tests, feel-token snapshot suites) while enforcing the
+  // reduced-motion rendered-shake=0 invariant at the ONE seam that
+  // actually paints pixels.
+  const confirmShakeXContribution = failureReducedMotion ? 0 : confirmEnvelope.hudShakeX;
+  document.documentElement.style.setProperty("--confirm-shake-x", `${confirmShakeXContribution - Math.round(failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
   document.documentElement.style.setProperty("--confirm-shake-y", `${confirmEnvelope.hudLiftY + Math.round(failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
   document.documentElement.style.setProperty("--confirm-reticle-scale", `${confirmEnvelope.reticleScale.toFixed(3)}`);
   document.documentElement.style.setProperty("--confirm-reticle-y", `${confirmEnvelope.reticleLiftPx.toFixed(2)}px`);
