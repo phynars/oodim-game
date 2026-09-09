@@ -1,6 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
 import { AFTERSIGN_JOB_OFFER_ACTION_FEEL } from "../../apps/web/src/aftersign/ioJobOfferActionFeel";
 
+// Aftersign job-offer ACTION-FEEL (decorative CSS-var stamp) — asserts
+// the `data-aftersign-job-risk` attribute + the seven
+// `--aftersign-job-offer-*` custom properties land on the very button
+// the player taps at `packet-offered`. This is #1680's shipped-consumer
+// trip-wire: drift on the mapper or the CSS-var authoring reds here.
+//
+// Cold-start + beat discipline mirrors the sibling
+// `aftersign-job-take-feel.playtest.spec.ts` (WAIT_MS + waitForBeat):
+// SwiftShader cold-start regularly overruns 5s, and the fresh `?slot=`
+// forces the first-visit safe-default offer so `job-offer-job-safe-
+// delivery` renders at `packet-offered`.
+//
+// SCOPE (per #1680): the stamp is DECORATIVE — `attachJobOfferPressFeedback`
+// remains the transform authority. This spec MUST NOT assert on
+// transform / press envelope; the sibling press-juice spec owns that.
+
 const WAIT_MS = 10_000;
 
 async function waitForReady(page: Page): Promise<void> {
@@ -13,10 +29,26 @@ async function waitForReady(page: Page): Promise<void> {
   );
 }
 
+async function waitForBeat(page: Page, beat: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = (
+            window as unknown as { __game?: { scene?: { beat?: unknown } } }
+          ).__game?.scene?.beat;
+          return typeof raw === "string" ? raw : null;
+        }),
+      { timeout: WAIT_MS },
+    )
+    .toBe(beat);
+}
+
 test("offered-job action feel is stamped on the visible button the player taps", async ({ page }) => {
   const slot = `job-offer-action-feel-${Date.now()}`;
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
   await waitForReady(page);
+  await waitForBeat(page, "packet-offered");
 
   const offer = page.locator("#job-offer-job-safe-delivery");
   await expect(offer).toBeVisible({ timeout: WAIT_MS });
@@ -25,7 +57,8 @@ test("offered-job action feel is stamped on the visible button the player taps",
     "--aftersign-job-offer-duration",
     `${AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.durationMs}ms`,
   );
-
-  await offer.click();
-  await expect(offer).toHaveAttribute("data-aftersign-job-risk", "safe");
+  await expect(offer).toHaveCSS(
+    "--aftersign-job-offer-press-scale",
+    String(AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.pressScale),
+  );
 });
