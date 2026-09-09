@@ -1,3 +1,18 @@
+// Memory-branched job-offer copy for Io's next-job handoff.
+//
+// The `.d.ts` companion in this directory is the authoritative
+// TypeScript shape (`AftersignJobOfferCopy` / `AftersignJobOfferCopyTable`);
+// this JS module holds the frozen strings so non-TS reviewers can eyeball
+// the copy without a compile step. `harness/bootWindowGame.ts` is the
+// ship-side consumer that folds the chosen row into the served-page
+// snapshot at `story.nextJob.offer.copy`; the two consumer tests in
+// this directory (`aftersignJobOfferCopy.consumer.test.ts` +
+// `aftersignJobTakeFeel.consumer.test.ts`) drive the three memory
+// branches end-to-end.
+//
+// Branch keys: `firstRun` / `trusted` / `opened` — matched by the
+// TS declaration `AftersignJobOfferCopyTable` and the consumer tests'
+// `AFTERSIGN_JOB_OFFER_COPY.<branch>` reads.
 export const AFTERSIGN_JOB_OFFER_COPY = Object.freeze({
   firstRun: Object.freeze({
     id: "blue-seal-safe",
@@ -40,6 +55,23 @@ export const AFTERSIGN_JOB_OFFER_COPY = Object.freeze({
   }),
 });
 
+/**
+ * Choose the memory branch to hand back for `memory`.
+ *
+ * Precedence (matches the pre-#1693 selector — kept intact because
+ * both `bootWindowGame.ts` and both `.consumer.test.ts` specs drive
+ * all three axes below):
+ *   1. `opened` — `memory.packetOpened === true`
+ *      OR `memory.firstPacketOutcome === "opened"`.
+ *   2. `trusted` — `memory.trustPosture === "trusted"`
+ *      OR `memory.ioTrustPosture === "trusted"`
+ *      OR `memory.firstPacketOutcome === "sealed"`
+ *      OR `memory.deliveredSealed === true`.
+ *   3. `firstRun` — the safe-default first-boot branch.
+ *
+ * Every field is optional; a fresh boot (`{}`) falls through to
+ * `firstRun`.
+ */
 export function chooseAftersignJobOfferCopy(memory = {}) {
   if (memory.packetOpened === true || memory.firstPacketOutcome === "opened") {
     return AFTERSIGN_JOB_OFFER_COPY.opened;
