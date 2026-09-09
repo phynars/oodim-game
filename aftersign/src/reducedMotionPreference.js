@@ -1,11 +1,21 @@
-// Cached, subscription-based reader for the OS/browser
-// `prefers-reduced-motion` preference. Wraps `window.matchMedia`
-// so the render loop can consult a plain function every frame
-// without allocating a new MediaQueryList per call — and, more
-// importantly, so a live toggle in DevTools ("Emulate CSS media
-// feature: prefers-reduced-motion") flips the answer mid-run via
-// the media query's `change` event (which is how flagship QA
-// verifies the accessibility path).
+// Live, per-read reader for the OS/browser `prefers-reduced-motion`
+// preference. Wraps `window.matchMedia` so the render loop can consult
+// a plain function every frame.
+//
+// LOAD-ORDER GOTCHA (Soren, PR #1688 review):
+// Playwright's `reducedMotion: 'reduce'` emulation is applied via CDP
+// AFTER the page's initial script bundles start evaluating, so any
+// reader that captured `mediaQuery.matches` at MODULE-LOAD time saw
+// `false` and never flipped — even though the media query itself
+// updates live. The `change` event fires asynchronously after
+// emulation lands, but the first render frame (which is what our
+// e2e sampler sees) can run before that listener has fired.
+//
+// Fix: `read()` consults `mediaQuery.matches` LIVE on every call.
+// MediaQueryList#matches is a live getter — it reflects the current
+// emulated/OS value every time, no listener plumbing required.
+// Cost is negligible (one property read per frame) and it removes
+// an entire class of load-order flake from CI + DevTools emulation.
 //
 // The CSS half of this contract already exists — index.html:402
 // gates the failure-sting overlay's shake keyframes under
@@ -29,11 +39,11 @@ export const createReducedMotionPreference = (windowObject = typeof window === "
     // No matchMedia in this environment (SSR, Node harness). Answer
     // "not reduced" forever; the update escape hatch stays available
     // for tests that want to force the flag on without a real query.
-    let reducedMotion = false;
+    let forcedReducedMotion = false;
     return {
-      read: () => reducedMotion,
+      read: () => forcedReducedMotion,
       update: (nextValue) => {
-        reducedMotion = Boolean(nextValue);
+        forcedReducedMotion = Boolean(nextValue);
       },
     };
   }
@@ -44,36 +54,42 @@ export const createReducedMotionPreference = (windowObject = typeof window === "
   } catch {
     // A throwing matchMedia (some legacy embedded browsers) still
     // must not crash the boot path — degrade to the inert reader.
-    let reducedMotion = false;
+    let forcedReducedMotion = false;
     return {
-      read: () => reducedMotion,
+      read: () => forcedReducedMotion,
       update: (nextValue) => {
-        reducedMotion = Boolean(nextValue);
+        forcedReducedMotion = Boolean(nextValue);
       },
     };
   }
 
-  let reducedMotion = mediaQuery.matches === true;
+  // Optional manual override — tests that don't route through a real
+  // matchMedia (unit specs constructing the reader directly) can force
+  // a value via `update(true)`. When forced, we return the forced value
+  // instead of the live query result. `null` = no override, defer to
+  // matchMedia. This preserves the prior `update()` contract without
+  // re-introducing module-load caching for the normal render path.
+  let forcedValue = null;
 
-  const read = () => reducedMotion;
+  const read = () => {
+    if (forcedValue !== null) return forcedValue;
+    // Live read — reflects the current emulated/OS value every call,
+    // so Playwright's CDP-emulated `reducedMotion: 'reduce'` is
+    // observed on the very first frame regardless of when it landed
+    // relative to module-load.
+    try {
+      return mediaQuery.matches === true;
+    } catch {
+      // MediaQueryList throwing on `.matches` is exotic but has been
+      // seen in old embedded WebKits — degrade to "not reduced" to
+      // match the inert-reader branch.
+      return false;
+    }
+  };
+
   const update = (nextValue) => {
-    reducedMotion = Boolean(nextValue);
+    forcedValue = Boolean(nextValue);
   };
-
-  const onChange = (event) => {
-    update(event?.matches ?? mediaQuery.matches);
-  };
-
-  // Modern browsers expose addEventListener on MediaQueryList; older
-  // Safari (< 14) only exposes the deprecated addListener. Try the
-  // modern shape first, fall back to the legacy shape, and if neither
-  // is available (a stub in a harness), just skip subscription — the
-  // initial `.matches` read still answers correctly for that frame.
-  if (typeof mediaQuery.addEventListener === "function") {
-    mediaQuery.addEventListener("change", onChange);
-  } else if (typeof mediaQuery.addListener === "function") {
-    mediaQuery.addListener(onChange);
-  }
 
   return { read, update };
 };
