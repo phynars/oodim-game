@@ -17,6 +17,12 @@ import { AFTERSIGN_JOB_OFFER_ACTION_FEEL } from "../../apps/web/src/aftersign/io
 // remains the transform authority. This spec MUST NOT assert on
 // transform / press envelope; the sibling press-juice spec owns that.
 
+// Phone tap lane — `offer.tap()` below requires `hasTouch: true`, or
+// Playwright throws before the play surface guard can even see the
+// event. Mirrors every sibling played spec (take-feel, press-juice,
+// kiosk, m-continue) so the tap lands as a real touch on the same
+// DOM node the shipped main.js decorates.
+const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 
 async function waitForReady(page: Page): Promise<void> {
@@ -44,31 +50,37 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
     .toBe(beat);
 }
 
-test("offered-job action feel is stamped on the visible button the player taps", async ({ page }) => {
-  const slot = `job-offer-action-feel-${Date.now()}`;
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-  await waitForReady(page);
-  await waitForBeat(page, "packet-offered");
+test.describe("AFTERSIGN job-offer action feel (phone tap)", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  const offer = page.locator("#job-offer-job-safe-delivery");
-  await expect(offer).toBeVisible({ timeout: WAIT_MS });
-  await expect(offer).toHaveAttribute("data-aftersign-job-risk", "safe");
-  await expect(offer).toHaveCSS(
-    "--aftersign-job-offer-duration",
-    `${AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.durationMs}ms`,
-  );
-  await expect(offer).toHaveCSS(
-    "--aftersign-job-offer-press-scale",
-    String(AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.pressScale),
-  );
+  test("offered-job action feel is stamped on the visible button the player taps", async ({
+    page,
+  }) => {
+    const slot = `job-offer-action-feel-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "packet-offered");
 
-  // Played, not driven. The trip-wire's shipped-consumer promise is
-  // that the stamp lands on the SAME visible button the player taps —
-  // a real tap here proves the decorated surface is the tappable one,
-  // and satisfies `playtest-input-surface-guard.spec.ts` (which
-  // requires every played spec to include a visible player event).
-  // The tap advances the beat out of `packet-offered`; no post-tap
-  // assertion — this spec owns the stamp channel, the sibling
-  // press-juice spec owns the transform envelope.
-  await offer.tap();
+    const offer = page.locator("#job-offer-job-safe-delivery");
+    await expect(offer).toBeVisible({ timeout: WAIT_MS });
+    await expect(offer).toHaveAttribute("data-aftersign-job-risk", "safe");
+    await expect(offer).toHaveCSS(
+      "--aftersign-job-offer-duration",
+      `${AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.durationMs}ms`,
+    );
+    await expect(offer).toHaveCSS(
+      "--aftersign-job-offer-press-scale",
+      String(AFTERSIGN_JOB_OFFER_ACTION_FEEL.safe.pressScale),
+    );
+
+    // Played, not driven. The trip-wire's shipped-consumer promise is
+    // that the stamp lands on the SAME visible button the player taps —
+    // a real tap here proves the decorated surface is the tappable one,
+    // and satisfies `playtest-input-surface-guard.spec.ts` (which
+    // requires every played spec to include a visible player event).
+    // The tap advances the beat out of `packet-offered`; no post-tap
+    // assertion — this spec owns the stamp channel, the sibling
+    // press-juice spec owns the transform envelope.
+    await offer.tap();
+  });
 });
