@@ -3915,8 +3915,10 @@ const tick = (now) => {
   // the drag-cancel gesture fires a `packetPress` that starts the
   // confirm envelope, then the drag exceeds the DRIFT_CANCEL_PX
   // threshold while the confirm envelope is still active — the rAF
-  // sampler catches a frame where `confirmEnvelope.hudShakeX = 2`
-  // and the assertion reds. Zeroing the confirm contribution here
+  // sampler catches a frame where `confirmEnvelope.hudShakeX` is
+  // non-zero (observed peaks of 2px and 7px on separate CI runs,
+  // bounded above by `feel.hudShakePx = 10`) and the assertion
+  // reds. Zeroing the confirm contribution here
   // (at the CSS-var write, not in the pure primitive) preserves
   // `interactionConfirmEnvelopeAt`'s existing consumer contracts
   // (harness tests, feel-token snapshot suites) while enforcing the
