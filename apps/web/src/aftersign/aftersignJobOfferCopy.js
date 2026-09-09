@@ -1,93 +1,90 @@
-const FIRST_RUN_OFFER = Object.freeze({
-  state: "first-run",
-  eyebrow: "Night Post job",
-  offer: "One safe job. One blue seal. Bring both back intact.",
-  route: "blue rainline",
-  risk: "sealed, short, watched",
-  actions: Object.freeze([
-    Object.freeze({
-      id: "carry-blue-packet",
-      label: "Carry the blue packet",
-      detail: "A first run with Io watching the seal.",
-    }),
-  ]),
+// Memory-branched job-offer copy for Io's next-job handoff.
+//
+// The `.d.ts` companion in this directory is the authoritative
+// TypeScript shape (`AftersignJobOfferCopy` / `AftersignJobOfferCopyTable`);
+// this JS module holds the frozen strings so non-TS reviewers can eyeball
+// the copy without a compile step. `harness/bootWindowGame.ts` is the
+// ship-side consumer that folds the chosen row into the served-page
+// snapshot at `story.nextJob.offer.copy`; the two consumer tests in
+// this directory (`aftersignJobOfferCopy.consumer.test.ts` +
+// `aftersignJobTakeFeel.consumer.test.ts`) drive the three memory
+// branches end-to-end.
+//
+// Branch keys: `firstRun` / `trusted` / `opened` — matched by the
+// TS declaration `AftersignJobOfferCopyTable` and the consumer tests'
+// `AFTERSIGN_JOB_OFFER_COPY.<branch>` reads.
+export const AFTERSIGN_JOB_OFFER_COPY = Object.freeze({
+  firstRun: Object.freeze({
+    id: "blue-seal-safe",
+    tappableActionId: "take-job-blue-seal-safe",
+    title: "Blue seal, short stairs",
+    actionLabel: "Take the blue seal job",
+    summary: "Carry Io's sealed packet to the stair box. Keep it shut. Come back breathing.",
+    ioLine: "One safe job. Blue seal, stair box, no heroics. Bring me back a fact I can use.",
+    riskPrompt: "The lit stair is longer. The dark cut is faster. Vey charges for fast.",
+    safeRouteLabel: "Take the lit stair",
+    riskyRouteLabel: "Take the dark cut",
+    route: "Take the lit stair. Do not stop under the bell rope.",
+    risk: "Low risk. Long route. Io can see most of it from the kiosk.",
+  }),
+  trusted: Object.freeze({
+    id: "orra-name-risk",
+    tappableActionId: "take-job-orra-name-risk",
+    title: "Orra's folded name",
+    actionLabel: "Take Orra's name job",
+    summary: "Carry a folded name from Saint Orra. Ask who it hurts before you promise.",
+    ioLine: "You kept one seal honest. That buys you Orra's kind of trouble. Ask twice before carrying a name.",
+    riskPrompt: "Orra's lantern knows old names. The short way passes under it. The long way avoids the saint.",
+    safeRouteLabel: "Avoid Orra's lantern",
+    riskyRouteLabel: "Pass under Orra's lantern",
+    route: "Cross behind the shuttered pharmacy before the bells count twice.",
+    risk: "Short route. Unlit. Better pay because Io trusts your hands.",
+  }),
+  opened: Object.freeze({
+    id: "wax-debt-repair",
+    tappableActionId: "take-job-wax-debt-repair",
+    title: "Wax debt, watched hands",
+    actionLabel: "Take the wax debt job",
+    summary: "Repair what opening the packet cost. Every hand on the route will be watching yours.",
+    ioLine: "You opened what was not yours. Useful skill, expensive habit. Tonight you pay it down.",
+    riskPrompt: "The public stair keeps you honest. The service cut keeps you unseen.",
+    safeRouteLabel: "Use the public stair",
+    riskyRouteLabel: "Use the service cut",
+    route: "Stay in the amber lamps. Let every sign watch the packet.",
+    risk: "Low route risk. Low trust. Io keeps the job visible.",
+  }),
 });
 
-const TRUSTED_OFFER = Object.freeze({
-  state: "trusted-seal",
-  eyebrow: "Wider work",
-  offer: "You kept the seal once. I can risk giving you a stranger door.",
-  route: "pharmacy receipt by the lit stair",
-  risk: "wider work, cleaner name",
-  actions: Object.freeze([
-    Object.freeze({
-      id: "carry-pharmacy-receipt",
-      label: "Carry the pharmacy receipt",
-      detail: "Orra's paper, clean enough to cross the lit stair.",
-    }),
-    Object.freeze({
-      id: "take-lit-stair",
-      label: "Take the lit stair",
-      detail: "Longer route. Fewer debts waiting in the dark.",
-    }),
-  ]),
-});
-
-const DISTRUSTED_OFFER = Object.freeze({
-  state: "opened-seal",
-  eyebrow: "Narrow work",
-  offer: "The seal opened. So the work narrows.",
-  route: "torn receipt by the dark cut",
-  risk: "narrow work, debt carried",
-  actions: Object.freeze([
-    Object.freeze({
-      id: "return-torn-receipt",
-      label: "Return the torn receipt",
-      detail: "A short job for hands Io is still counting.",
-    }),
-  ]),
-});
-
-const TRUSTED_PACKET_OUTCOMES = new Set([
-  "sealed",
-  "delivered_sealed",
-  "kept_sealed",
-  "packet_sealed",
-]);
-
-const DISTRUSTED_PACKET_OUTCOMES = new Set([
-  "opened",
-  "opened_packet",
-  "packet_opened",
-  "seal_broken",
-]);
-
-function readPacketOutcome(memory = {}) {
-  return String(
-    memory.packetOutcome ??
-      memory.lastPacketOutcome ??
-      memory.deliveryOutcome ??
-      memory.firstPacketOutcome ??
-      ""
-  ).toLowerCase();
-}
-
+/**
+ * Choose the memory branch to hand back for `memory`.
+ *
+ * Precedence (matches the pre-#1693 selector — kept intact because
+ * both `bootWindowGame.ts` and both `.consumer.test.ts` specs drive
+ * all three axes below):
+ *   1. `opened` — `memory.packetOpened === true`
+ *      OR `memory.firstPacketOutcome === "opened"`.
+ *   2. `trusted` — `memory.trustPosture === "trusted"`
+ *      OR `memory.ioTrustPosture === "trusted"`
+ *      OR `memory.firstPacketOutcome === "sealed"`
+ *      OR `memory.deliveredSealed === true`.
+ *   3. `firstRun` — the safe-default first-boot branch.
+ *
+ * Every field is optional; a fresh boot (`{}`) falls through to
+ * `firstRun`.
+ */
 export function chooseAftersignJobOfferCopy(memory = {}) {
-  const packetOutcome = readPacketOutcome(memory);
-
-  if (TRUSTED_PACKET_OUTCOMES.has(packetOutcome)) {
-    return TRUSTED_OFFER;
+  if (memory.packetOpened === true || memory.firstPacketOutcome === "opened") {
+    return AFTERSIGN_JOB_OFFER_COPY.opened;
   }
 
-  if (DISTRUSTED_PACKET_OUTCOMES.has(packetOutcome)) {
-    return DISTRUSTED_OFFER;
+  if (
+    memory.trustPosture === "trusted" ||
+    memory.ioTrustPosture === "trusted" ||
+    memory.firstPacketOutcome === "sealed" ||
+    memory.deliveredSealed === true
+  ) {
+    return AFTERSIGN_JOB_OFFER_COPY.trusted;
   }
 
-  return FIRST_RUN_OFFER;
+  return AFTERSIGN_JOB_OFFER_COPY.firstRun;
 }
-
-export const aftersignJobOfferCopy = Object.freeze({
-  firstRun: FIRST_RUN_OFFER,
-  trusted: TRUSTED_OFFER,
-  distrusted: DISTRUSTED_OFFER,
-});
