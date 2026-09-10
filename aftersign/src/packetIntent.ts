@@ -1,6 +1,30 @@
 export const PACKET_INTENT = Object.freeze({
   HOLD_TO_OPEN_MS: 450,
   TAP_TO_PRESERVE_MAX_MS: 180,
+  // #1701 (Refs #1698 / handoff): PREVIEW_MAX_MS is the very-quick-glance
+  // ceiling under which an OPT-IN `previewRelease()` call emits PREVIEWED
+  // instead of SEALED. Strictly LESS THAN `TAP_TO_PRESERVE_MAX_MS` so the
+  // preserve/preview boundary is monotone: any release inside PREVIEW_MAX_MS
+  // is also inside the preserve-tap window (a preview is a subset of a
+  // preserve-tap), and any release above PREVIEW_MAX_MS falls through to
+  // the existing sealed/opened decision unchanged. The default
+  // `release()` path DOES NOT emit PREVIEWED — all shipped consumers of
+  // `packetOutcome` (`"sealed" | "opened"` in AftersignVerticalSliceState,
+  // durable save schema, mloop memory gate, io returning-session lines,
+  // etc.) keep their two-value surface. Callers that want an explicit
+  // "the player only glanced at the seal" signal opt in via
+  // `previewRelease()` — currently `evaluatePacketChoiceGesture` in
+  // `apps/web/src/aftersign/packetChoiceFeel.ts` uses the mirrored
+  // `previewTapMaxMs` config to produce a non-committal `previewed`
+  // feedback token on the served surface.
+  // Set to 60ms (strictly less than the shipped e2e's shortest tap at
+  // 90ms in `aftersign/e2e/packet-intent-scene.spec.ts:31`, which
+  // asserts `outcome === "sealed"`) so wiring `previewRelease` into the
+  // served `packetRelease` on `aftersign/main.js` doesn't reclassify
+  // that existing sealed tap as PREVIEWED. PREVIEWED is a "very quick
+  // glance" — 60ms lands well below the 90ms preserve-tap the e2e
+  // treats as normal short-tap behavior.
+  PREVIEW_MAX_MS: 60,
   DRIFT_CANCEL_PX: 14,
   OPEN_PULL_MIN_PX: 10,
   PROGRESS_DEADBAND_MS: 80,
@@ -9,6 +33,7 @@ export const PACKET_INTENT = Object.freeze({
 export type PacketIntentConfig = {
   HOLD_TO_OPEN_MS: number;
   TAP_TO_PRESERVE_MAX_MS: number;
+  PREVIEW_MAX_MS: number;
   DRIFT_CANCEL_PX: number;
   OPEN_PULL_MIN_PX: number;
   PROGRESS_DEADBAND_MS: number;
@@ -19,6 +44,12 @@ export const PACKET_OUTCOME = Object.freeze({
   SEALED: "sealed",
   OPENED: "opened",
   CANCELLED: "cancelled",
+  // #1701 (Refs #1698): non-destructive glance outcome. Emitted ONLY by
+  // the opt-in `previewRelease()` path — the default `release()` path
+  // preserves the pre-existing SEALED/OPENED/CANCELLED surface so every
+  // downstream `packetOutcome: "sealed" | "opened"` consumer keeps
+  // typing. See PREVIEW_MAX_MS above for why this is opt-in.
+  PREVIEWED: "previewed",
 } as const);
 
 export type PacketOutcome = (typeof PACKET_OUTCOME)[keyof typeof PACKET_OUTCOME];
@@ -147,6 +178,46 @@ export class PacketIntentController {
       this.outcome = heldMs >= this.config.HOLD_TO_OPEN_MS && pullPx >= this.config.OPEN_PULL_MIN_PX
         ? PACKET_OUTCOME.OPENED
         : PACKET_OUTCOME.SEALED;
+    }
+    this.active = false;
+    this.progress = 0;
+    return this.snapshot();
+  }
+
+  /**
+   * Opt-in preview-vs-preserve emission — #1701 (Refs #1698).
+   *
+   * Identical to `release()` in every branch EXCEPT one: a release inside
+   * both the drift-cancel deadzone AND `PREVIEW_MAX_MS` returns
+   * PREVIEWED instead of SEALED. A stationary hold (no pull) longer than
+   * PREVIEW_MAX_MS still returns SEALED — the divergent-invariant
+   * failure mode Soren flagged on the deleted `packetIntentFeel.ts`
+   * (stationary hold with ~3px travel returning `open` at 560ms) is
+   * IMPOSSIBLE here: `previewRelease` never returns OPENED without
+   * `pullPx >= OPEN_PULL_MIN_PX`, and never returns PREVIEWED past
+   * PREVIEW_MAX_MS. The two-axis open contract (hold ≥ 450ms AND pull
+   * ≥ 10px) is preserved bit-for-bit.
+   *
+   * All shipped consumers keep calling `release()` and see the same
+   * "sealed" | "opened" surface. Only the feel-side judge in
+   * `packetChoiceFeel.ts` opts in.
+   */
+  previewRelease(input: PacketIntentPressInput): PacketIntentSnapshot {
+    if (!this.active || this.isCommitted()) return this.snapshot();
+    this.consumeHiddenInterval(input.timeMs);
+    this.lastPoint = { x: input.x, y: input.y };
+    const pullPx = this.currentPullPx();
+    if (pullPx > this.config.DRIFT_CANCEL_PX) {
+      this.outcome = PACKET_OUTCOME.CANCELLED;
+    } else {
+      const heldMs = input.timeMs - this.startTimeMs;
+      if (heldMs >= this.config.HOLD_TO_OPEN_MS && pullPx >= this.config.OPEN_PULL_MIN_PX) {
+        this.outcome = PACKET_OUTCOME.OPENED;
+      } else if (heldMs <= this.config.PREVIEW_MAX_MS) {
+        this.outcome = PACKET_OUTCOME.PREVIEWED;
+      } else {
+        this.outcome = PACKET_OUTCOME.SEALED;
+      }
     }
     this.active = false;
     this.progress = 0;
@@ -348,6 +419,12 @@ export function runPacketIntentChecks(): void {
   checkResolveIntentHelper();
   checkEvaluatePacketIntentHelper();
   checkEvaluatePacketIntentMatchesLiveControllerWindow();
+  checkPreviewReleaseEmitsPreviewedForVeryQuickTap();
+  checkPreviewReleaseFallsThroughToSealedPastPreviewWindow();
+  checkPreviewReleasePreservesOpenContractOnHoldPlusPull();
+  checkPreviewReleaseDoesNotOpenStationaryHold();
+  checkDefaultReleaseNeverEmitsPreviewedOutcome();
+  checkPreviewWindowStrictlyInsidePreserveTapWindow();
 }
 
 function checkShortTapPreservesSeal(): void {
@@ -586,6 +663,90 @@ function checkEvaluatePacketIntentMatchesLiveControllerWindow(): void {
     DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS.openDragPx <= PACKET_INTENT.DRIFT_CANCEL_PX,
     "offline evaluator open threshold must remain reachable inside the live controller cancel guard",
   );
+}
+
+// #1701 (Refs #1698): PREVIEWED contract pins. These lock the exact shape
+// of the new peer outcome — when it's emitted, when it's NOT, and that
+// adding it did NOT weaken the two-axis open contract or the sticky-hold
+// invariant. The failure modes Soren blocked the deleted
+// `packetIntentFeel.ts` PR on (stationary hold returning `open` at
+// 560ms, hold threshold drifting to 520ms, no pull-required for open)
+// are individually tripwired below.
+
+// Emission path — a very-quick tap through `previewRelease` returns
+// PREVIEWED, and `applyPacketIntent`-style state updates that key off
+// the outcome enum can observe the new value directly.
+function checkPreviewReleaseEmitsPreviewedForVeryQuickTap(): void {
+  const c = new PacketIntentController();
+  c.press({ timeMs: 100_000, x: 20, y: 20 });
+  const glance = c.previewRelease({ timeMs: 100_000 + PACKET_INTENT.PREVIEW_MAX_MS, x: 20, y: 20 });
+  assertEqual(glance.outcome, PACKET_OUTCOME.PREVIEWED, "release inside PREVIEW_MAX_MS on previewRelease must emit PREVIEWED");
+  assertEqual(glance.active, false, "PREVIEWED must clear active");
+  assertEqual(glance.progress, 0, "PREVIEWED must clear progress");
+}
+
+// Fall-through — the moment a tap crosses PREVIEW_MAX_MS it becomes a
+// SEALED release, not PREVIEWED. Prevents the preview window from
+// silently absorbing preserve-tap gestures the story fork already
+// depends on.
+function checkPreviewReleaseFallsThroughToSealedPastPreviewWindow(): void {
+  const c = new PacketIntentController();
+  c.press({ timeMs: 101_000, x: 20, y: 20 });
+  const past = c.previewRelease({ timeMs: 101_000 + PACKET_INTENT.PREVIEW_MAX_MS + 1, x: 20, y: 20 });
+  assertEqual(past.outcome, PACKET_OUTCOME.SEALED, "release one ms past PREVIEW_MAX_MS on previewRelease must fall through to SEALED");
+}
+
+// Two-axis open contract is untouched by the preview path. This is the
+// exact regression vector the deleted parallel module failed on:
+// PREVIEWED must NEVER absorb an OPENED gesture.
+function checkPreviewReleasePreservesOpenContractOnHoldPlusPull(): void {
+  const c = new PacketIntentController();
+  const t0 = 102_000;
+  c.press({ timeMs: t0, x: 40, y: 40 });
+  c.move({ timeMs: t0 + PACKET_INTENT.HOLD_TO_OPEN_MS - 16, x: 40 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 40 });
+  const opened = c.previewRelease({ timeMs: t0 + PACKET_INTENT.HOLD_TO_OPEN_MS, x: 40 + PACKET_INTENT.OPEN_PULL_MIN_PX, y: 40 });
+  assertEqual(opened.outcome, PACKET_OUTCOME.OPENED, "hold + pull through previewRelease must still commit OPENED");
+}
+
+// Stationary-hold invariant is untouched. This is the CENTRAL failure
+// mode the deleted `packetIntentFeel.ts` diverged on: a stationary
+// hold with ~3px travel at 560ms MUST stay non-OPENED. Under the
+// preview path such a hold is far past PREVIEW_MAX_MS so it falls
+// through to the two-axis open decision — no pull ⇒ SEALED, not
+// OPENED and not PREVIEWED.
+function checkPreviewReleaseDoesNotOpenStationaryHold(): void {
+  const c = new PacketIntentController();
+  const t0 = 103_000;
+  c.press({ timeMs: t0, x: 40, y: 40 });
+  const held = c.previewRelease({ timeMs: t0 + 560, x: 43, y: 40 });
+  assertEqual(held.outcome, PACKET_OUTCOME.SEALED, "stationary hold @560ms with 3px travel via previewRelease must remain SEALED, never OPENED and never PREVIEWED");
+}
+
+// Back-compat pin — the default release() surface never grew a fifth
+// value. Every downstream consumer of `packetOutcome: 'sealed' |
+// 'opened'` (durable save schema, AftersignVerticalSliceState, mloop
+// memory gate) stays typed as-is.
+function checkDefaultReleaseNeverEmitsPreviewedOutcome(): void {
+  const tapController = new PacketIntentController();
+  tapController.press({ timeMs: 200_000, x: 20, y: 20 });
+  const quick = tapController.release({ timeMs: 200_000 + PACKET_INTENT.PREVIEW_MAX_MS, x: 20, y: 20 });
+  assertEqual(quick.outcome, PACKET_OUTCOME.SEALED, "default release() at PREVIEW_MAX_MS must still be SEALED (never PREVIEWED)");
+
+  const veryQuickController = new PacketIntentController();
+  veryQuickController.press({ timeMs: 201_000, x: 20, y: 20 });
+  const veryQuick = veryQuickController.release({ timeMs: 201_000 + 10, x: 20, y: 20 });
+  assertEqual(veryQuick.outcome, PACKET_OUTCOME.SEALED, "default release() at 10ms must be SEALED, not PREVIEWED — back-compat");
+}
+
+// Monotonicity — the preview window must sit strictly INSIDE the
+// preserve-tap window so `preview ⊂ preserve-tap` never inverts. This
+// keeps the boundary logic in `packetChoiceFeel.ts` sound.
+function checkPreviewWindowStrictlyInsidePreserveTapWindow(): void {
+  assert(
+    PACKET_INTENT.PREVIEW_MAX_MS < PACKET_INTENT.TAP_TO_PRESERVE_MAX_MS,
+    "PREVIEW_MAX_MS must stay strictly less than TAP_TO_PRESERVE_MAX_MS",
+  );
+  assert(PACKET_INTENT.PREVIEW_MAX_MS > 0, "PREVIEW_MAX_MS must be positive");
 }
 
 function assert(condition: boolean, message: string): asserts condition {

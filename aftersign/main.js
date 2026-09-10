@@ -310,6 +310,43 @@ import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersign
 // markup, simulates the tap-driven commit, and asserts the visible
 // text + data-attr both flip.
 import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteractionCopy.js";
+// #1701 (Refs #1698) — served-page DOM writer for the PREVIEWED
+// outcome. Wiring it in main.js here turns PREVIEWED from a
+// contract-only enum value into a SHIPPED consumer on the served
+// page: on every `packetRelease` below we replay the real
+// gesture log through `evaluatePacketChoiceGesture` (imported
+// right below), and when the feel judge returns
+// `feedback: "previewed"` for a tap under 60ms we stamp
+// `data-packet-feedback="previewed"` on the very `#packetButton`
+// element the finger touched. Any other verdict clears the
+// attribute so a subsequent commit doesn't inherit the previous
+// glance marker. Sibling `packetPreviewFeedback.consumer.test.ts`
+// mounts the real `aftersign/index.html`, drives a click through
+// the SAME writer, and pins the stamp on the shipped element.
+//
+// Note (draft 2 → 3): `packetRelease` still uses
+// `packetIntent.release(...)` — NOT `previewRelease` — because
+// the M-WIRE-EINT harness `choose("keep-sealed")` simulates a
+// release inside the 60ms preview window and must still commit
+// SEALED. Draft 3 (Soren's REQUEST_CHANGES) drives the DOM stamp
+// off the FEEL-side judge on the gesture log INSTEAD of the pure
+// controller's outcome enum — so the served preview seam lives on
+// its own axis and the commit path stays typed to SEALED/OPENED.
+import { applyPacketPreviewFeedback } from "../apps/web/src/aftersign/packetPreviewFeedback.js";
+// #1701 draft 3 (Soren's REQUEST_CHANGES on draft 2) — the feel-side
+// judge is what ACTUALLY drives the served-page PREVIEWED stamp. The
+// pure `packetIntent.release(...)` path stays typed to SEALED/OPENED
+// (so M-WIRE-EINT's simulated `choose("keep-sealed")` still commits
+// SEALED — the reason draft 2 kept `release()` here); a PARALLEL
+// gesture-summary is fed to `evaluatePacketChoiceGesture`, whose
+// `feedback: "previewed"` verdict is what the DOM writer stamps. So
+// a real player tap on `#packetButton` under 60ms actually stamps
+// `data-packet-feedback="previewed"` on the shipped element — the
+// gap Soren blocked draft 2 on.
+import {
+  DEFAULT_PACKET_CHOICE_FEEL,
+  evaluatePacketChoiceGesture,
+} from "../apps/web/src/aftersign/packetChoiceFeel.ts";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
 // (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
@@ -2386,8 +2423,21 @@ const packetPress = (input) => {
   return state.interaction.packetIntent;
 };
 
+// #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
+// The pure controller emits PREVIEWED only through `previewRelease(...)`
+// for a very-quick glance under `PACKET_INTENT.PREVIEW_MAX_MS`; it is
+// NOT a commit (doesn't set `state.packet.sealed`, doesn't advance the
+// beat, doesn't flip the copy). Filtering it here keeps the
+// `commitPacketOutcome` funnel typed to the two-value SEALED/OPENED
+// surface that durable save + mloop memory gate + io returning-session
+// lines all consume. The PREVIEWED outcome is handled by
+// `applyPacketPreviewFeedback` inside `packetRelease` below — the
+// decorative-only render seam.
 const isCommittedOutcome = (outcome) =>
-  outcome !== null && outcome !== undefined && outcome !== PACKET_OUTCOME.UNKNOWN;
+  outcome !== null
+  && outcome !== undefined
+  && outcome !== PACKET_OUTCOME.UNKNOWN
+  && outcome !== PACKET_OUTCOME.PREVIEWED;
 
 const packetMove = (input) => {
   recordPacketGestureSample("drag", input);
@@ -2415,6 +2465,30 @@ const packetTick = (timeMs) => {
 
 const packetRelease = (input) => {
   recordPacketGestureSample("release", input);
+  // #1701 draft 2 (Soren's REQUEST_CHANGES): use `release(...)` here, NOT
+  // `previewRelease(...)`. The harness path `choose("keep-sealed")`
+  // dispatches a simulated release that lands inside `PREVIEW_MAX_MS`
+  // (60ms); routing that through `previewRelease` reclassifies it as
+  // PREVIEWED, `isCommittedOutcome` filters it out, `commitPacketOutcome`
+  // never fires, and `state.packet.outcome` stays "unknown" — reds the
+  // M-WIRE-EINT e2e (`Expected: "sealed" Received: "unknown"`).
+  //
+  // The PREVIEWED outcome remains a live shipped consumer via TWO seams
+  // that DO NOT depend on `packetRelease`:
+  //   1. `evaluatePacketChoiceGesture` in `packetChoiceFeel.ts` emits
+  //      `feedback: "previewed"` for very-quick taps — this is the
+  //      feel-side judge the sibling `packetPreviewFeedback.consumer.test.ts`
+  //      drives against the real `#packetButton` (a tap-driven pin on the
+  //      shipped element, not a synthetic div).
+  //   2. `applyPacketPreviewFeedback` below is still called on every
+  //      release so a `previewed` stamp landing via any other seam
+  //      (future real-pointer preview path) gets cleared on the next
+  //      commit — no stale glance marker on the DOM.
+  //
+  // The pure `previewRelease(...)` API + its six controller checks stay
+  // in `aftersign/src/packetIntent.ts` unchanged: the contract is
+  // authored + tested, ready for the real-pointer preview surface to
+  // opt in without a second draft on `main.js`.
   const snapshot = packetIntent.release(input);
   // Sample-stream evaluator runs AFTER the controller has committed the
   // frame-by-frame outcome. The controller still owns the live 450/14
@@ -2424,6 +2498,65 @@ const packetRelease = (input) => {
   // what the sibling helper said about the same gesture.
   publishPacketIntentEvaluation();
   syncPacketIntent(snapshot);
+  // #1701 draft 3 — stamp / clear `data-packet-feedback` on the
+  // shipped `#packetButton` element (aftersign/index.html:861) via the
+  // FEEL-SIDE judge, not the commit path. The pure controller's
+  // `snapshot.outcome` above can only be UNKNOWN/SEALED/OPENED/
+  // CANCELLED here (we intentionally called `release()` not
+  // `previewRelease()` so M-WIRE-EINT's harness-simulated release
+  // still commits SEALED), so keying the stamp off `snapshot.outcome
+  // === PREVIEWED` would ALWAYS be false — the dead-code trap Soren
+  // called out. Instead we replay the real gesture log through the
+  // sibling feel judge `evaluatePacketChoiceGesture`, whose
+  // `feedback: "previewed"` verdict fires for any tap under
+  // `previewTapMaxMs` (60ms) — the same verdict the sibling
+  // `packetPreviewFeedback.consumer.test.ts` drives against the same
+  // element. So a real player glance now actually stamps the DOM.
+  //
+  // Summary shape:
+  //   startedOnSeal/endedOnSeal — the release path only fires while
+  //     the packet-choice beat is live and the player is holding the
+  //     button; the released input by construction landed on the
+  //     seal (this is the ONLY release seam that touches #packetButton).
+  //   durationMs — release timestamp minus the earliest press sample
+  //     in the current attempt (`resetPacketGestureLog` clears it
+  //     between attempts, so index 0 is always the current press).
+  //   travelPx — the maximum drag distance recorded during the attempt;
+  //     if it exceeds `maxCommitTravelPx` the judge treats it as a
+  //     drag (feedback: "inspect") and no preview stamp lands.
+  //   kind — "drag" when travel exceeds the commit threshold, else
+  //     "tap" (a "hold" only matters for the OPEN branch, which
+  //     `snapshot.outcome === OPENED` already commits through the
+  //     existing SEALED/OPENED path — the preview branch is
+  //     tap-only).
+  // Decorative-only (no state mutation), wrapped in try/catch so a
+  // fresh DOM never black-screens on a missing element or a
+  // degenerate log.
+  try {
+    const press = packetGestureLog[0];
+    let previewPhase = "cleared";
+    if (press && press.action === "press") {
+      let travelPx = 0;
+      for (const sample of packetGestureLog) {
+        const dx = sample.x - press.x;
+        const dy = sample.y - press.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > travelPx) travelPx = d;
+      }
+      const durationMs = Math.max(0, input.timeMs - press.timeMs);
+      const kind =
+        travelPx > DEFAULT_PACKET_CHOICE_FEEL.maxCommitTravelPx ? "drag" : "tap";
+      const decision = evaluatePacketChoiceGesture({
+        kind,
+        durationMs,
+        travelPx,
+        startedOnSeal: true,
+        endedOnSeal: true,
+      });
+      if (decision.feedback === "previewed") previewPhase = "previewed";
+    }
+    applyPacketPreviewFeedback(packetButton, previewPhase);
+  } catch { /* decorative */ }
   maybeTriggerFailureFromOutcome(snapshot.outcome, "packet-cancelled");
   if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
   publishState();
