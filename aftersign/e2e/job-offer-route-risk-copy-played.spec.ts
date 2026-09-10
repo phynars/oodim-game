@@ -39,10 +39,10 @@ const PHONE_VIEWPORT = { width: 375, height: 812 } as const;
 // Verbatim from AFTERSIGN_JOB_OFFER_COPY (HANDOFF-1535.md).
 const FIRST_RUN_COPY =
   "Route: Take the lit stair. Do not stop under the bell rope. "
-  + "Risk: Low risk. Long route. Io can see most of it from the kiosk.";
+  + "Risk: Low risk. Long light. Io can see most of it from the kiosk.";
 const TRUSTED_COPY =
   "Route: Cross behind the shuttered pharmacy before the bells count twice. "
-  + "Risk: Short route. Unlit. Better pay because Io trusts your hands.";
+  + "Risk: Short route. Unlit. Better pay because Io has one good fact about you.";
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
