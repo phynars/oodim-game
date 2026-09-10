@@ -24,13 +24,13 @@ const FIRST_RUN = Object.freeze({
   tappableActionId: "take-job-blue-seal-safe",
   title: "One safe job. One blue seal.",
   actionLabel: "Take the blue-seal job",
-  summary: "Io hands you a sealed blue packet. Watched route, short walk.",
-  ioLine: "Bring it back the way I gave it to you. Nothing opened, nothing traded.",
-  riskPrompt: "Low risk. Long route. Kiosk keeps eyes on you the whole way.",
+  summary: "Io gives you the watched route: short walk, sealed packet, no witnesses needed.",
+  ioLine: "Bring it back the way I gave it to you. Closed seal, open account.",
+  riskPrompt: "Low risk. Long light. The kiosk keeps eyes on you most of the way.",
   safeRouteLabel: "Lit stair — under Io's window",
   riskyRouteLabel: "Cut past the bell rope",
   route: "Take the lit stair. Do not stop under the bell rope.",
-  risk: "Low risk. Long route. Io can see most of it from the kiosk.",
+  risk: "Low risk. Long light. Io can see most of it from the kiosk.",
 });
 
 const TRUSTED = Object.freeze({
@@ -38,13 +38,13 @@ const TRUSTED = Object.freeze({
   tappableActionId: "take-job-orra-name-risk",
   title: "Orra's name. A stranger door.",
   actionLabel: "Take Orra's-name job",
-  summary: "You kept the seal once. Io widens the work — unlit route, better pay.",
-  ioLine: "You kept the seal once. I can risk giving you a stranger door.",
-  riskPrompt: "Short route, unlit. The pay is better because Io trusts your hands.",
+  summary: "You kept the seal once. Io widens the work: darker route, cleaner pay.",
+  ioLine: "You kept the seal once. I can risk your hands on a door that lies.",
+  riskPrompt: "Short route, unlit. Better pay because Io has one good fact about you.",
   safeRouteLabel: "Long way — past the kiosk",
   riskyRouteLabel: "Behind the shuttered pharmacy",
   route: "Cross behind the shuttered pharmacy before the bells count twice.",
-  risk: "Short route. Unlit. Better pay because Io trusts your hands.",
+  risk: "Short route. Unlit. Better pay because Io has one good fact about you.",
 });
 
 const OPENED = Object.freeze({
@@ -52,9 +52,9 @@ const OPENED = Object.freeze({
   tappableActionId: "take-job-wax-debt-repair",
   title: "Wax debt. Narrow work.",
   actionLabel: "Take the wax-debt job",
-  summary: "The seal opened. So the work narrows — you carry a torn receipt back.",
-  ioLine: "The seal opened. So the work narrows.",
-  riskPrompt: "Narrow work. Debt carried. Io keeps the receipt until it's paid.",
+  summary: "The seal opened. Io narrows the work: torn receipt, watched return.",
+  ioLine: "The seal opened. I can still use you. Not wide work.",
+  riskPrompt: "Narrow work. Debt carried. Io keeps the receipt until the wax is paid.",
   safeRouteLabel: "Dark cut — quickest, watched only at the end",
   riskyRouteLabel: "Long way — across the lit square",
   route: "Take the dark cut. Do not run under the bell rope this time.",
