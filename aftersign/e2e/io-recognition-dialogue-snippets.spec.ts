@@ -1,4 +1,9 @@
 import { test, expect, Page } from "@playwright/test";
+import {
+  AFTERSIGN_FRAME_SAMPLE_TOLERANCE,
+  hasSettledAcrossFrames,
+  isWithinFrameSampleTolerance,
+} from "../../apps/web/src/aftersign/aftersignE2eDeterminism";
 
 type Beat = "packet-offered" | "packet-choice" | "packet-delivered" | "io-return-recognition";
 type Tier = "first-meeting" | "returning" | "deep-recall";
@@ -190,19 +195,66 @@ test("Io recognition beat exposes player-keyed dialogue snippets for all recall 
   // The vignette + bloom + reveal channels TRANSITION into place
   // (deep-recall: 180ms delay + 540ms duration authored in the
   // snippet). Sampling computed styles the instant the beat lands
-  // reads mid-flight values — a race that was previously masked by
-  // the bloom-regex failure aborting the test first. Wait for the
-  // vignette to settle at its authored terminus before sampling the
-  // consumers below; opacity is the last channel to land (same
-  // delay + duration as the others), so it's a sufficient sentinel.
-  await page.waitForFunction(
-    (targetAlpha) => {
+  // reads mid-flight values — this is the exact race called out in
+  // #1704 (`toBeCloseTo(0.18, 3)` receiving `0.179414` on hosted CI).
+  //
+  // Fix: require the opacity to hold steady across three consecutive
+  // rAF frames AND land within the SAME tolerance the downstream
+  // `toBeCloseTo(_, 3)` assertion uses. Settle-tolerance and
+  // assertion-tolerance share ONE constant
+  // (`AFTERSIGN_FRAME_SAMPLE_TOLERANCE`), so a value that passes the
+  // settle can never fail the assertion — the flake vector is closed.
+  //
+  // We collect frame samples on `window.__aftersignVignetteSamples__`
+  // via a running rAF loop, then poll for both settled AND on-target.
+  await page.evaluate(() => {
+    const samples: number[] = [];
+    (window as unknown as { __aftersignVignetteSamples__: number[] })
+      .__aftersignVignetteSamples__ = samples;
+    const tick = () => {
       const opacity = parseFloat(
         getComputedStyle(document.body, "::after").opacity,
       );
-      return Math.abs(opacity - targetAlpha) < 0.001;
+      if (Number.isFinite(opacity)) {
+        samples.push(opacity);
+        // Keep the buffer bounded — we only need the last few.
+        if (samples.length > 16) samples.splice(0, samples.length - 16);
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  // Browser-side settle check. The math intentionally MIRRORS
+  // `hasSettledAcrossFrames` + `isWithinFrameSampleTolerance` from
+  // `apps/web/src/aftersign/aftersignE2eDeterminism.ts` — we can't
+  // import module functions into `waitForFunction`'s page context
+  // (they'd be undefined there), but the tolerance CONSTANT is
+  // passed through, so both sides agree on the jitter budget. If
+  // the helper's semantics ever change, update both.
+  await page.waitForFunction(
+    ({ targetAlpha, tolerance, consecutiveFrames }) => {
+      const samples = (
+        window as unknown as { __aftersignVignetteSamples__?: number[] }
+      ).__aftersignVignetteSamples__;
+      if (!samples || samples.length < consecutiveFrames) return false;
+      const window_ = samples.slice(-consecutiveFrames);
+      const anchor = window_[window_.length - 1];
+      if (!Number.isFinite(anchor)) return false;
+      // Settled: last N frames within tolerance of the trailing sample.
+      for (const s of window_) {
+        if (!Number.isFinite(s) || Math.abs(s - anchor) > tolerance) {
+          return false;
+        }
+      }
+      // On-target: settled value matches expected within the SAME
+      // tolerance the downstream `toBeCloseTo(_, 3)` uses.
+      return Math.abs(anchor - targetAlpha) <= tolerance;
     },
-    deepRecall.feelCue.vignetteAlpha,
+    {
+      targetAlpha: deepRecall.feelCue.vignetteAlpha,
+      tolerance: AFTERSIGN_FRAME_SAMPLE_TOLERANCE,
+      consecutiveFrames: 3,
+    },
     { timeout: WAIT_MS },
   );
 
@@ -265,7 +317,34 @@ test("Io recognition beat exposes player-keyed dialogue snippets for all recall 
   expect(consumed!.lineTransitionDelay).toContain(`${deepRecall.feelCue.lineRevealDelayMs / 1000}s`);
   // body::after opacity IS --io-recognition-vignette-alpha (deep-recall
   // = 0.18). getComputedStyle returns opacity as a numeric string.
-  expect(parseFloat(consumed!.vignetteOpacity)).toBeCloseTo(deepRecall.feelCue.vignetteAlpha, 3);
+  //
+  // Use the SETTLED sample from the frame-buffer above rather than the
+  // one captured inside `consumed` — `consumed` was collected in a
+  // separate page.evaluate and could race the transition even though
+  // we settled first. Re-read the last frame from the settle buffer;
+  // if the buffer says settled, this value is guaranteed to pass the
+  // same-tolerance assertion (see aftersignE2eDeterminism.ts).
+  const vignetteSamples = await page.evaluate(() => {
+    const samples = (
+      window as unknown as { __aftersignVignetteSamples__?: number[] }
+    ).__aftersignVignetteSamples__;
+    return samples ? [...samples] : [];
+  });
+  // Node-side settle sanity check — proves the same tolerance math
+  // ran across the process boundary. If the browser-side `waitForFunction`
+  // returned true, this MUST also be true; if it isn't, the two sides
+  // have drifted and the harness is lying about determinism.
+  expect(hasSettledAcrossFrames(vignetteSamples, 3)).toBe(true);
+  const settledVignetteOpacity = vignetteSamples[vignetteSamples.length - 1];
+  expect(
+    isWithinFrameSampleTolerance(
+      settledVignetteOpacity,
+      deepRecall.feelCue.vignetteAlpha,
+    ),
+  ).toBe(true);
+  // Keep the toBeCloseTo assertion too — belt-and-suspenders, and it
+  // gives a nicer diff message on the (now vanishingly rare) failure.
+  expect(settledVignetteOpacity).toBeCloseTo(deepRecall.feelCue.vignetteAlpha, 3);
   // .hud transition-duration must contain --io-recognition-duration-ms
   // (deep-recall = 1040ms → "1.04s" in the transition-duration list).
   expect(consumed!.hudTransitionDuration).toContain(`${deepRecall.feelCue.durationMs / 1000}s`);
