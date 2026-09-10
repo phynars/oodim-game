@@ -42,14 +42,15 @@ export type PacketChoiceGesture = {
 export type PacketChoiceDecision = {
   choice: PacketChoice | null;
   committed: boolean;
-  feedback: "none" | "inspect" | "seal-strain" | "seal-break" | "seal-safe";
+  feedback: "none" | "inspect" | "seal-strain" | "seal-break" | "seal-safe" | "previewed";
   reason:
     | "not-on-seal"
     | "cancelled"
     | "dragged-away"
     | "inspect-only"
     | "hold-opened"
-    | "tap-preserved";
+    | "tap-preserved"
+    | "previewed-glance";
 };
 
 export type PacketChoiceFeelConfig = {
@@ -59,6 +60,21 @@ export type PacketChoiceFeelConfig = {
   maxCommitTravelPx: number;
   /** A quick tap on the intact seal confirms preservation instead of opening. */
   preserveTapMaxMs: number;
+  /**
+   * A very-quick glance on the seal — shorter than a preserve tap — surfaces
+   * a non-committal `previewed` feedback token instead of committing either
+   * choice. Mirrors `PACKET_INTENT.PREVIEW_MAX_MS` in the shipped contract
+   * (`aftersign/src/packetIntent.ts`), which is the SINGLE source of truth
+   * for the preview window. Kept strictly less than `preserveTapMaxMs` so a
+   * preview is a subset of a preserve-tap (see
+   * `checkPreviewWindowStrictlyInsidePreserveTapWindow`).
+   *
+   * This is opt-in on the feel-side judge only: the vertical-slice
+   * `packetOutcome: 'sealed' | 'opened'` surface (durable save, mloop
+   * memory gate, io returning-session lines) is untouched — `previewed`
+   * never becomes a committed choice, so downstream state stays typed.
+   */
+  previewTapMaxMs: number;
   /**
    * A finger-up frame that lands within this many ms of the hard hold
    * threshold still commits — accounts for the frame-boundary between
@@ -72,6 +88,14 @@ export const DEFAULT_PACKET_CHOICE_FEEL: PacketChoiceFeelConfig = {
   openHoldMs: 420,
   maxCommitTravelPx: 10,
   preserveTapMaxMs: 180,
+  // Mirrors `PACKET_INTENT.PREVIEW_MAX_MS` (90ms) in
+  // `aftersign/src/packetIntent.ts`. Kept as a literal here rather than
+  // imported to avoid pulling the whole pure controller subgraph into
+  // the served-surface bundle; the pure lane's
+  // `checkPreviewWindowStrictlyInsidePreserveTapWindow` locks the
+  // relationship and the jsdom `packetChoicePreviewed.consumer.test.ts`
+  // asserts the value used here matches the surfaced feedback path.
+  previewTapMaxMs: 90,
   releaseGraceMs: DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS.releaseGraceMs,
 };
 
@@ -103,6 +127,28 @@ export function evaluatePacketChoiceGesture(
       committed: false,
       feedback: "inspect",
       reason: "dragged-away",
+    };
+  }
+
+  // Preview-glance branch (#1701, Refs #1698). A tap inside
+  // `previewTapMaxMs` — shorter than the preserve-tap ceiling and well
+  // short of `openHoldMs` — is neither a preserve commit nor an open
+  // commit: it's the player briefly poking the seal to look at it. We
+  // surface a non-committal `previewed` feedback token so the render
+  // site can play a light glance beat without touching `packetOutcome`.
+  //
+  // Emitted only for `kind === "tap"` because a "hold" already implies
+  // a longer commit intent — the deliberate-hold branch below owns that
+  // path. Fires BEFORE the release-forgiveness tap-preserve branch so a
+  // sub-90ms tap doesn't get absorbed into the preserve commit. Above
+  // `previewTapMaxMs` the gesture falls through to the existing
+  // preserve/inspect logic unchanged.
+  if (gesture.kind === "tap" && gesture.durationMs <= config.previewTapMaxMs) {
+    return {
+      choice: null,
+      committed: false,
+      feedback: "previewed",
+      reason: "previewed-glance",
     };
   }
 
