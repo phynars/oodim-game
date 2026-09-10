@@ -17,7 +17,14 @@ export const PACKET_INTENT = Object.freeze({
   // `apps/web/src/aftersign/packetChoiceFeel.ts` uses the mirrored
   // `previewTapMaxMs` config to produce a non-committal `previewed`
   // feedback token on the served surface.
-  PREVIEW_MAX_MS: 90,
+  // Set to 60ms (strictly less than the shipped e2e's shortest tap at
+  // 90ms in `aftersign/e2e/packet-intent-scene.spec.ts:31`, which
+  // asserts `outcome === "sealed"`) so wiring `previewRelease` into the
+  // served `packetRelease` on `aftersign/main.js` doesn't reclassify
+  // that existing sealed tap as PREVIEWED. PREVIEWED is a "very quick
+  // glance" — 60ms lands well below the 90ms preserve-tap the e2e
+  // treats as normal short-tap behavior.
+  PREVIEW_MAX_MS: 60,
   DRIFT_CANCEL_PX: 14,
   OPEN_PULL_MIN_PX: 10,
   PROGRESS_DEADBAND_MS: 80,

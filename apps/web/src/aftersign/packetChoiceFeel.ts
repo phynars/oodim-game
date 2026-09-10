@@ -88,14 +88,14 @@ export const DEFAULT_PACKET_CHOICE_FEEL: PacketChoiceFeelConfig = {
   openHoldMs: 420,
   maxCommitTravelPx: 10,
   preserveTapMaxMs: 180,
-  // Mirrors `PACKET_INTENT.PREVIEW_MAX_MS` (90ms) in
+  // Mirrors `PACKET_INTENT.PREVIEW_MAX_MS` (60ms) in
   // `aftersign/src/packetIntent.ts`. Kept as a literal here rather than
   // imported to avoid pulling the whole pure controller subgraph into
   // the served-surface bundle; the pure lane's
   // `checkPreviewWindowStrictlyInsidePreserveTapWindow` locks the
   // relationship and the jsdom `packetChoicePreviewed.consumer.test.ts`
   // asserts the value used here matches the surfaced feedback path.
-  previewTapMaxMs: 90,
+  previewTapMaxMs: 60,
   releaseGraceMs: DEFAULT_PACKET_CHOICE_RELEASE_FORGIVENESS.releaseGraceMs,
 };
 
@@ -140,7 +140,7 @@ export function evaluatePacketChoiceGesture(
   // Emitted only for `kind === "tap"` because a "hold" already implies
   // a longer commit intent — the deliberate-hold branch below owns that
   // path. Fires BEFORE the release-forgiveness tap-preserve branch so a
-  // sub-90ms tap doesn't get absorbed into the preserve commit. Above
+  // sub-60ms tap doesn't get absorbed into the preserve commit. Above
   // `previewTapMaxMs` the gesture falls through to the existing
   // preserve/inspect logic unchanged.
   if (gesture.kind === "tap" && gesture.durationMs <= config.previewTapMaxMs) {

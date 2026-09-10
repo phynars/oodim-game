@@ -310,6 +310,19 @@ import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersign
 // markup, simulates the tap-driven commit, and asserts the visible
 // text + data-attr both flip.
 import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteractionCopy.js";
+// #1701 (Refs #1698) — served-page DOM writer for the PREVIEWED
+// outcome. Wiring it in main.js here turns PREVIEWED from a
+// contract-only enum value into a SHIPPED consumer on the served
+// page: `packetRelease` below calls `packetIntent.previewRelease(...)`
+// (opt-in preview-vs-preserve emission) and, when the outcome is
+// PREVIEWED, stamps `data-packet-feedback="previewed"` on the very
+// `#packetButton` element the finger touched. Any non-PREVIEWED
+// outcome (SEALED/OPENED/CANCELLED/UNKNOWN) clears the stamp so a
+// subsequent commit doesn't inherit the previous glance marker.
+// Sibling `packetPreviewFeedback.consumer.test.ts` mounts the real
+// `aftersign/index.html`, drives a click that dispatches through the
+// SAME writer, and pins the stamp on the shipped element.
+import { applyPacketPreviewFeedback } from "../apps/web/src/aftersign/packetPreviewFeedback.js";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
 // (packages/aftersign/src/computeOfferedJobs.ts) already ships and the
@@ -2386,8 +2399,21 @@ const packetPress = (input) => {
   return state.interaction.packetIntent;
 };
 
+// #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
+// The pure controller emits PREVIEWED only through `previewRelease(...)`
+// for a very-quick glance under `PACKET_INTENT.PREVIEW_MAX_MS`; it is
+// NOT a commit (doesn't set `state.packet.sealed`, doesn't advance the
+// beat, doesn't flip the copy). Filtering it here keeps the
+// `commitPacketOutcome` funnel typed to the two-value SEALED/OPENED
+// surface that durable save + mloop memory gate + io returning-session
+// lines all consume. The PREVIEWED outcome is handled by
+// `applyPacketPreviewFeedback` inside `packetRelease` below — the
+// decorative-only render seam.
 const isCommittedOutcome = (outcome) =>
-  outcome !== null && outcome !== undefined && outcome !== PACKET_OUTCOME.UNKNOWN;
+  outcome !== null
+  && outcome !== undefined
+  && outcome !== PACKET_OUTCOME.UNKNOWN
+  && outcome !== PACKET_OUTCOME.PREVIEWED;
 
 const packetMove = (input) => {
   recordPacketGestureSample("drag", input);
@@ -2415,7 +2441,18 @@ const packetTick = (timeMs) => {
 
 const packetRelease = (input) => {
   recordPacketGestureSample("release", input);
-  const snapshot = packetIntent.release(input);
+  // #1701 (Refs #1698) — opt into the preview-vs-preserve emission on
+  // the served surface. `previewRelease(...)` is identical to
+  // `release(...)` in every branch EXCEPT one: a release inside both
+  // the drift-cancel deadzone AND `PACKET_INTENT.PREVIEW_MAX_MS`
+  // returns PREVIEWED instead of SEALED. The two-axis open contract
+  // (hold ≥ HOLD_TO_OPEN_MS AND pull ≥ OPEN_PULL_MIN_PX) is preserved
+  // bit-for-bit; PREVIEWED is a decorative-only outcome (see
+  // `isCommittedOutcome` above — it is NOT a commit and does not
+  // mutate `state.packet.sealed` or advance the beat). This is the
+  // ONE call site that turns the pure `previewRelease` API into a
+  // SHIPPED consumer on the served page.
+  const snapshot = packetIntent.previewRelease(input);
   // Sample-stream evaluator runs AFTER the controller has committed the
   // frame-by-frame outcome. The controller still owns the live 450/14
   // e2e-pinned feel; this publishes the pure evaluator's summary verdict
@@ -2424,6 +2461,22 @@ const packetRelease = (input) => {
   // what the sibling helper said about the same gesture.
   publishPacketIntentEvaluation();
   syncPacketIntent(snapshot);
+  // #1701 (Refs #1698) — stamp / clear `data-packet-feedback` on the
+  // shipped `#packetButton` element (aftersign/index.html:861) the
+  // very frame the release outcome commits. When the outcome is
+  // PREVIEWED we stamp `data-packet-feedback="previewed"`; on any
+  // other outcome (UNKNOWN / SEALED / OPENED / CANCELLED) we clear
+  // the stamp so a subsequent commit doesn't inherit the previous
+  // glance marker. Decorative-only (no state mutation) — wrapped in
+  // try/catch because a fresh DOM must never black-screen on a
+  // missing element. Sibling `packetPreviewFeedback.consumer.test.ts`
+  // mounts the real `aftersign/index.html` and pins this seam.
+  try {
+    applyPacketPreviewFeedback(
+      packetButton,
+      snapshot.outcome === PACKET_OUTCOME.PREVIEWED ? "previewed" : "cleared",
+    );
+  } catch { /* decorative */ }
   maybeTriggerFailureFromOutcome(snapshot.outcome, "packet-cancelled");
   if (isCommittedOutcome(snapshot.outcome)) commitPacketOutcome(snapshot.outcome);
   publishState();
