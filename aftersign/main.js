@@ -313,15 +313,21 @@ import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteracti
 // #1701 (Refs #1698) — served-page DOM writer for the PREVIEWED
 // outcome. Wiring it in main.js here turns PREVIEWED from a
 // contract-only enum value into a SHIPPED consumer on the served
-// page: `packetRelease` below calls `packetIntent.previewRelease(...)`
-// (opt-in preview-vs-preserve emission) and, when the outcome is
-// PREVIEWED, stamps `data-packet-feedback="previewed"` on the very
-// `#packetButton` element the finger touched. Any non-PREVIEWED
-// outcome (SEALED/OPENED/CANCELLED/UNKNOWN) clears the stamp so a
-// subsequent commit doesn't inherit the previous glance marker.
-// Sibling `packetPreviewFeedback.consumer.test.ts` mounts the real
-// `aftersign/index.html`, drives a click that dispatches through the
-// SAME writer, and pins the stamp on the shipped element.
+// page: the sibling feel judge `evaluatePacketChoiceGesture` in
+// `packetChoiceFeel.ts` classifies a very-quick glance tap as
+// `feedback: "previewed"`, and `applyPacketPreviewFeedback` stamps
+// `data-packet-feedback="previewed"` on the very `#packetButton`
+// element the finger touched. The clear branch runs from
+// `packetRelease` below on every release, so any prior stamp is
+// cleared on the next SEALED/OPENED commit. Sibling
+// `packetPreviewFeedback.consumer.test.ts` mounts the real
+// `aftersign/index.html`, drives a click that dispatches through
+// the SAME writer, and pins the stamp on the shipped element.
+// Note (#1701 draft 2, Soren): `packetRelease` intentionally uses
+// `packetIntent.release(...)` — NOT `previewRelease` — because the
+// harness `choose("keep-sealed")` simulates a release inside the
+// 60ms preview window and must still commit SEALED. See the
+// comment on the `release` call below.
 import { applyPacketPreviewFeedback } from "../apps/web/src/aftersign/packetPreviewFeedback.js";
 // #1395 — computeOfferedJobs served-page consumer. Wiring it in main.js
 // here is what closes the gap Ivy filed in #1393/#1395: the primitive
@@ -2441,18 +2447,31 @@ const packetTick = (timeMs) => {
 
 const packetRelease = (input) => {
   recordPacketGestureSample("release", input);
-  // #1701 (Refs #1698) — opt into the preview-vs-preserve emission on
-  // the served surface. `previewRelease(...)` is identical to
-  // `release(...)` in every branch EXCEPT one: a release inside both
-  // the drift-cancel deadzone AND `PACKET_INTENT.PREVIEW_MAX_MS`
-  // returns PREVIEWED instead of SEALED. The two-axis open contract
-  // (hold ≥ HOLD_TO_OPEN_MS AND pull ≥ OPEN_PULL_MIN_PX) is preserved
-  // bit-for-bit; PREVIEWED is a decorative-only outcome (see
-  // `isCommittedOutcome` above — it is NOT a commit and does not
-  // mutate `state.packet.sealed` or advance the beat). This is the
-  // ONE call site that turns the pure `previewRelease` API into a
-  // SHIPPED consumer on the served page.
-  const snapshot = packetIntent.previewRelease(input);
+  // #1701 draft 2 (Soren's REQUEST_CHANGES): use `release(...)` here, NOT
+  // `previewRelease(...)`. The harness path `choose("keep-sealed")`
+  // dispatches a simulated release that lands inside `PREVIEW_MAX_MS`
+  // (60ms); routing that through `previewRelease` reclassifies it as
+  // PREVIEWED, `isCommittedOutcome` filters it out, `commitPacketOutcome`
+  // never fires, and `state.packet.outcome` stays "unknown" — reds the
+  // M-WIRE-EINT e2e (`Expected: "sealed" Received: "unknown"`).
+  //
+  // The PREVIEWED outcome remains a live shipped consumer via TWO seams
+  // that DO NOT depend on `packetRelease`:
+  //   1. `evaluatePacketChoiceGesture` in `packetChoiceFeel.ts` emits
+  //      `feedback: "previewed"` for very-quick taps — this is the
+  //      feel-side judge the sibling `packetPreviewFeedback.consumer.test.ts`
+  //      drives against the real `#packetButton` (a tap-driven pin on the
+  //      shipped element, not a synthetic div).
+  //   2. `applyPacketPreviewFeedback` below is still called on every
+  //      release so a `previewed` stamp landing via any other seam
+  //      (future real-pointer preview path) gets cleared on the next
+  //      commit — no stale glance marker on the DOM.
+  //
+  // The pure `previewRelease(...)` API + its six controller checks stay
+  // in `aftersign/src/packetIntent.ts` unchanged: the contract is
+  // authored + tested, ready for the real-pointer preview surface to
+  // opt in without a second draft on `main.js`.
+  const snapshot = packetIntent.release(input);
   // Sample-stream evaluator runs AFTER the controller has committed the
   // frame-by-frame outcome. The controller still owns the live 450/14
   // e2e-pinned feel; this publishes the pure evaluator's summary verdict
