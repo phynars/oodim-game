@@ -1,3 +1,20 @@
+// HARNESS-ONLY (juice R&D). NOT wired into the shipped confirm path.
+//
+// The live packet-confirm feel is `DELIVER_PACKET_CONFIRM_FEEL` in
+// `../interactionConfirm.ts` (shape: pulseMs / ringScale{From,To} /
+// ringEase / phoneYawDegrees / phoneLiftPx / shakePx / audioLeadMs),
+// consumed by `apps/web/src/aftersign/verticalSlicePacketInteraction.ts`.
+//
+// This module is a richer multi-cue envelope (motion-safe + reduced-motion
+// tracks, per-cue easing, acceptance bounds) that we're prototyping against
+// before proposing it as the next iteration of the shipped shape. Until a
+// consumer migrates, it exists ONLY to be exercised by
+// `interactionFeel.test.ts` — DO NOT import from app code.
+//
+// Migration plan: when a real touchpoint adopts this shape, wire it through
+// `interactionConfirm.ts` (or a sibling), delete this banner, and delete the
+// harness-only test.
+
 export type EasingName =
   | 'linear'
   | 'easeOutCubic'
@@ -79,3 +96,39 @@ export const PACKET_CONFIRM_FEEL: InteractionFeelSpec = {
     requiresPhoneViewport: { width: 390, height: 844 },
   },
 };
+
+/**
+ * End timestamp of a cue relative to spec start (delay + duration).
+ * Exposed so the harness test can assert acceptance bounds without
+ * re-implementing the math.
+ */
+export function getCueEndMs(cue: InteractionFeelCue): number {
+  return (cue.delayMs ?? 0) + cue.durationMs;
+}
+
+/**
+ * Total on-screen motion duration for a track: the max end-timestamp
+ * across all cues. Cues can overlap (delayMs stacks them in time), so
+ * "sum of durations" would over-count — we take the timeline max.
+ */
+export function getTrackMotionMs(cues: readonly InteractionFeelCue[]): number {
+  let end = 0;
+  for (const cue of cues) {
+    const cueEnd = getCueEndMs(cue);
+    if (cueEnd > end) end = cueEnd;
+  }
+  return end;
+}
+
+/**
+ * Pick the right cue track for the user's motion preference. The harness
+ * uses this to prove the reduced-motion path is a distinct, shake-free
+ * subset — the reviewer flagged that having no consumer means we could
+ * ship a broken spec without noticing.
+ */
+export function selectInteractionFeelCues(
+  spec: InteractionFeelSpec,
+  reducedMotion: boolean,
+): readonly InteractionFeelCue[] {
+  return reducedMotion ? spec.reducedMotion : spec.motionSafe;
+}
