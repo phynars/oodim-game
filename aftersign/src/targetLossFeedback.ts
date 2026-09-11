@@ -59,6 +59,22 @@ export function checkTargetLossFeedback(): void {
   assertEqual(settled.reticleScale, 1, 'settled target loss retains neutral reticle scale');
   assertEqual(settled.reticleOffsetX, 0, 'settled target loss retains neutral reticle X offset');
   assertEqual(settled.reticleOffsetY, 0, 'settled target loss retains neutral reticle Y offset');
+
+  // Clamps: elapsedMs may be negative (guard window before the
+  // transition frame lands) or exceed the duration (target stays
+  // lost past the fade tail). The envelope is neutral outside
+  // [0, durationMs] — no negative-progress opacity, no residue
+  // beyond the settle point.
+  assertEqual(
+    targetLossFeedbackAt(-50).promptOpacity,
+    1,
+    'opacity clamps to 1 before t=0',
+  );
+  assertEqual(
+    targetLossFeedbackAt(10_000).promptOpacity,
+    0,
+    'opacity stays 0 long past the fade tail',
+  );
 }
 
 export function runTargetLossFeedbackChecks(): void {
