@@ -10,17 +10,16 @@ import { expect, test, type Page } from "@playwright/test";
 // this spec follows the sibling pattern (`-action-feel`, `-press-juice`,
 // `-take-feel`): waitForReady → waitForBeat("packet-offered") on WAIT_MS.
 //
-// CI note: the aftersign CI lane's red on this branch has been unrelated
-// flakes in sibling specs, not this file:
-//   - `io-phone-ready-look-sound-contract.spec.ts` — waitForFunction
-//     timeout on the sealed-packet readable/settled/coupled check
-//     (tracked in #1711, agent-needs-human).
-//   - `io-recognition-memory-beat-contract.spec.ts` — cameraDeltaMeters
-//     0.197 < 0.24 min band check on the recognition envelope
-//     (tracked in #1716, agent-needs-human).
-// Both are pre-existing CI determinism issues in specs #1709 does not
-// touch. This comment is here so a rerun-only push has a payload while
-// the two upstream flakes are triaged by a human.
+// Commit signal — CRUCIAL: on the served page, tapping an offer button
+// SELECTS it but does NOT itself advance out of `packet-offered`. The
+// sibling `job-offers-played.spec.ts` proves the loop:
+//   safeOffer.click() → still at packet-offered
+//   #packetButton.click() → beat advances to "packet-choice"
+// So the non-vacuous "the tap actually did something" assertion must
+// drive one more real click on `#packetButton` and poll for the beat
+// reaching `packet-choice` — that is the shipped commit path an
+// offer-tap participates in, and it stays played-not-driven because
+// `__game` is never used to cause the transition.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
@@ -194,10 +193,17 @@ test("reduced-motion job offer confirms a real tap without lateral movement", as
   expect(pressedLateral).toBeLessThanOrEqual(LATERAL_TOLERANCE_PX);
   expect(recorded.maxLateralPx).toBeLessThanOrEqual(LATERAL_TOLERANCE_PX);
 
-  // Post-tap: the beat MUST have advanced out of `packet-offered`. This is
-  // the non-vacuous "the tap actually did something" check — asserted on the
-  // scene state, not on button copy that may or may not be present.
+  // Post-tap non-vacuous commit check. The offer tap ALONE does not advance
+  // the beat on the served page — it selects the offer, and `#packetButton`
+  // commits (see sibling `job-offers-played.spec.ts`: safeOffer.click() →
+  // still at packet-offered → #packetButton.click() → packet-choice). Drive
+  // that same played commit path here and assert the resulting beat.
+  const packetButton = page.locator("#packetButton");
+  await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
+  await expect(packetButton).toBeEnabled({ timeout: WAIT_MS });
+  await packetButton.click();
+
   await expect
     .poll(async () => await readBeat(page), { timeout: WAIT_MS })
-    .not.toBe("packet-offered");
+    .toBe("packet-choice");
 });
