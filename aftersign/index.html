@@ -847,6 +847,19 @@
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
         <p class="line" id="line">Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.</p>
+        <!--
+          PR #1715 (#1714) — Io ledger copy contract surface.
+          `aftersign/main.js` renderText() writes the resolved
+          chooseIoLedgerLine(fact) here on the two beats where Io
+          names the ledger-facing fact (io-return-recognition →
+          sealed/opened, io-next-job → returned), and mirrors the
+          fact as `data-io-ledger-fact`. Off both beats textContent
+          and the data-attr clear so a stale stamp can't smear.
+          Sibling `aftersign/e2e/io-ledger-line-served.spec.ts`
+          drives the served page and pins the three literals via
+          real player taps.
+        -->
+        <p class="io-ledger-line" id="ioLedgerLine" data-io-ledger-fact=""></p>
         <div class="controls">
           <!--
             data-aftersign-tap-choice: names the buttons that COMMIT a

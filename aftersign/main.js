@@ -401,6 +401,17 @@ import {
   selectMloopJobCopy,
 } from "./mloop-copy.js";
 import { stampJobOfferData } from "./src/jobOfferDom.js";
+// PR #1715 (#1714) — shipped consumer of the Io ledger copy contract.
+// `chooseIoLedgerLine` is the SINGLE source of the three ledger-facing
+// facts Io names: `sealed` / `opened` at `io-return-recognition` (Io
+// acknowledges what came back off the counter), and `returned` at
+// `io-next-job` (the fact is now the player's — Io hands the next
+// job on top of it). renderText() stamps the resolved line onto the
+// shipped `#ioLedgerLine` DOM node and mirrors the fact as
+// `data-io-ledger-fact` for a tap-driven e2e to pin the literal
+// element-level (not text-only). Off-beat both are cleared so a
+// stale ledger stamp can't smear into an unrelated beat.
+import { chooseIoLedgerLine } from "./src/ioLedgerLine.ts";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
@@ -513,6 +524,12 @@ function applyAftersignJobTakeFeelToButton(element, row, state) {
 const canvas = document.querySelector("#scene");
 const line = document.querySelector("#line");
 const speaker = document.querySelector("#speaker");
+// PR #1715 (#1714) — served-page DOM node the Io ledger copy
+// contract writes to. Null-guarded at write time because a very old
+// cached index.html (pre-#1714) won't have the element and the
+// recognition line surface must not black-screen just because the
+// ledger seam can't find its shipped node.
+const ioLedgerLine = document.querySelector("#ioLedgerLine");
 const stateReadout = document.querySelector("#stateReadout");
 const failureSting = document.querySelector(".failure-sting");
 const packetButton = document.querySelector("#packetButton");
@@ -1837,6 +1854,35 @@ const renderText = () => {
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
+  // PR #1715 (#1714) — Io ledger copy contract, wired to the two
+  // beats where Io names the ledger-facing fact:
+  //   • io-return-recognition → "sealed" | "opened"
+  //       state.packet.sealed is the durable memory Io just read off
+  //       the counter — SAME source the recognition-dialogue selector
+  //       keys on above.
+  //   • io-next-job         → "returned"
+  //       The fact is now the player's; Io hands the next job on top
+  //       of it.
+  // Off both beats the stamp clears so a stale ledger fact can't
+  // smear into an unrelated beat. `ioLedgerLine` is null-guarded
+  // because a stale cached index.html (pre-#1714) may not have
+  // the element yet.
+  if (ioLedgerLine) {
+    let ledgerFact = null;
+    if (isReturnRecognitionBeat) {
+      ledgerFact = state.packet.sealed ? "sealed" : "opened";
+    } else if (isNextJobBeat) {
+      ledgerFact = "returned";
+    }
+    const ledgerText = ledgerFact ? chooseIoLedgerLine(ledgerFact) : "";
+    const ledgerStamp = ledgerFact ?? "";
+    if (ioLedgerLine.textContent !== ledgerText) {
+      ioLedgerLine.textContent = ledgerText;
+    }
+    if (ioLedgerLine.getAttribute("data-io-ledger-fact") !== ledgerStamp) {
+      ioLedgerLine.setAttribute("data-io-ledger-fact", ledgerStamp);
+    }
+  }
   const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
