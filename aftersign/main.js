@@ -1,4 +1,7 @@
 // AFTERSIGN — main game module.
+// #1724 target-loss handoff: #1721's elapsedMs clock begins when the existing
+// packetRelease() transition resolves the held state.packet gesture to a
+// sealed/opened outcome. This slice has no state.target field; do not add one.
 // Extracted verbatim from the inline <script type="module"> in index.html
 // (2026-08-01, flagship DoD amendment §5): index.html is no longer the
 // hot file — edit the module that owns your slice. The window.__game

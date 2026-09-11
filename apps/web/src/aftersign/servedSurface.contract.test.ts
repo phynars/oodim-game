@@ -36,6 +36,13 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain('<script type="module" src="./main.js"></script>');
   });
 
+  it("ships the target-loss DOM surfaces for the packet-release wire-in", () => {
+    const html = readServedAftersignFile("index.html");
+
+    expect(html).toContain('id="reticle"');
+    expect(html).toContain('id="targetLostPrompt"');
+  });
+
   it("publishes the story, state, durable-save, and NPC-memory harness surface", () => {
     const main = readServedAftersignFile("main.js");
 

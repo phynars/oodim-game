@@ -426,6 +426,32 @@
         touch-action: none;
       }
 
+      /* #1724: inert targets for #1721's target-loss feedback wire-in.
+         The future render loop owns transform/opacity; these defaults keep
+         the minted aim surfaces invisible and non-interactive meanwhile. */
+      #reticle,
+      #targetLostPrompt {
+        position: fixed;
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      #reticle {
+        left: 50%;
+        top: 50%;
+        width: 24px;
+        height: 24px;
+        border: 1px solid rgba(120, 233, 255, 0.7);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      #targetLostPrompt {
+        left: 50%;
+        top: calc(50% + 32px);
+        transform: translateX(-50%);
+      }
+
       .hud {
         position: fixed;
         inset: auto 0 0 0;
@@ -802,6 +828,14 @@
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
     <div class="failure-sting" aria-hidden="true"></div>
+    <!-- #1724: inert DOM surfaces for #1721's target-loss feedback wire-in.
+         Minted here as siblings of the failure-sting layer (same category:
+         top-level fixed, pointer-events:none, invisible until a beat fires).
+         The CSS block above owns their default position/opacity; #1721's
+         render loop will drive transform/opacity when the packetRelease()
+         transition resolves the held state.packet gesture. -->
+    <div id="reticle" aria-hidden="true"></div>
+    <div id="targetLostPrompt" aria-hidden="true"></div>
     <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>
