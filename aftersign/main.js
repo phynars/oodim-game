@@ -441,6 +441,7 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 
 /**
  * PR #1549 — DOM writer that stamps the frozen aftersign-job-take feel
@@ -563,6 +564,43 @@ const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
 const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
+// Target-loss FEEL wire (#1723): single DOM-write funnel driven by the
+// packet-intent active edge. On active→inactive the aim reticle snaps
+// to its neutral transform in the SAME frame (no residue) and the
+// prompt fades linearly to 0 across the 100ms envelope from
+// `targetLossFeedbackAt`. Duplicated declarations from prior drafts
+// (three `syncTargetLossFeedback`, two `aimReticle`, two
+// `targetLossPrompt`, plus a stale `#reticle` query that never
+// resolved) collapsed into this one block — ES modules parse-error
+// on duplicate `const`, and the served page black-screened until
+// this fold. See #1726 review.
+const aimReticle = document.querySelector("#aimReticle");
+const targetLossPrompt = document.querySelector("#targetLossPrompt");
+let lastHadTargetMs = null;
+
+const syncTargetLossFeedback = (nowMs, hasTarget) => {
+  if (hasTarget) {
+    lastHadTargetMs = nowMs;
+    if (aimReticle) {
+      aimReticle.style.transform = "translate3d(0, 0, 0) scale(1)";
+      aimReticle.dataset.targetLossActive = "false";
+    }
+    if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
+    return;
+  }
+  if (lastHadTargetMs === null) return;
+  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
+  if (aimReticle) {
+    aimReticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
+    aimReticle.dataset.targetLossActive = String(feedback.active);
+  }
+  if (targetLossPrompt) {
+    targetLossPrompt.style.opacity = String(feedback.promptOpacity);
+  }
+  if (!feedback.active) {
+    lastHadTargetMs = null;
+  }
+};
 
 const CONFIRM_FEEDBACK = INTERACTION_CONFIRM_FEEL;
 const MEMORY_RECOGNITION_FEEDBACK = IO_RECOGNITION_BEAT_FEEDBACK;
@@ -2461,6 +2499,8 @@ const publishPacketIntentEvaluation = () => {
 };
 
 const packetPress = (input) => {
+  lastHadTargetMs = null;
+  if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
   // Fresh gesture — drop the previous log so the evaluator sees only
   // this attempt (mirrors PacketIntentController.press's reset of
   // its own internal fields).
@@ -2514,6 +2554,12 @@ const packetTick = (timeMs) => {
 };
 
 const packetRelease = (input) => {
+  // Arm the target-loss envelope: this release IS the active→inactive
+  // edge. Stamp the last-held moment, then render the first-loss
+  // frame explicitly (hasTarget=false, elapsed=0 → neutral reticle,
+  // opacity 1) so the DOM reads a valid frame before the next tick.
+  lastHadTargetMs = input.timeMs;
+  syncTargetLossFeedback(input.timeMs, false);
   recordPacketGestureSample("release", input);
   // #1701 draft 2 (Soren's REQUEST_CHANGES): use `release(...)` here, NOT
   // `previewRelease(...)`. The harness path `choose("keep-sealed")`
@@ -4050,6 +4096,7 @@ const tick = (now) => {
   const confirmStartedAt = state.interaction.confirmStartedAt;
   const failureStartedAt = state.interaction.failureStartedAt;
   const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
+  syncTargetLossFeedback(now, packetIntentSnapshot.active);
   const packetProgress = packetIntentSnapshot.progress;
   const confirmEnvelope = confirmStartedAt === null
     ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)

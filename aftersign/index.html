@@ -466,6 +466,35 @@
         will-change: transform;
       }
 
+      .aim-reticle {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: 32px;
+        height: 32px;
+        margin: -16px 0 0 -16px;
+        border: 2px solid rgba(120, 233, 255, 0.9);
+        border-radius: 50%;
+        pointer-events: auto;
+        touch-action: none;
+        transform: translate3d(0, 0, 0) scale(1);
+        z-index: 3;
+      }
+
+      .target-loss-prompt {
+        position: fixed;
+        top: calc(50% + 28px);
+        left: 50%;
+        margin: 0;
+        transform: translateX(-50%);
+        color: rgba(237, 247, 255, 0.82);
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 3;
+      }
+
       .failure-sting {
         position: fixed;
         inset: 0;
@@ -827,6 +856,8 @@
   </head>
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
+    <div id="aimReticle" class="aim-reticle" data-target-loss-active="false" aria-hidden="true"></div>
+    <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite">Target lost</p>
     <div class="failure-sting" aria-hidden="true"></div>
     <!-- #1724: inert DOM surfaces for #1721's target-loss feedback wire-in.
          Minted here as siblings of the failure-sting layer (same category:
