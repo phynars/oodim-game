@@ -75,14 +75,21 @@ test("reduced-motion job offer confirms a real tap without lateral movement", as
   const offers = page.locator("#offeredJobs");
   await expect(offers).toBeVisible({ timeout: WAIT_MS });
 
-  const offer = offers.getByRole("button").first();
-  await expect(offer).toBeVisible({ timeout: WAIT_MS });
-  await expect(offer).toBeEnabled({ timeout: WAIT_MS });
+  // Pre-state assertion pinned to the SHIPPED renderer's composite label.
+  // The served surface stamps `${offer.label} · ${offer.routeRisk} risk`
+  // (aftersign/main.js:1800); on first visit `computeOfferedJobs(undefined)`
+  // returns `[SAFE_DEFAULT_JOB_ID]`, so the single visible button is
+  // `#job-offer-job-safe-delivery` with text `"Safe delivery · low risk"`.
+  // This is the SAME composite the sibling job-offers-played spec pins at
+  // its `expectOfferMetadata(..., { label: "Safe delivery", routeRisk: "low" })`
+  // — asserting the full string here drift-guards on both axes (label
+  // rename OR risk-token relabel reds both specs together).
+  const safeOffer = page.locator("#job-offer-job-safe-delivery");
+  await expect(safeOffer).toBeVisible({ timeout: WAIT_MS });
+  await expect(safeOffer).toBeEnabled({ timeout: WAIT_MS });
+  await expect(safeOffer).toHaveText("Safe delivery · low risk");
 
-  // Pre-state assertion: the "accept delivery" copy MUST be present pre-tap.
-  // Without this, the post-tap `not.toContainText` check would be vacuous
-  // (it would pass whether or not the tap did anything).
-  await expect(offers).toContainText(/accept delivery/i, { timeout: WAIT_MS });
+  const offer = safeOffer;
 
   await page.evaluate(async () => {
     await (document as unknown as { fonts?: { ready?: Promise<unknown> } }).fonts
