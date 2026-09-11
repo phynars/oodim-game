@@ -9,6 +9,10 @@ import { expect, test, type Page } from "@playwright/test";
 // used to cause the action. Cold-start SwiftShader regularly overruns 5s, so
 // this spec follows the sibling pattern (`-action-feel`, `-press-juice`,
 // `-take-feel`): waitForReady → waitForBeat("packet-offered") on WAIT_MS.
+//
+// CI note: the aftersign CI lane's red on this branch has been an unrelated
+// flake in `io-phone-ready-look-sound-contract.spec.ts` (tracked in #1711),
+// not this file. This comment is here so a rerun-only push has a payload.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
