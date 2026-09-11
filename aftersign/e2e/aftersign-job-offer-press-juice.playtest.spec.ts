@@ -70,9 +70,7 @@ async function measureButton(locator: Locator): Promise<Measurement> {
 test.describe("AFTERSIGN job-offer press juice", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  // See #1689: this sibling assertion is flaky on main and must not block
-  // unrelated reduced-motion coverage while its press sampling is repaired.
-  test.fixme("a tappable job offer compresses briefly and recovers", async ({ page }) => {
+  test("a tappable job offer compresses briefly and recovers", async ({ page }) => {
     const slot = `job-offer-press-juice-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
