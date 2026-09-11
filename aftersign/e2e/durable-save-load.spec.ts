@@ -115,6 +115,9 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
     await forceReload(page);
 
     const loaded = await readSaveProbe(page);
+    // A hard navigation may rehydrate the save but must not manufacture a
+    // newer persistence event. The loaded record is the one just saved.
+    expect(loaded.save.lastPersistedAt).toBe(saved.save.lastPersistedAt);
     await forceSave(page);
     const resaved = await readSaveProbe(page);
     assertHardNavigationSaveSurvival({ cold, saved, loaded, resaved });
