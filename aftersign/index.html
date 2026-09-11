@@ -728,63 +728,6 @@
         transform: translate3d(0, 1px, 0) scale(0.99);
       }
 
-      .aim-reticle {
-        position: fixed;
-        left: 50%;
-        top: 46%;
-        width: 28px;
-        height: 28px;
-        margin: -14px 0 0 -14px;
-        border: 1px solid rgba(120, 233, 255, 0.86);
-        border-radius: 50%;
-        box-shadow: 0 0 14px rgba(120, 233, 255, 0.42);
-        pointer-events: none;
-        transform: translate3d(0, 0, 0) scale(1);
-      }
-
-      .target-loss-prompt {
-        position: fixed;
-        left: 50%;
-        top: calc(46% + 28px);
-        margin: 0;
-        transform: translateX(-50%);
-        color: rgba(237, 247, 255, 0.82);
-        font-size: 12px;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        pointer-events: none;
-        opacity: 0;
-      }
-
-      .aim-reticle {
-        position: fixed;
-        left: 50%;
-        top: 50%;
-        width: 26px;
-        height: 26px;
-        margin: -13px 0 0 -13px;
-        border: 1px solid rgba(120, 233, 255, 0.72);
-        border-radius: 999px;
-        box-shadow: 0 0 16px rgba(120, 233, 255, 0.34);
-        pointer-events: none;
-        transform: translate3d(0, 0, 0) scale(1);
-        z-index: 3;
-      }
-
-      .target-loss-prompt {
-        position: fixed;
-        left: 50%;
-        top: calc(50% + 30px);
-        transform: translateX(-50%);
-        color: rgba(237, 247, 255, 0.78);
-        font-size: 12px;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        pointer-events: none;
-        opacity: 0;
-        z-index: 3;
-      }
-
       /* Recognition impact-burst overlay (#1104). Absolute-positioned
          container anchored near the on-screen NPC-eye position; the
          render tick in main.js reconciles child `.impact-burst-particle`
@@ -887,11 +830,9 @@
   </head>
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
-    <div id="aimReticle" class="aim-reticle" aria-label="Aim reticle" role="button" tabindex="0"></div>
-    <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite">TARGET LOST</p>
-    <div class="failure-sting" aria-hidden="true"></div>
     <div id="aimReticle" class="aim-reticle" data-target-loss-active="false" aria-hidden="true"></div>
     <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite">Target lost</p>
+    <div class="failure-sting" aria-hidden="true"></div>
     <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>

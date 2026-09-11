@@ -439,8 +439,6 @@ import {
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
-import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
-import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 
 /**
  * PR #1549 — DOM writer that stamps the frozen aftersign-job-take feel
@@ -563,34 +561,32 @@ const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
 const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
-const reticle = document.querySelector("#reticle");
+// Target-loss FEEL wire (#1723): single DOM-write funnel driven by the
+// packet-intent active edge. On active→inactive the aim reticle snaps
+// to its neutral transform in the SAME frame (no residue) and the
+// prompt fades linearly to 0 across the 100ms envelope from
+// `targetLossFeedbackAt`. Duplicated declarations from prior drafts
+// (three `syncTargetLossFeedback`, two `aimReticle`, two
+// `targetLossPrompt`, plus a stale `#reticle` query that never
+// resolved) collapsed into this one block — ES modules parse-error
+// on duplicate `const`, and the served page black-screened until
+// this fold. See #1726 review.
+const aimReticle = document.querySelector("#aimReticle");
 const targetLossPrompt = document.querySelector("#targetLossPrompt");
 let lastHadTargetMs = null;
 
-const syncTargetLossFeedback = (nowMs) => {
-  if (lastHadTargetMs === null) return;
-  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
-  if (reticle) {
-    reticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
-  }
-  if (targetLossPrompt) {
-    targetLossPrompt.style.opacity = `${feedback.promptOpacity}`;
-  }
-  if (!feedback.active) {
-    lastHadTargetMs = null;
-  }
-};
-const aimReticle = document.querySelector("#aimReticle");
-const targetLossPrompt = document.querySelector("#targetLossPrompt");
-let lastHadPacketTargetMs = null;
-
-const syncTargetLossFeedback = (nowMs, hasPacketTarget) => {
-  if (hasPacketTarget) {
-    lastHadPacketTargetMs = nowMs;
+const syncTargetLossFeedback = (nowMs, hasTarget) => {
+  if (hasTarget) {
+    lastHadTargetMs = nowMs;
+    if (aimReticle) {
+      aimReticle.style.transform = "translate3d(0, 0, 0) scale(1)";
+      aimReticle.dataset.targetLossActive = "false";
+    }
+    if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
     return;
   }
-  if (lastHadPacketTargetMs === null) return;
-  const feedback = targetLossFeedbackAt(nowMs - lastHadPacketTargetMs);
+  if (lastHadTargetMs === null) return;
+  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
   if (aimReticle) {
     aimReticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
     aimReticle.dataset.targetLossActive = String(feedback.active);
@@ -599,27 +595,8 @@ const syncTargetLossFeedback = (nowMs, hasPacketTarget) => {
     targetLossPrompt.style.opacity = String(feedback.promptOpacity);
   }
   if (!feedback.active) {
-    lastHadPacketTargetMs = null;
+    lastHadTargetMs = null;
   }
-};
-const aimReticle = document.querySelector("#aimReticle");
-const targetLossPrompt = document.querySelector("#targetLossPrompt");
-let lastHadTargetMs = null;
-let aimTargetHeld = false;
-
-const syncTargetLossFeedback = (nowMs, hasTarget) => {
-  if (hasTarget) {
-    lastHadTargetMs = nowMs;
-    if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
-    return;
-  }
-  if (lastHadTargetMs === null) return;
-  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
-  if (aimReticle) {
-    aimReticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
-  }
-  if (targetLossPrompt) targetLossPrompt.style.opacity = String(feedback.promptOpacity);
-  if (feedback.progress >= 1) lastHadTargetMs = null;
 };
 
 const CONFIRM_FEEDBACK = INTERACTION_CONFIRM_FEEL;
@@ -2574,8 +2551,12 @@ const packetTick = (timeMs) => {
 };
 
 const packetRelease = (input) => {
+  // Arm the target-loss envelope: this release IS the active→inactive
+  // edge. Stamp the last-held moment, then render the first-loss
+  // frame explicitly (hasTarget=false, elapsed=0 → neutral reticle,
+  // opacity 1) so the DOM reads a valid frame before the next tick.
   lastHadTargetMs = input.timeMs;
-  syncTargetLossFeedback(input.timeMs);
+  syncTargetLossFeedback(input.timeMs, false);
   recordPacketGestureSample("release", input);
   // #1701 draft 2 (Soren's REQUEST_CHANGES): use `release(...)` here, NOT
   // `previewRelease(...)`. The harness path `choose("keep-sealed")`
@@ -4095,7 +4076,6 @@ let last = performance.now();
 const tick = (now) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
-  syncTargetLossFeedback(now, state.interaction.packetIntent.active);
   // #1128: consume any pending recognition arm on the first tick that
   // actually fires. Stamping to rAF's `now` (not wall-clock at the
   // synchronous input.choose() moment) means the burst window is
@@ -4108,7 +4088,6 @@ const tick = (now) => {
     framesDuringRecognitionBeat = 0;
   }
   stepMovementFixed(dt);
-  syncTargetLossFeedback(now);
   const t = now / 1000;
   const kioskPulse = state.interaction.kioskPulse;
   const confirmStartedAt = state.interaction.confirmStartedAt;
