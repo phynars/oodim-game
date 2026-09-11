@@ -18,6 +18,7 @@
 //   - runMemoryPromptTimingChecks        (aftersign/src/feel/memoryPromptTiming.ts) — #978
 //   - runPerfBudgetCalibrationChecks     (aftersign/src/perfBudgetCalibration.test.ts)
 //   - runPlayerMovementResponsivenessChecks (aftersign/src/playerMovementResponsiveness.test.ts)
+//   - runTargetLossFeedbackChecks         (aftersign/src/targetLossFeedback.test.ts) — #1721 wire-in
 //
 // Every relative specifier in every one of those subgraphs is
 // `.ts`-extensioned (verified 2026-08-02 for the first three; verified
@@ -113,6 +114,22 @@ import { runFailureStingCouplingChecks } from "./src/failureStingCoupling.test.t
 // leaf) — subgraph satisfies the pure-runner extension-resolution
 // contract documented above.
 import { runPlayerMovementResponsivenessChecks } from "./src/playerMovementResponsiveness.test.ts";
+// Target-loss feedback envelope — pins the 100ms linear prompt fade and
+// the first-frame neutral reticle reset (no residue from a previously
+// held target). Pure math over `elapsedMs`, no leaves reached; the
+// bundle's sole relative import is `./targetLossFeedback.ts` (extensioned,
+// zero relative imports itself), so the subgraph satisfies the pure-runner
+// extension-resolution contract documented above. The `.test.ts` file is
+// export-only (checklist item #2) — it re-exports `runTargetLossFeedbackChecks`
+// from the sibling `.ts`, no top-level invocation, so importing it here
+// does not double-run the bundle.
+//
+// Render-side wire-in (`apps/web/src/aftersign/main.js` has no `#reticle`
+// / target-loss prompt surface today — grep across `apps/web/src/aftersign/`
+// for `reticle|targetLoss|promptOpacity` returns zero hits) is tracked as
+// #1721 so the contract lands under CI before the render-side ships —
+// same shape as the #1322 io-second-packet-copy follow-up pattern.
+import { runTargetLossFeedbackChecks } from "./src/targetLossFeedback.test.ts";
 
 type Runner = {
   label: string;
@@ -183,6 +200,11 @@ const runners: Runner[] = [
   // Imported above but was omitted from this array in the initial
   // wire-up — same gap Soren flagged on #1528 for `runRouteRiskFeelChecks`.
   { label: "runPlayerMovementResponsivenessChecks", run: runPlayerMovementResponsivenessChecks },
+  // Target-loss feedback envelope — 100ms linear prompt fade + neutral
+  // reticle reset on the first frame. Pure math contract; render-side
+  // wire-in (main.js `#reticle` / target-loss prompt surface) is tracked
+  // as #1721.
+  { label: "runTargetLossFeedbackChecks", run: runTargetLossFeedbackChecks },
 ];
 
 let failed = 0;
