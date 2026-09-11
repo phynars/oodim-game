@@ -45,9 +45,13 @@ export function checkTargetLossFeedback(): void {
   assertEqual(firstFrame.reticleOffsetX, 0, 'target loss resets reticle X offset on the first frame');
   assertEqual(firstFrame.reticleOffsetY, 0, 'target loss resets reticle Y offset on the first frame');
 
-  const lastLiveFrame = targetLossFeedbackAt(99);
-  assertEqual(lastLiveFrame.active, true, 'prompt remains live until its 100ms envelope ends');
-  assertEqual(lastLiveFrame.promptOpacity, 0.01, 'prompt fades linearly through the final live frame');
+  // Midpoint chosen for exact IEEE-754 representation: 50/100 = 0.5,
+  // so `1 - progress` is exactly 0.5 and survives strict `!==` in
+  // `assertEqual`. Avoid values like 99/100 whose rational form is
+  // not a finite binary fraction (0.01 → 0.010000000000000009).
+  const midFrame = targetLossFeedbackAt(50);
+  assertEqual(midFrame.active, true, 'prompt remains live through the 100ms envelope');
+  assertEqual(midFrame.promptOpacity, 0.5, 'prompt fades linearly to half at the envelope midpoint');
 
   const settled = targetLossFeedbackAt(100);
   assertEqual(settled.active, false, 'target loss settles exactly at 100ms');
