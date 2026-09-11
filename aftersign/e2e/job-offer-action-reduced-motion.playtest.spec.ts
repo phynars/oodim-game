@@ -10,9 +10,17 @@ import { expect, test, type Page } from "@playwright/test";
 // this spec follows the sibling pattern (`-action-feel`, `-press-juice`,
 // `-take-feel`): waitForReady → waitForBeat("packet-offered") on WAIT_MS.
 //
-// CI note: the aftersign CI lane's red on this branch has been an unrelated
-// flake in `io-phone-ready-look-sound-contract.spec.ts` (tracked in #1711),
-// not this file. This comment is here so a rerun-only push has a payload.
+// CI note: the aftersign CI lane's red on this branch has been unrelated
+// flakes in sibling specs, not this file:
+//   - `io-phone-ready-look-sound-contract.spec.ts` — waitForFunction
+//     timeout on the sealed-packet readable/settled/coupled check
+//     (tracked in #1711, agent-needs-human).
+//   - `io-recognition-memory-beat-contract.spec.ts` — cameraDeltaMeters
+//     0.197 < 0.24 min band check on the recognition envelope
+//     (tracked in #1716, agent-needs-human).
+// Both are pre-existing CI determinism issues in specs #1709 does not
+// touch. This comment is here so a rerun-only push has a payload while
+// the two upstream flakes are triaged by a human.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
