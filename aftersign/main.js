@@ -438,6 +438,9 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
+import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
+import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 
 /**
  * PR #1549 — DOM writer that stamps the frozen aftersign-job-take feel
@@ -560,6 +563,64 @@ const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
 const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
+const reticle = document.querySelector("#reticle");
+const targetLossPrompt = document.querySelector("#targetLossPrompt");
+let lastHadTargetMs = null;
+
+const syncTargetLossFeedback = (nowMs) => {
+  if (lastHadTargetMs === null) return;
+  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
+  if (reticle) {
+    reticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
+  }
+  if (targetLossPrompt) {
+    targetLossPrompt.style.opacity = `${feedback.promptOpacity}`;
+  }
+  if (!feedback.active) {
+    lastHadTargetMs = null;
+  }
+};
+const aimReticle = document.querySelector("#aimReticle");
+const targetLossPrompt = document.querySelector("#targetLossPrompt");
+let lastHadPacketTargetMs = null;
+
+const syncTargetLossFeedback = (nowMs, hasPacketTarget) => {
+  if (hasPacketTarget) {
+    lastHadPacketTargetMs = nowMs;
+    return;
+  }
+  if (lastHadPacketTargetMs === null) return;
+  const feedback = targetLossFeedbackAt(nowMs - lastHadPacketTargetMs);
+  if (aimReticle) {
+    aimReticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
+    aimReticle.dataset.targetLossActive = String(feedback.active);
+  }
+  if (targetLossPrompt) {
+    targetLossPrompt.style.opacity = String(feedback.promptOpacity);
+  }
+  if (!feedback.active) {
+    lastHadPacketTargetMs = null;
+  }
+};
+const aimReticle = document.querySelector("#aimReticle");
+const targetLossPrompt = document.querySelector("#targetLossPrompt");
+let lastHadTargetMs = null;
+let aimTargetHeld = false;
+
+const syncTargetLossFeedback = (nowMs, hasTarget) => {
+  if (hasTarget) {
+    lastHadTargetMs = nowMs;
+    if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
+    return;
+  }
+  if (lastHadTargetMs === null) return;
+  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
+  if (aimReticle) {
+    aimReticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
+  }
+  if (targetLossPrompt) targetLossPrompt.style.opacity = String(feedback.promptOpacity);
+  if (feedback.progress >= 1) lastHadTargetMs = null;
+};
 
 const CONFIRM_FEEDBACK = INTERACTION_CONFIRM_FEEL;
 const MEMORY_RECOGNITION_FEEDBACK = IO_RECOGNITION_BEAT_FEEDBACK;
@@ -2458,6 +2519,8 @@ const publishPacketIntentEvaluation = () => {
 };
 
 const packetPress = (input) => {
+  lastHadTargetMs = null;
+  if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
   // Fresh gesture — drop the previous log so the evaluator sees only
   // this attempt (mirrors PacketIntentController.press's reset of
   // its own internal fields).
@@ -2511,6 +2574,8 @@ const packetTick = (timeMs) => {
 };
 
 const packetRelease = (input) => {
+  lastHadTargetMs = input.timeMs;
+  syncTargetLossFeedback(input.timeMs);
   recordPacketGestureSample("release", input);
   // #1701 draft 2 (Soren's REQUEST_CHANGES): use `release(...)` here, NOT
   // `previewRelease(...)`. The harness path `choose("keep-sealed")`
@@ -4030,6 +4095,7 @@ let last = performance.now();
 const tick = (now) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  syncTargetLossFeedback(now, state.interaction.packetIntent.active);
   // #1128: consume any pending recognition arm on the first tick that
   // actually fires. Stamping to rAF's `now` (not wall-clock at the
   // synchronous input.choose() moment) means the burst window is
@@ -4042,11 +4108,13 @@ const tick = (now) => {
     framesDuringRecognitionBeat = 0;
   }
   stepMovementFixed(dt);
+  syncTargetLossFeedback(now);
   const t = now / 1000;
   const kioskPulse = state.interaction.kioskPulse;
   const confirmStartedAt = state.interaction.confirmStartedAt;
   const failureStartedAt = state.interaction.failureStartedAt;
   const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
+  syncTargetLossFeedback(now, packetIntentSnapshot.active);
   const packetProgress = packetIntentSnapshot.progress;
   const confirmEnvelope = confirmStartedAt === null
     ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)
