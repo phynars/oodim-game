@@ -29,6 +29,7 @@ import {
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
+import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { recognitionEnvelopeAt as recognitionFeedbackEnvelopeAt } from "./src/recognitionFeedbackBridge.ts";
 import {
@@ -3856,7 +3857,10 @@ const handleScenePointer = (event) => {
   };
   markStateDirty();
   raycaster.setFromCamera(pointer, camera);
-  if (raycaster.intersectObjects(kioskHitTargets, false).length > 0) {
+  if (
+    canDeliverFromScenePointer(state.scene.beat)
+    && raycaster.intersectObjects(kioskHitTargets, false).length > 0
+  ) {
     event.preventDefault();
     deliverPacket("scene-kiosk-pointer");
   } else {
