@@ -25,20 +25,26 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
 
-  // Press: the target-loss timer arms on the release, so we hold
-  // until the press-side sync flips `data-target-loss-active="true"`
-  // on `#aimReticle` (that's the observable "we HAD a target" edge
-  // the release path needs before it can arm the loss envelope).
-  // Polling that attribute is what a state-quiesced wait looks like
-  // in this suite — no wall-clock sleep, so no allowance marker
-  // needed and `e2e-shared/no-wall-clock-waits/check.mjs` stays
-  // green on the merge gate.
+  // Press-and-release: the `syncTargetLossFeedback` wiring only flips
+  // `data-target-loss-active` to `"true"` on the RELEASE edge — while
+  // the pointer is held, `hasTarget === true` writes the attribute to
+  // `"false"` every tick and merely stamps `lastHadTargetMs`. The
+  // loss envelope arms when the release path calls
+  // `syncTargetLossFeedback(timeMs, false)` and `targetLossFeedbackAt(0)`
+  // returns `active === true`. So the observable first-loss edge lives
+  // AFTER `mouse.up()`, not before — polling for `"true"` between
+  // `down()` and `up()` would deadlock against the hold-path writer
+  // (Soren, PR #1726 review). No wall-clock waits: every `expect(...)`
+  // below is a Playwright state poll, so `e2e-shared/no-wall-clock-waits`
+  // stays green.
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await expect(aimReticle).toHaveAttribute("data-target-loss-active", "true");
   await page.mouse.up();
 
-  // First-loss frame: reticle is neutral, prompt is fully visible.
+  // First-loss frame: release stamps `"true"` and the sync writes the
+  // envelope's `elapsed=0` sample — reticle at neutral transform, prompt
+  // at full opacity.
+  await expect(aimReticle).toHaveAttribute("data-target-loss-active", "true");
   await expect(aimReticle).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
   await expect(prompt).toHaveCSS("opacity", "1");
 
