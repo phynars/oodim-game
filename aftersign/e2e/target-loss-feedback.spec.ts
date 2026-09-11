@@ -25,13 +25,17 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
 
-  // Press: the target-loss timer arms on the release, so we hold long
-  // enough to matter, then let go. The release path in main.js
-  // (`packetRelease`) stamps the first-loss frame (neutral transform,
-  // opacity 1) synchronously — no rAF required.
+  // Press: the target-loss timer arms on the release, so we hold
+  // until the press-side sync flips `data-target-loss-active="true"`
+  // on `#aimReticle` (that's the observable "we HAD a target" edge
+  // the release path needs before it can arm the loss envelope).
+  // Polling that attribute is what a state-quiesced wait looks like
+  // in this suite — no wall-clock sleep, so no allowance marker
+  // needed and `e2e-shared/no-wall-clock-waits/check.mjs` stays
+  // green on the merge gate.
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.waitForTimeout(20);
+  await expect(aimReticle).toHaveAttribute("data-target-loss-active", "true");
   await page.mouse.up();
 
   // First-loss frame: reticle is neutral, prompt is fully visible.
