@@ -211,7 +211,17 @@ test.describe("#1731 M2-E1: two divergent rounds expose mechanically different a
   test("two divergent saves expose and permit a mechanically different action", async ({
     browser,
   }) => {
-    test.setTimeout(COLD_START_MS * 2);
+    // Budget = 3 × COLD_START_MS = 270s.  This test creates TWO
+    // browser contexts (contextA + contextB) and boots each in
+    // sequence — every boot pays a full SwiftShader + three.js
+    // cold init (~90s on the CI lane, matching COLD_START_MS).
+    // Two sequential cold boots ≈ 180s, which is exactly the
+    // *2 budget the prior revision allotted — leaving zero
+    // headroom for the taps that follow. Bumping to *3 buys
+    // ~90s of tap-execution room while still capping the test
+    // well under Playwright's default per-worker ceiling.
+    // (Soren's REQUEST_CHANGES on PR #1734.)
+    test.setTimeout(COLD_START_MS * 3);
 
     // SAVE A — round one commits `take-the-long-way`
     // → routeRisk = {safe, true} → round-two set includes
