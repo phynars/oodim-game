@@ -2,54 +2,73 @@
 
 ## Vision
 
-A phone visitor takes a delivery job, makes a consequential choice, leaves, and returns to a world that remembers through the actions it makes available—not just through different dialogue. Ship the smallest playable loop that lets a stranger explain what they will do differently next round; more characters, polish, and isolated contracts do not substitute for that outcome.
+A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers it mechanically: what the player can do next changes, not merely what Io says. Build the smallest complete, replayable loop on https://game.oodim.com/aftersign before adding characters, systems, or polish. Memory is progression; merged components are not milestone acceptance.
+
+Planning checkpoint: **2026-09-11**. Source of product authority: `docs/flagship/BRIEF.md`, especially the founder's August 22 amendment. Exactly one active milestone and one active epic. Current plan identifiers **M2 / M2-E1** refer to historical **M-LOOP / M-LOOP-E1**; this is a planning alias, not a code-renaming project.
 
 ## Milestones
 
-### M1 — A phone player continues past Io's recognition into a tone answer and the next job
+### M1 — A phone player continues past Io's recognition into a tone response and the next job
 
 Deadline: 2026-08-22
 
-**Status:** historical completion recorded by the previous plan; not re-certified in this reconciliation. This compact plan groups the previous recognition/continuation milestones under M1. Historical issue identifiers remain unchanged; M1 here includes the former M-CONTINUE, not only the old July M1.
+Status: historical completion reported by the previous plan, not re-certified this cycle. This is the former M-CONTINUE outcome, not a new declaration of DONE. Earlier recognition, Orra, and wiring efforts are supporting history, not competing active milestones.
 
-**Observable outcome / definition of done:** at https://game.oodim.com/aftersign/, a phone player reaches Io's recognition, selects a visible tone response, reads the answer, and reaches the next-job offer. A boot-to-last-beat PLAYTEST uses pointer taps on visible elements and asserts every visible dialogue change; `window.__game` is assert-only.
+Definition of done: a player reaches the return-tone choice and next-job handoff after recognition on the deployed phone surface through visible taps; each visible dialogue transition is asserted, and existing recognition remains reachable. The previous plan identifies #1216 and `aftersign/e2e/m-continue-phone-tap-playtest.spec.ts` as its PLAYTEST evidence. That historical evidence has not been rerun in this planning cycle.
 
-**LoE budget:** no new allocation; historical one-epic continuation scope. Historical PLAYTEST story: #1216. Prior plan recorded completion on August 22; that record is provenance, not a fresh deployed run result.
+LoE budget: historical one-epic delivery; **zero new stories authorized**. Regressions that block M2 belong to M2's playable path, not a reopened recognition-depth roadmap.
 
-### M2 — A phone player completes two delivery rounds and sees memory change the next available action
+### M2 — A phone player completes two delivery rounds and can name what memory lets them do differently next round
 
 Deadline: 2026-09-05
 
-**Status: ACTIVE — the sole active milestone.** Historical alias: M-LOOP. **Days remaining: -6 (six days overdue), as of 2026-09-11.** September 5 is the existing spec-writer target, not a founder-confirmed date. Founder confirmation was requested via Telegram in the preceding chunk; no response is established here. Do not silently move the deadline.
+Status: **ACTIVE — acceptance incomplete**. Historical alias: M-LOOP.
 
-**Observable outcome:** a stranger plays two complete rounds on the deployed phone surface. A round includes taking a job, traversing its route with one risk choice, delivering and answering, and seeing the resulting memory affect a subsequent available action. After round one the player can explain what they intend to do differently next round.
+**Days remaining: -6 as of 2026-09-11 (six days overdue).** September 5 is the existing spec-writer planning target, not a founder-confirmed deadline. The brief gives no replacement date for M-LOOP. **Founder decision requested: confirm September 5 as the missed target or explicitly authorize a replacement date.** Until then, retain it; do not erase the miss by rolling the date forward.
 
-**Definition of done:**
+Founder bar, verbatim from the August 22 amendment:
 
-- On the deployed page, a taps-only phone-viewport divergence spec starts from two different saved memory records, completes one round from each, and proves a mechanically different available action through visible, enabled elements. Changing only dialogue or button labels is insufficient.
-- A continuous boot-to-last-beat PLAYTEST completes TWO rounds, not merely arrival at the second offer. It asserts every visible dialogue transition and the changed action availability after round one.
-- One route-risk choice is recorded and has a mechanical consequence in a later round. One payback channel is enough; extra economies and NPCs are out.
-- Player actions use pointer taps on visible controls. `window.__game` is assert-only. Save setup may establish initial conditions but may not bypass either played round.
-- Acceptance records identify deployed URL, revision, run link/artifacts, phone configuration, and executed/not-skipped lanes. A green local or harness-only run cannot establish deployed acceptance.
-- A recorded stranger replay states their answer to “what will you do differently next round?” with the run/date and observed outcome. CI alone cannot satisfy this criterion.
+> **M-LOOP metric: divergence.** Two save-states with different memory
+> records MUST produce different AVAILABLE ACTIONS on the served page —
+> different job offers, prices, or open routes; dialogue-only differences
+> score zero.
+>
+> **Integration proof (the milestone's done-gate spec):** a taps-only
+> phone-viewport spec seeds two saves with different memory records,
+> plays one round from each, and asserts the two runs' rendered pages
+> offered DIFFERENT tappable actions (element-level, not text-level). Plus
+> the standing playtest spec extended to complete TWO consecutive rounds.
+>
+> **Definition of DONE for the milestone:** a stranger finishes round one
+> and can answer "what will you do differently next round?" — the retell
+> bar upgraded to a replay bar. (Human playtest evidence; not CI-able —
+> recorded in the devlog per run.)
 
-**LoE budget:** one epic; 3–7 S/M mapped stories including integration and PLAYTEST. Cap remaining implementation allocation at two M-sized player-visible repairs until evidence shows a necessary gap. No speculative new subsystem; split any broader repair before authorization. Harness-only stories: at most one in four; currently none authorized.
+Definition of done:
 
-**Deadline-first scope rule:** finish a rough but playable complete loop and its proof before copy polish, another payback channel, or more recognition depth. Do not lower the two-round or mechanical-divergence bar to declare an overdue milestone done.
+1. On the deployed page, two divergent memory saves each support a complete job → real route traversal with one risk choice → delivery/answer → return/payback round. Different available actions are proved at element/action identity or enabled-state level, not by labels or dialogue alone.
+2. A **single continuous phone PLAYTEST** goes from cold boot through **two completed rounds**, tapping only visible enabled elements and asserting every visible dialogue change. Round two's offer is an intermediate checkpoint, not the finish. The run asserts memory recording and a changed available action after round one; no reseed between rounds.
+3. Use 390×844 with touch/mobile enabled. `window.__game` is assert-only. No game action may be caused by harness input, evaluated DOM clicks, forced clicks, or hidden controls. Initial divergent-save setup is allowed before play.
+4. Retain reachable recognition, tone response, and next-job handoff. A player can select the mechanically differing action, not merely inspect it.
+5. Attach deployed revision, deployed URL, run URL, executed test counts, and trace/video artifacts for the non-skipped acceptance run. Record a stranger's unprompted replay answer with date/revision in the public devlog and link it here before marking DONE.
+
+LoE budget: **one epic, four mapped stories**: two previously closed M building blocks, one existing M partial PLAYTEST, and one S single-file integration repair that consumes and completes the existing work. These sizes describe file blast radius, not a promise of elapsed delivery time. Authorize no speculative new implementation ladder. If the gate exposes a runtime blocker, bound the concrete player-surface repair first.
+
+Scope cuts, in order: copy/feel polish, additional payback channels, extra characters, and any depth beyond two proved rounds. Do not lower the mechanical-divergence bar to declare an overdue milestone DONE.
 
 ## Active milestone's epics
 
-### M2-E1 — A phone player can complete the loop and act on its memory-driven payback
+### M2-E1 — A phone player can complete the deployed loop by taps and act on memory-driven payback
 
-**Status:** ACTIVE; acceptance reconciliation incomplete. Historical alias: M-LOOP-E1. Days remaining: -6 as of 2026-09-11.
+Status: **ACTIVE**; acceptance reconciliation incomplete. Historical alias: M-LOOP-E1. Days remaining: -6 as of 2026-09-11.
 
-**Acceptance criteria:** the deployed surface supports every M2 round step by visible pointer taps; divergent saved memories produce different mechanical choices; the same player can finish a second round and see every dialogue change. The milestone's recorded human replay and deployed artifacts are required at closeout.
+Acceptance criteria: the deployed surface supports every M2 round step by visible pointer taps; divergent saved memories produce different **mechanical** choices (element/action identity, not just labels); the same player can complete a second round and see every visible dialogue transition. Recorded human replay and deployed artifacts are required at closeout.
 
-**LoE:** one epic, 3–7 S/M stories; remaining repairs capped at two M stories pending inspection. Existing merged building blocks are reused, not rebuilt.
+LoE: **one epic, four mapped stories** — two closed M building blocks (#1535, #1551), one existing partial M PLAYTEST (#1552), and the integration gate (#1370). Only S/M single-file continuation repairs are authorized as new work. Existing merged building blocks are reused, not rebuilt.
 
-**INTEGRATION story:** #1370 is the existing done-gate identity explicitly named in `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`. Its current issue disposition and acceptance scope must be read before deciding reuse versus a narrowly scoped successor. Do not file implementation stories before that reconciliation establishes an open integration gate. The old spec alone does not satisfy the gate.
+**INTEGRATION story:** #1370 is the existing done-gate identity explicitly named in `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`. Its current issue disposition and acceptance scope must be read before deciding reuse versus a narrowly scoped successor. Do not file implementation stories before that reconciliation establishes an open integration gate. The spec alone does not satisfy the gate; a skipped-lane run, a labels-only difference, or stopping at the second offer does not close it.
 
-**Integration success is the epic's done signal**, not a count of merged component PRs. A skipped lane, a changed label on the same action, or stopping at an offer cannot count as a completed loop.
+**Integration success is the epic's done signal**, not a count of merged component PRs.
 
 ## Story map — M2-E1
 
