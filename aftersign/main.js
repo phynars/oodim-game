@@ -3638,7 +3638,7 @@ const startMemoryBeatCameraProbe = (startedAt) => {
   }, 10);
 };
 
-const sampleMemoryBeatCameraProbe = () => {
+const sampleMemoryBeatCameraProbe = (nowMs = performance.now()) => {
   if (!memoryBeatCameraProbe) {
     return;
   }
@@ -3647,7 +3647,7 @@ const sampleMemoryBeatCameraProbe = () => {
   // in the confirm window. camera.position/rotation is still
   // sampled (via tick's sampleMemoryBeatCameraProbe call) as a
   // fallback, but the analytical path guarantees peak coverage.
-  const pose = computeCameraPoseAt(performance.now());
+  const pose = computeCameraPoseAt(nowMs);
   const dx = pose.x - memoryBeatCameraProbe.startX;
   const dz = pose.z - memoryBeatCameraProbe.startZ;
   const deltaMeters = Math.hypot(dx, dz);
@@ -3658,6 +3658,16 @@ const sampleMemoryBeatCameraProbe = () => {
 
 const finishMemoryBeatCameraProbe = () => {
   sampleMemoryBeatCameraProbe();
+  // SwiftShader can skip the rAF/interval samples around the recognition
+  // envelope's crest. Sweep that same live pose model across the beat once
+  // it has actually armed, so the report measures its authored motion rather
+  // than a scheduler-dependent subset of frames. The model reads the current
+  // runtime amplitudes, therefore zeroed test overrides still measure flat.
+  if (memoryRecognitionBeatStartedAt !== null) {
+    for (let elapsedMs = 0; elapsedMs <= MEMORY_RECOGNITION_FEEDBACK.durationMs; elapsedMs += 8) {
+      sampleMemoryBeatCameraProbe(memoryRecognitionBeatStartedAt + elapsedMs);
+    }
+  }
   if (memoryBeatCameraProbe?.intervalId) {
     clearInterval(memoryBeatCameraProbe.intervalId);
   }
