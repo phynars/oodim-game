@@ -213,13 +213,43 @@ export const recognitionEnvelopeAt = (
   const peakDelta = feedback?.cameraDeltaMeters ?? RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
   const peakYaw = feedback?.cameraYawDegrees ?? RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
 
-  // The contract constants are exported without explicit type annotations,
-  // so under `strict` they're inferred as non-zero literal types (0.32, 4).
-  // A `=== 0` guard against them is a compile-time "no overlap" error under
-  // strict TS — and is dead code besides, because the constants are
-  // authored-in and non-zero. Divide directly.
-  const deltaRatio = peakDelta / RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS;
-  const yawRatio = peakYaw / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;
+  // Camera dolly/yaw SHAPE is sourced from the AUTHORED contract
+  // (recognition-beat-feedback.js::ioRecognitionBeatEnvelopeAt), NOT
+  // from the phase-based `base.cameraDeltaMeters`.
+  //
+  // Why (#1737): the e2e camera probe (main.js memoryBeatCameraProbe →
+  // computeCameraPoseAt → recognitionMotionAt → this function) measures
+  // the LIVE camera pose, and io-recognition-memory-beat-contract.spec.ts
+  // pins its peak into the authored dolly band [0.24, 0.36]m. The
+  // phase-based envelope (`recognitionFeedback.ts`) peaks at only
+  // ~0.18m for delta and hits the yaw crest only at a single 700ms
+  // phase boundary, so a fixed-cadence sample lands 0.15–0.21m — below
+  // the 0.24 floor, systematically. The authored shape used by the
+  // contract tests is `cameraShape = easeOutCubic(elapsed/cameraPeakMs)`
+  // rising to 1.0 at cameraPeakMs (520ms), then a gentle cameraSettle
+  // decay. Peak `cameraShape` = 1.0 → peakDelta (0.32) lands squarely
+  // inside [0.24, 0.36]. Mirror recognition-beat-feedback.js:189-193.
+  //
+  // Amplitude (`peakDelta`/`peakYaw`) still MULTIPLIES the shape, so
+  // the harness override `setRecognitionCameraEnvelope({0,0})` zeroes
+  // the reported motion and the "not canned literals" test (flat
+  // override → measured delta < 0.24) stays green.
+  const CAMERA_PEAK_MS = 520;
+  const CAMERA_SETTLE_MS = 420;
+  const CAMERA_SETTLE_DEPTH = 0.06;
+  const safeElapsedMs = Math.max(0, Math.min(elapsedMs, RECOGNITION_FEEDBACK_TOTAL_MS));
+  const easeOutCubicShape = (value: number): number => {
+    const clamped = clamp01(value);
+    return 1 - (1 - clamped) ** 3;
+  };
+  const easeInOutSineShape = (value: number): number =>
+    (1 - Math.cos(Math.PI * clamp01(value))) / 2;
+  const cameraShape =
+    safeElapsedMs <= CAMERA_PEAK_MS
+      ? easeOutCubicShape(safeElapsedMs / CAMERA_PEAK_MS)
+      : 1
+        - CAMERA_SETTLE_DEPTH
+          * easeInOutSineShape((safeElapsedMs - CAMERA_PEAK_MS) / CAMERA_SETTLE_MS);
 
   // signGlowBoost is added to signLight.intensity every frame in the
   // render loop (main.js:1727: `7.4 + ... + recognitionMotion.signGlowBoost + ...`).
@@ -283,8 +313,10 @@ export const recognitionEnvelopeAt = (
     rainRim: cues.rainRim,
     hapticScale: cues.hapticScale,
     // Camera/light bridge fields already consumed by main.js:
-    cameraDeltaMeters: Number((base.cameraDeltaMeters * deltaRatio).toFixed(3)),
-    cameraYawDegrees: Number((base.cameraYawDegrees * yawRatio).toFixed(2)),
+    // authored easeOutCubic(520) dolly shape × runtime amplitude (see
+    // the cameraShape derivation above — #1737).
+    cameraDeltaMeters: Number((peakDelta * cameraShape).toFixed(3)),
+    cameraYawDegrees: Number((peakYaw * cameraShape).toFixed(2)),
     signGlowBoost: Number(signGlowBoost.toFixed(3)),
     impactBurst: {
       particles,
