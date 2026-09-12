@@ -61,7 +61,24 @@ export type IoRecognitionBeatLine = {
 
 export const RECOGNITION_FEEDBACK_TOTAL_MS = 1220;
 export const RECOGNITION_FEEDBACK_REDUCED_MOTION_MS = 160;
-export const RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS = 0.18;
+// Authored recognition-beat dolly peak. MUST match the feel contract in
+// docs/flagship/io-recognition-beat.md ("dolly 0.32m toward Io") and the
+// e2e acceptance band in aftersign/e2e/io-recognition-memory-beat-contract
+// .spec.ts + io-recognition-return-visual-feel.spec.ts
+// (cameraDeltaMeters ∈ [0.24, 0.36]).
+//
+// PR #1734 root-cause fix: #1146 tuned this down to 0.18, but that value
+// is BELOW the 0.24 e2e floor — so the served page could never satisfy
+// its own recognition-beat contract, and the aftersign WebGL e2e lane
+// stayed red no matter how the camera probe was sampled (measured
+// 0.154/0.206 and the analytical peak both cap at the constant). The
+// sibling contract copy at apps/web/src/aftersign/recognitionFeedback.ts
+// already carries the correct 0.32; this restores the served module to
+// match the doc + both e2e bands. The measured-vs-canned test still
+// passes: setRecognitionCameraEnvelope({cameraDeltaMeters:0}) drives the
+// bridge's deltaRatio to 0 (peakDelta / constant), collapsing the
+// reported motion to 0 regardless of this peak value.
+export const RECOGNITION_FEEDBACK_CAMERA_DELTA_METERS = 0.32;
 export const RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES = 4;
 export const RECOGNITION_FEEDBACK_STING_START_MS = 120;
 export const RECOGNITION_FEEDBACK_STING_DURATION_MS = 180;
