@@ -184,6 +184,12 @@ async function playRound(
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
 
+  // io-next-job has no auto-advance to packet-offered — the only
+  // transition out is `choose("deliver-packet")` when
+  // beat === "io-next-job" (main.js:2681-2700). Without this tap
+  // the next waitForBeat below hangs until the 60s timeout.
+  // (Soren's REQUEST_CHANGES on PR #1734.)
+  await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-offered");
   return snapshot(page);
 }
