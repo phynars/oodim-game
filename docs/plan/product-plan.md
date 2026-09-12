@@ -6,7 +6,7 @@ A phone player takes a delivery job, makes a consequential choice, and returns t
 
 Planning checkpoint: **2026-09-11**. Source of product authority: `docs/flagship/BRIEF.md`, especially the founder's August 22 amendment. Exactly one active milestone and one active epic. Current plan identifiers **M2 / M2-E1** refer to historical **M-LOOP / M-LOOP-E1**; this is a planning alias, not a code-renaming project.
 
-**Scope of this revision (Refs #1731, not Closes):** this change is plan-only. It restates the M-LOOP done-gate in the founder's verbatim words and tightens the epic's story budget. It does NOT repair `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`; the taps-only two-round integration spec called for by #1731 remains open and must land in a separate code PR before M2-E1 can be closed.
+**Scope of this revision (Refs #1731, not Closes):** this change is plan-only — a `docs/plan:` PR, not a `fix:`. It restates the M-LOOP done-gate in the founder's verbatim words and tightens the epic's story budget. It does NOT repair `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`; the taps-only two-round integration spec called for by #1731 remains open and must land in a separate code PR before M2-E1 can be closed.
 
 ## Milestones
 
