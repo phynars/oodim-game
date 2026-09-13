@@ -18,8 +18,12 @@ export type InteractionConfirmSample = {
 export const INTERACTION_CONFIRM_FEEL = {
   durationMs: 180,
   pressInMs: 54,
-  pressScalePeak: 0.94,
-  liftPxPeak: 3.5,
+  // 10% press-down scale (1.0 → 0.90) and 4px lift clear the prior
+  // 6% / 3.5px just-noticeable threshold on a phone without extending
+  // the 180ms confirmation window. Envelope shape (press-in / release
+  // hold / tail) is unchanged; only the peak amplitudes move.
+  pressScalePeak: 0.9,
+  liftPxPeak: 4,
   cameraYawDegPeak: 0.42,
   screenShakePxPeak: 1.25,
   glowAlphaPeak: 0.72,
