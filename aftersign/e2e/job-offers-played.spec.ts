@@ -15,16 +15,6 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 // Metadata guard: each served offer button must preserve its authored
 // player-facing label and expose its authored route-risk tier through the
 // `data-route-risk` attribute.
-//
-// #1526 review — the served renderer (aftersign/main.js:1795/1800) stamps
-// `data-route-risk` from `IoJobOffer.routeRisk`, whose current authored
-// vocabulary is `"low" | "medium" | "high"` (packages/aftersign/src/
-// computeOfferedJobs.ts). The button's textContent is the composite
-// `"<label> · <routeRisk> risk"` — Ivy's Phase B.5 (#1428) added the
-// canonical attribute alongside the composite label rather than replacing
-// the label. These assertions pin the SHIPPED DOM as-is; a future
-// canonical-token mapping (safe/risky/repair) is a separate change that
-// would flip both the served renderer AND this spec together.
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 30_000;
@@ -54,7 +44,7 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
     choice,
     `choice "${choiceId}" should be visible and tappable`,
   ).toBeVisible({ timeout: WAIT_MS });
-  await choice.click();
+  await choice.tap();
 }
 
 async function tapReturnReason(page: Page, reason: string): Promise<void> {
@@ -65,18 +55,13 @@ async function tapReturnReason(page: Page, reason: string): Promise<void> {
     button,
     `return-tone "${reason}" should be visible and tappable`,
   ).toBeVisible({ timeout: WAIT_MS });
-  await button.click();
+  await button.tap();
 }
 
 async function expectOfferMetadata(
   offer: Locator,
   expected: { label: string; routeRisk: "low" | "medium" | "high" },
 ): Promise<void> {
-  // The served renderer stamps textContent as
-  // `${offer.label} · ${offer.routeRisk} risk` (aftersign/main.js:1800),
-  // so the authored label is one axis of the composite string. Assert
-  // the full string so a drift on EITHER axis (label rename, risk
-  // relabel, separator change) reds the spec.
   await expect(
     offer,
     "offer text must combine the authored label with the authored route-risk token",
@@ -88,6 +73,8 @@ async function expectOfferMetadata(
 }
 
 test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
   test("first visit offers the safe default; the looped return offers the completed set", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
 
@@ -107,7 +94,7 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       label: "Safe delivery",
       routeRisk: "low",
     });
-    await safeOffer.click();
+    await safeOffer.tap();
     await expect(
       page.locator("#job-offer-job-night-transfer"),
       "completed-set offer should NOT render before any delivery",
@@ -117,7 +104,7 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       "completed-set offer should NOT render before any delivery",
     ).toHaveCount(0);
 
-    await page.locator("#packetButton").click();
+    await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
     await expect(
       page.locator('[id^="job-offer-"]'),
