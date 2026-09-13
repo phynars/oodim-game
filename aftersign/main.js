@@ -449,6 +449,7 @@ import {
   emptySave,
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
+import { attachPacketTargetLossPointer } from "./src/packetTargetLossPointer.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 
@@ -4031,6 +4032,11 @@ if (hudPanelForClearance && typeof ResizeObserver === "function") {
     }
   }).observe(hudPanelForClearance);
 }
+
+attachPacketTargetLossPointer({
+  button: packetButton,
+  release: packetRelease,
+});
 
 attachRuntimeInputAdapters({
   packetButton,
