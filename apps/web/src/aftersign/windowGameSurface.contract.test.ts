@@ -152,4 +152,48 @@ describe("Aftersign window.__game story/state contract", () => {
       }),
     });
   });
+
+  it("publishes Io's return hand-off prompt on the served surface, keyed to the committed packet outcome", () => {
+    // Pre-commit: no fork, no hand-off. The prompt only appears once
+    // recognition can hand the player a concrete next tap.
+    const preCommit = createAftersignWindowGameSurface(
+      createAftersignVerticalSliceState(),
+      { playerId: "p", playerName: "P" },
+    ).getStoryState();
+    expect(preCommit.story.ioDialogue.returnHandOff).toBeUndefined();
+
+    // Sealed fork → lit-stair hand-off. Asserted verbatim so a
+    // reviewer's grep for the shipped surface finds the wired
+    // consumer immediately: `chooseIoReturnHandOffCopy` reaches the
+    // player through `story.ioDialogue.returnHandOff`, not through
+    // an isolated route file.
+    const sealedReturn = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "sealed"),
+    );
+    const sealedSnapshot = createAftersignWindowGameSurface(sealedReturn, {
+      playerId: "p",
+      playerName: "P",
+    }).getStoryState();
+    expect(sealedSnapshot.story.ioDialogue.returnHandOff).toEqual({
+      id: "io-return-handoff",
+      speaker: "Io",
+      line: "The seal held. So will the short route, for you. Take it before the bell changes its mind.",
+      prompt: "Take the lit stair",
+    });
+
+    // Opened fork → dark-stair hand-off. Same shape, alternate copy.
+    const openedReturn = meetIoForAftersignSlice(
+      recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+    );
+    const openedSnapshot = createAftersignWindowGameSurface(openedReturn, {
+      playerId: "p",
+      playerName: "P",
+    }).getStoryState();
+    expect(openedSnapshot.story.ioDialogue.returnHandOff).toEqual({
+      id: "io-return-handoff",
+      speaker: "Io",
+      line: "The seal broke. The route did not. Take the dark stair; it has been waiting for someone careless.",
+      prompt: "Take the dark stair",
+    });
+  });
 });

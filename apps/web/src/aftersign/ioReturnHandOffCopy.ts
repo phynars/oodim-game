@@ -1,3 +1,17 @@
+import type { AftersignPacketOutcome } from "./verticalSliceRuntimeState";
+
+/**
+ * Io's hand-off beat: the sentence that turns recognition into a
+ * concrete next tap. Rendered on the served surface by
+ * `windowGameSurface.ts::getAftersignIoDialogueSnapshot` as
+ * `story.ioDialogue.returnHandOff`, alongside the existing packet/
+ * route `returnBeat` — a scene renderer paints the prompt as the
+ * next-action label the moment Io stops speaking.
+ *
+ * Keyed off the SAME committed `AftersignPacketOutcome` the return-
+ * beat lines read from, so this module cannot drift from what the
+ * player actually did.
+ */
 export type IoReturnHandOff = {
   readonly id: "io-return-handoff";
   readonly speaker: "Io";
@@ -6,11 +20,14 @@ export type IoReturnHandOff = {
 };
 
 /**
- * The moment after recognition must turn memory into a concrete next action.
- * Kept separately so the rendered route can consume a stable, authored beat.
+ * Select the hand-off beat for a committed packet outcome.
+ * Consumed by `getAftersignIoDialogueSnapshot` so every returning
+ * player who reaches the io-return scene sees the prompt.
  */
-export function chooseIoReturnHandOffCopy(openedPacket: boolean): IoReturnHandOff {
-  return openedPacket
+export function chooseIoReturnHandOffCopy(
+  packetOutcome: AftersignPacketOutcome,
+): IoReturnHandOff {
+  return packetOutcome === "opened"
     ? {
         id: "io-return-handoff",
         speaker: "Io",
