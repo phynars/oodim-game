@@ -19,6 +19,17 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   const aimReticle = page.locator("#aimReticle");
   const prompt = page.locator("#targetLossPrompt");
   await expect(packet).toBeVisible();
+  // The button is present in static HTML before main.js finishes its
+  // authoritative-save boot and installs the real pointer adapters. A
+  // visibility-only wait can therefore press an inert pre-boot button on a
+  // cold CI worker, yielding an opacity peak of 0 without exercising the
+  // player's release funnel. Wait for the public ready signal before the
+  // genuine mouse gesture; this does not drive or shim input.
+  await page.waitForFunction(
+    () => window.__game?.scene?.ready === true,
+    undefined,
+    { timeout: 60_000 },
+  );
 
   const box = await packet.boundingBox();
   if (!box) throw new Error("packet button has no pointer target");
