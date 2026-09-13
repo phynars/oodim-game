@@ -239,6 +239,15 @@ import {
   recordRouteRun,
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
+// Player-facing labels for the four route-risk action ids the
+// writer above stamps as `<button>` children. Passed as
+// `labelForAction: routeRiskActionLabel` at both
+// `renderRouteRiskChoice({...})` sites below so the served buttons
+// render authored copy instead of the raw action ids
+// (`"take-the-shortcut"`). The two route strings are sourced from
+// `aftersignJobOfferCopy.firstRun` — same vocabulary Io speaks in
+// her offer line, no drift. Soren's REQUEST_CHANGES on #1747.
+import { routeRiskActionLabel } from "../apps/web/src/aftersign/routeRiskActionLabels.js";
 // Scene-transition juice — the three-phase envelope (recognition-
 // settle → job-offer-rise → route-commit) that plays when the beat
 // crosses a scene boundary (kiosk → io-return, io-return → orra-
@@ -1863,6 +1872,7 @@ const publishState = () => {
     return renderRouteRiskChoice({
       container: routeRiskChoice,
       memory: state.player.routeRisk,
+      labelForAction: routeRiskActionLabel,
       onChoose: (action) => {
         let route = state.player.routeRisk?.lastRoute ?? "safe";
         let succeeded = true;
@@ -1946,6 +1956,7 @@ const renderText = () => {
       renderRouteRiskChoice({
         container: routeRiskChoice,
         memory: state.player.routeRisk,
+        labelForAction: routeRiskActionLabel,
         onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
           // shape the memory fact wants. "take-the-shortcut" and
