@@ -4117,22 +4117,7 @@ const tick = (now) => {
   const confirmStartedAt = state.interaction.confirmStartedAt;
   const failureStartedAt = state.interaction.failureStartedAt;
   const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
-  // #1751 fix: read `.active` from the LIVE controller AFTER packetTick(),
-  // not from the returned snapshot. `packetTick` may internally flip
-  // `packetIntent.active` to false (drift-cancel threshold, commit) between
-  // the ternary read above and this line — the snapshot object reflects
-  // the PRE-mutation `.active`. Passing the stale `true` into
-  // `syncTargetLossFeedback` re-enters the `hasTarget=true` branch, which
-  // zeroes `#targetLossPrompt.style.opacity` and re-stamps
-  // `lastHadTargetMs = now` — wiping the release-edge opacity=1 write that
-  // `packetRelease` just performed. The 3s rAF sampler in
-  // `aftersign/e2e/target-loss-feedback.spec.ts` then observes peak=0
-  // across ~180 frames — the exact flake shape #1751 catches.
-  //
-  // The live-read is safe: `syncTargetLossFeedback` uses `hasTarget` only
-  // as a branch selector; the branch bodies use `nowMs` (this frame's rAF
-  // timestamp) and never re-read state.
-  syncTargetLossFeedback(now, state.interaction.packetIntent.active);
+  syncTargetLossFeedback(now, packetIntentSnapshot.active);
   const packetProgress = packetIntentSnapshot.progress;
   const confirmEnvelope = confirmStartedAt === null
     ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)
