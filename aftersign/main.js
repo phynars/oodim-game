@@ -4033,11 +4033,6 @@ if (hudPanelForClearance && typeof ResizeObserver === "function") {
   }).observe(hudPanelForClearance);
 }
 
-attachPacketTargetLossPointer({
-  button: packetButton,
-  release: packetRelease,
-});
-
 attachRuntimeInputAdapters({
   packetButton,
   acknowledgeRouteButton,
