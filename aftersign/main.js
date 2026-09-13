@@ -586,10 +586,33 @@ const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
 const aimReticle = document.querySelector("#aimReticle");
 const targetLossPrompt = document.querySelector("#targetLossPrompt");
 let lastHadTargetMs = null;
+// #1751: the release edge and the rAF tick read two DIFFERENT clocks —
+// `packetRelease` stamps `input.timeMs` (the pointerup's
+// `performance.now()`), while the tick advances the fade off rAF's
+// `now`. On a fast renderer these are ~one frame apart and the prompt
+// visibly fades from 1→0 across the 100ms envelope. On a STARVED
+// SwiftShader CI run the FIRST rAF after `pointerup` can land >100ms
+// later, so the very first tick computes `targetLossFeedbackAt(gap)`
+// with `gap >= 100`, writes `opacity = 0`, and nulls `lastHadTargetMs`
+// BEFORE any frame paints an opacity > 0 — the served page emits no
+// non-zero opacity and the spec's rAF sampler peaks at 0
+// (`__targetLossOpacityPeak === 0`, the exact CI red in #1751).
+//
+// Fix (same discipline as `pendingRecognitionArm`): on the release
+// edge, ARM the envelope but anchor its start to the FIRST tick's rAF
+// clock instead of the event clock. `pendingTargetLossArm` carries the
+// arm request; the tick stamps `lastHadTargetMs = now` on the first
+// frame that actually fires, so the envelope measures its 100ms from a
+// PAINTED frame — cold-start rAF starvation can no longer skip the
+// fade window. The release path still writes `opacity = 1` synchronously
+// so a sampler that wakes between the event and the first tick already
+// sees full visibility.
+let pendingTargetLossArm = false;
 
 const syncTargetLossFeedback = (nowMs, hasTarget) => {
   if (hasTarget) {
     lastHadTargetMs = nowMs;
+    pendingTargetLossArm = false;
     if (aimReticle) {
       aimReticle.style.transform = "translate3d(0, 0, 0) scale(1)";
       aimReticle.dataset.targetLossActive = "false";
@@ -2566,11 +2589,19 @@ const packetTick = (timeMs) => {
 
 const packetRelease = (input) => {
   // Arm the target-loss envelope: this release IS the active→inactive
-  // edge. Stamp the last-held moment, then render the first-loss
-  // frame explicitly (hasTarget=false, elapsed=0 → neutral reticle,
-  // opacity 1) so the DOM reads a valid frame before the next tick.
+  // edge. Render the first-loss frame explicitly (hasTarget=false,
+  // elapsed=0 → neutral reticle, opacity 1) so the DOM reads a valid
+  // frame before the next tick — but anchor the envelope's START to
+  // the FIRST rAF `now`, not this event's `input.timeMs`. Stamping the
+  // event clock here made the fade race the tick clock: a starved
+  // first frame lands >100ms later and the tick zeroes opacity before
+  // any frame paints it (#1751). We stamp `lastHadTargetMs` to the
+  // event clock ONLY so this synchronous `elapsed=0` write lands
+  // opacity=1 now, then re-arm via `pendingTargetLossArm` so the tick
+  // re-anchors the start to a painted frame.
   lastHadTargetMs = input.timeMs;
   syncTargetLossFeedback(input.timeMs, false);
+  pendingTargetLossArm = true;
   recordPacketGestureSample("release", input);
   // #1701 draft 2 (Soren's REQUEST_CHANGES): use `release(...)` here, NOT
   // `previewRelease(...)`. The harness path `choose("keep-sealed")`
@@ -4117,6 +4148,17 @@ const tick = (now) => {
   const confirmStartedAt = state.interaction.confirmStartedAt;
   const failureStartedAt = state.interaction.failureStartedAt;
   const packetIntentSnapshot = state.interaction.packetIntent.active ? packetTick(now) : state.interaction.packetIntent;
+  // #1751: consume a pending target-loss arm on the first tick that
+  // actually fires after a release. Re-anchor `lastHadTargetMs` to rAF's
+  // `now` so the 100ms fade envelope measures from a PAINTED frame — a
+  // starved first frame can no longer skip the whole window before any
+  // opacity > 0 paints. Skipped if the packet became active again (a new
+  // gesture began before the fade completed): `hasTarget=true` below
+  // already cleared the arm and reset the reticle.
+  if (pendingTargetLossArm && !packetIntentSnapshot.active) {
+    lastHadTargetMs = now;
+    pendingTargetLossArm = false;
+  }
   syncTargetLossFeedback(now, packetIntentSnapshot.active);
   const packetProgress = packetIntentSnapshot.progress;
   const confirmEnvelope = confirmStartedAt === null
