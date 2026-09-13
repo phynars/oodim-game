@@ -8,8 +8,10 @@
 export const INTERACTION_CONFIRM_FEEL = Object.freeze({
   durationMs: 220,
   easing: "easeOutCubic",
-  reticleScalePeak: 1.08,
-  reticleLiftPx: 3,
+  // A 10% scale and 4px lift clear the old 8% / 3px just-noticeable threshold
+  // on a phone without extending the 220ms confirmation window.
+  reticleScalePeak: 1.1,
+  reticleLiftPx: 4,
   cameraKickDeg: 1.4,
   cameraKickWorldX: 0.055,
   hudShakePx: 10,
