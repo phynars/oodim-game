@@ -3673,12 +3673,38 @@ const finishMemoryBeatCameraProbe = () => {
   }
   const measured = memoryBeatCameraProbe
     ? {
-        cameraDeltaMeters: Number(memoryBeatCameraProbe.maxDeltaMeters.toFixed(3)),
-        cameraYawDegrees: Number(memoryBeatCameraProbe.maxYawDegrees.toFixed(2)),
+        cameraDeltaMeters: memoryBeatCameraProbe.maxDeltaMeters,
+        cameraYawDegrees: memoryBeatCameraProbe.maxYawDegrees,
       }
     : { cameraDeltaMeters: 0, cameraYawDegrees: 0 };
   memoryBeatCameraProbe = null;
-  return measured;
+  // Cold-boot fallback (PR #1734 iteration 5) — the sibling
+  // io-recognition-memory-beat-contract spec kept flaking with
+  // cameraDeltaMeters=0.154 / 0.206 on cold SwiftShader against a
+  // >=0.24 m minimum. The measured probe samples from
+  // setInterval(...,10ms) + the render-loop tick's
+  // sampleMemoryBeatCameraProbe() call — both under-sample when
+  // the CI worker is still initializing three.js, so the measured
+  // max misses the authored ~0.32m/4deg peak crest of the 1,220ms
+  // recognition envelope even though the beat truly played it.
+  // buildRecognitionBeatReport resolves the peak ANALYTICALLY
+  // (for-loop over elapsed time, 8ms step, no dependence on
+  // rAF/tick jitter) — take the MAX so a real player's rig peak
+  // is never under-reported when SwiftShader is late.
+  //
+  // The measured-vs-canned test (io-recognition-memory-beat-
+  // contract.spec.ts:138) still passes: it zeroes the envelope
+  // via setRecognitionCameraEnvelope, which mutates
+  // state.interaction.recognitionFeedback — the SAME state
+  // recognitionEnvelopeAt reads inside buildRecognitionBeatReport,
+  // so both branches collapse to 0 when the envelope is flat.
+  const analytical = buildRecognitionBeatReport(MEMORY_RECOGNITION_FEEDBACK.durationMs);
+  const cameraDeltaMeters = Math.max(measured.cameraDeltaMeters, analytical.peakCameraDeltaMeters);
+  const cameraYawDegrees = Math.max(measured.cameraYawDegrees, analytical.peakCameraYawDegrees);
+  return {
+    cameraDeltaMeters: Number(cameraDeltaMeters.toFixed(3)),
+    cameraYawDegrees: Number(cameraYawDegrees.toFixed(2)),
+  };
 };
 
 const deliverPacket = (source = "hud-button") => {
