@@ -55,8 +55,10 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
     const w = window as unknown as {
       __targetLossOpacityPeak?: number;
       __targetLossSamplerDoneAt?: number;
+      __targetLossReleaseCount?: number;
     };
     w.__targetLossOpacityPeak = 0;
+    w.__targetLossReleaseCount = 0;
     w.__targetLossSamplerDoneAt = performance.now() + 3000;
     const el = document.querySelector<HTMLElement>("#targetLossPrompt");
     if (!el) return;
@@ -75,6 +77,17 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.up();
+
+  // The real pointer gesture must traverse the single shipped release funnel.
+  // This diagnostic distinguishes a missing event from a feedback-rendering
+  // regression without driving state through window.__game.
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () => (window as unknown as { __targetLossReleaseCount?: number }).__targetLossReleaseCount ?? 0,
+      ),
+    )
+    .toBe(1);
 
   // First-loss frame: release stamps `"true"` and the sync writes the
   // envelope's `elapsed=0` sample — reticle at neutral transform, prompt
