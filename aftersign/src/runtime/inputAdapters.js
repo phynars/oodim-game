@@ -25,7 +25,15 @@ export const attachRuntimeInputAdapters = ({
 
   packetButton.addEventListener("pointerdown", (event) => {
     event.preventDefault();
-    packetButton.setPointerCapture(event.pointerId);
+    // Some synthesized pointer streams (including headless WebKit/SwiftShader
+    // paths) do not expose a captureable pointer. Capture is a convenience for
+    // drag continuity; it must never prevent the release funnel from arming
+    // target-loss feedback.
+    try {
+      packetButton.setPointerCapture(event.pointerId);
+    } catch {
+      /* release still arrives through the button's existing pointerup listener */
+    }
     packetPress(packetPointFromEvent(event));
   });
 
@@ -41,6 +49,9 @@ export const attachRuntimeInputAdapters = ({
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel("packet");
     }
+    // Diagnostic seam for the served-page target-loss spec. This records the
+    // one canonical release funnel; do not add a second pointerup listener.
+    window.__targetLossReleaseCount = (window.__targetLossReleaseCount ?? 0) + 1;
     packetRelease(packetPointFromEvent(event));
   });
 
