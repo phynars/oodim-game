@@ -12,6 +12,10 @@ import {
   type AftersignIoFirstSceneLine,
 } from "./ioFirstSceneDialogue";
 import {
+  chooseIoReturnHandOffCopy,
+  type IoReturnHandOff,
+} from "./ioReturnHandOffCopy";
+import {
   buildIoMemorySentence,
   buildIoReturnMemoryThread,
   ioPacketReturnLine,
@@ -77,6 +81,16 @@ export type AftersignIoDialogueSnapshot = {
     readonly packetLine: AftersignIoFirstSceneLine;
     readonly routeLine: AftersignIoFirstSceneLine;
   };
+  /**
+   * Io's hand-off beat: the sentence that turns recognition into a
+   * concrete next tap, plus the prompt label a scene renderer paints
+   * as the next-action affordance. Sourced from
+   * `chooseIoReturnHandOffCopy` keyed on the same committed
+   * `packetOutcome` the `returnBeat` reads — so the words the player
+   * SEES after Io remembers them cannot drift from what Io remembers.
+   * Emitted on the same gate as `returnBeat` (packet fork committed).
+   */
+  readonly returnHandOff?: IoReturnHandOff;
   /**
    * Auditable memory sentences Io "remembers" about the player's prior
    * run, built from the canonical voice contract in `ioVoiceContract.ts`.
@@ -677,6 +691,7 @@ function getAftersignIoDialogueSnapshot(
       kioskLines,
       loopCopy: getAftersignIoLoopCopy(state),
       returnBeat,
+      returnHandOff: chooseIoReturnHandOffCopy(state.packetOutcome),
       memoryThread: thread
         ? { packetReturn: packetMemory, thread }
         : { packetReturn: packetMemory },
