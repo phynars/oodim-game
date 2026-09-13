@@ -49,18 +49,22 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   // below is a Playwright state poll, so `e2e-shared/no-wall-clock-waits`
   // stays green.
   // Arm an in-page rAF sampler BEFORE the mouse.up() edge so the
-  // first-loss frame is captured deterministically. Without this, the
-  // observed opacity peak is racy: `promptOpacity = 1 - elapsedMs/100`,
-  // so opacity is exactly `1` only at the single frame where
-  // elapsed = 0. Playwright's `toHaveCSS` polls at ~100ms intervals,
-  // and on a slow CI (SwiftShader + retries: 3) the first poll can
-  // land past the 100ms envelope, catching opacity="0" instead of the
-  // elapsed=0 frame — the flake shape re-review flagged on PR #1733
-  // (main green; the CSS-only diff on `.aim-reticle` is geometrically
-  // unrelated to the packet button, so the race is inherent to
-  // asserting a single-frame CSS value on a linear fade). Sampling
-  // opacity across a 3s rAF window and asserting the MAX captures
-  // the player-facing contract (the prompt reached full visibility)
+  // first-loss frame is captured deterministically. The envelope now
+  // HOLDS at full opacity for its opening plateau (`holdMs` in
+  // `targetLossFeedback.ts`) before the linear fade begins — so
+  // `promptOpacity === 1` spans a real time window `[0, holdMs]`, not
+  // the single `elapsed = 0` point the pre-#1751 `1 - elapsedMs/100`
+  // envelope peaked at. That zero-width crest was the flake: on slow CI
+  // (SwiftShader + retries: 3) the game's render rAF and this sampler's
+  // rAF race across a single compositor commit, and the one frame the
+  // value is `1` could fall between two reads — the observed peak
+  // collapsed to 0 (the shape re-review flagged on PR #1733; the
+  // CSS-only diff on `.aim-reticle` is geometrically unrelated to the
+  // packet button, so the race was inherent to asserting a single-frame
+  // CSS value on a linear fade). With the plateau, full visibility is
+  // observable regardless of when either rAF wakes up. Sampling opacity
+  // across a 3s rAF window and asserting the MAX still captures the
+  // player-facing contract (the prompt reached full visibility)
   // regardless of when Playwright's own poll wakes up.
   await page.evaluate(() => {
     const w = window as unknown as {
