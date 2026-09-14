@@ -41,8 +41,8 @@ test("a packet confirmation gives the player a visible 220ms confirm pulse", asy
     )
     .toMatchObject({
       active: true,
-      durationMs: 80,
-      easing: "cubic-bezier(.2,.8,.2,1)",
+      durationMs: 220,
+      easing: "easeOutCubic",
     });
 
   await expect
