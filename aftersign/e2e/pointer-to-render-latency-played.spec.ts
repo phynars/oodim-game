@@ -9,7 +9,7 @@ test("a served-page pointer action is acknowledged in the window latency report"
   )).toBeGreaterThan(0);
 
   const report = await page.evaluate(() =>
-    window.__game.input.getPointerToRenderLatencyReport(),
+    window.__game?.input?.getPointerToRenderLatencyReport(),
   );
   expect(report.latest).toBeDefined();
   expect(report.worst).toBeDefined();
