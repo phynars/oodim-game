@@ -77,11 +77,12 @@ export function checkRememberBloomThenSettle(): void {
     bloom.cameraPushDegrees > 2.5,
     `t=520 cameraPushDegrees: expected > 2.5, got ${bloom.cameraPushDegrees}`,
   );
-  // Post-#1146 feel tuning: peak cameraDeltaMeters is 0.18 (was 0.32);
-  // at t=520 the remember bloom is ~87% eased-in, so ~0.158m.
+  // PR #1734: peak cameraDeltaMeters restored to 0.32 (matches the feel
+  // doc + e2e band [0.24, 0.36]); at t=520 the remember bloom is ~87%
+  // eased-in, so ~0.28m.
   assert(
-    bloom.cameraDeltaMeters > 0.14,
-    `t=520 cameraDeltaMeters: expected > 0.14, got ${bloom.cameraDeltaMeters}`,
+    bloom.cameraDeltaMeters > 0.25,
+    `t=520 cameraDeltaMeters: expected > 0.25, got ${bloom.cameraDeltaMeters}`,
   );
   // vignetteOpacity is now a flat 0.2 across catch+remember (was 0.32
   // peak in remember); guard against regression below the new floor.
@@ -173,12 +174,13 @@ export function checkRecognitionSpecBands(): void {
   );
 
   const peak = recognitionFeedbackAt(700, { outcome: 'sealed' });
-  // Post-#1146 spec band: peak cameraDeltaMeters tightened to 0.18
-  // (was 0.32). Band centered on the constant with ±0.06 slack so
-  // future ±one-notch feel nudges don't false-fail the harness.
+  // PR #1734: peak cameraDeltaMeters restored to 0.32 to match the feel
+  // doc (docs/flagship/io-recognition-beat.md — "dolly 0.32m") and the
+  // e2e acceptance band [0.24, 0.36]. Use that same band here so the
+  // harness and the shipped e2e agree on the contract.
   assert(
-    peak.cameraDeltaMeters >= 0.12 && peak.cameraDeltaMeters <= 0.24,
-    `peak cameraDeltaMeters should be 0.12–0.24m, got ${peak.cameraDeltaMeters}`,
+    peak.cameraDeltaMeters >= 0.24 && peak.cameraDeltaMeters <= 0.36,
+    `peak cameraDeltaMeters should be 0.24–0.36m, got ${peak.cameraDeltaMeters}`,
   );
   assert(
     peak.cameraYawDegrees >= 3 && peak.cameraYawDegrees <= 5,
