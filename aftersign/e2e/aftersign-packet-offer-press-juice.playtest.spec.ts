@@ -74,6 +74,6 @@ test.describe("AFTERSIGN packet-offer press juice", () => {
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxScaleDrop);
 
     await waitForBeat(page, "packet-choice");
-    await page.waitForTimeout(PRESS_FEEL.recoveryMs);
+    await page.waitForTimeout(PRESS_FEEL.recoveryMs); // pacing
   });
 });
