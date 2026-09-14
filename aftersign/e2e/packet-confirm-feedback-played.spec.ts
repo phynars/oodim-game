@@ -23,25 +23,32 @@ import { expect, test, type Page } from "@playwright/test";
  *   durationMs: 220
  *   easing:     "easeOutCubic"
  *
- * ------- Why an in-page rAF sampler (not a CDP getComputedStyle poll) -------
- * The `--confirm-shake-x` CSS custom property is `Math.round(wobble * 10)px`
- * where `wobble = falloff * sin(progress * π * 6)` (see the packet-cancel
- * failure-sting sibling's header comment for the same shape on the failure
- * channel). Across the 220ms envelope:
- *   • the sine crosses zero SIX times (progress * π * 6 gives 6 half-cycles),
- *   • the exponential falloff decays to ~0.125 by t≈110ms, so past that the
- *     product rounds to 0 or ±1,
- *   • at t=220ms `aftersign/main.js:3857` HARD-RESETS the var back to `0px`.
- * A `page.evaluate(() => getComputedStyle(...))` poll round-trips 40-100ms
- * on SwiftShader in CI, so a two-probe poll can land on a zero-crossing OR
- * past the reset. That's not flake — it's structural, and Soren's #1768
- * REQUEST_CHANGES calls it out explicitly.
+ * ------- Why an in-page rAF sampler on the STATE MIRROR (not the CSS var) -------
+ * The `--confirm-shake-x` CSS custom property is stamped from
+ *   `confirmEnvelope.hudShakeX = Math.round(wobble * feel.hudShakePx)`
+ * (aftersign/src/interactionConfirmFeel.js:48) where
+ * `wobble = falloff * sin(progress * π * 6)`. Across the 220ms envelope
+ * the sine crosses zero SIX times and the falloff decays to ~0.125 by
+ * t≈110ms — so a `page.evaluate(() => getComputedStyle(...))` poll that
+ * round-trips 40-100ms on SwiftShader in CI can land on a zero-crossing
+ * OR past the t=220ms hard-reset at `aftersign/main.js:3857`. That's
+ * not flake — it's structural, and #1768 draft 5 REQUEST_CHANGES from
+ * Soren spelled out the fix: read the envelope off
+ * `state.interaction.confirmFeedback` (the mirror `aftersign/main.js`
+ * writes on the same frame `.active` flips at :4171) INSTEAD of
+ * round-tripping through `getComputedStyle`. Same value, no render-
+ * timing dependency.
  *
- * Fix (same shape the sibling `packet-cancel-failure-sting-played.spec.ts`
- * already ships): install an in-page rAF loop BEFORE the gesture, walk the
- * envelope frame-by-frame in the page context, high-water the peak
- * `|--confirm-shake-x|` there, and read the accumulator ONCE after the
- * state mirror (`confirmFeedback.active`) has flipped back to false.
+ * The mirror keys the sampler reads (main.js writes them right after
+ * `confirmFeedback.active = confirmProgress < 1`):
+ *   confirmFeedback.hudShakeX     — same number stamped into --confirm-shake-x
+ *   confirmFeedback.hudLiftY      — same number stamped into --confirm-shake-y
+ *   confirmFeedback.reticleScale  — same number stamped into --confirm-reticle-scale
+ *
+ * The in-page rAF loop still walks frame-by-frame (so we don't miss the
+ * crest between two CDP probes), but each sample reads three plain
+ * numbers off a JS object the game's own render tick just wrote —
+ * which kills the SwiftShader race the reviewer called out.
  */
 
 const WAIT_MS = 15_000;
@@ -86,6 +93,9 @@ async function installConfirmHighWater(page: Page): Promise<void> {
             active: boolean;
             durationMs: number;
             easing: string;
+            hudShakeX?: number;
+            hudLiftY?: number;
+            reticleScale?: number;
           };
         };
       };
@@ -106,22 +116,25 @@ async function installConfirmHighWater(page: Page): Promise<void> {
       lastFeedback: null,
     };
     const highWater = w.__confirmHighWater!;
-    const root = document.documentElement;
     const step = () => {
       highWater.sampleCount += 1;
-      const style = getComputedStyle(root);
-      const shakeXRaw = style.getPropertyValue("--confirm-shake-x").replace("px", "").trim();
-      const shakeYRaw = style.getPropertyValue("--confirm-shake-y").replace("px", "").trim();
-      const reticleRaw = style.getPropertyValue("--confirm-reticle-scale").trim();
-      const shakeX = Number(shakeXRaw || "0");
-      const shakeY = Number(shakeYRaw || "0");
-      const reticle = Number(reticleRaw || "1");
+      // #1768 draft 6 (Soren's REQUEST_CHANGES): read shake off the
+      // envelope mirror on `state.interaction.confirmFeedback` — the
+      // game writes it on the SAME frame `.active` flips (main.js
+      // right after `confirmFeedback.active = confirmProgress < 1`)
+      // and it holds the exact same `confirmEnvelope.hudShakeX` value
+      // the CSS-var stamp uses at main.js:4159. No CDP round-trip
+      // through `getComputedStyle`, so no render-timing race on
+      // SwiftShader.
       const feedback = w.__game?.interaction?.confirmFeedback ?? null;
       const active = feedback?.active === true;
+      const shakeX = typeof feedback?.hudShakeX === "number" ? feedback.hudShakeX : 0;
+      const shakeY = typeof feedback?.hudLiftY === "number" ? feedback.hudLiftY : 0;
+      const reticle = typeof feedback?.reticleScale === "number" ? feedback.reticleScale : 1;
       highWater.lastActive = active;
       if (feedback) {
         // Clone: the runtime mutates the same object in place across
-        // frames (aftersign/main.js:4171-4172 writes .active/.remainingMs
+        // frames (main.js writes .active/.remainingMs/.hudShakeX/…
         // every render tick), so we snapshot rather than retain the
         // live reference.
         highWater.lastFeedback = {
@@ -229,15 +242,20 @@ test.describe("AFTERSIGN delivery confirm feel", () => {
     // survives:
     //   • the six zero-crossings of `sin(progress * π * 6)` — we
     //     high-water the crest across all live frames, not one probe,
-    //   • the `Math.round(wobble * 10)` snap-to-zero after t≈110ms —
-    //     the peak is captured in the first quarter of the envelope,
+    //   • the `Math.round(wobble * hudShakePx)` snap-to-zero after
+    //     t≈110ms — the peak is captured in the first quarter,
     //   • the main.js:3857 hard-reset — we sample DURING the envelope,
     //     not after.
+    // Draft 6 (Soren's REQUEST_CHANGES on draft 5): the peak comes off
+    // `confirmFeedback.hudShakeX` (the envelope mirror the game writes
+    // next to `.active`), NOT `getComputedStyle(--confirm-shake-x)` —
+    // same number, no CDP round-trip, no SwiftShader render-timing
+    // race.
     // >= 1 is intentionally the floor: the rendered wobble crest is
-    // `Math.round(0..1 * 10)` = up to 10px, but we don't want to pin
-    // exact px counts (that couples the test to SwiftShader render
-    // timing).  What we're proving is "not zero" — the reviewer's
-    // exact ask.
+    // `Math.round(wobble * feel.hudShakePx)` — up to ~feel.hudShakePx
+    // — but we don't want to pin exact px counts (that couples the
+    // test to the feel-token amplitude).  What we're proving is
+    // "not zero" — the reviewer's exact ask.
     expect(highWater.peakShakeXAbs).toBeGreaterThanOrEqual(1);
     expect(highWater.everActive).toBe(true);
     expect(highWater.everDecayed).toBe(true);
@@ -257,6 +275,9 @@ declare global {
           active: boolean;
           durationMs: number;
           easing: string;
+          hudShakeX?: number;
+          hudLiftY?: number;
+          reticleScale?: number;
         };
       };
     };

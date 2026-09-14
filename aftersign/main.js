@@ -4170,6 +4170,21 @@ const tick = (now) => {
   if (confirmStartedAt !== null) {
     state.interaction.confirmFeedback.active = confirmProgress < 1;
     state.interaction.confirmFeedback.remainingMs = Math.max(0, Math.round(CONFIRM_FEEDBACK.durationMs - (now - confirmStartedAt)));
+        // Envelope mirror (#1768 draft 6 — Soren's REQUEST_CHANGES): the
+        // shipped CSS-var stamp at main.js:4159 is
+        //   --confirm-shake-x = confirmEnvelope.hudShakeX - failureWobbleTerm
+        // and a `page.evaluate(() => getComputedStyle(...))` poll races the
+        // 220ms envelope against the CDP round-trip. Mirror the SAME
+        // `hudShakeX` / `hudLiftY` / `reticleScale` values the CSS-var
+        // stamp uses onto `state.interaction.confirmFeedback` on the same
+        // frame `.active` flips, so an in-page rAF sampler can read the
+        // envelope directly from `window.__game.interaction.confirmFeedback`
+        // and kill the render-timing dependency. Sibling e2e
+        // `aftersign/e2e/packet-confirm-feedback-played.spec.ts` reads
+        // these exact keys and pins `peakShakeXAbs >= 1`.
+        state.interaction.confirmFeedback.hudShakeX = confirmEnvelope.hudShakeX;
+        state.interaction.confirmFeedback.hudLiftY = confirmEnvelope.hudLiftY;
+        state.interaction.confirmFeedback.reticleScale = confirmEnvelope.reticleScale;
     if (confirmProgress >= 1) {
       state.interaction.confirmStartedAt = null;
     }
