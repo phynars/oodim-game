@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
  * interaction-confirm channel. This deliberately never drives __game input;
  * __game is read only after the rendered control receives the click.
  */
-test("a packet confirmation gives the player a visible 80ms confirm pulse", async ({ page }) => {
+test("a packet confirmation gives the player a visible 220ms confirm pulse", async ({ page }) => {
   await page.goto("/");
 
   const packetButton = page.locator("#packetButton");
