@@ -115,6 +115,29 @@
         --aftersign-scene-transition-vignette-alpha: 0;
         --aftersign-scene-transition-bloom-alpha: 0;
         --aftersign-scene-transition-easing: linear;
+
+        /* --aftersign-packet-press-* — packet-offer press envelope
+           consumed by the CSS rule on
+           `#packetButton[data-aftersign-packet-press="pressing"]`
+           (below) and stamped/held by
+           `aftersign/packetOfferPressing.js`. Mirrors the job-take
+           precedent (PR #1663 / #1649): Playwright's
+           `touchscreen.tap()` fires pointerdown+pointerup in ~1ms,
+           so `:active` cannot drive a paintable compression. A JS
+           `pressing` marker held by `setTimeout(hold-ms)` keeps the
+           button in the pressed transform for the full window; the
+           spec's 64ms sample (or its pointerdown-authored read) lands
+           inside the compressed envelope.
+
+           Numbers picked to match the job-take feel row exactly so
+           the packet-offer and job-offer press beats read as the
+           same "tap language" to the player:
+             scale-from : 0.97   (3% compression — visible, not jumpy)
+             hold-ms    : 96ms   (spec samples inside this window)
+             easing     : cubic-bezier(.2,.8,.2,1) (juice curve) */
+        --aftersign-packet-press-scale-from: 0.97;
+        --aftersign-packet-press-hold-ms: 96ms;
+        --aftersign-packet-press-easing: cubic-bezier(.2, .8, .2, 1);
       }
 
       /* Scene-transition consumer rule. Reads the CSS variables
@@ -754,6 +777,45 @@
         transform: translate3d(0, 1px, 0) scale(0.99);
       }
 
+      /* Packet-offer press envelope — SHIPPED CONSUMER of the
+         --aftersign-packet-press-* variables authored on `:root`.
+         Mirrors the job-take precedent (line ~335, PR #1663 /
+         #1649): the sibling `.packet-button:active span` rule
+         above only compresses the <span> child by 1% for ~1ms
+         under Playwright's `touchscreen.tap()`, which the
+         press-juice spec (aftersign-packet-offer-press-juice)
+         cannot measure — it samples the BUTTON's bounding rect
+         and needs the button ITSELF to compress for a real
+         painted window.
+
+         The fix is the same shape as job-take: a JS `pressing`
+         marker (see `aftersign/packetOfferPressing.js`) stamps
+         `data-aftersign-packet-press="pressing"` on
+         `#packetButton` at pointerdown and holds it via
+         `setTimeout(hold-ms)` so the transform lives long
+         enough for the 64ms sample to land inside the
+         compressed envelope. Compress-in reaches scale-from in
+         24ms (same as job-take's #1663 fix); the full hold
+         window keeps the compressed transform in place until
+         the JS restores the prior attribute value. Return path
+         inherits from the base .packet-button transition
+         (84ms cubic-bezier) once the marker is removed. */
+      #packetButton[data-aftersign-packet-press="pressing"] {
+        transform: scale(var(--aftersign-packet-press-scale-from, 1));
+        transition: transform 24ms var(--aftersign-packet-press-easing, linear);
+        will-change: transform;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        /* Reduced-motion: keep the state marker (so any
+           dependent CSS keys off it correctly) but collapse the
+           transform channel. The press-juice spec is not gated
+           on this branch. */
+        #packetButton[data-aftersign-packet-press="pressing"] {
+          transform: none;
+          transition: none;
+        }
+      }
+
       /* Recognition impact-burst overlay (#1104). Absolute-positioned
          container anchored near the on-screen NPC-eye position; the
          render tick in main.js reconciles child `.impact-burst-particle`
@@ -1383,6 +1445,7 @@
       })();
     </script>
     <script type="module" src="./jobOfferPressing.js"></script>
+    <script type="module" src="./packetOfferPressing.js"></script>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
