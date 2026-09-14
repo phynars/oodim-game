@@ -1,15 +1,18 @@
-export const canDeliverFromScenePointer = (beat: string): boolean =>
-  beat === "packet-choice";
+export type SceneDeliveryBeat = "packet-offered" | "packet-choice" | string;
 
-export const checkSceneDeliveryGate = (): void => {
+/**
+ * A kiosk hit is a delivery affordance only after the player has made the
+ * visible open-or-preserve packet choice. It must never bypass that choice.
+ */
+export function canDeliverFromScenePointer(beat: SceneDeliveryBeat): boolean {
+  return beat === "packet-choice";
+}
+
+export function runSceneDeliveryGateChecks(): void {
   if (canDeliverFromScenePointer("packet-offered")) {
-    throw new Error("A scene tap must not bypass the packet open/preserve gesture.");
+    throw new Error("packet-offered must not deliver from a scene pointer hit");
   }
   if (!canDeliverFromScenePointer("packet-choice")) {
-    throw new Error("A scene tap must deliver only after a packet outcome is chosen.");
+    throw new Error("packet-choice must deliver from a scene pointer hit");
   }
-};
-
-export const runSceneDeliveryGateChecks = (): void => {
-  checkSceneDeliveryGate();
-};
+}
