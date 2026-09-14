@@ -3,8 +3,17 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * Served-page feel gate: a player pointer action must visibly wake the
  * interaction-confirm channel. This deliberately never drives __game
- * input; __game is read only after the rendered control receives the
- * click, and the CSS-var peak is captured by an in-page rAF sampler.
+ * input; __game is read only after the rendered controls receive the
+ * clicks, and the CSS-var peak is captured by an in-page rAF sampler.
+ *
+ * WHICH GESTURE wakes the confirm envelope? The confirm channel fires
+ * from `triggerKioskFeedback` (aftersign/main.js:3321), which is only
+ * called by `deliverPacket` (aftersign/main.js:3691) — wired to
+ * `#deliverButton`, NOT `#packetButton`. The packet-open tap advances
+ * the beat to `packet-choice`; the DELIVERY tap on `#deliverButton` is
+ * what wakes the 220ms confirm pulse. Sibling specs use the same
+ * two-tap flow (`io-ledger-line-served.spec.ts:63/75`,
+ * `durable-return-session-phone-playtest.spec.ts:134`).
  *
  * Constants are pinned against the shipped feel token
  * (`aftersign/src/interactionConfirmFeel.js` — `INTERACTION_CONFIRM_FEEL`,
@@ -148,8 +157,8 @@ async function readConfirmHighWater(page: Page): Promise<ConfirmHighWater> {
   });
 }
 
-test.describe("AFTERSIGN packet confirm feel", () => {
-  test("a packet confirmation gives the player a visible 220ms confirm pulse", async ({ page }) => {
+test.describe("AFTERSIGN delivery confirm feel", () => {
+  test("a packet delivery gives the player a visible 220ms confirm pulse", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
 
     // Absolute-relative path against the vite preview server. baseURL
@@ -162,19 +171,32 @@ test.describe("AFTERSIGN packet confirm feel", () => {
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
 
+    // Step 1 — packet-open: tap `#packetButton` to advance the beat to
+    // `packet-choice`. This gesture does NOT fire the confirm envelope
+    // (see file header): triggerKioskFeedback is wired to deliverPacket
+    // only. We tap it here to reveal `#deliverButton`, then install the
+    // sampler and drive the delivery gesture.
     const packetButton = page.locator("#packetButton");
     await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
-
-    // Install the in-page rAF sampler BEFORE the click.  The confirm
-    // envelope is 220ms and its rendered `--confirm-shake-x` peak lives
-    // in the first ~100ms — the sampler must be running before the
-    // gesture or the crest is gone by the time we start reading (same
-    // race the sibling failure-sting spec documents).
-    await installConfirmHighWater(page);
-
     await packetButton.click();
 
-    // Wait for the sting to have BOTH lit up AND decayed.  This is the
+    // Step 2 — wait for the delivery control to appear (packet-choice
+    // beat). Sibling specs (`io-ledger-line-served.spec.ts:70`,
+    // `durable-return-session-phone-playtest.spec.ts:134`) use the same
+    // `#deliverButton` selector for this beat.
+    const deliverButton = page.locator("#deliverButton");
+    await expect(deliverButton).toBeVisible({ timeout: WAIT_MS });
+
+    // Install the in-page rAF sampler BEFORE the delivery click.  The
+    // confirm envelope is 220ms and its rendered `--confirm-shake-x`
+    // peak lives in the first ~100ms — the sampler must be running
+    // before the gesture or the crest is gone by the time we start
+    // reading (same race the sibling failure-sting spec documents).
+    await installConfirmHighWater(page);
+
+    await deliverButton.click();
+
+    // Wait for the confirm pulse to have BOTH lit up AND decayed.  This is the
     // exact state contract at `aftersign/main.js:4170-4175`:
     // `confirmFeedback.active = confirmProgress < 1` flips false when
     // the 220ms envelope closes.  We poll the page-side accumulator
