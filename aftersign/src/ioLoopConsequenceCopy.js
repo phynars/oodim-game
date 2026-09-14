@@ -21,14 +21,22 @@
 // "pending" line — safe default, never throws, never shows a raw key.
 //
 // Consumers on record:
-//   • `apps/web/src/aftersign/harness/bootWindowGame.ts`
-//     (projects the line onto `story.nextJob.offer.consequenceLine`)
+//   • `aftersign/main.js` — THE SERVED-PAGE CONSUMER. Stamps the
+//     selected line into `<p id="ioConsequenceLine">` inside the
+//     visible `#offeredJobs` tray at the `packet-offered` beat, with
+//     `data-aftersign-io-consequence-line=<outcome>` mirroring the
+//     branch. This is the DOM a real player reads.
+//   • `aftersign/e2e/io-loop-consequence-line-served.spec.ts` —
+//     real-taps the served page across a full loop and pins the
+//     fresh-boot ("pending") → sealed literal divergence
+//     element-level.
+//   • `apps/web/src/aftersign/harness/bootWindowGame.ts` — the
+//     vitest boot harness mirror; projects the same line onto
+//     `story.nextJob.offer.consequenceLine` so a pure-vitest
+//     consumer test can assert the harness projection matches the
+//     ground-truth literal without driving a browser.
 //   • `apps/web/src/aftersign/ioLoopConsequenceLine.consumer.test.ts`
-//     (asserts each branch reaches the served snapshot).
-//
-// If a future refactor unwires the harness importer, the consumer
-// spec above goes red — the copy stops being dead code the moment
-// it's shipped.
+//     — asserts each branch reaches the harness snapshot.
 
 const PENDING_LINE =
   "One run changes the next. Take the work in front of you.";

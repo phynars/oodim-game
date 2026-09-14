@@ -306,6 +306,23 @@ import {
   resolveAftersignJobTakeFeel,
 } from "../apps/web/src/aftersign/aftersignJobTakeFeel.js";
 import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersignJobOfferCopy.js";
+// #1765 (Soren's fourth REQUEST_CHANGES) — Io's round-to-round
+// consequence line. Wiring it in main.js here is what turns
+// `aftersign/src/ioLoopConsequenceCopy.js` from an isolated copy
+// table into a SHIPPED consumer on the served page: at the
+// packet-offered beat renderText() below stamps a
+// `<p id="ioConsequenceLine" data-aftersign-io-consequence-line>`
+// paragraph into the visible `#offeredJobs` tray, right beside the
+// route/risk copy the offer buttons render, keyed on the SAME
+// `packetOutcomeFactObject` axis (`sealed` / `opened`, fresh boot →
+// `pending`). Soren's prior three reviews blocked the wire into
+// `bootWindowGame.ts` (the vitest boot harness) because a snapshot
+// consumer is not a player-visible consumer; this import lands the
+// line in the DOM a player actually reads. Sibling e2e
+// `aftersign/e2e/io-loop-consequence-line-served.spec.ts` real-taps
+// the served page across a full loop and pins the fresh-boot
+// (`pending`) → sealed literal divergence element-level.
+import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
@@ -2166,6 +2183,26 @@ const renderText = () => {
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
         routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
+// #1765 — Io's round-to-round consequence line, stamped onto the
+// served `#offeredJobs` tray as a player-visible paragraph right
+// beside the route/risk copy. Fresh boot (no delivery-outcome fact)
+// → the neutral "pending" line; a sealed first delivery → the
+// trust line; an opened first delivery → the "narrow, watched"
+// line. Keyed on the SAME `packetOutcomeFactObject` the offer copy
+// narrows on, so voice and mechanics never drift. The
+// `data-aftersign-io-consequence-line` attribute mirrors the outcome
+// branch so a taps-only e2e can pin the literal element-level.
+const __ioConsequenceOutcome = packetOutcomeFactObject ?? "pending";
+const __ioConsequenceLineNode = document.createElement("p");
+__ioConsequenceLineNode.id = "ioConsequenceLine";
+__ioConsequenceLineNode.setAttribute(
+  "data-aftersign-io-consequence-line",
+  __ioConsequenceOutcome,
+);
+__ioConsequenceLineNode.textContent = ioLoopConsequenceLine(
+  packetOutcomeFactObject,
+);
+offeredJobs.appendChild(__ioConsequenceLineNode);
         for (const offer of offers) {
           // PR #1422 — per-jobId M-LOOP copy + memory-gated action.
           // `selectMloopJobCopy` currently mirrors the visible label

@@ -13,16 +13,17 @@ import {
 // harness is the sole importer and this file is the ship-side consumer
 // #1404's reviewer asked for.
 import { chooseAftersignJobOfferCopy } from "../aftersignJobOfferCopy.js";
-// Round-to-round consequence line for Io's next-job handoff.
-// Selected here so the served-surface snapshot at
-// `story.nextJob.offer.consequenceLine` carries the ONE sentence
-// Io speaks about what the previous run changed before she pushes
-// the new tag across — sealed delivery earns the "risk wider work"
-// line, an opened packet earns the "narrow, watched" line, and a
-// fresh boot gets the neutral pending line. Ship-side consumer
-// #1765's reviewers asked for; the module stops being a dead copy
-// table the moment this import lands (see
-// `ioLoopConsequenceLine.consumer.test.ts`).
+// Round-to-round consequence line for Io's next-job handoff — the
+// SNAPSHOT MIRROR. Selected here so the harness's
+// `story.nextJob.offer.consequenceLine` snapshot carries the same
+// sentence the served-page consumer stamps on `#ioConsequenceLine`
+// (see `aftersign/main.js`, which is the ACTUAL ship-side consumer;
+// this file is the vitest boot harness). Keyed on the same
+// `packetOutcome` axis the offer copy narrows on: sealed → trust
+// line, opened → "narrow, watched" line, fresh boot → pending line.
+// The served-page render is what the player reads; this snapshot
+// exists so `ioLoopConsequenceLine.consumer.test.ts` can pin the
+// harness projection matches the served literal element-for-element.
 import { ioLoopConsequenceLine } from "../../../../../aftersign/src/ioLoopConsequenceCopy.js";
 // Take-job tactile envelope. Resolved here so the served-surface tap
 // that COMMITS the next-job branch (`take-job-blue-seal-safe` /
@@ -826,8 +827,15 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
               // hands over the next tag. Sourced from the pure copy
               // module (`aftersign/src/ioLoopConsequenceCopy.js`) so no
               // dialogue is authored inline; keyed on the same
-              // `packetOutcome` axis the offer copy narrows on. Ship-
-              // side consumer #1765's reviewers asked for.
+              // `packetOutcome` axis the offer copy narrows on. This
+              // is the HARNESS SNAPSHOT MIRROR — the served-page
+              // consumer that a player actually reads is the
+              // `#ioConsequenceLine` render in `aftersign/main.js`;
+              // the served-e2e
+              // `aftersign/e2e/io-loop-consequence-line-served.spec.ts`
+              // pins the DOM literal, and this snapshot lets a
+              // pure-vitest consumer test assert the two projections
+              // never drift.
               consequenceLine: ioLoopConsequenceLine(state.packetOutcome),
           },
           beat: {
