@@ -13,6 +13,18 @@ import {
 // harness is the sole importer and this file is the ship-side consumer
 // #1404's reviewer asked for.
 import { chooseAftersignJobOfferCopy } from "../aftersignJobOfferCopy.js";
+// Round-to-round consequence line for Io's next-job handoff — the
+// SNAPSHOT MIRROR. Selected here so the harness's
+// `story.nextJob.offer.consequenceLine` snapshot carries the same
+// sentence the served-page consumer stamps on `#ioConsequenceLine`
+// (see `aftersign/main.js`, which is the ACTUAL ship-side consumer;
+// this file is the vitest boot harness). Keyed on the same
+// `packetOutcome` axis the offer copy narrows on: sealed → trust
+// line, opened → "narrow, watched" line, fresh boot → pending line.
+// The served-page render is what the player reads; this snapshot
+// exists so `ioLoopConsequenceLine.consumer.test.ts` can pin the
+// harness projection matches the served literal element-for-element.
+import { ioLoopConsequenceLine } from "../../../../../aftersign/src/ioLoopConsequenceCopy.js";
 // Take-job tactile envelope. Resolved here so the served-surface tap
 // that COMMITS the next-job branch (`take-job-blue-seal-safe` /
 // `take-job-orra-name-risk` / `take-job-wax-debt-repair`, or the
@@ -811,6 +823,20 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
                 packetOpened: state.packetOutcome === "opened",
                 deliveredSealed: state.packetOutcome === "sealed",
               }),
+              // One-line acknowledgement of the PREVIOUS run before Io
+              // hands over the next tag. Sourced from the pure copy
+              // module (`aftersign/src/ioLoopConsequenceCopy.js`) so no
+              // dialogue is authored inline; keyed on the same
+              // `packetOutcome` axis the offer copy narrows on. This
+              // is the HARNESS SNAPSHOT MIRROR — the served-page
+              // consumer that a player actually reads is the
+              // `#ioConsequenceLine` render in `aftersign/main.js`;
+              // the served-e2e
+              // `aftersign/e2e/io-loop-consequence-line-served.spec.ts`
+              // pins the DOM literal, and this snapshot lets a
+              // pure-vitest consumer test assert the two projections
+              // never drift.
+              consequenceLine: ioLoopConsequenceLine(state.packetOutcome),
           },
           beat: {
             id: ORRA_NAME_DEBT.id,
