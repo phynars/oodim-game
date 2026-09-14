@@ -24,7 +24,7 @@ export const IO_NEXT_JOB_DIALOGUE = Object.freeze({
   id: IO_NEXT_JOB_DIALOGUE_ID,
   speaker: "Io",
   beat: "io-next-job",
-  choiceLabel: "Take the red tag",
+  choiceLabel: "Pocket the red tag",
   line: IO_NEXT_JOB_HANDOFF.line,
   memoryRefs: Object.freeze(["delivery-outcome", "route-attention"]),
 });
