@@ -23,32 +23,39 @@ import { expect, test, type Page } from "@playwright/test";
  *   durationMs: 220
  *   easing:     "easeOutCubic"
  *
- * ------- Why an in-page rAF sampler on the STATE MIRROR (not the CSS var) -------
- * The `--confirm-shake-x` CSS custom property is stamped from
- *   `confirmEnvelope.hudShakeX = Math.round(wobble * feel.hudShakePx)`
- * (aftersign/src/interactionConfirmFeel.js:48) where
- * `wobble = falloff * sin(progress * π * 6)`. Across the 220ms envelope
- * the sine crosses zero SIX times and the falloff decays to ~0.125 by
- * t≈110ms — so a `page.evaluate(() => getComputedStyle(...))` poll that
- * round-trips 40-100ms on SwiftShader in CI can land on a zero-crossing
- * OR past the t=220ms hard-reset at `aftersign/main.js:3857`. That's
- * not flake — it's structural, and #1768 draft 5 REQUEST_CHANGES from
- * Soren spelled out the fix: read the envelope off
- * `state.interaction.confirmFeedback` (the mirror `aftersign/main.js`
- * writes on the same frame `.active` flips at :4171) INSTEAD of
- * round-tripping through `getComputedStyle`. Same value, no render-
- * timing dependency.
+ * ------- Why an in-page rAF sampler on the STATE MIRROR, and why we
+ * assert off `reticleScale` (monotonic) instead of `hudShakeX` (wobbly) -------
+ *
+ * Two races, two fixes:
+ *
+ * 1. CDP round-trip race (#1768 draft 5, Soren):
+ *    `page.evaluate(() => getComputedStyle(...))` round-trips 40-100ms
+ *    on SwiftShader in CI and can miss the 220ms envelope entirely.
+ *    Fix: read the envelope off `state.interaction.confirmFeedback`
+ *    (the mirror `aftersign/main.js` writes on the same frame
+ *    `.active` flips at :4171) INSTEAD of round-tripping through
+ *    `getComputedStyle`. Same values, no CDP round-trip.
+ *
+ * 2. Frame-sampling race on a wobbly channel (#1768 draft 6→7, Soren):
+ *    `hudShakeX = Math.round(wobble * hudShakePx)` where
+ *    `wobble = falloff * sin(progress * π * 6)`
+ *    (aftersign/src/interactionConfirmFeel.js:34-37). The sine crosses
+ *    zero SIX times across the 220ms envelope; on SwiftShader at
+ *    10-20fps the rAF sampler catches only 2-4 frames inside the
+ *    envelope, and those frames can land on/near zero-crossings — so
+ *    `peakShakeXAbs` reads 0 even though `.active` was true for the
+ *    full 220ms. Fix: assert off `peakReticleScale`, which is
+ *    monotonically `> 1` while the envelope is active:
+ *      reticleScale = 1 + falloff * (reticleScalePeak - 1)
+ *    and `falloff = 1 - easeOutCubic(progress) > 0` for every
+ *    `progress < 1`. No zero-crossings, no frame-timing dependency —
+ *    any live frame proves the HUD moved.
  *
  * The mirror keys the sampler reads (main.js writes them right after
  * `confirmFeedback.active = confirmProgress < 1`):
- *   confirmFeedback.hudShakeX     — same number stamped into --confirm-shake-x
- *   confirmFeedback.hudLiftY      — same number stamped into --confirm-shake-y
- *   confirmFeedback.reticleScale  — same number stamped into --confirm-reticle-scale
- *
- * The in-page rAF loop still walks frame-by-frame (so we don't miss the
- * crest between two CDP probes), but each sample reads three plain
- * numbers off a JS object the game's own render tick just wrote —
- * which kills the SwiftShader race the reviewer called out.
+ *   confirmFeedback.hudShakeX     — same number stamped into --confirm-shake-x (wobbly; NOT asserted)
+ *   confirmFeedback.hudLiftY      — same number stamped into --confirm-shake-y (wobbly; NOT asserted)
+ *   confirmFeedback.reticleScale  — same number stamped into --confirm-reticle-scale (monotonic; ASSERTED)
  */
 
 const WAIT_MS = 15_000;
@@ -237,26 +244,31 @@ test.describe("AFTERSIGN delivery confirm feel", () => {
       easing: "easeOutCubic",
     });
 
-    // The envelope actually MOVED the HUD.  Peak-abs is captured on
-    // every rAF tick that saw `confirmFeedback.active === true`, so it
-    // survives:
-    //   • the six zero-crossings of `sin(progress * π * 6)` — we
-    //     high-water the crest across all live frames, not one probe,
-    //   • the `Math.round(wobble * hudShakePx)` snap-to-zero after
-    //     t≈110ms — the peak is captured in the first quarter,
-    //   • the main.js:3857 hard-reset — we sample DURING the envelope,
-    //     not after.
-    // Draft 6 (Soren's REQUEST_CHANGES on draft 5): the peak comes off
-    // `confirmFeedback.hudShakeX` (the envelope mirror the game writes
-    // next to `.active`), NOT `getComputedStyle(--confirm-shake-x)` —
-    // same number, no CDP round-trip, no SwiftShader render-timing
-    // race.
-    // >= 1 is intentionally the floor: the rendered wobble crest is
-    // `Math.round(wobble * feel.hudShakePx)` — up to ~feel.hudShakePx
-    // — but we don't want to pin exact px counts (that couples the
-    // test to the feel-token amplitude).  What we're proving is
-    // "not zero" — the reviewer's exact ask.
-    expect(highWater.peakShakeXAbs).toBeGreaterThanOrEqual(1);
+    // The envelope actually MOVED the HUD.  Draft 7 (Soren's
+    // REQUEST_CHANGES on draft 6): the mirror kills the CDP round-trip
+    // race but NOT the frame-sampling race.  `hudShakeX` is
+    // `Math.round(wobble * hudShakePx)` where
+    // `wobble = falloff * sin(progress * π * 6)` — the sine crosses
+    // zero six times across the 220ms envelope, and on SwiftShader CI
+    // at ~10-20fps the rAF sampler catches only 2-4 frames inside the
+    // envelope.  Those frames can land on/near zero-crossings, so
+    // `peakShakeXAbs` reads 0 even though `.active` was true for the
+    // full 220ms (CI red on drafts 1-6).
+    //
+    // Fix: assert off `peakReticleScale`, a MONOTONIC field of the
+    // same envelope.  Per `aftersign/src/interactionConfirmFeel.js`,
+    //   reticleScale = 1 + falloff * (reticleScalePeak - 1)
+    // and `falloff = 1 - easeOutCubic(progress)`.  For every
+    // `progress < 1` (i.e. every frame where `.active === true`),
+    // `falloff > 0`, so `reticleScale > 1`.  No zero-crossings, no
+    // frame-timing dependency — ANY live frame the sampler catches
+    // proves the envelope moved.
+    //
+    // `> 1` is the structural floor: reticleScale peaks at
+    // `reticleScalePeak = 1.08` but we don't pin the amplitude (that
+    // would couple the test to the feel-token value).  What we prove
+    // is "the HUD moved", which is the reviewer's exact ask.
+    expect(highWater.peakReticleScale).toBeGreaterThan(1);
     expect(highWater.everActive).toBe(true);
     expect(highWater.everDecayed).toBe(true);
     expect(highWater.liveFrames).toBeGreaterThanOrEqual(1);
