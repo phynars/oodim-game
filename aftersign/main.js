@@ -436,7 +436,7 @@ import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // getPointerToRenderLatencyReport()`. The harness projection
 // (bootWindowGame.ts) exposes the SAME four methods over the same
 // primitive so vitest and Playwright can pin the seam identically.
-import { measurePointerToRenderLatency } from "./src/inputAcknowledgeLatency.ts";
+import { createPointerToRenderLatencyRuntime } from "./src/pointerToRenderRuntime.ts";
 // Runtime seam extractions (PR #1358) — the served page consumes the
 // same primitives the harness's bootWindowGame.ts pins in tests. Import
 // each symbol EXACTLY ONCE from its owning module (ES module rule; a
@@ -931,90 +931,16 @@ let kioskSceneInitContract = null;
 // markPointerRendered` methods are the harness-side entry points that
 // let a vitest spec exercise the same seam without dispatching a real
 // PointerEvent — same primitive, same report shape.
-const POINTER_TO_RENDER_FRAME_BUDGET_MS = 16.7;
-const pendingPointerIntents = new Map();
-let pointerLatencySamples = [];
-let worstPointerLatencySample = null;
-
-const resetPointerToRenderLatency = () => {
-  pendingPointerIntents.clear();
-  pointerLatencySamples = [];
-  worstPointerLatencySample = null;
-};
-
-const foldPointerLatencySample = (pointerAtMs, renderedAtMs, pointerId) => {
-  const id = `pointer-${pointerId}`;
-  const measurement = measurePointerToRenderLatency(
-    { id, receivedAtMs: pointerAtMs },
-    { id, renderedAtMs },
-    POINTER_TO_RENDER_FRAME_BUDGET_MS,
-  );
-  const sample = {
-    pointerAtMs: measurement.receivedAtMs,
-    renderedAtMs: measurement.renderedAtMs,
-    deltaMs: measurement.latencyMs,
-    frameBudgetMs: measurement.frameBudgetMs,
-    withinBudget: measurement.withinOneFrame,
-  };
-  pointerLatencySamples.push(sample);
-  if (
-    worstPointerLatencySample === null
-    || sample.deltaMs > worstPointerLatencySample.deltaMs
-  ) {
-    worstPointerLatencySample = sample;
-  }
-  return sample;
-};
-
-const markPointerIntent = (input) => {
-  if (!input || typeof input.pointerAtMs !== "number" || typeof input.pointerId !== "number") {
-    return;
-  }
-  pendingPointerIntents.set(input.pointerId, input.pointerAtMs);
-};
-
-const markPointerRendered = (input) => {
-  if (!input || typeof input.renderedAtMs !== "number" || typeof input.pointerId !== "number") {
-    return;
-  }
-  const pointerAtMs = pendingPointerIntents.get(input.pointerId);
-  if (pointerAtMs === undefined) {
-    // No matching intent — orphaned render signal. Silently ignore;
-    // a jittery renderer firing an extra `rendered` after a reset
-    // shouldn't crash the probe.
-    return;
-  }
-  pendingPointerIntents.delete(input.pointerId);
-  foldPointerLatencySample(pointerAtMs, input.renderedAtMs, input.pointerId);
-};
-
-const drainPointerIntentsForRenderedFrame = (renderedAtMs) => {
-  if (pendingPointerIntents.size === 0) {
-    return;
-  }
-  // Snapshot the pending entries so a fold that mutates the map
-  // doesn't invalidate the iterator on browsers that don't tolerate
-  // in-flight deletion.
-  const drained = Array.from(pendingPointerIntents.entries());
-  pendingPointerIntents.clear();
-  for (const [pointerId, pointerAtMs] of drained) {
-    foldPointerLatencySample(pointerAtMs, renderedAtMs, pointerId);
-  }
-};
-
-const getPointerToRenderLatencyReport = () => {
-  const latest = pointerLatencySamples[pointerLatencySamples.length - 1];
-  const report = {
-    samples: pointerLatencySamples.slice(),
-  };
-  if (latest) {
-    report.latest = latest;
-  }
-  if (worstPointerLatencySample) {
-    report.worst = worstPointerLatencySample;
-  }
-  return report;
-};
+// Frame-critical pointer bookkeeping lives outside the flagship runtime so
+// input capture and render acknowledgement can be profiled independently.
+// The public window.__game report remains the established projection.
+const pointerToRenderLatency = createPointerToRenderLatencyRuntime(16.7);
+const resetPointerToRenderLatency = () => pointerToRenderLatency.reset();
+const markPointerIntent = (input) => pointerToRenderLatency.markIntent(input);
+const markPointerRendered = (input) => pointerToRenderLatency.markRendered(input);
+const drainPointerIntentsForRenderedFrame = (renderedAtMs) =>
+  pointerToRenderLatency.acknowledgeRenderedFrame(renderedAtMs);
+const getPointerToRenderLatencyReport = () => pointerToRenderLatency.report();
 
 // #957: Io's returning-session boot line. Computed once at boot (below,
 // after `visibilitychange` wiring) from the durable delivery-outcome

@@ -223,14 +223,17 @@ describe("Aftersign served surface contract", () => {
     // and tap-choice precedents above — a pointer-to-render feel
     // primitive with no consumer on the served surface is green
     // tests over dead code. `aftersign/main.js` must import
-    // `measurePointerToRenderLatency` from
-    // `./src/inputAcknowledgeLatency.ts`, wire a real
-    // `pointerdown` capture-phase listener that timestamps intents
-    // at `performance.now()`, drain them into samples after
-    // `composer.render()` on each rAF tick, and expose the four
-    // probe methods (`resetPointerToRenderLatency`,
-    // `markPointerIntent`, `markPointerRendered`,
-    // `getPointerToRenderLatencyReport`) on
+    // `createPointerToRenderLatencyRuntime` from
+    // `./src/pointerToRenderRuntime.ts` (PR #1766 split the
+    // frame-critical runtime out of `inputAcknowledgeLatency.ts` —
+    // the pure `measurePointerToRenderLatency` primitive still lives
+    // in that source module and is consumed internally by the
+    // runtime factory), wire a real `pointerdown` capture-phase
+    // listener that timestamps intents at `performance.now()`,
+    // drain them into samples after `composer.render()` on each
+    // rAF tick, and expose the four probe methods
+    // (`resetPointerToRenderLatency`, `markPointerIntent`,
+    // `markPointerRendered`, `getPointerToRenderLatencyReport`) on
     // `window.__game.input`. Any future refactor that unwires the
     // seam (removes the listener, moves the drain out of the tick,
     // drops a method) reds this test — the contract is that the
@@ -238,8 +241,8 @@ describe("Aftersign served surface contract", () => {
     // played frame, not just when a harness caller drives the
     // probe by hand.
     const main = readServedAftersignFile("main.js");
-    expect(main).toContain("measurePointerToRenderLatency");
-    expect(main).toContain("./src/inputAcknowledgeLatency.ts");
+    expect(main).toContain("createPointerToRenderLatencyRuntime");
+    expect(main).toContain("./src/pointerToRenderRuntime.ts");
     // The four probe method names must appear as identifiers on
     // the shipped surface — bound as `window.__game.input.*`
     // downstream by the same shape the harness projects.
