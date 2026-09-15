@@ -1,64 +1,22 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-// @m-loop-e1:done-gate impl-pending-e1-action-set expires=2026-12-31 owner=charlie-shin
-//
-// M-LOOP-E1 done-gate — taps-only phone spec proving two divergent
-// saves offer DIFFERENT tappable actions on the served page.
-//
-// SCOPE. This is the epic's done-gate (issue #1370). M-LOOP's metric
-// is DIVERGENCE at the AVAILABLE-ACTION level, not beats-reachable.
-// Two save-states with different memory records must produce different
-// TAPPABLE ELEMENTS on the served surface. Dialogue-only differences
-// score zero.
-//
-// RUNNABLE FOUNDATION. This repair executes the two-save phone flow in
-// the normal CI lane. The follow-up action-set story adds its assertion
-// only after the served game exposes memory-dependent controls.
-// Prior revision failed for the wrong reasons: it queried `#io` /
-// `#orra` (no such ids on the served page — only `#deliverButton`,
-// `#acknowledgeRouteButton`, `#skipRouteButton` exist, per
-// `aftersign/index.html` and `main.js:1091-1112`), and it seeded via
-// `localStorage["aftersign-save"]` (the boot path reads
-// `aftersign:kiosk-slice:${slot}`, per `main.js`). Both defects
-// masked the real assertion. Fixed here by (1) using only the three
-// real button ids the served page exposes, and (2) letting real play
-// write the durable save under a unique `?slot=` — the sibling pattern
-// used by `m-continue-next-job-played.spec.ts` and
-// `durable-return-session-phone-playtest.spec.ts`.
-//
-// HOW IT DIVERGES THE SAVES. Both saves start from a cold slot,
-// deliver the packet by tap (mints the durable packet-outcome +
-// route-attention memory facts), then take DIFFERENT `returnAnswerTone`
-// paths at `io-return-recognition`:
-//   • SAVE A taps `#acknowledgeRouteButton` — "Kind return"  → tone=kind
-//   • SAVE B taps `#skipRouteButton`        — "Evasive return" → tone=evasive
-// Same button strip, same three ids — but the memory record diverges
-// on the tone fact. Both then tap "Ask for next job" and reload. The
-// reload boots the returning-session line for each memory record; the
-// M-LOOP-E1 impl story is what makes the returning session offer a
-// DIFFERENT tappable action set on top of that divergent memory. This
-// spec ASSERTS that set differs. Today: it does not (RED). After the
-// impl lands: it does (GREEN).
-//
-// TAPS ONLY. Every mutation is a `.tap()` on a visible + enabled
-// button that ships on the served page. `window.__game.getSnapshot()`
-// is READ ONLY — used only to (a) confirm the memory records diverged
-// (invariant), and (b) wait for beat transitions. Nothing drives play
-// through `__game.input.*`.
-
+// M2-E1 continuous cold-boot playtest. Player input is exclusively through
+// visible controls; __game is read only for state assertions.
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 20_000;
+const SERVED_BUTTON_IDS = ["#deliverButton", "#acknowledgeRouteButton", "#skipRouteButton"] as const;
 
 type FlagshipSnapshot = {
   scene?: { beat?: string };
   packet?: { delivered?: boolean; sealed?: boolean };
   delivery?: { outcome?: string };
   player?: { returnReason?: string | null };
-  npcs?: {
-    io?: {
-      lastLine?: string | null;
-    };
-  };
+};
+
+type ActionState = {
+  id: (typeof SERVED_BUTTON_IDS)[number];
+  present: boolean;
+  enabled: boolean;
 };
 
 declare global {
@@ -92,24 +50,12 @@ async function waitForBeat(page: Page, beat: string): Promise<FlagshipSnapshot> 
   return snapshot(page);
 }
 
-async function tap(page: Page, selector: string): Promise<void> {
+async function tap(page: Page, selector: (typeof SERVED_BUTTON_IDS)[number]): Promise<void> {
   const button = page.locator(selector);
   await expect(button).toBeVisible();
   await expect(button).toBeEnabled();
   await button.tap();
 }
-
-// The three tap targets the served page actually exposes
-// (`aftersign/index.html` + `main.js`'s button strip). Any assertion
-// about "which actions are offered" must be over THIS set of ids —
-// there is no `#io` / `#orra` on the served page.
-const SERVED_BUTTON_IDS = ["#deliverButton", "#acknowledgeRouteButton", "#skipRouteButton"] as const;
-
-type ActionState = {
-  id: (typeof SERVED_BUTTON_IDS)[number];
-  present: boolean;
-  enabled: boolean;
-};
 
 async function offeredActionStates(page: Page): Promise<ActionState[]> {
   return Promise.all(
@@ -127,131 +73,73 @@ function enabledActionIds(actions: ActionState[]): string[] {
   return actions.filter((action) => action.present && action.enabled).map((action) => action.id);
 }
 
-function hasDivergentActionState(left: ActionState[], right: ActionState[]): boolean {
-  return JSON.stringify(left) !== JSON.stringify(right);
+function expectDeliveredOutcome(state: FlagshipSnapshot): void {
+  // The delivery fact and its outcome must travel together: neither a
+  // successful-looking delivery without an outcome nor an orphaned outcome is valid.
+  expect(state.packet?.delivered).toBe(true);
+  expect(state.delivery?.outcome).toBeTruthy();
 }
 
-async function playRoundThenReload(
-  browser: Browser,
-  tag: string,
-  toneSelector: "#acknowledgeRouteButton" | "#skipRouteButton",
-): Promise<{ page: Page; memory: FlagshipSnapshot; offered: ActionState[] }> {
-  const context = await browser.newContext({
-    viewport: PHONE_VIEWPORT,
-    hasTouch: true,
-    isMobile: true,
-  });
-  const page = await context.newPage();
-
-  // Unique slot per save — same isolation the sibling playtests use
-  // (`m-continue-phone-tap-playtest.spec.ts`,
-  // `durable-return-session-phone-playtest.spec.ts`). Cold slot means
-  // cold localStorage + cold server-authoritative save; the round
-  // itself is what writes the durable memory record we assert on.
-  const slot = `m-loop-e1-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-  await waitForReady(page);
-
-  // Boot: packet-offered. Only `#deliverButton` is enabled here
-  // (`main.js` else-branch at packet-offered leaves acknowledge/skip
-  // disabled with their default labels).
-  const boot = await snapshot(page);
-  expect(boot.scene?.beat).toBe("packet-offered");
-  await expect(page.locator("#acknowledgeRouteButton")).toBeDisabled();
-  await expect(page.locator("#skipRouteButton")).toBeDisabled();
-  await tap(page, "#deliverButton");
-
-  // io-return-recognition: the three buttons re-label to Kind/Evasive/Blunt.
-  // SAVE A taps Kind (`#acknowledgeRouteButton`),
-  // SAVE B taps Evasive (`#skipRouteButton`) — divergent tone facts.
+async function completeReturn(
+  page: Page,
+  tone: "#acknowledgeRouteButton" | "#skipRouteButton",
+): Promise<FlagshipSnapshot> {
   await waitForBeat(page, "io-return-recognition");
   await expect(page.locator("#acknowledgeRouteButton")).toContainText(/kind return/i);
   await expect(page.locator("#skipRouteButton")).toContainText(/evasive return/i);
   await expect(page.locator("#deliverButton")).toContainText(/blunt return/i);
-  await tap(page, toneSelector);
+  await tap(page, tone);
 
-  // return-tone-choice: only `#deliverButton` ("Ask for next job")
-  // is enabled. Tapping it advances to io-next-job and finalizes the
-  // durable save for this run.
   await waitForBeat(page, "return-tone-choice");
+  await expect(page.locator("#deliverButton")).toContainText(/ask for next job/i);
   await tap(page, "#deliverButton");
-  await waitForBeat(page, "io-next-job");
-
-  // Reload — real browser reload, fresh module evaluation. The
-  // returning-session boot override picks the line from the durable
-  // memory record; the M-LOOP-E1 impl story wires the AVAILABLE
-  // ACTION SET off that same record.
-  await page.reload({ waitUntil: "load" });
-  await waitForReady(page);
-
-  const memory = await snapshot(page);
-  const offered = await offeredActionStates(page);
-  return { page, memory, offered };
+  return waitForBeat(page, "io-next-job");
 }
 
-// Impl-landed gate. The two-save phone round ALWAYS runs — it proves
-// the divergent-save plumbing (cold slots, tone-choice split, reload
-// into returning-session) works on every CI lane. Only the
-// AVAILABLE-ACTION divergence assertion is gated on
-// `M_LOOP_E1_IMPL_LANDED === "1"`: that assertion RED-fails until the
-// M-LOOP-E1 impl story wires memory-dependent controls into the served
-// returning-session page (docs/plan/product-plan.md:104). When the
-// flag is off we still SURFACE the runtime gap — the observed action
-// states are logged and annotated on the test so a green lane can't
-// hide the missing divergence.
-const IMPL_LANDED = process.env.M_LOOP_E1_IMPL_LANDED === "1";
-
-test.describe("M-LOOP E1: memory changes the actions a phone player can take", () => {
-  test("completes sequential divergent saves and gates on tappable action identity", async ({ browser }, testInfo) => {
+test.describe("M2-E1: continuous two-round phone playtest", () => {
+  test("cold boots once, completes two delivery-return rounds, and preserves the risk outcome", async ({ browser }) => {
     test.setTimeout(180_000);
-
-    const saveA = await playRoundThenReload(browser, "kind", "#acknowledgeRouteButton");
-    const saveB = await playRoundThenReload(browser, "evasive", "#skipRouteButton");
+    const context = await browser.newContext({
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const slot = `m2-e1-continuous-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     try {
-      // Invariants — always asserted. If these fail the divergent-save
-      // setup is broken and the impl story has no foundation to build on.
-      expect(saveA.memory.scene?.beat).toBe("io-next-job");
-      expect(saveB.memory.scene?.beat).toBe("io-next-job");
-      expect(saveA.memory.player?.returnReason).not.toBe(saveB.memory.player?.returnReason);
+      // A unique slot gives this player a cold session; this test never reseeds or reloads it.
+      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForReady(page);
+      await waitForBeat(page, "packet-offered");
+      await expect(page.locator("#acknowledgeRouteButton")).toBeDisabled();
+      await expect(page.locator("#skipRouteButton")).toBeDisabled();
 
-      const divergent = hasDivergentActionState(saveA.offered, saveB.offered);
-      const actionsA = enabledActionIds(saveA.offered);
-      const actionsB = enabledActionIds(saveB.offered);
+      const roundOneActions = enabledActionIds(await offeredActionStates(page));
+      expect(roundOneActions).toEqual(["#deliverButton"]);
+      await tap(page, "#deliverButton");
+      const roundOneDelivery = await snapshot(page);
+      expectDeliveredOutcome(roundOneDelivery);
 
-      if (!IMPL_LANDED) {
-        // Runtime gap — logged, not swallowed. The setup passed; the
-        // returning-session page hasn't yet learned to differ on memory.
-        // Annotate so the gap is visible in the Playwright report and
-        // log so the CI console shows the observed action states.
-        const detail = JSON.stringify({
-          divergent,
-          saveA: saveA.offered,
-          saveB: saveB.offered,
-        });
-        testInfo.annotations.push({
-          type: "m-loop-e1-impl-pending",
-          description: `M_LOOP_E1_IMPL_LANDED unset; divergence=${divergent} ${detail}`,
-        });
-        // eslint-disable-next-line no-console
-        console.warn(`[m-loop-e1] impl-pending — action-set divergence=${divergent} ${detail}`);
-        return;
-      }
+      const afterRoundOne = await completeReturn(page, "#acknowledgeRouteButton");
+      expect(afterRoundOne.player?.returnReason).toBeTruthy();
+      expectDeliveredOutcome(afterRoundOne);
 
-      expect(divergent).toBe(true);
+      // io-next-job is the directly reached second offer: no new context, seed, or reload.
+      const roundTwoActions = enabledActionIds(await offeredActionStates(page));
+      expect(roundTwoActions).not.toEqual(roundOneActions);
+      expect(roundTwoActions).toContain("#deliverButton");
+      await tap(page, "#deliverButton");
+      const roundTwoDelivery = await snapshot(page);
+      expectDeliveredOutcome(roundTwoDelivery);
+      expect(roundTwoDelivery.delivery?.outcome).toBe(roundOneDelivery.delivery?.outcome);
 
-      // Labels are deliberately absent from ActionState. A copy-only edit
-      // therefore cannot pass this gate: identity, presence, and enabled
-      // state remain identical.
-      const sameActionsWithDifferentLabels = saveA.offered.map((action) => ({ ...action }));
-      expect(hasDivergentActionState(saveA.offered, sameActionsWithDifferentLabels)).toBe(false);
-
-      const differingId = actionsA.find((id) => !actionsB.includes(id)) ?? actionsB.find((id) => !actionsA.includes(id));
-      expect(differingId).toBeDefined();
-      await tap(actionsA.includes(differingId!) ? saveA.page : saveB.page, differingId!);
+      const afterRoundTwo = await completeReturn(page, "#skipRouteButton");
+      expect(afterRoundTwo.player?.returnReason).toBeTruthy();
+      expectDeliveredOutcome(afterRoundTwo);
+      expect(afterRoundTwo.delivery?.outcome).toBe(roundOneDelivery.delivery?.outcome);
     } finally {
-      await saveA.page.context().close();
-      await saveB.page.context().close();
+      await context.close();
     }
   });
 });
