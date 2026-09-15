@@ -4170,6 +4170,43 @@ const tick = (now) => {
   if (confirmStartedAt !== null) {
     state.interaction.confirmFeedback.active = confirmProgress < 1;
     state.interaction.confirmFeedback.remainingMs = Math.max(0, Math.round(CONFIRM_FEEDBACK.durationMs - (now - confirmStartedAt)));
+    // Envelope mirror (#1768 draft 6 — Soren's REQUEST_CHANGES): the
+    // shipped CSS-var stamp at main.js:4159 is
+    //   --confirm-shake-x = confirmEnvelope.hudShakeX - failureWobbleTerm
+    // and a `page.evaluate(() => getComputedStyle(...))` poll races the
+    // 220ms envelope against the CDP round-trip. Mirror the SAME
+    // `hudShakeX` / `hudLiftY` / `reticleScale` values the CSS-var
+    // stamp uses onto `state.interaction.confirmFeedback` on the same
+    // frame `.active` flips, so an in-page rAF sampler can read the
+    // envelope directly from `window.__game.interaction.confirmFeedback`
+    // and kill the render-timing dependency. Sibling e2e
+    // `aftersign/e2e/packet-confirm-feedback-played.spec.ts` reads
+    // these exact keys; it asserts off `reticleScale` (monotonic
+    // `> 1` while active — no zero-crossing), NOT `hudShakeX`
+    // (which is `Math.round(wobble * hudShakePx)` and crosses zero
+    // six times across the 220ms envelope — see draft-7 review).
+    state.interaction.confirmFeedback.hudShakeX = confirmEnvelope.hudShakeX;
+    state.interaction.confirmFeedback.hudLiftY = confirmEnvelope.hudLiftY;
+    state.interaction.confirmFeedback.reticleScale = confirmEnvelope.reticleScale;
+    // ROOT-CAUSE FIX (#1768 draft 8 — Soren's REQUEST_CHANGES on draft 7):
+    // the three mirror writes above mutate `state.interaction.confirmFeedback`
+    // in place but did NOT bump the publish version. `publishState()` at the
+    // tail of this tick then hits its version guard
+    // (`publishedStateVersion === statePublishVersion` — see publishState)
+    // and early-returns the STALE `window.__game`, whose
+    // `interaction.confirmFeedback` clone predates these writes (its
+    // `reticleScale` is still `undefined` from boot). The in-page rAF sampler
+    // in `aftersign/e2e/packet-confirm-feedback-played.spec.ts` reads
+    // `window.__game.interaction.confirmFeedback.reticleScale`, sees
+    // `undefined`, defaults to `1`, and `peakReticleScale > 1` never holds —
+    // CI reds on the core assertion while `everActive`/`everDecayed` pass
+    // (the confirm channel DOES fire; only the mirror never reaches the
+    // published surface). Marking the state dirty on every active confirm
+    // frame forces `publishState()` to re-clone, so the sampler sees the
+    // live monotonic `reticleScale` (1 + falloff*(peak-1) > 1) on the same
+    // frame `.active` is true — no zero-crossing, no CDP round-trip, no
+    // frame-timing race.
+    markStateDirty();
     if (confirmProgress >= 1) {
       state.interaction.confirmStartedAt = null;
     }
