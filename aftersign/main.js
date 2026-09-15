@@ -3335,6 +3335,39 @@ const triggerKioskFeedback = (source) => {
   publishState();
 };
 
+// Failure-sting audio is coupled to the same cancel edge that arms the
+// 180ms visual envelope: a 144Hz triangle falls silent in 120ms, so the
+// sound exits before the flash recovers instead of hanging past the screen.
+// Stamp the cue before AudioContext unlock just like playKioskConfirm(), so
+// a real pointer test can observe the dispatch even when autoplay blocks sound.
+const playFailureStingAudio = async () => {
+  state._runtime.audio.lastCue = "packet-cancelled";
+  state._runtime.audio.lastCueAt = performance.now();
+  markStateDirty();
+  publishState();
+
+  const unlocked = await enableAudio();
+  state._runtime.audio.lastCue = "packet-cancelled";
+  state._runtime.audio.lastCueAt = performance.now();
+  markStateDirty();
+  publishState();
+  if (!unlocked || !audioContext) return;
+
+  const now = audioContext.currentTime;
+  const gain = audioContext.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.09, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+  gain.connect(audioContext.destination);
+
+  const tone = audioContext.createOscillator();
+  tone.type = "triangle";
+  tone.frequency.setValueAtTime(144, now);
+  tone.connect(gain);
+  tone.start(now);
+  tone.stop(now + 0.12);
+};
+
 const triggerFailureFeedback = (source) => {
   state.interaction.lastAction = source;
   state.interaction.failureStartedAt = performance.now();
@@ -3346,6 +3379,7 @@ const triggerFailureFeedback = (source) => {
   };
   markStateDirty();
   publishState();
+  void playFailureStingAudio();
 };
 
 let memoryBeatCameraProbe = null;
