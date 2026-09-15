@@ -33,6 +33,7 @@ import {
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
+import { packetOfferTapNextBeat } from "./src/packetOfferTapTransition.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { recognitionEnvelopeAt as recognitionFeedbackEnvelopeAt } from "./src/recognitionFeedbackBridge.ts";
 import {
@@ -2187,6 +2188,9 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           );
           attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
           armJobOfferFeel(button, () => {
+            // The offer is the first real choice surface. Its tap must reach
+            // the packet fork instead of only arming decorative feedback.
+            setBeat(packetOfferTapNextBeat(state.scene.beat));
             // Compose the M-LOOP action id with the underlying
             // offered jobId so BOTH axes ride on `lastAction`. Old
             // shape (`job-offer:${offer.id}`) is superseded — a
