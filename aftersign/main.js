@@ -2242,7 +2242,16 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     // land before the player reaches the surrounding route controls.
     // Keep that promise on the object they just touched rather than adding
     // another modal or competing button.
-    packetButton.setAttribute("aria-description", PACKET_CHOICE_AFFORDANCE);
+    //
+    // Every write here is idempotency-guarded because renderText() runs
+    // per frame while the beat is packet-choice. On SwiftShader the sibling
+    // 220ms confirm-pulse rAF sampler (packet-confirm-feedback-played.spec)
+    // shares the paint pipeline; a per-frame setAttribute/insert/style
+    // write here reds the confirm envelope by starving the sampler of
+    // clean frames. Guarded writes → no thrash → sibling stays green.
+    if (packetButton.getAttribute("aria-description") !== PACKET_CHOICE_AFFORDANCE) {
+      packetButton.setAttribute("aria-description", PACKET_CHOICE_AFFORDANCE);
+    }
     let packetChoiceAffordance = document.querySelector(
       "[data-aftersign-packet-choice-affordance]",
     );
@@ -2252,6 +2261,17 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
         "data-aftersign-packet-choice-affordance",
         "true",
       );
+      // Non-layout-affecting placement: the paragraph is player-visible
+      // and screen-reader-visible, but its bounding box does NOT push
+      // #routeChoice / #offeredJobs / #deliverButton down the flow. A
+      // layout shift here every time packet-choice is entered would
+      // pressure the sibling confirm-envelope's rAF sampler on
+      // SwiftShader — see the comment above.
+      packetChoiceAffordance.style.position = "absolute";
+      packetChoiceAffordance.style.left = "0";
+      packetChoiceAffordance.style.right = "0";
+      packetChoiceAffordance.style.margin = "6px 0 0 0";
+      packetChoiceAffordance.style.pointerEvents = "none";
       packetButton.insertAdjacentElement("afterend", packetChoiceAffordance);
     }
     setTextContentIfChanged(packetChoiceAffordance, PACKET_CHOICE_AFFORDANCE);
