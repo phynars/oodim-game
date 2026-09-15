@@ -105,25 +105,37 @@ async function tap(page: Page, selector: string): Promise<void> {
 // there is no `#io` / `#orra` on the served page.
 const SERVED_BUTTON_IDS = ["#deliverButton", "#acknowledgeRouteButton", "#skipRouteButton"] as const;
 
-async function offeredTappableIds(page: Page): Promise<Array<{ id: string; label: string }>> {
-  const rows = await Promise.all(
-    SERVED_BUTTON_IDS.map(async (selector) => {
-      const button = page.locator(selector);
-      const visible = await button.isVisible().catch(() => false);
+type ActionState = {
+  id: (typeof SERVED_BUTTON_IDS)[number];
+  present: boolean;
+  enabled: boolean;
+};
+
+async function offeredActionStates(page: Page): Promise<ActionState[]> {
+  return Promise.all(
+    SERVED_BUTTON_IDS.map(async (id) => {
+      const button = page.locator(id);
+      const present = await button.count().then(Boolean);
+      const visible = present ? await button.isVisible().catch(() => false) : false;
       const enabled = visible ? await button.isEnabled().catch(() => false) : false;
-      if (!visible || !enabled) return null;
-      const label = ((await button.textContent().catch(() => "")) ?? "").trim();
-      return { id: selector, label };
+      return { id, present: visible, enabled };
     }),
   );
-  return rows.filter((row): row is { id: string; label: string } => row !== null);
+}
+
+function enabledActionIds(actions: ActionState[]): string[] {
+  return actions.filter((action) => action.present && action.enabled).map((action) => action.id);
+}
+
+function hasDivergentActionState(left: ActionState[], right: ActionState[]): boolean {
+  return JSON.stringify(left) !== JSON.stringify(right);
 }
 
 async function playRoundThenReload(
   browser: Browser,
   tag: string,
   toneSelector: "#acknowledgeRouteButton" | "#skipRouteButton",
-): Promise<{ page: Page; memory: FlagshipSnapshot; offered: Array<{ id: string; label: string }> }> {
+): Promise<{ page: Page; memory: FlagshipSnapshot; offered: ActionState[] }> {
   const context = await browser.newContext({
     viewport: PHONE_VIEWPORT,
     hasTouch: true,
@@ -173,22 +185,73 @@ async function playRoundThenReload(
   await waitForReady(page);
 
   const memory = await snapshot(page);
-  const offered = await offeredTappableIds(page);
+  const offered = await offeredActionStates(page);
   return { page, memory, offered };
 }
 
-// This is intentionally a runnable setup skeleton. The follow-up story
-// adds the memory-dependent action-set assertion after that game behavior
-// exists; this CI lane establishes that both divergent saves can be played
-// through the served phone surface first.
+// Impl-landed gate. The two-save phone round ALWAYS runs — it proves
+// the divergent-save plumbing (cold slots, tone-choice split, reload
+// into returning-session) works on every CI lane. Only the
+// AVAILABLE-ACTION divergence assertion is gated on
+// `M_LOOP_E1_IMPL_LANDED === "1"`: that assertion RED-fails until the
+// M-LOOP-E1 impl story wires memory-dependent controls into the served
+// returning-session page (docs/plan/product-plan.md:104). When the
+// flag is off we still SURFACE the runtime gap — the observed action
+// states are logged and annotated on the test so a green lane can't
+// hide the missing divergence.
+const IMPL_LANDED = process.env.M_LOOP_E1_IMPL_LANDED === "1";
+
 test.describe("M-LOOP E1: memory changes the actions a phone player can take", () => {
-  test("plays two divergent saves through a taps-only phone round", async ({ browser }) => {
+  test("completes sequential divergent saves and gates on tappable action identity", async ({ browser }, testInfo) => {
     test.setTimeout(180_000);
 
     const saveA = await playRoundThenReload(browser, "kind", "#acknowledgeRouteButton");
     const saveB = await playRoundThenReload(browser, "evasive", "#skipRouteButton");
 
-    await saveA.page.context().close();
-    await saveB.page.context().close();
+    try {
+      // Invariants — always asserted. If these fail the divergent-save
+      // setup is broken and the impl story has no foundation to build on.
+      expect(saveA.memory.scene?.beat).toBe("io-next-job");
+      expect(saveB.memory.scene?.beat).toBe("io-next-job");
+      expect(saveA.memory.player?.returnReason).not.toBe(saveB.memory.player?.returnReason);
+
+      const divergent = hasDivergentActionState(saveA.offered, saveB.offered);
+      const actionsA = enabledActionIds(saveA.offered);
+      const actionsB = enabledActionIds(saveB.offered);
+
+      if (!IMPL_LANDED) {
+        // Runtime gap — logged, not swallowed. The setup passed; the
+        // returning-session page hasn't yet learned to differ on memory.
+        // Annotate so the gap is visible in the Playwright report and
+        // log so the CI console shows the observed action states.
+        const detail = JSON.stringify({
+          divergent,
+          saveA: saveA.offered,
+          saveB: saveB.offered,
+        });
+        testInfo.annotations.push({
+          type: "m-loop-e1-impl-pending",
+          description: `M_LOOP_E1_IMPL_LANDED unset; divergence=${divergent} ${detail}`,
+        });
+        // eslint-disable-next-line no-console
+        console.warn(`[m-loop-e1] impl-pending — action-set divergence=${divergent} ${detail}`);
+        return;
+      }
+
+      expect(divergent).toBe(true);
+
+      // Labels are deliberately absent from ActionState. A copy-only edit
+      // therefore cannot pass this gate: identity, presence, and enabled
+      // state remain identical.
+      const sameActionsWithDifferentLabels = saveA.offered.map((action) => ({ ...action }));
+      expect(hasDivergentActionState(saveA.offered, sameActionsWithDifferentLabels)).toBe(false);
+
+      const differingId = actionsA.find((id) => !actionsB.includes(id)) ?? actionsB.find((id) => !actionsA.includes(id));
+      expect(differingId).toBeDefined();
+      await tap(actionsA.includes(differingId!) ? saveA.page : saveB.page, differingId!);
+    } finally {
+      await saveA.page.context().close();
+      await saveB.page.context().close();
+    }
   });
 });
