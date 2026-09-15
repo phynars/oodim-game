@@ -238,6 +238,26 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
       // secondary axis so a same-choice-id, same-button-id round-two
       // (i.e. no real divergence) fails loudly.
       expect(roundTwoEnabledIds).toContain("#deliverButton");
+      // Round-two beat graph (confirmed against `aftersign/main.js`):
+      //   io-next-job  → tap `#deliverButton` (choice `deliver-packet`)
+      //                  runs the reset branch at main.js:2727 —
+      //                  `state.packet` is cleared and the beat is
+      //                  `setBeat("packet-offered")` (main.js:2745).
+      //   packet-offered → tap `#deliverButton` (choice `deliver-packet`)
+      //                    falls through to `deliverPacket("contract-input")`
+      //                    at main.js:2750, which stamps
+      //                    `state.packet.delivered = true` +
+      //                    `state.delivery.outcome` and then
+      //                    `setBeat("packet-delivered")` →
+      //                    `setBeat("io-return-recognition")` via the
+      //                    1180ms setTimeout at main.js:3812.
+      // So round two needs TWO taps on `#deliverButton`, gated by the
+      // intermediate `packet-offered` beat. Tapping once and jumping
+      // straight to `completeReturn` (which awaits
+      // `io-return-recognition`) times out — the served surface never
+      // reaches the recognition beat without the second tap.
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "packet-offered");
       await tap(page, "#deliverButton");
       const afterRoundTwo = await completeReturn(page, "#skipRouteButton");
       expect(afterRoundTwo.player?.returnReason).toBeTruthy();
