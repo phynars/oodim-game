@@ -469,6 +469,7 @@ import {
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
+import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
 
 /**
  * PR #1549 — DOM writer that stamps the frozen aftersign-job-take feel
@@ -1593,11 +1594,7 @@ const publishState = () => {
       scene: state.scene,
       story: state.story,
       player: state.player,
-      packet: state.packet,
-      delivery: {
-        id: "blue-packet",
-        ...state.delivery,
-      },
+      ...deliverySnapshotState(state.packet, state.delivery),
       npcs: {
         io: {
           id: "io",
