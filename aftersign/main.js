@@ -340,6 +340,7 @@ import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersign
 // markup, simulates the tap-driven commit, and asserts the visible
 // text + data-attr both flip.
 import { applyPacketButtonCopy } from "../apps/web/src/aftersign/packetInteractionCopy.js";
+import { PACKET_CHOICE_AFFORDANCE } from "./src/packetChoiceAffordance.js";
 // #1701 (Refs #1698) — served-page DOM writer for the PREVIEWED
 // outcome. Wiring it in main.js here turns PREVIEWED from a
 // contract-only enum value into a SHIPPED consumer on the served
@@ -2237,6 +2238,23 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
   }
 
   if (isPacketChoiceBeat) {
+    // The packet fork is a physical gesture, but its consequence needs to
+    // land before the player reaches the surrounding route controls.
+    // Keep that promise on the object they just touched rather than adding
+    // another modal or competing button.
+    packetButton.setAttribute("aria-description", PACKET_CHOICE_AFFORDANCE);
+    let packetChoiceAffordance = document.querySelector(
+      "[data-aftersign-packet-choice-affordance]",
+    );
+    if (!packetChoiceAffordance) {
+      packetChoiceAffordance = document.createElement("p");
+      packetChoiceAffordance.setAttribute(
+        "data-aftersign-packet-choice-affordance",
+        "true",
+      );
+      packetButton.insertAdjacentElement("afterend", packetChoiceAffordance);
+    }
+    setTextContentIfChanged(packetChoiceAffordance, PACKET_CHOICE_AFFORDANCE);
     setTextContentIfChanged(acknowledgeRouteButton, "Acknowledge route");
     setTextContentIfChanged(skipRouteButton, "Skip acknowledgment");
     setTextContentIfChanged(deliverButton, "Deliver packet");
