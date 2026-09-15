@@ -24,10 +24,19 @@ import { expect, test, type Page } from "@playwright/test";
 //        shared vite preview (same pattern as
 //        `aftersign/e2e/npc-memory-recall-dialogue-served.spec.ts`).
 //
-//     2. RACE-SAFE SINGLE-TICK POLL — `waitForBeat(page, beat)` uses
-//        `expect.poll` on `window.__game.getSnapshot().scene?.beat`,
-//        which retries with the framework's tick budget rather than a
-//        hand-rolled sleep. No arbitrary `waitForTimeout` calls.
+//     2. RACE-SAFE SINGLE-TICK POLL — two-part:
+//        (a) `waitForBeat(page, beat)` uses `expect.poll` on
+//            `window.__game.getSnapshot().scene?.beat`, which retries
+//            with the framework's tick budget rather than a hand-rolled
+//            sleep. No arbitrary `waitForTimeout` calls.
+//        (b) Every post-mount DOM read is folded into ONE
+//            `page.evaluate` snapshot. The layer auto-disposes at
+//            `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS`
+//            (540 + 80 = 620ms). Sequential `toHaveAttribute` calls
+//            cost one IPC round-trip each and can overrun 620ms on a
+//            loaded CI runner, hitting a detached element. Snapshotting
+//            all attrs in one tick sidesteps the race — same shape as
+//            the prior spec's "RACE FIX PR #1523 review 4" note.
 //
 //     3. DYNAMIC FEEL-NUMBER FETCH — the total-duration assertion
 //        reads its expected value from
@@ -156,62 +165,90 @@ test.describe("AFTERSIGN scene transition — served-surface consumer", () => {
     // presence of the layer alone.
     await waitForBeat(page, "io-return-recognition");
 
-    // Direct-seam pin — locate under the served surface container
-    // (`[data-aftersign-scene-transition-surface]`) so a renderer
-    // regression that moved the mount off the served surface reds
-    // here first.
-    const transition = page.locator(
-      "[data-aftersign-scene-transition-surface] .aftersign-scene-transition",
-    );
-    await expect(transition).toBeAttached();
+    // RACE FIX (PR #1785 review 3, Soren): the layer auto-disposes at
+    // `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS` (540 + 80 =
+    // 620ms). Issuing ~9 sequential Playwright `toHaveAttribute` calls
+    // after `waitForBeat` costs one IPC round-trip each; on a loaded CI
+    // runner that sequence can overrun 620ms and later assertions hit
+    // a detached element (10s timeout, red spec). Fold every read into
+    // ONE `page.evaluate` that snapshots the layer synchronously in a
+    // single tick — same shape as the prior spec's "RACE FIX PR #1523
+    // review 4" note. Direct-seam pin
+    // (`[data-aftersign-scene-transition-surface] .aftersign-scene-transition`)
+    // still enforced: `querySelector` off the surface container inside
+    // the evaluate, so a renderer regression that moved the mount off
+    // the served surface reds via `null` layer.
+    const snapshot = await page.evaluate(() => {
+      const layer = document.querySelector<HTMLElement>(
+        "[data-aftersign-scene-transition-surface] .aftersign-scene-transition",
+      );
+      const g = window.__game;
+      const feel = g?.getSceneTransitionFeel?.() ?? null;
+      if (!layer) {
+        return { mounted: false as const, feel };
+      }
+      return {
+        mounted: true as const,
+        feel,
+        fromScene: layer.dataset.fromScene ?? null,
+        toScene: layer.dataset.toScene ?? null,
+        totalDurationMs: layer.dataset.totalDurationMs ?? null,
+        audioRecognitionSettleHz:
+          layer.dataset.audioRecognitionSettleHz ?? null,
+        audioJobOfferRiseHz: layer.dataset.audioJobOfferRiseHz ?? null,
+        audioRouteCommitHz: layer.dataset.audioRouteCommitHz ?? null,
+        reducedMotion: layer.dataset.reducedMotion ?? null,
+      };
+    });
+
+    // Direct-seam pin — the layer must be mounted under the served
+    // surface container. A `null` here means a renderer regression
+    // moved the mount off `[data-aftersign-scene-transition-surface]`.
+    expect(
+      snapshot.mounted,
+      "scene-transition layer must be mounted under [data-aftersign-scene-transition-surface]",
+    ).toBe(true);
+
+    // Dynamic feel-number source — `window.__game.getSceneTransitionFeel`
+    // must be exposed so the assertions below pin the DOM against the
+    // live `AFTERSIGN_SCENE_TRANSITION_FEEL` constant, not a literal.
+    expect(
+      snapshot.feel,
+      "window.__game.getSceneTransitionFeel must be exposed",
+    ).not.toBeNull();
+
+    if (!snapshot.mounted || !snapshot.feel) {
+      // Type-narrowing — the two expects above have already failed the
+      // test if either is missing; this guard keeps the reads below
+      // typed and stops further access to the (possibly stale) refs.
+      return;
+    }
 
     // Traced crossing at the DOM level — the from/to attributes the
     // writer stamps must reflect the kiosk → io-return beat we drove.
-    await expect(transition).toHaveAttribute("data-from-scene", "kiosk");
-    await expect(transition).toHaveAttribute("data-to-scene", "io-return");
+    expect(snapshot.fromScene).toBe("kiosk");
+    expect(snapshot.toScene).toBe("io-return");
 
-    // Dynamic feel-number fetch — expected total duration comes off
-    // the live `window.__game.getSceneTransitionFeel()` surface, the
-    // SAME `AFTERSIGN_SCENE_TRANSITION_FEEL` constant the writer
-    // reads. No literal `"540"` to drift from the module.
-    const feel = await page.evaluate(() => {
-      const g = window.__game;
-      if (!g?.getSceneTransitionFeel) return null;
-      const f = g.getSceneTransitionFeel();
-      return {
-        totalDurationMs: f.totalDurationMs,
-        recognitionSettleHz: f.audioCoupling.recognitionSettleHz,
-        jobOfferRiseHz: f.audioCoupling.jobOfferRiseHz,
-        routeCommitHz: f.audioCoupling.routeCommitHz,
-      };
-    });
-    expect(feel, "window.__game.getSceneTransitionFeel must be exposed").not.toBeNull();
+    // Total duration — asserted against the live feel constant, no
+    // literal `"540"` to drift from the module.
+    expect(snapshot.totalDurationMs).toBe(String(snapshot.feel.totalDurationMs));
 
-    await expect(transition).toHaveAttribute(
-      "data-total-duration-ms",
-      String(feel!.totalDurationMs),
+    // Audio-coupling Hz numbers — same live-constant source, no
+    // literal `"196"` / `"294"` / `"392"` to drift.
+    expect(snapshot.audioRecognitionSettleHz).toBe(
+      String(snapshot.feel.audioCoupling.recognitionSettleHz),
     );
-
-    // Audio-coupling Hz numbers — asserted against the same live
-    // feel constant, no literal `"196"` / `"294"` / `"392"` to
-    // drift.
-    await expect(transition).toHaveAttribute(
-      "data-audio-recognition-settle-hz",
-      String(feel!.recognitionSettleHz),
+    expect(snapshot.audioJobOfferRiseHz).toBe(
+      String(snapshot.feel.audioCoupling.jobOfferRiseHz),
     );
-    await expect(transition).toHaveAttribute(
-      "data-audio-job-offer-rise-hz",
-      String(feel!.jobOfferRiseHz),
-    );
-    await expect(transition).toHaveAttribute(
-      "data-audio-route-commit-hz",
-      String(feel!.routeCommitHz),
+    expect(snapshot.audioRouteCommitHz).toBe(
+      String(snapshot.feel.audioCoupling.routeCommitHz),
     );
 
     // Reduced-motion flag — the writer stamps `"true"` / `"false"`;
     // the default (no forced-color / no reduced-motion Playwright
     // context) is `"false"`. A regression that inverted the boolean
     // would red here.
-    await expect(transition).toHaveAttribute("data-reduced-motion", "false");
+    expect(snapshot.reducedMotion).toBe("false");
   });
 });
