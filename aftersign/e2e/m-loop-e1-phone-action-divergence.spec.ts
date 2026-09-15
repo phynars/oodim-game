@@ -118,7 +118,11 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
       const roundOneActions = enabledActionIds(await offeredActionStates(page));
       expect(roundOneActions).toEqual(["#deliverButton"]);
       await tap(page, "#deliverButton");
-      const roundOneDelivery = await snapshot(page);
+      // tap() only awaits the pointer event; delivery advances the beat
+      // asynchronously (packet-delivered → io-return-recognition ~1180ms
+      // later). Gate the snapshot on the post-delivery beat so
+      // packet.delivered / delivery.outcome are actually populated.
+      const roundOneDelivery = await waitForBeat(page, "io-return-recognition");
       expectDeliveredOutcome(roundOneDelivery);
 
       const afterRoundOne = await completeReturn(page, "#acknowledgeRouteButton");
@@ -130,7 +134,9 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
       expect(roundTwoActions).not.toEqual(roundOneActions);
       expect(roundTwoActions).toContain("#deliverButton");
       await tap(page, "#deliverButton");
-      const roundTwoDelivery = await snapshot(page);
+      // Same asynchronous transition as round one: wait for the delivery
+      // beat before reading packet.delivered.
+      const roundTwoDelivery = await waitForBeat(page, "io-return-recognition");
       expectDeliveredOutcome(roundTwoDelivery);
       expect(roundTwoDelivery.delivery?.outcome).toBe(roundOneDelivery.delivery?.outcome);
 
