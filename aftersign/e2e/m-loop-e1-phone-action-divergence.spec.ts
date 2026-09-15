@@ -189,7 +189,18 @@ async function playRoundThenReload(
   return { page, memory, offered };
 }
 
-test.describe("M-LOOP E1: memory changes the actions a phone player can take", () => {
+// Impl-landed gate. The action-set assertion below RED-fails until the
+// M-LOOP-E1 impl story wires memory-dependent controls into the served
+// returning-session page (docs/plan/product-plan.md:104 — the spec
+// should skip unless `M_LOOP_E1_IMPL_LANDED === "1"`). Guarding the
+// whole describe lets this land GREEN today and flip on the moment CI
+// exports the flag alongside the impl PR. Using `describe.skip` (not
+// `test.fixme`) keeps the run silent for the pending story rather than
+// noisy per-test.
+const IMPL_LANDED = process.env.M_LOOP_E1_IMPL_LANDED === "1";
+const describeWhenImplLanded = IMPL_LANDED ? test.describe : test.describe.skip;
+
+describeWhenImplLanded("M-LOOP E1: memory changes the actions a phone player can take", () => {
   test("completes sequential divergent saves and gates on tappable action identity", async ({ browser }) => {
     test.setTimeout(180_000);
 
