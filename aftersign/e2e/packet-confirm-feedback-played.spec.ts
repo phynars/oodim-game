@@ -58,8 +58,18 @@ import { expect, test, type Page } from "@playwright/test";
  *   confirmFeedback.reticleScale  — same number stamped into --confirm-reticle-scale (monotonic; ASSERTED)
  */
 
-const WAIT_MS = 15_000;
-const COLD_START_MS = 30_000;
+// PR #1785 review 3 (CI red on the 220ms-confirm spec):
+//   WAIT_MS bumped 15_000 → 30_000 so per-wait budget matches sibling
+//   flagship-lane specs (`flagship-phase2-input-delivery-contract.spec.ts`
+//   uses WAIT_MS=60_000). The failing CI line was "Timeout 15000ms
+//   exceeded" — a per-wait budget miss under SwiftShader cold boot,
+//   not a real assertion failure. Both waits (`#packetButton` visible,
+//   `#deliverButton` visible after the packet-open beat commit) can
+//   overrun 15s on a loaded runner even when the render is correct.
+//   COLD_START_MS bumped in lockstep so the per-test cap doesn't
+//   truncate the widened per-wait budget.
+const WAIT_MS = 30_000;
+const COLD_START_MS = 90_000;
 
 // Mirror the sibling `waitForReady` shape used across
 // `aftersign/e2e/*.spec.ts` — poll `window.__game.scene.ready` until
