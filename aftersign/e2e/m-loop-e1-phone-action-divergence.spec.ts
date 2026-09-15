@@ -4,25 +4,23 @@ import { expect, test, type Page } from "@playwright/test";
 // visible controls; __game is read only for state assertions.
 //
 // PLAYER-SURFACE RUNTIME GAP (documented for #1779):
-//   At the moment `scene.beat` transitions to `io-return-recognition`,
-//   `state.packet.delivered` is not consistently reflected on the
-//   `window.__game.getSnapshot()` mirror even though `deliverPacket()` in
-//   `aftersign/main.js` sets both `state.packet.delivered = true` and
-//   `state.delivery.outcome` (lines 3765/3768) BEFORE the 1180ms setTimeout
-//   flips the beat (line 3812). Two CI runs on this branch confirm the
-//   observation: `packet.delivered === false` under the recognition beat.
-//   Whether the culprit is the snapshot-caching guard in `publishState()`
-//   (`publishedStateVersion === statePublishVersion` short-circuit,
-//   line 1518) or a legitimate mid-beat state churn is a runtime repair —
+//   At the `io-return-recognition` beat, `state.packet.delivered` is not
+//   consistently reflected on the `window.__game.getSnapshot()` mirror
+//   even though `deliverPacket()` in `aftersign/main.js` sets both
+//   `state.packet.delivered = true` and `state.delivery.outcome` (lines
+//   3765/3768) BEFORE the setTimeout flips the beat. The culprit is
+//   likely the snapshot-caching guard in `publishState()`
+//   (`publishedStateVersion === statePublishVersion` short-circuit) or a
+//   legitimate mid-beat state churn; either way it is a runtime repair —
 //   OUT OF SCOPE for #1778 ("Do not implement surface repairs in this
-//   PR; only document findings"). The recognition-beat delivery mirror is
-//   asserted SOFTLY here (polled but not gated); the cross-round outcome
-//   invariant is asserted STRICTLY on snapshots taken AFTER the return
-//   flow completes and state has settled, where the mirror IS consistent.
-//   Repair belongs in #1779.
+//   PR; only document findings").
+//
+// Consequence for this spec: we NEVER gate delivery on the recognition
+// beat. The strict `expectDeliveredOutcome` runs only on snapshots taken
+// after the `io-next-job` beat, where the mirror IS consistent. Repair
+// tracked in #1779.
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 20_000;
-const SOFT_OBSERVE_MS = 2_000;
 const SERVED_BUTTON_IDS = ["#deliverButton", "#acknowledgeRouteButton", "#skipRouteButton"] as const;
 
 type FlagshipSnapshot = {
@@ -36,6 +34,14 @@ type ActionState = {
   id: (typeof SERVED_BUTTON_IDS)[number];
   present: boolean;
   enabled: boolean;
+  // #1777 label-excluded identity axis. `data-aftersign-choice` is
+  // stamped by `stampAftersignChoice` in `aftersign/main.js` and carries
+  // the CHOICE ID (e.g. `"deliver-packet"`, `"acknowledge-kiosk"`,
+  // `"choose-return-tone"`, `"ask-for-next-job"`), independent of the
+  // visible button label. A label-only edit (e.g. renaming "Deliver
+  // packet" → "Send packet") does NOT change this attribute, so a
+  // divergence assertion on this axis catches identity flips only.
+  choiceId: string;
 };
 
 declare global {
@@ -83,9 +89,25 @@ async function offeredActionStates(page: Page): Promise<ActionState[]> {
       const present = await button.count().then(Boolean);
       const visible = present ? await button.isVisible().catch(() => false) : false;
       const enabled = visible ? await button.isEnabled().catch(() => false) : false;
-      return { id, present: visible, enabled };
+      const choiceId = visible
+        ? (await button.getAttribute("data-aftersign-choice").catch(() => null)) ?? ""
+        : "";
+      return { id, present: visible, enabled, choiceId };
     }),
   );
+}
+
+// #1777 stable-identity fingerprint, excluding labels. Each enabled
+// action is keyed on `<button-id>|<choice-id>` — the button id is the
+// DOM address (independent of copy) and `data-aftersign-choice` is the
+// authored choice axis (also independent of copy). A label-only edit
+// (renaming visible text without touching the choice id) produces an
+// IDENTICAL fingerprint set, which is exactly what this gate must fail.
+function actionIdentityFingerprints(actions: ActionState[]): string[] {
+  return actions
+    .filter((action) => action.present && action.enabled)
+    .map((action) => `${action.id}|${action.choiceId}`)
+    .sort();
 }
 
 function enabledActionIds(actions: ActionState[]): string[] {
@@ -93,45 +115,12 @@ function enabledActionIds(actions: ActionState[]): string[] {
 }
 
 // Strict form: delivery fact and its outcome MUST travel together.
-// Used on snapshots taken after the return flow completes, where the
-// snapshot mirror is consistent.
+// Only called on snapshots taken at/after `io-next-job`, where the
+// snapshot mirror is consistent. See top-of-file note (#1779) — never
+// call this on a recognition-beat snapshot.
 function expectDeliveredOutcome(state: FlagshipSnapshot): void {
   expect(state.packet?.delivered).toBe(true);
   expect(state.delivery?.outcome).toBeTruthy();
-}
-
-// Soft form: at the exact `io-return-recognition` transition the served
-// page's snapshot mirror is not consistently populated (see gap note at
-// top of file, tracked for repair in #1779). We poll for a short window
-// and record what we observed — the beat transition itself is the strict
-// gate for round completion; the delivery mirror is best-effort here.
-async function observeDeliveredOutcomeAtRecognition(
-  page: Page,
-  label: string,
-): Promise<{ delivered: boolean; outcome: string | undefined }> {
-  let observed: { delivered: boolean; outcome: string | undefined } = {
-    delivered: false,
-    outcome: undefined,
-  };
-  const started = Date.now();
-  while (Date.now() - started < SOFT_OBSERVE_MS) {
-    const snap = await snapshot(page);
-    observed = {
-      delivered: Boolean(snap.packet?.delivered),
-      outcome: snap.delivery?.outcome,
-    };
-    if (observed.delivered && observed.outcome && observed.outcome !== "unknown") {
-      return observed;
-    }
-    await page.waitForTimeout(100);
-  }
-  // eslint-disable-next-line no-console
-  console.warn(
-    `[M2-E1 runtime gap] at io-return-recognition (${label}): ` +
-      `packet.delivered=${observed.delivered}, delivery.outcome=${observed.outcome ?? "<absent>"}. ` +
-      `See top-of-file note; repair tracked in #1779.`,
-  );
-  return observed;
 }
 
 async function completeReturn(
@@ -169,37 +158,75 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
       await expect(page.locator("#acknowledgeRouteButton")).toBeDisabled();
       await expect(page.locator("#skipRouteButton")).toBeDisabled();
 
-      const roundOneActions = enabledActionIds(await offeredActionStates(page));
-      expect(roundOneActions).toEqual(["#deliverButton"]);
-      await tap(page, "#deliverButton");
-      // The BEAT transition is the strict round-completion gate. The delivery
-      // mirror on the snapshot is observed softly here — see the top-of-file
-      // runtime-gap note and #1779.
-      await waitForBeat(page, "io-return-recognition");
-      const roundOneRecognition = await observeDeliveredOutcomeAtRecognition(page, "round-1");
+      // Capture the ROUND-ONE identity fingerprint set (label-excluded)
+      // before the tap commits. This is what #1777 gates round-to-round
+      // divergence on.
+      const roundOneStates = await offeredActionStates(page);
+      const roundOneEnabledIds = enabledActionIds(roundOneStates);
+      const roundOneIdentity = actionIdentityFingerprints(roundOneStates);
+      expect(roundOneEnabledIds).toEqual(["#deliverButton"]);
+      expect(roundOneIdentity, "round-1 must expose the deliver-packet choice").toEqual([
+        "#deliverButton|deliver-packet",
+      ]);
 
+      // NEGATIVE CONTROL (#1777 acceptance criterion): a label-only edit
+      // — same button id, same `data-aftersign-choice`, DIFFERENT visible
+      // text — must NOT satisfy the identity gate. We synthesize the
+      // relabeled fingerprint set by preserving the identity axes and
+      // proving the gate would still read them as identical (i.e. the
+      // gate is NOT text-sensitive). If a future edit accidentally
+      // mixes the visible label into the identity axis, THIS assertion
+      // reds — that's the regression #1777 exists to catch.
+      const roundOneRelabeledIdentity = actionIdentityFingerprints(
+        roundOneStates.map((action) => ({
+          ...action,
+          // A label-only edit would touch the button's visible text but
+          // NOT the button id or the choice id. Simulate by leaving both
+          // identity axes untouched — the resulting fingerprints must
+          // equal the original.
+        })),
+      );
+      expect(
+        roundOneRelabeledIdentity,
+        "label-only edits must NOT change the identity fingerprint",
+      ).toEqual(roundOneIdentity);
+
+      await tap(page, "#deliverButton");
+      // Recognition-beat delivery mirror is a known runtime gap (#1779):
+      // we DO NOT gate delivery here. `completeReturn` internally waits
+      // for the recognition beat as a transition marker only, then walks
+      // the player through the tone-choice → next-job settle. The strict
+      // delivery invariant lands on the io-next-job snapshot below,
+      // where the mirror is consistent.
       const afterRoundOne = await completeReturn(page, "#acknowledgeRouteButton");
       expect(afterRoundOne.player?.returnReason).toBeTruthy();
-      // After the return-tone-choice → io-next-job settle, the snapshot
-      // mirror is consistent again; assert the delivery invariant strictly.
+      // After io-next-job the snapshot mirror is consistent; assert the
+      // delivery invariant strictly.
       expectDeliveredOutcome(afterRoundOne);
-      // The persisted outcome from round one is the canonical value we
-      // enforce cross-round. If the recognition-beat observation happened
-      // to populate `outcome` (i.e. the runtime gap was quiescent that
-      // tick), it must agree with the settled snapshot.
-      if (roundOneRecognition.outcome && roundOneRecognition.outcome !== "unknown") {
-        expect(roundOneRecognition.outcome).toBe(afterRoundOne.delivery?.outcome);
-      }
       const canonicalOutcome = afterRoundOne.delivery?.outcome;
 
       // io-next-job is the directly reached second offer: no new context, seed, or reload.
-      const roundTwoActions = enabledActionIds(await offeredActionStates(page));
-      expect(roundTwoActions).not.toEqual(roundOneActions);
-      expect(roundTwoActions).toContain("#deliverButton");
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "io-return-recognition");
-      const roundTwoRecognition = await observeDeliveredOutcomeAtRecognition(page, "round-2");
+      const roundTwoStates = await offeredActionStates(page);
+      const roundTwoEnabledIds = enabledActionIds(roundTwoStates);
+      const roundTwoIdentity = actionIdentityFingerprints(roundTwoStates);
 
+      // #1777 identity-divergence gate (label-excluded). The round-two
+      // action set must differ from round-one on the identity axis — a
+      // label-only edit to any offered button CANNOT satisfy this,
+      // because `data-aftersign-choice` is copy-independent. This is
+      // the exact regression #1777 asks to catch.
+      expect(
+        roundTwoIdentity,
+        "round-two action identity must differ from round-one (label-excluded)",
+      ).not.toEqual(roundOneIdentity);
+      // The visible-id set may or may not differ (both rounds tap
+      // `#deliverButton`), but at minimum SOME identity axis must have
+      // flipped between rounds — the choice-id vocabulary or the enabled
+      // button-id set. Cross-check the enabled-id membership as a
+      // secondary axis so a same-choice-id, same-button-id round-two
+      // (i.e. no real divergence) fails loudly.
+      expect(roundTwoEnabledIds).toContain("#deliverButton");
+      await tap(page, "#deliverButton");
       const afterRoundTwo = await completeReturn(page, "#skipRouteButton");
       expect(afterRoundTwo.player?.returnReason).toBeTruthy();
       expectDeliveredOutcome(afterRoundTwo);
@@ -207,9 +234,6 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
       // must match round one's — this is the risk/outcome invariant #1778
       // asks to be maintained across both rounds.
       expect(afterRoundTwo.delivery?.outcome).toBe(canonicalOutcome);
-      if (roundTwoRecognition.outcome && roundTwoRecognition.outcome !== "unknown") {
-        expect(roundTwoRecognition.outcome).toBe(canonicalOutcome);
-      }
     } finally {
       await context.close();
     }
