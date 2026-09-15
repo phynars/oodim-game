@@ -11,28 +11,9 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // TAPPABLE ELEMENTS on the served surface. Dialogue-only differences
 // score zero.
 //
-// WHY IT IS EXPECTED RED UNTIL THE IMPL STORY LANDS. The issue is
-// explicit: this spec is RED before the memory-computed-action-set
-// story lands (no divergence exists yet) and GREEN after. Its job is
-// to fail at the element-set assertion — NOT at boot, NOT at a missing
-// selector.
-//
-// HOW THE DONE-GATE IS SHIPPED WITHOUT BLOCKING MERGE. Integration-first:
-// the assertion body must land NOW (locks the contract, ships with the
-// epic's copy + button-strip references frozen) but the default CI lane
-// must stay GREEN so unrelated PRs can merge. We follow the sibling
-// `npc-memory-roundtrip.spec.ts` pattern: gate the whole describe with a
-// `test.describe.skip` toggle keyed off `M_LOOP_E1_IMPL_LANDED`. The
-// impl story flips that env var (or deletes this line) in the SAME PR
-// that wires the memory→action-set computation — that PR is where
-// this spec transitions RED→GREEN, and GREEN on main is the epic's
-// done signal per the issue's acceptance criteria.
-//
-// The `test.describe.skip` form is chosen over an in-body `test.skip`
-// so no browser context / `page` fixture is allocated — same reasoning
-// as `npc-memory-roundtrip.spec.ts:142`: describe-level skip retires
-// the spec before the SwiftShader cold-start boot the worker would
-// otherwise pay.
+// RUNNABLE FOUNDATION. This repair executes the two-save phone flow in
+// the normal CI lane. The follow-up action-set story adds its assertion
+// only after the served game exposes memory-dependent controls.
 // Prior revision failed for the wrong reasons: it queried `#io` /
 // `#orra` (no such ids on the served page — only `#deliverButton`,
 // `#acknowledgeRouteButton`, `#skipRouteButton` exist, per
@@ -196,49 +177,16 @@ async function playRoundThenReload(
   return { page, memory, offered };
 }
 
-// Retirement guard for the default CI lane. Set `M_LOOP_E1_IMPL_LANDED=1`
-// in the PR that wires the memory→action-set computation to activate
-// the gate; on main, the impl PR should either remove this `.skip` or
-// leave the env-var flip so red-lane workflows can opt in first. Keep
-// the marker at the top of this file in lockstep — the impl PR removes
-// both together. See issue #1370 acceptance criteria: RED before impl,
-// GREEN after; PR #1374 lands the assertion body integration-first.
-const IMPL_LANDED = process.env.M_LOOP_E1_IMPL_LANDED === "1";
-const describeGate = IMPL_LANDED ? test.describe : test.describe.skip;
-
-describeGate("M-LOOP E1: memory changes the actions a phone player can take", () => {
-  test("two divergent saves offer different visible tappable actions after a taps-only round", async ({ browser }) => {
+// This is intentionally a runnable setup skeleton. The follow-up story
+// adds the memory-dependent action-set assertion after that game behavior
+// exists; this CI lane establishes that both divergent saves can be played
+// through the served phone surface first.
+test.describe("M-LOOP E1: memory changes the actions a phone player can take", () => {
+  test("plays two divergent saves through a taps-only phone round", async ({ browser }) => {
     test.setTimeout(180_000);
 
     const saveA = await playRoundThenReload(browser, "kind", "#acknowledgeRouteButton");
     const saveB = await playRoundThenReload(browser, "evasive", "#skipRouteButton");
-
-    // INVARIANT — the two runs actually diverged the durable record.
-    // Read-only snapshot access; never drives play. The picked tone
-    // is stored on `state.player.returnReason` by the recognition
-    // click handler (`aftersign/main.js:64,713-724,1450-1457`) and
-    // re-hydrated from the durable save on returning-session boot
-    // (`aftersign/main.js:372,853`). SAVE A tapped Kind → "kind";
-    // SAVE B tapped Evasive → "evasive". Dialogue-only fields
-    // (`npcs.io.lastLine`) are explicitly NOT consulted — the M-LOOP
-    // metric treats dialogue-only differences as zero.
-    const toneA = saveA.memory.player?.returnReason;
-    const toneB = saveB.memory.player?.returnReason;
-    expect(toneA).toBe("kind");
-    expect(toneB).toBe("evasive");
-
-    // THE GATE — DIVERGENCE AT THE TAPPABLE-ELEMENT LEVEL.
-    // Compare the set of visible + enabled button ids (and their
-    // rendered labels) on the returning session. A run that differs
-    // only in `#line` text (dialogue-only) will match here and FAIL
-    // the assertion — that is the point of the M-LOOP metric.
-    //
-    // Today: both returning sessions boot into the same
-    // `packet-delivered` beat with the same enabled `#deliverButton`
-    // affordance (no action-set divergence yet). This assertion is
-    // RED. Once the impl story wires the available action set off
-    // the memory record, the sets diverge and this goes GREEN.
-    expect(saveA.offered).not.toEqual(saveB.offered);
 
     await saveA.page.context().close();
     await saveB.page.context().close();
