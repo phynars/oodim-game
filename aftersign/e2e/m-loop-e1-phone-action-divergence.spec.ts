@@ -189,30 +189,56 @@ async function playRoundThenReload(
   return { page, memory, offered };
 }
 
-// Impl-landed gate. The action-set assertion below RED-fails until the
+// Impl-landed gate. The two-save phone round ALWAYS runs — it proves
+// the divergent-save plumbing (cold slots, tone-choice split, reload
+// into returning-session) works on every CI lane. Only the
+// AVAILABLE-ACTION divergence assertion is gated on
+// `M_LOOP_E1_IMPL_LANDED === "1"`: that assertion RED-fails until the
 // M-LOOP-E1 impl story wires memory-dependent controls into the served
-// returning-session page (docs/plan/product-plan.md:104 — the spec
-// should skip unless `M_LOOP_E1_IMPL_LANDED === "1"`). Guarding the
-// whole describe lets this land GREEN today and flip on the moment CI
-// exports the flag alongside the impl PR. Using `describe.skip` (not
-// `test.fixme`) keeps the run silent for the pending story rather than
-// noisy per-test.
+// returning-session page (docs/plan/product-plan.md:104). When the
+// flag is off we still SURFACE the runtime gap — the observed action
+// states are logged and annotated on the test so a green lane can't
+// hide the missing divergence.
 const IMPL_LANDED = process.env.M_LOOP_E1_IMPL_LANDED === "1";
-const describeWhenImplLanded = IMPL_LANDED ? test.describe : test.describe.skip;
 
-describeWhenImplLanded("M-LOOP E1: memory changes the actions a phone player can take", () => {
-  test("completes sequential divergent saves and gates on tappable action identity", async ({ browser }) => {
+test.describe("M-LOOP E1: memory changes the actions a phone player can take", () => {
+  test("completes sequential divergent saves and gates on tappable action identity", async ({ browser }, testInfo) => {
     test.setTimeout(180_000);
 
     const saveA = await playRoundThenReload(browser, "kind", "#acknowledgeRouteButton");
     const saveB = await playRoundThenReload(browser, "evasive", "#skipRouteButton");
 
     try {
+      // Invariants — always asserted. If these fail the divergent-save
+      // setup is broken and the impl story has no foundation to build on.
       expect(saveA.memory.scene?.beat).toBe("io-next-job");
       expect(saveB.memory.scene?.beat).toBe("io-next-job");
       expect(saveA.memory.player?.returnReason).not.toBe(saveB.memory.player?.returnReason);
 
-      expect(hasDivergentActionState(saveA.offered, saveB.offered)).toBe(true);
+      const divergent = hasDivergentActionState(saveA.offered, saveB.offered);
+      const actionsA = enabledActionIds(saveA.offered);
+      const actionsB = enabledActionIds(saveB.offered);
+
+      if (!IMPL_LANDED) {
+        // Runtime gap — logged, not swallowed. The setup passed; the
+        // returning-session page hasn't yet learned to differ on memory.
+        // Annotate so the gap is visible in the Playwright report and
+        // log so the CI console shows the observed action states.
+        const detail = JSON.stringify({
+          divergent,
+          saveA: saveA.offered,
+          saveB: saveB.offered,
+        });
+        testInfo.annotations.push({
+          type: "m-loop-e1-impl-pending",
+          description: `M_LOOP_E1_IMPL_LANDED unset; divergence=${divergent} ${detail}`,
+        });
+        // eslint-disable-next-line no-console
+        console.warn(`[m-loop-e1] impl-pending — action-set divergence=${divergent} ${detail}`);
+        return;
+      }
+
+      expect(divergent).toBe(true);
 
       // Labels are deliberately absent from ActionState. A copy-only edit
       // therefore cannot pass this gate: identity, presence, and enabled
@@ -220,8 +246,6 @@ describeWhenImplLanded("M-LOOP E1: memory changes the actions a phone player can
       const sameActionsWithDifferentLabels = saveA.offered.map((action) => ({ ...action }));
       expect(hasDivergentActionState(saveA.offered, sameActionsWithDifferentLabels)).toBe(false);
 
-      const actionsA = enabledActionIds(saveA.offered);
-      const actionsB = enabledActionIds(saveB.offered);
       const differingId = actionsA.find((id) => !actionsB.includes(id)) ?? actionsB.find((id) => !actionsA.includes(id));
       expect(differingId).toBeDefined();
       await tap(actionsA.includes(differingId!) ? saveA.page : saveB.page, differingId!);
