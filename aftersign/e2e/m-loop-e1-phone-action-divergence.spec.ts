@@ -34,13 +34,23 @@ type ActionState = {
   id: (typeof SERVED_BUTTON_IDS)[number];
   present: boolean;
   enabled: boolean;
-  // #1777 label-excluded identity axis. `data-aftersign-choice` is
-  // stamped by `stampAftersignChoice` in `aftersign/main.js` and carries
-  // the CHOICE ID (e.g. `"deliver-packet"`, `"acknowledge-kiosk"`,
-  // `"choose-return-tone"`, `"ask-for-next-job"`), independent of the
-  // visible button label. A label-only edit (e.g. renaming "Deliver
+  // #1777 label-excluded identity axis. `data-aftersign-tap-choice` is
+  // the served-page attribute (pinned by
+  // `apps/web/src/aftersign/servedSurface.contract.test.ts:109` and
+  // `apps/web/src/aftersign/routeRiskMemory.ts:100 —
+  // AFTERSIGN_ROUTE_RISK_TAP_ATTRIBUTE`). It is written by the static
+  // HTML on `#deliverButton` (`aftersign/index.html:1051`) and by
+  // `main.js:2148` for dynamically minted offer buttons; it carries the
+  // CHOICE ID (`"deliver-packet"`, `"acknowledge-kiosk"`,
+  // `"choose-return-tone"`, `"ask-for-next-job"`, …), independent of
+  // the visible button label. A label-only edit (renaming "Deliver
   // packet" → "Send packet") does NOT change this attribute, so a
   // divergence assertion on this axis catches identity flips only.
+  //
+  // NB: `stampAftersignChoice` in `aftersign/src/playerVisibleBeatDom.js`
+  // writes a DIFFERENT attribute (`data-choice-id`) on the same buttons
+  // — same vocabulary, second axis. We key on the tap-choice attribute
+  // because that's the one the served-surface contract test pins.
   choiceId: string;
 };
 
@@ -90,7 +100,7 @@ async function offeredActionStates(page: Page): Promise<ActionState[]> {
       const visible = present ? await button.isVisible().catch(() => false) : false;
       const enabled = visible ? await button.isEnabled().catch(() => false) : false;
       const choiceId = visible
-        ? (await button.getAttribute("data-aftersign-choice").catch(() => null)) ?? ""
+        ? (await button.getAttribute("data-aftersign-tap-choice").catch(() => null)) ?? ""
         : "";
       return { id, present: visible, enabled, choiceId };
     }),
@@ -99,10 +109,11 @@ async function offeredActionStates(page: Page): Promise<ActionState[]> {
 
 // #1777 stable-identity fingerprint, excluding labels. Each enabled
 // action is keyed on `<button-id>|<choice-id>` — the button id is the
-// DOM address (independent of copy) and `data-aftersign-choice` is the
-// authored choice axis (also independent of copy). A label-only edit
-// (renaming visible text without touching the choice id) produces an
-// IDENTICAL fingerprint set, which is exactly what this gate must fail.
+// DOM address (independent of copy) and `data-aftersign-tap-choice` is
+// the authored choice axis (also independent of copy). A label-only
+// edit (renaming visible text without touching the choice id) produces
+// an IDENTICAL fingerprint set, which is exactly what this gate must
+// fail.
 function actionIdentityFingerprints(actions: ActionState[]): string[] {
   return actions
     .filter((action) => action.present && action.enabled)
@@ -169,27 +180,28 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
         "#deliverButton|deliver-packet",
       ]);
 
-      // NEGATIVE CONTROL (#1777 acceptance criterion): a label-only edit
-      // — same button id, same `data-aftersign-choice`, DIFFERENT visible
-      // text — must NOT satisfy the identity gate. We synthesize the
-      // relabeled fingerprint set by preserving the identity axes and
-      // proving the gate would still read them as identical (i.e. the
-      // gate is NOT text-sensitive). If a future edit accidentally
-      // mixes the visible label into the identity axis, THIS assertion
-      // reds — that's the regression #1777 exists to catch.
-      const roundOneRelabeledIdentity = actionIdentityFingerprints(
-        roundOneStates.map((action) => ({
-          ...action,
-          // A label-only edit would touch the button's visible text but
-          // NOT the button id or the choice id. Simulate by leaving both
-          // identity axes untouched — the resulting fingerprints must
-          // equal the original.
-        })),
+      // NEGATIVE CONTROL (#1777 acceptance criterion): prove the
+      // choice-id axis is LOAD-BEARING in the fingerprint. If a future
+      // refactor accidentally drops `choiceId` from
+      // `actionIdentityFingerprints` (collapsing identity to button id
+      // alone), the divergence gate downstream would silently pass on
+      // label-only edits — the exact regression #1777 exists to catch.
+      // We prove load-bearing by mutating ONLY the choice-id axis on a
+      // copy of the round-one states and asserting the fingerprint
+      // DIFFERS. Same button ids, different choice ids → different
+      // fingerprint. If this reds, the fingerprint stopped consuming
+      // choiceId and the divergence gate is toothless.
+      const roundOneChoiceIdMutated = actionIdentityFingerprints(
+        roundOneStates.map((action) =>
+          action.present && action.enabled
+            ? { ...action, choiceId: `${action.choiceId}-mutated` }
+            : action,
+        ),
       );
       expect(
-        roundOneRelabeledIdentity,
-        "label-only edits must NOT change the identity fingerprint",
-      ).toEqual(roundOneIdentity);
+        roundOneChoiceIdMutated,
+        "choice-id must be load-bearing in the identity fingerprint",
+      ).not.toEqual(roundOneIdentity);
 
       await tap(page, "#deliverButton");
       // Recognition-beat delivery mirror is a known runtime gap (#1779):
@@ -213,8 +225,8 @@ test.describe("M2-E1: continuous two-round phone playtest", () => {
       // #1777 identity-divergence gate (label-excluded). The round-two
       // action set must differ from round-one on the identity axis — a
       // label-only edit to any offered button CANNOT satisfy this,
-      // because `data-aftersign-choice` is copy-independent. This is
-      // the exact regression #1777 asks to catch.
+      // because `data-aftersign-tap-choice` is copy-independent. This
+      // is the exact regression #1777 asks to catch.
       expect(
         roundTwoIdentity,
         "round-two action identity must differ from round-one (label-excluded)",
