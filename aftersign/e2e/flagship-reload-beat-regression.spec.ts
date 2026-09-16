@@ -57,6 +57,10 @@ const PACKET_PATHS: PacketPath[] = [
 ];
 
 async function waitForSurface(page: Page): Promise<void> {
+  // `?.input.choose` (not `?.input?.choose`): waitForFunction re-polls on
+  // throw, so a transient `input === undefined` retries rather than crashes.
+  // The optional chain on `__game` is what guards the boot race; nested
+  // optional chains would just hide a real contract break in `input`.
   await page.waitForFunction(
     () =>
       typeof window.__game?.getSnapshot === "function" &&
