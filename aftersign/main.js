@@ -444,6 +444,7 @@ import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { chooseIoLedgerLine } from "./src/ioLedgerLine.ts";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
+import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -2187,6 +2188,19 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           );
           attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
           armJobOfferFeel(button, () => {
+            // PR #1790 (Soren's REQUEST_CHANGES) — schedule the frozen
+            // `JOB_OFFER_CONFIRM_AUDIO` triangle burst on the same
+            // `audioContext` `playKioskConfirm` uses, from the very
+            // click callback the offer button's DOM click event fires.
+            // This turns the imported audio row from dead weight into a
+            // shipped consumer: a real player tap on `#job-offer-<jobId>`
+            // now hears the 196Hz/120ms cue, and the story-level marker
+            // `state._runtime.audio.lastCue === "job-offer-selected"` is
+            // stamped even in headless CI where AudioContext stays
+            // suspended — so a played-not-driven e2e can pin the cue
+            // element-level. Fire-and-forget (`void`) matches the
+            // sibling `void playFailureStingAudio()` schedule call.
+            void playJobOfferConfirm();
             // Compose the M-LOOP action id with the underlying
             // offered jobId so BOTH axes ride on `lastAction`. Old
             // shape (`job-offer:${offer.id}`) is superseded — a
@@ -3303,7 +3317,51 @@ const playKioskConfirm = async () => {
   tone.connect(gain);
   tone.start(now);
   tone.stop(now + cue.durationMs / 1000);
-};
+  };
+
+  // PR #1790 (Soren's REQUEST_CHANGES) — served-page consumer of the
+  // frozen `JOB_OFFER_CONFIRM_AUDIO` row. The first draft imported the
+  // module in main.js without wiring anything to play it: no click
+  // handler, no audio scheduler, no story-cue stamp. Same shape as
+  // `playKioskConfirm` above — stamp the STORY-LEVEL cue FIRST (so a
+  // headless harness whose AudioContext never unlocks can still assert
+  // `state._runtime.audio.lastCue === "job-offer-selected"` when the
+  // tap lands), then schedule the triangle burst on `audioContext`
+  // once `enableAudio()` returns unlocked. Called from the offer
+  // button's click callback below (inside `armJobOfferFeel(button, ...)`),
+  // so a real player tap on `#job-offer-<jobId>` actually hears the cue.
+  const playJobOfferConfirm = async () => {
+    state._runtime.audio.lastCue = JOB_OFFER_CONFIRM_AUDIO.cue;
+    state._runtime.audio.lastCueAt = performance.now();
+    markStateDirty();
+    publishState();
+    const unlocked = await enableAudio();
+    // enableAudio() may overwrite lastCue with "ambient-rainline" on
+    // its FIRST successful unlock. Re-stamp job-offer-selected after —
+    // this cue is the more specific signal for this call.
+    state._runtime.audio.lastCue = JOB_OFFER_CONFIRM_AUDIO.cue;
+    state._runtime.audio.lastCueAt = performance.now();
+    markStateDirty();
+    publishState();
+    if (!unlocked || !audioContext) return;
+
+    const now = audioContext.currentTime;
+    const attack = JOB_OFFER_CONFIRM_AUDIO.attackMs / 1000;
+    const duration = JOB_OFFER_CONFIRM_AUDIO.durationMs / 1000;
+    const peak = JOB_OFFER_CONFIRM_AUDIO.peakGain;
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    gain.connect(audioContext.destination);
+
+    const tone = audioContext.createOscillator();
+    tone.type = JOB_OFFER_CONFIRM_AUDIO.waveform;
+    tone.frequency.setValueAtTime(JOB_OFFER_CONFIRM_AUDIO.frequencyHz, now);
+    tone.connect(gain);
+    tone.start(now);
+    tone.stop(now + duration);
+  };
 
 const triggerRecognitionImpactChirp = async ({ frequencyHz, durationMs }) => {
   state._runtime.audio.lastCue = "recognition-impact-chirp";
