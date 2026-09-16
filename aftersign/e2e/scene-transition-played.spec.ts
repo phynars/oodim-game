@@ -62,16 +62,32 @@ import { expect, test, type Page } from "@playwright/test";
 //     5. TRACED BEAT CROSSING — we cross the ONE scene boundary the
 //        vertical slice actually renders on the served page:
 //        kiosk (`packet-offered` / `packet-choice` / `packet-delivered`)
-//        → io-return (`io-return-recognition`). The player taps
-//        `#deliverButton` at `packet-offered` (the sole enabled tap
-//        at boot — `aftersign/e2e/m-continue-tap-playtest.spec.ts`
-//        pins that invariant), the beat advances through
-//        `packet-delivered` and lands on `io-return-recognition`,
-//        AftersignSceneId flips kiosk → io-return, `main.js`'s
-//        setBeat calls `resolveAndPlayAftersignSceneTransition`, and
-//        the layer mounts. We assert `data-from-scene="kiosk"` +
-//        `data-to-scene="io-return"` on the mounted layer to pin the
-//        traced crossing element-level.
+//        → io-return (`io-return-recognition`). The vertical slice
+//        requires a TWO-TAP flow to reach that crossing (Soren, PR
+//        #1785 review 7):
+//
+//          Tap 1 — `#packetButton` at boot beat `packet-offered`:
+//            advances the beat to `packet-choice` and reveals
+//            `#deliverButton`. This is the sole enabled tap at boot.
+//          Tap 2 — `#deliverButton` at `packet-choice`: fires
+//            `deliverPacket()` (aftersign/main.js:3760), which sets
+//            `packet-delivered` synchronously and schedules the
+//            1180ms `io-return-recognition` beat that crosses the
+//            kiosk → io-return scene boundary and mounts the
+//            transition layer.
+//
+//        `deliverPacket()` ONLY fires from the `packet-choice` beat —
+//        tapping `#deliverButton` at boot (before `#packetButton`) is
+//        a no-op that leaves the beat at `packet-offered`, the
+//        transition never mounts, and the fused `expect.poll` below
+//        times out on a layer that was never created. Same two-tap
+//        shape as the sibling `packet-confirm-feedback-played.spec.ts`
+//        (`#packetButton` → `#deliverButton`). Once the crossing
+//        fires, `main.js`'s setBeat calls
+//        `resolveAndPlayAftersignSceneTransition` and the layer
+//        mounts under `[data-aftersign-scene-transition-surface]`.
+//        We assert `data-from-scene="kiosk"` + `data-to-scene="io-return"`
+//        on the mounted layer to pin the traced crossing element-level.
 //
 // Real dataset attrs the writer emits (see
 // `createAftersignSceneTransitionLayer` in
@@ -142,13 +158,30 @@ test.describe("AFTERSIGN scene transition — served-surface consumer", () => {
     );
     await waitForGame(page);
 
-    // Boot lands at packet-offered (kiosk scene). The sole enabled
-    // tap is `#deliverButton` — pinned by
-    // `aftersign/e2e/m-continue-tap-playtest.spec.ts`. Tapping it
-    // advances the beat through packet-delivered and onto
-    // io-return-recognition, which flips the AftersignSceneId
-    // (kiosk → io-return) and causes `main.js`'s setBeat to call
-    // `resolveAndPlayAftersignSceneTransition`.
+    // Boot lands at packet-offered (kiosk scene). The vertical slice
+    // requires a TWO-TAP flow to reach the kiosk → io-return crossing
+    // (Soren, PR #1785 review 7):
+    //
+    //   Tap 1 — `#packetButton` (visible at boot, packet-offered):
+    //     advances the beat to `packet-choice` and reveals
+    //     `#deliverButton`.
+    //   Tap 2 — `#deliverButton` (visible at packet-choice): fires
+    //     `deliverPacket()` (aftersign/main.js:3760), which sets
+    //     `packet-delivered` synchronously and schedules the 1180ms
+    //     `io-return-recognition` beat that crosses the kiosk →
+    //     io-return scene boundary and mounts the transition layer.
+    //
+    // `deliverPacket()` ONLY fires from the `packet-choice` beat, so
+    // tapping `#deliverButton` before `#packetButton` is a no-op that
+    // leaves the beat at `packet-offered` and the transition layer
+    // never mounts — the fused `expect.poll` below then times out on
+    // a layer that was never created (the CI red Soren blocked on).
+    // Sibling `packet-confirm-feedback-played.spec.ts` uses the same
+    // two-tap flow.
+    const packetButton = page.locator("#packetButton");
+    await expect(packetButton).toBeVisible();
+    await packetButton.click();
+
     const deliverButton = page.locator("#deliverButton");
     await expect(deliverButton).toBeVisible();
     await deliverButton.click();
