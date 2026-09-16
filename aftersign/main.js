@@ -240,6 +240,7 @@ import {
   recordRouteRun,
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
+import { buildRouteRiskRenderSignature } from "./src/routeRiskRenderSignature.js";
 // Player-facing labels for the four route-risk action ids the
 // writer above stamps as `<button>` children. Passed as
 // `labelForAction: routeRiskActionLabel` at both
@@ -1921,11 +1922,19 @@ const renderText = () => {
       routeRiskChoice.dataset.visible = String(routeRiskVisible);
     }
     if (routeRiskVisible) {
-      renderRouteRiskChoice({
-        container: routeRiskChoice,
-        memory: state.player.routeRisk,
-        labelForAction: routeRiskActionLabel,
-        onChoose: (action) => {
+      // renderText runs each frame. Keep this tray's real buttons stable
+      // while its durable route-risk axis is unchanged; otherwise a phone
+      // tap can land on a node that is replaced before its click resolves.
+      const routeRiskSignature = buildRouteRiskRenderSignature(
+        state.player.routeRisk,
+      );
+      if (routeRiskChoice.dataset.renderSignature !== routeRiskSignature) {
+        routeRiskChoice.dataset.renderSignature = routeRiskSignature;
+        renderRouteRiskChoice({
+          container: routeRiskChoice,
+          memory: state.player.routeRisk,
+          labelForAction: routeRiskActionLabel,
+          onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
           // shape the memory fact wants. "take-the-shortcut" and
           // "carry-a-fragile-packet" record a successful fast run;
@@ -1954,8 +1963,9 @@ const renderText = () => {
           // blocked #1642 on this half-migration.
           void persistAuthoritative({ dirty: true });
           renderText();
-        },
-      });
+          },
+        });
+      }
     } else if (routeRiskChoice.firstChild) {
       while (routeRiskChoice.firstChild) {
         routeRiskChoice.removeChild(routeRiskChoice.firstChild);
