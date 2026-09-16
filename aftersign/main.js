@@ -1967,6 +1967,13 @@ const renderText = () => {
         });
       }
     } else if (routeRiskChoice.firstChild) {
+      // Clear the signature gate too — otherwise a hide→show cycle with
+      // an unchanged memory axis matches the stale value, skips the
+      // re-render, and the player sees a visible tray with zero
+      // buttons. That IS the tap-breaking bug this PR claims to fix,
+      // reintroduced in a new shape (Soren's REQUEST_CHANGES on the
+      // first draft). Same discipline as the show branch above.
+      delete routeRiskChoice.dataset.renderSignature;
       while (routeRiskChoice.firstChild) {
         routeRiskChoice.removeChild(routeRiskChoice.firstChild);
       }
