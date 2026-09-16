@@ -24,19 +24,21 @@ import { expect, test, type Page } from "@playwright/test";
 //        shared vite preview (same pattern as
 //        `aftersign/e2e/npc-memory-recall-dialogue-served.spec.ts`).
 //
-//     2. RACE-SAFE SINGLE-TICK POLL — two-part:
-//        (a) `waitForBeat(page, beat)` uses `expect.poll` on
-//            `window.__game.getSnapshot().scene?.beat`, which retries
-//            with the framework's tick budget rather than a hand-rolled
-//            sleep. No arbitrary `waitForTimeout` calls.
-//        (b) Every post-mount DOM read is folded into ONE
-//            `page.evaluate` snapshot. The layer auto-disposes at
-//            `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS`
-//            (540 + 80 = 620ms). Sequential `toHaveAttribute` calls
-//            cost one IPC round-trip each and can overrun 620ms on a
-//            loaded CI runner, hitting a detached element. Snapshotting
-//            all attrs in one tick sidesteps the race — same shape as
-//            the prior spec's "RACE FIX PR #1523 review 4" note.
+//     2. RACE-SAFE SINGLE-TICK POLL — beat check AND DOM snapshot
+//        fused into ONE `expect.poll`. Every iteration runs a single
+//        `page.evaluate` that reads BOTH `getSnapshot().scene?.beat`
+//        AND the mounted layer's dataset attrs atomically; the poll
+//        resolves only when beat === "io-return-recognition" AND the
+//        layer is mounted under the served surface. The layer auto-
+//        disposes at `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS`
+//        (540 + 80 = 620ms). Any cross-RPC gap between "beat matched"
+//        and "read the DOM" — e.g. a separate `waitForBeat` followed
+//        by a snapshot evaluate — can overrun 620ms on a loaded
+//        SwiftShader CI runner and observe a detached element. Fusing
+//        them into one tick closes the race. Same shape as the prior
+//        spec's "RACE FIX PR #1523 review 4" note; Soren re-flagged
+//        the split shape in review 6 of PR #1785 for exactly this
+//        reason.
 //
 //     3. DYNAMIC FEEL-NUMBER FETCH — the total-duration assertion
 //        reads its expected value from
@@ -120,21 +122,11 @@ async function waitForGame(page: Page): Promise<void> {
   });
 }
 
-async function waitForBeat(page: Page, beat: string): Promise<void> {
-  // Race-safe single-tick poll — expect.poll owns the retry budget so
-  // we never sleep-and-check. Same shape as
-  // `npc-memory-recall-dialogue-served.spec.ts`.
-  await expect
-    .poll(
-      async () => {
-        return page.evaluate(
-          () => window.__game?.getSnapshot?.().scene?.beat ?? null,
-        );
-      },
-      { timeout: WAIT_MS },
-    )
-    .toBe(beat);
-}
+// NOTE: no standalone `waitForBeat` helper here — the beat check is
+// fused into the single-tick `expect.poll` below so the beat-matched
+// snapshot and the DOM read happen atomically in one `page.evaluate`.
+// Splitting them (beat wait then separate snapshot) reopens the 620ms
+// disposal race Soren blocked on in review 6 of PR #1785.
 
 test.describe("AFTERSIGN scene transition — served-surface consumer", () => {
   test.use({ viewport: PHONE_VIEWPORT });
@@ -161,45 +153,101 @@ test.describe("AFTERSIGN scene transition — served-surface consumer", () => {
     await expect(deliverButton).toBeVisible();
     await deliverButton.click();
 
-    // Traced beat crossing — proved by the beat id, not by the
-    // presence of the layer alone.
-    await waitForBeat(page, "io-return-recognition");
-
-    // RACE FIX (PR #1785 review 3, Soren): the layer auto-disposes at
-    // `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS` (540 + 80 =
-    // 620ms). Issuing ~9 sequential Playwright `toHaveAttribute` calls
-    // after `waitForBeat` costs one IPC round-trip each; on a loaded CI
-    // runner that sequence can overrun 620ms and later assertions hit
-    // a detached element (10s timeout, red spec). Fold every read into
-    // ONE `page.evaluate` that snapshots the layer synchronously in a
-    // single tick — same shape as the prior spec's "RACE FIX PR #1523
-    // review 4" note. Direct-seam pin
+    // RACE FIX (PR #1785 review 6, Soren blocked): the layer auto-
+    // disposes at `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS`
+    // (540 + 80 = 620ms after mount). The previous shape here — a
+    // separate `waitForBeat("io-return-recognition")` followed by a
+    // one-shot `page.evaluate` snapshot — introduced a cross-RPC gap
+    // between "beat matched" and "read the DOM". On a loaded
+    // SwiftShader CI runner the `expect.poll` interval inside
+    // `waitForBeat` plus the IPC round-trip to the snapshot evaluate
+    // can exceed 620ms, so by the time the snapshot runs the layer
+    // has already been detached and `snapshot.mounted` is `false`.
+    //
+    // Fix: collapse the beat wait AND the DOM snapshot into a SINGLE
+    // `expect.poll` — one `page.evaluate` per iteration that returns
+    // BOTH the beat and the layer attrs atomically. The poll only
+    // resolves when the beat is `io-return-recognition` AND the layer
+    // is mounted under the served surface — no gap for the disposal
+    // timer to slip through. This is the shape the prior spec used
+    // (see the "RACE FIX PR #1523 review 4" note) and the one Soren
+    // flagged when the earlier rewrite split it.
+    //
+    // Direct-seam pin
     // (`[data-aftersign-scene-transition-surface] .aftersign-scene-transition`)
-    // still enforced: `querySelector` off the surface container inside
-    // the evaluate, so a renderer regression that moved the mount off
-    // the served surface reds via `null` layer.
-    const snapshot = await page.evaluate(() => {
-      const layer = document.querySelector<HTMLElement>(
-        "[data-aftersign-scene-transition-surface] .aftersign-scene-transition",
-      );
-      const g = window.__game;
-      const feel = g?.getSceneTransitionFeel?.() ?? null;
-      if (!layer) {
-        return { mounted: false as const, feel };
-      }
-      return {
-        mounted: true as const,
-        feel,
-        fromScene: layer.dataset.fromScene ?? null,
-        toScene: layer.dataset.toScene ?? null,
-        totalDurationMs: layer.dataset.totalDurationMs ?? null,
-        audioRecognitionSettleHz:
-          layer.dataset.audioRecognitionSettleHz ?? null,
-        audioJobOfferRiseHz: layer.dataset.audioJobOfferRiseHz ?? null,
-        audioRouteCommitHz: layer.dataset.audioRouteCommitHz ?? null,
-        reducedMotion: layer.dataset.reducedMotion ?? null,
-      };
-    });
+    // is still enforced by the `querySelector` off the served-surface
+    // container inside the evaluate — a renderer regression that
+    // moved the mount off the surface reds via a poll that never
+    // observes `mounted: true`.
+    type SceneTransitionSnapshot = {
+      beat: string | null;
+      mounted: boolean;
+      feel: SceneTransitionFeel | null;
+      fromScene: string | null;
+      toScene: string | null;
+      totalDurationMs: string | null;
+      audioRecognitionSettleHz: string | null;
+      audioJobOfferRiseHz: string | null;
+      audioRouteCommitHz: string | null;
+      reducedMotion: string | null;
+    };
+
+    let snapshot: SceneTransitionSnapshot = {
+      beat: null,
+      mounted: false,
+      feel: null,
+      fromScene: null,
+      toScene: null,
+      totalDurationMs: null,
+      audioRecognitionSettleHz: null,
+      audioJobOfferRiseHz: null,
+      audioRouteCommitHz: null,
+      reducedMotion: null,
+    };
+
+    await expect
+      .poll(
+        async () => {
+          snapshot = await page.evaluate<SceneTransitionSnapshot>(() => {
+            const g = window.__game;
+            const beat = g?.getSnapshot?.().scene?.beat ?? null;
+            const feel = g?.getSceneTransitionFeel?.() ?? null;
+            const layer = document.querySelector<HTMLElement>(
+              "[data-aftersign-scene-transition-surface] .aftersign-scene-transition",
+            );
+            if (!layer) {
+              return {
+                beat,
+                mounted: false,
+                feel,
+                fromScene: null,
+                toScene: null,
+                totalDurationMs: null,
+                audioRecognitionSettleHz: null,
+                audioJobOfferRiseHz: null,
+                audioRouteCommitHz: null,
+                reducedMotion: null,
+              };
+            }
+            return {
+              beat,
+              mounted: true,
+              feel,
+              fromScene: layer.dataset.fromScene ?? null,
+              toScene: layer.dataset.toScene ?? null,
+              totalDurationMs: layer.dataset.totalDurationMs ?? null,
+              audioRecognitionSettleHz:
+                layer.dataset.audioRecognitionSettleHz ?? null,
+              audioJobOfferRiseHz: layer.dataset.audioJobOfferRiseHz ?? null,
+              audioRouteCommitHz: layer.dataset.audioRouteCommitHz ?? null,
+              reducedMotion: layer.dataset.reducedMotion ?? null,
+            };
+          });
+          return snapshot.beat === "io-return-recognition" && snapshot.mounted;
+        },
+        { timeout: WAIT_MS },
+      )
+      .toBe(true);
 
     // Direct-seam pin — the layer must be mounted under the served
     // surface container. A `null` here means a renderer regression
