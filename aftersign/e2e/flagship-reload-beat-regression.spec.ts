@@ -1,47 +1,18 @@
-// Reload-beat regression harness for the AFTERSIGN vertical slice.
-//
-// What it guards (impl at aftersign/index.html, publishState()):
-//   • deliverPacket() persists with beat="packet-delivered" SYNCHRONOUSLY,
-//     then schedules a setBeat("io-return-recognition") after 1180ms.
-//     The persisted beat we reload from is "packet-delivered" — that's
-//     the durable one; the returning-line beat is a live-session
-//     animation, not a save-state. To reach it after a reload the test
-//     calls choose("return-to-io"), which routes through advance() and
-//     promotes the beat when packet.delivered && memory.length > 0
-//     (both survive reload).
-//   • state.npcs.io.memory (SINGULAR) is the field publishState exposes.
-//     There is no plural `memories` — asserting on it would read undefined
-//     and pass silently even after a regression. The shared contract
-//     (e2e-shared/flagshipStoryStateContract.ts) uses `memories`, but that
-//     surface is `test.fixme`'d until Phase 3 (#566) lands the rename.
-//     Until then this spec asserts against the LIVE shape.
-//   • The expected lastLine strings are pinned to lineForBeat() in
-//     aftersign/main.js — the ONLY source publishState() reads.
-//     After a forceSave→forceReload from a delivered save the #957
-//     returning-session boot override (aftersign/main.js:325-334,
-//     1928-1941) replaces the fresh "clean handoff" copy with the
-//     appropriate returning-session line — asserted per-path via
-//     `path.expectedReloadedDeliveredLine` (sealed→sealedPacketSkippedRoute,
-//     opened→openedPacketSkippedRoute; both paths in this spec skip the
-//     kiosk-acknowledge second action, so route-attention normalizes
-//     to "skipped" at fact-mint). The fresh line is also asserted as a
-//     "must NOT be" negative so a runtime regression that DROPS the
-//     override (Io slides back to the fresh copy on reload) fails here.
-//
-// Guard is state-quiesced (waitForFunction + waitForStoryIdle) — no
-// waitForTimeout, per e2e-shared/no-wall-clock-waits.
 import { expect, test, type Page } from "@playwright/test";
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
+import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
 
-// Narrow local Window.__game shape covering only the fields this spec touches.
-// Global augmentations in TypeScript merge across files, but Playwright's
-// per-file esbuild transpile strips types — so runtime is unaffected. The
-// narrow type keeps this file self-contained without pulling the full
-// FlagshipGameSurface.
+type IoMemory = { id?: string; object?: string; action?: string };
+type ReloadSnapshot = {
+  scene: { beat: string };
+  npcs: { io: { lastLine?: string | null; lastLineMemoryRefs?: string[]; memory: IoMemory[] } };
+  delivery: { outcome: string };
+};
+
 declare global {
   interface Window {
     __FLAGSHIP_BREAK_MODE?: string;
     __game?: {
-      scene: { beat: string };
       input: {
         choose: (choiceId: string) => void | Promise<void>;
         forceSave: () => void | Promise<void>;
@@ -53,49 +24,9 @@ declare global {
   }
 }
 
-type ReloadSnapshot = {
-  scene: { beat: string };
-  npcs: {
-    io: {
-      lastLine?: string | null;
-      lastLineMemoryRefs?: string[];
-      memory: Array<{ id?: string; object?: string; action?: string }>;
-    };
-  };
-  delivery: { outcome: string };
-};
-
 const WAIT_MS = 10_000;
-
-// The fresh-session "clean handoff" line — what lineForBeat() emits
-// at packet-delivered ONLY when NO returning-session boot override
-// applies (i.e. during the live delivery flow, before any reload).
-// After forceSave→forceReload from a delivered save, the #957 override
-// wins and Io speaks a RETURNING-session line instead — see
-// RELOADED_DELIVERED_LINE_* below. This constant is retained so the
-// spec can assert that the fresh line does NOT survive the round trip
-// (i.e. we're proving the runtime replaces it, not preserves it).
 const FRESH_DELIVERED_LINE =
   "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
-// Recognition lines come from the canonical copy module (#595 cleanup,
-// #1077). These flows never acknowledge the kiosk route, so the
-// RETURNING tier speaks (routeListened=false).
-import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
-const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
-// Returning-session boot lines (#957). A reloaded delivered save opens
-// with lineForBeat() returning `ioReturningBootLine`, computed at boot
-// from chooseIoReturningSessionLine({ packetOutcome, routeAttention }).
-// These paths never invoke "acknowledge-kiosk" — normalizeSecondAction
-// maps null→"skipped" at fact-mint (aftersign/main.js:196, 1935-1938),
-// so route-attention resolves to "skipped" for both. The SkippedRoute
-// variants are the exact lines Io speaks at the durable packet-delivered
-// beat AFTER reload, and the assertion below pins them verbatim so a
-// runtime change to the boot override (or a copy edit in
-// packages/aftersign/src/ioReturningSession.ts) fails loudly.
-import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
-const SEALED_RELOADED_DELIVERED_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
-const OPENED_RELOADED_DELIVERED_LINE = ioReturningSessionLines.openedPacketSkippedRoute;
 
 type PacketPath = {
   name: string;
@@ -103,9 +34,6 @@ type PacketPath = {
   expectedOutcome: "sealed" | "opened";
   expectedRecognitionLine: string;
   wrongRecognitionLine: string;
-  // The verbatim line Io speaks at scene.beat === "packet-delivered"
-  // AFTER forceSave→forceReload — path-specific, minted by the #957
-  // boot override, NOT the fresh "clean handoff" copy.
   expectedReloadedDeliveredLine: string;
 };
 
@@ -114,17 +42,17 @@ const PACKET_PATHS: PacketPath[] = [
     name: "sealed packet",
     choices: ["keep-sealed", "deliver-packet"],
     expectedOutcome: "sealed",
-    expectedRecognitionLine: SEALED_RECOGNITION_LINE,
-    wrongRecognitionLine: OPENED_RECOGNITION_LINE,
-    expectedReloadedDeliveredLine: SEALED_RELOADED_DELIVERED_LINE,
+    expectedRecognitionLine: expectedIoRecognitionLine("sealed", false),
+    wrongRecognitionLine: expectedIoRecognitionLine("opened", false),
+    expectedReloadedDeliveredLine: ioReturningSessionLines.sealedPacketSkippedRoute,
   },
   {
     name: "opened packet",
     choices: ["open-packet", "deliver-packet"],
     expectedOutcome: "opened",
-    expectedRecognitionLine: OPENED_RECOGNITION_LINE,
-    wrongRecognitionLine: SEALED_RECOGNITION_LINE,
-    expectedReloadedDeliveredLine: OPENED_RELOADED_DELIVERED_LINE,
+    expectedRecognitionLine: expectedIoRecognitionLine("opened", false),
+    wrongRecognitionLine: expectedIoRecognitionLine("sealed", false),
+    expectedReloadedDeliveredLine: ioReturningSessionLines.openedPacketSkippedRoute,
   },
 ];
 
@@ -132,10 +60,10 @@ async function waitForSurface(page: Page): Promise<void> {
   await page.waitForFunction(
     () =>
       typeof window.__game?.getSnapshot === "function" &&
-      typeof window.__game?.input?.choose === "function" &&
-      typeof window.__game?.input?.forceSave === "function" &&
-      typeof window.__game?.input?.forceReload === "function" &&
-      typeof window.__game?.input?.waitForStoryIdle === "function",
+      typeof window.__game?.input.choose === "function" &&
+      typeof window.__game?.input.forceSave === "function" &&
+      typeof window.__game?.input.forceReload === "function" &&
+      typeof window.__game?.input.waitForStoryIdle === "function",
     undefined,
     { timeout: WAIT_MS },
   );
@@ -146,15 +74,10 @@ async function idle(page: Page): Promise<void> {
 }
 
 function uniqueSlotKey(path: PacketPath): string {
-  return `flagship-reload-${path.expectedOutcome}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+  return `flagship-reload-${path.expectedOutcome}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function playSaveReloadPath(page: Page, path: PacketPath) {
-  // Only install the break-mode hook when a mode is actually set — the
-  // default lane runs with FLAGSHIP_BREAK_MODE unset, so this is a no-op
-  // and the runtime path stays byte-identical to pre-guard behavior.
+async function playSaveReloadPath(page: Page, path: PacketPath): Promise<ReloadSnapshot> {
   const breakMode = process.env.FLAGSHIP_BREAK_MODE;
   if (breakMode) {
     await page.addInitScript((mode) => {
@@ -162,17 +85,12 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
     }, breakMode);
   }
 
-  // Preserve per-test save/load isolation by pinning each run to its own slot
-  // key so forceSave/forceReload storage never cross-talks with parallel specs.
-  const slot = uniqueSlotKey(path);
-  await page.goto(`./?slot=${slot}`);
+  await page.goto(`./?slot=${uniqueSlotKey(path)}`);
   await waitForSurface(page);
 
-  // Fresh-session baseline that used to live in story-state-save-load.spec.ts.
-  // Assert BEFORE the first choice mutates state.
   const baseline = await page.evaluate(() => window.__game!.getSnapshot());
   expect(baseline.delivery.outcome).toBe("unknown");
-  expect(baseline.npcs.io.memory.length).toBe(0);
+  expect(baseline.npcs.io.memory).toHaveLength(0);
 
   for (const choice of path.choices) {
     await page.evaluate((choiceId) => window.__game!.input.choose(choiceId), choice);
@@ -182,53 +100,16 @@ async function playSaveReloadPath(page: Page, path: PacketPath) {
   await page.evaluate(() => window.__game!.input.forceSave());
   await page.evaluate(() => window.__game!.input.forceReload());
   await idle(page);
-
   return page.evaluate(() => window.__game!.getSnapshot());
 }
 
-// Shared post-reload assertion block. Both the green-path tests and the
-// drop-memory red probe reload to beat="packet-delivered" and want the
-// same five properties held (or, under drop-memory, deliberately broken
-// at memory.length>0 so the red workflow inverts). Keeping ONE helper
-// keeps the assertions byte-identical across callers — future edits
-// touch one place, not two.
 function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
-  // Live impl (aftersign/main.js):
-  //   • deliverPacket() persists with beat="packet-delivered" synchronously,
-  //     then advances to "io-return-recognition" ~1180ms later. The saved
-  //     beat we reload from is "packet-delivered".
-  //   • npcs.io.memory is the singular array field. There is no plural
-  //     `memories` — asserting on it would always be undefined.
-  //   • At the reloaded packet-delivered beat, lineForBeat() no longer
-  //     emits the fresh "Done. Blue route..." copy — the #957 returning-
-  //     session boot override (aftersign/main.js:325-334, 1928-1941)
-  //     replaces it with the RETURNING line minted by
-  //     chooseIoReturningSessionLine from the durable outcome +
-  //     route-attention facts. Sealed→sealedPacketSkippedRoute,
-  //     opened→openedPacketSkippedRoute (these paths never acknowledge
-  //     the kiosk, so route-attention normalizes to "skipped"). Assert
-  //     the path-specific returning line here — a real regression that
-  //     drops the override, or a copy drift in the ioReturningSession
-  //     module, fails loudly on this exact string.
   expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
-  // #958 de-flake: deliverPacket() persists beat="packet-delivered"
-  // synchronously and a 1180ms setTimeout advances to
-  // "io-return-recognition" — and pagehide/forceSave persists WHATEVER
-  // beat is current. On a slow runner the timer wins the race, so BOTH
-  // beats are contract-valid after reload (the byte-identical build
-  // produced either outcome across runners; the timing is environmental,
-  // not behavioral). The durable guard is the outcome + remembered
-  // memory + the beat-appropriate line — asserted for whichever
-  // contract-valid beat we landed on.
   expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
   expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-  expect(afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome)).toBe(
-    true,
-  );
+  expect(afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome)).toBe(true);
+
   if (afterReload.scene.beat === "packet-delivered") {
-    // Post-#957: the returning-session boot override wins at the
-    // durable beat. Path-specific (sealed vs opened) — the fresh
-    // "clean handoff" line must NOT survive the round trip.
     expect(afterReload.npcs.io.lastLine).toBe(path.expectedReloadedDeliveredLine);
     expect(afterReload.npcs.io.lastLine).not.toBe(FRESH_DELIVERED_LINE);
   } else {
@@ -237,14 +118,7 @@ function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): v
   }
 }
 
-// After reload we're at the durable "packet-delivered" beat. The
-// sealed/opened split only appears at "io-return-recognition"; reach
-// it deterministically by routing through advance() — no wall-clock wait,
-// no reliance on the 1180ms setTimeout (which doesn't survive reload).
-async function advanceToRecognition(page: Page) {
-  // #958: if the 1180ms timer already advanced us pre-save, we reloaded
-  // INTO recognition — choosing "return-to-io" again would be an unknown
-  // choice at that beat. Advance only when still at packet-delivered.
+async function advanceToRecognition(page: Page): Promise<ReloadSnapshot> {
   const beat = await page.evaluate(() => window.__game!.getSnapshot().scene.beat);
   if (beat !== "io-return-recognition") {
     await page.evaluate(() => window.__game!.input.choose("return-to-io"));
@@ -257,11 +131,8 @@ test.describe("AFTERSIGN reload beat regression", () => {
   for (const path of PACKET_PATHS) {
     test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);
-
       expectReloadedOutcome(afterReload, path);
 
-      // Now advance to the recognition beat and confirm the durable
-      // outcome routes to the correct remembered line.
       const afterRecognition = await advanceToRecognition(page);
       expect(afterRecognition.scene.beat).toBe("io-return-recognition");
       expect(afterRecognition.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
@@ -272,65 +143,28 @@ test.describe("AFTERSIGN reload beat regression", () => {
   test("sealed and opened reload paths produce distinct Io recognition lines", async ({ page }) => {
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page);
-
     await playSaveReloadPath(page, PACKET_PATHS[1]);
     const opened = await advanceToRecognition(page);
 
     expect(sealed.scene.beat).toBe("io-return-recognition");
     expect(opened.scene.beat).toBe("io-return-recognition");
-    expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
-    expect(opened.npcs.io.lastLine).toBe(OPENED_RECOGNITION_LINE);
+    expect(sealed.npcs.io.lastLine).toBe(PACKET_PATHS[0].expectedRecognitionLine);
+    expect(opened.npcs.io.lastLine).toBe(PACKET_PATHS[1].expectedRecognitionLine);
     expect(sealed.npcs.io.lastLine).not.toBe(opened.npcs.io.lastLine);
   });
 
   test("FLAGSHIP_BREAK_MODE=wrong-io-line fails the outcome-correct Io line contract", async ({ page }) => {
-    test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line",
-      "red guard: only runs when the runtime is deliberately configured to swap Io recognition lines",
-    );
-
+    test.skip(process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line", "red guard");
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page);
-
-    // Under wrong-io-line the runtime swaps the recognition line, so the
-    // sealed path speaks the OPENED line and these assertions FAIL —
-    // that failure is the red-polarity proof the workflow inverts.
     expect(sealed.scene.beat).toBe("io-return-recognition");
-    expect(sealed.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
-    expect(sealed.npcs.io.lastLine).not.toBe(OPENED_RECOGNITION_LINE);
+    expect(sealed.npcs.io.lastLine).toBe(PACKET_PATHS[0].expectedRecognitionLine);
+    expect(sealed.npcs.io.lastLine).not.toBe(PACKET_PATHS[0].wrongRecognitionLine);
   });
 
   test("FLAGSHIP_BREAK_MODE=drop-memory fails the persisted memory contract", async ({ page }) => {
-    test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== "drop-memory",
-      "red guard: only runs when the runtime is deliberately configured to drop Io memory on reload",
-    );
-
+    test.skip(process.env.FLAGSHIP_BREAK_MODE !== "drop-memory", "red guard");
     const afterReload = await playSaveReloadPath(page, PACKET_PATHS[0]);
-
-    // Under drop-memory reloadFromSave() discards saved.memory, so
-    // memory.length is 0 and these assertions FAIL — red polarity.
     expectReloadedOutcome(afterReload, PACKET_PATHS[0]);
   });
-
-  // FLAGSHIP_BREAK_MODE=local-only-save red coverage is NOT re-implemented
-  // here — one owner per break mode keeps polarity auditable. Durability's
-  // red-polarity workflow (.github/workflows/aftersign-durable-save-redgreen.yml)
-  // targets save-load-durable-contract.spec.ts, which is the shared-contract
-  // owner for the durable save/load rule. That workflow's preflight already
-  // self-retires when the FLAGSHIP_BREAK_MODE guard string is removed from
-  // the owner spec, so re-adding a parallel red probe here would either
-  //   (a) duplicate the assertion in a lane that never runs it (CI gap:
-  //       nothing sets FLAGSHIP_BREAK_MODE=local-only-save against THIS
-  //       spec — the aftersign-durable-save-redgreen job targets a
-  //       different spec via package.json:44), OR
-  //   (b) split ownership across two files and let one drift silently.
-  // The break-mode HOOK still lives in aftersign/index.html (forceSave
-  // short-circuits under local-only-save; reloadFromSave skips the server
-  // read) so the durable-save spec's red polarity CAN be re-enabled just
-  // by restoring its FLAGSHIP_BREAK_MODE guard — no impl change required.
-  // The wrong-io-line / drop-memory red probes above stay here because
-  // this spec IS their owner (they assert against beat+line surface, not
-  // durability), and the aftersign-npc-memory-redgreen workflow targets
-  // flagship-surface-contract for drop-memory as its shared owner.
 });
