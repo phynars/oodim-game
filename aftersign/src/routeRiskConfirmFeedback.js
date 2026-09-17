@@ -8,6 +8,11 @@ export const ROUTE_RISK_CONFIRM_FEEL = Object.freeze({
   easing: "cubic-bezier(.2,.8,.2,1)",
 });
 
+const prefersReducedMotion = () =>
+  typeof window !== "undefined"
+  && typeof window.matchMedia === "function"
+  && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /**
  * Play the route-choice acknowledgement on the tray the player just used.
  * @param {HTMLElement | null} surface
@@ -16,17 +21,24 @@ export const ROUTE_RISK_CONFIRM_FEEL = Object.freeze({
 export const playRouteRiskConfirmFeedback = (surface) => {
   if (!surface || typeof surface.animate !== "function") return false;
   const { durationMs, liftPx, scalePeak, easing } = ROUTE_RISK_CONFIRM_FEEL;
+  const reducedMotion = prefersReducedMotion();
   surface.getAnimations?.().forEach((animation) => animation.cancel());
   surface.animate(
-    [
-      { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
-      {
-        transform: `translate3d(0, -${liftPx}px, 0) scale(${scalePeak})`,
-        filter: "brightness(1.16)",
-        offset: 0.35,
-      },
-      { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
-    ],
+    reducedMotion
+      ? [
+          { filter: "brightness(1)" },
+          { filter: "brightness(1.16)", offset: 0.35 },
+          { filter: "brightness(1)" },
+        ]
+      : [
+          { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
+          {
+            transform: `translate3d(0, -${liftPx}px, 0) scale(${scalePeak})`,
+            filter: "brightness(1.16)",
+            offset: 0.35,
+          },
+          { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
+        ],
     { duration: durationMs, easing, fill: "none" },
   );
   return true;
