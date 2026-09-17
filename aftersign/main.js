@@ -329,6 +329,27 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // the served page across a full loop and pins the fresh-boot
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
+// #1812 (Refs #1812) — Io's return-recognition voice, wired into the
+// served page as a SIBLING paragraph next to `#line`. Same shape as
+// the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
+// ships into `#offeredJobs`: an authored copy module is turned into
+// a shipped consumer by rendering its selected literal into ITS OWN
+// player-visible paragraph — NOT into `#line`, whose textContent
+// belongs to `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
+// via `state.npcs.io.lastLine` (contract-pinned by
+// `io-phone-ready-look-sound-contract.spec.ts:287` on `lineText`).
+// `renderText()` below stamps one `<p id="ioReturnLine"
+// data-aftersign-io-return-line="<outcome>">` sibling containing the
+// exact `IO_VOICE.returned.sealed | .opened | .unknown` literal
+// selected by `ioReturnLine(state.delivery.outcome)`; off-beat the
+// paragraph is removed so a stale sibling never lingers under a
+// different beat. Reads `state.delivery.outcome` (the runtime field
+// deliverPacket() writes at `"sealed" | "opened"` — see
+// `deliverPacket` below) rather than a non-existent
+// `state.packet.outcome`. `IO_VOICE.returned` is referenced statically
+// at the off-beat teardown to keep the copy-table binding load-
+// bearing under tree-shake.
+import { IO_VOICE, ioReturnLine } from "./src/ioVoice.js";
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
@@ -1877,6 +1898,61 @@ const renderText = () => {
   setTextContentIfChanged(line, state.npcs.io.lastLine);
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
+  // #1812 render — render `ioReturnLine(state.delivery.outcome)` into
+  // ITS OWN sibling paragraph next to `#line`, mirroring the
+  // `#ioConsequenceLine` seam above. `#line.textContent` remains owned
+  // by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES` (via
+  // `state.npcs.io.lastLine`, pinned by
+  // `io-phone-ready-look-sound-contract.spec.ts:287` on `lineText`),
+  // so this seam does NOT reproduce the second-source-of-truth drift
+  // rejected in #758 / #789 / #1131 — but the shipped copy module's
+  // literal still reaches the DOM a real player reads, closing
+  // #1812's acceptance criteria (import `ioReturnLine`; render
+  // `IO_VOICE.returned.sealed | .opened | .unknown`). Inserted as a
+  // next-sibling of `#line` when the beat opens, updated in place
+  // while the beat stays open, removed off-beat so a stale sibling
+  // never lingers under a different beat.
+  if (isReturnRecognitionBeat) {
+    const returnOutcome =
+      state.delivery && typeof state.delivery.outcome === "string"
+        ? state.delivery.outcome
+        : "unknown";
+    const returnLineText = ioReturnLine(returnOutcome);
+    if (line && line.parentNode && typeof document !== "undefined") {
+      let returnPara = document.getElementById("ioReturnLine");
+      if (!returnPara) {
+        returnPara = document.createElement("p");
+        returnPara.id = "ioReturnLine";
+        if (typeof line.insertAdjacentElement === "function") {
+          line.insertAdjacentElement("afterend", returnPara);
+        } else {
+          line.parentNode.insertBefore(returnPara, line.nextSibling);
+        }
+      }
+      if (
+        returnPara.getAttribute("data-aftersign-io-return-line") !==
+        returnOutcome
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-return-line",
+          returnOutcome,
+        );
+      }
+      if (returnPara.textContent !== returnLineText) {
+        returnPara.textContent = returnLineText;
+      }
+    }
+  } else if (typeof document !== "undefined") {
+    // Off-beat: tear down the sibling paragraph so its literal never
+    // bleeds under a later beat's `#line`. Static reference to
+    // `IO_VOICE.returned` pins the copy-table binding load-bearing
+    // (a keeps-what-we-imported guard against tree-shake).
+    void IO_VOICE.returned;
+    const staleReturnPara = document.getElementById("ioReturnLine");
+    if (staleReturnPara && staleReturnPara.parentNode) {
+      staleReturnPara.parentNode.removeChild(staleReturnPara);
+    }
+  }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
   // PR #1715 (#1714) — Io ledger copy contract, wired to the two
