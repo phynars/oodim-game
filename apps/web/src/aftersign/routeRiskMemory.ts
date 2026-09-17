@@ -45,6 +45,21 @@
 //   drives the REAL served `aftersign/index.html` in jsdom and pins
 //   both halves — DOM render + persist-payload round-trip — so a
 //   refactor that unwires either half reds.
+//
+// Confirm-feedback wiring (route-risk press envelope):
+//   The tap acknowledgement lives in `aftersign/src/routeRiskConfirmFeedback.js`
+//   and is played from `aftersign/main.js` at the two
+//   `renderRouteRiskChoice({...})` call sites — NOT here inside the
+//   writer. Reason: this module is the SHARED contract that both the
+//   served `main.js` and the plain-Node pure-runner import (via
+//   `aftersign/src/routeRiskFeel.ts`); the pure-runner header
+//   (`aftersign/pure-runner.ts`) documents the leaf as having ZERO
+//   relative imports. Adding a runtime import to a `.js` writer here
+//   would drag a browser-only `window.matchMedia` / `Element.animate`
+//   graph into the pure lane. Keeping the writer surface-agnostic
+//   preserves that invariant; the played consumer wires the
+//   acknowledgement where the served DOM already lives (see
+//   `playRouteRiskConfirmFeedback` import in `aftersign/main.js`).
 
 export type AftersignRoute = "fast" | "safe";
 
