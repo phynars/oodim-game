@@ -110,7 +110,12 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
     expect(saved.save.revision).toBeGreaterThanOrEqual(cold.save.revision);
     expect(saved.save.lastPersistedAt).toEqual(expect.any(String));
     expect(Number.isNaN(Date.parse(saved.save.lastPersistedAt as string))).toBe(false);
-    expect(saved.save.authority).toMatch(/^(server|local-fallback)$/);
+    // The normal flagship lane must use the authoritative store. The red
+    // guard deliberately permits the local fallback to reach the reload
+    // assertion below, where losing state is the expected failure.
+    expect(saved.save.authority).toBe(
+      breakMode === 'local-only-save' ? 'local-fallback' : 'server',
+    );
 
     await page.goto('/aftersign/', { waitUntil: 'load' });
     await page.goto(`/aftersign/?slot=${slotKey}`, { waitUntil: 'load' });
