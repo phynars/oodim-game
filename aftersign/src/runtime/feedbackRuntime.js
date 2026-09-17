@@ -13,11 +13,16 @@ export const createCameraPoseSampler = ({
   const computeCameraPoseAt = (nowMs) => {
     const confirmStartedAt = state.interaction.confirmStartedAt;
     const failureStartedAt = state.interaction.failureStartedAt;
+    const confirmReducedMotion = prefersReducedMotion();
     const confirmEnvelope = confirmStartedAt === null
-      ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK)
-      : interactionConfirmEnvelopeAt(nowMs - confirmStartedAt, CONFIRM_FEEDBACK);
+      ? interactionConfirmEnvelopeAt(CONFIRM_FEEDBACK.durationMs, CONFIRM_FEEDBACK, {
+          reducedMotion: confirmReducedMotion,
+        })
+      : interactionConfirmEnvelopeAt(nowMs - confirmStartedAt, CONFIRM_FEEDBACK, {
+          reducedMotion: confirmReducedMotion,
+        });
     const confirmWobble = confirmEnvelope.wobble;
-    const failureReducedMotion = prefersReducedMotion();
+    const failureReducedMotion = confirmReducedMotion;
     const failureEnvelope = failureStartedAt === null
       ? failureStingEnvelopeAt(FAILURE_FEEDBACK.durationMs, FAILURE_FEEDBACK, {
           reducedMotion: failureReducedMotion,
