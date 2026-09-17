@@ -42,6 +42,18 @@ const OPENED_OUTCOME_KEY = "opened" as const;
 
 const WAIT_MS = 15_000;
 
+// Phone context (Soren's fifth REQUEST_CHANGES on PR #1813). Every
+// sibling phone-tap spec in `aftersign/e2e/` opts into touch via
+// `test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true })`
+// (see `io-second-packet-copy-served.spec.ts:70` and
+// `aftersign-packet-offer-touch.playtest.spec.ts:38`). Without
+// `hasTouch: true` Playwright throws
+// `locator.tap: The page does not support tap.` on the very first
+// `#packetButton.tap()` — both branches time out before ever reaching
+// `#ioReturnLine`, and the tap-driven proof this PR exists to ship
+// never actually runs.
+const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
+
 // `#line` is stamped with the shipped `data-beat-id` attribute
 // (see `AFTERSIGN_BEAT_ATTRIBUTE` in
 // `aftersign/src/playerVisibleBeatDom.js`, and every sibling e2e in
@@ -139,49 +151,53 @@ async function holdOpenPacketButton(
   );
 }
 
-test("sealed delivery serves Io's sealed return voice in the sibling #ioReturnLine paragraph", async ({
-  page,
-}) => {
-  await openAftersign(page, `io-voice-sealed-${Date.now()}`);
+test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  // Plain tap on `#packetButton` commits SEALED (`PacketIntentController`
-  // never crosses OPEN thresholds).
-  await page.locator("#packetButton").tap();
-  await waitForBeat(page, "packet-choice");
-  await tapDeliverToRecognition(page);
+  test("sealed delivery serves Io's sealed return voice in the sibling #ioReturnLine paragraph", async ({
+    page,
+  }) => {
+    await openAftersign(page, `io-voice-sealed-${Date.now()}`);
 
-  const returnLine = page.locator("#ioReturnLine");
-  await expect(
-    returnLine,
-    "sibling #ioReturnLine paragraph must be present at the recognition beat",
-  ).toBeVisible({ timeout: WAIT_MS });
-  await expect(returnLine).toHaveAttribute(
-    "data-aftersign-io-return-line",
-    SEALED_OUTCOME_KEY,
-  );
-  await expect(returnLine).toHaveText(IO_VOICE.returned.sealed);
-});
+    // Plain tap on `#packetButton` commits SEALED (`PacketIntentController`
+    // never crosses OPEN thresholds).
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    await tapDeliverToRecognition(page);
 
-test("opened delivery serves Io's opened return voice in the sibling #ioReturnLine paragraph", async ({
-  page,
-}) => {
-  await openAftersign(page, `io-voice-opened-${Date.now()}`);
+    const returnLine = page.locator("#ioReturnLine");
+    await expect(
+      returnLine,
+      "sibling #ioReturnLine paragraph must be present at the recognition beat",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await expect(returnLine).toHaveAttribute(
+      "data-aftersign-io-return-line",
+      SEALED_OUTCOME_KEY,
+    );
+    await expect(returnLine).toHaveText(IO_VOICE.returned.sealed);
+  });
 
-  // Real hold+pull on `#packetButton` — the shipped seal-break gesture,
-  // driven by pointer events on the rendered control. Same shape as
-  // `performPacketGesture` in `io-recognition-return-visual-feel.spec.ts`.
-  await holdOpenPacketButton(page, 900);
-  await waitForBeat(page, "packet-choice");
-  await tapDeliverToRecognition(page);
+  test("opened delivery serves Io's opened return voice in the sibling #ioReturnLine paragraph", async ({
+    page,
+  }) => {
+    await openAftersign(page, `io-voice-opened-${Date.now()}`);
 
-  const returnLine = page.locator("#ioReturnLine");
-  await expect(
-    returnLine,
-    "sibling #ioReturnLine paragraph must be present at the recognition beat",
-  ).toBeVisible({ timeout: WAIT_MS });
-  await expect(returnLine).toHaveAttribute(
-    "data-aftersign-io-return-line",
-    OPENED_OUTCOME_KEY,
-  );
-  await expect(returnLine).toHaveText(IO_VOICE.returned.opened);
+    // Real hold+pull on `#packetButton` — the shipped seal-break gesture,
+    // driven by pointer events on the rendered control. Same shape as
+    // `performPacketGesture` in `io-recognition-return-visual-feel.spec.ts`.
+    await holdOpenPacketButton(page, 900);
+    await waitForBeat(page, "packet-choice");
+    await tapDeliverToRecognition(page);
+
+    const returnLine = page.locator("#ioReturnLine");
+    await expect(
+      returnLine,
+      "sibling #ioReturnLine paragraph must be present at the recognition beat",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await expect(returnLine).toHaveAttribute(
+      "data-aftersign-io-return-line",
+      OPENED_OUTCOME_KEY,
+    );
+    await expect(returnLine).toHaveText(IO_VOICE.returned.opened);
+  });
 });
