@@ -78,16 +78,18 @@ async function forceReload(page: Page): Promise<void> {
 
 test.describe('AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, timestamp, clean-state, authority, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
-    // #1419 Path (b): the default aftersign CI lane (ci.yml → test:e2e:aftersign)
-    // runs the whole e2e/ directory unconditionally, and this spec's three
-    // cold `page.goto` boots reliably trip the SwiftShader cold-start flake
-    // (#700/#506/#590/#766). Gate the run behind FLAGSHIP_BREAK_MODE so only
-    // the redgreen red lane — which explicitly opts into the durable-save
-    // contract via FLAGSHIP_BREAK_MODE=local-only-save — actually executes
-    // the boots. Default lane skips before the `page` fixture is exercised.
+    // #1801: the durable save/load round-trip is part of the flagship
+    // verification contract and must run in the ordinary flagship E2E lane
+    // (green: FLAGSHIP_BREAK_MODE unset). It also honors the red-lane guard:
+    // under FLAGSHIP_BREAK_MODE=local-only-save the save authority falls
+    // back to local storage, a hard `page.goto` wipes that state, and the
+    // survival assertion fails as required. Any OTHER break mode targets a
+    // different contract (drop-memory / wrong-io-line / etc.) — skip so we
+    // don't cross-contaminate assertions from a mode this spec doesn't own.
+    const breakMode = process.env.FLAGSHIP_BREAK_MODE;
     test.skip(
-      process.env.FLAGSHIP_BREAK_MODE !== 'local-only-save',
-      'red lane requires FLAGSHIP_BREAK_MODE=local-only-save',
+      breakMode !== undefined && breakMode !== 'local-only-save',
+      `durable save/load contract is orthogonal to FLAGSHIP_BREAK_MODE='${breakMode}'`,
     );
     test.setTimeout(COLD_START_MS);
 
