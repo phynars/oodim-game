@@ -132,6 +132,8 @@ async function advanceToRecognition(page: Page): Promise<ReloadSnapshot> {
 }
 
 test.describe("AFTERSIGN reload beat regression", () => {
+  test.describe.configure({ timeout: WAIT_MS });
+
   for (const path of PACKET_PATHS) {
     test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);
