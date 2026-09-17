@@ -25,6 +25,7 @@ declare global {
 }
 
 const WAIT_MS = 10_000;
+const COLD_START_MS = 90_000;
 const FRESH_DELIVERED_LINE =
   "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
 
@@ -132,6 +133,15 @@ async function advanceToRecognition(page: Page): Promise<ReloadSnapshot> {
 }
 
 test.describe("AFTERSIGN reload beat regression", () => {
+  // No `test.describe.configure({ timeout })` here on purpose: Playwright's
+  // default 30s per-test budget (aftersign/playwright.config.ts has no
+  // top-level `timeout`) is what the sealed-vs-opened spec needs — it plays
+  // TWO full save/reload paths in one test, each paying the SwiftShader
+  // cold-start tax. An earlier revision set this to WAIT_MS (10s) and CI
+  // timed out at exactly 10000ms; keep the default and let individual
+  // heavier specs opt into `test.setTimeout(COLD_START_MS)` (see the
+  // wrong-io-line red-guard below).
+
   for (const path of PACKET_PATHS) {
     test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);
@@ -159,6 +169,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
   test("FLAGSHIP_BREAK_MODE=wrong-io-line fails the outcome-correct Io line contract", async ({ page }) => {
     test.skip(process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line", "red guard");
+    test.setTimeout(COLD_START_MS);
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page);
     expect(sealed.scene.beat).toBe("io-return-recognition");
