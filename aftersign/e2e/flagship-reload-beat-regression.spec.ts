@@ -161,6 +161,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
   test("FLAGSHIP_BREAK_MODE=wrong-io-line fails the outcome-correct Io line contract", async ({ page }) => {
     test.skip(process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line", "red guard");
+    test.setTimeout(COLD_START_MS);
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page);
     expect(sealed.scene.beat).toBe("io-return-recognition");
