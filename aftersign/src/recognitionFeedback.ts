@@ -74,6 +74,8 @@ export const RECOGNITION_FEEDBACK_OPENED_TARGET_OFFSET_METERS = 0.06;
 export const RECOGNITION_FEEDBACK_OPENED_CLICK_DELAY_MS = 45;
 export const RECOGNITION_DIALOGUE_REVEAL_MS = 180;
 export const RECOGNITION_DIALOGUE_NUDGE_PX = 8;
+export const RECOGNITION_SUBTITLE_CATCH_SCALE = 1.055;
+export const RECOGNITION_SUBTITLE_REMEMBER_PEAK_SCALE = 1.075;
 
 export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
@@ -281,7 +283,7 @@ export function recognitionFeedbackAt(
     cameraYawDegrees = phase.cameraPushDegrees * pop;
     screenShakePx = phase.screenShakePx * (1 - localT) * shakePulse;
     vignetteOpacity = phase.vignetteOpacity * pop;
-    subtitleScale = 1 + 0.04 * pop;
+    subtitleScale = 1 + (RECOGNITION_SUBTITLE_CATCH_SCALE - 1) * pop;
   } else if (phase.name === 'remember') {
     const bloom = easeInOutCubic(localT);
     const catchPhase = RECOGNITION_FEEDBACK_PHASES[0];
@@ -290,13 +292,14 @@ export function recognitionFeedbackAt(
     cameraYawDegrees = cameraFrom + (phase.cameraPushDegrees - cameraFrom) * bloom;
     screenShakePx = phase.screenShakePx * Math.sin(localT * Math.PI);
     vignetteOpacity = vignetteFrom + (phase.vignetteOpacity - vignetteFrom) * bloom;
-    subtitleScale = 1.04 + 0.02 * Math.sin(localT * Math.PI);
+    subtitleScale = RECOGNITION_SUBTITLE_CATCH_SCALE
+      + (RECOGNITION_SUBTITLE_REMEMBER_PEAK_SCALE - RECOGNITION_SUBTITLE_CATCH_SCALE) * Math.sin(localT * Math.PI);
   } else {
     const settle = 1 - easeOutCubic(localT);
     cameraYawDegrees = RECOGNITION_FEEDBACK_PHASES[1].cameraPushDegrees * settle;
     screenShakePx = 0;
     vignetteOpacity = RECOGNITION_FEEDBACK_PHASES[1].vignetteOpacity * settle;
-    subtitleScale = 1 + 0.04 * settle;
+    subtitleScale = 1 + (RECOGNITION_SUBTITLE_CATCH_SCALE - 1) * settle;
   }
 
   const normalizedYaw = cameraYawDegrees / RECOGNITION_FEEDBACK_CAMERA_YAW_DEGREES;

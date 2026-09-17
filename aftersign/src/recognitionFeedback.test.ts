@@ -267,8 +267,12 @@ export function checkSubtitleScaleEnvelopeBounds(): void {
       state.subtitleScale >= 1 - epsilon,
       `subtitleScale should never dip below 1.0 (t=${t}): got ${state.subtitleScale}`,
     );
+    // Post-#1805 remember-phase bloom: peak subtitleScale is
+    // RECOGNITION_SUBTITLE_CATCH_SCALE (1.055) + 0.02·sin(π/2) = 1.075
+    // at t≈440ms. Cap raised from 1.06 → 1.08 to cover the new peak
+    // while still catching runaway text-scale regressions.
     assert(
-      state.subtitleScale <= 1.06 + epsilon,
+      state.subtitleScale <= 1.08 + epsilon,
       `subtitleScale should stay within readability cap (t=${t}): got ${state.subtitleScale}`,
     );
   }
