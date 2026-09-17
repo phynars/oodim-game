@@ -138,6 +138,38 @@
         --aftersign-packet-press-scale-from: 0.97;
         --aftersign-packet-press-hold-ms: 96ms;
         --aftersign-packet-press-easing: cubic-bezier(.2, .8, .2, 1);
+
+        /* --aftersign-route-choice-press-* — route-choice press
+           envelope consumed by the CSS rule on
+           `#routeChoice button[data-aftersign-route-choice-press="pressing"]`
+           (below) and stamped/held by
+           `aftersign/routeChoicePressing.js`. Mirrors the packet-press
+           precedent (PR #1806): Playwright's / iOS touch tap dispatches
+           pointerdown+pointerup in ~1ms, so `:active` can never drive a
+           paintable compression on the two route-memory choices
+           (`#acknowledgeRouteButton`, `#skipRouteButton`). A JS
+           `pressing` marker held by `setTimeout(hold-ms)` keeps the
+           button in the pressed transform for the full window; any
+           pointerdown-authored press-juice probe lands inside the
+           compressed envelope.
+
+           Numbers are the SINGLE SOURCE OF TRUTH mirrored on the JS
+           side by `aftersign/src/routeChoicePressFeedback.ts`'s
+           `ROUTE_CHOICE_PRESS_*` constants, and the served-HTML
+           contract check inside `runRouteChoicePressFeedbackChecks`
+           (registered in `aftersign/pure-runner.ts`) reds the pure
+           CI lane if the two drift. Chosen to sit inside the same
+           tap-language as the packet-press feel row (slightly
+           gentler compression because these are one-tap commits,
+           not a hold gesture):
+             scale-from : 0.972  (2.8% compression)
+             lift-px    : 1px    (visible sink on press)
+             hold-ms    : 96ms   (spec samples inside this window)
+             easing     : cubic-bezier(.2,.8,.2,1) (shared juice curve)  */
+        --aftersign-route-choice-press-scale-from: 0.972;
+        --aftersign-route-choice-press-lift-px: 1px;
+        --aftersign-route-choice-press-hold-ms: 96ms;
+        --aftersign-route-choice-press-easing: cubic-bezier(.2, .8, .2, 1);
       }
 
       /* Scene-transition consumer rule. Reads the CSS variables
@@ -816,6 +848,37 @@
         }
       }
 
+      /* Route-choice press envelope — SHIPPED CONSUMER of the four
+         --aftersign-route-choice-press-* variables (PR #1806). The
+         two route-memory buttons inside `#routeChoice`
+         (`#acknowledgeRouteButton` and `#skipRouteButton`) commit a
+         fork with a single tap; without a JS-held press marker the
+         `:active` window is ~1ms under touch and the compression is
+         imperceptible. `aftersign/routeChoicePressing.js` stamps
+         `data-aftersign-route-choice-press="pressing"` on pointerdown
+         and holds it for the full 96ms via setTimeout, so the CSS
+         rule below paints for a window a real player can feel and a
+         press-juice probe can sample. Return path inherits from the
+         base button transition when the marker is removed. */
+      #routeChoice button[data-aftersign-route-choice-press="pressing"] {
+        transform:
+          translateY(var(--aftersign-route-choice-press-lift-px, 0px))
+          scale(var(--aftersign-route-choice-press-scale-from, 1));
+        transition: transform 24ms var(--aftersign-route-choice-press-easing, linear);
+        will-change: transform;
+        filter: brightness(1.08);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        /* Reduced-motion: keep the state marker (so any dependent
+           CSS keys off it correctly) but collapse the transform
+           channel — same discipline as the packet-press branch above. */
+        #routeChoice button[data-aftersign-route-choice-press="pressing"] {
+          transform: none;
+          transition: none;
+          filter: none;
+        }
+      }
+
       /* Recognition impact-burst overlay (#1104). Absolute-positioned
          container anchored near the on-screen NPC-eye position; the
          render tick in main.js reconciles child `.impact-burst-particle`
@@ -1446,6 +1509,7 @@
     </script>
     <script type="module" src="./jobOfferPressing.js"></script>
     <script type="module" src="./packetOfferPressing.js"></script>
+    <script type="module" src="./routeChoicePressing.js"></script>
     <script type="module" src="./main.js"></script>
   </body>
 </html>

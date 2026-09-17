@@ -19,6 +19,8 @@
 //   - runPerfBudgetCalibrationChecks     (aftersign/src/perfBudgetCalibration.test.ts)
 //   - runPlayerMovementResponsivenessChecks (aftersign/src/playerMovementResponsiveness.test.ts)
 //   - runTargetLossFeedbackChecks         (aftersign/src/targetLossFeedback.test.ts) — #1721 wire-in
+//   - runRouteChoicePressFeedbackChecks   (aftersign/src/routeChoicePressFeedback.test.ts) — #1806
+//   - runRouteChoicePressServedContractChecks (aftersign/routeChoicePressServedContract.ts) — #1806 served pin
 //
 // Every relative specifier in every one of those subgraphs is
 // `.ts`-extensioned (verified 2026-08-02 for the first three; verified
@@ -130,6 +132,29 @@ import { runPlayerMovementResponsivenessChecks } from "./src/playerMovementRespo
 // #1721 so the contract lands under CI before the render-side ships —
 // same shape as the #1322 io-second-packet-copy follow-up pattern.
 import { runTargetLossFeedbackChecks } from "./src/targetLossFeedback.test.ts";
+// Route-choice press-feedback envelope (#1806) — pure press-math
+// contract. `.test.ts` shim re-exports from `./routeChoicePressFeedback.ts`
+// (extensioned); the leaf itself has ZERO relative imports, so the
+// subgraph satisfies the pure-runner extension-resolution contract
+// documented above.
+import { runRouteChoicePressFeedbackChecks } from "./src/routeChoicePressFeedback.test.ts";
+// Route-choice served-HTML contract (#1806) — pins the shipped
+// `aftersign/index.html` wiring that turns the TS press-math constants
+// into actual paint on `#routeChoice`:
+//   • `:root { --aftersign-route-choice-press-* }` variables (values
+//     must equal `ROUTE_CHOICE_PRESS_*` from the TS module),
+//   • `#routeChoice button[data-aftersign-route-choice-press="pressing"]`
+//     consumer CSS rule that paints the press envelope,
+//   • `<script src="./routeChoicePressing.js">` tag that stamps the
+//     pressing marker on pointerdown.
+// Closes the "zero importers / self-test never runs" gap Soren flagged
+// on PR #1806: `routeChoicePressing.js` (browser JS, can't import TS)
+// and the CSS rule (can't import TS) both mirror the constants; this
+// contract check reds the pure lane if any of the three drift. Lives
+// OUTSIDE `aftersign/src/` because it uses `node:fs`, which the
+// aftersign tsconfig's `types: ["vite/client"]` deliberately excludes
+// from the strict blocking gate over `src/`.
+import { runRouteChoicePressServedContractChecks } from "./routeChoicePressServedContract.ts";
 
 type Runner = {
   label: string;
@@ -205,6 +230,23 @@ const runners: Runner[] = [
   // wire-in (main.js `#reticle` / target-loss prompt surface) is tracked
   // as #1721.
   { label: "runTargetLossFeedbackChecks", run: runTargetLossFeedbackChecks },
+  // Route-choice press feedback (#1806) — pure press-math contract.
+  // The TS module is the source of truth for scale / lift / hold-ms;
+  // the sibling served-HTML runner below pins those constants against
+  // the shipped `aftersign/index.html` wiring.
+  { label: "runRouteChoicePressFeedbackChecks", run: runRouteChoicePressFeedbackChecks },
+  // Route-choice served-HTML contract (#1806) — reads the shipped
+  // `aftersign/index.html` and pins the four :root vars, the CSS
+  // consumer rule on `#routeChoice button[data-aftersign-route-choice-press="pressing"]`,
+  // and the `<script src="./routeChoicePressing.js">` tag against
+  // the numeric constants in `routeChoicePressFeedback.ts`. Reds if
+  // the served surface drifts from the TS source of truth (or if
+  // either of `#acknowledgeRouteButton` / `#skipRouteButton` is
+  // renamed / moved out of `#routeChoice`).
+  {
+    label: "runRouteChoicePressServedContractChecks",
+    run: runRouteChoicePressServedContractChecks,
+  },
 ];
 
 let failed = 0;
