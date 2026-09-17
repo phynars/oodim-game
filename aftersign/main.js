@@ -241,6 +241,10 @@ import {
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
 import { buildRouteRiskRenderSignature } from "./src/routeRiskRenderSignature.js";
+import {
+  playRouteRiskConfirmFeedback,
+  ROUTE_RISK_CONFIRM_FEEL,
+} from "./src/routeRiskConfirmFeedback.js";
 // Player-facing labels for the four route-risk action ids the
 // writer above stamps as `<button>` children. Passed as
 // `labelForAction: routeRiskActionLabel` at both
@@ -1862,6 +1866,7 @@ const publishState = () => {
   };
   window.__game.getOfferedActions = () =>
     computeOfferedActions(state.player.routeRisk);
+  window.__game.getRouteRiskConfirmFeel = () => ({ ...ROUTE_RISK_CONFIRM_FEEL });
   return window.__game;
 };
 
@@ -1954,6 +1959,11 @@ const renderText = () => {
             succeeded = false;
           }
           state.player.routeRisk = recordRouteRun({ route, succeeded });
+          // The fork needs a tiny physical "yes" before its durable
+          // write leaves the tab: 180ms, 4px lift, 1.025 peak scale.
+          // Animate the tray rather than rebuilding its button so the
+          // pressed target remains stable through this acknowledgement.
+          playRouteRiskConfirmFeedback(routeRiskChoice);
           markStateDirty();
           // Route-attention commit — authoritative writer, same as
           // the harness seam ~1749. `persist` writes only to the
