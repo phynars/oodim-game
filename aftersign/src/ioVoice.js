@@ -3,6 +3,23 @@
  *
  * Keep the decision in the rendering layer: these lines name a concrete
  * memory fact, then make it useful. They do not explain the memory system.
+ *
+ * Status (PR #1811): this module is COPY-ONLY today. The served
+ * `aftersign/main.js` does not import it yet. The wire — importing
+ * `ioReturnLine` alongside `ioLoopConsequenceLine` and stamping the
+ * chosen line into `#line` at the Io return-recognition beat — is
+ * tracked as a named follow-up: see #1812. The neighbor pattern for
+ * that wire lives right here in `aftersign/src/`:
+ *
+ *   - `ioLoopConsequenceCopy.js` — #1765, packet-offered beat
+ *   - `ioNextJobDialogue.js`      — io-next-job beat
+ *   - `npcMemoryDialogue.js`      — terminal-handoff beat
+ *
+ * Path convention: this module lives under `aftersign/src/` (NOT the
+ * repo root) so it sits next to the voice modules `main.js` already
+ * imports from `./src/`. A prior draft placed it at the repo root
+ * (`aftersign/io-voice.js`) — moved here to make the eventual wire a
+ * one-line import that reads like its siblings.
  */
 export const IO_VOICE = Object.freeze({
   greeting: "Night Post is closed to excuses. Open to couriers.",
