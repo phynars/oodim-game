@@ -122,6 +122,10 @@ test.describe('AFTERSIGN hard-navigation save survival', () => {
     await forceReload(page);
 
     const loaded = await readSaveProbe(page);
+    // Rehydration must retain the persistence authority as well as record
+    // data. A local fallback after a document teardown is not durable save
+    // coverage, even if a later explicit save could recreate state.
+    expect(loaded.save.authority).toBe(saved.save.authority);
     // A hard navigation may rehydrate the save but must not manufacture a
     // newer persistence event. The loaded record is the one just saved.
     expect(loaded.save.lastPersistedAt).toBe(saved.save.lastPersistedAt);
