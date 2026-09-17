@@ -1,3 +1,17 @@
+// Confirm-feedback juice — the brightness + lift keyframes that play
+// on the very button the finger touched, so the tap "counts" before
+// the beat re-renders. Wiring it into the writer (as opposed to a
+// call site in `aftersign/main.js`) is what turns
+// `aftersign/src/routeRiskConfirmFeedback.js` into a SHIPPED consumer:
+// every consumer of `renderRouteRiskChoice` (including the served
+// `aftersign/main.js`, which already imports this writer and invokes
+// it at the packet-choice beat) now plays the feedback on tap for
+// free, with no second call site to drift. The `.animate()` guard
+// inside `playRouteRiskConfirmFeedback` makes it a no-op on jsdom
+// (which doesn't implement Web Animations), so the existing consumer
+// tests below stay green.
+import { playRouteRiskConfirmFeedback } from "../../../../aftersign/src/routeRiskConfirmFeedback.js";
+
 // M-LOOP-E1: route + risk choice as a durable memory fact that feeds the
 // next run's offered-action set.
 //
@@ -155,6 +169,15 @@ export function renderRouteRiskChoice(
     button.setAttribute(AFTERSIGN_ROUTE_RISK_TAP_ATTRIBUTE, action);
     button.textContent = labelForAction ? labelForAction(action) : action;
     button.addEventListener("click", () => {
+      // Play the confirm feedback on the exact button the finger
+      // touched BEFORE the memory reducer runs — the click may
+      // trigger a re-render (`renderRouteRiskChoice` is idempotent
+      // and swaps children), so we want the animation kicked off
+      // on THIS element while it still lives in the DOM. The
+      // writer inside `playRouteRiskConfirmFeedback` self-guards
+      // on `typeof surface.animate !== "function"`, so jsdom-based
+      // consumer tests no-op cleanly.
+      playRouteRiskConfirmFeedback(button);
       onChoose(action);
     });
     container.appendChild(button);
