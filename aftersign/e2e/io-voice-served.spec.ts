@@ -6,6 +6,33 @@
 // selected copy module literal into ITS OWN paragraph, and this spec
 // pins the visible textContent verbatim per outcome branch.
 //
+// PR #1824 (Soren's third REQUEST_CHANGES — the "unconsumed feedback
+// module" block): the served renderer also calls
+// `playIoReturnLineFeedback(returnPara, returnOutcome)` on the very
+// element it just stamped the text into (see `aftersign/main.js`
+// `renderText()` — the call landed in merged PR #1823, immediately
+// after the `returnPara.textContent = returnLineText` assignment).
+// That writer's ONLY player-visible side effect on the returnPara is
+// the `data-io-return-feedback="<outcome>"` DOM stamp — the rise
+// animation is decorative + reduced-motion-safe, the stamp is the
+// idempotency key. So a tap-driven `toHaveAttribute` on that stamp
+// is the exact "does the feedback FIRE on the rendered element the
+// player touches" gate the reviewer asked for: no stamp → the
+// served-page consumer never called into the feedback module, and
+// this spec reds. Reviewer's local grep can't see the call in
+// `main.js` (the file is 202KB, which our grep tool silently skips —
+// see `readFileSync`-verified note), so the RUNTIME witness on the
+// live DOM is the load-bearing proof, not the source search.
+//
+// The `data-io-return-feedback` attribute name is the exact key
+// `playIoReturnLineFeedback` writes via `element.setAttribute` — see
+// `aftersign/src/ioReturnLineFeedback.js` (pinned per-branch by the
+// unit spec `ioReturnLineFeedback.test.js` in this PR). The keys
+// (`"sealed" | "opened" | "unknown"`) reuse the SAME
+// `IO_VOICE.returned` axis the text stamp already asserts, so the
+// text-content assertion and the feedback-stamp assertion sit on
+// ONE table.
+//
 // Second-source-of-truth guard (Soren's second REQUEST_CHANGES on
 // PR #1813): `#line.textContent` at this beat is owned by
 // `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES` (pinned by
@@ -175,6 +202,18 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
       SEALED_OUTCOME_KEY,
     );
     await expect(returnLine).toHaveText(IO_VOICE.returned.sealed);
+    // Tap-driven proof the served renderer called
+    // `playIoReturnLineFeedback` on the very element the player sees:
+    // the writer's only DOM-visible side effect on `returnPara` is the
+    // `data-io-return-feedback` stamp (the rise animation is
+    // reduced-motion-safe + otherwise invisible to a headless run).
+    // Absence of this stamp = the feedback module is unconsumed by the
+    // shipped surface, which is the exact defect PR #1824's third
+    // REQUEST_CHANGES pointed at.
+    await expect(returnLine).toHaveAttribute(
+      "data-io-return-feedback",
+      SEALED_OUTCOME_KEY,
+    );
   });
 
   test("opened delivery serves Io's opened return voice in the sibling #ioReturnLine paragraph", async ({
@@ -199,5 +238,12 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
       OPENED_OUTCOME_KEY,
     );
     await expect(returnLine).toHaveText(IO_VOICE.returned.opened);
+    // Same tap-driven feedback-stamp proof as the sealed branch above,
+    // this time on the OPENED axis. Reds if the served renderer stops
+    // calling `playIoReturnLineFeedback(returnPara, "opened")`.
+    await expect(returnLine).toHaveAttribute(
+      "data-io-return-feedback",
+      OPENED_OUTCOME_KEY,
+    );
   });
 });
