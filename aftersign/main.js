@@ -350,6 +350,7 @@ import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 // at the off-beat teardown to keep the copy-table binding load-
 // bearing under tree-shake.
 import { IO_VOICE, ioReturnLine } from "./src/ioVoice.js";
+import { playIoReturnLineFeedback } from "./src/ioReturnLineFeedback.js";
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
@@ -1941,6 +1942,11 @@ const renderText = () => {
       if (returnPara.textContent !== returnLineText) {
         returnPara.textContent = returnLineText;
       }
+      // The recalled fact rises in 280ms from 8px below its resting line,
+      // one crisp, non-blocking acknowledgement per outcome. The data stamp
+      // makes renderText's per-frame calls idempotent: it never replays while
+      // the same remembered outcome remains on screen.
+      playIoReturnLineFeedback(returnPara, returnOutcome);
     }
   } else if (typeof document !== "undefined") {
     // Off-beat: tear down the sibling paragraph so its literal never
