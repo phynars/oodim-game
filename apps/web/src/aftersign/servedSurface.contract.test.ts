@@ -36,6 +36,48 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain('<script type="module" src="./main.js"></script>');
   });
 
+  it("renders Io's target-loss line on the shipped #targetLossPrompt (#1829)", () => {
+    // PR #1829 — the `IO_TARGET_LOSS_LINE` constant in
+    // `aftersign/src/ioVoice.ts` was staged as an orphan (defined,
+    // imported nowhere, never rendered). Soren + Mara requested
+    // changes: "a line that never reaches the DOM was never spoken."
+    // This pin closes the loop — the shipped `#targetLossPrompt`
+    // element's text content must equal the exported constant, so a
+    // rename on either side reds this test BEFORE a player-visible
+    // drift lands. Read both files raw and grep for the exact
+    // string; no module import (the vitest lane's tsconfig doesn't
+    // resolve `aftersign/src/*` imports from
+    // `apps/web/src/aftersign/*`, matching the tsconfig split
+    // documented in `aftersign/README.md`).
+    const ioVoiceSource = readFileSync(
+      join(process.cwd(), "aftersign", "src", "ioVoice.ts"),
+      "utf8",
+    );
+    const html = readServedAftersignFile("index.html");
+
+    // The literal string must appear in the exported constant AND
+    // inside the `#targetLossPrompt` paragraph's body on the served
+    // page. A rename that updates one side reds here.
+    const line = "Keep your hands steady. The packet is still there.";
+    expect(ioVoiceSource).toContain(`IO_TARGET_LOSS_LINE`);
+    expect(ioVoiceSource).toContain(line);
+    // Pin the exact wire-in: the string must be the innerText of
+    // the shipped `#targetLossPrompt` node — not just present
+    // somewhere in the document (a comment mentioning the line
+    // would satisfy a bare `toContain`; this regex ties it to the
+    // rendered element).
+    expect(html).toMatch(
+      /<p id="targetLossPrompt"[^>]*>\s*Keep your hands steady\. The packet is still there\.\s*<\/p>/,
+    );
+    // Guard against the placeholder resurfacing: the pre-#1829
+    // copy `Target lost` was a two-word flat placeholder with no
+    // author. If a future refactor "reverts" the wire-in, red
+    // here before the player sees the drift.
+    expect(html).not.toMatch(
+      /<p id="targetLossPrompt"[^>]*>\s*Target lost\s*<\/p>/,
+    );
+  });
+
   it("ships the target-loss DOM surfaces for the packet-release wire-in", () => {
     // PR #1815: this pin used to assert `id="targetLostPrompt"` and
     // `id="reticle"` — a pair of inert placeholders that no wire-in

@@ -121,4 +121,17 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   // reads `feedback.active === false`, writes opacity 0, and nulls the
   // timer so a stale prompt cannot smear into the next beat.
   await expect(prompt).toHaveCSS("opacity", "0", { timeout: 400 });
+
+  // #1829 — the prompt must speak IN IO'S VOICE, not a flat placeholder.
+  // `aftersign/src/ioVoice.ts::IO_TARGET_LOSS_LINE` is the single
+  // source of truth; the served `#targetLossPrompt` renders it
+  // verbatim (contract-pinned in
+  // `apps/web/src/aftersign/servedSurface.contract.test.ts`). This
+  // played assertion catches a runtime edit (a subsequent tick that
+  // overwrites the paragraph's textContent) that a static-HTML pin
+  // would miss — the check runs AFTER the full release funnel, so
+  // any wiring that mutates the node during the envelope reds here.
+  await expect(prompt).toHaveText(
+    "Keep your hands steady. The packet is still there.",
+  );
 });
