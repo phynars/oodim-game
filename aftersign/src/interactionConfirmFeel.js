@@ -32,6 +32,7 @@ export const easeOutCubicConfirm = (value) => 1 - ((1 - clamp01(value)) ** 3);
 export const interactionConfirmEnvelopeAt = (
   elapsedMs,
   feel = INTERACTION_CONFIRM_FEEL,
+  { reducedMotion = false } = {},
 ) => {
   const progress = clamp01(elapsedMs / feel.durationMs);
   const intensity = easeOutCubicConfirm(progress);
@@ -43,11 +44,14 @@ export const interactionConfirmEnvelopeAt = (
     progress,
     falloff,
     wobble,
+    // reticleScale / hudLiftY stay live under reduced motion (scale + lift are
+    // non-vestibular affordances) — matches failureStingFeedback precedent.
     reticleScale: 1 + falloff * (feel.reticleScalePeak - 1),
     reticleLiftPx: -falloff * feel.reticleLiftPx,
-    hudShakeX: Math.round(wobble * feel.hudShakePx),
+    // Screen-shake + camera kick are vestibular; zero them under reduced motion.
+    hudShakeX: reducedMotion ? 0 : Math.round(wobble * feel.hudShakePx),
     hudLiftY: Math.round(-falloff * feel.hudLiftPx),
-    cameraKickWorldX: wobble * feel.cameraKickWorldX,
-    cameraKickDeg: wobble * feel.cameraKickDeg,
+    cameraKickWorldX: reducedMotion ? 0 : wobble * feel.cameraKickWorldX,
+    cameraKickDeg: reducedMotion ? 0 : wobble * feel.cameraKickDeg,
   };
 };
