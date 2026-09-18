@@ -36,7 +36,11 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
-const COLD_START_MS = 60_000;
+// Three cold WebGL boots (Slot A, Slot B setup, Slot B reload) plus one
+// full delivery loop.  Sibling reload specs (flagship-reload-beat-regression,
+// io-returning-session-boot) budget ~45s per cold boot; 60s total was
+// timing-starved.  Match the sibling ceiling.
+const COLD_START_MS = 180_000;
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -46,6 +50,34 @@ async function waitForReady(page: Page): Promise<void> {
     undefined,
     { timeout: WAIT_MS },
   );
+}
+
+// Persist the in-memory save to the server-authoritative store BEFORE
+// closing the browser context.  The served page no longer boots from
+// localStorage (see m-loop-divergent-offered-actions.playtest.spec.ts),
+// so a context that closes without forceSave() leaves the durable store
+// empty — a fresh context on the same `?slot=` will hydrate as if it
+// were a first visit and never reach `packet-offered` with the completed
+// offer set.  Sibling reload specs use the same pattern
+// (flagship-reload-beat-regression.spec.ts:105, io-returning-session-boot.spec.ts:66).
+async function persistBeforeClose(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const game = (
+      window as unknown as {
+        __game?: {
+          input?: {
+            forceSave?: () => Promise<unknown> | unknown;
+            waitForStoryIdle?: () => Promise<unknown> | unknown;
+          };
+        };
+      }
+    ).__game;
+    if (!game?.input?.forceSave) {
+      throw new Error("window.__game.input.forceSave is missing");
+    }
+    await game.input.forceSave();
+    await game.input.waitForStoryIdle?.();
+  });
 }
 
 async function waitForBeat(page: Page, beatId: string): Promise<void> {
@@ -158,6 +190,7 @@ test.describe("AFTERSIGN two-save tappable divergence (served page)", () => {
     const pageA = await ctxA.newPage();
     await bootSlot(pageA, slotFirstRun);
     const firstRunOffers = await snapshotOffers(pageA);
+    await persistBeforeClose(pageA);
     await ctxA.close();
 
     // Slot B — play one full delivery loop, so its durable save
@@ -173,6 +206,11 @@ test.describe("AFTERSIGN two-save tappable divergence (served page)", () => {
     await bootSlot(pageBSetup, slotCompleted);
     await playOneDeliveryLoop(pageBSetup);
     const completedOffersInSession = await snapshotOffers(pageBSetup);
+    // CRITICAL: persist the completed save to the server-authoritative
+    // store before tearing down the context.  Without this, the reload
+    // leg below hydrates an empty save and never reaches
+    // `packet-offered`.
+    await persistBeforeClose(pageBSetup);
     await ctxBSetup.close();
 
     // Slot B reload — fresh browser context, same `?slot=`; the
