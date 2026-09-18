@@ -349,7 +349,33 @@ import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 // `state.packet.outcome`. `IO_VOICE.returned` is referenced statically
 // at the off-beat teardown to keep the copy-table binding load-
 // bearing under tree-shake.
-import { IO_VOICE, ioReturnLine } from "./src/ioVoice.js";
+import {
+  IO_VOICE,
+  IO_TARGET_LOSS_LINE,
+  ioReturnLine,
+} from "./src/ioVoice.js";
+
+// #1829 (Soren's fourth REQUEST_CHANGES) — Io's target-loss line is
+// SINGLE-SOURCED from `./src/ioVoice.js::IO_TARGET_LOSS_LINE`. The
+// served `aftersign/index.html` ships the `#targetLossPrompt`
+// paragraph EMPTY; this stamp writes the authored line onto the
+// element's `textContent` at boot, so the constant is the ONE source
+// that drives the DOM (no HTML mirror to hold in sync via a string
+// pin). A `<script type="module">` is deferred by spec, so the DOM
+// is parsed by the time this top-level statement runs and
+// `#targetLossPrompt` is present. The played e2e
+// `aftersign/e2e/target-loss-feedback.spec.ts` asserts
+// `toHaveText(IO_TARGET_LOSS_LINE)` after driving a real packet
+// release, proving the runtime stamp lands. `servedSurface.contract.test.ts`
+// pins the import + this stamp so a future refactor that drops
+// either half reds before player-visible drift.
+{
+  const targetLossPromptEl = document.getElementById("targetLossPrompt");
+  if (targetLossPromptEl) {
+    targetLossPromptEl.textContent = IO_TARGET_LOSS_LINE;
+  }
+}
+
 import { playIoReturnLineFeedback } from "./src/ioReturnLineFeedback.js";
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";

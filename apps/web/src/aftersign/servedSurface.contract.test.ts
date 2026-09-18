@@ -36,6 +36,78 @@ describe("Aftersign served surface contract", () => {
     expect(html).toContain('<script type="module" src="./main.js"></script>');
   });
 
+  it("wires Io's target-loss line from ioVoice.js into #targetLossPrompt at boot (#1829)", () => {
+    // PR #1829 (Soren's fourth review) — the previous draft defined
+    // `IO_TARGET_LOSS_LINE` in a sibling `aftersign/src/ioVoice.ts`
+    // that NO SHIPPED CODE imported; main.js imports `./src/ioVoice.js`
+    // (a different file). The line reached the DOM only because the
+    // HTML literal was updated by hand, held in sync with the
+    // orphan constant by a string-equality test — "two sources held
+    // in sync, not one source driving the DOM." Soren's fix landed:
+    // move the constant into the EXISTING `./src/ioVoice.js`, delete
+    // the stem-colliding `.ts` sibling, and have main.js stamp the
+    // constant onto `#targetLossPrompt.textContent` at boot so the
+    // module is the SINGLE source and the HTML paragraph ships empty.
+    //
+    // This pin asserts the WIRE (import + stamp) instead of a string
+    // mirror. A refactor that drops either half — the import, or the
+    // stamp — reds here before any player-visible drift.
+    const ioVoiceSource = readFileSync(
+      join(process.cwd(), "aftersign", "src", "ioVoice.js"),
+      "utf8",
+    );
+    const main = readServedAftersignFile("main.js");
+    const html = readServedAftersignFile("index.html");
+
+    // (a) The authored line lives in `./src/ioVoice.js` under the
+    // named export `IO_TARGET_LOSS_LINE`. A rename that drops the
+    // identifier reds here.
+    const line = "Keep your hands steady. The packet is still there.";
+    expect(ioVoiceSource).toContain("export const IO_TARGET_LOSS_LINE");
+    expect(ioVoiceSource).toContain(line);
+
+    // (b) Stem-collision guard — no `aftersign/src/ioVoice.ts` may
+    // exist alongside the `.js`. An extensionless import from a
+    // future edit would resolve either file non-deterministically;
+    // keeping the stem unique is the fix.
+    expect(() =>
+      readFileSync(
+        join(process.cwd(), "aftersign", "src", "ioVoice.ts"),
+        "utf8",
+      ),
+    ).toThrow();
+
+    // (c) main.js imports the identifier from the served-lane
+    // module (matching `IO_VOICE`/`ioReturnLine`'s existing import
+    // shape). The regex tolerates the multi-line named-import form
+    // main.js uses now that the list has three identifiers.
+    expect(main).toMatch(
+      /import[\s\S]{0,200}IO_TARGET_LOSS_LINE[\s\S]{0,200}from\s+"\.\/src\/ioVoice\.js"/,
+    );
+
+    // (d) main.js STAMPS the constant onto the rendered
+    // `#targetLossPrompt` node's `textContent` at boot — the
+    // played-not-driven contract. Import alone would be an orphan
+    // again; the stamp is what makes the module drive the DOM.
+    expect(main).toContain('document.getElementById("targetLossPrompt")');
+    expect(main).toMatch(
+      /getElementById\("targetLossPrompt"\)[\s\S]{0,200}textContent\s*=\s*IO_TARGET_LOSS_LINE/,
+    );
+
+    // (e) The paragraph ships EMPTY in the HTML source — the runtime
+    // stamp is the sole source. If a future refactor re-hardcodes
+    // the string in the HTML, that resurrects the two-source drift
+    // Soren blocked #1829 on.
+    expect(html).toMatch(
+      /<p id="targetLossPrompt"[^>]*>\s*<\/p>/,
+    );
+    // Belt-and-braces: guard the pre-#1829 flat placeholder from
+    // resurfacing on the shipped element.
+    expect(html).not.toMatch(
+      /<p id="targetLossPrompt"[^>]*>\s*Target lost\s*<\/p>/,
+    );
+  });
+
   it("ships the target-loss DOM surfaces for the packet-release wire-in", () => {
     // PR #1815: this pin used to assert `id="targetLostPrompt"` and
     // `id="reticle"` — a pair of inert placeholders that no wire-in

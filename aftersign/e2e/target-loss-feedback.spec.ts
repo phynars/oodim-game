@@ -121,4 +121,20 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   // reads `feedback.active === false`, writes opacity 0, and nulls the
   // timer so a stale prompt cannot smear into the next beat.
   await expect(prompt).toHaveCSS("opacity", "0", { timeout: 400 });
+
+  // #1829 — the prompt must speak IN IO'S VOICE, not a flat placeholder.
+  // `aftersign/src/ioVoice.js::IO_TARGET_LOSS_LINE` is the SINGLE
+  // source of truth; `aftersign/main.js` imports the identifier and
+  // stamps it onto `#targetLossPrompt.textContent` at boot (the
+  // paragraph ships EMPTY in the served HTML). This played assertion
+  // proves the runtime stamp actually landed on the real DOM in a
+  // real browser — a purely static contract pin can't prove that
+  // (a broken import would leave the paragraph blank and the string
+  // still present in main.js source). Running it here — AFTER the
+  // full press + release + fade funnel — also catches a later tick
+  // that overwrites the paragraph's textContent during the envelope
+  // (Soren's fourth review on this PR: pin the wire, not a mirror).
+  await expect(prompt).toHaveText(
+    "Keep your hands steady. The packet is still there.",
+  );
 });

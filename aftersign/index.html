@@ -981,7 +981,25 @@
   <body>
     <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
     <div id="aimReticle" class="aim-reticle" data-target-loss-active="false" aria-hidden="true"></div>
-    <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite">Target lost</p>
+    <!-- Io's voice on the target-loss beat. This paragraph ships
+         EMPTY on purpose — `aftersign/main.js` imports
+         `IO_TARGET_LOSS_LINE` from `./src/ioVoice.js` and stamps it
+         onto this node's `textContent` at boot (a `<script
+         type="module">` is deferred, so the DOM is parsed by the
+         time the stamp runs). That makes `ioVoice.js` the SINGLE
+         SOURCE OF TRUTH for the line — no HTML mirror to hold in
+         sync via a string-equality contract pin, no risk of the
+         two literals drifting. The pin in
+         `apps/web/src/aftersign/servedSurface.contract.test.ts`
+         asserts the IMPORT + the STAMP live in main.js (not that
+         the HTML contains the string). Rendered live for the full
+         100ms target-loss envelope authored in
+         `aftersign/src/targetLossFeedback.ts`; the played-not-
+         driven proof lives in
+         `aftersign/e2e/target-loss-feedback.spec.ts`, which
+         `toHaveText(IO_TARGET_LOSS_LINE)`s after a real packet
+         release. -->
+    <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite"></p>
     <div class="failure-sting" aria-hidden="true"></div>
     <!-- #1724: inert DOM surface for a target-loss wire-in that never
          landed on this node. The real target-loss feedback ships on
