@@ -37,10 +37,28 @@ describe("Aftersign served surface contract", () => {
   });
 
   it("ships the target-loss DOM surfaces for the packet-release wire-in", () => {
+    // PR #1815: this pin used to assert `id="targetLostPrompt"` and
+    // `id="reticle"` — a pair of inert placeholders that no wire-in
+    // ever landed on. The REAL target-loss feedback ships on
+    // `#aimReticle` + `#targetLossPrompt` (double-`s`, note the id
+    // near-collision that made the old pin a readability trap); those
+    // are the ids the sibling e2e
+    // `aftersign/e2e/target-loss-feedback.spec.ts` drives and the ones
+    // `aftersign/src/targetLossFeedback.ts` documents in its module
+    // header. `id="targetLostPrompt"` was removed from `index.html`
+    // in the same PR — its guard was dead-code accretion. `#reticle`
+    // remains as a separate placeholder with its own history, but
+    // isn't part of the target-loss render path so it's no longer
+    // pinned here.
     const html = readServedAftersignFile("index.html");
 
-    expect(html).toContain('id="reticle"');
-    expect(html).toContain('id="targetLostPrompt"');
+    expect(html).toContain('id="aimReticle"');
+    expect(html).toContain('id="targetLossPrompt"');
+    // Bind-through: the real reticle carries the state marker the
+    // e2e polls on release (`data-target-loss-active="true"` after
+    // the pointerup edge). A rename that drops the attribute reds
+    // this pin before the e2e has to.
+    expect(html).toContain('data-target-loss-active');
   });
 
   it("publishes the story, state, durable-save, and NPC-memory harness surface", () => {
