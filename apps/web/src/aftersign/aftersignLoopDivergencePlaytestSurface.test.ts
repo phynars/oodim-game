@@ -1,19 +1,33 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // M-LOOP acceptance must prove the flagship's load-bearing memory mechanic on
 // the served page. The bar is divergence: two different memory records produce
 // different tappable actions, by taps only, on a phone-shaped viewport.
-const AFTERSIGN_E2E_DIR = join(process.cwd(), "aftersign", "e2e");
+//
+// Playtest specs live at REPO-ROOT `aftersign/e2e/`, not under apps/web. Walk
+// up from cwd to find the directory so this test passes whether it's invoked
+// from the repo root or from apps/web (vitest workspaces do both).
+function findRepoRoot(start: string): string {
+  let directory = resolve(start);
+  while (dirname(directory) !== directory) {
+    if (existsSync(join(directory, "aftersign", "e2e"))) return directory;
+    directory = dirname(directory);
+  }
+  throw new Error("Could not find the repository-root aftersign/e2e directory.");
+}
 
-// Phone-viewport signal. The flagship specs (m-loop-divergence.playtest,
-// memory-divergence-phone-playtest, m-continue-*, reset-route-risk-isolation)
-// all write the labeled Playwright shape
-//   `viewport: { width: 390, height: 844 }` or `{ width: 375, height: 812 }`,
-// where the width and height numbers are NOT adjacent — `height:` sits in the
-// gap. A bare `390\s*,\s*844` fails on that shape. Match on the labeled
-// shape (`width: 3XX, height: 8XX`) plus the platform/keyword fallbacks.
+const AFTERSIGN_E2E_DIR = join(findRepoRoot(process.cwd()), "aftersign", "e2e");
+
+// Phone-viewport signal. The flagship specs write either an inline object
+// (`viewport: { width: 390, height: 844 }`) or bind a labeled const first
+// (`const PHONE_VIEWPORT = { width: 390, height: 844 }` + `test.use({ viewport: PHONE_VIEWPORT, ... })`).
+// The real M-LOOP-E1 spec uses the labeled-const shape, so a regex that
+// demands `{` right after `viewport:` would reject it. Match on the
+// `width: 3XX, height: 6XX-9XX` shape wherever it appears, plus the
+// platform/keyword fallbacks (`isMobile: true`, `hasTouch: true`, `iphone`,
+// `pixel`, `mobile`).
 const PHONE_VIEWPORT_PATTERN = /(?:width\s*:\s*3[0-9]{2}\s*,\s*height\s*:\s*(?:6[0-9]{2}|7[0-9]{2}|8[0-9]{2}|9[0-9]{2})|iphone|pixel|mobile|isMobile\s*:\s*true|hasTouch\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ACTION_PATTERN = /\b(?:getByRole|getByLabelText|locator)\s*\([^\n]*(?:button|link|menuitem|checkbox|radio|tab|option|action|job|route|price|shortcut)/i;
@@ -91,8 +105,7 @@ describe("stripCommentsAndStrings ordering", () => {
   // lets the M-LOOP guard admit a spec whose HEADER COMMENT documents
   // abstinence with the literal `window.__game.input.*`. If a future edit
   // reorders the chain (e.g. strings first, or line-before-block), the
-  // false-positive that this PR fixed silently returns. These assertions
-  // pin the guarantee.
+  // false-positive that this test pins silently returns.
   it("strips a // __game.input. comment so HARNESS_INPUT_PATTERN no longer matches", () => {
     const source = [
       "// M-LOOP specs must NOT drive the game via window.__game.input.click(),",
@@ -176,6 +189,35 @@ describe("matchesLoopDivergencePlaytest contract", () => {
   // gate is INDIVIDUALLY load-bearing.
   it("admits a synthetic spec that satisfies every gate", () => {
     expect(matchesLoopDivergencePlaytest(FIXTURE_COMPLIANT_SPEC)).toBe(true);
+  });
+
+  // The real M-LOOP-E1 spec uses the labeled-const shape
+  // (`const PHONE_VIEWPORT = { width: 390, height: 844 }` +
+  // `test.use({ viewport: PHONE_VIEWPORT, ... })`). PHONE_VIEWPORT_PATTERN
+  // must match that shape too, not only the inline object. Regression
+  // test — an earlier revision demanded `{` right after `viewport:` and
+  // reddened this exact spec.
+  it("admits a spec that binds the viewport through a labeled const", () => {
+    const labeledConstSpec = [
+      "// M-LOOP-E1 phone playtest — no window.__game.input.* channels.",
+      "import { expect, test } from '@playwright/test';",
+      "const PHONE_VIEWPORT = { width: 390, height: 844 } as const;",
+      "test.describe('M-LOOP-E1 two-round phone playtest', () => {",
+      "  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });",
+      "  test('boots, completes round one, returns, and sees round two offer a different visible action set', async ({ page }) => {",
+      "    await page.goto('/aftersign/?slot=x');",
+      "    const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
+      "    await page.getByRole('button', { name: /accept/i }).tap();",
+      "    // priorOutcome=packet.delivered, looped return, safe-default, completed set",
+      "    const second = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
+      "    expect(first).not.toEqual(second); // different tappable actions",
+      "    const beat = await page.evaluate(() => window.__game?.scene?.beat);",
+      "    expect(beat).toBeDefined();",
+      "  });",
+      "});",
+    ].join("\n");
+
+    expect(matchesLoopDivergencePlaytest(labeledConstSpec)).toBe(true);
   });
 
   // Negative-fixture matrix. Each mutation removes exactly one gate's
