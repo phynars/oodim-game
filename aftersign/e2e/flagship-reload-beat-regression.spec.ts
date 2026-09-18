@@ -5,7 +5,7 @@ import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturnin
 type IoMemory = { id?: string; object?: string; action?: string };
 type ReloadSnapshot = {
   scene: { beat: string };
-  npcs: { io: { lastLine?: string | null; lastLineMemoryRefs?: string[]; memory: IoMemory[] } };
+  npcs: { io: { lastLine?: string | null; lastLineMemoryRefs?: string[]; memories: IoMemory[] } };
   delivery: { outcome: string };
 };
 
@@ -95,7 +95,7 @@ async function playSaveReloadPath(page: Page, path: PacketPath): Promise<ReloadS
 
   const baseline = await page.evaluate(() => window.__game!.getSnapshot());
   expect(baseline.delivery.outcome).toBe("unknown");
-  expect(baseline.npcs.io.memory).toHaveLength(0);
+  expect(baseline.npcs.io.memories).toHaveLength(0);
 
   for (const choice of path.choices) {
     await page.evaluate((choiceId) => window.__game!.input.choose(choiceId), choice);
@@ -111,8 +111,8 @@ async function playSaveReloadPath(page: Page, path: PacketPath): Promise<ReloadS
 function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
   expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
   expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
-  expect(afterReload.npcs.io.memory.length).toBeGreaterThan(0);
-  expect(afterReload.npcs.io.memory.some((memory) => memory.object === path.expectedOutcome)).toBe(true);
+  expect(afterReload.npcs.io.memories.length).toBeGreaterThan(0);
+  expect(afterReload.npcs.io.memories.some((memory) => memory.object === path.expectedOutcome)).toBe(true);
 
   if (afterReload.scene.beat === "packet-delivered") {
     expect(afterReload.npcs.io.lastLine).toBe(path.expectedReloadedDeliveredLine);
