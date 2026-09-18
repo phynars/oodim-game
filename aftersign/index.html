@@ -481,17 +481,22 @@
         touch-action: none;
       }
 
-      /* #1724: inert targets for #1721's target-loss feedback wire-in.
-         The future render loop owns transform/opacity; these defaults keep
-         the minted aim surfaces invisible and non-interactive meanwhile. */
-      #reticle,
-      #targetLostPrompt {
+      /* #1724: inert aim surface for a target-loss wire-in that never
+         landed here — the real target-loss feedback ships on the
+         `#aimReticle` + `#targetLossPrompt` pair below (see
+         `aftersign/src/targetLossFeedback.ts` + the e2e at
+         `aftersign/e2e/target-loss-feedback.spec.ts`, which walk the
+         `#aimReticle` transform + `#targetLossPrompt` opacity envelope).
+         The sibling `#targetLostPrompt` placeholder was removed in
+         PR #1815 because nothing ever consumed it and its near-identical
+         id (`Lost` vs `Loss`) turned `document.getElementById()` into a
+         readability trap. `#reticle` is kept for now — it's a separate
+         placeholder with its own history — but the future render loop
+         should either wire it in or remove it too. */
+      #reticle {
         position: fixed;
         pointer-events: none;
         opacity: 0;
-      }
-
-      #reticle {
         left: 50%;
         top: 50%;
         width: 24px;
@@ -499,12 +504,6 @@
         border: 1px solid rgba(120, 233, 255, 0.7);
         border-radius: 50%;
         transform: translate(-50%, -50%);
-      }
-
-      #targetLostPrompt {
-        left: 50%;
-        top: calc(50% + 32px);
-        transform: translateX(-50%);
       }
 
       .hud {
@@ -984,14 +983,15 @@
     <div id="aimReticle" class="aim-reticle" data-target-loss-active="false" aria-hidden="true"></div>
     <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite">Target lost</p>
     <div class="failure-sting" aria-hidden="true"></div>
-    <!-- #1724: inert DOM surfaces for #1721's target-loss feedback wire-in.
-         Minted here as siblings of the failure-sting layer (same category:
-         top-level fixed, pointer-events:none, invisible until a beat fires).
-         The CSS block above owns their default position/opacity; #1721's
-         render loop will drive transform/opacity when the packetRelease()
-         transition resolves the held state.packet gesture. -->
+    <!-- #1724: inert DOM surface for a target-loss wire-in that never
+         landed on this node. The real target-loss feedback ships on
+         `#aimReticle` + `#targetLossPrompt` above; `#reticle` is
+         kept for now as a separate placeholder with its own history.
+         PR #1815 removed the sibling `#targetLostPrompt` placeholder
+         (id near-collision with the real `#targetLossPrompt` above
+         made `document.getElementById()` a readability trap, and
+         nothing ever imported it). -->
     <div id="reticle" aria-hidden="true"></div>
-    <div id="targetLostPrompt" aria-hidden="true"></div>
     <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>
