@@ -267,16 +267,37 @@ game-mechanic spine. Persistence already exists; M-LOOP makes it LOAD-BEARING.
   records MUST produce different AVAILABLE ACTIONS on the served page —
   different job offers, prices, or open routes; dialogue-only differences
   score zero.
-- **Acceptance (played, not driven):** a taps-only phone-viewport spec seeds
-  two divergent saves, plays one round from each, and asserts the two runs
-  offered DIFFERENT tappable actions (element-level, not text-level). Plus
-  the standing playtest spec extended to complete TWO consecutive rounds.
+- **Acceptance (played, not driven):** a Playwright phone-viewport spec
+  seeds **two durable memory records**, serves each record through **two
+  consecutive rounds**, and taps the rendered page to play them. The records
+  pass only when they expose different visible, tappable actions on the served
+  page — element/action-level evidence, not merely different copy or a
+  different state-machine value. The standing playtest spec is extended to
+  complete both consecutive rounds by those player-driven taps.
+- **Evidence boundary:** state-machine assertions (including reads from
+  `window.__game`) can prove that memory was stored or a branch was selected;
+  they do **not** prove M-LOOP divergence. The Playwright served-page spec is
+  the player-facing proof: it must use visible controls and pointer/touch
+  interaction, never a harness input hook, to establish that the available
+  action changed.
+- **Scope:** this proof stays inside the existing flagship scene and its
+  existing characters. No new scene, map, or NPC is required for M-LOOP
+  divergence.
 - **Definition of DONE for the milestone:** a stranger finishes round one
   and can answer "what will you do differently next round?" — the retell
   bar upgraded to a replay bar. (Human playtest evidence; not CI-able —
   recorded in the devlog per run.)
 - Declaring DONE requires quoting this bar verbatim + pointing at the
   divergence spec (the 08-14 rule applies).
+
+**M-LOOP divergence playtest definition:** Two distinct durable memory records
+must yield distinct visible, tappable actions on the served page. The
+player-driven Playwright spec from sub-issue #2 proves this by completing the
+two served rounds consecutively with pointer/touch events—not
+`window.__game.input.*` or any harness hook. State-machine evidence may show
+that memory branches and action data exist; it is not evidence that a player
+can reach or touch divergent actions. The proof is the rendered action
+surface, not a dialogue-only or state-only difference.
 
 **Scope discipline:** one scene is still enough — depth of consequence over
 breadth of map. No new NPCs before both existing ones pay memories back
