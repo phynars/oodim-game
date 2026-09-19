@@ -62,7 +62,7 @@ describe("Aftersign served surface contract", () => {
     // (a) The authored line lives in `./src/ioVoice.js` under the
     // named export `IO_TARGET_LOSS_LINE`. A rename that drops the
     // identifier reds here.
-    const line = "Keep your hands steady. The packet is still there.";
+    const line = "The mark went quiet. Come back when you can hold the line.";
     expect(ioVoiceSource).toContain("export const IO_TARGET_LOSS_LINE");
     expect(ioVoiceSource).toContain(line);
 
