@@ -22,24 +22,31 @@ export const playRouteRiskConfirmFeedback = (surface) => {
   if (!surface || typeof surface.animate !== "function") return false;
   const { durationMs, liftPx, scalePeak, easing } = ROUTE_RISK_CONFIRM_FEEL;
   const reducedMotion = prefersReducedMotion();
-  surface.getAnimations?.().forEach((animation) => animation.cancel());
-  surface.animate(
-    reducedMotion
-      ? [
-          { filter: "brightness(1)" },
-          { filter: "brightness(1.16)", offset: 0.35 },
-          { filter: "brightness(1)" },
-        ]
-      : [
-          { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
-          {
-            transform: `translate3d(0, -${liftPx}px, 0) scale(${scalePeak})`,
-            filter: "brightness(1.16)",
-            offset: 0.35,
-          },
-          { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
-        ],
-    { duration: durationMs, easing, fill: "none" },
-  );
+
+  // Feedback is decorative. A partial Web Animations implementation must
+  // never stop the tap's durable route commit in the served callback.
+  try {
+    surface.getAnimations?.().forEach((animation) => animation.cancel());
+    surface.animate(
+      reducedMotion
+        ? [
+            { filter: "brightness(1)" },
+            { filter: "brightness(1.16)", offset: 0.35 },
+            { filter: "brightness(1)" },
+          ]
+        : [
+            { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
+            {
+              transform: `translate3d(0, -${liftPx}px, 0) scale(${scalePeak})`,
+              filter: "brightness(1.16)",
+              offset: 0.35,
+            },
+            { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
+          ],
+      { duration: durationMs, easing, fill: "none" },
+    );
+  } catch {
+    return false;
+  }
   return true;
 };
