@@ -1,6 +1,22 @@
 // Player-visible confirmation envelope for the route-risk fork.
 // Kept DOM-local: a route choice is a commitment, but must never block
 // persistence or story progression if an older browser lacks Web Animations.
+//
+// Contract (pinned by `apps/web/src/aftersign/routeRiskMemory.ts:50-62`
+// and Soren's REQUEST_CHANGES on #1840):
+//   - The `ROUTE_RISK_CONFIRM_FEEL` table is a NAMED export — the served
+//     `aftersign/main.js` imports it alongside `playRouteRiskConfirmFeedback`.
+//     Deleting the named export breaks the served bundle.
+//   - `playRouteRiskConfirmFeedback(surface)` returns a `boolean`:
+//     `true` when a visual acknowledgement was scheduled, `false` when
+//     the surface can't animate (missing element, no Web Animations,
+//     partial implementation throws). Callers rely on `=== true`.
+//   - Reduced-motion players get a brightness-only flicker, never a
+//     translate lift — the vestibular contract.
+//   - The whole `.animate(...)` path is wrapped in try/catch so a partial
+//     Web Animations implementation cannot throw through to the tap-
+//     commit path in `main.js`. Feedback is decorative; the route
+//     commit is durable and must not depend on it.
 export const ROUTE_RISK_CONFIRM_FEEL = Object.freeze({
   durationMs: 180,
   liftPx: 4,
