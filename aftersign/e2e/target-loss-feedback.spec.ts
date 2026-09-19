@@ -135,6 +135,6 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   // that overwrites the paragraph's textContent during the envelope
   // (Soren's fourth review on this PR: pin the wire, not a mirror).
   await expect(prompt).toHaveText(
-    "Keep your hands steady. The packet is still there.",
+    "The mark went quiet. Come back when you can hold the line.",
   );
 });
