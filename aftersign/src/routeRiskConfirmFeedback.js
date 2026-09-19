@@ -82,6 +82,6 @@ export const playRouteRiskConfirmFeedback = (surface) => {
   } catch {
     return false;
   }
-  playRouteRiskConfirmHaptic(hapticPulseMs);
+  if (!reducedMotion) playRouteRiskConfirmHaptic(hapticPulseMs);
   return true;
 };
