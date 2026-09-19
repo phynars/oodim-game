@@ -4,9 +4,7 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers it mechanically: what the player can do next changes, not merely what Io says. Build the smallest complete, replayable loop on https://game.oodim.com/aftersign before adding characters, systems, or polish. Memory is progression; merged components are not milestone acceptance.
 
-Planning checkpoint: **2026-09-11**. Source of product authority: `docs/flagship/BRIEF.md`, especially the founder's August 22 amendment. Exactly one active milestone and one active epic. Current plan identifiers **M2 / M2-E1** refer to historical **M-LOOP / M-LOOP-E1**; this is a planning alias, not a code-renaming project.
-
-**Scope of this revision (Refs #1731, not Closes):** this change is plan-only — a `docs/plan:` PR, not a `fix:`. It restates the M-LOOP done-gate in the founder's verbatim words and tightens the epic's story budget. It does NOT repair `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`; the taps-only two-round integration spec called for by #1731 remains open and must land in a separate code PR before M2-E1 can be closed.
+Planning checkpoint: **2026-09-19, chunk 3**. Product authority: `docs/flagship/BRIEF.md`, especially the previously inspected August 22 amendment. Current identifiers M2 / M2-E1 alias historical M-LOOP / M-LOOP-E1; this is not a code-renaming project. Exactly one milestone and one epic are active. This revision records source inspection and board reconciliation, not a successful deployed playtest.
 
 ## Milestones
 
@@ -14,21 +12,21 @@ Planning checkpoint: **2026-09-11**. Source of product authority: `docs/flagship
 
 Deadline: 2026-08-22
 
-Status: historical completion reported by the previous plan, not re-certified this cycle. This is the former M-CONTINUE outcome, not a new declaration of DONE. Earlier recognition, Orra, and wiring efforts are supporting history, not competing active milestones.
+Status: historical completion reported by the previous plan; not re-certified this cycle.
 
-Definition of done: a player reaches the return-tone choice and next-job handoff after recognition on the deployed phone surface through visible taps; each visible dialogue transition is asserted, and existing recognition remains reachable. The previous plan identifies #1216 and `aftersign/e2e/m-continue-phone-tap-playtest.spec.ts` as its PLAYTEST evidence. That historical evidence has not been rerun in this planning cycle.
+Definition of done: on the deployed phone surface, a player reaches the return-tone choice and next-job handoff after recognition through visible taps, with each visible dialogue transition asserted. Historical PLAYTEST: #1216 and `aftersign/e2e/m-continue-phone-tap-playtest.spec.ts`, as recorded by the previous plan, not rerun here.
 
-LoE budget: historical one-epic delivery; **zero new stories authorized**. Regressions that block M2 belong to M2's playable path, not a reopened recognition-depth roadmap.
+LoE budget: historical one-epic delivery; **zero new stories authorized**. Only regressions blocking M2 enter current execution.
 
 ### M2 — A phone player completes two delivery rounds and can name what memory lets them do differently next round
 
 Deadline: 2026-09-05
 
-Status: **ACTIVE — acceptance incomplete**. Historical alias: M-LOOP.
+Status: **ACTIVE — acceptance incomplete**.
 
-**Days remaining: -6 as of 2026-09-11 (six days overdue).** September 5 is the existing spec-writer planning target, not a founder-confirmed deadline. The brief gives no replacement date for M-LOOP. **Founder decision requested: confirm September 5 as the missed target or explicitly authorize a replacement date.** Until then, retain it; do not erase the miss by rolling the date forward.
+**Days remaining: -14 as of 2026-09-19 (14 days overdue).** September 5 remains the existing planning target, not a founder-confirmed replacement. Prior chunks requested founder confirmation. No authorized replacement has been verified; retain the missed date rather than rolling it forward.
 
-Founder bar, verbatim from the August 22 amendment:
+Founder bar retained from the previous plan's August 22 brief transcription:
 
 > **M-LOOP metric: divergence.** Two save-states with different memory
 > records MUST produce different AVAILABLE ACTIONS on the served page —
@@ -48,88 +46,93 @@ Founder bar, verbatim from the August 22 amendment:
 
 Definition of done:
 
-1. On the deployed page, two divergent memory saves each support a complete job → real route traversal with one risk choice → delivery/answer → return/payback round. Different available actions are proved at element/action identity or enabled-state level, not by labels or dialogue alone.
-2. A **single continuous phone PLAYTEST** goes from cold boot through **two completed rounds**, tapping only visible enabled elements and asserting every visible dialogue change. Round two's offer is an intermediate checkpoint, not the finish. The run asserts memory recording and a changed available action after round one; no reseed between rounds.
-3. Use 390×844 with touch/mobile enabled. `window.__game` is assert-only. No game action may be caused by harness input, evaluated DOM clicks, forced clicks, or hidden controls. Initial divergent-save setup is allowed before play.
-4. Retain reachable recognition, tone response, and next-job handoff. A player can select the mechanically differing action, not merely inspect it.
-5. Attach deployed revision, deployed URL, run URL, executed test counts, and trace/video artifacts for the non-skipped acceptance run. Record a stranger's unprompted replay answer with date/revision in the public devlog and link it here before marking DONE.
+1. On the deployed page, divergent memory saves support job → route traversal with one risk choice → delivery/answer → return/payback. Different available actions are proved by action identity or enabled state, not dialogue or labels alone; the player actually selects the differing action.
+2. A continuous 390×844 touch/mobile PLAYTEST runs from boot through **two completed rounds**, asserting each visible dialogue change. Round two's offer is an intermediate checkpoint, not completion. #1819's existing stronger scope, confirmed by the prior chunk, requires two durable records each played through two complete rounds; preserve it.
+3. Game actions use pointer taps on visible enabled controls. `window.__game` is assert-only; no harness input, evaluated DOM clicks, forced clicks, hidden controls, or mid-run reseeding. Initial divergent-save setup is allowed before play.
+4. Recognition, tone response, and next-job handoff remain reachable. Memory is durable across the acceptance run's reload boundary.
+5. Record deployed URL/revision, non-skipped executed test counts, run URL, trace/video artifacts, and a dated stranger replay answer in the public devlog. Link evidence here before marking DONE.
 
-LoE budget: **one epic, four mapped stories**: two previously closed M building blocks, one existing M partial PLAYTEST, and one S single-file integration repair that consumes and completes the existing work. These sizes describe file blast radius, not a promise of elapsed delivery time. Authorize no speculative new implementation ladder. If the gate exposes a runtime blocker, bound the concrete player-surface repair first.
+LoE budget: **one epic, four provisional mapped stories** below, reusing existing work. Target each remaining code execution at S (one file) or M (2–3 files, one behavior); #1818/#1819 currently carry L labels and have NOT yet been reconciled to verified S/M execution boundaries. No new implementation ladder is authorized until that reconciliation. Evidence closeout belongs to the integration gate, not an unconsumed harness subsystem.
 
-Scope cuts, in order: copy/feel polish, additional payback channels, extra characters, and any depth beyond two proved rounds. Do not lower the mechanical-divergence bar to declare an overdue milestone DONE.
+Time-first order: establish the existing integration gate → identify its first concrete served-path failure → repair only that failure → finish and run the two-round proof → record human replay. Cut copy/feel polish, extra payback channels, extra characters, and depth beyond two rounds before changing the date. Do not cut mechanical divergence or complete-round acceptance.
 
 ## Active milestone's epics
 
-### M2-E1 — A phone player can complete the deployed loop by taps and act on memory-driven payback
+### M2-E1 — A phone player completes the deployed loop by taps and acts on memory-driven payback
 
-Status: **ACTIVE**; acceptance reconciliation incomplete. Historical alias: M-LOOP-E1. Days remaining: -6 as of 2026-09-11.
+Status: **ACTIVE — source/acceptance reconciliation in progress**.
 
-Acceptance criteria: the deployed surface supports every M2 round step by visible pointer taps; divergent saved memories produce different **mechanical** choices (element/action identity, not just labels); the same player can complete a second round and see every visible dialogue transition. Recorded human replay and deployed artifacts are required at closeout.
+Days remaining: -14 as of 2026-09-19.
 
-LoE: **one epic, four mapped stories** — two closed M building blocks (#1535, #1551), one existing partial M PLAYTEST (#1552), and the integration gate (#1370). Only S/M single-file continuation repairs are authorized as new work. Existing merged building blocks are reused, not rebuilt.
+Acceptance: every M2 step is reachable on the deployed phone surface by visible pointer taps; two durable histories yield different selectable mechanical actions; both complete-round continuity and each dialogue change are asserted; deployed artifacts and human replay evidence are attached.
 
-**INTEGRATION story:** #1370 is the existing done-gate identity explicitly named in `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`. Its current issue disposition and acceptance scope must be read before deciding reuse versus a narrowly scoped successor. Do not file implementation stories before that reconciliation establishes an open integration gate. The spec alone does not satisfy the gate; a skipped-lane run, a labels-only difference, or stopping at the second offer does not close it.
+LoE: four provisional mapped existing stories, no duplicate contracts. S/M execution scopes must be verified before filing any additional implementation work. Historical closed building blocks #1535 and #1551 remain reused background work, not fresh authorizations.
 
-**Integration success is the epic's done signal**, not a count of merged component PRs.
+**INTEGRATION + PLAYTEST: #1819**, already open and dependent on #1818. This supersedes the previous plan's unresolved choice of #1370 as the current gate. Preserve #1370/#1552 as historical evidence/overlap to reconcile, not alternate concurrent gates. The epic is done only when #1819's played outcome and evidence pass, not when its dependencies merge.
 
 ## Story map — M2-E1
 
-Days remaining: -6 (six days overdue), as of 2026-09-11. This map is provisional pending the final planning chunk; no new issues were filed in chunk 3. Ordering is by the shortest path to playable acceptance, not component elegance.
+Days remaining: -14 as of 2026-09-19. This is a provisional reconciliation map, not a declaration that L issues have become M. No new issues filed in chunk 3.
 
-| Order | Player outcome | Issue | LoE | Disposition / dependency |
+| Order | Player outcome | Existing issue | Execution budget / status | Evidence responsibility |
 | --- | --- | --- | --- | --- |
-| 0 | A phone player can complete a round from each divergent save and obtain different mechanical actions on the deployed surface | #1370 | M proposed | Existing INTEGRATION identity; issue status/scope unverified. Read FIRST next chunk; reuse or file its successor before any implementation gaps. |
-| 1 | A phone player can select a memory-specific job action | #1535 | M | CLOSED 2026-08-29. Its issue criteria cover action IDs, snapshot fields, and canonical input routing; that is not by itself proof of two played rounds. No duplicate contract story. |
-| 2 | A phone player can read the offered route and risk across memory branches | #1551 | M | CLOSED 2026-08-31; PR #1555 confirmed merged that day. Issue requires visible route/risk and a cross-branch served assertion. Full closing diff and deployed proof remain unverified here; do not reopen or duplicate on that basis. |
-| 3 | A phone player can play continuously from boot through completion of round TWO, seeing each dialogue change | #1552 | M | Existing PLAYTEST story. Prior chunk inspected its spec: it ends at the second offer, so that inspected coverage does not establish two completed rounds. Reconcile issue disposition and integration scope before filing a bounded continuation gap. |
-| 4 | A stranger can replay the loop and explain a different next-round action | Not filed | S proposed | Acceptance closeout, not a harness module. Locate existing human replay/deployed artifacts first; if absent, map a served-play evidence story under the integration gate. Do not call absent inspection proof of absent evidence. |
+| 0 | A phone player completes two rounds from each divergent durable record and acts on different available choices | #1819 | OPEN INTEGRATION + PLAYTEST; currently L; bounded S/M execution unresolved; depends on #1818 | Integration implementer owns complete dialogue assertions, deployed revision/run/counts/trace, and linking the human replay record; operator recruits a stranger |
+| 1 | A returning phone player can tap the mechanically differing job/route action and continue the round | #1818 | OPEN; currently L; inspect remaining behavioral gap before bounding S/M or splitting | Runtime implementer proves a concrete failing path is repaired on `/aftersign/`, consumed by #1819; do not rebuild already rendered offers |
+| 2 | A phone player sees and taps different available actions from two saved histories | #1827 | OPEN M; narrower two-save served DOM proof per prior chunk; overlap/wiring still needs direct verification | Spec implementer supplies element-level action divergence to #1819; not a substitute for two completed rounds |
+| 3 | A phone player continues from boot beyond the second offer through the second completed delivery/return | #1552 | Historical PLAYTEST overlap, M in previous plan; current issue disposition unresolved | Reuse existing continuous-run spec in #1819; prior inspection found a second-offer stopping point, not full completion |
 
-Every newly filed story must begin with:
+At most one in four stories may be harness-only; authorize none as a new standalone harness now. #1827 must remain a served-page assertion consumed by the integration gate. The final chunk must resolve #1552 overlap and establish verified S/M remaining execution before declaring the map final.
+
+New story body prefix, if a genuinely uncovered gap needs filing:
 
 ```text
 Milestone: M2 — a phone player completes two delivery rounds and sees memory change available actions
 Epic: M2-E1 — a phone player completes the deployed loop by taps and acts on memory-driven payback
 Deadline: 2026-09-05
-Days remaining: -6 (six days overdue), as of 2026-09-11
+Days remaining: -14 (14 days overdue), as of 2026-09-19
 ```
 
-Each new story must name the deployed surface, visible-pointer acceptance, precise verified affected files, and the integration consumer. No new unconsumed contract/harness stories are authorized.
+## Evidence reconciliation — 2026-09-19, chunk 3
 
-## Acceptance reconciliation — 2026-09-11, chunk 3
+### Direct source inspection
 
-### Established this chunk
+- `aftersign/e2e/job-offers-played.spec.ts` uses 390×844 touch/mobile, navigates to `/aftersign/?slot=…`, taps rendered buttons, and reads `window.__game.scene.ready` only as readiness. It plays one slot through delivery, recognition, tone, handoff, and the next offer. It ends after checking night-transfer/signed-receipt metadata and absence of the safe-default offer. It does **not** play the second round, reload, compare two durable records, or assert every dialogue text change. Its header's delivered-flag explanation must not be treated as the current runtime implementation.
+- The inspected `renderText` region of `aftersign/main.js` actually derives offers with `offeredJobsMemoryFromIoMemory(state.npcs.io.memory)` and `selectIoJobOffers`. It renders job buttons with job ID, risk, and semantic fingerprint attributes. This establishes a served consumer exists; it does not prove #1818 or #1827 complete.
+- The rendered offer callback records `lastAction`, increments confirmation count, plays feedback, and publishes state. It does not itself advance the beat or durably persist a selected job in that callback. The separate packet controls advance the round. Therefore button/fingerprint divergence alone cannot establish that choosing a different offer changes the played round; #1818/#1819 reconciliation must test the intended mechanical consequence rather than infer it from a stamp.
+- `choose('deliver-packet')` at the next-job beat resets packet state and returns to `packet-offered`; it is not completion of a second delivery. `deliverPacket` replaces Io's memory with the current packet-outcome and second-action facts. Do not describe this inspected runtime as accumulating unlimited career history.
+- These are static observations, not a deployed execution result. The main.js read was truncated at its end, but the renderer, choice, and delivery regions above were returned.
 
-- Read #1551, then #1535. Their CLOSED states do not certify the wider M2 outcome. #1535's stated acceptance is chiefly action-ID/snapshot/handler coverage; #1551 adds visible route/risk coverage. Preserve both as completed building-block issue records rather than filing duplicates.
-- PR #1555 is merged (2026-08-31). Its returned discussion reports served route/risk wiring and a human-lane layout repair. The thread is truncated; neither a complete closing diff nor a current successful deployed run was retrieved. No current CI-green claim is made.
-- Read `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts`. It selects `test.describe.skip` unless `M_LOOP_E1_IMPL_LANDED === "1"`. Workflow configuration has NOT been inspected here, so whether CI sets that flag remains unknown.
-- That spec creates 390×844 contexts with `hasTouch: true` and `isMobile: true`. It plays kind/evasive paths to `io-next-job`, reloads, and compares visible/enabled button rows containing both IDs and labels. A labels-only difference can satisfy the final inequality; the assertion therefore does not independently enforce the stronger mechanical-action bar.
-- It does not continue a complete played round after each reload. Its snapshot reads assert tone facts. This is partial acceptance coverage, not evidence that the actual game lacks the required mechanics.
-- Fresh open-board query returned only #1727. #1370 and #1721 were not in that result; absence from the open list does not establish why they closed or their acceptance status.
+### Recent landed history
 
-### Trusted prior-chunk findings
+`file_history(aftersign/main.js)` returned September 18 changes #1829 and #1823; September 17 #1813 (referencing #1812) and #1797; and September 16 #1795, #1794, and #1790. This establishes recent source history, not current green CI or deployed acceptance. In particular, the source now renders `ioReturnLine` in sibling `#ioReturnLine` while retaining `#line` ownership; open #1812 must be reconciled against its acceptance, not blindly implemented again or automatically closed.
 
-- M2 is the sole active milestone; September 5 is six days overdue.
-- The inspected #1552 spec ends at the second offer.
-- Inspected job-offer coverage is one-slot, first-visit-to-return, not the full two-save/two-round acceptance gate.
-- Founder date confirmation has already been requested; do not resend or invent a reply.
+### Other candidate coverage
 
-### Evidence still required
+Read #1788: it requests restoring a disabled reload-beat regression spec by aligning a shared state field and removing `test.fixme`. Its source has not been inspected in this chunk. Treat it as supporting M2 continuity coverage, not the milestone PLAYTEST: its issue acceptance does not establish taps-only two-round play. Promote into the active map only if it repairs a concrete integration blocker without duplicating #1819.
 
-The #1370 issue body/disposition; #1535's closing changes if needed to settle a specific criterion; actual acceptance-lane workflow settings; deployed run artifacts; recorded human replay; and a deduplicated open integration gate with only verified S/M follow-ups. These are unverified, not presumed missing. This planning cycle is NOT complete.
+### Still unverified
+
+Current founder-authorized date replacement; exact remaining #1818/#1819 S/M execution scopes; #1827's direct test/wiring; #1370/#1552 historical issue disposition where needed for deduplication; acceptance-lane configuration; successful deployed run artifacts; human replay record. Not inspected is not the same as absent.
 
 ## Drift and operator disposition
 
-- **#1727 — open:** title reports a display-only aim-reticle overlay stealing taps. No explicit M2-E1 mapping is established by the list result. Hold outside the active story map pending scope inspection; promote it only if it blocks the deployed loop's visible taps. Do not close it as drift and do not duplicate it as a new phone-input repair.
-- **#1721 — prior disposition retained pending reconciliation:** absent from the refreshed open board. The prior handoff requested retaining this note but supplied no title or resolution; do not fabricate either or count it as open drift. Read only if its disposition affects the active gate.
-- No other open issues were returned by the refreshed board. Older operator issues and retired milestone story lists are not current work authorization.
+The refreshed open board returned seven issues: #1827, #1825, #1819, #1818, #1812, #1808, #1788.
+
+- **#1825:** systemic pipeline decomposition work, no player-outcome epic served in this product plan. Operator disposition; do not close it here.
+- **#1808:** human-needed recovery of stuck press-juice PRs, not an active M2 story. No concrete M2 acceptance-path dependency established. Keep outside the product execution map unless such a dependency is shown.
+- **#1812:** related to M2's recognition surface, but recent source history includes its referenced implementation. Acceptance/issue-state reconciliation required; not fresh work and not declared drift solely because it remains open.
+- **#1788:** relevant to reload continuity, conditional supporting coverage; not unrelated drift and not a replacement for integration.
+- The previous plan's #1727/#1721 are not in this returned open list. Do not invent a closing reason or continue reporting them as open.
 
 ## Final-chunk handoff
 
-1. Read #1370 FIRST: reconcile the existing integration issue with the inspected conditional spec and M2 acceptance.
-2. Resolve an open integration gate before any implementation filing; inspect only the exact files needed to make its scope verifiable and S/M.
-3. Check acceptance-lane configuration and locate deployed run/human replay evidence; no green-by-assumption.
-4. Reuse #1535/#1551; do not rebuild their contracts. Keep #1552's second-offer stopping point separate from full-round completion.
-5. File only verified remaining gaps, 3–7 total mapped stories including reused work; update this map with actual issue numbers.
-6. Inspect #1727 only if it can supply an existing player-input repair; preserve #1721's unresolved disposition note.
-7. Keep September 5 and -6 days remaining unless founder confirmation actually supplies a new authorized target.
-8. End META-DONE only when the integration-first map is actually filed and current; otherwise state the specific blocker.
+1. Read #1818 FIRST and identify the exact still-unmet player-surface behavior against the source observations above; do not re-read main.js wholesale.
+2. Read #1819 only as needed to bound implementation to verified S/M execution; retain it as the open INTEGRATION + PLAYTEST gate.
+3. Directly inspect #1827's identified served spec/wiring and merge overlapping acceptance ownership into #1819 rather than filing duplicates.
+4. Reconcile #1552/#1370 disposition only if necessary to finalize the 3–7 story map; source history is not acceptance.
+5. Locate deployed artifacts and human replay evidence; assign missing closeout under #1819, with no green-by-assumption.
+6. #1788 is supporting continuity coverage, not automatically a new active story. #1812 needs landed/open reconciliation.
+7. Refresh the board before any filing. File only verified uncovered S/M gaps, integration-first, with the required milestone/epic/date prefix.
+8. Retain September 5 and **-14 days remaining** unless the brief supplies an authorized replacement.
+9. Finish the plan/map and report #1825/#1808 as outside product-epic execution; do not close them.
+10. This cycle is NOT complete. Use META-DONE only after remaining scopes and evidence ownership are reconciled.
