@@ -27,9 +27,11 @@ const SERVED_MAIN_PATH = join(REPO_ROOT, "aftersign", "main.js");
 // (`const PHONE_VIEWPORT = { width: 390, height: 844 }` + `test.use({ viewport: PHONE_VIEWPORT, ... })`).
 const PHONE_VIEWPORT_PATTERN = /(?:width\s*:\s*3[0-9]{2}\s*,\s*height\s*:\s*(?:6[0-9]{2}|7[0-9]{2}|8[0-9]{2}|9[0-9]{2})|iphone|pixel|mobile|isMobile\s*:\s*true|hasTouch\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
+const PLAYER_EVENT_GLOBAL_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/g;
 const VISIBLE_ACTION_PATTERN = /\b(?:getByRole|getByLabelText|locator)\s*\([^\n]*(?:button|link|menuitem|checkbox|radio|tab|option|action|job|route|price|shortcut)/i;
 const DIFFERENT_ACTIONS_PATTERN = /(?:different|divergent|not\.toEqual|not\.toStrictEqual|toHaveCount\s*\(\s*2|available actions|tappable actions|job offers|open routes|prices)/i;
 const TWO_SAVE_STATES_PATTERN = /save[-\s]?slots?|save[-\s]?states?|memory\s+records?|two[-\s]?rounds?|looped\s+return|priorOutcome|packet\.delivered|completed\s+set|safe[-\s]?default|returnReason|returnAnswerTone|packetOutcome|firstSave|secondSave|trusted|distrusted|riskTaken|riskAvoided|prior\s+outcomes|trust\s+posture/i;
+const COMPLETED_ROUND_PATTERN = /(?:complete|finish|deliver|return)[\s\S]{0,100}(?:round|job|route|delivery)|(?:round|job|route|delivery)[\s\S]{0,100}(?:complete|finish|deliver|return)/gi;
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 const DIALOGUE_ONLY_PATTERN = /(?:getByText|toContainText|textContent)[\s\S]{0,200}(?:different|divergent|not\.toEqual|not\.toStrictEqual)/i;
@@ -53,6 +55,11 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
     }));
 }
 
+function countMatches(pattern: RegExp, source: string): number {
+  pattern.lastIndex = 0;
+  return [...source.matchAll(pattern)].length;
+}
+
 function matchesLoopDivergencePlaytest(source: string): boolean {
   const code = stripCommentsAndStrings(source);
   return (
@@ -64,6 +71,18 @@ function matchesLoopDivergencePlaytest(source: string): boolean {
     HARNESS_READ_PATTERN.test(source) &&
     !HARNESS_INPUT_PATTERN.test(code) &&
     !DIALOGUE_ONLY_PATTERN.test(source)
+  );
+}
+
+// M-LOOP says two *consecutive rounds*, not merely two booted save slots. The
+// stricter witness below is intentionally separate from the baseline matcher:
+// it makes a missing played round-completion proof fail loudly until the e2e
+// names and exercises both completions through rendered controls.
+function provesTwoPlayedRounds(source: string): boolean {
+  return (
+    matchesLoopDivergencePlaytest(source) &&
+    countMatches(COMPLETED_ROUND_PATTERN, source) >= 2 &&
+    countMatches(PLAYER_EVENT_GLOBAL_PATTERN, stripCommentsAndStrings(source)) >= 4
   );
 }
 
@@ -84,9 +103,24 @@ const FIXTURE_COMPLIANT_SPEC = [
   "});",
 ].join("\n");
 
+const FIXTURE_TWO_ROUND_SPEC = [
+  FIXTURE_COMPLIANT_SPEC,
+  "// Round one: tap through visible route and delivery controls to complete the job.",
+  "await page.getByRole('button', { name: /take route/i }).tap();",
+  "await page.getByRole('button', { name: /deliver/i }).tap();",
+  "// Round two: tap through the returning action and complete the delivery.",
+  "await page.getByRole('button', { name: /take return route/i }).tap();",
+  "await page.getByRole('button', { name: /deliver return/i }).tap();",
+].join("\n");
+
 describe("matchesLoopDivergencePlaytest contract", () => {
-  it("admits a synthetic spec that satisfies every gate", () => {
+  it("admits a synthetic spec that satisfies every baseline gate", () => {
     expect(matchesLoopDivergencePlaytest(FIXTURE_COMPLIANT_SPEC)).toBe(true);
+  });
+
+  it("requires visible interaction through two completed rounds", () => {
+    expect(provesTwoPlayedRounds(FIXTURE_COMPLIANT_SPEC)).toBe(false);
+    expect(provesTwoPlayedRounds(FIXTURE_TWO_ROUND_SPEC)).toBe(true);
   });
 
   it.each([
@@ -128,6 +162,12 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     const playtests = readAftersignPlaytestSpecs();
     const matchingPlaytest = playtests.find(({ source }) => matchesLoopDivergencePlaytest(source));
     expect(matchingPlaytest?.path).toBeDefined();
+  });
+
+  it("has a phone playtest that completes two visible rounds, not only two save-slot boots", () => {
+    const playtests = readAftersignPlaytestSpecs();
+    const twoRoundPlaytest = playtests.find(({ source }) => provesTwoPlayedRounds(source));
+    expect(twoRoundPlaytest?.path).toBeDefined();
   });
 
   it("keeps the divergent offer witness wired into the served page", () => {
