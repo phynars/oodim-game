@@ -6,8 +6,16 @@ import { expect, test, type Page } from '@playwright/test';
 // never fires when the render loop keeps requesting frames.
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
-const RECOGNITION_BEAT_WAIT_MS = 12_000;
-const RECOGNITION_MARKS_WAIT_MS = 8_000;
+// Progressive gates for driveToSealedRecognitionBeat: authored state (beat +
+// memoryBeat cleared) gets the larger slice because it runs immediately after
+// forceReload() and must survive a cold SwiftShader re-init; diagnostic marks
+// (MutationObserver-stamped) are microtask-driven and settle fast once the
+// beat has arrived. Both are derived from WAIT_MS as a shared budget so they
+// compose to ≤WAIT_MS (30 + 15 = 45s ≤ 60s) rather than being magic numbers,
+// while keeping #1852's property that one slow condition cannot eat the whole
+// window.
+const RECOGNITION_BEAT_WAIT_MS = WAIT_MS / 2;
+const RECOGNITION_MARKS_WAIT_MS = WAIT_MS / 4;
 const POLL_INTERVAL_MS = 100;
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
@@ -101,7 +109,7 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
   });
 
   // Separate authored state from diagnostic marks: neither slow condition can
-  // consume the full old 60s window, and their 20s total fits the test budget.
+  // consume the full old WAIT_MS window, and their composed budget stays ≤WAIT_MS.
   await page.waitForFunction(
     () => {
       const game = (window as Window & { __game?: { scene?: { beat?: string }; story?: { memoryBeat?: unknown } } }).__game;
