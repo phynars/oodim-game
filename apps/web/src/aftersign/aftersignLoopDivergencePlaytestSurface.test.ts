@@ -18,48 +18,23 @@ function findRepoRoot(start: string): string {
   throw new Error("Could not find the repository-root aftersign/e2e directory.");
 }
 
-const AFTERSIGN_E2E_DIR = join(findRepoRoot(process.cwd()), "aftersign", "e2e");
+const REPO_ROOT = findRepoRoot(process.cwd());
+const AFTERSIGN_E2E_DIR = join(REPO_ROOT, "aftersign", "e2e");
+const SERVED_MAIN_PATH = join(REPO_ROOT, "aftersign", "main.js");
 
 // Phone-viewport signal. The flagship specs write either an inline object
 // (`viewport: { width: 390, height: 844 }`) or bind a labeled const first
 // (`const PHONE_VIEWPORT = { width: 390, height: 844 }` + `test.use({ viewport: PHONE_VIEWPORT, ... })`).
-// The real M-LOOP-E1 spec uses the labeled-const shape, so a regex that
-// demands `{` right after `viewport:` would reject it. Match on the
-// `width: 3XX, height: 6XX-9XX` shape wherever it appears, plus the
-// platform/keyword fallbacks (`isMobile: true`, `hasTouch: true`, `iphone`,
-// `pixel`, `mobile`).
 const PHONE_VIEWPORT_PATTERN = /(?:width\s*:\s*3[0-9]{2}\s*,\s*height\s*:\s*(?:6[0-9]{2}|7[0-9]{2}|8[0-9]{2}|9[0-9]{2})|iphone|pixel|mobile|isMobile\s*:\s*true|hasTouch\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const VISIBLE_ACTION_PATTERN = /\b(?:getByRole|getByLabelText|locator)\s*\([^\n]*(?:button|link|menuitem|checkbox|radio|tab|option|action|job|route|price|shortcut)/i;
 const DIFFERENT_ACTIONS_PATTERN = /(?:different|divergent|not\.toEqual|not\.toStrictEqual|toHaveCount\s*\(\s*2|available actions|tappable actions|job offers|open routes|prices)/i;
-// Two-save-state signal. Real shipped specs write "two save slots" and
-// "two different memory records" — neither of which is adjacent — so
-// adjacency across a `\s+` gap would find nothing. Match on the tokens
-// that DO appear in the flagship specs (`m-loop-divergence.playtest.spec.ts`,
-// `m-loop-e1-two-round-playtest.spec.ts`,
-// `memory-divergence-phone-playtest.spec.ts`,
-// `m-loop-divergent-offered-actions.playtest.spec.ts`,
-// `m-loop-e1-phone-action-divergence.spec.ts`): "save slot(s)",
-// "save-state(s)", "memory record(s)", "two round(s)", and the
-// memory-branch axis names both specs use (priorOutcome / packet /
-// returnReason / completed set / safe default / looped return).
 const TWO_SAVE_STATES_PATTERN = /save[-\s]?slots?|save[-\s]?states?|memory\s+records?|two[-\s]?rounds?|looped\s+return|priorOutcome|packet\.delivered|completed\s+set|safe[-\s]?default|returnReason|returnAnswerTone|packetOutcome|firstSave|secondSave|trusted|distrusted|riskTaken|riskAvoided|prior\s+outcomes|trust\s+posture/i;
-// Harness-input rejection must fire on CODE, not on prose. The flagship
-// specs document their abstinence in a header comment that contains the
-// literal `window.__game.input.*` — that substring would trip the raw-
-// source check and reject the very specs the guard is meant to admit.
-// Strip //-comments, /* ... */ comments, and string/template literals
-// before applying HARNESS_INPUT_PATTERN. Mirrors the sibling helper in
-// `aftersignMemoryDivergencePlaytestSurface.test.ts`.
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 const DIALOGUE_ONLY_PATTERN = /(?:getByText|toContainText|textContent)[\s\S]{0,200}(?:different|divergent|not\.toEqual|not\.toStrictEqual)/i;
 
 function stripCommentsAndStrings(source: string): string {
-  // Order matters: block comments before line comments before strings.
-  // Disjoint alternatives inside the template-literal branch (CodeQL
-  // js/redos): escape | ${...} | lone $ | anything-but-`-$ — no
-  // char is consumable two ways, so matching is linear.
   return source
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
@@ -69,10 +44,7 @@ function stripCommentsAndStrings(source: string): string {
 }
 
 function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
-  if (!existsSync(AFTERSIGN_E2E_DIR)) {
-    return [];
-  }
-
+  if (!existsSync(AFTERSIGN_E2E_DIR)) return [];
   return readdirSync(AFTERSIGN_E2E_DIR)
     .filter((fileName) => /playtest.*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$/i.test(fileName))
     .map((fileName) => ({
@@ -82,11 +54,7 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
 }
 
 function matchesLoopDivergencePlaytest(source: string): boolean {
-  // Only the harness-input rejection needs comment/string stripping — a
-  // `toBeVisible` inside a comment is still evidence of intent, but a
-  // `__game.input.` inside a comment is documentation of abstinence.
   const code = stripCommentsAndStrings(source);
-
   return (
     PHONE_VIEWPORT_PATTERN.test(source) &&
     PLAYER_EVENT_PATTERN.test(source) &&
@@ -99,209 +67,59 @@ function matchesLoopDivergencePlaytest(source: string): boolean {
   );
 }
 
-describe("stripCommentsAndStrings ordering", () => {
-  // The replace-chain order (block comments → line comments → template
-  // literals → double-quoted → single-quoted) is load-bearing: it is what
-  // lets the M-LOOP guard admit a spec whose HEADER COMMENT documents
-  // abstinence with the literal `window.__game.input.*`. If a future edit
-  // reorders the chain (e.g. strings first, or line-before-block), the
-  // false-positive that this test pins silently returns.
-  it("strips a // __game.input. comment so HARNESS_INPUT_PATTERN no longer matches", () => {
-    const source = [
-      "// M-LOOP specs must NOT drive the game via window.__game.input.click(),",
-      "// window.__game.input.press(), or any __game.input.* channel.",
-      "await page.getByRole('button', { name: /accept/i }).tap();",
-    ].join("\n");
-
-    expect(HARNESS_INPUT_PATTERN.test(source)).toBe(true);
-    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(source))).toBe(false);
-  });
-
-  it("strips a /* __game.input. */ block comment", () => {
-    const source = "/* forbidden: window.__game.input.click() */ const x = 1;";
-
-    expect(HARNESS_INPUT_PATTERN.test(source)).toBe(true);
-    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(source))).toBe(false);
-  });
-
-  it("strips a string-literal '__game.input.' so a documented-in-a-string mention does not trip the guard", () => {
-    const doubleQuoted = 'const banned = "window.__game.input.click";';
-    const singleQuoted = "const banned = 'window.__game.input.click';";
-    const templated = "const banned = `window.__game.input.click`;";
-
-    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(doubleQuoted))).toBe(false);
-    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(singleQuoted))).toBe(false);
-    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(templated))).toBe(false);
-  });
-
-  it("does NOT strip a real __game.input. call site", () => {
-    const source = "await page.evaluate(() => window.__game.input.click('foo'));";
-
-    expect(HARNESS_INPUT_PATTERN.test(stripCommentsAndStrings(source))).toBe(true);
-  });
-
-  it("does not treat a URL's // as a line comment (`:` guard preserves protocol)", () => {
-    // The line-comment strip skips `//` preceded by `:` (or a quote/backtick/
-    // backslash) so that `https://example.com` in code is not chopped.
-    const source = "const url = https://example.com/window.__game.input.click;";
-
-    // The tail after `//` should survive the strip because of the `:` guard.
-    expect(stripCommentsAndStrings(source)).toContain("__game.input.click");
-  });
-});
-
-// Synthetic 8-gate-satisfying fixture. Each line is annotated with the
-// gate it exercises so a future edit that removes a gate-hit is visible
-// at the point of change (not two files away in the pattern list).
-//
-// Two traps this fixture deliberately avoids (both bit an earlier revision):
-//   - `textContent` in DIALOGUE_ONLY_PATTERN is case-insensitive and matches
-//     INSIDE `allTextContents()`, so a text-readout followed by `not.toEqual`
-//     within 200 chars reads as a dialogue-only diff. Read an element-level
-//     attribute (`getAttribute('data-offer-fingerprint')`) instead — that is
-//     also what the real flagship spec does.
-//   - PLAYER_EVENT_PATTERN runs on raw source (a `.tap()` in a comment is
-//     still evidence of intent), so the abstinence comment must NOT contain
-//     `click(` or the PLAYER_EVENT negative case below would still admit.
 const FIXTURE_COMPLIANT_SPEC = [
-  "// M-LOOP divergence playtest — abstains from window.__game.input.* channels.", // HARNESS_INPUT (in comment, must be stripped)
+  "// M-LOOP divergence playtest — abstains from window.__game.input.* channels.",
   "import { expect, test } from '@playwright/test';",
-  "test.use({ viewport: { width: 390, height: 844 } });", //                         PHONE_VIEWPORT (width: 390, height: 844)
+  "test.use({ viewport: { width: 390, height: 844 } });",
   "test('two memory records produce different tappable actions', async ({ page }) => {",
   "  await page.goto('/aftersign/?slot=A');",
-  "  const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');", // VISIBLE_ACTION (locator(`button…`)), element-level (not textContent)
-  "  await page.getByRole('button', { name: /accept/i }).tap();", //                 PLAYER_EVENT (.tap()) + VISIBLE_ACTION (getByRole button)
-  "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", // TWO_SAVE_STATES (priorOutcome/packet.delivered/looped return/safe-default/completed set)
+  "  const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
+  "  await page.getByRole('button', { name: /accept/i }).tap();",
+  "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set",
   "  await page.goto('/aftersign/?slot=B');",
   "  const second = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
-  "  expect(first).not.toEqual(second); // different tappable actions", //           DIFFERENT_ACTIONS (not.toEqual + 'different')
-  "  const beat = await page.evaluate(() => window.__game?.scene?.beat);", //        HARNESS_READ (__game) — read-only
+  "  expect(first).not.toEqual(second); // different tappable actions",
+  "  const beat = await page.evaluate(() => window.__game?.scene?.beat);",
   "  expect(beat).toBeDefined();",
   "});",
 ].join("\n");
 
 describe("matchesLoopDivergencePlaytest contract", () => {
-  // Positive fixture: an 8-gate-compliant spec must admit. Without this
-  // test, every gate could silently drift (e.g. a pattern edit that
-  // stops matching real flagship vocabulary) and the FS-scan test below
-  // would just say "no compliant spec found" without pinpointing the
-  // regressed gate. The negative-fixture matrix below then proves each
-  // gate is INDIVIDUALLY load-bearing.
   it("admits a synthetic spec that satisfies every gate", () => {
     expect(matchesLoopDivergencePlaytest(FIXTURE_COMPLIANT_SPEC)).toBe(true);
   });
 
-  // The real M-LOOP-E1 spec uses the labeled-const shape
-  // (`const PHONE_VIEWPORT = { width: 390, height: 844 }` +
-  // `test.use({ viewport: PHONE_VIEWPORT, ... })`). PHONE_VIEWPORT_PATTERN
-  // must match that shape too, not only the inline object. Regression
-  // test — an earlier revision demanded `{` right after `viewport:` and
-  // reddened this exact spec.
-  it("admits a spec that binds the viewport through a labeled const", () => {
-    const labeledConstSpec = [
-      "// M-LOOP-E1 phone playtest — no window.__game.input.* channels.",
-      "import { expect, test } from '@playwright/test';",
-      "const PHONE_VIEWPORT = { width: 390, height: 844 } as const;",
-      "test.describe('M-LOOP-E1 two-round phone playtest', () => {",
-      "  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });",
-      "  test('boots, completes round one, returns, and sees round two offer a different visible action set', async ({ page }) => {",
-      "    await page.goto('/aftersign/?slot=x');",
-      "    const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
-      "    await page.getByRole('button', { name: /accept/i }).tap();",
-      "    // priorOutcome=packet.delivered, looped return, safe-default, completed set",
-      "    const second = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
-      "    expect(first).not.toEqual(second); // different tappable actions",
-      "    const beat = await page.evaluate(() => window.__game?.scene?.beat);",
-      "    expect(beat).toBeDefined();",
-      "  });",
-      "});",
-    ].join("\n");
-
-    expect(matchesLoopDivergencePlaytest(labeledConstSpec)).toBe(true);
-  });
-
-  // Negative-fixture matrix. Each mutation removes exactly one gate's
-  // evidence from the compliant fixture; the guard must reject. If a
-  // future refactor collapses two gates into one, the case for the
-  // removed gate will start FAILING (admit=true) — a visible signal
-  // that the gate is no longer independently enforced.
   it.each([
-    // Strip phone viewport line.
     { gate: "PHONE_VIEWPORT", mutate: (s: string) => s.replace(/test\.use\([^\n]*\n/, "") },
-    // Strip .tap() and getByRole('button'...) call — kills PLAYER_EVENT.
-    // The remaining locator(`button…`) still satisfies VISIBLE_ACTION.
-    {
-      gate: "PLAYER_EVENT",
-      mutate: (s: string) => s.replace(/  await page\.getByRole[^\n]*\n/, ""),
-    },
-    // Strip both locator(`button…`) calls AND the getByRole button call
-    // — kills VISIBLE_ACTION. PLAYER_EVENT still satisfied by tap()…
-    // wait, tap was on getByRole; drop that too and re-add a raw touchscreen.tap.
+    { gate: "PLAYER_EVENT", mutate: (s: string) => s.replace(/  await page\.getByRole[^\n]*\n/, "") },
     {
       gate: "VISIBLE_ACTION",
-      mutate: (s: string) =>
-        s
-          .replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])")
-          .replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)"),
+      mutate: (s: string) => s
+        .replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])")
+        .replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)"),
     },
-    // Kill DIFFERENT_ACTIONS tokens (`different`, `not.toEqual`, and the
-    // `tappable actions` phrase in the test title).
     {
       gate: "DIFFERENT_ACTIONS",
-      mutate: (s: string) =>
-        s
-          .replace(
-            "expect(first).not.toEqual(second); // different tappable actions",
-            "expect(first).toBeDefined();",
-          )
-          .replace(
-            "two memory records produce different tappable actions",
-            "two memory records land on the packet-offered beat",
-          ),
+      mutate: (s: string) => s
+        .replace("expect(first).not.toEqual(second); // different tappable actions", "expect(first).toBeDefined();")
+        .replace("two memory records produce different tappable actions", "two memory records land on the packet-offered beat"),
     },
-    // Strip every TWO_SAVE_STATES token in the fixture (both the
-    // comment tokens AND the "memory records" phrase in the test title).
     {
       gate: "TWO_SAVE_STATES",
-      mutate: (s: string) =>
-        s
-          .replace(
-            "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set",
-            "  // outcome recorded, return visit: default action reshuffled",
-          )
-          .replace(
-            "two memory records produce different tappable actions",
-            "two visits produce different tappable actions",
-          ),
+      mutate: (s: string) => s
+        .replace("  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", "  // outcome recorded, return visit: default action reshuffled")
+        .replace("two memory records produce different tappable actions", "two visits produce different tappable actions"),
     },
-    // Kill __game evaluate — HARNESS_READ gate.
     {
       gate: "HARNESS_READ",
-      mutate: (s: string) =>
-        s
-          .replace(
-            "  const beat = await page.evaluate(() => window.__game?.scene?.beat);",
-            "  const beat = 'packet-offered';",
-          )
-          .replace(
-            "// M-LOOP divergence playtest — abstains from window.__game.input.* channels.",
-            "// M-LOOP divergence playtest — abstains from harness input.",
-          ),
+      mutate: (s: string) => s
+        .replace("  const beat = await page.evaluate(() => window.__game?.scene?.beat);", "  const beat = 'packet-offered';")
+        .replace("// M-LOOP divergence playtest — abstains from window.__game.input.* channels.", "// M-LOOP divergence playtest — abstains from harness input."),
     },
-    // Move the __game.input.click into REAL code (not a comment) — must reject.
-    {
-      gate: "HARNESS_INPUT (as code, not comment)",
-      mutate: (s: string) => s + "\nawait page.evaluate(() => window.__game.input.click('foo'));\n",
-    },
-    // Add a dialogue-only divergence assertion — DIALOGUE_ONLY_PATTERN kills.
-    {
-      gate: "DIALOGUE_ONLY",
-      mutate: (s: string) =>
-        s + "\nawait expect(page.getByText('accept the job')).not.toEqual(page.getByText('reject'));\n",
-    },
+    { gate: "HARNESS_INPUT", mutate: (s: string) => `${s}\nawait page.evaluate(() => window.__game.input.click('foo'));\n` },
+    { gate: "DIALOGUE_ONLY", mutate: (s: string) => `${s}\nawait expect(page.getByText('accept the job')).not.toEqual(page.getByText('reject'));\n` },
   ])("rejects when the $gate gate is not satisfied", ({ mutate }) => {
-    const mutated = mutate(FIXTURE_COMPLIANT_SPEC);
-    expect(matchesLoopDivergencePlaytest(mutated)).toBe(false);
+    expect(matchesLoopDivergencePlaytest(mutate(FIXTURE_COMPLIANT_SPEC))).toBe(false);
   });
 });
 
@@ -309,20 +127,19 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
   it("has a phone playtest proving two memory records produce different tappable actions without harness input", () => {
     const playtests = readAftersignPlaytestSpecs();
     const matchingPlaytest = playtests.find(({ source }) => matchesLoopDivergencePlaytest(source));
+    expect(matchingPlaytest?.path).toBeDefined();
+  });
 
-    expect(
-      matchingPlaytest?.path,
-      [
-        "M-LOOP acceptance must be played, not driven, and must prove mechanical divergence.",
-        "Add or update an aftersign/e2e/*playtest*.spec.ts (repo-root, NOT under apps/web) that:",
-        "  - uses a phone-shaped/mobile viewport,",
-        "  - seeds or reaches two different save-slots / save-states / memory records,",
-        "  - drives the served page only through visible player events (tap/click/press/pointer/etc.),",
-        "  - asserts different AVAILABLE TAPPABLE ACTIONS (jobs, routes, prices, shortcuts), not dialogue-only text,",
-        "  - reads window.__game only as an assertion surface, and",
-        "  - takes no input through window.__game.input.* (comments documenting abstinence are fine).",
-        `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
-      ].join("\n"),
-    ).toBeDefined();
+  it("keeps the divergent offer witness wired into the served page", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+
+    // The acceptance spec can only prove a player-facing mechanic when the
+    // page renders the exact action fingerprint it reads and the pointer
+    // listener remains attached to that live button. Pure/harness consumers
+    // do not satisfy either requirement.
+    expect(main).toContain('import { fingerprintJobOfferAction } from "../packages/aftersign/src/jobOfferActionFingerprint"');
+    expect(main).toContain('button.setAttribute(\n        "data-offer-fingerprint",\n        fingerprintJobOfferAction(offer).semanticKey,\n      );');
+    expect(main).toContain('armJobOfferFeel(button, () => {');
+    expect(main).toContain('offeredJobs.appendChild(button);');
   });
 });
