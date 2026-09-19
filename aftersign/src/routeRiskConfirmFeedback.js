@@ -43,6 +43,10 @@ export const playRouteRiskConfirmFeedback = (surface) => {
   // never stop the tap's durable route commit in the served callback.
   try {
     surface.getAnimations?.().forEach((animation) => animation.cancel());
+    // The pressed tray must own this brief transform outright. Without an
+    // explicit replace composite, an ancestor or prior animation can add its
+    // own translate/scale and turn the 4px confirmation into a wandering,
+    // inconsistent bump on successive route picks.
     surface.animate(
       reducedMotion
         ? [
@@ -59,7 +63,7 @@ export const playRouteRiskConfirmFeedback = (surface) => {
             },
             { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
           ],
-      { duration: durationMs, easing, fill: "none" },
+      { duration: durationMs, easing, fill: "none", composite: "replace" },
     );
   } catch {
     return false;
