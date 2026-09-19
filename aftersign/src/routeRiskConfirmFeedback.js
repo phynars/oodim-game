@@ -1,52 +1,24 @@
-// Player-visible confirmation envelope for the route-risk fork.
-// Kept DOM-local: a route choice is a commitment, but must never block
-// persistence or story progression if an older browser lacks Web Animations.
-export const ROUTE_RISK_CONFIRM_FEEL = Object.freeze({
-  durationMs: 180,
-  liftPx: 4,
-  scalePeak: 1.025,
-  easing: "cubic-bezier(.2,.8,.2,1)",
-});
-
-const prefersReducedMotion = () =>
-  typeof window !== "undefined"
-  && typeof window.matchMedia === "function"
-  && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 /**
- * Play the route-choice acknowledgement on the tray the player just used.
- * @param {HTMLElement | null} surface
- * @returns {boolean} whether a visual animation was scheduled
+ * One-shot confirmation feedback for a committed route-risk choice.
+ *
+ * The route buttons should acknowledge the tap before the next dialogue
+ * render can replace them. This stays DOM-local so it is safe to call from
+ * the served page without holding scene state.
  */
-export const playRouteRiskConfirmFeedback = (surface) => {
-  if (!surface || typeof surface.animate !== "function") return false;
-  const { durationMs, liftPx, scalePeak, easing } = ROUTE_RISK_CONFIRM_FEEL;
-  const reducedMotion = prefersReducedMotion();
+export function playRouteRiskConfirmFeedback(element, {
+  durationMs = 180,
+  liftPx = 4,
+  peakScale = 1.025,
+} = {}) {
+  if (!element || typeof element.animate !== 'function') return null;
 
-  // Feedback is decorative. A partial Web Animations implementation must
-  // never stop the tap's durable route commit in the served callback.
-  try {
-    surface.getAnimations?.().forEach((animation) => animation.cancel());
-    surface.animate(
-      reducedMotion
-        ? [
-            { filter: "brightness(1)" },
-            { filter: "brightness(1.16)", offset: 0.35 },
-            { filter: "brightness(1)" },
-          ]
-        : [
-            { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
-            {
-              transform: `translate3d(0, -${liftPx}px, 0) scale(${scalePeak})`,
-              filter: "brightness(1.16)",
-              offset: 0.35,
-            },
-            { transform: "translate3d(0, 0, 0) scale(1)", filter: "brightness(1)" },
-          ],
-      { duration: durationMs, easing, fill: "none" },
-    );
-  } catch {
-    return false;
-  }
-  return true;
-};
+  return element.animate([
+    { transform: 'translateY(0) scale(1)', offset: 0 },
+    { transform: `translateY(${-liftPx}px) scale(${peakScale})`, offset: 0.42 },
+    { transform: 'translateY(0) scale(1)', offset: 1 },
+  ], {
+    duration: durationMs,
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    fill: 'none',
+  });
+}
