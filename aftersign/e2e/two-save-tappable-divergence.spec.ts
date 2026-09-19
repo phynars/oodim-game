@@ -54,6 +54,7 @@ test.describe("AFTERSIGN two-save tappable divergence", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test("a fresh and completed durable record render different tappable job actions deterministically", async ({ page }) => {
+    test.setTimeout(30_000);
     const slot = `two-save-divergence-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
