@@ -32,7 +32,7 @@ export const IO_VOICE = Object.freeze({
       "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
     opened:
       "You came back. The seal did not. I can use one of those facts.",
-    unknown: "You came back. I have one fact. Bring me another.",
+    unknown: "You came back with one fact. Bring me a second.",
   }),
   listened: "You listened before you ran. Rare habit. Keep it.",
   skipped: "You found the box anyway. Next time, let me finish saving your life.",
