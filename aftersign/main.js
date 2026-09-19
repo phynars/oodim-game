@@ -329,6 +329,7 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // the served page across a full loop and pins the fresh-boot
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
+import { ioOfferHeading } from "./src/ioLoopCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
 // served page as a SIBLING paragraph next to `#line`. Same shape as
 // the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
@@ -2238,6 +2239,10 @@ const renderText = () => {
         label.className = "route-choice-label";
         label.textContent = "Offered jobs";
         offeredJobs.appendChild(label);
+        const ioOfferHeadingNode = document.createElement("p");
+        ioOfferHeadingNode.setAttribute("data-aftersign-io-offer-heading", "true");
+        ioOfferHeadingNode.textContent = ioOfferHeading(packetOutcomeFactObject);
+        offeredJobs.appendChild(ioOfferHeadingNode);
         const offerCopy = chooseAftersignJobOfferCopy({
           firstPacketOutcome: packetOutcomeFactObject ?? null,
           packetOpened: packetOutcomeFactObject === "opened",
