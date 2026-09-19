@@ -6,6 +6,17 @@ import { expect, test, type Page } from '@playwright/test';
 // never fires when the render loop keeps requesting frames.
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
+// Progressive gates for driveToSealedRecognitionBeat: authored state (beat +
+// memoryBeat cleared) gets the larger slice because it runs immediately after
+// forceReload() and must survive a cold SwiftShader re-init; diagnostic marks
+// (MutationObserver-stamped) are microtask-driven and settle fast once the
+// beat has arrived. Both are derived from WAIT_MS as a shared budget so they
+// compose to ≤WAIT_MS (30 + 15 = 45s ≤ 60s) rather than being magic numbers,
+// while keeping #1852's property that one slow condition cannot eat the whole
+// window.
+const RECOGNITION_BEAT_WAIT_MS = WAIT_MS / 2;
+const RECOGNITION_MARKS_WAIT_MS = WAIT_MS / 4;
+const POLL_INTERVAL_MS = 100;
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
@@ -18,9 +29,6 @@ const MAX_UI_SETTLE_MS = 360;
 const MAX_AV_DRIFT_MS = 50;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
-// The line that ACTUALLY renders at the sealed recognition beat — from
-// the canonical copy module (#595 cleanup, #1077). This flow skips the
-// kiosk route, so the RETURNING tier speaks.
 import { expectedIoRecognitionLine } from '../src/ioRecognitionDialogue';
 const IO_SEALED_RECOGNITION_LINE = expectedIoRecognitionLine('sealed', false);
 
@@ -28,18 +36,8 @@ type PhoneReadyProbe = {
   readonly lineText: string;
   readonly lineVisible: boolean;
   readonly lineReadable: boolean;
-  readonly lineRect: {
-    readonly left: number;
-    readonly right: number;
-    readonly top: number;
-    readonly bottom: number;
-    readonly width: number;
-    readonly height: number;
-  };
-  readonly viewport: {
-    readonly width: number;
-    readonly height: number;
-  };
+  readonly lineRect: { readonly left: number; readonly right: number; readonly top: number; readonly bottom: number; readonly width: number; readonly height: number };
+  readonly viewport: { readonly width: number; readonly height: number };
   readonly horizontalOverflowPx: number;
   readonly verticalOverflowPx: number;
   readonly settleMs: number;
@@ -56,15 +54,9 @@ type RuntimeMarks = {
 const waitForGame = async (page: Page) => {
   await page.waitForFunction(
     () => Boolean(
-      (window as Window & {
-        __game?: { input?: { choose?: unknown; advance?: unknown; forceReload?: unknown } };
-      }).__game?.input?.choose
-        && (window as Window & {
-          __game?: { input?: { advance?: unknown } };
-        }).__game?.input?.advance
-        && (window as Window & {
-          __game?: { input?: { forceReload?: unknown } };
-        }).__game?.input?.forceReload,
+      (window as Window & { __game?: { input?: { choose?: unknown; advance?: unknown; forceReload?: unknown } } }).__game?.input?.choose
+        && (window as Window & { __game?: { input?: { advance?: unknown } } }).__game?.input?.advance
+        && (window as Window & { __game?: { input?: { forceReload?: unknown } } }).__game?.input?.forceReload,
     ),
     undefined,
     { timeout: WAIT_MS },
@@ -74,81 +66,30 @@ const waitForGame = async (page: Page) => {
 const installPhoneReadyRuntimeMarks = async (page: Page) => {
   await page.evaluate((expectedCue) => {
     const win = window as Window & {
-      __ioPhoneReadyMarks?: {
-        recognitionTriggeredAt?: number;
-        lineSettledAt?: number;
-        audioCueAt?: number;
-      };
-      __game?: {
-        scene?: { beat?: string };
-        _runtime?: { audio?: { lastCue?: string | null; lastCueAt?: number | null } };
-      };
+      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; audioCueAt?: number };
+      __game?: { scene?: { beat?: string }; _runtime?: { audio?: { lastCue?: string | null; lastCueAt?: number | null } } };
     };
-
     win.__ioPhoneReadyMarks = {};
-
-    const initialGame = win.__game;
     const initialLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
-    const initialAudioCueAt: number | null = initialGame?._runtime?.audio?.lastCueAt ?? null;
+    const initialAudioCueAt = win.__game?._runtime?.audio?.lastCueAt ?? null;
 
-    // Shared marking body, driven by BOTH a rAF loop and a MutationObserver
-    // on #line. The observer matters on starved SwiftShader hosts: setBeat →
-    // renderText → audio cue all run synchronously in the beat's setTimeout,
-    // but rAF can be starved for 600ms+ afterwards — an rAF-only probe then
-    // stamps lineSettledAt centuries after the runtime's own audioCueAt and
-    // reports host frame-lag as authored A/V drift (main-e2e red, avDrift
-    // 632ms vs the 50ms contract). MutationObserver callbacks are microtasks
-    // fired at the DOM write itself, so the settle stamp lands at the same
-    // instant the runtime spoke — what the contract actually authored.
+    // MutationObserver stamps the DOM write as a microtask; the rAF loop is
+    // retained only as a fallback, so a cold SwiftShader frame stall cannot
+    // by itself delay the authored line/audio timing measurement.
     const stampMarks = () => {
       const game = win.__game;
-      const beat = game?.scene?.beat ?? null;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
-      const audioCue = game?._runtime?.audio?.lastCue ?? null;
-      const audioCueAt = game?._runtime?.audio?.lastCueAt ?? null;
       const marks = win.__ioPhoneReadyMarks;
       if (!marks) return;
-
-      if (marks.recognitionTriggeredAt === undefined && beat === 'io-return-recognition') {
-        marks.recognitionTriggeredAt = performance.now();
-      }
-
-      if (
-        marks.recognitionTriggeredAt !== undefined
-        && marks.lineSettledAt === undefined
-        // Tier-agnostic prefix: this page-side probe only marks WHEN the
-        // recognition line settled; exact copy is asserted node-side
-        // against the canonical module.
-        && lineText.startsWith('I remember you')
-        && lineText !== initialLineText
-      ) {
-        marks.lineSettledAt = performance.now();
-      }
-
-      if (
-        marks.recognitionTriggeredAt !== undefined
-        && marks.audioCueAt === undefined
-        && audioCue === expectedCue
-        && audioCueAt !== null
-        && audioCueAt !== initialAudioCueAt
-      ) {
-        marks.audioCueAt = audioCueAt;
-      }
+      if (marks.recognitionTriggeredAt === undefined && game?.scene?.beat === 'io-return-recognition') marks.recognitionTriggeredAt = performance.now();
+      if (marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt === undefined && lineText.startsWith('I remember you') && lineText !== initialLineText) marks.lineSettledAt = performance.now();
+      const audio = game?._runtime?.audio;
+      if (marks.recognitionTriggeredAt !== undefined && marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null && audio.lastCueAt !== initialAudioCueAt) marks.audioCueAt = audio.lastCueAt;
     };
 
     const lineNode = document.querySelector('#line');
-    if (lineNode) {
-      new MutationObserver(stampMarks).observe(lineNode, {
-        childList: true,
-        characterData: true,
-        subtree: true,
-      });
-    }
-
-    const observe = () => {
-      stampMarks();
-      requestAnimationFrame(observe);
-    };
+    if (lineNode) new MutationObserver(stampMarks).observe(lineNode, { childList: true, characterData: true, subtree: true });
+    const observe = () => { stampMarks(); requestAnimationFrame(observe); };
     requestAnimationFrame(observe);
   }, EXPECTED_AUDIO_CUE);
 };
@@ -157,159 +98,72 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
   await installPhoneReadyRuntimeMarks(page);
   await page.evaluate(async () => {
-    const game = (window as Window & {
-      __game?: {
-        input?: {
-          choose?: (choiceId: string) => Promise<void>;
-          advance?: () => Promise<void>;
-          forceReload?: () => Promise<void>;
-        };
-        story?: { memoryBeat?: unknown };
-        enableAudio?: () => Promise<boolean>;
-      };
-    }).__game;
-    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) {
-      throw new Error('window.__game.input is not available');
-    }
+    const game = (window as Window & { __game?: { input?: { choose?: (choiceId: string) => Promise<void>; advance?: () => Promise<void>; forceReload?: () => Promise<void> }; story?: { memoryBeat?: unknown }; enableAudio?: () => Promise<boolean> } }).__game;
+    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) throw new Error('window.__game.input is not available');
     await game.input.forceReload();
-    if (game.story) {
-      game.story.memoryBeat = null;
-    }
-    if (typeof game.enableAudio === 'function') {
-      await game.enableAudio();
-    }
+    if (game.story) game.story.memoryBeat = null;
+    if (typeof game.enableAudio === 'function') await game.enableAudio();
     await game.input.choose('keep-packet-sealed');
     await game.input.choose('deliver-packet');
     await game.input.advance();
   });
 
+  // Separate authored state from diagnostic marks: neither slow condition can
+  // consume the full old WAIT_MS window, and their composed budget stays ≤WAIT_MS.
   await page.waitForFunction(
-    (expectedCue) => {
-      const win = window as Window & {
-        __game?: {
-          scene?: { beat?: string };
-          story?: { memoryBeat?: unknown };
-          _runtime?: { audio?: { lastCue?: string | null } };
-        };
-        __ioPhoneReadyMarks?: Partial<RuntimeMarks>;
-      };
-      return (
-        win.__game?.scene?.beat === 'io-return-recognition'
-        && win.__game?.story?.memoryBeat !== null
-        && win.__game?._runtime?.audio?.lastCue === expectedCue
-        && win.__ioPhoneReadyMarks?.recognitionTriggeredAt !== undefined
-        && win.__ioPhoneReadyMarks?.lineSettledAt !== undefined
-        && win.__ioPhoneReadyMarks?.audioCueAt !== undefined
-      );
-    },
-    EXPECTED_AUDIO_CUE,
-    { timeout: WAIT_MS },
-  );
-};
-
-const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => {
-  return page.evaluate(
     () => {
-      const lineNode = document.querySelector<HTMLElement>('#line');
-      if (!lineNode) {
-        throw new Error('Missing #line node in AFTERSIGN HUD');
-      }
-
-      const rect = lineNode.getBoundingClientRect();
-      const style = window.getComputedStyle(lineNode);
-      const root = document.documentElement;
-      const viewport = {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      };
-
-      const horizontalOverflowPx = Math.max(
-        0,
-        root.scrollWidth - viewport.width,
-        -rect.left,
-        rect.right - viewport.width,
-      );
-      const verticalOverflowPx = Math.max(
-        0,
-        root.scrollHeight - viewport.height,
-        -rect.top,
-        rect.bottom - viewport.height,
-      );
-
-      const win = window as Window & {
-        __game?: {
-          _runtime?: { audio?: { lastCue?: string | null } };
-        };
-        __ioPhoneReadyMarks?: Partial<RuntimeMarks>;
-      };
-      const marks = win.__ioPhoneReadyMarks;
-      if (
-        marks?.recognitionTriggeredAt === undefined
-        || marks.lineSettledAt === undefined
-        || marks.audioCueAt === undefined
-      ) {
-        throw new Error('Missing Io phone-ready runtime marks');
-      }
-
-      const settleMs = Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt);
-      const avDriftMs = Math.abs(marks.audioCueAt - marks.lineSettledAt);
-      const audioLastCue = win.__game?._runtime?.audio?.lastCue ?? null;
-
-      return {
-        lineText: lineNode.innerText.trim(),
-        lineVisible:
-          rect.width > 0
-          && rect.height > 0
-          && style.visibility !== 'hidden'
-          && style.display !== 'none',
-        lineReadable: Number.parseFloat(style.fontSize) >= 16 && style.opacity !== '0',
-        lineRect: {
-          left: rect.left,
-          right: rect.right,
-          top: rect.top,
-          bottom: rect.bottom,
-          width: rect.width,
-          height: rect.height,
-        },
-        viewport,
-        horizontalOverflowPx,
-        verticalOverflowPx,
-        settleMs,
-        avDriftMs,
-        audioLastCue,
-      } satisfies PhoneReadyProbe;
+      const game = (window as Window & { __game?: { scene?: { beat?: string }; story?: { memoryBeat?: unknown } } }).__game;
+      return game?.scene?.beat === 'io-return-recognition' && game.story?.memoryBeat !== null;
     },
     undefined,
+    { timeout: RECOGNITION_BEAT_WAIT_MS, polling: POLL_INTERVAL_MS },
+  );
+  await page.waitForFunction(
+    (expectedCue) => {
+      const win = window as Window & { __game?: { _runtime?: { audio?: { lastCue?: string | null } } }; __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
+      const marks = win.__ioPhoneReadyMarks;
+      return win.__game?._runtime?.audio?.lastCue === expectedCue && marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.audioCueAt !== undefined;
+    },
+    EXPECTED_AUDIO_CUE,
+    { timeout: RECOGNITION_MARKS_WAIT_MS, polling: POLL_INTERVAL_MS },
   );
 };
+
+const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => page.evaluate(() => {
+  const lineNode = document.querySelector<HTMLElement>('#line');
+  if (!lineNode) throw new Error('Missing #line node in AFTERSIGN HUD');
+  const rect = lineNode.getBoundingClientRect();
+  const style = window.getComputedStyle(lineNode);
+  const root = document.documentElement;
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  const win = window as Window & { __game?: { _runtime?: { audio?: { lastCue?: string | null } } }; __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
+  const marks = win.__ioPhoneReadyMarks;
+  if (marks?.recognitionTriggeredAt === undefined || marks.lineSettledAt === undefined || marks.audioCueAt === undefined) throw new Error('Missing Io phone-ready runtime marks');
+  return {
+    lineText: lineNode.innerText.trim(),
+    lineVisible: rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none',
+    lineReadable: Number.parseFloat(style.fontSize) >= 16 && style.opacity !== '0',
+    lineRect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height },
+    viewport,
+    horizontalOverflowPx: Math.max(0, root.scrollWidth - viewport.width, -rect.left, rect.right - viewport.width),
+    verticalOverflowPx: Math.max(0, root.scrollHeight - viewport.height, -rect.top, rect.bottom - viewport.height),
+    settleMs: Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt),
+    avDriftMs: Math.abs(marks.audioCueAt - marks.lineSettledAt),
+    audioLastCue: win.__game?._runtime?.audio?.lastCue ?? null,
+  } satisfies PhoneReadyProbe;
+}, undefined);
 
 test.describe('Io phone-ready look/sound contract', () => {
   test('keeps the sealed-packet recognition beat readable, settled, and coupled on a phone viewport', async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     await page.setViewportSize(PHONE_VIEWPORT);
-    await page.addInitScript((key) => {
-      window.localStorage.removeItem(key);
-    }, STORAGE_KEY);
-    await page.goto(`/aftersign/index.html?slot=${DETERMINISTIC_SLOT}`, {
-      waitUntil: 'load',
-    });
-
+    await page.addInitScript((key) => window.localStorage.removeItem(key), STORAGE_KEY);
+    await page.goto(`/aftersign/index.html?slot=${DETERMINISTIC_SLOT}`, { waitUntil: 'load' });
     await driveToSealedRecognitionBeat(page);
-
-    await expect
-      .poll(() => measurePhoneReadyProbe(page), {
-        timeout: WAIT_MS,
-        intervals: [100, 250, 500, 1000],
-      })
-      .toMatchObject({
-        lineText: expect.stringContaining(IO_SEALED_RECOGNITION_LINE),
-        lineVisible: true,
-        lineReadable: true,
-        audioLastCue: EXPECTED_AUDIO_CUE,
-      });
-
+    await expect.poll(() => measurePhoneReadyProbe(page), { timeout: WAIT_MS, intervals: [100, 250, 500, 1000] }).toMatchObject({
+      lineText: expect.stringContaining(IO_SEALED_RECOGNITION_LINE), lineVisible: true, lineReadable: true, audioLastCue: EXPECTED_AUDIO_CUE,
+    });
     const probe = await measurePhoneReadyProbe(page);
-
     expect(probe.viewport).toEqual(PHONE_VIEWPORT);
     expect(probe.lineText).toContain(IO_SEALED_RECOGNITION_LINE);
     expect(probe.lineVisible).toBe(true);
