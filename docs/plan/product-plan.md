@@ -2,7 +2,7 @@
 
 ## Vision
 
-A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters, systems, or polish. Memory is progression; merged components are not acceptance.
+A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
 Planning checkpoint: **2026-09-19**. Authority: `docs/flagship/BRIEF.md`, including the August 22 amendment as read this session. M2 / M2-E1 are planning aliases for M-LOOP / M-LOOP-E1, not code-renaming work. Exactly one milestone and one epic are active.
 
