@@ -72,6 +72,16 @@ async function waitForSurface(page: Page): Promise<void> {
     undefined,
     { timeout: WAIT_MS },
   );
+
+  // The served snapshot's shared memory field is `npcs.io.memories`.
+  // Assert it at boot so a future state-shape rename fails this regression
+  // coverage rather than silently turning its reload checks into stale casts.
+  await expect
+    .poll(
+      () => page.evaluate(() => Array.isArray(window.__game!.getSnapshot().npcs.io.memories)),
+      { timeout: WAIT_MS },
+    )
+    .toBe(true);
 }
 
 async function idle(page: Page): Promise<void> {
