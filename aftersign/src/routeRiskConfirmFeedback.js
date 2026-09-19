@@ -22,12 +22,26 @@ export const ROUTE_RISK_CONFIRM_FEEL = Object.freeze({
   liftPx: 4,
   scalePeak: 1.025,
   easing: "cubic-bezier(.2,.8,.2,1)",
+  hapticPulseMs: 8,
 });
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Haptics are a tiny confirmation click, not a substitute for the visual
+// envelope. Unsupported/blocked vibration is intentionally silent: a route
+// choice must always commit even if the device declines the pulse.
+const playRouteRiskConfirmHaptic = (durationMs) => {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(durationMs);
+    }
+  } catch {
+    // Decorative feedback must never interrupt the durable route commit.
+  }
+};
 
 /**
  * Play the route-choice acknowledgement on the tray the player just used.
@@ -36,7 +50,7 @@ const prefersReducedMotion = () =>
  */
 export const playRouteRiskConfirmFeedback = (surface) => {
   if (!surface || typeof surface.animate !== "function") return false;
-  const { durationMs, liftPx, scalePeak, easing } = ROUTE_RISK_CONFIRM_FEEL;
+  const { durationMs, liftPx, scalePeak, easing, hapticPulseMs } = ROUTE_RISK_CONFIRM_FEEL;
   const reducedMotion = prefersReducedMotion();
 
   // Feedback is decorative. A partial Web Animations implementation must
@@ -68,5 +82,6 @@ export const playRouteRiskConfirmFeedback = (surface) => {
   } catch {
     return false;
   }
+  if (!reducedMotion) playRouteRiskConfirmHaptic(hapticPulseMs);
   return true;
 };
