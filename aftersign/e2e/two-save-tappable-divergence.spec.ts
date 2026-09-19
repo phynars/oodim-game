@@ -1,16 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// M-LOOP divergence — played on the served phone surface.
+// AFTERSIGN — M-LOOP durable-save divergence, played through the rendered page.
 //
-// This test never advances story through window.__game. Every transition is
-// a tap on a visible control. `__game` is read only for scene readiness;
-// story beats and job actions are asserted through the rendered DOM.
+// This spec is #1827's acceptance evidence: it proves that two divergent
+// durable save records (fresh vs completed) produce visibly different
+// tappable job action ELEMENTS on the served phone surface, and that the
+// route-risk copy is stamped element-level (not just implied by ids).
+// Every transition is a real tap on a visible control; `window.__game`
+// is read ONLY as the scene-ready gate — no `__game.input.*` puppeteering.
 
+const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
-// This scenario includes two SwiftShader scene boots and a full delivery.
-// Keep the aggregate budget separate from each UI assertion/action deadline:
-// a slow cold start must not consume the entire multi-phase scenario budget.
-const SCENARIO_TIMEOUT_MS = 180_000;
+// One durable slot, one completed loop, one reload. The SwiftShader cold
+// boot dominates wall time; sibling `m-loop-divergence.playtest.spec.ts`
+// runs the same shape at 45s, but this variant ALSO reloads mid-test, so
+// we double the budget and pin it well above the Playwright 30s default
+// so the reload's cold boot cannot be clipped by the runner's default.
+const SPEC_TIMEOUT_MS = 180_000;
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -23,76 +29,183 @@ async function waitForReady(page: Page): Promise<void> {
 }
 
 async function waitForBeat(page: Page, beatId: string): Promise<void> {
-  await expect(page.locator(`[data-beat-id="${beatId}"]`)).toBeVisible({
-    timeout: WAIT_MS,
-  });
+  await expect(
+    page.locator(`[data-beat-id="${beatId}"]`),
+    `story line should visibly reach beat "${beatId}"`,
+  ).toBeVisible({ timeout: WAIT_MS });
 }
 
 async function tap(page: Page, selector: string): Promise<void> {
   const control = page.locator(`${selector}:not([disabled])`).first();
-  await expect(control).toBeVisible({ timeout: WAIT_MS });
+  await expect(
+    control,
+    `control "${selector}" should be tappable`,
+  ).toBeVisible({ timeout: WAIT_MS });
   await control.tap({ timeout: WAIT_MS });
+}
+
+type OfferReadout = {
+  readonly ids: readonly string[];
+  readonly byId: Readonly<
+    Record<string, { readonly routeRisk: string | null; readonly text: string }>
+  >;
+};
+
+async function readOfferedActions(page: Page): Promise<OfferReadout> {
+  // #job-offer-<jobId> is the served render surface (aftersign/main.js
+  // stamps these buttons at the packet-offered beat and adds
+  // [data-aftersign-job-take] + [data-route-risk] element-level). We
+  // read attributes straight off the DOM so a served-renderer
+  // regression that drops [data-route-risk] reds THIS spec.
+  const offers = page.locator('[id^="job-offer-"]');
+  await expect(
+    offers.first(),
+    "at least one #job-offer-* button must render at packet-offered",
+  ).toBeVisible({ timeout: WAIT_MS });
+
+  const count = await offers.count();
+  const ids: string[] = [];
+  const byId: Record<
+    string,
+    { routeRisk: string | null; text: string }
+  > = {};
+  for (let index = 0; index < count; index += 1) {
+    const offer = offers.nth(index);
+    if (!(await offer.isVisible())) continue;
+    const id = await offer.getAttribute("id");
+    if (!id) continue;
+    // The button MUST carry [data-aftersign-job-take] (the tap locator
+    // sibling specs pin, e.g. aftersign-job-take-feel.playtest.spec.ts).
+    await expect(
+      offer,
+      `${id} must expose the [data-aftersign-job-take] locator at render`,
+    ).toHaveAttribute("data-aftersign-job-take", /.+/);
+    const routeRisk = await offer.getAttribute("data-route-risk");
+    expect(
+      routeRisk,
+      `${id} must expose [data-route-risk] from computeOfferedJobs`,
+    ).toMatch(/^(?:low|medium|high)$/);
+    ids.push(id);
+    byId[id] = {
+      routeRisk,
+      text: (await offer.textContent())?.trim() ?? "",
+    };
+  }
+
+  return {
+    ids: ids.slice().sort(),
+    byId,
+  };
 }
 
 async function completeSafeDelivery(page: Page): Promise<void> {
   await tap(page, "#job-offer-job-safe-delivery");
   await tap(page, "#packetButton");
   await waitForBeat(page, "packet-choice");
-  await tap(page, '[data-choice-id="acknowledge-kiosk"]');
-  await tap(page, '[data-choice-id="deliver-packet"]');
+  await tap(page, 'button[data-choice-id="acknowledge-kiosk"]');
+  await tap(page, 'button[data-choice-id="deliver-packet"]');
   await waitForBeat(page, "io-return-recognition");
-  await tap(page, '[data-return-reason="blunt"]');
+  await tap(page, 'button[data-return-reason="blunt"]');
   await waitForBeat(page, "return-tone-choice");
-  await tap(page, '[data-choice-id="ask-for-next-job"]');
+  await tap(page, 'button[data-choice-id="ask-for-next-job"]');
   await waitForBeat(page, "io-next-job");
-  await tap(page, '[data-choice-id="deliver-packet"]');
+  await tap(page, 'button[data-choice-id="deliver-packet"]');
 }
 
-async function offeredActionIds(page: Page): Promise<string[]> {
-  return page.locator("button[data-aftersign-job-take]").evaluateAll((buttons) =>
-    buttons.map((button) => button.id).sort(),
-  );
-}
+test.describe("AFTERSIGN two-save tappable divergence (served page)", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-test.describe("AFTERSIGN two-save tappable divergence", () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test("a fresh and completed durable record render different tappable job actions deterministically", async ({
+    page,
+  }) => {
+    // Pin the per-test timeout FIRST so nothing below can be clipped by
+    // the Playwright default (30s). Prior CI runs on this branch red-ed
+    // with "Test timeout of 30000ms exceeded" when this line was placed
+    // AFTER a test.step() — Playwright applies the override at call
+    // time, so a step that boots SwiftShader before the override lands
+    // still runs under the default. Keeping it as the first statement
+    // in the test body is load-bearing.
+    test.setTimeout(SPEC_TIMEOUT_MS);
 
-  test("a fresh and completed durable record render different tappable job actions deterministically", async ({ page }) => {
-    test.setTimeout(SCENARIO_TIMEOUT_MS);
-    const slot = `two-save-divergence-${Date.now()}`;
-    const freshActions = await test.step("boot fresh slot and assert initial offer", async () => {
-      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-      await waitForReady(page);
-      await waitForBeat(page, "packet-offered");
+    const slot = `two-save-divergence-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}`;
 
-      const actions = await offeredActionIds(page);
-      await expect(page.locator("#job-offer-job-safe-delivery")).toBeVisible();
-      expect(actions).toEqual(["job-offer-job-safe-delivery"]);
-      return actions;
+    // FRESH DURABLE RECORD — first visit, packet.delivered === false.
+    await page.goto(`/aftersign/?slot=${encodeURIComponent(slot)}`, {
+      waitUntil: "load",
     });
+    await waitForReady(page);
+    await waitForBeat(page, "packet-offered");
 
-    // The player's taps create the completed durable record in this slot.
-    const completedActions = await test.step("complete delivery through visible taps and assert divergent offers", async () => {
-      await completeSafeDelivery(page);
-      await waitForBeat(page, "packet-offered");
-      const actions = await offeredActionIds(page);
-      expect(actions).toEqual([
-        "job-offer-job-night-transfer",
-        "job-offer-job-signed-receipt",
-      ]);
-      expect(actions).not.toEqual(freshActions);
-      return actions;
-    });
+    const freshOffers = await readOfferedActions(page);
+    expect(
+      freshOffers.ids,
+      "fresh durable record must render the safe-default job offer",
+    ).toEqual(["job-offer-job-safe-delivery"]);
+    // #1827 explicit criterion: route-risk copy divergence asserted
+    // from the RENDERED DOM (not from the pure selector). Pin the
+    // fresh slot's low-risk stamp here.
+    expect(
+      freshOffers.byId["job-offer-job-safe-delivery"]?.routeRisk,
+      "fresh offer must expose data-route-risk=\"low\"",
+    ).toBe("low");
 
-    // Reload the same durable slot: the returned action set is stable and
-    // still rendered as tappable served-page controls.
-    await test.step("reload durable slot and assert stable offers", async () => {
-      await page.reload({ waitUntil: "load" });
-      await waitForReady(page);
-      await waitForBeat(page, "packet-offered");
-      await expect(page.locator("#job-offer-job-night-transfer")).toBeVisible();
-      await expect(page.locator("#job-offer-job-signed-receipt")).toBeVisible();
-      expect(await offeredActionIds(page)).toEqual(completedActions);
-    });
+    // COMPLETED DURABLE RECORD — same slot, driven to `priorOutcome
+    // === "completed"` by real taps on the served surface.
+    await completeSafeDelivery(page);
+    await waitForBeat(page, "packet-offered");
+
+    const completedOffers = await readOfferedActions(page);
+    expect(
+      completedOffers.ids,
+      "completed durable record must render the completed-branch offers",
+    ).toEqual([
+      "job-offer-job-night-transfer",
+      "job-offer-job-signed-receipt",
+    ]);
+    // #1827 explicit criterion: two divergent durable saves produce
+    // visibly different tappable elements. Compare the id set AND the
+    // route-risk stamps element-level.
+    expect(
+      completedOffers.ids,
+      "memory must change the visible action id set, not only dialogue",
+    ).not.toEqual(freshOffers.ids);
+    expect(
+      completedOffers.byId["job-offer-job-night-transfer"]?.routeRisk,
+      "night-transfer must expose data-route-risk=\"medium\"",
+    ).toBe("medium");
+    expect(
+      completedOffers.byId["job-offer-job-signed-receipt"]?.routeRisk,
+      "signed-receipt must expose data-route-risk=\"low\"",
+    ).toBe("low");
+    // Route-risk copy divergence element-level: at least one action
+    // between the two records carries a different route-risk stamp.
+    // (Fresh: {low}. Completed: {medium, low}. Set inequality.)
+    const freshRiskSet = new Set(
+      Object.values(freshOffers.byId).map((entry) => entry.routeRisk),
+    );
+    const completedRiskSet = new Set(
+      Object.values(completedOffers.byId).map((entry) => entry.routeRisk),
+    );
+    expect(
+      completedRiskSet,
+      "route-risk stamps rendered from the DOM must diverge across records",
+    ).not.toEqual(freshRiskSet);
+
+    // DETERMINISM (#1827 criterion 3, per #1818) — reloading the same
+    // completed slot re-renders the SAME tappable element set with the
+    // SAME route-risk stamps. `deliverPacket()` persists synchronously
+    // (flagship-phase2 spec:43) and `ask-for-next-job → forceSave`
+    // auto-persists (ioNextJobDurability.test.ts:48), so a plain
+    // page.reload() is sufficient — no harness helper needed.
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "packet-offered");
+    const reloadedOffers = await readOfferedActions(page);
+    expect(
+      reloadedOffers,
+      "reloading the same durable slot must be deterministic on the served DOM",
+    ).toEqual(completedOffers);
   });
 });
