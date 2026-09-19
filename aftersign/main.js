@@ -661,38 +661,20 @@ const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
 const aimReticle = document.querySelector("#aimReticle");
 const targetLossPrompt = document.querySelector("#targetLossPrompt");
 let lastHadTargetMs = null;
-// #1751: the target-loss envelope must be measured from the render
-// clock (rAF `now`), never the pointer-event clock (`input.timeMs`).
-// `event.timeStamp` and `performance.now()` are NOT the same axis —
-// their origins differ per engine, and under cold-CI SwiftShader the
-// first rAF `now` after a release can land past `input.timeMs + 100ms`,
-// so `targetLossFeedbackAt(now - input.timeMs)` returns promptOpacity=0
-// on the very first sampled frame and the e2e captures
-// promptOpacityPeak=0 (the flake #1751). Same discipline as
-// `pendingRecognitionArm`: `packetRelease` sets this flag, and the
-// FIRST tick that actually paints stamps `lastHadTargetMs = now` so
-// the 100ms fade begins from the first composited frame — immune to
-// the dual-clock skew and to rAF starvation.
-let pendingTargetLossArm = false;
-
+// The target-loss envelope must use the monotonic runtime clock,
+// not a pointer event timestamp (whose origin differs by browser).
+// Stamp that clock at the release edge: waiting for the next rAF to arm
+// the envelope makes a cold SwiftShader renderer begin the 100ms fade
+// late, leaving the prompt visible after the e2e's 400ms budget.
 const syncTargetLossFeedback = (nowMs, hasTarget) => {
   if (hasTarget) {
     lastHadTargetMs = nowMs;
-    pendingTargetLossArm = false;
     if (aimReticle) {
       aimReticle.style.transform = "translate3d(0, 0, 0) scale(1)";
       aimReticle.dataset.targetLossActive = "false";
     }
     if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
     return;
-  }
-  // First non-active frame after a release: anchor the envelope clock
-  // to the RENDER clock (`nowMs`, rAF's timestamp) rather than the
-  // pointer-event clock the release captured. This is the fix for
-  // #1751 — see the `pendingTargetLossArm` declaration above.
-  if (pendingTargetLossArm) {
-    lastHadTargetMs = nowMs;
-    pendingTargetLossArm = false;
   }
   if (lastHadTargetMs === null) return;
   const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
@@ -2743,18 +2725,11 @@ const packetTick = (timeMs) => {
 };
 
 const packetRelease = (input) => {
-  // Arm the target-loss envelope: this release IS the active→inactive
-  // edge, but the envelope must be measured from the RENDER clock, not
-  // the pointer-event clock this release carries (#1751 — see the
-  // `pendingTargetLossArm` declaration). Instead of stamping
-  // `lastHadTargetMs = input.timeMs` (a cross-clock skew that reds the
-  // e2e as promptOpacityPeak=0), we arm the pending flag; the first
-  // tick that actually paints stamps `lastHadTargetMs = now` and
-  // renders the elapsed=0 frame (neutral reticle, opacity 1) on the
-  // render clock. Reset any half-armed prior state so the reticle
-  // shows its full-opacity first-loss frame immediately.
-  pendingTargetLossArm = true;
-  lastHadTargetMs = null;
+  // This release is the active→inactive edge. Stamp it with
+  // performance.now(), which shares the rAF timestamp's monotonic clock
+  // without inheriting the pointer event's clock origin. The envelope then
+  // advances in real time even if a cold renderer delays the next frame.
+  lastHadTargetMs = performance.now();
   if (aimReticle) {
     aimReticle.style.transform = "translate3d(0, 0, 0) scale(1)";
     aimReticle.dataset.targetLossActive = "true";
