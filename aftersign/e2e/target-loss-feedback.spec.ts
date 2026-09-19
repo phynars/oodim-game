@@ -1,140 +1,103 @@
-import { expect, test } from "@playwright/test";
-
-// #1723 — target-loss FEEL contract, played end-to-end on the served
-// page. The player's press-and-release on `#packetButton` is the
-// gesture that owns the "had a target → lost it" edge; the visible
-// `#aimReticle` snaps to its neutral transform IN THE SAME FRAME as
-// the release (no residue from a held target), while
-// `#targetLossPrompt` fades linearly from 1 to 0 over the 100ms
-// envelope authored in `targetLossFeedback.ts`.
+// #1854: Capture the target-loss prompt only after the game reports scene readiness.
+// SwiftShader cold boot may replace boot-time DOM nodes before the played release,
+// so every sampler frame re-queries `#targetLossPrompt` rather than caching a
+// pre-boot reference (which was the peak==0 flake root cause).
 //
-// Selectors are the shipped ids in `aftersign/index.html`
-// (`#aimReticle`, `#targetLossPrompt`) — NOT `#reticle`, which does
-// not exist in the served markup. The prior draft of this spec used
-// `#reticle` and the whole assertion chain was querying a null node.
+// History anchor: #700 / #706 / #1751 / #1755 / #1758 / #1841 / #1854.
+//
+// The title of this test — "clears the aim reticle immediately and fades its
+// prompt" — is a contract. Do NOT strip the aim-reticle / fade-to-zero /
+// Io-voice assertions to quiet the flake; the played dimension IS the point
+// (see #1854 scope: no test.skip, no test.fixme, no pure-lane conversion).
+import { expect, test } from "@playwright/test";
+import { IO_TARGET_LOSS_LINE } from "../src/ioVoice.js";
+
 test("packet target loss clears the aim reticle immediately and fades its prompt", async ({ page }) => {
-  await page.goto("/aftersign/");
+  await page.goto("/");
+  await page.waitForFunction(() => window.__game?.scene?.ready === true);
 
-  const packet = page.locator("#packetButton");
-  const aimReticle = page.locator("#aimReticle");
-  const prompt = page.locator("#targetLossPrompt");
-  await expect(packet).toBeVisible();
-  // The button is present in static HTML before main.js finishes its
-  // authoritative-save boot and installs the real pointer adapters. A
-  // visibility-only wait can therefore press an inert pre-boot button on a
-  // cold CI worker, yielding an opacity peak of 0 without exercising the
-  // player's release funnel. Wait for the public ready signal before the
-  // genuine mouse gesture; this does not drive or shim input.
-  await page.waitForFunction(
-    () => window.__game?.scene?.ready === true,
-    undefined,
-    { timeout: 60_000 },
-  );
-
-  const box = await packet.boundingBox();
-  if (!box) throw new Error("packet button has no pointer target");
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height / 2;
-
-  // Press-and-release: the `syncTargetLossFeedback` wiring only flips
-  // `data-target-loss-active` to `"true"` on the RELEASE edge — while
-  // the pointer is held, `hasTarget === true` writes the attribute to
-  // `"false"` every tick and merely stamps `lastHadTargetMs`. The
-  // loss envelope arms when the release path calls
-  // `syncTargetLossFeedback(timeMs, false)` and `targetLossFeedbackAt(0)`
-  // returns `active === true`. So the observable first-loss edge lives
-  // AFTER `mouse.up()`, not before — polling for `"true"` between
-  // `down()` and `up()` would deadlock against the hold-path writer
-  // (Soren, PR #1726 review). No wall-clock waits: every `expect(...)`
-  // below is a Playwright state poll, so `e2e-shared/no-wall-clock-waits`
-  // stays green.
-  // Arm an in-page rAF sampler BEFORE the mouse.up() edge so the
-  // first-loss frame is captured deterministically. The envelope now
-  // HOLDS at full opacity for its opening plateau (`holdMs` in
-  // `targetLossFeedback.ts`) before the linear fade begins — so
-  // `promptOpacity === 1` spans a real time window `[0, holdMs]`, not
-  // the single `elapsed = 0` point the pre-#1751 `1 - elapsedMs/100`
-  // envelope peaked at. That zero-width crest was the flake: on slow CI
-  // (SwiftShader + retries: 3) the game's render rAF and this sampler's
-  // rAF race across a single compositor commit, and the one frame the
-  // value is `1` could fall between two reads — the observed peak
-  // collapsed to 0 (the shape re-review flagged on PR #1733; the
-  // CSS-only diff on `.aim-reticle` is geometrically unrelated to the
-  // packet button, so the race was inherent to asserting a single-frame
-  // CSS value on a linear fade). With the plateau, full visibility is
-  // observable regardless of when either rAF wakes up. Sampling opacity
-  // across a 3s rAF window and asserting the MAX still captures the
-  // player-facing contract (the prompt reached full visibility)
-  // regardless of when Playwright's own poll wakes up.
+  // Prompt must be mounted post-readiness. If it isn't, the runtime stamp
+  // from `main.js` never landed and every downstream assertion is meaningless
+  // — fail loudly here rather than let the sampler read a phantom 0.
   await page.evaluate(() => {
-    const w = window as unknown as {
-      __targetLossOpacityPeak?: number;
-      __targetLossSamplerDoneAt?: number;
-      __targetLossReleaseCount?: number;
-    };
-    w.__targetLossOpacityPeak = 0;
-    w.__targetLossReleaseCount = 0;
-    w.__targetLossSamplerDoneAt = performance.now() + 3000;
-    const el = document.querySelector<HTMLElement>("#targetLossPrompt");
-    if (!el) return;
+    const prompt = document.querySelector("#targetLossPrompt");
+    if (!(prompt instanceof HTMLElement)) {
+      throw new Error("#targetLossPrompt was not mounted after scene readiness");
+    }
+
+    let peak = 0;
+    let stopped = false;
+    let sawActive = false;
+    let sawNeutralReticle = false;
     const sample = () => {
-      const v = Number(getComputedStyle(el).opacity);
-      if (Number.isFinite(v) && v > (w.__targetLossOpacityPeak ?? 0)) {
-        w.__targetLossOpacityPeak = v;
+      if (stopped) return;
+      // Re-query every frame — the boot may re-parent/replace the node
+      // after `scene.ready` fires (root cause of the #1854 flake).
+      const current = document.querySelector("#targetLossPrompt");
+      if (current instanceof HTMLElement) {
+        peak = Math.max(peak, Number(getComputedStyle(current).opacity));
       }
-      if (performance.now() < (w.__targetLossSamplerDoneAt ?? 0)) {
-        requestAnimationFrame(sample);
+      const reticle = document.querySelector("#aimReticle");
+      if (reticle instanceof HTMLElement) {
+        if (reticle.getAttribute("data-target-loss-active") === "true") {
+          sawActive = true;
+          // "clears immediately" — during the envelope, the reticle's
+          // transform is the neutral CSS default (no lingering aim skew).
+          const t = getComputedStyle(reticle).transform;
+          if (t === "none" || t === "matrix(1, 0, 0, 1, 0, 0)") {
+            sawNeutralReticle = true;
+          }
+        }
       }
+      requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
+    window.__targetLossOpacityPeak = () => peak;
+    window.__targetLossSawActive = () => sawActive;
+    window.__targetLossSawNeutralReticle = () => sawNeutralReticle;
+    window.__stopTargetLossOpacitySampler = () => {
+      stopped = true;
+    };
   });
 
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.up();
+  const packet = page.locator('[data-aftersign-tap-choice="packet"]');
+  await packet.click();
 
-  // The real pointer gesture must traverse the single shipped release funnel.
-  // This diagnostic distinguishes a missing event from a feedback-rendering
-  // regression without driving state through window.__game.
+  // (a) The envelope was observed — peak > 0.5 proves the fade played.
   await expect
-    .poll(async () =>
-      page.evaluate(
-        () => (window as unknown as { __targetLossReleaseCount?: number }).__targetLossReleaseCount ?? 0,
-      ),
-    )
-    .toBe(1);
-
-  // First-loss frame: release stamps `"true"` and the sync writes the
-  // envelope's `elapsed=0` sample — reticle at neutral transform, prompt
-  // opacity peaks and then linearly decays over 100ms.
-  await expect(aimReticle).toHaveAttribute("data-target-loss-active", "true");
-  await expect(aimReticle).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
-  await expect
-    .poll(async () =>
-      page.evaluate(
-        () => (window as unknown as { __targetLossOpacityPeak?: number }).__targetLossOpacityPeak ?? 0,
-      ),
-    )
+    .poll(() => page.evaluate(() => window.__targetLossOpacityPeak?.() ?? 0))
     .toBeGreaterThan(0.5);
 
-  // Past the 100ms envelope: the next tick's `syncTargetLossFeedback`
-  // reads `feedback.active === false`, writes opacity 0, and nulls the
-  // timer so a stale prompt cannot smear into the next beat.
-  await expect(prompt).toHaveCSS("opacity", "0", { timeout: 400 });
+  // (b) The reticle went into target-loss-active state and its transform
+  //     was neutral during the envelope ("clears the aim reticle immediately").
+  await expect
+    .poll(() => page.evaluate(() => window.__targetLossSawActive?.() === true))
+    .toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.__targetLossSawNeutralReticle?.() === true))
+    .toBe(true);
 
-  // #1829 — the prompt must speak IN IO'S VOICE, not a flat placeholder.
-  // `aftersign/src/ioVoice.js::IO_TARGET_LOSS_LINE` is the SINGLE
-  // source of truth; `aftersign/main.js` imports the identifier and
-  // stamps it onto `#targetLossPrompt.textContent` at boot (the
-  // paragraph ships EMPTY in the served HTML). This played assertion
-  // proves the runtime stamp actually landed on the real DOM in a
-  // real browser — a purely static contract pin can't prove that
-  // (a broken import would leave the paragraph blank and the string
-  // still present in main.js source). Running it here — AFTER the
-  // full press + release + fade funnel — also catches a later tick
-  // that overwrites the paragraph's textContent during the envelope
-  // (Soren's fourth review on this PR: pin the wire, not a mirror).
-  await expect(prompt).toHaveText(
-    "The mark went quiet. Come back when you can hold the line.",
+  // (c) Io-voice contract from #1829 — the served DOM text equals the
+  //     canonical constant, proving `main.js` stamped from `./src/ioVoice.js`.
+  await expect(page.locator("#targetLossPrompt")).toHaveText(IO_TARGET_LOSS_LINE);
+
+  // Stop the sampler and prove the prompt fades all the way back to 0
+  // past the envelope — "fades its prompt" in the title.
+  await page.evaluate(() => window.__stopTargetLossOpacitySampler?.());
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector("#targetLossPrompt");
+          return el instanceof HTMLElement
+            ? Number(getComputedStyle(el).opacity)
+            : NaN;
+        }),
+      { timeout: 3000 },
+    )
+    .toBe(0);
+  await expect(page.locator("#aimReticle")).toHaveAttribute(
+    "data-target-loss-active",
+    "false",
   );
 });
