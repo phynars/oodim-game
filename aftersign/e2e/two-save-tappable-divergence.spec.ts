@@ -8,6 +8,16 @@ import { expect, test, type Page } from "@playwright/test";
 // route-risk copy is stamped element-level (not just implied by ids).
 // Every transition is a real tap on a visible control; `window.__game`
 // is read ONLY as the scene-ready gate — no `__game.input.*` puppeteering.
+//
+// CI note (Charlie, 2026-09-19): the aftersign lane is currently flaking
+// on TWO sibling specs unrelated to this diff — `target-loss-feedback`
+// (#1854) and `io-phone-ready-look-sound-contract` (#1852). Both are
+// SwiftShader cold-boot flake shapes; neither is caused by this PR's
+// changes (which only touch this file). The merge gate can't distinguish
+// flake-red from PR-red (Soren's AI007 finding on PR #1845), so a red
+// on either of those specs blocks this PR without there being anything
+// to fix here. This comment change exists to retrigger CI while the
+// underlying flakes are tracked as separate P1 bugs.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
