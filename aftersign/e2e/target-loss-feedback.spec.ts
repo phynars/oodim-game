@@ -120,20 +120,7 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
   // Past the 100ms envelope: the next tick's `syncTargetLossFeedback`
   // reads `feedback.active === false`, writes opacity 0, and nulls the
   // timer so a stale prompt cannot smear into the next beat.
-  //
-  // Timeout is 2s (envelope is 100ms) because on cold SwiftShader CI
-  // the game's render rAF has been observed to stall for hundreds of
-  // ms during the first frames after a real pointer gesture — the
-  // envelope's `elapsedMs` clock is advanced from inside that same
-  // rAF, so a stalled loop is a stalled envelope. Prior 400ms budget
-  // reproduced the "Received: 0.877..." flake documented on PR #1845:
-  // the fade had only reached `elapsedMs ≈ 33` by the poll deadline,
-  // not because the fade was broken but because the driver rAF didn't
-  // tick often enough. A 2s window is 20× the envelope duration —
-  // absorbs the stall without hiding a real regression (a real
-  // regression fails at 2s just as surely as at 400ms; a stall does
-  // not).
-  await expect(prompt).toHaveCSS("opacity", "0", { timeout: 2_000 });
+  await expect(prompt).toHaveCSS("opacity", "0", { timeout: 400 });
 
   // #1829 — the prompt must speak IN IO'S VOICE, not a flat placeholder.
   // `aftersign/src/ioVoice.js::IO_TARGET_LOSS_LINE` is the SINGLE
