@@ -68,4 +68,4 @@ export function ioReturnLine(packetOutcome) {
  * real DOM in a real browser, not just a static-HTML pin.
  */
 export const IO_TARGET_LOSS_LINE =
-  "Keep your hands steady. The packet is still there.";
+  "The mark went quiet. Come back when you can hold the line.";
