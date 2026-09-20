@@ -52,14 +52,20 @@ type RuntimeMarks = {
 };
 
 const waitForGame = async (page: Page) => {
+  // Same 100ms clock-driven poll used by the recognition gates below: on a
+  // cold SwiftShader worker rAF can stall long enough that even the pre-boot
+  // input-readiness check inherits the flake vector #1852 documented for the
+  // downstream gates. Using an explicit interval decouples readiness from
+  // the render loop; the default polling='raf' would re-introduce it here.
   await page.waitForFunction(
-    () => Boolean(
-      (window as Window & { __game?: { input?: { choose?: unknown; advance?: unknown; forceReload?: unknown } } }).__game?.input?.choose
-        && (window as Window & { __game?: { input?: { advance?: unknown } } }).__game?.input?.advance
-        && (window as Window & { __game?: { input?: { forceReload?: unknown } } }).__game?.input?.forceReload,
-    ),
+    () => {
+      const input = (window as Window & {
+        __game?: { input?: { choose?: unknown; advance?: unknown; forceReload?: unknown } };
+      }).__game?.input;
+      return Boolean(input?.choose && input.advance && input.forceReload);
+    },
     undefined,
-    { timeout: WAIT_MS },
+    { timeout: WAIT_MS, polling: POLL_INTERVAL_MS },
   );
 };
 
