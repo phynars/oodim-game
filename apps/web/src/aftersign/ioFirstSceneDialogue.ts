@@ -70,7 +70,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "sealedReturn",
     intent: "returnPacket",
-    text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+    text: "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     memoryKey: "io_return_packet_sealed",
   },
   {

@@ -364,7 +364,7 @@ export function checkRecognitionDialogueTimeline(): void {
 export function checkRecognitionDialogueForBeatContract(): void {
   const sealed = recognitionDialogueForBeat('sealed', 2);
   assert(
-    sealed.text === 'That gives me two facts to trust.',
+    sealed.text === 'That makes two reasons to trust you.',
     `sealed beat 2 text mismatch: got '${sealed.text}'`,
   );
   assert(sealed.lineId === 'io_return_packet_sealed', `sealed lineId mismatch: got '${sealed.lineId}'`);

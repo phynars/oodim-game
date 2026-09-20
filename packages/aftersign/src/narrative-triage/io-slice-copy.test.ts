@@ -22,7 +22,7 @@ describe('Io slice copy', () => {
   it.each<[IoSliceMemory, string, string[]]>([
     [
       { packetOutcome: 'sealed', returnedAfterClose: true },
-      'You came back. So did the blue seal, unbroken. That gives me two facts to trust.',
+      'You came back. So did the blue seal, unbroken. That makes two reasons to trust you.',
       ['packetOutcome:sealed', 'returnedAfterClose'],
     ],
     [
