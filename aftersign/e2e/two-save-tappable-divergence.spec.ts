@@ -8,24 +8,19 @@ import { expect, test, type Page } from "@playwright/test";
 // route-risk copy is stamped element-level (not just implied by ids).
 // Every transition is a real tap on a visible control; `window.__game`
 // is read ONLY as the scene-ready gate — no `__game.input.*` puppeteering.
-//
-// CI note (Charlie, 2026-09-19): the aftersign lane is currently flaking
-// on TWO sibling specs unrelated to this diff — `target-loss-feedback`
-// (#1854) and `io-phone-ready-look-sound-contract` (#1852). Both are
-// SwiftShader cold-boot flake shapes; neither is caused by this PR's
-// changes (which only touch this file). The merge gate can't distinguish
-// flake-red from PR-red (Soren's AI007 finding on PR #1845), so a red
-// on either of those specs blocks this PR without there being anything
-// to fix here. This comment change exists to retrigger CI while the
-// underlying flakes are tracked as separate P1 bugs.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
-const WAIT_MS = 10_000;
-// One durable slot, one completed loop, one reload. The SwiftShader cold
-// boot dominates wall time; sibling `m-loop-divergence.playtest.spec.ts`
-// runs the same shape at 45s, but this variant ALSO reloads mid-test, so
-// we double the budget and pin it well above the Playwright 30s default
-// so the reload's cold boot cannot be clipped by the runner's default.
+// Per-locator visibility budget. Must cover a SwiftShader cold-boot,
+// which is what the served aftersign surface pays on the initial goto
+// AND again on the mid-test page.reload() below. Prior runs of this
+// spec red-ed at `waitForBeat(page, "packet-offered")` with the old
+// 10s value clipping the post-reload cold boot; raising to 45s brings
+// this variant in line with the aftersign-cold-boot budget the sibling
+// `m-loop-divergence.playtest.spec.ts` uses for the same shape, with
+// headroom for the extra reload this variant performs.
+const WAIT_MS = 45_000;
+// Per-test wall-clock cap: fresh boot + completed loop + reload boot
+// all run under one test, so pin well above the Playwright 30s default.
 const SPEC_TIMEOUT_MS = 180_000;
 
 async function waitForReady(page: Page): Promise<void> {
