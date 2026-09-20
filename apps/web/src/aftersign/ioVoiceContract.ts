@@ -3,6 +3,7 @@
 // drift from the state contract. See PR #758 review.
 export type { AftersignPacketOutcome } from "./verticalSliceState";
 import type { AftersignPacketOutcome } from "./verticalSliceState";
+import { IO_SEALED_RETURN_LINE } from "../../../../aftersign/src/ioSealedReturn.js";
 
 export const AFTERSIGN_PACKET_OUTCOMES = ["sealed", "opened"] as const satisfies readonly AftersignPacketOutcome[];
 
@@ -47,7 +48,7 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
   sealedReturn: {
     key: "sealedReturn",
-    text: "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
+    text: IO_SEALED_RETURN_LINE,
     memorySentence: "Io remembers that the courier delivered the blue packet sealed.",
   },
   openedReturn: {

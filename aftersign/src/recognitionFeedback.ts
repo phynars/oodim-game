@@ -1,3 +1,5 @@
+import { IO_SEALED_RETURN_BEATS } from './ioSealedReturn.ts';
+
 export type RecognitionFeedbackPhase = {
   readonly name: 'catch' | 'remember' | 'settle';
   readonly startMs: number;
@@ -80,11 +82,7 @@ export const RECOGNITION_SUBTITLE_REMEMBER_PEAK_SCALE = 1.075;
 export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
 const IO_RECOGNITION_LINES: Record<IoRecognitionOutcome, readonly [string, string, string]> = {
-  sealed: [
-    'You came back.',
-    'So did the blue seal, unbroken.',
-    'That makes two reasons to trust you.',
-  ],
+  sealed: IO_SEALED_RETURN_BEATS,
   opened: [
     'You came back.',
     'The seal did not.',

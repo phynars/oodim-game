@@ -1,3 +1,4 @@
+import { IO_SEALED_RETURN_LINE } from "../../../../aftersign/src/ioSealedReturn.js";
 import type {
   AftersignPacketOutcome,
   AftersignVerticalSliceState,
@@ -70,7 +71,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "sealedReturn",
     intent: "returnPacket",
-    text: "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
+    text: IO_SEALED_RETURN_LINE,
     memoryKey: "io_return_packet_sealed",
   },
   {

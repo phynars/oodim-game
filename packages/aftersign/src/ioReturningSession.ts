@@ -1,3 +1,5 @@
+import { IO_SEALED_RETURN_LINE } from '../../../aftersign/src/ioSealedReturn.ts'
+
 export type IoPacketOutcome = 'sealed' | 'opened' | 'withheld' | 'returned'
 export type IoRouteAttention = 'listened' | 'skipped'
 export type IoReturnAnswerTone = 'kind' | 'evasive' | 'blunt'
@@ -21,8 +23,7 @@ export type IoReturningSessionLineKey =
 // Lines are pinned to docs/flagship/vertical-slice-script.md §7–§8.
 // Do not paraphrase; the harness asserts these strings verbatim.
 export const ioReturningSessionLines: Record<IoReturningSessionLineKey, string> = {
-  sealedPacket:
-    'You came back. So did the blue seal, unbroken. That makes two reasons to trust you.',
+  sealedPacket: IO_SEALED_RETURN_LINE,
   openedPacket: 'You came back. The seal did not. I can use one of those facts.',
   withheldPacket:
     'You came back with the packet still in your pocket. That is not nothing. It is not delivery.',

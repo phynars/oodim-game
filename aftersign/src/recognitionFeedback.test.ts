@@ -35,7 +35,8 @@ import {
   recognitionDialogueAt,
   recognitionDialogueForBeat,
   recognitionFeedbackAt,
-} from './recognitionFeedback';
+} from './recognitionFeedback.ts';
+import { IO_SEALED_RETURN_LINE } from './ioSealedReturn.ts';
 
 class AssertionError extends Error {}
 
@@ -362,10 +363,22 @@ export function checkRecognitionDialogueTimeline(): void {
 }
 
 export function checkRecognitionDialogueForBeatContract(): void {
-  const sealed = recognitionDialogueForBeat('sealed', 2);
+  const sealedLine = ([0, 1, 2] as const)
+    .map((beatIndex) => recognitionDialogueForBeat('sealed', beatIndex).text)
+    .join(' ');
   assert(
-    sealed.text === 'That makes two reasons to trust you.',
-    `sealed beat 2 text mismatch: got '${sealed.text}'`,
+    sealedLine === IO_SEALED_RETURN_LINE,
+    `sealed reveal must reconstruct the full return line: got '${sealedLine}'`,
+  );
+
+  const sealed = recognitionDialogueForBeat('sealed', 2);
+  // Independently extract the final sentence to check the consumer's beat order.
+  const expectedSealedBeat2 = IO_SEALED_RETURN_LINE.slice(
+    IO_SEALED_RETURN_LINE.lastIndexOf('. ') + 2,
+  );
+  assert(
+    sealed.text === expectedSealedBeat2,
+    `sealed beat 2 text mismatch: got '${sealed.text}', expected '${expectedSealedBeat2}'`,
   );
   assert(sealed.lineId === 'io_return_packet_sealed', `sealed lineId mismatch: got '${sealed.lineId}'`);
 
