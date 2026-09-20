@@ -7,8 +7,24 @@
  * `aftersign/e2e/io-voice-served.spec.ts`, and the servedSurface pin
  * that asserts the import). The feedback writer passes
  * `element.parentElement` here — the `.panel` node that contains both
- * `#line` and `#ioReturnLine` — so the treatment is scoped to the exact
- * surface Io's return voice is stamped into.
+ * `#line` and `#ioReturnLine` — so the descendant treatment is scoped
+ * to the exact surface Io's return voice is stamped into.
+ *
+ * SURFACE-SAFETY (PR #1867, iterate 3 — Soren approved the wire but CI
+ * red on `npc-memory-roundtrip` + `save-load-durable-contract` after
+ * the first draft). `.panel` is a heavily-consumed surface: its own
+ * box-shadow list carries the warm bloom ring
+ * (`rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha))`)
+ * pinned by `io-recognition-dialogue-snippets.spec.ts`, its own
+ * background is a compositional part of the recognition beat, and
+ * `overflow: hidden` on it would clip the recognition camera
+ * dolly/yaw. The safe surface for a scene-side flourish is the
+ * DESCENDANT `#ioReturnLine` paragraph — a sibling of `#line` that
+ * `index.html` styles NOWHERE, so a new typographic treatment on it
+ * can't collide with a pinned rule. We add `.aftersign-kiosk-scene`
+ * as a marker class on `.panel` (identity for consumers to key off)
+ * but DO NOT paint on the marker itself — every declaration lives on
+ * the `.aftersign-kiosk-scene #ioReturnLine` descendant selector.
  *
  * The writer is idempotent: `<style data-aftersign-kiosk-visual>` is
  * created at most once per `document`, and the surface's
@@ -31,56 +47,21 @@ function ensureStyle(doc) {
   style.id = STYLE_ID;
   style.dataset.aftersignKioskVisual = "true";
   style.textContent = `
-    /* Kiosk-scene surface treatment. NOTE: no `box-shadow` here — the
-     * `.panel` rule in aftersign/index.html (line 581) owns the
-     * box-shadow layer, and one of its four shadows is the warm
-     * bloom ring that io-recognition-dialogue-snippets.spec.ts pins
-     * (rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha))).
+    /* SURFACE-SAFETY: no declarations on `.aftersign-kiosk-scene`
+     * itself — every paint lives on the DESCENDANT `#ioReturnLine`
+     * paragraph. See the module header for why touching `.panel`
+     * (background / overflow / box-shadow / position) reds the
+     * npc-memory + durable-save red-green lanes: the recognition
+     * beat consumes `.panel`'s shadow stack (warm bloom ring) +
+     * background + dolly/yaw transform, and a scene-side flourish
+     * cannot claim any of those without invalidating a pinned
+     * contract.
      *
-     * `.aftersign-kiosk-scene` has the same (0,1,0) specificity as
-     * `.panel` and our <style> is appended to <head> AFTER the inline
-     * index.html <style>, so any `box-shadow` we declare here wins by
-     * source order and silently drops the ring — the e2e reds
-     * (Soren's REQUEST_CHANGES on PR #1867). We supply the inset
-     * frame + inner darkening via a `::after` pseudo-element instead,
-     * which composes ON TOP of the panel's shadow stack without
-     * touching the shorthand property.
+     * `#ioReturnLine` on the other hand is a sibling paragraph
+     * `main.js`'s `renderText()` inserts into `.panel` for Io's
+     * return voice; `index.html` styles it NOWHERE, so a new
+     * typographic pass here can't collide with anything shipped.
      */
-    .aftersign-kiosk-scene {
-      position: relative;
-      isolation: isolate;
-      overflow: hidden;
-      background:
-        radial-gradient(circle at 74% 14%, rgb(255 193 101 / 18%), transparent 29rem),
-        radial-gradient(circle at 15% 82%, rgb(67 151 170 / 16%), transparent 25rem),
-        linear-gradient(145deg, #07141c, #10151d 54%, #1f1720);
-    }
-    /* Inner frame + darkening — was previously a `box-shadow: inset`
-     * on `.panel` itself, which clobbered the warm bloom ring. Moved
-     * to a pseudo-element so we don't touch the shipped shadow stack.
-     * `pointer-events: none` keeps taps flowing through to the panel
-     * beneath; `border-radius: inherit` matches the panel's 18px so
-     * the inner frame reads as one piece with the panel border. */
-    .aftersign-kiosk-scene::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      border-radius: inherit;
-      box-shadow: inset 0 0 0 1px rgb(222 196 147 / 14%), inset 0 0 5rem rgb(0 0 0 / 34%);
-      z-index: 0;
-    }
-    .aftersign-kiosk-scene::before {
-      content: "";
-      position: absolute;
-      z-index: -1;
-      inset: 0;
-      pointer-events: none;
-      opacity: .45;
-      background-image: linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px);
-      background-size: 100% 4px;
-      mix-blend-mode: soft-light;
-    }
     .aftersign-kiosk-scene #ioReturnLine {
       display: block;
       margin: .65rem 0 0;
