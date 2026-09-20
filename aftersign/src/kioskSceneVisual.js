@@ -56,19 +56,19 @@ function ensureStyle(doc) {
   style.id = STYLE_ID;
   style.dataset.aftersignKioskVisual = "true";
   style.textContent = `
-    /* SURFACE-SAFETY: no declarations on `.aftersign-kiosk-scene`
-     * itself — every paint lives on the DESCENDANT `#ioReturnLine`
-     * paragraph. See the module header for why touching `.panel`
+    /* SURFACE-SAFETY: no declarations on '.aftersign-kiosk-scene'
+     * itself — every paint lives on the DESCENDANT '#ioReturnLine'
+     * paragraph. See the module header for why touching '.panel'
      * (background / overflow / box-shadow / position) reds the
      * npc-memory + durable-save red-green lanes: the recognition
-     * beat consumes `.panel`'s shadow stack (warm bloom ring) +
+     * beat consumes '.panel''s shadow stack (warm bloom ring) +
      * background + dolly/yaw transform, and a scene-side flourish
      * cannot claim any of those without invalidating a pinned
      * contract.
      *
-     * `#ioReturnLine` on the other hand is a sibling paragraph
-     * `main.js`'s `renderText()` inserts into `.panel` for Io's
-     * return voice; `index.html` styles it NOWHERE, so a new
+     * '#ioReturnLine' on the other hand is a sibling paragraph
+     * 'main.js''s 'renderText()' inserts into '.panel' for Io's
+     * return voice; 'index.html' styles it NOWHERE, so a new
      * typographic pass here can't collide with anything shipped.
      */
     .aftersign-kiosk-scene #ioReturnLine {
