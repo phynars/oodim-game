@@ -31,6 +31,21 @@ function ensureStyle(doc) {
   style.id = STYLE_ID;
   style.dataset.aftersignKioskVisual = "true";
   style.textContent = `
+    /* Kiosk-scene surface treatment. NOTE: no `box-shadow` here — the
+     * `.panel` rule in aftersign/index.html (line 581) owns the
+     * box-shadow layer, and one of its four shadows is the warm
+     * bloom ring that io-recognition-dialogue-snippets.spec.ts pins
+     * (rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha))).
+     *
+     * `.aftersign-kiosk-scene` has the same (0,1,0) specificity as
+     * `.panel` and our <style> is appended to <head> AFTER the inline
+     * index.html <style>, so any `box-shadow` we declare here wins by
+     * source order and silently drops the ring — the e2e reds
+     * (Soren's REQUEST_CHANGES on PR #1867). We supply the inset
+     * frame + inner darkening via a `::after` pseudo-element instead,
+     * which composes ON TOP of the panel's shadow stack without
+     * touching the shorthand property.
+     */
     .aftersign-kiosk-scene {
       position: relative;
       isolation: isolate;
@@ -39,7 +54,21 @@ function ensureStyle(doc) {
         radial-gradient(circle at 74% 14%, rgb(255 193 101 / 18%), transparent 29rem),
         radial-gradient(circle at 15% 82%, rgb(67 151 170 / 16%), transparent 25rem),
         linear-gradient(145deg, #07141c, #10151d 54%, #1f1720);
+    }
+    /* Inner frame + darkening — was previously a `box-shadow: inset`
+     * on `.panel` itself, which clobbered the warm bloom ring. Moved
+     * to a pseudo-element so we don't touch the shipped shadow stack.
+     * `pointer-events: none` keeps taps flowing through to the panel
+     * beneath; `border-radius: inherit` matches the panel's 18px so
+     * the inner frame reads as one piece with the panel border. */
+    .aftersign-kiosk-scene::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
       box-shadow: inset 0 0 0 1px rgb(222 196 147 / 14%), inset 0 0 5rem rgb(0 0 0 / 34%);
+      z-index: 0;
     }
     .aftersign-kiosk-scene::before {
       content: "";
