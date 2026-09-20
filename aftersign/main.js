@@ -500,6 +500,7 @@ import { chooseIoLedgerLine } from "./src/ioLedgerLine.ts";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
+import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -2332,6 +2333,9 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // element-level. Fire-and-forget (`void`) matches the
             // sibling `void playFailureStingAudio()` schedule call.
             void playJobOfferConfirm();
+            // A 12ms haptic tick lands with the audio attack: optional and
+            // fire-and-forget, so unavailable vibration never delays the job.
+            playJobOfferTapHaptic();
             // Compose the M-LOOP action id with the underlying
             // offered jobId so BOTH axes ride on `lastAction`. Old
             // shape (`job-offer:${offer.id}`) is superseded — a
