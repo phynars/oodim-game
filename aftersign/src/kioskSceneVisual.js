@@ -12,7 +12,16 @@
  *
  * SURFACE-SAFETY (PR #1867, iterate 3 — Soren approved the wire but CI
  * red on `npc-memory-roundtrip` + `save-load-durable-contract` after
- * the first draft). `.panel` is a heavily-consumed surface: its own
+ * the first draft; iterate 4 — Soren re-reviewed the diff as clean and
+ * diagnosed the remaining `build:aftersign` red as environmental, the
+ * log tail he could pull was git-cleanup noise, not the actual error.
+ * The wire itself is untouched here; this comment refresh nudges the
+ * branch onto a fresh CI cycle so a genuinely environmental flake
+ * (SwiftShader cold-boot, apt install glitch) either clears or repeats
+ * deterministically. Same discipline as `aftersign/tsconfig.apps-web.
+ * json`'s "rebuild note" precedent — a CI retrigger belongs in the
+ * file whose behavior CI is arbitrating). `.panel` is a heavily-
+ * consumed surface: its own
  * box-shadow list carries the warm bloom ring
  * (`rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha))`)
  * pinned by `io-recognition-dialogue-snippets.spec.ts`, its own
