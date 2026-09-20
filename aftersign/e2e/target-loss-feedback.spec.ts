@@ -13,8 +13,17 @@ import { expect, test } from "@playwright/test";
 import { IO_TARGET_LOSS_LINE } from "../src/ioVoice.js";
 
 test("packet target loss clears the aim reticle immediately and fades its prompt", async ({ page }) => {
-  await page.goto("/");
-  await page.waitForFunction(() => window.__game?.scene?.ready === true);
+  // baseURL is `http://localhost:4374/aftersign/` (see playwright config).
+  // `/` would resolve to the vite preview root, which does NOT serve the
+  // aftersign bundle — `window.__game` never publishes and `scene.ready`
+  // never flips. `packet-confirm-feedback-played.spec.ts` documents this
+  // exact trap; keep the path anchored on the aftersign base URL.
+  await page.goto("/aftersign/");
+  await page.waitForFunction(
+    () => window.__game?.scene?.ready === true,
+    undefined,
+    { timeout: 60_000 },
+  );
 
   // Prompt must be mounted post-readiness. If it isn't, the runtime stamp
   // from `main.js` never landed and every downstream assertion is meaningless
