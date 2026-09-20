@@ -36,6 +36,7 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
 
     let peak = 0;
     let stopped = false;
+    let samplerStarted = false;
     let sawActive = false;
     let sawNeutralReticle = false;
     const sample = () => {
@@ -58,16 +59,25 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
           }
         }
       }
+      samplerStarted = true;
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
     window.__targetLossOpacityPeak = () => peak;
+    window.__targetLossSamplerStarted = () => samplerStarted;
     window.__targetLossSawActive = () => sawActive;
     window.__targetLossSawNeutralReticle = () => sawNeutralReticle;
     window.__stopTargetLossOpacitySampler = () => {
       stopped = true;
     };
   });
+
+  // The sampler must have observed at least one rendered frame before the
+  // played release. Otherwise a cold renderer can complete the 100ms fade
+  // before its first callback and report a false zero peak.
+  await expect
+    .poll(() => page.evaluate(() => window.__targetLossSamplerStarted?.() === true))
+    .toBe(true);
 
   const packet = page.locator('[data-aftersign-tap-choice="packet"]');
   await packet.click();
