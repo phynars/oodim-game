@@ -80,6 +80,23 @@ describe("applyKioskSceneVisual", () => {
     ).toHaveLength(1);
   });
 
+  it("is a no-op on a disconnected surface (isConnected === false)", () => {
+    // PR #1867 iterate 5: renderText() runs every frame at the
+    // recognition beat; during a `.panel` swap-out the parentElement
+    // we're handed can be an orphan (owner doc set, isConnected
+    // false). We short-circuit rather than thrashing a detached
+    // node — the next frame's re-arm hits a connected surface.
+    const orphan = document.createElement("div");
+    // Not appended to document.body → isConnected === false.
+    expect(orphan.isConnected).toBe(false);
+    expect(applyKioskSceneVisual(orphan)).toBe(false);
+    expect(orphan.getAttribute("data-aftersign-kiosk-visual")).toBeNull();
+    expect(orphan.classList.contains("aftersign-kiosk-scene")).toBe(false);
+    expect(
+      document.head.querySelectorAll("style[data-aftersign-kiosk-visual]"),
+    ).toHaveLength(0);
+  });
+
   it("is a no-op on non-element input (harness fake, null, undefined)", () => {
     expect(applyKioskSceneVisual(null)).toBe(false);
     expect(applyKioskSceneVisual(undefined)).toBe(false);

@@ -96,12 +96,27 @@ export function applyKioskSceneVisual(surface) {
   if (!surface || typeof surface !== "object") return false;
   if (typeof surface.classList?.add !== "function") return false;
   if (typeof surface.setAttribute !== "function") return false;
+  if (typeof surface.getAttribute !== "function") return false;
+
+  // PR #1867 iterate 5 — belt-and-suspenders guard for the served
+  // lane: only stamp on a surface that is genuinely connected to a
+  // live document. `renderText()` runs every frame at the recognition
+  // beat, and during the rare window where a `.panel` node is being
+  // swapped out the `parentElement` we get can be an orphan (owner
+  // doc set, `isConnected === false`). Skipping the stamp in that
+  // window keeps a scene-side flourish from thrashing a detached
+  // surface — never a player-visible cost, since the next frame's
+  // re-arm hits a connected surface. Node's DOM spec (and jsdom)
+  // both expose `isConnected` as a boolean; we treat a missing
+  // property as "assume connected" so unit-test fakes that don't
+  // model connectedness stay unaffected.
+  if (surface.isConnected === false) return false;
 
   // Idempotency gate — a played-not-driven dataset marker on the
   // surface so `renderText()` re-arms (which run every frame at the
   // recognition beat) don't re-append the stylesheet or thrash the
   // class list.
-  if (surface.getAttribute?.("data-aftersign-kiosk-visual") === "mounted") {
+  if (surface.getAttribute("data-aftersign-kiosk-visual") === "mounted") {
     return false;
   }
 
