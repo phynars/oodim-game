@@ -1,3 +1,5 @@
+import { IO_SEALED_RETURN_BEATS } from './ioSealedReturn.js';
+
 export type RecognitionFeedbackPhase = {
   readonly name: 'catch' | 'remember' | 'settle';
   readonly startMs: number;

@@ -61,7 +61,7 @@ export function ioReturningLine(memory: IoSliceMemory): IoLine {
   if (memory.packetOutcome === 'sealed') {
     return {
       id: 'io.return.packetSealed',
-      text: 'You came back. So did the blue seal, unbroken. That makes two reasons to trust you.',
+      text: IO_SEALED_RETURN_LINE,
       remembers: memory.returnedAfterClose
         ? ['packetOutcome:sealed', 'returnedAfterClose']
         : ['packetOutcome:sealed'],

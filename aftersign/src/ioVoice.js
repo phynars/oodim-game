@@ -22,14 +22,15 @@
  * stem and let an extensionless import resolve either file
  * non-deterministically (Soren's second blocker on PR #1829).
  */
+import { IO_SEALED_RETURN_LINE } from "./ioSealedReturn.js";
+
 export const IO_VOICE = Object.freeze({
   greeting: "Night Post is closed to excuses. Open to couriers.",
   packetOffer: "Blue seal. Silt Stair box. Do not improve the message on the way.",
   routeHint:
     "Lanterns mark the dry boards. Brass signs mark the honest ones. Follow both.",
   returned: Object.freeze({
-    sealed:
-      "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
+    sealed: IO_SEALED_RETURN_LINE,
     opened:
       "You came back. The seal did not. I can use one of those facts.",
     unknown: "You came back. One fact isn't a history. Bring me the second.",

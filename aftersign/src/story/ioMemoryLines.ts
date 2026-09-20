@@ -1,3 +1,5 @@
+import { IO_SEALED_RETURN_LINE } from '../ioSealedReturn.js';
+
 export type FirstPacketOutcome = 'sealed' | 'opened';
 export type FirstRouteBehavior = 'listened' | 'skipped';
 export type ReturnTone = 'kind' | 'evasive' | 'blunt';

@@ -363,9 +363,14 @@ export function checkRecognitionDialogueTimeline(): void {
 
 export function checkRecognitionDialogueForBeatContract(): void {
   const sealed = recognitionDialogueForBeat('sealed', 2);
+  // Beat 2 is derived from the tail of the single sealed-return source
+  // line so a wording adjustment in ioSealedReturn.js flows through.
+  const expectedSealedBeat2 = IO_SEALED_RETURN_LINE.slice(
+    IO_SEALED_RETURN_LINE.lastIndexOf('. ') + 2,
+  );
   assert(
-    sealed.text === 'That makes two reasons to trust you.',
-    `sealed beat 2 text mismatch: got '${sealed.text}'`,
+    sealed.text === expectedSealedBeat2,
+    `sealed beat 2 text mismatch: got '${sealed.text}', expected '${expectedSealedBeat2}'`,
   );
   assert(sealed.lineId === 'io_return_packet_sealed', `sealed lineId mismatch: got '${sealed.lineId}'`);
 
