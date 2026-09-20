@@ -1,4 +1,4 @@
-import { IO_SEALED_RETURN_LINE } from '../../../aftersign/src/ioSealedReturn.js'
+import { IO_SEALED_RETURN_LINE } from '../../../aftersign/src/ioSealedReturn.ts'
 
 export type IoPacketOutcome = 'sealed' | 'opened' | 'withheld' | 'returned'
 export type IoRouteAttention = 'listened' | 'skipped'
