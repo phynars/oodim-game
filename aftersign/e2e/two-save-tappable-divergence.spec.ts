@@ -200,12 +200,22 @@ test.describe("AFTERSIGN two-save tappable divergence (served page)", () => {
 
     // DETERMINISM (#1827 criterion 3, per #1818) — reloading the same
     // completed slot re-renders the SAME tappable element set with the
-    // SAME route-risk stamps. `deliverPacket()` persists synchronously
-    // (flagship-phase2 spec:43) and `ask-for-next-job → forceSave`
-    // auto-persists (ioNextJobDurability.test.ts:48), so a plain
-    // page.reload() is sufficient — no harness helper needed.
+    // SAME route-risk stamps. The durable record was stamped at
+    // `io-next-job` (`ask-for-next-job → forceSave`,
+    // ioNextJobDurability.test.ts:48), and PR #1249's restore path SNAPS
+    // the booted beat to that stamp — so a cold boot from this save
+    // lands on the io-return surface and `packet-offered` does NOT
+    // re-fire on its own (this spec's prior CI red: waitForBeat
+    // timing out post-reload at any WAIT_MS). Assert the stamped
+    // restore beat explicitly — that IS the durability contract —
+    // then re-enter packet-offered with the same visible tap the
+    // live session used (main.js: `deliver-packet` at io-next-job →
+    // setBeat("packet-offered")). Still taps-only; the offers the
+    // re-entered beat renders must equal the live completed set.
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
+    await waitForBeat(page, "io-next-job");
+    await tap(page, 'button[data-choice-id="deliver-packet"]');
     await waitForBeat(page, "packet-offered");
     const reloadedOffers = await readOfferedActions(page);
     expect(
