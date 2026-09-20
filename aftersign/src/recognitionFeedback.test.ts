@@ -36,7 +36,14 @@ import {
   recognitionDialogueForBeat,
   recognitionFeedbackAt,
 } from './recognitionFeedback';
-import { IO_SEALED_RETURN_LINE } from './ioSealedReturn.js';
+// `.ts` (not `.js`) matches the extension of the resolved module.
+// aftersign/tsconfig.json (include: ["src"], moduleResolution: Bundler,
+// allowImportingTsExtensions) accepts either; but the sibling
+// `recognitionFeedback.ts` already imports the same module with `.ts`,
+// so keeping this file consistent removes the extension-drift smell
+// Soren flagged (AI005) and matches routeRiskRenderSignature.ts's
+// pattern for the same reason.
+import { IO_SEALED_RETURN_LINE } from './ioSealedReturn.ts';
 
 class AssertionError extends Error {}
 
@@ -365,7 +372,7 @@ export function checkRecognitionDialogueTimeline(): void {
 export function checkRecognitionDialogueForBeatContract(): void {
   const sealed = recognitionDialogueForBeat('sealed', 2);
   // Beat 2 is derived from the tail of the single sealed-return source
-  // line so a wording adjustment in ioSealedReturn.js flows through.
+  // line so a wording adjustment in ioSealedReturn.ts flows through.
   const expectedSealedBeat2 = IO_SEALED_RETURN_LINE.slice(
     IO_SEALED_RETURN_LINE.lastIndexOf('. ') + 2,
   );

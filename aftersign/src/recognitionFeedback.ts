@@ -82,7 +82,7 @@ export const RECOGNITION_SUBTITLE_REMEMBER_PEAK_SCALE = 1.075;
 export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
 // The sealed beats derive from the single sealed-return source line so
-// a wording adjustment in ioSealedReturn.js flows through every consumer
+// a wording adjustment in ioSealedReturn.ts flows through every consumer
 // (voice, memory, scene dialogue, recognition) in lockstep.
 const [
   IO_SEALED_BEAT_0,
