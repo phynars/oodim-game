@@ -81,12 +81,17 @@ export const RECOGNITION_SUBTITLE_REMEMBER_PEAK_SCALE = 1.075;
 
 export const IO_RECOGNITION_BEAT_MS = [440, 880, 1220] as const;
 
+// The sealed beats derive from the single sealed-return source line so
+// a wording adjustment in ioSealedReturn.js flows through every consumer
+// (voice, memory, scene dialogue, recognition) in lockstep.
+const [
+  IO_SEALED_BEAT_0,
+  IO_SEALED_BEAT_1,
+  IO_SEALED_BEAT_2,
+] = IO_SEALED_RETURN_BEATS as readonly [string, string, string];
+
 const IO_RECOGNITION_LINES: Record<IoRecognitionOutcome, readonly [string, string, string]> = {
-  sealed: [
-    'You came back.',
-    'So did the blue seal, unbroken.',
-    'That makes two reasons to trust you.',
-  ],
+  sealed: [IO_SEALED_BEAT_0, IO_SEALED_BEAT_1, IO_SEALED_BEAT_2],
   opened: [
     'You came back.',
     'The seal did not.',

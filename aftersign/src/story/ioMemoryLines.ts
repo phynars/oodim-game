@@ -32,7 +32,7 @@ export const IO_FIRST_SESSION_LINES = {
 } as const;
 
 export const IO_RETURNING_MEMORY_LINES: Record<FirstPacketOutcome, string> = {
-  sealed: 'You came back. So did the blue seal, unbroken. That makes two reasons to trust you.',
+  sealed: IO_SEALED_RETURN_LINE,
   opened: 'You came back. The seal did not. I can use one of those facts.',
 } as const;
 

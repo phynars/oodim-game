@@ -36,6 +36,7 @@ import {
   recognitionDialogueForBeat,
   recognitionFeedbackAt,
 } from './recognitionFeedback';
+import { IO_SEALED_RETURN_LINE } from './ioSealedReturn.js';
 
 class AssertionError extends Error {}
 
