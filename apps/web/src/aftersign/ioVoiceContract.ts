@@ -3,6 +3,7 @@
 // drift from the state contract. See PR #758 review.
 export type { AftersignPacketOutcome } from "./verticalSliceState";
 import type { AftersignPacketOutcome } from "./verticalSliceState";
+import { IO_SEALED_RETURN_LINE } from "../../../../aftersign/src/ioSealedReturn.js";
 
 export const AFTERSIGN_PACKET_OUTCOMES = ["sealed", "opened"] as const satisfies readonly AftersignPacketOutcome[];
 

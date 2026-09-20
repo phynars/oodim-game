@@ -1,3 +1,5 @@
+import { IO_SEALED_RETURN_LINE } from '../../../../aftersign/src/ioSealedReturn.js';
+
 export type PacketOutcome = 'sealed' | 'opened' | 'unknown';
 
 export type RouteAttention = 'listened' | 'skipped' | 'unknown';
