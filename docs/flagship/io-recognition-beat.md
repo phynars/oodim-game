@@ -48,7 +48,7 @@ Total authored beat: **1,220ms** from trigger to full control return.
 
 Io line from the concept:
 
-> “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”
+> “You came back. So did the blue seal, unbroken. That makes two reasons to trust you.”
 
 Feel notes:
 

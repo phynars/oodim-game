@@ -83,7 +83,7 @@ const IO_RECOGNITION_LINES: Record<IoRecognitionOutcome, readonly [string, strin
   sealed: [
     'You came back.',
     'So did the blue seal, unbroken.',
-    'That gives me two facts to trust.',
+    'That makes two reasons to trust you.',
   ],
   opened: [
     'You came back.',

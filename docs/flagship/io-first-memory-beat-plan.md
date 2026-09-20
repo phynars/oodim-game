@@ -34,7 +34,7 @@ If a feature does not make that sentence stronger, more reliable, or more beauti
 
 Sealed packet:
 
-> “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”
+> “You came back. So did the blue seal, unbroken. That makes two reasons to trust you.”
 
 Opened packet:
 

@@ -47,7 +47,7 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
   sealedReturn: {
     key: "sealedReturn",
-    text: "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+    text: "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     memorySentence: "Io remembers that the courier delivered the blue packet sealed.",
   },
   openedReturn: {

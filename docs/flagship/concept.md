@@ -102,7 +102,7 @@ The story loop is the gameplay loop: carrying information through a city where i
 
 If the player delivered the packet sealed:
 
-> “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”
+> “You came back. So did the blue seal, unbroken. That makes two reasons to trust you.”
 
 If the player opened it:
 

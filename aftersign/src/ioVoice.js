@@ -29,7 +29,7 @@ export const IO_VOICE = Object.freeze({
     "Lanterns mark the dry boards. Brass signs mark the honest ones. Follow both.",
   returned: Object.freeze({
     sealed:
-      "You came back. So did the blue seal, unbroken. That gives me two facts to trust.",
+      "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     opened:
       "You came back. The seal did not. I can use one of those facts.",
     unknown: "You came back. One fact isn't a history. Bring me the second.",

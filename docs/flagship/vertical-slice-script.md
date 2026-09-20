@@ -257,7 +257,7 @@ If these labels ever obscure player understanding on phone, clarity wins. The fa
 
 - A first-session sealed delivery produces the sealed same-session Io response and persists the sealed memory sentence.
 - A first-session opened delivery produces the opened same-session Io response and persists the opened memory sentence.
-- A returning session after sealed delivery displays: “You came back. So did the blue seal, unbroken. That gives me two facts to trust.”
+- A returning session after sealed delivery displays: “You came back. So did the blue seal, unbroken. That makes two reasons to trust you.”
 - A returning session after opened delivery displays: “You came back. The seal did not. I can use one of those facts.”
 - A returning-session line fails harness validation if it references the wrong packet outcome.
 - Route-behavior lines never replace the packet outcome line.
