@@ -525,6 +525,7 @@ import {
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
+import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
 
 /**
@@ -661,6 +662,7 @@ const impactBurstOverlay = document.querySelector("#recognitionImpactBurst");
 const aimReticle = document.querySelector("#aimReticle");
 const targetLossPrompt = document.querySelector("#targetLossPrompt");
 let lastHadTargetMs = null;
+let targetLossFirstFramePending = false;
 // The target-loss envelope must use the monotonic runtime clock,
 // not a pointer event timestamp (whose origin differs by browser).
 // Stamp that clock at the release edge: waiting for the next rAF to arm
@@ -677,7 +679,10 @@ const syncTargetLossFeedback = (nowMs, hasTarget) => {
     return;
   }
   if (lastHadTargetMs === null) return;
-  const feedback = targetLossFeedbackAt(nowMs - lastHadTargetMs);
+  const feedback = targetLossFeedbackAt(
+    targetLossElapsedMs(lastHadTargetMs, nowMs, targetLossFirstFramePending),
+  );
+  targetLossFirstFramePending = false;
   if (aimReticle) {
     aimReticle.style.transform = `translate3d(${feedback.reticleOffsetX}px, ${feedback.reticleOffsetY}px, 0) scale(${feedback.reticleScale})`;
     aimReticle.dataset.targetLossActive = String(feedback.active);
@@ -2671,6 +2676,7 @@ const publishPacketIntentEvaluation = () => {
 
 const packetPress = (input) => {
   lastHadTargetMs = null;
+  targetLossFirstFramePending = false;
   if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
   // Fresh gesture — drop the previous log so the evaluator sees only
   // this attempt (mirrors PacketIntentController.press's reset of
@@ -2730,6 +2736,7 @@ const packetRelease = (input) => {
   // without inheriting the pointer event's clock origin. The envelope then
   // advances in real time even if a cold renderer delays the next frame.
   lastHadTargetMs = performance.now();
+  targetLossFirstFramePending = true;
   if (aimReticle) {
     aimReticle.style.transform = "translate3d(0, 0, 0) scale(1)";
     aimReticle.dataset.targetLossActive = "true";
