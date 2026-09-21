@@ -85,7 +85,6 @@ import {
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
-import { ioSecondPacketResponseLine as ioSecondPacketResponseVoiceLine } from "./src/ioSecondPacketResponseVoice.js";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -2991,8 +2990,8 @@ const choose = async (choiceId) => {
     });
     const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
     if (selectedChoice) {
-      ioSecondPacketResponseLine = ioSecondPacketResponseVoiceLine(choiceId);
-      state.npcs.io.lastLine = ioSecondPacketResponseLine;
+      ioSecondPacketResponseLine = selectedChoice.response;
+      state.npcs.io.lastLine = selectedChoice.response;
       state.npcs.io.lastLineMemoryRefs = [];
       markStateDirty();
       renderText();

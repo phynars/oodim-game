@@ -111,5 +111,31 @@ test.describe('Io second-packet copy on the served page', () => {
       await expect(page.locator(`button[data-choice-id="${expected.choices[0].id}"]`)).toHaveText(expected.choices[0].label);
       await expect(page.locator(`button[data-choice-id="${expected.choices[1].id}"]`)).toHaveText(expected.choices[1].label);
     });
+
+    // Tap-driven response assertion (Soren's AI007 on PR #1873):
+    // the offer render alone doesn't prove `.response` reached the
+    // player. For each choice, drive the real tap and pin the
+    // rendered `#line` + `state.npcs.io.lastLine` against the
+    // contract's `selectedChoice.response` verbatim.
+    for (const choiceIndex of [0, 1] as const) {
+      test(`speaks the ${reason} choices[${choiceIndex}].response after the player taps it`, async ({ page }) => {
+        const slot = `${slotPrefix}-${choiceIndex}-tap-${Date.now()}`;
+        const expected = selectIoSecondPacketCopyForReturnReason({ returnReason: reason });
+        const choice = expected.choices[choiceIndex];
+
+        await playToSecondPacket(page, slot, reason);
+        // Offer beat rendered — now commit the choice and assert
+        // the response lands on the shipped `#line` node.
+        await tapChoice(page, choice.id);
+
+        await expect(beat(page)).toHaveText(choice.response, { timeout: WAIT_MS });
+        await expect
+          .poll(
+            () => page.evaluate(() => window.__game?.npcs?.io?.lastLine),
+            { timeout: WAIT_MS },
+          )
+          .toBe(choice.response);
+      });
+    }
   }
 });
