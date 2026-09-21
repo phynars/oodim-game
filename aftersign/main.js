@@ -85,6 +85,70 @@ import {
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
+// #1874 — Io's Saint-Orra pointer line. Wired here as a SHIPPED
+// consumer of `ioSecondPacketResponseVoice.ts` on the served page:
+// when the player commits to one of the two second-packet choices
+// (`accept-second-packet` / `ask-what-changed`), Io speaks a
+// follow-up line that redirects them to the Saint Orra door. The
+// pointer is rendered into a `#ioSecondPacketPointer` sibling
+// paragraph next to `#line` (same shape as the `#ioReturnLine` /
+// `#ioConsequenceLine` sibling paragraphs stamped earlier in this
+// file) so it does NOT overwrite the beat's canonical `#line` text
+// (which is contract-pinned by `io-phone-ready-look-sound-contract.spec.ts`
+// on `lineText`). Sibling stamp writer + e2e assert the pointer
+// renders on the shipped surface after a real tap on the choice
+// button.
+import { ioSecondPacketResponseLine } from "./src/ioSecondPacketResponseVoice.ts";
+import { stampIoSecondPacketPointer, clearIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
+if (typeof document !== "undefined") {
+  // Delegated capture-phase listener on the whole document — matches
+  // any tap on a `[data-choice-id="accept-second-packet"]` or
+  // `[data-choice-id="ask-what-changed"]` button, regardless of which
+  // main.js branch minted the element. The listener stamps the
+  // pointer line into the `#ioSecondPacketPointer` sibling
+  // paragraph; a subsequent beat change clears it via the
+  // `beforebeat` DOM event main.js emits on `setBeat`.
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    // Prefer the choice-id axis when the button has been stamped by
+    // `stampAftersignChoice` (see `src/playerVisibleBeatDom.js`).
+    const choiceEl = target.closest("[data-choice-id]");
+    const choiceId = choiceEl ? choiceEl.getAttribute("data-choice-id") : null;
+    if (choiceId === "accept-second-packet" || choiceId === "ask-what-changed") {
+      stampIoSecondPacketPointer(document, choiceId, ioSecondPacketResponseLine(choiceId));
+      return;
+    }
+    if (typeof choiceId === "string" && choiceId.length > 0) {
+      // A different choice-id tap — the beat has moved on. Clear
+      // the pointer so it doesn't linger under a downstream beat.
+      clearIoSecondPacketPointer(document);
+      return;
+    }
+
+    // Fallback: the choice-id data attribute may not be stamped on
+    // the io-next-job branch's buttons. The sibling served spec
+    // `io-second-packet-copy-served.spec.ts` proves the two visible
+    // choices at `io-next-job` map to `#acknowledgeRouteButton`
+    // (choices[0] — `accept-second-packet`) and `#skipRouteButton`
+    // (choices[1] — `ask-what-changed`). Gate on the current beat via
+    // `window.__game.getSnapshot()` so a tap on those buttons at any
+    // OTHER beat (return-tone-choice / etc.) does not misfire.
+    const buttonEl = target.closest("#acknowledgeRouteButton, #skipRouteButton");
+    if (!(buttonEl instanceof Element)) return;
+    try {
+      const snap = window.__game?.getSnapshot?.();
+      if (!snap || snap.scene?.beat !== "io-next-job") return;
+    } catch {
+      return;
+    }
+    const fallbackId = buttonEl.id === "acknowledgeRouteButton"
+      ? "accept-second-packet"
+      : "ask-what-changed";
+    stampIoSecondPacketPointer(document, fallbackId, ioSecondPacketResponseLine(fallbackId));
+  }, true);
+}
 import {
   stampAftersignBeat,
   stampAftersignChoice,

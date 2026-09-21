@@ -25,9 +25,29 @@
 //   2. `aftersign/pure-runner.ts` — registers the check bundle in the
 //      `test:aftersign:pure` lane, so CI reds on any drift.
 //
-// Render-site wire-in (main.js beat that speaks this line after the
-// choice-response window closes) is a separate slice, tracked as the
-// same #1322-shaped follow-up as the sibling copy module.
+// Render-site wire-in (PR #1874, addressing Soren's REQUEST_CHANGES):
+//   3. `aftersign/main.js` — imports `ioSecondPacketResponseLine`
+//      alongside the sibling `selectIoSecondPacketCopyForReturnReason`
+//      and installs a delegated document-level `click` listener that
+//      stamps the pointer via
+//      `apps/web/src/aftersign/ioSecondPacketPointerRender.ts::stampIoSecondPacketPointer`
+//      into a `<p id="ioSecondPacketPointer">` sibling paragraph
+//      right after `#line`, keyed on the two second-packet choice
+//      ids (`accept-second-packet` / `ask-what-changed`). The
+//      paragraph is a SIBLING, not a `#line` overwrite — the beat
+//      dialogue table in `ioRecognitionDialogue.ts` still owns
+//      `#line` (contract-pinned by
+//      `io-phone-ready-look-sound-contract.spec.ts` on `lineText`).
+//   4. `apps/web/src/aftersign/ioSecondPacketPointerRender.consumer.test.ts`
+//      — jsdom-mount consumer test asserting the writer inserts the
+//      sibling paragraph, matches the exact pointer literal for each
+//      choice id, and does not overwrite `#line` textContent.
+//   5. `aftersign/e2e/io-second-packet-response-pointer-served.spec.ts`
+//      — tap-driven Playwright spec that plays a phone viewport from
+//      packet-offered through `io-next-job`, then taps the two
+//      second-packet buttons and asserts the rendered pointer text +
+//      `data-aftersign-io-second-packet-pointer="<choiceId>"` land on
+//      the shipped `#ioSecondPacketPointer` element.
 
 import type { IoSecondPacketChoice } from './ioSecondPacketCopy.ts';
 
