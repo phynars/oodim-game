@@ -6,17 +6,13 @@
  * This writer is idempotent per outcome: renderText() may run every frame,
  * but a sealed/opened/unknown line enters only once per mounted paragraph.
  *
- * Kiosk-scene visual wire (PR #1867, Soren's REQUEST_CHANGES): this
- * writer is the ONE served-page site that fires on the very
- * `#ioReturnLine` element the player reads — main.js's `renderText()`
- * already invokes `playIoReturnLineFeedback(returnPara, outcome)` at
- * the recognition beat (see `aftersign/e2e/io-voice-served.spec.ts`
- * lines 11 + 28 + 243, and the servedSurface pin below). Applying
- * the kiosk scene visual to `element.parentElement` here turns
- * `applyKioskSceneVisual` from an unconsumed CSS module into a
- * played consumer without touching the 207KB main.js. The visual
- * writer is itself idempotent (dataset marker + shared stylesheet)
- * so re-arms across frames don't accumulate.
+ * Kiosk-scene visual wire: this writer is the served-page site
+ * that fires on the real #ioReturnLine paragraph — main.js's
+ * renderText() invokes playIoReturnLineFeedback(returnPara, outcome)
+ * at the recognition beat. Applying the kiosk scene visual to
+ * element.parentElement here mounts the descendant treatment on
+ * the .panel surface. The visual writer is idempotent, so re-arms
+ * across frames do not accumulate.
  */
 import { applyKioskSceneVisual } from "./kioskSceneVisual.js";
 
@@ -33,10 +29,9 @@ export function playIoReturnLineFeedback(element, outcome) {
 
   element.setAttribute("data-io-return-feedback", key);
 
-  // Arm the kiosk scene visual on the surface that contains this
-  // paragraph — a no-op when `parentElement` is unavailable (fake
-  // element under the unit test) and idempotent per surface via the
-  // visual writer's own `data-aftersign-kiosk-visual` gate.
+  // Arm the kiosk scene visual on the containing surface — no-op
+  // when parentElement is unavailable (unit-test fake) and
+  // idempotent per surface via the visual writer's own gate.
   applyKioskSceneVisual(element.parentElement);
 
   if (typeof element.animate !== "function") return true;

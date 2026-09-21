@@ -1,47 +1,28 @@
 /**
  * Visual treatment for the served AFTERSIGN kiosk return beat.
  *
- * Consumed by `aftersign/src/ioReturnLineFeedback.js` — which the served
- * `aftersign/main.js` already invokes on the real `#ioReturnLine` element
- * inside its `renderText()` pass (see the e2e references in
- * `aftersign/e2e/io-voice-served.spec.ts`, and the servedSurface pin
- * that asserts the import). The feedback writer passes
- * `element.parentElement` here — the `.panel` node that contains both
- * `#line` and `#ioReturnLine` — so the descendant treatment is scoped
- * to the exact surface Io's return voice is stamped into.
+ * Consumed by ioReturnLineFeedback.js, which main.js's renderText()
+ * invokes on the real #ioReturnLine paragraph at the recognition
+ * beat. The feedback writer passes element.parentElement — the
+ * .panel node containing both #line and #ioReturnLine — so the
+ * treatment is scoped to the surface Io's return voice is stamped
+ * into.
  *
- * SURFACE-SAFETY (PR #1867, iterate 3 — Soren approved the wire but CI
- * red on `npc-memory-roundtrip` + `save-load-durable-contract` after
- * the first draft; iterate 4 — Soren re-reviewed the diff as clean and
- * diagnosed the remaining `build:aftersign` red as environmental, the
- * log tail he could pull was git-cleanup noise, not the actual error.
- * The wire itself is untouched here; this comment refresh nudges the
- * branch onto a fresh CI cycle so a genuinely environmental flake
- * (SwiftShader cold-boot, apt install glitch) either clears or repeats
- * deterministically. Same discipline as `aftersign/tsconfig.apps-web.
- * json`'s "rebuild note" precedent — a CI retrigger belongs in the
- * file whose behavior CI is arbitrating). `.panel` is a heavily-
- * consumed surface: its own
- * box-shadow list carries the warm bloom ring
- * (`rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha))`)
- * pinned by `io-recognition-dialogue-snippets.spec.ts`, its own
- * background is a compositional part of the recognition beat, and
- * `overflow: hidden` on it would clip the recognition camera
- * dolly/yaw. The safe surface for a scene-side flourish is the
- * DESCENDANT `#ioReturnLine` paragraph — a sibling of `#line` that
- * `index.html` styles NOWHERE, so a new typographic treatment on it
- * can't collide with a pinned rule. We add `.aftersign-kiosk-scene`
- * as a marker class on `.panel` (identity for consumers to key off)
- * but DO NOT paint on the marker itself — every declaration lives on
- * the `.aftersign-kiosk-scene #ioReturnLine` descendant selector.
+ * Surface-safety: .panel already carries the warm bloom ring
+ * (see index.html's box-shadow with rgba 255,214,151 pinned by
+ * io-recognition-dialogue-snippets.spec.ts), its own background,
+ * and hosts the recognition camera dolly/yaw. We therefore add
+ * .aftersign-kiosk-scene as a marker class on .panel but DO NOT
+ * declare any paint on that marker — every rule targets the
+ * descendant #ioReturnLine paragraph, which index.html styles
+ * nowhere.
  *
- * The writer is idempotent: `<style data-aftersign-kiosk-visual>` is
- * created at most once per `document`, and the surface's
- * `aftersign-kiosk-scene` class is only added if not already present.
- * Repeated re-arms across `renderText()` frames do not accumulate
- * stylesheets or duplicate classes. The `data-aftersign-kiosk-visual`
- * attribute on the surface is the played-not-driven pin an e2e / dev
- * overlay can poll to confirm the visual actually mounted.
+ * Idempotency: <style data-aftersign-kiosk-visual> is created at
+ * most once per document; the class + dataset marker are only
+ * stamped when absent. Re-arms across renderText() frames do not
+ * accumulate stylesheets or duplicate classes. The
+ * data-aftersign-kiosk-visual="mounted" attribute is the
+ * played-not-driven pin an e2e can poll.
  */
 
 const STYLE_ID = "aftersign-kiosk-visual-style";
@@ -56,21 +37,8 @@ function ensureStyle(doc) {
   style.id = STYLE_ID;
   style.dataset.aftersignKioskVisual = "true";
   style.textContent = `
-    /* SURFACE-SAFETY: no declarations on '.aftersign-kiosk-scene'
-     * itself — every paint lives on the DESCENDANT '#ioReturnLine'
-     * paragraph. See the module header for why touching '.panel'
-     * (background / overflow / box-shadow / position) reds the
-     * npc-memory + durable-save red-green lanes: the recognition
-     * beat consumes '.panel''s shadow stack (warm bloom ring) +
-     * background + dolly/yaw transform, and a scene-side flourish
-     * cannot claim any of those without invalidating a pinned
-     * contract.
-     *
-     * '#ioReturnLine' on the other hand is a sibling paragraph
-     * 'main.js''s 'renderText()' inserts into '.panel' for Io's
-     * return voice; 'index.html' styles it NOWHERE, so a new
-     * typographic pass here can't collide with anything shipped.
-     */
+    /* Paint targets the descendant #ioReturnLine paragraph only —
+     * never .aftersign-kiosk-scene itself. See module header. */
     .aftersign-kiosk-scene #ioReturnLine {
       display: block;
       margin: .65rem 0 0;
@@ -98,24 +66,15 @@ export function applyKioskSceneVisual(surface) {
   if (typeof surface.setAttribute !== "function") return false;
   if (typeof surface.getAttribute !== "function") return false;
 
-  // PR #1867 iterate 5 — belt-and-suspenders guard for the served
-  // lane: only stamp on a surface that is genuinely connected to a
-  // live document. `renderText()` runs every frame at the recognition
-  // beat, and during the rare window where a `.panel` node is being
-  // swapped out the `parentElement` we get can be an orphan (owner
-  // doc set, `isConnected === false`). Skipping the stamp in that
-  // window keeps a scene-side flourish from thrashing a detached
-  // surface — never a player-visible cost, since the next frame's
-  // re-arm hits a connected surface. Node's DOM spec (and jsdom)
-  // both expose `isConnected` as a boolean; we treat a missing
-  // property as "assume connected" so unit-test fakes that don't
-  // model connectedness stay unaffected.
+  // Skip detached surfaces — renderText() runs every frame, and
+  // during a .panel swap-out the parentElement we receive can be
+  // an orphan (isConnected === false). The next frame's re-arm
+  // will hit a live surface. A missing isConnected (unit-test
+  // fakes) is treated as "assume connected".
   if (surface.isConnected === false) return false;
 
-  // Idempotency gate — a played-not-driven dataset marker on the
-  // surface so `renderText()` re-arms (which run every frame at the
-  // recognition beat) don't re-append the stylesheet or thrash the
-  // class list.
+  // Idempotency gate: renderText() re-arms every frame; the
+  // dataset marker short-circuits repeats.
   if (surface.getAttribute("data-aftersign-kiosk-visual") === "mounted") {
     return false;
   }
