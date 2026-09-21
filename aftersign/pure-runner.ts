@@ -202,6 +202,10 @@ const runners: Runner[] = [
   { label: "runIoRecognitionExpectedLineContractChecks", run: runIoRecognitionExpectedLineContractChecks },
   { label: "runFailureStingFeedbackChecks", run: runFailureStingFeedbackChecks },
   { label: "runIoSecondPacketCopyChecks", run: runIoSecondPacketCopyChecks },
+  // Saint-Orra pointer line — pinned per choice id, sibling-cross-checked
+  // against the shipped `ioSecondPacketCopy.ts` contract so the pointer
+  // keys can't drift from the choice ids.
+  { label: "runIoSecondPacketResponseVoiceChecks", run: runIoSecondPacketResponseVoiceChecks },
   // M-LOOP route/risk FEEL — pins over the SHIPPED contract
   // (`apps/web/src/aftersign/routeRiskMemory.ts`, rendered via
   // `#routeRiskChoice`). Imported above but was omitted from this
