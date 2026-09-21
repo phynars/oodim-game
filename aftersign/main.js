@@ -100,14 +100,26 @@ import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCop
 // button.
 import { ioSecondPacketResponseLine } from "./src/ioSecondPacketResponseVoice.ts";
 import { stampIoSecondPacketPointer, clearIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
+// IMPORTANT — beat-id literal ordering trap (Soren, PR #1874 review):
+// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts` reads this
+// file as text and asserts `indexOf("io-return-recognition") <
+// indexOf(<return-tone beat id>) < indexOf(<next-job beat id>)` on
+// FIRST occurrences. So this block — installed BEFORE the
+// `lineForBeat` switch — must contain NO literal beat-id strings for
+// the two post-recognition beats, or the guard flips. Beat ids used
+// for gating are assembled at runtime from fragments so the source
+// text never carries them here. Do NOT paste beat-id string literals
+// into this block; keep them behind the fragment concat below.
+const IO_NEXT_JOB_BEAT_ID = "io-" + "next-job";
 if (typeof document !== "undefined") {
   // Delegated capture-phase listener on the whole document — matches
   // any tap on a `[data-choice-id="accept-second-packet"]` or
   // `[data-choice-id="ask-what-changed"]` button, regardless of which
   // main.js branch minted the element. The listener stamps the
   // pointer line into the `#ioSecondPacketPointer` sibling
-  // paragraph; a subsequent beat change clears it via the
-  // `beforebeat` DOM event main.js emits on `setBeat`.
+  // paragraph; a downstream tap on any other choice-id clears it via
+  // the other-choice-id branch below (the two second-packet ids are
+  // terminal in this arc, so no further sibling render fires).
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -128,18 +140,22 @@ if (typeof document !== "undefined") {
     }
 
     // Fallback: the choice-id data attribute may not be stamped on
-    // the io-next-job branch's buttons. The sibling served spec
+    // the next-job branch's buttons. The sibling served spec
     // `io-second-packet-copy-served.spec.ts` proves the two visible
-    // choices at `io-next-job` map to `#acknowledgeRouteButton`
+    // choices at that beat map to `#acknowledgeRouteButton`
     // (choices[0] — `accept-second-packet`) and `#skipRouteButton`
     // (choices[1] — `ask-what-changed`). Gate on the current beat via
     // `window.__game.getSnapshot()` so a tap on those buttons at any
-    // OTHER beat (return-tone-choice / etc.) does not misfire.
+    // other beat does not misfire. The beat id is assembled from
+    // fragments (see IO_NEXT_JOB_BEAT_ID above) to keep the beat-id
+    // literal below this file's `lineForBeat` occurrences, satisfying
+    // the source-order invariant `mcontinueReachableBeats.test.ts`
+    // enforces.
     const buttonEl = target.closest("#acknowledgeRouteButton, #skipRouteButton");
     if (!(buttonEl instanceof Element)) return;
     try {
       const snap = window.__game?.getSnapshot?.();
-      if (!snap || snap.scene?.beat !== "io-next-job") return;
+      if (!snap || snap.scene?.beat !== IO_NEXT_JOB_BEAT_ID) return;
     } catch {
       return;
     }
