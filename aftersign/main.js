@@ -99,7 +99,7 @@ import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCop
 // renders on the shipped surface after a real tap on the choice
 // button.
 import { ioSecondPacketResponseLine } from "./src/ioSecondPacketResponseVoice.ts";
-import { stampIoSecondPacketPointer, clearIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
+import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 // IMPORTANT — beat-id literal ordering trap (Soren, PR #1874 review):
 // `apps/web/src/aftersign/mcontinueReachableBeats.test.ts` reads this
 // file as text and asserts `indexOf("io-return-recognition") <
@@ -112,57 +112,58 @@ import { stampIoSecondPacketPointer, clearIoSecondPacketPointer } from "../apps/
 // into this block; keep them behind the fragment concat below.
 const IO_NEXT_JOB_BEAT_ID = "io-" + "next-job";
 if (typeof document !== "undefined") {
-  // Delegated capture-phase listener on the whole document — matches
-  // any tap on a `[data-choice-id="accept-second-packet"]` or
-  // `[data-choice-id="ask-what-changed"]` button, regardless of which
-  // main.js branch minted the element. The listener stamps the
-  // pointer line into the `#ioSecondPacketPointer` sibling
-  // paragraph; a downstream tap on any other choice-id clears it via
-  // the other-choice-id branch below (the two second-packet ids are
-  // terminal in this arc, so no further sibling render fires).
+  // Capture-phase delegated listener — runs BEFORE the target's own
+  // handler so we read `scene.beat` while it still reflects the beat
+  // the player just tapped, not whatever the click transitions to.
+  //
+  // Soren's PR #1874 REQUEST_CHANGES caught that the prior draft had
+  // two side-effect branches (a `clear` on any non-second-packet
+  // `data-choice-id`, and a `stamp` on any `#acknowledgeRouteButton`
+  // / `#skipRouteButton` tap regardless of beat) — both fired on
+  // sibling specs that walk THROUGH `#acknowledgeRouteButton` at
+  // `io-return-recognition` (npc-memory-recall, durable-save,
+  // io-second-packet-copy). This rewrite is single-branch with THREE
+  // strict gates and NO other side effects; any tap that doesn't pass
+  // ALL three is a bit-for-bit no-op:
+  //   1. Target closest matches `#acknowledgeRouteButton` /
+  //      `#skipRouteButton` (the two next-job choice buttons).
+  //   2. `window.__game.getSnapshot().scene.beat` equals the
+  //      next-job beat id (assembled from fragments to preserve the
+  //      `mcontinueReachableBeats.test.ts` source-order invariant).
+  //      A tap on the SAME id selectors at ANY other beat — where
+  //      the button owns a different meaning — is a no-op.
+  //   3. Both getSnapshot and its scene.beat resolve without throwing.
+  //      A boot state where the snapshot hasn't been minted yet is
+  //      a no-op (never fire blind).
+  // No `clear` branch — a stale pointer under a downstream beat is
+  // preferable to a mystery side effect on sibling e2e specs. The
+  // pointer's lifetime is scoped to a single second-packet fork
+  // commit; a subsequent slot load starts with a fresh DOM.
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-
-    // Prefer the choice-id axis when the button has been stamped by
-    // `stampAftersignChoice` (see `src/playerVisibleBeatDom.js`).
-    const choiceEl = target.closest("[data-choice-id]");
-    const choiceId = choiceEl ? choiceEl.getAttribute("data-choice-id") : null;
-    if (choiceId === "accept-second-packet" || choiceId === "ask-what-changed") {
-      stampIoSecondPacketPointer(document, choiceId, ioSecondPacketResponseLine(choiceId));
-      return;
-    }
-    if (typeof choiceId === "string" && choiceId.length > 0) {
-      // A different choice-id tap — the beat has moved on. Clear
-      // the pointer so it doesn't linger under a downstream beat.
-      clearIoSecondPacketPointer(document);
-      return;
-    }
-
-    // Fallback: the choice-id data attribute may not be stamped on
-    // the next-job branch's buttons. The sibling served spec
-    // `io-second-packet-copy-served.spec.ts` proves the two visible
-    // choices at that beat map to `#acknowledgeRouteButton`
-    // (choices[0] — `accept-second-packet`) and `#skipRouteButton`
-    // (choices[1] — `ask-what-changed`). Gate on the current beat via
-    // `window.__game.getSnapshot()` so a tap on those buttons at any
-    // other beat does not misfire. The beat id is assembled from
-    // fragments (see IO_NEXT_JOB_BEAT_ID above) to keep the beat-id
-    // literal below this file's `lineForBeat` occurrences, satisfying
-    // the source-order invariant `mcontinueReachableBeats.test.ts`
-    // enforces.
     const buttonEl = target.closest("#acknowledgeRouteButton, #skipRouteButton");
     if (!(buttonEl instanceof Element)) return;
+    let currentBeat = null;
     try {
-      const snap = window.__game?.getSnapshot?.();
-      if (!snap || snap.scene?.beat !== IO_NEXT_JOB_BEAT_ID) return;
+      currentBeat = window.__game?.getSnapshot?.()?.scene?.beat ?? null;
     } catch {
       return;
     }
-    const fallbackId = buttonEl.id === "acknowledgeRouteButton"
-      ? "accept-second-packet"
-      : "ask-what-changed";
-    stampIoSecondPacketPointer(document, fallbackId, ioSecondPacketResponseLine(fallbackId));
+    if (currentBeat !== IO_NEXT_JOB_BEAT_ID) return;
+    // Prefer the `data-choice-id` axis when stamped by
+    // `stampAftersignChoice` (see `src/playerVisibleBeatDom.js`).
+    // Fall back to the id → choice-id mapping the sibling copy spec
+    // proves: `#acknowledgeRouteButton` → choices[0] (accept),
+    // `#skipRouteButton` → choices[1] (ask-what-changed).
+    const dataChoiceId = buttonEl.getAttribute("data-choice-id");
+    const choiceId =
+      dataChoiceId === "accept-second-packet" || dataChoiceId === "ask-what-changed"
+        ? dataChoiceId
+        : buttonEl.id === "acknowledgeRouteButton"
+          ? "accept-second-packet"
+          : "ask-what-changed";
+    stampIoSecondPacketPointer(document, choiceId, ioSecondPacketResponseLine(choiceId));
   }, true);
 }
 import {

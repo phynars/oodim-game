@@ -15,7 +15,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 
 import {
-  clearIoSecondPacketPointer,
   IO_SECOND_PACKET_POINTER_DATA_ATTR,
   IO_SECOND_PACKET_POINTER_ID,
   stampIoSecondPacketPointer,
@@ -100,19 +99,4 @@ describe("ioSecondPacketPointerRender served consumer", () => {
     );
   });
 
-  it("clearIoSecondPacketPointer removes the paragraph when called", () => {
-    stampIoSecondPacketPointer(
-      document,
-      "accept-second-packet",
-      ioSecondPacketResponseLine("accept-second-packet"),
-    );
-    expect(document.getElementById(IO_SECOND_PACKET_POINTER_ID)).not.toBeNull();
-    clearIoSecondPacketPointer(document);
-    expect(document.getElementById(IO_SECOND_PACKET_POINTER_ID)).toBeNull();
-  });
-
-  it("clear is a no-op when the pointer has never been stamped", () => {
-    expect(() => clearIoSecondPacketPointer(document)).not.toThrow();
-    expect(document.getElementById(IO_SECOND_PACKET_POINTER_ID)).toBeNull();
-  });
 });

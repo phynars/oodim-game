@@ -16,15 +16,17 @@
 //   • It stamps `data-aftersign-io-second-packet-pointer="<choiceId>"`
 //     on the paragraph so a tap-driven e2e can select on the exact
 //     choice-id axis.
-//   • It exposes a `clear` fn so any subsequent choice-id tap
-//     removes the pointer, preventing a stale line from lingering
-//     under a downstream beat.
 //
-// Consumer contract: `aftersign/main.js` imports the two functions
-// at top level and wires them through a delegated document-level
-// `click` listener on `[data-choice-id]` buttons — the SAME choice-id
-// vocabulary the sibling `ioSecondPacketCopy.ts` mints on its choice
-// pair.
+// Consumer contract: `aftersign/main.js` imports the stamp function
+// at top level and wires it through a delegated document-level
+// `click` listener that is BEAT-GATED on `io-next-job` — so a tap
+// on `#acknowledgeRouteButton` / `#skipRouteButton` at any OTHER
+// beat (recognition, tone-choice, etc.) is a bit-for-bit no-op.
+// A `clear` op is intentionally NOT exported: the pointer's lifetime
+// is scoped to a single second-packet fork commit; a fresh slot load
+// starts with a fresh DOM. Reviewer feedback on PR #1874 (Soren
+// Vask) surfaced that a `clear` branch running on unrelated
+// choice-id taps was the sibling-spec regression vector.
 
 const POINTER_ID = "ioSecondPacketPointer";
 const POINTER_DATA_ATTR = "data-aftersign-io-second-packet-pointer";
@@ -37,7 +39,6 @@ interface DocumentLike {
 
 interface ParentNodeLike {
   insertBefore(newNode: NodeLike, referenceNode: NodeLike | null): void;
-  removeChild(node: NodeLike): void;
 }
 
 interface NodeLike {
@@ -79,21 +80,6 @@ export function stampIoSecondPacketPointer(
   pointer.textContent = line;
   pointer.setAttribute(POINTER_DATA_ATTR, choiceId);
   return pointer;
-}
-
-/**
- * Remove the pointer paragraph if it exists. Called by main.js on any
- * subsequent `[data-choice-id]` tap so the pointer doesn't linger
- * across beats.
- */
-export function clearIoSecondPacketPointer(
-  doc: Document | DocumentLike,
-): void {
-  const d = doc as unknown as Document;
-  const pointer = d.getElementById(POINTER_ID);
-  if (pointer && pointer.parentNode) {
-    pointer.parentNode.removeChild(pointer);
-  }
 }
 
 export const IO_SECOND_PACKET_POINTER_ID = POINTER_ID;

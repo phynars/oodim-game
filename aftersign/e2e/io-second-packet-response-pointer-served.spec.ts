@@ -25,6 +25,14 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   ioSecondPacketResponseLine,
 } from "../src/ioSecondPacketResponseVoice.ts";
+// AI005 fix (Soren, PR #1874 review): import the pointer id +
+// data-attr from the render module rather than hardcoding the
+// literals. A rename on the render module now reds this spec at
+// typecheck / import time, not on the played surface.
+import {
+  IO_SECOND_PACKET_POINTER_DATA_ATTR,
+  IO_SECOND_PACKET_POINTER_ID,
+} from "../../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
@@ -120,7 +128,8 @@ test.describe("AFTERSIGN Saint-Orra pointer renders after a second-packet choice
       // At `io-next-job`, the two second-packet choice buttons are
       // stamped by the sibling copy module. Before the tap, the
       // pointer paragraph does NOT exist.
-      await expect(page.locator("#ioSecondPacketPointer")).toHaveCount(0);
+      const pointerSelector = `#${IO_SECOND_PACKET_POINTER_ID}`;
+      await expect(page.locator(pointerSelector)).toHaveCount(0);
 
       // Real tap on the choice button — the delegated click listener
       // in main.js stamps the pointer.
@@ -128,13 +137,14 @@ test.describe("AFTERSIGN Saint-Orra pointer renders after a second-packet choice
 
       // The pointer paragraph now exists with the exact literal from
       // ioSecondPacketResponseLine(choiceId) and the choice-id data
-      // attribute.
+      // attribute — both sourced from the render module's exports so
+      // a rename reds this spec at import time, not on the surface.
       const expectedPointer = ioSecondPacketResponseLine(c.choiceId);
-      const pointer = page.locator("#ioSecondPacketPointer");
+      const pointer = page.locator(pointerSelector);
       await expect(pointer).toBeVisible({ timeout: WAIT_MS });
       await expect(pointer).toHaveText(expectedPointer);
       await expect(pointer).toHaveAttribute(
-        "data-aftersign-io-second-packet-pointer",
+        IO_SECOND_PACKET_POINTER_DATA_ATTR,
         c.choiceId,
       );
       // Every pointer variant names the next door — the reason the
