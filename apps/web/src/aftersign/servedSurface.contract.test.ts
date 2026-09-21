@@ -441,6 +441,59 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("window.__game.renderOrraFirstNameDialogue");
   });
 
+  it("consumes the cancel-failure sting writer on the shipped release funnel (#1871, Refs #1698)", () => {
+    // Soren's REQUEST_CHANGES on PR #1871: draft 1 added
+    // `apps/web/src/aftersign/packetCancelFailureSting.js` with
+    // clean feel constants but NO importer on the served page.
+    // AI006 "unconsumed surface" and AI003 "tautological test" —
+    // the consumer test drove its own fabricated click handler,
+    // not the shipped code. Draft 2's fix wires the writer into
+    // `aftersign/src/runtime/inputAdapters.js` — the SAME adapter
+    // module main.js calls via `attachRuntimeInputAdapters(...)`
+    // at boot — so both the `pointerup` (capture-lost safety net)
+    // and `pointercancel` (primary path) handlers on the shipped
+    // `#packetButton` feed a gesture summary through the pure feel
+    // judge and, on `reason: "cancelled"`, stamp
+    // `playPacketCancelFailureSting(#packetButton, ...)` on the
+    // very element the finger touched. Same shape as the
+    // `applyTapConfirmFeel` wire above: one shipped adapter, one
+    // DOM element, one served release funnel.
+    const inputAdapters = readServedAftersignInputAdaptersSource();
+
+    // (a) The writer is imported from the apps-lane module — a
+    // rename in `packetCancelFailureSting.js` that drops the file
+    // (or a refactor that unwires the import) reds this pin.
+    expect(inputAdapters).toContain(
+      "../../../apps/web/src/aftersign/packetCancelFailureSting.js",
+    );
+    expect(inputAdapters).toContain("playPacketCancelFailureSting");
+
+    // (b) The pure feel judge is imported alongside — the adapter
+    // must classify the gesture through the SHIPPED judge so the
+    // `reason: "cancelled"` branch stays anchored to one source.
+    expect(inputAdapters).toContain(
+      "../../../apps/web/src/aftersign/packetChoiceFeel.ts",
+    );
+    expect(inputAdapters).toContain("evaluatePacketChoiceGesture");
+
+    // (c) Both release-funnel handlers dispatch the writer. The
+    // pointercancel path is the primary served entry; the
+    // pointerup path is a capture-lost safety net. A refactor that
+    // drops either call site reds here.
+    expect(inputAdapters).toMatch(
+      /packetButton\.addEventListener\("pointercancel"[\s\S]{0,800}dispatchCancelFailureStingIfCancelled\(/,
+    );
+    expect(inputAdapters).toMatch(
+      /packetButton\.addEventListener\("pointerup"[\s\S]{0,800}dispatchCancelFailureStingIfCancelled\(/,
+    );
+
+    // (d) main.js still wires the adapter — the served page
+    // consumes this file at boot. Same pin every other input-adapter
+    // consumer above uses.
+    const main = readServedAftersignFile("main.js");
+    expect(main).toContain("attachRuntimeInputAdapters(");
+  });
+
   it("consumes the scene-transition feel envelope on the shipped surface", () => {
     // Blocking review on PR #1523: same shape as the return-tone /
     // tap-choice / tap-confirm / route-risk precedents above — an
