@@ -194,7 +194,7 @@ export function checkChoicesArePinned(): void {
   assertEqual(accept.label, 'Take the second packet', 'accept.label');
   assertEqual(
     accept.response,
-    'Then keep it close. The city has learned your weight.',
+    'Good. Take the red tag. Saint Orra keeps the door that asks what you are willing to owe.',
     'accept.response',
   );
 
@@ -203,7 +203,7 @@ export function checkChoicesArePinned(): void {
   assertEqual(ask.label, 'Ask what changed', 'ask.label');
   assertEqual(
     ask.response,
-    'You did. That is the part the route noticed.',
+    'The red tag opens a door Saint Orra has kept shut. She will tell you what it costs after you carry it there.',
     'ask.response',
   );
 }

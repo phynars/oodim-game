@@ -130,12 +130,14 @@ export function selectIoSecondPacketCopy(
       Object.freeze({
         id: 'accept-second-packet',
         label: 'Take the second packet',
-        response: 'Then keep it close. The city has learned your weight.',
+        response:
+          'Good. Take the red tag. Saint Orra keeps the door that asks what you are willing to owe.',
       } as const),
       Object.freeze({
         id: 'ask-what-changed',
         label: 'Ask what changed',
-        response: 'You did. That is the part the route noticed.',
+        response:
+          'The red tag opens a door Saint Orra has kept shut. She will tell you what it costs after you carry it there.',
       } as const),
     ] as [IoSecondPacketChoice, IoSecondPacketChoice]),
   };
