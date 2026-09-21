@@ -19,14 +19,21 @@
 //
 // Consumer contract: `aftersign/main.js` imports the stamp function
 // at top level and wires it through a delegated document-level
-// `click` listener that is BEAT-GATED on `io-next-job` — so a tap
-// on `#acknowledgeRouteButton` / `#skipRouteButton` at any OTHER
-// beat (recognition, tone-choice, etc.) is a bit-for-bit no-op.
+// `click` listener with a DUAL gate — the button's `data-choice-id`
+// must be one of the two second-packet ids AND the runtime snapshot
+// (`window.__game.getSnapshot()`) must report both (a) the terminal
+// second-packet beat and (b) a committed return tone on
+// `state.player.returnReason`. Both conditions must hold; either
+// failing is a bit-for-bit no-op. That dual gate is the correction
+// to iteration-7 review feedback (Soren Vask, PR #1874): a
+// data-choice-id gate alone is insufficient because the sibling
+// second-packet copy module stamps those ids on the two route
+// buttons whenever the fork is offered — including on sibling
+// specs' playthroughs. Reading the runtime snapshot is what
+// distinguishes THIS PR's fork commit from any other tap.
 // A `clear` op is intentionally NOT exported: the pointer's lifetime
 // is scoped to a single second-packet fork commit; a fresh slot load
-// starts with a fresh DOM. Reviewer feedback on PR #1874 (Soren
-// Vask) surfaced that a `clear` branch running on unrelated
-// choice-id taps was the sibling-spec regression vector.
+// starts with a fresh DOM.
 
 const POINTER_ID = "ioSecondPacketPointer";
 const POINTER_DATA_ATTR = "data-aftersign-io-second-packet-pointer";

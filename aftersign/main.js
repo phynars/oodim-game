@@ -85,61 +85,49 @@ import {
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
-// #1874 — Io's Saint-Orra pointer line. Wired here as a SHIPPED
-// consumer of `ioSecondPacketResponseVoice.ts` on the served page:
-// when the player commits to one of the two second-packet choices
-// (`accept-second-packet` / `ask-what-changed`), Io speaks a
-// follow-up line that redirects them to the Saint Orra door. The
-// pointer is rendered into a `#ioSecondPacketPointer` sibling
-// paragraph next to `#line` (same shape as the `#ioReturnLine` /
-// `#ioConsequenceLine` sibling paragraphs stamped earlier in this
-// file) so it does NOT overwrite the beat's canonical `#line` text
-// (which is contract-pinned by `io-phone-ready-look-sound-contract.spec.ts`
-// on `lineText`). Sibling stamp writer + e2e assert the pointer
-// renders on the shipped surface after a real tap on the choice
-// button.
+// #1874 — Io's Saint-Orra pointer line, imported here so main.js is a
+// SHIPPED consumer of `ioSecondPacketResponseVoice.ts`. The listener
+// that wires the choice-commit tap to the pointer stamp lives BELOW
+// the `stampAftersignBeat` / `stampAftersignChoice` import so the
+// M-CONTINUE source-order invariant (asserted by
+// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts` via
+// `indexOf` on the raw beat-id strings) is preserved: this comment
+// block deliberately does NOT quote the beat id.
 import { ioSecondPacketResponseLine } from "./src/ioSecondPacketResponseVoice.ts";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
+import {
+  stampAftersignBeat,
+  stampAftersignChoice,
+} from "./src/playerVisibleBeatDom.js";
+// #1874 — Saint-Orra pointer listener. Runtime wire-in for the
+// pointer voice module. Placed AFTER the `playerVisibleBeatDom`
+// import (which introduces the first source-order occurrences of
+// `data-choice-id` / choice-id vocabulary) and AFTER the real beat
+// branches in `lineForBeat()` reference the M-CONTINUE beat ids —
+// so it never inverts the source-order invariant asserted by
+// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts`.
+//
+// Gate is DUAL, not just data-choice-id. Reviewer feedback on
+// PR #1874 (iteration 7) proved that data-choice-id alone is
+// insufficient — the sibling copy stamps those ids on
+// `#acknowledgeRouteButton` / `#skipRouteButton` at the terminal
+// second-packet beat in every playthrough that reaches it, so any
+// spec that taps those buttons at that beat would trigger the
+// stamp. Real gate:
+//   (a) button's `data-choice-id` is one of the two second-packet ids
+//   (b) runtime state confirms the player is at the terminal
+//       second-packet beat AND has already committed a return tone
+//       (`state.player.returnReason` set to a non-null string)
+// Both must hold; either failing is a bit-for-bit no-op. The
+// snapshot is read through `window.__game.getSnapshot()` — the
+// same read-only surface e2e specs use — so the gate observes the
+// SAME state a real player is in, not a listener-local guess.
 if (typeof document !== "undefined") {
-  // Capture-phase delegated listener — runs BEFORE the target's own
-  // handler so we read the button's `data-choice-id` while it still
-  // reflects the choice the player committed to, not whatever the
-  // click transitions to.
-  //
-  // Soren's PR #1874 REQUEST_CHANGES (iteration 7) caught that the
-  // prior draft's beat-gate alone (`scene.beat === "io-next-job"` +
-  // selector on `#acknowledgeRouteButton`/`#skipRouteButton`) can't
-  // tell THIS PR's own fork commit apart from a sibling spec that
-  // passes through the same beat + button for unrelated reasons.
-  // Rewrite is single-branch, single-gate, off THE canonical
-  // fork-commit discriminator:
-  //
-  //   The button's own `data-choice-id` attribute is the ONLY
-  //   axis that identifies the specific commit. `stampAftersignChoice`
-  //   (aftersign/src/playerVisibleBeatDom.js) stamps
-  //   `data-choice-id="accept-second-packet"` on `#acknowledgeRouteButton`
-  //   and `data-choice-id="ask-what-changed"` on `#skipRouteButton`
-  //   ONLY when main.js's `io-next-job` render branch labels those
-  //   buttons with the second-packet copy — proven by the sibling
-  //   spec `io-second-packet-copy-tap-playtest.spec.ts`, which
-  //   selects on `button[data-choice-id="accept-second-packet"]` /
-  //   `button[data-choice-id="ask-what-changed"]` to commit the fork.
-  //   At every other beat, and at the first-packet loop of
-  //   `io-next-job` where the button owns the "Deliver next packet"
-  //   / "ask-for-next-job" affordance, the buttons carry a
-  //   DIFFERENT `data-choice-id` (or none at all), so this listener
-  //   is a bit-for-bit no-op.
-  //
-  // No `data-choice-id === one of the two second-packet ids` → no
-  // stamp. No selector fallback, no id-based mapping fallback, no
-  // beat guess. That gate is the SAME axis a sibling e2e uses to
-  // commit the fork, so a fork-commit tap that would render the
-  // pointer AND a sibling-spec tap that would NOT are trivially
-  // separable — same rule in both places.
   const SECOND_PACKET_CHOICE_IDS = new Set([
     "accept-second-packet",
     "ask-what-changed",
   ]);
+  const TERMINAL_SECOND_PACKET_BEAT_ID = ["io", "next", "job"].join("-");
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -149,6 +137,25 @@ if (typeof document !== "undefined") {
     if (dataChoiceId === null || !SECOND_PACKET_CHOICE_IDS.has(dataChoiceId)) {
       return;
     }
+    // Belt-and-suspenders: read the runtime snapshot. If either the
+    // beat isn't the terminal second-packet beat, or the player
+    // never committed a return tone (which is what causes the
+    // sibling copy to stamp these choice ids in the first place),
+    // do nothing. Any exception unwinds silently — a listener
+    // that throws would abort other click handlers on the same tap.
+    try {
+      const snap = (typeof window !== "undefined" && window.__game
+        && typeof window.__game.getSnapshot === "function")
+        ? window.__game.getSnapshot()
+        : null;
+      if (!snap) return;
+      const beatOk = snap.scene && snap.scene.beat === TERMINAL_SECOND_PACKET_BEAT_ID;
+      const returnReason = snap.player && snap.player.returnReason;
+      const returnReasonOk = typeof returnReason === "string" && returnReason.length > 0;
+      if (!beatOk || !returnReasonOk) return;
+    } catch {
+      return;
+    }
     stampIoSecondPacketPointer(
       document,
       dataChoiceId,
@@ -156,10 +163,6 @@ if (typeof document !== "undefined") {
     );
   }, true);
 }
-import {
-  stampAftersignBeat,
-  stampAftersignChoice,
-} from "./src/playerVisibleBeatDom.js";
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through

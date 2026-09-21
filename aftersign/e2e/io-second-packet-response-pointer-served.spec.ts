@@ -18,18 +18,20 @@
 // returns.
 //
 // Discriminator note (Soren, PR #1874 iteration 7 review):
-//   The listener in `aftersign/main.js` gates on
-//   `data-choice-id ∈ {accept-second-packet, ask-what-changed}` —
-//   NOT on the beat id, NOT on the button DOM id. Selecting the
-//   button by its `data-choice-id` attribute here proves the SAME
-//   axis is used on both sides: (a) the discriminator that decides
-//   whether to stamp, and (b) the affordance a real player commits
-//   through. That axis is stamped ONLY when the second-packet copy
-//   has re-labeled the two next-job buttons. At every other beat —
-//   and at the first-packet loop of `io-next-job` before the
-//   second-packet fork is offered — the same DOM ids carry a
-//   different `data-choice-id` (or none), so the listener is a
-//   bit-for-bit no-op on every failing sibling spec.
+//   The listener in `aftersign/main.js` gates on TWO axes together:
+//   (a) `data-choice-id ∈ {accept-second-packet, ask-what-changed}`
+//   on the tapped button, AND (b) the runtime snapshot from
+//   `window.__game.getSnapshot()` reports both the terminal
+//   second-packet beat and a committed `state.player.returnReason`.
+//   Selecting by `data-choice-id` here mirrors axis (a); walking
+//   the spec through packet-choice → recognition → tone-choice →
+//   the second-packet fork before tapping mirrors axis (b). Both
+//   axes must hold for the pointer to render — CI on the first
+//   draft caught that gating on (a) alone was insufficient, since
+//   the sibling copy module stamps those ids on the two route
+//   buttons whenever the fork is offered. The runtime-snapshot
+//   check is what distinguishes this PR's fork commit from any
+//   other tap that happens to carry the same attribute.
 //
 // This closes the AI006 "unconsumed surface" gap Soren flagged on
 // draft 1: the pointer voice module is now consumed by main.js
