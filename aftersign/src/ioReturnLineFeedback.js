@@ -5,7 +5,17 @@
  * player's eye without stealing the recognition line's existing camera beat.
  * This writer is idempotent per outcome: renderText() may run every frame,
  * but a sealed/opened/unknown line enters only once per mounted paragraph.
+ *
+ * Kiosk-scene visual wire: this writer is the served-page site
+ * that fires on the real #ioReturnLine paragraph — main.js's
+ * renderText() invokes playIoReturnLineFeedback(returnPara, outcome)
+ * at the recognition beat. Applying the kiosk scene visual to
+ * element.parentElement here mounts the descendant treatment on
+ * the .panel surface. The visual writer is idempotent, so re-arms
+ * across frames do not accumulate.
  */
+import { applyKioskSceneVisual } from "./kioskSceneVisual.js";
+
 export const IO_RETURN_LINE_FEEDBACK = Object.freeze({
   durationMs: 280,
   risePx: 8,
@@ -18,6 +28,12 @@ export function playIoReturnLineFeedback(element, outcome) {
   if (element.getAttribute("data-io-return-feedback") === key) return false;
 
   element.setAttribute("data-io-return-feedback", key);
+
+  // Arm the kiosk scene visual on the containing surface — no-op
+  // when parentElement is unavailable (unit-test fake) and
+  // idempotent per surface via the visual writer's own gate.
+  applyKioskSceneVisual(element.parentElement);
+
   if (typeof element.animate !== "function") return true;
 
   element.animate(

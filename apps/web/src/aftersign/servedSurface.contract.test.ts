@@ -518,4 +518,62 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("stampAftersignChoice");
     expect(main).toContain("./src/playerVisibleBeatDom.js");
   });
+
+  it("wires the kiosk scene visual through ioReturnLineFeedback.js (#1867)", () => {
+    // PR #1867 (Soren's REQUEST_CHANGES) — an earlier draft shipped
+    // `apps/web/src/aftersign/kioskSceneVisual.js` with zero consumers:
+    // main.js never imported it, so the served `#ioReturnLine` beat
+    // never mounted the treatment. Same shape as the return-tone /
+    // tap-confirm precedents above (a pure CSS/DOM writer with no
+    // shipped consumer is green tests over dead code). The wire lands
+    // by co-locating the writer with the served lane
+    // (`aftersign/src/kioskSceneVisual.js`) and importing it from
+    // `aftersign/src/ioReturnLineFeedback.js` — which main.js's
+    // `renderText()` already invokes on the real `#ioReturnLine`
+    // element at the recognition beat (see `aftersign/e2e/
+    // io-voice-served.spec.ts`). The feedback writer passes
+    // `element.parentElement` — the `.panel` node that contains
+    // both `#line` and `#ioReturnLine` — so the treatment is scoped
+    // to the surface Io's return voice is stamped into.
+    //
+    // A refactor that drops either half (the served-lane module OR
+    // the import from the feedback writer) reds this pin BEFORE any
+    // player-visible regression.
+    const feedbackSource = readServedAftersignFile(
+      "src/ioReturnLineFeedback.js",
+    );
+    // (a) The import specifier — a rename in kioskSceneVisual.js
+    // that drops the file must red this pin.
+    expect(feedbackSource).toContain(
+      'import { applyKioskSceneVisual } from "./kioskSceneVisual.js"',
+    );
+    // (b) Played-not-driven pin: the imported writer must actually
+    // be INVOKED inside the feedback writer against the element's
+    // parent — a rename that updates the import but drops the call
+    // site still reds here.
+    expect(feedbackSource).toContain("applyKioskSceneVisual(element.parentElement)");
+
+    // (c) The served-lane module exports the named symbol — a
+    // refactor that renames the export reds here before the import
+    // in (a) resolves to `undefined` at runtime.
+    const visualSource = readServedAftersignFile("src/kioskSceneVisual.js");
+    expect(visualSource).toContain("export function applyKioskSceneVisual");
+    // (d) The scoped CSS the writer stamps must target the
+    // sibling `#ioReturnLine` paragraph — a refactor that
+    // renames the id (or drops the scoping) reds here.
+    expect(visualSource).toContain(".aftersign-kiosk-scene #ioReturnLine");
+    // (e) Stem-collision guard — the old orphan module lived at
+    // `apps/web/src/aftersign/kioskSceneVisual.js` with no consumer.
+    // Assert it stays deleted so a future edit that resurrects the
+    // orphan reds here.
+    expect(() =>
+      readFileSync(
+        join(
+          process.cwd(),
+          "apps/web/src/aftersign/kioskSceneVisual.js",
+        ),
+        "utf8",
+      ),
+    ).toThrow();
+  });
 });
