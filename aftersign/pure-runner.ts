@@ -81,6 +81,19 @@ import { runFailureStingFeedbackChecks } from "./src/failureStingFeedback.test.t
 // (the sole import is `./ioSecondPacketCopy.ts`), satisfying the
 // extension-resolution contract documented above.
 import { runIoSecondPacketCopyChecks } from "./src/ioSecondPacketCopy.test.ts";
+// Saint-Orra pointer line (PR #1874) — pure-lane check bundle for
+// `ioSecondPacketResponseVoice.ts`. The bundle's relative imports are
+// `.ts`-extensioned (`./ioSecondPacketResponseVoice.ts`,
+// `./ioSecondPacketCopy.ts`), and both leaves have zero unextensioned
+// relative imports, so the subgraph satisfies the pure-runner
+// extension-resolution contract documented above. The `.test.ts` file
+// is export-only (no top-level invocation) so importing it here does
+// not double-run when a Playwright spec also imports the sibling voice
+// module. The runner registration in the `runners` array below was
+// added in the initial wire-up but the import was omitted, throwing
+// `ReferenceError` at `test:aftersign:pure` — reviewer feedback on
+// PR #1874 caught this. Fixed here.
+import { runIoSecondPacketResponseVoiceChecks } from "./src/ioSecondPacketResponseVoice.test.ts";
 // M-LOOP route/risk FEEL pins over the SHIPPED contract
 // (`apps/web/src/aftersign/routeRiskMemory.ts` — the module main.js
 // renders through `#routeRiskChoice`). Closes the "nothing consumes
