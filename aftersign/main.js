@@ -85,6 +85,10 @@ import {
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
+// Keep the pointer selector distinct from the existing immediate-response
+// state below. The accepted-choice path owns both; renderText projects them.
+import { ioSecondPacketResponseLine as selectIoSecondPacketPointerLine } from "./src/ioSecondPacketResponseVoice.ts";
+import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -1016,6 +1020,8 @@ const getPointerToRenderLatencyReport = () => pointerToRenderLatency.report();
 let ioReturningBootLine = null;
 let ioReturningBootBeat = null;
 let ioSecondPacketResponseLine = null;
+// Transient presentation, owned by the accepted choice (not a DOM event).
+let ioSecondPacketPointerChoiceId = null;
 
 // Recompute the returning-session boot override from the CURRENT state
 // (memory facts + scene beat). Called at module init AND from
@@ -1976,6 +1982,12 @@ const renderText = () => {
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
+  const pointerChoiceId = isNextJobBeat ? ioSecondPacketPointerChoiceId : null;
+  stampIoSecondPacketPointer(
+    document,
+    pointerChoiceId,
+    pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
+  );
   // PR #1715 (#1714) — Io ledger copy contract, wired to the two
   // beats where Io names the ledger-facing fact:
   //   • io-return-recognition → "sealed" | "opened"
@@ -2561,6 +2573,7 @@ const setBeat = (beat) => {
     state.scene.beat = canonicalBeat;
     if (canonicalBeat !== "io-next-job") {
       ioSecondPacketResponseLine = null;
+      ioSecondPacketPointerChoiceId = null;
     }
     markStateDirty();
     // Scene-transition juice — mount the three-phase envelope
@@ -2990,6 +3003,7 @@ const choose = async (choiceId) => {
     });
     const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
     if (selectedChoice) {
+      ioSecondPacketPointerChoiceId = selectedChoice.id;
       ioSecondPacketResponseLine = selectedChoice.response;
       state.npcs.io.lastLine = selectedChoice.response;
       state.npcs.io.lastLineMemoryRefs = [];
@@ -3113,6 +3127,11 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         playerId,
       }).catch(() => null);
   const saved = authoritativeSave;
+
+  if (saved || clearLocalState || breakMode === "local-only-save") {
+    ioSecondPacketResponseLine = null;
+    ioSecondPacketPointerChoiceId = null;
+  }
 
   if (!saved) {
     // Two shapes reach this branch:
@@ -4006,6 +4025,7 @@ const resetSliceSave = async () => {
   resetPacketGestureLog();
   state.scene.beat = "packet-offered";
   ioSecondPacketResponseLine = null;
+  ioSecondPacketPointerChoiceId = null;
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;
   state.player = {
@@ -4135,6 +4155,8 @@ const reset = (snapshot) => {
     resetSliceSave();
     return;
   }
+  ioSecondPacketResponseLine = null;
+  ioSecondPacketPointerChoiceId = null;
   const restored = clone(snapshot);
   if (restored.scene && typeof restored.scene.beat === "string") {
     state.scene.beat = restored.scene.beat;

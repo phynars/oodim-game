@@ -42,6 +42,13 @@ export default defineConfig({
       "apps/web/src/aftersign/aftersignKioskInteractionLoopSurface.test.ts",
       "apps/web/src/aftersign/playerMemoryBackend.test.ts",
       "apps/web/src/aftersign/mLoopE1CoverageSurface.test.ts",
+      // PR #1874 — Saint-Orra pointer render consumer test. Mounts a
+      // fragment matching the served `aftersign/index.html` shape and
+      // exercises `stampIoSecondPacketPointer` against it. Was
+      // previously absent from this include list, so its jsdom
+      // assertions never ran — reviewer feedback on PR #1874 (Soren
+      // Vask) caught the dead coverage. Fixed here.
+      "apps/web/src/aftersign/ioSecondPacketPointerRender.consumer.test.ts",
     ],
   },
 });
