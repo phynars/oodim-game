@@ -6,13 +6,30 @@
 // player through:
 //     packet-offered → packet-choice → packet-delivered →
 //     io-return-recognition → return-tone-choice → io-next-job
-// At `io-next-job` the two choice buttons `#acknowledgeRouteButton`
-// (choices[0] — `accept-second-packet`) and `#skipRouteButton`
-// (choices[1] — `ask-what-changed`) are visible, labeled from the
-// sibling copy contract. A tap on either commits the fork; this
-// spec asserts the pointer line then lands in the
-// `#ioSecondPacketPointer` sibling paragraph next to `#line`,
-// with the SAME literal `ioSecondPacketResponseLine(id)` returns.
+// At `io-next-job` the two choice buttons are stamped with
+// `data-choice-id="accept-second-packet"` and
+// `data-choice-id="ask-what-changed"` by main.js's io-next-job
+// render branch (proven by sibling
+// `io-second-packet-copy-tap-playtest.spec.ts`, which selects on
+// the SAME `button[data-choice-id="..."]` axis to commit the fork).
+// A tap on either commits the fork; this spec asserts the pointer
+// line then lands in the `#ioSecondPacketPointer` sibling paragraph
+// next to `#line`, with the SAME literal `ioSecondPacketResponseLine(id)`
+// returns.
+//
+// Discriminator note (Soren, PR #1874 iteration 7 review):
+//   The listener in `aftersign/main.js` gates on
+//   `data-choice-id ∈ {accept-second-packet, ask-what-changed}` —
+//   NOT on the beat id, NOT on the button DOM id. Selecting the
+//   button by its `data-choice-id` attribute here proves the SAME
+//   axis is used on both sides: (a) the discriminator that decides
+//   whether to stamp, and (b) the affordance a real player commits
+//   through. That axis is stamped ONLY when the second-packet copy
+//   has re-labeled the two next-job buttons. At every other beat —
+//   and at the first-packet loop of `io-next-job` before the
+//   second-packet fork is offered — the same DOM ids carry a
+//   different `data-choice-id` (or none), so the listener is a
+//   bit-for-bit no-op on every failing sibling spec.
 //
 // This closes the AI006 "unconsumed surface" gap Soren flagged on
 // draft 1: the pointer voice module is now consumed by main.js
@@ -84,19 +101,16 @@ const cases: Array<{
   readonly reason: ReturnReason;
   readonly toneSelector: string;
   readonly choiceId: "accept-second-packet" | "ask-what-changed";
-  readonly choiceSelector: string;
 }> = [
   {
     reason: "kind",
     toneSelector: "#acknowledgeRouteButton",
     choiceId: "accept-second-packet",
-    choiceSelector: "#acknowledgeRouteButton",
   },
   {
     reason: "blunt",
     toneSelector: "#deliverButton",
     choiceId: "ask-what-changed",
-    choiceSelector: "#skipRouteButton",
   },
 ];
 
@@ -131,9 +145,20 @@ test.describe("AFTERSIGN Saint-Orra pointer renders after a second-packet choice
       const pointerSelector = `#${IO_SECOND_PACKET_POINTER_ID}`;
       await expect(page.locator(pointerSelector)).toHaveCount(0);
 
-      // Real tap on the choice button — the delegated click listener
-      // in main.js stamps the pointer.
-      await tap(page, c.choiceSelector);
+      // Select the choice button by its `data-choice-id` attribute —
+      // the SAME axis the delegated listener in main.js gates on.
+      // If the io-next-job render branch ever regresses and stops
+      // stamping this attribute on the two second-packet buttons,
+      // this locator finds nothing and the spec reds honestly here,
+      // not later on the pointer assertion. Sibling spec
+      // `io-second-packet-copy-tap-playtest.spec.ts` uses the
+      // identical selector shape to commit the same fork.
+      const choiceButton = page
+        .locator(`button[data-choice-id="${c.choiceId}"]:not([disabled])`)
+        .first();
+      await expect(choiceButton).toBeVisible({ timeout: WAIT_MS });
+      await expect(choiceButton).toHaveAttribute("data-choice-id", c.choiceId);
+      await choiceButton.tap();
 
       // The pointer paragraph now exists with the exact literal from
       // ioSecondPacketResponseLine(choiceId) and the choice-id data

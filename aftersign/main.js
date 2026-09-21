@@ -100,70 +100,60 @@ import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCop
 // button.
 import { ioSecondPacketResponseLine } from "./src/ioSecondPacketResponseVoice.ts";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
-// IMPORTANT — beat-id literal ordering trap (Soren, PR #1874 review):
-// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts` reads this
-// file as text and asserts `indexOf("io-return-recognition") <
-// indexOf(<return-tone beat id>) < indexOf(<next-job beat id>)` on
-// FIRST occurrences. So this block — installed BEFORE the
-// `lineForBeat` switch — must contain NO literal beat-id strings for
-// the two post-recognition beats, or the guard flips. Beat ids used
-// for gating are assembled at runtime from fragments so the source
-// text never carries them here. Do NOT paste beat-id string literals
-// into this block; keep them behind the fragment concat below.
-const IO_NEXT_JOB_BEAT_ID = "io-" + "next-job";
 if (typeof document !== "undefined") {
   // Capture-phase delegated listener — runs BEFORE the target's own
-  // handler so we read `scene.beat` while it still reflects the beat
-  // the player just tapped, not whatever the click transitions to.
+  // handler so we read the button's `data-choice-id` while it still
+  // reflects the choice the player committed to, not whatever the
+  // click transitions to.
   //
-  // Soren's PR #1874 REQUEST_CHANGES caught that the prior draft had
-  // two side-effect branches (a `clear` on any non-second-packet
-  // `data-choice-id`, and a `stamp` on any `#acknowledgeRouteButton`
-  // / `#skipRouteButton` tap regardless of beat) — both fired on
-  // sibling specs that walk THROUGH `#acknowledgeRouteButton` at
-  // `io-return-recognition` (npc-memory-recall, durable-save,
-  // io-second-packet-copy). This rewrite is single-branch with THREE
-  // strict gates and NO other side effects; any tap that doesn't pass
-  // ALL three is a bit-for-bit no-op:
-  //   1. Target closest matches `#acknowledgeRouteButton` /
-  //      `#skipRouteButton` (the two next-job choice buttons).
-  //   2. `window.__game.getSnapshot().scene.beat` equals the
-  //      next-job beat id (assembled from fragments to preserve the
-  //      `mcontinueReachableBeats.test.ts` source-order invariant).
-  //      A tap on the SAME id selectors at ANY other beat — where
-  //      the button owns a different meaning — is a no-op.
-  //   3. Both getSnapshot and its scene.beat resolve without throwing.
-  //      A boot state where the snapshot hasn't been minted yet is
-  //      a no-op (never fire blind).
-  // No `clear` branch — a stale pointer under a downstream beat is
-  // preferable to a mystery side effect on sibling e2e specs. The
-  // pointer's lifetime is scoped to a single second-packet fork
-  // commit; a subsequent slot load starts with a fresh DOM.
+  // Soren's PR #1874 REQUEST_CHANGES (iteration 7) caught that the
+  // prior draft's beat-gate alone (`scene.beat === "io-next-job"` +
+  // selector on `#acknowledgeRouteButton`/`#skipRouteButton`) can't
+  // tell THIS PR's own fork commit apart from a sibling spec that
+  // passes through the same beat + button for unrelated reasons.
+  // Rewrite is single-branch, single-gate, off THE canonical
+  // fork-commit discriminator:
+  //
+  //   The button's own `data-choice-id` attribute is the ONLY
+  //   axis that identifies the specific commit. `stampAftersignChoice`
+  //   (aftersign/src/playerVisibleBeatDom.js) stamps
+  //   `data-choice-id="accept-second-packet"` on `#acknowledgeRouteButton`
+  //   and `data-choice-id="ask-what-changed"` on `#skipRouteButton`
+  //   ONLY when main.js's `io-next-job` render branch labels those
+  //   buttons with the second-packet copy — proven by the sibling
+  //   spec `io-second-packet-copy-tap-playtest.spec.ts`, which
+  //   selects on `button[data-choice-id="accept-second-packet"]` /
+  //   `button[data-choice-id="ask-what-changed"]` to commit the fork.
+  //   At every other beat, and at the first-packet loop of
+  //   `io-next-job` where the button owns the "Deliver next packet"
+  //   / "ask-for-next-job" affordance, the buttons carry a
+  //   DIFFERENT `data-choice-id` (or none at all), so this listener
+  //   is a bit-for-bit no-op.
+  //
+  // No `data-choice-id === one of the two second-packet ids` → no
+  // stamp. No selector fallback, no id-based mapping fallback, no
+  // beat guess. That gate is the SAME axis a sibling e2e uses to
+  // commit the fork, so a fork-commit tap that would render the
+  // pointer AND a sibling-spec tap that would NOT are trivially
+  // separable — same rule in both places.
+  const SECOND_PACKET_CHOICE_IDS = new Set([
+    "accept-second-packet",
+    "ask-what-changed",
+  ]);
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const buttonEl = target.closest("#acknowledgeRouteButton, #skipRouteButton");
+    const buttonEl = target.closest("button[data-choice-id]");
     if (!(buttonEl instanceof Element)) return;
-    let currentBeat = null;
-    try {
-      currentBeat = window.__game?.getSnapshot?.()?.scene?.beat ?? null;
-    } catch {
+    const dataChoiceId = buttonEl.getAttribute("data-choice-id");
+    if (dataChoiceId === null || !SECOND_PACKET_CHOICE_IDS.has(dataChoiceId)) {
       return;
     }
-    if (currentBeat !== IO_NEXT_JOB_BEAT_ID) return;
-    // Prefer the `data-choice-id` axis when stamped by
-    // `stampAftersignChoice` (see `src/playerVisibleBeatDom.js`).
-    // Fall back to the id → choice-id mapping the sibling copy spec
-    // proves: `#acknowledgeRouteButton` → choices[0] (accept),
-    // `#skipRouteButton` → choices[1] (ask-what-changed).
-    const dataChoiceId = buttonEl.getAttribute("data-choice-id");
-    const choiceId =
-      dataChoiceId === "accept-second-packet" || dataChoiceId === "ask-what-changed"
-        ? dataChoiceId
-        : buttonEl.id === "acknowledgeRouteButton"
-          ? "accept-second-packet"
-          : "ask-what-changed";
-    stampIoSecondPacketPointer(document, choiceId, ioSecondPacketResponseLine(choiceId));
+    stampIoSecondPacketPointer(
+      document,
+      dataChoiceId,
+      ioSecondPacketResponseLine(dataChoiceId),
+    );
   }, true);
 }
 import {
