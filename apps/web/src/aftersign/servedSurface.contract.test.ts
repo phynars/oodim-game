@@ -480,11 +480,20 @@ describe("Aftersign served surface contract", () => {
     // pointercancel path is the primary served entry; the
     // pointerup path is a capture-lost safety net. A refactor that
     // drops either call site reds here.
+    // Bound is generous by design: the handlers carry explanatory
+    // comment blocks (why `pointercancel` is the primary path, why
+    // the `pointerup` site is defensive symmetry) that push the
+    // dispatch call ~1.2KB past the anchor. 2000 keeps the pin
+    // inside the same handler (a stray dispatch elsewhere in the
+    // ~7KB file would still fail this) while giving the shipped
+    // comments room to breathe. Soren's REQUEST_CHANGES on draft 2
+    // called out the 800-char bound as too tight — this loosens it
+    // per that feedback.
     expect(inputAdapters).toMatch(
-      /packetButton\.addEventListener\("pointercancel"[\s\S]{0,800}dispatchCancelFailureStingIfCancelled\(/,
+      /packetButton\.addEventListener\("pointercancel"[\s\S]{0,2000}dispatchCancelFailureStingIfCancelled\(/,
     );
     expect(inputAdapters).toMatch(
-      /packetButton\.addEventListener\("pointerup"[\s\S]{0,800}dispatchCancelFailureStingIfCancelled\(/,
+      /packetButton\.addEventListener\("pointerup"[\s\S]{0,2000}dispatchCancelFailureStingIfCancelled\(/,
     );
 
     // (d) main.js still wires the adapter — the served page
