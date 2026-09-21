@@ -7,8 +7,8 @@
 // Why this exists: PR #1874's first draft added
 // `ioSecondPacketResponseVoice.ts` without a shipped consumer —
 // Soren's REQUEST_CHANGES cited AI006 (unconsumed surface). This
-// bundle plus `aftersign/main.js`'s top-level import + delegated
-// click listener + the tap-driven e2e
+// bundle plus `aftersign/main.js`'s accepted-choice render path
+// and the tap-driven e2e
 // (`aftersign/e2e/io-second-packet-response-pointer-served.spec.ts`)
 // close the wire-in.
 
@@ -99,4 +99,21 @@ describe("ioSecondPacketPointerRender served consumer", () => {
     );
   });
 
+  it("clears transient copy without changing the primary dialogue", () => {
+    const originalLine = document.getElementById("line")!.textContent;
+    stampIoSecondPacketPointer(document, "accept-second-packet", "Saint Orra");
+    expect(stampIoSecondPacketPointer(document, null, "")).toBeNull();
+    expect(document.getElementById(IO_SECOND_PACKET_POINTER_ID)).toBeNull();
+    expect(document.getElementById("line")!.textContent).toBe(originalLine);
+    expect(stampIoSecondPacketPointer(document, null, "")).toBeNull();
+  });
+
+  it("does not mutate the DOM on an unchanged render frame", () => {
+    stampIoSecondPacketPointer(document, "accept-second-packet", "Saint Orra");
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+    stampIoSecondPacketPointer(document, "accept-second-packet", "Saint Orra");
+    expect(observer.takeRecords()).toEqual([]);
+    observer.disconnect();
+  });
 });

@@ -28,8 +28,7 @@
 // Render-site wire-in (PR #1874, addressing Soren's REQUEST_CHANGES):
 //   3. `aftersign/main.js` — imports `ioSecondPacketResponseLine`
 //      alongside the sibling `selectIoSecondPacketCopyForReturnReason`
-//      and installs a delegated document-level `click` listener that
-//      stamps the pointer via
+//      and renders the accepted choice's transient pointer via
 //      `apps/web/src/aftersign/ioSecondPacketPointerRender.ts::stampIoSecondPacketPointer`
 //      into a `<p id="ioSecondPacketPointer">` sibling paragraph
 //      right after `#line`, keyed on the two second-packet choice

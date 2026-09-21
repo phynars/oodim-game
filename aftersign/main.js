@@ -85,84 +85,14 @@ import {
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
-// #1874 — Io's Saint-Orra pointer line, imported here so main.js is a
-// SHIPPED consumer of `ioSecondPacketResponseVoice.ts`. The listener
-// that wires the choice-commit tap to the pointer stamp lives BELOW
-// the `stampAftersignBeat` / `stampAftersignChoice` import so the
-// M-CONTINUE source-order invariant (asserted by
-// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts` via
-// `indexOf` on the raw beat-id strings) is preserved: this comment
-// block deliberately does NOT quote the beat id.
-import { ioSecondPacketResponseLine } from "./src/ioSecondPacketResponseVoice.ts";
+// Keep the pointer selector distinct from the existing immediate-response
+// state below. The accepted-choice path owns both; renderText projects them.
+import { ioSecondPacketResponseLine as selectIoSecondPacketPointerLine } from "./src/ioSecondPacketResponseVoice.ts";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
 } from "./src/playerVisibleBeatDom.js";
-// #1874 — Saint-Orra pointer listener. Runtime wire-in for the
-// pointer voice module. Placed AFTER the `playerVisibleBeatDom`
-// import (which introduces the first source-order occurrences of
-// `data-choice-id` / choice-id vocabulary) and AFTER the real beat
-// branches in `lineForBeat()` reference the M-CONTINUE beat ids —
-// so it never inverts the source-order invariant asserted by
-// `apps/web/src/aftersign/mcontinueReachableBeats.test.ts`.
-//
-// Gate is DUAL, not just data-choice-id. Reviewer feedback on
-// PR #1874 (iteration 7) proved that data-choice-id alone is
-// insufficient — the sibling copy stamps those ids on
-// `#acknowledgeRouteButton` / `#skipRouteButton` at the terminal
-// second-packet beat in every playthrough that reaches it, so any
-// spec that taps those buttons at that beat would trigger the
-// stamp. Real gate:
-//   (a) button's `data-choice-id` is one of the two second-packet ids
-//   (b) runtime state confirms the player is at the terminal
-//       second-packet beat AND has already committed a return tone
-//       (`state.player.returnReason` set to a non-null string)
-// Both must hold; either failing is a bit-for-bit no-op. The
-// snapshot is read through `window.__game.getSnapshot()` — the
-// same read-only surface e2e specs use — so the gate observes the
-// SAME state a real player is in, not a listener-local guess.
-if (typeof document !== "undefined") {
-  const SECOND_PACKET_CHOICE_IDS = new Set([
-    "accept-second-packet",
-    "ask-what-changed",
-  ]);
-  const TERMINAL_SECOND_PACKET_BEAT_ID = ["io", "next", "job"].join("-");
-  document.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const buttonEl = target.closest("button[data-choice-id]");
-    if (!(buttonEl instanceof Element)) return;
-    const dataChoiceId = buttonEl.getAttribute("data-choice-id");
-    if (dataChoiceId === null || !SECOND_PACKET_CHOICE_IDS.has(dataChoiceId)) {
-      return;
-    }
-    // Belt-and-suspenders: read the runtime snapshot. If either the
-    // beat isn't the terminal second-packet beat, or the player
-    // never committed a return tone (which is what causes the
-    // sibling copy to stamp these choice ids in the first place),
-    // do nothing. Any exception unwinds silently — a listener
-    // that throws would abort other click handlers on the same tap.
-    try {
-      const snap = (typeof window !== "undefined" && window.__game
-        && typeof window.__game.getSnapshot === "function")
-        ? window.__game.getSnapshot()
-        : null;
-      if (!snap) return;
-      const beatOk = snap.scene && snap.scene.beat === TERMINAL_SECOND_PACKET_BEAT_ID;
-      const returnReason = snap.player && snap.player.returnReason;
-      const returnReasonOk = typeof returnReason === "string" && returnReason.length > 0;
-      if (!beatOk || !returnReasonOk) return;
-    } catch {
-      return;
-    }
-    stampIoSecondPacketPointer(
-      document,
-      dataChoiceId,
-      ioSecondPacketResponseLine(dataChoiceId),
-    );
-  }, true);
-}
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through
@@ -1090,6 +1020,8 @@ const getPointerToRenderLatencyReport = () => pointerToRenderLatency.report();
 let ioReturningBootLine = null;
 let ioReturningBootBeat = null;
 let ioSecondPacketResponseLine = null;
+// Transient presentation, owned by the accepted choice (not a DOM event).
+let ioSecondPacketPointerChoiceId = null;
 
 // Recompute the returning-session boot override from the CURRENT state
 // (memory facts + scene beat). Called at module init AND from
@@ -2050,6 +1982,12 @@ const renderText = () => {
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
+  const pointerChoiceId = isNextJobBeat ? ioSecondPacketPointerChoiceId : null;
+  stampIoSecondPacketPointer(
+    document,
+    pointerChoiceId,
+    pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
+  );
   // PR #1715 (#1714) — Io ledger copy contract, wired to the two
   // beats where Io names the ledger-facing fact:
   //   • io-return-recognition → "sealed" | "opened"
@@ -2635,6 +2573,7 @@ const setBeat = (beat) => {
     state.scene.beat = canonicalBeat;
     if (canonicalBeat !== "io-next-job") {
       ioSecondPacketResponseLine = null;
+      ioSecondPacketPointerChoiceId = null;
     }
     markStateDirty();
     // Scene-transition juice — mount the three-phase envelope
@@ -3064,6 +3003,7 @@ const choose = async (choiceId) => {
     });
     const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
     if (selectedChoice) {
+      ioSecondPacketPointerChoiceId = selectedChoice.id;
       ioSecondPacketResponseLine = selectedChoice.response;
       state.npcs.io.lastLine = selectedChoice.response;
       state.npcs.io.lastLineMemoryRefs = [];
@@ -3187,6 +3127,11 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
         playerId,
       }).catch(() => null);
   const saved = authoritativeSave;
+
+  if (saved || clearLocalState || breakMode === "local-only-save") {
+    ioSecondPacketResponseLine = null;
+    ioSecondPacketPointerChoiceId = null;
+  }
 
   if (!saved) {
     // Two shapes reach this branch:
@@ -4080,6 +4025,7 @@ const resetSliceSave = async () => {
   resetPacketGestureLog();
   state.scene.beat = "packet-offered";
   ioSecondPacketResponseLine = null;
+  ioSecondPacketPointerChoiceId = null;
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;
   state.player = {
@@ -4209,6 +4155,8 @@ const reset = (snapshot) => {
     resetSliceSave();
     return;
   }
+  ioSecondPacketResponseLine = null;
+  ioSecondPacketPointerChoiceId = null;
   const restored = clone(snapshot);
   if (restored.scene && typeof restored.scene.beat === "string") {
     state.scene.beat = restored.scene.beat;

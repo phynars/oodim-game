@@ -17,29 +17,12 @@
 // next to `#line`, with the SAME literal `ioSecondPacketResponseLine(id)`
 // returns.
 //
-// Discriminator note (Soren, PR #1874 iteration 7 review):
-//   The listener in `aftersign/main.js` gates on TWO axes together:
-//   (a) `data-choice-id ∈ {accept-second-packet, ask-what-changed}`
-//   on the tapped button, AND (b) the runtime snapshot from
-//   `window.__game.getSnapshot()` reports both the terminal
-//   second-packet beat and a committed `state.player.returnReason`.
-//   Selecting by `data-choice-id` here mirrors axis (a); walking
-//   the spec through packet-choice → recognition → tone-choice →
-//   the second-packet fork before tapping mirrors axis (b). Both
-//   axes must hold for the pointer to render — CI on the first
-//   draft caught that gating on (a) alone was insufficient, since
-//   the sibling copy module stamps those ids on the two route
-//   buttons whenever the fork is offered. The runtime-snapshot
-//   check is what distinguishes this PR's fork commit from any
-//   other tap that happens to carry the same attribute.
-//
-// This closes the AI006 "unconsumed surface" gap Soren flagged on
-// draft 1: the pointer voice module is now consumed by main.js
-// (via `apps/web/src/aftersign/ioSecondPacketPointerRender.ts` +
-// a delegated click listener), and this spec real-taps a phone
-// viewport to prove the rendered pointer is on the shipped surface.
+// The accepted choice owns the pointer; entering the offer does not.
+// These tests also pin the immediate response on #line and teardown
+// when the next delivery begins. No test-specific runtime opt-in.
 
 import { expect, test, type Page } from "@playwright/test";
+import { selectIoSecondPacketCopyForReturnReason } from "../src/ioSecondPacketCopy.ts";
 
 import {
   ioSecondPacketResponseLine,
@@ -147,8 +130,7 @@ test.describe("AFTERSIGN Saint-Orra pointer renders after a second-packet choice
       const pointerSelector = `#${IO_SECOND_PACKET_POINTER_ID}`;
       await expect(page.locator(pointerSelector)).toHaveCount(0);
 
-      // Select the choice button by its `data-choice-id` attribute —
-      // the SAME axis the delegated listener in main.js gates on.
+      // Select the choice button by its `data-choice-id` attribute.
       // If the io-next-job render branch ever regresses and stops
       // stamping this attribute on the two second-packet buttons,
       // this locator finds nothing and the spec reds honestly here,
@@ -177,6 +159,37 @@ test.describe("AFTERSIGN Saint-Orra pointer renders after a second-packet choice
       // Every pointer variant names the next door — the reason the
       // module exists.
       expect(expectedPointer).toContain("Saint Orra");
+      const selectedChoice = selectIoSecondPacketCopyForReturnReason({
+        returnReason: c.reason,
+        playerName: null,
+      }).choices.find((choice) => choice.id === c.choiceId)!;
+      await expect(page.locator("#line")).toHaveText(selectedChoice.response);
+
+      // Repeating a choice updates the same paragraph rather than stacking it.
+      await choiceButton.tap();
+      await expect(pointer).toHaveCount(1);
+      await expect(pointer).toHaveText(expectedPointer);
+
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "packet-offered");
+      await expect(pointer).toHaveCount(0);
+
+      // A second loop must show the offer without the previous pointer.
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "io-return-recognition");
+      await tap(page, c.toneSelector);
+      await waitForBeat(page, "return-tone-choice");
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "io-next-job");
+      await expect(pointer).toHaveCount(0);
+      await choiceButton.tap();
+      await expect(pointer).toHaveText(expectedPointer);
+
+      // A full reload discards this transient response, not the saved offer.
+      await page.reload({ waitUntil: "load" });
+      await waitForReady(page);
+      await waitForBeat(page, "io-next-job");
+      await expect(pointer).toHaveCount(0);
     });
   }
 });
