@@ -638,4 +638,65 @@ describe("Aftersign served surface contract", () => {
       ),
     ).toThrow();
   });
+
+  it("consumes the packet-press logic-side feedback envelope on the shipped surface (#1879)", () => {
+    // Blocking review on PR #1879 (Mara Okonkwo): `packetPress(input)`
+    // calls `playPacketPressFeedback()`, which stamps
+    // `data-packet-press-feedback="pressed"` on `#packetButton` — but
+    // a repo-wide grep for that attribute returned ZERO CSS readers.
+    // Every sibling envelope (tap-confirm, packet-press pointer,
+    // route-choice-press, job-take) ships a paint rule; this one
+    // didn't. Same shape as the return-tone / tap-confirm precedents
+    // above — a JS writer with no CSS consumer is a green test over
+    // an invisible envelope.
+    //
+    // The fix has three parts: (1) main.js imports the pure
+    // begin/advance functions and drives the rAF-ticked state, (2)
+    // index.html declares `--aftersign-packet-press-feedback-*` vars
+    // + a CSS consumer rule on `#packetButton[data-packet-press-feedback="pressed"]`,
+    // and (3) `aftersign/packetPressFeedbackServedContract.ts` (a
+    // pure-runner-registered contract) pins the CSS var value against
+    // the numeric `PACKET_PRESS_FEEDBACK_MS` constant in
+    // `aftersign/src/packet-press-feedback.ts`. This vitest pin locks
+    // the vertical slice — main.js WIRE + index.html CONSUMER — so a
+    // future refactor that unwires either half reds here BEFORE any
+    // player-visible drift.
+    const main = readServedAftersignFile("main.js");
+    // (a) main.js imports the pure begin/advance from the served-lane
+    // module. A rename in `packet-press-feedback.ts` that drops
+    // either export reds this pin.
+    expect(main).toContain("./src/packet-press-feedback.ts");
+    expect(main).toContain("beginPacketPressFeedback");
+    expect(main).toContain("advancePacketPressFeedback");
+    // (b) `packetPress` actually invokes the writer — a refactor
+    // that "cleans up" the call site (import kept, invocation
+    // dropped) reds here.
+    expect(main).toContain("playPacketPressFeedback(");
+    // (c) The stamp lands on `#packetButton.dataset.packetPressFeedback`
+    // — the very attribute the CSS consumer rule keys off. A rename
+    // that forks the attribute name silently unwires the paint.
+    expect(main).toMatch(
+      /packetButton\.dataset\.packetPressFeedback\s*=/,
+    );
+
+    const html = readServedAftersignFile("index.html");
+    // (d) The three CSS variables the consumer rule reads must have
+    // :root defaults so the page parses cleanly before any press.
+    expect(html).toContain("--aftersign-packet-press-feedback-hold-ms");
+    expect(html).toContain("--aftersign-packet-press-feedback-scale-from");
+    expect(html).toContain("--aftersign-packet-press-feedback-easing");
+    // (e) The consumer rule must exist on the exact
+    // `#packetButton[data-packet-press-feedback="pressed"]` selector
+    // — the pattern the JS writer stamps.
+    expect(html).toContain(
+      '#packetButton[data-packet-press-feedback="pressed"]',
+    );
+    // (f) Reduced-motion respect — the pressed selector must appear
+    // inside a `prefers-reduced-motion: reduce` block that collapses
+    // its transform. Same discipline as the pointer-driven packet-press
+    // envelope above.
+    expect(html).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,600}data-packet-press-feedback="pressed"/,
+    );
+  });
 });

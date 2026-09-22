@@ -139,6 +139,32 @@
         --aftersign-packet-press-hold-ms: 96ms;
         --aftersign-packet-press-easing: cubic-bezier(.2, .8, .2, 1);
 
+        /* --aftersign-packet-press-feedback-* — logic-side press
+           envelope (PR #1879) consumed by the CSS rule on
+           `#packetButton[data-packet-press-feedback="pressed"]`
+           (below) and stamped by `packetPress(input)` in
+           `aftersign/main.js` via `playPacketPressFeedback()`.
+           DISTINCT from the pointer-driven `data-aftersign-packet-press`
+           envelope above: that one paints raw finger contact via
+           `aftersign/packetOfferPressing.js`; THIS one paints the
+           logic side — controller acknowledged the press, held for
+           the visual window regardless of contact duration.
+           Different attribute name so the two envelopes stack
+           without collision (one on `data-aftersign-packet-press`,
+           the other on `data-packet-press-feedback`).
+
+           The hold-ms number is the SINGLE SOURCE OF TRUTH mirrored
+           in `aftersign/src/packet-press-feedback.ts` as
+           `PACKET_PRESS_FEEDBACK_MS`, and the served-HTML contract
+           check (`runPacketPressFeedbackServedContractChecks` in
+           `aftersign/pure-runner.ts`) reds the pure CI lane if the
+           two drift. 92ms sits inside the same feel language as the
+           96ms pointer press — slightly shorter so a controller
+           press feels crisper than a finger hold. */
+        --aftersign-packet-press-feedback-hold-ms: 92ms;
+        --aftersign-packet-press-feedback-scale-from: 0.97;
+        --aftersign-packet-press-feedback-easing: cubic-bezier(.2, .8, .2, 1);
+
         /* --aftersign-route-choice-press-* — route-choice press
            envelope consumed by the CSS rule on
            `#routeChoice button[data-aftersign-route-choice-press="pressing"]`
@@ -842,6 +868,44 @@
            transform channel. The press-juice spec is not gated
            on this branch. */
         #packetButton[data-aftersign-packet-press="pressing"] {
+          transform: none;
+          transition: none;
+        }
+      }
+
+      /* Packet-press logic-side feedback envelope — SHIPPED
+         CONSUMER of the `--aftersign-packet-press-feedback-*` :root
+         variables (PR #1879 re-review: "nothing in index.html CSS
+         reads `data-packet-press-feedback`" — fixed here). Distinct
+         from the pointer-driven
+         `#packetButton[data-aftersign-packet-press="pressing"]` rule
+         above: that one keys off finger contact stamped by
+         `aftersign/packetOfferPressing.js`; THIS one keys off the
+         `data-packet-press-feedback="pressed"` marker that
+         `playPacketPressFeedback()` in `aftersign/main.js` stamps
+         when `packetPress(input)` fires. The controller-driven
+         envelope holds for `PACKET_PRESS_FEEDBACK_MS` (92ms)
+         regardless of contact duration.
+
+         Reads the `feedback-hold-ms` var so a `MS: 92 → 108` edit
+         in `aftersign/src/packet-press-feedback.ts` actually re-times
+         the shipped press, not just a synthetic node in a vitest
+         harness. The `runPacketPressFeedbackServedContractChecks`
+         pure-runner pin reds if the CSS var or this rule drifts from
+         the TS constant. */
+      #packetButton[data-packet-press-feedback="pressed"] {
+        transform: scale(var(--aftersign-packet-press-feedback-scale-from, 1));
+        transition: transform
+          var(--aftersign-packet-press-feedback-hold-ms, 0ms)
+          var(--aftersign-packet-press-feedback-easing, linear);
+        will-change: transform;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        /* Reduced-motion: keep the state marker (so any dependent
+           CSS keys off it correctly) but collapse the transform
+           channel. Same discipline as the pointer-driven envelope
+           above. */
+        #packetButton[data-packet-press-feedback="pressed"] {
           transform: none;
           transition: none;
         }
