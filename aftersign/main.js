@@ -89,6 +89,19 @@ import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCop
 // state below. The accepted-choice path owns both; renderText projects them.
 import { ioSecondPacketResponseLine as selectIoSecondPacketPointerLine } from "./src/ioSecondPacketResponseVoice.ts";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
+// PR #1884 re-review (Mara Okonkwo) — Io's job-acceptance line, wired
+// into the served page as a SIBLING paragraph next to `#line` (same
+// discipline as `#ioSecondPacketPointer` above and `#ioReturnLine` /
+// `#ioConsequenceLine` further down). `renderText()` reads
+// `state.interaction.lastAction` at the `packet-offered` beat, matches
+// the shipped `mloop-*:job-*` format, and stamps the authored ack
+// line for that jobId into `<p id="jobTakeAckLine">`. Off-beat the
+// paragraph is removed so a stale ack never lingers under a
+// different beat. Sibling e2e
+// `aftersign/e2e/aftersign-job-take-feel.playtest.spec.ts` real-taps
+// the safe-delivery offer and pins the stamped line + jobId axis.
+import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
+import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -2017,6 +2030,31 @@ const renderText = () => {
     document,
     pointerChoiceId,
     pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
+  );
+  // PR #1884 re-review (Mara) — job-acceptance ack sibling paragraph.
+  // At `packet-offered` the player's tap on `#job-offer-<jobId>`
+  // stamps `state.interaction.lastAction === "mloop-<action>:<jobId>"`
+  // (pinned by `aftersign/e2e/kiosk-interaction-loop.playtest.spec.ts`
+  // and `mloop-job-copy-played.spec.ts`). Read the jobId off that axis
+  // and stamp the authored ack line into `#jobTakeAckLine` right after
+  // `#line`. Off-beat or no matching lastAction → the writer clears
+  // the paragraph, so a stale ack never leaks into another beat.
+  //
+  // We do NOT overwrite `#line` — its textContent is contract-owned by
+  // the beat dialogue table in `ioRecognitionDialogue.ts` (pinned by
+  // `io-phone-ready-look-sound-contract.spec.ts` on `lineText`). Same
+  // sibling discipline as `#ioSecondPacketPointer` above.
+  const isPacketOfferedBeat = state.scene.beat === "packet-offered";
+  const rawLastAction = state?.interaction?.lastAction;
+  const jobTakeMatch =
+    isPacketOfferedBeat && typeof rawLastAction === "string"
+      ? rawLastAction.match(/^mloop-[a-z0-9-]+:(job-[a-z0-9-]+)$/)
+      : null;
+  const jobTakeAckJobId = jobTakeMatch ? jobTakeMatch[1] : null;
+  stampJobAcceptedLine(
+    document,
+    jobTakeAckJobId,
+    jobTakeAckJobId ? aftersignJobAcceptedLine(jobTakeAckJobId) : "",
   );
   // PR #1715 (#1714) — Io ledger copy contract, wired to the two
   // beats where Io names the ledger-facing fact:

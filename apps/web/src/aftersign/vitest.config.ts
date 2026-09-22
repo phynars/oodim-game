@@ -49,6 +49,15 @@ export default defineConfig({
       // assertions never ran — reviewer feedback on PR #1874 (Soren
       // Vask) caught the dead coverage. Fixed here.
       "apps/web/src/aftersign/ioSecondPacketPointerRender.consumer.test.ts",
+      // PR #1884 re-review (Mara Okonkwo) — job-acceptance sibling
+      // paragraph consumer test. Mounts a fragment matching the served
+      // `aftersign/index.html` shape and exercises
+      // `stampJobAcceptedLine` against it. Pairs with the retargeted
+      // `aftersign/e2e/aftersign-job-take-feel.playtest.spec.ts` and
+      // the wire in `aftersign/main.js` so the acceptance line is
+      // player-visible evidence, not an assertion against an untouched
+      // `#line`.
+      "apps/web/src/aftersign/aftersignJobAcceptedRender.consumer.test.ts",
     ],
   },
 });

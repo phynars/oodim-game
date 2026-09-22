@@ -67,9 +67,8 @@ const JOB_TAKE_FEEL_STAMP = {
 // its own unit tests red first; the served renderer keys on the
 // same table so this locator stays canonical.
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
+const SAFE_DELIVERY_JOB_ID = "job-safe-delivery";
 const SAFE_DELIVERY_ACTION_ID = "mloop-safe-delivery-take";
-const JOB_ACCEPTED_LINE =
-  "Marked: Safe delivery. Take the route you chose — I will keep the return open.";
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
