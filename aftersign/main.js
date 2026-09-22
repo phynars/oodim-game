@@ -411,17 +411,23 @@ import {
 // node the selector matches, the coupling timer stamps
 // `state._runtime.audio.lastCue = "io-return-action"`, e2e reads it.
 //
-// PR #1885 iter-6 (Soren's REQUEST_CHANGES on the silent audio
-// callback): the callback now (1) BEAT-GATES on
-// `state.scene?.beat === "io-return-recognition"` so a stale target
-// attribute on a repurposed button can't fire the cue on an off-beat
-// tap (AI007); (2) stamps `state._runtime.audio.lastCue` FIRST — the
-// pre-unlock write survives autoplay-suspended AudioContext, matching
-// the sibling `playFailureStingAudio` / `playJobOfferConfirm`
-// discipline; (3) THEN schedules a REAL 165Hz triangle-wave burst
-// via `playIoReturnActionAudio()` — that's the tone the player hears.
-// Prior iterations only wrote the marker and shipped a silent "audio
-// feedback" — the whole point of this PR is a played sound.
+// PR #1885 iter-7 (Soren's REQUEST_CHANGES on iter-6's beat-gate,
+// AI008): the callback (1) stamps `state._runtime.audio.lastCue`
+// FIRST — the pre-unlock write survives autoplay-suspended
+// AudioContext, matching the sibling `playFailureStingAudio` /
+// `playJobOfferConfirm` discipline; (2) THEN schedules a REAL 165Hz
+// triangle-wave burst via `playIoReturnActionAudio()` — that's the
+// tone the player hears. NO beat-gate inside the audio callback:
+// `choose(choiceId)` fires SYNCHRONOUSLY on `pointerup` inside the
+// input adapter (see `aftersign/src/runtime/inputAdapters.js`), so
+// by the time the 28ms coupling timer runs, `state.scene.beat` has
+// already advanced past `io-return-recognition` — a beat-gate that
+// samples at-fire (not at-arm) would always reject the cue. The
+// real off-beat guard is the tag teardown in the return-tone-choice
+// branch below: deleting `dataset.ioReturnActionFeedbackTarget` from
+// every participating button when we leave the recognition beat
+// makes the document-scoped selector match nothing, so the callback
+// never runs on a stale/repurposed button in the first place.
 let __ioReturnActionFeedbackArmed = false;
 const armIoReturnActionFeedbackOnce = () => {
   if (__ioReturnActionFeedbackArmed) return;
@@ -433,22 +439,18 @@ const armIoReturnActionFeedbackOnce = () => {
       }
     },
     audio: () => {
-      // Beat-gate — AI007. A tag stamped at the recognition branch
-      // (see the offer-render loop below) is NOT cleared on every
-      // repurposing branch; a subsequent tap on `deliverButton`
-      // (now labeled "Ask for next job") shouldn't fire the
-      // return-action cue. If we're no longer at the recognition
-      // beat, the cue is stale by construction — silently drop it.
-      const currentBeat =
-        state && state.scene && typeof state.scene.beat === "string"
-          ? state.scene.beat
-          : null;
-      if (currentBeat !== "io-return-recognition") return;
-
       // Story-level cue write FIRST — same shape as
       // `playFailureStingAudio` / `playJobOfferConfirm` — survives
       // autoplay-suspended AudioContext so the e2e contract lands
       // even when the browser is silent (headless CI, muted tab).
+      //
+      // No beat-gate here (iter-7, AI008). `choose()` fires
+      // synchronously on `pointerup` — by the time this 28ms timer
+      // runs, the beat has already advanced past the recognition
+      // beat, so an at-fire beat-gate would always drop the cue.
+      // Off-beat protection lives in the tag teardown on the tone-
+      // choice branch below: no matching selector → this callback
+      // never runs on a repurposed button.
       state._runtime = state._runtime || {};
       state._runtime.audio = state._runtime.audio || {};
       state._runtime.audio.lastCue = IO_RETURN_ACTION_AUDIO.cue;
@@ -2660,8 +2662,8 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
     armIoReturnActionFeedbackOnce();
   } else if (isReturnToneChoiceBeat) {
-    // PR #1885 iter-6 (Soren AI007) — off-beat teardown. The
-    // recognition branch above stamps
+    // PR #1885 iter-7 (Soren AI008) — off-beat teardown. THE
+    // off-beat guard. The recognition branch above stamps
     // `dataset.ioReturnActionFeedbackTarget = ""` on all three
     // return-action buttons. When the beat advances to the tone-
     // choice beat, `deliverButton` gets REPURPOSED to
@@ -2669,9 +2671,13 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     // let an off-beat tap fire the return-action cue.  Delete the
     // tag from every participating button as we leave the
     // recognition beat.  The document-level listener won't match
-    // any node once the selector is empty, so the callback (and
-    // its beat guard) never runs on the wrong beat.  Belt and
-    // braces: the audio callback ALSO checks `state.scene.beat`.
+    // any node once the selector is empty, so the callback never
+    // runs on the wrong beat.  (Iter-6 also carried a beat-gate
+    // inside the audio callback; Soren removed it in iter-7 —
+    // `choose()` fires synchronously on pointerup, so the beat has
+    // already advanced past `io-return-recognition` by the time
+    // the 28ms coupling timer samples it. Sample-at-fire and the
+    // gate self-defeats. This teardown IS the guard.)
     for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
       delete button.dataset.ioReturnActionFeedbackTarget;
     }
