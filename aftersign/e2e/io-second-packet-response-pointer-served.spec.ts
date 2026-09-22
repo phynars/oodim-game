@@ -37,7 +37,19 @@ import {
 } from "../../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-const WAIT_MS = 10_000;
+// Per-locator visibility budget. This spec walks a full played round
+// (packet-offered → packet-choice → packet-delivered →
+// io-return-recognition → return-tone-choice → io-next-job → pointer
+// commit → next packet-offered → SECOND played round → io-next-job →
+// `page.reload()` cold boot → io-next-job). Under SwiftShader the
+// initial goto cold boot alone can approach 30s; the reload pays a
+// second cold boot on top. The aftersign e2e convention is 60_000
+// (see the WAIT_MS declaration in every sibling spec in this dir,
+// e.g. `io-second-packet-copy-tap-playtest.spec.ts:6`). A prior
+// value of 10_000 red-ed CI at `waitForReady`'s `waitForFunction`
+// clipping the cold-boot budget before the per-test wall-clock
+// override even mattered.
+const WAIT_MS = 60_000;
 
 type ReturnReason = "kind" | "evasive" | "blunt";
 
