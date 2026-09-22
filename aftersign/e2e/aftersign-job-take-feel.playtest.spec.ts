@@ -1,5 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// PR #1884 re-review (Mara Okonkwo) — the acceptance-line assertion
+// below is played evidence, not a hard-coded string: it reads from
+// the same authored copy module the served renderer uses
+// (`aftersignJobAcceptedCopy.js`). If a designer rewords the line
+// there, this spec follows automatically; if the wire in
+// `aftersign/main.js` drops the `stampJobAcceptedLine` call, the
+// `#jobTakeAckLine` locator disappears and this spec reds.
+import { aftersignJobAcceptedLine } from "../../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
+
 // AFTERSIGN aftersign-job-take FEEL trip-wire — played, not driven.
 //
 // SCOPE. Where the sibling `job-offers-played.spec.ts` pins DIVERGENCE
@@ -219,9 +228,23 @@ test.describe("AFTERSIGN aftersign-job-take feel (phone tap)", () => {
     // STORY/STATE CONTRACT — the tap must visibly acknowledge the
     // player's selected job, rather than writing only to the hidden
     // action ledger. This is played evidence: the assertion observes
-    // the rendered line after a phone tap, never a harness input call.
-    await expect(page.locator("#line")).toHaveText(JOB_ACCEPTED_LINE, {
-      timeout: WAIT_MS,
-    });
+    // the rendered `#jobTakeAckLine` sibling paragraph the served
+    // renderer stamps after a phone tap, never a harness input call.
+    //
+    // `#line` is deliberately NOT the target — its textContent is
+    // owned by the beat dialogue table in `ioRecognitionDialogue.ts`
+    // (pinned by `io-phone-ready-look-sound-contract.spec.ts`). The
+    // acceptance line is a SIBLING paragraph (same discipline as
+    // `#ioSecondPacketPointer` from PR #1874), stamped by
+    // `stampJobAcceptedLine` in `aftersign/main.js`'s `renderText()`.
+    const jobAcceptedLine = aftersignJobAcceptedLine(SAFE_DELIVERY_JOB_ID);
+    await expect(page.locator("#jobTakeAckLine")).toHaveText(
+      jobAcceptedLine,
+      { timeout: WAIT_MS },
+    );
+    await expect(page.locator("#jobTakeAckLine")).toHaveAttribute(
+      "data-aftersign-job-take-ack",
+      SAFE_DELIVERY_JOB_ID,
+    );
   });
 });
