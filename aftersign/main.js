@@ -396,7 +396,39 @@ import {
 }
 
 import { playIoReturnLineFeedback } from "./src/ioReturnLineFeedback.js";
-import { attachIoReturnActionFeedback } from "./src/ioReturnActionFeedback.js";
+import { armIoReturnActionFeedback } from "./src/ioReturnActionFeedback.js";
+
+// PR #1885 (Soren, AI008): the return-action fork re-renders every
+// frame — its button nodes get REPLACED, so any listener bound to a
+// specific node dies with it. Arm the tactile feedback ONCE on the
+// document (a truly stable ancestor) and match participating buttons
+// by data-attribute. Node replacement across re-render is now
+// invisible to the gesture: `pointerup` fires on whichever fresh
+// node the selector matches, the coupling timer stamps
+// `state._runtime.audio.lastCue = "io-return-action"`, e2e reads it.
+let __ioReturnActionFeedbackArmed = false;
+const armIoReturnActionFeedbackOnce = () => {
+  if (__ioReturnActionFeedbackArmed) return;
+  if (typeof document === "undefined") return;
+  armIoReturnActionFeedback(document, {
+    haptic: () => {
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(28);
+      }
+    },
+    audio: () => {
+      // The pinned e2e contract (`state._runtime.audio.lastCue`)
+      // MUST land unconditionally. No `typeof`-guarded calls to
+      // symbols this file doesn't import — those are dead branches
+      // (PR #1885, Soren AI004) that hid the real wiring gap.
+      state._runtime = state._runtime || {};
+      state._runtime.audio = state._runtime.audio || {};
+      state._runtime.audio.lastCue = "io-return-action";
+      state._runtime.audio.lastCueAt = performance.now();
+    },
+  });
+  __ioReturnActionFeedbackArmed = true;
+};
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
@@ -2582,44 +2614,17 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       IO_RETURN_TONE_OPTIONS[1].id; // "evasive"
     deliverButton.dataset.returnReason =
       IO_RETURN_TONE_OPTIONS[2].id; // "blunt"
-    // The player has arrived at Io's return fork: install tactile feedback
-    // before any click can advance the beat. Re-rendering is frame-driven,
-    // so we guard against churning listeners every frame — attach ONCE
-    // per button DOM identity, and let the module's detach only run when
-    // the button is genuinely being replaced. Critically, the module's
-    // detach no longer cancels the in-flight 28ms coupling timer
-    // (PR #1885, Soren's REQUEST_CHANGES): the tap already happened, the
-    // cue is a promise to the player, and must survive re-render frames.
+    // The player has arrived at Io's return fork. Tag every
+    // return-action button with the data-attribute the document-
+    // scoped feedback listener matches. Node replacement across
+    // beat re-renders no longer breaks the wiring — a fresh node
+    // still carries the attribute, still gets picked up by the
+    // capture-phase pointerup on `document`, and still stamps the
+    // 28ms coupling cue (PR #1885, Soren AI008).
     for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
-      if (button["__ioReturnActionFeedbackArmed"]) continue;
-      button["__ioReturnActionFeedbackCleanup"]?.();
-      button["__ioReturnActionFeedbackCleanup"] = attachIoReturnActionFeedback(button, {
-        haptic: () => {
-          if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-            navigator.vibrate(28);
-          }
-        },
-        audio: () => {
-          // PR #1885 (Soren, second REQUEST_CHANGES): the enclosing
-          // module dropped the try/catch that was hiding failures in
-          // this callback. Order writes DEFENSIVELY so the pinned
-          // contract (`state._runtime.audio.lastCue`) lands before
-          // any optional side effect that could throw:
-          //   1. ensure the `_runtime.audio` container exists,
-          //   2. stamp `lastCue` + `lastCueAt` (what the e2e reads),
-          //   3. THEN invoke the mark/kiosk helpers, guarded by
-          //      typeof so an out-of-scope symbol can't ReferenceError
-          //      before the cue-stamp writes are visible.
-          state._runtime = state._runtime || {};
-          state._runtime.audio = state._runtime.audio || {};
-          state._runtime.audio.lastCue = "io-return-action";
-          state._runtime.audio.lastCueAt = performance.now();
-          if (typeof markStateDirty === "function") markStateDirty();
-          if (typeof playKioskConfirm === "function") void playKioskConfirm();
-        },
-      });
-      button["__ioReturnActionFeedbackArmed"] = true;
+      button.dataset.ioReturnActionFeedbackTarget = "";
     }
+    armIoReturnActionFeedbackOnce();
   } else if (isReturnToneChoiceBeat) {
     setTextContentIfChanged(deliverButton, "Ask for next job");
     stampAftersignChoice(deliverButton, "ask-for-next-job");
