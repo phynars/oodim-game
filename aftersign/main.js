@@ -334,6 +334,7 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 import { ioOfferHeading } from "./src/ioLoopCopy.js";
+import { ioJobAcceptedLine } from "./src/ioJobAcceptedCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
 // served page as a SIBLING paragraph next to `#line`. Same shape as
 // the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
@@ -2386,6 +2387,11 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // action id (memory-gated) as the head.
             state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;
             state.interaction.confirmCount += 1;
+            // A job selection must answer the player's tap on the served
+            // dialogue surface, not only mutate the invisible action ledger.
+            // The selected offer remains visible below as the route receipt.
+            state.npcs.io.lastLine = ioJobAcceptedLine(offer.label);
+            line.textContent = state.npcs.io.lastLine;
             // PR #1549 — flip the feel marker to "armed" on the
             // pressed button so the tap acknowledgment is visible
             // (dataset + refreshed vars) on the exact element the
