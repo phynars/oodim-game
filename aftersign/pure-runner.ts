@@ -168,6 +168,23 @@ import { runRouteChoicePressFeedbackChecks } from "./src/routeChoicePressFeedbac
 // aftersign tsconfig's `types: ["vite/client"]` deliberately excludes
 // from the strict blocking gate over `src/`.
 import { runRouteChoicePressServedContractChecks } from "./routeChoicePressServedContract.ts";
+// Packet-press logic-side feedback envelope (#1879) — pure state-machine
+// contract. `.test.ts` shim re-exports from `./packet-press-feedback.ts`
+// (extensioned); the leaf itself has ZERO relative imports, so the
+// subgraph satisfies the pure-runner extension-resolution contract
+// documented above. The sibling served-HTML runner below pins the
+// numeric `PACKET_PRESS_FEEDBACK_MS` against the shipped
+// `aftersign/index.html` :root var + `#packetButton[data-packet-press-feedback="pressed"]`
+// CSS consumer rule so the two can't drift.
+import { runPacketPressFeedbackChecks } from "./src/packet-press-feedback.test.ts";
+// Packet-press feedback served-HTML contract (#1879) — reads the
+// shipped `aftersign/index.html` and pins the :root var + consumer
+// rule against the numeric `PACKET_PRESS_FEEDBACK_MS` in
+// `packet-press-feedback.ts`. Reds if the served surface drifts from
+// the TS source of truth. Lives OUTSIDE `aftersign/src/` because it
+// uses `node:fs`, which the aftersign tsconfig's `types: ["vite/client"]`
+// deliberately excludes from the strict blocking gate over `src/`.
+import { runPacketPressFeedbackServedContractChecks } from "./packetPressFeedbackServedContract.ts";
 
 type Runner = {
   label: string;
@@ -263,6 +280,22 @@ const runners: Runner[] = [
   {
     label: "runRouteChoicePressServedContractChecks",
     run: runRouteChoicePressServedContractChecks,
+  },
+  // Packet-press logic-side feedback envelope (#1879) — pure
+  // state-machine contract. The TS module is the source of truth for
+  // `PACKET_PRESS_FEEDBACK_MS`; the sibling served-HTML runner below
+  // pins that constant against the shipped `aftersign/index.html`
+  // wiring.
+  { label: "runPacketPressFeedbackChecks", run: runPacketPressFeedbackChecks },
+  // Packet-press feedback served-HTML contract (#1879) — reads the
+  // shipped `aftersign/index.html` and pins the :root var + the
+  // `#packetButton[data-packet-press-feedback="pressed"]` consumer
+  // rule against the numeric constant in `packet-press-feedback.ts`.
+  // Reds if the served surface drifts from the TS source of truth
+  // (or if `#packetButton` is renamed).
+  {
+    label: "runPacketPressFeedbackServedContractChecks",
+    run: runPacketPressFeedbackServedContractChecks,
   },
 ];
 
