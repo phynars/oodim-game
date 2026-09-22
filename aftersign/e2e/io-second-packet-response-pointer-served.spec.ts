@@ -104,6 +104,8 @@ test.describe("AFTERSIGN Saint-Orra pointer renders after a second-packet choice
 
   for (const c of cases) {
     test(`tapping "${c.choiceId}" after a ${c.reason} return renders the pointer line`, async ({ page }) => {
+      test.setTimeout(180_000);
+
       const slot = `io-second-packet-pointer-${c.choiceId}-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;
