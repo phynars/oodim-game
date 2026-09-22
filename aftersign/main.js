@@ -396,6 +396,7 @@ import {
 }
 
 import { playIoReturnLineFeedback } from "./src/ioReturnLineFeedback.js";
+import { attachIoReturnActionFeedback } from "./src/ioReturnActionFeedback.js";
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
@@ -2581,6 +2582,25 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       IO_RETURN_TONE_OPTIONS[1].id; // "evasive"
     deliverButton.dataset.returnReason =
       IO_RETURN_TONE_OPTIONS[2].id; // "blunt"
+    // The player has arrived at Io's return fork: install tactile feedback
+    // before any click can advance the beat. Re-rendering is frame-driven,
+    // so each button stores and clears its prior listener bundle first.
+    for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
+      button["__ioReturnActionFeedbackCleanup"]?.();
+      button["__ioReturnActionFeedbackCleanup"] = attachIoReturnActionFeedback(button, {
+        haptic: () => {
+          if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+            navigator.vibrate(28);
+          }
+        },
+        audio: () => {
+          state._runtime.audio.lastCue = "io-return-action";
+          state._runtime.audio.lastCueAt = performance.now();
+          markStateDirty();
+          void playKioskConfirm();
+        },
+      });
+    }
   } else if (isReturnToneChoiceBeat) {
     setTextContentIfChanged(deliverButton, "Ask for next job");
     stampAftersignChoice(deliverButton, "ask-for-next-job");
