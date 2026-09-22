@@ -102,6 +102,20 @@ test.describe("AFTERSIGN two-save tappable divergence (served page)", () => {
     await waitForBeat(page, "io-next-job");
     await tap(page, 'button[data-choice-id="deliver-packet"]');
     await waitForBeat(page, "packet-offered");
-    expect(await readOfferedActions(page)).toEqual(completed);
+    const reloaded = await readOfferedActions(page);
+    expect(reloaded).toEqual(completed);
+
+    // M2 criterion 4 says "REPEAT loading the same starting record" — so
+    // prove load-vs-load equality, not only live-vs-load: a second cold
+    // boot of the same durable slot must render identical offers and copy.
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "io-next-job");
+    await tap(page, 'button[data-choice-id="deliver-packet"]');
+    await waitForBeat(page, "packet-offered");
+    expect(
+      await readOfferedActions(page),
+      "two cold loads of the completed durable record must render identical offers and copy",
+    ).toEqual(reloaded);
   });
 });
