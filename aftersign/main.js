@@ -2031,23 +2031,41 @@ const renderText = () => {
     pointerChoiceId,
     pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
   );
-  // PR #1884 re-review (Mara) — job-acceptance ack sibling paragraph.
-  // At `packet-offered` the player's tap on `#job-offer-<jobId>`
+  // PR #1884 re-review (Mara Okonkwo, AI008) — job-acceptance ack
+  // sibling paragraph.
+  //
+  // The player's tap on `#job-offer-<jobId>` at `packet-offered`
   // stamps `state.interaction.lastAction === "mloop-<action>:<jobId>"`
   // (pinned by `aftersign/e2e/kiosk-interaction-loop.playtest.spec.ts`
-  // and `mloop-job-copy-played.spec.ts`). Read the jobId off that axis
-  // and stamp the authored ack line into `#jobTakeAckLine` right after
-  // `#line`. Off-beat or no matching lastAction → the writer clears
-  // the paragraph, so a stale ack never leaks into another beat.
+  // and `mloop-job-copy-played.spec.ts`). Mara's REQUEST_CHANGES:
+  // per `docs/plan/product-plan.md:116`, the offer callback "records
+  // `lastAction`, increments confirmation count, plays feedback, and
+  // publishes state. It does not itself advance the beat" — but the
+  // beat DOES then advance out of `packet-offered` (see
+  // `aftersign/e2e/aftersign-job-offer-action-feel.playtest.spec.ts:81`,
+  // "The tap advances the beat out of `packet-offered`"). A previous
+  // draft of this render gated on `state.scene.beat === "packet-offered"`,
+  // so the very first post-tap `renderText()` frame that sees the
+  // new beat cleared `#jobTakeAckLine` — the ack could never land as
+  // player-visible evidence. Same class of AI008 defect the reviewer
+  // called out.
+  //
+  // Fix: gate on the `lastAction` FORMAT, not the beat. The regex
+  // `/^mloop-[a-z0-9-]+:(job-[a-z0-9-]+)$/` matches only the shipped
+  // job-take action-id shape stamped by the offer callback. Any other
+  // action-id (return-tone, second-packet accept, deliver) misses the
+  // regex → paragraph cleared. So the ack lands on the tap that set
+  // `lastAction`, persists across the beat advance the same tap
+  // triggers, and is torn down the next time the player commits any
+  // non-job-take action — no stale leak, no beat-timing dependency.
   //
   // We do NOT overwrite `#line` — its textContent is contract-owned by
   // the beat dialogue table in `ioRecognitionDialogue.ts` (pinned by
   // `io-phone-ready-look-sound-contract.spec.ts` on `lineText`). Same
   // sibling discipline as `#ioSecondPacketPointer` above.
-  const isPacketOfferedBeat = state.scene.beat === "packet-offered";
   const rawLastAction = state?.interaction?.lastAction;
   const jobTakeMatch =
-    isPacketOfferedBeat && typeof rawLastAction === "string"
+    typeof rawLastAction === "string"
       ? rawLastAction.match(/^mloop-[a-z0-9-]+:(job-[a-z0-9-]+)$/)
       : null;
   const jobTakeAckJobId = jobTakeMatch ? jobTakeMatch[1] : null;

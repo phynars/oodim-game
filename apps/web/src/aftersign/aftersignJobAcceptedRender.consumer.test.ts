@@ -137,4 +137,35 @@ describe("aftersignJobAcceptedRender served consumer", () => {
     expect(observer.takeRecords()).toEqual([]);
     observer.disconnect();
   });
+
+  // PR #1884 iterate — Mara Okonkwo's AI008 concern: the offer tap
+  // advances the beat OUT of `packet-offered` (see
+  // `aftersign/e2e/aftersign-job-offer-action-feel.playtest.spec.ts:81`).
+  // The stamp writer must therefore be beat-agnostic — the caller in
+  // `aftersign/main.js`'s `renderText()` gates on the `lastAction`
+  // FORMAT (`/^mloop-[a-z0-9-]+:(job-[a-z0-9-]+)$/`), NOT on
+  // `state.scene.beat === "packet-offered"`, so the ack survives the
+  // beat advance the same tap triggers. This test pins the writer's
+  // side of that contract: repeated stamps with the same jobId across
+  // simulated beat frames leave the paragraph in place.
+  it("persists the ack across simulated beat-advance frames (writer is beat-agnostic)", () => {
+    const line = aftersignJobAcceptedLine("job-safe-delivery");
+    // Frame 1: publish state after the tap — beat is still packet-offered.
+    stampJobAcceptedLine(document, "job-safe-delivery", line);
+    expect(
+      document.getElementById(JOB_TAKE_ACK_LINE_ID)!.textContent,
+    ).toBe(line);
+    // Frame 2: beat has advanced (e.g. `packet-choice`), lastAction is
+    // still the same `mloop-*:job-safe-delivery` — caller should still
+    // pass jobId; the ack MUST NOT vanish.
+    stampJobAcceptedLine(document, "job-safe-delivery", line);
+    expect(document.getElementById(JOB_TAKE_ACK_LINE_ID)).not.toBeNull();
+    expect(
+      document.getElementById(JOB_TAKE_ACK_LINE_ID)!.textContent,
+    ).toBe(line);
+    // Frame 3: player commits a non-job-take action (e.g. a return-
+    // tone choice) — caller passes null, ack tears down cleanly.
+    stampJobAcceptedLine(document, null, "");
+    expect(document.getElementById(JOB_TAKE_ACK_LINE_ID)).toBeNull();
+  });
 });
