@@ -423,6 +423,10 @@ import { PACKET_CHOICE_AFFORDANCE } from "./src/packetChoiceAffordance.js";
 // controller's outcome enum — so the served preview seam lives on
 // its own axis and the commit path stays typed to SEALED/OPENED.
 import { applyPacketPreviewFeedback } from "../apps/web/src/aftersign/packetPreviewFeedback.js";
+import {
+  advancePacketPressFeedback,
+  beginPacketPressFeedback,
+} from "./src/packet-press-feedback.ts";
 // #1701 draft 3 (Soren's REQUEST_CHANGES on draft 2) — the feel-side
 // judge is what ACTUALLY drives the served-page PREVIEWED stamp. The
 // pure `packetIntent.release(...)` path stays typed to SEALED/OPENED
@@ -627,6 +631,32 @@ const ioLedgerLine = document.querySelector("#ioLedgerLine");
 const stateReadout = document.querySelector("#stateReadout");
 const failureSting = document.querySelector(".failure-sting");
 const packetButton = document.querySelector("#packetButton");
+let packetPressFeedback = { isPressed: false, releaseAtMs: null };
+let packetPressFeedbackFrame = null;
+
+const renderPacketPressFeedback = () => {
+  if (!packetButton) return;
+  packetButton.dataset.packetPressFeedback = packetPressFeedback.isPressed ? "pressed" : "idle";
+};
+
+const tickPacketPressFeedback = (nowMs) => {
+  packetPressFeedback = advancePacketPressFeedback(packetPressFeedback, nowMs);
+  renderPacketPressFeedback();
+  if (packetPressFeedback.isPressed) {
+    packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
+  } else {
+    packetPressFeedbackFrame = null;
+  }
+};
+
+const playPacketPressFeedback = () => {
+  packetPressFeedback = beginPacketPressFeedback(performance.now());
+  renderPacketPressFeedback();
+  if (packetPressFeedbackFrame === null) {
+    packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
+  }
+};
+
 // #1563 — stamp the idle label + hint on the packet button at boot,
 // before any tap. `applyPacketButtonCopy` is null-safe, so a jsdom
 // mount without this button (unit-test harness) is a no-op.
@@ -2692,6 +2722,7 @@ const publishPacketIntentEvaluation = () => {
 };
 
 const packetPress = (input) => {
+  playPacketPressFeedback();
   lastHadTargetMs = null;
   targetLossFirstFramePending = false;
   if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
