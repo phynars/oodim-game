@@ -334,6 +334,7 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 import { ioOfferHeading } from "./src/ioLoopCopy.js";
+import { ioJobAcceptedLine } from "./src/ioJobAcceptedCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
 // served page as a SIBLING paragraph next to `#line`. Same shape as
 // the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
@@ -2386,6 +2387,39 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // action id (memory-gated) as the head.
             state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;
             state.interaction.confirmCount += 1;
+            // A job selection must answer the player's tap on the served
+            // dialogue surface. `#line.textContent` and `state.npcs.io.lastLine`
+            // are OWNED by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
+            // at the recognition beat (pinned by
+            // `io-phone-ready-look-sound-contract.spec.ts` + `flagship-surface-contract.spec.ts:514`
+            // + `flagship-reload-beat-regression.spec.ts:128`), so we DO NOT
+            // overwrite them here. Same shape as the `#ioConsequenceLine` /
+            // `#ioReturnLine` seams above: stamp the selected job-accept
+            // literal into ITS OWN sibling paragraph inside `#offeredJobs`,
+            // keyed on the offer id. Ivy's REQUEST_CHANGES on PR #1883 —
+            // AI008 (unverified runtime premise: overwriting a
+            // contract-pinned field) + AI001 (no played spec). The
+            // per-jobId paragraph is idempotent — the same jobId re-tap
+            // updates the existing node instead of appending a duplicate.
+            {
+              const acceptedLineText = ioJobAcceptedLine(offer.label);
+              const offeredJobsRoot =
+                document.getElementById("offeredJobs") ||
+                (typeof offeredJobs !== "undefined" ? offeredJobs : null);
+              if (offeredJobsRoot) {
+                let acceptedNode = document.getElementById("ioJobAcceptedLine");
+                if (!acceptedNode) {
+                  acceptedNode = document.createElement("p");
+                  acceptedNode.id = "ioJobAcceptedLine";
+                  offeredJobsRoot.appendChild(acceptedNode);
+                }
+                acceptedNode.setAttribute(
+                  "data-aftersign-io-job-accepted-line",
+                  offer.id,
+                );
+                acceptedNode.textContent = acceptedLineText;
+              }
+            }
             // PR #1549 — flip the feel marker to "armed" on the
             // pressed button so the tap acknowledgment is visible
             // (dataset + refreshed vars) on the exact element the
