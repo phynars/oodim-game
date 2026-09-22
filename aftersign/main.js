@@ -2600,10 +2600,22 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           }
         },
         audio: () => {
+          // PR #1885 (Soren, second REQUEST_CHANGES): the enclosing
+          // module dropped the try/catch that was hiding failures in
+          // this callback. Order writes DEFENSIVELY so the pinned
+          // contract (`state._runtime.audio.lastCue`) lands before
+          // any optional side effect that could throw:
+          //   1. ensure the `_runtime.audio` container exists,
+          //   2. stamp `lastCue` + `lastCueAt` (what the e2e reads),
+          //   3. THEN invoke the mark/kiosk helpers, guarded by
+          //      typeof so an out-of-scope symbol can't ReferenceError
+          //      before the cue-stamp writes are visible.
+          state._runtime = state._runtime || {};
+          state._runtime.audio = state._runtime.audio || {};
           state._runtime.audio.lastCue = "io-return-action";
           state._runtime.audio.lastCueAt = performance.now();
-          markStateDirty();
-          void playKioskConfirm();
+          if (typeof markStateDirty === "function") markStateDirty();
+          if (typeof playKioskConfirm === "function") void playKioskConfirm();
         },
       });
       button["__ioReturnActionFeedbackArmed"] = true;

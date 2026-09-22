@@ -41,9 +41,17 @@ export const attachIoReturnActionFeedback = (button, cues = {}) => {
     button.dataset.ioReturnActionFeedback = "released";
     // Fire-and-forget: not cancellable on detach. The tap already
     // happened; the cue must survive an intervening re-render.
+    //
+    // PR #1885 (Soren, second REQUEST_CHANGES): NO try/catch here.
+    // The prior draft swallowed errors from `cues.audio?.()`, which
+    // hid the real failure (`state._runtime.audio` undefined, or an
+    // out-of-scope helper) and left the e2e hanging on the cue poll
+    // with no diagnostic. If a cue callback throws, the console
+    // shows the true stack — that's the debugging surface we need.
+    // Callers own their own safety inside the callback.
     setTimeout(() => {
-      try { cues.haptic?.(); } catch { /* optional tactile cue */ }
-      try { cues.audio?.(); } catch { /* optional audio cue */ }
+      cues.haptic?.();
+      cues.audio?.();
     }, IO_RETURN_ACTION_FEEL.couplingDelayMs);
   };
 
