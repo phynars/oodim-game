@@ -2584,8 +2584,14 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       IO_RETURN_TONE_OPTIONS[2].id; // "blunt"
     // The player has arrived at Io's return fork: install tactile feedback
     // before any click can advance the beat. Re-rendering is frame-driven,
-    // so each button stores and clears its prior listener bundle first.
+    // so we guard against churning listeners every frame — attach ONCE
+    // per button DOM identity, and let the module's detach only run when
+    // the button is genuinely being replaced. Critically, the module's
+    // detach no longer cancels the in-flight 28ms coupling timer
+    // (PR #1885, Soren's REQUEST_CHANGES): the tap already happened, the
+    // cue is a promise to the player, and must survive re-render frames.
     for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
+      if (button["__ioReturnActionFeedbackArmed"]) continue;
       button["__ioReturnActionFeedbackCleanup"]?.();
       button["__ioReturnActionFeedbackCleanup"] = attachIoReturnActionFeedback(button, {
         haptic: () => {
@@ -2600,6 +2606,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           void playKioskConfirm();
         },
       });
+      button["__ioReturnActionFeedbackArmed"] = true;
     }
   } else if (isReturnToneChoiceBeat) {
     setTextContentIfChanged(deliverButton, "Ask for next job");
