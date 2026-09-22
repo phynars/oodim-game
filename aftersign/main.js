@@ -89,6 +89,19 @@ import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCop
 // state below. The accepted-choice path owns both; renderText projects them.
 import { ioSecondPacketResponseLine as selectIoSecondPacketPointerLine } from "./src/ioSecondPacketResponseVoice.ts";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
+// PR #1884 re-review (Mara Okonkwo) — Io's job-acceptance line, wired
+// into the served page as a SIBLING paragraph next to `#line` (same
+// discipline as `#ioSecondPacketPointer` above and `#ioReturnLine` /
+// `#ioConsequenceLine` further down). `renderText()` reads
+// `state.interaction.lastAction` at the `packet-offered` beat, matches
+// the shipped `mloop-*:job-*` format, and stamps the authored ack
+// line for that jobId into `<p id="jobTakeAckLine">`. Off-beat the
+// paragraph is removed so a stale ack never lingers under a
+// different beat. Sibling e2e
+// `aftersign/e2e/aftersign-job-take-feel.playtest.spec.ts` real-taps
+// the safe-delivery offer and pins the stamped line + jobId axis.
+import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
+import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -2018,6 +2031,49 @@ const renderText = () => {
     document,
     pointerChoiceId,
     pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
+  );
+  // PR #1884 re-review (Mara Okonkwo, AI008) — job-acceptance ack
+  // sibling paragraph.
+  //
+  // The player's tap on `#job-offer-<jobId>` at `packet-offered`
+  // stamps `state.interaction.lastAction === "mloop-<action>:<jobId>"`
+  // (pinned by `aftersign/e2e/kiosk-interaction-loop.playtest.spec.ts`
+  // and `mloop-job-copy-played.spec.ts`). Mara's REQUEST_CHANGES:
+  // per `docs/plan/product-plan.md:116`, the offer callback "records
+  // `lastAction`, increments confirmation count, plays feedback, and
+  // publishes state. It does not itself advance the beat" — but the
+  // beat DOES then advance out of `packet-offered` (see
+  // `aftersign/e2e/aftersign-job-offer-action-feel.playtest.spec.ts:81`,
+  // "The tap advances the beat out of `packet-offered`"). A previous
+  // draft of this render gated on `state.scene.beat === "packet-offered"`,
+  // so the very first post-tap `renderText()` frame that sees the
+  // new beat cleared `#jobTakeAckLine` — the ack could never land as
+  // player-visible evidence. Same class of AI008 defect the reviewer
+  // called out.
+  //
+  // Fix: gate on the `lastAction` FORMAT, not the beat. The regex
+  // `/^mloop-[a-z0-9-]+:(job-[a-z0-9-]+)$/` matches only the shipped
+  // job-take action-id shape stamped by the offer callback. Any other
+  // action-id (return-tone, second-packet accept, deliver) misses the
+  // regex → paragraph cleared. So the ack lands on the tap that set
+  // `lastAction`, persists across the beat advance the same tap
+  // triggers, and is torn down the next time the player commits any
+  // non-job-take action — no stale leak, no beat-timing dependency.
+  //
+  // We do NOT overwrite `#line` — its textContent is contract-owned by
+  // the beat dialogue table in `ioRecognitionDialogue.ts` (pinned by
+  // `io-phone-ready-look-sound-contract.spec.ts` on `lineText`). Same
+  // sibling discipline as `#ioSecondPacketPointer` above.
+  const rawLastAction = state?.interaction?.lastAction;
+  const jobTakeMatch =
+    typeof rawLastAction === "string"
+      ? rawLastAction.match(/^mloop-[a-z0-9-]+:(job-[a-z0-9-]+)$/)
+      : null;
+  const jobTakeAckJobId = jobTakeMatch ? jobTakeMatch[1] : null;
+  stampJobAcceptedLine(
+    document,
+    jobTakeAckJobId,
+    jobTakeAckJobId ? aftersignJobAcceptedLine(jobTakeAckJobId) : "",
   );
   // PR #1715 (#1714) — Io ledger copy contract, wired to the two
   // beats where Io names the ledger-facing fact:
