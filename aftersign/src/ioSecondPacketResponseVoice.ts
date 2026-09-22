@@ -16,37 +16,20 @@
 //     narratively distinct from `choice.response` — different function,
 //     different rhythm (the reply acknowledges, the pointer redirects).
 //
-// Consumer contract (why this module isn't orphaned — reviewer feedback
-// on the prior draft was correct: an unconsumed file is dead on arrival):
+// Consumer contract (why this module isn't orphaned):
 //   1. `aftersign/src/ioSecondPacketResponseVoice.test.ts` — pure-lane
 //      check bundle asserting both choice ids produce distinct, non-empty
 //      pointer lines, both name "Saint Orra" (the pointer's purpose),
-//      and unknown choice ids fall back to the accept path.
+//      unknown choice ids fall back to the accept path, the table is
+//      frozen, and its keys match the sibling choice contract.
 //   2. `aftersign/pure-runner.ts` — registers the check bundle in the
 //      `test:aftersign:pure` lane, so CI reds on any drift.
-//
-// Render-site wire-in (PR #1874, addressing Soren's REQUEST_CHANGES):
-//   3. `aftersign/main.js` — imports `ioSecondPacketResponseLine`
-//      alongside the sibling `selectIoSecondPacketCopyForReturnReason`
-//      and renders the accepted choice's transient pointer via
-//      `apps/web/src/aftersign/ioSecondPacketPointerRender.ts::stampIoSecondPacketPointer`
-//      into a `<p id="ioSecondPacketPointer">` sibling paragraph
-//      right after `#line`, keyed on the two second-packet choice
-//      ids (`accept-second-packet` / `ask-what-changed`). The
-//      paragraph is a SIBLING, not a `#line` overwrite — the beat
-//      dialogue table in `ioRecognitionDialogue.ts` still owns
-//      `#line` (contract-pinned by
-//      `io-phone-ready-look-sound-contract.spec.ts` on `lineText`).
-//   4. `apps/web/src/aftersign/ioSecondPacketPointerRender.consumer.test.ts`
-//      — jsdom-mount consumer test asserting the writer inserts the
-//      sibling paragraph, matches the exact pointer literal for each
-//      choice id, and does not overwrite `#line` textContent.
-//   5. `aftersign/e2e/io-second-packet-response-pointer-served.spec.ts`
-//      — tap-driven Playwright spec that plays a phone viewport from
-//      packet-offered through `io-next-job`, then taps the two
-//      second-packet buttons and asserts the rendered pointer text +
-//      `data-aftersign-io-second-packet-pointer="<choiceId>"` land on
-//      the shipped `#ioSecondPacketPointer` element.
+//   3. `aftersign/main.js` — imports `ioSecondPacketResponseLine` at
+//      the render site and hands the result to
+//      `apps/web/src/aftersign/ioSecondPacketPointerRender.ts::stampIoSecondPacketPointer`.
+//      Because the fallback returns a non-empty accept-path pointer
+//      instead of an empty string, an unknown id still ships a
+//      meaningful pointer paragraph (never a blank `<p>`).
 
 import type { IoSecondPacketChoice } from './ioSecondPacketCopy.ts';
 
@@ -59,17 +42,26 @@ const SAINT_ORRA_POINTER: Readonly<Record<IoSecondPacketChoiceId, string>> = Obj
     'The red tag opens a door Saint Orra has kept shut. She will tell you what it costs after you carry it there.',
 });
 
+/**
+ * Public alias — the frozen pointer table itself. Kept exported so the
+ * contract test can assert freeze + key-parity against the sibling
+ * choice contract without reaching into module internals.
+ */
 export const IO_SECOND_PACKET_RESPONSE_VOICE = SAINT_ORRA_POINTER;
 
 /**
  * Return the Saint-Orra pointer line for a given second-packet
- * choice id. Unknown / non-string input falls back to the accept-path
- * pointer — the beat still fires, it just uses the more directive
- * variant (matches the sibling copy's `guarded` default philosophy).
+ * choice id. Unknown / non-string / missing input falls back to the
+ * accept-path pointer — the beat still fires, it just uses the more
+ * directive variant (matches the sibling copy's `guarded` default
+ * philosophy). Never returns an empty string, so the render site
+ * never stamps a blank `<p id="ioSecondPacketPointer">`.
  */
 export function ioSecondPacketResponseLine(choiceId: unknown): string {
-  if (typeof choiceId === 'string'
-    && Object.prototype.hasOwnProperty.call(SAINT_ORRA_POINTER, choiceId)) {
+  if (
+    typeof choiceId === 'string'
+    && Object.prototype.hasOwnProperty.call(SAINT_ORRA_POINTER, choiceId)
+  ) {
     return SAINT_ORRA_POINTER[choiceId as IoSecondPacketChoiceId];
   }
   return SAINT_ORRA_POINTER['accept-second-packet'];
