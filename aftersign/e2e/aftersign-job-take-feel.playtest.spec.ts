@@ -68,6 +68,8 @@ const JOB_TAKE_FEEL_STAMP = {
 // same table so this locator stays canonical.
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
 const SAFE_DELIVERY_ACTION_ID = "mloop-safe-delivery-take";
+const JOB_ACCEPTED_LINE =
+  "Marked: Safe delivery. Take the route you chose — I will keep the return open.";
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -214,5 +216,13 @@ test.describe("AFTERSIGN aftersign-job-take feel (phone tap)", () => {
       "data-aftersign-job-take-action",
       SAFE_DELIVERY_ACTION_ID,
     );
+
+    // STORY/STATE CONTRACT — the tap must visibly acknowledge the
+    // player's selected job, rather than writing only to the hidden
+    // action ledger. This is played evidence: the assertion observes
+    // the rendered line after a phone tap, never a harness input call.
+    await expect(page.locator("#line")).toHaveText(JOB_ACCEPTED_LINE, {
+      timeout: WAIT_MS,
+    });
   });
 });
