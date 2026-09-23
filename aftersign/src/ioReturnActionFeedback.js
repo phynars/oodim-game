@@ -3,6 +3,17 @@
 // their story commit, and unavailable haptics/audio never block that commit.
 export const IO_RETURN_ACTION_FEEL = Object.freeze({
   pressScale: 0.96,
+  // PR #1889 (Soren, REQUEST_CHANGES): a companion "press hold"
+  // module tried to add a 1px sink via a stylesheet marker, but the
+  // inline `style.transform` this module already writes on the same
+  // pointerdown WON the specificity battle — the lift never
+  // rendered. Fold the lift into the sole owner of the transform
+  // (this module), and compose it into the same inline write so
+  // there's exactly one writer for the button's transform. 1px is
+  // the same sink the sibling job-take and route-choice press
+  // envelopes ship (see aftersign/index.html --aftersign-*-lift-px).
+  pressLiftPx: 1,
+  pressTransitionMs: 48,
   releaseDurationMs: 180,
   releaseSpringStiffness: 18,
   couplingDelayMs: 28,
@@ -37,6 +48,28 @@ export const IO_RETURN_ACTION_AUDIO = Object.freeze({
 });
 
 const releaseEasing = "linear(0, 0.42 16%, 0.9 48%, 1.035 72%, 1 100%)";
+
+// PR #1889 (Soren): reduced-motion users still get the state marker
+// (so any dependent CSS keys off it correctly) but the transform
+// channel collapses — no compression paint, no lift. Same discipline
+// as the sibling job-take press envelope's @media block in index.html.
+const prefersReducedMotion = () => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_err) {
+    return false;
+  }
+};
+
+// The one composed inline transform written by this module on
+// pointerdown. Single writer of `style.transform` for these buttons —
+// PR #1889 removed a sibling module that was also writing here and
+// losing the specificity race with this one.
+const composePressTransform = () => {
+  if (prefersReducedMotion()) return "";
+  return `translateY(${IO_RETURN_ACTION_FEEL.pressLiftPx}px) scale(${IO_RETURN_ACTION_FEEL.pressScale})`;
+};
 
 // PR #1885 (Soren, AI008): the previous per-button attach was wrong
 // against a frame-driven re-render. Tap → beat advances → parent
@@ -80,8 +113,12 @@ export const armIoReturnActionFeedback = (root, cues = {}) => {
     const button = matchButton(event);
     if (!button) return;
     button.style.setProperty("--io-return-action-press-scale", String(IO_RETURN_ACTION_FEEL.pressScale));
-    button.style.transform = `scale(${IO_RETURN_ACTION_FEEL.pressScale})`;
-    button.style.transition = "transform 48ms ease-out";
+    button.style.setProperty("--io-return-action-press-lift-px", `${IO_RETURN_ACTION_FEEL.pressLiftPx}px`);
+    // Single composed transform — lift + compression together — so
+    // there is exactly one owner of style.transform for these
+    // buttons (see PR #1889 rationale on the FEEL row above).
+    button.style.transform = composePressTransform();
+    button.style.transition = `transform ${IO_RETURN_ACTION_FEEL.pressTransitionMs}ms ease-out`;
     button.dataset.ioReturnActionFeedback = "pressed";
   };
 
@@ -89,7 +126,9 @@ export const armIoReturnActionFeedback = (root, cues = {}) => {
     const button = matchButton(event);
     if (!button) return;
     button.style.transition = `transform ${IO_RETURN_ACTION_FEEL.releaseDurationMs}ms ${releaseEasing}`;
-    button.style.transform = "scale(1)";
+    // Return to identity — clears both the lift and the compression
+    // in one write; matches the single-owner discipline of pointerdown.
+    button.style.transform = prefersReducedMotion() ? "" : "translateY(0) scale(1)";
     button.dataset.ioReturnActionFeedback = "released";
     // Fire-and-forget: not cancellable on detach. The tap already
     // happened; the cue must survive an intervening re-render.
@@ -135,14 +174,15 @@ export const attachIoReturnActionFeedback = (button, cues = {}) => {
 
   const onPointerDown = () => {
     button.style.setProperty("--io-return-action-press-scale", String(IO_RETURN_ACTION_FEEL.pressScale));
-    button.style.transform = `scale(${IO_RETURN_ACTION_FEEL.pressScale})`;
-    button.style.transition = "transform 48ms ease-out";
+    button.style.setProperty("--io-return-action-press-lift-px", `${IO_RETURN_ACTION_FEEL.pressLiftPx}px`);
+    button.style.transform = composePressTransform();
+    button.style.transition = `transform ${IO_RETURN_ACTION_FEEL.pressTransitionMs}ms ease-out`;
     button.dataset.ioReturnActionFeedback = "pressed";
   };
 
   const onRelease = () => {
     button.style.transition = `transform ${IO_RETURN_ACTION_FEEL.releaseDurationMs}ms ${releaseEasing}`;
-    button.style.transform = "scale(1)";
+    button.style.transform = prefersReducedMotion() ? "" : "translateY(0) scale(1)";
     button.dataset.ioReturnActionFeedback = "released";
     setTimeout(() => {
       cues.haptic?.();
