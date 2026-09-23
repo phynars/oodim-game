@@ -591,6 +591,7 @@ import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { chooseIoLedgerLine } from "./src/ioLedgerLine.ts";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
+import { playJobOfferCommitFeedback } from "./src/jobOfferCommitFeedback.js";
 import { applyJobOfferChoiceFeedback } from "./src/jobOfferChoiceFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
@@ -2494,6 +2495,13 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // The decision lands immediately on the exact rendered button,
             // before audio unlock or persistence can defer the response.
             applyJobOfferChoiceFeedback(button, offer.routeRisk);
+            // Let the selected offer rebound once after its finger-down
+            // compression: 0.96 → 1.025 → 1 over 180ms. This is a distinct
+            // post-commit acknowledgement, so press feedback remains the
+            // transform authority while the pointer is still down.
+            playJobOfferCommitFeedback(button, {
+              reducedMotion: prefersReducedMotion(),
+            });
             // PR #1790 (Soren's REQUEST_CHANGES) — schedule the frozen
             // `JOB_OFFER_CONFIRM_AUDIO` triangle burst on the same
             // `audioContext` `playKioskConfirm` uses, from the very
