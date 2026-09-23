@@ -639,6 +639,64 @@ describe("Aftersign served surface contract", () => {
     ).toThrow();
   });
 
+  it("wires the sibling return-line tactile feedback through main.js (#1901)", () => {
+    // Blocking review on PR #1901 (Soren Vask): the earlier draft
+    // shipped a sibling `aftersign/return-line-tactile.js` alongside
+    // the existing `aftersign/src/ioReturnLineFeedback.js` writer,
+    // but exported the SAME identifier name (`playIoReturnLineFeedback`)
+    // — so main.js's named import
+    // `import { playIoReturnLineTactileFeedback } from "./return-line-tactile.js"`
+    // never resolved. Served as native ESM (`<script type="module">`),
+    // that throws `SyntaxError` at module evaluation and black-screens
+    // the game on boot; under a bundler, the identifier is `undefined`
+    // and the per-frame call inside `renderText()` reds every tick.
+    //
+    // No test caught it because the sibling module wasn't pinned —
+    // only `ioReturnLineFeedback.js` (the audio/visual sibling) had a
+    // servedSurface pin. Same shape as the tap-confirm / kiosk-scene
+    // precedents above: a writer with no shipped-import proof is dead
+    // code with green tests. Lock (a) the sibling exports the
+    // distinct name `playIoReturnLineTactileFeedback`, (b) main.js
+    // imports it from `./return-line-tactile.js`, and (c) main.js
+    // invokes the imported binding inside `renderText()` on the same
+    // `returnPara` node the sibling audio-visual writer already
+    // consumes — so both feedbacks layer on the exact DOM element the
+    // player sees.
+    const tactileSource = readServedAftersignFile("return-line-tactile.js");
+    const main = readServedAftersignFile("main.js");
+
+    // (a) The sibling module MUST export the tactile-suffixed name.
+    // A rename that drops the `Tactile` token (the exact regression
+    // Soren blocked) reds this pin before boot.
+    expect(tactileSource).toContain(
+      "export function playIoReturnLineTactileFeedback",
+    );
+    // Guard the collision-prone shape: the sibling must NOT re-export
+    // `playIoReturnLineFeedback` (that name belongs to the sibling
+    // audio-visual writer in `src/ioReturnLineFeedback.js`).
+    expect(tactileSource).not.toMatch(
+      /export\s+(?:function|const|let|var)\s+playIoReturnLineFeedback\b/,
+    );
+
+    // (b) main.js imports the tactile writer from the served-lane
+    // sibling. The path is the same relative shape the existing
+    // `./src/ioReturnLineFeedback.js` import uses on the line above.
+    expect(main).toMatch(
+      /import\s*\{\s*playIoReturnLineTactileFeedback\s*\}\s*from\s+"\.\/return-line-tactile\.js"/,
+    );
+
+    // (c) Bind-through pin — the imported binding must actually be
+    // INVOKED inside `renderText()` on the `returnPara` DOM node. A
+    // refactor that keeps the import but drops the call site (or
+    // forks the argument off a different reference) still reds here.
+    // Layered on top of the audio-visual sibling: both writers must
+    // fire on the same node so the tactile treatment stamps on the
+    // exact paragraph that flashed.
+    expect(main).toMatch(
+      /playIoReturnLineTactileFeedback\(returnPara,\s*returnOutcome\)/,
+    );
+  });
+
   it("consumes the packet-press logic-side feedback envelope on the shipped surface (#1879)", () => {
     // Blocking review on PR #1879 (Mara Okonkwo): `packetPress(input)`
     // calls `playPacketPressFeedback()`, which stamps

@@ -1,7 +1,17 @@
 // Tactile feedback for Io's visible return-recognition line.
-// The served renderer calls this after stamping #ioReturnLine.
+// The served renderer calls this after stamping #ioReturnLine,
+// LAYERED on top of the audio/visual feedback in
+// `./src/ioReturnLineFeedback.js` (which owns the export name
+// `playIoReturnLineFeedback`). Kept as a sibling with a distinct
+// name so both can co-exist on the same beat without a named-import
+// collision in `main.js` — a bug Soren caught on PR #1901 (the
+// earlier draft exported `playIoReturnLineFeedback` here too, and
+// the ESM named import in `main.js` threw at load).
+//
+// Pinned by the `#1901` case in
+// `apps/web/src/aftersign/servedSurface.contract.test.ts`.
 
-export function playIoReturnLineFeedback(element, outcome) {
+export function playIoReturnLineTactileFeedback(element, outcome) {
   if (!element) return;
 
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
