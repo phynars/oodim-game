@@ -16,32 +16,32 @@ import { expect, test, type Page } from "@playwright/test";
 // `job-offer-route-risk-copy-played.spec.ts`).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-// Per-beat / per-locator budget. This spec cold-boots the WebGL surface
-// THREE times (first-run slot goto, completed slot goto, completed slot
-// reload) AND plays a full packet loop between boots two and three;
-// every `waitForBeat("packet-offered")` after a cold
-// `page.goto`/`page.reload` pays the SwiftShader boot tax on CI.
+// Per-beat / per-locator budget. Aligned with the sibling
+// `io-continue-beats-tap-playtest.spec.ts`, which cold-boots the same
+// SwiftShader surface on the same lane and stays green at 60_000.
 //
-// Prior iterations tried 10_000 → red, 60_000 → red at exactly
-// `Timeout: 60000ms` on `[data-beat-id="packet-offered"]` (Soren
-// reviews, PR #1887 iterations 2 and 3). Sibling
-// `io-continue-beats-tap-playtest.spec.ts` (60_000) pays ONE cold boot;
-// this spec pays THREE + a played loop, so on the same SwiftShader
-// hardware the per-beat budget must actually exceed the sibling's, not
-// merely match it. 90_000 gives 50% headroom over the sibling's proven-
-// green budget — the smallest bump that both (a) crosses the observed
-// 60s red line and (b) stays under the total-budget ceiling below.
-const WAIT_MS = 90_000;
-// Total per-test budget. Three cold boots @ up to 90s per `packet-offered`
-// wait + the packet loop between boots two and three ⇒ needs real
-// headroom on the SwiftShader lane. 240s (4×WAIT_MS) is deliberately
-// generous: this test earns its completed record by playing the shipped
-// packet loop (not by seeding), so it cannot be as tight as
-// `m-loop-divergent-offered-actions` (90s / two seeded boots) nor as
-// tight as `io-continue-beats-tap-playtest` (120s / one cold boot + one
-// reload + a loop). Better to over-budget once and stay green than to
-// re-red on a SwiftShader spike.
-const COLD_START_MS = 240_000;
+// IMPORTANT — this is NOT a timing budget. Earlier iterations of this
+// PR (#1887) tried 10_000 → 60_000 → 90_000 chasing a `packet-offered`
+// toBeVisible timeout on the post-`completeFirstRound` reload; every
+// bump reded (Soren's AI008 review, PR #1887 iterations 2/3/4). The
+// beat wasn't slow — it was NEVER RENDERING in that flow. Root cause:
+// `completeFirstRound` ends by tapping `ask-for-next-job`, which
+// `setBeat("io-next-job")` + `await forceSave()` (main.js, pinned by
+// `apps/web/src/aftersign/ioNextJobDurability.test.ts`). The
+// SUBSEQUENT live tap of `deliver-packet` moves the LIVE beat to
+// `packet-offered`, but the durably persisted beat remains
+// `io-next-job` (that same file pins the restore branch:
+// `state.scene.beat = "io-next-job"`). So a reload of the completed
+// slot lands on `io-next-job`, and waiting for `packet-offered` there
+// times out at ANY budget. The fix — re-taping `deliver-packet` after
+// the restored `io-next-job` beat — is below in the reload block; the
+// budget is restored to the sibling's proven-green value.
+const WAIT_MS = 60_000;
+// Total per-test budget. Two cold `page.goto` + one `page.reload` +
+// one played packet loop on the SwiftShader lane. 180s matches the
+// pre-refactor version of this same test (git history) and mirrors
+// the sibling M-loop specs.
+const COLD_START_MS = 180_000;
 
 // Verbatim from AFTERSIGN_JOB_OFFER_COPY (see HANDOFF-1535.md and the
 // sibling `job-offer-route-risk-copy-played.spec.ts`).
@@ -205,8 +205,28 @@ test.describe("AFTERSIGN two durable saves — rendered tappable divergence", ()
 
     // Reloading the completed durable record must preserve this same visible
     // tappable branch AND its route/risk copy — determinism across cold loads.
+    //
+    // The completed durable stamp restores to `io-next-job`, NOT to
+    // `packet-offered`: the last `forceSave()` in `completeFirstRound`
+    // ran on `ask-for-next-job` (which `setBeat("io-next-job")`), and
+    // the reload branch in `aftersign/main.js` puts `state.scene.beat`
+    // back to `"io-next-job"` for a matching parked stamp. This is
+    // pinned in `apps/web/src/aftersign/ioNextJobDurability.test.ts`
+    // (see `ioNextJobStamp.beat === "io-next-job"` +
+    // `state.scene.beat = "io-next-job"`).
+    //
+    // So on reload we must first wait for the restored `io-next-job`
+    // beat, then tap `deliver-packet` (which at `io-next-job` runs the
+    // reset branch — `state.packet` cleared and
+    // `setBeat("packet-offered")`, see
+    // `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts:245`)
+    // to re-enter the offer surface. This is the same visible player
+    // path a returning user takes; it is a served-page tap, not a
+    // state-mutation shortcut.
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
+    await waitForBeat(page, "io-next-job");
+    await tap(page, '[data-choice-id="deliver-packet"]');
     await waitForBeat(page, "packet-offered");
     await expect.poll(() => readOffers(page)).toEqual(completedOffers);
     expect(await readRouteRiskCopy(page)).toBe(completedRouteRiskCopy);
