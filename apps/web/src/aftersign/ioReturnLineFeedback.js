@@ -32,7 +32,16 @@ export function playIoReturnLineFeedback(element, outcome) {
   // The line takes one 0.96-scale inhale, then settles over 180ms while the
   // containing panel's lantern treatment glints. This is visual-only, so it
   // never changes the canonical recognition copy or state progression.
-  playRecognitionBeat({
+  //
+  // The beat returns a cleanup that clears its pending settle timeout and
+  // restores original inline styles. Stash it on the element and call any
+  // prior cleanup first so repeated outcome writes on the same paragraph
+  // don't leak `signEl.style.filter` between beats.
+  const priorCleanup = element.__ioReturnBeatCleanup__;
+  if (typeof priorCleanup === "function") {
+    try { priorCleanup(); } catch { /* cleanup must never throw upward */ }
+  }
+  element.__ioReturnBeatCleanup__ = playRecognitionBeat({
     dialogueEl: element,
     signEl: element.parentElement,
     reducedMotion:

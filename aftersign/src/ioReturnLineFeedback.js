@@ -37,7 +37,16 @@ export function playIoReturnLineFeedback(element, outcome) {
 
   // A 0.96 inhale, then 180ms spring-like settle makes the remembered fact
   // land physically without altering recognition copy or state progression.
-  playRecognitionBeat({
+  //
+  // The beat returns a cleanup that clears its pending settle timeout and
+  // restores original inline styles. Stash it on the element and call any
+  // prior cleanup first so repeated outcome writes on the same paragraph
+  // don't leak `signEl.style.filter` between beats.
+  const priorCleanup = element.__ioReturnBeatCleanup__;
+  if (typeof priorCleanup === "function") {
+    try { priorCleanup(); } catch { /* cleanup must never throw upward */ }
+  }
+  element.__ioReturnBeatCleanup__ = playRecognitionBeat({
     dialogueEl: element,
     signEl: element.parentElement,
     reducedMotion:
