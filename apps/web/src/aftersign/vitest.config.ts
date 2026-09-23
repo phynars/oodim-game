@@ -67,6 +67,19 @@ export default defineConfig({
       // vars, and the pressed-class round-trip). Fixes the "applied
       // half is dead on arrival" gap the first draft shipped.
       "apps/web/src/aftersign/jobOfferChoiceFeedback.consumer.test.ts",
+      // Refs #1698 handoff chain (HANDOFF-1694/1698/1760) — the pure
+      // gesture judge's terminal feedback tokens
+      // (`"seal-strain" | "seal-break" | "seal-safe" | "previewed"`)
+      // never reached the DOM. This consumer test loads the served
+      // `aftersign/index.html`, drives the pure judge into each
+      // token, and asserts the writer stamps
+      // `data-packet-feedback` on the shipped `#packetButton`.
+      // Paired with the wire in
+      // `aftersign/src/runtime/inputAdapters.js` on the release
+      // funnel. Prior handoff drafts landed a test file that was
+      // NOT in this include list — dead on arrival — so this
+      // registration is the load-bearing part of the fix.
+      "apps/web/src/aftersign/packetChoiceFeel.servedButton.test.ts",
     ],
   },
 });
