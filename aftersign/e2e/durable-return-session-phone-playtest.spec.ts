@@ -81,6 +81,13 @@ async function expectRestoredReturningSession(page: Page): Promise<void> {
   expect(restored.npcs.io.memory.length).toBeGreaterThan(0);
   expect(restored.npcs.io.memory.some((fact) => fact.object === "sealed")).toBe(true);
   expect(restored.npcs.io.lastLine).toBe(RETURNING_SESSION_LINE);
+
+  // A remembered return must still leave the player at a playable decision,
+  // rather than restoring the correct words into a dead end.
+  await expect(page.locator("#acknowledgeRouteButton")).toBeVisible();
+  await expect(page.locator("#acknowledgeRouteButton")).toBeEnabled();
+  await expect(page.locator("#skipRouteButton")).toBeVisible();
+  await expect(page.locator("#skipRouteButton")).toBeEnabled();
 }
 
 async function openFreshPhoneContext(browser: Browser): Promise<Page> {
