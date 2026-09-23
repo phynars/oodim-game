@@ -58,6 +58,15 @@ export default defineConfig({
       // player-visible evidence, not an assertion against an untouched
       // `#line`.
       "apps/web/src/aftersign/aftersignJobAcceptedRender.consumer.test.ts",
+      // PR #1890 re-review (Soren Vask) — the offer-choice acknowledgement
+      // wrapper `aftersign/src/jobOfferChoiceFeedback.js` delegates to
+      // the shipped `ioJobOfferActionFeel` writer + toggles the shipped
+      // pressed class. This consumer test drives the wrapper against a
+      // real jsdom button and asserts the RENDERED outcome (installed
+      // <style>, stamped `data-aftersign-job-risk`, the shipped CSS
+      // vars, and the pressed-class round-trip). Fixes the "applied
+      // half is dead on arrival" gap the first draft shipped.
+      "apps/web/src/aftersign/jobOfferChoiceFeedback.consumer.test.ts",
     ],
   },
 });
