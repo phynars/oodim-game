@@ -83,7 +83,21 @@ async function expectRestoredReturningSession(page: Page): Promise<void> {
   expect(restored.npcs.io.lastLine).toBe(RETURNING_SESSION_LINE);
 
   // A remembered return must still leave the player at a playable decision,
-  // rather than restoring the correct words into a dead end.
+  // rather than restoring the correct words into a dead end. On restore
+  // the beat lands on `packet-delivered` and then auto-advances to
+  // `io-return-recognition` after ~1180ms (aftersign/main.js's
+  // deliverPacket schedules a setBeat("io-return-recognition") — the
+  // sibling `flagship-phase2-input-delivery-contract.spec.ts:44` header
+  // documents the same 1180ms window). `#acknowledgeRouteButton` /
+  // `#skipRouteButton` are gated by `routeChoiceVisible` in main.js
+  // (pinned by `mContinueVisibleButtons.contract.test.ts:23`) to
+  // packet-choice/return-recognition/return-tone-choice/io-next-job —
+  // NOT `packet-delivered`. So we poll for the auto-advance into
+  // `io-return-recognition` before asserting the route affordance, which
+  // is the beat where the buttons actually exist.
+  await expect
+    .poll(async () => (await snapshot(page)).scene.beat, { timeout: WAIT_MS })
+    .toBe("io-return-recognition");
   await expect(page.locator("#acknowledgeRouteButton")).toBeVisible();
   await expect(page.locator("#acknowledgeRouteButton")).toBeEnabled();
   await expect(page.locator("#skipRouteButton")).toBeVisible();
