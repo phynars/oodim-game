@@ -396,6 +396,7 @@ import {
 }
 
 import { playIoReturnLineFeedback } from "./src/ioReturnLineFeedback.js";
+import { playIoReturnLineTactileFeedback } from "./return-line-tactile.js";
 import {
   armIoReturnActionFeedback,
   IO_RETURN_ACTION_AUDIO,
@@ -2081,6 +2082,7 @@ const renderText = () => {
       // makes renderText's per-frame calls idempotent: it never replays while
       // the same remembered outcome remains on screen.
       playIoReturnLineFeedback(returnPara, returnOutcome);
+      playIoReturnLineTactileFeedback(returnPara, returnOutcome);
     }
   } else if (typeof document !== "undefined") {
     // Off-beat: tear down the sibling paragraph so its literal never
