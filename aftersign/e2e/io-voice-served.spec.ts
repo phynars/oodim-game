@@ -214,6 +214,31 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
       "data-io-return-feedback",
       SEALED_OUTCOME_KEY,
     );
+    // #1901 (AI007) — tap-driven witness for the sibling TACTILE
+    // writer (`aftersign/return-line-tactile.js::
+    // playIoReturnLineTactileFeedback`) landing on the SAME node
+    // as the audio/visual feedback above. The tactile writer's
+    // only DOM-visible side effect is
+    // `dataset.ioReturnTactileOutcome = outcome`, so absence of
+    // this attribute = the shipped surface stopped invoking the
+    // tactile module (the exact defect Soren blocked when the
+    // contract pin only regex-matched the source). Also proves
+    // BOTH feedbacks fire on the same `returnPara` at runtime —
+    // not just co-located in a source grep.
+    await expect(returnLine).toHaveAttribute(
+      "data-io-return-tactile-outcome",
+      SEALED_OUTCOME_KEY,
+    );
+    // AI006 witness: the tactile writer stamps the
+    // `--io-return-accent` custom property, and its injected
+    // stylesheet consumes it via `border-left-color`. Reading the
+    // property back off `getComputedStyle` proves the custom
+    // property is not dead-on-arrival — a CSS rule is actually
+    // seeing it. SEALED = warm amber (`#f0c978`).
+    const sealedAccent = await returnLine.evaluate((node) =>
+      getComputedStyle(node).getPropertyValue("--io-return-accent").trim(),
+    );
+    expect(sealedAccent).toBe("#f0c978");
   });
 
   test("opened delivery serves Io's opened return voice in the sibling #ioReturnLine paragraph", async ({
@@ -245,5 +270,21 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
       "data-io-return-feedback",
       OPENED_OUTCOME_KEY,
     );
+    // #1901 (AI007) — OPENED-branch tap-driven witness for the
+    // sibling TACTILE writer. Same shape as the SEALED branch
+    // above: absence of `data-io-return-tactile-outcome=opened`
+    // = the served renderer stopped calling
+    // `playIoReturnLineTactileFeedback(returnPara, "opened")`.
+    await expect(returnLine).toHaveAttribute(
+      "data-io-return-tactile-outcome",
+      OPENED_OUTCOME_KEY,
+    );
+    // AI006 witness on the OPENED axis: red-orange accent
+    // (`#d46b62`) proves the writer flipped the custom property
+    // and the injected stylesheet is still reading it.
+    const openedAccent = await returnLine.evaluate((node) =>
+      getComputedStyle(node).getPropertyValue("--io-return-accent").trim(),
+    );
+    expect(openedAccent).toBe("#d46b62");
   });
 });

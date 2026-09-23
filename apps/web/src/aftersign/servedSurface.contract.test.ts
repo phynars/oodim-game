@@ -639,6 +639,129 @@ describe("Aftersign served surface contract", () => {
     ).toThrow();
   });
 
+  it("wires the sibling return-line tactile feedback through main.js (#1901)", () => {
+    // Blocking review on PR #1901 (Soren Vask): the earlier draft
+    // shipped a sibling `aftersign/return-line-tactile.js` alongside
+    // the existing `aftersign/src/ioReturnLineFeedback.js` writer,
+    // but exported the SAME identifier name (`playIoReturnLineFeedback`)
+    // — so main.js's named import
+    // `import { playIoReturnLineTactileFeedback } from "./return-line-tactile.js"`
+    // never resolved. Served as native ESM (`<script type="module">`),
+    // that throws `SyntaxError` at module evaluation and black-screens
+    // the game on boot; under a bundler, the identifier is `undefined`
+    // and the per-frame call inside `renderText()` reds every tick.
+    //
+    // No test caught it because the sibling module wasn't pinned —
+    // only `ioReturnLineFeedback.js` (the audio/visual sibling) had a
+    // servedSurface pin. Same shape as the tap-confirm / kiosk-scene
+    // precedents above: a writer with no shipped-import proof is dead
+    // code with green tests. Lock (a) the sibling exports the
+    // distinct name `playIoReturnLineTactileFeedback`, (b) main.js
+    // imports it from `./return-line-tactile.js`, and (c) main.js
+    // invokes the imported binding inside `renderText()` on the same
+    // `returnPara` node the sibling audio-visual writer already
+    // consumes — so both feedbacks layer on the exact DOM element the
+    // player sees.
+    const tactileSource = readServedAftersignFile("return-line-tactile.js");
+    const main = readServedAftersignFile("main.js");
+
+    // (a) The sibling module MUST export the tactile-suffixed name.
+    // A rename that drops the `Tactile` token (the exact regression
+    // Soren blocked) reds this pin before boot.
+    expect(tactileSource).toContain(
+      "export function playIoReturnLineTactileFeedback",
+    );
+    // Guard the collision-prone shape: the sibling must NOT re-export
+    // `playIoReturnLineFeedback` (that name belongs to the sibling
+    // audio-visual writer in `src/ioReturnLineFeedback.js`).
+    expect(tactileSource).not.toMatch(
+      /export\s+(?:function|const|let|var)\s+playIoReturnLineFeedback\b/,
+    );
+
+    // (b) main.js imports the tactile writer from the served-lane
+    // sibling. The path is the same relative shape the existing
+    // `./src/ioReturnLineFeedback.js` import uses on the line above.
+    expect(main).toMatch(
+      /import\s*\{\s*playIoReturnLineTactileFeedback\s*\}\s*from\s+"\.\/return-line-tactile\.js"/,
+    );
+
+    // (c) Bind-through pin — the imported binding must actually be
+    // INVOKED inside `renderText()` on the `returnPara` DOM node. A
+    // refactor that keeps the import but drops the call site (or
+    // forks the argument off a different reference) still reds here.
+    // Layered on top of the audio-visual sibling: both writers must
+    // fire on the same node so the tactile treatment stamps on the
+    // exact paragraph that flashed.
+    expect(main).toMatch(
+      /playIoReturnLineTactileFeedback\(returnPara,\s*returnOutcome\)/,
+    );
+
+    // (d) AI006 — CSS consumer for the stamped custom property.
+    // Soren's second block: the earlier draft stamped
+    // `--io-return-accent` on `element.style` but NO stylesheet
+    // read it — dead-on-arrival, same shape the tap-confirm
+    // precedent above pins against (`[data-aftersign-tap-
+    // confirm="armed"]` rule reads its stamped vars). Fix: the
+    // tactile module now injects an idempotent stylesheet whose
+    // rule consumes the property via `var(--io-return-accent)`.
+    // Pin BOTH the stamp AND the consumer so a refactor that
+    // drops either half reds here BEFORE the CI e2e catches it
+    // at runtime.
+    expect(tactileSource).toContain(
+      'element.style.setProperty("--io-return-accent"',
+    );
+    // The consumer rule scopes to `#ioReturnLine` (same target
+    // the audio-visual and kiosk-scene siblings paint) and reads
+    // the stamped property via `var(...)`. A fallback keyword is
+    // required so off-beat frames parse cleanly — matches the
+    // return-tone-feel + tap-confirm shapes above.
+    expect(tactileSource).toMatch(/#ioReturnLine\s*\{[\s\S]*var\(--io-return-accent/);
+    // The injected `<style>` node carries a stable id so the
+    // mount is idempotent under `renderText()`'s per-frame
+    // re-arms. Same shape as `kioskSceneVisual.js`'s
+    // `aftersign-kiosk-visual-style`.
+    expect(tactileSource).toContain(
+      '"aftersign-return-line-tactile-style"',
+    );
+
+    // (e) AI007 — played witness for the tactile stamp. The
+    // served e2e (`aftersign/e2e/io-voice-served.spec.ts`) must
+    // assert `data-io-return-tactile-outcome` on `#ioReturnLine`
+    // after a real gesture on BOTH branches (sealed + opened).
+    // Soren's block: without this the source-grep above only
+    // proves "both writers are colocated in main.js source" —
+    // not "both writers actually fire on the same node in a
+    // real browser". The runtime witness is the load-bearing
+    // proof, mirroring how the audio-visual sibling is pinned by
+    // its `data-io-return-feedback` runtime witness in the same
+    // file.
+    const servedE2eSource = readFileSync(
+      join(
+        process.cwd(),
+        "aftersign",
+        "e2e",
+        "io-voice-served.spec.ts",
+      ),
+      "utf8",
+    );
+    // Two assertions — one per branch — on the SAME attribute
+    // the tactile writer stamps (`element.dataset.
+    // ioReturnTactileOutcome = outcome`, which surfaces on the
+    // DOM as `data-io-return-tactile-outcome`).
+    const tactileWitnessMatches = servedE2eSource.match(
+      /toHaveAttribute\(\s*"data-io-return-tactile-outcome"/g,
+    );
+    expect(tactileWitnessMatches).not.toBeNull();
+    expect(tactileWitnessMatches?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // The witnesses must live on the same `#ioReturnLine`
+    // locator the audio-visual witness above uses — proving
+    // "both feedbacks fire on the SAME node," which is the exact
+    // wire-in claim source-grep alone can't back.
+    expect(servedE2eSource).toContain(
+      'const returnLine = page.locator("#ioReturnLine")',
+    );
+  });
+
   it("consumes the packet-press logic-side feedback envelope on the shipped surface (#1879)", () => {
     // Blocking review on PR #1879 (Mara Okonkwo): `packetPress(input)`
     // calls `playPacketPressFeedback()`, which stamps
