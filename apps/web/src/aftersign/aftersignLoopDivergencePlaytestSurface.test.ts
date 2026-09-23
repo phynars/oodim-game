@@ -22,9 +22,6 @@ const REPO_ROOT = findRepoRoot(process.cwd());
 const AFTERSIGN_E2E_DIR = join(REPO_ROOT, "aftersign", "e2e");
 const SERVED_MAIN_PATH = join(REPO_ROOT, "aftersign", "main.js");
 
-// Phone-viewport signal. The flagship specs write either an inline object
-// (`viewport: { width: 390, height: 844 }`) or bind a labeled const first
-// (`const PHONE_VIEWPORT = { width: 390, height: 844 }` + `test.use({ viewport: PHONE_VIEWPORT, ... })`).
 const PHONE_VIEWPORT_PATTERN = /(?:width\s*:\s*3[0-9]{2}\s*,\s*height\s*:\s*(?:6[0-9]{2}|7[0-9]{2}|8[0-9]{2}|9[0-9]{2})|iphone|pixel|mobile|isMobile\s*:\s*true|hasTouch\s*:\s*true)/i;
 const PLAYER_EVENT_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/;
 const PLAYER_EVENT_GLOBAL_PATTERN = /\b(?:click|tap|press|keyboard|pointer|mouse|touchscreen)\s*\(/g;
@@ -75,9 +72,9 @@ function matchesLoopDivergencePlaytest(source: string): boolean {
 }
 
 // M-LOOP says two *consecutive rounds*, not merely two booted save slots. The
-// stricter witness below is intentionally separate from the baseline matcher:
-// it makes a missing played round-completion proof fail loudly until the e2e
-// names and exercises both completions through rendered controls.
+// stricter witness is deliberately part of the same-spec check below: separate
+// specs can each prove fragments, but cannot prove a player completed the
+// divergent loop end-to-end.
 function provesTwoPlayedRounds(source: string): boolean {
   return (
     matchesLoopDivergencePlaytest(source) &&
@@ -126,30 +123,10 @@ describe("matchesLoopDivergencePlaytest contract", () => {
   it.each([
     { gate: "PHONE_VIEWPORT", mutate: (s: string) => s.replace(/test\.use\([^\n]*\n/, "") },
     { gate: "PLAYER_EVENT", mutate: (s: string) => s.replace(/  await page\.getByRole[^\n]*\n/, "") },
-    {
-      gate: "VISIBLE_ACTION",
-      mutate: (s: string) => s
-        .replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])")
-        .replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)"),
-    },
-    {
-      gate: "DIFFERENT_ACTIONS",
-      mutate: (s: string) => s
-        .replace("expect(first).not.toEqual(second); // different tappable actions", "expect(first).toBeDefined();")
-        .replace("two memory records produce different tappable actions", "two memory records land on the packet-offered beat"),
-    },
-    {
-      gate: "TWO_SAVE_STATES",
-      mutate: (s: string) => s
-        .replace("  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", "  // outcome recorded, return visit: default action reshuffled")
-        .replace("two memory records produce different tappable actions", "two visits produce different tappable actions"),
-    },
-    {
-      gate: "HARNESS_READ",
-      mutate: (s: string) => s
-        .replace("  const beat = await page.evaluate(() => window.__game?.scene?.beat);", "  const beat = 'packet-offered';")
-        .replace("// M-LOOP divergence playtest — abstains from window.__game.input.* channels.", "// M-LOOP divergence playtest — abstains from harness input."),
-    },
+    { gate: "VISIBLE_ACTION", mutate: (s: string) => s.replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])").replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)") },
+    { gate: "DIFFERENT_ACTIONS", mutate: (s: string) => s.replace("expect(first).not.toEqual(second); // different tappable actions", "expect(first).toBeDefined();").replace("two memory records produce different tappable actions", "two memory records land on the packet-offered beat") },
+    { gate: "TWO_SAVE_STATES", mutate: (s: string) => s.replace("  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", "  // outcome recorded, return visit: default action reshuffled").replace("two memory records produce different tappable actions", "two visits produce different tappable actions") },
+    { gate: "HARNESS_READ", mutate: (s: string) => s.replace("  const beat = await page.evaluate(() => window.__game?.scene?.beat);", "  const beat = 'packet-offered';").replace("// M-LOOP divergence playtest — abstains from window.__game.input.* channels.", "// M-LOOP divergence playtest — abstains from harness input.") },
     { gate: "HARNESS_INPUT", mutate: (s: string) => `${s}\nawait page.evaluate(() => window.__game.input.click('foo'));\n` },
     { gate: "DIALOGUE_ONLY", mutate: (s: string) => `${s}\nawait expect(page.getByText('accept the job')).not.toEqual(page.getByText('reject'));\n` },
   ])("rejects when the $gate gate is not satisfied", ({ mutate }) => {
@@ -158,25 +135,14 @@ describe("matchesLoopDivergencePlaytest contract", () => {
 });
 
 describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
-  it("has a phone playtest proving two memory records produce different tappable actions without harness input", () => {
+  it("has a phone playtest proving two memory records produce different tappable actions and completes both rounds without harness input", () => {
     const playtests = readAftersignPlaytestSpecs();
-    const matchingPlaytest = playtests.find(({ source }) => matchesLoopDivergencePlaytest(source));
-    expect(matchingPlaytest?.path).toBeDefined();
-  });
-
-  it("has a phone playtest that completes two visible rounds, not only two save-slot boots", () => {
-    const playtests = readAftersignPlaytestSpecs();
-    const twoRoundPlaytest = playtests.find(({ source }) => provesTwoPlayedRounds(source));
-    expect(twoRoundPlaytest?.path).toBeDefined();
+    const fullLoopPlaytest = playtests.find(({ source }) => provesTwoPlayedRounds(source));
+    expect(fullLoopPlaytest?.path).toBeDefined();
   });
 
   it("keeps the divergent offer witness wired into the served page", () => {
     const main = readFileSync(SERVED_MAIN_PATH, "utf8");
-
-    // The acceptance spec can only prove a player-facing mechanic when the
-    // page renders the exact action fingerprint it reads and the pointer
-    // listener remains attached to that live button. Pure/harness consumers
-    // do not satisfy either requirement.
     expect(main).toContain('import { fingerprintJobOfferAction } from "../packages/aftersign/src/jobOfferActionFingerprint"');
     expect(main).toContain('button.setAttribute(\n        "data-offer-fingerprint",\n        fingerprintJobOfferAction(offer).semanticKey,\n      );');
     expect(main).toContain('armJobOfferFeel(button, () => {');
