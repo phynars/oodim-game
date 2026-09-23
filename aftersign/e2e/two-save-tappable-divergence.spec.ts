@@ -7,44 +7,11 @@ import { expect, test, type Page } from "@playwright/test";
 // The first slot remains a first-run save; the second earns its completed
 // memory record through the shipped packet loop, then reloads that same slot
 // before its offer surface is inspected.
-//
-// Route/risk copy divergence is asserted from the rendered DOM — the
-// `<p data-aftersign-job-offer-route-risk>` inside `#offeredJobs` — so a
-// player-visible drift on either branch reds this spec. Copy strings are
-// the verbatim authored branches from
-// `apps/web/src/aftersign/aftersignJobOfferCopy.js` (see the sibling
-// `job-offer-route-risk-copy-played.spec.ts`).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-// Per-beat / per-locator budget. Aligned with the sibling
-// `io-continue-beats-tap-playtest.spec.ts`, which cold-boots the same
-// SwiftShader surface on the same lane and stays green at 60_000.
-//
-// IMPORTANT — this is NOT a timing budget. Earlier iterations of this
-// PR (#1887) tried 10_000 → 60_000 → 90_000 chasing a `packet-offered`
-// toBeVisible timeout on the post-`completeFirstRound` reload; every
-// bump reded (Soren's AI008 review, PR #1887 iterations 2/3/4). The
-// beat wasn't slow — it was NEVER RENDERING in that flow. Root cause:
-// `completeFirstRound` ends by tapping `ask-for-next-job`, which
-// `setBeat("io-next-job")` + `await forceSave()` (main.js, pinned by
-// `apps/web/src/aftersign/ioNextJobDurability.test.ts`). The
-// SUBSEQUENT live tap of `deliver-packet` moves the LIVE beat to
-// `packet-offered`, but the durably persisted beat remains
-// `io-next-job` (that same file pins the restore branch:
-// `state.scene.beat = "io-next-job"`). So a reload of the completed
-// slot lands on `io-next-job`, and waiting for `packet-offered` there
-// times out at ANY budget. The fix — re-taping `deliver-packet` after
-// the restored `io-next-job` beat — is below in the reload block; the
-// budget is restored to the sibling's proven-green value.
 const WAIT_MS = 60_000;
-// Total per-test budget. Two cold `page.goto` + one `page.reload` +
-// one played packet loop on the SwiftShader lane. 180s matches the
-// pre-refactor version of this same test (git history) and mirrors
-// the sibling M-loop specs.
 const COLD_START_MS = 180_000;
 
-// Verbatim from AFTERSIGN_JOB_OFFER_COPY (see HANDOFF-1535.md and the
-// sibling `job-offer-route-risk-copy-played.spec.ts`).
 const FIRST_RUN_ROUTE_RISK_COPY =
   "Route: Take the lit stair. Do not stop under the bell rope. "
   + "Risk: Low risk. Long light. Io can see most of it from the kiosk.";
@@ -55,6 +22,7 @@ const TRUSTED_ROUTE_RISK_COPY =
 type OfferStamp = {
   id: string;
   action: string | null;
+  fingerprint: string | null;
   routeRisk: string | null;
   text: string;
 };
@@ -88,6 +56,7 @@ async function readOffers(page: Page): Promise<OfferStamp[]> {
     nodes.map((node) => ({
       id: node.id,
       action: node.getAttribute("data-aftersign-job-take-action"),
+      fingerprint: node.getAttribute("data-offer-fingerprint"),
       routeRisk: node.getAttribute("data-route-risk"),
       text: node.textContent?.trim() ?? "",
     })),
@@ -137,28 +106,14 @@ test.describe("AFTERSIGN two durable saves — rendered tappable divergence", ()
     ]);
     expect(firstRunOffers[0]).toMatchObject({
       action: "mloop-safe-delivery-take",
+      fingerprint: "job-safe-delivery#low",
       routeRisk: "low",
     });
     const firstRunRouteRiskCopy = await readRouteRiskCopy(page);
-    expect(
-      firstRunRouteRiskCopy,
-      "first-run render must speak the firstRun route/risk copy verbatim",
-    ).toBe(FIRST_RUN_ROUTE_RISK_COPY);
-    await expect(
-      page.getByText(FIRST_RUN_ROUTE_RISK_COPY, { exact: true }),
-      "firstRun copy must be player-visible on the first-run render",
-    ).toBeVisible({ timeout: WAIT_MS });
-
-    // Note: the first-run reload block that used to live here was
-    // dropped in PR #1887 iteration 4. #1827's determinism criterion —
-    // "the same save loaded twice yields the same attribute values" —
-    // is proved by the completed-record reload at the end of this
-    // test, on the memory-gated branch that is actually load-bearing.
-    // Rebooting the untouched fresh slot too added a fourth cold WebGL
-    // boot to the SwiftShader lane and pushed the per-beat `packet-
-    // offered` wait past even 60s in CI (Soren's AI008 diagnosis, PR
-    // #1887 iterations 2 and 3). One determinism proof, on the branch
-    // that matters, is the shippable slice.
+    expect(firstRunRouteRiskCopy).toBe(FIRST_RUN_ROUTE_RISK_COPY);
+    await expect(page.getByText(FIRST_RUN_ROUTE_RISK_COPY, { exact: true })).toBeVisible({
+      timeout: WAIT_MS,
+    });
 
     const completedSlot = `two-save-completed-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${completedSlot}`, { waitUntil: "load" });
@@ -179,50 +134,28 @@ test.describe("AFTERSIGN two durable saves — rendered tappable divergence", ()
     expect(completedOffers.map((offer) => offer.action)).not.toEqual(
       firstRunOffers.map((offer) => offer.action),
     );
+    // This is the mechanical M-LOOP proof: the actual controls exposed to a
+    // returning player have a different stable action identity, not merely
+    // different words in Io's dialogue.
+    expect(completedOffers.map((offer) => offer.fingerprint)).toEqual([
+      "job-night-transfer#medium",
+      "job-signed-receipt#low",
+    ]);
+    expect(completedOffers.map((offer) => offer.fingerprint)).not.toEqual(
+      firstRunOffers.map((offer) => offer.fingerprint),
+    );
 
-    // Route/risk copy divergence, asserted from the rendered DOM: the
-    // completed durable record must speak the trusted branch, and it
-    // must not match what the first-run render showed.
     const completedRouteRiskCopy = await readRouteRiskCopy(page);
-    expect(
-      completedRouteRiskCopy,
-      "completed record must speak the trusted route/risk copy verbatim",
-    ).toBe(TRUSTED_ROUTE_RISK_COPY);
-    await expect(
-      page.getByText(TRUSTED_ROUTE_RISK_COPY, { exact: true }),
-      "trusted copy must be player-visible on the completed render",
-    ).toBeVisible({ timeout: WAIT_MS });
-    expect(
-      completedRouteRiskCopy,
-      "visible route/risk copy must diverge between the two saves",
-    ).not.toBe(firstRunRouteRiskCopy);
-    // Divergence means replacement, not accumulation — the firstRun
-    // copy must not linger on the completed page.
-    await expect(
-      page.getByText(FIRST_RUN_ROUTE_RISK_COPY, { exact: true }),
-      "firstRun route/risk copy must NOT render on the completed record",
-    ).toHaveCount(0);
+    expect(completedRouteRiskCopy).toBe(TRUSTED_ROUTE_RISK_COPY);
+    await expect(page.getByText(TRUSTED_ROUTE_RISK_COPY, { exact: true })).toBeVisible({
+      timeout: WAIT_MS,
+    });
+    expect(completedRouteRiskCopy).not.toBe(firstRunRouteRiskCopy);
+    await expect(page.getByText(FIRST_RUN_ROUTE_RISK_COPY, { exact: true })).toHaveCount(0);
 
-    // Reloading the completed durable record must preserve this same visible
-    // tappable branch AND its route/risk copy — determinism across cold loads.
-    //
-    // The completed durable stamp restores to `io-next-job`, NOT to
-    // `packet-offered`: the last `forceSave()` in `completeFirstRound`
-    // ran on `ask-for-next-job` (which `setBeat("io-next-job")`), and
-    // the reload branch in `aftersign/main.js` puts `state.scene.beat`
-    // back to `"io-next-job"` for a matching parked stamp. This is
-    // pinned in `apps/web/src/aftersign/ioNextJobDurability.test.ts`
-    // (see `ioNextJobStamp.beat === "io-next-job"` +
-    // `state.scene.beat = "io-next-job"`).
-    //
-    // So on reload we must first wait for the restored `io-next-job`
-    // beat, then tap `deliver-packet` (which at `io-next-job` runs the
-    // reset branch — `state.packet` cleared and
-    // `setBeat("packet-offered")`, see
-    // `aftersign/e2e/m-loop-e1-phone-action-divergence.spec.ts:245`)
-    // to re-enter the offer surface. This is the same visible player
-    // path a returning user takes; it is a served-page tap, not a
-    // state-mutation shortcut.
+    // The durable completed record restores to io-next-job. Re-entering the
+    // offer surface is itself a visible player tap, then the reloaded controls
+    // must retain the same action identities and copy.
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "io-next-job");
