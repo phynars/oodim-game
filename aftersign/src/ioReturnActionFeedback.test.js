@@ -25,12 +25,27 @@ describe("attachIoReturnActionFeedback", () => {
 
     button.dispatchEvent(new Event("pointerdown"));
     expect(button.dataset.ioReturnActionFeedback).toBe("pressed");
-    expect(button.style.transform).toBe("scale(0.96)");
+    // PR #1889 (Soren, REQUEST_CHANGES): the transform is now composed
+    // — lift + compression together — so this module is the SINGLE
+    // owner of `style.transform` on these buttons. A companion
+    // stylesheet marker used to try to add the lift separately, but
+    // an inline write always beat it. Pinning the composed value here
+    // catches any future drift where a second writer sneaks the
+    // transform back to `scale(...)` alone and drops the sink.
+    expect(button.style.transform).toBe(
+      `translateY(${IO_RETURN_ACTION_FEEL.pressLiftPx}px) scale(${IO_RETURN_ACTION_FEEL.pressScale})`,
+    );
     expect(button.style.getPropertyValue("--io-return-action-press-scale")).toBe("0.96");
+    expect(button.style.getPropertyValue("--io-return-action-press-lift-px")).toBe(
+      `${IO_RETURN_ACTION_FEEL.pressLiftPx}px`,
+    );
+    expect(button.style.transition).toContain(`${IO_RETURN_ACTION_FEEL.pressTransitionMs}ms`);
 
     button.dispatchEvent(new Event("pointerup"));
     expect(button.dataset.ioReturnActionFeedback).toBe("released");
-    expect(button.style.transform).toBe("scale(1)");
+    // Return to identity clears BOTH channels in one write — no
+    // dangling translateY(1px) after release.
+    expect(button.style.transform).toBe("translateY(0) scale(1)");
     expect(button.style.transition).toContain(`${IO_RETURN_ACTION_FEEL.releaseDurationMs}ms`);
     expect(haptic).not.toHaveBeenCalled();
     expect(audio).not.toHaveBeenCalled();

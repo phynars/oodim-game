@@ -401,8 +401,6 @@ import {
   IO_RETURN_ACTION_AUDIO,
   playIoReturnActionAudio,
 } from "./src/ioReturnActionFeedback.js";
-import { armIoReturnActionPressFeedback } from "./src/ioReturnActionPressFeedback.js";
-
 // PR #1885 (Soren, AI008): the return-action fork re-renders every
 // frame — its button nodes get REPLACED, so any listener bound to a
 // specific node dies with it. Arm the tactile feedback ONCE on the
@@ -433,7 +431,6 @@ let __ioReturnActionFeedbackArmed = false;
 const armIoReturnActionFeedbackOnce = () => {
   if (__ioReturnActionFeedbackArmed) return;
   if (typeof document === "undefined") return;
-  armIoReturnActionPressFeedback(document);
   armIoReturnActionFeedback(document, {
     haptic: () => {
       if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
