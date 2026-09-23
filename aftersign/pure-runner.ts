@@ -202,7 +202,7 @@ import { runPacketPressFeedbackServedContractChecks } from "./packetPressFeedbac
 // earlier tautological check (`PACKET_CHOICE_ACK_MS <= 200 && > 0`
 // mirroring the same file's own constant) that Soren flagged AI003 on
 // PR #1902. The `.test.ts` shim's sole relative import is
-// `./packetChoiceIntentFeedback.js` (extensioned), and that leaf has
+// `./packetChoiceIntentFeedback.ts` (matching every sibling *Feedback shim in this directory; the prior `.js` leaf tripped TS7016 in `typecheck:aftersign` — Soren, AI008) (extensioned), and that leaf has
 // ZERO relative imports, so the subgraph satisfies the extension-
 // resolution contract documented above.
 import { runPacketChoiceIntentFeedbackChecks } from "./src/packetChoiceIntentFeedback.test.ts";

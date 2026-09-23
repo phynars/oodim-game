@@ -262,7 +262,7 @@ import {
   playRouteRiskConfirmFeedback,
   ROUTE_RISK_CONFIRM_FEEL,
 } from "./src/routeRiskConfirmFeedback.js";
-import { playPacketChoiceIntentFeedback } from "./src/packetChoiceIntentFeedback.js";
+import { playPacketChoiceIntentFeedback } from "./src/packetChoiceIntentFeedback.ts";
 // Player-facing labels for the four route-risk action ids the
 // writer above stamps as `<button>` children. Passed as
 // `labelForAction: routeRiskActionLabel` at both

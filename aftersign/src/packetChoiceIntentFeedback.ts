@@ -7,27 +7,55 @@
  * feedback exception can never block the durable choice commit.
  *
  * Extension-resolution contract: this file has ZERO relative imports; the
- * `.test.ts` shim's sole relative import (`./packetChoiceIntentFeedback.js`)
- * is `.js`-extensioned. The pure-runner (`node --experimental-strip-types`)
- * resolves the whole subgraph deterministically — see the /*.ts / .js *\/
- * note in `aftersign/pure-runner.ts`'s header.
+ * `.test.ts` shim's sole relative import (`./packetChoiceIntentFeedback.ts`)
+ * is `.ts`-extensioned, matching every sibling *Feedback module in this
+ * directory (routeChoicePressFeedback.ts, targetLossFeedback.ts,
+ * failureStingFeedback.ts, recognitionFeedback.ts). The prior draft used a
+ * `.js` leaf; Soren (PR #1902, AI008) flagged that the `.ts`-imports-`.js`
+ * shape needs `allowJs` or a `.d.ts`, and the owning `aftersign/tsconfig.json`
+ * has neither (`strict: true`, no `allowJs`). Renaming the leaf to `.ts` is
+ * the mechanical fix — same runtime behaviour under `--experimental-strip-types`,
+ * types now visible to the blocking `typecheck:aftersign` gate.
+ *
+ * Runtime consumer: `aftersign/main.js` imports this file at
+ * `./src/packetChoiceIntentFeedback.ts`. Vite resolves `.ts` from a `.js`
+ * ES module import in dev/build (siblings `routeChoicePressFeedback.ts` and
+ * `targetLossFeedback.ts` are consumed the same way from main.js — verified
+ * in this same PR's diff and in prior PR #1806).
  */
+
+interface AckElement {
+  style: {
+    transition: string;
+    transform: string;
+    filter: string;
+    [key: string]: string;
+  };
+}
+
+interface PlayOptions {
+  reducedMotion?: boolean;
+}
+
 export const PACKET_CHOICE_ACK_MS = 180;
 
 // Style keys the ack module mutates. Kept in one place so both playback and
 // reset touch the same set; also lets `checkPacketChoiceIntentFeedback` assert
 // EVERY prior is restored (not just the ones the current implementation
 // happens to remember).
-const ACK_STYLE_KEYS = ["transition", "transform", "filter"];
+const ACK_STYLE_KEYS = ["transition", "transform", "filter"] as const;
 
-export function playPacketChoiceIntentFeedback(element, { reducedMotion = false } = {}) {
+export function playPacketChoiceIntentFeedback(
+  element: AckElement | null | undefined,
+  { reducedMotion = false }: PlayOptions = {},
+): () => void {
   if (!element) return () => {};
 
-  const priors = {};
+  const priors: Record<string, string> = {};
   for (const key of ACK_STYLE_KEYS) priors[key] = element.style[key];
   let timer = 0;
 
-  const reset = () => {
+  const reset = (): void => {
     if (timer) {
       // `window.clearTimeout` matches the `window.setTimeout` we scheduled,
       // so a bare `clearTimeout` reference (missing in some test doubles)
@@ -54,10 +82,10 @@ export function playPacketChoiceIntentFeedback(element, { reducedMotion = false 
     element.style.filter = "brightness(1.12)";
   }
 
-  const schedule =
+  const schedule: (fn: () => void, delay: number) => number =
     typeof window !== "undefined" && typeof window.setTimeout === "function"
-      ? window.setTimeout.bind(window)
-      : setTimeout;
+      ? (fn, delay) => window.setTimeout(fn, delay) as unknown as number
+      : (fn, delay) => setTimeout(fn, delay) as unknown as number;
   timer = schedule(() => {
     // Body: same reset, but zero `timer` FIRST so a nested `reset()` call
     // from the timer thread doesn't double-clear a re-used id.
@@ -85,7 +113,13 @@ export function playPacketChoiceIntentFeedback(element, { reducedMotion = false 
 // automatically at `PACKET_CHOICE_ACK_MS`.
 // ---------------------------------------------------------------------------
 
-function makeElementStub(initial = {}) {
+interface ElementStubInit {
+  transition?: string;
+  transform?: string;
+  filter?: string;
+}
+
+function makeElementStub(initial: ElementStubInit = {}): AckElement {
   return {
     style: {
       transition: initial.transition ?? "",
@@ -95,26 +129,31 @@ function makeElementStub(initial = {}) {
   };
 }
 
-function withFakeTimers(body) {
-  const scheduled = [];
+interface FakeTimers {
+  advance: () => void;
+  pending: () => number;
+  lastDelay: () => number | null;
+}
+
+function withFakeTimers<T>(body: (timers: FakeTimers) => T): T {
+  const scheduled: Array<{ id: number; fn: () => void; delay: number }> = [];
   let nextId = 1;
   const realWindow = typeof window === "undefined" ? undefined : window;
   const fakeWindow = {
-    setTimeout: (fn, delay) => {
+    setTimeout: (fn: () => void, delay: number): number => {
       const id = nextId++;
       scheduled.push({ id, fn, delay });
       return id;
     },
-    clearTimeout: (id) => {
+    clearTimeout: (id: number): void => {
       const idx = scheduled.findIndex((entry) => entry.id === id);
       if (idx >= 0) scheduled.splice(idx, 1);
     },
-    matchMedia: () => ({ matches: false }),
+    matchMedia: (): { matches: boolean } => ({ matches: false }),
   };
   // Install fake window for the duration of `body`. The module code guards
   // `typeof window !== "undefined"`, so overwriting the global is enough.
-  // eslint-disable-next-line no-undef
-  globalThis.window = fakeWindow;
+  (globalThis as unknown as { window: unknown }).window = fakeWindow;
   try {
     return body({
       advance: () => {
@@ -127,24 +166,22 @@ function withFakeTimers(body) {
       lastDelay: () => (scheduled.length ? scheduled[scheduled.length - 1].delay : null),
     });
   } finally {
-    // eslint-disable-next-line no-undef
-    if (realWindow === undefined) delete globalThis.window;
-    // eslint-disable-next-line no-undef
-    else globalThis.window = realWindow;
+    if (realWindow === undefined) delete (globalThis as unknown as { window?: unknown }).window;
+    else (globalThis as unknown as { window: unknown }).window = realWindow;
   }
 }
 
-function assertEqual(actual, expected, message) {
+function assertEqual<T>(actual: T, expected: T, message: string): void {
   if (actual !== expected) {
     throw new Error(`${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
   }
 }
 
-function assertTrue(cond, message) {
+function assertTrue(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
 }
 
-export function checkPacketChoiceIntentFeedback() {
+export function checkPacketChoiceIntentFeedback(): void {
   // (0) Constant sanity — kept as a lightweight sibling pin, not the whole
   //     bundle. `PACKET_CHOICE_ACK_MS` must be finite and fit inside the
   //     "immediate ack" budget the wire-in comment in main.js promises.
@@ -158,7 +195,7 @@ export function checkPacketChoiceIntentFeedback() {
   //     button ref is stale, playback must return a no-op cancel fn without
   //     throwing (the try/catch in main.js would swallow a throw, but a
   //     silent no-op is the contract).
-  return withFakeTimers((timers) => {
+  withFakeTimers((timers) => {
     const nullCancel = playPacketChoiceIntentFeedback(null);
     assertEqual(typeof nullCancel, "function", "Null element must yield a no-op cancel function");
     nullCancel(); // must not throw
@@ -225,6 +262,6 @@ export function checkPacketChoiceIntentFeedback() {
   });
 }
 
-export function runPacketChoiceIntentFeedbackChecks() {
+export function runPacketChoiceIntentFeedbackChecks(): void {
   checkPacketChoiceIntentFeedback();
 }
