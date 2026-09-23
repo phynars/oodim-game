@@ -5,22 +5,16 @@
  * player's eye without stealing the recognition line's existing camera beat.
  * This writer is idempotent per outcome: renderText() may run every frame,
  * but a sealed/opened/unknown line enters only once per mounted paragraph.
- *
- * Kiosk-scene visual wire: this writer is the served-page site
- * that fires on the real #ioReturnLine paragraph — main.js's
- * renderText() invokes playIoReturnLineFeedback(returnPara, outcome)
- * at the recognition beat. Applying the kiosk scene visual to
- * element.parentElement here mounts the descendant treatment on
- * the .panel surface. The visual writer is idempotent, so re-arms
- * across frames do not accumulate.
  */
 import { applyKioskSceneVisual } from "./kioskSceneVisual.js";
-import { playRecognitionBeat } from "./recognitionBeatMotion.js";
+import { playRecognitionBeat } from "../recognition-beat-motion.js";
 
 export const IO_RETURN_LINE_FEEDBACK = Object.freeze({
   durationMs: 280,
   risePx: 8,
   easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+  recognitionPressScale: 0.96,
+  recognitionSettleMs: 180,
 });
 
 export function playIoReturnLineFeedback(element, outcome) {
@@ -31,12 +25,13 @@ export function playIoReturnLineFeedback(element, outcome) {
   element.setAttribute("data-io-return-feedback", key);
 
   // Arm the kiosk scene visual on the containing surface — no-op
-  // when parentElement is unavailable (unit-test fake) and
-  // idempotent per surface via the visual writer's own gate.
+  // when parentElement is unavailable (unit-test fake) and idempotent per
+  // surface via the visual writer's own gate.
   applyKioskSceneVisual(element.parentElement);
 
-  // A 0.96 inhale, then 180ms spring-like settle makes the remembered fact
-  // land physically without altering recognition copy or state progression.
+  // The line takes one 0.96-scale inhale, then settles over 180ms while the
+  // containing panel's lantern treatment glints. This is visual-only, so it
+  // never changes the canonical recognition copy or state progression.
   playRecognitionBeat({
     dialogueEl: element,
     signEl: element.parentElement,
