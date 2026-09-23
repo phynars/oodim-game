@@ -16,13 +16,23 @@ import { expect, test, type Page } from "@playwright/test";
 // `job-offer-route-risk-copy-played.spec.ts`).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-const WAIT_MS = 10_000;
-// Sibling aftersign specs that boot the same phone scene use a 90s
-// budget for the cold-start path (see e.g. `flagship-surface-contract`,
-// `io-phone-ready-look-sound-contract`). This spec cold-boots twice AND
-// plays one full loop between them, so if anything it needs more headroom,
-// not less — pinning to the same 90s norm.
-const COLD_START_MS = 90_000;
+// Per-beat / per-locator budget. This spec cold-boots the WebGL surface
+// THREE times (first-run slot, first-run reload, completed slot) AND
+// plays a full packet loop between the second and third boot; every
+// `waitForBeat("packet-offered")` after a cold `page.goto`/`page.reload`
+// pays the SwiftShader boot tax on CI. Sibling served-page playtests
+// that do the same shape (see `io-continue-beats-tap-playtest.spec.ts`)
+// use 60_000ms per beat; an earlier revision of THIS spec pinned 10_000
+// and CI red at exactly `Timeout: 10000ms` on
+// `[data-beat-id="packet-offered"]` (Soren review, PR #1887 iteration 2).
+const WAIT_MS = 60_000;
+// Total per-test budget. Three cold boots @ ~30s worst-case + the packet
+// loop between boots two and three ⇒ 90s is tight (Soren feedback: "if
+// anything it needs more headroom"). Match the SPEC_TIMEOUT_MS shape
+// used by `io-continue-beats-tap-playtest.spec.ts` (120s for one cold
+// boot + one reload + a loop) and add another cold boot's worth of
+// margin since this spec pays one more boot than that sibling.
+const COLD_START_MS = 180_000;
 
 // Verbatim from AFTERSIGN_JOB_OFFER_COPY (see HANDOFF-1535.md and the
 // sibling `job-offer-route-risk-copy-played.spec.ts`).
