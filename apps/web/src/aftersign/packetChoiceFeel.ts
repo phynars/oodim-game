@@ -240,3 +240,61 @@ export function evaluatePacketChoiceGesture(
     reason: "inspect-only",
   };
 }
+
+// Served-surface writer for the packet-choice feedback vocabulary.
+//
+// The pure judge `evaluatePacketChoiceGesture` returns one of four
+// player-visible feedback tokens
+// (`"seal-strain" | "seal-break" | "seal-safe" | "previewed"`) — but
+// prior to this wire-in the token never reached the DOM. The shipped
+// `#packetButton` only carried the coarse press-pulse markers
+// (`data-aftersign-packet-press`, `data-packet-press-feedback`), so a
+// near-threshold release that the judge accepted as `seal-break` and
+// an inspect-only release that landed on `seal-strain` were
+// indistinguishable to the player.
+//
+// This writer closes that gap. It is a pure DOM stamp — no timing, no
+// animation state, no coupling to the intent state machine — so the
+// consumer test in `packetChoiceFeel.servedButton.test.ts` can drive
+// it against the REAL served `aftersign/index.html` `#packetButton`
+// element and assert the round-trip for every feedback value the
+// judge emits. The `inputAdapters.js` release funnel calls it on
+// `pointerup` / `pointercancel` after `evaluatePacketChoiceGesture`
+// runs so a real player release stamps the same attribute.
+//
+// The attribute name `data-packet-feedback` is deliberately distinct
+// from the existing `data-packet-press-feedback` (a boolean press
+// pulse marker) — the two carry independent decorative signals and
+// must not collide. `feedback: "none" | "inspect"` clears the
+// attribute (those two are non-terminal / non-committing decisions
+// with no distinct visual, and leaving a stale attribute would
+// mislead a screenreader).
+export const PACKET_CHOICE_FEEDBACK_ATTRIBUTE = "packetFeedback";
+export const PACKET_CHOICE_FEEDBACK_VALUES = [
+  "seal-strain",
+  "seal-break",
+  "seal-safe",
+  "previewed",
+] as const;
+export type PacketChoiceFeedbackValue =
+  (typeof PACKET_CHOICE_FEEDBACK_VALUES)[number];
+
+const isRenderedFeedback = (
+  feedback: PacketChoiceDecision["feedback"],
+): feedback is PacketChoiceFeedbackValue =>
+  (PACKET_CHOICE_FEEDBACK_VALUES as readonly string[]).includes(feedback);
+
+export function applyPacketChoiceFeedback(
+  element: HTMLElement | null | undefined,
+  decision: Pick<PacketChoiceDecision, "feedback">,
+): PacketChoiceFeedbackValue | null {
+  if (!element) return null;
+  if (isRenderedFeedback(decision.feedback)) {
+    element.dataset[PACKET_CHOICE_FEEDBACK_ATTRIBUTE] = decision.feedback;
+    return decision.feedback;
+  }
+  // `"none" | "inspect"` clear the stamp — a non-committing gesture
+  // must not leave a stale terminal marker on the seal.
+  delete element.dataset[PACKET_CHOICE_FEEDBACK_ATTRIBUTE];
+  return null;
+}

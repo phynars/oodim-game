@@ -10,6 +10,7 @@
 // blocked the prior draft because the writer had no importer here; this
 // import + the call sites below close that gap.
 import {
+  applyPacketChoiceFeedback,
   DEFAULT_PACKET_CHOICE_FEEL,
   evaluatePacketChoiceGesture,
 } from "../../../apps/web/src/aftersign/packetChoiceFeel.ts";
@@ -63,12 +64,15 @@ export const attachRuntimeInputAdapters = ({
   let packetPressX = null;
   let packetPressY = null;
 
-  const dispatchCancelFailureStingIfCancelled = (kind, event) => {
-    // Only dispatch when we saw the matching press — a stray release
-    // event without a press summary can't produce a meaningful
-    // duration/travel, and the pure judge would classify it as
-    // `reason: "not-on-seal"` anyway.
-    if (packetPressAtMs === null) return false;
+  // Runs the pure feel judge on the closed press-release summary and
+  // returns the decision. Kept as a single call site so the served
+  // `pointerup` / `pointercancel` funnels share ONE judgement per
+  // release — a stamp of `data-packet-feedback`, a decision on the
+  // cancel-failure sting, and any future consumer all read the same
+  // `PacketChoiceDecision`. Returns `null` when there's no matching
+  // press (stray release; not-on-seal by construction).
+  const evaluatePacketReleaseDecision = (kind, event) => {
+    if (packetPressAtMs === null) return null;
     const durationMs = Math.max(0, performance.now() - packetPressAtMs);
     const dx = typeof event.clientX === "number" && packetPressX !== null
       ? event.clientX - packetPressX
@@ -77,7 +81,7 @@ export const attachRuntimeInputAdapters = ({
       ? event.clientY - packetPressY
       : 0;
     const travelPx = Math.sqrt(dx * dx + dy * dy);
-    const decision = evaluatePacketChoiceGesture(
+    return evaluatePacketChoiceGesture(
       {
         kind,
         durationMs,
@@ -87,6 +91,31 @@ export const attachRuntimeInputAdapters = ({
       },
       DEFAULT_PACKET_CHOICE_FEEL,
     );
+  };
+
+  // Stamp `data-packet-feedback` on the shipped `#packetButton` from
+  // the pure judge's `feedback` token. Paired with the CSS block in
+  // `aftersign/index.html` that reads the attribute, so the served
+  // surface now distinguishes `seal-strain` (inspect-only overshoot),
+  // `seal-break` (near-threshold hold accepted by release-forgiveness),
+  // `seal-safe` (preserve tap), and `previewed` (sub-preview glance).
+  // Before this wire-in the four decisions were visually
+  // indistinguishable on the served page.
+  const stampPacketFeedbackFromDecision = (decision) => {
+    if (!decision) return;
+    try {
+      applyPacketChoiceFeedback(packetButton, decision);
+    } catch {
+      // Decorative stamp — must never break the release funnel.
+    }
+  };
+
+  const dispatchCancelFailureStingIfCancelled = (decision) => {
+    // Only dispatch when we saw the matching press — a stray release
+    // event without a press summary can't produce a meaningful
+    // duration/travel, and the pure judge would classify it as
+    // `reason: "not-on-seal"` anyway.
+    if (!decision) return false;
     if (decision.reason !== "cancelled") return false;
     try {
       return playPacketCancelFailureSting(packetButton, {
@@ -137,13 +166,25 @@ export const attachRuntimeInputAdapters = ({
     // PR #1871 — cancel-failure sting wire-in on the served release
     // funnel. A normal pointerup is a "tap" or "hold" gesture, not
     // a cancel — the pure judge returns `reason: "cancelled"` only
-    // for `kind: "cancel"` — so this call site is a no-op on every
+    // for `kind: "cancel"` — so the sting branch is a no-op on every
     // healthy release. The `pointercancel` handler below is the
-    // primary served path; this call kept purely so a future
+    // primary sting path; this call kept purely so a future
     // reviewer greping for the writer on the pointerup seam sees
     // it (a defensive symmetry, cheap because the judge's
     // `not-on-seal` / non-cancel branches short-circuit).
-    dispatchCancelFailureStingIfCancelled("tap", event);
+    //
+    // PR revision (Refs #1698 handoff chain) — pointerup is ALSO the
+    // primary path for the four terminal feedback tokens
+    // (`seal-strain` / `seal-break` / `seal-safe` / `previewed`), so
+    // we evaluate the decision once and stamp
+    // `data-packet-feedback` on the very `#packetButton` the finger
+    // touched. Before this wire-in the pure judge's feedback token
+    // never reached the DOM.
+    {
+      const decision = evaluatePacketReleaseDecision("tap", event);
+      stampPacketFeedbackFromDecision(decision);
+      dispatchCancelFailureStingIfCancelled(decision);
+    }
     packetPressAtMs = null;
     packetPressX = null;
     packetPressY = null;
@@ -166,7 +207,17 @@ export const attachRuntimeInputAdapters = ({
     // the finger touched. Same call site the sibling
     // `applyTapConfirmFeel` wire uses on pointerup: one shipped
     // adapter file, one DOM element, one served release funnel.
-    dispatchCancelFailureStingIfCancelled("cancel", event);
+    //
+    // PR revision (Refs #1698 handoff chain) — a cancelled gesture
+    // clears any prior `data-packet-feedback` stamp (the pure judge
+    // returns `feedback: "none"` for `kind: "cancel"`), so a stale
+    // terminal marker from a previous release cannot linger on the
+    // seal into the next attempt.
+    {
+      const decision = evaluatePacketReleaseDecision("cancel", event);
+      stampPacketFeedbackFromDecision(decision);
+      dispatchCancelFailureStingIfCancelled(decision);
+    }
     packetPressAtMs = null;
     packetPressX = null;
     packetPressY = null;
