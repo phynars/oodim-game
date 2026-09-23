@@ -262,6 +262,7 @@ import {
   playRouteRiskConfirmFeedback,
   ROUTE_RISK_CONFIRM_FEEL,
 } from "./src/routeRiskConfirmFeedback.js";
+import { playPacketChoiceIntentFeedback } from "./src/packetChoiceIntentFeedback.js";
 // Player-facing labels for the four route-risk action ids the
 // writer above stamps as `<button>` children. Passed as
 // `labelForAction: routeRiskActionLabel` at both
@@ -2825,6 +2826,14 @@ const setBeat = (beat) => {
 };
 
 const commitPacketOutcome = (outcome) => {
+  // An irreversible packet choice needs an immediate screen-level answer.
+  // This is decorative only: the state commit below remains authoritative.
+  try {
+    playPacketChoiceIntentFeedback(packetButton, {
+      reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+    });
+  } catch { /* feedback must never block a committed choice */ }
+
     // #1563 — flip the visible `#packetButton` copy the same frame
     // the tap-driven outcome commits. Sibling
     // `packetInteractionCopy.consumer.test.ts` pins this so a future
