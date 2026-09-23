@@ -589,6 +589,7 @@ import { stampJobOfferData } from "./src/jobOfferDom.js";
 import { chooseIoLedgerLine } from "./src/ioLedgerLine.ts";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
+import { applyJobOfferChoiceFeedback } from "./src/jobOfferChoiceFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
@@ -2487,6 +2488,9 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           );
           attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
           armJobOfferFeel(button, () => {
+            // The decision lands immediately on the exact rendered button,
+            // before audio unlock or persistence can defer the response.
+            applyJobOfferChoiceFeedback(button, offer.routeRisk);
             // PR #1790 (Soren's REQUEST_CHANGES) — schedule the frozen
             // `JOB_OFFER_CONFIRM_AUDIO` triangle burst on the same
             // `audioContext` `playKioskConfirm` uses, from the very
