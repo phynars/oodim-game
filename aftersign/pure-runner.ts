@@ -21,6 +21,7 @@
 //   - runTargetLossFeedbackChecks         (aftersign/src/targetLossFeedback.test.ts) — #1721 wire-in
 //   - runRouteChoicePressFeedbackChecks   (aftersign/src/routeChoicePressFeedback.test.ts) — #1806
 //   - runRouteChoicePressServedContractChecks (aftersign/routeChoicePressServedContract.ts) — #1806 served pin
+//   - runPacketChoiceIntentFeedbackChecks (aftersign/src/packetChoiceIntentFeedback.test.ts) — #1902
 //
 // Every relative specifier in every one of those subgraphs is
 // `.ts`-extensioned (verified 2026-08-02 for the first three; verified
@@ -185,6 +186,26 @@ import { runPacketPressFeedbackChecks } from "./src/packet-press-feedback.test.t
 // uses `node:fs`, which the aftersign tsconfig's `types: ["vite/client"]`
 // deliberately excludes from the strict blocking gate over `src/`.
 import { runPacketPressFeedbackServedContractChecks } from "./packetPressFeedbackServedContract.ts";
+// Packet-choice intent feedback (#1902) — the short, cancel-safe visual
+// ack `commitPacketOutcome` in `aftersign/main.js` plays on the frame an
+// irreversible packet choice commits. This bundle drives
+// `playPacketChoiceIntentFeedback` against an element stub + fake timers
+// and pins the five observable playback branches: (a) null-element
+// early-out returns a no-op cancel (main.js's try/catch would swallow a
+// throw, but the contract is silent no-op), (b) non-reduced branch
+// stamps transform + transition + filter, (c) manual cancel restores
+// every prior style, (d) the auto-timer at `PACKET_CHOICE_ACK_MS`
+// restores every prior style with no manual cancel, and (e) the
+// reduced-motion branch is brightness-only (no transform, no
+// transition) — the OS-honored promise wired in main.js via
+// `window.matchMedia("(prefers-reduced-motion: reduce)")`. Replaces the
+// earlier tautological check (`PACKET_CHOICE_ACK_MS <= 200 && > 0`
+// mirroring the same file's own constant) that Soren flagged AI003 on
+// PR #1902. The `.test.ts` shim's sole relative import is
+// `./packetChoiceIntentFeedback.js` (extensioned), and that leaf has
+// ZERO relative imports, so the subgraph satisfies the extension-
+// resolution contract documented above.
+import { runPacketChoiceIntentFeedbackChecks } from "./src/packetChoiceIntentFeedback.test.ts";
 
 type Runner = {
   label: string;
@@ -297,6 +318,14 @@ const runners: Runner[] = [
     label: "runPacketPressFeedbackServedContractChecks",
     run: runPacketPressFeedbackServedContractChecks,
   },
+  // Packet-choice intent feedback (#1902) — pins the five observable
+  // playback branches of `playPacketChoiceIntentFeedback` (null-element
+  // no-op, transform/transition/filter stamp, cancel restores priors,
+  // auto-timer restores priors, reduced-motion collapses to brightness
+  // only). Reds if a future edit breaks the reduced-motion promise, the
+  // prior-style restore path, or the ≤200ms immediate-ack budget the
+  // wire-in in `commitPacketOutcome` depends on.
+  { label: "runPacketChoiceIntentFeedbackChecks", run: runPacketChoiceIntentFeedbackChecks },
 ];
 
 let failed = 0;

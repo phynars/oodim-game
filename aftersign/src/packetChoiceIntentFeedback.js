@@ -2,26 +2,51 @@
  * A short, cancel-safe acknowledgement for the irreversible packet decision.
  * The caller supplies the rendered choice element; this module deliberately owns
  * no story state, so a visual acknowledgement cannot cause a different choice.
+ *
+ * Wired into `aftersign/main.js:commitPacketOutcome` behind a try/catch so any
+ * feedback exception can never block the durable choice commit.
+ *
+ * Extension-resolution contract: this file has ZERO relative imports; the
+ * `.test.ts` shim's sole relative import (`./packetChoiceIntentFeedback.js`)
+ * is `.js`-extensioned. The pure-runner (`node --experimental-strip-types`)
+ * resolves the whole subgraph deterministically — see the /*.ts / .js *\/
+ * note in `aftersign/pure-runner.ts`'s header.
  */
 export const PACKET_CHOICE_ACK_MS = 180;
+
+// Style keys the ack module mutates. Kept in one place so both playback and
+// reset touch the same set; also lets `checkPacketChoiceIntentFeedback` assert
+// EVERY prior is restored (not just the ones the current implementation
+// happens to remember).
+const ACK_STYLE_KEYS = ["transition", "transform", "filter"];
 
 export function playPacketChoiceIntentFeedback(element, { reducedMotion = false } = {}) {
   if (!element) return () => {};
 
-  const priorTransition = element.style.transition;
-  const priorTransform = element.style.transform;
-  const priorFilter = element.style.filter;
+  const priors = {};
+  for (const key of ACK_STYLE_KEYS) priors[key] = element.style[key];
   let timer = 0;
 
   const reset = () => {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      // `window.clearTimeout` matches the `window.setTimeout` we scheduled,
+      // so a bare `clearTimeout` reference (missing in some test doubles)
+      // isn't required. If the caller invokes `reset()` before the timer
+      // fires we cancel; if it invokes after, `timer` was already zeroed
+      // by the timer body below and we no-op.
+      if (typeof window !== "undefined" && typeof window.clearTimeout === "function") {
+        window.clearTimeout(timer);
+      } else if (typeof clearTimeout === "function") {
+        clearTimeout(timer);
+      }
+    }
     timer = 0;
-    element.style.transition = priorTransition;
-    element.style.transform = priorTransform;
-    element.style.filter = priorFilter;
+    for (const key of ACK_STYLE_KEYS) element.style[key] = priors[key];
   };
 
   if (reducedMotion) {
+    // Brightness-only: no motion, no transition. Players who asked the OS to
+    // reduce motion get an unambiguous static ack.
     element.style.filter = "brightness(1.18)";
   } else {
     element.style.transition = "transform 70ms ease-out, filter 70ms ease-out";
@@ -29,22 +54,177 @@ export function playPacketChoiceIntentFeedback(element, { reducedMotion = false 
     element.style.filter = "brightness(1.12)";
   }
 
-  timer = window.setTimeout(reset, PACKET_CHOICE_ACK_MS);
+  const schedule =
+    typeof window !== "undefined" && typeof window.setTimeout === "function"
+      ? window.setTimeout.bind(window)
+      : setTimeout;
+  timer = schedule(() => {
+    // Body: same reset, but zero `timer` FIRST so a nested `reset()` call
+    // from the timer thread doesn't double-clear a re-used id.
+    const t = timer;
+    timer = 0;
+    if (t) {
+      // no-op: `t` is our own id; nothing external to clear.
+    }
+    for (const key of ACK_STYLE_KEYS) element.style[key] = priors[key];
+  }, PACKET_CHOICE_ACK_MS);
+
   return reset;
 }
 
-export function checkPacketChoiceIntentFeedback() {
-  const checks = [];
-  const assert = (condition, message) => {
-    if (!condition) throw new Error(message);
-    checks.push(message);
-  };
+// ---------------------------------------------------------------------------
+// Pure-runner check bundle.
+//
+// The earlier draft only asserted `PACKET_CHOICE_ACK_MS <= 200 && > 0` against
+// the same hardcoded `180` in this file — a tautology that couldn't fail for
+// any real bug (Soren, PR #1902, AI003). These checks drive
+// `playPacketChoiceIntentFeedback` against a tiny element stub and pin the
+// OBSERVABLE playback behaviour: null-element early-out, prior-style
+// restoration, the reduced-motion branch collapses to brightness only, the
+// non-reduced branch stamps a transform, and the timer fires the reset
+// automatically at `PACKET_CHOICE_ACK_MS`.
+// ---------------------------------------------------------------------------
 
-  assert(PACKET_CHOICE_ACK_MS <= 200, "packet choice acknowledgement starts and clears inside 200ms");
-  assert(PACKET_CHOICE_ACK_MS > 0, "packet choice acknowledgement has a finite visible duration");
-  return checks;
+function makeElementStub(initial = {}) {
+  return {
+    style: {
+      transition: initial.transition ?? "",
+      transform: initial.transform ?? "",
+      filter: initial.filter ?? "",
+    },
+  };
+}
+
+function withFakeTimers(body) {
+  const scheduled = [];
+  let nextId = 1;
+  const realWindow = typeof window === "undefined" ? undefined : window;
+  const fakeWindow = {
+    setTimeout: (fn, delay) => {
+      const id = nextId++;
+      scheduled.push({ id, fn, delay });
+      return id;
+    },
+    clearTimeout: (id) => {
+      const idx = scheduled.findIndex((entry) => entry.id === id);
+      if (idx >= 0) scheduled.splice(idx, 1);
+    },
+    matchMedia: () => ({ matches: false }),
+  };
+  // Install fake window for the duration of `body`. The module code guards
+  // `typeof window !== "undefined"`, so overwriting the global is enough.
+  // eslint-disable-next-line no-undef
+  globalThis.window = fakeWindow;
+  try {
+    return body({
+      advance: () => {
+        // Fire every pending timer once, in FIFO order. Handlers may push
+        // more; those run on the next `advance()` call.
+        const batch = scheduled.splice(0);
+        for (const entry of batch) entry.fn();
+      },
+      pending: () => scheduled.length,
+      lastDelay: () => (scheduled.length ? scheduled[scheduled.length - 1].delay : null),
+    });
+  } finally {
+    // eslint-disable-next-line no-undef
+    if (realWindow === undefined) delete globalThis.window;
+    // eslint-disable-next-line no-undef
+    else globalThis.window = realWindow;
+  }
+}
+
+function assertEqual(actual, expected, message) {
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+}
+
+function assertTrue(cond, message) {
+  if (!cond) throw new Error(message);
+}
+
+export function checkPacketChoiceIntentFeedback() {
+  // (0) Constant sanity — kept as a lightweight sibling pin, not the whole
+  //     bundle. `PACKET_CHOICE_ACK_MS` must be finite and fit inside the
+  //     "immediate ack" budget the wire-in comment in main.js promises.
+  assertTrue(PACKET_CHOICE_ACK_MS > 0, "PACKET_CHOICE_ACK_MS must be a finite positive duration");
+  assertTrue(
+    PACKET_CHOICE_ACK_MS <= 200,
+    "PACKET_CHOICE_ACK_MS must stay inside the ≤200ms immediate-ack budget",
+  );
+
+  // (1) Null-element early-out — commitPacketOutcome relies on this: if the
+  //     button ref is stale, playback must return a no-op cancel fn without
+  //     throwing (the try/catch in main.js would swallow a throw, but a
+  //     silent no-op is the contract).
+  return withFakeTimers((timers) => {
+    const nullCancel = playPacketChoiceIntentFeedback(null);
+    assertEqual(typeof nullCancel, "function", "Null element must yield a no-op cancel function");
+    nullCancel(); // must not throw
+    assertEqual(timers.pending(), 0, "Null-element playback must not schedule a timer");
+
+    // (2) Non-reduced-motion branch stamps transform + transition + filter.
+    const el = makeElementStub({ transition: "orig-t", transform: "orig-x", filter: "orig-f" });
+    const cancel = playPacketChoiceIntentFeedback(el, { reducedMotion: false });
+    assertTrue(el.style.transform.length > 0, "Non-reduced branch must stamp a transform");
+    assertTrue(
+      el.style.transform !== "orig-x",
+      "Non-reduced branch must overwrite the prior transform (not leave it as-is)",
+    );
+    assertTrue(el.style.filter.length > 0, "Non-reduced branch must stamp a filter");
+    assertTrue(el.style.transition.length > 0, "Non-reduced branch must stamp a transition");
+    assertEqual(timers.pending(), 1, "Non-reduced playback must schedule exactly one release timer");
+    assertEqual(
+      timers.lastDelay(),
+      PACKET_CHOICE_ACK_MS,
+      "Release timer must fire at PACKET_CHOICE_ACK_MS, not some other window",
+    );
+
+    // (3) Manual cancel restores every prior style — this is the try/catch
+    //     safety net in main.js: if a re-entrant commit fires, the caller
+    //     can cancel and the button must go back to exactly where it was.
+    cancel();
+    assertEqual(el.style.transition, "orig-t", "Cancel must restore prior transition");
+    assertEqual(el.style.transform, "orig-x", "Cancel must restore prior transform");
+    assertEqual(el.style.filter, "orig-f", "Cancel must restore prior filter");
+    assertEqual(timers.pending(), 0, "Cancel must clear the scheduled release timer");
+
+    // (4) Timer-driven release restores every prior style with no manual
+    //     cancel — this is the common path (player commits, ack fades on
+    //     its own).
+    const el2 = makeElementStub({ transition: "t2", transform: "x2", filter: "f2" });
+    playPacketChoiceIntentFeedback(el2, { reducedMotion: false });
+    assertTrue(el2.style.transform !== "x2", "Playback must overwrite prior transform before timer fires");
+    timers.advance();
+    assertEqual(el2.style.transition, "t2", "Timer release must restore prior transition");
+    assertEqual(el2.style.transform, "x2", "Timer release must restore prior transform");
+    assertEqual(el2.style.filter, "f2", "Timer release must restore prior filter");
+
+    // (5) Reduced-motion branch is brightness-only: no transform, no
+    //     transition — the reduced-motion promise in the wire-in comment.
+    const el3 = makeElementStub({ transition: "keep-t", transform: "keep-x", filter: "keep-f" });
+    playPacketChoiceIntentFeedback(el3, { reducedMotion: true });
+    assertEqual(
+      el3.style.transform,
+      "keep-x",
+      "Reduced-motion branch must not stamp a transform (motion is what the OS said not to do)",
+    );
+    assertEqual(
+      el3.style.transition,
+      "keep-t",
+      "Reduced-motion branch must not stamp a transition (no motion, no easing curve)",
+    );
+    assertTrue(
+      el3.style.filter !== "keep-f",
+      "Reduced-motion branch must still stamp a brightness ack — silent commits are worse than motionless ones",
+    );
+    assertEqual(timers.pending(), 1, "Reduced-motion playback must also schedule a release timer");
+    timers.advance();
+    assertEqual(el3.style.filter, "keep-f", "Reduced-motion timer release must restore prior filter");
+  });
 }
 
 export function runPacketChoiceIntentFeedbackChecks() {
-  return checkPacketChoiceIntentFeedback();
+  checkPacketChoiceIntentFeedback();
 }
