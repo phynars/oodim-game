@@ -1,6 +1,12 @@
 // M-LOOP-E1: route + risk choice as a durable memory fact that feeds the
 // next run's offered-action set.
 //
+// Feel guard (see `routeRiskChoiceIntent.ts`): once a choice fires,
+// route-risk taps are locked for 180ms so a finger that lifts after
+// the tray reflows can't visually confirm the wrong route. The lock
+// state lives per-container (module `WeakMap` keyed by the container
+// element) so two concurrent surfaces don't share a lock.
+//
 // This module is the CONTRACT + the RENDERED CONSUMER for the loop:
 //
 //   1. Pure data + selection primitive
@@ -60,6 +66,11 @@
 //   preserves that invariant; the played consumer wires the
 //   acknowledgement where the served DOM already lives (see
 //   `playRouteRiskConfirmFeedback` import in `aftersign/main.js`).
+
+import {
+  pickRouteRiskChoiceOnTap,
+  type RouteRiskChoiceLock,
+} from "./routeRiskChoiceIntent";
 
 export type AftersignRoute = "fast" | "safe";
 
@@ -136,7 +147,20 @@ export type AftersignRouteRiskRenderInput = {
    * tap-driven test and for scaffolding.
    */
   labelForAction?: (action: AftersignOfferedAction) => string;
+  /**
+   * Optional clock the writer reads to gate the 180ms route-risk tap
+   * lock. Defaults to `Date.now`. Tests supply a fake clock so a
+   * "two taps in 60ms" scenario is deterministic.
+   */
+  now?: () => number;
 };
+
+// Per-container lock state. Keyed by the container element so two
+// concurrent surfaces (unlikely on the flagship, but cheap to isolate)
+// don't share a window. A container that's GC'd releases its lock
+// entry with it.
+const ROUTE_RISK_LOCKS: WeakMap<HTMLElement, RouteRiskChoiceLock> =
+  new WeakMap();
 
 /**
  * DOM writer — stamps one `<button data-aftersign-tap-choice="<action>">`
@@ -156,7 +180,8 @@ export type AftersignRouteRiskRenderInput = {
 export function renderRouteRiskChoice(
   input: AftersignRouteRiskRenderInput,
 ): readonly AftersignOfferedAction[] {
-  const { container, memory, onChoose, labelForAction } = input;
+  const { container, memory, onChoose, labelForAction, now } = input;
+  const readNow = now ?? (() => Date.now());
   const actions = computeOfferedActions(memory);
   container.setAttribute(AFTERSIGN_ROUTE_RISK_SURFACE_ATTRIBUTE, "");
   // Clear any previous render (idempotency).
@@ -170,6 +195,19 @@ export function renderRouteRiskChoice(
     button.setAttribute(AFTERSIGN_ROUTE_RISK_TAP_ATTRIBUTE, action);
     button.textContent = labelForAction ? labelForAction(action) : action;
     button.addEventListener("click", () => {
+      // Feel guard: drop route-risk taps that arrive inside the 180ms
+      // lock window on a DIFFERENT choice — the finger that lifted
+      // after reflow can't confirm the wrong action.
+      const prior = ROUTE_RISK_LOCKS.get(container);
+      const { accepted, nextLock } = pickRouteRiskChoiceOnTap(
+        prior,
+        action,
+        readNow(),
+      );
+      ROUTE_RISK_LOCKS.set(container, nextLock);
+      if (!accepted) {
+        return;
+      }
       onChoose(action);
     });
     container.appendChild(button);
