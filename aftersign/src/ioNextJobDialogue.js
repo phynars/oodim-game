@@ -24,7 +24,9 @@ export const IO_NEXT_JOB_DIALOGUE = Object.freeze({
   id: IO_NEXT_JOB_DIALOGUE_ID,
   speaker: "Io",
   beat: "io-next-job",
-  choiceLabel: "Pocket the red tag",
+  // This is the player-facing choice: Orra's remembered knowledge is
+  // a consequence waiting at the next door, not lore tucked in a line.
+  choiceLabel: "Take the red tag. Orra will remember.",
   line: IO_NEXT_JOB_HANDOFF.line,
   memoryRefs: Object.freeze(["delivery-outcome", "route-attention"]),
 });
