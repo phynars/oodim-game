@@ -20,11 +20,23 @@ import { IO_NEXT_JOB_HANDOFF } from "../../apps/web/src/aftersign/story/ioContin
 
 export const IO_NEXT_JOB_DIALOGUE_ID = "io-next-job-red-tag";
 
+// What this object actually SHIPS: only `line` is consumed by the
+// served page — `main.js` imports `ioNextJobLine` below and stamps
+// its return value into `#line`. The other fields (`id`, `speaker`,
+// `beat`, `memoryRefs`) are metadata kept as a paper-trail for the
+// beat this module speaks for; they are NOT rendered anywhere today.
+//
+// A `choiceLabel` field previously lived here (PR #1909, iter-1). It
+// was removed on re-review (Soren, AI006/AI007): the ask-for-next-job
+// button's label is authored elsewhere and this file had zero
+// importers of the field, so the copy never reached a player.
+// If a future PR wants to author that button's label, do it in the
+// module `main.js` actually imports for the button — and add a played
+// e2e that asserts on the label text, not on the choice id.
 export const IO_NEXT_JOB_DIALOGUE = Object.freeze({
   id: IO_NEXT_JOB_DIALOGUE_ID,
   speaker: "Io",
   beat: "io-next-job",
-  choiceLabel: "Pocket the red tag",
   line: IO_NEXT_JOB_HANDOFF.line,
   memoryRefs: Object.freeze(["delivery-outcome", "route-attention"]),
 });
