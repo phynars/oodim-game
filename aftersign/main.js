@@ -347,6 +347,7 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // the served page across a full loop and pins the fresh-boot
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
+import { IO_DEFAULT_OFFER_LINE } from "./src/ioDefaultOfferCopy.js";
 import { ioOfferHeading } from "./src/ioLoopCopy.js";
 import { ioJobAcceptedLine } from "./src/ioJobAcceptedCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
@@ -1354,7 +1355,7 @@ const lineForBeat = () => {
     return selectIoRecognitionDialogueLine(snippets, { memory: state.npcs.io.memory }).line;
   }
 
-  return "Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.";
+  return IO_DEFAULT_OFFER_LINE;
 };
 
 const memoryFacts = () => {
