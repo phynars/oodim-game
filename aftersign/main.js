@@ -3218,9 +3218,19 @@ const choose = async (choiceId) => {
     // deliver its pointer and click events across the beat transition;
     // without this frame gate the click that means "Return to Io" can be
     // reinterpreted as the newly-rendered return-tone control.
+    //
+    // Producer: the setTimeout in `deliverPacket` stamps
+    // `state.interaction.recognitionEnteredFrame` with the frame it
+    // promoted the beat on. After a reload the field is unset (the
+    // reload path doesn't re-enter the beat, it restores INTO it), and
+    // the timer that would stamp it is cancelled in `reloadFromSave`,
+    // so a `typeof === "number"` guard here treats "not stamped" as
+    // "the beat has been settled for a while" — the correct polarity
+    // for the reload race the sibling clearTimeout already handles.
+    const enteredFrame = state.interaction.recognitionEnteredFrame;
     if (
       state.scene.beat !== "io-return-recognition"
-      || state.interaction.recognitionEnteredFrame === state._runtime.frame
+      || (typeof enteredFrame === "number" && enteredFrame === state._runtime.frame)
     ) {
       return;
     }
@@ -4254,6 +4264,16 @@ const deliverPacket = (source = "hud-button") => {
   setBeat("packet-delivered");
   deliveryRecognitionTimeout = setTimeout(() => {
     deliveryRecognitionTimeout = null;
+    // Frame-gate producer for the `choose-return-tone` guard above.
+    // This callback synchronously promotes the beat to
+    // `io-return-recognition` (via `setBeat(...)` further down); stamp
+    // the frame here so a `pointerup` that races the transition — the
+    // "same gesture reinterpreted as the newly-rendered return-tone
+    // control" case — falls on `enteredFrame === _runtime.frame` and
+    // is silently no-op'd. `_runtime.frame` is stable inside a single
+    // callback body, so it doesn't matter that the stamp precedes the
+    // setBeat in source order.
+    state.interaction.recognitionEnteredFrame = state._runtime.frame;
     const beatEndedAt = performance.now();
     const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
