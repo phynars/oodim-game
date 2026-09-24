@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { isSameJobOfferRecovery } from "../src/jobOfferPressRecovery";
+
 // The press animation can be hidden immediately after the click advances the
 // beat. Record the authored pressed scale in the pointer event itself, rather
 // than hoping an asynchronous sampler runs before that hide.
