@@ -592,6 +592,7 @@ import { chooseIoLedgerLine } from "./src/ioLedgerLine.ts";
 import { armJobOfferFeel, JOB_OFFER_FEEL } from "./src/jobOfferFeel.js";
 import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 import { applyJobOfferChoiceFeedback } from "./src/jobOfferChoiceFeedback.js";
+import { playJobOfferFocusFeedback } from "./src/jobOfferFocusFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
@@ -2495,6 +2496,10 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // The decision lands immediately on the exact rendered button,
             // before audio unlock or persistence can defer the response.
             applyJobOfferChoiceFeedback(button, offer.routeRisk);
+            // Keep the committed offer visibly latched through touch release.
+            // This is presentation-only; the story action below still lands
+            // in this callback without waiting for the 180ms envelope.
+            playJobOfferFocusFeedback(button);
             // PR #1790 (Soren's REQUEST_CHANGES) — schedule the frozen
             // `JOB_OFFER_CONFIRM_AUDIO` triangle burst on the same
             // `audioContext` `playKioskConfirm` uses, from the very
