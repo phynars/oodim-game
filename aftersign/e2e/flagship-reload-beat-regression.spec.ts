@@ -133,11 +133,16 @@ function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): v
   }
 }
 
-async function advanceToRecognition(page: Page): Promise<ReloadSnapshot> {
+async function advanceToRecognition(page: Page, path: PacketPath): Promise<ReloadSnapshot> {
   const beat = await page.evaluate(() => window.__game!.getSnapshot().scene.beat);
-  if (beat !== "io-return-recognition") {
-    await page.evaluate(() => window.__game!.input.choose("return-to-io"));
+  if (beat === "packet-delivered") {
+    const advanceControl = page.locator("#deliverButton");
+    await expect(advanceControl).toBeVisible();
+    await expect(advanceControl).toBeEnabled();
+    await expect(advanceControl).toHaveText("Return to Io");
+    await advanceControl.click();
     await idle(page);
+    await expect(page.locator("#line")).toHaveText(path.expectedRecognitionLine);
   }
   return page.evaluate(() => window.__game!.getSnapshot());
 }
@@ -157,7 +162,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
       const afterReload = await playSaveReloadPath(page, path);
       expectReloadedOutcome(afterReload, path);
 
-      const afterRecognition = await advanceToRecognition(page);
+      const afterRecognition = await advanceToRecognition(page, path);
       expect(afterRecognition.scene.beat).toBe("io-return-recognition");
       expect(afterRecognition.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
       expect(afterRecognition.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
@@ -166,9 +171,9 @@ test.describe("AFTERSIGN reload beat regression", () => {
 
   test("sealed and opened reload paths produce distinct Io recognition lines", async ({ page }) => {
     await playSaveReloadPath(page, PACKET_PATHS[0]);
-    const sealed = await advanceToRecognition(page);
+    const sealed = await advanceToRecognition(page, PACKET_PATHS[0]);
     await playSaveReloadPath(page, PACKET_PATHS[1]);
-    const opened = await advanceToRecognition(page);
+    const opened = await advanceToRecognition(page, PACKET_PATHS[1]);
 
     expect(sealed.scene.beat).toBe("io-return-recognition");
     expect(opened.scene.beat).toBe("io-return-recognition");
@@ -181,7 +186,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
     test.skip(process.env.FLAGSHIP_BREAK_MODE !== "wrong-io-line", "red guard");
     test.setTimeout(COLD_START_MS);
     await playSaveReloadPath(page, PACKET_PATHS[0]);
-    const sealed = await advanceToRecognition(page);
+    const sealed = await advanceToRecognition(page, PACKET_PATHS[0]);
     expect(sealed.scene.beat).toBe("io-return-recognition");
     expect(sealed.npcs.io.lastLine).toBe(PACKET_PATHS[0].expectedRecognitionLine);
     expect(sealed.npcs.io.lastLine).not.toBe(PACKET_PATHS[0].wrongRecognitionLine);

@@ -16,11 +16,14 @@ describe("M-CONTINUE visible button affordance", () => {
     const packetChoiceBranchStart = source.indexOf("if (isPacketChoiceBeat)", renderTextStart);
     const renderTextSetup = source.slice(renderTextStart, packetChoiceBranchStart);
 
+    expect(renderTextSetup).toContain("state.scene.beat === \"packet-delivered\"");
     expect(renderTextSetup).toContain("state.scene.beat === \"io-return-recognition\"");
     expect(renderTextSetup).toContain("state.scene.beat === \"return-tone-choice\"");
     expect(renderTextSetup).toContain("state.scene.beat === \"io-next-job\"");
     expect(renderTextSetup).toMatch(
-      /routeChoiceVisible\s*=\s*isPacketChoiceBeat\s*\|\|\s*isReturnRecognitionBeat\s*\|\|\s*isReturnToneChoiceBeat\s*\|\|\s*isNextJobBeat/,
+      /routeChoiceVisible\s*=\s*isPacketChoiceBeat\s*\|\|\s*isPacketDeliveredBeat\s*\|\|\s*isReturnRecognitionBeat\s*\|\|\s*isReturnToneChoiceBeat\s*\|\|\s*isNextJobBeat/,
     );
+    expect(source.slice(packetChoiceBranchStart)).toContain("if (isPacketDeliveredBeat)");
+    expect(source.slice(packetChoiceBranchStart)).toContain('stampAftersignChoice(deliverButton, "return-to-io")');
   });
 });
