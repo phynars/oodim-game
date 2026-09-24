@@ -3224,12 +3224,16 @@ const choose = async (choiceId) => {
     // Producer: the delivery-recognition setTimeout in `deliverPacket`
     // stamps `state.interaction.recognitionEnteredAt = performance.now()`
     // on the SAME callback that calls `setBeat("io-return-recognition")`,
-    // so the stamp lands atomically with the beat transition. On reload
-    // that timer is cancelled (see `reloadFromSave`) and the stamp is
-    // not written — a `typeof === "number"` check therefore treats
-    // "restored INTO the beat, not entered afresh" as "settled long
-    // enough", which is the correct polarity: a reload cannot itself
-    // be part of a same-gesture race.
+    // so the stamp lands atomically with the beat transition. On a
+    // reload the timer is intentionally NOT cancelled (see the note in
+    // `reloadFromSave`) so `memoryBeat` publishes on schedule; the
+    // stamp therefore lands with the beat transition after reload too,
+    // and the same-gesture race window is guarded identically. When a
+    // beat is entered by another path (e.g. `return-to-io` directly
+    // advancing off a durable save) `recognitionEnteredAt` may remain
+    // unset — `typeof === "number"` treats that as "settled" (gate
+    // passes), the correct polarity: an already-settled restored beat
+    // cannot itself be part of a same-gesture race.
     //
     // Why time and not frame count: `state._runtime` has no frame
     // producer (the rAF `tick()` does not maintain a counter — only
@@ -3394,19 +3398,16 @@ const forceSave = async () => {
 };
 
 const reloadFromSave = async ({ clearLocalState = false } = {}) => {
-  if (deliveryRecognitionTimeout !== null) {
-    clearTimeout(deliveryRecognitionTimeout);
-    deliveryRecognitionTimeout = null;
-  }
-  // The delivery timer that would have stamped `recognitionEnteredAt`
-  // has been cancelled above; clear any stale stamp so the settle-gate
-  // in `choose-return-tone` treats "restored INTO the beat" as
-  // "settled" (typeof !== "number" → gate passes). Without this, a
-  // save persisted mid-race could carry a stamp forward that either
-  // rejects a legitimate tap or admits a stale one after restore.
-  if (state.interaction && typeof state.interaction === "object") {
-    state.interaction.recognitionEnteredAt = null;
-  }
+  // NOTE: intentionally do NOT cancel `deliveryRecognitionTimeout` here.
+  // Its callback is the sole publisher of `state.story.memoryBeat` (and
+  // the transition into `io-return-recognition`), and M2-E1 in
+  // `flagship-surface-contract.spec.ts` depends on that publish surviving
+  // an in-page reload. The #1918 tap-race is covered by the
+  // `RECOGNITION_SETTLE_MS` gate in the `choose-return-tone` branch of
+  // `choose()` above — `recognitionEnteredAt` is stamped in the same
+  // synchronous callback body that sets the beat, so a `pointerup` on
+  // a re-rendered return-tone control within one gesture is rejected
+  // by the settle window without needing to cancel the timer here.
   const playerId = state.player.id;
 
   if (clearLocalState) {
@@ -4257,9 +4258,13 @@ const finishMemoryBeatCameraProbe = () => {
   return measured;
 };
 
-// A reload owns the restored beat. Cancel the in-flight delivery timer on
-// reload so an old session cannot advance a restored packet-delivered screen
-// underneath the player's Return to Io tap.
+// Handle for the delivery-recognition setTimeout armed in `deliverPacket`.
+// The callback publishes `state.story.memoryBeat` and advances the beat to
+// `io-return-recognition`; both surfaces are contract-pinned (see
+// `flagship-surface-contract.spec.ts` M2-E1), so the timer is NOT cancelled
+// on reload — see the note in `reloadFromSave`. The reference is kept
+// module-scoped so future work that needs to introspect the in-flight
+// publish has a seam to hook onto without touching call sites.
 let deliveryRecognitionTimeout = null;
 
 // Minimum wall-clock ms the recognition beat must be settled before a
