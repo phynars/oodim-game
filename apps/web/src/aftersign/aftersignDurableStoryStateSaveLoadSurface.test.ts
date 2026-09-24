@@ -64,12 +64,21 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
     }));
 }
 
+function readsRestoredStoryStateAfterReload(source: string): boolean {
+  const reload = source.search(RELOAD_PATTERN);
+  if (reload < 0) {
+    return false;
+  }
+
+  return HARNESS_STORY_READ_PATTERN.test(source.slice(reload));
+}
+
 function matchesDurableStoryStateSaveLoadSpec(source: string): boolean {
   return (
     PHONE_VIEWPORT_PATTERN.test(source) &&
     PLAYER_EVENT_PATTERN.test(source) &&
     !HARNESS_INPUT_PATTERN.test(source) &&
-    HARNESS_STORY_READ_PATTERN.test(source) &&
+    readsRestoredStoryStateAfterReload(source) &&
     NAMED_STORY_MUTATION_PATTERN.test(source) &&
     RELOAD_PATTERN.test(source) &&
     RESTORED_ASSERTION_PATTERN.test(source)
@@ -90,7 +99,7 @@ describe("AFTERSIGN durable story-state save/load surface", () => {
         "  - mutates a named story-state value through visible player action,",
         "  - crosses a real reload/navigation/new-page boundary,",
         "  - reads window.__game (getSnapshot() or getStoryState()) as an assertion surface",
-        "    to verify the restored named story-state value, and",
+        "    after that boundary to verify the restored named story-state value, and",
         "  - never drives player input through window.__game.input.*.",
         `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
       ].join("\n"),
