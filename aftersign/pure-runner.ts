@@ -206,6 +206,7 @@ import { runPacketPressFeedbackServedContractChecks } from "./packetPressFeedbac
 // ZERO relative imports, so the subgraph satisfies the extension-
 // resolution contract documented above.
 import { runPacketChoiceIntentFeedbackChecks } from "./src/packetChoiceIntentFeedback.test.ts";
+import { runPlaytestHarnessInputGuardChecks } from "./playtestHarnessInputGuard.ts";
 
 type Runner = {
   label: string;
