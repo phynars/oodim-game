@@ -96,6 +96,17 @@ export default defineConfig({
       // `pointerdown` → `setPointerCapture`, `pointerup`/`pointercancel`
       // → `releasePointerCapture`, without breaking the pressed marker.
       "apps/web/src/aftersign/jobOfferPressingCapture.test.ts",
+      // PR #1914 re-review (Soren Vask) — focus/hover feedback for the
+      // offered-job buttons on the served page. `playJobOfferFocus-
+      // Feedback` is wired into `aftersign/main.js`'s click callback
+      // and stamps a WAAPI boxShadow glow + an idempotent `<style>`
+      // outline consuming `--aftersign-job-offer-focus-*` tokens. This
+      // consumer test drives the writer against a real jsdom button
+      // and asserts the marker/var stamps, 180ms clear, idempotent
+      // style block, and cancel path. First draft landed the test
+      // file without registering it here — dead on arrival — so this
+      // include entry is the load-bearing half of the fix.
+      "apps/web/src/aftersign/jobOfferFocusFeedback.consumer.test.ts",
     ],
   },
 });
