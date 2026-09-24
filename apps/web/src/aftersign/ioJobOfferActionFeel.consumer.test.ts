@@ -189,6 +189,98 @@ describe("ioJobOfferActionFeel consumer (renderAftersignJobOfferActionButton)", 
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("captures the active pointer on pointerdown and releases it on pointerup (real pointerId path)", () => {
+    // Reviewer AI001 feedback on PR #1911: the existing pointer tests
+    // dispatch `new Event("pointerdown")` with no `pointerId`, so the
+    // `?.` guards on setPointerCapture / hasPointerCapture short-circuit
+    // and the capture branch is never actually exercised. This test
+    // stubs the Pointer Capture API on the rendered button and
+    // dispatches events with a real `pointerId`, so the capture path
+    // runs end-to-end: setPointerCapture on down, hasPointerCapture
+    // gate on leave, releasePointerCapture on up.
+    const { button, dispose } = renderAftersignJobOfferActionButton({
+      risk: "risky",
+      label: "Drift",
+    });
+    document.body.append(button);
+
+    const captured = new Set<number>();
+    button.setPointerCapture = vi.fn((id: number) => {
+      captured.add(id);
+    });
+    button.hasPointerCapture = vi.fn((id: number) => captured.has(id));
+    button.releasePointerCapture = vi.fn((id: number) => {
+      captured.delete(id);
+    });
+
+    const POINTER_ID = 7;
+    const down = new Event("pointerdown") as Event & { pointerId: number };
+    down.pointerId = POINTER_ID;
+    button.dispatchEvent(down);
+
+    expect(button.setPointerCapture).toHaveBeenCalledWith(POINTER_ID);
+    expect(captured.has(POINTER_ID)).toBe(true);
+    expect(
+      button.classList.contains(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS),
+    ).toBe(true);
+
+    // A `pointerleave` fired WHILE the pointer is captured must NOT
+    // clear the pressed state — that's the touch-drift guard.
+    const leave = new Event("pointerleave") as Event & { pointerId: number };
+    leave.pointerId = POINTER_ID;
+    button.dispatchEvent(leave);
+    expect(
+      button.classList.contains(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS),
+    ).toBe(true);
+
+    const up = new Event("pointerup") as Event & { pointerId: number };
+    up.pointerId = POINTER_ID;
+    button.dispatchEvent(up);
+
+    expect(button.releasePointerCapture).toHaveBeenCalledWith(POINTER_ID);
+    expect(captured.has(POINTER_ID)).toBe(false);
+    expect(
+      button.classList.contains(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS),
+    ).toBe(false);
+
+    dispose();
+  });
+
+  it("lostpointercapture (OS steals the pointer) clears the pressed state as a safety net", () => {
+    const { button, dispose } = renderAftersignJobOfferActionButton({
+      risk: "consequence",
+      label: "Sign",
+    });
+    document.body.append(button);
+
+    // Simulate that setPointerCapture succeeded (so onDown will have
+    // taken the pressed state), then have the OS "steal" the pointer
+    // by firing lostpointercapture. Pressed must clear even without
+    // pointerup — this is why the listener exists.
+    const captured = new Set<number>();
+    button.setPointerCapture = vi.fn((id: number) => {
+      captured.add(id);
+    });
+    button.hasPointerCapture = vi.fn((id: number) => captured.has(id));
+    button.releasePointerCapture = vi.fn((id: number) => {
+      captured.delete(id);
+    });
+
+    const down = new Event("pointerdown") as Event & { pointerId: number };
+    down.pointerId = 42;
+    button.dispatchEvent(down);
+    expect(
+      button.classList.contains(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS),
+    ).toBe(true);
+
+    button.dispatchEvent(new Event("lostpointercapture"));
+    expect(
+      button.classList.contains(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS),
+    ).toBe(false);
+
+    dispose();
+  });
+
   it("selector-mounts under [data-aftersign-job-risk] so CSS can target it", () => {
     const { button } = renderAftersignJobOfferActionButton({
       risk: "consequence",
