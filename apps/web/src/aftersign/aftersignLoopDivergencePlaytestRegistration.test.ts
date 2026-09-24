@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Sibling guard for `aftersignLoopDivergencePlaytestSurface.test.ts`.
@@ -18,10 +19,33 @@ import { describe, expect, it } from "vitest";
 // is asserted against `aftersign/main.js`. If either is deleted, this test
 // reds — and that's the whole point.
 
-const surfaceSource = readFileSync(
-  new URL("./aftersignLoopDivergencePlaytestSurface.test.ts", import.meta.url),
-  "utf8",
+// Resolve the sibling surface file from cwd, not `import.meta.url` — under
+// the CI vitest runner `import.meta.url` isn't guaranteed to be a `file:`
+// URL, and `readFileSync` on a non-file URL throws ERR_INVALID_URL_SCHEME,
+// which would make this guard silently absent. The surface test next to us
+// already solved cwd-independence by walking up to find `aftersign/e2e`;
+// we do the same thing to find the repo root, then join through
+// `apps/web/src/aftersign/`. Works from both the repo-root and the
+// apps/web vitest invocations.
+function findRepoRoot(start: string): string {
+  let directory = resolve(start);
+  while (dirname(directory) !== directory) {
+    if (existsSync(join(directory, "aftersign", "e2e"))) return directory;
+    directory = dirname(directory);
+  }
+  throw new Error("Could not find the repository-root aftersign/e2e directory.");
+}
+
+const REPO_ROOT = findRepoRoot(process.cwd());
+const SURFACE_TEST_PATH = join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "aftersign",
+  "aftersignLoopDivergencePlaytestSurface.test.ts",
 );
+const surfaceSource = readFileSync(SURFACE_TEST_PATH, "utf8");
 
 describe("M-LOOP divergence played-acceptance surface — body guard", () => {
   it("asserts a discovered playtest satisfies provesTwoPlayedRounds (not merely matchesLoopDivergencePlaytest)", () => {
