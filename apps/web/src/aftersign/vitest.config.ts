@@ -21,6 +21,13 @@ export default defineConfig({
       "apps/web/src/aftersign/aftersignDurableStoryStateSaveLoadSurface.test.ts",
       "apps/web/src/aftersign/aftersignMemoryDivergencePlaytestSurface.test.ts",
       "apps/web/src/aftersign/aftersignLoopDivergencePlaytestSurface.test.ts",
+      // Sibling body-guard for the surface test above. The surface test
+      // can't prove its own body isn't hollowed out (`.skip`, gutted
+      // assertion, dropped served-page witness). This file reads the
+      // surface source and reds if the load-bearing pieces disappear.
+      // See PR #1905 (Mara Okonkwo review): "wire it into `include` and
+      // have it assert something the surface test can't".
+      "apps/web/src/aftersign/aftersignLoopDivergencePlaytestRegistration.test.ts",
       "apps/web/src/aftersign/aftersignMloopDivergence.contract.test.ts",
       "apps/web/src/aftersign/aftersignMloopMemoryGate.test.ts",
       "apps/web/src/aftersign/aftersignPlayedAcceptanceNaming.test.ts",
