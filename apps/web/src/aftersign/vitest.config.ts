@@ -40,6 +40,17 @@ export default defineConfig({
       "apps/web/src/aftersign/tapConfirmFeel.consumer.test.ts",
       "apps/web/src/aftersign/tapConfirmFeel.servedButton.test.ts",
       "apps/web/src/aftersign/routeRiskMemory.consumer.test.ts",
+      // PR #1925 re-review (Soren Vask) — route-risk tap-lock. The
+      // first draft shipped `routeRiskChoiceIntent.ts` as a pure
+      // module with zero importers and no tap-driven assertion —
+      // dead-on-arrival per the CONSUMER RULE. This consumer test
+      // renders the served `renderRouteRiskChoice` into jsdom,
+      // taps two DIFFERENT buttons 60ms apart on an injected clock,
+      // and asserts the second tap dropped — the exact "finger
+      // that lifted after reflow confirmed the wrong route" case
+      // the 180ms lock exists to prevent. Paired with the wire in
+      // `routeRiskMemory.ts`'s click handler so an unwiring reds.
+      "apps/web/src/aftersign/routeRiskChoiceLock.consumer.test.ts",
       "apps/web/src/aftersign/aftersignJobOfferCopy.consumer.test.ts",
       "apps/web/src/aftersign/ioLoopConsequenceLine.consumer.test.ts",
       "apps/web/src/aftersign/aftersignJobTakeFeel.test.ts",
