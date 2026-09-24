@@ -3213,11 +3213,15 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "choose-return-tone") {
-    // M-CONTINUE-E1: advance from `io-return-recognition` into the
-    // return-tone fork. Only valid once Io has recognized the
-    // returning player — otherwise the tone beat has nothing to
-    // hang off. Silent no-op off-beat (mirrors acknowledge-kiosk).
-    if (state.scene.beat !== "io-return-recognition") {
+    // The return action is only legal after the recognition line has
+    // remained visible for one rendered frame. A single DOM gesture can
+    // deliver its pointer and click events across the beat transition;
+    // without this frame gate the click that means "Return to Io" can be
+    // reinterpreted as the newly-rendered return-tone control.
+    if (
+      state.scene.beat !== "io-return-recognition"
+      || state.interaction.recognitionEnteredFrame === state._runtime.frame
+    ) {
       return;
     }
     setBeat("return-tone-choice");
@@ -3368,6 +3372,10 @@ const forceSave = async () => {
 };
 
 const reloadFromSave = async ({ clearLocalState = false } = {}) => {
+  if (deliveryRecognitionTimeout !== null) {
+    clearTimeout(deliveryRecognitionTimeout);
+    deliveryRecognitionTimeout = null;
+  }
   const playerId = state.player.id;
 
   if (clearLocalState) {
@@ -4218,6 +4226,11 @@ const finishMemoryBeatCameraProbe = () => {
   return measured;
 };
 
+// A reload owns the restored beat. Cancel the in-flight delivery timer on
+// reload so an old session cannot advance a restored packet-delivered screen
+// underneath the player's Return to Io tap.
+let deliveryRecognitionTimeout = null;
+
 const deliverPacket = (source = "hud-button") => {
   triggerKioskFeedback(source);
   state.packet.delivered = true;
@@ -4239,7 +4252,8 @@ const deliverPacket = (source = "hud-button") => {
   playKioskConfirm();
   markStateDirty();
   setBeat("packet-delivered");
-  setTimeout(() => {
+  deliveryRecognitionTimeout = setTimeout(() => {
+    deliveryRecognitionTimeout = null;
     const beatEndedAt = performance.now();
     const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
