@@ -2549,6 +2549,14 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
                 if (!acceptedNode) {
                   acceptedNode = document.createElement("p");
                   acceptedNode.id = "ioJobAcceptedLine";
+                  // The acknowledgement is a sibling overlay, not a new flex
+                  // item: adding it to the tray's flow shifted the offer the
+                  // player just tapped while its press was recovering.
+                  offeredJobsRoot.style.position = "relative";
+                  acceptedNode.style.position = "absolute";
+                  acceptedNode.style.inset = "0 auto auto 0";
+                  acceptedNode.style.margin = "0";
+                  acceptedNode.style.pointerEvents = "none";
                   offeredJobsRoot.appendChild(acceptedNode);
                 }
                 acceptedNode.setAttribute(
