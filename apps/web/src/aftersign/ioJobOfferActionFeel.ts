@@ -238,12 +238,9 @@ export type AftersignJobOfferActionButtonHandle = {
 /**
  * Runtime consumer: build a real `<button>` with the feel attributes,
  * CSS variables, and pointer handlers wired so the press-scale + glow
- * play on tap. Returns the button + a `dispose` that removes the
- * pointer listeners (the caller owns removal from the DOM).
- *
- * The consumer test drives THIS function — `pointerdown` on the
- * returned button must add the pressed class, `pointerup` must remove
- * it, and `click` must fire `onCommit(risk)`.
+ * play on tap. Capturing the active pointer holds the pressed state through
+ * a touch's small drift and guarantees the release/cancel comes back to this
+ * button instead of leaving it visually stuck.
  */
 export function renderAftersignJobOfferActionButton(
   options: RenderAftersignJobOfferActionButtonOptions,
@@ -261,22 +258,45 @@ export function renderAftersignJobOfferActionButton(
     button.classList.toggle(AFTERSIGN_JOB_OFFER_ACTION_PRESSED_CLASS, pressed);
   };
 
-  const onDown = (): void => setPressed(true);
-  const onUp = (): void => setPressed(false);
-  const onLeave = (): void => setPressed(false);
+  const releasePointer = (pointerId: number): void => {
+    if (button.hasPointerCapture?.(pointerId)) {
+      button.releasePointerCapture(pointerId);
+    }
+  };
+
+  const onDown = (event: PointerEvent): void => {
+    setPressed(true);
+    button.setPointerCapture?.(event.pointerId);
+  };
+  const onUp = (event: PointerEvent): void => {
+    setPressed(false);
+    releasePointer(event.pointerId);
+  };
+  const onCancel = (event: PointerEvent): void => {
+    setPressed(false);
+    releasePointer(event.pointerId);
+  };
+  const onLeave = (event: PointerEvent): void => {
+    if (!button.hasPointerCapture?.(event.pointerId)) {
+      setPressed(false);
+    }
+  };
+  const onLostCapture = (): void => setPressed(false);
   const onClick = (): void => onCommit?.(risk);
 
   button.addEventListener("pointerdown", onDown);
   button.addEventListener("pointerup", onUp);
-  button.addEventListener("pointercancel", onLeave);
+  button.addEventListener("pointercancel", onCancel);
   button.addEventListener("pointerleave", onLeave);
+  button.addEventListener("lostpointercapture", onLostCapture);
   button.addEventListener("click", onClick);
 
   const dispose = (): void => {
     button.removeEventListener("pointerdown", onDown);
     button.removeEventListener("pointerup", onUp);
-    button.removeEventListener("pointercancel", onLeave);
+    button.removeEventListener("pointercancel", onCancel);
     button.removeEventListener("pointerleave", onLeave);
+    button.removeEventListener("lostpointercapture", onLostCapture);
     button.removeEventListener("click", onClick);
   };
 
