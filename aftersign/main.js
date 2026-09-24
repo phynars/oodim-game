@@ -3213,24 +3213,36 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "choose-return-tone") {
-    // The return action is only legal after the recognition line has
-    // remained visible for one rendered frame. A single DOM gesture can
-    // deliver its pointer and click events across the beat transition;
-    // without this frame gate the click that means "Return to Io" can be
-    // reinterpreted as the newly-rendered return-tone control.
+    // The return-tone action is only legal after the recognition beat
+    // has been settled for at least RECOGNITION_SETTLE_MS. A single
+    // DOM gesture can deliver `pointerdown` before, and `pointerup` /
+    // `click` after, the `setBeat("io-return-recognition")` transition
+    // — without this settle gate the click that meant "Return to Io"
+    // is reinterpreted as the newly-rendered return-tone control on
+    // the same finger stroke.
     //
-    // Producer: the setTimeout in `deliverPacket` stamps
-    // `state.interaction.recognitionEnteredFrame` with the frame it
-    // promoted the beat on. After a reload the field is unset (the
-    // reload path doesn't re-enter the beat, it restores INTO it), and
-    // the timer that would stamp it is cancelled in `reloadFromSave`,
-    // so a `typeof === "number"` guard here treats "not stamped" as
-    // "the beat has been settled for a while" — the correct polarity
-    // for the reload race the sibling clearTimeout already handles.
-    const enteredFrame = state.interaction.recognitionEnteredFrame;
+    // Producer: the delivery-recognition setTimeout in `deliverPacket`
+    // stamps `state.interaction.recognitionEnteredAt = performance.now()`
+    // on the SAME callback that calls `setBeat("io-return-recognition")`,
+    // so the stamp lands atomically with the beat transition. On reload
+    // that timer is cancelled (see `reloadFromSave`) and the stamp is
+    // not written — a `typeof === "number"` check therefore treats
+    // "restored INTO the beat, not entered afresh" as "settled long
+    // enough", which is the correct polarity: a reload cannot itself
+    // be part of a same-gesture race.
+    //
+    // Why time and not frame count: `state._runtime` has no frame
+    // producer (the rAF `tick()` does not maintain a counter — only
+    // `_runtime.audio.*` fields exist), so a frame-index gate would
+    // be dead code. `performance.now()` is monotonic and already used
+    // for beat timing elsewhere in this file.
+    if (state.scene.beat !== "io-return-recognition") {
+      return;
+    }
+    const enteredAt = state.interaction.recognitionEnteredAt;
     if (
-      state.scene.beat !== "io-return-recognition"
-      || (typeof enteredFrame === "number" && enteredFrame === state._runtime.frame)
+      typeof enteredAt === "number"
+      && performance.now() - enteredAt < RECOGNITION_SETTLE_MS
     ) {
       return;
     }
@@ -3385,6 +3397,15 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   if (deliveryRecognitionTimeout !== null) {
     clearTimeout(deliveryRecognitionTimeout);
     deliveryRecognitionTimeout = null;
+  }
+  // The delivery timer that would have stamped `recognitionEnteredAt`
+  // has been cancelled above; clear any stale stamp so the settle-gate
+  // in `choose-return-tone` treats "restored INTO the beat" as
+  // "settled" (typeof !== "number" → gate passes). Without this, a
+  // save persisted mid-race could carry a stamp forward that either
+  // rejects a legitimate tap or admits a stale one after restore.
+  if (state.interaction && typeof state.interaction === "object") {
+    state.interaction.recognitionEnteredAt = null;
   }
   const playerId = state.player.id;
 
@@ -4241,6 +4262,13 @@ const finishMemoryBeatCameraProbe = () => {
 // underneath the player's Return to Io tap.
 let deliveryRecognitionTimeout = null;
 
+// Minimum wall-clock ms the recognition beat must be settled before a
+// `choose-return-tone` tap is accepted. Sized well under one 60Hz frame
+// budget (16.6ms) so a human tap never notices the gate, but comfortably
+// above the pointer/click event ordering skew a single gesture produces
+// as `setBeat("io-return-recognition")` re-renders the button tree.
+const RECOGNITION_SETTLE_MS = 120;
+
 const deliverPacket = (source = "hud-button") => {
   triggerKioskFeedback(source);
   state.packet.delivered = true;
@@ -4264,16 +4292,22 @@ const deliverPacket = (source = "hud-button") => {
   setBeat("packet-delivered");
   deliveryRecognitionTimeout = setTimeout(() => {
     deliveryRecognitionTimeout = null;
-    // Frame-gate producer for the `choose-return-tone` guard above.
+    // Settle-gate producer for the `choose-return-tone` guard above.
     // This callback synchronously promotes the beat to
     // `io-return-recognition` (via `setBeat(...)` further down); stamp
-    // the frame here so a `pointerup` that races the transition — the
-    // "same gesture reinterpreted as the newly-rendered return-tone
-    // control" case — falls on `enteredFrame === _runtime.frame` and
-    // is silently no-op'd. `_runtime.frame` is stable inside a single
-    // callback body, so it doesn't matter that the stamp precedes the
-    // setBeat in source order.
-    state.interaction.recognitionEnteredFrame = state._runtime.frame;
+    // the wall-clock instant NOW so a `pointerup` that races the
+    // transition — the "same gesture reinterpreted as the newly-
+    // rendered return-tone control" case — sees
+    // `performance.now() - enteredAt < RECOGNITION_SETTLE_MS` and is
+    // silently no-op'd. The stamp precedes `setBeat(...)` in source
+    // order but both run in this same synchronous callback body, so
+    // no tap handler can observe the beat transition before the
+    // stamp lands. `state.interaction` is initialized at boot; see
+    // its default shape further up.
+    if (!state.interaction || typeof state.interaction !== "object") {
+      state.interaction = {};
+    }
+    state.interaction.recognitionEnteredAt = performance.now();
     const beatEndedAt = performance.now();
     const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
