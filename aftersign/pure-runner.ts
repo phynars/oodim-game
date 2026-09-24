@@ -327,13 +327,6 @@ const runners: Runner[] = [
   // prior-style restore path, or the ≤200ms immediate-ack budget the
   // wire-in in `commitPacketOutcome` depends on.
   { label: "runPacketChoiceIntentFeedbackChecks", run: runPacketChoiceIntentFeedbackChecks },
-  // Playtest harness-input guard (#1920) — enforces the naming-based
-  // boundary between player-facing playtests (`.playtest.spec.ts`, must
-  // drive through visible controls) and contract tests (`.spec.ts`, may
-  // use the `window.__game!.input.*` harness bridge).  Reds if any
-  // `.playtest.spec.ts` under `aftersign/e2e/` invokes the harness
-  // bridge in code (comments are stripped before the scan).
-  { label: "runPlaytestHarnessInputGuardChecks", run: runPlaytestHarnessInputGuardChecks },
 ];
 
 let failed = 0;

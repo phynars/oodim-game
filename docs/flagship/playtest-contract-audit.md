@@ -1,31 +1,59 @@
 # Playtest contract audit
 
+Refs #1920.
+
 ## Finding
 
-`aftersign/e2e/flagship-phase2-input-delivery-contract.spec.ts` drives story choices through `window.__game!.input.choose(...)` (lines 39 and 64). This is appropriate for a **contract** test but must never be mistaken for player-facing acceptance evidence under the flagship brief.
+`aftersign/e2e/flagship-phase2-input-delivery-contract.spec.ts` drives
+story choices through `window.__game!.input.choose(...)`. This is
+appropriate for a **contract** test but must never be mistaken for
+player-facing acceptance evidence under the flagship brief.
 
-## Boundary
+## Boundary (naming)
 
-Naming carries the contract:
+- `*.playtest.spec.ts` — player-facing acceptance evidence. Must drive
+  the game through visible controls (`page.tap(...)`, `page.click(...)`,
+  keydown). Reads of `window.__game` are permitted (readiness polls,
+  snapshot assertions); calls into `window.__game...input.<name>(...)`
+  are not.
+- `*-served*.spec.ts` and `*-played.spec.ts` — same rule. These are the
+  other two categories of played-not-driven acceptance.
+- `*-contract.spec.ts` — contract tests. Free to use the
+  `window.__game!.input.*` harness bridge; that surface's contract is
+  their whole job.
 
-- `*.playtest.spec.ts` — player-facing acceptance evidence. Must drive the game through visible controls (`page.tap(...)`, `page.click(...)`, keydown). Reads of `window.__game` are permitted (readiness polls, snapshot assertions); **calls** into `window.__game...input.<name>(...)` are not.
-- `*.spec.ts` without the `.playtest.` segment — contract tests. Free to use the `window.__game!.input.*` harness bridge (`choose`, `forceSave`, `forceReload`, `waitForStoryIdle`, …).
+## Existing guard (owner of this boundary)
 
-## Guard
+This boundary is already enforced by
+`apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts`,
+wired into `apps/web/src/aftersign/vitest.config.ts` and executed on
+CI's `test:unit:aftersign` lane (`.github/workflows/ci.yml`) — blocking
+on every PR.
 
-Enforced by `aftersign/playtestHarnessInputGuard.ts`, registered on the pure-runner (`aftersign/pure-runner.ts`) and executed by every `npm run test:aftersign:pure` run (blocking on every PR).
+That guard is broader than a naive `.playtest.spec.ts`-only check:
 
-The guard:
+- Scans all three played-not-driven categories
+  (`.playtest.spec.ts`, `*-served*.spec.ts`, `*-played.spec.ts`), with
+  `*-contract.spec.ts` explicitly excluded from the taxonomy.
+- Catches `window.__game.input`, `window["__game"].input`, and bare
+  `__game.input` — reads and calls, not just call-parens.
+- Strips `//` and `/* */` comments before matching, so a spec's own
+  commentary about the seam does not trip it.
+- Runs per-category vacuity checks so a rename that empties a category
+  cannot silently pass the corpus check.
+- Maintains a named `HARNESS_ONLY_ALLOWLIST` (with citations) for the
+  handful of specs the founder amendment explicitly demoted.
 
-1. Strips `//` line comments and `/* … */` block comments from each `*.playtest.spec.ts` under `aftersign/e2e/`.
-2. Reds if the stripped source contains `window.__game[...] .input.<ident>(` — the shape the harness bridge takes.
-3. Ignores files without the `.playtest.` segment, so `flagship-phase2-input-delivery-contract.spec.ts` and its siblings remain free to use the bridge.
+## What this audit does NOT add
 
-Self-tests (in the same module) pin four fixtures:
+An earlier revision of this PR introduced a second, narrower guard at
+`aftersign/playtestHarnessInputGuard.ts` (dot-form only,
+`window`-prefixed only, call-paren required, `.playtest.spec.ts` only).
+That was a strict subset of the existing guard on every axis and has
+been removed — a single owner for this boundary is better than two
+parallel consumers that will drift.
 
-- (a) playtest calling `window.__game!.input.choose("keep-sealed")` → **fails** with one violation on the offending line.
-- (b) playtest reading `window.__game?.scene?.ready` and committing via `page.locator(...).tap()` → **passes**.
-- (c) contract spec (no `.playtest.` segment) using `window.__game!.input.choose(...)` → **permitted** (the naming exemption is what protects it; the regex would otherwise match).
-- (d) playtest whose only occurrences of the phrase are inside `//` and `/* */` comments (the shape every shipped playtest uses today) → **passes**.
-
-If a future spec author moves harness-driven coverage into a `.playtest.spec.ts` file, the pure lane reds with the file path, line number, and offending excerpt.
+If the existing guard needs to grow (new category, new evasion shape,
+new allowlist entry), extend
+`apps/web/src/aftersign/harness/playedAcceptanceNoHarnessInput.test.ts`
+directly.
