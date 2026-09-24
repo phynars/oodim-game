@@ -2034,6 +2034,7 @@ const renderText = () => {
   setTextContentIfChanged(speaker, "Io");
   setTextContentIfChanged(line, state.npcs.io.lastLine);
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
+  const isPacketDeliveredBeat = state.scene.beat === "packet-delivered";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
   // #1812 render — render `ioReturnLine(state.delivery.outcome)` into
   // ITS OWN sibling paragraph next to `#line`, mirroring the
@@ -2176,7 +2177,7 @@ const renderText = () => {
       ioLedgerLine.setAttribute("data-io-ledger-fact", ledgerStamp);
     }
   }
-  const routeChoiceVisible = isPacketChoiceBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
+  const routeChoiceVisible = isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
   }
@@ -2590,7 +2591,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
   }
 
-  if (isPacketChoiceBeat) {
+  if (isPacketDeliveredBeat) {
+    setTextContentIfChanged(deliverButton, "Return to Io");
+    stampAftersignChoice(deliverButton, "return-to-io");
+    acknowledgeRouteButton.disabled = true;
+    skipRouteButton.disabled = true;
+  } else if (isPacketChoiceBeat) {
     // The packet fork is a physical gesture, but its consequence needs to
     // land before the player reaches the surrounding route controls.
     // Keep that promise on the object they just touched rather than adding
