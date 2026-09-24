@@ -67,10 +67,18 @@
 //   acknowledgement where the served DOM already lives (see
 //   `playRouteRiskConfirmFeedback` import in `aftersign/main.js`).
 
+// NOTE: this relative import uses an explicit `.ts` extension because
+// `aftersign/src/routeRiskFeel.ts` (typechecked by the blocking
+// `typecheck:aftersign` gate) imports THIS file, and the pure-runner
+// extension contract (see `routeRiskFeel.ts` header) requires the
+// whole subgraph to resolve under `node --experimental-strip-types` —
+// which REQUIRES explicit `.ts` extensions on relative imports. The
+// aftersign tsconfig sets `allowImportingTsExtensions: true` to accept
+// this form under `tsc --noEmit`.
 import {
   pickRouteRiskChoiceOnTap,
   type RouteRiskChoiceLock,
-} from "./routeRiskChoiceIntent";
+} from "./routeRiskChoiceIntent.ts";
 
 export type AftersignRoute = "fast" | "safe";
 

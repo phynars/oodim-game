@@ -79,12 +79,14 @@ export function pickRouteRiskChoiceOnTap(
   choice: RouteRiskChoiceIntent,
   nowMs: number,
 ): { accepted: boolean; nextLock: RouteRiskChoiceLock } {
-  if (!isRouteRiskChoiceLocked(lock, nowMs)) {
+  // Inline the lock-active check so TS can narrow `lock` to non-undefined
+  // in the branches below (a helper call doesn't narrow the outer binding).
+  if (lock === undefined || nowMs >= lock.releaseAtMs) {
     return { accepted: true, nextLock: lockRouteRiskChoice(choice, nowMs) };
   }
   // Active lock. Same-choice re-tap is fine; different-choice tap drops.
-  if (lock!.choice === choice) {
-    return { accepted: true, nextLock: lock! };
+  if (lock.choice === choice) {
+    return { accepted: true, nextLock: lock };
   }
-  return { accepted: false, nextLock: lock! };
+  return { accepted: false, nextLock: lock };
 }
