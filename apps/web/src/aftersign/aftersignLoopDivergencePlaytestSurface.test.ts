@@ -33,10 +33,14 @@ const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 const DIALOGUE_ONLY_PATTERN = /(?:getByText|toContainText|textContent)[\s\S]{0,200}(?:different|divergent|not\.toEqual|not\.toStrictEqual)/i;
 
-function stripCommentsAndStrings(source: string): string {
+function stripComments(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1")
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1");
+}
+
+function stripCommentsAndStrings(source: string): string {
+  return stripComments(source)
     .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|\$(?!\{)|[^`\\$])*`/g, "``")
     .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
     .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
@@ -58,16 +62,17 @@ function countMatches(pattern: RegExp, source: string): number {
 }
 
 function matchesLoopDivergencePlaytest(source: string): boolean {
+  const uncommented = stripComments(source);
   const code = stripCommentsAndStrings(source);
   return (
-    PHONE_VIEWPORT_PATTERN.test(source) &&
-    PLAYER_EVENT_PATTERN.test(source) &&
-    VISIBLE_ACTION_PATTERN.test(source) &&
-    DIFFERENT_ACTIONS_PATTERN.test(source) &&
-    TWO_SAVE_STATES_PATTERN.test(source) &&
-    HARNESS_READ_PATTERN.test(source) &&
+    PHONE_VIEWPORT_PATTERN.test(uncommented) &&
+    PLAYER_EVENT_PATTERN.test(uncommented) &&
+    VISIBLE_ACTION_PATTERN.test(uncommented) &&
+    DIFFERENT_ACTIONS_PATTERN.test(uncommented) &&
+    TWO_SAVE_STATES_PATTERN.test(uncommented) &&
+    HARNESS_READ_PATTERN.test(uncommented) &&
     !HARNESS_INPUT_PATTERN.test(code) &&
-    !DIALOGUE_ONLY_PATTERN.test(source)
+    !DIALOGUE_ONLY_PATTERN.test(uncommented)
   );
 }
 
@@ -76,25 +81,24 @@ function matchesLoopDivergencePlaytest(source: string): boolean {
 // specs can each prove fragments, but cannot prove a player completed the
 // divergent loop end-to-end.
 function provesTwoPlayedRounds(source: string): boolean {
+  const uncommented = stripComments(source);
   return (
     matchesLoopDivergencePlaytest(source) &&
-    countMatches(COMPLETED_ROUND_PATTERN, source) >= 2 &&
+    countMatches(COMPLETED_ROUND_PATTERN, uncommented) >= 2 &&
     countMatches(PLAYER_EVENT_GLOBAL_PATTERN, stripCommentsAndStrings(source)) >= 4
   );
 }
 
 const FIXTURE_COMPLIANT_SPEC = [
-  "// M-LOOP divergence playtest — abstains from window.__game.input.* channels.",
   "import { expect, test } from '@playwright/test';",
   "test.use({ viewport: { width: 390, height: 844 } });",
   "test('two memory records produce different tappable actions', async ({ page }) => {",
-  "  await page.goto('/aftersign/?slot=A');",
+  "  await page.goto('/aftersign/?slot=A&priorOutcome=packet.delivered');",
   "  const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
   "  await page.getByRole('button', { name: /accept/i }).tap();",
-  "  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set",
-  "  await page.goto('/aftersign/?slot=B');",
+  "  await page.goto('/aftersign/?slot=B&trust=trusted');",
   "  const second = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
-  "  expect(first).not.toEqual(second); // different tappable actions",
+  "  expect(first).not.toEqual(second);",
   "  const beat = await page.evaluate(() => window.__game?.scene?.beat);",
   "  expect(beat).toBeDefined();",
   "});",
@@ -102,12 +106,10 @@ const FIXTURE_COMPLIANT_SPEC = [
 
 const FIXTURE_TWO_ROUND_SPEC = [
   FIXTURE_COMPLIANT_SPEC,
-  "// Round one: tap through visible route and delivery controls to complete the job.",
-  "await page.getByRole('button', { name: /take route/i }).tap();",
-  "await page.getByRole('button', { name: /deliver/i }).tap();",
-  "// Round two: tap through the returning action and complete the delivery.",
+  "await page.getByRole('button', { name: /take round one route/i }).tap();",
+  "await page.getByRole('button', { name: /deliver round one job/i }).tap();",
   "await page.getByRole('button', { name: /take return route/i }).tap();",
-  "await page.getByRole('button', { name: /deliver return/i }).tap();",
+  "await page.getByRole('button', { name: /deliver return job/i }).tap();",
 ].join("\n");
 
 describe("matchesLoopDivergencePlaytest contract", () => {
@@ -120,13 +122,23 @@ describe("matchesLoopDivergencePlaytest contract", () => {
     expect(provesTwoPlayedRounds(FIXTURE_TWO_ROUND_SPEC)).toBe(true);
   });
 
+  it("does not let comments stand in for an executable divergence witness", () => {
+    const commentedOutEvidence = FIXTURE_COMPLIANT_SPEC
+      .replace("&priorOutcome=packet.delivered", "")
+      .replace("expect(first).not.toEqual(second);", "expect(first).toBeDefined();")
+      .replace("two memory records produce different tappable actions", "two visits reach the offer")
+      .replace("const beat = await page.evaluate(() => window.__game?.scene?.beat);", "const beat = 'packet-offered';")
+      .concat("\n// two memory records, packet.delivered, different tappable actions, window.__game\n");
+    expect(matchesLoopDivergencePlaytest(commentedOutEvidence)).toBe(false);
+  });
+
   it.each([
     { gate: "PHONE_VIEWPORT", mutate: (s: string) => s.replace(/test\.use\([^\n]*\n/, "") },
     { gate: "PLAYER_EVENT", mutate: (s: string) => s.replace(/  await page\.getByRole[^\n]*\n/, "") },
     { gate: "VISIBLE_ACTION", mutate: (s: string) => s.replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])").replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)") },
-    { gate: "DIFFERENT_ACTIONS", mutate: (s: string) => s.replace("expect(first).not.toEqual(second); // different tappable actions", "expect(first).toBeDefined();").replace("two memory records produce different tappable actions", "two memory records land on the packet-offered beat") },
-    { gate: "TWO_SAVE_STATES", mutate: (s: string) => s.replace("  // priorOutcome=packet.delivered, looped return: safe-default falls off completed set", "  // outcome recorded, return visit: default action reshuffled").replace("two memory records produce different tappable actions", "two visits produce different tappable actions") },
-    { gate: "HARNESS_READ", mutate: (s: string) => s.replace("  const beat = await page.evaluate(() => window.__game?.scene?.beat);", "  const beat = 'packet-offered';").replace("// M-LOOP divergence playtest — abstains from window.__game.input.* channels.", "// M-LOOP divergence playtest — abstains from harness input.") },
+    { gate: "DIFFERENT_ACTIONS", mutate: (s: string) => s.replace("expect(first).not.toEqual(second);", "expect(first).toBeDefined();").replace("two memory records produce different tappable actions", "two visits land on the packet-offered beat") },
+    { gate: "TWO_SAVE_STATES", mutate: (s: string) => s.replace("&priorOutcome=packet.delivered", "").replace("&trust=trusted", "").replace("two memory records produce different tappable actions", "two visits produce different tappable actions") },
+    { gate: "HARNESS_READ", mutate: (s: string) => s.replace("  const beat = await page.evaluate(() => window.__game?.scene?.beat);", "  const beat = 'packet-offered';") },
     { gate: "HARNESS_INPUT", mutate: (s: string) => `${s}\nawait page.evaluate(() => window.__game.input.click('foo'));\n` },
     { gate: "DIALOGUE_ONLY", mutate: (s: string) => `${s}\nawait expect(page.getByText('accept the job')).not.toEqual(page.getByText('reject'));\n` },
   ])("rejects when the $gate gate is not satisfied", ({ mutate }) => {
