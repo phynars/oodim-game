@@ -23,7 +23,13 @@ describe("M-CONTINUE visible button affordance", () => {
     expect(renderTextSetup).toMatch(
       /routeChoiceVisible\s*=\s*isPacketChoiceBeat\s*\|\|\s*isPacketDeliveredBeat\s*\|\|\s*isReturnRecognitionBeat\s*\|\|\s*isReturnToneChoiceBeat\s*\|\|\s*isNextJobBeat/,
     );
-    expect(source.slice(packetChoiceBranchStart)).toContain("if (isPacketDeliveredBeat)");
-    expect(source.slice(packetChoiceBranchStart)).toContain('stampAftersignChoice(deliverButton, "return-to-io")');
+    // The `packet-delivered` branch renders BEFORE `if (isPacketChoiceBeat)`
+    // in `renderText()` (`if (isPacketDeliveredBeat) { ... } else if (isPacketChoiceBeat) { ... }`),
+    // so the affordance stamps live inside `renderTextSetup`, not in the
+    // post-packet-choice slice. Anchor both assertions to the region
+    // where the branch actually appears — otherwise the slice starts
+    // AFTER the delivered branch and the `toContain` misses it.
+    expect(renderTextSetup).toContain("if (isPacketDeliveredBeat)");
+    expect(renderTextSetup).toContain('stampAftersignChoice(deliverButton, "return-to-io")');
   });
 });
