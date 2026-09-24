@@ -87,6 +87,15 @@ export default defineConfig({
       // NOT in this include list — dead on arrival — so this
       // registration is the load-bearing part of the fix.
       "apps/web/src/aftersign/packetChoiceFeel.servedButton.test.ts",
+      // PR #1911 re-review (Soren Vask) — pointer-capture wired into the
+      // SHIPPED offered-job press owner `aftersign/jobOfferPressing.js`
+      // (loaded by `<script>` from `aftersign/index.html:1593`). The
+      // first draft only touched a test-fixture (`renderAftersignJob-
+      // OfferActionButton`) that nothing on the served page calls. This
+      // test drives `attachJobOfferPressing` end-to-end and pins that
+      // `pointerdown` → `setPointerCapture`, `pointerup`/`pointercancel`
+      // → `releasePointerCapture`, without breaking the pressed marker.
+      "apps/web/src/aftersign/jobOfferPressingCapture.test.ts",
     ],
   },
 });
