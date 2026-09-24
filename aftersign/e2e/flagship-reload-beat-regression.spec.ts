@@ -137,12 +137,15 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
   const beat = await page.evaluate(() => window.__game!.getSnapshot().scene.beat);
   if (beat === "packet-delivered") {
     const advanceControl = page.locator("#deliverButton");
-    await expect(advanceControl).toBeVisible();
-    await expect(advanceControl).toBeEnabled();
-    await expect(advanceControl).toHaveText("Return to Io");
+    await expect(advanceControl).toBeVisible({ timeout: WAIT_MS });
+    await expect(advanceControl).toBeEnabled({ timeout: WAIT_MS });
+    await expect(advanceControl).toHaveText("Return to Io", { timeout: WAIT_MS });
     await advanceControl.click();
     await idle(page);
-    await expect(page.locator("#line")).toHaveText(path.expectedRecognitionLine);
+    await expect
+      .poll(() => page.evaluate(() => window.__game!.getSnapshot().scene.beat), { timeout: WAIT_MS })
+      .toBe("io-return-recognition");
+    await expect(page.locator("#line")).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
   }
   return page.evaluate(() => window.__game!.getSnapshot());
 }
