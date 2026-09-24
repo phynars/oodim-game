@@ -64,13 +64,45 @@ function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
     }));
 }
 
+// A named-story-state READ CALL SITE — the call that observes the
+// restored value in the test body. Playwright specs factor the
+// `window.__game.getSnapshot()` read into a helper (see
+// `snapshot()`/`expectRestored*` in the durable playtest specs), so
+// the literal `window.__game` reference lives ABOVE the test body in
+// helper definitions. We can't detect that with a raw source-order
+// slice; instead we check that a snapshot-shaped call site (a helper
+// that reads restored story state) appears after the last reload
+// boundary. Helpers are defined above their call sites in JS/TS, so
+// the LAST reload match in source is the last reload in execution
+// order, and any snapshot/restored-assertion call after it is the
+// post-reload read.
+const RESTORED_READ_CALL_PATTERN = /(?:\b(?:snapshot|getSnapshot|getStoryState)\s*\(|\bexpect(?:Restored|ReturningSession|Persisted|Remembered)\w*\s*\()/;
+
 function readsRestoredStoryStateAfterReload(source: string): boolean {
-  const reload = source.search(RELOAD_PATTERN);
-  if (reload < 0) {
+  // The file must define/reference a `window.__game` harness read
+  // somewhere (helper OR inline). Without this, the spec isn't
+  // reading through the harness at all.
+  if (!HARNESS_STORY_READ_PATTERN.test(source)) {
     return false;
   }
 
-  return HARNESS_STORY_READ_PATTERN.test(source.slice(reload));
+  // Find the LAST reload boundary in source. Because helpers are
+  // hoisted textually above the test body, the last reload match is
+  // reliably inside the test body's execution flow (or is the last
+  // one there), and a restored-read call after it is the post-reload
+  // observation we require.
+  let lastReloadEnd = -1;
+  const reloadMatches = source.matchAll(new RegExp(RELOAD_PATTERN.source, "gi"));
+  for (const match of reloadMatches) {
+    if (typeof match.index === "number") {
+      lastReloadEnd = match.index + match[0].length;
+    }
+  }
+  if (lastReloadEnd < 0) {
+    return false;
+  }
+
+  return RESTORED_READ_CALL_PATTERN.test(source.slice(lastReloadEnd));
 }
 
 function matchesDurableStoryStateSaveLoadSpec(source: string): boolean {
@@ -99,7 +131,9 @@ describe("AFTERSIGN durable story-state save/load surface", () => {
         "  - mutates a named story-state value through visible player action,",
         "  - crosses a real reload/navigation/new-page boundary,",
         "  - reads window.__game (getSnapshot() or getStoryState()) as an assertion surface",
-        "    after that boundary to verify the restored named story-state value, and",
+        "    to verify the restored named story-state value — the read may be factored",
+        "    into a helper (e.g. `snapshot()` / `expectRestored*()`), but the helper must",
+        "    be CALLED after the last reload boundary in the test body, and",
         "  - never drives player input through window.__game.input.*.",
         `Scanned ${playtests.length} playtest spec(s): ${playtests.map(({ path }) => path).join(", ") || "none"}`,
       ].join("\n"),
