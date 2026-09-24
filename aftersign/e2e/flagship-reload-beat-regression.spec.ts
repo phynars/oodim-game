@@ -58,10 +58,6 @@ const PACKET_PATHS: PacketPath[] = [
 ];
 
 async function waitForSurface(page: Page): Promise<void> {
-  // `?.input.choose` (not `?.input?.choose`): waitForFunction re-polls on
-  // throw, so a transient `input === undefined` retries rather than crashes.
-  // The optional chain on `__game` is what guards the boot race; nested
-  // optional chains would just hide a real contract break in `input`.
   await page.waitForFunction(
     () =>
       typeof window.__game?.getSnapshot === "function" &&
@@ -73,9 +69,6 @@ async function waitForSurface(page: Page): Promise<void> {
     { timeout: WAIT_MS },
   );
 
-  // The served snapshot's shared memory field is `npcs.io.memories`.
-  // Assert it at boot so a future state-shape rename fails this regression
-  // coverage rather than silently turning its reload checks into stale casts.
   await expect
     .poll(
       () => page.evaluate(() => Array.isArray(window.__game!.getSnapshot().npcs.io.memories)),
@@ -141,7 +134,6 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
     await expect(advanceControl).toBeEnabled({ timeout: WAIT_MS });
     await expect(advanceControl).toHaveText("Return to Io", { timeout: WAIT_MS });
     await advanceControl.click();
-    await idle(page);
     await expect
       .poll(() => page.evaluate(() => window.__game!.getSnapshot().scene.beat), { timeout: WAIT_MS })
       .toBe("io-return-recognition");
@@ -151,15 +143,6 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
 }
 
 test.describe("AFTERSIGN reload beat regression", () => {
-  // No `test.describe.configure({ timeout })` here on purpose: Playwright's
-  // default 30s per-test budget (aftersign/playwright.config.ts has no
-  // top-level `timeout`) is what the sealed-vs-opened spec needs — it plays
-  // TWO full save/reload paths in one test, each paying the SwiftShader
-  // cold-start tax. An earlier revision set this to WAIT_MS (10s) and CI
-  // timed out at exactly 10000ms; keep the default and let individual
-  // heavier specs opt into `test.setTimeout(COLD_START_MS)` (see the
-  // wrong-io-line red-guard below).
-
   for (const path of PACKET_PATHS) {
     test(`reloads the ${path.name} outcome and remembers it durably`, async ({ page }) => {
       const afterReload = await playSaveReloadPath(page, path);
