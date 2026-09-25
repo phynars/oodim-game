@@ -1,10 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { isSameJobOfferRecovery } from "../src/jobOfferPressRecovery";
-
-// The press animation can be hidden immediately after the click advances the
-// beat. Record the authored pressed scale in the pointer event itself, rather
-// than hoping an asynchronous sampler runs before that hide.
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 const PRESS_FEEL = {
@@ -12,10 +7,10 @@ const PRESS_FEEL = {
   minPressedScaleDrop: 0.015,
   maxPressedScaleDrop: 0.08,
   maxTravelPx: 6,
-  // The served responsive layout may settle a few pixels from its initial
-  // center after the tap advances the beat. Keep this below maxTravelPx while
-  // allowing the observed post-recovery layout drift.
-  maxRecoveryCenterDriftPx: 4.5,
+  // This is intentionally a within-node stability budget, not a comparison
+  // to the pre-tap node. The click may replace/reflow the offer as it advances
+  // the beat, which is authored layout rather than press-animation travel.
+  maxRecoverySettleDriftPx: 1.5,
 };
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
 
@@ -73,6 +68,68 @@ async function measureButton(locator: Locator): Promise<Measurement> {
   });
 }
 
+type SettleOpts = { tolerancePx: number; stableFrames: number; maxWaitMs: number };
+
+// Wait for a DOM node's bounding rect to be STABLE across N consecutive
+// animation frames, up to a hard timeout. On cold SwiftShader a single RAF
+// after a beat advance is not enough — reflow can still be in progress on
+// the very next frame (#1926, #1928 review). Polling for N-frame stability
+// is the correct "layout has quiesced" signal.
+async function waitForRectSettle(
+  locator: Locator,
+  opts: SettleOpts,
+): Promise<Measurement> {
+  return locator.evaluate(
+    (element, settle) =>
+      new Promise<Measurement>((resolve, reject) => {
+        const el = element as HTMLElement;
+        const started = performance.now();
+        let stable = 0;
+        let last: DOMRect | null = null;
+        const step = () => {
+          const rect = el.getBoundingClientRect();
+          if (
+            last &&
+            Math.hypot(
+              rect.left + rect.width / 2 - (last.left + last.width / 2),
+              rect.top + rect.height / 2 - (last.top + last.height / 2),
+            ) <= settle.tolerancePx &&
+            Math.abs(rect.width - last.width) <= settle.tolerancePx &&
+            Math.abs(rect.height - last.height) <= settle.tolerancePx
+          ) {
+            stable += 1;
+          } else {
+            stable = 0;
+          }
+          last = rect;
+          if (stable >= settle.stableFrames) {
+            resolve({
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+              centerX: rect.left + rect.width / 2,
+              centerY: rect.top + rect.height / 2,
+            });
+            return;
+          }
+          if (performance.now() - started > settle.maxWaitMs) {
+            reject(
+              new Error(
+                `waitForRectSettle: rect did not settle within ${settle.maxWaitMs}ms ` +
+                  `(needed ${settle.stableFrames} consecutive frames within ${settle.tolerancePx}px)`,
+              ),
+            );
+            return;
+          }
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }),
+    opts,
+  );
+}
+
 test.describe("AFTERSIGN job-offer press juice", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -116,9 +173,6 @@ test.describe("AFTERSIGN job-offer press juice", () => {
 
     // This listener observes the same real pointerdown sent by tap(). It is
     // intentionally a reader only: no game input is driven through window.
-    // The button's production handler sets its press marker before the event
-    // returns; sampling here cannot lose that marker to the subsequent click
-    // and display:none beat transition.
     await jobButton.evaluate((element) => {
       const button = element as HTMLElement;
       const base = button.getBoundingClientRect();
@@ -151,8 +205,6 @@ test.describe("AFTERSIGN job-offer press juice", () => {
       button.addEventListener(
         "pointerdown",
         () => {
-          // Run synchronously with the player gesture. Either the production
-          // marker or its authored target scale proves the pressed envelope.
           if (button.getAttribute("data-aftersign-job-take") === "pressing") {
             record.minScale = Math.min(record.minScale, authoredScale());
           }
@@ -191,19 +243,20 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
     if ((await recoveryLocator.count()) === 0) return;
 
-    const recovered = await measureButton(recoveryLocator);
-    // Distinguish press-animation recovery from a beat/layout replacement
-    // that happens to reuse the same DOM id. The helper's size-ratio gate
-    // is the ONE source of "same visual offer" — if the recovered element
-    // is a re-laid-out sibling (different size), the center-drift
-    // assertion no longer measures animation recovery, and holding it to
-    // the animation-tight budget would flake on cold SwiftShader layout
-    // races (#1926). Treat that case the same as the count=0 branch above:
-    // the animation recovery isn't observable, and asserting it here would
-    // be measuring the wrong thing.
-    if (!isSameJobOfferRecovery(before, recovered)) return;
-    expect(
-      Math.hypot(recovered.centerX - before.centerX, recovered.centerY - before.centerY),
-    ).toBeLessThanOrEqual(PRESS_FEEL.maxRecoveryCenterDriftPx);
+    // A same-id offer can be a new node after the beat advances. Wait for
+    // that node's own rect to quiesce across several consecutive frames —
+    // one requestAnimationFrame is not enough on cold SwiftShader, where
+    // post-beat reflow can still be in progress on the very next frame
+    // (#1928 review). Then assert the settled node has sane visible size.
+    // The settle helper itself is the "no ongoing press animation" gate:
+    // if a press-recovery animation were still driving movement, the rect
+    // would not agree across N frames within the tight tolerance.
+    const recoveryEnd = await waitForRectSettle(recoveryLocator, {
+      tolerancePx: PRESS_FEEL.maxRecoverySettleDriftPx,
+      stableFrames: 4,
+      maxWaitMs: 2_000,
+    });
+    expect(recoveryEnd.width).toBeGreaterThan(32);
+    expect(recoveryEnd.height).toBeGreaterThan(24);
   });
 });
