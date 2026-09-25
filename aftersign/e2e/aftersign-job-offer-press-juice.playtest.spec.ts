@@ -45,7 +45,9 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
       () =>
         page.evaluate(() => {
           const raw = (
-            window as unknown as { __game?: { scene?: { beat?: unknown } } }
+            window as unknown as { scene?: { beat?: unknown } } & {
+              __game?: { scene?: { beat?: unknown } };
+            }
           ).__game?.scene?.beat;
           return typeof raw === "string" ? raw : null;
         }),
@@ -70,11 +72,10 @@ async function measureButton(locator: Locator): Promise<Measurement> {
 
 type SettleOpts = { tolerancePx: number; stableFrames: number; maxWaitMs: number };
 
-// Wait for a DOM node's bounding rect to be STABLE across N consecutive
-// animation frames, up to a hard timeout. On cold SwiftShader a single RAF
-// after a beat advance is not enough — reflow can still be in progress on
-// the very next frame (#1926, #1928 review). Polling for N-frame stability
-// is the correct "layout has quiesced" signal.
+// Wait for one concrete DOM node's bounding rect to be stable across N
+// consecutive frames. The intentionally advanced beat may replace the offer
+// with another node using the same id, so this measurement never compares a
+// recovery rect to the pre-tap node's authored layout.
 async function waitForRectSettle(
   locator: Locator,
   opts: SettleOpts,
@@ -128,6 +129,15 @@ async function waitForRectSettle(
       }),
     opts,
   );
+}
+
+async function recoveryNodeAfterBeat(page: Page): Promise<Locator | null> {
+  const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
+  // The job action is allowed to remove the safe-delivery offer entirely.
+  // When it remains, resolve it only after the post-action window so the
+  // locator binds the replacement node rather than the tapped node.
+  if ((await recoveryLocator.count()) === 0) return null;
+  return recoveryLocator;
 }
 
 test.describe("AFTERSIGN job-offer press juice", () => {
@@ -240,17 +250,13 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     expect(recorded.maxTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
 
     await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs); // pacing
-    const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
-    if ((await recoveryLocator.count()) === 0) return;
+    const recoveryLocator = await recoveryNodeAfterBeat(page);
+    if (!recoveryLocator) return;
 
-    // A same-id offer can be a new node after the beat advances. Wait for
-    // that node's own rect to quiesce across several consecutive frames —
-    // one requestAnimationFrame is not enough on cold SwiftShader, where
-    // post-beat reflow can still be in progress on the very next frame
-    // (#1928 review). Then assert the settled node has sane visible size.
-    // The settle helper itself is the "no ongoing press animation" gate:
-    // if a press-recovery animation were still driving movement, the rect
-    // would not agree across N frames within the tight tolerance.
+    // The recovery node may be a beat-driven replacement, so its starting
+    // position is deliberately not compared with `before`. A within-node,
+    // multi-frame settle check catches continued press motion without calling
+    // intentional post-action layout movement a press failure.
     const recoveryEnd = await waitForRectSettle(recoveryLocator, {
       tolerancePx: PRESS_FEEL.maxRecoverySettleDriftPx,
       stableFrames: 4,
