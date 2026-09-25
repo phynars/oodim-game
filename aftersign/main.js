@@ -3340,6 +3340,16 @@ const advance = async () => {
       impactBurstParticles = [];
       markStateDirty();
     }, MEMORY_RECOGNITION_FEEDBACK.durationMs);
+    // #1931: stamp the recognition-settle clock on the reload→"Return to
+    // Io" path too. Previously only deliverPacket's timer stamped it, so
+    // after a restore `recognitionEnteredAt` was unset and the
+    // `choose-return-tone` settle gate treated the beat as already
+    // settled — the same #deliverButton gesture that advanced
+    // packet-delivered → io-return-recognition was re-read as the
+    // newly-rendered return-tone control and double-advanced to
+    // `return-tone-choice`. Stamping atomically with setBeat gives the
+    // restored path the same same-gesture guard as the live path.
+    state.interaction.recognitionEnteredAt = performance.now();
     setBeat("io-return-recognition");
   }
 };
