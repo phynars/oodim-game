@@ -61,6 +61,54 @@ function hasPlayedKioskInteractionLoop(rawSource: string): boolean {
   );
 }
 
+function findPlaytestHarnessInput(pathsAndSources: Array<{ path: string; source: string }>): string | undefined {
+  return pathsAndSources.find(
+    ({ path, source }) => /\.playtest\.spec\.(?:ts|js)$/i.test(path) && HARNESS_INPUT_PATTERN.test(stripComments(source)),
+  )?.path;
+}
+
+describe("AFTERSIGN playtest harness-input boundary", () => {
+  it("rejects harness input in player-facing playtest specs while allowing rendered-page input", () => {
+    expect(
+      findPlaytestHarnessInput([
+        {
+          path: "aftersign/e2e/fixture.playtest.spec.ts",
+          source: "await page.evaluate(() => window.__game.input.choose('safe-delivery'))",
+        },
+      ]),
+    ).toBe("aftersign/e2e/fixture.playtest.spec.ts");
+
+    expect(
+      findPlaytestHarnessInput([
+        {
+          path: "aftersign/e2e/fixture.playtest.spec.ts",
+          source: "await page.getByRole('button', { name: 'Accept' }).click()",
+        },
+        {
+          path: "aftersign/e2e/flagship-phase2-input-delivery-contract.spec.ts",
+          source: "await page.evaluate(() => window.__game.input.choose('safe-delivery'))",
+        },
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("finds no harness-driven player-facing playtest in the AFTERSIGN e2e directory", () => {
+    const playtests = existsSync(AFTERSIGN_E2E_DIR)
+      ? readdirSync(AFTERSIGN_E2E_DIR)
+          .filter((fileName) => /\.playtest\.spec\.(?:ts|js)$/i.test(fileName))
+          .map((fileName) => ({
+            path: join(AFTERSIGN_E2E_DIR, fileName),
+            source: readFileSync(join(AFTERSIGN_E2E_DIR, fileName), "utf8"),
+          }))
+      : [];
+
+    expect(
+      findPlaytestHarnessInput(playtests),
+      "Player-facing .playtest.spec.ts files must use rendered-page input rather than window.__game.input.*.",
+    ).toBeUndefined();
+  });
+});
+
 describe("AFTERSIGN kiosk interaction loop surface", () => {
   it("has a phone-played kiosk loop with proximity prompt, real activation, and deterministic window.__game event emission", () => {
     const surfaces = readAftersignPlayableSurfaces();
