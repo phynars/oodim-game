@@ -303,6 +303,17 @@ surface, not a dialogue-only or state-only difference.
 breadth of map. No new NPCs before both existing ones pay memories back
 mechanically. Cut anything before cutting the divergence bar.
 
+### Served M-LOOP divergence contract
+
+At `packet-offered`, the served `#offeredJobs` tray derives its action set from
+durable Io memory. It stamps `data-mloop-divergence-memory` as `fresh`,
+`completed`, or `debt-held`; the tray's `button[data-offered-job-id]` children
+are the visible, tappable evidence of that branch. The mapping is deterministic:
+no memory selects the safe offer, a sealed/completed record selects completed
+jobs, and opened debt selects debt-repair work. A phone-viewport Playwright spec
+must tap these rendered buttons for each seeded record; reading a harness input
+surface is not acceptance evidence.
+
 The two standing guard rules (beats-reachable, played-not-driven) carry
 over unchanged; **the divergence metric SUPERSEDES beats-reachable as the
 milestone metric from this amendment forward.**

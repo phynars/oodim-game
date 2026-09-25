@@ -557,6 +557,7 @@ import { selectIoJobOffers } from "../packages/aftersign/src/computeOfferedJobs"
 // `offeredJobsMemoryFromIoMemory(` — the ONE call site the
 // consumer test also drives).
 import { offeredJobsMemoryFromIoMemory } from "./src/offeredJobsMemoryFromIoMemory.js";
+import { servedMloopDivergenceKey } from "./mloop-served-divergence.js";
 // #1568 — element-level M-LOOP fingerprint stamped on the offer button
 // the player actually taps. `fingerprintJobOfferAction` is the same
 // primitive `jobOfferActionFingerprint.consumer.test.ts` drives
@@ -2321,6 +2322,13 @@ const renderText = () => {
         state.npcs.io.memory,
       );
       const offers = selectIoJobOffers(offeredJobsMemory);
+      // The rendered offer tray carries its durable selection posture so
+      // player-driven browser coverage can compare two save records at the
+      // actual tappable surface rather than through a harness snapshot.
+      offeredJobs.setAttribute(
+        "data-mloop-divergence-memory",
+        servedMloopDivergenceKey(offeredJobsMemory),
+      );
       // PR #1614 — mirror the rendered offer set into
       // `state.story.offeredJobs` so the served-page snapshot read
       // (`window.__game.getSnapshot()`) matches the DOM the player
