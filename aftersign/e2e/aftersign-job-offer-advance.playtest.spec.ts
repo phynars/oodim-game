@@ -46,6 +46,26 @@ test.describe("AFTERSIGN job offer advances by phone tap", () => {
     const offer = page.locator("#packetButton");
     await expect(offer).toBeVisible({ timeout: WAIT_MS });
     await expect(offer).toBeEnabled({ timeout: WAIT_MS });
+
+    // Browser-real rendered-rect floor for the tap the player is about
+    // to make. The 44px contract itself is owned by
+    // `apps/web/src/aftersign/tapChoiceFeel.consumer.test.ts`, which
+    // exercises the harness's rect measurement against stubbed jsdom
+    // rects; jsdom cannot produce a real layout box, so this line is
+    // the one place a real Chromium layout of `#packetButton` at 390×844
+    // is checked before the tap. Kept inline (not a new spec) so the
+    // ready/beat/enabled guards above continue to gate it.
+    const box = await offer.boundingBox();
+    expect(box, "packetButton must have a rendered hit area").not.toBeNull();
+    expect(
+      box!.width,
+      "packetButton width must meet the 44px touch minimum",
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      box!.height,
+      "packetButton height must meet the 44px touch minimum",
+    ).toBeGreaterThanOrEqual(44);
+
     await offer.tap();
 
     await waitForBeat(page, "packet-choice");
