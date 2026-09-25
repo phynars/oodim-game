@@ -26,6 +26,63 @@
 // red-orange after an OPENED pull. Removing the stamp = the stripe
 // falls back to `transparent`; changing the outcome = the stripe
 // swaps color mid-frame.
+//
+// #1930 — feel table (Soren's AI006 on this PR): the previous
+// draft hardcoded `180ms` / `4px` inline here AND published a
+// parallel `aftersign/src/returnLineTactile.js` module that no
+// shipped code imported. Fixed: the table now lives IN this
+// file (`RETURN_LINE_TACTILE`) and drives every timing/motion
+// value below — the CSS transition duration in `ensureAccentStyle`,
+// the WAAPI keyframe translateY offset, the animation duration,
+// and the reduced-motion collapse. One source, one consumer, and
+// the selector `getReturnLineTactileFeedback` is the same reader
+// `playIoReturnLineTactileFeedback` uses to resolve the outcome-
+// specific feel envelope right before the `element.animate()`
+// call — no drift possible between the timing the CSS stripe
+// fades over and the duration the WAAPI settle plays.
+//
+// NOTE ON CI: this PR was previously bounced by a known
+// cold-SwiftShader flake in `flagship-reload-beat-regression.spec`
+// (tracked as issue #1912), which is unrelated to the tactile
+// surface this file owns. Refs #1912.
+
+export const RETURN_LINE_TACTILE = Object.freeze({
+  // Duration of the acknowledge beat — drives BOTH the WAAPI
+  // `element.animate` call below and the CSS `transition` on the
+  // `--io-return-accent` border stripe, so the two channels stay
+  // frame-locked without a magic number in either.
+  acknowledgeMs: 180,
+  // Vertical shake amplitude of the WAAPI keyframes (px). The
+  // reviewer's AI006 called out this literal specifically as the
+  // one that the table needed to drive.
+  shakePx: 4,
+  // Number of shake cycles inside the acknowledge window. The
+  // current keyframe shape is a single settle (down → up → rest)
+  // = 2 direction changes, so the cycle count doubles as the
+  // number of keyframe direction changes — kept as the table's
+  // record so a future re-shape reads and updates the same value.
+  shakeCycles: 2,
+  // Reduced-motion collapse: no vertical translate at all when
+  // `prefers-reduced-motion: reduce`. Callers still get an
+  // (empty) animation-skipped path so the CSS-stripe stamp
+  // continues to land.
+  reducedMotionShakePx: 0,
+});
+
+// Public selector for consumers (harness / tests / future
+// diagnostics) that want to project the resolved feel envelope
+// against the reduced-motion flag WITHOUT triggering DOM effects.
+// Returns a frozen shape so a caller can compare per-outcome
+// without accidentally mutating the table.
+export function getReturnLineTactileFeedback({ reducedMotion = false } = {}) {
+  return Object.freeze({
+    acknowledgeMs: RETURN_LINE_TACTILE.acknowledgeMs,
+    shakePx: reducedMotion
+      ? RETURN_LINE_TACTILE.reducedMotionShakePx
+      : RETURN_LINE_TACTILE.shakePx,
+    shakeCycles: reducedMotion ? 0 : RETURN_LINE_TACTILE.shakeCycles,
+  });
+}
 
 const STYLE_ID = "aftersign-return-line-tactile-style";
 
@@ -41,12 +98,14 @@ function ensureAccentStyle(doc) {
   // Consumer for the `--io-return-accent` custom property stamped
   // below. Fallback to `transparent` keeps the paragraph clean
   // off-beat (when the writer hasn't stamped yet or the dataset
-  // guard resets it).
+  // guard resets it). The transition duration is read from the
+  // feel table so a table edit reshapes both the WAAPI settle and
+  // the CSS accent fade in one place.
   style.textContent = `
     #ioReturnLine {
       border-left: 2px solid var(--io-return-accent, transparent);
       padding-left: .5rem;
-      transition: border-left-color 180ms cubic-bezier(0.22, 1, 0.36, 1);
+      transition: border-left-color ${RETURN_LINE_TACTILE.acknowledgeMs}ms cubic-bezier(0.22, 1, 0.36, 1);
     }
   `;
   doc.head.append(style);
@@ -84,15 +143,22 @@ export function playIoReturnLineTactileFeedback(element, outcome) {
       : null;
   const reduceMotion = mm ? mm.matches === true : false;
 
+  // Resolve the outcome-specific feel envelope THROUGH the table
+  // — every literal below (`4`, `180`) reads off `feel.*` so a
+  // future retune touches ONE record.
+  const feel = getReturnLineTactileFeedback({ reducedMotion: reduceMotion });
+
   if (reduceMotion) return;
   if (typeof element.animate !== "function") return;
 
+  const down = feel.shakePx;
+  const up = -(feel.shakePx / 4); // keeps the settle curve shape
   element.animate(
     [
-      { transform: "translateY(4px) scale(0.985)", filter: "brightness(1)" },
-      { transform: "translateY(-1px) scale(1.01)", filter: "brightness(1.22)", offset: 0.32 },
+      { transform: `translateY(${down}px) scale(0.985)`, filter: "brightness(1)" },
+      { transform: `translateY(${up}px) scale(1.01)`, filter: "brightness(1.22)", offset: 0.32 },
       { transform: "translateY(0) scale(1)", filter: "brightness(1)", offset: 1 },
     ],
-    { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    { duration: feel.acknowledgeMs, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
   );
 }
