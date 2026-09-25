@@ -154,6 +154,17 @@ describe("attachReturnToneCarryOverGuard (JSDOM consumer)", () => {
   });
 
   /**
+   * Dispatch a DOM event shaped like the real browser dispatches it.
+   *
+   * - `pointerdown` / `pointerup`: `PointerEvent`-shape — carries a
+   *   `pointerId`. We use MouseEvent + `Object.defineProperty` because
+   *   JSDOM's PointerEvent constructor is spotty; the guard only reads
+   *   `event.pointerId` and standard MouseEvent fields.
+   * - `click`: plain `MouseEvent` — per the pointer-events spec, a
+   *   pointer-derived click carries NO `pointerId`. This test mirrors
+   *   that so a bug where the guard reads `pointerId` off the click
+   *   would show up as a failing test.
+   *
    * @param {"pointerdown" | "pointerup" | "click"} type
    * @param {HTMLElement} target
    * @param {number} pointerId
@@ -163,7 +174,9 @@ describe("attachReturnToneCarryOverGuard (JSDOM consumer)", () => {
       bubbles: true,
       cancelable: true,
     });
-    Object.defineProperty(event, "pointerId", { value: pointerId });
+    if (type === "pointerdown" || type === "pointerup") {
+      Object.defineProperty(event, "pointerId", { value: pointerId });
+    }
     target.dispatchEvent(event);
     return event;
   };
@@ -190,10 +203,13 @@ describe("attachReturnToneCarryOverGuard (JSDOM consumer)", () => {
     expect(commitSpy).not.toHaveBeenCalled();
   });
 
-  it("REJECTS a carry-over click even when pointerup is skipped (bound-on-click adapters)", () => {
-    // main.js binds the tone-button commit as a `click` listener
-    // (the standard DOM path). Even if the pointerup wire is
-    // absent, the click path must still be blocked.
+  it("REJECTS the derived click via the pointerup-armed latch (main.js binds on 'click')", () => {
+    // `acknowledgeRouteButton` in main.js binds the tone-button
+    // commit as a `click` listener — the served path. Real browser
+    // `click` MouseEvents carry NO `pointerId` (see the dispatch()
+    // helper above; we mirror that here). The guard therefore
+    // defends the click path via the latch armed by the paired
+    // `pointerup`, NOT by re-reading pointerId off the click.
     const clickOnlySpy = vi.fn();
     toneButton.removeEventListener("click", commitSpy);
     toneButton.removeEventListener("pointerup", commitSpy);
@@ -203,9 +219,56 @@ describe("attachReturnToneCarryOverGuard (JSDOM consumer)", () => {
     dispatch("pointerdown", toneButton);
     state.interaction.recognitionEnteredAt = 500;
     nowMs = 520;
+    // Full pointer-derived sequence: pointerup arms the latch, the
+    // click that follows is consumed by it.
+    dispatch("pointerup", toneButton);
     dispatch("click", toneButton);
 
     expect(clickOnlySpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT block a click whose target differs from the latched tone button", () => {
+    // The latch is same-target: a carry-over pointerup on one tone
+    // button must not swallow a click on a different button. (In
+    // practice this can't happen — the pointerup and click share
+    // one gesture — but a stray click bug elsewhere in the doc
+    // should not be silently eaten by the latch.)
+    dom.window.document.body.insertAdjacentHTML(
+      "beforeend",
+      `<button id="tone-brisk" data-choice-id="choose-return-tone">brisk</button>`,
+    );
+    const otherToneButton = /** @type {HTMLButtonElement} */ (
+      dom.window.document.querySelector("#tone-brisk")
+    );
+    const otherSpy = vi.fn();
+    otherToneButton.addEventListener("click", otherSpy);
+
+    nowMs = 100;
+    dispatch("pointerdown", toneButton);
+    state.interaction.recognitionEnteredAt = 500;
+    nowMs = 520;
+    dispatch("pointerup", toneButton); // arms latch on `toneButton`
+    // A click on a DIFFERENT button must pass through.
+    dispatch("click", otherToneButton);
+
+    expect(otherSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT block a click whose latch has aged past the budget", () => {
+    // Defensive: if the click somehow never arrives within the
+    // pointer-derived window (~10ms in practice, 500ms budget here),
+    // an unrelated later click on the same button must not be eaten.
+    nowMs = 100;
+    dispatch("pointerdown", toneButton);
+    state.interaction.recognitionEnteredAt = 500;
+    nowMs = 520;
+    dispatch("pointerup", toneButton); // arms latch at t=520
+
+    // A fresh deliberate click much later — well past the 500ms latch.
+    nowMs = 2000;
+    dispatch("click", toneButton);
+
+    expect(commitSpy).toHaveBeenCalled();
   });
 
   it("accepts a fresh press: pointerdown after the stamp", () => {

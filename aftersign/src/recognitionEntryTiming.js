@@ -12,9 +12,13 @@
 // button whose matching `pointerdown` occurred BEFORE the stamp — i.e. the
 // same finger release that transitioned into the recognition beat is now
 // bubbling into a tone-choice button that mounted underneath it — the
-// guard calls `event.stopImmediatePropagation()` + `preventDefault()` to
-// block the accidental commit. A fresh, deliberate press whose down
-// timestamp POST-dates the stamp passes through untouched.
+// guard calls `event.stopImmediatePropagation()` + `preventDefault()` on
+// the `pointerup` AND arms a single-shot latch keyed to that tone
+// button. The derived `click` MouseEvent (which per the pointer-events
+// spec has NO `pointerId`) is blocked by that latch on the very next
+// `click` on the same target — that click is the served path
+// `acknowledgeRouteButton` binds in `main.js`. A fresh, deliberate press
+// whose down timestamp POST-dates the stamp passes through untouched.
 //
 // The predicate is a pure function so both the guard and its unit tests
 // exercise the SAME comparison — no divergence between "what the guard
@@ -111,47 +115,41 @@ export const attachReturnToneCarryOverGuard = ({
   };
 
   /**
-   * `pointerup` and the derived `click` are separate events, but they
-   * both flow through the SAME pointerId's press summary. The guard
-   * runs the identical decision on both:
-   *   - `pointerup` blocks any adapter that commits directly on
-   *     release (a `button.addEventListener("pointerup", ...)`).
-   *   - `click` blocks the standard DOM path (`button.onclick` /
-   *     `button.addEventListener("click", ...)` — the shape main.js
-   *     uses for its three tone buttons).
-   * Blocking BOTH is what turns the stamp into a real guard rather
-   * than one shipped with the escape hatch left open.
+   * `pointerup` and the derived `click` are SEPARATE DOM events. Per
+   * the pointer-events spec, `click` for pointer-derived input is a
+   * plain `MouseEvent` — it does NOT carry `pointerId`. That means we
+   * can only pair a click with its originating press by observing the
+   * `pointerdown`→`pointerup` pair FIRST (which does carry pointerId)
+   * and, if that release was a carry-over on a tone button, arming a
+   * latch that consumes the immediately-following `click`.
    *
-   * We do NOT delete the pointerId from the map on `pointerup` — the
-   * derived `click` for the same gesture arrives right after and needs
-   * the same lookup. The delete happens on `click` (or after a bounded
-   * age check the next time the id is written) so a subsequent
-   * unrelated release can't accidentally read a stale timestamp.
+   * `pointerup` on a tone-button carry-over:
+   *   - stopImmediatePropagation() + preventDefault() on the pointerup
+   *     itself (blocks any `button.addEventListener("pointerup", ...)`
+   *     adapter).
+   *   - Arms `blockedClickLatch` with the exact target element +
+   *     `armedAtMs`. The next `click` on the SAME target within a
+   *     small window is blocked. The tone-button's `click` handler
+   *     (the shape main.js binds — `acknowledgeRouteButton`) is the
+   *     served path; this latch is the only way to defend it, because
+   *     the click MouseEvent has no `pointerId` to key off.
+   *
+   * `click`:
+   *   - If the latch is armed and matches this target within the
+   *     window, block + disarm. Otherwise let through.
+   *
+   * The latch is bounded so it cannot leak past the gesture:
+   *   - Time budget: LATCH_MAX_AGE_MS. Beyond that a click is treated
+   *     as unrelated (defensive; the real click arrives within ~10ms).
+   *   - Same-target requirement: the latch stores the exact tone
+   *     button; a click on a different element does not consume it.
+   *   - Single-shot: consumed on first matching click.
    */
-  const evaluateReleaseOnTarget = (event, { deleteAfter }) => {
-    if (!event || typeof event.pointerId !== "number") {
-      // `click` synthesized from keyboard has no pointerId. Fail safe
-      // — we cannot claim a carry-over without a matching press.
-      return false;
-    }
-    const pointerDownAtMs =
-      pointerDownAtMsByPointerId.get(event.pointerId) ?? null;
-    if (deleteAfter) pointerDownAtMsByPointerId.delete(event.pointerId);
+  const LATCH_MAX_AGE_MS = 500;
+  /** @type {{ target: Element, armedAtMs: number } | null} */
+  let blockedClickLatch = null;
 
-    const toneButton = matchesToneChoice(event.target);
-    if (!toneButton) return false;
-
-    const recognitionStamp = readRecognitionStamp();
-
-    if (
-      !isReturnToneCarryOverRelease({
-        pointerDownAtMs,
-        recognitionEnteredAt: recognitionStamp,
-      })
-    ) {
-      return false;
-    }
-
+  const rejectEvent = (event) => {
     event.stopImmediatePropagation();
     if (typeof event.preventDefault === "function") {
       event.preventDefault();
@@ -163,15 +161,54 @@ export const attachReturnToneCarryOverGuard = ({
         // Observer must never break the guard.
       }
     }
-    return true;
   };
 
   const onPointerUp = (event) => {
-    evaluateReleaseOnTarget(event, { deleteAfter: false });
+    if (!event || typeof event.pointerId !== "number") return;
+    const pointerDownAtMs =
+      pointerDownAtMsByPointerId.get(event.pointerId) ?? null;
+    // The derived `click` for the same gesture arrives right after;
+    // we clear the pointerId's press timestamp now (its verdict is
+    // handed off to `blockedClickLatch` if it was a carry-over).
+    pointerDownAtMsByPointerId.delete(event.pointerId);
+
+    const toneButton = matchesToneChoice(event.target);
+    if (!toneButton) return;
+
+    const recognitionStamp = readRecognitionStamp();
+    if (
+      !isReturnToneCarryOverRelease({
+        pointerDownAtMs,
+        recognitionEnteredAt: recognitionStamp,
+      })
+    ) {
+      return;
+    }
+
+    // Block the pointerup itself AND arm the click latch — the served
+    // path is `acknowledgeRouteButton`'s `click` binding in main.js.
+    rejectEvent(event);
+    blockedClickLatch = { target: toneButton, armedAtMs: now() };
   };
 
   const onClick = (event) => {
-    evaluateReleaseOnTarget(event, { deleteAfter: true });
+    // Real `click` MouseEvents have NO `pointerId` — do NOT gate on it.
+    // The latch is the only signal that couples this click to a
+    // carry-over pointerup we already rejected.
+    if (!blockedClickLatch) return;
+
+    const { target: latchedTarget, armedAtMs } = blockedClickLatch;
+    const ageMs = now() - armedAtMs;
+    if (ageMs > LATCH_MAX_AGE_MS) {
+      blockedClickLatch = null;
+      return;
+    }
+
+    const toneButton = matchesToneChoice(event.target);
+    if (!toneButton || toneButton !== latchedTarget) return;
+
+    blockedClickLatch = null;
+    rejectEvent(event);
   };
 
   document.addEventListener("pointerdown", onPointerDown, { capture: true });
@@ -185,5 +222,6 @@ export const attachReturnToneCarryOverGuard = ({
     document.removeEventListener("pointerup", onPointerUp, { capture: true });
     document.removeEventListener("click", onClick, { capture: true });
     pointerDownAtMsByPointerId.clear();
+    blockedClickLatch = null;
   };
 };
