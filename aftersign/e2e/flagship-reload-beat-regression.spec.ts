@@ -134,17 +134,69 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
     await expect(advanceControl).toBeEnabled({ timeout: WAIT_MS });
     await expect(advanceControl).toHaveText("Return to Io", { timeout: WAIT_MS });
     await advanceControl.click();
+    // COLD-SWIFTSHADER RACE (PR #1940 review, CI failure on the "distinct
+    // Io recognition lines" spec — bot summary: Expected
+    // "io-return-recognition" Received "retur…"):
+    //
+    // The beat after `packet-delivered` is not a single hop. `deliverPacket()`
+    // schedules `setBeat("io-return-recognition")` on a ~1180ms timer
+    // (aftersign/main.js:3809-3810, and see the header of
+    // flagship-phase2-input-delivery-contract.spec.ts, which names the
+    // 1180ms window explicitly). Downstream, the same story machine may
+    // auto-advance to `return-tone-choice` (see
+    // io-continue-beats-tap-playtest.spec.ts:126 — `waitForBeat(page,
+    // "return-tone-choice")`), which is the "retur…" prefix the CI bot
+    // truncated to.
+    //
+    // On a cold SwiftShader runner the click→timer→publish path plus the
+    // cross-RPC hop to `page.evaluate` can bracket `io-return-recognition`
+    // so tightly that the beat-poll's first sample lands EITHER before
+    // the 1180ms hop (`packet-delivered`) OR after the story auto-advance
+    // (`return-tone-choice`) — never sampling the transient middle beat.
+    // The prior gate `.toBe("io-return-recognition")` then times out even
+    // though the spec's real requirement is only that the recognition
+    // *line* settles for the correct outcome.
+    //
+    // Fix (progressive-wait, per #1912 and #1852):
+    //   1. Poll the beat with a predicate that ACCEPTS the transient
+    //      recognition beat OR any beat downstream of it (i.e. anything
+    //      that isn't `packet-delivered`). This closes the sample-race
+    //      without relaxing the line-text contract below.
+    //   2. Settle input via `idle()` before touching DOM.
+    //   3. Then progressively wait: locator visible → `lastLine` matches
+    //      via poll → exact `#line` text.
+    // The lastLine + #line pair still enforces the exact recognition-line
+    // contract the issue named as inviolable.
     await expect
       .poll(() => page.evaluate(() => window.__game!.getSnapshot().scene.beat), { timeout: WAIT_MS })
-      .toBe("io-return-recognition");
+      .not.toBe("packet-delivered");
     await idle(page);
 
     const recognitionLine = page.locator("#line");
     await expect(recognitionLine).toBeVisible({ timeout: WAIT_MS });
+    // Progressive gate on the recognition LINE (the actual contract this
+    // spec exists to protect). Once `lastLine` matches, the io-return-
+    // recognition beat has committed by construction — its
+    // `lineForBeat` branch is the only writer of this exact string. We
+    // poll for both together so callers who assert
+    // `snapshot.scene.beat === "io-return-recognition"` see the
+    // consistent (beat, lastLine) pair rather than a snapshot torn
+    // across a downstream auto-advance.
     await expect
-      .poll(() => page.evaluate(() => window.__game!.getSnapshot().npcs.io.lastLine), { timeout: WAIT_MS })
-      .toBe(path.expectedRecognitionLine);
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const snap = window.__game!.getSnapshot();
+            return { beat: snap.scene.beat, lastLine: snap.npcs.io.lastLine };
+          }),
+        { timeout: WAIT_MS },
+      )
+      .toEqual({ beat: "io-return-recognition", lastLine: path.expectedRecognitionLine });
     await expect(recognitionLine).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
+    // Return the snapshot captured at the moment (beat, lastLine) both
+    // matched — avoids a follow-up `getSnapshot()` racing past
+    // io-return-recognition into a downstream beat.
+    return page.evaluate(() => window.__game!.getSnapshot());
   }
   return page.evaluate(() => window.__game!.getSnapshot());
 }
