@@ -86,18 +86,17 @@ export default defineConfig({
       // half is dead on arrival" gap the first draft shipped.
       "apps/web/src/aftersign/jobOfferChoiceFeedback.consumer.test.ts",
       // PR #1955 re-review (Soren Vask) — route-risk touch feedback
-      // wrapper `aftersign/src/routeRiskTouchFeedback.js`. First draft
-      // shipped a `.ts` pure resolver returning `{ scale, translateY,
-      // durationMs }` that NOTHING imported and no CSS read — dead on
-      // arrival per the CONSUMER RULE. Fix: replace with a DOM writer
-      // that installs scoped CSS, stamps `data-aftersign-route-risk-
-      // touch` + the shipped `--aftersign-route-risk-touch-*` vars,
-      // and toggles `.is-aftersign-route-risk-touch-pressing` for the
-      // pressed transform outcome. This consumer test drives the
-      // wrapper against a real jsdom button and asserts the RENDERED
-      // outcome (installed <style>, stamped attribute, CSS vars,
-      // pressed-class round-trip on fake timers).
-      "apps/web/src/aftersign/routeRiskTouchFeedback.consumer.test.ts",
+      // module was DELETED as the FIFTH repetition of the parallel-
+      // feel-contract pattern (HANDOFF-1694 / -1698 / -1760 / -1848,
+      // now -1955). The canonical route-choice confirmation envelope
+      // is `aftersign/src/routeRiskConfirmFeedback.js` — it already
+      // ships the pinned numbers (pressScale 0.97, scalePeak 1.025,
+      // 180ms), a reduced-motion vestibular branch, try/catch around
+      // the WAAPI call, and a boolean return callers rely on. See
+      // `apps/web/src/aftersign/HANDOFF-1955.md` for the deletion
+      // rationale; a real route-risk press cue extends that module
+      // (or `packages/aftersign/src/interactionConfirm.ts`) in a
+      // scoped PR, it does not fork a fifth parallel module.
       // Refs #1698 handoff chain (HANDOFF-1694/1698/1760) — the pure
       // gesture judge's terminal feedback tokens
       // (`"seal-strain" | "seal-break" | "seal-safe" | "previewed"`)
