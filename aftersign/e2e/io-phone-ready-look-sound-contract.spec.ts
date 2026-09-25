@@ -70,7 +70,7 @@ const waitForGame = async (page: Page) => {
 };
 
 const installPhoneReadyRuntimeMarks = async (page: Page) => {
-  await page.evaluate((expectedCue) => {
+  await page.evaluate(({ expectedCue, pollIntervalMs }) => {
     const win = window as Window & {
       __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; audioCueAt?: number };
       __game?: { scene?: { beat?: string }; _runtime?: { audio?: { lastCue?: string | null; lastCueAt?: number | null } } };
@@ -79,9 +79,10 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
     const initialLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
     const initialAudioCueAt = win.__game?._runtime?.audio?.lastCueAt ?? null;
 
-    // MutationObserver stamps the DOM write as a microtask; the rAF loop is
-    // retained only as a fallback, so a cold SwiftShader frame stall cannot
-    // by itself delay the authored line/audio timing measurement.
+    // MutationObserver stamps the DOM write as a microtask. Sample game/audio
+    // state on the task queue as well: a cold SwiftShader worker can starve
+    // rAF, but it must not prevent this test-only diagnostic stamp from seeing
+    // the authored cue.
     const stampMarks = () => {
       const game = win.__game;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
@@ -95,9 +96,9 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
     const lineNode = document.querySelector('#line');
     if (lineNode) new MutationObserver(stampMarks).observe(lineNode, { childList: true, characterData: true, subtree: true });
-    const observe = () => { stampMarks(); requestAnimationFrame(observe); };
-    requestAnimationFrame(observe);
-  }, EXPECTED_AUDIO_CUE);
+    stampMarks();
+    window.setInterval(stampMarks, pollIntervalMs);
+  }, { expectedCue: EXPECTED_AUDIO_CUE, pollIntervalMs: POLL_INTERVAL_MS });
 };
 
 const driveToSealedRecognitionBeat = async (page: Page) => {
