@@ -62,7 +62,12 @@ describe("aftersignJobAcceptedRender served consumer", () => {
     stampJobAcceptedLine(document, "job-sealed-return", line);
     const ack = document.getElementById(JOB_TAKE_ACK_LINE_ID);
     expect(ack!.textContent).toBe(line);
-    expect(ack!.textContent).toContain("Sealed return");
+    // Anchor the assertion in the new authored copy for
+    // `job-sealed-return` — "Take it back sealed. If the box refuses
+    // it, bring the refusal to me." (see `aftersignJobAcceptedCopy.js`).
+    // Substring pin proves the sealed-return branch — not the default
+    // fallback — resolved through `aftersignJobAcceptedLine()`.
+    expect(ack!.textContent).toContain("Take it back sealed");
     expect(ack!.getAttribute(JOB_TAKE_ACK_LINE_DATA_ATTR)).toBe(
       "job-sealed-return",
     );
