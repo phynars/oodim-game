@@ -118,6 +118,15 @@ export default defineConfig({
       // file without registering it here — dead on arrival — so this
       // include entry is the load-bearing half of the fix.
       "apps/web/src/aftersign/jobOfferFocusFeedback.consumer.test.ts",
+      // PR #1934 re-review (Soren Vask) — pin the three return values
+      // of `servedMloopDivergenceKey`, the helper `aftersign/main.js`
+      // uses to stamp `data-mloop-divergence-memory` on the rendered
+      // `#offeredJobs` tray. Paired with the played spec at
+      // `aftersign/e2e/mloop-served-divergence-played.spec.ts` (which
+      // reads the attribute at the tap surface); this file locks the
+      // `fresh` | `completed` | `debt-held` label vocabulary so a
+      // future relabel reds here alongside the spec.
+      "apps/web/src/aftersign/servedMloopDivergenceKey.test.ts",
     ],
   },
 });
