@@ -6,16 +6,15 @@ import { expect, test, type Page } from '@playwright/test';
 // never fires when the render loop keeps requesting frames.
 const COLD_START_MS = 90_000;
 const WAIT_MS = 60_000;
-// Progressive gates for driveToSealedRecognitionBeat: authored state (beat +
-// memoryBeat cleared) gets the larger slice because it runs immediately after
-// forceReload() and must survive a cold SwiftShader re-init; diagnostic marks
-// (MutationObserver-stamped) are microtask-driven and settle fast once the
-// beat has arrived. Both are derived from WAIT_MS as a shared budget so they
-// compose to ≤WAIT_MS (30 + 15 = 45s ≤ 60s) rather than being magic numbers,
-// while keeping #1852's property that one slow condition cannot eat the whole
-// window.
-const RECOGNITION_BEAT_WAIT_MS = WAIT_MS / 2;
-const RECOGNITION_MARKS_WAIT_MS = WAIT_MS / 4;
+// Keep every sequential wait beneath the test's 90s cold-start envelope.
+// SwiftShader boot gets the largest slice; after authored state arrives, the
+// MutationObserver/task-queue marks and the final DOM probe need only short,
+// independent windows. This prevents any one downstream condition from
+// inheriting a full 60s timeout after a cold boot has already consumed time.
+const GAME_READY_WAIT_MS = 50_000;
+const RECOGNITION_BEAT_WAIT_MS = 20_000;
+const RECOGNITION_MARKS_WAIT_MS = 10_000;
+const PHONE_READY_PROBE_WAIT_MS = 5_000;
 const POLL_INTERVAL_MS = 100;
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
@@ -65,7 +64,7 @@ const waitForGame = async (page: Page) => {
       return Boolean(input?.choose && input.advance && input.forceReload);
     },
     undefined,
-    { timeout: WAIT_MS, polling: POLL_INTERVAL_MS },
+    { timeout: GAME_READY_WAIT_MS, polling: POLL_INTERVAL_MS },
   );
 };
 
@@ -82,16 +81,17 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
     // MutationObserver stamps the DOM write as a microtask. Sample game/audio
     // state on the task queue as well: a cold SwiftShader worker can starve
     // rAF, but it must not prevent this test-only diagnostic stamp from seeing
-    // the authored cue.
+    // the authored cue. Capture the cue independently of the beat: otherwise
+    // a cue that lands just before the beat stamp is permanently missed.
     const stampMarks = () => {
       const game = win.__game;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
       const marks = win.__ioPhoneReadyMarks;
       if (!marks) return;
+      const audio = game?._runtime?.audio;
+      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null && audio.lastCueAt !== initialAudioCueAt) marks.audioCueAt = audio.lastCueAt;
       if (marks.recognitionTriggeredAt === undefined && game?.scene?.beat === 'io-return-recognition') marks.recognitionTriggeredAt = performance.now();
       if (marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt === undefined && lineText.startsWith('I remember you') && lineText !== initialLineText) marks.lineSettledAt = performance.now();
-      const audio = game?._runtime?.audio;
-      if (marks.recognitionTriggeredAt !== undefined && marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null && audio.lastCueAt !== initialAudioCueAt) marks.audioCueAt = audio.lastCueAt;
     };
 
     const lineNode = document.querySelector('#line');
@@ -167,7 +167,7 @@ test.describe('Io phone-ready look/sound contract', () => {
     await page.addInitScript((key) => window.localStorage.removeItem(key), STORAGE_KEY);
     await page.goto(`/aftersign/index.html?slot=${DETERMINISTIC_SLOT}`, { waitUntil: 'load' });
     await driveToSealedRecognitionBeat(page);
-    await expect.poll(() => measurePhoneReadyProbe(page), { timeout: WAIT_MS, intervals: [100, 250, 500, 1000] }).toMatchObject({
+    await expect.poll(() => measurePhoneReadyProbe(page), { timeout: PHONE_READY_PROBE_WAIT_MS, intervals: [100, 250, 500, 1000] }).toMatchObject({
       lineText: expect.stringContaining(IO_SEALED_RECOGNITION_LINE), lineVisible: true, lineReadable: true, audioLastCue: EXPECTED_AUDIO_CUE,
     });
     const probe = await measurePhoneReadyProbe(page);
