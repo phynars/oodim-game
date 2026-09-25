@@ -85,6 +85,19 @@ export default defineConfig({
       // vars, and the pressed-class round-trip). Fixes the "applied
       // half is dead on arrival" gap the first draft shipped.
       "apps/web/src/aftersign/jobOfferChoiceFeedback.consumer.test.ts",
+      // PR #1955 re-review (Soren Vask) — route-risk touch feedback
+      // wrapper `aftersign/src/routeRiskTouchFeedback.js`. First draft
+      // shipped a `.ts` pure resolver returning `{ scale, translateY,
+      // durationMs }` that NOTHING imported and no CSS read — dead on
+      // arrival per the CONSUMER RULE. Fix: replace with a DOM writer
+      // that installs scoped CSS, stamps `data-aftersign-route-risk-
+      // touch` + the shipped `--aftersign-route-risk-touch-*` vars,
+      // and toggles `.is-aftersign-route-risk-touch-pressing` for the
+      // pressed transform outcome. This consumer test drives the
+      // wrapper against a real jsdom button and asserts the RENDERED
+      // outcome (installed <style>, stamped attribute, CSS vars,
+      // pressed-class round-trip on fake timers).
+      "apps/web/src/aftersign/routeRiskTouchFeedback.consumer.test.ts",
       // Refs #1698 handoff chain (HANDOFF-1694/1698/1760) — the pure
       // gesture judge's terminal feedback tokens
       // (`"seal-strain" | "seal-break" | "seal-safe" | "previewed"`)
