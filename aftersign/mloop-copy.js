@@ -3,6 +3,15 @@
 // `computeOfferedJobs` owns which jobs appear from durable memory. This
 // module gives each offered job an accessible name and records the memory
 // posture behind the player's committed action.
+//
+// Copy convention (do not break silently):
+//   Labels are ATMOSPHERIC, not descriptive — a short image the player
+//   might overhear ("The lit stair", "Bring it back closed") rather than
+//   a UI category ("Safe delivery"). The stake reads before the choice
+//   is named. IDs and gate keys ("mloop-safe-delivery-take", "returning",
+//   "deep-recall") are the stable seam; only the human-readable `label`
+//   field is atmospheric. E2E / unit specs pin `id` + `memoryGate`, so
+//   copy edits here stay green as long as the seam is preserved.
 
 /** @typedef {Object} MloopMemory
  *  @property {string=} packetOutcome — sealed / opened / unknown.
