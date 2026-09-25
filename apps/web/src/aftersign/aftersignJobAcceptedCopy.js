@@ -10,9 +10,9 @@
 //     `data-aftersign-job-take-action` axis.
 //   • It DOES own the FOLLOW-UP acknowledgement Io speaks the instant
 //     the fork commits, keyed on the jobId the player just took.
-//     Narratively distinct from the button label: the label named the
-//     available work; this line acknowledges the choice landed and
-//     keeps the loop open ("I will keep the return open").
+//     Narratively distinct from the button label: the label names the
+//     available work; this line confirms the choice landed and keeps
+//     the loop open.
 //
 // Consumer contract (why this module is not orphaned — Mara's
 // REQUEST_CHANGES on PR #1884 was correct: an unrendered copy string
@@ -43,23 +43,23 @@
 // never renders template-token leakage.
 const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
   "job-safe-delivery":
-    "Marked: Safe delivery. Take the route you chose — I will keep the return open.",
+    "The lit stair, then. Keep the seal closed. I will keep the return open.",
   "job-sealed-return":
-    "Marked: Sealed return. Take the route you chose — I will keep the return open.",
+    "Take it back sealed. If the box refuses it, bring the refusal to me.",
   "job-private-ledger":
-    "Marked: Private ledger. Take the route you chose — I will keep the return open.",
+    "A private ledger leaves no clean hands. Come back with yours anyway.",
   "job-night-transfer":
-    "Marked: Night transfer. Take the route you chose — I will keep the return open.",
+    "Cross after the bell. Do not mistake the quiet for permission.",
   "job-signed-receipt":
-    "Marked: Signed receipt. Take the route you chose — I will keep the return open.",
+    "Get it in ink. A promise is lighter when someone has to carry it.",
   "job-low-risk-errand":
-    "Marked: Low-risk errand. Take the route you chose — I will keep the return open.",
+    "Stay where the light can find you. Bring back what it lets you keep.",
   "job-redemption-route":
-    "Marked: Redemption route. Take the route you chose — I will keep the return open.",
+    "Pay it back. The account is still open because I left it open.",
 });
 
 const DEFAULT_LINE =
-  "Marked: the job you chose. Take the route you chose — I will keep the return open.";
+  "Take the job. Keep the return open — I will be here when it comes back.";
 
 export const AFTERSIGN_JOB_ACCEPTED_COPY = JOB_ACCEPTED_LINE_BY_JOB_ID;
 
