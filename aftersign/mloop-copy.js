@@ -1,56 +1,20 @@
 // AFTERSIGN — M-LOOP per-jobId authored copy layer.
 //
-// PR #1422. `computeOfferedJobs` (packages/aftersign/src/computeOfferedJobs.ts)
-// already owns the SELECTION axis: which jobIds are offered given the
-// player's durable memory (safe-default / completed / trusted / etc.).
-// Its `IoJobOffer` shape carries `id`, `label`, `routeRisk` — enough to
-// stamp the shipped button's visible text.
+// `computeOfferedJobs` owns which jobs appear from durable memory. This
+// module gives each offered job an accessible name and records the memory
+// posture behind the player's committed action.
 //
-// What this module ADDS is the memory-gated ACTION axis: for each
-// jobId, what is the M-LOOP action id the player's tap commits, and
-// what `memoryGate` did that action id come from (fresh / returning /
-// deep-recall)? The action id rides on `state.interaction.lastAction`
-// as `${mloopAction.id}:${jobId}` so downstream consumers (memory
-// facts, cross-slice analytics, the harness) can tell WHICH offer the
-// player took AND under WHICH memory posture — one axis, no drift
-// between the label the player saw and the fact the game records.
-//
-// Two seams:
-//   • `selectMloopJobCopy(jobId, mloopMemory)` — returns `{ id, label }`.
-//     `id` is the authored copy id (currently equal to `jobId` when
-//     authored, otherwise the fallback "mloop-copy-default"); `label`
-//     is a per-jobId short string used ONLY for accessibility
-//     (`aria-label`) — the button's visible textContent still comes
-//     from the `IoJobOffer` selector's `label · routeRisk risk`
-//     format so the shipped e2e (`job-offers-played.spec.ts`) that
-//     asserts that exact text stays green.
-//
-//   • `getMloopAvailableAction(jobId, mloopMemory)` — returns
-//     `{ id, memoryGate, label }`. `id` is the action id stamped on
-//     `data-mloop-job-id` and composed into `lastAction`;
-//     `memoryGate` is the posture the id came from (fresh /
-//     returning / deep-recall / default); `label` is the same short
-//     ARIA-friendly string as above so a caller can pick one seam
-//     without looking up the other.
-//
-// Pure. No DOM, no state, no timers — every input is passed by the
-// caller. The served page consumes both exports inside `renderText()`'s
-// offered-jobs render loop; the tap-driven e2e
-// (`aftersign/e2e/mloop-job-copy-played.spec.ts`) plays through to
-// `packet-offered`, taps a real `<button id="job-offer-*">`, and
-// asserts the stamped `data-mloop-*` attributes and composed
-// `lastAction` axis.
+// Copy convention (do not break silently):
+//   Labels are ATMOSPHERIC, not descriptive — a short image the player
+//   might overhear ("The lit stair", "Bring it back closed") rather than
+//   a UI category ("Safe delivery"). The stake reads before the choice
+//   is named. IDs and gate keys ("mloop-safe-delivery-take", "returning",
+//   "deep-recall") are the stable seam; only the human-readable `label`
+//   field is atmospheric. E2E / unit specs pin `id` + `memoryGate`, so
+//   copy edits here stay green as long as the seam is preserved.
 
 /** @typedef {Object} MloopMemory
- *  @property {string=} packetOutcome  — sealed / opened / unknown. This
- *    is the ACTUAL shape the served page feeds `getMloopAvailableAction`
- *    at `packet-offered` render time (see `aftersign/main.js` ~1950:
- *    `mloopMemory = packetOutcomeFactObject ? { packetOutcome: … } : {}`).
- *    The served page derives it inline from
- *    `state.npcs.io.memory.find(fact => fact.kind === "delivery-outcome")
- *    ?.object` — it does NOT reuse `offeredJobsMemoryFromIoMemory`'s
- *    output (that bag feeds `selectIoJobOffers` on the SELECTION axis
- *    at main.js:1918, a different consumer).
+ *  @property {string=} packetOutcome — sealed / opened / unknown.
  */
 
 /** @typedef {"fresh"|"returning"|"deep-recall"|"default"} MloopMemoryGate */
@@ -66,64 +30,56 @@
  *  @property {string} label
  */
 
-// Per-jobId authored M-LOOP copy. Keys are `jobId`s from
-// `packages/aftersign/src/computeOfferedJobs.ts` (SAFE_DEFAULT_JOB_ID
-// + COMPLETED_JOB_IDS + TRUSTED_COURIER_JOB_IDS + GUARDED_JOB_IDS +
-// FAILED_JOB_IDS).  Every jobId the selector can return is authored
-// here so `selectMloopJobCopy` never falls through to the default
-// under any completed / trusted / guarded / failed branch.
+// The visible offer still comes from `IoJobOffer`. These short labels are
+// exposed to assistive technology, where the choice needs its own stake.
 const MLOOP_JOB_COPY_BY_ID = Object.freeze({
   "job-safe-delivery": Object.freeze({
     id: "job-safe-delivery",
-    label: "Safe delivery",
+    label: "The lit stair",
   }),
   "job-sealed-return": Object.freeze({
     id: "job-sealed-return",
-    label: "Sealed return",
+    label: "Bring it back closed",
   }),
   "job-private-ledger": Object.freeze({
     id: "job-private-ledger",
-    label: "Private ledger",
+    label: "Carry the private ledger",
   }),
   "job-night-transfer": Object.freeze({
     id: "job-night-transfer",
-    label: "Night transfer",
+    label: "Cross after the bell",
   }),
   "job-signed-receipt": Object.freeze({
     id: "job-signed-receipt",
-    label: "Signed receipt",
+    label: "Get it in ink",
   }),
   "job-low-risk-errand": Object.freeze({
     id: "job-low-risk-errand",
-    label: "Low-risk errand",
+    label: "Keep to the light",
   }),
   "job-redemption-route": Object.freeze({
     id: "job-redemption-route",
-    label: "Redemption route",
+    label: "Pay it back",
   }),
 });
 
 const DEFAULT_JOB_COPY = Object.freeze({
   id: "mloop-copy-default",
-  label: "Offered job",
+  label: "The job waiting for you",
 });
 
-// Per-jobId × memory-gate action authoring. Maps every jobId × gate
-// to an action id (rides on `lastAction`) and a short accessible
-// label. `default` is the fallback when the memory gate can't be
-// inferred (no packetOutcome yet — the pre-first-delivery visit).
 const MLOOP_ACTION_TABLE_BY_ID = Object.freeze({
   "job-safe-delivery": Object.freeze({
-    default: { id: "mloop-safe-delivery-take", label: "Take the safe delivery" },
-    fresh: { id: "mloop-safe-delivery-take", label: "Take the safe delivery" },
-    returning: { id: "mloop-safe-delivery-again", label: "Take the safe delivery again" },
-    "deep-recall": { id: "mloop-safe-delivery-again", label: "Take the safe delivery again" },
+    default: { id: "mloop-safe-delivery-take", label: "Take the lit stair" },
+    fresh: { id: "mloop-safe-delivery-take", label: "Take the lit stair" },
+    returning: { id: "mloop-safe-delivery-again", label: "Take the lit stair again" },
+    "deep-recall": { id: "mloop-safe-delivery-again", label: "Take the lit stair again" },
   }),
   "job-sealed-return": Object.freeze({
-    default: { id: "mloop-sealed-return-accept", label: "Accept the sealed return" },
-    fresh: { id: "mloop-sealed-return-accept", label: "Accept the sealed return" },
-    returning: { id: "mloop-sealed-return-accept-again", label: "Accept the sealed return again" },
-    "deep-recall": { id: "mloop-sealed-return-accept-again", label: "Accept the sealed return again" },
+    default: { id: "mloop-sealed-return-accept", label: "Bring it back closed" },
+    fresh: { id: "mloop-sealed-return-accept", label: "Bring it back closed" },
+    returning: { id: "mloop-sealed-return-accept-again", label: "Bring it back closed again" },
+    "deep-recall": { id: "mloop-sealed-return-accept-again", label: "Bring it back closed again" },
   }),
   "job-private-ledger": Object.freeze({
     default: { id: "mloop-private-ledger-carry", label: "Carry the private ledger" },
@@ -132,77 +88,39 @@ const MLOOP_ACTION_TABLE_BY_ID = Object.freeze({
     "deep-recall": { id: "mloop-private-ledger-carry-again", label: "Carry the private ledger again" },
   }),
   "job-night-transfer": Object.freeze({
-    default: { id: "mloop-night-transfer-take", label: "Take the night transfer" },
-    fresh: { id: "mloop-night-transfer-take", label: "Take the night transfer" },
-    returning: { id: "mloop-night-transfer-take-again", label: "Take the night transfer again" },
-    "deep-recall": { id: "mloop-night-transfer-take-again", label: "Take the night transfer again" },
+    default: { id: "mloop-night-transfer-take", label: "Cross after the bell" },
+    fresh: { id: "mloop-night-transfer-take", label: "Cross after the bell" },
+    returning: { id: "mloop-night-transfer-take-again", label: "Cross after the bell again" },
+    "deep-recall": { id: "mloop-night-transfer-take-again", label: "Cross after the bell again" },
   }),
   "job-signed-receipt": Object.freeze({
-    default: { id: "mloop-signed-receipt-take", label: "Take the signed-receipt run" },
-    fresh: { id: "mloop-signed-receipt-take", label: "Take the signed-receipt run" },
-    returning: { id: "mloop-signed-receipt-take-again", label: "Take the signed-receipt run again" },
-    "deep-recall": { id: "mloop-signed-receipt-take-again", label: "Take the signed-receipt run again" },
+    default: { id: "mloop-signed-receipt-take", label: "Get it in ink" },
+    fresh: { id: "mloop-signed-receipt-take", label: "Get it in ink" },
+    returning: { id: "mloop-signed-receipt-take-again", label: "Get it in ink again" },
+    "deep-recall": { id: "mloop-signed-receipt-take-again", label: "Get it in ink again" },
   }),
   "job-low-risk-errand": Object.freeze({
-    default: { id: "mloop-low-risk-errand-take", label: "Take the low-risk errand" },
-    fresh: { id: "mloop-low-risk-errand-take", label: "Take the low-risk errand" },
-    returning: { id: "mloop-low-risk-errand-take-again", label: "Take the low-risk errand again" },
-    "deep-recall": { id: "mloop-low-risk-errand-take-again", label: "Take the low-risk errand again" },
+    default: { id: "mloop-low-risk-errand-take", label: "Keep to the light" },
+    fresh: { id: "mloop-low-risk-errand-take", label: "Keep to the light" },
+    returning: { id: "mloop-low-risk-errand-take-again", label: "Keep to the light again" },
+    "deep-recall": { id: "mloop-low-risk-errand-take-again", label: "Keep to the light again" },
   }),
   "job-redemption-route": Object.freeze({
-    default: { id: "mloop-redemption-route-take", label: "Take the redemption route" },
-    fresh: { id: "mloop-redemption-route-take", label: "Take the redemption route" },
-    returning: { id: "mloop-redemption-route-take-again", label: "Take the redemption route again" },
-    "deep-recall": { id: "mloop-redemption-route-take-again", label: "Take the redemption route again" },
+    default: { id: "mloop-redemption-route-take", label: "Pay it back" },
+    fresh: { id: "mloop-redemption-route-take", label: "Pay it back" },
+    returning: { id: "mloop-redemption-route-take-again", label: "Pay it back again" },
+    "deep-recall": { id: "mloop-redemption-route-take-again", label: "Pay it back again" },
   }),
 });
 
 const DEFAULT_ACTION = Object.freeze({
   id: "mloop-take",
   memoryGate: "default",
-  label: "Take the offered job",
+  label: "Take the job waiting for you",
 });
 
-/**
- * Derive the memory gate from an `MloopMemory` shape. Kept exported-
- * shape-free (an internal helper) so the two public seams share one
- * rule.
- *
- * Input shape is the one the SERVED PAGE actually feeds (see
- * `aftersign/main.js` ~1950): `{ packetOutcome: "sealed"|"opened" } | {}`,
- * derived inline from
- * `state.npcs.io.memory.find(fact => fact.kind === "delivery-outcome")
- * ?.object`. The served page does NOT reuse
- * `offeredJobsMemoryFromIoMemory`'s output for this axis — that bag
- * (`{ priorOutcome } | { debtHeld }`) feeds `selectIoJobOffers` on the
- * SELECTION axis at main.js:1918, a different consumer. The e2e
- * divergence (`m-loop-divergent-offered-actions.playtest.spec.ts`)
- * rides on this shape end-to-end and the unit spec
- * `apps/web/src/aftersign/aftersignMloopMemoryGate.test.ts` pins the
- * same transform.
- *
- * Rule:
- *   - `packetOutcome === "opened"` → "deep-recall"
- *   - `packetOutcome === "sealed"` → "returning"
- *   - any other object            → "fresh"
- *   - null / undefined / non-object → "default"
- *
- * @param {MloopMemory | null | undefined} mloopMemory
- * @returns {MloopMemoryGate}
- */
 function memoryGateFor(mloopMemory) {
   if (!mloopMemory || typeof mloopMemory !== "object") return "default";
-  // ONE input shape: `{ packetOutcome } | {}`. The served page
-  // (`aftersign/main.js` ~1950) builds this inline from the
-  // delivery-outcome fact in `state.npcs.io.memory`; the unit spec
-  // `apps/web/src/aftersign/aftersignMloopMemoryGate.test.ts` pins the
-  // same transform. PR #1642 briefly grew `debtHeld` / `priorOutcome`
-  // branches here (the `offeredJobsMemoryFromIoMemory` output shape);
-  // no production caller fed them and they silently re-gated every
-  // existing consumer that passes the SELECTION bag through this seam
-  // — so they are gone, not "reserved". If the served page ever
-  // switches to the selection bag, add the branch + a served-path
-  // test in the same PR.
   const outcome = mloopMemory.packetOutcome;
   if (outcome === "opened") return "deep-recall";
   if (outcome === "sealed") return "returning";
@@ -210,12 +128,10 @@ function memoryGateFor(mloopMemory) {
 }
 
 /**
- * Per-jobId authored copy for the M-LOOP offered-jobs surface.
+ * Per-jobId accessible copy for the offered-jobs surface.
  *
  * @param {string} jobId
- * @param {MloopMemory | null | undefined} _mloopMemory  — unused today;
- *   reserved so a future authoring pass can vary the LABEL (not the
- *   action id) by memory posture without breaking the seam's arity.
+ * @param {MloopMemory | null | undefined} _mloopMemory
  * @returns {MloopJobCopy}
  */
 export function selectMloopJobCopy(jobId, _mloopMemory) {
@@ -224,12 +140,8 @@ export function selectMloopJobCopy(jobId, _mloopMemory) {
 }
 
 /**
- * Per-jobId × memory-gate action authoring for the M-LOOP offered-
- * jobs surface. The returned `id` rides on `state.interaction.
- * lastAction` as `${id}:${jobId}` so downstream consumers can read
- * BOTH the mloop action id AND the underlying offered jobId off one
- * axis — no drift between the label the player saw and the fact the
- * game records.
+ * Return the action a job commits under the player's current memory posture.
+ * The action id is composed with its job id by the served-page caller.
  *
  * @param {string} jobId
  * @param {MloopMemory | null | undefined} mloopMemory
@@ -248,6 +160,4 @@ export function getMloopAvailableAction(jobId, mloopMemory) {
   return { id: row.id, memoryGate: gate, label: row.label };
 }
 
-// Exposed for tests + downstream consumers that want to enumerate
-// the authored jobIds without probing internal shape.
 export const MLOOP_JOB_COPY_IDS = Object.freeze(Object.keys(MLOOP_JOB_COPY_BY_ID));
