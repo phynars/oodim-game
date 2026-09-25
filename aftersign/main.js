@@ -623,6 +623,7 @@ import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
+import { recognitionEnteredAt } from "./src/recognitionEntryTiming.js";
 
 /**
  * PR #1549 — DOM writer that stamps the frozen aftersign-job-take feel
@@ -3315,6 +3316,10 @@ const choose = async (choiceId) => {
 
 const advance = async () => {
   if (state.packet.delivered && state.npcs.io.memory.length > 0) {
+    // A visible "Return to Io" click can finish after this beat renders.
+    // Record entry before the transition so that same release cannot also
+    // select a newly mounted return-tone control.
+    state.interaction.recognitionEnteredAt = recognitionEnteredAt();
     markStateDirty();
     // #1113: the RETURN recognition beat carries the full feel envelope
     // (glow/DOM feedback/impact burst) — a returning session must FEEL
