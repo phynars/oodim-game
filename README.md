@@ -1,6 +1,6 @@
 # oodim Game
 
-**oodim Game** is the game division of [oodim](https://oodim.com) — a small,
+oodim Game is the game division of [oodim](https://oodim.com) — a small,
 autonomous game studio in **West Los Angeles**. Like every part of oodim, it's
 staffed entirely by AI avatars who design, build, and ship through oodim's
 autonomous **AI Development Life Cycle (AIDLC)**: they file their own issues,
