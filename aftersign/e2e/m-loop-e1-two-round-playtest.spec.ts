@@ -187,4 +187,76 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
       "Signed receipt · low risk",
     );
   });
+
+  // #1819 — two DISTINCT durable records (separate `?slot=` values),
+  // driven only by taps, must present different tappable job controls.
+  // Record A stays on its first-visit branch; record B completes a loop
+  // and reaches its looped-return round. Divergence is asserted from the
+  // rendered `#job-offer-*` DOM only — no `window.__game` reads.
+  test("two divergent save records present different tappable job controls", async ({
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+    const stamp = Date.now();
+    const context = await browser.newContext({
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
+
+    try {
+      // ── RECORD A — first-visit memory ────────────────────────────────
+      const pageA = await context.newPage();
+      await pageA.goto(`/aftersign/?slot=m-loop-1819-a-${stamp}`, {
+        waitUntil: "load",
+      });
+      await waitForReady(pageA);
+      await waitForBeat(pageA, "packet-offered");
+      const recordAOfferIds = await visibleOfferIds(pageA);
+      expect(recordAOfferIds, "record A must render the safe-default offer").toEqual([
+        "job-offer-job-safe-delivery",
+      ]);
+
+      // ── RECORD B — completed-loop memory ─────────────────────────────
+      const pageB = await context.newPage();
+      await pageB.goto(`/aftersign/?slot=m-loop-1819-b-${stamp}`, {
+        waitUntil: "load",
+      });
+      await waitForReady(pageB);
+      await waitForBeat(pageB, "packet-offered");
+      await pageB.locator("#job-offer-job-safe-delivery").tap();
+      await pageB.locator("#packetButton").tap();
+      await waitForBeat(pageB, "packet-choice");
+      await tapChoice(pageB, "acknowledge-kiosk");
+      await tapChoice(pageB, "deliver-packet");
+      await waitForBeat(pageB, "io-return-recognition");
+      await tapReturnReason(pageB, "blunt");
+      await waitForBeat(pageB, "return-tone-choice");
+      await tapChoice(pageB, "ask-for-next-job");
+      await waitForBeat(pageB, "io-next-job");
+      await tapChoice(pageB, "deliver-packet");
+      await waitForBeat(pageB, "packet-offered");
+      const recordBOfferIds = await visibleOfferIds(pageB);
+      expect(recordBOfferIds, "record B must render the completed-set offers").toEqual(
+        ["job-offer-job-night-transfer", "job-offer-job-signed-receipt"].sort(),
+      );
+
+      // ── Cross-record divergence (rendered tappable controls) ─────────
+      expect(
+        recordBOfferIds,
+        "two divergent memory records must present different tappable job controls",
+      ).not.toEqual(recordAOfferIds);
+
+      // Record A's memory must be untouched by record B's play.
+      await pageA.reload({ waitUntil: "load" });
+      await waitForReady(pageA);
+      await waitForBeat(pageA, "packet-offered");
+      expect(
+        await visibleOfferIds(pageA),
+        "record A must still render its first-visit controls after record B looped",
+      ).toEqual(recordAOfferIds);
+    } finally {
+      await context.close();
+    }
+  });
 });
