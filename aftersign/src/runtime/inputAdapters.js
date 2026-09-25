@@ -15,6 +15,17 @@ import {
   evaluatePacketChoiceGesture,
 } from "../../../apps/web/src/aftersign/packetChoiceFeel.ts";
 import { playPacketCancelFailureSting } from "../../../apps/web/src/aftersign/packetCancelFailureSting.js";
+// PR #1932 re-review (Soren): the recognition-entry stamp
+// (`state.interaction.recognitionEnteredAt`, written by `advance()`)
+// needs a READ side. The guard below listens at document-capture on
+// `pointerup` and, when the release lands on a
+// `[data-choice-id="choose-return-tone"]` button whose matching
+// `pointerdown` PREDATES the stamp, calls
+// `event.stopImmediatePropagation()` before the tone button's own
+// click listener (bound in `main.js`) can commit the fork. That's the
+// carry-over release the stamp was written to defend against — see
+// `aftersign/src/recognitionEntryTiming.js` for the pure predicate.
+import { attachReturnToneCarryOverGuard } from "../recognitionEntryTiming.js";
 
 const prefersReducedMotionForCancelSting = (windowRef) => {
   try {
@@ -289,4 +300,15 @@ export const attachRuntimeInputAdapters = ({
     },
     { capture: true, passive: true },
   );
+
+  // PR #1932 re-review — READ side of `state.interaction.recognitionEnteredAt`.
+  // Installs document-level capture listeners that reject a
+  // `choose-return-tone` release whose matching `pointerdown` occurred
+  // BEFORE `advance()` stamped the recognition beat. Same-file wire so
+  // the served page (main.js → attachRuntimeInputAdapters) picks up
+  // the guard automatically; no second boot call required.
+  attachReturnToneCarryOverGuard({
+    document,
+    getState: () => state,
+  });
 };
