@@ -137,6 +137,9 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
     await expect
       .poll(() => page.evaluate(() => window.__game!.getSnapshot().scene.beat), { timeout: WAIT_MS })
       .toBe("io-return-recognition");
+    await expect
+      .poll(() => page.evaluate(() => window.__game!.getSnapshot().npcs.io.lastLine), { timeout: WAIT_MS })
+      .toBe(path.expectedRecognitionLine);
     await expect(page.locator("#line")).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
   }
   return page.evaluate(() => window.__game!.getSnapshot());
