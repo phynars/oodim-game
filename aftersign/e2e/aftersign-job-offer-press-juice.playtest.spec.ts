@@ -7,10 +7,17 @@ const PRESS_FEEL = {
   minPressedScaleDrop: 0.015,
   maxPressedScaleDrop: 0.08,
   maxTravelPx: 6,
-  // This is intentionally a within-node stability budget, not a comparison
-  // to the pre-tap node. The click may replace/reflow the offer as it advances
-  // the beat, which is authored layout rather than press-animation travel.
+  // Within-node stability budget: N consecutive frames must agree to this
+  // tolerance for the settle helper to declare "layout has quiesced".
   maxRecoverySettleDriftPx: 1.5,
+  // How far the settled recovery-node center may sit from the pre-tap center
+  // before we treat the node as a beat-driven replacement in a different
+  // authored slot. Inside this radius the node is the same authored slot and
+  // MUST return to `before` within maxRecoverySettleDriftPx (the real
+  // anti-press-drift assertion — this is what the #1926 4px CI flake violated).
+  // Outside it, the beat has intentionally moved the offer and the vs-`before`
+  // comparison is skipped as expected authored motion.
+  replacementDisplacementPx: 24,
 };
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
 
@@ -45,9 +52,7 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
       () =>
         page.evaluate(() => {
           const raw = (
-            window as unknown as { scene?: { beat?: unknown } } & {
-              __game?: { scene?: { beat?: unknown } };
-            }
+            window as unknown as { __game?: { scene?: { beat?: unknown } } }
           ).__game?.scene?.beat;
           return typeof raw === "string" ? raw : null;
         }),
@@ -72,10 +77,11 @@ async function measureButton(locator: Locator): Promise<Measurement> {
 
 type SettleOpts = { tolerancePx: number; stableFrames: number; maxWaitMs: number };
 
-// Wait for one concrete DOM node's bounding rect to be stable across N
-// consecutive frames. The intentionally advanced beat may replace the offer
-// with another node using the same id, so this measurement never compares a
-// recovery rect to the pre-tap node's authored layout.
+// Wait for a DOM node's bounding rect to be STABLE across N consecutive
+// animation frames, up to a hard timeout. On cold SwiftShader a single RAF
+// after a beat advance is not enough — reflow can still be in progress on
+// the very next frame (#1926, #1928 review). Polling for N-frame stability
+// is the correct "layout has quiesced" signal before comparing centers.
 async function waitForRectSettle(
   locator: Locator,
   opts: SettleOpts,
@@ -129,15 +135,6 @@ async function waitForRectSettle(
       }),
     opts,
   );
-}
-
-async function recoveryNodeAfterBeat(page: Page): Promise<Locator | null> {
-  const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
-  // The job action is allowed to remove the safe-delivery offer entirely.
-  // When it remains, resolve it only after the post-action window so the
-  // locator binds the replacement node rather than the tapped node.
-  if ((await recoveryLocator.count()) === 0) return null;
-  return recoveryLocator;
 }
 
 test.describe("AFTERSIGN job-offer press juice", () => {
@@ -250,13 +247,15 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     expect(recorded.maxTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
 
     await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs); // pacing
-    const recoveryLocator = await recoveryNodeAfterBeat(page);
-    if (!recoveryLocator) return;
+    // The job action is allowed to remove the safe-delivery offer entirely.
+    // If it's gone, there is no recovery rect to measure and the press
+    // contract has already been asserted above.
+    const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
+    if ((await recoveryLocator.count()) === 0) return;
 
-    // The recovery node may be a beat-driven replacement, so its starting
-    // position is deliberately not compared with `before`. A within-node,
-    // multi-frame settle check catches continued press motion without calling
-    // intentional post-action layout movement a press failure.
+    // Multi-frame settle: catches continued press-animation motion. One RAF
+    // after a beat advance is not enough on cold SwiftShader (#1928 review),
+    // so we require N consecutive frames to agree within tolerance.
     const recoveryEnd = await waitForRectSettle(recoveryLocator, {
       tolerancePx: PRESS_FEEL.maxRecoverySettleDriftPx,
       stableFrames: 4,
@@ -264,5 +263,28 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     });
     expect(recoveryEnd.width).toBeGreaterThan(32);
     expect(recoveryEnd.height).toBeGreaterThan(24);
+
+    // Distinguish animation movement from intentional beat/layout replacement
+    // (#1926 acceptance criterion). If the settled center sits inside a small
+    // radius of the pre-tap center, this is the SAME authored slot — the
+    // press animation must have fully unwound and the recovered center MUST
+    // match `before` within the tight settle tolerance. This is the missing
+    // assertion behind the 4px CI drift reported on #1761. Outside that
+    // radius, the beat has intentionally relocated the offer (a replacement
+    // node in a different authored slot); the vs-`before` comparison is not
+    // meaningful and the within-node settle above is the whole check.
+    const displacement = Math.hypot(
+      recoveryEnd.centerX - before.centerX,
+      recoveryEnd.centerY - before.centerY,
+    );
+    if (displacement <= PRESS_FEEL.replacementDisplacementPx) {
+      expect(
+        displacement,
+        `recovery center drifted ${displacement.toFixed(2)}px from pre-tap ` +
+          `center — press animation did not fully unwind (tolerance ` +
+          `${PRESS_FEEL.maxRecoverySettleDriftPx}px). If the offer moved on ` +
+          `purpose, displacement should be > ${PRESS_FEEL.replacementDisplacementPx}px.`,
+      ).toBeLessThanOrEqual(PRESS_FEEL.maxRecoverySettleDriftPx);
+    }
   });
 });
