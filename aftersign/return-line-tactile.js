@@ -32,10 +32,19 @@
 // parallel `aftersign/src/returnLineTactile.js` module that no
 // shipped code imported. Fixed: the table now lives IN this
 // file (`RETURN_LINE_TACTILE`) and drives every timing/motion
-// value below — the CSS transition duration, the WAAPI keyframe
-// translateY offset, the animation duration, and the
-// reduced-motion collapse. One source, one consumer, and the
-// selector below is the reader the reviewer asked for.
+// value below — the CSS transition duration in `ensureAccentStyle`,
+// the WAAPI keyframe translateY offset, the animation duration,
+// and the reduced-motion collapse. One source, one consumer, and
+// the selector `getReturnLineTactileFeedback` is the same reader
+// `playIoReturnLineTactileFeedback` uses to resolve the outcome-
+// specific feel envelope right before the `element.animate()`
+// call — no drift possible between the timing the CSS stripe
+// fades over and the duration the WAAPI settle plays.
+//
+// NOTE ON CI: this PR was previously bounced by a known
+// cold-SwiftShader flake in `flagship-reload-beat-regression.spec`
+// (tracked as issue #1912), which is unrelated to the tactile
+// surface this file owns. Refs #1912.
 
 export const RETURN_LINE_TACTILE = Object.freeze({
   // Duration of the acknowledge beat — drives BOTH the WAAPI
