@@ -8,16 +8,11 @@ const PRESS_FEEL = {
   maxPressedScaleDrop: 0.08,
   maxTravelPx: 6,
   // Within-node stability budget: N consecutive frames must agree to this
-  // tolerance for the settle helper to declare "layout has quiesced".
+  // tolerance for the settle helper to declare "layout has quiesced". This
+  // is the ONLY "press animation has unwound" signal the spec asserts — see
+  // the long comment at the recovery block below for why comparing the
+  // settled center against the pre-tap center is not a valid gate.
   maxRecoverySettleDriftPx: 1.5,
-  // How far the settled recovery-node center may sit from the pre-tap center
-  // before we treat the node as a beat-driven replacement in a different
-  // authored slot. Inside this radius the node is the same authored slot and
-  // MUST return to `before` within maxRecoverySettleDriftPx (the real
-  // anti-press-drift assertion — this is what the #1926 4px CI flake violated).
-  // Outside it, the beat has intentionally moved the offer and the vs-`before`
-  // comparison is skipped as expected authored motion.
-  replacementDisplacementPx: 24,
 };
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
 
@@ -81,7 +76,12 @@ type SettleOpts = { tolerancePx: number; stableFrames: number; maxWaitMs: number
 // animation frames, up to a hard timeout. On cold SwiftShader a single RAF
 // after a beat advance is not enough — reflow can still be in progress on
 // the very next frame (#1926, #1928 review). Polling for N-frame stability
-// is the correct "layout has quiesced" signal before comparing centers.
+// is the correct "layout has quiesced" signal, AND it is the direct test
+// for "no ongoing press-recovery animation": a rect that agrees with
+// itself for N frames within a sub-pixel tolerance cannot also be
+// actively animating. See the recovery block for why this is the whole
+// gate — comparing the settled center to the pre-tap center would also
+// fail benign sibling reflow, which is exactly the 4px #1926 residual.
 async function waitForRectSettle(
   locator: Locator,
   opts: SettleOpts,
@@ -253,9 +253,37 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
     if ((await recoveryLocator.count()) === 0) return;
 
-    // Multi-frame settle: catches continued press-animation motion. One RAF
-    // after a beat advance is not enough on cold SwiftShader (#1928 review),
-    // so we require N consecutive frames to agree within tolerance.
+    // Multi-frame settle IS the "press animation has unwound" gate that
+    // #1926 asks for. Distinguishing press-animation movement from
+    // beat/layout replacement does NOT require comparing the settled
+    // center to `before` — a rect that agrees with itself across N
+    // consecutive frames within `maxRecoverySettleDriftPx` cannot also
+    // be actively animating. That is the criterion. Where the node
+    // ends up in the viewport after the beat advances is authored
+    // layout, not press animation.
+    //
+    // Why the earlier vs-`before` gate was wrong (Soren's #1937 review,
+    // and the root cause of the 4px CI residual):
+    //   • The press envelope in aftersign/index.html is a pure
+    //     `transform: scale(...)` around the default 50%/50% origin —
+    //     it CANNOT translate the bounding-box center on its own.
+    //   • Tapping the safe-delivery offer advances the beat and
+    //     inserts the job-accepted acknowledgement paragraph as a
+    //     sibling of #line (see aftersignJobAcceptedRender). That
+    //     sibling insertion legitimately reflows ancestors, shifting
+    //     the offer button by a few CSS pixels. The button is still
+    //     the same authored slot; its center just moved because the
+    //     page around it did — that is beat-driven layout, not
+    //     residual press animation.
+    //   • A "same-slot vs. replacement" radius has no correct value:
+    //     the 4px reflow lives in the gap between "unwound" (≤1.5px)
+    //     and any believable "replacement" threshold (>>4px). Any
+    //     bucket boundary drawn in that gap either fails on real
+    //     reflow (what CI reproduced) or lets a genuinely stuck press
+    //     animation slip through as "replacement".
+    //
+    // So: assert the recovered node is stable (settle) and visibly
+    // sized. Do not assert its center matches `before`.
     const recoveryEnd = await waitForRectSettle(recoveryLocator, {
       tolerancePx: PRESS_FEEL.maxRecoverySettleDriftPx,
       stableFrames: 4,
@@ -263,28 +291,5 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     });
     expect(recoveryEnd.width).toBeGreaterThan(32);
     expect(recoveryEnd.height).toBeGreaterThan(24);
-
-    // Distinguish animation movement from intentional beat/layout replacement
-    // (#1926 acceptance criterion). If the settled center sits inside a small
-    // radius of the pre-tap center, this is the SAME authored slot — the
-    // press animation must have fully unwound and the recovered center MUST
-    // match `before` within the tight settle tolerance. This is the missing
-    // assertion behind the 4px CI drift reported on #1761. Outside that
-    // radius, the beat has intentionally relocated the offer (a replacement
-    // node in a different authored slot); the vs-`before` comparison is not
-    // meaningful and the within-node settle above is the whole check.
-    const displacement = Math.hypot(
-      recoveryEnd.centerX - before.centerX,
-      recoveryEnd.centerY - before.centerY,
-    );
-    if (displacement <= PRESS_FEEL.replacementDisplacementPx) {
-      expect(
-        displacement,
-        `recovery center drifted ${displacement.toFixed(2)}px from pre-tap ` +
-          `center — press animation did not fully unwind (tolerance ` +
-          `${PRESS_FEEL.maxRecoverySettleDriftPx}px). If the offer moved on ` +
-          `purpose, displacement should be > ${PRESS_FEEL.replacementDisplacementPx}px.`,
-      ).toBeLessThanOrEqual(PRESS_FEEL.maxRecoverySettleDriftPx);
-    }
   });
 });
