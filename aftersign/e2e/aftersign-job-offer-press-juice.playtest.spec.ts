@@ -7,9 +7,11 @@ const PRESS_FEEL = {
   minPressedScaleDrop: 0.015,
   maxPressedScaleDrop: 0.08,
   maxTravelPx: 6,
-  // This is intentionally a within-node stability budget, not a comparison
-  // to the pre-tap node. The click may replace/reflow the offer as it advances
-  // the beat, which is authored layout rather than press-animation travel.
+  // Within-node stability budget: N consecutive frames must agree to this
+  // tolerance for the settle helper to declare "layout has quiesced". This
+  // is the ONLY "press animation has unwound" signal the spec asserts — see
+  // the long comment at the recovery block below for why comparing the
+  // settled center against the pre-tap center is not a valid gate.
   maxRecoverySettleDriftPx: 1.5,
 };
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
@@ -74,7 +76,12 @@ type SettleOpts = { tolerancePx: number; stableFrames: number; maxWaitMs: number
 // animation frames, up to a hard timeout. On cold SwiftShader a single RAF
 // after a beat advance is not enough — reflow can still be in progress on
 // the very next frame (#1926, #1928 review). Polling for N-frame stability
-// is the correct "layout has quiesced" signal.
+// is the correct "layout has quiesced" signal, AND it is the direct test
+// for "no ongoing press-recovery animation": a rect that agrees with
+// itself for N frames within a sub-pixel tolerance cannot also be
+// actively animating. See the recovery block for why this is the whole
+// gate — comparing the settled center to the pre-tap center would also
+// fail benign sibling reflow, which is exactly the 4px #1926 residual.
 async function waitForRectSettle(
   locator: Locator,
   opts: SettleOpts,
@@ -240,17 +247,43 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     expect(recorded.maxTravel).toBeLessThanOrEqual(PRESS_FEEL.maxTravelPx);
 
     await page.waitForTimeout(PRESS_FEEL.recoveryWindowMs); // pacing
+    // The job action is allowed to remove the safe-delivery offer entirely.
+    // If it's gone, there is no recovery rect to measure and the press
+    // contract has already been asserted above.
     const recoveryLocator = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
     if ((await recoveryLocator.count()) === 0) return;
 
-    // A same-id offer can be a new node after the beat advances. Wait for
-    // that node's own rect to quiesce across several consecutive frames —
-    // one requestAnimationFrame is not enough on cold SwiftShader, where
-    // post-beat reflow can still be in progress on the very next frame
-    // (#1928 review). Then assert the settled node has sane visible size.
-    // The settle helper itself is the "no ongoing press animation" gate:
-    // if a press-recovery animation were still driving movement, the rect
-    // would not agree across N frames within the tight tolerance.
+    // Multi-frame settle IS the "press animation has unwound" gate that
+    // #1926 asks for. Distinguishing press-animation movement from
+    // beat/layout replacement does NOT require comparing the settled
+    // center to `before` — a rect that agrees with itself across N
+    // consecutive frames within `maxRecoverySettleDriftPx` cannot also
+    // be actively animating. That is the criterion. Where the node
+    // ends up in the viewport after the beat advances is authored
+    // layout, not press animation.
+    //
+    // Why the earlier vs-`before` gate was wrong (Soren's #1937 review,
+    // and the root cause of the 4px CI residual):
+    //   • The press envelope in aftersign/index.html is a pure
+    //     `transform: scale(...)` around the default 50%/50% origin —
+    //     it CANNOT translate the bounding-box center on its own.
+    //   • Tapping the safe-delivery offer advances the beat and
+    //     inserts the job-accepted acknowledgement paragraph as a
+    //     sibling of #line (see aftersignJobAcceptedRender). That
+    //     sibling insertion legitimately reflows ancestors, shifting
+    //     the offer button by a few CSS pixels. The button is still
+    //     the same authored slot; its center just moved because the
+    //     page around it did — that is beat-driven layout, not
+    //     residual press animation.
+    //   • A "same-slot vs. replacement" radius has no correct value:
+    //     the 4px reflow lives in the gap between "unwound" (≤1.5px)
+    //     and any believable "replacement" threshold (>>4px). Any
+    //     bucket boundary drawn in that gap either fails on real
+    //     reflow (what CI reproduced) or lets a genuinely stuck press
+    //     animation slip through as "replacement".
+    //
+    // So: assert the recovered node is stable (settle) and visibly
+    // sized. Do not assert its center matches `before`.
     const recoveryEnd = await waitForRectSettle(recoveryLocator, {
       tolerancePx: PRESS_FEEL.maxRecoverySettleDriftPx,
       stableFrames: 4,
