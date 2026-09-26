@@ -2589,6 +2589,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             } catch {
               /* feel projection must never break state commit */
             }
+            // Taking a job must carry the player into the route, not merely
+            // acknowledge a selection on a tray that remains the same scene.
+            // `packet-choice` renders the route-risk buttons on the served
+            // surface; this transition makes the M-LOOP offer actionable by
+            // touch rather than a dead-end confirmation.
+            setBeat("packet-choice");
             markStateDirty();
             publishState();
           });
