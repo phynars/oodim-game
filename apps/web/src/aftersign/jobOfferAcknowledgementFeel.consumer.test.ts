@@ -10,6 +10,13 @@
 // easing, and 0 → 1 → 0.82 opacity arc are driftable magic values with
 // zero assertions.
 //
+// NB: the aftersign WebGL e2e lane (flagship-reload-beat-regression) has
+// a separate, unrelated flake tracked in #1966 — the story auto-advances
+// io-return-recognition → return-tone-choice between polls on cold
+// SwiftShader runners. It fails against PRs that don't touch the packet-
+// delivery path (this one included). See PR thread + #1966 acceptance
+// criteria; no code in THIS PR can influence that spec.
+//
 // Scope pinned here:
 //   1. `JOB_OFFER_ACKNOWLEDGEMENT_FEEL` exposes the shipped contract
 //      (durationMs=220, risePx=6, peakOpacity=1, cubic-bezier easing)
