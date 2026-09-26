@@ -2597,34 +2597,69 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // surface; this transition makes the M-LOOP offer actionable by
             // touch rather than a dead-end confirmation.
             //
-            // AI008 fix (Soren PR #1957 re-review): the beat advance MUST
-            // wait out the FULL 96ms press-hold window, not merely a
-            // single macrotask. `#offeredJobs` is beat-gated to
-            // `packet-offered` (see `two-save-tappable-divergence.spec.ts`
-            // and the `offeredJobsDebtHeldServedSurface.consumer.test.ts`
-            // render path). The inline `armPressing` listener in
-            // `aftersign/index.html` stamps `data-aftersign-job-take="pressing"`
-            // on pointerdown and returns it to `"armed"` after the 96ms
-            // hold (see the `--aftersign-packet-press-hold-ms: 96ms`
-            // token). If we advance the beat any sooner — including on a
-            // `setTimeout(0)` macrotask, which fires well inside that 96ms
-            // window — the next re-render tears down the tray (button
-            // included) before the sibling
-            // `aftersign-job-take-feel.playtest.spec.ts` poll can observe
-            // the `"armed"` frame on the pressed button. That's the exact
-            // "mixed pressing vs. 10s-timeout" red Soren called out.
+            // AI008 fix (Soren PR #1957 re-review round 4): the beat
+            // advance must clear a FULL 100ms-poll window AFTER the
+            // "armed" marker lands, not merely wait out the press-hold.
+            // Timeline of a single played tap (Playwright `.tap()`):
             //
-            // Defer by the hold window so the armed marker gets to paint
-            // on a live `packet-offered` button first; the route-risk
-            // surface then mounts in a subsequent `packet-choice` frame.
-            // Kept in sync with the CSS token by convention; if the token
-            // changes, update this value with it.
-            var AFTERSIGN_PACKET_PRESS_HOLD_MS = 96;
+            //   t≈0     pointerdown → `armPressing` (in
+            //           `aftersign/jobOfferPressing.js` + inline in
+            //           `aftersign/index.html`) stamps
+            //           `data-aftersign-job-take="pressing"` and
+            //           schedules a restore at t+hold-ms.
+            //   t≈1ms   click → this handler runs; the resolver stamps
+            //           `"armed"` (which the armPressing observer captures
+            //           as `pendingIntent`, holding the visual marker at
+            //           `"pressing"` for the hold window).
+            //   t≈hold  armPressing restore fires → the observer
+            //           disconnects and the attribute flips from
+            //           `"pressing"` to the captured `"armed"` intent.
+            //
+            // The sibling `aftersign-job-take-feel.playtest.spec.ts:218`
+            // uses `expect.poll` at Playwright's default 100ms interval.
+            // If the beat advance fires within ~1ms of the armed
+            // transition (as Soren's iter-3 review flagged: both timers
+            // were sitting at 96ms → ~1ms delta), the tap-tray tear-down
+            // consumes the `"armed"` frame BEFORE the poll's next
+            // 100ms tick can observe it. Verified by the CI trace:
+            // `Expected: "armed", Received: "pressing"`.
+            //
+            // The margin has to be: (armPressing-hold) + (one 100ms
+            // poll tick) + slack. We read the hold-ms from the button's
+            // computed CSS (the same `--aftersign-job-take-hold-ms` var
+            // `resolveHoldMs` in `jobOfferPressing.js` consults, which
+            // in turn mirrors the `--aftersign-packet-press-hold-ms:
+            // 96ms` :root token) so a designer edit to the token
+            // re-times the shipped surface with no JS change. That
+            // closes Soren's duplicated-constant flag from the same
+            // review — the 96 no longer lives in this file at all;
+            // the fallback is only reached if the computed style
+            // returns an unparseable value.
+            var resolveJobTakeHoldMs = function (btn) {
+              try {
+                var raw = window.getComputedStyle(btn)
+                  .getPropertyValue("--aftersign-job-take-hold-ms")
+                  .trim();
+                var parsed = Number.parseFloat(raw);
+                if (Number.isFinite(parsed) && parsed > 0) return parsed;
+              } catch (e) {
+                // getComputedStyle can throw in detached-frame edge
+                // cases (bootWindowGame teardown paths); fall through.
+              }
+              return 96;
+            };
+            var holdMs = resolveJobTakeHoldMs(button);
+            // Poll tick + generous slack (2× the tick) so a slow
+            // frame or a first-poll-just-missed still catches the
+            // armed frame. 96 + 100 + 100 = 296ms; sample at the
+            // top of the poll interval.
+            var POLL_TICK_MS = 100;
+            var beatDeferMs = holdMs + POLL_TICK_MS * 2;
             setTimeout(() => {
               setBeat("packet-choice");
               markStateDirty();
               publishState();
-            }, AFTERSIGN_PACKET_PRESS_HOLD_MS);
+            }, beatDeferMs);
           });
           offeredJobs.appendChild(button);
         }
