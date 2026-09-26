@@ -139,7 +139,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
                     };
                   };
                 }
-              ).__game?.getSnapshot().player?.routeRisk ?? null,
+              ).__game?.getSnapshot().player?.routeRisk ?? null),
         { timeout: WAIT_MS },
       )
       .toEqual({ lastRoute: "safe", succeeded: true });
