@@ -145,22 +145,33 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
     // Progressive gate on the recognition LINE (the actual contract this
     // spec exists to protect). Once `lastLine` matches, the io-return-
     // recognition beat has committed by construction — its
-    // `lineForBeat` branch is the only writer of this exact string. We
-    // poll for both together so callers who assert
-    // `snapshot.scene.beat === "io-return-recognition"` see the
-    // consistent (beat, lastLine) pair rather than a snapshot torn
-    // across a downstream auto-advance.
+    // `lineForBeat` branch is the only writer of this exact string.
+    //
+    // #1966: on cold runners the story can auto-advance
+    // `io-return-recognition → return-tone-choice` between the poll
+    // that observes the recognition (beat,lastLine) pair and a
+    // FOLLOW-UP `getSnapshot()`. So instead of poll-then-fetch, we
+    // CAPTURE the full snapshot INSIDE the poll — the same iteration
+    // that validated the pair keeps it — and return that snapshot.
+    // Callers assert against what the poll observed, not a re-fetch.
+    let capturedSnapshot: ReloadSnapshot | null = null;
     await expect
       .poll(
-        () =>
-          page.evaluate(() => {
-            const snap = window.__game!.getSnapshot();
-            return { beat: snap.scene.beat, lastLine: snap.npcs.io.lastLine };
-          }),
+        async () => {
+          const snap = await page.evaluate(() => window.__game!.getSnapshot());
+          if (
+            snap.scene.beat === "io-return-recognition" &&
+            snap.npcs.io.lastLine === path.expectedRecognitionLine
+          ) {
+            capturedSnapshot = snap;
+          }
+          return { beat: snap.scene.beat, lastLine: snap.npcs.io.lastLine };
+        },
         { timeout: WAIT_MS },
       )
       .toEqual({ beat: "io-return-recognition", lastLine: path.expectedRecognitionLine });
     await expect(recognitionLine).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
+    if (capturedSnapshot) return capturedSnapshot;
   }
   return page.evaluate(() => window.__game!.getSnapshot());
 }

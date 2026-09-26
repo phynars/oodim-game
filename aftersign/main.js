@@ -597,6 +597,7 @@ import { applyJobOfferChoiceFeedback } from "./src/jobOfferChoiceFeedback.js";
 import { playJobOfferFocusFeedback } from "./src/jobOfferFocusFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
+import { playJobOfferAcknowledgementFeel } from "./src/jobOfferAcknowledgementFeel.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
@@ -2572,6 +2573,11 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
                   offer.id,
                 );
                 acceptedNode.textContent = acceptedLineText;
+                // Reaffirm the choice without moving the offer tray: a 220ms
+                // 6px rise is deliberately smaller than the job button's
+                // press recovery, so the acknowledgement reads as a receipt
+                // rather than a second competing tap target.
+                playJobOfferAcknowledgementFeel(acceptedNode);
               }
             }
             // PR #1549 — flip the feel marker to "armed" on the
