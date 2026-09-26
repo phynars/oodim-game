@@ -21,6 +21,14 @@ declare global {
       };
       getSnapshot: () => ReloadSnapshot;
     };
+    /**
+     * Set by `advanceToRecognition`'s in-browser observer: the FIRST
+     * `getSnapshot()` reading where `(beat, lastLine)` both matched
+     * the expected recognition pair. Sampled on RAF frames so the
+     * transient `io-return-recognition` window is not lost to a
+     * downstream auto-advance into `return-tone-choice` (issue #1966).
+     */
+    __flagshipRecognitionSnapshot?: ReloadSnapshot;
   }
 }
 
@@ -140,40 +148,63 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
       .toBe("io-return-recognition");
     await idle(page);
 
-    const recognitionLine = page.locator("#line");
-    await expect(recognitionLine).toBeVisible({ timeout: WAIT_MS });
-    // Progressive gate on the recognition LINE (the actual contract this
-    // spec exists to protect). Once `lastLine` matches, the io-return-
-    // recognition beat has committed by construction — its
-    // `lineForBeat` branch is the only writer of this exact string.
-    //
-    // #1966: on cold runners the story can auto-advance
-    // `io-return-recognition → return-tone-choice` between the poll
-    // that observes the recognition (beat,lastLine) pair and a
-    // FOLLOW-UP `getSnapshot()`. So instead of poll-then-fetch, we
-    // CAPTURE the full snapshot INSIDE the poll — the same iteration
-    // that validated the pair keeps it — and return that snapshot.
-    // Callers assert against what the poll observed, not a re-fetch.
-    let capturedSnapshot: ReloadSnapshot | null = null;
-    await expect
-      .poll(
-        async () => {
-          const snap = await page.evaluate(() => window.__game!.getSnapshot());
-          if (
-            snap.scene.beat === "io-return-recognition" &&
-            snap.npcs.io.lastLine === path.expectedRecognitionLine
-          ) {
-            capturedSnapshot = snap;
-          }
-          return { beat: snap.scene.beat, lastLine: snap.npcs.io.lastLine };
-        },
-        { timeout: WAIT_MS },
-      )
-      .toEqual({ beat: "io-return-recognition", lastLine: path.expectedRecognitionLine });
-    await expect(recognitionLine).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
-    if (capturedSnapshot) return capturedSnapshot;
   }
-  return page.evaluate(() => window.__game!.getSnapshot());
+
+  const recognitionLine = page.locator("#line");
+  await expect(recognitionLine).toBeVisible({ timeout: WAIT_MS });
+
+  // Install a RAF-tight in-browser observer BEFORE the recognition
+  // window opens. Playwright's `expect.poll` samples on a ~100 ms
+  // interval, so if the story auto-advances from
+  // `io-return-recognition` into `return-tone-choice` in less than
+  // one poll tick the recognition state is missed entirely and the
+  // final polled reading is the post-advance beat (issue #1966 —
+  // observed as `Received: "return-tone-choice"` on cold CI).
+  //
+  // The observer polls `getSnapshot()` on every animation frame
+  // (~16 ms), and freezes the FIRST snapshot whose
+  // `(beat, lastLine)` pair matches the expected recognition state
+  // onto `window.__flagshipRecognitionSnapshot`. Once frozen, later
+  // auto-advances cannot overwrite it — the test asserts against the
+  // captured moment, not a re-fetched snapshot that may have drifted.
+  await page.evaluate((expectedRecognitionLine) => {
+    delete window.__flagshipRecognitionSnapshot;
+    const sample = () => {
+      if (window.__flagshipRecognitionSnapshot) return;
+      const snapshot = window.__game?.getSnapshot();
+      if (!snapshot) return;
+      if (
+        snapshot.scene.beat === "io-return-recognition" &&
+        snapshot.npcs.io.lastLine === expectedRecognitionLine
+      ) {
+        window.__flagshipRecognitionSnapshot = snapshot;
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, path.expectedRecognitionLine);
+
+  // Wait for the observer to freeze the recognition snapshot. This is
+  // still capped at WAIT_MS — a genuine failure (recognition line
+  // never rendered) surfaces as a timeout here, not as a false
+  // downstream `return-tone-choice` reading.
+  await page.waitForFunction(
+    () => window.__flagshipRecognitionSnapshot !== undefined,
+    undefined,
+    { timeout: WAIT_MS },
+  );
+  await expect(recognitionLine).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
+
+  const recognitionSnapshot = await page.evaluate(() => {
+    const captured = window.__flagshipRecognitionSnapshot;
+    delete window.__flagshipRecognitionSnapshot;
+    return captured;
+  });
+  if (!recognitionSnapshot) {
+    throw new Error("Recognition snapshot was not captured during the progressive gate");
+  }
+  return recognitionSnapshot;
 }
 
 test.describe("AFTERSIGN reload beat regression", () => {
