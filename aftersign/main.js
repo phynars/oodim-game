@@ -2597,26 +2597,34 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // surface; this transition makes the M-LOOP offer actionable by
             // touch rather than a dead-end confirmation.
             //
-            // AI008 fix (Soren PR #1957 REQUEST_CHANGES): the beat advance
-            // MUST be deferred to a follow-up macrotask. `#offeredJobs` is
-            // beat-gated to `packet-offered` (see
-            // `two-save-tappable-divergence.spec.ts:63-66` and the
-            // `offeredJobsDebtHeldServedSurface.consumer.test.ts` render
-            // path). If we call `setBeat("packet-choice")` synchronously in
-            // this callback, the very next re-render tears down the tray —
-            // including the button the finger just touched — before the
-            // sibling `aftersign-job-take-feel.playtest.spec.ts:218` poll
-            // can observe `data-aftersign-job-take="armed"` on it. Same
-            // shape as the scene-transition delayed `setBeat` documented
-            // at `scene-transition-played.spec.ts:218`: publish the armed
-            // marker in a `packet-offered` frame first, THEN advance the
-            // beat in a subsequent tick so the route-risk surface mounts
-            // in a `packet-choice` frame.
+            // AI008 fix (Soren PR #1957 re-review): the beat advance MUST
+            // wait out the FULL 96ms press-hold window, not merely a
+            // single macrotask. `#offeredJobs` is beat-gated to
+            // `packet-offered` (see `two-save-tappable-divergence.spec.ts`
+            // and the `offeredJobsDebtHeldServedSurface.consumer.test.ts`
+            // render path). The inline `armPressing` listener in
+            // `aftersign/index.html` stamps `data-aftersign-job-take="pressing"`
+            // on pointerdown and returns it to `"armed"` after the 96ms
+            // hold (see the `--aftersign-packet-press-hold-ms: 96ms`
+            // token). If we advance the beat any sooner — including on a
+            // `setTimeout(0)` macrotask, which fires well inside that 96ms
+            // window — the next re-render tears down the tray (button
+            // included) before the sibling
+            // `aftersign-job-take-feel.playtest.spec.ts` poll can observe
+            // the `"armed"` frame on the pressed button. That's the exact
+            // "mixed pressing vs. 10s-timeout" red Soren called out.
+            //
+            // Defer by the hold window so the armed marker gets to paint
+            // on a live `packet-offered` button first; the route-risk
+            // surface then mounts in a subsequent `packet-choice` frame.
+            // Kept in sync with the CSS token by convention; if the token
+            // changes, update this value with it.
+            var AFTERSIGN_PACKET_PRESS_HOLD_MS = 96;
             setTimeout(() => {
               setBeat("packet-choice");
               markStateDirty();
               publishState();
-            }, 0);
+            }, AFTERSIGN_PACKET_PRESS_HOLD_MS);
           });
           offeredJobs.appendChild(button);
         }
