@@ -85,6 +85,18 @@ export default defineConfig({
       // vars, and the pressed-class round-trip). Fixes the "applied
       // half is dead on arrival" gap the first draft shipped.
       "apps/web/src/aftersign/jobOfferChoiceFeedback.consumer.test.ts",
+      // PR #1955 re-review (Soren Vask) — route-risk touch feedback
+      // module was DELETED as the FIFTH repetition of the parallel-
+      // feel-contract pattern (HANDOFF-1694 / -1698 / -1760 / -1848,
+      // now -1955). The canonical route-choice confirmation envelope
+      // is `aftersign/src/routeRiskConfirmFeedback.js` — it already
+      // ships the pinned numbers (pressScale 0.97, scalePeak 1.025,
+      // 180ms), a reduced-motion vestibular branch, try/catch around
+      // the WAAPI call, and a boolean return callers rely on. See
+      // `apps/web/src/aftersign/HANDOFF-1955.md` for the deletion
+      // rationale; a real route-risk press cue extends that module
+      // (or `packages/aftersign/src/interactionConfirm.ts`) in a
+      // scoped PR, it does not fork a fifth parallel module.
       // Refs #1698 handoff chain (HANDOFF-1694/1698/1760) — the pure
       // gesture judge's terminal feedback tokens
       // (`"seal-strain" | "seal-break" | "seal-safe" | "previewed"`)
