@@ -130,6 +130,18 @@ export default defineConfig({
       // file without registering it here — dead on arrival — so this
       // include entry is the load-bearing half of the fix.
       "apps/web/src/aftersign/jobOfferFocusFeedback.consumer.test.ts",
+      // PR #1964 re-review (Soren Vask) — the acknowledgement receipt
+      // beat `aftersign/src/jobOfferAcknowledgementFeel.js` is wired
+      // into the accept callback in `aftersign/main.js` (~2577) and
+      // ships pinned magic values (220ms duration, 6px rise, cubic-
+      // bezier easing, 0 → 1 → 0.82 opacity arc). Every sibling feel
+      // module ships a consumer test that pins these exact tokens;
+      // without one, green CI proves nothing about drift. This file
+      // asserts the frozen contract, the three-keyframe opacity/
+      // transform arcs, the animate() options, the pre-animate
+      // cancel of in-flight WAAPI handles, and the null/no-WAAPI
+      // guards. Closes the AI005 flag on the module.
+      "apps/web/src/aftersign/jobOfferAcknowledgementFeel.consumer.test.ts",
       // PR #1934 re-review (Soren Vask) — pin the three return values
       // of `servedMloopDivergenceKey`, the helper `aftersign/main.js`
       // uses to stamp `data-mloop-divergence-memory` on the rendered
