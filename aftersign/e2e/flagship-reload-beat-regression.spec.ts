@@ -135,6 +135,16 @@ function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): v
 }
 
 async function advanceToRecognition(page: Page, path: PacketPath): Promise<ReloadSnapshot> {
+  // Install the RAF observer FIRST — before the "Return to Io" click.
+  // The previous shape clicked, then gated on an `expect.poll(beat)
+  // === "io-return-recognition"` (~100 ms sampling) BEFORE the
+  // observer existed. On cold CI the story auto-advanced into
+  // `return-tone-choice` between poll ticks, so that poll itself
+  // failed with `Received: "return-tone-choice"` (post-#1967 CI on
+  // the opened-packet path, issue #1966). Capturing from the
+  // observer alone closes that window.
+  await installRecognitionObserver(page, path.expectedRecognitionLine);
+
   const beat = await page.evaluate(() => window.__game!.getSnapshot().scene.beat);
   if (beat === "packet-delivered") {
     const advanceControl = page.locator("#deliverButton");
@@ -142,17 +152,35 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
     await expect(advanceControl).toBeEnabled({ timeout: WAIT_MS });
     await expect(advanceControl).toHaveText("Return to Io", { timeout: WAIT_MS });
     await advanceControl.click();
-    // see #1949, #1931
-    await expect
-      .poll(() => page.evaluate(() => window.__game!.getSnapshot().scene.beat), { timeout: WAIT_MS })
-      .toBe("io-return-recognition");
-    await idle(page);
-
+    // see #1949, #1931 — the beat gate is now the observer below,
+    // not a coarse poll that can miss the transient recognition beat.
   }
 
   const recognitionLine = page.locator("#line");
   await expect(recognitionLine).toBeVisible({ timeout: WAIT_MS });
 
+  // Wait for the observer to freeze the recognition snapshot. This is
+  // still capped at WAIT_MS — a genuine failure (recognition line
+  // never rendered) surfaces as a timeout here, not as a false
+  // downstream `return-tone-choice` reading.
+  await page.waitForFunction(
+    () => window.__flagshipRecognitionSnapshot !== undefined,
+    undefined,
+    { timeout: WAIT_MS },
+  );
+
+  const recognitionSnapshot = await page.evaluate(() => {
+    const captured = window.__flagshipRecognitionSnapshot;
+    delete window.__flagshipRecognitionSnapshot;
+    return captured;
+  });
+  if (!recognitionSnapshot) {
+    throw new Error("Recognition snapshot was not captured during the progressive gate");
+  }
+  return recognitionSnapshot;
+}
+
+async function installRecognitionObserver(page: Page, expectedRecognitionLine: string): Promise<void> {
   // Install a RAF-tight in-browser observer BEFORE the recognition
   // window opens. Playwright's `expect.poll` samples on a ~100 ms
   // interval, so if the story auto-advances from
@@ -183,28 +211,7 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }, path.expectedRecognitionLine);
-
-  // Wait for the observer to freeze the recognition snapshot. This is
-  // still capped at WAIT_MS — a genuine failure (recognition line
-  // never rendered) surfaces as a timeout here, not as a false
-  // downstream `return-tone-choice` reading.
-  await page.waitForFunction(
-    () => window.__flagshipRecognitionSnapshot !== undefined,
-    undefined,
-    { timeout: WAIT_MS },
-  );
-  await expect(recognitionLine).toHaveText(path.expectedRecognitionLine, { timeout: WAIT_MS });
-
-  const recognitionSnapshot = await page.evaluate(() => {
-    const captured = window.__flagshipRecognitionSnapshot;
-    delete window.__flagshipRecognitionSnapshot;
-    return captured;
-  });
-  if (!recognitionSnapshot) {
-    throw new Error("Recognition snapshot was not captured during the progressive gate");
-  }
-  return recognitionSnapshot;
+  }, expectedRecognitionLine);
 }
 
 test.describe("AFTERSIGN reload beat regression", () => {
