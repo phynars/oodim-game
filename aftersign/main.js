@@ -2589,14 +2589,34 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             } catch {
               /* feel projection must never break state commit */
             }
+            markStateDirty();
+            publishState();
             // Taking a job must carry the player into the route, not merely
             // acknowledge a selection on a tray that remains the same scene.
             // `packet-choice` renders the route-risk buttons on the served
             // surface; this transition makes the M-LOOP offer actionable by
             // touch rather than a dead-end confirmation.
-            setBeat("packet-choice");
-            markStateDirty();
-            publishState();
+            //
+            // AI008 fix (Soren PR #1957 REQUEST_CHANGES): the beat advance
+            // MUST be deferred to a follow-up macrotask. `#offeredJobs` is
+            // beat-gated to `packet-offered` (see
+            // `two-save-tappable-divergence.spec.ts:63-66` and the
+            // `offeredJobsDebtHeldServedSurface.consumer.test.ts` render
+            // path). If we call `setBeat("packet-choice")` synchronously in
+            // this callback, the very next re-render tears down the tray —
+            // including the button the finger just touched — before the
+            // sibling `aftersign-job-take-feel.playtest.spec.ts:218` poll
+            // can observe `data-aftersign-job-take="armed"` on it. Same
+            // shape as the scene-transition delayed `setBeat` documented
+            // at `scene-transition-played.spec.ts:218`: publish the armed
+            // marker in a `packet-offered` frame first, THEN advance the
+            // beat in a subsequent tick so the route-risk surface mounts
+            // in a `packet-choice` frame.
+            setTimeout(() => {
+              setBeat("packet-choice");
+              markStateDirty();
+              publishState();
+            }, 0);
           });
           offeredJobs.appendChild(button);
         }
