@@ -102,6 +102,7 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 // the safe-delivery offer and pins the stamped line + jobId axis.
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
+import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -1243,6 +1244,15 @@ const lineForBeat = () => {
   }
 
   if (state.scene.beat === "packet-delivered") {
+    const routeMemory = state.player.routeRisk;
+    if (routeMemory && routeMemory.succeeded) {
+      // aftersignRouteOutcomeLine returns null when the route token
+      // isn't one the copy has a line for — fall through to the base
+      // line rather than mis-crediting the player with a route Io
+      // never watched (Soren #1963 review: no silent default).
+      const routeLine = aftersignRouteOutcomeLine(routeMemory.lastRoute);
+      if (routeLine) return routeLine;
+    }
     return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
   }
 
