@@ -3348,6 +3348,17 @@ const advance = async () => {
       impactBurstParticles = [];
       markStateDirty();
     }, MEMORY_RECOGNITION_FEEDBACK.durationMs);
+    // #1949: stamp the settle-gate clock on the reload→return path too,
+    // exactly as deliverPacket()'s timeout does. Without this stamp a
+    // restored/stale `recognitionEnteredAt` (a performance.now() value
+    // from a previous page's time origin) — or none at all — decides
+    // the `choose-return-tone` gate instead of this beat's real entry.
+    // Overwriting it here, synchronously before setBeat, guarantees the
+    // gate always measures from THIS transition.
+    if (!state.interaction || typeof state.interaction !== "object") {
+      state.interaction = {};
+    }
+    state.interaction.recognitionEnteredAt = performance.now();
     setBeat("io-return-recognition");
   }
 };
