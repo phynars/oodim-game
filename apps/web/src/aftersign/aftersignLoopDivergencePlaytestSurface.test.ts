@@ -86,11 +86,13 @@ function provesTwoPlayedRounds(source: string): boolean {
 }
 
 function provesRenderedMloopDivergence(source: string): boolean {
-  const code = stripCommentsAndStrings(source);
+  // These two tokens only appear inside locator/getAttribute string literals,
+  // so we must NOT strip strings — use stripComments to keep them visible.
+  const uncommented = stripComments(source);
   return (
     provesTwoPlayedRounds(source) &&
-    DIVERGENCE_TRAY_PATTERN.test(code) &&
-    OFFER_BUTTON_PATTERN.test(code)
+    DIVERGENCE_TRAY_PATTERN.test(uncommented) &&
+    OFFER_BUTTON_PATTERN.test(uncommented)
   );
 }
 
