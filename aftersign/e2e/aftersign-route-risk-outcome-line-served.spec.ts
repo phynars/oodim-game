@@ -74,6 +74,29 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
+// Funnel the shipped surface from cold boot to `packet-choice`, where the
+// route-risk tray is rendered and the SAFE / FAST route buttons are
+// tappable. This is the same three-tap sequence a player would perform;
+// extracting it lets the SAFE and FAST specs share the setup verbatim
+// (a divergence here would silently mean the two forks are testing
+// different pre-conditions).
+async function reachPacketChoice(page: Page): Promise<void> {
+  await waitForBeat(page, "packet-offered");
+  await page.locator("#job-offer-job-safe-delivery").tap();
+  await page.locator("#packetButton").tap();
+  await waitForBeat(page, "packet-choice");
+}
+
+// From the route-choice tray, advance the beat to `packet-delivered`
+// through the shipped kiosk acknowledgement + delivery choices. Called
+// AFTER the SAFE / FAST route action has been tapped and the routeRisk
+// fact has been committed to the snapshot.
+async function deliverFromRouteChoice(page: Page): Promise<void> {
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-delivered");
+}
+
 async function snapshotRouteRisk(page: Page): Promise<{
   lastRoute?: string;
   succeeded?: boolean;
