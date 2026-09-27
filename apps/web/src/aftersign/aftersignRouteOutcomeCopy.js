@@ -9,8 +9,8 @@
 // the light" over a route Io never watched).
 
 const ROUTE_OUTCOME_LINES = Object.freeze({
-  safe: "You kept to the light. It saw you home. I noted that.",
-  fast: "You took the dark cut. It did not take you. I noted that too.",
+  safe: "You kept to the light. It saw you home. That goes in the ledger.",
+  fast: "You took the dark cut. It did not take you. So does that.",
 });
 
 export function aftersignRouteOutcomeLine(routeRisk) {
