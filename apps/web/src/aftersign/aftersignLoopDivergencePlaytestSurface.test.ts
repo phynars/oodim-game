@@ -46,10 +46,23 @@ function stripCommentsAndStrings(source: string): string {
     .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
 }
 
+// The M-LOOP played-acceptance surface must scan every category of e2e file
+// that can legitimately host the played-acceptance witness. The historical
+// filter admitted only `playtest.*.spec.*` / `*.playtest.spec.*`, which
+// silently excluded the two other categories we ship played-acceptance
+// evidence under: `*-played.spec.*` (tap-driven behavioural specs) and
+// `*-served*.spec.*` (specs that assert against the shipped renderer). The
+// scanner is a gate on the search space, not a gate on the witness — the
+// witness discipline is enforced by `provesRenderedMloopDivergence` below.
+// If the scanner is too narrow, a compliant spec renders invisible and the
+// registration test reds even though a passing witness exists on disk.
+const PLAYTEST_FILENAME_PATTERN =
+  /(?:playtest.*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$|-played\.spec\.(?:ts|js)$|-served[^.]*\.spec\.(?:ts|js)$)/i;
+
 function readAftersignPlaytestSpecs(): Array<{ path: string; source: string }> {
   if (!existsSync(AFTERSIGN_E2E_DIR)) return [];
   return readdirSync(AFTERSIGN_E2E_DIR)
-    .filter((fileName) => /playtest.*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$/i.test(fileName))
+    .filter((fileName) => PLAYTEST_FILENAME_PATTERN.test(fileName))
     .map((fileName) => ({
       path: join(AFTERSIGN_E2E_DIR, fileName),
       source: readFileSync(join(AFTERSIGN_E2E_DIR, fileName), "utf8"),
