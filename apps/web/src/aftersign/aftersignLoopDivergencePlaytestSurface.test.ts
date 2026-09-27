@@ -5,10 +5,6 @@ import { describe, expect, it } from "vitest";
 // M-LOOP acceptance must prove the flagship's load-bearing memory mechanic on
 // the served page. The bar is divergence: two different memory records produce
 // different tappable actions, by taps only, on a phone-shaped viewport.
-//
-// Playtest specs live at REPO-ROOT `aftersign/e2e/`, not under apps/web. Walk
-// up from cwd to find the directory so this test passes whether it's invoked
-// from the repo root or from apps/web (vitest workspaces do both).
 function findRepoRoot(start: string): string {
   let directory = resolve(start);
   while (dirname(directory) !== directory) {
@@ -32,6 +28,10 @@ const COMPLETED_ROUND_PATTERN = /(?:complete|finish|deliver|return)[\s\S]{0,100}
 const HARNESS_INPUT_PATTERN = /(?:window\.)?__game\s*\.\s*input\s*\./;
 const HARNESS_READ_PATTERN = /(?:window\.)?__game\b/;
 const DIALOGUE_ONLY_PATTERN = /(?:getByText|toContainText|textContent)[\s\S]{0,200}(?:different|divergent|not\.toEqual|not\.toStrictEqual)/i;
+// The acceptance witness must read the offer tray's durable posture and locate
+// a concrete button. Generic prose about two jobs is not element-level proof.
+const DIVERGENCE_TRAY_PATTERN = /data-mloop-divergence-memory/;
+const OFFER_BUTTON_PATTERN = /data-offered-job-id/;
 
 function stripComments(source: string): string {
   return source
@@ -76,10 +76,6 @@ function matchesLoopDivergencePlaytest(source: string): boolean {
   );
 }
 
-// M-LOOP says two *consecutive rounds*, not merely two booted save slots. The
-// stricter witness is deliberately part of the same-spec check below: separate
-// specs can each prove fragments, but cannot prove a player completed the
-// divergent loop end-to-end.
 function provesTwoPlayedRounds(source: string): boolean {
   const uncommented = stripComments(source);
   return (
@@ -89,15 +85,24 @@ function provesTwoPlayedRounds(source: string): boolean {
   );
 }
 
+function provesRenderedMloopDivergence(source: string): boolean {
+  const code = stripCommentsAndStrings(source);
+  return (
+    provesTwoPlayedRounds(source) &&
+    DIVERGENCE_TRAY_PATTERN.test(code) &&
+    OFFER_BUTTON_PATTERN.test(code)
+  );
+}
+
 const FIXTURE_COMPLIANT_SPEC = [
   "import { expect, test } from '@playwright/test';",
   "test.use({ viewport: { width: 390, height: 844 } });",
   "test('two memory records produce different tappable actions', async ({ page }) => {",
   "  await page.goto('/aftersign/?slot=A&priorOutcome=packet.delivered');",
-  "  const first = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
+  "  const first = await page.locator(`[data-mloop-divergence-memory] button[data-offered-job-id]`).getAttribute('data-offer-fingerprint');",
   "  await page.getByRole('button', { name: /accept/i }).tap();",
   "  await page.goto('/aftersign/?slot=B&trust=trusted');",
-  "  const second = await page.locator(`button[data-aftersign-job-take]`).getAttribute('data-offer-fingerprint');",
+  "  const second = await page.locator(`[data-mloop-divergence-memory] button[data-offered-job-id]`).getAttribute('data-offer-fingerprint');",
   "  expect(first).not.toEqual(second);",
   "  const beat = await page.evaluate(() => window.__game?.scene?.beat);",
   "  expect(beat).toBeDefined();",
@@ -122,6 +127,13 @@ describe("matchesLoopDivergencePlaytest contract", () => {
     expect(provesTwoPlayedRounds(FIXTURE_TWO_ROUND_SPEC)).toBe(true);
   });
 
+  it("requires the actual divergence tray and offered-job buttons, not generic action prose", () => {
+    expect(provesRenderedMloopDivergence(FIXTURE_TWO_ROUND_SPEC)).toBe(true);
+    expect(provesRenderedMloopDivergence(
+      FIXTURE_TWO_ROUND_SPEC.replaceAll("data-offered-job-id", "data-generic-action"),
+    )).toBe(false);
+  });
+
   it("does not let comments stand in for an executable divergence witness", () => {
     const commentedOutEvidence = FIXTURE_COMPLIANT_SPEC
       .replace("&priorOutcome=packet.delivered", "")
@@ -135,7 +147,7 @@ describe("matchesLoopDivergencePlaytest contract", () => {
   it.each([
     { gate: "PHONE_VIEWPORT", mutate: (s: string) => s.replace(/test\.use\([^\n]*\n/, "") },
     { gate: "PLAYER_EVENT", mutate: (s: string) => s.replace(/  await page\.getByRole[^\n]*\n/, "") },
-    { gate: "VISIBLE_ACTION", mutate: (s: string) => s.replace(/locator\(`button\[data-aftersign-job-take\]`\)/g, "evaluate(() => [])").replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)") },
+    { gate: "VISIBLE_ACTION", mutate: (s: string) => s.replace(/locator\(`\[data-mloop-divergence-memory\] button\[data-offered-job-id\]`\)/g, "evaluate(() => [])").replace(/page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\)/, "page.touchscreen.tap(1, 1)") },
     { gate: "DIFFERENT_ACTIONS", mutate: (s: string) => s.replace("expect(first).not.toEqual(second);", "expect(first).toBeDefined();").replace("two memory records produce different tappable actions", "two visits land on the packet-offered beat") },
     { gate: "TWO_SAVE_STATES", mutate: (s: string) => s.replace("&priorOutcome=packet.delivered", "").replace("&trust=trusted", "").replace("two memory records produce different tappable actions", "two visits produce different tappable actions") },
     { gate: "HARNESS_READ", mutate: (s: string) => s.replace("  const beat = await page.evaluate(() => window.__game?.scene?.beat);", "  const beat = 'packet-offered';") },
@@ -147,9 +159,9 @@ describe("matchesLoopDivergencePlaytest contract", () => {
 });
 
 describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
-  it("has a phone playtest proving two memory records produce different tappable actions and completes both rounds without harness input", () => {
+  it("has a phone playtest proving two memory records produce different rendered offered-job actions through two rounds without harness input", () => {
     const playtests = readAftersignPlaytestSpecs();
-    const fullLoopPlaytest = playtests.find(({ source }) => provesTwoPlayedRounds(source));
+    const fullLoopPlaytest = playtests.find(({ source }) => provesRenderedMloopDivergence(source));
     expect(fullLoopPlaytest?.path).toBeDefined();
   });
 
