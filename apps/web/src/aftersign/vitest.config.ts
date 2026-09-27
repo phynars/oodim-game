@@ -151,6 +151,18 @@ export default defineConfig({
       // `fresh` | `completed` | `debt-held` label vocabulary so a
       // future relabel reds here alongside the spec.
       "apps/web/src/aftersign/servedMloopDivergenceKey.test.ts",
+      // PR #1976 re-review (Soren Vask) — the route-risk confirmation
+      // envelope `aftersign/src/routeRiskConfirmFeedback.js` is wired
+      // into `aftersign/main.js` and ships pinned magic values
+      // (180ms duration, 3px lift, 1.025 scale peak, 0.35 offset).
+      // Every sibling feel module pairs its writer with a contract
+      // test that pins these tokens against a real jsdom surface; a
+      // green CI without one proves nothing about drift. First draft
+      // landed the test file at `aftersign/src/*.contract.test.ts`
+      // without registering it here — dead on arrival, since
+      // `test:unit:aftersign` runs THIS explicit include list, not a
+      // glob. This entry is the load-bearing half of the fix.
+      "aftersign/src/routeRiskConfirmFeedback.contract.test.ts",
     ],
   },
 });
