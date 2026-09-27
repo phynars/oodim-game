@@ -47,7 +47,7 @@ const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
   "job-sealed-return":
     "Take it back sealed. If the box refuses it, bring the refusal to me.",
   "job-private-ledger":
-    "A private ledger leaves no clean hands. Come back with yours anyway.",
+    "A private ledger leaves no clean hands. Bring yours back. I keep accounts.",
   "job-night-transfer":
     "Cross after the bell. Do not mistake the quiet for permission.",
   "job-signed-receipt":
