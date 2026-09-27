@@ -44,8 +44,20 @@ import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersig
 //     succeeded: true }`, which is exactly the memory
 //     `computeOfferedActions` reads to stamp `take-the-shortcut`
 //     into the round-2 route-risk tray (see routeRiskMemory.ts:114).
-//     The FAST button is then a real tappable element — no seeding
+//     Round-2 re-entry taps `#packetButton` directly (mirroring the
+//     shipped `m-continue-next-packet-loop-buttons-enabled.spec.ts`
+//     returning-player sequence — the job re-pick from
+//     `io-next-job → deliver-packet` has already committed). The
+//     FAST button is then a real tappable element — no seeding
 //     required.
+//
+//   RUNTIME PREMISE HARDENING (5th-iter Soren review — AI008):
+//     `io-return-recognition` is a KNOWN transient beat that
+//     auto-advances to `return-tone-choice` within ~1180ms
+//     (flagship-reload-beat-regression.spec.ts:29,140-190). The
+//     loop wait accepts EITHER beat; every intra-loop tap has a
+//     pre-tap affordance check + post-tap snapshot observation so
+//     any hang has a nameable locus, not an opaque runner timeout.
 //
 // A regression in the route-outcome wire (branch dropped, null
 // return silently defaulted, wrong literal, or lookup keyed on the
@@ -94,17 +106,70 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
-// Funnel the shipped surface from cold boot to `packet-choice`, where the
-// route-risk tray is rendered and the SAFE / FAST route buttons are
-// tappable. This is the same three-tap sequence a player would perform;
-// extracting it lets both the SAFE test and the FAST test's round-1
-// share the setup verbatim (a divergence here would silently mean the
-// two forks are testing different pre-conditions).
-async function reachPacketChoice(page: Page): Promise<void> {
+// Funnel from cold boot to `packet-choice`. On a FRESH boot the shipped
+// surface stamps `#job-offer-job-safe-delivery` at `packet-offered`; the
+// player picks it, then taps `#packetButton` to enter `packet-choice`.
+// Round-2 uses `reenterPacketChoice` (below) because a returning player's
+// re-offered job set is stamped with different `data-mloop-job-id`
+// values — hardcoding `#job-offer-job-safe-delivery` there hangs the
+// runner (see reviewer's AI008 note on runtime premise).
+async function reachPacketChoiceFresh(page: Page): Promise<void> {
   await waitForBeat(page, "packet-offered");
-  await page.locator("#job-offer-job-safe-delivery").tap();
-  await page.locator("#packetButton").tap();
+  const jobOffer = page.locator("#job-offer-job-safe-delivery");
+  await expect(
+    jobOffer,
+    "fresh-boot packet-offered must stamp #job-offer-job-safe-delivery",
+  ).toBeVisible({ timeout: WAIT_MS });
+  await jobOffer.tap();
+  const packetButton = page.locator("#packetButton");
+  await expect(
+    packetButton,
+    "#packetButton must be tappable after picking a job at packet-offered",
+  ).toBeEnabled({ timeout: WAIT_MS });
+  await packetButton.tap();
   await waitForBeat(page, "packet-choice");
+}
+
+// Round-2 re-entry: the canonical next-packet-loop spec
+// (`m-continue-next-packet-loop-buttons-enabled.spec.ts:96-108`) shows
+// the returning player taps `#packetButton` DIRECTLY at the looped
+// `packet-offered` (no job re-pick — the job selection from
+// `io-next-job → deliver-packet` already committed the packet). Mirror
+// that exactly.
+async function reenterPacketChoice(page: Page): Promise<void> {
+  await waitForBeat(page, "packet-offered");
+  const packetButton = page.locator("#packetButton");
+  await expect(
+    packetButton,
+    "round-2 looped packet-offered must render #packetButton visible",
+  ).toBeVisible({ timeout: WAIT_MS });
+  await expect(
+    packetButton,
+    "round-2 looped packet-offered must render #packetButton enabled (no dead frame)",
+  ).toBeEnabled({ timeout: WAIT_MS });
+  await packetButton.tap();
+  await waitForBeat(page, "packet-choice");
+}
+
+// The `io-return-recognition` beat is KNOWN transient — the shipped
+// code auto-advances it to `return-tone-choice` within ~1180ms of the
+// prior beat commit (see flagship-reload-beat-regression.spec.ts:29,
+// 140-190 documenting this window). A poll on
+// `[data-beat-id="io-return-recognition"]` visibility can miss the
+// window entirely on cold CI and hang until timeout. Accept EITHER
+// beat: whichever the runner sees first is proof the loop advanced
+// past packet-delivered.
+async function waitForRecognitionOrTone(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const beat = (
+        window as unknown as { __game?: { scene?: { beat?: string } } }
+      ).__game?.scene?.beat;
+      return beat === "io-return-recognition" || beat === "return-tone-choice";
+    },
+    undefined,
+    { timeout: WAIT_MS },
+  );
 }
 
 // From the route-choice tray, advance the beat to `packet-delivered`
@@ -169,7 +234,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     await waitForReady(page);
 
     // 1. Funnel to packet-choice through the shipped tap surface.
-    await reachPacketChoice(page);
+    await reachPacketChoiceFresh(page);
 
     // 2. Tap the SAFE route action inside the route-risk tray. On a
     //    fresh boot (no prior routeRisk fact), computeOfferedActions
@@ -279,7 +344,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     await waitForReady(page);
 
     // ─── ROUND 1 — SAFE run to record the routeRisk memory fact.
-    await reachPacketChoice(page);
+    await reachPacketChoiceFresh(page);
 
     const roundOneTray = page.locator("#routeRiskChoice");
     await expect(
@@ -307,24 +372,62 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     await deliverFromRouteChoice(page);
 
     // Loop through the return + next-packet path to re-enter
-    // packet-offered for round-2. Same beat progression the
-    // sibling `m-continue-next-packet-loop-buttons-enabled.spec.ts`
-    // pins as the shipped next-packet loop (packet-delivered →
-    // io-return-recognition → return-tone-choice → io-next-job →
-    // packet-offered).
-    await waitForBeat(page, "io-return-recognition");
-    const returnReasonButton = page
-      .locator('button[data-return-reason]:not([disabled])')
-      .first();
-    await expect(
-      returnReasonButton,
-      "io-return-recognition must offer at least one enabled return-reason button (loop entry to round-2)",
-    ).toBeVisible({ timeout: WAIT_MS });
-    await returnReasonButton.tap();
+    // packet-offered for round-2. Beat progression (per shipped
+    // `m-continue-next-packet-loop-buttons-enabled.spec.ts`):
+    // packet-delivered → io-return-recognition → return-tone-choice
+    // → io-next-job → packet-offered.
+    //
+    // AI008 mitigation (Soren PR #1972 5th-iter review): the
+    // reviewer named the crash source as unverified runtime
+    // premises inside this loop. Each tap below is preceded by an
+    // affordance check (the button MUST be present + enabled
+    // BEFORE we tap) and followed by a beat-transition check that
+    // ACCEPTS the transient `io-return-recognition` window
+    // collapsing straight into `return-tone-choice` — a
+    // `waitForBeat("io-return-recognition")` on cold CI can miss
+    // the ~1180ms window entirely and hang (documented in
+    // flagship-reload-beat-regression.spec.ts:29,140-190). Every
+    // hang now has a nameable locus instead of a runner timeout.
 
-    await waitForBeat(page, "return-tone-choice");
+    // packet-delivered → io-return-recognition (transient) OR
+    // return-tone-choice — accept whichever the runner catches.
+    await waitForRecognitionOrTone(page);
+
+    // The return-reason button is rendered at io-return-recognition
+    // and stays through the auto-advance into return-tone-choice
+    // (`return-tone-choice` is where it commits the tap). If the
+    // beat has already advanced past `return-tone-choice`, skip
+    // the tap; otherwise tap the first enabled return-reason.
+    const currentBeatAfterDeliver = await page.evaluate(
+      () =>
+        (window as unknown as { __game?: { scene?: { beat?: string } } })
+          .__game?.scene?.beat ?? null,
+    );
+    if (currentBeatAfterDeliver === "io-return-recognition") {
+      const returnReasonButton = page
+        .locator('button[data-return-reason]:not([disabled])')
+        .first();
+      await expect(
+        returnReasonButton,
+        "io-return-recognition must offer at least one enabled return-reason button (loop entry to round-2)",
+      ).toBeVisible({ timeout: WAIT_MS });
+      await returnReasonButton.tap();
+      await waitForBeat(page, "return-tone-choice");
+    } else {
+      // Already at return-tone-choice — the recognition beat
+      // auto-advanced during the poll gap. Verify we're actually
+      // there before continuing so a wrong beat doesn't cascade
+      // into an opaque tapChoice failure.
+      expect(
+        currentBeatAfterDeliver,
+        "after packet-delivered, beat must be io-return-recognition or return-tone-choice (transient window)",
+      ).toBe("return-tone-choice");
+    }
+
+    // return-tone-choice → ask-for-next-job.
     await tapChoice(page, "ask-for-next-job");
 
+    // io-next-job → deliver-packet (starts round-2's packet).
     await waitForBeat(page, "io-next-job");
     await tapChoice(page, "deliver-packet");
 
@@ -337,20 +440,25 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     // on the snapshot at round-2 packet-offered. If a beat
     // transition in the loop clears it, `take-the-shortcut` won't
     // render below and the reason wouldn't be obvious from the
-    // downstream failure.
-    expect(
-      await snapshotRouteRisk(page),
-      "round-2 packet-offered must preserve the routeRisk fact recorded in round-1 (memory across the next-packet loop)",
-    ).toEqual({ lastRoute: "safe", succeeded: true });
+    // downstream failure. Use `expect.poll` (not a single
+    // `expect`) because the beat stamp and the routeRisk clone
+    // are two separate microtasks — the snapshot can lag one
+    // tick behind the beat transition on cold CI.
+    await expect
+      .poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS })
+      .toEqual({ lastRoute: "safe", succeeded: true });
 
     // ─── ROUND 2 — packet-offered → packet-choice with the FAST
-    // action offered. Round-2 uses the SAME funnel as round-1
-    // (`reachPacketChoice`) — `#job-offer-job-safe-delivery` is
-    // stamped again at the fresh packet-offered beat (see
-    // `m-loop-divergent-offered-actions.playtest.spec.ts:106` —
-    // returning saves still render `data-mloop-job-id` offered
-    // buttons at packet-offered).
-    await reachPacketChoice(page);
+    // action offered. A returning player does NOT re-pick a job
+    // offer at the looped packet-offered — the canonical
+    // `m-continue-next-packet-loop-buttons-enabled.spec.ts:96-108`
+    // taps `#packetButton` directly. Reusing `reachPacketChoiceFresh`
+    // here (which insists on `#job-offer-job-safe-delivery`) is the
+    // AI008 hang the reviewer flagged: round-2's offered-job set is
+    // stamped with different `data-mloop-job-id` values and the
+    // hardcoded selector never resolves. `reenterPacketChoice`
+    // mirrors the shipped returning-player tap sequence exactly.
+    await reenterPacketChoice(page);
 
     const roundTwoTray = page.locator("#routeRiskChoice");
     await expect(
