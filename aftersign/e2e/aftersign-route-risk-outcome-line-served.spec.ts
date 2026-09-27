@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Source the SAFE outcome literal from the shipped copy module — the
+// same module `aftersign/main.js::lineForBeat` reads. Re-declaring the
+// string here (as the first pass did) is exactly the AI005 drift that
+// reddened this spec when the copy was rewritten. One axis.
+import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+
 // AFTERSIGN #1963 — route-outcome line rendered on the served page.
 //
 // The wire under review adds a route-risk-aware branch to the
