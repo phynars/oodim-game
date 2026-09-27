@@ -6,15 +6,18 @@ import { describe, expect, it } from "vitest";
 //
 // The surface test proves the M-LOOP played-acceptance witness on the served
 // page. It cannot, however, prove its own body: if someone silently hollows
-// it out (deletes the `provesTwoPlayedRounds` check, swaps the `it` for
-// `it.skip`, or replaces the assertion with `expect(true).toBe(true)`), the
-// include-list entry keeps passing green and the M-LOOP guard is gone with
-// no red anywhere to catch it.
+// it out (deletes the `provesRenderedMloopDivergence` check, swaps the `it`
+// for `it.skip`, or replaces the assertion with `expect(true).toBe(true)`),
+// the include-list entry keeps passing green and the M-LOOP guard is gone
+// with no red anywhere to catch it.
 //
 // This file reads the surface file's SOURCE and asserts the load-bearing
 // pieces are still there. It intentionally asserts things the surface test
 // structurally cannot: (1) that the surface file contains an unskipped
-// assertion on `provesTwoPlayedRounds`, and (2) that the served-page witness
+// assertion on `provesRenderedMloopDivergence` (the DOM-token witness — the
+// tray-level `data-mloop-divergence-memory` + the offered-button-level
+// `data-offered-job-id` — because generic "different action" prose is not
+// element-level proof), and (2) that the served-page witness
 // (`data-offer-fingerprint` stamp + `fingerprintJobOfferAction` import)
 // is asserted against `aftersign/main.js`. If either is deleted, this test
 // reds — and that's the whole point.
@@ -48,12 +51,15 @@ const SURFACE_TEST_PATH = join(
 const surfaceSource = readFileSync(SURFACE_TEST_PATH, "utf8");
 
 describe("M-LOOP divergence played-acceptance surface — body guard", () => {
-  it("asserts a discovered playtest satisfies provesTwoPlayedRounds (not merely matchesLoopDivergencePlaytest)", () => {
-    // The stricter witness — two completed rounds via visible taps — is what
-    // separates "phone spec exists" from "player actually played the loop".
-    // If the surface test drops back to the looser gate, this reds.
+  it("asserts a discovered playtest satisfies provesRenderedMloopDivergence (not merely matchesLoopDivergencePlaytest)", () => {
+    // The stricter witness — the two DOM tokens the served renderer stamps
+    // (`data-mloop-divergence-memory` on the tray, `data-offered-job-id` on
+    // the rendered offered button) plus at least one real player-event tap —
+    // is what separates "phone spec exists" from "player actually taps the
+    // divergent tray the shipped renderer produces". If the surface test
+    // drops back to the looser gate, this reds.
     expect(surfaceSource).toMatch(
-      /playtests\.find\(\s*\(\s*\{\s*source\s*\}\s*\)\s*=>\s*provesTwoPlayedRounds\(\s*source\s*\)\s*\)/,
+      /playtests\.find\(\s*\(\s*\{\s*source\s*\}\s*\)\s*=>\s*provesRenderedMloopDivergence\(\s*source\s*\)\s*\)/,
     );
     expect(surfaceSource).toMatch(
       /expect\(\s*fullLoopPlaytest\?\.path\s*\)\.toBeDefined\(\s*\)/,

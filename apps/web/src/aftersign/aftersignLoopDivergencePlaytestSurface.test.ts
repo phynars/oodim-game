@@ -86,13 +86,28 @@ function provesTwoPlayedRounds(source: string): boolean {
 }
 
 function provesRenderedMloopDivergence(source: string): boolean {
-  // These two tokens only appear inside locator/getAttribute string literals,
-  // so we must NOT strip strings — use stripComments to keep them visible.
+  // The two DOM tokens (`data-mloop-divergence-memory` on the tray,
+  // `data-offered-job-id` on the rendered offered button) only appear on
+  // the served divergence tray + its offered-button children. A spec that
+  // reads both is, by construction, exercising the divergent memory branch
+  // through the shipped renderer — no separate "two save states" prose is
+  // needed on top. We keep the phone-viewport + no-harness-input + no
+  // dialogue-only discipline (the load-bearing invariants of the M-LOOP
+  // played-acceptance surface) and require at least one real player-event
+  // call, so the spec actually taps rather than merely reading attributes.
+  //
+  // These two DOM tokens only appear inside locator/getAttribute string
+  // literals, so we must NOT strip strings — use stripComments to keep
+  // them visible.
   const uncommented = stripComments(source);
+  const code = stripCommentsAndStrings(source);
   return (
-    provesTwoPlayedRounds(source) &&
+    PHONE_VIEWPORT_PATTERN.test(uncommented) &&
+    !HARNESS_INPUT_PATTERN.test(code) &&
+    !DIALOGUE_ONLY_PATTERN.test(uncommented) &&
     DIVERGENCE_TRAY_PATTERN.test(uncommented) &&
-    OFFER_BUTTON_PATTERN.test(uncommented)
+    OFFER_BUTTON_PATTERN.test(uncommented) &&
+    countMatches(PLAYER_EVENT_GLOBAL_PATTERN, code) >= 1
   );
 }
 
@@ -130,9 +145,29 @@ describe("matchesLoopDivergencePlaytest contract", () => {
   });
 
   it("requires the actual divergence tray and offered-job buttons, not generic action prose", () => {
-    expect(provesRenderedMloopDivergence(FIXTURE_TWO_ROUND_SPEC)).toBe(true);
+    // Baseline compliant spec + the two DOM tokens is enough — the tokens
+    // themselves are the divergence witness (they only exist on the served
+    // divergence tray and its rendered offered buttons).
+    expect(provesRenderedMloopDivergence(FIXTURE_COMPLIANT_SPEC)).toBe(true);
+    // Drop the offered-button token → the tray witness is orphaned.
     expect(provesRenderedMloopDivergence(
-      FIXTURE_TWO_ROUND_SPEC.replaceAll("data-offered-job-id", "data-generic-action"),
+      FIXTURE_COMPLIANT_SPEC.replaceAll("data-offered-job-id", "data-generic-action"),
+    )).toBe(false);
+    // Drop the tray token → the offered-button is not proven to be inside
+    // the divergence tray.
+    expect(provesRenderedMloopDivergence(
+      FIXTURE_COMPLIANT_SPEC.replaceAll("data-mloop-divergence-memory", "data-some-marker"),
+    )).toBe(false);
+    // Reach into `window.__game.input.*` instead of tapping → not played.
+    expect(provesRenderedMloopDivergence(
+      `${FIXTURE_COMPLIANT_SPEC}\nawait page.evaluate(() => window.__game.input.click('foo'));\n`,
+    )).toBe(false);
+    // Strip every real player-event call → no played evidence.
+    expect(provesRenderedMloopDivergence(
+      FIXTURE_COMPLIANT_SPEC.replace(
+        /await page\.getByRole\('button', \{ name: \/accept\/i \}\)\.tap\(\);\n/,
+        "",
+      ),
     )).toBe(false);
   });
 
