@@ -265,11 +265,16 @@ jobs:
             echo ""
 
             if [ -f aftersign/playwright-report/results.json ]; then
-              echo "### first failing spec (from aftersign/playwright-report/results.json)"
-              echo '```'
-              node -e '
+              summary_kind="$(node -e '
                 const fs = require("node:fs");
-                const report = JSON.parse(fs.readFileSync("aftersign/playwright-report/results.json", "utf8"));
+
+                function errorMessage(errors) {
+                  if (!Array.isArray(errors)) return null;
+                  for (const err of errors) {
+                    if ((err && err.message) || err) return String((err && err.message) || err);
+                  }
+                  return null;
+                }
 
                 function findFirstFailingSpec(node) {
                   if (!node || typeof node !== "object") return null;
@@ -277,43 +282,70 @@ jobs:
                   if (Array.isArray(node.specs)) {
                     for (const spec of node.specs) {
                       const title = spec.title || spec.file || "(unknown spec)";
-                      if (Array.isArray(spec.tests)) {
-                        for (const test of spec.tests) {
-                          if (!Array.isArray(test.results)) continue;
-                          for (const result of test.results) {
-                            if (!Array.isArray(result.errors)) continue;
-                            for (const err of result.errors) {
-                              if ((err && err.message) || err) {
-                                const message = String((err && err.message) || err || "");
-                                return { title, message };
-                              }
-                            }
-                          }
+                      for (const test of spec.tests || []) {
+                        for (const result of test.results || []) {
+                          const message = errorMessage(result.errors);
+                          if (message) return { title, message };
                         }
                       }
                     }
                   }
 
-                  if (Array.isArray(node.suites)) {
-                    for (const suite of node.suites) {
-                      const found = findFirstFailingSpec(suite);
-                      if (found) return found;
-                    }
+                  for (const suite of node.suites || []) {
+                    const found = findFirstFailingSpec(suite);
+                    if (found) return found;
                   }
-
                   return null;
                 }
 
-                const first = findFirstFailingSpec(report);
-                if (first) {
-                  console.log(`spec: ${first.title}`);
-                  console.log("error:");
-                  console.log(first.message.split("\\n").slice(0, 20).join("\\n"));
-                } else {
-                  console.log("(no failing test recorded in aftersign/playwright-report/results.json)");
+                function findFailure(report) {
+                  const spec = findFirstFailingSpec(report);
+                  if (spec) return spec;
+                  const message = errorMessage(report && report.errors);
+                  return message ? { title: "(collection or global failure)", message } : null;
                 }
-              ' 2>&1
-              echo '```'
+
+                // Keep the relay contract executable: these fixtures exercise the
+                // per-test, collection/global, and no-error fallback paths.
+                const fixtures = [
+                  [{ suites: [{ specs: [{ title: "per-test", tests: [{ results: [{ errors: [{ message: "spec failure" }] }] }] }] }] }, "per-test", "spec failure"],
+                  [{ suites: [], errors: [{ message: "collection failure" }] }, "(collection or global failure)", "collection failure"],
+                  [{ suites: [], errors: [] }, null, null],
+                ];
+                for (const [fixture, title, message] of fixtures) {
+                  const found = findFailure(fixture);
+                  if ((found && found.title) !== title || (found && found.message) !== message) {
+                    throw new Error("aftersign failure-summary parser fixture failed");
+                  }
+                }
+
+                const found = findFailure(JSON.parse(fs.readFileSync("aftersign/playwright-report/results.json", "utf8")));
+                if (!found) {
+                  console.log("raw-log");
+                } else {
+                  console.log("failure");
+                  console.log(`spec: ${found.title}`);
+                  console.log("error:");
+                  console.log(found.message.split("\\n").slice(0, 20).join("\\n"));
+                }
+              ' 2>&1)"
+              if [ "${summary_kind%%$'\n'*}" = "failure" ]; then
+                echo "### first failing spec (from aftersign/playwright-report/results.json)"
+                echo '```'
+                printf '%s\n' "${summary_kind#*$'\n'}"
+                echo '```'
+              else
+                echo "(no usable error in aftersign/playwright-report/results.json; raw runner log tail below)"
+                if [ -f /tmp/aftersign-e2e-runner.log ]; then
+                  echo ""
+                  echo "### raw e2e runner log (last 80 lines)"
+                  echo '```'
+                  tail -n 80 /tmp/aftersign-e2e-runner.log
+                  echo '```'
+                else
+                  echo "(runner log not captured — the e2e step may not have started)"
+                fi
+              fi
             else
               echo "(aftersign/playwright-report/results.json not found — the json reporter in aftersign/playwright.config.ts should have written it; the run crashed BEFORE any spec ran, e.g. a webServer boot failure. Raw runner log tail below — #1065.)"
               if [ -f /tmp/aftersign-e2e-runner.log ]; then
