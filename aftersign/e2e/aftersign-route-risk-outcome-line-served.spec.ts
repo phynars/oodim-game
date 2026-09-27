@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
 
 // AFTERSIGN #1963 — route-outcome line rendered on the served page.
 //
@@ -73,6 +74,41 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
+async function snapshotRouteRisk(page: Page): Promise<{
+  lastRoute?: string;
+  succeeded?: boolean;
+} | null> {
+  return page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __game?: {
+            getSnapshot: () => {
+              player?: {
+                routeRisk?: { lastRoute?: string; succeeded?: boolean } | null;
+              };
+            };
+          };
+        }
+      ).__game?.getSnapshot().player?.routeRisk ?? null,
+  );
+}
+
+async function snapshotIoLine(page: Page): Promise<string | null> {
+  return page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __game?: {
+            getSnapshot: () => {
+              npcs: { io: { lastLine?: string | null } };
+            };
+          };
+        }
+      ).__game?.getSnapshot().npcs.io.lastLine ?? null,
+  );
+}
+
 test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#1963)", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -90,10 +126,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     await waitForReady(page);
 
     // 1. Funnel to packet-choice through the shipped tap surface.
-    await waitForBeat(page, "packet-offered");
-    await page.locator("#job-offer-job-safe-delivery").tap();
-    await page.locator("#packetButton").tap();
-    await waitForBeat(page, "packet-choice");
+    await reachPacketChoice(page);
 
     // 2. Tap the SAFE route action inside the route-risk tray. On a
     //    fresh boot (no prior routeRisk fact), computeOfferedActions
@@ -121,33 +154,13 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     // wire's branch guard `routeMemory && routeMemory.succeeded`
     // silently fails and we'd read the base line without the tap
     // ever having committed.
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () =>
-              (
-                window as unknown as {
-                  __game?: {
-                    getSnapshot: () => {
-                      player?: {
-                        routeRisk?: {
-                          lastRoute?: string;
-                          succeeded?: boolean;
-                        } | null;
-                      };
-                    };
-                  };
-                }
-              ).__game?.getSnapshot().player?.routeRisk ?? null),
-        { timeout: WAIT_MS },
-      )
-      .toEqual({ lastRoute: "safe", succeeded: true });
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({
+      lastRoute: "safe",
+      succeeded: true,
+    });
 
     // 3. Acknowledge the kiosk + deliver the packet.
-    await tapChoice(page, "acknowledge-kiosk");
-    await tapChoice(page, "deliver-packet");
-    await waitForBeat(page, "packet-delivered");
+    await deliverFromRouteChoice(page);
 
     // 4. Assert the shipped `#line` DOM node speaks the SAFE outcome
     //    literal verbatim, and is distinctly NOT the fresh
@@ -169,21 +182,55 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     // Cross-check against the snapshot so a future refactor that
     // splits the DOM writer from `lineForBeat` cannot let the two
     // views drift silently.
-    const snapshotLine = await page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __game?: {
-              getSnapshot: () => {
-                npcs: { io: { lastLine?: string | null } };
-              };
-            };
-          }
-        ).__game?.getSnapshot().npcs.io.lastLine ?? null,
-    );
     expect(
-      snapshotLine,
+      await snapshotIoLine(page),
       "snapshot lastLine must match the DOM #line — one axis, no drift",
     ).toBe(SAFE_OUTCOME_LINE);
+  });
+
+  test("tapping the FAST route action speaks the authored FAST outcome line at packet-delivered", async ({
+    page,
+  }) => {
+    test.setTimeout(COLD_START_MS);
+
+    const fastOutcomeLine = aftersignRouteOutcomeLine("fast");
+    expect(fastOutcomeLine, "FAST route must have authored outcome copy").not.toBeNull();
+
+    const slot = `route-outcome-fast-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForReady(page);
+    await reachPacketChoice(page);
+
+    const tray = page.locator("#routeRiskChoice");
+    await expect(
+      tray,
+      "route-risk tray must be visible at packet-choice for the FAST tap to land",
+    ).toHaveAttribute("data-visible", "true", { timeout: WAIT_MS });
+    const fastRouteButton = tray.locator(
+      'button[data-aftersign-tap-choice="take-the-shortcut"]:not([disabled])',
+    );
+    await expect(
+      fastRouteButton,
+      "the FAST route action button must be a real tappable element",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await fastRouteButton.tap();
+
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({
+      lastRoute: "fast",
+      succeeded: true,
+    });
+
+    await deliverFromRouteChoice(page);
+
+    const line = page.locator("#line");
+    await expect(line).toBeVisible({ timeout: WAIT_MS });
+    await expect(
+      line,
+      "#line must speak the authored FAST route-outcome line at packet-delivered",
+    ).toHaveText(fastOutcomeLine!, { timeout: WAIT_MS });
+    expect(
+      await snapshotIoLine(page),
+      "snapshot lastLine must match the FAST DOM #line — one axis, no drift",
+    ).toBe(fastOutcomeLine);
   });
 });
