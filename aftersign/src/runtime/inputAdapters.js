@@ -15,6 +15,7 @@ import {
   evaluatePacketChoiceGesture,
 } from "../../../apps/web/src/aftersign/packetChoiceFeel.ts";
 import { playPacketCancelFailureSting } from "../../../apps/web/src/aftersign/packetCancelFailureSting.js";
+import { readReturnReasonFromTarget } from "../returnToneReason.js";
 
 const prefersReducedMotionForCancelSting = (windowRef) => {
   try {
@@ -224,8 +225,11 @@ export const attachRuntimeInputAdapters = ({
   });
 
   acknowledgeRouteButton.addEventListener("click", () => {
-    const reasonFromAck = acknowledgeRouteButton.dataset.returnReason;
-    if (reasonFromAck && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromAck)) {
+    const reasonFromAck = readReturnReasonFromTarget(
+      acknowledgeRouteButton,
+      IO_RETURN_TONE_OPTIONS,
+    );
+    if (reasonFromAck) {
       state.player.returnReason = reasonFromAck;
       markStateDirty();
     }
@@ -237,8 +241,11 @@ export const attachRuntimeInputAdapters = ({
   });
 
   skipRouteButton.addEventListener("click", () => {
-    const reasonFromSkip = skipRouteButton.dataset.returnReason;
-    if (reasonFromSkip && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromSkip)) {
+    const reasonFromSkip = readReturnReasonFromTarget(
+      skipRouteButton,
+      IO_RETURN_TONE_OPTIONS,
+    );
+    if (reasonFromSkip) {
       state.player.returnReason = reasonFromSkip;
       markStateDirty();
     }
@@ -250,8 +257,11 @@ export const attachRuntimeInputAdapters = ({
   });
 
   deliverButton.addEventListener("click", () => {
-    const reasonFromDeliver = deliverButton.dataset.returnReason;
-    if (reasonFromDeliver && IO_RETURN_TONE_OPTIONS.some((o) => o.id === reasonFromDeliver)) {
+    const reasonFromDeliver = readReturnReasonFromTarget(
+      deliverButton,
+      IO_RETURN_TONE_OPTIONS,
+    );
+    if (reasonFromDeliver) {
       state.player.returnReason = reasonFromDeliver;
       markStateDirty();
     }
