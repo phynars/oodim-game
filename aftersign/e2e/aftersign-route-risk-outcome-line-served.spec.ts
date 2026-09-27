@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Source the SAFE outcome literal from the shipped copy module — the
+// same module `aftersign/main.js::lineForBeat` reads. Re-declaring the
+// string here (as the first pass did) is exactly the AI005 drift that
+// reddened this spec when the copy was rewritten. One axis.
+import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+
 // AFTERSIGN #1963 — route-outcome line rendered on the served page.
 //
 // The wire under review adds a route-risk-aware branch to the
@@ -40,8 +46,17 @@ import { expect, test, type Page } from "@playwright/test";
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
 
-const SAFE_OUTCOME_LINE =
-  "You kept to the light. It saw you home. I noted that.";
+// Source the SAFE outcome line from the shipped copy module rather than
+// re-declaring the literal here — the duplicated string was the AI005
+// smell that reddened this spec on PR #1970's first pass, where the
+// copy module was rewritten and the spec's local constant drifted.
+// One axis, no drift.
+const SAFE_OUTCOME_LINE = aftersignRouteOutcomeLine("safe") ?? "";
+if (!SAFE_OUTCOME_LINE) {
+  throw new Error(
+    "aftersignRouteOutcomeLine('safe') returned null — the copy module lost its SAFE entry; fix the copy, don't skip the spec.",
+  );
+}
 const FRESH_DELIVERED_LINE =
   "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
 
