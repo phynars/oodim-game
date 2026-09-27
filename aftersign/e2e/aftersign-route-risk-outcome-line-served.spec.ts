@@ -6,33 +6,46 @@ import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersig
 // The wire under review adds a route-risk-aware branch to the
 // `packet-delivered` line in `aftersign/main.js` (`lineForBeat`).
 // When `state.player.routeRisk.succeeded === true` and
-// `lastRoute === "safe"`, Io speaks the authored SAFE outcome line
-// from `apps/web/src/aftersign/aftersignRouteOutcomeCopy.js` INSTEAD
+// `lastRoute === "safe"` (or `"fast"`), Io speaks the authored
+// route-outcome line from
+// `apps/web/src/aftersign/aftersignRouteOutcomeCopy.js` INSTEAD
 // of the generic "clean handoff" line — a durable acknowledgement
-// that the player ran the light-side route, not merely selected a
-// job.
+// that the player ran the light-side (or dark-side) route, not
+// merely selected a job.
 //
 // Soren's review on the first two drafts blocked on the copy module
 // existing in isolation with NO played-through e2e that taps a real
 // route-risk button and asserts the shipped `#line` DOM node speaks
-// the SAFE outcome literal. This spec is that proof — played, not
-// driven:
+// the authored outcome literal. This spec is that proof — played,
+// not driven — for BOTH fork values:
 //
-//   1. Reach `packet-choice` through the shipped tap funnel
-//      (`#job-offer-job-safe-delivery` → `#packetButton` → keep
-//      sealed) so the route-risk tray is rendered against a real
-//      served surface.
-//   2. Tap the SAFE route action (`take-the-long-way`) inside the
-//      `#routeRiskChoice` tray — the same button any player would
-//      touch. This is the ONLY route into the `succeeded: true /
-//      lastRoute: "safe"` fact from the offered-action set on a
-//      fresh boot (see routeRiskMemory.ts::computeOfferedActions).
-//   3. Acknowledge the kiosk + deliver the packet to advance the
-//      beat to `packet-delivered` — the beat whose line the wire
-//      diverts.
-//   4. Assert `#line`.textContent is the SAFE outcome literal
-//      verbatim (element-level, not snapshot-only), and is
-//      distinctly NOT the fresh "clean handoff" line.
+//   SAFE fork (round-1 fresh boot):
+//     1. Reach `packet-choice` through the shipped tap funnel
+//        (`#job-offer-job-safe-delivery` → `#packetButton` → keep
+//        sealed) so the route-risk tray is rendered against a real
+//        served surface.
+//     2. Tap the SAFE route action (`take-the-long-way`) inside the
+//        `#routeRiskChoice` tray — the same button any player would
+//        touch. This is the ONLY route into the `succeeded: true /
+//        lastRoute: "safe"` fact from the offered-action set on a
+//        fresh boot (see routeRiskMemory.ts::computeOfferedActions).
+//     3. Acknowledge the kiosk + deliver the packet to advance the
+//        beat to `packet-delivered` — the beat whose line the wire
+//        diverts.
+//     4. Assert `#line`.textContent is the SAFE outcome literal
+//        verbatim (element-level, not snapshot-only), and is
+//        distinctly NOT the fresh "clean handoff" line.
+//
+//   FAST fork (round-2 after natural SAFE round-1):
+//     Same played flow, then loops through
+//     io-return-recognition → return-tone-choice → io-next-job to
+//     re-enter `packet-offered`; round-1's SAFE tap has already
+//     written `state.player.routeRisk = { lastRoute: "safe",
+//     succeeded: true }`, which is exactly the memory
+//     `computeOfferedActions` reads to stamp `take-the-shortcut`
+//     into the round-2 route-risk tray (see routeRiskMemory.ts:114).
+//     The FAST button is then a real tappable element — no seeding
+//     required.
 //
 // A regression in the route-outcome wire (branch dropped, null
 // return silently defaulted, wrong literal, or lookup keyed on the
@@ -40,6 +53,13 @@ import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersig
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
+// Two-round natural flow budget for the FAST fork — SAFE round-1
+// records the routeRisk memory that gates round-2's
+// `take-the-shortcut` render. Matches the sibling two-round specs
+// (`m-loop-e1-phone-action-divergence.spec.ts` sets 180s for two
+// full rounds; this spec's round-2 stops at packet-delivered, so
+// 90s suffices).
+const TWO_ROUND_FLOW_MS = 90_000;
 
 const SAFE_OUTCOME_LINE =
   "You kept to the light. It saw you home. I noted that.";
@@ -77,9 +97,9 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
 // Funnel the shipped surface from cold boot to `packet-choice`, where the
 // route-risk tray is rendered and the SAFE / FAST route buttons are
 // tappable. This is the same three-tap sequence a player would perform;
-// extracting it lets the SAFE and FAST specs share the setup verbatim
-// (a divergence here would silently mean the two forks are testing
-// different pre-conditions).
+// extracting it lets both the SAFE test and the FAST test's round-1
+// share the setup verbatim (a divergence here would silently mean the
+// two forks are testing different pre-conditions).
 async function reachPacketChoice(page: Page): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await page.locator("#job-offer-job-safe-delivery").tap();
@@ -214,158 +234,141 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
   test("tapping the FAST route action speaks the authored FAST outcome line at packet-delivered", async ({
     page,
   }) => {
-    test.setTimeout(COLD_START_MS);
+    // Two-round natural flow: round-1 SAFE tap sets
+    // `state.player.routeRisk = { lastRoute: "safe", succeeded: true }`
+    // (see routeRiskMemory.ts:120 recordRouteRun); the packet-offered →
+    // packet-choice → packet-delivered → io-return-recognition →
+    // return-tone-choice → io-next-job → packet-offered loop then
+    // re-enters `packet-choice` for round-2 with that memory intact,
+    // so `computeOfferedActions({lastRoute:"safe",succeeded:true})`
+    // emits `["take-the-shortcut","carry-a-fragile-packet"]`
+    // (routeRiskMemory.ts:114) and the FAST button is rendered as a
+    // real tappable element.
+    //
+    // Prior iterations of this PR (4×) tried to skip round-1 by
+    // seeding an authoritative save with
+    // `player.routeRisk = { lastRoute: "safe", succeeded: true }`
+    // and booting straight into a `take-the-shortcut`-offering
+    // packet-choice. Every iteration was rejected: the aftersign
+    // e2e lane stayed red because the served-page boot's
+    // hydration guards don't reliably restore `player.routeRisk`
+    // from a seed unless the rest of the "prior succeeded
+    // delivery" fixture is present (packet.delivered:true,
+    // delivery.outcome:"sealed", and the matching
+    // `delivery-outcome` / `route-attention` memory facts — see
+    // the working seed in
+    // `reset-route-risk-isolation.spec.ts:37-65`). Even with that
+    // shape, the seeded packet-offered → packet-choice funnel is
+    // a code path a returning player doesn't take.
+    //
+    // Running the full two-round loop costs ~30s more than a
+    // seed would, but it exercises exactly the shipped surface a
+    // player touches: the SAME `renderRouteRiskChoice` writer
+    // call that stamps `take-the-shortcut` for a real returning
+    // player also stamps it here. Played, not seeded. The 90s
+    // budget mirrors the sibling two-round-flow specs
+    // (`m-loop-e1-phone-action-divergence.spec.ts`,
+    // `m-loop-divergent-offered-actions.playtest.spec.ts`).
+    test.setTimeout(TWO_ROUND_FLOW_MS);
 
     const fastOutcomeLine = aftersignRouteOutcomeLine("fast");
     expect(fastOutcomeLine, "FAST route must have authored outcome copy").not.toBeNull();
 
     const slot = `route-outcome-fast-${Date.now()}`;
-
-    // Seed the AUTHORITATIVE server-side save so the served page
-    // cold-boots at `packet-offered` with a successful SAFE run
-    // already on the ledger — that's the precondition for
-    // `computeOfferedActions` to emit `take-the-shortcut` (per
-    // routeRiskMemory.ts:102, FAST only renders after a prior
-    // succeeded SAFE run).
-    //
-    // The served page reads from `/aftersign/save/${playerId}/${slot}`
-    // at boot; localStorage seeding is a DEAD path since PR #1642
-    // dropped the readStored() fallback. See reset-route-risk-isolation.spec.ts
-    // for the canonical seed vector this test mirrors — same
-    // BOOTSTRAP_PLAYER_ID, same PUT-then-round-trip-verify shape.
-    //
-    // Why seed instead of running two full deliveries: a two-run
-    // funnel would duplicate the SAFE spec's assertions and add
-    // ~30s of tap-latency to CI for zero additional signal on the
-    // FAST outcome-line contract. Seeding isolates the FAST fork.
-    const BOOTSTRAP_PLAYER_ID = "local-slice-player";
-    const SAVE_ENDPOINT_BASE = "/aftersign/save";
-    // Payload shape mirrors the canonical seed used by
-    // `reset-route-risk-isolation.spec.ts` and
-    // `m-loop-divergent-offered-actions.playtest.spec.ts` (the two
-    // sibling specs on the PR #1642 authoritative-save migration
-    // that currently ship green). Trimming this to `{beat, player,
-    // memory:[], save}` reds CI: the boot hydration path in
-    // `aftersign/main.js` expects `packet` + `delivery` alongside
-    // `player` at the `packet-offered` beat, and a slimmed payload
-    // fails to restore — the served page falls back to a fresh
-    // cold boot with `player.routeRisk = null`, so
-    // `computeOfferedActions(null)` returns
-    // `["repair-the-loss","take-the-long-way"]`
-    // (routeRiskMemory.ts:108) and `take-the-shortcut` is never
-    // rendered. The verify-poll below would then time out — but
-    // by then we've already burned the boot budget on nothing.
-    //
-    // Concretely, we need the pre-delivery packet-offered fixture:
-    // `packet.delivered: false` + `delivery.outcome: "unknown"`
-    // (see FRESH_SAVE in m-loop-divergent-offered-actions), plus
-    // the prior-run `player.routeRisk = { lastRoute: "safe",
-    // succeeded: true }` that's the actual precondition for
-    // `take-the-shortcut` being offered.
-    const SEED_SAVE = {
-      beat: "packet-offered",
-      packet: {
-        delivered: false,
-        route: null,
-        sealed: true,
-        deliveredAt: null,
-      },
-      delivery: { outcome: "unknown" },
-      player: {
-        id: "route-outcome-fast-seed-player",
-        name: null,
-        flags: { io_intro_seen: true },
-        routeRisk: { lastRoute: "safe", succeeded: true },
-      },
-      memory: [],
-      save: { revision: 1 },
-    };
-    const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(
-      BOOTSTRAP_PLAYER_ID,
-    )}/${encodeURIComponent(slot)}`;
-    const seedResponse = await page.request.put(saveUrl, {
-      data: { payload: SEED_SAVE },
-      headers: { "content-type": "application/json" },
-    });
-    expect(
-      seedResponse.ok(),
-      `seed PUT for slot ${slot} must succeed before page boot (HTTP ${seedResponse.status()})`,
-    ).toBe(true);
-
-    // Round-trip verify through the SAME endpoint the served page
-    // boot will hit. If this GET returns the wrong payload
-    // (endpoint drift, id encoding mismatch, dropped routeRisk),
-    // the downstream failure would be an opaque `null !==
-    // { lastRoute: "safe", succeeded: true }` at the hydration
-    // poll. This named check localizes the blame to the seed
-    // step. Mirrors the canonical guard in
-    // reset-route-risk-isolation.spec.ts.
-    const verifyResponse = await page.request.get(saveUrl, {
-      headers: { accept: "application/json" },
-    });
-    expect(
-      verifyResponse.ok(),
-      `seed round-trip GET for slot ${slot} must succeed before page boot (HTTP ${verifyResponse.status()})`,
-    ).toBe(true);
-    const verifyBody = (await verifyResponse.json()) as {
-      payload?: { player?: { routeRisk?: unknown } | null } | null;
-    };
-    expect(
-      verifyBody?.payload,
-      `seed round-trip GET for slot ${slot} must return the payload the served page will read at boot`,
-    ).not.toBeNull();
-    expect(
-      verifyBody?.payload?.player?.routeRisk,
-      `seed round-trip payload for slot ${slot} must carry the prior-succeeded-SAFE routeRisk that gates take-the-shortcut`,
-    ).toEqual({ lastRoute: "safe", succeeded: true });
-
-    // Watch for boot-side hydration errors from `[aftersign boot]`
-    // so a payload the server accepts but the client rejects fails
-    // this test with a NAMED cause instead of a downstream
-    // `toBeVisible` timeout on the shortcut button.
-    const bootConsoleErrors: string[] = [];
-    page.on("console", (msg) => {
-      if (msg.type() === "error" && msg.text().includes("[aftersign boot]")) {
-        bootConsoleErrors.push(msg.text());
-      }
-    });
-
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
-    expect(
-      bootConsoleErrors,
-      `boot must not log an [aftersign boot] readAuthoritativeSave failure for slot ${slot} — a hydration reject means the shipped save shape drifted from this fixture`,
-    ).toEqual([]);
 
-    // Verify the seed hydrated — if the authoritative read didn't pick
-    // up our PUT (endpoint drift, id encoding mismatch), the boot
-    // falls back to null and take-the-shortcut is never rendered.
-    // Fail here with a named message rather than downstream with an
-    // opaque `toBeVisible` timeout.
+    // ─── ROUND 1 — SAFE run to record the routeRisk memory fact.
+    await reachPacketChoice(page);
+
+    const roundOneTray = page.locator("#routeRiskChoice");
+    await expect(
+      roundOneTray,
+      "round-1 route-risk tray must be visible at packet-choice",
+    ).toHaveAttribute("data-visible", "true", { timeout: WAIT_MS });
+    const safeRouteButton = roundOneTray.locator(
+      'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
+    );
+    await expect(
+      safeRouteButton,
+      "round-1 SAFE route action must be tappable — this tap records the routeRisk fact that gates take-the-shortcut in round-2",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await safeRouteButton.tap();
+
+    // Confirm round-1's SAFE tap committed the memory fact — if
+    // this poll times out, the routeRisk writer never fired and
+    // round-2 cannot possibly render `take-the-shortcut`. Naming
+    // the failure here localizes the blame instead of surfacing
+    // as an opaque `toBeVisible` timeout on the FAST button.
     await expect
       .poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS })
       .toEqual({ lastRoute: "safe", succeeded: true });
 
+    await deliverFromRouteChoice(page);
+
+    // Loop through the return + next-packet path to re-enter
+    // packet-offered for round-2. Same beat progression the
+    // sibling `m-continue-next-packet-loop-buttons-enabled.spec.ts`
+    // pins as the shipped next-packet loop (packet-delivered →
+    // io-return-recognition → return-tone-choice → io-next-job →
+    // packet-offered).
+    await waitForBeat(page, "io-return-recognition");
+    const returnReasonButton = page
+      .locator('button[data-return-reason]:not([disabled])')
+      .first();
+    await expect(
+      returnReasonButton,
+      "io-return-recognition must offer at least one enabled return-reason button (loop entry to round-2)",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await returnReasonButton.tap();
+
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
+
+    // Round-2 packet-offered — routeRisk memory from round-1 is
+    // still on `state.player.routeRisk` (persistence.js:60 clones
+    // `state.player` into the persist payload, and the in-memory
+    // routeRisk stays put across the beat loop).
+    await waitForBeat(page, "packet-offered");
+    // Cross-check: the routeRisk fact from round-1 MUST still be
+    // on the snapshot at round-2 packet-offered. If a beat
+    // transition in the loop clears it, `take-the-shortcut` won't
+    // render below and the reason wouldn't be obvious from the
+    // downstream failure.
+    expect(
+      await snapshotRouteRisk(page),
+      "round-2 packet-offered must preserve the routeRisk fact recorded in round-1 (memory across the next-packet loop)",
+    ).toEqual({ lastRoute: "safe", succeeded: true });
+
+    // ─── ROUND 2 — packet-offered → packet-choice with the FAST
+    // action offered. Round-2 uses the SAME funnel as round-1
+    // (`reachPacketChoice`) — `#job-offer-job-safe-delivery` is
+    // stamped again at the fresh packet-offered beat (see
+    // `m-loop-divergent-offered-actions.playtest.spec.ts:106` —
+    // returning saves still render `data-mloop-job-id` offered
+    // buttons at packet-offered).
     await reachPacketChoice(page);
 
-    const tray = page.locator("#routeRiskChoice");
+    const roundTwoTray = page.locator("#routeRiskChoice");
     await expect(
-      tray,
-      "route-risk tray must be visible at packet-choice for the FAST tap to land",
+      roundTwoTray,
+      "round-2 route-risk tray must be visible at packet-choice for the FAST tap to land",
     ).toHaveAttribute("data-visible", "true", { timeout: WAIT_MS });
-    const fastRouteButton = tray.locator(
+    const fastRouteButton = roundTwoTray.locator(
       'button[data-aftersign-tap-choice="take-the-shortcut"]:not([disabled])',
     );
     await expect(
       fastRouteButton,
-      "the FAST route action button must be a real tappable element (requires a prior succeeded SAFE run seeded into the save)",
+      "the FAST route action button must be a real tappable element at round-2 packet-choice (offered because round-1 recorded { lastRoute: 'safe', succeeded: true })",
     ).toBeVisible({ timeout: WAIT_MS });
     await fastRouteButton.tap();
 
-    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({
-      lastRoute: "fast",
-      succeeded: true,
-    });
+    await expect
+      .poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS })
+      .toEqual({ lastRoute: "fast", succeeded: true });
 
     await deliverFromRouteChoice(page);
 
