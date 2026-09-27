@@ -240,8 +240,37 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     // FAST outcome-line contract. Seeding isolates the FAST fork.
     const BOOTSTRAP_PLAYER_ID = "local-slice-player";
     const SAVE_ENDPOINT_BASE = "/aftersign/save";
+    // Payload shape mirrors the canonical seed used by
+    // `reset-route-risk-isolation.spec.ts` and
+    // `m-loop-divergent-offered-actions.playtest.spec.ts` (the two
+    // sibling specs on the PR #1642 authoritative-save migration
+    // that currently ship green). Trimming this to `{beat, player,
+    // memory:[], save}` reds CI: the boot hydration path in
+    // `aftersign/main.js` expects `packet` + `delivery` alongside
+    // `player` at the `packet-offered` beat, and a slimmed payload
+    // fails to restore — the served page falls back to a fresh
+    // cold boot with `player.routeRisk = null`, so
+    // `computeOfferedActions(null)` returns
+    // `["repair-the-loss","take-the-long-way"]`
+    // (routeRiskMemory.ts:108) and `take-the-shortcut` is never
+    // rendered. The verify-poll below would then time out — but
+    // by then we've already burned the boot budget on nothing.
+    //
+    // Concretely, we need the pre-delivery packet-offered fixture:
+    // `packet.delivered: false` + `delivery.outcome: "unknown"`
+    // (see FRESH_SAVE in m-loop-divergent-offered-actions), plus
+    // the prior-run `player.routeRisk = { lastRoute: "safe",
+    // succeeded: true }` that's the actual precondition for
+    // `take-the-shortcut` being offered.
     const SEED_SAVE = {
       beat: "packet-offered",
+      packet: {
+        delivered: false,
+        route: null,
+        sealed: true,
+        deliveredAt: null,
+      },
+      delivery: { outcome: "unknown" },
       player: {
         id: "route-outcome-fast-seed-player",
         name: null,
@@ -263,8 +292,50 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
       `seed PUT for slot ${slot} must succeed before page boot (HTTP ${seedResponse.status()})`,
     ).toBe(true);
 
+    // Round-trip verify through the SAME endpoint the served page
+    // boot will hit. If this GET returns the wrong payload
+    // (endpoint drift, id encoding mismatch, dropped routeRisk),
+    // the downstream failure would be an opaque `null !==
+    // { lastRoute: "safe", succeeded: true }` at the hydration
+    // poll. This named check localizes the blame to the seed
+    // step. Mirrors the canonical guard in
+    // reset-route-risk-isolation.spec.ts.
+    const verifyResponse = await page.request.get(saveUrl, {
+      headers: { accept: "application/json" },
+    });
+    expect(
+      verifyResponse.ok(),
+      `seed round-trip GET for slot ${slot} must succeed before page boot (HTTP ${verifyResponse.status()})`,
+    ).toBe(true);
+    const verifyBody = (await verifyResponse.json()) as {
+      payload?: { player?: { routeRisk?: unknown } | null } | null;
+    };
+    expect(
+      verifyBody?.payload,
+      `seed round-trip GET for slot ${slot} must return the payload the served page will read at boot`,
+    ).not.toBeNull();
+    expect(
+      verifyBody?.payload?.player?.routeRisk,
+      `seed round-trip payload for slot ${slot} must carry the prior-succeeded-SAFE routeRisk that gates take-the-shortcut`,
+    ).toEqual({ lastRoute: "safe", succeeded: true });
+
+    // Watch for boot-side hydration errors from `[aftersign boot]`
+    // so a payload the server accepts but the client rejects fails
+    // this test with a NAMED cause instead of a downstream
+    // `toBeVisible` timeout on the shortcut button.
+    const bootConsoleErrors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error" && msg.text().includes("[aftersign boot]")) {
+        bootConsoleErrors.push(msg.text());
+      }
+    });
+
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
+    expect(
+      bootConsoleErrors,
+      `boot must not log an [aftersign boot] readAuthoritativeSave failure for slot ${slot} — a hydration reject means the shipped save shape drifted from this fixture`,
+    ).toEqual([]);
 
     // Verify the seed hydrated — if the authoritative read didn't pick
     // up our PUT (endpoint drift, id encoding mismatch), the boot
