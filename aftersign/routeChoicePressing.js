@@ -15,53 +15,64 @@
 // and schedule a restore via `setTimeout(hold-ms)` so the CSS rule
 // for the pressing marker
 // (see `#routeChoice button[data-aftersign-route-choice-press="pressing"]`
-// in `index.html`) paints the compressed + lifted transform for the
+// in `index.html`) paints the compressed + sunk transform for the
 // full hold window — a press-juice probe or a real player's eye
 // lands INSIDE the compressed envelope regardless of finger contact
 // duration.
 //
 // SOURCE OF TRUTH — the four numeric constants (scale 0.972, lift 1px,
 // hold-ms 96, easing cubic-bezier(.2,.8,.2,1)) live in ONE place:
-// the :root CSS variables authored on `#aftersign/index.html`
-// (--aftersign-route-choice-press-*). The typed contract module
-// `aftersign/src/routeChoicePressFeedback.ts` mirrors those numbers
-// (ROUTE_CHOICE_PRESS_SCALE, ROUTE_CHOICE_PRESS_LIFT_PX,
-// ROUTE_CHOICE_PRESS_OUT_MS) and its pure-runner-registered check
-// (`runRouteChoicePressFeedbackChecks`, wired in
-// `aftersign/pure-runner.ts`) reds the CI lane if the TS constants
-// drift from the shipped CSS values. This file inlines only the
-// FALLBACK (used if the CSS var is missing / unparseable) and reads
-// the hold-ms from getComputedStyle so an edit to the :root var
-// re-times the shipped surface without touching this file.
-//
-// Prior-value restore: the two route-choice buttons carry a
-// `data-aftersign-tap-choice` attribute but no per-button state
-// stored on `data-aftersign-route-choice-press` — the marker exists
-// ONLY for the press window, then is removed. This mirrors
-// packetOfferPressing.js's absence-is-the-prior discipline.
-//
-// Same-id replacement: `#acknowledgeRouteButton` and
-// `#skipRouteButton` are fixed elements in `index.html` (not
-// re-rendered under a parent tray the way job offers are), so no
-// inFlight map is needed. A future refactor that re-renders them
-// should mirror `jobOfferPressing.js`'s WeakSet + MutationObserver
-// hook.
+// the :root CSS variables authored on `#aftersign/index.html`.
+// `routeChoicePressFeedback.ts` mirrors those numbers and its
+// pure-runner-registered served contract check reds the CI lane if the
+// CSS values drift. This module reads the computed values and only
+// carries defensive fallbacks.
 
 const FALLBACK_HOLD_MS = 96;
+const FALLBACK_SCALE = 0.972;
+const FALLBACK_LIFT_PX = 1;
 const ROUTE_CHOICE_BUTTON_SELECTOR =
   "#routeChoice button#acknowledgeRouteButton, #routeChoice button#skipRouteButton";
 const attachedButtons = new WeakSet();
 
+function resolvePositiveNumber(button, propertyName, fallback) {
+  const raw = getComputedStyle(button).getPropertyValue(propertyName).trim();
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 function resolveHoldMs(button) {
-  // Read from the computed CSS (--aftersign-route-choice-press-hold-ms
-  // is authored on :root in index.html). getPropertyValue on inline
-  // style returns "" for :root vars; use getComputedStyle so the
-  // cascade resolves it. Same shape as packetOfferPressing.js.
-  const raw = getComputedStyle(button)
-    .getPropertyValue("--aftersign-route-choice-press-hold-ms")
-    .trim();
-  const holdMs = Number.parseFloat(raw);
-  return Number.isFinite(holdMs) && holdMs > 0 ? holdMs : FALLBACK_HOLD_MS;
+  return resolvePositiveNumber(
+    button,
+    "--aftersign-route-choice-press-hold-ms",
+    FALLBACK_HOLD_MS,
+  );
+}
+
+function prefersReducedMotion() {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function stampPressedTransform(button) {
+  // The class rule is the ordinary paint path. This inline stamp is its
+  // belt-and-suspenders counterpart: a one-tap commit can synchronously
+  // change dialogue visibility, so writing the resolved transform before
+  // that work ensures the player gets one settled compression frame.
+  if (prefersReducedMotion()) return;
+  const scale = resolvePositiveNumber(
+    button,
+    "--aftersign-route-choice-press-scale-from",
+    FALLBACK_SCALE,
+  );
+  const liftPx = resolvePositiveNumber(
+    button,
+    "--aftersign-route-choice-press-lift-px",
+    FALLBACK_LIFT_PX,
+  );
+  button.style.transform = `translateY(${liftPx}px) scale(${scale})`;
 }
 
 function armPressing(button) {
@@ -75,6 +86,7 @@ function armPressing(button) {
 
   const holdMs = resolveHoldMs(button);
   button.setAttribute("data-aftersign-route-choice-press", "pressing");
+  stampPressedTransform(button);
 
   window.setTimeout(() => {
     // Only clear if we're still the ones holding the marker. A future
@@ -85,6 +97,10 @@ function armPressing(button) {
     ) {
       button.removeAttribute("data-aftersign-route-choice-press");
     }
+    // Hand the release back to the authored CSS transition. This must
+    // happen after marker removal so the return path eases from the
+    // actual pressed geometry rather than snapping to identity.
+    button.style.transform = "";
   }, holdMs);
 }
 
