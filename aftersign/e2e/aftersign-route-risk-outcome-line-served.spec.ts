@@ -220,8 +220,61 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     expect(fastOutcomeLine, "FAST route must have authored outcome copy").not.toBeNull();
 
     const slot = `route-outcome-fast-${Date.now()}`;
+
+    // Seed the AUTHORITATIVE server-side save so the served page
+    // cold-boots at `packet-offered` with a successful SAFE run
+    // already on the ledger — that's the precondition for
+    // `computeOfferedActions` to emit `take-the-shortcut` (per
+    // routeRiskMemory.ts:102, FAST only renders after a prior
+    // succeeded SAFE run).
+    //
+    // The served page reads from `/aftersign/save/${playerId}/${slot}`
+    // at boot; localStorage seeding is a DEAD path since PR #1642
+    // dropped the readStored() fallback. See reset-route-risk-isolation.spec.ts
+    // for the canonical seed vector this test mirrors — same
+    // BOOTSTRAP_PLAYER_ID, same PUT-then-round-trip-verify shape.
+    //
+    // Why seed instead of running two full deliveries: a two-run
+    // funnel would duplicate the SAFE spec's assertions and add
+    // ~30s of tap-latency to CI for zero additional signal on the
+    // FAST outcome-line contract. Seeding isolates the FAST fork.
+    const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+    const SAVE_ENDPOINT_BASE = "/aftersign/save";
+    const SEED_SAVE = {
+      beat: "packet-offered",
+      player: {
+        id: "route-outcome-fast-seed-player",
+        name: null,
+        flags: { io_intro_seen: true },
+        routeRisk: { lastRoute: "safe", succeeded: true },
+      },
+      memory: [],
+      save: { revision: 1 },
+    };
+    const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(
+      BOOTSTRAP_PLAYER_ID,
+    )}/${encodeURIComponent(slot)}`;
+    const seedResponse = await page.request.put(saveUrl, {
+      data: { payload: SEED_SAVE },
+      headers: { "content-type": "application/json" },
+    });
+    expect(
+      seedResponse.ok(),
+      `seed PUT for slot ${slot} must succeed before page boot (HTTP ${seedResponse.status()})`,
+    ).toBe(true);
+
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
+
+    // Verify the seed hydrated — if the authoritative read didn't pick
+    // up our PUT (endpoint drift, id encoding mismatch), the boot
+    // falls back to null and take-the-shortcut is never rendered.
+    // Fail here with a named message rather than downstream with an
+    // opaque `toBeVisible` timeout.
+    await expect
+      .poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS })
+      .toEqual({ lastRoute: "safe", succeeded: true });
+
     await reachPacketChoice(page);
 
     const tray = page.locator("#routeRiskChoice");
@@ -234,7 +287,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line — safe fork (#196
     );
     await expect(
       fastRouteButton,
-      "the FAST route action button must be a real tappable element",
+      "the FAST route action button must be a real tappable element (requires a prior succeeded SAFE run seeded into the save)",
     ).toBeVisible({ timeout: WAIT_MS });
     await fastRouteButton.tap();
 
