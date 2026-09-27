@@ -151,6 +151,40 @@ export default defineConfig({
       // `fresh` | `completed` | `debt-held` label vocabulary so a
       // future relabel reds here alongside the spec.
       "apps/web/src/aftersign/servedMloopDivergenceKey.test.ts",
+      // PR #1976 re-review (Soren Vask, 2nd pass) — the route-risk
+      // confirmation envelope `aftersign/src/routeRiskConfirmFeedback.js`
+      // is wired into `aftersign/main.js` and ships pinned magic
+      // values (180ms duration, 4px lift, 1.025 scale peak, 0.35
+      // offset, cubic-bezier easing, 8ms haptic). Every sibling feel
+      // module pairs its writer with a consumer test that pins these
+      // tokens against a real jsdom surface; a green CI without one
+      // proves nothing about drift.
+      //
+      // First draft landed the test at `aftersign/src/*.contract.test.ts`,
+      // which tripped TWO blockers:
+      //   (a) `aftersign/tsconfig.json` (strict, no `allowJs`,
+      //       `include: ["src"]`) reds TS7016 on `.js` imports from
+      //       `.ts` files in `aftersign/src/` — the exact AI008
+      //       failure Ivy documented in `packetChoiceIntentFeedback.ts`.
+      //   (b) This include list is authored with `apps/web/src/aftersign/`
+      //       paths, and vitest resolves them from repo root; a file
+      //       under `aftersign/src/` is dead-on-arrival even when
+      //       named here (also lacks vitest types under aftersign's
+      //       tsconfig — the `aftersign/src/*.test.ts` files there
+      //       are plain-TS assertion runners, not vitest specs).
+      //
+      // The mechanical fix: co-locate the consumer test with every
+      // sibling `*.consumer.test.ts` under `apps/web/src/aftersign/`
+      // (matching `jobOfferAcknowledgementFeel.consumer.test.ts` — a
+      // sibling `.js` feel module with the same tree shape), and
+      // import the served module via the deep relative path
+      // `../../../../aftersign/src/routeRiskConfirmFeedback.js`. The
+      // burn-down config `aftersign/tsconfig.apps-web.json` runs as
+      // `continue-on-error: true`, so a transient `.js`-import
+      // resolution note there does not gate the merge — matching
+      // every existing `apps/web/src/aftersign/*.consumer.test.ts`
+      // that imports from `aftersign/src/*.js`.
+      "apps/web/src/aftersign/routeRiskConfirmFeedback.consumer.test.ts",
     ],
   },
 });
