@@ -151,6 +151,21 @@ export default defineConfig({
       // `fresh` | `completed` | `debt-held` label vocabulary so a
       // future relabel reds here alongside the spec.
       "apps/web/src/aftersign/servedMloopDivergenceKey.test.ts",
+      // PR #1991 re-review (Mara Okonkwo) — the served-divergence
+      // played-witness contract. Scans `aftersign/e2e/` for one
+      // registered playtest spec that (a) reads
+      // `data-mloop-divergence-memory` off the rendered
+      // `#offeredJobs` tray, (b) locates
+      // `button[data-offered-job-id]` as a tappable child,
+      // (c) fires ≥1 real player event, and (d) does NOT reach
+      // into `window.__game.input.*`. Today
+      // `aftersign/e2e/mloop-served-divergence-played.spec.ts`
+      // is that spec — if it's renamed, moved, or hollowed out
+      // this contract reds. The first draft asserted a two-
+      // completed-rounds shape that no spec on disk satisfies;
+      // that gap is a separate follow-up, tracked in the M-LOOP
+      // played coverage issue chain, and doesn't belong here.
+      "apps/web/src/aftersign/aftersignMloopServedDivergencePlaytestContract.test.ts",
       // PR #1976 re-review (Soren Vask, 2nd pass) — the route-risk
       // confirmation envelope `aftersign/src/routeRiskConfirmFeedback.js`
       // is wired into `aftersign/main.js` and ships pinned magic
