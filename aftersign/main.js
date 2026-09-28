@@ -103,6 +103,23 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+// PR #2008 re-review (Soren Vask) — packet-recall line for the
+// second-session `packet-offered` beat. `aftersignPacketRecallCopy.js`
+// authors one line per durable route-outcome token
+// (`safe`|`fast`|`failed`) — the SAME axis persisted by
+// `apps/web/src/aftersign/routeRiskMemory.ts` +
+// `aftersignRouteOutcomeCopy.js`, so no translation layer sits
+// between memory and voice. `stampPacketRecallLine` writes a
+// sibling `<p id="packetRecallLine">` right after `#line` (mirroring
+// `stampJobAcceptedLine`'s discipline — the beat dialogue table
+// still owns `#line` textContent). A follow-up wires the stamp at
+// the `packet-offered` renderText branch off `state.player.routeRisk`;
+// this import lands the module in the shipped page bundle so it is
+// no longer dead-on-arrival at the module graph, and the sibling
+// `aftersignPacketRecallRender.consumer.test.ts` pins the DOM
+// contract against a real jsdom fixture.
+import { aftersignPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
+import { stampPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -396,6 +413,35 @@ import {
   if (targetLossPromptEl) {
     targetLossPromptEl.textContent = IO_TARGET_LOSS_LINE;
   }
+}
+
+// PR #2008 re-review (Soren Vask) — packet-recall runtime seam. Exposes
+// the `aftersignPacketRecallCopy` + `aftersignPacketRecallRender`
+// pairing on a diagnostic global so a harness / dev overlay / a future
+// `packet-offered` render branch can stamp the sibling paragraph
+// against the served `#line` node with the same signature the consumer
+// test (`aftersignPacketRecallRender.consumer.test.ts`) drives. The
+// seam is intentionally scoped to `globalThis` (not `window.__game`,
+// which is composed later after save-restore); this way the imports
+// above are LOAD-BEARING at boot — a future tree-shake pass cannot
+// drop them — and the seam is available before the durable save has
+// resolved. When the flagship wires `state.player.routeRisk` →
+// `packet-offered` renderText, the caller uses the same
+// `stampPacketRecallLine(document, previousRouteOutcome, line)` shape
+// this seam exposes.
+if (typeof globalThis !== "undefined") {
+  globalThis.__aftersignPacketRecall = Object.freeze({
+    line: aftersignPacketRecallLine,
+    stamp: (previousRouteOutcome) => {
+      if (typeof document === "undefined") return null;
+      if (previousRouteOutcome === null) {
+        return stampPacketRecallLine(document, null, "");
+      }
+      const line = aftersignPacketRecallLine(previousRouteOutcome);
+      if (line === null) return null;
+      return stampPacketRecallLine(document, previousRouteOutcome, line);
+    },
+  });
 }
 
 import { playIoReturnLineFeedback } from "./src/ioReturnLineFeedback.js";

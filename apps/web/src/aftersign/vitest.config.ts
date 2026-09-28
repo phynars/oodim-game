@@ -76,6 +76,17 @@ export default defineConfig({
       // player-visible evidence, not an assertion against an untouched
       // `#line`.
       "apps/web/src/aftersign/aftersignJobAcceptedRender.consumer.test.ts",
+      // PR #2008 re-review (Soren Vask) — packet-recall consumer test.
+      // The first draft shipped `aftersignPacketRecallCopy.js` with
+      // zero importers AND an invented `careful` token that didn't
+      // match the durable `safe`|`fast`|`failed` axis. This bundle
+      // fixes both: the writer `aftersignPacketRecallRender.ts`
+      // stamps a sibling `<p id="packetRecallLine">` next to the
+      // served `#line` paragraph, the copy table shares the exact
+      // route-outcome axis as `aftersignRouteOutcomeCopy.js`, and
+      // this consumer test pins the token vocabulary AND the DOM
+      // contract against a served-shape fragment.
+      "apps/web/src/aftersign/aftersignPacketRecallRender.consumer.test.ts",
       // PR #1890 re-review (Soren Vask) — the offer-choice acknowledgement
       // wrapper `aftersign/src/jobOfferChoiceFeedback.js` delegates to
       // the shipped `ioJobOfferActionFeel` writer + toggles the shipped
