@@ -43,23 +43,23 @@
 // never renders template-token leakage.
 const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
   "job-safe-delivery":
-    "The lit stair, then. Keep the seal closed. I will keep the return open.",
+    "The lit stair, then. Keep the seal closed. I will remember you as careful.",
   "job-sealed-return":
-    "Take it back sealed. If the box refuses it, bring the refusal to me.",
+    "Take it back sealed. If the box refuses it, bring the refusal to me. I remember who kept faith.",
   "job-private-ledger":
-    "A private ledger leaves no clean hands. Bring yours back. I keep accounts.",
+    "A private ledger leaves no clean hands. Bring yours back. I remember what you chose to carry.",
   "job-night-transfer":
-    "Cross after the bell. Do not mistake the quiet for permission.",
+    "Cross after the bell. Do not mistake the quiet for permission. I will remember you took the dark.",
   "job-signed-receipt":
-    "Get it in ink. A promise is lighter when someone has to carry it.",
+    "Get it in ink. A promise is lighter when someone has to carry it. I remember who made it answer.",
   "job-low-risk-errand":
-    "Stay where the light can find you. Bring back what it lets you keep.",
+    "Stay where the light can find you. Bring back what it lets you keep. I remember caution.",
   "job-redemption-route":
-    "Pay it back. The account is still open because I left it open.",
+    "Pay it back. The account is still open because I left it open. I remember who returned.",
 });
 
 const DEFAULT_LINE =
-  "Take the job. Keep the return open — I will be here when it comes back.";
+  "Take the job. Keep the return open — I will remember what you bring back.";
 
 export const AFTERSIGN_JOB_ACCEPTED_COPY = JOB_ACCEPTED_LINE_BY_JOB_ID;
 
