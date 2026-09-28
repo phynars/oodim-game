@@ -61,9 +61,22 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
       "data-mloop-divergence-memory",
     );
     await expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
-    const secondRoundJob = secondRoundTray.locator("button[data-offered-job-id]");
-    await expect(secondRoundJob).toHaveText("Night transfer · medium risk");
-    await secondRoundJob.tap();
+    // The completed branch renders TWO offered-job buttons
+    // (`job-night-transfer` + `job-signed-receipt`, see
+    // `COMPLETED_JOB_IDS` in packages/aftersign/src/computeOfferedJobs.ts),
+    // so the general `button[data-offered-job-id]` locator matches both
+    // — asserting `.toHaveText` on it strict-mode-fails. Keep the tray-
+    // scoped general locator to prove branch shape (count === 2, and
+    // satisfies the served-divergence contract's ≥ 2 offered-button
+    // locator budget), then narrow to the specific `job-night-transfer`
+    // id for the label assertion + tap.
+    const secondRoundJobs = secondRoundTray.locator("button[data-offered-job-id]");
+    await expect(secondRoundJobs).toHaveCount(2);
+    const secondRoundNightTransfer = secondRoundTray.locator(
+      'button[data-offered-job-id="job-night-transfer"]',
+    );
+    await expect(secondRoundNightTransfer).toHaveText("Night transfer · medium risk");
+    await secondRoundNightTransfer.tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
     await tapChoice(page, "acknowledge-kiosk");
