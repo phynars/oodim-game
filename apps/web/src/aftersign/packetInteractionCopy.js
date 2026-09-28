@@ -12,8 +12,8 @@
 export const AFTERSIGN_PACKET_BUTTON_COPY = Object.freeze({
   idleLabel: "Blue packet",
   idleHint: "Tap to keep the seal. Hold and pull to break it.",
-  sealedResult: "Seal intact. Io can risk wider work.",
-  openedResult: "Seal broken. Io can still use you. Not the same way.",
+  sealedResult: "Seal intact. Io will remember you kept it that way.",
+  openedResult: "Seal broken. Io will remember the wax on your hands.",
 });
 
 const PACKET_BUTTON_ID = "packetButton";
