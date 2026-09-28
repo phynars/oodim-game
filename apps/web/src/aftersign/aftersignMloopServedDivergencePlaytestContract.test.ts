@@ -102,8 +102,18 @@ function stripCommentsAndStrings(source: string): string {
 }
 
 function count(pattern: RegExp, source: string): number {
-  pattern.lastIndex = 0;
-  return [...source.matchAll(pattern)].length;
+  // `String.prototype.matchAll` throws on non-global RegExps. Several of
+  // the patterns above are authored without the `g` flag because they
+  // are also used with `.test(...)`; clone them here with `g` added so
+  // this helper accepts either shape without mutating the original.
+  const globalPattern = pattern.global
+    ? pattern
+    : new RegExp(
+        pattern.source,
+        pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
+      );
+  globalPattern.lastIndex = 0;
+  return [...source.matchAll(globalPattern)].length;
 }
 
 describe("AFTERSIGN M-LOOP served-divergence played-witness contract", () => {
