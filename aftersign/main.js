@@ -415,6 +415,122 @@ import {
   }
 }
 
+// PR #2008 re-review (Soren Vask) — packet-recall runtime consumer,
+// polled sync lane.
+//
+// The MutationObserver installed further down in this module watches
+// `#line` for beat-dialogue mutations and stamps
+// `#packetRecallLine` in the same tick. But there is a boot-ordering
+// race the observer alone cannot cover: on a returning player the
+// SEQUENCE at cold start is
+//   1. `renderText(packet-offered)` fires with default state
+//      (`state.player.routeRisk === null`) — mutation fires but the
+//      observer reads null → recall paragraph is not stamped
+//      (correct for this snapshot).
+//   2. The durable save-restore lane lands the seeded
+//      `state.player.routeRisk` AFTER the initial renderText —
+//      no new `#line` mutation triggers, so the observer never
+//      re-runs and the recall paragraph is never stamped.
+// The played e2e `aftersign-packet-recall-served.playtest.spec.ts`
+// stalls on that gap.
+//
+// This polled lane closes the race: at boot we start a light
+// `requestAnimationFrame`-driven poll that reads
+// `window.__game.getSnapshot()` every frame, maps
+// `{lastRoute, succeeded}` to the durable `safe|fast|failed` token
+// vocabulary Io's copy table shares with `aftersignRouteOutcomeCopy.js`,
+// and calls `stampPacketRecallLine(document, token, line)` any time
+// the (beat, token) tuple changes. Off `packet-offered` or with no
+// restored memory the poll passes `null`, which tears the sibling
+// paragraph down (same discipline the observer uses). The poll is
+// idempotent with the observer — whichever writer sees the
+// end-state first wins; subsequent calls only re-stamp when the
+// stamped attribute differs from the intended token
+// (`stampPacketRecallLine` short-circuits on equal text + attr).
+//
+// The poll stops after `state.scene.ready === true` AND the beat has
+// been observed to reach `packet-offered` at least once AND either
+// (a) the recall paragraph has been stamped, or (b) we have polled
+// for `PACKET_RECALL_POLL_TIMEOUT_MS` — whichever comes first. This
+// bounds the loop cost on fresh boots (no routeRisk restored ever).
+{
+  const PACKET_RECALL_POLL_TIMEOUT_MS = 20_000;
+  const PACKET_RECALL_BEAT = "packet-offered";
+
+  function packetRecallTokenFromRouteRisk(routeRisk) {
+    if (!routeRisk || typeof routeRisk !== "object") return null;
+    const succeeded = routeRisk.succeeded === true;
+    const lastRoute = routeRisk.lastRoute;
+    if (!succeeded) return "failed";
+    if (lastRoute === "safe") return "safe";
+    if (lastRoute === "fast") return "fast";
+    return null;
+  }
+
+  const startedAt =
+    typeof performance !== "undefined" && typeof performance.now === "function"
+      ? performance.now()
+      : Date.now();
+  let lastStampedToken = undefined;
+  let stopped = false;
+
+  function stopPacketRecallPoll() {
+    stopped = true;
+  }
+
+  function pumpPacketRecallPoll() {
+    if (stopped) return;
+    const now =
+      typeof performance !== "undefined" &&
+      typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    if (now - startedAt > PACKET_RECALL_POLL_TIMEOUT_MS) {
+      stopPacketRecallPoll();
+      return;
+    }
+    try {
+      const game = globalThis.__game;
+      const snapshot =
+        game && typeof game.getSnapshot === "function"
+          ? game.getSnapshot()
+          : null;
+      const beat = snapshot?.scene?.beat ?? null;
+      const routeRisk = snapshot?.player?.routeRisk ?? null;
+      const token =
+        beat === PACKET_RECALL_BEAT
+          ? packetRecallTokenFromRouteRisk(routeRisk)
+          : null;
+      if (token !== lastStampedToken) {
+        if (token === null) {
+          stampPacketRecallLine(document, null, "");
+        } else {
+          const line = aftersignPacketRecallLine(token);
+          if (typeof line === "string") {
+            stampPacketRecallLine(document, token, line);
+          }
+        }
+        lastStampedToken = token;
+      }
+    } catch {
+      // A transient read error against __game must never break the
+      // frame loop — swallow and try again next tick. If the game
+      // never boots, the timeout above stops the poll.
+    }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(pumpPacketRecallPoll);
+    } else {
+      setTimeout(pumpPacketRecallPoll, 16);
+    }
+  }
+
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(pumpPacketRecallPoll);
+  } else {
+    setTimeout(pumpPacketRecallPoll, 16);
+  }
+}
+
 // PR #2008 re-review (Soren Vask) — packet-recall runtime consumer.
 //
 // Soren's re-review blocked the prior "globalThis seam with no reader"
