@@ -126,7 +126,12 @@ describe("AFTERSIGN M-LOOP served-divergence played-witness contract", () => {
         return (
           count(DIVERGENCE_TRAY_READ, source) >= 2 &&
           count(OFFERED_BUTTON_LOCATOR, source) >= 2 &&
-          count(ROUND_COMPLETION, executable) >= 2 &&
+          // ROUND_COMPLETION matches a beat-name string literal
+          // (`"io-return-recognition"`), which `stripCommentsAndStrings`
+          // empties to `""`. Count against `source`, not `executable`,
+          // or every candidate spec scores zero and the witness never
+          // resolves (see PR #1995 re-review, Soren Vask).
+          count(ROUND_COMPLETION, source) >= 2 &&
           DIVERGENCE_ASSERTION.test(executable) &&
           !HARNESS_INPUT.test(executable) &&
           count(PLAYER_EVENT, executable) >= 2
