@@ -513,7 +513,10 @@ import {
   advancePacketPressFeedback,
   beginPacketPressFeedback,
 } from "./src/packet-press-feedback.ts";
-import { PACKET_PRESS_TACTILE_CUE } from "./src/packetPressTactileCue.ts";
+import {
+  PACKET_PRESS_TACTILE_CUE,
+  packetPressPrefersReducedMotion,
+} from "./src/packetPressTactileCue.ts";
 // #1701 draft 3 (Soren's REQUEST_CHANGES on draft 2) — the feel-side
 // judge is what ACTUALLY drives the served-page PREVIEWED stamp. The
 // pure `packetIntent.release(...)` path stays typed to SEALED/OPENED
@@ -743,24 +746,50 @@ const tickPacketPressFeedback = (nowMs) => {
 const playPacketPressFeedback = () => {
   packetPressFeedback = beginPacketPressFeedback(performance.now());
   renderPacketPressFeedback();
+  // Decorative WAAPI + haptic envelope. The served-surface pin path
+  // (#1879) routes through `packetPress(input)` — this cue MUST NOT throw
+  // through to the durable commit. Mirror the contract in
+  // `aftersign/src/routeRiskConfirmFeedback.js`: reduced-motion players
+  // get a brightness flicker (no translate/scale), and the whole
+  // `.animate()` call is wrapped in try/catch so a partial Web Animations
+  // implementation cannot break the packet commit.
+  const packetPressReducedMotion = packetPressPrefersReducedMotion();
   if (packetButton && typeof packetButton.animate === "function") {
-    packetButton.animate(
-      [
-        { transform: "translateY(0) scale(1)" },
+    try {
+      packetButton.animate(
+        packetPressReducedMotion
+          ? [
+              { filter: "brightness(1)" },
+              { filter: "brightness(1.12)", offset: 0.35 },
+              { filter: "brightness(1)" },
+            ]
+          : [
+              { transform: "translateY(0) scale(1)" },
+              {
+                transform: `translateY(${PACKET_PRESS_TACTILE_CUE.travelPx}px) scale(${PACKET_PRESS_TACTILE_CUE.scale})`,
+                offset: 0.35,
+              },
+              { transform: "translateY(0) scale(1)" },
+            ],
         {
-          transform: `translateY(${PACKET_PRESS_TACTILE_CUE.travelPx}px) scale(${PACKET_PRESS_TACTILE_CUE.scale})`,
-          offset: 0.35,
+          duration: PACKET_PRESS_TACTILE_CUE.durationMs,
+          easing: PACKET_PRESS_TACTILE_CUE.easing,
         },
-        { transform: "translateY(0) scale(1)" },
-      ],
-      {
-        duration: PACKET_PRESS_TACTILE_CUE.durationMs,
-        easing: PACKET_PRESS_TACTILE_CUE.easing,
-      },
-    );
+      );
+    } catch {
+      // Decorative feedback must never interrupt the durable packet commit.
+    }
   }
-  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-    navigator.vibrate(PACKET_PRESS_TACTILE_CUE.vibrationMs);
+  if (
+    !packetPressReducedMotion
+    && typeof navigator !== "undefined"
+    && typeof navigator.vibrate === "function"
+  ) {
+    try {
+      navigator.vibrate(PACKET_PRESS_TACTILE_CUE.vibrationMs);
+    } catch {
+      // Haptic pulse is decorative; blocked or unsupported vibrate is silent.
+    }
   }
   if (packetPressFeedbackFrame === null) {
     packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
