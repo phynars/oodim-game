@@ -63,6 +63,13 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
 // served observer fires and stamps the sibling paragraph. This is
 // the play-time equivalent of a returning-player save-restore that
 // lands on `packet-offered` with the durable memory already present.
+//
+// PLAYED-NOT-DRIVEN (Soren re-review #2008). We deliberately do NOT
+// call `__aftersignPacketRecall.sync()` here — that diagnostic seam
+// would let this spec green even if the served MutationObserver on
+// `#line` were removed. Instead we mutate `#line.textContent` (the
+// exact signal the shipped observer listens for), so the trip-wire
+// is the observer install itself: break it and this spec reds.
 async function seedRouteRiskAndSync(
   page: Page,
   memory: { lastRoute: "safe" | "fast"; succeeded: boolean } | null,
@@ -73,27 +80,26 @@ async function seedRouteRiskAndSync(
         state?: { player?: { routeRisk?: unknown } };
         scene?: { beat?: string };
       };
-      __aftersignPacketRecall?: { sync?: () => void };
     };
     if (!g.__game) throw new Error("window.__game not present");
     if (!g.__game.state) throw new Error("window.__game.state not present");
     if (!g.__game.state.player) g.__game.state.player = {};
     g.__game.state.player.routeRisk = mem;
 
-    // Force the observer to re-evaluate. Rewriting `#line.textContent`
-    // to its current value fires the observer without changing the
-    // beat dialogue table's contract (same textContent in, same
-    // textContent out). If the diagnostic sync helper is exposed on
-    // globalThis, call it directly — that is the shipped seam.
-    if (typeof g.__aftersignPacketRecall?.sync === "function") {
-      g.__aftersignPacketRecall.sync();
-      return;
-    }
+    // Fire the served observer by mutating `#line`. Rewriting
+    // `textContent` to a distinct value (then restoring) guarantees a
+    // MutationObserver characterData/childList tick without leaving
+    // the beat dialogue in a wrong state. The observer reads
+    // `state.player.routeRisk` off `window.__game.state` — the same
+    // seam a durable save-restore writes — and stamps
+    // `#packetRecallLine`.
     const lineEl = document.getElementById("line");
-    if (lineEl) {
-      const current = lineEl.textContent ?? "";
-      lineEl.textContent = current;
-    }
+    if (!lineEl) throw new Error("#line not present on served page");
+    const original = lineEl.textContent ?? "";
+    // Force a real mutation (empty then original) so the observer
+    // fires even if `textContent` was already equal to `original`.
+    lineEl.textContent = "";
+    lineEl.textContent = original;
   }, memory);
 }
 
