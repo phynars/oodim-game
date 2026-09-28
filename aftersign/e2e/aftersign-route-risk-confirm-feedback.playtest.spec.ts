@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 declare global {
   interface Window {
     __routeRiskConfirmFeedback?: Array<{
+      elementId: string;
       duration?: unknown;
       transforms: string[];
       serialized: string;
@@ -37,6 +38,7 @@ test.describe("AFTERSIGN route-risk confirmation feedback", () => {
     test.setTimeout(45_000);
     await page.addInitScript(() => {
       const recorded: Array<{
+        elementId: string;
         duration?: unknown;
         transforms: string[];
         serialized: string;
@@ -48,6 +50,7 @@ test.describe("AFTERSIGN route-risk confirmation feedback", () => {
         const duration =
           typeof options === "object" && options ? options.duration : undefined;
         recorded.push({
+          elementId: this.id,
           duration,
           transforms: frames.map((frame) => String(frame.transform ?? "")),
           serialized,
@@ -89,8 +92,9 @@ test.describe("AFTERSIGN route-risk confirmation feedback", () => {
           page.evaluate(() =>
             (window.__routeRiskConfirmFeedback ?? []).find(
               (entry) =>
-                entry.duration === 180 &&
-                entry.serialized.includes(
+                entry.elementId === "routeRiskChoice"
+                && entry.duration === 180
+                && entry.serialized.includes(
                   "translate3d(0, -4px, 0) scale(1.025)",
                 ),
             ),
