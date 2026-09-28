@@ -5,14 +5,13 @@ import { expect, test, type Page } from '@playwright/test';
 // aftersign/e2e/ opts into 90s and uses waitUntil: 'load' — 'networkidle'
 // never fires when the render loop keeps requesting frames.
 const COLD_START_MS = 90_000;
-const WAIT_MS = 60_000;
-// Keep every sequential wait beneath the test's 90s cold-start envelope.
-// SwiftShader boot gets the largest slice; after authored state arrives, the
-// MutationObserver/task-queue marks and the final DOM probe need only short,
-// independent windows. This prevents any one downstream condition from
-// inheriting a full 60s timeout after a cold boot has already consumed time.
-const GAME_READY_WAIT_MS = 50_000;
-const RECOGNITION_BEAT_WAIT_MS = 20_000;
+// Sequential waits sum to 75s (45 + 15 + 10 + 5), leaving 15s of headroom
+// under the 90s test timeout for page.goto, the driving evaluate, and the
+// final synchronous probe. SwiftShader boot gets the largest slice; after
+// authored state arrives, the MutationObserver/task-queue marks and the final
+// DOM probe need only short, independent windows.
+const GAME_READY_WAIT_MS = 45_000;
+const RECOGNITION_BEAT_WAIT_MS = 15_000;
 const RECOGNITION_MARKS_WAIT_MS = 10_000;
 const PHONE_READY_PROBE_WAIT_MS = 5_000;
 const POLL_INTERVAL_MS = 100;
