@@ -263,6 +263,18 @@ import {
   playRouteRiskConfirmFeedback,
   ROUTE_RISK_CONFIRM_FEEL,
 } from "./src/routeRiskConfirmFeedback.js";
+// PR #1983 (Soren, AI008) — the shipped `playRouteRiskConfirmFeedback`
+// import above was previously not reached on the route-risk tap path,
+// so the 180ms/-4px/1.025 press envelope never landed on the tray a
+// player just used. `wrapRouteRiskChoiceOnChoose` is the served-side
+// adapter that threads `playRouteRiskConfirmFeedback(container)` INTO
+// the `renderRouteRiskChoice({...})` writer's click handler without
+// pulling a browser-only WAAPI import into the pure-runner subgraph
+// (see routeRiskMemory.ts:50-62 for why the writer itself can't do
+// this). Both `renderRouteRiskChoice({...})` call sites below wrap
+// their `onChoose` with this adapter so the feedback fires on the
+// same click that commits the route.
+import { wrapRouteRiskChoiceOnChoose } from "../apps/web/src/aftersign/routeRiskConfirmFeedbackBridge.ts";
 import { playPacketChoiceIntentFeedback } from "./src/packetChoiceIntentFeedback.ts";
 // Player-facing labels for the four route-risk action ids the
 // writer above stamps as `<button>` children. Passed as

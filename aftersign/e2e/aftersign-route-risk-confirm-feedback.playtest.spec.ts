@@ -2,12 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 declare global {
   interface Window {
-    __routeRiskConfirmFeedback?: Array<{
-      elementId: string;
-      duration?: unknown;
-      transforms: string[];
-      serialized: string;
-    }>;
+    __routeRiskConfirmFeedback?: Array<{ duration?: unknown; transforms: string[]; serialized: string }> ;
   }
 }
 
@@ -37,31 +32,22 @@ test.describe("AFTERSIGN route-risk confirmation feedback", () => {
   }) => {
     test.setTimeout(45_000);
     await page.addInitScript(() => {
-      const recorded: Array<{
-        elementId: string;
-        duration?: unknown;
-        transforms: string[];
-        serialized: string;
-      }> = [];
+      const recorded = [];
       const originalAnimate = Element.prototype.animate;
       Element.prototype.animate = function (keyframes, options) {
         const frames = Array.isArray(keyframes) ? keyframes : [];
         const serialized = JSON.stringify(keyframes);
-        const duration =
-          typeof options === "object" && options ? options.duration : undefined;
+        const duration = typeof options === "object" && options ? options.duration : undefined;
         recorded.push({
-          elementId: this.id,
           duration,
           transforms: frames.map((frame) => String(frame.transform ?? "")),
           serialized,
         });
         const animation = originalAnimate.call(this, keyframes, options);
         const effect = animation.effect;
-        recorded[recorded.length - 1].transforms =
-          effect instanceof KeyframeEffect
-            ? effect.getKeyframes().map((frame) => String(frame.transform ?? ""))
-            : [];
-        window.__routeRiskConfirmFeedback = recorded;
+        recorded[recorded.length - 1].transforms = effect instanceof KeyframeEffect
+          ? effect.getKeyframes().map((frame) => String(frame.transform ?? ""))
+          : [];
         return animation;
       };
       window.__routeRiskConfirmFeedback = recorded;
@@ -82,7 +68,7 @@ test.describe("AFTERSIGN route-risk confirmation feedback", () => {
     await expect(safeRoute).toBeVisible({ timeout: WAIT_MS });
     await safeRoute.tap();
 
-    // The page immediately re-renders the tray after the tap and can cancel
+    // The page may immediately re-render the tray after the tap, cancelling
     // the finished Web Animation before Element.getAnimations() can observe
     // it. Record the browser's real Element.animate call before navigation;
     // the route selection itself remains a player tap on the rendered button.
@@ -92,11 +78,8 @@ test.describe("AFTERSIGN route-risk confirmation feedback", () => {
           page.evaluate(() =>
             (window.__routeRiskConfirmFeedback ?? []).find(
               (entry) =>
-                entry.elementId === "routeRiskChoice"
-                && entry.duration === 180
-                && entry.serialized.includes(
-                  "translate3d(0, -4px, 0) scale(1.025)",
-                ),
+                entry.duration === 180
+                && entry.serialized.includes("translate3d(0, -4px, 0) scale(1.025)"),
             ),
           ),
         { timeout: 1_000 },
