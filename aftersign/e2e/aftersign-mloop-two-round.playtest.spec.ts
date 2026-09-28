@@ -36,7 +36,13 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await waitForReady(page);
 
     await waitForBeat(page, "packet-offered");
-    await page.locator("#job-offer-job-safe-delivery").tap();
+    const firstRoundTray = page.locator("#offeredJobs");
+    const firstRoundDivergence = await firstRoundTray.getAttribute(
+      "data-mloop-divergence-memory",
+    );
+    const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
+    await expect(firstRoundJob).toHaveCount(1);
+    await firstRoundJob.tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
     await tapChoice(page, "acknowledge-kiosk");
@@ -50,10 +56,24 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await tapChoice(page, "deliver-packet");
 
     await waitForBeat(page, "packet-offered");
-    const secondRoundJob = page.locator("#job-offer-job-night-transfer");
+    const secondRoundTray = page.locator("#offeredJobs");
+    const secondRoundDivergence = await secondRoundTray.getAttribute(
+      "data-mloop-divergence-memory",
+    );
+    await expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
+    const secondRoundJob = secondRoundTray.locator("button[data-offered-job-id]");
     await expect(secondRoundJob).toHaveText("Night transfer · medium risk");
     await secondRoundJob.tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
   });
 });
