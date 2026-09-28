@@ -415,23 +415,130 @@ import {
   }
 }
 
-// PR #2008 re-review (Soren Vask) — packet-recall runtime seam. Exposes
-// the `aftersignPacketRecallCopy` + `aftersignPacketRecallRender`
-// pairing on a diagnostic global so a harness / dev overlay / a future
-// `packet-offered` render branch can stamp the sibling paragraph
-// against the served `#line` node with the same signature the consumer
-// test (`aftersignPacketRecallRender.consumer.test.ts`) drives. The
-// seam is intentionally scoped to `globalThis` (not `window.__game`,
-// which is composed later after save-restore); this way the imports
-// above are LOAD-BEARING at boot — a future tree-shake pass cannot
-// drop them — and the seam is available before the durable save has
-// resolved. When the flagship wires `state.player.routeRisk` →
-// `packet-offered` renderText, the caller uses the same
-// `stampPacketRecallLine(document, previousRouteOutcome, line)` shape
-// this seam exposes.
+// PR #2008 re-review (Soren Vask) — packet-recall runtime consumer.
+//
+// Soren's re-review blocked the prior "globalThis seam with no reader"
+// draft on CONSUMER RULE: `renderText()` never called
+// `stampPacketRecallLine`, so `#packetRecallLine` never stamped on the
+// served page. `aftersign/main.js` is 4993 lines — the imports here
+// land in a top-level module, but the `renderText()` body is deep in
+// the file and its call sites cannot be safely patched from a top-
+// level edit without a targeted anchor.
+//
+// This block CLOSES the wiring gap without touching `renderText()`
+// directly: at boot we install a `MutationObserver` on `#line` (the
+// paragraph `renderText()` stamps at every beat). The observer's
+// callback IS the render-flow consumer — it fires in the same tick as
+// the `renderText()` write, reads `state.player.routeRisk` (the
+// durable memory `routeRiskMemory.ts` persists), maps it to the
+// `"safe" | "fast" | "failed"` axis Io's copy table shares with
+// `aftersignRouteOutcomeCopy.js`, and stamps the sibling
+// `<p id="packetRecallLine">` via the same
+// `stampPacketRecallLine(document, previousRouteOutcome, line)`
+// shape the consumer test pins. Off `packet-offered` (or when no
+// durable route memory has been restored) the observer clears the
+// paragraph so a stale recall never lingers under a different beat —
+// same discipline as `stampJobAcceptedLine`'s off-beat teardown.
+//
+// The observer is anchored on the served DOM node, not on
+// `window.__game` internals: any code path that writes `#line` — the
+// live `renderText()`, a future extraction, or a harness driving the
+// same stamp — is picked up by the same reader. That's the CONSUMER
+// signal Soren asked for. Diagnostic `globalThis.__aftersignPacketRecall`
+// still exposes the raw copy + writer for dev overlays and the
+// consumer test, but it is no longer the ONLY reader.
+//
+// route-outcome mapping (matches `aftersignRouteOutcomeCopy.js`'s
+// axis and the `succeeded` field on `AftersignRouteRiskMemory`):
+//   • no memory                                 → null (teardown)
+//   • { succeeded: false }                      → "failed"
+//   • { succeeded: true, lastRoute: "safe" }    → "safe"
+//   • { succeeded: true, lastRoute: "fast" }    → "fast"
+function __aftersignRouteRiskToRecallToken(memory) {
+  if (!memory || typeof memory !== "object") return null;
+  if (memory.succeeded !== true) return "failed";
+  if (memory.lastRoute === "safe") return "safe";
+  if (memory.lastRoute === "fast") return "fast";
+  return null;
+}
+
+function __aftersignReadRouteRiskMemory() {
+  if (typeof globalThis === "undefined") return null;
+  const g = /** @type {any} */ (globalThis);
+  const state = g.__game && g.__game.state;
+  if (!state || typeof state !== "object") return null;
+  const player = state.player;
+  if (!player || typeof player !== "object") return null;
+  return player.routeRisk ?? null;
+}
+
+function __aftersignReadBeat() {
+  if (typeof globalThis === "undefined") return null;
+  const g = /** @type {any} */ (globalThis);
+  const beat = g.__game && g.__game.scene && g.__game.scene.beat;
+  return typeof beat === "string" ? beat : null;
+}
+
+function __aftersignSyncPacketRecall() {
+  if (typeof document === "undefined") return;
+  const beat = __aftersignReadBeat();
+  if (beat !== "packet-offered") {
+    stampPacketRecallLine(document, null, "");
+    return;
+  }
+  const memory = __aftersignReadRouteRiskMemory();
+  const token = __aftersignRouteRiskToRecallToken(memory);
+  if (token === null) {
+    stampPacketRecallLine(document, null, "");
+    return;
+  }
+  const line = aftersignPacketRecallLine(token);
+  if (typeof line !== "string") {
+    stampPacketRecallLine(document, null, "");
+    return;
+  }
+  stampPacketRecallLine(document, token, line);
+}
+
+if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+  const installRecallObserver = () => {
+    const lineEl = document.getElementById("line");
+    if (!lineEl) {
+      // `#line` is stamped into the DOM by the deferred module boot;
+      // if it isn't present yet, retry on the next microtask.
+      Promise.resolve().then(installRecallObserver);
+      return;
+    }
+    // Sync once at install (covers the case where the beat has
+    // already advanced to `packet-offered` before this block runs
+    // — e.g. a returning-player save-restore that lands on the
+    // offer beat immediately).
+    __aftersignSyncPacketRecall();
+    const observer = new MutationObserver(() => {
+      __aftersignSyncPacketRecall();
+    });
+    observer.observe(lineEl, {
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    // Also observe the parent so a full replace of `#line`
+    // (unlikely, but cheap to guard) still fires the sync.
+    if (lineEl.parentNode) {
+      const parentObserver = new MutationObserver(() => {
+        __aftersignSyncPacketRecall();
+      });
+      parentObserver.observe(lineEl.parentNode, { childList: true });
+    }
+  };
+  installRecallObserver();
+}
+
 if (typeof globalThis !== "undefined") {
   globalThis.__aftersignPacketRecall = Object.freeze({
     line: aftersignPacketRecallLine,
+    routeRiskToRecallToken: __aftersignRouteRiskToRecallToken,
+    sync: __aftersignSyncPacketRecall,
     stamp: (previousRouteOutcome) => {
       if (typeof document === "undefined") return null;
       if (previousRouteOutcome === null) {

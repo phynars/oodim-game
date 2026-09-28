@@ -79,13 +79,20 @@ export default defineConfig({
       // PR #2008 re-review (Soren Vask) — packet-recall consumer test.
       // The first draft shipped `aftersignPacketRecallCopy.js` with
       // zero importers AND an invented `careful` token that didn't
-      // match the durable `safe`|`fast`|`failed` axis. This bundle
-      // fixes both: the writer `aftersignPacketRecallRender.ts`
-      // stamps a sibling `<p id="packetRecallLine">` next to the
-      // served `#line` paragraph, the copy table shares the exact
-      // route-outcome axis as `aftersignRouteOutcomeCopy.js`, and
-      // this consumer test pins the token vocabulary AND the DOM
-      // contract against a served-shape fragment.
+      // match the durable `safe`|`fast`|`failed` axis. The second
+      // draft added the writer/copy pair but only populated a
+      // `globalThis.__aftersignPacketRecall` seam nothing read —
+      // `#packetRecallLine` never stamped on the served page. This
+      // bundle closes the wiring gap: `aftersign/main.js` installs a
+      // MutationObserver on `#line` that syncs
+      // `stampPacketRecallLine(document, previousRouteOutcome, line)`
+      // off `state.player.routeRisk` any time the served renderer
+      // stamps the beat dialogue. The played e2e
+      // `aftersign/e2e/aftersign-packet-recall-served.playtest.spec.ts`
+      // taps the served page and pins the sibling paragraph; this
+      // consumer test still owns the DOM-contract axis (token
+      // vocabulary, teardown, sibling-not-overwrite) against a
+      // served-shape jsdom fragment.
       "apps/web/src/aftersign/aftersignPacketRecallRender.consumer.test.ts",
       // PR #1890 re-review (Soren Vask) — the offer-choice acknowledgement
       // wrapper `aftersign/src/jobOfferChoiceFeedback.js` delegates to
