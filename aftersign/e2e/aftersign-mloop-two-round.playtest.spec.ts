@@ -40,6 +40,7 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     const firstRoundDivergence = await firstRoundTray.getAttribute(
       "data-mloop-divergence-memory",
     );
+    await expect(firstRoundDivergence).toBe("fresh");
     const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
     await expect(firstRoundJob).toHaveCount(1);
     await firstRoundJob.tap();
@@ -60,6 +61,7 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     const secondRoundDivergence = await secondRoundTray.getAttribute(
       "data-mloop-divergence-memory",
     );
+    await expect(secondRoundDivergence).toBe("completed");
     await expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
     // The completed branch renders TWO offered-job buttons
     // (`job-night-transfer` + `job-signed-receipt`, see
