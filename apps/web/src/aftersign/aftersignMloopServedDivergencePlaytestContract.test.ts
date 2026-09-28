@@ -70,13 +70,26 @@ const PLAYTEST_PATTERN =
 
 // The tray-attribute read on the RENDERED surface, not a comment
 // mention. `getAttribute("data-mloop-divergence-memory")` is the
-// exact shape `mloop-served-divergence-played.spec.ts` uses.
+// exact shape `mloop-served-divergence-played.spec.ts` uses. The
+// trailing `,?\s*` before `)` accepts the multi-line form Prettier
+// emits when the call wraps — `getAttribute(\n  "data-mloop-...",\n)`
+// — where a bare `\s*\)` would fail on the trailing comma (PR #1995
+// re-review, Soren Vask).
 const DIVERGENCE_TRAY_READ =
-  /getAttribute\s*\(\s*["'`]data-mloop-divergence-memory["'`]\s*\)/;
+  /getAttribute\s*\(\s*["'`]data-mloop-divergence-memory["'`]\s*,?\s*\)/;
 
-// The offered-button locator used to select the tappable child.
+// The offered-button locator used to select the tappable child. Same
+// optional trailing comma as `DIVERGENCE_TRAY_READ` for parity with the
+// wrapped call shape.
 const OFFERED_BUTTON_LOCATOR =
-  /locator\s*\(\s*["'`][^"'`]*button\[data-offered-job-id\][^"'`]*["'`]\s*\)/;
+  /locator\s*\(\s*["'`][^"'`]*button\[data-offered-job-id\][^"'`]*["'`]\s*,?\s*\)/;
+
+// The played two-round witness must prove round-one completion before it
+// observes and selects the second rendered tray.
+const ROUND_COMPLETION = /waitForBeat\s*\(\s*page\s*,\s*["'`]io-return-recognition["'`]\s*\)/;
+
+// The two rendered labels must be compared as distinct durable-memory states.
+const DIVERGENCE_ASSERTION = /expect\s*\([^)]*secondRoundDivergence[^)]*\)\s*\.not\.toBe\s*\(\s*firstRoundDivergence\s*\)/;
 
 // Any real player-event call on a Playwright locator/page.
 const PLAYER_EVENT =
@@ -95,28 +108,45 @@ function stripCommentsAndStrings(source: string): string {
 }
 
 function count(pattern: RegExp, source: string): number {
-  pattern.lastIndex = 0;
-  return [...source.matchAll(pattern)].length;
+  // `String.prototype.matchAll` throws on non-global RegExps. Several of
+  // the patterns above are authored without the `g` flag because they
+  // are also used with `.test(...)`; clone them here with `g` added so
+  // this helper accepts either shape without mutating the original.
+  const globalPattern = pattern.global
+    ? pattern
+    : new RegExp(
+        pattern.source,
+        pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
+      );
+  globalPattern.lastIndex = 0;
+  return [...source.matchAll(globalPattern)].length;
 }
 
 describe("AFTERSIGN M-LOOP served-divergence played-witness contract", () => {
-  it("keeps one registered playtest spec that reads the divergence tray attribute AND taps a rendered offered-job button (played, not driven)", () => {
+  it("keeps one registered playtest spec that plays two rounds, observes divergent rendered trays, and taps each offered-job button", () => {
     const witness = readdirSync(E2E_DIRECTORY)
       .filter((name) => PLAYTEST_PATTERN.test(name))
       .map((name) => ({ name, source: readFileSync(join(E2E_DIRECTORY, name), "utf8") }))
       .find(({ source }) => {
         const executable = stripCommentsAndStrings(source);
         return (
-          DIVERGENCE_TRAY_READ.test(source) &&
-          OFFERED_BUTTON_LOCATOR.test(source) &&
+          count(DIVERGENCE_TRAY_READ, source) >= 2 &&
+          count(OFFERED_BUTTON_LOCATOR, source) >= 2 &&
+          // ROUND_COMPLETION matches a beat-name string literal
+          // (`"io-return-recognition"`), which `stripCommentsAndStrings`
+          // empties to `""`. Count against `source`, not `executable`,
+          // or every candidate spec scores zero and the witness never
+          // resolves (see PR #1995 re-review, Soren Vask).
+          count(ROUND_COMPLETION, source) >= 2 &&
+          DIVERGENCE_ASSERTION.test(executable) &&
           !HARNESS_INPUT.test(executable) &&
-          count(PLAYER_EVENT, executable) >= 1
+          count(PLAYER_EVENT, executable) >= 2
         );
       });
 
     expect(
       witness?.name,
-      "no registered playtest spec satisfies the served-divergence played-witness contract: exactly one spec must (a) read data-mloop-divergence-memory off the rendered #offeredJobs tray, (b) locate button[data-offered-job-id] as a tappable child, (c) fire at least one real player event (.tap/.click/.press/keyboard/pointer/mouse/touchscreen), and (d) NOT reach into window.__game.input.*. Today `aftersign/e2e/mloop-served-divergence-played.spec.ts` is that spec.",
+      "no registered playtest spec satisfies the two-round served-divergence played-witness contract: exactly one spec must (a) read data-mloop-divergence-memory from #offeredJobs at both packet-offered entries, (b) locate and tap button[data-offered-job-id] at both entries, (c) complete both rounds through io-return-recognition, and (d) NOT reach into window.__game.input.*. Today `aftersign/e2e/aftersign-mloop-two-round.playtest.spec.ts` is that spec.",
     ).toBeDefined();
   });
 });

@@ -36,7 +36,13 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await waitForReady(page);
 
     await waitForBeat(page, "packet-offered");
-    await page.locator("#job-offer-job-safe-delivery").tap();
+    const firstRoundTray = page.locator("#offeredJobs");
+    const firstRoundDivergence = await firstRoundTray.getAttribute(
+      "data-mloop-divergence-memory",
+    );
+    const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
+    await expect(firstRoundJob).toHaveCount(1);
+    await firstRoundJob.tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
     await tapChoice(page, "acknowledge-kiosk");
@@ -50,10 +56,37 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await tapChoice(page, "deliver-packet");
 
     await waitForBeat(page, "packet-offered");
-    const secondRoundJob = page.locator("#job-offer-job-night-transfer");
-    await expect(secondRoundJob).toHaveText("Night transfer · medium risk");
-    await secondRoundJob.tap();
+    const secondRoundTray = page.locator("#offeredJobs");
+    const secondRoundDivergence = await secondRoundTray.getAttribute(
+      "data-mloop-divergence-memory",
+    );
+    await expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
+    // The completed branch renders TWO offered-job buttons
+    // (`job-night-transfer` + `job-signed-receipt`, see
+    // `COMPLETED_JOB_IDS` in packages/aftersign/src/computeOfferedJobs.ts),
+    // so the general `button[data-offered-job-id]` locator matches both
+    // — asserting `.toHaveText` on it strict-mode-fails. Keep the tray-
+    // scoped general locator to prove branch shape (count === 2, and
+    // satisfies the served-divergence contract's ≥ 2 offered-button
+    // locator budget), then narrow to the specific `job-night-transfer`
+    // id for the label assertion + tap.
+    const secondRoundJobs = secondRoundTray.locator("button[data-offered-job-id]");
+    await expect(secondRoundJobs).toHaveCount(2);
+    const secondRoundNightTransfer = secondRoundTray.locator(
+      'button[data-offered-job-id="job-night-transfer"]',
+    );
+    await expect(secondRoundNightTransfer).toHaveText("Night transfer · medium risk");
+    await secondRoundNightTransfer.tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
   });
 });
