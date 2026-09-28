@@ -513,6 +513,7 @@ import {
   advancePacketPressFeedback,
   beginPacketPressFeedback,
 } from "./src/packet-press-feedback.ts";
+import { PACKET_PRESS_TACTILE_CUE } from "./src/packetPressTactileCue.ts";
 // #1701 draft 3 (Soren's REQUEST_CHANGES on draft 2) — the feel-side
 // judge is what ACTUALLY drives the served-page PREVIEWED stamp. The
 // pure `packetIntent.release(...)` path stays typed to SEALED/OPENED
@@ -742,6 +743,25 @@ const tickPacketPressFeedback = (nowMs) => {
 const playPacketPressFeedback = () => {
   packetPressFeedback = beginPacketPressFeedback(performance.now());
   renderPacketPressFeedback();
+  if (packetButton && typeof packetButton.animate === "function") {
+    packetButton.animate(
+      [
+        { transform: "translateY(0) scale(1)" },
+        {
+          transform: `translateY(${PACKET_PRESS_TACTILE_CUE.travelPx}px) scale(${PACKET_PRESS_TACTILE_CUE.scale})`,
+          offset: 0.35,
+        },
+        { transform: "translateY(0) scale(1)" },
+      ],
+      {
+        duration: PACKET_PRESS_TACTILE_CUE.durationMs,
+        easing: PACKET_PRESS_TACTILE_CUE.easing,
+      },
+    );
+  }
+  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+    navigator.vibrate(PACKET_PRESS_TACTILE_CUE.vibrationMs);
+  }
   if (packetPressFeedbackFrame === null) {
     packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
   }
