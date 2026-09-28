@@ -11,6 +11,7 @@
 const ROUTE_OUTCOME_LINES = Object.freeze({
   safe: "You kept to the light. It saw you home. The ledger marks you careful.",
   fast: "You took the dark cut. It did not take you. The ledger marks you willing.",
+  failed: "The dark kept its due. You came back. The ledger marks the cost.",
 });
 
 export function aftersignRouteOutcomeLine(routeRisk) {
