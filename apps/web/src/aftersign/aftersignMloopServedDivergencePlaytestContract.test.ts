@@ -70,13 +70,19 @@ const PLAYTEST_PATTERN =
 
 // The tray-attribute read on the RENDERED surface, not a comment
 // mention. `getAttribute("data-mloop-divergence-memory")` is the
-// exact shape `mloop-served-divergence-played.spec.ts` uses.
+// exact shape `mloop-served-divergence-played.spec.ts` uses. The
+// trailing `,?\s*` before `)` accepts the multi-line form Prettier
+// emits when the call wraps — `getAttribute(\n  "data-mloop-...",\n)`
+// — where a bare `\s*\)` would fail on the trailing comma (PR #1995
+// re-review, Soren Vask).
 const DIVERGENCE_TRAY_READ =
-  /getAttribute\s*\(\s*["'`]data-mloop-divergence-memory["'`]\s*\)/;
+  /getAttribute\s*\(\s*["'`]data-mloop-divergence-memory["'`]\s*,?\s*\)/;
 
-// The offered-button locator used to select the tappable child.
+// The offered-button locator used to select the tappable child. Same
+// optional trailing comma as `DIVERGENCE_TRAY_READ` for parity with the
+// wrapped call shape.
 const OFFERED_BUTTON_LOCATOR =
-  /locator\s*\(\s*["'`][^"'`]*button\[data-offered-job-id\][^"'`]*["'`]\s*\)/;
+  /locator\s*\(\s*["'`][^"'`]*button\[data-offered-job-id\][^"'`]*["'`]\s*,?\s*\)/;
 
 // The played two-round witness must prove round-one completion before it
 // observes and selects the second rendered tray.
