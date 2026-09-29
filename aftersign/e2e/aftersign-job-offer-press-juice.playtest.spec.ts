@@ -29,6 +29,7 @@ type PressJuiceRecord = {
   minScale: number;
   maxTravel: number;
   samples: number;
+  pressedOnPointerDown: boolean;
 };
 
 async function waitForReady(page: Page): Promise<void> {
@@ -183,7 +184,12 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     await jobButton.evaluate((element) => {
       const button = element as HTMLElement;
       const base = button.getBoundingClientRect();
-      const record = { minScale: 1, maxTravel: 0, samples: 0 };
+      const record = {
+        minScale: 1,
+        maxTravel: 0,
+        samples: 0,
+        pressedOnPointerDown: false,
+      };
       (window as unknown as { __aftersignPressJuiceRecorder?: typeof record })
         .__aftersignPressJuiceRecorder = record;
 
@@ -212,7 +218,9 @@ test.describe("AFTERSIGN job-offer press juice", () => {
       button.addEventListener(
         "pointerdown",
         () => {
-          if (button.getAttribute("data-aftersign-job-take") === "pressing") {
+          record.pressedOnPointerDown =
+            button.getAttribute("data-aftersign-job-take") === "pressing";
+          if (record.pressedOnPointerDown) {
             record.minScale = Math.min(record.minScale, authoredScale());
           }
           sample();
@@ -238,9 +246,15 @@ test.describe("AFTERSIGN job-offer press juice", () => {
           ).__aftersignPressJuiceRecorder ?? null,
       );
     await expect
+      .poll(async () => (await readRecorder())?.pressedOnPointerDown ?? false, {
+        timeout: WAIT_MS,
+      })
+      .toBe(true);
+    await expect
       .poll(async () => (await readRecorder())?.minScale ?? 1, { timeout: WAIT_MS })
       .toBeLessThanOrEqual(1 - PRESS_FEEL.minPressedScaleDrop);
     const recorded = (await readRecorder()) as PressJuiceRecord;
+    expect(recorded.pressedOnPointerDown).toBe(true);
     const scaleDrop = 1 - recorded.minScale;
     expect(scaleDrop).toBeGreaterThanOrEqual(PRESS_FEEL.minPressedScaleDrop);
     expect(scaleDrop).toBeLessThanOrEqual(PRESS_FEEL.maxPressedScaleDrop);
