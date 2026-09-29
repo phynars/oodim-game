@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
+import { performPacketGesture } from "./helpers/packetGesture";
 
 // Playtest: after a phone-player reload, the OPENED-packet recognition
 // beat restores via the shipped durable-save contract — auto-save fires
@@ -17,10 +18,16 @@ import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 // tone controls) would slip past the sealed spec.
 //
 // Runtime premises validated against shipped code on 2026-09-29:
-//   1. `open-packet` at `packet-choice` records the opened outcome —
-//      the choice IDs list is enumerated at
-//      aftersign/e2e/save-load-durable-contract.spec.ts:48
-//      ("open-packet" | "keep-packet-sealed" | "deliver-packet").
+//   1. Sealed vs. opened is chosen by the PACKET GESTURE on the visible
+//      `#packetButton`, NOT by a `data-choice-id` button.
+//      `open-packet` / `keep-packet-sealed` are dispatch-only ids
+//      inside `choose()` (aftersign/main.js:2126) and are NEVER stamped
+//      on a rendered control — a `button[data-choice-id="open-packet"]`
+//      selector times out because that button does not exist. The played
+//      path is `performPacketGesture(page, "opened")` — pointerdown →
+//      mid-hold 12px pointermove → pointerup on `#packetButton` — same
+//      helper the sibling io-recognition-return-visual-feel.spec.ts
+//      uses to reach the opened branch.
 //   2. Auto-save fires on `deliver-packet`; restored beat is
 //      `packet-delivered`, NOT `io-return-recognition` — see the
 //      sealed sibling's premise notes and
@@ -86,19 +93,16 @@ test.describe("AFTERSIGN recognition reload restoration (opened)", () => {
     const slot = `recognition-reload-restoration-opened-${Date.now()}`;
     await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
 
-    // --- Play from a fresh save to io-return-recognition via taps only.
+    // --- Play from a fresh save to io-return-recognition via the real
+    // player surface. The opened branch is reached by holding
+    // `#packetButton` with a mid-hold pull — NOT by a choice-id tap.
     await waitForBeat(page, "packet-offered");
-    const packet = page.locator("#packetButton");
-    await expect(
-      packet,
-      "#packetButton should be visible at packet-offered",
-    ).toBeVisible({ timeout: WAIT_MS });
-    await packet.click();
+    await performPacketGesture(page, "opened", WAIT_MS);
 
     await waitForBeat(page, "packet-choice");
-    // open-packet → outcome=opened; skip-kiosk-acknowledge keeps
-    // routeListened=false so the RETURNING tier speaks.
-    await tapChoice(page, "open-packet");
+    // `skip-kiosk-acknowledge` keeps routeListened=false so the
+    // RETURNING tier speaks; then `deliver-packet` fires the auto-save
+    // and advances the beat.
     await tapChoice(page, "skip-kiosk-acknowledge");
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "packet-delivered");
