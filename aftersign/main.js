@@ -590,21 +590,44 @@ function __aftersignRouteRiskToRecallToken(memory) {
   return null;
 }
 
+// PR #2008 CI-red fix (Soren re-review): the observer previously read
+// `g.__game.state.player.routeRisk` — but the served surface exposes
+// state only through `__game.getSnapshot()` (see
+// `aftersign/e2e/aftersign-route-risk-outcome-line-served.spec.ts:61`
+// + `reset-route-risk-isolation.spec.ts:139`, which both read
+// `getSnapshot().player.routeRisk`). Reading `__game.state` returned
+// `undefined` on every mutation, the observer folded that to `null`,
+// and the sibling `#packetRecallLine` was cleared out immediately
+// after the polled lane stamped it. Route through the same
+// `getSnapshot()` read the polled lane uses so both writers see the
+// same axis.
 function __aftersignReadRouteRiskMemory() {
   if (typeof globalThis === "undefined") return null;
   const g = /** @type {any} */ (globalThis);
-  const state = g.__game && g.__game.state;
-  if (!state || typeof state !== "object") return null;
-  const player = state.player;
-  if (!player || typeof player !== "object") return null;
-  return player.routeRisk ?? null;
+  const game = g.__game;
+  if (!game || typeof game.getSnapshot !== "function") return null;
+  try {
+    const snapshot = game.getSnapshot();
+    const player = snapshot && snapshot.player;
+    if (!player || typeof player !== "object") return null;
+    return player.routeRisk ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function __aftersignReadBeat() {
   if (typeof globalThis === "undefined") return null;
   const g = /** @type {any} */ (globalThis);
-  const beat = g.__game && g.__game.scene && g.__game.scene.beat;
-  return typeof beat === "string" ? beat : null;
+  const game = g.__game;
+  if (!game || typeof game.getSnapshot !== "function") return null;
+  try {
+    const snapshot = game.getSnapshot();
+    const beat = snapshot && snapshot.scene && snapshot.scene.beat;
+    return typeof beat === "string" ? beat : null;
+  } catch {
+    return null;
+  }
 }
 
 function __aftersignSyncPacketRecall() {
