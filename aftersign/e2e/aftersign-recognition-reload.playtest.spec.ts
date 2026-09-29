@@ -103,7 +103,7 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     await expect(packet, "#packetButton should be visible at packet-offered").toBeVisible({
       timeout: WAIT_MS,
     });
-    await packet.click();
+    await packet.tap();
 
     await waitForBeat(page, "packet-choice");
     // skip-kiosk-acknowledge keeps routeListened=false so the RETURNING
