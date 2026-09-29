@@ -10,6 +10,8 @@ type GameReadout = {
   npcs: { io: { memory: Array<{ kind: string; object: string }> } };
 };
 
+type DivergenceMemory = "fresh" | "completed" | "debt-held";
+
 async function readGame(page: Page): Promise<GameReadout> {
   return page.evaluate(() =>
     (window as unknown as { __game: GameReadout }).__game,
@@ -48,12 +50,23 @@ async function tapAndWaitForSave(
   expect(response.ok(), `save at ${beat} must succeed`).toBe(true);
 }
 
-async function readOffers(page: Page): Promise<string[]> {
+async function readOffers(
+  page: Page,
+  memory: DivergenceMemory,
+): Promise<string[]> {
   await waitForBeat(page, "packet-offered");
-  const offers = page.locator('button[id^="job-offer-"]:visible');
+  const tray = page.locator("#offeredJobs");
+  await expect(tray).toBeVisible({ timeout: WAIT_MS });
+  await expect(tray).toHaveAttribute("data-mloop-divergence-memory", memory);
+
+  const offers = tray.locator("button[data-offered-job-id]:visible");
   await expect(offers.first()).toBeVisible({ timeout: WAIT_MS });
   const fingerprints = await offers.evaluateAll((buttons) =>
-    buttons.map((button) => button.getAttribute("data-offer-fingerprint")),
+    buttons.map((button) => {
+      const jobId = button.getAttribute("data-offered-job-id");
+      const fingerprint = button.getAttribute("data-offer-fingerprint");
+      return `${jobId}#${fingerprint?.split("#")[1]}`;
+    }),
   );
   for (const fingerprint of fingerprints) {
     expect(fingerprint).toMatch(/^job-[a-z0-9-]+#(?:low|medium|high)$/);
@@ -67,7 +80,7 @@ async function readOffers(page: Page): Promise<string[]> {
 async function completeRound(page: Page, jobId: string): Promise<number> {
   const before = await readGame(page);
   expect(before.packet.delivered).toBe(false);
-  await page.locator(`#job-offer-${jobId}`).tap();
+  await page.locator(`[data-offered-job-id="${jobId}"]`).tap();
   await page.locator("#packetButton").tap();
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
@@ -117,7 +130,7 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
         undefined,
         { timeout: WAIT_MS },
       );
-      const firstOffers = await readOffers(page);
+      const firstOffers = await readOffers(page, "fresh");
       expect(firstOffers).toEqual(["job-safe-delivery#low"]);
 
       // Complete round one, then park at the durably saved next-job beat.
@@ -149,7 +162,7 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
         expect.objectContaining({ kind: "delivery-outcome", object: "sealed" }),
       ]));
       await tapChoice(page, "deliver-packet");
-      const secondOffers = await readOffers(page);
+      const secondOffers = await readOffers(page, "completed");
       expect(secondOffers).toEqual([
         "job-night-transfer#medium",
         "job-signed-receipt#low",
