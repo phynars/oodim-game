@@ -68,6 +68,14 @@ const DEFAULT_JOB_COPY = Object.freeze({
   label: "The job waiting for you",
 });
 
+// These lines are the public assertion seam for the server-authoritative
+// packet-memory round trip. Keep outcome keys and string references stable.
+export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
+  safe: "You brought it back whole. I remember how you move.",
+  fast: "You got it here fast. I remember what you risk for a minute.",
+  failed: "You came back empty. I remember you came back.",
+});
+
 const MLOOP_ACTION_TABLE_BY_ID = Object.freeze({
   "job-safe-delivery": Object.freeze({
     default: { id: "mloop-safe-delivery-take", label: "Take the lit stair" },
