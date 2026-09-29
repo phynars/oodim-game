@@ -160,4 +160,13 @@ export function getMloopAvailableAction(jobId, mloopMemory) {
   return { id: row.id, memoryGate: gate, label: row.label };
 }
 
+// Route-risk values are durable player choices. Keep this exported table as
+// the single literal seam for the served recall surface and its D1 round-trip
+// assertion; renderers select it by `player.routeRisk`.
+export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
+  safe: "You took the lit way. I left the door unlatched.",
+  fast: "You ran the dark route. The ledger kept pace.",
+  failed: "You came back empty-handed. I saved your place anyway.",
+});
+
 export const MLOOP_JOB_COPY_IDS = Object.freeze(Object.keys(MLOOP_JOB_COPY_BY_ID));
