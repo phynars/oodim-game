@@ -485,7 +485,14 @@ import {
       typeof performance.now === "function"
         ? performance.now()
         : Date.now();
-    if (now - startedAt > PACKET_RECALL_POLL_TIMEOUT_MS) {
+    // Only give up if the game never booted inside the window. Once
+    // `__game` exists the poll must keep running: a real player can
+    // reach `packet-offered` minutes after boot, and slow SwiftShader
+    // CI boots can exceed 20s before the beat is reached.
+    if (
+      now - startedAt > PACKET_RECALL_POLL_TIMEOUT_MS &&
+      !(globalThis.__game && typeof globalThis.__game.getSnapshot === "function")
+    ) {
       stopPacketRecallPoll();
       return;
     }
@@ -501,7 +508,12 @@ import {
         beat === PACKET_RECALL_BEAT
           ? packetRecallTokenFromRouteRisk(routeRisk)
           : null;
-      if (token !== lastStampedToken) {
+      // Re-stamp when the token changes OR when a re-render dropped the
+      // #packetRecallLine node while the token stayed the same (the old
+      // equality-only guard never restored a removed node).
+      const recallMissing =
+        token !== null && !document.getElementById("packetRecallLine");
+      if (token !== lastStampedToken || recallMissing) {
         if (token === null) {
           stampPacketRecallLine(document, null, "");
         } else {
