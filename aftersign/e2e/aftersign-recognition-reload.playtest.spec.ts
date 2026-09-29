@@ -39,10 +39,20 @@ import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 //   4. Wait for beats via the rendered `[data-beat-id="…"]` node, not
 //      `window.__game.scene.beat` — the DOM is the played surface, and
 //      `data-beat-id` is the contract asserted by
-//      apps/web/src/aftersign/servedSurface.contract.test.ts.
+//      apps/web/src/aftersign/servedSurface.contract.test.ts. The
+//      served surface does NOT set `data-aftersign-beat` on <html>;
+//      polling that attribute (as an earlier rewrite of this spec did)
+//      times out. Two sibling specs document this exact mistake —
+//      io-voice-served.spec.ts:88-89 and
+//      m-continue-next-packet-loop-buttons-enabled.spec.ts:17.
 //   5. Timeouts match the sibling visual-feel spec (60s per beat,
-//      90s test ceiling) because the reload path re-runs the WebGL
+//      180s test ceiling) because the reload path re-runs the WebGL
 //      cold-start under SwiftShader on CI.
+//   6. `hasTouch: true` is required on the phone context. Without it
+//      `#packetButton.tap()` throws
+//      `locator.tap: The page does not support tap.` — see
+//      io-voice-served.spec.ts:74-80 for the same requirement on every
+//      phone-tap spec in this directory.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
