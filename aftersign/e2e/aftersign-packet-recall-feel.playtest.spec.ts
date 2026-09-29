@@ -5,6 +5,16 @@ import {
   PACKET_RECALL_LINE_ID,
 } from "../../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 
+// state.player.routeRisk is written ONLY by renderRouteRiskChoice's
+// onChoose callback on a `#routeRiskChoice` tray tap — the
+// `acknowledge-kiosk` → `deliver-packet` path never populates it.
+// (Reviewer note on PR #2012, confirmed by
+// `aftersign-route-risk-outcome-line-served.spec.ts` — the green
+// sibling for the same routeRisk axis.) So round 1 MUST tap the
+// SAFE route button (`take-the-long-way`) before `acknowledge-kiosk`,
+// or the main.js recall-token derivation stays null and the recall
+// paragraph never stamps at round-2 `packet-offered`.
+
 // AFTERSIGN packet-recall (tap-driven) — plays a phone viewport
 // through round 1's safe delivery, loops back to `packet-offered`,
 // and asserts the recalled "safe" line renders on a VISIBLE sibling
@@ -91,6 +101,50 @@ test.describe("AFTERSIGN packet-recall (phone tap)", () => {
     await page.locator("#job-offer-job-safe-delivery").tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
+
+    // Tap the SAFE route on the `#routeRiskChoice` tray — this is
+    // the ONLY tap path that fires renderRouteRiskChoice's onChoose,
+    // which calls recordRouteRun and writes
+    // `state.player.routeRisk = { lastRoute: "safe", succeeded: true }`.
+    // Without this tap the memory fact never persists, main.js
+    // derives `packetRecallToken === null`, and the round-2 stamp
+    // tears the paragraph down instead of rendering it. Selector +
+    // poll shape mirror `aftersign-route-risk-outcome-line-served.spec.ts`.
+    const tray = page.locator("#routeRiskChoice");
+    await expect(tray).toHaveAttribute("data-visible", "true", {
+      timeout: WAIT_MS,
+    });
+    const safeRouteButton = tray.locator(
+      'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
+    );
+    await expect(safeRouteButton).toBeVisible({ timeout: WAIT_MS });
+    await safeRouteButton.tap();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as unknown as {
+                __game?: {
+                  getSnapshot: () => {
+                    player?: {
+                      routeRisk?: {
+                        lastRoute?: string;
+                        succeeded?: boolean;
+                      } | null;
+                    };
+                  };
+                };
+              }).__game?.getSnapshot().player?.routeRisk ?? null,
+          ),
+        {
+          message:
+            "SAFE route tap must record routeRisk={lastRoute:'safe',succeeded:true} — recall paragraph derives its token from this fact",
+          timeout: WAIT_MS,
+        },
+      )
+      .toEqual({ lastRoute: "safe", succeeded: true });
+
     await tapChoice(page, "acknowledge-kiosk");
     await tapChoice(page, "deliver-packet");
 
