@@ -103,6 +103,8 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+import { aftersignPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
+import { stampPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -2096,6 +2098,22 @@ const renderText = () => {
   stampAftersignBeat(line, state.scene.beat);
   setTextContentIfChanged(speaker, "Io");
   setTextContentIfChanged(line, state.npcs.io.lastLine);
+  // The recalled route is a prior-run fact. At the next offer, let Io
+  // name it beside (not inside) the beat-owned dialogue line.
+  const routeRisk = state.player.routeRisk;
+  const packetRecallToken =
+    routeRisk?.succeeded === false
+      ? "failed"
+      : routeRisk?.lastRoute === "safe"
+        ? "safe"
+        : routeRisk?.lastRoute === "fast"
+          ? "fast"
+          : null;
+  const packetRecallLine =
+    state.scene.beat === "packet-offered" && packetRecallToken
+      ? aftersignPacketRecallLine(packetRecallToken)
+      : "";
+  stampPacketRecallLine(document, packetRecallToken, packetRecallLine);
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
   const isPacketDeliveredBeat = state.scene.beat === "packet-delivered";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
