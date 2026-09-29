@@ -48,7 +48,7 @@ test.describe("AFTERSIGN job offer advances by phone tap", () => {
     await expect(offer).toBeEnabled({ timeout: WAIT_MS });
 
     // The browser-real 44 CSS-pixel rendered-target contract is owned by
-    // `aftersign/e2e/packet-button-touch-target.contract.playtest.spec.ts`.
+    // `aftersign/e2e/packet-button-touch-target.contract.spec.ts`.
     // This playtest keeps the player outcome: a visible phone tap must advance
     // from the offered packet to the packet-choice surface.
     await offer.tap();
