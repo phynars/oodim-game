@@ -415,6 +415,154 @@ import {
   }
 }
 
+// PR #2008 re-review (Soren Vask, 2026-09-29) — packet-recall CORRECTIVE
+// runtime consumer. Runs BEFORE the polled-sync-lane block below.
+//
+// WHY THIS BLOCK EXISTS. Soren's review of the polled-sync-lane variant
+// caught the AI008 surface-mismatch: the polled lane gated its stamp on
+// `window.__game.getSnapshot().scene.beat === "packet-offered"`, but the
+// played e2e (`aftersign-packet-recall-served.playtest.spec.ts`) confirms
+// the beat via `window.__game.scene.beat` — a DIFFERENT surface. On the
+// served page the snapshot's `scene.beat` can lag the direct
+// `__game.scene.beat` property (the runtime updates the scene object in
+// place and only rebuilds the snapshot on demand), so at the moment the
+// e2e is ready to assert `#packetRecallLine.toBeVisible`, the polled
+// lane's gate reads a stale beat and never fires `stampPacketRecallLine`.
+//
+// The fix: gate off DOM state, not snapshot shape. The served renderer
+// stamps `data-beat-id` on `#line` via `stampAftersignBeat` every time
+// the beat renders — that attribute is the SAME DOM state the e2e can
+// observe, and it's authoritative because it's the actual player-visible
+// signal. This block:
+//   1. Installs a MutationObserver on `#line` watching BOTH
+//      `data-beat-id` attribute changes AND text-content mutations.
+//   2. On every observation, and on a bounded rAF tail (to cover the
+//      durable-restore-lands-after-first-render race), reads
+//      `#line`'s `data-beat-id` for the beat and
+//      `window.__game.getSnapshot().player.routeRisk` for the memory —
+//      the routeRisk axis on `getSnapshot()` IS load-bearing on the
+//      served page (confirmed by sibling e2e
+//      `reset-route-risk-isolation.spec.ts` and the earlier passing
+//      played spec on this PR).
+//   3. When `data-beat-id === "packet-offered"` AND routeRisk is
+//      present, folds `{lastRoute, succeeded}` to the durable
+//      `safe|fast|failed` axis and stamps
+//      `stampPacketRecallLine(document, token, aftersignPacketRecallLine(token))`.
+//   4. On any other beat, tears down via
+//      `stampPacketRecallLine(document, null, "")` so a stale sibling
+//      never lingers across a scene change.
+//
+// The existing polled-sync-lane block further down is left in place as
+// a belt-and-suspenders redundancy; both writers call the same
+// idempotent `stampPacketRecallLine` so they cannot fight — whichever
+// gate resolves first wins, the other becomes a no-op.
+{
+  const routeRiskToRecallToken = (routeRisk) => {
+    if (!routeRisk || typeof routeRisk !== "object") return null;
+    const { lastRoute, succeeded } = routeRisk;
+    if (succeeded === false) return "failed";
+    if (lastRoute === "safe") return "safe";
+    if (lastRoute === "fast") return "fast";
+    return null;
+  };
+
+  const readBeatIdFromDom = () => {
+    const el = document.getElementById("line");
+    if (!el) return null;
+    const beat = el.getAttribute("data-beat-id");
+    return typeof beat === "string" && beat.length > 0 ? beat : null;
+  };
+
+  const readRouteRiskFromSnapshot = () => {
+    const gameSurface = /** @type {any} */ (window).__game;
+    if (!gameSurface || typeof gameSurface.getSnapshot !== "function") {
+      return null;
+    }
+    let snapshot;
+    try {
+      snapshot = gameSurface.getSnapshot();
+    } catch {
+      return null;
+    }
+    const player =
+      snapshot && typeof snapshot === "object"
+        ? /** @type {any} */ (snapshot).player
+        : null;
+    if (!player || typeof player !== "object") return null;
+    return player.routeRisk ?? null;
+  };
+
+  const syncPacketRecall = () => {
+    const beatId = readBeatIdFromDom();
+    if (beatId !== "packet-offered") {
+      // Off-beat: tear down any stale sibling so a returning player
+      // doesn't see the recall paragraph linger past packet-offered.
+      stampPacketRecallLine(document, null, "");
+      return;
+    }
+    const routeRisk = readRouteRiskFromSnapshot();
+    const token = routeRiskToRecallToken(routeRisk);
+    if (token === null) {
+      // Fresh boot or unrestored state — no recall to speak.
+      stampPacketRecallLine(document, null, "");
+      return;
+    }
+    const line = aftersignPacketRecallLine(token);
+    if (typeof line !== "string") {
+      stampPacketRecallLine(document, null, "");
+      return;
+    }
+    stampPacketRecallLine(document, token, line);
+  };
+
+  // Observe `#line` for beat-attribute AND text mutations. The
+  // served renderer stamps `data-beat-id` on `#line` at every beat
+  // via `stampAftersignBeat`, so an attribute-mutation observation
+  // captures every beat transition, including the initial cold-boot
+  // stamp. Text mutations are watched too because the beat dialogue
+  // updates `#line` textContent at packet-offered when the durable
+  // restore lands after first render.
+  const installLineObserver = () => {
+    const lineEl = document.getElementById("line");
+    if (!lineEl) {
+      // Retry next frame — `<script type="module">` is deferred so
+      // the DOM is normally present, but a served page in a slow
+      // test frame can be one paint behind.
+      requestAnimationFrame(installLineObserver);
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      syncPacketRecall();
+    });
+    observer.observe(lineEl, {
+      attributes: true,
+      attributeFilter: ["data-beat-id"],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    // Sync once on install — the initial render can precede the
+    // observer registration.
+    syncPacketRecall();
+  };
+  installLineObserver();
+
+  // Bounded rAF tail — covers the boot-ordering race where the
+  // durable save-restore populates `state.player.routeRisk` AFTER
+  // the initial `renderText(packet-offered)` mutation fires. The
+  // observer alone can miss that because no new DOM mutation is
+  // emitted when the restore lands. 60 frames (~1s at 60fps) is
+  // ample: the durable restore reads from a same-origin fetch that
+  // completes within a few frames of boot.
+  let framesLeft = 60;
+  const tail = () => {
+    syncPacketRecall();
+    framesLeft -= 1;
+    if (framesLeft > 0) requestAnimationFrame(tail);
+  };
+  requestAnimationFrame(tail);
+}
+
 // PR #2008 re-review (Soren Vask) — packet-recall runtime consumer,
 // polled sync lane.
 //
