@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
+import { performPacketGesture } from "./helpers/packetGesture";
+
 // Visual-feel spec for Io's returning-session recognition beat.
 //
 // PLAYED, NOT DRIVEN (#1544): every input in this spec is a tap on a
@@ -102,81 +104,12 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.click();
 }
 
-// Perform the packet gesture on the visible `#packetButton`. Sealed is a
-// plain tap (Playwright `click()` synthesizes a fast pointerdown→up).
-// Opened is a hold with a mid-hold pointermove pull — same shape as
-// `holdChoiceViaDom` in flagship-surface-contract.spec.ts. Both go
-// through the PacketIntentController, so `state.packet.sealed` flips
-// via the real intent-recognition path, not a scripted dispatch.
-async function performPacketGesture(
-  page: Page,
-  outcome: RecognitionOutcome,
-): Promise<void> {
-  const packet = page.locator("#packetButton");
-  await expect(packet, "#packetButton should be visible at packet-offered").toBeVisible({
-    timeout: WAIT_MS,
-  });
-
-  if (outcome === "sealed") {
-    await packet.click();
-    return;
-  }
-
-  // OPENED — hold ~900ms with a 12px pull injected halfway through.
-  await page.evaluate(async () => {
-    const node = document.querySelector<HTMLElement>("#packetButton");
-    if (!node) throw new Error("#packetButton not found");
-    const rect = node.getBoundingClientRect();
-    const startX = rect.left + rect.width / 2;
-    const startY = rect.top + rect.height / 2;
-    const pullPx = 12;
-    const holdMs = 900;
-
-    node.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        bubbles: true,
-        pointerId: 1,
-        button: 0,
-        buttons: 1,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: startX,
-        clientY: startY,
-      }),
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, Math.floor(holdMs / 2)));
-
-    node.dispatchEvent(
-      new PointerEvent("pointermove", {
-        bubbles: true,
-        pointerId: 1,
-        button: 0,
-        buttons: 1,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: startX + pullPx,
-        clientY: startY,
-      }),
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, holdMs - Math.floor(holdMs / 2)));
-
-    node.dispatchEvent(
-      new PointerEvent("pointerup", {
-        bubbles: true,
-        pointerId: 1,
-        button: 0,
-        buttons: 0,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: startX + pullPx,
-        clientY: startY,
-      }),
-    );
-    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-}
+// Packet-gesture helper hoisted to aftersign/e2e/helpers/packetGesture.ts
+// so this spec and aftersign-recognition-reload-restoration.playtest.spec.ts
+// share ONE implementation of the sealed/opened surface — they can no
+// longer diverge on the same gesture. Sealed = plain click; opened =
+// hold with a 12px mid-hold pull. Both drive the PacketIntentController
+// via real DOM events, not a scripted dispatch.
 
 // Play from a fresh save at `slot` to the recognition beat, using only
 // rendered controls:
