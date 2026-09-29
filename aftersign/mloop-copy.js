@@ -119,6 +119,15 @@ const DEFAULT_ACTION = Object.freeze({
   label: "Take the job waiting for you",
 });
 
+// Io names the route the player accepted as soon as the packet is offered.
+// Keep these strings here: the recall harness imports the exact entry rather
+// than duplicating dialogue in an assertion.
+export const IO_PACKET_RECALL_BY_ROUTE_RISK = Object.freeze({
+  low: "You kept to the light. I kept the door open.",
+  medium: "You took the middle way. It still cost you.",
+  high: "You took the dark route. I wrote it in the ledger.",
+});
+
 function memoryGateFor(mloopMemory) {
   if (!mloopMemory || typeof mloopMemory !== "object") return "default";
   const outcome = mloopMemory.packetOutcome;
