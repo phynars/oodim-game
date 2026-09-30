@@ -68,6 +68,9 @@ async function readOffers(
       return `${jobId}#${fingerprint?.split("#")[1]}`;
     }),
   );
+  for (const offer of await offers.all()) {
+    await expect(offer).toBeEnabled();
+  }
   for (const fingerprint of fingerprints) {
     expect(fingerprint).toMatch(/^job-[a-z0-9-]+#(?:low|medium|high)$/);
   }
@@ -119,59 +122,105 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
   test("two durable memory records expose different tappable actions across two played rounds", async ({
     page,
   }, testInfo) => {
-    test.setTimeout(60_000);
+    test.setTimeout(180_000);
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     try {
-      const slot = `m-loop-two-round-${Date.now()}-${testInfo.workerIndex}-${testInfo.retry}`;
-      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-      await page.waitForFunction(
-        () => (window as unknown as { __game?: GameReadout }).__game?.scene.ready === true,
-        undefined,
-        { timeout: WAIT_MS },
-      );
-      const firstOffers = await readOffers(page, "fresh");
-      expect(firstOffers).toEqual(["job-safe-delivery#low"]);
+      const stamp = `${Date.now()}-${testInfo.workerIndex}-${testInfo.retry}`;
+      const cohorts = [
+        { memory: "fresh" as const, slot: `m-loop-fresh-${stamp}`, facts: [], revision: 0,
+          offers: ["job-safe-delivery#low"], job: "job-safe-delivery" },
+        { memory: "completed" as const, slot: `m-loop-completed-${stamp}`, facts: [
+          { id: "fact-delivery-outcome-seeded", kind: "delivery-outcome", subject: "io",
+            object: "sealed", sessionId: "session-seeded" },
+          { id: "fact-route-attention-seeded", kind: "route-attention", subject: "io",
+            object: "done", sessionId: "session-seeded" },
+        ], revision: 1,
+          offers: ["job-night-transfer#medium", "job-signed-receipt#low"], job: "job-signed-receipt" },
+      ];
+      // Seed and verify BOTH independent records before any page boots. Prior
+      // delivery facts persist, but the current packet starts undelivered.
+      for (const cohort of cohorts) {
+        const payload = {
+          beat: "packet-offered",
+          packet: { delivered: false, route: null, sealed: true, deliveredAt: null },
+          delivery: { outcome: "unknown" },
+          player: { id: "local-slice-player", name: null, flags: { io_intro_seen: true } },
+          memory: cohort.facts,
+          save: { revision: cohort.revision },
+        };
+        const url = `/aftersign/save/local-slice-player/${encodeURIComponent(cohort.slot)}`;
+        const saved = await page.request.put(url, { data: { payload } });
+        expect(saved.ok(), `seed ${cohort.memory}`).toBe(true);
+        const verified = await page.request.get(url);
+        expect(verified.ok(), `read back ${cohort.memory}`).toBe(true);
+        expect((await verified.json()).payload).toEqual(payload);
+      }
 
-      // Complete round one, then park at the durably saved next-job beat.
-      const firstRevision = await completeRound(page, "job-safe-delivery");
-      await tapAndWaitForSave(
-        page,
-        page.locator('button[data-return-reason="blunt"]'),
-        "return-tone-choice",
-      );
-      await waitForBeat(page, "return-tone-choice");
-      await tapAndWaitForSave(
-        page,
-        page.locator('button[data-choice-id="ask-for-next-job"]').first(),
-        "io-next-job",
-      );
-      await waitForBeat(page, "io-next-job");
-      await expect.poll(async () => {
-        const game = await readGame(page);
-        return { authority: game.save.authority, dirty: game.save.dirty };
-      }, { timeout: WAIT_MS }).toEqual({ authority: "server", dirty: false });
+      const boot = async (slot: string) => {
+        await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+        await page.waitForFunction(
+          () => (window as unknown as { __game?: GameReadout }).__game?.scene.ready === true,
+          undefined,
+          { timeout: WAIT_MS },
+        );
+      };
+      // Compare rendered, enabled action IDs BEFORE either record is played;
+      // different copy, fingerprints, or an in-memory branch alone cannot pass.
+      const initialActionSets: string[][] = [];
+      for (const cohort of cohorts) {
+        await boot(cohort.slot);
+        const offers = await readOffers(page, cohort.memory);
+        expect(offers).toEqual(cohort.offers);
+        initialActionSets.push(offers.map((offer) => offer.split("#")[0]));
+      }
+      expect(initialActionSets[0]).not.toEqual(initialActionSets[1]);
 
-      // Reload the SAME slot: memory must survive the server round-trip,
-      // not merely remain in the previous page's in-memory state.
-      await page.reload({ waitUntil: "load" });
-      await waitForBeat(page, "io-next-job");
-      const restored = await readGame(page);
-      expect(restored.save.revision).toBe(firstRevision);
-      expect(restored.npcs.io.memory).toEqual(expect.arrayContaining([
-        expect.objectContaining({ kind: "delivery-outcome", object: "sealed" }),
-      ]));
-      await tapChoice(page, "deliver-packet");
-      const secondOffers = await readOffers(page, "completed");
-      expect(secondOffers).toEqual([
-        "job-night-transfer#medium",
-        "job-signed-receipt#low",
-      ]);
-      expect(secondOffers).not.toEqual(firstOffers);
+      for (const cohort of cohorts) {
+        await test.step(`${cohort.memory}: two consecutive played rounds`, async () => {
+          await boot(cohort.slot);
+          expect(await readOffers(page, cohort.memory)).toEqual(cohort.offers);
+          expect((await readGame(page)).save.revision).toBe(cohort.revision);
+          // Complete round one, then park at the durably saved next-job beat.
+          const firstRevision = await completeRound(page, cohort.job);
+          await tapAndWaitForSave(
+            page,
+            page.locator('button[data-return-reason="blunt"]'),
+            "return-tone-choice",
+          );
+          await waitForBeat(page, "return-tone-choice");
+          await tapAndWaitForSave(
+            page,
+            page.locator('button[data-choice-id="ask-for-next-job"]').first(),
+            "io-next-job",
+          );
+          await waitForBeat(page, "io-next-job");
+          await expect.poll(async () => {
+            const game = await readGame(page);
+            return { authority: game.save.authority, dirty: game.save.dirty };
+          }, { timeout: WAIT_MS }).toEqual({ authority: "server", dirty: false });
 
-      // Complete round two; just exposing the returning offers is not enough.
-      const secondRevision = await completeRound(page, "job-signed-receipt");
-      expect(secondRevision).toBe(firstRevision + 1);
+          // Reload the SAME slot: memory must survive the server round-trip,
+          // not merely remain in the previous page's in-memory state.
+          await page.reload({ waitUntil: "load" });
+          await waitForBeat(page, "io-next-job");
+          const restored = await readGame(page);
+          expect(restored.save.revision).toBe(firstRevision);
+          expect(restored.npcs.io.memory).toEqual(expect.arrayContaining([
+            expect.objectContaining({ kind: "delivery-outcome", object: "sealed" }),
+          ]));
+          await tapChoice(page, "deliver-packet");
+          const secondOffers = await readOffers(page, "completed");
+          expect(secondOffers).toEqual([
+            "job-night-transfer#medium",
+            "job-signed-receipt#low",
+          ]);
+
+          // Complete round two; just exposing the returning offers is not enough.
+          const secondRevision = await completeRound(page, "job-signed-receipt");
+          expect(secondRevision).toBe(firstRevision + 1);
+        });
+      }
     } finally {
       await testInfo.attach("page-errors", {
         body: JSON.stringify(pageErrors, null, 2),
