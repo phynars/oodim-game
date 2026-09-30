@@ -28,6 +28,23 @@ import {
 // lane `memory-divergence-phone-playtest.spec.ts` uses to force
 // divergent offered-job sets — so the READ path from a real durable
 // save round-trips into the played DOM.
+//
+// Scope guard (PR #2043 iter-1 & iter-2 blocked): this spec is the
+// READ half of the memory axis — that a durable failed-route fact
+// (a) renders the "failed" recall line and (b) surfaces the
+// divergent offered-action set. It does NOT add a tap-and-reflow
+// assertion on `repair-the-loss`. The sibling safe-route spec's
+// `toBeHidden` shape does not transfer to this branch:
+// `computeOfferedActions` returns `["repair-the-loss","take-the-long-way"]`
+// for ANY `!memory.succeeded` fact, so whatever fact `main.js`'s
+// route-risk `onChoose` writes for `repair-the-loss` cannot flip the
+// tray off it (see reviewer note on iter-2 — AI008: unverified
+// runtime premise). The WRITE half of `renderRouteRiskChoice` is
+// already proved played-not-driven by
+// `aftersign/e2e/route-risk-tray-hide-show-played.spec.ts` (a
+// fresh-boot route-risk tap flips `data-render-signature` away from
+// "fresh") and pure by
+// `apps/web/src/aftersign/routeRiskMemory.consumer.test.ts`.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
