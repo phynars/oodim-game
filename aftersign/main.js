@@ -103,6 +103,8 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+import { aftersignPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
+import { stampPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 import {
   stampAftersignBeat,
   stampAftersignChoice,
@@ -513,6 +515,10 @@ import {
   advancePacketPressFeedback,
   beginPacketPressFeedback,
 } from "./src/packet-press-feedback.ts";
+import {
+  PACKET_PRESS_TACTILE_CUE,
+  packetPressPrefersReducedMotion,
+} from "./src/packetPressTactileCue.ts";
 // #1701 draft 3 (Soren's REQUEST_CHANGES on draft 2) — the feel-side
 // judge is what ACTUALLY drives the served-page PREVIEWED stamp. The
 // pure `packetIntent.release(...)` path stays typed to SEALED/OPENED
@@ -742,6 +748,51 @@ const tickPacketPressFeedback = (nowMs) => {
 const playPacketPressFeedback = () => {
   packetPressFeedback = beginPacketPressFeedback(performance.now());
   renderPacketPressFeedback();
+  // Decorative WAAPI + haptic envelope. The served-surface pin path
+  // (#1879) routes through `packetPress(input)` — this cue MUST NOT throw
+  // through to the durable commit. Mirror the contract in
+  // `aftersign/src/routeRiskConfirmFeedback.js`: reduced-motion players
+  // get a brightness flicker (no translate/scale), and the whole
+  // `.animate()` call is wrapped in try/catch so a partial Web Animations
+  // implementation cannot break the packet commit.
+  const packetPressReducedMotion = packetPressPrefersReducedMotion();
+  if (packetButton && typeof packetButton.animate === "function") {
+    try {
+      packetButton.animate(
+        packetPressReducedMotion
+          ? [
+              { filter: "brightness(1)" },
+              { filter: "brightness(1.12)", offset: 0.35 },
+              { filter: "brightness(1)" },
+            ]
+          : [
+              { transform: "translateY(0) scale(1)" },
+              {
+                transform: `translateY(${PACKET_PRESS_TACTILE_CUE.travelPx}px) scale(${PACKET_PRESS_TACTILE_CUE.scale})`,
+                offset: 0.35,
+              },
+              { transform: "translateY(0) scale(1)" },
+            ],
+        {
+          duration: PACKET_PRESS_TACTILE_CUE.durationMs,
+          easing: PACKET_PRESS_TACTILE_CUE.easing,
+        },
+      );
+    } catch {
+      // Decorative feedback must never interrupt the durable packet commit.
+    }
+  }
+  if (
+    !packetPressReducedMotion
+    && typeof navigator !== "undefined"
+    && typeof navigator.vibrate === "function"
+  ) {
+    try {
+      navigator.vibrate(PACKET_PRESS_TACTILE_CUE.vibrationMs);
+    } catch {
+      // Haptic pulse is decorative; blocked or unsupported vibrate is silent.
+    }
+  }
   if (packetPressFeedbackFrame === null) {
     packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
   }
@@ -2047,6 +2098,22 @@ const renderText = () => {
   stampAftersignBeat(line, state.scene.beat);
   setTextContentIfChanged(speaker, "Io");
   setTextContentIfChanged(line, state.npcs.io.lastLine);
+  // The recalled route is a prior-run fact. At the next offer, let Io
+  // name it beside (not inside) the beat-owned dialogue line.
+  const routeRisk = state.player.routeRisk;
+  const packetRecallToken =
+    routeRisk?.succeeded === false
+      ? "failed"
+      : routeRisk?.lastRoute === "safe"
+        ? "safe"
+        : routeRisk?.lastRoute === "fast"
+          ? "fast"
+          : null;
+  const packetRecallLine =
+    state.scene.beat === "packet-offered" && packetRecallToken
+      ? aftersignPacketRecallLine(packetRecallToken)
+      : "";
+  stampPacketRecallLine(document, packetRecallToken, packetRecallLine);
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
   const isPacketDeliveredBeat = state.scene.beat === "packet-delivered";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";

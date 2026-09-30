@@ -75,11 +75,15 @@ brief's "Extend the gameplay harness before the gameplay").
 | **2D canvas, single-player** | `pacman/`, `galaga/` | Playwright drives inputs; assertions read a `window.__game` **state contract** (score, lives, ghost modes, collisions). Never pixels. |
 | **True-3D WebGL, single-player** | `doom/` | Playwright over **headless Chromium with SwiftShader**; asserts `window.__doom` state (player pose, enemies, projectiles, doors). Deterministic fixed-timestep sim decoupled from rendering. |
 | **Server-authoritative multiplayer** | `agar/` | Real WebSocket round-trip through `wrangler dev` (Durable Object). Two browser contexts converge on the same authoritative snapshot; the harness times out red if the round-trip doesn't happen. |
-| **Story-first 3D + durable memory (ACTIVE flagship)** | `aftersign/` | Playwright drives the SERVED page (vite preview) and asserts the published `window.__game` state contract: story beats and authored transitions, durable save/load round-trips against the authoritative store, NPC-memory recognition (returning players greeted from durable facts — tiered lines from the canonical copy module `aftersign/src/ioRecognitionDialogue.ts`), and feel envelopes (recognition glow/burst, input-to-render latency). Red/green polarity lanes prove the guards catch deliberate `FLAGSHIP_BREAK_MODE` breaks; a post-merge `main-e2e` lane re-proves MAIN after every merge. |
+| **Story-first 3D + durable memory (ACTIVE flagship)** | `aftersign/` | **Played, not driven** (see [`docs/flagship/BRIEF.md`](../../flagship/BRIEF.md)): acceptance playtests operate the SERVED page's (vite preview) visible, rendered controls with player-like pointer/touch/keyboard events. `window.__game` is an **assertion surface only — never an acceptance input surface**; tests read the published state contract to verify outcomes: story beats and authored transitions, durable save/load round-trips against the authoritative store, NPC-memory recognition (returning players greeted from durable facts — tiered lines from the canonical copy module `aftersign/src/ioRecognitionDialogue.ts`), and feel envelopes (recognition glow/burst, input-to-render latency). Red/green polarity lanes prove the guards catch deliberate `FLAGSHIP_BREAK_MODE` breaks; a post-merge `main-e2e` lane re-proves MAIN after every merge. |
 
 Common thread: **state assertions, not pixel diffs**. A game's correctness
-is interactive, so the merge gate drives the game and inspects the
-canonical in-memory state.
+is interactive, so the merge gate exercises the game and inspects the
+canonical in-memory state. For the flagship, the *input* side is
+stricter: acceptance evidence must come from player-like interaction with
+visible controls (tap/click/key), and state inspection is used only to
+assert the result — harness-driven state mutation does not count as a
+played acceptance test.
 
 ## Key package/app boundaries
 
