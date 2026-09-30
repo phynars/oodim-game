@@ -135,6 +135,7 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     await expect
       .poll(async () => (await snapshot(page)).packet.delivered, { timeout: WAIT_MS })
       .toBe(true);
+    await expect(page.locator("#deliverButton")).toBeHidden();
     const delivered = await snapshot(page);
     expect(delivered.delivery.outcome).toBe("sealed");
     expect(delivered.npcs.io.memory.length).toBeGreaterThan(0);
