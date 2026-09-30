@@ -28,6 +28,23 @@ import {
 // lane `memory-divergence-phone-playtest.spec.ts` uses to force
 // divergent offered-job sets — so the READ path from a real durable
 // save round-trips into the played DOM.
+//
+// Scope guard (PR #2043 iter-1 & iter-2 blocked): this spec is the
+// READ half of the memory axis — that a durable failed-route fact
+// (a) renders the "failed" recall line and (b) surfaces the
+// divergent offered-action set. It does NOT add a tap-and-reflow
+// assertion on `repair-the-loss`. The sibling safe-route spec's
+// `toBeHidden` shape does not transfer to this branch:
+// `computeOfferedActions` returns `["repair-the-loss","take-the-long-way"]`
+// for ANY `!memory.succeeded` fact, so whatever fact `main.js`'s
+// route-risk `onChoose` writes for `repair-the-loss` cannot flip the
+// tray off it (see reviewer note on iter-2 — AI008: unverified
+// runtime premise). The WRITE half of `renderRouteRiskChoice` is
+// already proved played-not-driven by
+// `aftersign/e2e/route-risk-tray-hide-show-played.spec.ts` (a
+// fresh-boot route-risk tap flips `data-render-signature` away from
+// "fresh") and pure by
+// `apps/web/src/aftersign/routeRiskMemory.consumer.test.ts`.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
@@ -171,20 +188,6 @@ test.describe("AFTERSIGN failed-route recall (phone tap)", () => {
       repairRoute,
       "failed-memory tray must offer repair-the-loss",
     ).toBeVisible({ timeout: WAIT_MS });
-
-    // The recovery action must remain playable rather than merely visible.
-    // A player has now reached this divergent route by taps from a durable
-    // save; tapping it must commit through the served UI. The player-facing
-    // proof — mirroring the sibling green safe-route spec at
-    // aftersign-packet-recall-feel.playtest.spec.ts — is that the tray
-    // reflows and the tapped button hides. `renderRouteRiskChoice` only
-    // records the route run and re-renders the tray on `onChoose`; the
-    // beat is not advanced by this tap, so do not assert on `[data-beat-id]`.
-    await repairRoute.tap();
-    await expect(
-      repairRoute,
-      "repair-the-loss must reflow off-tray after a player taps it",
-    ).toBeHidden({ timeout: WAIT_MS });
 
     // Divergence pin: the succeeded-safe offers must NOT render on
     // the failed-memory branch. This is the read half of the
