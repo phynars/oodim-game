@@ -135,7 +135,14 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     await expect
       .poll(async () => (await snapshot(page)).packet.delivered, { timeout: WAIT_MS })
       .toBe(true);
-    await expect(page.locator("#deliverButton")).toBeHidden();
+    // After the delivery tap the beat advances to `packet-delivered` and
+    // `#deliverButton` RELABELS (not hides) to "Return to Io" — the same
+    // affordance `aftersign-recognition-reload.playtest.spec.ts:75-79`
+    // asserts visible + enabled at this beat. Asserting `toBeHidden()`
+    // here was wrong: the button stays visible, so CI reported
+    // "Received: visible" against the previous revision.
+    await expect(page.locator("#deliverButton")).toBeVisible({ timeout: WAIT_MS });
+    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
     const delivered = await snapshot(page);
     expect(delivered.delivery.outcome).toBe("sealed");
     expect(delivered.npcs.io.memory.length).toBeGreaterThan(0);
