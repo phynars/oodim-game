@@ -172,6 +172,15 @@ test.describe("AFTERSIGN failed-route recall (phone tap)", () => {
       "failed-memory tray must offer repair-the-loss",
     ).toBeVisible({ timeout: WAIT_MS });
 
+    // The recovery action must remain playable rather than merely visible.
+    // A player has now reached this divergent route by taps from a durable
+    // save; tapping it must advance the rendered story beyond packet-choice.
+    await repairRoute.tap();
+    await expect(
+      page.locator('[data-beat-id]:not([data-beat-id="packet-choice"])'),
+      "repair-the-loss must advance the served story after a player taps it",
+    ).toBeVisible({ timeout: WAIT_MS });
+
     // Divergence pin: the succeeded-safe offers must NOT render on
     // the failed-memory branch. This is the read half of the
     // `computeOfferedActions` axis — a refactor that folds the
