@@ -28,7 +28,7 @@
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "You kept to the light. The packet arrived dry. I noticed.",
   fast: "You took the dark cut. The packet beat the bell. I noticed.",
-  failed: "The bell caught you. It catches everyone once. I noticed.",
+  failed: "The bell caught you. It knows your step now. I do too.",
 });
 
 /**
