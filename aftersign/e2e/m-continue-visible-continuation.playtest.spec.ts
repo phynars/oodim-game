@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 const WAIT_MS = 10_000;
-const COLD_START_MS = 20_000;
+// Repeat-each=3 completed this full touch journey in at most 19.8s. Keep a
+// bounded 30s journey budget so cold boot plus the final rendered tap has
+// headroom, independently of the 10s timeout enforced for each beat.
+const JOURNEY_TIMEOUT_MS = 30_000;
 
 // M-CONTINUE player proof: after `io-return-recognition`, the served page must
 // continue into `return-tone-choice` and `io-next-job` through visible taps only.
@@ -16,7 +19,7 @@ test.describe("AFTERSIGN M-CONTINUE visible continuation", () => {
   test("plays past io-return-recognition into return-tone and next-job by tapping rendered UI", async ({
     page,
   }) => {
-    test.setTimeout(COLD_START_MS);
+    test.setTimeout(JOURNEY_TIMEOUT_MS);
 
     const slot = `m-continue-visible-continuation-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
