@@ -51,15 +51,17 @@ const SURFACE_TEST_PATH = join(
 const surfaceSource = readFileSync(SURFACE_TEST_PATH, "utf8");
 
 describe("M-LOOP divergence played-acceptance surface — body guard", () => {
-  it("asserts a discovered playtest satisfies provesRenderedMloopDivergence (not merely matchesLoopDivergencePlaytest)", () => {
-    // The stricter witness — the two DOM tokens the served renderer stamps
-    // (`data-mloop-divergence-memory` on the tray, `data-offered-job-id` on
-    // the rendered offered button) plus at least one real player-event tap —
-    // is what separates "phone spec exists" from "player actually taps the
-    // divergent tray the shipped renderer produces". If the surface test
-    // drops back to the looser gate, this reds.
+  it("asserts a discovered playtest satisfies both provesRenderedMloopDivergence AND provesTwoPlayedRounds on one witness", () => {
+    // The stricter witness pairs two properties on ONE spec: (a) the DOM
+    // tokens the served renderer stamps (`data-mloop-divergence-memory` on
+    // the tray, `data-offered-job-id` on the rendered offered button) plus
+    // at least one real player-event tap, AND (b) two completed played
+    // rounds. Splitting them across two separate `find`s would let a
+    // state-only round test launder a one-tap offer check into acceptance
+    // evidence. If the surface test drops either predicate — or splits the
+    // conjunction across two `find` calls — this reds.
     expect(surfaceSource).toMatch(
-      /playtests\.find\(\s*\(\s*\{\s*source\s*\}\s*\)\s*=>\s*provesRenderedMloopDivergence\(\s*source\s*\)\s*\)/,
+      /playtests\.find\(\s*\(\s*\{\s*source\s*\}\s*\)\s*=>\s*provesRenderedMloopDivergence\(\s*source\s*\)\s*&&\s*provesTwoPlayedRounds\(\s*source\s*\)\s*,?\s*\)/,
     );
     expect(surfaceSource).toMatch(
       /expect\(\s*fullLoopPlaytest\?\.path\s*\)\.toBeDefined\(\s*\)/,

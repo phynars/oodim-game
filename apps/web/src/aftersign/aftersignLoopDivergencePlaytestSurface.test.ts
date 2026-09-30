@@ -209,9 +209,15 @@ describe("matchesLoopDivergencePlaytest contract", () => {
 });
 
 describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
-  it("has a phone playtest proving two memory records produce different rendered offered-job actions through two rounds without harness input", () => {
+  it("has one phone playtest proving rendered divergent offered-job actions through two completed rounds without harness input", () => {
     const playtests = readAftersignPlaytestSpecs();
-    const fullLoopPlaytest = playtests.find(({ source }) => provesRenderedMloopDivergence(source));
+    // The milestone requires both properties from the same played witness:
+    // two completed rounds and rendered, tappable divergence. Finding one
+    // spec for each would permit a state-only round test to launder a
+    // separate one-tap offer check into acceptance evidence.
+    const fullLoopPlaytest = playtests.find(({ source }) =>
+      provesRenderedMloopDivergence(source) && provesTwoPlayedRounds(source),
+    );
     expect(fullLoopPlaytest?.path).toBeDefined();
   });
 
