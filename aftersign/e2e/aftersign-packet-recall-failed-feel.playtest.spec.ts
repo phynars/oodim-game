@@ -173,13 +173,18 @@ test.describe("AFTERSIGN failed-route recall (phone tap)", () => {
     ).toBeVisible({ timeout: WAIT_MS });
 
     // The recovery action must remain playable rather than merely visible.
-    // A player has now reached this divergent route by taps from a durable
-    // save; tapping it must advance the rendered story beyond packet-choice.
+    // Route-risk's `onChoose` (routeRiskMemory.ts) records the run and
+    // re-renders the tray — it does NOT advance the beat (the sibling
+    // `aftersign-packet-recall-feel.playtest.spec.ts` proves this: after
+    // tapping `take-the-long-way` the button goes hidden, and a separate
+    // `acknowledge-kiosk` tap is required to leave packet-choice). So the
+    // player-facing witness that the tap committed is the same visible
+    // reflow: the tapped `repair-the-loss` button hides on the re-render.
     await repairRoute.tap();
     await expect(
-      page.locator('[data-beat-id]:not([data-beat-id="packet-choice"])'),
-      "repair-the-loss must advance the served story after a player taps it",
-    ).toBeVisible({ timeout: WAIT_MS });
+      repairRoute,
+      "repair-the-loss must hide after a player taps it (served tray re-render is the commit witness)",
+    ).toBeHidden({ timeout: WAIT_MS });
 
     // Divergence pin: the succeeded-safe offers must NOT render on
     // the failed-memory branch. This is the read half of the
