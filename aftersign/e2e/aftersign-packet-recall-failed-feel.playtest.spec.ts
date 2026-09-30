@@ -155,7 +155,7 @@ test.describe("AFTERSIGN failed-route recall (phone tap)", () => {
     await waitForBeat(page, "packet-offered");
 
     // (a) The recall paragraph stamps the "failed" branch — Io names
-    // the route by its outcome ("The bell caught you..."). The stamp
+    // the setback and offers repair without inventing its cause. The stamp
     // lives on a sibling of `#line`, not on `#line` itself; the beat
     // dialogue axis is preserved.
     const recall = page.locator(`#${PACKET_RECALL_LINE_ID}`);
