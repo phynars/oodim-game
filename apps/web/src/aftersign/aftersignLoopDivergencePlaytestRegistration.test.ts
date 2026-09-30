@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 //
 // The surface test proves the M-LOOP played-acceptance witness on the served
 // page. It cannot, however, prove its own body: if someone silently hollows
-// it out (deletes the `provesRenderedMloopDivergence` check, swaps the `it`
+// it out (deletes the `provesPlayedTwoRoundDivergence` check, swaps the `it`
 // for `it.skip`, or replaces the assertion with `expect(true).toBe(true)`),
 // the include-list entry keeps passing green and the M-LOOP guard is gone
 // with no red anywhere to catch it.
@@ -14,13 +14,14 @@ import { describe, expect, it } from "vitest";
 // This file reads the surface file's SOURCE and asserts the load-bearing
 // pieces are still there. It intentionally asserts things the surface test
 // structurally cannot: (1) that the surface file contains an unskipped
-// assertion on `provesRenderedMloopDivergence` (the DOM-token witness — the
-// tray-level `data-mloop-divergence-memory` + the offered-button-level
-// `data-offered-job-id` — because generic "different action" prose is not
-// element-level proof), and (2) that the served-page witness
-// (`data-offer-fingerprint` stamp + `fingerprintJobOfferAction` import)
-// is asserted against `aftersign/main.js`. If either is deleted, this test
-// reds — and that's the whole point.
+// assertion on `provesPlayedTwoRoundDivergence` (the single predicate that
+// pairs the DOM-token witness — the tray-level `data-mloop-divergence-memory`
+// + the offered-button-level `data-offered-job-id` — with two completed
+// played rounds, because splitting them across two `find`s would launder a
+// state-only round test into acceptance evidence), and (2) that the
+// served-page witness (`data-offer-fingerprint` stamp + `fingerprintJobOfferAction`
+// import) is asserted against `aftersign/main.js`. If either is deleted,
+// this test reds — and that's the whole point.
 
 // Resolve the sibling surface file from cwd, not `import.meta.url` — under
 // the CI vitest runner `import.meta.url` isn't guaranteed to be a `file:`
@@ -51,20 +52,21 @@ const SURFACE_TEST_PATH = join(
 const surfaceSource = readFileSync(SURFACE_TEST_PATH, "utf8");
 
 describe("M-LOOP divergence played-acceptance surface — body guard", () => {
-  it("asserts a discovered playtest satisfies both provesRenderedMloopDivergence AND provesTwoPlayedRounds on one witness", () => {
+  it("asserts a discovered playtest satisfies provesPlayedTwoRoundDivergence on a single witness", () => {
     // The stricter witness pairs two properties on ONE spec: (a) the DOM
     // tokens the served renderer stamps (`data-mloop-divergence-memory` on
     // the tray, `data-offered-job-id` on the rendered offered button) plus
-    // at least one real player-event tap, AND (b) two completed played
-    // rounds. Splitting them across two separate `find`s would let a
-    // state-only round test launder a one-tap offer check into acceptance
-    // evidence. If the surface test drops either predicate — or splits the
-    // conjunction across two `find` calls — this reds.
+    // real player-event taps, AND (b) two completed played rounds. The
+    // predicate `provesPlayedTwoRoundDivergence` binds both properties to
+    // the same source string; splitting the search across two `find`s
+    // would let a state-only round test launder a one-tap offer check
+    // into acceptance evidence. If the surface test drops the predicate —
+    // or reintroduces a split across two `find` calls — this reds.
     expect(surfaceSource).toMatch(
-      /playtests\.find\(\s*\(\s*\{\s*source\s*\}\s*\)\s*=>\s*provesRenderedMloopDivergence\(\s*source\s*\)\s*&&\s*provesTwoPlayedRounds\(\s*source\s*\)\s*,?\s*\)/,
+      /\.find\(\s*\(\s*\{\s*source\s*\}\s*\)\s*=>\s*provesPlayedTwoRoundDivergence\(\s*source\s*\)\s*,?\s*\)/,
     );
     expect(surfaceSource).toMatch(
-      /expect\(\s*fullLoopPlaytest\?\.path\s*\)\.toBeDefined\(\s*\)/,
+      /expect\(\s*witness\?\.path\s*\)\.toBeDefined\(\s*\)/,
     );
   });
 
@@ -77,7 +79,8 @@ describe("M-LOOP divergence played-acceptance surface — body guard", () => {
       'import { fingerprintJobOfferAction } from "../packages/aftersign/src/jobOfferActionFingerprint"',
     );
     expect(surfaceSource).toContain('"data-offer-fingerprint"');
-    expect(surfaceSource).toContain("fingerprintJobOfferAction(offer).semanticKey");
+    expect(surfaceSource).toContain("armJobOfferFeel(button, () => {");
+    expect(surfaceSource).toContain("offeredJobs.appendChild(button);");
   });
 
   it("keeps the surface `it` blocks unskipped", () => {
