@@ -56,7 +56,7 @@ describe("aftersignPacketRecallRender served consumer", () => {
     stampPacketRecallLine(document, "fast", line);
     const recall = document.getElementById(PACKET_RECALL_LINE_ID);
     expect(recall!.textContent).toBe(line);
-    expect(recall!.textContent).toContain("cut through the dark");
+    expect(recall!.textContent).toContain("dark cut");
     expect(recall!.getAttribute(PACKET_RECALL_LINE_DATA_ATTR)).toBe("fast");
   });
 
