@@ -177,6 +177,7 @@ import {
   interactionConfirmEnvelopeAt,
 } from "./src/interactionConfirmFeel.js";
 import { createReducedMotionPreference } from "./src/reducedMotionPreference.js";
+import { resolvePlayerId } from "./src/playerIdentity.ts";
 import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
@@ -725,6 +726,12 @@ const speaker = document.querySelector("#speaker");
 // ledger seam can't find its shipped node.
 const ioLedgerLine = document.querySelector("#ioLedgerLine");
 const stateReadout = document.querySelector("#stateReadout");
+// The readout is a debug line ("story: packet-offered · packet … · player
+// x,z"). Keep it in the DOM (specs read its text) but hide it from players
+// unless `?debug=1` is on the URL.
+if (stateReadout && new URLSearchParams(window.location.search).get("debug") !== "1") {
+  stateReadout.hidden = true;
+}
 const failureSting = document.querySelector(".failure-sting");
 const packetButton = document.querySelector("#packetButton");
 let packetPressFeedback = { isPressed: false, releaseAtMs: null };
@@ -921,7 +928,16 @@ const writeStored = () => {
 const trustPostureForOutcome = (outcome) =>
   outcome === "sealed" ? "trusted-seal" : outcome === "opened" ? "useful-breach" : "untested";
 
-const bootstrapPlayerId = "local-slice-player";
+// Per-visitor identity (aftersign/src/playerIdentity.ts). This id is the
+// save's capability token: every real visitor mints their own
+// unguessable id instead of sharing one hard-coded save. Local dev/test
+// hosts keep the legacy fixed id unless `?identity=visitor` is passed;
+// `?player=<id>` is an explicit override. See the module header.
+const bootstrapPlayerId = resolvePlayerId({
+  params,
+  hostname: window.location.hostname,
+  getStorage: () => window.localStorage,
+}).id;
 // PR #1642 follow-up (Soren's second REQUEST_CHANGES). The prior
 // `.catch(() => null)` swallowed EVERY boot-read failure silently —
 // which is exactly the trap the migration is supposed to close.
@@ -971,7 +987,7 @@ const state = {
     outcome: stored?.delivery?.outcome || "unknown",
   },
   player: {
-    id: "local-slice-player",
+    id: bootstrapPlayerId,
     name: stored?.player?.name ?? null,
     flags: {
       io_intro_seen: false,
@@ -4458,7 +4474,7 @@ const resetSliceSave = async () => {
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;
   state.player = {
-    id: "local-slice-player",
+    id: bootstrapPlayerId,
     // Reset must reproduce the SHAPE of the cold-boot `state.player`
     // — every field the served-page contract exposes, or downstream
     // reads land on `undefined` and throw. Missing `flags` was the

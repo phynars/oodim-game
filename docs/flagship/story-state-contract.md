@@ -137,6 +137,12 @@ The harness may assert exact `scene.beat` values. These ids are deliberately aut
 
 `player.id` is the durable player identity used by the authoritative save path. It must survive a reload with `clearLocalState: true` when the same test identity is supplied by the harness environment.
 
+`player.id` is resolved once at boot by `aftersign/src/playerIdentity.ts` and is the save's capability token (whoever knows it can read/write that save), so on a real host it is unguessable and per-visitor:
+
+- `?player=<id>` (matching `^[A-Za-z0-9_-]{1,64}$`) — explicit override, used as-is and never persisted.
+- On `localhost` / `127.0.0.1` / `::1` without `?identity=visitor` — the fixed test identity `local-slice-player`. This is what the e2e suite addresses directly (`/aftersign/save/local-slice-player/<slot>`), including across `localStorage.clear()` and fresh browser contexts.
+- Otherwise (game.oodim.com, or local with `?identity=visitor`) — a `crypto.randomUUID()` minted on first visit and kept in `localStorage["aftersign:player-id:v1"]`; if storage throws, a session-only in-memory id. Clearing site data therefore starts a new player.
+
 `player.flags` is for authored story flags only. It must not become a dump of engine internals.
 
 Allowed slice-1 flags:

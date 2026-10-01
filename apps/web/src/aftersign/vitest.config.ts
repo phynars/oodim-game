@@ -71,6 +71,12 @@ export default defineConfig({
       // no runtime witness — the exact failure mode Soren called out
       // (orphaned module / no test) on the player-memory sibling.
       "apps/web/src/aftersign/authoritativeSaveBackend.test.ts",
+      // Public-traffic hardening for /aftersign/save/* + /player-memory
+      // (id/slot shape 400, body caps 413, per-IP write limit 429) and
+      // the per-visitor identity that replaced the one shared
+      // `local-slice-player` save every visitor overwrote.
+      "apps/web/src/aftersign/aftersignWorkerHardening.test.ts",
+      "apps/web/src/aftersign/playerIdentity.test.ts",
       "apps/web/src/aftersign/mLoopE1CoverageSurface.test.ts",
       // PR #1874 — Saint-Orra pointer render consumer test. Mounts a
       // fragment matching the served `aftersign/index.html` shape and

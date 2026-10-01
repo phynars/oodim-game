@@ -6,8 +6,9 @@
 //   1. `handleAuthoritativeSaveRequest(request, env)` — a fetch-side
 //      router called from the Worker entrypoint (`src/server.ts`). It
 //      claims requests to `/aftersign/save/:playerId/:slot`, validates
-//      the route segments + method, enforces a 1 MiB cap on PUT bodies
-//      (parity with the vite dev middleware), and forwards to the DO
+//      the route segments (`^[A-Za-z0-9_-]{1,64}$`) + method, rate-limits
+//      writes per IP, enforces a 128 KiB cap on PUT bodies, and forwards
+//      to the DO
 //      stub keyed by `${playerId}::${slot}`. Non-matching URLs return
 //      `null` so the caller falls through to its next branch.
 //
@@ -51,6 +52,13 @@
 // typechecked with CF types in scope via wrangler's bundler) imports
 // and calls this module with real bindings.
 
+import {
+  isSafeId,
+  rateLimitWrite,
+  readBoundedBody,
+  type WriteRateLimiter,
+} from "./workerRequestGuards";
+
 /** Structural shape of `env.AFTERSIGN_SAVE` (a CF DurableObjectNamespace).
  *  Kept as a local interface so this file typechecks under the aftersign
  *  tsconfig lane (no `@cloudflare/workers-types`). */
@@ -61,6 +69,9 @@ export interface AftersignAuthoritativeSaveNamespace {
 
 export interface AftersignAuthoritativeSaveEnv {
   AFTERSIGN_SAVE: AftersignAuthoritativeSaveNamespace;
+  /** Per-IP write limiter (wrangler.jsonc [[ratelimits]]). Optional so
+   *  local dev / tests without the binding still route. */
+  AFTERSIGN_WRITE_RATELIMIT?: WriteRateLimiter;
 }
 
 /** Structural shape of CF's `DurableObjectStorage`. `state.storage` on
@@ -86,11 +97,13 @@ const SNAPSHOT_KEY = "snapshot";
  *  URL-decoded. */
 export const AUTHORITATIVE_SAVE_PATH_PREFIX = "/aftersign/save/";
 
-/** 1 MiB cap on PUT bodies — parity with the vite dev middleware's
- *  bound. Enforced BOTH via `content-length` (short-circuit, cheap)
- *  AND via realised body length (defensive — the header is advisory
- *  and a mendacious client can lie). */
-const MAX_SAVE_BYTES = 1_048_576;
+/** 128 KiB cap on PUT bodies. A real full-snapshot save is a few KiB;
+ *  the cap bounds what one anonymous capability token can park in DO
+ *  storage. Enforced BOTH via `content-length` (short-circuit, cheap)
+ *  AND via the streamed byte count (the header is advisory and a
+ *  mendacious client can lie). The vite dev middleware keeps its own
+ *  looser 1 MiB bound; it never faces the public internet. */
+export const MAX_SAVE_BYTES = 131_072;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -122,7 +135,7 @@ function parseRoute(
   } catch {
     return "malformed";
   }
-  if (!playerId || !slot) return "malformed";
+  if (!isSafeId(playerId) || !isSafeId(slot)) return "malformed";
   return { playerId, slot };
 }
 
@@ -135,10 +148,12 @@ function parseRoute(
  *
  * Pre-DO guards enforced here (fail fast at the router, cheap):
  *   - Non-matching path → `null`
- *   - Matching prefix but malformed segments → 400
+ *   - Matching prefix but malformed segments, or a playerId/slot outside
+ *     `^[A-Za-z0-9_-]{1,64}$` → 400
  *   - Method not GET/PUT/DELETE → 405 with `Allow: GET, PUT, DELETE`
- *   - PUT with `content-length` > 1 MiB → 413 (header-advised cap)
- *   - PUT whose realised body exceeds 1 MiB → 413 (defensive cap)
+ *   - PUT/DELETE over the per-IP write limit → 429
+ *   - PUT with `content-length` > 128 KiB → 413 (header-advised cap)
+ *   - PUT whose streamed body exceeds 128 KiB → 413 (defensive cap)
  *
  * Everything else (JSON shape validation, 404-vs-200, DELETE
  * idempotency, 503 on storage failure) lives inside the DO so the
@@ -166,35 +181,22 @@ export async function handleAuthoritativeSaveRequest(
     });
   }
 
-  // 1 MiB cap on PUT — pre-DO so we don't spend DO CPU/storage on an
-  // oversized body. Both branches respond 413 for parity with the vite
-  // dev middleware.
+  if (method !== "GET") {
+    const limited = await rateLimitWrite(request, env.AFTERSIGN_WRITE_RATELIMIT, "save");
+    if (limited) return limited;
+  }
+
+  // Body cap on PUT — pre-DO so we don't spend DO CPU/storage on an
+  // oversized body. Read + re-wrap once so the DO sees a request with
+  // the body intact AND the streamed byte length is bounded.
   let forwarded = request;
   if (method === "PUT") {
-    const declared = request.headers.get("content-length");
-    if (declared !== null) {
-      const n = Number(declared);
-      if (Number.isFinite(n) && n > MAX_SAVE_BYTES) {
-        return json({ error: "Save payload too large" }, 413);
-      }
-    }
-    // `content-length` is advisory. Read + re-wrap once so the DO
-    // sees a request with the body intact AND we can bound the
-    // realised byte length.
-    let bodyText: string;
-    try {
-      bodyText = await request.text();
-    } catch {
-      return json({ error: "Invalid save payload" }, 400);
-    }
-    const realisedBytes = new TextEncoder().encode(bodyText).byteLength;
-    if (realisedBytes > MAX_SAVE_BYTES) {
-      return json({ error: "Save payload too large" }, 413);
-    }
+    const bounded = await readBoundedBody(request, MAX_SAVE_BYTES);
+    if (!bounded.ok) return bounded.response;
     forwarded = new Request(request.url, {
       method: "PUT",
       headers: request.headers,
-      body: bodyText,
+      body: bounded.text,
     });
   }
 

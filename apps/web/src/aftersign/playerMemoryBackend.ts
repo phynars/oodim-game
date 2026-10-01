@@ -36,6 +36,13 @@
 // with CF types in scope via wrangler's bundler) imports and calls this
 // module with real bindings.
 
+import {
+  isSafeId,
+  rateLimitWrite,
+  readBoundedBody,
+  type WriteRateLimiter,
+} from "./workerRequestGuards";
+
 export type AftersignPlayerMemoryFacts = Record<string, unknown>;
 
 /** Structural shape of `env.PLAYER_MEMORY` (a CF DurableObjectNamespace).
@@ -48,6 +55,9 @@ export interface AftersignPlayerMemoryNamespace {
 
 export interface AftersignPlayerMemoryEnv {
   PLAYER_MEMORY: AftersignPlayerMemoryNamespace;
+  /** Per-IP write limiter (wrangler.jsonc [[ratelimits]]). Optional so
+   *  local dev / tests without the binding still route. */
+  AFTERSIGN_WRITE_RATELIMIT?: WriteRateLimiter;
 }
 
 /** Structural shape of CF's `DurableObjectStorage`. `state.storage` on
@@ -65,6 +75,11 @@ export interface AftersignDurableObjectState {
 const FACTS_KEY = "facts";
 export const PLAYER_MEMORY_PATH = "/player-memory";
 export const PLAYER_IDENTITY_HEADER = "x-player-id";
+/** Cap on one POST body AND on the merged facts record per identity.
+ *  POST shallow-merges, so without the second bound an anonymous
+ *  identity could grow its record without limit across many small
+ *  POSTs. */
+export const MAX_PLAYER_MEMORY_BYTES = 65_536;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -99,9 +114,25 @@ export async function handlePlayerMemoryRequest(
   if (!identity) {
     return json({ error: `${PLAYER_IDENTITY_HEADER} is required` }, 400);
   }
+  if (!isSafeId(identity)) {
+    return json({ error: `${PLAYER_IDENTITY_HEADER} must match ^[A-Za-z0-9_-]{1,64}$` }, 400);
+  }
+
+  let forwarded = request;
+  if (request.method === "POST") {
+    const limited = await rateLimitWrite(request, env.AFTERSIGN_WRITE_RATELIMIT, "player-memory");
+    if (limited) return limited;
+    const bounded = await readBoundedBody(request, MAX_PLAYER_MEMORY_BYTES);
+    if (!bounded.ok) return bounded.response;
+    forwarded = new Request(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: bounded.text,
+    });
+  }
 
   const id = env.PLAYER_MEMORY.idFromName(identity);
-  return env.PLAYER_MEMORY.get(id).fetch(request);
+  return env.PLAYER_MEMORY.get(id).fetch(forwarded);
 }
 
 /**
@@ -148,6 +179,10 @@ export class AftersignPlayerMemory {
         (await this.state.storage.get<AftersignPlayerMemoryFacts>(FACTS_KEY)) ??
         {};
       const facts = { ...existing, ...(body as AftersignPlayerMemoryFacts) };
+      const mergedBytes = new TextEncoder().encode(JSON.stringify(facts)).byteLength;
+      if (mergedBytes > MAX_PLAYER_MEMORY_BYTES) {
+        return json({ error: "player memory record too large", maxBytes: MAX_PLAYER_MEMORY_BYTES }, 413);
+      }
       await this.state.storage.put(FACTS_KEY, facts);
       return json({ facts });
     }
