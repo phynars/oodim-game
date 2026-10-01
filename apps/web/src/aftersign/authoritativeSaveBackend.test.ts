@@ -324,7 +324,7 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     expect(body.payload).toBeNull();
   });
 
-  it("rejects a PUT whose declared content-length exceeds the 1 MiB cap with 413 (parity with the vite middleware's bound)", async () => {
+  it("rejects a PUT whose declared content-length exceeds the body cap with 413", async () => {
     const env = createFakeEnv();
     const req = new Request(`${ORIGIN}/aftersign/save/player-alpha/default`, {
       method: "PUT",
@@ -338,9 +338,9 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     expect(res!.status).toBe(413);
   });
 
-  it("rejects a PUT whose realised body exceeds the 1 MiB cap with 413 (content-length is advisory)", async () => {
+  it("rejects a PUT whose realised body exceeds the body cap with 413 (content-length is advisory)", async () => {
     const env = createFakeEnv();
-    // Build a body >1 MiB by padding a string field. We don't send a
+    // Build a body over the cap by padding a string field. We don't send a
     // content-length header so only the realised-length check can
     // catch this — exactly the attack a mendacious client would try.
     const bigString = "x".repeat(1_200_000);
@@ -353,17 +353,16 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     expect(res!.status).toBe(413);
   });
 
-  it("URL-decodes playerId and slot in the route segments (percent-encoded identities round-trip)", async () => {
+  it("URL-decodes route segments before validating them (a percent-encoded safe id round-trips)", async () => {
     const env = createFakeEnv();
-    const quirky = "player with spaces & slash/safe"; // encoded by `encodeURIComponent`.
-    await handleAuthoritativeSaveRequest(
-      putSave(quirky, "default", { note: "ok" }),
-      env,
-    );
-    const getRes = await handleAuthoritativeSaveRequest(
-      getSave(quirky, "default"),
-      env,
-    );
+    // `%41bc` decodes to `Abc`, which is inside the accepted alphabet.
+    const put = new Request(`${ORIGIN}/aftersign/save/%41bc/default`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ payload: { note: "ok" } }),
+    });
+    expect((await handleAuthoritativeSaveRequest(put, env))!.status).toBe(204);
+    const getRes = await handleAuthoritativeSaveRequest(getSave("Abc", "default"), env);
     expect(getRes!.status).toBe(200);
     const body = (await readJson(getRes!)) as { payload: { note: string } };
     expect(body.payload.note).toBe("ok");

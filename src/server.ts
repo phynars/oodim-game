@@ -86,6 +86,10 @@ interface Env {
   // per-key limiter enforced at the edge; a no-op in `wrangler dev`. Optional
   // so a config without it (or local dev) still routes.
   WS_RATELIMIT?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
+  // Per-IP limiter for AFTERSIGN writes (PUT/DELETE /aftersign/save/*,
+  // POST /player-memory). Same optional/no-op-in-dev contract as
+  // WS_RATELIMIT; enforced inside the two routers above.
+  AFTERSIGN_WRITE_RATELIMIT?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };
 }
 
 export default {
