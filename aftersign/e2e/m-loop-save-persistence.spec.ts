@@ -1,14 +1,28 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// AFTERSIGN save persistence + slot isolation regression.
+//
+// SCOPE (what this spec DOES assert):
+//   - A completed delivery writes an authoritative save (PUT /aftersign/save/…
+//     returns 204), reloads rehydrate the exact payload (GET returns 200), and
+//     the player can start a second delivery after reload.
+//   - Two slots are isolated: the primary slot's save never appears under a
+//     sibling slot (GET on the sibling slot returns 404).
+//
+// NOT IN SCOPE (what this spec does NOT assert — do not read "Worker-backed"
+// into this file):
+//   - A deployed Worker (miniflare / wrangler dev / staging) is NOT exercised
+//     here. This spec runs against the vite-preview baseURL
+//     (http://localhost:4374/aftersign/), which serves the Worker-shaped
+//     /aftersign/save/* endpoints from aftersign/server-authoritative-save.js.
+//     That handler is the same contract the Worker implements in
+//     apps/web/src/aftersign/authoritativeSaveBackend.ts, but this test
+//     never actually hits AftersignAuthoritativeSave. #2063's first AC
+//     ("runs against Worker backend, not Vite middleware") therefore
+//     remains open — see AI006 and the PR body for the Refs vs Closes
+//     distinction. Filename and describe-block deliberately avoid the
+//     word "Worker" to stop the overclaim flagged in AI007.
 const WAIT_MS = 10_000;
-// Default to the aftersign vite-preview baseURL (http://localhost:4374/aftersign/),
-// which already serves the Worker-shaped /aftersign/save/* endpoints the
-// sibling playtest specs hit. AFTERSIGN_WORKER_BASE_URL stays an override so a
-// real Worker deployment can be targeted from CI if/when wired, but the spec
-// is NOT allowed to silently skip in the default lane — a spec that never
-// runs gates nothing (see playwright.config.ts header). AI006.
-const workerBaseURL = process.env.AFTERSIGN_WORKER_BASE_URL
-  ?? "http://localhost:4374/aftersign/";
 
 type SavePayload = {
   payload: {
@@ -75,9 +89,8 @@ async function reachNextJob(page: Page): Promise<SavePayload> {
   return response.request().postDataJSON() as SavePayload;
 }
 
-test.describe("AFTERSIGN Worker save persistence", () => {
+test.describe("AFTERSIGN save persistence (vite-preview save surface)", () => {
   test.use({
-    baseURL: workerBaseURL,
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
@@ -86,8 +99,8 @@ test.describe("AFTERSIGN Worker save persistence", () => {
   test("persists a played delivery across reload without sharing another slot", async ({ browser }, testInfo) => {
     test.setTimeout(120_000);
     const stamp = `${Date.now()}-${testInfo.workerIndex}`;
-    const primarySlot = `worker-persistence-${stamp}`;
-    const otherSlot = `worker-isolation-${stamp}`;
+    const primarySlot = `save-persistence-${stamp}`;
+    const otherSlot = `save-isolation-${stamp}`;
     const primary = await browser.newPage();
     const other = await browser.newPage();
 
