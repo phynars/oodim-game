@@ -1,7 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const WAIT_MS = 10_000;
-const workerBaseURL = process.env.AFTERSIGN_WORKER_BASE_URL;
+// Default to the aftersign vite-preview baseURL (http://localhost:4374/aftersign/),
+// which already serves the Worker-shaped /aftersign/save/* endpoints the
+// sibling playtest specs hit. AFTERSIGN_WORKER_BASE_URL stays an override so a
+// real Worker deployment can be targeted from CI if/when wired, but the spec
+// is NOT allowed to silently skip in the default lane — a spec that never
+// runs gates nothing (see playwright.config.ts header). AI006.
+const workerBaseURL = process.env.AFTERSIGN_WORKER_BASE_URL
+  ?? "http://localhost:4374/aftersign/";
 
 type SavePayload = {
   payload: {
@@ -65,7 +72,6 @@ async function reachNextJob(page: Page): Promise<SavePayload> {
 }
 
 test.describe("AFTERSIGN Worker save persistence", () => {
-  test.skip(!workerBaseURL, "requires AFTERSIGN_WORKER_BASE_URL, never Vite middleware");
   test.use({
     baseURL: workerBaseURL,
     viewport: { width: 390, height: 844 },
@@ -105,7 +111,12 @@ test.describe("AFTERSIGN Worker save persistence", () => {
       const otherSavePath = `/aftersign/save/local-slice-player/${encodeURIComponent(otherSlot)}`;
       const otherGet = await other.request.get(otherSavePath);
       expect(otherGet.status()).toBe(404);
-      expect(saved.payload.beat).toBe("packet-delivered");
+      // `reachNextJob` returns the PUT whose payload.beat === "io-next-job"
+      // (its waitForResponse filters on exactly that). The reload path above
+      // already proved the GET body equals `saved`; this final assertion
+      // pins the beat identity so a future refactor that changes the helper's
+      // filter also has to update this expectation. AI003.
+      expect(saved.payload.beat).toBe("io-next-job");
     } finally {
       await primary.close();
       await other.close();
