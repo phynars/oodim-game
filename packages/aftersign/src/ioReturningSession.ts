@@ -30,7 +30,7 @@ export const ioReturningSessionLines: Record<IoReturningSessionLineKey, string> 
   returnedPacket:
     'You brought the work back instead of losing it. Bad news, neatly labeled, still counts.',
   sealedPacketListenedRoute:
-    'You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.',
+    'You came back with the blue seal unbroken. You heard me out before you ran. I remember hands I can trust.',
   sealedPacketSkippedRoute:
     'You came back with the blue seal unbroken, and you still ran before the route finished. Reliable hands, impatient feet.',
   openedPacketListenedRoute:

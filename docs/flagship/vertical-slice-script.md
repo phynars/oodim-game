@@ -190,7 +190,7 @@ When BOTH packet outcome and route behavior are remembered, Io chains both facts
 
 **If packet was sealed and route was listened:**
 
-**Io:** “You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.”
+**Io:** “You came back with the blue seal unbroken. You heard me out before you ran. I remember hands I can trust.”
 
 **If packet was sealed and route was skipped:**
 
