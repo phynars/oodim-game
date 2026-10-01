@@ -71,8 +71,42 @@ jobs:
     outputs:
       aftersign: ${{ steps.filter.outputs.aftersign }}
       agar: ${{ steps.filter.outputs.agar }}
+      durable_green: ${{ steps.lanes.outputs.durable_green }}
+      durable_red: ${{ steps.lanes.outputs.durable_red }}
+      npc_memory_green: ${{ steps.lanes.outputs.npc_memory_green }}
+      npc_memory_red: ${{ steps.lanes.outputs.npc_memory_red }}
     steps:
       - uses: actions/checkout@v7
+      # Lane states from aftersign/redgreen.config.json, read HERE so a
+      # retired lane is skipped at the JOB level (`if:` on the lane job)
+      # instead of paying checkout + npm install + Playwright install before
+      # its in-job preflight bows out (~3.9 runner-hours/week wasted on the
+      # two retired red lanes). The in-job preflights stay as-is: the config
+      # is still the source of truth, and the red lanes' guard-string
+      # fail-loud safety still runs whenever a lane is live. The runner's
+      # preinstalled node is enough for this read — no setup-node needed.
+      - name: Read lane states from aftersign/redgreen.config.json
+        id: lanes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const cfg = JSON.parse(fs.readFileSync("aftersign/redgreen.config.json", "utf8"));
+            const lanes = {
+              durable_green: cfg["durable-save"].green,
+              durable_red: cfg["durable-save"].red,
+              npc_memory_green: cfg["npc-memory"].green,
+              npc_memory_red: cfg["npc-memory"].red,
+            };
+            const out = [];
+            for (const [k, v] of Object.entries(lanes)) {
+              if (typeof v !== "string") throw new Error(`redgreen.config.json: missing state for ${k}`);
+              console.log(`${k}: ${v}${v === "live" ? "" : "  (job will be SKIPPED)"}`);
+              out.push(`${k}=${v}`);
+            }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, out.join("\n") + "\n");
+          '
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -126,7 +160,8 @@ jobs:
   # ------------------------------------------------- aftersign durable-save
   aftersign-durable-green:
     needs: changes
-    if: ${{ needs.changes.outputs.aftersign == 'true' }}
+    # Retired lanes (redgreen.config.json) skip here, before any install.
+    if: ${{ needs.changes.outputs.aftersign == 'true' && needs.changes.outputs.durable_green == 'live' }}
     name: durable-save contract (green — default suite remains skipped)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -155,7 +190,8 @@ jobs:
 
   aftersign-durable-red:
     needs: changes
-    if: ${{ needs.changes.outputs.aftersign == 'true' }}
+    # Retired lanes (redgreen.config.json) skip here, before any install.
+    if: ${{ needs.changes.outputs.aftersign == 'true' && needs.changes.outputs.durable_red == 'live' }}
     name: durable-save contract (red — local-only-save MUST fail)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -208,7 +244,8 @@ jobs:
   # --------------------------------------------------- aftersign npc-memory
   aftersign-npc-memory-green:
     needs: changes
-    if: ${{ needs.changes.outputs.aftersign == 'true' }}
+    # Retired lanes (redgreen.config.json) skip here, before any install.
+    if: ${{ needs.changes.outputs.aftersign == 'true' && needs.changes.outputs.npc_memory_green == 'live' }}
     name: npc-memory contract (green — default suite may skip)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -235,7 +272,8 @@ jobs:
 
   aftersign-npc-memory-red:
     needs: changes
-    if: ${{ needs.changes.outputs.aftersign == 'true' }}
+    # Retired lanes (redgreen.config.json) skip here, before any install.
+    if: ${{ needs.changes.outputs.aftersign == 'true' && needs.changes.outputs.npc_memory_red == 'live' }}
     name: npc-memory contract (red — drop-memory MUST fail)
     runs-on: ubuntu-latest
     timeout-minutes: 15
