@@ -19,6 +19,14 @@
   // gets marked green under weaker rules than it will eventually
   // face.
   //
+  // allowJs (2026-10-01, Kyoung's call): 21 of the 46 burn-down errors
+  // were TS7016 "no declaration file" on `.js` modules under
+  // aftersign/ and apps/web/src/aftersign/ that the .ts files import.
+  // allowJs lets tsc resolve and infer types from those modules instead
+  // of typing them `any`, so the real errors behind them show up (one
+  // TS2345 did). checkJs stays off — the .js files themselves are NOT
+  // typechecked, so this loosens no strict flag on any .ts file.
+  //
   // Rebuild note: the initial CI run on this PR went red on
   // `test:e2e:aftersign` — a Playwright step this diff does not touch
   // (no aftersign runtime, e2e config, or playwright.config change).
@@ -42,6 +50,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowJs": true,
     "types": ["vite/client", "node"]
   },
   "include": ["../apps/web/src/aftersign/**/*.ts"],
