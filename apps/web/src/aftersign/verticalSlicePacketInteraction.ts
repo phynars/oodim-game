@@ -131,9 +131,17 @@ export function resolveAftersignPacketConfirmInteraction(
 function stampAftersignPacketConfirmEnvelopeOnLayer(
   layer: HTMLElement,
   kind: AftersignInteractionConfirmKind,
+  bloomDurationMs: number,
   reducedMotion: boolean,
 ): void {
-  const peakElapsedMs = AFTERSIGN_INTERACTION_CONFIRM_FEEL[kind].durationMs * 0.35;
+  // The peak is 35% of the BLOOM LAYER's own duration (the tuned
+  // `AftersignConfirmFeelSpec.durationMs` the player actually ran, i.e.
+  // `handle.feel.durationMs`) — the same 35% convention the sting stamp
+  // below uses against its own spec. `AFTERSIGN_INTERACTION_CONFIRM_FEEL`
+  // entries have no `durationMs` field; reading one yielded `undefined`,
+  // so `undefined * 0.35` = NaN and the sampler threw "elapsedMs must be
+  // finite" on every packet confirm.
+  const peakElapsedMs = bloomDurationMs * 0.35;
   const peakSample = sampleAftersignInteractionConfirmEnvelope(
     kind,
     peakElapsedMs,
@@ -202,6 +210,7 @@ export function playAftersignPacketConfirmInteractionFeel(
     stampAftersignPacketConfirmEnvelopeOnLayer(
       handle.layer,
       interaction.kind,
+      handle.feel.durationMs,
       reducedMotion,
     );
     stampAftersignInteractionConfirmStingOnLayer(handle.layer, reducedMotion);

@@ -53,7 +53,8 @@ export function sampleFailureStingFeel(elapsedMs: number): FailureStingSample {
   return {
     elapsedMs: safeElapsedMs,
     progress,
-    recoilPx: FAILURE_STING_FEEL.recoilPxPeak * recoilIn * hold,
+    // `+ 0` normalizes -0 (negative peak × zero ramp) to +0 at rest.
+    recoilPx: FAILURE_STING_FEEL.recoilPxPeak * recoilIn * hold + 0,
     shakePx: FAILURE_STING_FEEL.shakePxPeak * Math.sin(progress * Math.PI * 8) * tail,
     vignetteAlpha: FAILURE_STING_FEEL.vignetteAlphaPeak * recoilIn * tail,
     desaturate: FAILURE_STING_FEEL.desaturatePeak * recoilIn * tail,
