@@ -29,7 +29,16 @@ export { EchoRoom } from "../agar/server/worker";
 // localStorage clear.
 export { AftersignPlayerMemory } from "../apps/web/src/aftersign/playerMemoryBackend";
 import { handlePlayerMemoryRequest } from "../apps/web/src/aftersign/playerMemoryBackend";
-import { handleAuthoritativeSaveRequest } from "../aftersign/server-authoritative-save.js";
+
+// AFTERSIGN authoritative full-snapshot save backend (PR #2065 re-review).
+// Mirrors the player-memory wiring: a DO class re-exported so wrangler can
+// locate it, plus a router called from fetch below. The DO substrate is the
+// correction for the first draft's module-level `new Map()`, which Workers
+// isolates would silently drop on recycle/eviction. See
+// `apps/web/src/aftersign/authoritativeSaveBackend.ts` for the full
+// rationale.
+export { AftersignAuthoritativeSave } from "../apps/web/src/aftersign/authoritativeSaveBackend";
+import { handleAuthoritativeSaveRequest } from "../apps/web/src/aftersign/authoritativeSaveBackend";
 
 /** True when a browser-sent Origin is allowed to open the /ws socket. Only a
  *  PRESENT, non-allowed origin is rejected by the caller (absent → allowed). */
@@ -62,6 +71,17 @@ interface Env {
       fetch: (request: Request) => Promise<Response>;
     };
   };
+  // AFTERSIGN authoritative save DO namespace (wrangler.jsonc
+  // [[durable_objects]]). Bound as `AFTERSIGN_SAVE`; class
+  // `AftersignAuthoritativeSave`. Handles GET/PUT/DELETE on
+  // `/aftersign/save/:playerId/:slot`, one DO instance per
+  // (playerId, slot) pair.
+  AFTERSIGN_SAVE: {
+    idFromName: (name: string) => { toString(): string };
+    get: (id: { toString(): string }) => {
+      fetch: (request: Request) => Promise<Response>;
+    };
+  };
   // Workers Rate Limiting binding (wrangler.jsonc [[ratelimits]]). Best-effort
   // per-key limiter enforced at the edge; a no-op in `wrangler dev`. Optional
   // so a config without it (or local dev) still routes.
@@ -79,9 +99,11 @@ export default {
     const playerMemoryResponse = await handlePlayerMemoryRequest(request, env);
     if (playerMemoryResponse !== null) return playerMemoryResponse;
 
-    // AFTERSIGN full-snapshot saves. The handler validates both route segments
-    // and keys storage by their pair, preventing player and slot cross-talk.
-    const authoritativeSaveResponse = await handleAuthoritativeSaveRequest(request);
+    // AFTERSIGN authoritative full-snapshot saves. The router validates
+    // both route segments and dispatches to a DO keyed by
+    // `${playerId}::${slot}`, so storage survives isolate recycling and
+    // player/slot cross-talk is structurally impossible.
+    const authoritativeSaveResponse = await handleAuthoritativeSaveRequest(request, env);
     if (authoritativeSaveResponse !== null) return authoritativeSaveResponse;
 
     if (url.pathname === "/ws") {

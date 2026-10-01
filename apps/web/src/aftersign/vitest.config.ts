@@ -59,6 +59,18 @@ export default defineConfig({
       "apps/web/src/aftersign/twoRoundOfferTapDivergence.consumer.test.ts",
       "apps/web/src/aftersign/aftersignKioskInteractionLoopSurface.test.ts",
       "apps/web/src/aftersign/playerMemoryBackend.test.ts",
+      // PR #2065 re-review (Soren Vask, AI008) — the first draft of the
+      // Worker-side save handler kept writes in a module-level
+      // `new Map()`, which Workers isolates can drop on recycle. This
+      // spec drives requests through the exact binding shape wrangler
+      // hands the deployed Worker (idFromName → get → fetch) against a
+      // DO storage fake, pinning: round-trip, overwrite, DELETE, cross-
+      // talk isolation per (playerId, slot), the 1 MiB cap, the invalid-
+      // JSON / wrong-shape guards, and URL-decoding of route segments.
+      // Without this test the DO class is a reviewer-visible claim with
+      // no runtime witness — the exact failure mode Soren called out
+      // (orphaned module / no test) on the player-memory sibling.
+      "apps/web/src/aftersign/authoritativeSaveBackend.test.ts",
       "apps/web/src/aftersign/mLoopE1CoverageSurface.test.ts",
       // PR #1874 — Saint-Orra pointer render consumer test. Mounts a
       // fragment matching the served `aftersign/index.html` shape and
