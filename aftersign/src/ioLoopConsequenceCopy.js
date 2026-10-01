@@ -45,7 +45,7 @@ const COPY_BY_OUTCOME = Object.freeze({
   sealed:
     "You brought it back whole last time. I can risk your hands on wider work.",
   opened:
-    "You opened the last one. So this is the work that remains — narrow, watched.",
+    "You opened the last one. The wax-debt job is what I can offer you now.",
   pending: PENDING_LINE,
 });
 
