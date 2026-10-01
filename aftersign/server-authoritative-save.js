@@ -1,33 +1,12 @@
-// Server-authoritative save client for AFTERSIGN.
+// Server-authoritative save client and HTTP handler for AFTERSIGN.
 //
-// The save is served by a real HTTP endpoint mounted on the vite dev/preview
-// server (see aftersign/vite.config.ts → aftersignAuthoritativeSaveMiddleware).
-// The store lives in the vite Node process, NOT in the browser — so it
-// outlives window.localStorage.clear(), IndexedDB clear-site-data, incognito
-// windows, and any other browser-local bucket. This is what makes stamping
-// `source: "server"` / `authority: "server"` on the persisted save honest:
-// the payload genuinely crossed a network boundary and is not reconstructed
-// from local browser state.
-//
-// Contract with the harness (docs/flagship/story-state-contract.md):
-//   - `readAuthoritativeSave` returns the last payload written for
-//     ${playerId}::${slot}, or null on a cold slot / server error.
-//   - `writeAuthoritativeSave` persists the payload atomically; concurrent
-//     writes overwrite in arrival order (single-writer per slot in practice).
-//   - `clearAuthoritativeSave` removes the row for that ${playerId}::${slot}
-//     — used by reloadFromSave({ clearLocalState: true }) to wipe durable
-//     state for the vertical slice.
-//
-// Endpoint shape:
-//   GET    /aftersign/save/:playerId/:slot   → 200 {payload}|null | 404
-//   PUT    /aftersign/save/:playerId/:slot   → 204 (body: {payload})
-//   DELETE /aftersign/save/:playerId/:slot   → 204
-//
-// The client is deliberately small: no retry, no queue. Playwright specs run
-// against localhost; a fetch failure means the vite server is down, and
-// falling back to localStorage would silently defeat the durability proof.
+// Client contract:
+//   GET    /aftersign/save/:playerId/:slot → 200 { payload } | 404
+//   PUT    /aftersign/save/:playerId/:slot → 204 (body: { payload })
+//   DELETE /aftersign/save/:playerId/:slot → 204
 
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
+const saveStore = new Map();
 
 function encodeKey({ playerId, slot }) {
   return `${encodeURIComponent(playerId)}/${encodeURIComponent(slot)}`;
@@ -35,6 +14,67 @@ function encodeKey({ playerId, slot }) {
 
 function isBrowser() {
   return typeof window !== "undefined" && typeof window.fetch === "function";
+}
+
+function saveKey(playerId, slot) {
+  return `${playerId}\u0000${slot}`;
+}
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/**
+ * Handles the authoritative save HTTP contract. Returns null for paths outside
+ * this endpoint so callers can continue normal routing.
+ */
+export async function handleAuthoritativeSaveRequest(request) {
+  const url = new URL(request.url);
+  const match = /^\/aftersign\/save\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+  if (!match) return null;
+
+  let playerId;
+  let slot;
+  try {
+    playerId = decodeURIComponent(match[1]);
+    slot = decodeURIComponent(match[2]);
+  } catch {
+    return jsonResponse({ error: "invalid save key" }, 400);
+  }
+  if (!playerId || !slot) return jsonResponse({ error: "invalid save key" }, 400);
+
+  const key = saveKey(playerId, slot);
+  if (request.method === "GET") {
+    if (!saveStore.has(key)) return new Response(null, { status: 404 });
+    return jsonResponse({ payload: saveStore.get(key) });
+  }
+
+  if (request.method === "PUT") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON" }, 400);
+    }
+    if (typeof body !== "object" || body === null || !("payload" in body)) {
+      return jsonResponse({ error: "payload is required" }, 400);
+    }
+    saveStore.set(key, body.payload);
+    return new Response(null, { status: 204 });
+  }
+
+  if (request.method === "DELETE") {
+    saveStore.delete(key);
+    return new Response(null, { status: 204 });
+  }
+
+  return new Response(null, {
+    status: 405,
+    headers: { allow: "GET, PUT, DELETE" },
+  });
 }
 
 export async function readAuthoritativeSave({ slot, playerId }) {
@@ -50,13 +90,8 @@ export async function readAuthoritativeSave({ slot, playerId }) {
       throw new Error(`Authoritative save read failed: HTTP ${response.status}`);
     }
     const body = await response.json();
-    // Endpoint returns { payload: ... } on hit; treat a missing payload as null
-    // so the caller's `|| null` fallback still routes correctly.
     return body?.payload ?? null;
   } catch (err) {
-    // Surface the failure to the caller — the durable-load path must not
-    // silently reconstruct from local state when the server is unreachable
-    // (that would re-introduce exactly the defect this file exists to fix).
     throw err instanceof Error ? err : new Error(String(err));
   }
 }
@@ -78,7 +113,6 @@ export async function clearAuthoritativeSave({ slot, playerId }) {
   const response = await window.fetch(`${SAVE_ENDPOINT_BASE}/${encodeKey({ playerId, slot })}`, {
     method: "DELETE",
   });
-  // 404 is fine — DELETE of a missing row is a no-op success.
   if (!response.ok && response.status !== 404) {
     throw new Error(`Authoritative save delete failed: HTTP ${response.status}`);
   }

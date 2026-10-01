@@ -29,6 +29,7 @@ export { EchoRoom } from "../agar/server/worker";
 // localStorage clear.
 export { AftersignPlayerMemory } from "../apps/web/src/aftersign/playerMemoryBackend";
 import { handlePlayerMemoryRequest } from "../apps/web/src/aftersign/playerMemoryBackend";
+import { handleAuthoritativeSaveRequest } from "../aftersign/server-authoritative-save.js";
 
 /** True when a browser-sent Origin is allowed to open the /ws socket. Only a
  *  PRESENT, non-allowed origin is rejected by the caller (absent → allowed). */
@@ -77,6 +78,11 @@ export default {
     // through to /ws + ASSETS below.
     const playerMemoryResponse = await handlePlayerMemoryRequest(request, env);
     if (playerMemoryResponse !== null) return playerMemoryResponse;
+
+    // AFTERSIGN full-snapshot saves. The handler validates both route segments
+    // and keys storage by their pair, preventing player and slot cross-talk.
+    const authoritativeSaveResponse = await handleAuthoritativeSaveRequest(request);
+    if (authoritativeSaveResponse !== null) return authoritativeSaveResponse;
 
     if (url.pathname === "/ws") {
       const origin = request.headers.get("Origin");
