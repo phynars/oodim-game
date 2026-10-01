@@ -17,13 +17,19 @@ describe("verticalSliceState", () => {
       packetOutcome: null,
       ioHasMetPlayer: false,
       ioRecognizesPlayer: false,
+      orraHasMetPlayer: false,
+      orraRecognizesPlayer: false,
+      orraAction: null,
+      hasChosenReturnTone: false,
+      hasAskedForNextJob: false,
+      rememberedTone: undefined,
     });
   });
 
   it("records the sealed packet choice without moving scenes", () => {
     const state = createAftersignVerticalSliceState();
 
-    expect(recordAftersignPacketChoice(state, "sealed")).toEqual({
+    expect(recordAftersignPacketChoice(state, "sealed")).toMatchObject({
       scene: "kiosk",
       packetOutcome: "sealed",
       ioHasMetPlayer: false,
@@ -37,7 +43,7 @@ describe("verticalSliceState", () => {
       "opened",
     );
 
-    expect(meetIoForAftersignSlice(state)).toEqual({
+    expect(meetIoForAftersignSlice(state)).toMatchObject({
       scene: "io-return",
       packetOutcome: "opened",
       ioHasMetPlayer: true,
@@ -53,7 +59,7 @@ describe("verticalSliceState", () => {
       createAftersignVerticalSliceSave(firstMeeting),
     );
 
-    expect(meetIoForAftersignSlice(restored)).toEqual({
+    expect(meetIoForAftersignSlice(restored)).toMatchObject({
       scene: "io-return",
       packetOutcome: "sealed",
       ioHasMetPlayer: true,

@@ -21,7 +21,8 @@ describe("AFTERSIGN served M-LOOP divergence tray contract", () => {
   it("publishes the durable-memory branch and stable offer ids on the rendered tray", () => {
     const main = readFileSync(MAIN_PATH, "utf8");
 
-    expect(main).toContain('offeredJobs.setAttribute("data-mloop-divergence-memory",');
+    // Whitespace-tolerant: main.js splits this call across lines.
+    expect(main).toMatch(/offeredJobs\.setAttribute\(\s*"data-mloop-divergence-memory",/);
     expect(main).toContain('button.setAttribute("data-offered-job-id",');
     expect(main).toContain("offeredJobs.appendChild(button);");
   });

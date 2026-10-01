@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { it } from "vitest";
 
 import {
   recognitionFeedbackContract,
@@ -10,7 +11,7 @@ function inBand(value: number, min: number, max: number): void {
   assert.ok(value >= min && value <= max, `${value} expected in ${min}..${max}`);
 }
 
-{
+it("sealed camera peak lands in band with the sealed target offset", () => {
   const peak = sampleRecognitionFeedbackBeat(recognitionFeedbackContract.cameraPeakMs, {
     outcome: "sealed",
     startedAt: 1000,
@@ -22,25 +23,25 @@ function inBand(value: number, min: number, max: number): void {
   assert.equal(peak.cameraTargetOffsetMeters, recognitionFeedbackContract.sealedTargetOffsetMeters);
   assert.equal(peak.inputLockMs, 1220);
   assert.equal(peak.lineId, "io.test.sealed");
-}
+});
 
-{
+it("sign glow rises from the floor to the peak multiplier", () => {
   const glowStart = sampleRecognitionFeedbackBeat(recognitionFeedbackContract.glowStartMs);
   const glowPeak = sampleRecognitionFeedbackBeat(
     recognitionFeedbackContract.glowStartMs + recognitionFeedbackContract.glowRiseMs,
   );
   assert.equal(glowStart.signGlowMultiplier, recognitionFeedbackContract.glowFromMultiplier);
   inBand(glowPeak.signGlowMultiplier, 1.34, 1.35);
-}
+});
 
-{
+it("recognition sting gain is in band 90ms after the sting starts", () => {
   const sting = sampleRecognitionFeedbackBeat(recognitionFeedbackContract.stingStartMs + 90);
   assert.notEqual(sting.stingGainDb, null);
   inBand(sting.stingGainDb ?? 0, -9, -7.5);
   assert.equal(sting.stingElapsedMs, 90);
-}
+});
 
-{
+it("opened outcome uses the opened target offset and wooden click timing", () => {
   const opened = sampleRecognitionFeedbackBeat(
     recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
     { outcome: "opened" },
@@ -48,9 +49,9 @@ function inBand(value: number, min: number, max: number): void {
   assert.equal(opened.outcome, "opened");
   assert.equal(opened.cameraTargetOffsetMeters, recognitionFeedbackContract.openedTargetOffsetMeters);
   assert.equal(opened.woodenClickElapsedMs, 0);
-}
+});
 
-{
+it("sealed and opened outcomes differ on lantern, seal, sign, rim and haptics", () => {
   const sealed = sampleRecognitionFeedbackBeat(recognitionFeedbackContract.stingStartMs + 8, { outcome: "sealed" });
   const opened = sampleRecognitionFeedbackBeat(
     recognitionFeedbackContract.stingStartMs + recognitionFeedbackContract.openedWoodenClickDelayMs,
@@ -68,9 +69,9 @@ function inBand(value: number, min: number, max: number): void {
   assert.notEqual(sealed.hapticScale.amplitude, opened.hapticScale.amplitude);
   assert.deepEqual(sealed.audioCueIds, ["recognition-sting", "seal-wax-click", "bell-soft"]);
   assert.deepEqual(opened.audioCueIds, ["recognition-sting", "seal-paper-tear", "bell-soft"]);
-}
+});
 
-{
+it("reducedMotion collapses camera motion but keeps audio and haptic", () => {
   const reduced = sampleRecognitionFeedbackBeat(160, { reducedMotion: true, outcome: "opened" });
   assert.equal(reduced.totalMs, 160);
   assert.equal(reduced.cameraDeltaMeters, 0);
@@ -79,9 +80,9 @@ function inBand(value: number, min: number, max: number): void {
   assert.notEqual(reduced.stingGainDb, null);
   assert.equal(reduced.packetSeal.audioId, "seal-paper-tear");
   assert.equal(reduced.hapticScale.durationMs, 72);
-}
+});
 
-{
+it("completed beat ends at startedAt + total and snapshots stable keys", () => {
   const done = sampleRecognitionFeedbackBeat(5000, { startedAt: 2000 });
   assert.equal(done.endedAt, 3220);
   const snapshot = toRecognitionMemoryBeatSnapshot(done);
@@ -96,4 +97,4 @@ function inBand(value: number, min: number, max: number): void {
     "lineId",
   ]);
   assert.equal(snapshot.kind, "io-recognition");
-}
+});

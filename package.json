@@ -60,6 +60,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260903.1",
     "@playwright/test": "^1.48.0",
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^26.4.1",
     "@types/three": "^0.186.0",
     "jsdom": "^26.0.0",
@@ -72,7 +73,7 @@
     "sharp": ">=0.35.0",
     "postcss": ">=8.5.18",
     "miniflare": {
-      "undici": "7.29.0"
+      "undici": "^7.29.1"
     }
   }
 }

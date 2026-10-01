@@ -81,7 +81,8 @@ export const sampleAftersignKioskSceneEnvelope = (
     label,
     elapsedMs,
     cameraYOffsetPx: camera.startOffsetYPx * (1 - cameraProgress),
-    cameraPushInZPx: camera.startPushInZPx * (1 - cameraProgress),
+    // `+ 0` normalizes -0 (negative start × zero remaining) to +0.
+    cameraPushInZPx: camera.startPushInZPx * (1 - cameraProgress) + 0,
     scanlineYPx: recognition.scanlineTravelPx * scanlineProgress,
     ledGlowAlpha: ledProgress,
     faceplateGlowPx: recognition.faceplateGlowPx * ledProgress,

@@ -198,7 +198,10 @@ describe("Aftersign durable save/load contract", () => {
       rememberedSessionIds: ["session-1"],
     });
 
-    expect(snapshot).toEqual({
+    // toMatchObject: the snapshot has since grown `scene`, `ioDialogue`
+    // and `offeredJobs` (pinned by their own tests); this test owns the
+    // NPC-memory round-trip fields below.
+    expect(snapshot).toMatchObject({
       story: {
         id: "aftersign.verticalSlice",
         act: "act-1",
@@ -341,18 +344,23 @@ describe("Aftersign durable save/load contract", () => {
   });
 
   it("publishes Orra's story memory beat alongside Io without sharing fields", () => {
+    // Restore resets ioRecognizesPlayer / orraRecognizesPlayer (recognition
+    // is derived from re-meeting), so re-meet BOTH NPCs after the restore —
+    // same pattern as the "second save" test above.
     const returningSession = meetOrraForAftersignSlice(
-      restoreAftersignDurableSave(
-        encodeAftersignDurableSave(
-          meetOrraForAftersignSlice(
-            recordAftersignOrraAction(
-              meetIoForAftersignSlice(
-                recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+      meetIoForAftersignSlice(
+        restoreAftersignDurableSave(
+          encodeAftersignDurableSave(
+            meetOrraForAftersignSlice(
+              recordAftersignOrraAction(
+                meetIoForAftersignSlice(
+                  recordAftersignPacketChoice(createAftersignVerticalSliceState(), "opened"),
+                ),
+                "answered-saint-orra",
               ),
-              "answered-saint-orra",
             ),
+            13,
           ),
-          13,
         ),
       ),
     );
@@ -576,6 +584,7 @@ describe("Aftersign durable save/load contract", () => {
       kind: "orra-recognition-beat",
       orraAction: "answered-saint-orra",
       startedAtMs: 1_260,
+      beat: expect.objectContaining({ id: "orra-debt-named" }),
     });
     expect(sampleAftersignOrraRecognitionEnvelope(cue, 1_380, { reducedMotion: true })).toEqual({
       label: "orra-recognition",

@@ -12,7 +12,6 @@
 //   - does NOT touch `interactionConfirmFeel.ts` (shared envelope).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AFTERSIGN_CONFIRM_FEEL } from "./aftersignConfirmFeel";
 import {
   AFTERSIGN_INTERACTION_CONFIRM_STING,
   sampleAftersignInteractionConfirmSting,
@@ -25,6 +24,15 @@ import {
 import type { AftersignVerticalSliceState } from "./verticalSliceRuntimeState";
 
 const LAYER_SELECTOR = ".aftersign-confirm-feel";
+
+// Per-kind bloom durations pinned by `PACKET_CONFIRM_BLOOM_OVERRIDES` in
+// `verticalSlicePacketInteraction.ts` (they override the base
+// `AFTERSIGN_CONFIRM_FEEL.durationMs`, so cleanup = override + 80ms).
+const PACKET_BLOOM_DURATION_MS = {
+  packetOpen: 460,
+  packetPreserve: 520,
+  packetInspect: 320,
+} as const;
 
 function committedState(
   packetOutcome: "opened" | "sealed",
@@ -90,7 +98,7 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     resolveAndPlayAftersignPacketConfirmInteraction(committedState("opened"));
     expect(layers()).toHaveLength(1);
 
-    const { durationMs } = AFTERSIGN_CONFIRM_FEEL;
+    const durationMs = PACKET_BLOOM_DURATION_MS.packetOpen;
 
     // Just before the cleanup deadline the layer must still exist.
     vi.advanceTimersByTime(durationMs + 79);
@@ -102,7 +110,7 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
   });
 
   it("keeps sequential packet-confirm blooms isolated after the cleanup deadline", () => {
-    const { durationMs } = AFTERSIGN_CONFIRM_FEEL;
+    const durationMs = PACKET_BLOOM_DURATION_MS.packetOpen;
 
     resolveAndPlayAftersignPacketConfirmInteraction(
       committedState("opened"),
@@ -123,8 +131,9 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     expect(layers()[0]!.textContent).toContain("Sealed");
   });
 
-  it("keeps rapid double-confirms visibly distinct until their shared cleanup window", () => {
-    const { durationMs } = AFTERSIGN_CONFIRM_FEEL;
+  it("keeps rapid double-confirms visibly distinct until each one's own cleanup deadline", () => {
+    const openMs = PACKET_BLOOM_DURATION_MS.packetOpen;
+    const preserveMs = PACKET_BLOOM_DURATION_MS.packetPreserve;
 
     const firstInteraction = resolveAndPlayAftersignPacketConfirmInteraction(
       committedState("opened"),
@@ -145,9 +154,16 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
       expect.stringContaining("Sealed"),
     ]);
 
-    vi.advanceTimersByTime(durationMs + 79);
+    vi.advanceTimersByTime(openMs + 79);
     expect(layers()).toHaveLength(2);
 
+    // The open bloom (shorter) clears first; the preserve bloom stays.
+    vi.advanceTimersByTime(1);
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]!.textContent).toContain("Sealed");
+
+    vi.advanceTimersByTime(preserveMs - openMs - 1);
+    expect(layers()).toHaveLength(1);
     vi.advanceTimersByTime(1);
     expect(layers()).toHaveLength(0);
   });
@@ -162,7 +178,12 @@ describe("aftersignConfirmFeel consumer (packet-confirm wiring)", () => {
     const layer = layers()[0] as HTMLElement | undefined;
     expect(layer).toBeDefined();
 
-    const peakMs = interaction.feel.durationMs * 0.35;
+    // Peak = 35% of the bloom layer's own duration. packetOpen's bloom
+    // override pins 460ms (see PACKET_CONFIRM_BLOOM_OVERRIDES); the layer
+    // publishes it as `--aftersign-confirm-duration`.
+    expect(layer!.style.getPropertyValue("--aftersign-confirm-duration")).toBe("460ms");
+    const peakMs = 460 * 0.35;
+    expect(Number.isFinite(Number(layer!.dataset.confirmEnvelopePeakMs))).toBe(true);
     const peak = sampleAftersignInteractionConfirmEnvelope(
       interaction.kind,
       peakMs,
