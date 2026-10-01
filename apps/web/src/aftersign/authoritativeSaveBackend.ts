@@ -14,7 +14,15 @@
 //   2. `AftersignAuthoritativeSave` — a Cloudflare Durable Object class
 //      declared in `wrangler.jsonc` under
 //      `[[durable_objects]] name = "AFTERSIGN_SAVE"` (migration `v3`,
-//      `new_classes = ["AftersignAuthoritativeSave"]`). The constructor
+//      `new_classes = ["AftersignAuthoritativeSave"]`). Both the
+//      binding AND the migration landed in PR #2065 (commit `0e439ce`,
+//      wrangler.jsonc lines ~35 and ~61) and are reused as-is by this
+//      PR — `grep "AFTERSIGN_SAVE" wrangler.jsonc src/server.ts` at
+//      repo HEAD lists them. The router + DO class are re-exported
+//      and called from `src/server.ts` (same commit — see the
+//      `AftersignAuthoritativeSave` export and the
+//      `handleAuthoritativeSaveRequest` call site in the fetch
+//      handler). The constructor
 //      takes the standard `(state, env)` pair; `fetch()` serves GET
 //      (read snapshot), PUT (write snapshot), DELETE (clear snapshot)
 //      against `state.storage`. Each DO instance IS one (playerId,
