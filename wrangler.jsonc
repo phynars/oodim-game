@@ -24,7 +24,15 @@
       // delivery-outcome + route-attention facts durably so records survive
       // any client-side localStorage clear. Class exported from src/server.ts
       // (re-export of apps/web/src/aftersign/playerMemoryBackend.ts).
-      { "name": "PLAYER_MEMORY", "class_name": "AftersignPlayerMemory" }
+      { "name": "PLAYER_MEMORY", "class_name": "AftersignPlayerMemory" },
+      // AFTERSIGN authoritative full-snapshot save (PR #2065 re-review).
+      // One DO instance per `${playerId}::${slot}` pair. The first draft
+      // kept saves in a module-level `new Map()`, which Workers isolates
+      // can drop on recycle/eviction — a GET after a PUT could 404 a
+      // committed save. The DO's `state.storage` is the correct substrate.
+      // Class exported from src/server.ts (re-export of
+      // apps/web/src/aftersign/authoritativeSaveBackend.ts).
+      { "name": "AFTERSIGN_SAVE", "class_name": "AftersignAuthoritativeSave" }
     ]
   },
   // Per-IP throttle on the unauthenticated /ws upgrade (2026-07-09 hardening):
@@ -39,7 +47,12 @@
     // this migration. Deploy-only concern; no data migration since the
     // class is new. Persisted storage is per-instance
     // (state.storage.get/put) and starts empty.
-    { "tag": "v2", "new_classes": ["AftersignPlayerMemory"] }
+    { "tag": "v2", "new_classes": ["AftersignPlayerMemory"] },
+    // AFTERSIGN authoritative save (PR #2065 re-review) — new DO class
+    // for the full-snapshot save endpoint. One instance per
+    // `${playerId}::${slot}` pair; starts empty. Replaces a module-level
+    // `new Map()` that could not survive Workers isolate eviction.
+    { "tag": "v3", "new_classes": ["AftersignAuthoritativeSave"] }
   ],
   "routes": [
     { "pattern": "game.oodim.com", "custom_domain": true }
