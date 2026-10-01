@@ -197,15 +197,32 @@ jobs:
       # `continue-on-error: true` on this step once it lands green on
       # its own, then retire the sibling per its own header comment.
       # ANNOTATION HYGIENE (game#1867, 2026-09-20): setup-node registers a
-      # tsc problem matcher, so this non-blocking step's ~25 latent errors
-      # were posted as FAILURE-level annotations on every run — and on a run
-      # that failed for a DIFFERENT reason they buried the real error (five
+      # tsc problem matcher, so this non-blocking step's latent errors were
+      # posted as FAILURE-level annotations on every run — and on a run that
+      # failed for a DIFFERENT reason they buried the real error (five
       # iterate rounds went to a vite PARSE_ERROR hiding behind burn-down
-      # noise). The line prefix defeats the matcher while keeping the full
-      # list readable in the log; pipefail (the Actions default shell)
-      # preserves the step's exit code, so continue-on-error semantics and
-      # the burn-down's flip-to-blocking plan are unchanged.
-      - run: npm run typecheck:aftersign:apps-web 2>&1 | sed 's/^/[burn-down] /'
+      # noise). The matcher's regex starts `^([^\s].*)[\(:](\d+)[,:](\d+)`,
+      # so the prefix MUST begin with whitespace: the original
+      # `[burn-down] ` prefix (#1867/#1870) never defeated it (`[` is not
+      # whitespace) and green runs still carried 10 failure annotations on
+      # path `.github`. The leading-space prefix fails `^[^\s]` while keeping
+      # the full list readable in the log. The matcher itself stays
+      # registered, so the BLOCKING `typecheck:aftersign` above and the tsc
+      # inside `build:aftersign` below still annotate real errors.
+      #
+      # EXIT CODE: an unqualified `run:` uses `bash -e {0}` WITHOUT
+      # pipefail, so the old step exited with sed's 0 and the burn-down
+      # could never report failure. `shell: bash` is
+      # `bash --noprofile --norc -eo pipefail {0}` (the explicit
+      # `set -o pipefail` keeps that true if the shell line is edited), so
+      # the step now FAILS while burn-down errors exist and
+      # `continue-on-error: true` keeps the job green until the
+      # flip-to-blocking plan above lands.
+      - name: Burn-down typecheck of apps/web/src/aftersign (non-blocking)
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck:aftersign:apps-web 2>&1 | sed 's/^/  [burn-down] /'
         continue-on-error: true
       - run: npm run test:unit:aftersign
       - run: npm run build:aftersign
@@ -360,6 +377,11 @@ jobs:
             fi
           } > "$summary_file"
 
+          # Strip ANSI escape sequences (Playwright expect messages carry
+          # colour codes such as ESC[2m) so neither the step summary nor the
+          # PR comment shows raw \u001b[...m noise.
+          sed -i -E 's/\x1b\[[0-9;]*[A-Za-z]//g' "$summary_file"
+
           cat "$summary_file" | tee -a "$GITHUB_STEP_SUMMARY"
 
           # Export to $GITHUB_ENV using a random heredoc delimiter (the
@@ -382,6 +404,10 @@ jobs:
             // markdown that reaches $GITHUB_STEP_SUMMARY reaches the PR.
             let body = process.env.AFTERSIGN_FIRST_CONTEXT
               || '## aftersign WebGL e2e — failure summary\n\n(no failure context captured; see run logs)';
+
+            // Belt-and-braces with the shell-side sed: never post raw ANSI
+            // escape sequences into a PR comment.
+            body = body.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
 
             if (body.length > 60000) {
               body = `${body.slice(0, 60000)}\n\n_(truncated for GitHub comment limit)_`;

@@ -124,6 +124,9 @@ jobs:
               fi
             fi
           } > "$summary_file"
+          # Strip ANSI escape sequences (Playwright colour codes) before the
+          # summary reaches the step summary and the main-RED issue body.
+          sed -i -E 's/\x1b\[[0-9;]*[A-Za-z]//g' "$summary_file"
           cat "$summary_file" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: File or bump the main-RED issue (agent-visible)
