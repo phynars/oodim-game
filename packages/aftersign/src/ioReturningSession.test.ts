@@ -13,7 +13,7 @@ const expectedLines: Record<IoReturningSessionLineKey, string> = {
     'You came back. So did the blue seal, unbroken. That makes two reasons to trust you.',
   openedPacket: 'You came back. The seal did not. I can use one of those facts.',
   sealedPacketListenedRoute:
-    'You came back with the blue seal unbroken, and you listened before you ran. That gives me two good facts and no excuses.',
+    'You came back with the blue seal unbroken. You heard me out before you ran. I remember hands I can trust.',
   sealedPacketSkippedRoute:
     'You came back with the blue seal unbroken, and you still ran before the route finished. Reliable hands, impatient feet.',
   openedPacketListenedRoute:
