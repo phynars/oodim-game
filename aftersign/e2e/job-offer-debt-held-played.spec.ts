@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { IO_LOOP_CONSEQUENCE_COPY } from "../src/ioLoopConsequenceCopy.js";
 
 // AFTERSIGN — real-tap proof for the DEBT-HELD branch of the M-LOOP
 // offered-job axis (PR #1624, Soren's third REQUEST_CHANGES).
@@ -230,6 +231,14 @@ test.describe("AFTERSIGN debt-held offered job — real-tap played divergence", 
       debtOffer,
       "debt-repair offer should render after an OPENED delivery — this is the served seam Soren blocked #1624 on",
     ).toBeVisible({ timeout: WAIT_MS });
+
+    // Io names the remembered choice and the job it leaves available,
+    // beside the actual repair action rather than only in a snapshot.
+    const consequenceLine = page.locator(
+      '#offeredJobs [data-aftersign-io-consequence-line="opened"]',
+    );
+    await expect(consequenceLine).toBeVisible({ timeout: WAIT_MS });
+    await expect(consequenceLine).toHaveText(IO_LOOP_CONSEQUENCE_COPY.opened);
 
     // Metadata guard — same shape the sibling `job-offers-played.spec.ts`
     // pins on the safe-default / completed offers. If the primitive
