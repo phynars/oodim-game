@@ -4,6 +4,13 @@ import {
   PACKET_RECALL_LINE_ID,
 } from "../../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 
+// This is a DURABLE-SAVE CONTRACT, not a played acceptance spec. It seeds a
+// save over HTTP, reloads the page, and asserts the recall line renders with
+// the stable DOM contract. No player input is driven here — the point is the
+// server→client restore surface, not an input flow. Named without `playtest`
+// / `played` so `playtest-input-surface-guard.spec.ts` does not treat it as
+// acceptance evidence (that guard requires a visible .tap/.click/.press).
+
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
