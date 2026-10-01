@@ -1,49 +1,59 @@
-// AFTERSIGN authoritative full-snapshot save backend (PR #2065 re-review).
+// AFTERSIGN authoritative full-snapshot save backend (issue #2062,
+// re-review from PR #2066).
 //
-// Why this file replaces a module-level `Map` on the Worker:
+// Ships two pieces, mirroring the sibling `playerMemoryBackend.ts`:
 //
-// The first draft of the Worker-side save handler kept writes in a
-// `new Map()` at module scope inside `aftersign/server-authoritative-save.js`.
-// Soren's review on #2065 rejected that (AI008 — unverified runtime
-// premise): Cloudflare Workers isolates are per-location and get
-// recycled or evicted between requests, and different POPs run
-// separate isolates. A module-level Map therefore CANNOT be the
-// durable store that the "authority: server" stamp claims — a GET
-// after a PUT can land on a cold isolate, see an empty Map, and 404
-// a save that the harness proved was committed. That's the exact
-// "stamping server-authority on browser-local state" failure mode
-// the authoritative-save contract exists to prevent, re-introduced
-// one layer up.
+//   1. `handleAuthoritativeSaveRequest(request, env)` — a fetch-side
+//      router called from the Worker entrypoint (`src/server.ts`). It
+//      claims requests to `/aftersign/save/:playerId/:slot`, validates
+//      the route segments + method, enforces a 1 MiB cap on PUT bodies
+//      (parity with the vite dev middleware), and forwards to the DO
+//      stub keyed by `${playerId}::${slot}`. Non-matching URLs return
+//      `null` so the caller falls through to its next branch.
 //
-// Correct substrate: a Durable Object, same as the neighbouring
-// `AftersignPlayerMemory` (issue #1635). One DO instance per
-// `${playerId}::${slot}` pair (keyed via idFromName); payload persisted
-// in `state.storage`, which Cloudflare guarantees to survive isolate
-// recycling, cross-POP routing, and anything else short of an
-// account-level data loss event.
+//   2. `AftersignAuthoritativeSave` — a Cloudflare Durable Object class
+//      declared in `wrangler.jsonc` under
+//      `[[durable_objects]] name = "AFTERSIGN_SAVE"` (migration `v3`,
+//      `new_classes = ["AftersignAuthoritativeSave"]`). Both the
+//      binding AND the migration landed in PR #2065 (commit `0e439ce`,
+//      wrangler.jsonc lines ~35 and ~61) and are reused as-is by this
+//      PR — `grep "AFTERSIGN_SAVE" wrangler.jsonc src/server.ts` at
+//      repo HEAD lists them. The router + DO class are re-exported
+//      and called from `src/server.ts` (same commit — see the
+//      `AftersignAuthoritativeSave` export and the
+//      `handleAuthoritativeSaveRequest` call site in the fetch
+//      handler). The constructor
+//      takes the standard `(state, env)` pair; `fetch()` serves GET
+//      (read snapshot), PUT (write snapshot), DELETE (clear snapshot)
+//      against `state.storage`. Each DO instance IS one (playerId,
+//      slot) pair — the record lives in `state.storage`, not in
+//      isolate memory, so a GET after a PUT cannot 404 a committed
+//      save when the isolate recycles.
 //
-// Contract this module serves (unchanged from the vite middleware):
-//   GET    /aftersign/save/:playerId/:slot → 200 { payload } | 404
-//   PUT    /aftersign/save/:playerId/:slot → 204 (body: { payload })
-//   DELETE /aftersign/save/:playerId/:slot → 204
+// Why the DO substrate (not a module-level `Map`)? PR #2065's first
+// draft kept writes in a `new Map()` on the Worker module — Workers
+// isolates can drop that on recycle/eviction, so a GET after a PUT
+// could silently 404 a committed save. The DO's `state.storage` is
+// the correct substrate: durable, keyed per instance, and the router
+// pins one instance per (playerId, slot) via `idFromName()`.
 //
-// Size cap parity: PUT bodies are capped at 1 MiB, matching the vite
-// middleware (`aftersign/vite.config.ts` → `readJsonBody`). A
-// well-formed slice save is <10 KiB; the cap bounds memory and makes
-// an abusive client an obvious 413 instead of an obscure DO storage
-// error.
+// 404 vs 503 split: a MISSING snapshot is a legitimate cold slot and
+// returns 404 inside the DO; a storage FAILURE (e.g. the storage API
+// throws) is a transient infra fault and returns 503. The router
+// never conflates the two.
 //
 // Type shims: this module lives under `apps/web/src/aftersign/**`,
-// whose tsconfig (`aftersign/tsconfig.apps-web.json`) deliberately
-// omits `@cloudflare/workers-types`. The local interfaces below
-// describe the exact CF shapes the runtime dispatches against —
-// same shape wrangler binds at deploy time — without pulling the
-// ambient CF types into every aftersign module. The structural
-// contract matches `playerMemoryBackend.ts`.
+// whose tsconfig deliberately does NOT include
+// `@cloudflare/workers-types`. The shim interfaces below describe the
+// exact CF shapes the runtime dispatches against — same shape wrangler
+// binds at deploy time — without pulling the ambient CF types into
+// every aftersign module. `src/server.ts` (repo-root Worker entry,
+// typechecked with CF types in scope via wrangler's bundler) imports
+// and calls this module with real bindings.
 
-export type AuthoritativeSavePayload = unknown;
-
-/** Structural shape of `env.AFTERSIGN_SAVE` (a CF DurableObjectNamespace). */
+/** Structural shape of `env.AFTERSIGN_SAVE` (a CF DurableObjectNamespace).
+ *  Kept as a local interface so this file typechecks under the aftersign
+ *  tsconfig lane (no `@cloudflare/workers-types`). */
 export interface AftersignAuthoritativeSaveNamespace {
   idFromName(name: string): { toString(): string };
   get(id: { toString(): string }): { fetch(request: Request): Promise<Response> };
@@ -53,7 +63,10 @@ export interface AftersignAuthoritativeSaveEnv {
   AFTERSIGN_SAVE: AftersignAuthoritativeSaveNamespace;
 }
 
-/** Structural shape of CF's `DurableObjectStorage`. */
+/** Structural shape of CF's `DurableObjectStorage`. `state.storage` on
+ *  the deployed DO satisfies this at runtime. `delete` is optional in
+ *  the sense that it may be absent on some fakes, but the real runtime
+ *  always provides it. */
 interface DurableObjectStorage {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
@@ -65,79 +78,147 @@ export interface AftersignAuthoritativeSaveState {
   storage: DurableObjectStorage;
 }
 
-const PAYLOAD_KEY = "payload";
-const SAVE_PATH_PATTERN = /^\/aftersign\/save\/([^/]+)\/([^/]+)$/;
-// 1 MiB — matches `aftersign/vite.config.ts` readJsonBody cap. A
-// well-formed vertical-slice save is <10 KiB; this bound keeps a
-// pathological client from parking large blobs in the DO.
-const MAX_PUT_BYTES = 1_048_576;
+/** The sentinel field we store the snapshot under in `state.storage`. */
+const SNAPSHOT_KEY = "snapshot";
 
-function jsonResponse(body: unknown, status = 200): Response {
+/** Route prefix that this backend owns. The router matches
+ *  `/aftersign/save/:playerId/:slot` exactly — two trailing segments,
+ *  URL-decoded. */
+export const AUTHORITATIVE_SAVE_PATH_PREFIX = "/aftersign/save/";
+
+/** 1 MiB cap on PUT bodies — parity with the vite dev middleware's
+ *  bound. Enforced BOTH via `content-length` (short-circuit, cheap)
+ *  AND via realised body length (defensive — the header is advisory
+ *  and a mendacious client can lie). */
+const MAX_SAVE_BYTES = 1_048_576;
+
+function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
   });
 }
 
-function emptyResponse(status: number, headers?: Record<string, string>): Response {
-  return new Response(null, { status, headers });
-}
-
-function parseSaveRoute(url: URL): { playerId: string; slot: string } | null {
-  const match = SAVE_PATH_PATTERN.exec(url.pathname);
-  if (!match) return null;
+/** Parse `/aftersign/save/:playerId/:slot` from a URL. Returns
+ *  `{ playerId, slot }` on exact match, `"malformed"` when the path
+ *  starts with the prefix but has the wrong segment count or an empty
+ *  segment, or `null` when the path doesn't belong to this backend. */
+function parseRoute(
+  pathname: string,
+): { playerId: string; slot: string } | "malformed" | null {
+  if (!pathname.startsWith(AUTHORITATIVE_SAVE_PATH_PREFIX)) return null;
+  const tail = pathname.slice(AUTHORITATIVE_SAVE_PATH_PREFIX.length);
+  // Reject trailing slash / empty tail / nested paths. Must be exactly
+  // two non-empty segments.
+  const segments = tail.split("/");
+  if (segments.length !== 2) return "malformed";
+  const [rawPlayer, rawSlot] = segments;
+  if (!rawPlayer || !rawSlot) return "malformed";
+  let playerId: string;
+  let slot: string;
   try {
-    const playerId = decodeURIComponent(match[1]);
-    const slot = decodeURIComponent(match[2]);
-    if (!playerId || !slot) return null;
-    return { playerId, slot };
+    playerId = decodeURIComponent(rawPlayer);
+    slot = decodeURIComponent(rawSlot);
   } catch {
-    return null;
+    return "malformed";
   }
+  if (!playerId || !slot) return "malformed";
+  return { playerId, slot };
 }
 
 /**
- * Route an authoritative-save request to the DO keyed by
- * `${playerId}::${slot}`. Called from the Worker `fetch` entrypoint
+ * Route an authoritative-save API request to the durable record for
+ * `(playerId, slot)`. Called from the Worker `fetch` entrypoint
  * (`src/server.ts`). Returns `null` when the URL is not under
- * `/aftersign/save/:playerId/:slot` so the caller can fall through
- * to the next branch.
+ * `/aftersign/save/` so the caller can fall through to the next
+ * branch.
  *
- * The parse happens here (not inside the DO) so a malformed route
- * never consumes an idFromName / DO instantiation.
+ * Pre-DO guards enforced here (fail fast at the router, cheap):
+ *   - Non-matching path → `null`
+ *   - Matching prefix but malformed segments → 400
+ *   - Method not GET/PUT/DELETE → 405 with `Allow: GET, PUT, DELETE`
+ *   - PUT with `content-length` > 1 MiB → 413 (header-advised cap)
+ *   - PUT whose realised body exceeds 1 MiB → 413 (defensive cap)
+ *
+ * Everything else (JSON shape validation, 404-vs-200, DELETE
+ * idempotency, 503 on storage failure) lives inside the DO so the
+ * record and the decision stay co-located.
  */
 export async function handleAuthoritativeSaveRequest(
   request: Request,
   env: AftersignAuthoritativeSaveEnv,
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/aftersign/save/")) return null;
-
-  const route = parseSaveRoute(url);
-  if (!route) return jsonResponse({ error: "invalid save key" }, 400);
-
-  const method = request.method.toUpperCase();
-  if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
-    return emptyResponse(405, { allow: "GET, PUT, DELETE" });
+  const parsed = parseRoute(url.pathname);
+  if (parsed === null) return null;
+  if (parsed === "malformed") {
+    return json({ error: "Invalid save route" }, 400);
   }
 
-  const id = env.AFTERSIGN_SAVE.idFromName(`${route.playerId}::${route.slot}`);
-  return env.AFTERSIGN_SAVE.get(id).fetch(request);
+  const method = request.method;
+  if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: {
+        "content-type": "application/json",
+        allow: "GET, PUT, DELETE",
+      },
+    });
+  }
+
+  // 1 MiB cap on PUT — pre-DO so we don't spend DO CPU/storage on an
+  // oversized body. Both branches respond 413 for parity with the vite
+  // dev middleware.
+  let forwarded = request;
+  if (method === "PUT") {
+    const declared = request.headers.get("content-length");
+    if (declared !== null) {
+      const n = Number(declared);
+      if (Number.isFinite(n) && n > MAX_SAVE_BYTES) {
+        return json({ error: "Save payload too large" }, 413);
+      }
+    }
+    // `content-length` is advisory. Read + re-wrap once so the DO
+    // sees a request with the body intact AND we can bound the
+    // realised byte length.
+    let bodyText: string;
+    try {
+      bodyText = await request.text();
+    } catch {
+      return json({ error: "Invalid save payload" }, 400);
+    }
+    const realisedBytes = new TextEncoder().encode(bodyText).byteLength;
+    if (realisedBytes > MAX_SAVE_BYTES) {
+      return json({ error: "Save payload too large" }, 413);
+    }
+    forwarded = new Request(request.url, {
+      method: "PUT",
+      headers: request.headers,
+      body: bodyText,
+    });
+  }
+
+  const id = env.AFTERSIGN_SAVE.idFromName(`${parsed.playerId}::${parsed.slot}`);
+  return env.AFTERSIGN_SAVE.get(id).fetch(forwarded);
 }
 
 /**
  * Cloudflare Durable Object: one authoritative save record per
- * `${playerId}::${slot}` pair.
+ * `(playerId, slot)` pair.
  *
  * Wired in `wrangler.jsonc`:
  *   `[[durable_objects]] { name: "AFTERSIGN_SAVE",
  *      class_name: "AftersignAuthoritativeSave" }`
  * and re-exported from `src/server.ts` so wrangler can locate the
- * class during bundle/deploy.
+ * class during bundle/deploy. Migration tag `v3` registers the class.
  *
- * The constructor takes the standard `(state, env)` pair; `env` is
- * declared for shape conformance even though this DO does not fan
- * out to other bindings.
+ * The constructor takes the standard `(state, env)` pair Cloudflare
+ * dispatches with. `env` is currently unused — declared for shape
+ * conformance and so future extensions don't need a ctor change.
+ *
+ * `fetch()` wraps the storage I/O in a single try/catch so a storage
+ * exception becomes a 503 ("transient — retry"), distinct from a 404
+ * (cold slot, a legitimate "nothing to load") the GET branch returns.
  */
 export class AftersignAuthoritativeSave {
   private readonly state: AftersignAuthoritativeSaveState;
@@ -150,61 +231,65 @@ export class AftersignAuthoritativeSave {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const method = request.method.toUpperCase();
-
-    if (method === "GET") {
-      const stored = await this.state.storage.get<AuthoritativeSavePayload>(
-        PAYLOAD_KEY,
-      );
-      if (stored === undefined) return emptyResponse(404);
-      return jsonResponse({ payload: stored });
-    }
-
-    if (method === "PUT") {
-      // Enforce the 1 MiB cap before parsing so we don't buffer a
-      // multi-MiB JSON only to reject it. `content-length` is
-      // advisory (clients can lie), so we also cap the realised
-      // text length below.
-      const declared = request.headers.get("content-length");
-      if (declared !== null) {
-        const asNumber = Number(declared);
-        if (Number.isFinite(asNumber) && asNumber > MAX_PUT_BYTES) {
-          return jsonResponse({ error: "payload too large" }, 413);
+    try {
+      switch (request.method) {
+        case "GET": {
+          // `has()` would be ideal but isn't on the structural shape;
+          // use a tombstone sentinel object alongside the payload so
+          // we can distinguish "never written" (undefined) from
+          // "written as null" (a legitimate cleared snapshot).
+          const slot = await this.state.storage.get<{ payload: unknown }>(
+            SNAPSHOT_KEY,
+          );
+          if (slot === undefined) {
+            return json({ error: "Save slot not found" }, 404);
+          }
+          return json({ payload: slot.payload });
         }
-      }
 
-      let text: string;
-      try {
-        text = await request.text();
-      } catch {
-        return jsonResponse({ error: "failed to read body" }, 400);
-      }
-      if (text.length > MAX_PUT_BYTES) {
-        return jsonResponse({ error: "payload too large" }, 413);
-      }
+        case "PUT": {
+          let body: unknown;
+          try {
+            body = await request.json();
+          } catch {
+            return json({ error: "Invalid save payload" }, 400);
+          }
+          if (
+            !body ||
+            typeof body !== "object" ||
+            Array.isArray(body) ||
+            !("payload" in (body as Record<string, unknown>))
+          ) {
+            return json({ error: "Missing save payload" }, 400);
+          }
+          const payload = (body as { payload: unknown }).payload;
+          // Wrap in a sentinel object so a stored `null` payload is
+          // distinguishable from an absent record on subsequent GETs.
+          await this.state.storage.put(SNAPSHOT_KEY, { payload });
+          return new Response(null, { status: 204 });
+        }
 
-      let body: unknown;
-      try {
-        body = text.length === 0 ? null : JSON.parse(text);
-      } catch {
-        return jsonResponse({ error: "invalid JSON" }, 400);
-      }
-      if (typeof body !== "object" || body === null || !("payload" in body)) {
-        return jsonResponse({ error: "payload is required" }, 400);
-      }
+        case "DELETE": {
+          // Idempotent: deleting an absent record is still 204.
+          await this.state.storage.delete(SNAPSHOT_KEY);
+          return new Response(null, { status: 204 });
+        }
 
-      await this.state.storage.put(
-        PAYLOAD_KEY,
-        (body as { payload: AuthoritativeSavePayload }).payload,
-      );
-      return emptyResponse(204);
+        default:
+          return new Response(
+            JSON.stringify({ error: "Method not allowed" }),
+            {
+              status: 405,
+              headers: {
+                "content-type": "application/json",
+                allow: "GET, PUT, DELETE",
+              },
+            },
+          );
+      }
+    } catch (error) {
+      console.error("Aftersign authoritative save storage failure", error);
+      return json({ error: "Save storage temporarily unavailable" }, 503);
     }
-
-    if (method === "DELETE") {
-      await this.state.storage.delete(PAYLOAD_KEY);
-      return emptyResponse(204);
-    }
-
-    return emptyResponse(405, { allow: "GET, PUT, DELETE" });
   }
 }
