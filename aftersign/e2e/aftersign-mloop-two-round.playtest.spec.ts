@@ -1,7 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { performPacketGesture, type PacketOutcome } from "./helpers/packetGesture";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
+
+type JobOfferSet = readonly string[];
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -25,70 +28,87 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
-test.describe("AFTERSIGN M-LOOP round-two entry", () => {
+async function offeredJobIds(page: Page): Promise<JobOfferSet> {
+  const jobs = page.locator("#offeredJobs button[data-offered-job-id]");
+  await expect(jobs.first()).toBeVisible({ timeout: WAIT_MS });
+  return jobs.evaluateAll((buttons) =>
+    buttons.map((button) => button.getAttribute("data-offered-job-id") ?? ""),
+  );
+}
+
+async function completeRound(
+  page: Page,
+  jobId: string,
+  packetOutcome: PacketOutcome,
+): Promise<void> {
+  await page.locator(`#offeredJobs button[data-offered-job-id="${jobId}"]`).tap();
+  await performPacketGesture(page, packetOutcome, WAIT_MS);
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "io-return-recognition");
+  await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+  await waitForBeat(page, "return-tone-choice");
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-offered");
+}
+
+async function playTwoRounds(
+  page: Page,
+  slot: string,
+  firstPacketOutcome: PacketOutcome,
+  expectedMemory: string,
+): Promise<{
+  fresh: JobOfferSet;
+  completed: JobOfferSet;
+}> {
+  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+  await waitForReady(page);
+  await waitForBeat(page, "packet-offered");
+
+  const fresh = await offeredJobIds(page);
+  await expect(page.locator("#offeredJobs")).toHaveAttribute(
+    "data-mloop-divergence-memory",
+    "fresh",
+  );
+  await completeRound(page, fresh[0], firstPacketOutcome);
+
+  const completed = await offeredJobIds(page);
+  await expect(page.locator("#offeredJobs")).toHaveAttribute(
+    "data-mloop-divergence-memory",
+    expectedMemory,
+  );
+  await expect(completed).not.toEqual(fresh);
+  await completeRound(page, completed[0], "sealed");
+
+  return { fresh, completed };
+}
+
+test.describe("AFTERSIGN M-LOOP durable-memory divergence", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("a played first round reaches a different job and starts the second route", async ({ page }) => {
-    test.setTimeout(90_000);
-    await page.goto(`/aftersign/?slot=mloop-round-two-entry-${Date.now()}`, {
-      waitUntil: "load",
-    });
-    await waitForReady(page);
-
-    await waitForBeat(page, "packet-offered");
-    const firstRoundTray = page.locator("#offeredJobs");
-    const firstRoundDivergence = await firstRoundTray.getAttribute(
-      "data-mloop-divergence-memory",
+  test("two durable records expose divergent visible job actions after played rounds", async ({ page }) => {
+    test.setTimeout(180_000);
+    const runId = Date.now();
+    const sealedRecord = await playTwoRounds(
+      page,
+      `mloop-durable-sealed-${runId}`,
+      "sealed",
+      "completed",
     );
-    await expect(firstRoundDivergence).toBe("fresh");
-    const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
-    await expect(firstRoundJob).toHaveCount(1);
-    await firstRoundJob.tap();
-    await page.locator("#packetButton").tap();
-    await waitForBeat(page, "packet-choice");
-    await tapChoice(page, "acknowledge-kiosk");
-    await tapChoice(page, "deliver-packet");
-
-    await waitForBeat(page, "io-return-recognition");
-    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
-    await waitForBeat(page, "return-tone-choice");
-    await tapChoice(page, "ask-for-next-job");
-    await waitForBeat(page, "io-next-job");
-    await tapChoice(page, "deliver-packet");
-
-    await waitForBeat(page, "packet-offered");
-    const secondRoundTray = page.locator("#offeredJobs");
-    const secondRoundDivergence = await secondRoundTray.getAttribute(
-      "data-mloop-divergence-memory",
+    const openedRecord = await playTwoRounds(
+      page,
+      `mloop-durable-opened-${runId}`,
+      "opened",
+      "debt-held",
     );
-    await expect(secondRoundDivergence).toBe("completed");
-    await expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
-    // The completed branch renders TWO offered-job buttons
-    // (`job-night-transfer` + `job-signed-receipt`, see
-    // `COMPLETED_JOB_IDS` in packages/aftersign/src/computeOfferedJobs.ts),
-    // so the general `button[data-offered-job-id]` locator matches both
-    // — asserting `.toHaveText` on it strict-mode-fails. Keep the tray-
-    // scoped general locator to prove branch shape (count === 2, and
-    // satisfies the served-divergence contract's ≥ 2 offered-button
-    // locator budget), then narrow to the specific `job-night-transfer`
-    // id for the label assertion + tap.
-    const secondRoundJobs = secondRoundTray.locator("button[data-offered-job-id]");
-    await expect(secondRoundJobs).toHaveCount(2);
-    const secondRoundNightTransfer = secondRoundTray.locator(
-      'button[data-offered-job-id="job-night-transfer"]',
-    );
-    await expect(secondRoundNightTransfer).toHaveText("Night transfer · medium risk");
-    await secondRoundNightTransfer.tap();
-    await page.locator("#packetButton").tap();
-    await waitForBeat(page, "packet-choice");
-    await tapChoice(page, "acknowledge-kiosk");
-    await tapChoice(page, "deliver-packet");
 
-    await waitForBeat(page, "io-return-recognition");
-    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
-    await waitForBeat(page, "return-tone-choice");
-    await tapChoice(page, "ask-for-next-job");
-    await waitForBeat(page, "io-next-job");
-    await tapChoice(page, "deliver-packet");
+    // The two distinct durable records begin from the same visible action,
+    // then diverge because one sealed and one opened its first packet.
+    // Their completed offer sets are rendered, observed, and tapped.
+    await expect(sealedRecord.completed).not.toEqual(openedRecord.completed);
+    await expect(sealedRecord.fresh).toEqual(openedRecord.fresh);
   });
 });
