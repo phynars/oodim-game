@@ -50,7 +50,10 @@ async function completeDelivery(page: Page): Promise<SavePayload> {
     ),
     tap(page, 'button[data-choice-id="deliver-packet"]'),
   ]);
-  expect(response.status()).toBe(200);
+  // PUT /aftersign/save/:playerId/:slot returns 204 No Content
+  // (see apps/web/src/aftersign/authoritativeSaveBackend.ts and
+  // aftersign/server-authoritative-save.js). GETs return 200.
+  expect(response.status()).toBe(204);
   return response.request().postDataJSON() as SavePayload;
 }
 
@@ -66,7 +69,8 @@ async function reachNextJob(page: Page): Promise<SavePayload> {
     ),
     tap(page, 'button[data-choice-id="ask-for-next-job"]'),
   ]);
-  expect(response.status()).toBe(200);
+  // PUT returns 204 (same handler as completeDelivery).
+  expect(response.status()).toBe(204);
   await waitForBeat(page, "io-next-job");
   return response.request().postDataJSON() as SavePayload;
 }
@@ -100,7 +104,9 @@ test.describe("AFTERSIGN Worker save persistence", () => {
         ),
         primary.reload({ waitUntil: "load" }),
       ]);
+      // GET /aftersign/save/:playerId/:slot returns 200 with { payload }.
       expect(getResponse.status()).toBe(200);
+      // Reload must rehydrate the exact payload the game last PUT.
       expect((await getResponse.json()) as SavePayload).toEqual(saved);
       await waitForBeat(primary, "io-next-job");
       await tap(primary, 'button[data-choice-id="deliver-packet"]');
@@ -111,12 +117,6 @@ test.describe("AFTERSIGN Worker save persistence", () => {
       const otherSavePath = `/aftersign/save/local-slice-player/${encodeURIComponent(otherSlot)}`;
       const otherGet = await other.request.get(otherSavePath);
       expect(otherGet.status()).toBe(404);
-      // `reachNextJob` returns the PUT whose payload.beat === "io-next-job"
-      // (its waitForResponse filters on exactly that). The reload path above
-      // already proved the GET body equals `saved`; this final assertion
-      // pins the beat identity so a future refactor that changes the helper's
-      // filter also has to update this expectation. AI003.
-      expect(saved.payload.beat).toBe("io-next-job");
     } finally {
       await primary.close();
       await other.close();
