@@ -55,6 +55,7 @@ jobs:
               - 'aftersign/**'
               - 'apps/web/src/aftersign/**'
               - 'e2e-shared/aftersign/**'
+              - 'packages/**'
             landing:
               - 'landing/**'
             shared:
