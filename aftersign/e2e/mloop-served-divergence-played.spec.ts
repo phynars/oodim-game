@@ -36,11 +36,13 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // vocabulary shifts, THAT reds first and this spec reds second (both
 // surfaces move together).
 
+type DivergenceMemoryLabel = "fresh" | "completed" | "debt-held";
+
 type SeededRecord = {
   label: string;
   slotSuffix: string;
   save: Record<string, unknown>;
-  expectedDivergenceMemory: "fresh" | "completed" | "debt-held";
+  expectedDivergenceMemory: DivergenceMemoryLabel;
 };
 
 // SwiftShader can spend more than 10s compiling the cold WebGL boot path.
@@ -97,6 +99,52 @@ const COMPLETED_SAVE: Record<string, unknown> = {
     flags: { io_intro_seen: true },
   },
   memory: COMPLETED_MEMORY,
+  save: { revision: 1 },
+};
+
+// One `delivery-outcome` fact with `object: "opened"` and NO sealed
+// delivery — the SAME shape the sibling
+// `aftersign/e2e/job-offer-debt-held-played.spec.ts` mints by holding
+// the packet open at the first loop. `offeredJobsMemoryFromIoMemory`
+// (aftersign/src/offeredJobsMemoryFromIoMemory.js) maps this to
+// `{ debtHeld: 1 }` because the sealed count is zero and the opened
+// count is one, and `servedMloopDivergenceKey` then stamps `debt-held`
+// on the tray. The matching render surface
+// (`aftersign/e2e/job-offer-debt-held-played.spec.ts`) tapped the
+// rendered `#job-offer-job-wax-debt-repair` button; here the SAME
+// durable-memory posture is reached by SEEDING the opened fact into
+// the authoritative save (no need to replay the hold gesture — the
+// save endpoint is the shipped boot path), and we tap the first
+// visible `button[data-offered-job-id]` child of `#offeredJobs` so
+// the third branch of `servedMloopDivergenceKey` carries its own
+// tappable evidence inside THIS spec.
+const DEBT_HELD_MEMORY = [
+  {
+    id: "fact-delivery-outcome-opened-seeded",
+    kind: "delivery-outcome",
+    subject: "io",
+    object: "opened",
+    sessionId: "session-mloop-served-divergence-debt-held",
+  },
+  {
+    id: "fact-route-attention-opened-seeded",
+    kind: "route-attention",
+    subject: "io",
+    object: "done",
+    sessionId: "session-mloop-served-divergence-debt-held",
+  },
+];
+
+const DEBT_HELD_SAVE: Record<string, unknown> = {
+  beat: "packet-offered",
+  packet: { delivered: true, route: "blue rainline", sealed: false, deliveredAt: "2026-01-01T00:00:00.000Z" },
+  delivery: { outcome: "opened" },
+  player: {
+    id: "mloop-served-divergence-debt-held-player",
+    name: null,
+    flags: { io_intro_seen: true },
+  },
+  memory: DEBT_HELD_MEMORY,
   save: { revision: 1 },
 };
 
@@ -227,43 +275,84 @@ const SEEDED_RECORDS: readonly SeededRecord[] = [
     save: COMPLETED_SAVE,
     expectedDivergenceMemory: "completed",
   },
+  {
+    label: "debt-held save",
+    slotSuffix: `debt-held-${uniqueSlotSuffix()}`,
+    save: DEBT_HELD_SAVE,
+    expectedDivergenceMemory: "debt-held",
+  },
 ];
 
+// Each seeded record is its OWN top-level test. A single omnibus test that
+// cold-boots three WebGL contexts back-to-back exceeded the 90s per-test
+// timeout in CI (Soren Vask, PR #2059 re-review): each cold boot can burn
+// close to 30s of SwiftShader compile, so three in series doesn't fit.
+// Splitting means each record gets its own COLD_START_MS budget, and the
+// final divergence check runs over the collected results.
+//
+// `describe.serial` + a module-scoped `played` array is the shape:
+// Playwright runs these sub-tests in order within the suite, each in its
+// own test slot (own timeout, own retry), but they share state so the
+// final pairwise check sees all three outcomes. If any seed sub-test
+// fails, serial-mode skips the rest including the divergence check,
+// which is the behavior we want — divergence is only meaningful once
+// all three records rendered.
+test.describe.configure({ mode: "serial" });
 test.describe("AFTERSIGN M-LOOP served divergence memory — phone-viewport, tap-driven", () => {
-  test("two divergent authoritative saves stamp two DIFFERENT `data-mloop-divergence-memory` values on #offeredJobs and each renders a real, tappable button[data-offered-job-id]", async ({
-    browser,
-  }) => {
-    test.setTimeout(COLD_START_MS);
-    const played: PlayedRecord[] = [];
-    try {
-      for (const record of SEEDED_RECORDS) {
-        played.push(await playSeededRecord(browser, record));
-      }
+  const played: PlayedRecord[] = [];
 
-      // Both records rendered their own tappable offered button and
-      // exposed the branch label the durable-memory posture selected.
-      // Divergence check: the two records must NOT collapse into the
-      // same tray-level branch label.
-      const [freshRecord, completedRecord] = played;
-      expect(
-        completedRecord.divergenceMemory,
-        "divergent seeded memory must stamp a DIFFERENT data-mloop-divergence-memory on #offeredJobs (the whole point of the served divergence contract — if both saves stamp the same label, the branch is dead)",
-      ).not.toBe(freshRecord.divergenceMemory);
+  test.afterAll(async () => {
+    for (const record of played) {
+      await record.context.close();
+    }
+    played.length = 0;
+  });
 
-      // And the visible tappable evidence must diverge too — the two
-      // records must not resolve to the SAME first offered-job id.
-      // (If it does, the branch label is stamped but the action tray
-      // itself doesn't actually diverge, which is the same failure
-      // shape the sibling `m-loop-divergent-offered-actions.playtest.spec.ts`
-      // pins — kept independent here so this spec fails specifically
-      // when the tray-stamp regresses vs. when the primitive regresses.)
-      expect(
-        completedRecord.tappedOfferId,
-        "divergent seeded memory must also render a DIFFERENT first offered-job id (visible tappable evidence of the branch — not just a relabeled attribute over the same action set)",
-      ).not.toBe(freshRecord.tappedOfferId);
-    } finally {
-      for (const record of played) {
-        await record.context.close();
+  for (const record of SEEDED_RECORDS) {
+    test(`${record.label}: seeded authoritative save stamps data-mloop-divergence-memory="${record.expectedDivergenceMemory}" on #offeredJobs and renders a real, tappable button[data-offered-job-id]`, async ({
+      browser,
+    }) => {
+      test.setTimeout(COLD_START_MS);
+      played.push(await playSeededRecord(browser, record));
+    });
+  }
+
+  test("three divergent authoritative saves stamp three DIFFERENT `data-mloop-divergence-memory` values and three DIFFERENT first offered-job ids on #offeredJobs", async () => {
+    expect(
+      played.length,
+      "all three seeded sub-tests must have produced a PlayedRecord before the divergence check runs — serial-mode should guarantee this",
+    ).toBe(SEEDED_RECORDS.length);
+
+    // Pairwise divergence check: NO two records may collapse into the
+    // same tray-level branch label. This covers all three branches
+    // `servedMloopDivergenceKey` returns (fresh / completed / debt-held)
+    // — the unit test at
+    // `apps/web/src/aftersign/servedMloopDivergenceKey.test.ts` pins the
+    // vocabulary; this spec is the rendered proof that each branch
+    // reaches the DOM.
+    for (let i = 0; i < played.length; i += 1) {
+      for (let j = i + 1; j < played.length; j += 1) {
+        const a = played[i];
+        const b = played[j];
+        const aLabel = SEEDED_RECORDS[i].label;
+        const bLabel = SEEDED_RECORDS[j].label;
+        expect(
+          b.divergenceMemory,
+          `${aLabel} and ${bLabel} must stamp DIFFERENT data-mloop-divergence-memory values on #offeredJobs (the whole point of the served divergence contract — if two saves stamp the same label, that branch is dead)`,
+        ).not.toBe(a.divergenceMemory);
+
+        // And the visible tappable evidence must diverge too — no two
+        // records may resolve to the SAME first offered-job id. (If
+        // they do, the branch label is stamped but the action tray
+        // itself doesn't actually diverge, which is the same failure
+        // shape the sibling
+        // `m-loop-divergent-offered-actions.playtest.spec.ts` pins —
+        // kept independent here so this spec fails specifically when
+        // the tray-stamp regresses vs. when the primitive regresses.)
+        expect(
+          b.tappedOfferId,
+          `${aLabel} and ${bLabel} must render DIFFERENT first offered-job ids (visible tappable evidence of the branch — not just a relabeled attribute over the same action set)`,
+        ).not.toBe(a.tappedOfferId);
       }
     }
   });
