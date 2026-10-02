@@ -67,8 +67,23 @@ test.describe("AFTERSIGN native-touch opens the packet", () => {
       .poll(() => page.evaluate(() => window.__game.getSnapshot().packet.sealed))
       .toBe(false);
 
-    await page.locator('[data-choice-id="skip-kiosk-acknowledge"]').tap();
-    await page.locator("#deliver-packet").tap();
+    // Sibling specs (aftersign-mloop-two-round, aftersign-packet-recall-feel,
+    // flagship-surface-contract…) reach choice buttons as
+    // `button[data-choice-id="…"]:not([disabled])` — the `:not([disabled])`
+    // guard waits past the brief enter-animation when the button exists
+    // but hasn't become interactive yet. Match that pattern here instead
+    // of guessing an `#id` that main.js may not render.
+    const acknowledgeChoice = page.locator(
+      'button[data-choice-id="skip-kiosk-acknowledge"]:not([disabled])',
+    );
+    await expect(acknowledgeChoice).toBeVisible({ timeout: WAIT_MS });
+    await acknowledgeChoice.tap();
+
+    const deliverChoice = page.locator(
+      'button[data-choice-id="deliver-packet"]:not([disabled])',
+    );
+    await expect(deliverChoice).toBeVisible({ timeout: WAIT_MS });
+    await deliverChoice.tap();
     await page.waitForFunction(
       () => window.__game?.getSnapshot?.().story?.beat === "io-return-recognition",
       undefined,
