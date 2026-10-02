@@ -12,7 +12,7 @@
 // edits — the test asserts that phrase, not the whole line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io kept the route lit. You brought the packet back sealed; the next door opens for you.",
-  fast: "Io remembers you beat the bell. The next packet will not wait for you.",
+  fast: "Io remembers you beat the bell. The next packet is yours if you move before it rings.",
   failed: "Io remembers the packet came back wrong. Your repair job is waiting at the mark you left.",
 });
 
