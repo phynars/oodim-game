@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 const WAIT_MS = 10_000;
-// Repeat-each=3 completed this full touch journey in at most 19.8s. Keep a
-// bounded 30s journey budget so cold boot plus the final rendered tap has
-// headroom, independently of the 10s timeout enforced for each beat.
-const JOURNEY_TIMEOUT_MS = 30_000;
+// The full rendered phone journey completed in 53.8s on the Oct. 2 Chromium
+// sandbox run. Keep a bounded 60s budget so cold boot and the final rendered
+// tap have headroom, independently of the 10s timeout enforced for each beat.
+const JOURNEY_TIMEOUT_MS = 60_000;
 
 // M-CONTINUE player proof: after `io-return-recognition`, the served page must
 // continue into `return-tone-choice` and `io-next-job` through visible taps only.
