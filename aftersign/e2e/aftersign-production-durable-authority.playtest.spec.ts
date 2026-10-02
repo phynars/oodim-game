@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // Opt-in production harness. Default aftersign/playwright.config.ts targets
 // the local vite preview (baseURL http://localhost:4374/aftersign/); this
@@ -15,92 +15,140 @@ import { expect, test } from "@playwright/test";
 //     (aftersignMloopServedDivergencePlaytestContract.test.ts et al).
 //   - Guarded by AFTERSIGN_PRODUCTION_URL: unset → test.skip, so cold
 //     local + CI runs stay green without needing a deployed target.
-//   - Opt-in script: `npm run test:aftersign:production` (added in the
-//     root package.json alongside this file) sets the env var expected
-//     here and invokes playwright on this spec only.
+//   - Opt-in script: `npm run test:e2e:aftersign:production-durable-authority`
+//     (added in the root package.json alongside this file) sets the env
+//     var expected here and invokes playwright on this spec only.
+//
+// What this spec proves (and the sibling two-round spec does NOT):
+//   The two-round spec drives a full round inside ONE page document and
+//   asserts the second-round tray stamp becomes "completed" — proving the
+//   memory derivation is live, but NOT proving the durable save survives
+//   a navigation. This spec plays the SAME full round (packet tap →
+//   acknowledge → deliver → recognition → next-job) and THEN does a hard
+//   `page.reload()`. After the reload the tray must come back stamped
+//   `completed` (not `fresh`), restored from the Worker-backed save. If
+//   the Worker silently loses the save, the restored tray falls through
+//   `computeOfferedJobs(undefined)` back to `[SAFE_DEFAULT_JOB_ID]` with
+//   stamp `fresh` and this spec goes red — which is the whole point.
 const productionUrl = process.env.AFTERSIGN_PRODUCTION_URL;
+
+const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
+const WAIT_MS = 15_000;
+
+// `COMPLETED_JOB_IDS` as declared in packages/aftersign/src/computeOfferedJobs.ts.
+// Hard-coded here rather than imported because this file is driven by the
+// aftersign Playwright config, which does NOT bundle the apps/web TS
+// sources; importing would blow up module resolution. The sibling two-
+// round spec takes the same inline approach for `job-night-transfer`.
+const COMPLETED_JOB_IDS = ["job-night-transfer", "job-signed-receipt"] as const;
+
+async function waitForReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __game?: { scene?: { ready?: boolean } } })
+        .__game?.scene?.ready === true,
+    undefined,
+    { timeout: WAIT_MS },
+  );
+}
+
+async function waitForBeat(page: Page, beatId: string): Promise<void> {
+  await expect(page.locator(`[data-beat-id="${beatId}"]`)).toBeVisible({
+    timeout: WAIT_MS,
+  });
+}
+
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`);
+  await expect(choice).toBeVisible({ timeout: WAIT_MS });
+  await choice.tap();
+}
 
 test.describe("production durable authority", () => {
   test.skip(!productionUrl, "set AFTERSIGN_PRODUCTION_URL to run against the deployed Worker");
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("reload surfaces the memory-driven offer, not the safe default", async ({ page }) => {
-    await page.goto(productionUrl!);
+  test("a played first round survives a hard reload against the deployed Worker", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
 
-    const offeredJobs = page.locator("#offeredJobs");
-    await expect(offeredJobs).toBeVisible();
+    // Unique slot per run — the sibling `aftersign-mloop-two-round.playtest.spec.ts`
+    // uses the same `?slot=…${Date.now()}` isolation pattern. Without this,
+    // a second run of this spec against the same deployed Worker would
+    // start on the ALREADY-completed branch, and the pre-click `fresh`
+    // assertion would go red for a reason unrelated to the durable save.
+    const slot = `prod-durable-authority-${Date.now()}`;
+    const base = productionUrl!.replace(/\/+$/, "");
+    const separator = base.includes("?") ? "&" : "?";
+    await page.goto(`${base}${separator}slot=${slot}`, { waitUntil: "load" });
+    await waitForReady(page);
 
-    // Capture the pre-click offer id. On a fresh document with no
-    // Worker-backed memory this is the safe-default branch of
-    // `computeOfferedJobs` — see
-    // `apps/web/src/aftersign/aftersignMloopDivergence.contract.test.ts`
-    // (`computeOfferedJobs(undefined) === [SAFE_DEFAULT_JOB_ID]`) and the
-    // rendering contract in
-    // `apps/web/src/aftersign/aftersignMloopDivergenceTrayContract.test.ts`
-    // which pins `button.setAttribute("data-offered-job-id", …)` as the
-    // tray's rendered surface — so this locator is the same string the
-    // tray contract test asserts the bundle writes.
-    const preClickOffer = offeredJobs.locator("button[data-offered-job-id]").first();
-    await expect(preClickOffer).toBeVisible();
-    const preClickOfferId = await preClickOffer.getAttribute("data-offered-job-id");
-    expect(preClickOfferId, "pre-click offer must expose its job id").not.toBeNull();
+    // --- Round one: play the SAME path the two-round spec plays. ---
+    // Any divergence from that path risks reaching a branch the memory
+    // model does not stamp `completed`; the two-round spec is the one
+    // and only verified recipe for driving the derivation into the
+    // `priorOutcome: "completed"` branch of `computeOfferedJobs`.
+    await waitForBeat(page, "packet-offered");
+    const tray = page.locator("#offeredJobs");
+    await expect(tray).toHaveAttribute("data-mloop-divergence-memory", "fresh");
+    const freshOffer = tray.locator("button[data-offered-job-id]");
+    await expect(freshOffer).toHaveCount(1);
+    await freshOffer.tap();
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
 
-    await preClickOffer.click();
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
 
-    // Narrow the "click actually moved memory forward" premise before we
-    // reload: wait for the bundle to repaint SOMETHING past the safe-default
-    // tray. The weakest contract that holds across both branches of the
-    // post-tap render path (packet-choice ack and durable packet-recall
-    // re-entry — see aftersignJobAcceptedRender.consumer.test.ts and
-    // aftersignPacketRecallRender.ts) is: either the tray's offered-id set
-    // changes, or #offeredJobs is replaced by a non-tray surface. If
-    // neither happens inside a generous timeout, the click did not advance
-    // memory and the reload assertion below would be meaningless — fail
-    // fast with a clear reason instead of going red on the wrong line.
-    await expect
-      .poll(
-        async () => {
-          const stillTrayWithSameOffers = await offeredJobs
-            .locator(`button[data-offered-job-id="${preClickOfferId}"]`)
-            .count();
-          const nonTrayChildren = await offeredJobs
-            .locator(":scope > *:not(button[data-offered-job-id])")
-            .count();
-          return stillTrayWithSameOffers === 1 && nonTrayChildren === 0;
-        },
-        {
-          message:
-            "tap on offered-job button did not advance the rendered surface — " +
-            "either the click did not fire or the bundle did not re-render past " +
-            "packet-offered; reload assertion below would be unverifiable",
-          timeout: 10_000,
-        },
-      )
-      .toBeFalsy();
+    // At this point `#offeredJobs` has re-rendered for round two and the
+    // completed-branch save has been written to the Durable Object. Pin
+    // that pre-reload state so a failure after reload has a clear "it
+    // WAS completed, it CAME BACK fresh" diff.
+    await waitForBeat(page, "packet-offered");
+    await expect(tray).toHaveAttribute("data-mloop-divergence-memory", "completed");
+    const preReloadOffers = tray.locator("button[data-offered-job-id]");
+    await expect(preReloadOffers).toHaveCount(COMPLETED_JOB_IDS.length);
+    const preReloadIds = await preReloadOffers.evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).getAttribute("data-offered-job-id")),
+    );
+    expect(preReloadIds, "pre-reload offer ids must match the completed branch").toEqual(
+      [...COMPLETED_JOB_IDS],
+    );
 
+    // --- The reload boundary — the whole reason this spec exists. ---
     // A new browser document is the minimum useful reload boundary: the
-    // rendered offer must be rebuilt from the Worker-backed save, not retained
-    // only in the previous page's JavaScript heap.
-    await page.reload();
-    await expect(offeredJobs).toBeVisible();
+    // rendered offer must be rebuilt from the Worker-backed save, not
+    // retained only in the previous page's JavaScript heap.
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "packet-offered");
 
-    const restoredOffers = offeredJobs.locator("button[data-offered-job-id]");
-    await expect(restoredOffers.first()).toBeVisible();
+    // Load-bearing assertion: the restored tray must stamp `completed`
+    // (not `fresh`). A Worker that silently loses the save falls back
+    // through `computeOfferedJobs(undefined)` to `[SAFE_DEFAULT_JOB_ID]`
+    // with stamp `fresh`, and this assertion goes red. The old spec
+    // only tapped once (no `completed` memory ever written) and asserted
+    // the id-set differed — on a healthy Worker that would ALSO fire a
+    // false red, because one tap doesn't advance memory past the safe
+    // default.
+    await expect(tray).toHaveAttribute("data-mloop-divergence-memory", "completed");
 
-    // Load-bearing assertion: the restored offer id set must DIFFER from
-    // the pre-click (safe-default) id. A Worker that silently loses the
-    // save falls back through `computeOfferedJobs(undefined)` to
-    // `[SAFE_DEFAULT_JOB_ID]` — i.e. the same id as `preClickOfferId` —
-    // and this assertion goes red. The previous `toHaveCount(1)` guard
-    // could not distinguish "state restored" from "state reset", because
-    // the safe-default branch also renders exactly one offer.
+    const restoredOffers = tray.locator("button[data-offered-job-id]");
+    await expect(restoredOffers).toHaveCount(COMPLETED_JOB_IDS.length);
     const restoredIds = await restoredOffers.evaluateAll((nodes) =>
       nodes.map((node) => (node as HTMLElement).getAttribute("data-offered-job-id")),
     );
-    expect(restoredIds, "every restored offer must expose its job id").not.toContain(null);
     expect(
       restoredIds,
-      "restored offers must not collapse back to the pre-click safe-default id — " +
-        "that would mean the Worker lost the save",
-    ).not.toEqual([preClickOfferId]);
+      "restored offers must match COMPLETED_JOB_IDS — a Worker that lost the save " +
+        "would fall back to [SAFE_DEFAULT_JOB_ID] here",
+    ).toEqual([...COMPLETED_JOB_IDS]);
   });
 });
