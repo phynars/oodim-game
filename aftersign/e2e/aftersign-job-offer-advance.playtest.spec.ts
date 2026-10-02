@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 // The job offer is the first player commitment in a round. This is deliberately
 // played through the visible phone target: __game is read only to prove that
-// the tap was not swallowed while the offer surface rerendered.
+// the touch was not swallowed while the offer surface rerendered.
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 60_000;
 
@@ -27,10 +27,10 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
     .toBe(beat);
 }
 
-test.describe("AFTERSIGN job offer advances by phone tap", () => {
+test.describe("AFTERSIGN job offer advances by phone touch", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("a visible offer tap reaches packet choice", async ({ page }) => {
+  test("a browser-routed touch on the visible offer reaches packet choice", async ({ page }) => {
     test.setTimeout(90_000);
     const slot = `job-offer-advance-${Date.now()}`;
 
@@ -47,11 +47,21 @@ test.describe("AFTERSIGN job offer advances by phone tap", () => {
     await expect(offer).toBeVisible({ timeout: WAIT_MS });
     await expect(offer).toBeEnabled({ timeout: WAIT_MS });
 
-    // The browser-real 44 CSS-pixel rendered-target contract is owned by
-    // `aftersign/e2e/packet-button-touch-target.contract.spec.ts`.
-    // This playtest keeps the player outcome: a visible phone tap must advance
-    // from the offered packet to the packet-choice surface.
-    await offer.tap();
+    // Send a real Chrome DevTools Protocol touch sequence at the rendered
+    // target rather than calling DOM handlers or the game input contract.
+    const box = await offer.boundingBox();
+    expect(box).not.toBeNull();
+    const x = box!.x + box!.width / 2;
+    const y = box!.y + box!.height / 2;
+    const client = await page.context().newCDPSession(page);
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y, id: 1 }],
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
 
     await waitForBeat(page, "packet-choice");
     await expect(page.locator("[data-aftersign-route-risk-surface]")).toBeVisible({
