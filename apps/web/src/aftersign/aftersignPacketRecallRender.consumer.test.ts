@@ -48,7 +48,7 @@ describe("aftersignPacketRecallRender served consumer", () => {
     const lineEl = document.getElementById("line");
     expect(lineEl!.nextElementSibling).toBe(recall);
     // Substring pin proves the "safe" branch — not a fallback — resolved.
-    expect(recall!.textContent).toContain("arrived dry");
+    expect(recall!.textContent).toContain("brought the packet back sealed");
   });
 
   it("stamps the fast recall copy on a subsequent token", () => {
@@ -56,7 +56,7 @@ describe("aftersignPacketRecallRender served consumer", () => {
     stampPacketRecallLine(document, "fast", line);
     const recall = document.getElementById(PACKET_RECALL_LINE_ID);
     expect(recall!.textContent).toBe(line);
-    expect(recall!.textContent).toContain("dark cut");
+    expect(recall!.textContent).toContain("beat the bell");
     expect(recall!.getAttribute(PACKET_RECALL_LINE_DATA_ATTR)).toBe("fast");
   });
 
@@ -65,7 +65,7 @@ describe("aftersignPacketRecallRender served consumer", () => {
     stampPacketRecallLine(document, "failed", line);
     const recall = document.getElementById(PACKET_RECALL_LINE_ID);
     expect(recall!.textContent).toBe(line);
-    expect(recall!.textContent).toContain("We can mend this");
+    expect(recall!.textContent).toContain("came back wrong");
     expect(recall!.getAttribute(PACKET_RECALL_LINE_DATA_ATTR)).toBe("failed");
   });
 

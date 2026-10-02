@@ -1,15 +1,21 @@
 // Durable route-recall copy for Io's packet-offered return beat.
-// `aftersign/main.js` resolves the prior route token and renders the exact
-// line through `aftersignPacketRecallLine()`.
+// `aftersign/main.js` resolves the prior route token and renders the
+// exact line through `aftersignPacketRecallLine()` into the sibling
+// `#packetRecallLine` paragraph next to `#line`.
+//
+// Writer's rule (pinned by `aftersignPacketRecallRender.consumer.test.ts`):
+// an UNKNOWN or ABSENT token returns `""`. The render seam treats that
+// as a teardown — a missing/corrupt route must tear down the paragraph,
+// not render a false "safe" memory. Do NOT fall back to a default line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
-  safe: "You kept to the light. The packet arrived dry. I remember.",
-  fast: "You took the dark cut. The packet beat the bell. I noticed.",
-  failed: "Last run went wrong. You came back. We can mend this.",
+  safe: "Io kept the route lit because you brought the packet back sealed. The next door opens.",
+  fast: "Io remembers you beat the bell. Speed buys a harder handoff next time.",
+  failed: "Io remembers the packet came back wrong. The repair job is waiting where you left the mark.",
 });
 
 /**
  * Return Io's authored recall for a durable route token.
- * Unknown or absent tokens deliberately render no recall.
+ * Unknown or absent tokens deliberately render no recall (teardown).
  *
  * @param {unknown} token
  * @returns {string}
@@ -19,8 +25,8 @@ export function aftersignPacketRecallLine(token) {
   return AFTERSIGN_PACKET_RECALL_COPY[token] ?? "";
 }
 
-// Exposed for tests that enumerate authored tokens without relying on object
-// shape.
+// Exposed for tests / harness code that enumerate authored tokens
+// without reaching into the frozen object shape.
 export const AFTERSIGN_PACKET_RECALL_TOKENS = Object.freeze(
   Object.keys(AFTERSIGN_PACKET_RECALL_COPY),
 );
