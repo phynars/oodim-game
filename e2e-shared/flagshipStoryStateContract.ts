@@ -1,7 +1,7 @@
-// Shared story-state contract for the AFTERSIGN flagship harness.
+// Shared flagship story/state harness contract.
 //
-// This file is the executable mirror of
-// `docs/flagship/story-state-contract.md`. Every exported type, const,
+// This mirrors the AUTHORITATIVE FlagshipGameSurface shape defined in
+// docs/flagship/story-state-contract.md. Every field name, enum value,
 // and required line fragment below traces to a rule in that document.
 // If the doc and this file disagree, the doc wins — update this file
 // in the same PR that changes the doc, not later.
@@ -27,14 +27,14 @@ export type FlagshipSceneBeat =
   | 'return-tone-choice'
   | 'io-next-job';
 
-export type FlagshipPlayerFlags = Record<string, boolean>;
-
-export type FlagshipDeliveryOutcome = 'unknown' | 'sealed' | 'opened';
+export type FlagshipDeliveryOutcome =
+  | 'unknown'
+  | 'sealed'
+  | 'opened'
+  | 'withheld'
+  | 'returned';
 
 export type FlagshipChoiceId =
-  | 'arrive'
-  | 'offer-packet'
-  | 'accept-packet'
   | 'keep-sealed'
   | 'open-packet'
   | 'deliver-packet'
@@ -51,31 +51,46 @@ export type FlagshipIoTrustPosture = 'untested' | 'trusted-seal' | 'useful-breac
 export type FlagshipIoMemoryKind =
   | 'delivery-outcome'
   | 'return'
-  | 'answer-tone'
-  | 'route-attention';
-
-export type FlagshipIoMemorySource = 'server' | 'local-fallback';
+  | 'route-attention'
+  | 'answer-tone';
 
 export type FlagshipIoMemory = {
   id: string;
   kind: FlagshipIoMemoryKind;
-  source: FlagshipIoMemorySource;
-  object?: string;
+  subject: 'player';
+  predicate: string;
+  object: string;
+  deliveryId?: 'blue-packet';
+  sessionId: string;
+  source: 'server';
 };
 
-export type FlagshipSaveAuthority = 'server' | 'local-fallback';
+export type FlagshipPlayerFlags = {
+  io_intro_seen?: boolean;
+  io_route_listened?: boolean;
+  returned_after_first_session?: boolean;
+  answer_tone?: FlagshipAnswerTone;
+} & Record<string, boolean | number | string>;
 
-export type FlagshipSaveLastLoadProof = {
-  source: 'server' | 'local-fallback' | null;
-  playerId: string | null;
-  revision: number | null;
+export type FlagshipSave = {
+  slot: 'default';
+  revision: number;
+  lastPersistedAt: string | null;
+  dirty: boolean;
+  authority: 'server' | 'local-fallback';
+  lastLoadProof: {
+    source: 'server' | 'local-fallback' | null;
+    revision: number | null;
+    playerId: string | null;
+  };
 };
 
 export type FlagshipInput = {
-  choose(choiceId: string): Promise<void> | void;
-  waitForStoryIdle(): Promise<void> | void;
-  forceSave(): Promise<void> | void;
-  forceReload(opts?: { clearLocalState?: boolean }): Promise<void> | void;
+  choose(choiceId: FlagshipChoiceId): Promise<void>;
+  advance(): Promise<void>;
+  forceSave(): Promise<void>;
+  forceReload(options?: { clearLocalState?: boolean }): Promise<void>;
+  waitForStoryIdle(): Promise<void>;
 };
 
 export type FlagshipGameSurface = {
@@ -102,19 +117,15 @@ export type FlagshipGameSurface = {
   npcs: {
     io: {
       id: 'io';
+      displayName: 'Io Vale';
+      present: boolean;
       trustPosture: FlagshipIoTrustPosture;
-      memories: readonly FlagshipIoMemory[];
+      memories: FlagshipIoMemory[];
       lastLine: string | null;
-      lastLineMemoryRefs: readonly string[];
+      lastLineMemoryRefs: string[];
     };
   };
-  save: {
-    slot: 'default';
-    revision: number;
-    authority: FlagshipSaveAuthority;
-    dirty: boolean;
-    lastLoadProof: FlagshipSaveLastLoadProof;
-  };
+  save: FlagshipSave;
   input: FlagshipInput;
 };
 
@@ -232,10 +243,9 @@ export function assertSerializableFlagshipSurface(surface: FlagshipGameSurface):
 }
 
 // `assertStoryBeatTransition` checks that `after.scene.beat` matches the
-// `expectedBeat` the caller just drove toward. It does NOT advance the
-// story itself and it does NOT await any timer — the SOLE job of the
-// assertion is to pin the SYNCHRONOUS post-condition of the choice the
-// caller made.
+// `expectedBeat` the caller just drove toward, AND that the beat actually
+// advanced from `before` (a no-op choice must not pass this assertion —
+// that red polarity applies to every caller).
 //
 // IMPORTANT (#2085): some choices (notably `deliver-packet`) set the
 // expected beat SYNCHRONOUSLY and then schedule a FURTHER transition on
@@ -245,13 +255,17 @@ export function assertSerializableFlagshipSurface(surface: FlagshipGameSurface):
 // past that timer — otherwise this assertion sees the LATER beat and
 // reports the next state, not the one the choice just produced. The
 // contract itself does not define `waitForStoryIdle`'s timer policy, so
-// a flaky test here is a test-shape bug, not a contract regression.
+// a flake here is a test-shape bug (read `after` too late), not a
+// contract regression.
 export function assertStoryBeatTransition(
   before: FlagshipGameSurface,
   after: FlagshipGameSurface,
   expectedBeat: FlagshipSceneBeat,
   expectedFlag?: keyof FlagshipPlayerFlags,
 ): void {
+  if (before.scene.beat === after.scene.beat) {
+    throw new Error(`Expected scene.beat to advance from '${before.scene.beat}'.`);
+  }
   if (after.scene.beat !== expectedBeat) {
     throw new Error(`Expected scene.beat '${expectedBeat}', got '${after.scene.beat}'.`);
   }
