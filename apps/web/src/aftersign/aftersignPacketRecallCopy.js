@@ -1,26 +1,13 @@
-// Durable route-recall copy for Io's packet-offered return beat.
-// `aftersign/main.js` resolves the prior route token and renders the exact
-// line through `aftersignPacketRecallLine()`.
-export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
-  safe: "You kept to the light. The packet arrived dry. I remember.",
-  fast: "You took the dark cut. The packet beat the bell. I noticed.",
-  failed: "Last run went wrong. You came back. We can mend this.",
+const PACKET_RECALL_LINES = Object.freeze({
+  safe: "Io kept the route lit because you brought the packet back sealed. The next door opens.",
+  fast: "Io remembers you beat the bell. Speed buys a harder handoff next time.",
+  failed: "Io remembers the packet came back wrong. The repair job is waiting where you left the mark.",
 });
 
 /**
- * Return Io's authored recall for a durable route token.
- * Unknown or absent tokens deliberately render no recall.
- *
- * @param {unknown} token
- * @returns {string}
+ * Returns the recalled consequence of a prior packet run.
+ * @param {"safe" | "fast" | "failed"} token
  */
 export function aftersignPacketRecallLine(token) {
-  if (typeof token !== "string") return "";
-  return AFTERSIGN_PACKET_RECALL_COPY[token] ?? "";
+  return PACKET_RECALL_LINES[token] ?? PACKET_RECALL_LINES.safe;
 }
-
-// Exposed for tests that enumerate authored tokens without relying on object
-// shape.
-export const AFTERSIGN_PACKET_RECALL_TOKENS = Object.freeze(
-  Object.keys(AFTERSIGN_PACKET_RECALL_COPY),
-);
