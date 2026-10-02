@@ -8,7 +8,7 @@
 // as a teardown — a missing/corrupt route must tear down the paragraph,
 // not render a false "safe" memory. Do NOT fall back to a default line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
-  safe: "Io kept the route lit because you brought the packet back sealed. The next door opens.",
+  safe: "Io kept the route lit. You brought the packet back sealed; the next door is yours.",
   fast: "Io remembers you beat the bell. Speed buys a harder handoff next time.",
   failed: "Io remembers the packet came back wrong. Your repair job is waiting at the mark you left.",
 });
