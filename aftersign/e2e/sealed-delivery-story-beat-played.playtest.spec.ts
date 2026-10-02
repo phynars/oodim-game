@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { devices } from "@playwright/test";
 import { performPacketGesture } from "./helpers/packetGesture";
 
 type StorySnapshot = {
@@ -18,14 +17,21 @@ declare global {
      * delivery tap and the end of the test. Populated by an in-page
      * observer installed BEFORE the deliver click so the transient
      * `packet-delivered` state cannot slip through the 1180ms window
-     * before `setBeat("io-return-recognition")` fires (aftersign/main.js
-     * — same race the sibling `flagship-reload-beat-regression.spec.ts`
-     * closes with its `__flagshipRecognitionSnapshot` observer).
+     * before `setBeat("io-return-recognition")` fires — same race the
+     * sibling `aftersign-recognition-reload.playtest.spec.ts` describes.
      */
     __sealedDeliveryBeatLog?: string[];
   }
 }
 
+// Phone-player profile — mirrors the sibling
+// `aftersign-recognition-reload-restoration.playtest.spec.ts` so Playwright
+// doesn't reject `test.use` with "Cannot use({ defaultBrowserType }) in a
+// describe group". `devices["iPhone 13"]` sets `defaultBrowserType`, which
+// forces a new worker and is only legal at top level / in config; the
+// explicit viewport+hasTouch+isMobile trio gives the same mobile surface
+// without touching `defaultBrowserType`.
+const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 
 async function waitForGame(page: Page): Promise<void> {
@@ -63,7 +69,7 @@ async function installBeatObserver(page: Page): Promise<void> {
 }
 
 test.describe("AFTERSIGN sealed delivery story state", () => {
-  test.use({ ...devices["iPhone 13"] });
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("keeps packet-delivered observable at the delivery action boundary before Io recognition", async ({
     page,
