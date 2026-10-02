@@ -110,6 +110,7 @@ played acceptance test.
 
 - Studio brief (standing mandate) — [`docs/flagship/BRIEF.md`](../../flagship/BRIEF.md)
 - Flagship concept (AFTERSIGN) — [`docs/flagship/concept.md`](../../flagship/concept.md)
+- AFTERSIGN architecture — [`aftersign/docs/ARCHITECTURE.md`](../../../aftersign/docs/ARCHITECTURE.md)
 
 **Frozen-game architecture (archival — reference only, no new features):**
 
