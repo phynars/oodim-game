@@ -871,10 +871,22 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     const afterChoice = await readSurface(page);
 
     await page.evaluate(() => window.__game!.input.choose("deliver-packet"));
-    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
+    // #2085 fix: `deliverPacket()` (aftersign/main.js) sets
+    // `scene.beat = 'packet-delivered'` SYNCHRONOUSLY and then
+    // schedules a ~1180ms setTimeout that promotes the beat to
+    // `io-return-recognition`. If we `waitForStoryIdle()` BEFORE
+    // reading the surface, the idle wait can straddle that timer
+    // and `afterDeliver.scene.beat` reads `io-return-recognition`
+    // instead of `packet-delivered` — the exact flake #2075's
+    // WebGL run reported ("expected packet-delivered, got
+    // io-return-recognition"). Capture the SYNCHRONOUS
+    // post-condition BEFORE draining idle so
+    // `assertStoryBeatTransition` pins the beat the choice just
+    // produced; drain idle AFTER the assertion for the subsequent
+    // reads below.
     const afterDeliver = await readSurface(page);
-
     assertStoryBeatTransition(afterChoice, afterDeliver, "packet-delivered", "io_intro_seen");
+    await page.evaluate(() => window.__game!.input.waitForStoryIdle());
     expect(afterDeliver.delivery.outcome).toBe("sealed");
     expect(afterDeliver.npcs.io.trustPosture).toBe("trusted-seal");
 

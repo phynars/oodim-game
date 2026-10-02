@@ -242,6 +242,21 @@ export function assertSerializableFlagshipSurface(surface: FlagshipGameSurface):
   }
 }
 
+// `assertStoryBeatTransition` checks that `after.scene.beat` matches the
+// `expectedBeat` the caller just drove toward, AND that the beat actually
+// advanced from `before` (a no-op choice must not pass this assertion —
+// that red polarity applies to every caller).
+//
+// IMPORTANT (#2085): some choices (notably `deliver-packet`) set the
+// expected beat SYNCHRONOUSLY and then schedule a FURTHER transition on
+// a timer (deliverPacket in aftersign/main.js schedules the ~1180ms
+// `io-return-recognition` promotion). Callers asserting the synchronous
+// post-condition must capture `after` BEFORE `waitForStoryIdle()` resolves
+// past that timer — otherwise this assertion sees the LATER beat and
+// reports the next state, not the one the choice just produced. The
+// contract itself does not define `waitForStoryIdle`'s timer policy, so
+// a flake here is a test-shape bug (read `after` too late), not a
+// contract regression.
 export function assertStoryBeatTransition(
   before: FlagshipGameSurface,
   after: FlagshipGameSurface,
