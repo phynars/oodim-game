@@ -178,8 +178,6 @@ async function waitForReady(page: Page): Promise<void> {
 }
 
 type PlayedRecord = {
-  page: Page;
-  context: Awaited<ReturnType<typeof newPhoneContext>>;
   divergenceMemory: string;
   tappedOfferId: string;
 };
@@ -259,7 +257,8 @@ async function playSeededRecord(
   ).not.toBe("");
   await tappable.tap();
 
-  return { page, context, divergenceMemory, tappedOfferId };
+  await context.close();
+  return { divergenceMemory, tappedOfferId };
 }
 
 const SEEDED_RECORDS: readonly SeededRecord[] = [
@@ -300,13 +299,6 @@ const SEEDED_RECORDS: readonly SeededRecord[] = [
 test.describe.configure({ mode: "serial" });
 test.describe("AFTERSIGN M-LOOP served divergence memory — phone-viewport, tap-driven", () => {
   const played: PlayedRecord[] = [];
-
-  test.afterAll(async () => {
-    for (const record of played) {
-      await record.context.close();
-    }
-    played.length = 0;
-  });
 
   for (const record of SEEDED_RECORDS) {
     test(`${record.label}: seeded authoritative save stamps data-mloop-divergence-memory="${record.expectedDivergenceMemory}" on #offeredJobs and renders a real, tappable button[data-offered-job-id]`, async ({
