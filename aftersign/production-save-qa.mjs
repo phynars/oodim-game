@@ -88,7 +88,14 @@ try {
   expect(evidence.returningOffers).toEqual(['job-night-transfer', 'job-signed-receipt']);
   await round('job-signed-receipt');
   await expect.poll(async () => (await read()).save.revision, { timeout: 60000 }).toBe(2);
-  await checkpoint('round-two-delivered');
+  const roundTwo = await checkpoint('round-two-delivered');
+  const roundTwoSaved = await context.request.get(endpoint);
+  evidence.roundTwoGetStatus = roundTwoSaved.status();
+  expect(roundTwoSaved.ok()).toBe(true);
+  const roundTwoBody = await roundTwoSaved.json();
+  expect(roundTwo.save.revision).toBe(2);
+  expect(roundTwoBody.payload.save.revision).toBe(2);
+  expect(roundTwoBody.payload.beat).toBe('packet-delivered');
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.requests.every(r => r.status >= 200 && r.status < 300)).toBe(true);
   evidence.result = 'PASS';
