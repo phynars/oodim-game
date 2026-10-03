@@ -267,6 +267,12 @@ import {
   ROUTE_RISK_CONFIRM_FEEL,
 } from "./src/routeRiskConfirmFeedback.js";
 import { playPacketChoiceIntentFeedback } from "./src/packetChoiceIntentFeedback.ts";
+import {
+  PACKET_INTERACTION_OUTCOME,
+  applyPacketFeedback,
+  feedbackForPacketOutcome,
+  registerPacketChoice,
+} from "./src/packet-interaction.js";
 // Player-facing labels for the four route-risk action ids the
 // writer above stamps as `<button>` children. Passed as
 // `labelForAction: routeRiskActionLabel` at both
@@ -2955,43 +2961,33 @@ const setBeat = (beat) => {
 };
 
 const commitPacketOutcome = (outcome) => {
+  const interaction = registerPacketChoice({
+    packet: state.packet,
+    outcome: outcome === PACKET_OUTCOME.SEALED
+      ? PACKET_INTERACTION_OUTCOME.SEALED
+      : outcome === PACKET_OUTCOME.OPENED
+        ? PACKET_INTERACTION_OUTCOME.OPENED
+        : PACKET_INTERACTION_OUTCOME.UNKNOWN,
+  });
+  if (!interaction.accepted) return;
+
   // An irreversible packet choice needs an immediate screen-level answer.
-  // This is decorative only: the state commit below remains authoritative.
+  // Every DOM write is caller-owned; the extracted module only computes it.
   try {
     playPacketChoiceIntentFeedback(packetButton, {
       reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
     });
+    applyPacketFeedback(interaction.feedback, {
+      applyButtonCopy: (copy) => applyPacketButtonCopy(packetButton, copy),
+    });
   } catch { /* feedback must never block a committed choice */ }
 
-    // #1563 — flip the visible `#packetButton` copy the same frame
-    // the tap-driven outcome commits. Sibling
-    // `packetInteractionCopy.consumer.test.ts` pins this so a future
-    // regression (SEALED lands but the button still reads the idle
-    // hint) reds the consumer test, not the shipped surface. Wrapped
-    // in try/catch because copy writes are decorative and MUST NEVER
-    // interrupt the state commit that follows.
-    if (outcome === PACKET_OUTCOME.SEALED) {
-      try { applyPacketButtonCopy(packetButton, "sealed"); } catch { /* decorative */ }
-    } else if (outcome === PACKET_OUTCOME.OPENED) {
-      try { applyPacketButtonCopy(packetButton, "opened"); } catch { /* decorative */ }
-    }
-  if (outcome === PACKET_OUTCOME.SEALED) {
-    if (!state.packet.sealed) {
-      state.packet.sealed = true;
-      markStateDirty();
-    }
-    state.interaction.lastAction = "packet-sealed";
-    setBeat("packet-choice");
+  if (state.packet.sealed !== interaction.packet.sealed) {
+    state.packet.sealed = interaction.packet.sealed;
+    markStateDirty();
   }
-
-  if (outcome === PACKET_OUTCOME.OPENED) {
-    if (state.packet.sealed) {
-      state.packet.sealed = false;
-      markStateDirty();
-    }
-    state.interaction.lastAction = "packet-opened";
-    setBeat("packet-choice");
-  }
+  state.interaction.lastAction = interaction.choiceId;
+  setBeat("packet-choice");
 };
 
 // Failure sting fires on the TRANSITION into CANCELLED, never on the
@@ -3004,10 +3000,15 @@ const commitPacketOutcome = (outcome) => {
 let lastPacketOutcomeForFailure = PACKET_OUTCOME.UNKNOWN;
 
 const maybeTriggerFailureFromOutcome = (outcome, source) => {
-  if (outcome === PACKET_OUTCOME.CANCELLED
-    && lastPacketOutcomeForFailure !== PACKET_OUTCOME.CANCELLED) {
-    triggerFailureFeedback(source);
-  }
+  const previousOutcome = lastPacketOutcomeForFailure === PACKET_OUTCOME.CANCELLED
+    ? PACKET_INTERACTION_OUTCOME.CANCELLED
+    : PACKET_INTERACTION_OUTCOME.UNKNOWN;
+  const nextOutcome = outcome === PACKET_OUTCOME.CANCELLED
+    ? PACKET_INTERACTION_OUTCOME.CANCELLED
+    : PACKET_INTERACTION_OUTCOME.UNKNOWN;
+  applyPacketFeedback(feedbackForPacketOutcome(nextOutcome, previousOutcome), {
+    triggerFailure: () => triggerFailureFeedback(source),
+  });
   lastPacketOutcomeForFailure = outcome;
 };
 
