@@ -105,6 +105,24 @@ jobs:
           set -euo pipefail
           npx playwright install --with-deps chromium
           npx playwright test m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
+      # DIAGNOSTIC (#2118): the first served M-LOOP artifact was 2.12 KB —
+      # too small to carry trace.zip + video.webm even though trace/video
+      # are "on" in served mode. Before the upload, dump the actual
+      # contents of both directories so the next live-verify run shows
+      # what Playwright produced on disk. If this reveals the artifacts
+      # are missing (vs mis-pathed), the fix moves to the spec/config;
+      # if they're present but excluded, the fix moves to the upload
+      # globs. Either way, the diagnostic replaces guessing with ground
+      # truth. Non-fatal (`|| true`) — the gate already decided red/green.
+      - name: Diagnostic — list M-LOOP artifact tree
+        if: ${{ always() && steps.m_loop_gate.outcome != 'skipped' }}
+        run: |
+          echo "=== aftersign/playwright-report/ ==="
+          ls -laR aftersign/playwright-report/ 2>&1 || true
+          echo "=== aftersign/test-results/ ==="
+          ls -laR aftersign/test-results/ 2>&1 || true
+          echo "=== root test-results/ (checking for stray output) ==="
+          ls -laR test-results/ 2>&1 || true
       - name: Upload M-LOOP Playwright evidence
         if: ${{ always() && steps.m_loop_gate.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
