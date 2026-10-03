@@ -130,9 +130,41 @@ The previous plan inspected `aftersign/e2e/job-offers-played.spec.ts` and record
 
 #1370 and #1552 remain historical integration/PLAYTEST identities to consult only if needed to locate the full-round spec and avoid duplication. Do not turn their uninspected disposition into new work.
 
-## Drift and operator disposition
+## Reconciliation checkpoint — 2026-10-03 (supersedes the 2026-09-26 handoff below)
 
-Current open board: #1950, #1920, #1825. No issues closed here.
+Active milestone: **M2 (M-LOOP)**. Deadline: 2026-09-05 (provisional; founder has still not confirmed a binding M-LOOP date in `docs/flagship/BRIEF.md`). **Days remaining: -28 as of 2026-10-03.** Founder action still required: confirm or replace the date. Do not roll it forward silently.
+
+### What this chunk directly read
+
+- `read(aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts)` — **this closes the CI-side gap the 09-26 handoff named.** It runs on a 390×844 `hasTouch`/`isMobile` viewport. It seeds two durable records (`fresh`, `completed`) via `PUT /aftersign/save/...` and reads each one back. It then asserts their rendered, enabled `#offeredJobs button[data-offered-job-id]` action-ID sets differ before either is played (`["job-safe-delivery"]` vs `["job-night-transfer","job-signed-receipt"]`). After that, **each record plays two consecutive rounds** by `.tap()` on visible controls. Each round goes offer → packet → `packet-choice` → deliver → `io-return-recognition`. Between rounds it taps the return-tone and next-job controls, does a same-slot `page.reload()` and checks memory, then completes round two (revision +1). `window.__game` is only read through `page.evaluate`; no `__game.input.*` call causes an action. Seeding goes over HTTP, which the bar allows ("seeds two durable memory records").
+- `read(aftersign/e2e/m-loop-two-rounds-phone-playtest.spec.ts)` — a single fresh slot, tap-only, round 1 → second `packet-offered`, then a tap on a round-2 offer. Its divergence comparison reads `__game.getSnapshot().story.offeredJobs` (assert-only, allowed), but it does not complete round 2. This is supporting coverage, not the gate.
+- `list_issues(open)`: #2097, #2080, #2071, #2064. The 09-26 board (#1950, #1920, #1825) is no longer open.
+
+### Residual gaps against the verbatim founder bar (quoted in M2 above)
+
+1. **Every visible dialogue change asserted.** The gate spec asserts beat stamps (`[data-beat-id]` visible) at each beat. It does not check rendered dialogue text per transition. This is a bounded S edit to the existing spec, not a new integration story. Defer it unless the founder rejects beat-stamp evidence.
+2. **Deployed execution evidence.** No non-skipped run URL, revision, or trace against https://game.oodim.com/aftersign has been linked. → **#2064** (deployed save persistence on the production Worker, `agent-needs-human`) is the blocking prerequisite. A green local or preview run does not prove the production Worker persists saves.
+3. **Human replay bar** ("a stranger finishes round one and can answer 'what will you do differently next round?'") is not CI-able. → **#2071** (human device pass, `agent-needs-human`) is the nearest existing vehicle. It has to record the stranger's replay answer in the devlog, not just confirm that controls work.
+
+### Updated story map — M2-E1 (Deadline 2026-09-05, days remaining -28)
+
+| Order | Player outcome | Issue / artifact | LoE | Status |
+| --- | --- | --- | --- | --- |
+| 1 Gate | Two divergent saves each complete two tapped rounds on the phone viewport | #1819 → `aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts` | S residual (dialogue-text asserts) | Spec present on main; matches the bar statically. A green deployed run is not yet linked. |
+| 2 Deploy proof | A phone player's save survives on the production Worker | #2064 | L label, human | OPEN, needs a human. Blocks closeout. |
+| 3 Human proof | A stranger plays on a real phone and names a next-round change | #2071 | S, human | OPEN, needs a human. Scope must include the replay question. |
+| — | Reuse | #1535, #1551, #1818, #1827, PR #1934 | — | Closed or merged; supporting coverage only. |
+
+**No new implementation stories are authorized.** The CI-side M2 gate exists. What's left is operating it on the deployed page plus a human pass. At -28 days, filing more component work would be the failure mode the brief names.
+
+### Drift (open, serving no M2-E1 outcome)
+
+- **#2097** — restore the architecture doc: documentation/contributor tooling with no player-visible M2 outcome. P3; keep it out of the M2 queue.
+- **#2080** — audit tracking: operator lane, not product.
+
+## Drift and operator disposition (2026-09-26 snapshot, superseded)
+
+Board as of 2026-09-26: #1950, #1920, #1825. None of these is open as of 2026-10-03. No issues closed here.
 
 - **#1825 — no product epic served:** pipeline/orderless-decomposition work, per trusted prior-chunk classification and current title. Keep in operator lane, not M2 player acceptance.
 - **#1950 — provisional maintenance-only:** title requests dead-module removal and leftover wait-budget cleanup. No M2 outcome dependency established; read the body before final classification.
