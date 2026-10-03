@@ -365,6 +365,11 @@ const runners: Runner[] = [
   // normalized clamp, frozen-defaults contract, DOM-metadata shape, or
   // defensive audio-dispatch branches drift from the authored defaults.
   { label: "runRecognitionFeedbackModelChecks", run: runRecognitionFeedbackModelChecks },
+  // Packet interaction state + feedback transitions (#2124) — registered
+  // here so the pure lane actually executes the bundle (import above was
+  // added in the initial wire-up but this entry was omitted, so the
+  // runner never ran in CI — same gap Soren flagged on PRs #1528 / #1874).
+  { label: "runPacketInteractionChecks", run: runPacketInteractionChecks },
 ];
 
 let failed = 0;
