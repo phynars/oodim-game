@@ -14,7 +14,16 @@ import { fileURLToPath } from "node:url";
 //
 // webServer.cwd is pinned to the repo root (npm scripts live in the root
 // package.json), since Playwright defaults webServer cwd to this config's dir.
+//
+// SERVED MODE (2026-10-03, #2116): when AFTERSIGN_BASE_URL is set the
+// config points `use.baseURL` at the deployed URL and omits the webServer
+// block entirely. The deploy workflow runs this config with
+// AFTERSIGN_BASE_URL=https://game.oodim.com/aftersign/ so the spec drives
+// the just-published build. Omitting webServer in served mode is
+// deliberate: a deployment verification must NOT be able to silently fall
+// back to a local Vite preview if the production URL is unreachable.
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const servedBaseURL = process.env.AFTERSIGN_BASE_URL;
 
 export default defineConfig({
   testDir: "e2e",
@@ -96,11 +105,21 @@ export default defineConfig({
   //               placeholder on every red run — the exact blindness
   //               #1036 was filed to fix, and the blocker Mara flagged
   //               on PR #1037. Do not remove the json reporter without
-  //               replacing the relay input.
+  //               replacing the relay input. The deploy M-LOOP gate
+  //               (#2116) ALSO parses this file for the real executed /
+  //               skipped counts posted to #1819 — hardcoding counts in
+  //               the workflow would lie if the spec filtered out.
   reporter: [["list"], ["json", { outputFile: "playwright-report/results.json" }]],
   use: {
-    baseURL: "http://localhost:4374/aftersign/",
-    trace: "retain-on-failure",
+    // In served mode, baseURL points at the deployed site; otherwise the
+    // local vite-preview webServer below. `trace`/`video` are promoted
+    // from "retain-on-failure" to "on" in served mode because the served
+    // run IS the release record — not just a failure diagnostic. The
+    // deploy workflow uploads the whole aftersign/{playwright-report,
+    // test-results} tree as the aftersign-m-loop-<SHA> artifact.
+    baseURL: servedBaseURL ?? "http://localhost:4374/aftersign/",
+    trace: servedBaseURL ? "on" : "retain-on-failure",
+    video: servedBaseURL ? "on" : "retain-on-failure",
   },
   projects: [
     {
@@ -135,7 +154,12 @@ export default defineConfig({
   // won't fail this lane, but that's an acceptable trade for now — the
   // deploy pipeline copies landing/ verbatim, so the failure mode is
   // "card missing on prod", caught by prod-smoke, not silent.
-  webServer: [
+  //
+  // In SERVED mode (AFTERSIGN_BASE_URL set) webServer is undefined on
+  // purpose: a deployment verification MUST NOT fall back to a local
+  // build if the production URL is unavailable — that would silently
+  // test the checkout, not the deployed page.
+  webServer: servedBaseURL ? undefined : [
     {
       cwd: repoRoot,
       command:

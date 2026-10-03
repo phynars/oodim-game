@@ -120,6 +120,10 @@ Days remaining: -21 (21 days overdue against provisional target), as of 2026-09-
 - `read(apps/web/src/aftersign/aftersignLoopDivergencePlaytestSurface.test.ts)`: source-pattern guard that discovers root `aftersign/e2e` specs and confirms one satisfies `provesTwoPlayedRounds(source)` — a regex-and-count heuristic on completion-related text and `.tap()` syntax, not an execution trace. A passing source-pattern guard is presence of a candidate spec, not evidence that two rounds per record executed or that every dialogue transition was asserted on a deployed run.
 - `grep` located sibling specs on main: `aftersign/e2e/m-loop-divergence.playtest.spec.ts`, `m-loop-two-round-divergence.playtest.spec.ts`, `m-loop-two-rounds-phone-playtest.spec.ts`, `mloop-served-divergence-played.spec.ts`, `two-save-tappable-divergence.spec.ts`. Their full bodies were not inspected this chunk; their presence does not establish per-record two-round execution or deployed pass.
 
+### Deployed M-LOOP gate (pending first deploy)
+
+The deploy workflow runs `aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts` against `https://game.oodim.com/aftersign/` after a Cloudflare deployment. The run uses the executed revision (`GITHUB_SHA`), records trace and video, uploads the `aftersign-m-loop-<SHA>` artifact, and posts its GitHub Actions URL plus the artifact anchor to #1819 on success. The first concrete run URL and executed non-skipped count will be recorded here by that successful workflow; they cannot be truthfully prefilled in a source change.
+
 ### Trusted previous-chunk evidence
 
 PR #1934 merged September 25; its reviews describe focused served-page divergence coverage. This chunk inspected the diff rather than re-fetching that merge status. Deployed execution artifacts and human replay evidence were not verified by either chunk.
