@@ -27,6 +27,11 @@ const servedBaseURL = process.env.AFTERSIGN_BASE_URL;
 
 export default defineConfig({
   testDir: "e2e",
+  // Keep browser artifacts under the config directory. The post-deploy
+  // workflow uploads `aftersign/test-results/`; declaring this explicitly
+  // prevents a CLI working-directory change from producing trace/video in an
+  // uncollected root-level `test-results/` directory.
+  outputDir: "test-results",
   // Exclude pure-logic specs that already run in the deterministic pure
   // lane (`aftersign/playwright.pure.config.ts`, `test:aftersign:pure`).
   // These specs do NOT use the `{ page }` fixture — each file's header
@@ -109,7 +114,7 @@ export default defineConfig({
   //               (#2116) ALSO parses this file for the real executed /
   //               skipped counts posted to #1819 — hardcoding counts in
   //               the workflow would lie if the spec filtered out.
-  reporter: [["list"], ["json", { outputFile: "playwright-report/results.json" }]],
+  reporter: [["list"], ["json", { outputFile: fileURLToPath(new URL("./playwright-report/results.json", import.meta.url)) }]],
   use: {
     // In served mode, baseURL points at the deployed site; otherwise the
     // local vite-preview webServer below. `trace`/`video` are promoted
