@@ -206,6 +206,20 @@ import { runPacketPressFeedbackServedContractChecks } from "./packetPressFeedbac
 // ZERO relative imports, so the subgraph satisfies the extension-
 // resolution contract documented above.
 import { runPacketChoiceIntentFeedbackChecks } from "./src/packetChoiceIntentFeedback.test.ts";
+// Recognition-beat feedback MODEL (#2126) — pure classifier +
+// presentation-state math extracted from `aftersign/main.js` into
+// `aftersign/src/recognition-feedback.js`. The runner pins the hit /
+// early / late / miss window arithmetic against the authored defaults,
+// the normalized-progress clamp at both window edges, the frozen
+// defaults table, the DOM-metadata attribute shape, and the defensive
+// no-op branches of `triggerRecognitionAudioCue` so a caller can safely
+// omit the audio handle without a render-tick throw. The leaf
+// `./recognition-feedback.js` has ZERO relative imports, so the subgraph
+// satisfies the pure-runner extension-resolution contract documented
+// above. Closes AI001 from Soren's PR #2130 review — the prior draft
+// used `.test.js` + vitest, which this runner's `.test.ts`-only import
+// discipline would never have executed in CI.
+import { runRecognitionFeedbackModelChecks } from "./src/recognition-feedback.test.ts";
 
 type Runner = {
   label: string;
@@ -326,6 +340,11 @@ const runners: Runner[] = [
   // prior-style restore path, or the ≤200ms immediate-ack budget the
   // wire-in in `commitPacketOutcome` depends on.
   { label: "runPacketChoiceIntentFeedbackChecks", run: runPacketChoiceIntentFeedbackChecks },
+  // Recognition-beat feedback model (#2126) — pure classifier for the
+  // extracted `recognition-feedback.js`. Reds if the window math,
+  // normalized clamp, frozen-defaults contract, DOM-metadata shape, or
+  // defensive audio-dispatch branches drift from the authored defaults.
+  { label: "runRecognitionFeedbackModelChecks", run: runRecognitionFeedbackModelChecks },
 ];
 
 let failed = 0;
