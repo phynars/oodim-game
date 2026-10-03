@@ -24,12 +24,22 @@ import { expect, test, type Page } from "@playwright/test";
 //   asserts the second-round tray stamp becomes "completed" — proving the
 //   memory derivation is live, but NOT proving the durable save survives
 //   a navigation. This spec plays the SAME full round (packet tap →
-//   acknowledge → deliver → recognition → next-job) and THEN does a hard
-//   `page.reload()`. After the reload the tray must come back stamped
-//   `completed` (not `fresh`), restored from the Worker-backed save. If
-//   the Worker silently loses the save, the restored tray falls through
-//   `computeOfferedJobs(undefined)` back to `[SAFE_DEFAULT_JOB_ID]` with
-//   stamp `fresh` and this spec goes red — which is the whole point.
+//   acknowledge → deliver → recognition → next-job), then explicitly
+//   CLEARS origin localStorage before navigating back to the slot. That
+//   clear is load-bearing: `aftersign/src/runtime/persistence.js:23`
+//   defaults saves to `authority: "local-fallback"` when the Worker
+//   write doesn't confirm, so a plain `page.reload()` would recover the
+//   restored tray from the browser's own fallback cache and the final
+//   `completed` assertion would stay green even if the Worker silently
+//   lost the save (exactly the bug Mara flagged on the first revision).
+//   With localStorage emptied the restore MUST come from the deployed
+//   Worker's record — if that record is missing or corrupted the tray
+//   falls through `computeOfferedJobs(undefined)` back to
+//   `[SAFE_DEFAULT_JOB_ID]` with stamp `fresh`, and this spec goes red.
+//   The pattern mirrors `durable-return-session-phone-playtest.spec.ts`
+//   (`clearLocalStorage` + `page.goto(url)` at lines 156–162), which is
+//   the canonical "force recovery from the backend record" boundary in
+//   this directory.
 const productionUrl = process.env.AFTERSIGN_PRODUCTION_URL;
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
@@ -64,6 +74,19 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
+// Mirrors `durable-return-session-phone-playtest.spec.ts`'s helper of the
+// same name. Clears origin localStorage AND polls until the clear is
+// observable, so a stale key written during the final beat (the save
+// path is async) can't survive the subsequent navigation and silently
+// serve the restored tray from the local-fallback branch of
+// `aftersign/src/runtime/persistence.js:23`.
+async function clearLocalStorage(page: Page): Promise<void> {
+  await page.evaluate(() => window.localStorage.clear());
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.length), { timeout: WAIT_MS })
+    .toBe(0);
+}
+
 test.describe("production durable authority", () => {
   test.skip(!productionUrl, "set AFTERSIGN_PRODUCTION_URL to run against the deployed Worker");
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
@@ -81,7 +104,8 @@ test.describe("production durable authority", () => {
     const slot = `prod-durable-authority-${Date.now()}`;
     const base = productionUrl!.replace(/\/+$/, "");
     const separator = base.includes("?") ? "&" : "?";
-    await page.goto(`${base}${separator}slot=${slot}`, { waitUntil: "load" });
+    const url = `${base}${separator}slot=${slot}`;
+    await page.goto(url, { waitUntil: "load" });
     await waitForReady(page);
 
     // --- Round one: play the SAME path the two-round spec plays. ---
@@ -123,21 +147,32 @@ test.describe("production durable authority", () => {
     );
 
     // --- The reload boundary — the whole reason this spec exists. ---
-    // A new browser document is the minimum useful reload boundary: the
-    // rendered offer must be rebuilt from the Worker-backed save, not
-    // retained only in the previous page's JavaScript heap.
-    await page.reload({ waitUntil: "load" });
+    // A plain `page.reload()` keeps origin localStorage, which means the
+    // restored tray could be served out of `persistence.js:23`'s
+    // `authority: "local-fallback"` branch and the final `completed`
+    // assertion would stay green even if the deployed Worker silently
+    // lost the save. Mara's REQUEST_CHANGES called this out directly.
+    //
+    // Clearing localStorage before the next navigation removes that
+    // escape hatch: the only surviving record of the completed round is
+    // the one the deployed Worker holds. A fresh `page.goto(url)` with
+    // the SAME `slot` query parameter then forces the client to request
+    // the state from the Worker on boot. If the Worker's record is
+    // missing or stale, `computeOfferedJobs(undefined)` falls back to
+    // `[SAFE_DEFAULT_JOB_ID]` with stamp `fresh`, and the assertions
+    // below go red — which is the whole point of this spec.
+    await clearLocalStorage(page);
+    await page.goto(url, { waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "packet-offered");
 
     // Load-bearing assertion: the restored tray must stamp `completed`
-    // (not `fresh`). A Worker that silently loses the save falls back
-    // through `computeOfferedJobs(undefined)` to `[SAFE_DEFAULT_JOB_ID]`
-    // with stamp `fresh`, and this assertion goes red. The old spec
-    // only tapped once (no `completed` memory ever written) and asserted
-    // the id-set differed — on a healthy Worker that would ALSO fire a
-    // false red, because one tap doesn't advance memory past the safe
-    // default.
+    // (not `fresh`). Because localStorage was cleared above, this can
+    // only be satisfied by a Worker-backed restore. A Worker that
+    // silently lost the save falls through
+    // `computeOfferedJobs(undefined)` to `[SAFE_DEFAULT_JOB_ID]` with
+    // stamp `fresh`, and this assertion goes red — the exact bug this
+    // spec is named after.
     await expect(tray).toHaveAttribute("data-mloop-divergence-memory", "completed");
 
     const restoredOffers = tray.locator("button[data-offered-job-id]");
@@ -147,8 +182,9 @@ test.describe("production durable authority", () => {
     );
     expect(
       restoredIds,
-      "restored offers must match COMPLETED_JOB_IDS — a Worker that lost the save " +
-        "would fall back to [SAFE_DEFAULT_JOB_ID] here",
+      "restored offers must match COMPLETED_JOB_IDS — localStorage was cleared " +
+        "before this reload, so a Worker that lost the save would fall back to " +
+        "[SAFE_DEFAULT_JOB_ID] here",
     ).toEqual([...COMPLETED_JOB_IDS]);
   });
 });
