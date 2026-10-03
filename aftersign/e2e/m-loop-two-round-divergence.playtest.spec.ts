@@ -127,6 +127,14 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
     page.on("pageerror", (error) => pageErrors.push(error.message));
     try {
       const stamp = `${Date.now()}-${testInfo.workerIndex}-${testInfo.retry}`;
+      // Per-run player id (served-mode safe). On localhost `resolvePlayerId`
+      // would return the fixed `local-slice-player`, but on game.oodim.com
+      // it mints a random UUID — so the spec MUST pass `?player=` and seed
+      // under the same id, or the boot reads an empty slot and the
+      // divergence memory assertion fails. The id must match
+      // PLAYER_ID_PATTERN (`^[A-Za-z0-9_-]{1,64}$`); the stamp is already
+      // in that alphabet.
+      const playerId = `m-loop-${stamp}`;
       const cohorts = [
         { memory: "fresh" as const, slot: `m-loop-fresh-${stamp}`, facts: [], revision: 0,
           offers: ["job-safe-delivery#low"], job: "job-safe-delivery" },
@@ -140,16 +148,19 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
       ];
       // Seed and verify BOTH independent records before any page boots. Prior
       // delivery facts persist, but the current packet starts undelivered.
+      // Seeds are written under the per-run `playerId`, not the shared
+      // `local-slice-player` namespace, so served-mode runs don't pollute
+      // prod's shared id.
       for (const cohort of cohorts) {
         const payload = {
           beat: "packet-offered",
           packet: { delivered: false, route: null, sealed: true, deliveredAt: null },
           delivery: { outcome: "unknown" },
-          player: { id: "local-slice-player", name: null, flags: { io_intro_seen: true } },
+          player: { id: playerId, name: null, flags: { io_intro_seen: true } },
           memory: cohort.facts,
           save: { revision: cohort.revision },
         };
-        const url = `/aftersign/save/local-slice-player/${encodeURIComponent(cohort.slot)}`;
+        const url = `/aftersign/save/${encodeURIComponent(playerId)}/${encodeURIComponent(cohort.slot)}`;
         const saved = await page.request.put(url, { data: { payload } });
         expect(saved.ok(), `seed ${cohort.memory}`).toBe(true);
         const verified = await page.request.get(url);
@@ -158,7 +169,13 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
       }
 
       const boot = async (slot: string) => {
-        await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+        // `?player=` resolves BEFORE the local-dev hostname branch in
+        // `resolvePlayerId`, so this works identically on localhost and
+        // on game.oodim.com — no server-mode / localhost split.
+        await page.goto(
+          `/aftersign/?slot=${slot}&player=${encodeURIComponent(playerId)}`,
+          { waitUntil: "load" },
+        );
         await page.waitForFunction(
           () => (window as unknown as { __game?: GameReadout }).__game?.scene.ready === true,
           undefined,
