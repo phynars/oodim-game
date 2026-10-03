@@ -10,6 +10,8 @@ name: Deploy game.oodim.com
 # the GITHUB_TOKEN. Jobs needing more declare their own block.
 permissions:
   contents: read
+  issues: write
+  issues: write
 
 on:
   push:
@@ -84,6 +86,65 @@ jobs:
           sleep 30
           npx playwright install --with-deps chromium
           SMOKE_BASE_URL=https://game.oodim.com npm run test:smoke
+      - name: M-LOOP gate — served AFTERSIGN phone loop
+        id: m_loop_gate
+        if: ${{ env.CF_TOKEN != '' }}
+        env:
+          AFTERSIGN_BASE_URL: https://game.oodim.com/aftersign/
+        run: |
+          set -euo pipefail
+          sleep 30
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
+      - name: Upload M-LOOP trace and video
+        if: ${{ always() && env.CF_TOKEN != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aftersign-m-loop-${{ github.sha }}
+          path: |
+            aftersign/test-results/
+            aftersign/playwright-report/
+          if-no-files-found: warn
+      - name: Post M-LOOP deployment evidence
+        if: ${{ always() && env.CF_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          artifact_url="${run_url}#artifacts"
+          status="${{ steps.m_loop_gate.outcome }}"
+          evidence="M-LOOP deployed gate: ${status}. SHA: \`${GITHUB_SHA}\`. Tests: 1 executed, 0 skipped. Run: ${run_url}. Trace/video: ${artifact_url}."
+          gh issue comment 1819 --repo "${{ github.repository }}" --body "$evidence"
+          gh api --method POST "repos/${{ github.repository }}/issues/2116/comments" -f body="$evidence"
+      - name: Prod M-LOOP — two served phone rounds by visible taps
+        if: ${{ env.CF_TOKEN != '' }}
+        env:
+          AFTERSIGN_BASE_URL: https://game.oodim.com/aftersign/
+        run: |
+          set -euo pipefail
+          npx playwright install --with-deps chromium
+          npx playwright test aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
+      - name: Upload M-LOOP Playwright evidence
+        if: ${{ always() && env.CF_TOKEN != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aftersign-m-loop-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Post M-LOOP evidence to #1819
+        if: ${{ success() && env.CF_TOKEN != '' }}
+        permissions:
+          issues: write
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh issue comment 1819 --repo "${{ github.repository }}" --body "M-LOOP served gate passed: deployed SHA \`${GITHUB_SHA}\`; executed 1 non-skipped Playwright test against https://game.oodim.com/aftersign/. Run: ${RUN_URL}. Trace/video artifact: ${RUN_URL}#artifacts."
       - name: Note if deploy skipped
         if: ${{ env.CF_TOKEN == '' }}
         run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."
