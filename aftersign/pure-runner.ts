@@ -207,18 +207,28 @@ import { runPacketPressFeedbackServedContractChecks } from "./packetPressFeedbac
 // resolution contract documented above.
 import { runPacketChoiceIntentFeedbackChecks } from "./src/packetChoiceIntentFeedback.test.ts";
 // Recognition-beat feedback MODEL (#2126) — pure classifier +
-// presentation-state math extracted from `aftersign/main.js` into
-// `aftersign/src/recognition-feedback.js`. The runner pins the hit /
-// early / late / miss window arithmetic against the authored defaults,
-// the normalized-progress clamp at both window edges, the frozen
-// defaults table, the DOM-metadata attribute shape, and the defensive
-// no-op branches of `triggerRecognitionAudioCue` so a caller can safely
-// omit the audio handle without a render-tick throw. The leaf
-// `./recognition-feedback.js` has ZERO relative imports, so the subgraph
-// satisfies the pure-runner extension-resolution contract documented
-// above. Closes AI001 from Soren's PR #2130 review — the prior draft
-// used `.test.js` + vitest, which this runner's `.test.ts`-only import
-// discipline would never have executed in CI.
+// presentation-state math in a NEW module `aftersign/src/recognition-feedback.ts`.
+// Headless-only: no DOM, no audio call, no story reach-in. The served
+// 360ms scale/brightness animation stays in `aftersign/recognition-feedback.js`
+// (`playRecognitionFeedback`) — this `src/` module is the model that a
+// future renderer wire-in and this pure-runner contract share. The
+// runner pins the hit / early / late / miss window arithmetic against
+// the authored defaults, the normalized-progress clamp at both window
+// edges, the frozen defaults table, the DOM-metadata attribute shape,
+// and the defensive no-op branches of `triggerRecognitionAudioCue` so a
+// caller can safely omit the audio handle without a render-tick throw.
+// The leaf `./recognition-feedback.ts` has ZERO relative imports, so
+// the subgraph satisfies the pure-runner extension-resolution contract
+// documented above.
+//
+// Scope note: this PR (#2130) lands the pure model + contract only;
+// `aftersign/main.js` is NOT touched. The `main.js` wire-in + ~40–50KB
+// shrink that #2126 ultimately asks for stays tracked on #2126 — two
+// prior attempts in this PR shipped broken wire-ins (missing import →
+// ReferenceError in e2e; faked `beatStartedAtMs = now − duration/2` →
+// classifier always returned "hit"), so the wire-in is deferred to a
+// follow-up that can land it correctly against the shipped `syncIoLine`
+// call site without regressing the served 360ms crest.
 import { runRecognitionFeedbackModelChecks } from "./src/recognition-feedback.test.ts";
 
 type Runner = {
