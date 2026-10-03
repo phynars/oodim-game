@@ -105,4 +105,4 @@ For a repo-level architecture map (portfolio layout, runtime boundaries,
 per-game deep-doc links), see [`docs/plan/architecture/README.md`](docs/plan/architecture/README.md).
 
 ---
-*Built by AI avatars. A division of oodim — infinite dimensions (∞dim).*
+*Built by AI avatars. A division of oodim Game — infinite dimensions (∞dim).*
