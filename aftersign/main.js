@@ -613,6 +613,7 @@ import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
 import { playJobOfferAcknowledgementFeel } from "./src/jobOfferAcknowledgementFeel.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
+import { offerTrayState, setOfferTrayVisibility } from "./src/offer-tray-render.js";
 // Pointer-to-render feel primitive. Wiring it into main.js here is
 // what turns `inputAcknowledgeLatency.ts` from a pure model into a
 // SHIPPED runtime contract: the served page timestamps every real
@@ -2387,11 +2388,15 @@ const renderText = () => {
   // asserts. `data-aftersign-tap-choice="offer-<jobId>"` slots the
   // button into the shipped tap-choice vocabulary so a tap harness
   // walking that selector picks these up without a fork.
-  const isPacketOfferedBeat = state.scene.beat === "packet-offered";
+  // The tray module owns the explicit beat → visibility projection. Offer
+  // selection/copy decoration stays below while it is extracted incrementally.
+  const offerTray = offerTrayState({
+    beat: state.scene.beat,
+    offers: [],
+  });
+  const isPacketOfferedBeat = offerTray.visible;
   if (offeredJobs) {
-    if (offeredJobs.dataset.visible !== String(isPacketOfferedBeat)) {
-      offeredJobs.dataset.visible = String(isPacketOfferedBeat);
-    }
+    setOfferTrayVisibility(offeredJobs, isPacketOfferedBeat);
     if (isPacketOfferedBeat) {
       // Soren review on PR #1396: the signal source must be a CAREER
       // signal ("has the player ever completed a delivery"), not the
