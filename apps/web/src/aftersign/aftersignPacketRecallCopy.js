@@ -13,7 +13,7 @@
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io remembers you brought the packet back sealed. The lit route is still yours; take the next packet.",
   fast: "Io remembers you beat the bell. The next packet is yours if you move before it rings.",
-  failed: "Io remembers the packet came back wrong. Your repair job is waiting at the mark you left.",
+  failed: "Io remembers the packet came back wrong. She kept the repair job for you.",
 });
 
 /**
