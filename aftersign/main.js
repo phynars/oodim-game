@@ -34,13 +34,7 @@ import {
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
-import {
-  computeRecognitionFeedbackState,
-  detectRecognitionBeat,
-  playRecognitionFeedback,
-  recognitionDomFeedbackMetadata,
-  triggerRecognitionAudioCue,
-} from "./src/recognition-feedback.js";
+import { playRecognitionFeedback } from "./recognition-feedback.js";
 import { recognitionEnvelopeAt as recognitionFeedbackEnvelopeAt } from "./src/recognitionFeedbackBridge.ts";
 import {
   applyRecognitionDomFeedback,
