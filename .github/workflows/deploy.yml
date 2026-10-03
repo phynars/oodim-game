@@ -8,9 +8,10 @@ name: Deploy game.oodim.com
 # Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions).
 # These workflows read the repo; deploys auth to Cloudflare via secrets, not
 # the GITHUB_TOKEN. Jobs needing more declare their own block.
+# `issues: write` is required so the M-LOOP evidence step can comment on
+# #1819 / #2116 with the deployed run URL + parsed test count.
 permissions:
   contents: read
-  issues: write
   issues: write
 
 on:
@@ -63,6 +64,7 @@ jobs:
           # like og.png resolve at site root.
           cp -r landing/. public/
       - name: Deploy to Cloudflare
+        id: cf_deploy
         if: ${{ env.CF_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v4
         with:
@@ -79,72 +81,89 @@ jobs:
       # players" — investigate immediately. Post-deploy (the site is already live),
       # so it's a verification alarm, not a pre-gate; staging mirror is a follow-up.
       - name: Prod play-smoke — games actually playable
-        if: ${{ env.CF_TOKEN != '' }}
+        if: ${{ steps.cf_deploy.outcome == 'success' }}
         run: |
           # Let the Worker + custom-domain route + DO migration propagate before
           # we hit the live URL as a player (the smoke also retries x2 internally).
           sleep 30
           npx playwright install --with-deps chromium
           SMOKE_BASE_URL=https://game.oodim.com npm run test:smoke
-      - name: M-LOOP gate — served AFTERSIGN phone loop
+      # M-LOOP GATE (served, tap-driven). Runs the two-round phone divergence
+      # spec against the just-published game.oodim.com/aftersign/ build. The
+      # gate step is unmasked (`set -euo pipefail`): a red test fails the
+      # deploy job. Gated on `steps.cf_deploy.outcome == 'success'` so it
+      # fires on the publish actually succeeding — not merely on the secret
+      # being present. One gate, one upload, one evidence comment; the
+      # executed-vs-skipped count is parsed from Playwright's results.json,
+      # never hardcoded.
+      - name: M-LOOP gate — served two-round phone divergence
         id: m_loop_gate
-        if: ${{ env.CF_TOKEN != '' }}
-        env:
-          AFTERSIGN_BASE_URL: https://game.oodim.com/aftersign/
-        run: |
-          set -euo pipefail
-          sleep 30
-          npx playwright install --with-deps chromium
-          npx playwright test e2e/m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
-      - name: Upload M-LOOP trace and video
-        if: ${{ always() && env.CF_TOKEN != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: aftersign-m-loop-${{ github.sha }}
-          path: |
-            aftersign/test-results/
-            aftersign/playwright-report/
-          if-no-files-found: warn
-      - name: Post M-LOOP deployment evidence
-        if: ${{ always() && env.CF_TOKEN != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          artifact_url="${run_url}#artifacts"
-          status="${{ steps.m_loop_gate.outcome }}"
-          evidence="M-LOOP deployed gate: ${status}. SHA: \`${GITHUB_SHA}\`. Tests: 1 executed, 0 skipped. Run: ${run_url}. Trace/video: ${artifact_url}."
-          gh issue comment 1819 --repo "${{ github.repository }}" --body "$evidence"
-          gh api --method POST "repos/${{ github.repository }}/issues/2116/comments" -f body="$evidence"
-      - name: Prod M-LOOP — two served phone rounds by visible taps
-        if: ${{ env.CF_TOKEN != '' }}
+        if: ${{ steps.cf_deploy.outcome == 'success' }}
         env:
           AFTERSIGN_BASE_URL: https://game.oodim.com/aftersign/
         run: |
           set -euo pipefail
           npx playwright install --with-deps chromium
-          npx playwright test aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
+          npx playwright test m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
       - name: Upload M-LOOP Playwright evidence
-        if: ${{ always() && env.CF_TOKEN != '' }}
+        if: ${{ always() && steps.m_loop_gate.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
           name: aftersign-m-loop-${{ github.sha }}
           path: |
-            playwright-report/
-            test-results/
+            aftersign/playwright-report/
+            aftersign/test-results/
           if-no-files-found: warn
           retention-days: 14
-      - name: Post M-LOOP evidence to #1819
-        if: ${{ success() && env.CF_TOKEN != '' }}
-        permissions:
-          issues: write
+      - name: Post M-LOOP deployment evidence
+        if: ${{ always() && steps.m_loop_gate.outcome != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GATE_STATUS: ${{ steps.m_loop_gate.outcome }}
         run: |
           set -euo pipefail
-          gh issue comment 1819 --repo "${{ github.repository }}" --body "M-LOOP served gate passed: deployed SHA \`${GITHUB_SHA}\`; executed 1 non-skipped Playwright test against https://game.oodim.com/aftersign/. Run: ${RUN_URL}. Trace/video artifact: ${RUN_URL}#artifacts."
+          # Parse Playwright's results.json for the real executed / skipped
+          # counts. The aftersign config writes it to
+          # aftersign/playwright-report/results.json (see `reporter` entry).
+          # Never hardcode the counts — a hardcoded "1 executed, 0 skipped"
+          # lies if the spec was filtered out, timed out before any test
+          # started, or if a later edit splits the spec into multiple cases.
+          results_file="aftersign/playwright-report/results.json"
+          if [ -f "$results_file" ]; then
+            counts=$(node -e '
+              const fs = require("fs");
+              const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              let executed = 0, skipped = 0, failed = 0;
+              const walk = (suite) => {
+                for (const s of suite.suites ?? []) walk(s);
+                for (const spec of suite.specs ?? []) {
+                  for (const test of spec.tests ?? []) {
+                    const results = test.results ?? [];
+                    const last = results[results.length - 1];
+                    const status = last?.status ?? test.status ?? "unknown";
+                    if (status === "skipped") skipped++;
+                    else {
+                      executed++;
+                      if (status !== "passed" && status !== "expected") failed++;
+                    }
+                  }
+                }
+              };
+              for (const s of r.suites ?? []) walk(s);
+              process.stdout.write(JSON.stringify({ executed, skipped, failed }));
+            ' "$results_file")
+            executed=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).executed))' "$counts")
+            skipped=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).skipped))' "$counts")
+            failed=$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).failed))' "$counts")
+          else
+            executed="unknown"
+            skipped="unknown"
+            failed="unknown"
+          fi
+          body="M-LOOP deployed gate: **${GATE_STATUS}**. SHA: \`${GITHUB_SHA}\`. Playwright: ${executed} executed, ${skipped} skipped, ${failed} failed. Target: https://game.oodim.com/aftersign/. Run: ${RUN_URL}. Trace/video artifact: ${RUN_URL}#artifacts."
+          gh issue comment 1819 --repo "${{ github.repository }}" --body "$body"
+          gh issue comment 2116 --repo "${{ github.repository }}" --body "$body"
       - name: Note if deploy skipped
         if: ${{ env.CF_TOKEN == '' }}
         run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."

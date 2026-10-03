@@ -1,19 +1,57 @@
 import { defineConfig, devices } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 
+// AFTERSIGN gameplay/story harness. Mirrors the doom config: builds +
+// previews the aftersign/ product at /aftersign/ on its own port, forces
+// SwiftShader WebGL so the three.js scene initializes headless. The spec
+// suite asserts on the window.__game story/state contract (not pixels).
+//
+// Why this file exists (2026-07-05): without a playwright config, the
+// harness spec under aftersign/e2e/ has no runner — and a spec that never
+// runs gates nothing. The whole PREMISE of the harness ("no story beat
+// exists unless a harness assertion says so") requires the spec to actually
+// execute in CI. See PR #427 review.
+//
+// webServer.cwd is pinned to the repo root (npm scripts live in the root
+// package.json), since Playwright defaults webServer cwd to this config's dir.
+//
+// SERVED MODE (2026-10-03, #2116): when AFTERSIGN_BASE_URL is set the
+// config points `use.baseURL` at the deployed URL and omits the webServer
+// block entirely. The deploy workflow runs this config with
+// AFTERSIGN_BASE_URL=https://game.oodim.com/aftersign/ so the spec drives
+// the just-published build. Omitting webServer in served mode is
+// deliberate: a deployment verification must NOT be able to silently fall
+// back to a local Vite preview if the production URL is unreachable.
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-// A served run must not boot a local Vite preview: it would silently test the
-// checkout rather than the page that was just deployed.
 const servedBaseURL = process.env.AFTERSIGN_BASE_URL;
 
 export default defineConfig({
   testDir: "e2e",
+  // Exclude pure-logic specs that already run in the deterministic pure
+  // lane (`aftersign/playwright.pure.config.ts`, `test:aftersign:pure`).
+  // These specs do NOT use the `{ page }` fixture — each file's header
+  // comment states it explicitly — so they don't need the vite-preview
+  // webServer or the SwiftShader-backed chromium project. Running them
+  // ONLY on the pure lane (retries: 0, no browser) means:
+  //   1. They don't inflate this lane's cold-start surface with N extra
+  //      files the SwiftShader boot has to shepherd through.
+  //   2. A pure-logic regression fails on the pure lane, first attempt,
+  //      instead of being masked by this lane's `retries: 3`.
+  // This is the escape hatch this file's `retries` comment names
+  // ("teasing the pure-logic controller checks … out of the Playwright
+  // lane so they stop paying the vite-preview + SwiftShader boot tax
+  // at all"). Keep this list in lockstep with the pure config's
+  // `testMatch` — a spec that runs on BOTH lanes wastes cold-start
+  // budget on this one; a spec that runs on NEITHER lane gates nothing.
   testIgnore: [
     "packet-intent-contract.spec.ts",
     "packet-intent-vertical-slice-contract.spec.ts",
     "io-recognition-cue-contract.spec.ts",
     "recognition-beat-contract.spec.ts",
     "npc-memory-dialogue-contract.spec.ts",
+    // #978: bundle migrated to the plain-Node pure-runner; without this
+    // entry the spec would pay this lane's SwiftShader boot tax AND
+    // double-run the bundle (pure-runner + here).
     "first-camera-move-feel-contract.spec.ts",
     "io-return-memory-beat-contract.spec.ts",
     "io-returning-recognition-line-contract.spec.ts",
@@ -25,41 +63,119 @@ export default defineConfig({
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // AFTERSIGN gets two MORE retries than sibling three.js lanes (pacman /
+  // galaga / doom / agar all use retries: 1). Rationale: the aftersign
+  // spec is a heavier cold-start than the other WebGL games — it boots
+  // three.js AND the audio-cue pipeline AND waits on window.__game story
+  // marks (recognitionTriggeredAt / lineSettledAt / audioCueAt), all
+  // gated behind SwiftShader's software renderer. Reviewers on #706
+  // (following #453 / #468 / #590) all noted the same cold-start flake
+  // shape.
+  //
+  // 2026-07-19 (#714 iteration 6): bumped 2 → 3. The prior +COLD_START_MS
+  // spec-level timeout bump (90s per spec + 60s waitForFunction) did not
+  // stabilize the aftersign lane — CI stayed red on the same flake shape
+  // #700/#506/#590 documented. The escape hatch named explicitly in
+  // `packet-intent-contract.spec.ts` line 40 ("escalate to a wider
+  // retry-count bump on aftersign/playwright.config.ts instead of another
+  // author push") is this bump. A real assertion bug still fails 4× in a
+  // row and stays red; a SwiftShader boot hiccup gets the extra attempt.
+  //
+  // If a future iteration finds this lane still flaking at retries:3,
+  // the correct next move is NOT retries:4 — it's teasing the pure-logic
+  // controller checks (packet-intent-contract.spec.ts, which runs
+  // `runPacketIntentChecks()` with no page fixture) out of the Playwright
+  // lane into a plain Node/Vitest runner so they stop paying the
+  // vite-preview + SwiftShader boot tax at all.
   retries: process.env.CI ? 3 : 0,
+  // Two reporters, on purpose:
+  //   - "list"  → stdout in the CI step log (what humans read on the run
+  //               page while the job is streaming).
+  //   - "json"  → playwright-report/results.json, parsed by the
+  //               "Print aftersign failure summary" step in ci.yml to
+  //               extract the FIRST failing spec's title + top error
+  //               line and relay it into $GITHUB_ENV, which the next
+  //               step posts as a PR comment. Agent /code sessions can
+  //               read PR comments but CAN'T read step logs or artifacts
+  //               (Actions:Read scope missing on the agent token — see
+  //               #1036), so this JSON file is the ONLY channel by which
+  //               the failing error line reaches an autonomous loop.
+  //               Without it, ci.yml's shell finds no results.json and
+  //               posts a deterministic "(results.json not found)"
+  //               placeholder on every red run — the exact blindness
+  //               #1036 was filed to fix, and the blocker Mara flagged
+  //               on PR #1037. Do not remove the json reporter without
+  //               replacing the relay input. The deploy M-LOOP gate
+  //               (#2116) ALSO parses this file for the real executed /
+  //               skipped counts posted to #1819 — hardcoding counts in
+  //               the workflow would lie if the spec filtered out.
   reporter: [["list"], ["json", { outputFile: "playwright-report/results.json" }]],
   use: {
+    // In served mode, baseURL points at the deployed site; otherwise the
+    // local vite-preview webServer below. `trace`/`video` are promoted
+    // from "retain-on-failure" to "on" in served mode because the served
+    // run IS the release record — not just a failure diagnostic. The
+    // deploy workflow uploads the whole aftersign/{playwright-report,
+    // test-results} tree as the aftersign-m-loop-<SHA> artifact.
     baseURL: servedBaseURL ?? "http://localhost:4374/aftersign/",
-    // Served evidence is a release record, not only a failure diagnostic.
     trace: servedBaseURL ? "on" : "retain-on-failure",
     video: servedBaseURL ? "on" : "retain-on-failure",
   },
-  projects: [{
-    name: "chromium",
-    use: {
-      ...devices["Desktop Chrome"],
-      launchOptions: {
-        args: [
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--enable-unsafe-swiftshader",
-          "--ignore-gpu-blocklist",
-        ],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Software WebGL (SwiftShader) is the reliable headless path for
+        // three.js — see doom/playwright.config.ts for the full rationale.
+        launchOptions: {
+          args: [
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
+            "--enable-unsafe-swiftshader",
+            "--ignore-gpu-blocklist",
+          ],
+        },
       },
     },
-  }],
-  // `AFTERSIGN_BASE_URL` is the explicit served-mode switch used by deploy.
-  // Omitting webServer is deliberate: a deployment verification must be unable
-  // to fall back to a local build if the production URL is unavailable.
+  ],
+  // Two web servers: the aftersign vite preview (game bundle at :4374) and
+  // a static file server for the portfolio landing page (:4375). The landing
+  // server exists so aftersign/e2e/landing-discoverability.spec.ts can assert
+  // the AFTERSIGN card is present + linked correctly at game.oodim.com/ —
+  // discoverability is a first-touch surface for the flagship, so a broken
+  // card should fail the aftersign lane the same way a broken scene would.
+  //
+  // Why colocated here vs a dedicated landing lane: the assertion IS an
+  // aftersign concern — "is the flagship reachable from the portfolio
+  // index?" — so gating it on the aftersign lane is semantically correct.
+  // The aftersign filter in ci.yml triggers on aftersign/** and `shared`
+  // changes; a pure landing-only edit that breaks the AFTERSIGN card
+  // won't fail this lane, but that's an acceptable trade for now — the
+  // deploy pipeline copies landing/ verbatim, so the failure mode is
+  // "card missing on prod", caught by prod-smoke, not silent.
+  //
+  // In SERVED mode (AFTERSIGN_BASE_URL set) webServer is undefined on
+  // purpose: a deployment verification MUST NOT fall back to a local
+  // build if the production URL is unavailable — that would silently
+  // test the checkout, not the deployed page.
   webServer: servedBaseURL ? undefined : [
     {
       cwd: repoRoot,
-      command: "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
+      command:
+        "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
       url: "http://localhost:4374/aftersign/",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {
       cwd: repoRoot,
+      // Static-serve landing/ via a tiny Node script (no external deps, no
+      // registry fetch at test-time). See scripts/serve-landing.mjs for the
+      // full rationale — the earlier `npx --yes serve@14 …` variant was
+      // fragile in CI because it downloaded `serve` at run-time and any
+      // transient npm-registry hiccup surfaced as an aftersign-lane failure
+      // with no signal about the actual spec.
       command: "node scripts/serve-landing.mjs 4375",
       url: "http://localhost:4375/",
       reuseExistingServer: !process.env.CI,
