@@ -230,6 +230,16 @@ import { runPacketChoiceIntentFeedbackChecks } from "./src/packetChoiceIntentFee
 // follow-up that can land it correctly against the shipped `syncIoLine`
 // call site without regressing the served 360ms crest.
 import { runRecognitionFeedbackModelChecks } from "./src/recognition-feedback.test.ts";
+// Packet interaction state + feedback transitions (#2124) — the module
+// `aftersign/main.js:275` imports `./src/packet-interaction.js`. Its check
+// bundle shipped export-only but was never registered here, so it never
+// ran in CI. The leaf has ZERO relative imports and the shim's only
+// relative import is the extensioned `./packet-interaction.js`, so the
+// subgraph resolves under `node --experimental-strip-types`. The leaf is
+// plain JS (no .d.ts); `@ts-ignore` (not `@ts-expect-error`) keeps
+// `typecheck:aftersign` green whether or not allowJs resolves it (TS7016).
+// @ts-ignore
+import { runPacketInteractionChecks } from "./src/packet-interaction.test.js";
 
 type Runner = {
   label: string;
