@@ -34,7 +34,13 @@ import {
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
-import { playRecognitionFeedback } from "./recognition-feedback.js";
+import {
+  computeRecognitionFeedbackState,
+  detectRecognitionBeat,
+  playRecognitionFeedback,
+  recognitionDomFeedbackMetadata,
+  triggerRecognitionAudioCue,
+} from "./src/recognition-feedback.js";
 import { recognitionEnvelopeAt as recognitionFeedbackEnvelopeAt } from "./src/recognitionFeedbackBridge.ts";
 import {
   applyRecognitionDomFeedback,
@@ -1624,6 +1630,27 @@ const syncIoLine = () => {
     state.interaction.recognitionSnippetFeelCue = nextFeelCue;
     applyIoRecognitionFeelCueVars(nextFeelCue);
     if (nextFeelCue) {
+      // Recognition feedback is computed through the isolated module: the
+      // renderer supplies timestamps, DOM, and audio dispatch explicitly.
+      const timing = detectRecognitionBeat({
+        beatStartedAtMs: performance.now() - nextFeelCue.durationMs / 2,
+        inputAtMs: performance.now(),
+        durationMs: nextFeelCue.durationMs,
+      });
+      const feedback = computeRecognitionFeedbackState({
+        timing: timing.timing,
+        elapsedMs: timing.elapsedMs,
+        durationMs: nextFeelCue.durationMs,
+      });
+      const feedbackDom = recognitionDomFeedbackMetadata(feedback);
+      line?.setAttribute("data-recognition-feedback", feedbackDom.feedback);
+      line?.setAttribute("data-recognition-feedback-active", feedbackDom.active);
+      triggerRecognitionAudioCue({
+        play: (cue) => {
+          state._runtime.audio.lastCue = cue;
+          state._runtime.audio.lastCueAt = performance.now();
+        },
+      }, feedback);
       playRecognitionFeedback(line, { reducedMotion: prefersReducedMotion() });
     }
     markStateDirty();
