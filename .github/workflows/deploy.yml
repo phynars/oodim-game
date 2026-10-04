@@ -128,9 +128,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aftersign-m-loop-${{ github.sha }}
+          # Playwright's outputDir resolves to the REPO-ROOT test-results/
+          # (results.json attachments: <repo>/test-results/<test>/trace.zip +
+          # video.webm). Without that path the artifact held only results.json
+          # (2 KB; #2118, still 2053 B after #2119's diagnostic).
           path: |
             aftersign/playwright-report/
             aftersign/test-results/
+            test-results/
           if-no-files-found: warn
           retention-days: 14
       - name: Post M-LOOP deployment evidence
