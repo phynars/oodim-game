@@ -18,7 +18,7 @@ they'll do differently next round.
 
 | Criterion | Evidence |
 | --- | --- |
-| Deployed revision | `1596e0fb5ec07f641044a40773583b2308d29bce` on https://game.oodim.com/aftersign/ |
+| Deployed revision | `1596e0fb5ec07f641044a40773583b2308d29bce` (latest green: `363bd7f`) on https://game.oodim.com/aftersign/ |
 | Gate run (non-skipped) | [run 37214795603](https://github.com/phynars/oodim-game/actions/runs/37214795603): 1 executed / 0 skipped / 0 failed; spec `aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts` |
 | Divergent actions | rendered, enabled offer ids differ before play: fresh `[job-safe-delivery]` vs completed `[job-night-transfer, job-signed-receipt]` |
 | Two rounds per record | both records complete round 1 → return tone → next job → reload → round 2 (revision +1), by pointer taps on a 390×844 touch viewport |
@@ -26,11 +26,20 @@ they'll do differently next round.
 | Every visible dialogue transition | `#speaker`/`#line` asserted at every beat, and each beat advance changes the line (#2156); transcript in the run's `results.json` |
 | Trace + video | artifact `aftersign-m-loop-1596e0f…`: `trace.zip` 8.5 MB, `video.webm` 2.3 MB (#2155) |
 
-**Observation for the human pass:** the dialogue transcript is identical for
-the fresh and the completed records, and round 2's offer line repeats round
-1's. Memory pays back in **actions** (different jobs offered), not yet in what
-Io says while offering. Watch whether a stranger notices the new jobs without
-being told.
+**Io now says what she remembers (#2158, deployed `363bd7f`,
+[gate run](https://github.com/phynars/oodim-game/actions/runs/37217525381)
+green).** At 1596e0f the dialogue was identical for both records, and round 2
+repeated round 1's offer line, so memory paid back only in the buttons. Now
+the offer line comes from the same derivation as the job tray:
+- **Fresh:** "Keep it sealed if you want the city to trust you…" (unchanged).
+- **Sealed delivery remembered:** "You brought my blue seal back unbroken.
+  That's why the board shows Night transfer or Signed receipt now: work I don't
+  give strangers. Pick one."
+- **Next round:** the same line, plus how the player answered her on the way
+  back (e.g. "And last time you told me straight…").
+
+The gate asserts that the line differs by memory, names the offered jobs, and
+changes from round 1 to round 2.
 
 ### Human replay: PENDING (#2071)
 
