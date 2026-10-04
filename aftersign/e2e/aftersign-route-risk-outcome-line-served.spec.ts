@@ -87,7 +87,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     const safeRouteButton = tray.locator('button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])');
     await expect(safeRouteButton).toBeVisible({ timeout: WAIT_MS });
     await safeRouteButton.tap();
-    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "safe", succeeded: true });
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "safe", succeeded: true, lastAction: "take-the-long-way" });
 
     await deliverFromRouteChoice(page);
     const line = page.locator("#line");
@@ -113,7 +113,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     const safeRouteButton = tray.locator('button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])');
     await expect(safeRouteButton).toBeVisible({ timeout: WAIT_MS });
     await safeRouteButton.tap();
-    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "safe", succeeded: true });
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "safe", succeeded: true, lastAction: "take-the-long-way" });
     await waitForBeat(page, "packet-choice");
 
     const unlockAfter = await page.evaluate((lockMs) => Date.now() + lockMs, ROUTE_RISK_CHOICE_LOCK_MS);
@@ -121,7 +121,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     const fastRouteButton = tray.locator('button[data-aftersign-tap-choice="take-the-shortcut"]:not([disabled])');
     await expect(fastRouteButton).toBeVisible({ timeout: WAIT_MS });
     await fastRouteButton.tap();
-    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "fast", succeeded: true });
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "fast", succeeded: true, lastAction: "take-the-shortcut" });
 
     await deliverFromRouteChoice(page);
     const line = page.locator("#line");

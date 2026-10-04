@@ -103,7 +103,7 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
-import { aftersignPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
+import { aftersignPacketRecallLine, aftersignPacketRecallToken } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
 import { stampPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 import {
   stampAftersignBeat,
@@ -2173,7 +2173,9 @@ const publishState = () => {
         } else if (action === "repair-the-loss") {
           succeeded = false;
         }
-        state.player.routeRisk = recordRouteRun({ route, succeeded });
+        // #2164: keep WHICH action ran, not just the route class, so the
+          // recall never names a route the player did not take.
+          state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action };
         markStateDirty();
         void persistAuthoritative({ dirty: true });
       },
@@ -2193,14 +2195,7 @@ const renderText = () => {
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;
-  const packetRecallToken =
-    routeRisk?.succeeded === false
-      ? "failed"
-      : routeRisk?.lastRoute === "safe"
-        ? "safe"
-        : routeRisk?.lastRoute === "fast"
-          ? "fast"
-          : null;
+  const packetRecallToken = aftersignPacketRecallToken(routeRisk);
   const packetRecallLine =
     state.scene.beat === "packet-offered" && packetRecallToken
       ? aftersignPacketRecallLine(packetRecallToken)
@@ -2400,7 +2395,9 @@ const renderText = () => {
           } else if (action === "repair-the-loss") {
             succeeded = false;
           }
-          state.player.routeRisk = recordRouteRun({ route, succeeded });
+          // #2164: keep WHICH action ran, not just the route class, so the
+          // recall never names a route the player did not take.
+          state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action };
           // Keep the selected label across the ensuing tray rebuild: the
           // route-memory action set changes immediately after this tap,
           // but the receipt must stay visible to the player. The stamp
