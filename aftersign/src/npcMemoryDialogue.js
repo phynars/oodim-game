@@ -23,12 +23,12 @@ const IO_LINES = Object.freeze({
   remembersSecondActionDone: Object.freeze({
     id: "io-memory-kiosk-second-action-done",
     speaker: "Io",
-    text: "You checked the kiosk twice. Most couriers let the second signal die.",
+    text: "You acknowledged the route. Most couriers let the second signal die.",
   }),
   remembersSecondActionSkipped: Object.freeze({
     id: "io-memory-kiosk-second-action-skipped",
     speaker: "Io",
-    text: "You left the second kiosk ping unanswered. Speed has a voice too.",
+    text: "You skipped the route acknowledgment. Speed has a voice too.",
   }),
   remembersNoDurableFact: Object.freeze({
     id: "io-memory-intro-seen-no-fact",
@@ -203,20 +203,43 @@ const runPacketSealedKioskSkippedCase = () => {
   );
 };
 
+const runSecondActionVocabularyCase = () => {
+  const done = ioMemoryResponseLinesFor({
+    playerFlags: introFlags(),
+    npcMemoryFacts: [IO_KIOSK_DONE_FACT],
+  });
+  const skipped = ioMemoryResponseLinesFor({
+    playerFlags: introFlags(),
+    npcMemoryFacts: [IO_KIOSK_SKIPPED_FACT],
+  });
+  const doneLine = done.find((entry) => entry.id === IO_LINES.remembersSecondActionDone.id);
+  const skippedLine = skipped.find((entry) => entry.id === IO_LINES.remembersSecondActionSkipped.id);
+
+  // The served button labels are "Acknowledge route" and "Skip
+  // acknowledgment". Keep their player-facing nouns in the memory lines
+  // so Io names an action the player can recognize.
+  expect(
+    /route/i.test(doneLine?.text ?? ""),
+    "acknowledge-kiosk memory must share the visible Acknowledge route noun",
+  );
+  expect(
+    /acknowledg/i.test(skippedLine?.text ?? "") && /route/i.test(skippedLine?.text ?? ""),
+    "skip-kiosk-acknowledge memory must share the visible Skip acknowledgment route vocabulary",
+  );
+};
+
 const runMalformedFactsIgnoredCase = () => {
   const junk = [
     null,
     undefined,
-    { id: "io-remembers-blue-packet-sealed" }, // missing kind/predicate/object
-    { kind: "delivery-outcome", object: "sealed" }, // missing id
-    // Well-formed shape but id mis-matches (schema drift a save file could carry).
+    { id: "io-remembers-blue-packet-sealed" },
+    { kind: "delivery-outcome", object: "sealed" },
     {
       kind: "delivery-outcome",
       predicate: "delivered-blue-packet",
       object: "sealed",
       id: "io-remembers-blue-packet-undefined",
     },
-    // Wrong predicate for the kind.
     {
       kind: "delivery-outcome",
       predicate: "kiosk-second-action",
@@ -235,14 +258,12 @@ const runMalformedFactsIgnoredCase = () => {
 };
 
 const runDefensiveInputsCase = () => {
-  // No args at all.
   const empty = ioMemoryResponseLinesFor();
   expect(
     empty.length === 1 && empty[0].id === IO_LINES.firstMeeting.id,
     "no-args must be treated as first meeting",
   );
 
-  // Non-array facts must not throw.
   const bogusFacts = ioMemoryResponseLinesFor({
     playerFlags: introFlags(),
     npcMemoryFacts: "not-an-array",
@@ -252,7 +273,6 @@ const runDefensiveInputsCase = () => {
     "non-array facts must be treated as no-durable-facts",
   );
 
-  // Non-object playerFlags must not throw.
   const bogusFlags = ioMemoryResponseLinesFor({
     playerFlags: "nope",
     npcMemoryFacts: [],
@@ -264,15 +284,8 @@ const runDefensiveInputsCase = () => {
 };
 
 const runFactIdCoverageCase = () => {
-  // Every NPC_MEMORY_FACT_ID must have at least one line whose id encodes
-  // it (as suffix / substring). This is the drift guard: if the schema
-  // grows a new fact id, adding a matching line to IO_LINES is required
-  // or this check fails at CI time.
   const lineIdList = Object.values(IO_LINES).map((line) => line.id);
   for (const factId of Object.values(NPC_MEMORY_FACT_ID)) {
-    // Fact ids look like "io-remembers-blue-packet-sealed"; line ids
-    // look like "io-memory-blue-packet-sealed". Compare the meaningful
-    // tail after the "io-*-" prefix.
     const tail = factId.replace(/^io-remembers-/, "");
     const covered = lineIdList.some((lineId) => lineId.endsWith(tail));
     expect(
@@ -288,6 +301,7 @@ export const runIoMemoryResponseChecks = () => {
   runPacketSealedCase();
   runPacketOpenedKioskDoneCase();
   runPacketSealedKioskSkippedCase();
+  runSecondActionVocabularyCase();
   runMalformedFactsIgnoredCase();
   runDefensiveInputsCase();
   runFactIdCoverageCase();
