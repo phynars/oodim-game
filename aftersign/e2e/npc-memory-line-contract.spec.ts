@@ -175,5 +175,17 @@ test.describe("AFTERSIGN NPC memory-line contract", () => {
     // e2e-shared/flagshipStoryStateContract.ts), not on a token that no
     // longer appears in the line.
     expect(line).toMatch(/the seal did not survive/i);
+
+    // Memory-legibility pin: the opened run must file the PLAYER against
+    // the delivery outcome, not the outcome in the abstract — Io
+    // remembered THEM, specifically, because they broke the seal. The
+    // phrase "your name beside the risk" is the surface that reads as
+    // Io's filing of this specific courier; any copy change that drops
+    // the player-as-subject reading reds this spec. The sibling
+    // ioRecognitionDialogueContract.test.ts asserts reference equality
+    // against expectedIoRecognitionLine("opened", false) but tolerates
+    // any copy — this regex pins the emotional seam the memory mechanic
+    // was authored to land.
+    expect(line).toMatch(/your name beside the risk/i);
   });
 });

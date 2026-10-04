@@ -43,7 +43,7 @@ const RETURNING_LINES = {
   sealed:
     "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.",
   opened:
-    "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept the risk beside your name.",
+    "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept your name beside the risk.",
 } as const;
 
 const DEEP_RECALL_LINES = {
