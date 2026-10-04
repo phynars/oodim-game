@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
-const origin = 'https://game.oodim.com';
+const origin = process.env.AFTERSIGN_PRODUCTION_ORIGIN || 'https://game.oodim.com';
 const player = `mara-qa-${randomUUID()}`;
 const slot = 'save-verification';
 const endpoint = `${origin}/aftersign/save/${player}/${slot}`;
