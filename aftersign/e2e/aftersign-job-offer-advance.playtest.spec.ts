@@ -49,9 +49,22 @@ test.describe("AFTERSIGN job offer advances by phone tap", () => {
 
     // The browser-real 44 CSS-pixel rendered-target contract is owned by
     // `aftersign/e2e/packet-button-touch-target.contract.spec.ts`.
-    // This playtest keeps the player outcome: tapping an actual offered job
-    // must advance from the offered packet to the packet-choice surface.
+    //
+    // Player sequence out of `packet-offered`, as proven by the sibling
+    // specs `aftersign-mloop-playtest-verification.spec.ts` and
+    // `m-loop-save-persistence.spec.ts`:
+    //   (1) Tap an offered job — SELECTS the job but does not itself
+    //       leave `packet-offered`.
+    //   (2) Tap `#packetButton` — advances the beat to `packet-choice`.
+    // This playtest keeps the player outcome end-to-end: a visible phone
+    // tap on an actual offered job, followed by the packet-button tap,
+    // must reach the packet-choice surface.
     await offer.tap();
+
+    const packetButton = page.locator("#packetButton");
+    await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
+    await expect(packetButton).toBeEnabled({ timeout: WAIT_MS });
+    await packetButton.tap();
 
     await waitForBeat(page, "packet-choice");
     await expect(page.locator("[data-aftersign-route-risk-surface]")).toBeVisible({
