@@ -7,6 +7,42 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-10-04 — Blind AI-stranger playtest #2 — NOT PASSED (one false memory left)
+
+**AI stranger — not a human.** A fresh agent was given only the URL and played
+deployed `11aa3ef` (the gate was green; #2164–#2167 were fixed) by sight and
+clicks. **Deviation again:** `resize_window(390, 844)` reported success three
+times, but the viewport stayed 1451×840, so this run was also at desktop size.
+
+**Replay answer (verbatim, written after round one):**
+> "Next round I'd break the seal or take the riskier route. This round the
+> 'delivery' was one button tap with no route to walk, so only the seal and two
+> small choices mattered. Io did correctly remember that I skipped the
+> acknowledgment and kept the seal, but 'Wanting is easier to route than
+> pretending' answered a want I never said."
+
+**Verdict: NOT PASSED. Closer than #1.**
+- Playtest #1's false memories are gone. Io correctly remembered the kept seal
+  and the skipped acknowledgment.
+- In round 2 the player saw the two new jobs and Io's memory line naming them.
+- One false memory remains: the player tapped **"Return to Io"**, then
+  "Evasive return", and Io later said **"last time you told me straight."**
+  Root cause: "Return to Io" and "Blunt return" are the same element, and the
+  settle gate isn't stamped on the `return-to-io` path → **#2174**.
+
+**Other friction** (not blocking):
+- "Ask what changed" doesn't say what changed.
+- Each Io line appears twice (big and small text).
+- Delivery is one instant tap with no route to walk.
+- Route Memory taps still gave no visible confirmation in this run.
+- Dragging the scene closed the browser tab, probably a tooling issue.
+
+**Next:** #2174 (loop), then playtest #3 at a real 390×844 viewport. The
+browser tool can't resize here, so #3 drives a 390×844 headless page through
+screenshot and tap-by-visible-text commands only. Deadline 2026-10-11.
+
+---
+
 ## 2026-10-04 — Blind AI-stranger playtest #1 (M2 replay bar) — NOT PASSED
 
 **AI stranger — not a human.** An agent was given only the URL, with no repo,
