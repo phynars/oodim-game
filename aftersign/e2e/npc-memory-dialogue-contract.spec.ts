@@ -23,7 +23,7 @@ test.describe("AFTERSIGN NPC memory dialogue contract", () => {
       "You kept the blue packet sealed. The city remembers closed hands.",
     );
     expect(IO_MEMORY_RESPONSE_LINES.remembersSecondActionSkipped.text).toBe(
-      "You left the second kiosk ping unanswered. Speed has a voice too.",
+      "You skipped the route acknowledgment. Speed has a voice too.",
     );
   });
 });
