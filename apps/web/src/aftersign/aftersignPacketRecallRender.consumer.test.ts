@@ -65,7 +65,7 @@ describe("aftersignPacketRecallRender served consumer", () => {
     stampPacketRecallLine(document, "failed", line);
     const recall = document.getElementById(PACKET_RECALL_LINE_ID);
     expect(recall!.textContent).toBe(line);
-    expect(recall!.textContent).toContain("the packet failed");
+    expect(recall!.textContent).toContain("no second chance");
     expect(recall!.getAttribute(PACKET_RECALL_LINE_DATA_ATTR)).toBe("failed");
   });
 
