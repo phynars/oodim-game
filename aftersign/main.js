@@ -824,6 +824,9 @@ try {
 const routeChoice = document.querySelector("#routeChoice");
 const acknowledgeRouteButton = document.querySelector("#acknowledgeRouteButton");
 const skipRouteButton = document.querySelector("#skipRouteButton");
+// The route-memory fork stays on the packet-choice beat, so its receipt
+// must be rendered from durable choice state rather than a transient click.
+let routeMemoryConfirmation = null;
 // #1372: the M-LOOP-E1 route/risk surface. The writer
 // `renderRouteRiskChoice` stamps one `<button
 // data-aftersign-tap-choice="…">` per offered action into this
@@ -2346,6 +2349,9 @@ const renderText = () => {
             succeeded = false;
           }
           state.player.routeRisk = recordRouteRun({ route, succeeded });
+          // Keep the selected label across the ensuing tray rebuild: the
+          // route-memory action set changes immediately after this tap.
+          routeRiskChoice.dataset.routeMemoryConfirmation = routeRiskActionLabel(action);
           // The fork needs a tiny physical "yes" before its durable
           // write leaves the tab: 180ms, 4px lift, 1.025 peak scale.
           // Animate the tray rather than rebuilding its button so the
@@ -2766,15 +2772,10 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
         "data-aftersign-packet-choice-affordance",
         "true",
       );
-      // Non-layout-affecting placement: the paragraph is player-visible
-      // and screen-reader-visible, but its bounding box does NOT push
-      // #routeChoice / #offeredJobs / #deliverButton down the flow. A
-      // layout shift here every time packet-choice is entered would
-      // pressure the sibling confirm-envelope's rAF sampler on
-      // SwiftShader — see the comment above.
-      packetChoiceAffordance.style.position = "absolute";
-      packetChoiceAffordance.style.left = "0";
-      packetChoiceAffordance.style.right = "0";
+      // Keep this in normal flow under the packet control. The former
+      // absolute positioning placed the instruction over the packet label
+      // at both phone and desktop widths, making both lines unreadable.
+      packetChoiceAffordance.style.position = "relative";
       packetChoiceAffordance.style.margin = "6px 0 0 0";
       packetChoiceAffordance.style.pointerEvents = "none";
       packetButton.insertAdjacentElement("afterend", packetChoiceAffordance);
