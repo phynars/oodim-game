@@ -1042,6 +1042,10 @@ const state = {
     // for free — no new persistence branch. `computeOfferedActions`
     // reads it on the next run to diverge the offered-action set.
     routeRisk: stored?.player?.routeRisk ?? null,
+    // Set by the visible "Take the second packet" choice. The next offer
+    // board uses this durable handoff marker to keep Io's red-tag route in
+    // view instead of silently replacing the job at the round boundary.
+    secondPacketHandoffAccepted: Boolean(stored?.player?.secondPacketHandoffAccepted),
   },
   packet: {
     delivered: Boolean(stored?.packet?.delivered),
@@ -2441,6 +2445,12 @@ const renderText = () => {
         state.npcs.io.memory,
       );
       const offers = selectIoJobOffers(offeredJobsMemory);
+      // The round-one handoff is a concrete job, not just transitional
+      // dialogue. Keep its destination on the round-two board after the
+      // player visibly accepts the second packet.
+      const secondPacketHandoffLine = state.player.secondPacketHandoffAccepted
+        ? "Red tag — Saint Orra"
+        : null;
       // The rendered offer tray carries its durable selection posture so
       // player-driven browser coverage can compare two save records at the
       // actual tappable surface rather than through a harness snapshot.
@@ -2541,6 +2551,12 @@ const renderText = () => {
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
         routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
+        if (secondPacketHandoffLine) {
+          const handoffNode = document.createElement("p");
+          handoffNode.setAttribute("data-aftersign-second-packet-handoff", "accepted");
+          handoffNode.textContent = secondPacketHandoffLine;
+          offeredJobs.appendChild(handoffNode);
+        }
 // #1765 — Io's round-to-round consequence line, stamped onto the
 // served `#offeredJobs` tray as a player-visible paragraph right
 // beside the route/risk copy. Fresh boot (no delivery-outcome fact)
@@ -3414,6 +3430,9 @@ const choose = async (choiceId) => {
     });
     const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
     if (selectedChoice) {
+      if (choiceId === "accept-second-packet") {
+        state.player.secondPacketHandoffAccepted = true;
+      }
       ioSecondPacketPointerChoiceId = selectedChoice.id;
       ioSecondPacketResponseLine = selectedChoice.response;
       state.npcs.io.lastLine = selectedChoice.response;
