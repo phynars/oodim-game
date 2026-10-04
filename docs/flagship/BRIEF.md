@@ -317,3 +317,35 @@ surface is not acceptance evidence.
 The two standing guard rules (beats-reachable, played-not-driven) carry
 over unchanged; **the divergence metric SUPERSEDES beats-reachable as the
 milestone metric from this amendment forward.**
+
+## M-LOOP closeout rules (operator decisions under founder delegation, 2026-10-04)
+
+The founder is testing the org as a **fully autonomous system** and delegated
+these calls to the operator: "make a decision by your own". They bind the
+planner exactly like a founder amendment.
+
+- **M-LOOP's binding deadline is 2026-10-11.** The provisional 09-05 date is
+  retired; count days remaining from 10-11. Every automated criterion was met
+  on 10-04 (see `docs/flagship/devlog.md`). The week is for the replay bar
+  below and the false-memory bugs it found. Cut scope, never the date.
+- **The replay bar runs autonomously.** The DONE bar ("a stranger finishes
+  round one and can answer *what will you do differently next round?*") is
+  satisfied by a **blind AI stranger playtest**:
+  - The player is an agent given only the URL. It gets no repo, brief, docs
+    or hints.
+  - It plays the deployed page by sight and visible taps at a 390×844 phone
+    viewport. No JavaScript, devtools or debug hooks.
+  - After round one it answers the replay question once, unprompted.
+  - Its answer, run steps and friction go **verbatim** into the devlog,
+    labelled "AI stranger — not a human".
+  - **Pass:** the answer names a change the player expects *because of what
+    the game remembered*: a new job, route, price or reaction. Also, Io
+    states no memory the player can't recognise from their own actions.
+- **A false memory blocks closeout.** If Io tells the player they did
+  something they didn't, or names an action in words the player can't map to
+  the button they pressed, that is a P1 M-LOOP bug, whatever the CI gates
+  say. A remembering character that misremembers is the opposite of the
+  signature mechanic.
+- **The human device pass (#2071) is no longer a blocker.** It stays open,
+  and a real stranger's answer recorded in the devlog outranks the AI one
+  whenever it arrives.
