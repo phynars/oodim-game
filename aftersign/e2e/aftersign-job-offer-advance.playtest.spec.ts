@@ -60,6 +60,10 @@ test.describe("AFTERSIGN job offer advances by phone tap", () => {
     // tap on an actual offered job, followed by the packet-button tap,
     // must reach the packet-choice surface.
     await offer.tap();
+    // Selection is intentionally distinct from confirmation: the first tap
+    // must retain the offer beat so the player can inspect the job before
+    // committing with the packet button.
+    await waitForBeat(page, "packet-offered");
 
     const packetButton = page.locator("#packetButton");
     await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
