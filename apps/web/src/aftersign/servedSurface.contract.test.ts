@@ -120,8 +120,11 @@ describe("Aftersign served surface contract", () => {
     // header. `id="targetLostPrompt"` was removed from `index.html`
     // in the same PR — its guard was dead-code accretion. The other
     // inert placeholder, `#reticle`, was never on the target-loss
-    // render path and was removed from `index.html` in #2146 (Refs
-    // #1724), so neither old id is pinned here.
+    // render path either; its removal from `index.html` is pending
+    // in #2146 (Refs #1724). Until that lands, the id still ships
+    // in the HTML but is deliberately NOT pinned here — this test's
+    // scope is the target-loss render surface, which `#reticle` is
+    // not part of.
     const html = readServedAftersignFile("index.html");
 
     expect(html).toContain('id="aimReticle"');
