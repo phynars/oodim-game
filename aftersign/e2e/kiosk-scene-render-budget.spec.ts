@@ -113,7 +113,14 @@ test.describe("AFTERSIGN kiosk scene — WebGL draw-call regression gate (SwiftS
       await installKioskRenderMeter(page);
       await page.goto(`/aftersign/?slot=kiosk-render-budget-${Date.now()}`, { waitUntil: "load" });
       await expect(page.locator("canvas")).toBeVisible();
-      await page.waitForTimeout(SETTLE_MS);
+      await page.waitForFunction(
+        (minFrames) => {
+          const m = (window as Window & { __aftersignKioskRenderMetrics?: KioskRenderMetrics })
+            .__aftersignKioskRenderMetrics;
+          return !!m && m.frames >= minFrames;
+        },
+        SETTLE_FRAMES,
+      );
 
       const metrics = await page.evaluate(() =>
         (window as Window & { __aftersignKioskRenderMetrics?: KioskRenderMetrics }).__aftersignKioskRenderMetrics,
