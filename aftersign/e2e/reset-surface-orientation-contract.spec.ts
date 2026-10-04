@@ -162,7 +162,7 @@ test.describe("AFTERSIGN reset orientation contract", () => {
       { timeout: WAIT_MS },
     );
     await expect(lineNode).toContainText(
-      "You checked the kiosk twice. Most couriers let the second signal die.",
+      "You acknowledged the route. Most couriers let the second signal die.",
       { timeout: WAIT_MS },
     );
     await expect(lineNode).not.toContainText(

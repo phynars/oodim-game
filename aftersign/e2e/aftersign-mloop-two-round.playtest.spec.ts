@@ -46,7 +46,9 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await firstRoundJob.tap();
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
-    await tapChoice(page, "acknowledge-kiosk");
+    const acknowledgeRoute = page.locator('button[data-choice-id="acknowledge-kiosk"]');
+    await expect(acknowledgeRoute).toHaveText("Acknowledge route");
+    await acknowledgeRoute.tap();
     await tapChoice(page, "deliver-packet");
 
     await waitForBeat(page, "io-return-recognition");
