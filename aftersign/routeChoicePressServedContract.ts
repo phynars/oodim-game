@@ -64,10 +64,11 @@ function assertMatches(
   }
 }
 
-// Escape decimals when interpolating a numeric constant into a
-// RegExp source so a `.` matches a literal dot, not any character.
+// Escape a value interpolated into a RegExp source: every metacharacter,
+// backslash included, not just the decimal point (CodeQL
+// js/incomplete-sanitization, game alert #24).
 function escapeForRegExp(value: number): string {
-  return String(value).replace(/[.]/g, "\\.");
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function checkRouteChoicePressServedContract(): void {
