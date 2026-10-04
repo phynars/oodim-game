@@ -49,12 +49,10 @@ owned by the backend boundary rather than browser-local state. This separation
 is what lets returning-player recognition and saved outcomes survive a new
 session.
 
-The client-side shadow of that state lives in `aftersign/src/story-state.js`,
-which reads and writes a single JSON blob in `localStorage` under
-`aftersign.kioskSlice.v1` (load falls back to `null` on empty). Any change to
-the save shape or key is a contract change — bump the versioned key and
-update the round-trip specs in the same PR. The served page no longer boots
-from `localStorage`; the local blob is a cache, not the source of truth.
+`aftersign/src/story-state.js` provides an in-memory seam for client-side
+story-state consumers and tests; it is not player persistence. Browser-local
+storage is not a player-save boundary. Returning-player state and recovery
+must be read from the durable backend authority.
 
 ## Player-driven verification
 
