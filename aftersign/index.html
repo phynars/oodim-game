@@ -1041,15 +1041,16 @@
          release. -->
     <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite"></p>
     <div class="failure-sting" aria-hidden="true"></div>
-    <!-- #1724: inert DOM surface for a target-loss wire-in that never
-         landed on this node. The real target-loss feedback ships on
-         `#aimReticle` + `#targetLossPrompt` above; `#reticle` is
-         kept for now as a separate placeholder with its own history.
-         PR #1815 removed the sibling `#targetLostPrompt` placeholder
-         (id near-collision with the real `#targetLossPrompt` above
-         made `document.getElementById()` a readability trap, and
-         nothing ever imported it). -->
-    <div id="reticle" aria-hidden="true"></div>
+    <!-- #2152 (Refs #1724): the inert `<div id="reticle">` placeholder
+         was removed. It was never consumed — no CSS rule, no JS
+         importer, no e2e locator — and the real target-loss feedback
+         ships on `#aimReticle` + `#targetLossPrompt` above. Its
+         absence is pinned by `servedSurface.contract.test.ts` so a
+         future accretion can't quietly re-add it. The companion
+         `#targetLostPrompt` placeholder was removed earlier in #1815
+         for the same reason (id near-collision with the real
+         `#targetLossPrompt` made `document.getElementById()` a
+         readability trap). -->
     <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>

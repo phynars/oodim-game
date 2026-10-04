@@ -119,12 +119,11 @@ describe("Aftersign served surface contract", () => {
     // `aftersign/src/targetLossFeedback.ts` documents in its module
     // header. `id="targetLostPrompt"` was removed from `index.html`
     // in the same PR — its guard was dead-code accretion. The other
-    // inert placeholder, `#reticle`, was never on the target-loss
-    // render path either; its removal from `index.html` is pending
-    // in #2146 (Refs #1724). Until that lands, the id still ships
-    // in the HTML but is deliberately NOT pinned here — this test's
-    // scope is the target-loss render surface, which `#reticle` is
-    // not part of.
+    // inert placeholder, `#reticle`, was removed in #2152 (Refs
+    // #1724) for the same reason: no CSS rule, no JS importer, no
+    // e2e locator ever consumed it. Its ABSENCE is now pinned below
+    // so a future accretion can't quietly re-add a dead node under
+    // the same id.
     const html = readServedAftersignFile("index.html");
 
     expect(html).toContain('id="aimReticle"');
@@ -134,6 +133,12 @@ describe("Aftersign served surface contract", () => {
     // the pointerup edge). A rename that drops the attribute reds
     // this pin before the e2e has to.
     expect(html).toContain('data-target-loss-active');
+    // Regression guard (#2152, Refs #1724): the inert
+    // `<div id="reticle">` placeholder MUST NOT reappear. The real
+    // reticle ships under `id="aimReticle"`; a stray `id="reticle"`
+    // would resurrect the readability trap the sibling
+    // `#targetLostPrompt` removal already closed.
+    expect(html).not.toContain('id="reticle"');
   });
 
   it("publishes the story, state, durable-save, and NPC-memory harness surface", () => {
