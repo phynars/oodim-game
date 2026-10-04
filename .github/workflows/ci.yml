@@ -77,6 +77,43 @@ jobs:
           node-version: "22"
       - run: node scripts/check-product-wiring.mjs
 
+  # Fail-to-pass gate for BUG-FIX PRs (oodim AIDLC round 1, item ③,
+  # 2026-10-03; SWT-bench's criterion). A PR that closes a `type:bug` issue
+  # must carry a test that FAILS on the base branch's source — the aftersign
+  # lane already proves it PASSES on head. Only the PR's changed tests run,
+  # against base source with HEAD runner wiring, one retry (a flake that
+  # passes on retry is not a reproduction). Out of scope / exempt PRs exit
+  # green at the plan step in seconds. Full rules: scripts/fail-to-pass.mjs.
+  # Escape hatch: a PR-body line `f2p-exempt: <reason>`.
+  fail-to-pass:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: fail-to-pass self-test
+        run: node --test scripts/fail-to-pass.test.mjs
+      - name: plan (bug fix? carries a test?)
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/fail-to-pass.mjs plan
+      - if: steps.plan.outputs.result == 'run'
+        run: npm install
+      - if: steps.plan.outputs.result == 'run' && steps.plan.outputs.needs_browser == 'true'
+        run: node scripts/install-playwright-chromium.mjs
+      - name: changed tests must FAIL on base source
+        if: steps.plan.outputs.result == 'run'
+        run: node scripts/fail-to-pass.mjs run
+
   pacman:
     needs: changes
     if: ${{ needs.changes.outputs.pacman == 'true' || needs.changes.outputs.shared == 'true' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_frozen_games == 'true') }}
