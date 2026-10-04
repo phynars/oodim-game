@@ -18,9 +18,27 @@ async function readGame(page: Page): Promise<GameReadout> {
   );
 }
 
+type DialogueEntry = { beat: string; speaker: string; line: string };
+
+// Every beat the gate reaches is a visible dialogue transition the founder
+// bar requires to be ASSERTED ("the standing phone PLAYTEST ... asserting
+// every visible dialogue transition"), not just stamped. The HUD's
+// #speaker/#line pair is what a phone player reads and aria-live announces.
+const transcript: DialogueEntry[] = [];
+
 async function waitForBeat(page: Page, beat: string): Promise<void> {
   await expect(page.locator(`[data-beat-id="${beat}"]`)).toBeVisible({
     timeout: WAIT_MS,
+  });
+  const speaker = page.locator("#speaker");
+  const line = page.locator("#line");
+  await expect(speaker).toBeVisible({ timeout: WAIT_MS });
+  await expect(line).toBeVisible({ timeout: WAIT_MS });
+  await expect(line, `dialogue line at ${beat}`).not.toHaveText(/^\s*$/, { timeout: WAIT_MS });
+  transcript.push({
+    beat,
+    speaker: (await speaker.innerText()).trim(),
+    line: (await line.innerText()).trim(),
   });
 }
 
@@ -238,7 +256,19 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
           expect(secondRevision).toBe(firstRevision + 1);
         });
       }
+
+      // Each beat ADVANCE must change what the player reads; a re-read of
+      // the same beat (initial offer comparison, reload restore) may repeat.
+      for (let i = 1; i < transcript.length; i += 1) {
+        const [prev, cur] = [transcript[i - 1], transcript[i]];
+        if (prev.beat === cur.beat) continue;
+        expect(cur.line, `dialogue must change ${prev.beat} → ${cur.beat}`).not.toBe(prev.line);
+      }
     } finally {
+      await testInfo.attach("dialogue-transcript", {
+        body: JSON.stringify(transcript, null, 2),
+        contentType: "application/json",
+      });
       await testInfo.attach("page-errors", {
         body: JSON.stringify(pageErrors, null, 2),
         contentType: "application/json",
