@@ -358,6 +358,7 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 import { IO_DEFAULT_OFFER_LINE } from "./src/ioDefaultOfferCopy.js";
+import { ioOfferLineFor } from "./src/ioOfferMemoryLine.js";
 import { ioOfferHeading } from "./src/ioLoopCopy.js";
 import { ioJobAcceptedLine } from "./src/ioJobAcceptedCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
@@ -1440,6 +1441,19 @@ const lineForBeat = () => {
     // second-action (route-attention `object === "done"`). Without
     // this the fallback path always speaks the returning tier.
     return selectIoRecognitionDialogueLine(snippets, { memory: state.npcs.io.memory }).line;
+  }
+
+  if (state.scene.beat === "packet-offered") {
+    // #2158 (M2): Io names what she remembers and the jobs it unlocked,
+    // from the SAME derivation the #offeredJobs tray renders below, plus
+    // how the player answered her on the way back (returnReason), so a
+    // returning courier hears why the buttons changed. No delivery
+    // memory → the unchanged IO_DEFAULT_OFFER_LINE.
+    return ioOfferLineFor(
+      state.npcs.io.memory,
+      selectIoJobOffers(offeredJobsMemoryFromIoMemory(state.npcs.io.memory)),
+      state.player.returnReason,
+    );
   }
 
   return IO_DEFAULT_OFFER_LINE;
