@@ -507,31 +507,6 @@
         touch-action: none;
       }
 
-      /* #1724: inert aim surface for a target-loss wire-in that never
-         landed here — the real target-loss feedback ships on the
-         `#aimReticle` + `#targetLossPrompt` pair below (see
-         `aftersign/src/targetLossFeedback.ts` + the e2e at
-         `aftersign/e2e/target-loss-feedback.spec.ts`, which walk the
-         `#aimReticle` transform + `#targetLossPrompt` opacity envelope).
-         The sibling `#targetLostPrompt` placeholder was removed in
-         PR #1815 because nothing ever consumed it and its near-identical
-         id (`Lost` vs `Loss`) turned `document.getElementById()` into a
-         readability trap. `#reticle` is kept for now — it's a separate
-         placeholder with its own history — but the future render loop
-         should either wire it in or remove it too. */
-      #reticle {
-        position: fixed;
-        pointer-events: none;
-        opacity: 0;
-        left: 50%;
-        top: 50%;
-        width: 24px;
-        height: 24px;
-        border: 1px solid rgba(120, 233, 255, 0.7);
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-      }
-
       .hud {
         position: fixed;
         inset: auto 0 0 0;
