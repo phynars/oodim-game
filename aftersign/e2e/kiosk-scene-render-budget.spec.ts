@@ -34,7 +34,11 @@ import { expect, test, type Page } from "@playwright/test";
 // baseline exists.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-const SETTLE_MS = 1_000;
+// Settle in rAF frames, not wall-clock: the meter samples per
+// `requestAnimationFrame` tick, so the gate must wait on frames too.
+// 60 frames ≈ 1s at 60fps on a healthy lane, and still deterministic
+// if SwiftShader runs slower — we wait for frames, not for a stopwatch.
+const SETTLE_FRAMES = 60;
 
 const DRAW_CALL_BASELINE = 73;
 const DRAW_CALL_HEADROOM = 1.5;
