@@ -62,7 +62,7 @@ export const AFTERSIGN_IO_RETURNING_LINES = {
   // empty-memory arm without teaching the contract about it.
   fallback: {
     id: "io-return-fallback",
-    text: "Back again. Good. Vey keeps receipts. I keep names.",
+    text: "Back again. Good. Vey keeps receipts better than people do.",
     references: [],
   },
 } as const satisfies Record<string, AftersignIoReturningLine>;
