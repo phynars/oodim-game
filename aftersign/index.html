@@ -1041,15 +1041,19 @@
          release. -->
     <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite"></p>
     <div class="failure-sting" aria-hidden="true"></div>
-    <!-- #2152 (Refs #1724): the inert `<div id="reticle">` placeholder
-         was removed. It was never consumed — no CSS rule, no JS
-         importer, no e2e locator — and the real target-loss feedback
-         ships on `#aimReticle` + `#targetLossPrompt` above. Its
-         absence is pinned by `servedSurface.contract.test.ts` so a
-         future accretion can't quietly re-add it. The companion
-         `#targetLostPrompt` placeholder was removed earlier in #1815
-         for the same reason (id near-collision with the real
-         `#targetLossPrompt` made `document.getElementById()` a
+    <!-- #2152 (Refs #1724): the inert reticle placeholder div
+         (selector hash-reticle, no quotes used here on purpose —
+         see below) was removed. It was never consumed — no CSS
+         rule, no JS importer, no e2e locator — and the real
+         target-loss feedback ships on `#aimReticle` +
+         `#targetLossPrompt` above. Its absence is pinned by
+         `servedSurface.contract.test.ts` with a substring guard
+         against the literal attribute form, which is why this
+         comment deliberately avoids writing that attribute form
+         (the comment is part of the served HTML the guard scans).
+         The companion placeholder near `#targetLossPrompt` was
+         removed earlier in #1815 for the same reason (id
+         near-collision made `document.getElementById()` a
          readability trap). -->
     <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
