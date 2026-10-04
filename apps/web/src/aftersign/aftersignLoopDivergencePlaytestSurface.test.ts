@@ -29,7 +29,9 @@ function stripComments(source: string): string {
 
 function stripCommentsAndStrings(source: string): string {
   return stripComments(source)
-    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|[^`\\])*`/g, "``")
+    // A bare `$` has its own branch, so `${` can match only one way: no
+    // exponential backtracking (CodeQL js/redos, game alert #25).
+    .replace(/`(?:\\[\s\S]|\$\{[^}]*\}|\$(?!\{)|[^`\\$])*`/g, "``")
     .replace(/"(?:\\[\s\S]|[^"\\\n])*"/g, '""')
     .replace(/'(?:\\[\s\S]|[^'\\\n])*'/g, "''");
 }
