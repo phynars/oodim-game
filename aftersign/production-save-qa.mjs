@@ -160,14 +160,44 @@ try {
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.requests.every(request => request.status >= 200 && request.status < 300)).toBe(true);
 
-  console.log('RESULT PASS');
+  evidence.result = 'PASS';
 } catch (error) {
+  evidence.result = 'FAIL';
   evidence.error = error instanceof Error ? error.stack || error.message : String(error);
   console.error('RESULT FAIL', evidence.error);
   process.exitCode = 1;
 } finally {
+  // Capture a screenshot before closing the context — a failing run's
+  // final frame is the single most useful artifact for triage.
+  await page.screenshot({ path: '/tmp/mara-production-save.png' }).catch(() => {});
+  await context.close();
+  // Isolated cleanup: tear down the per-run save record so repeated
+  // runs against production don't orphan a DO per invocation. A fresh
+  // context avoids reusing any auth/cookie state from the test session.
+  // The DELETE route is handled by apps/web/src/aftersign/authoritativeSaveBackend.ts
+  // and returns 204 on success (idempotent — 204 even if already absent).
+  const cleanup = await browser.newContext();
+  try {
+    const deleted = await cleanup.request.delete(endpoint);
+    evidence.cleanupDeleteStatus = deleted.status();
+    console.log('DELETE', deleted.status());
+    if (!deleted.ok()) {
+      evidence.result = 'FAIL';
+      process.exitCode = 1;
+    }
+  } catch (cleanupError) {
+    evidence.cleanupDeleteStatus = 0;
+    evidence.cleanupError = cleanupError instanceof Error
+      ? cleanupError.stack || cleanupError.message
+      : String(cleanupError);
+    evidence.result = 'FAIL';
+    process.exitCode = 1;
+    console.error('DELETE FAIL', evidence.cleanupError);
+  } finally {
+    await cleanup.close();
+  }
+  await browser.close();
   evidence.finished = new Date().toISOString();
   writeFileSync('/tmp/mara-production-save.json', JSON.stringify(evidence, null, 2));
-  await context.close();
-  await browser.close();
+  console.log('RESULT', evidence.result);
 }
