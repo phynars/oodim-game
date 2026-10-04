@@ -211,11 +211,18 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
       }
       expect(initialActionSets[0]).not.toEqual(initialActionSets[1]);
 
+      // #2158: memory must show in Io's WORDS too, not only in the buttons —
+      // the offer line differs per record and names the offered jobs by the
+      // labels on the buttons the player can tap.
+      const offerLines = new Map<string, string>();
+
       for (const cohort of cohorts) {
         await test.step(`${cohort.memory}: two consecutive played rounds`, async () => {
           await boot(cohort.slot);
           expect(await readOffers(page, cohort.memory)).toEqual(cohort.offers);
           expect((await readGame(page)).save.revision).toBe(cohort.revision);
+          const roundOneLine = (await page.locator("#line").innerText()).trim();
+          offerLines.set(cohort.memory, roundOneLine);
           // Complete round one, then park at the durably saved next-job beat.
           const firstRevision = await completeRound(page, cohort.job);
           await tapAndWaitForSave(
@@ -250,12 +257,24 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
             "job-night-transfer#medium",
             "job-signed-receipt#low",
           ]);
+          const roundTwoLine = page.locator("#line");
+          await expect(roundTwoLine, "round 2 offer line names the unlocked jobs").toContainText("Night transfer");
+          await expect(roundTwoLine).toContainText("Signed receipt");
+          expect(
+            (await roundTwoLine.innerText()).trim(),
+            `${cohort.memory}: round 2's offer line must differ from round 1's`,
+          ).not.toBe(roundOneLine);
 
           // Complete round two; just exposing the returning offers is not enough.
           const secondRevision = await completeRound(page, "job-signed-receipt");
           expect(secondRevision).toBe(firstRevision + 1);
         });
       }
+
+      const [freshLine, completedLine] = [offerLines.get("fresh"), offerLines.get("completed")];
+      expect(completedLine, "Io's offer line differs by memory").not.toBe(freshLine);
+      expect(completedLine).toContain("Night transfer");
+      expect(completedLine).toContain("Signed receipt");
 
       // Each beat ADVANCE must change what the player reads; a re-read of
       // the same beat (initial offer comparison, reload restore) may repeat.
