@@ -118,10 +118,10 @@ describe("Aftersign served surface contract", () => {
     // `aftersign/e2e/target-loss-feedback.spec.ts` drives and the ones
     // `aftersign/src/targetLossFeedback.ts` documents in its module
     // header. `id="targetLostPrompt"` was removed from `index.html`
-    // in the same PR — its guard was dead-code accretion. `#reticle`
-    // remains as a separate placeholder with its own history, but
-    // isn't part of the target-loss render path so it's no longer
-    // pinned here.
+    // in the same PR — its guard was dead-code accretion. The other
+    // inert placeholder, `#reticle`, was never on the target-loss
+    // render path and was removed from `index.html` in #2146 (Refs
+    // #1724), so neither old id is pinned here.
     const html = readServedAftersignFile("index.html");
 
     expect(html).toContain('id="aimReticle"');
