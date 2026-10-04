@@ -826,7 +826,55 @@ const acknowledgeRouteButton = document.querySelector("#acknowledgeRouteButton")
 const skipRouteButton = document.querySelector("#skipRouteButton");
 // The route-memory fork stays on the packet-choice beat, so its receipt
 // must be rendered from durable choice state rather than a transient click.
+// `routeMemoryConfirmation` holds the authored label of the LAST tapped
+// route-memory action; the MutationObserver + stamp helper below re-emit
+// a visible `<p data-aftersign-route-memory-confirmation>` child onto
+// `#routeRiskChoice` every time the tray rebuilds — the writer at
+// `renderRouteRiskChoice` clears children to re-emit buttons, so a
+// one-shot append from the click handler would be wiped on the next
+// render pass. Sibling e2e locator
+// `#routeRiskChoice [data-aftersign-route-memory-confirmation]`
+// reads this text — a player-visible receipt of the choice they
+// just tapped, surviving the action-set divergence that happens
+// immediately after.
 let routeMemoryConfirmation = null;
+const ROUTE_MEMORY_CONFIRMATION_ATTR =
+  "data-aftersign-route-memory-confirmation";
+const stampRouteMemoryConfirmation = () => {
+  if (typeof document === "undefined") return;
+  const host = document.querySelector("#routeRiskChoice");
+  if (!host) return;
+  if (!routeMemoryConfirmation) {
+    const stale = host.querySelector(`[${ROUTE_MEMORY_CONFIRMATION_ATTR}]`);
+    if (stale) stale.remove();
+    return;
+  }
+  let node = host.querySelector(`[${ROUTE_MEMORY_CONFIRMATION_ATTR}]`);
+  if (!node) {
+    node = document.createElement("p");
+    node.setAttribute(ROUTE_MEMORY_CONFIRMATION_ATTR, "");
+    node.style.margin = "6px 0 0 0";
+    node.style.pointerEvents = "none";
+    host.appendChild(node);
+  } else if (node.parentElement !== host) {
+    host.appendChild(node);
+  }
+  if (node.textContent !== routeMemoryConfirmation) {
+    node.textContent = routeMemoryConfirmation;
+  }
+};
+if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+  const host = document.querySelector("#routeRiskChoice");
+  if (host) {
+    const observer = new MutationObserver(() => {
+      if (!routeMemoryConfirmation) return;
+      if (!host.querySelector(`[${ROUTE_MEMORY_CONFIRMATION_ATTR}]`)) {
+        stampRouteMemoryConfirmation();
+      }
+    });
+    observer.observe(host, { childList: true });
+  }
+}
 // #1372: the M-LOOP-E1 route/risk surface. The writer
 // `renderRouteRiskChoice` stamps one `<button
 // data-aftersign-tap-choice="…">` per offered action into this
@@ -2350,8 +2398,15 @@ const renderText = () => {
           }
           state.player.routeRisk = recordRouteRun({ route, succeeded });
           // Keep the selected label across the ensuing tray rebuild: the
-          // route-memory action set changes immediately after this tap.
-          routeRiskChoice.dataset.routeMemoryConfirmation = routeRiskActionLabel(action);
+          // route-memory action set changes immediately after this tap,
+          // but the receipt must stay visible to the player. The stamp
+          // helper + MutationObserver (declared above with
+          // `routeMemoryConfirmation`) re-emit the `<p
+          // data-aftersign-route-memory-confirmation>` child on every
+          // subsequent `renderRouteRiskChoice` pass.
+          routeMemoryConfirmation = routeRiskActionLabel(action);
+          routeRiskChoice.dataset.routeMemoryConfirmation = routeMemoryConfirmation;
+          stampRouteMemoryConfirmation();
           // The fork needs a tiny physical "yes" before its durable
           // write leaves the tab: 180ms, 4px lift, 1.025 peak scale.
           // Animate the tray rather than rebuilding its button so the
