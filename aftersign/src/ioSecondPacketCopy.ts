@@ -37,7 +37,10 @@ interface ReturnToneLineSet {
 const RETURN_TONE_LINES: Readonly<Record<IoSecondPacketReturnTone, ReturnToneLineSet>> =
   Object.freeze({
     gentle: Object.freeze({
-      recognition: 'You came back quiet. I can work with quiet.',
+      // Kind return → gentle tone. Must agree with the job-board memory
+      // line ("you came back gentle with me", ioOfferMemoryLine.js `kind`);
+      // "quiet" read as evasive and was a false memory (#2180).
+      recognition: 'You came back gentle. I can work with gentle.',
       offer: 'Second packet. Same hands. Less mercy in the route.',
       prompt: 'Take it if you mean to be remembered for something useful.',
     }),

@@ -229,6 +229,64 @@ export function checkReturnTonesArrayCoversUnion(): void {
   assertEqual(missing.length, 0, `tones missing from array: ${missing.join(', ')}`);
 }
 
+/** The gentle recognition line is the FIRST thing Io says when a `kind`
+ * returner comes back for round two. The job-board memory line keyed to
+ * `kind` (ioOfferMemoryLine.js `RETURN_TONE_CLAUSE.kind`) is:
+ *
+ *     "And you came back gentle with me last time. I haven't forgotten."
+ *
+ * If the recognition line here calls the same return "quiet" (as it did
+ * before #2180), Io remembers two different things about the same beat:
+ * the board remembers it as "gentle", the offer remembers it as "quiet".
+ * That's the false memory #2180 names.
+ *
+ * This test pins the two together so they can't drift again:
+ *   - recognition line MUST contain "gentle"
+ *   - recognition line MUST NOT contain "quiet"
+ *   - both anchor words from the memory clause ("gentle", "came back")
+ *     must land verbatim in the recognition line.
+ *
+ * On main (pre-#2180) the recognition read "You came back quiet. I can
+ * work with quiet." — the `gentle` and no-`quiet` asserts both fail.
+ * With #2180's fix ("You came back gentle. I can work with gentle.") the
+ * four asserts pass. */
+export function checkGentleRecognitionAgreesWithKindMemoryLine(): void {
+  const copy = selectIoSecondPacketCopy({ returnTone: 'gentle' });
+  const recognition = copy.lines[0];
+
+  // The memory-line clause this must agree with — kept verbatim as the
+  // single source of truth for the shared anchor words. If the clause in
+  // `ioOfferMemoryLine.js` is edited, update this literal in the same
+  // commit so the two sides keep speaking the same memory.
+  const kindMemoryClause =
+    "And you came back gentle with me last time. I haven't forgotten.";
+
+  assert(
+    recognition.includes('gentle'),
+    `gentle recognition must say "gentle" (agrees with kind memory clause ${JSON.stringify(
+      kindMemoryClause,
+    )}), got ${JSON.stringify(recognition)}`,
+  );
+  assert(
+    !/\bquiet\b/i.test(recognition),
+    `gentle recognition must NOT say "quiet" — that was the false memory #2180 fixed; got ${JSON.stringify(
+      recognition,
+    )}`,
+  );
+  assert(
+    /came back/i.test(recognition),
+    `gentle recognition must share the "came back" anchor with the kind memory clause, got ${JSON.stringify(
+      recognition,
+    )}`,
+  );
+  assert(
+    kindMemoryClause.includes('gentle') && kindMemoryClause.includes('came back'),
+    `kind memory clause lost its anchor words — update this test and ioOfferMemoryLine.js together; clause is ${JSON.stringify(
+      kindMemoryClause,
+    )}`,
+  );
+}
+
 export function runIoSecondPacketCopyChecks(): void {
   checkCopyIdVerbatim();
   checkEveryToneProducesThreeOrderedLines();
@@ -238,4 +296,5 @@ export function runIoSecondPacketCopyChecks(): void {
   checkReturnedPayloadIsDeeplyFrozen();
   checkChoicesArePinned();
   checkReturnTonesArrayCoversUnion();
+  checkGentleRecognitionAgreesWithKindMemoryLine();
 }
