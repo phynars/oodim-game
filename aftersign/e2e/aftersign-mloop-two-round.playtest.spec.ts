@@ -50,7 +50,16 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
 
     await waitForBeat(page, "packet-offered");
     const firstRoundTray = page.locator("#offeredJobs");
-    await expect(firstRoundTray).toHaveAttribute("data-mloop-divergence-memory", "fresh");
+    // Read via `getAttribute` (not `toHaveAttribute`) so the served-
+    // divergence played-witness contract in
+    // `apps/web/src/aftersign/aftersignMloopServedDivergencePlaytestContract.test.ts`
+    // can see the branch label actually being READ off the rendered
+    // tray on BOTH rounds, and so the two labels can be compared as
+    // distinct durable-memory states below.
+    const firstRoundDivergence = await firstRoundTray.getAttribute(
+      "data-mloop-divergence-memory",
+    );
+    expect(firstRoundDivergence).toBe("fresh");
     const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
     await expect(firstRoundJob).toHaveCount(1);
     await firstRoundJob.tap();
@@ -70,7 +79,15 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
 
     await waitForBeat(page, "packet-offered");
     const secondRoundTray = page.locator("#offeredJobs");
-    await expect(secondRoundTray).toHaveAttribute("data-mloop-divergence-memory", "completed");
+    const secondRoundDivergence = await secondRoundTray.getAttribute(
+      "data-mloop-divergence-memory",
+    );
+    expect(secondRoundDivergence).toBe("completed");
+    // The whole point of the served-divergence contract: two rounds that
+    // completed under different durable-memory shapes must stamp
+    // DIFFERENT labels on #offeredJobs. If a future refactor collapses
+    // the branch, this fires before any UI assertion.
+    expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
     const secondRoundJobs = secondRoundTray.locator("button[data-offered-job-id]");
     await expect(secondRoundJobs).toHaveCount(2);
     await expectFullyInsidePhone(page, '#offeredJobs [data-aftersign-job-offer-route-risk]');
