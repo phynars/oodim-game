@@ -229,10 +229,11 @@ export const attachRuntimeInputAdapters = ({
       acknowledgeRouteButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    if (reasonFromAck) {
-      state.player.returnReason = reasonFromAck;
-      markStateDirty();
-    }
+    // #2174: never commit the reason here. A same-gesture tap that meant
+    // "Return to Io" can land on the freshly-stamped return-tone control;
+    // main.js's `choose-return-tone` branch commits the pending reason
+    // only after its beat + RECOGNITION_SETTLE_MS gates pass.
+    state.interaction.pendingReturnReason = reasonFromAck || null;
     const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);

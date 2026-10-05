@@ -3436,6 +3436,14 @@ const choose = async (choiceId) => {
     // `_runtime.audio.*` fields exist), so a frame-index gate would
     // be dead code. `performance.now()` is monotonic and already used
     // for beat timing elsewhere in this file.
+    //
+    // #2174: the input adapter no longer writes `state.player.returnReason`
+    // on click — it stages `state.interaction.pendingReturnReason`, and the
+    // reason is committed HERE, only after both gates pass. A rejected
+    // same-gesture tap therefore leaves `returnReason` untouched (null),
+    // so no tone reply / next-offer recall can leak from it.
+    const pendingReason = state.interaction.pendingReturnReason ?? null;
+    state.interaction.pendingReturnReason = null;
     if (state.scene.beat !== "io-return-recognition") {
       return;
     }
@@ -3445,6 +3453,13 @@ const choose = async (choiceId) => {
       && performance.now() - enteredAt < RECOGNITION_SETTLE_MS
     ) {
       return;
+    }
+    if (
+      typeof pendingReason === "string"
+      && IO_RETURN_TONE_OPTIONS.some((o) => o.id === pendingReason)
+    ) {
+      state.player.returnReason = pendingReason;
+      markStateDirty();
     }
     setBeat("return-tone-choice");
     // #1234: the tone the player just struck is marked "for later
