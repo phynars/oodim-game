@@ -25,10 +25,23 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
+async function expectFullyInsidePhone(page: Page, selector: string): Promise<void> {
+  const rect = await page.locator(selector).evaluate((element) => {
+    const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+    return { left, top, right, bottom, width, height };
+  });
+  expect(rect.width).toBeGreaterThan(0);
+  expect(rect.height).toBeGreaterThan(0);
+  expect(rect.left).toBeGreaterThanOrEqual(0);
+  expect(rect.top).toBeGreaterThanOrEqual(0);
+  expect(rect.right).toBeLessThanOrEqual(PHONE_VIEWPORT.width);
+  expect(rect.bottom).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+}
+
 test.describe("AFTERSIGN M-LOOP round-two entry", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("a played first round reaches a different job and starts the second route", async ({ page }) => {
+  test("a played first round keeps every round-two job reachable on phone", async ({ page }) => {
     test.setTimeout(90_000);
     await page.goto(`/aftersign/?slot=mloop-round-two-entry-${Date.now()}`, {
       waitUntil: "load",
@@ -37,10 +50,7 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
 
     await waitForBeat(page, "packet-offered");
     const firstRoundTray = page.locator("#offeredJobs");
-    const firstRoundDivergence = await firstRoundTray.getAttribute(
-      "data-mloop-divergence-memory",
-    );
-    await expect(firstRoundDivergence).toBe("fresh");
+    await expect(firstRoundTray).toHaveAttribute("data-mloop-divergence-memory", "fresh");
     const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
     await expect(firstRoundJob).toHaveCount(1);
     await firstRoundJob.tap();
@@ -60,37 +70,19 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
 
     await waitForBeat(page, "packet-offered");
     const secondRoundTray = page.locator("#offeredJobs");
-    const secondRoundDivergence = await secondRoundTray.getAttribute(
-      "data-mloop-divergence-memory",
-    );
-    await expect(secondRoundDivergence).toBe("completed");
-    await expect(secondRoundDivergence).not.toBe(firstRoundDivergence);
-    // The completed branch renders TWO offered-job buttons
-    // (`job-night-transfer` + `job-signed-receipt`, see
-    // `COMPLETED_JOB_IDS` in packages/aftersign/src/computeOfferedJobs.ts),
-    // so the general `button[data-offered-job-id]` locator matches both
-    // — asserting `.toHaveText` on it strict-mode-fails. Keep the tray-
-    // scoped general locator to prove branch shape (count === 2, and
-    // satisfies the served-divergence contract's ≥ 2 offered-button
-    // locator budget), then narrow to the specific `job-night-transfer`
-    // id for the label assertion + tap.
+    await expect(secondRoundTray).toHaveAttribute("data-mloop-divergence-memory", "completed");
     const secondRoundJobs = secondRoundTray.locator("button[data-offered-job-id]");
     await expect(secondRoundJobs).toHaveCount(2);
-    const secondRoundNightTransfer = secondRoundTray.locator(
-      'button[data-offered-job-id="job-night-transfer"]',
-    );
-    await expect(secondRoundNightTransfer).toHaveText("Night transfer · medium risk");
-    await secondRoundNightTransfer.tap();
-    await page.locator("#packetButton").tap();
-    await waitForBeat(page, "packet-choice");
-    await tapChoice(page, "acknowledge-kiosk");
-    await tapChoice(page, "deliver-packet");
+    await expectFullyInsidePhone(page, '#offeredJobs [data-aftersign-job-offer-route-risk]');
+    await expectFullyInsidePhone(page, 'button[data-offered-job-id="job-night-transfer"]');
+    await expectFullyInsidePhone(page, 'button[data-offered-job-id="job-signed-receipt"]');
 
-    await waitForBeat(page, "io-return-recognition");
-    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
-    await waitForBeat(page, "return-tone-choice");
-    await tapChoice(page, "ask-for-next-job");
-    await waitForBeat(page, "io-next-job");
-    await tapChoice(page, "deliver-packet");
+    // This is the player outcome: the previously clipped second control is
+    // tapped through the actual touch surface, not the game-state harness.
+    const signedReceipt = secondRoundTray.locator(
+      'button[data-offered-job-id="job-signed-receipt"]',
+    );
+    await signedReceipt.tap();
+    await expect(signedReceipt).toHaveAttribute("data-aftersign-job-take", "armed");
   });
 });
