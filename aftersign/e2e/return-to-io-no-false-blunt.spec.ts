@@ -4,20 +4,28 @@ import { test, expect, type Page } from "@playwright/test";
 // A visible Return to Io tap must never become a Blunt return when the
 // reused #deliverButton is restamped during the beat transition.
 //
-// Scope note (PR #2183 review follow-up — AI003):
+// Fails-on-main scope note (PR #2183 review follow-up — AI003/AI007):
 // #2181's bug is a sub-frame race between the physical pointerup on
 // `#deliverButton` and the beat flip that re-stamps the SAME DOM node
 // with `data-choice-id="choose-return-tone"` + `data-return-reason="blunt"`.
-// Playwright's `tap()` fires discrete events that don't participate in
-// that race — a `tap()`-driven round-2 spec cannot reproduce the silent
-// commit, and this file is NOT trying to. The round-2 test below
-// documents the SHAPE invariant on the normal path (durable
-// `returnReason` survives the next-packet reset, no stale
-// `pendingReturnReason` is carried, all three tone buttons present);
-// the SOURCE-LEVEL guard that the next-packet reset actually clears
-// the race's inputs (`recognitionEnteredAt`, `pendingReturnReason`)
-// lives in `apps/web/src/aftersign/returnToIoNextPacketReset.test.ts`
-// (vitest, red on `main`, green on head).
+// Playwright's `tap()` is one-shot and cannot reliably reproduce the
+// race's exact pointer-vs-restamp interleave. What this spec DOES
+// reproduce — and what fails on `main` without this PR — is the
+// INPUT the race feeds on: `state.interaction.recognitionEnteredAt`
+// stamped by round 1's `return-to-io` tap (see `stampRecognitionEntryIfReturnToIo`
+// in `aftersign/src/runtime/inputAdapters.js`) and left stale across
+// the ask-for-next-job → next-packet transition. On main, by the time
+// the player's finger reaches round 2's `packet-delivered` beat, the
+// stale stamp is far enough in the past that the `RECOGNITION_SETTLE_MS`
+// gate in `main.js`'s `choose-return-tone` branch waves ANY staged
+// `pendingReturnReason` through — including the "blunt" the re-stamp
+// race writes. The round-two assertion below reads
+// `state.interaction.recognitionEnteredAt` on the served snapshot right
+// at `packet-delivered` of round 2 and asserts it is `null`: on main
+// the slot retains round 1's `performance.now()` stamp and the test
+// reds; on head the next-packet reset in `main.js` nulls it and the
+// test greens. That is the DETERMINISTIC fails-on-main surface the
+// race itself cannot produce via `tap()`.
 
 type ReturnReasonSnapshot = {
   scene?: { beat?: string };
@@ -163,9 +171,25 @@ test.describe("AFTERSIGN Return to Io does not silently record a blunt tone", ()
     const afterKindReturn = await snapshot(page);
     expect(afterKindReturn.player?.returnReason).toBe("kind");
 
+    // Round 1's `return-to-io` tap stamped
+    // `state.interaction.recognitionEnteredAt` via
+    // `stampRecognitionEntryIfReturnToIo` in
+    // `aftersign/src/runtime/inputAdapters.js`. Before the fix, that
+    // stamp survives into round 2 — any main.js build without the
+    // next-packet reset carries a non-null `recognitionEnteredAt`
+    // from here through the entire round-2 setup, up to and
+    // including round 2's `packet-delivered` beat.
+    const afterRound1Tone = await snapshot(page);
+    expect(afterRound1Tone.interaction?.recognitionEnteredAt ?? null).not.toBeNull();
+
     // Move to the next-job surface, take the second packet, then run
     // through the round-two delivery via the visible controls a player
-    // actually touches on a phone.
+    // actually touches on a phone. One of these taps (the
+    // ask-for-next-job → next-packet branch in `main.js`) carries the
+    // reset block this PR adds — the exact tap doesn't matter for the
+    // fails-on-main check further down, only that by round 2's
+    // `packet-delivered` beat the slot is clear on head and stale on
+    // main.
     await tapChoice(page, "ask-for-next-job");
     await waitForBeat(page, "io-next-job");
     await tapChoice(page, "accept-second-packet");
@@ -186,9 +210,17 @@ test.describe("AFTERSIGN Return to Io does not silently record a blunt tone", ()
     // three tone buttons so round 2 can post a new posture if the player
     // chooses one. A silent commit to "blunt" would show up as either
     // `returnReason === "blunt"` or as the Blunt tone button missing.
+    //
+    // Fails-on-main check at the round-2 `packet-delivered` seam: the
+    // reused `#deliverButton` has just restamped to "Return to Io", and
+    // `recognitionEnteredAt` must still be null (round 1's stamp was
+    // cleared by the next-packet reset above; round 2's return-to-io
+    // tap hasn't fired yet to stamp a fresh one). On main the slot
+    // retains round 1's `performance.now()` and this reds.
     const beforeReturn = await snapshot(page);
     expect(beforeReturn.player?.returnReason).toBe("kind");
     expect(beforeReturn.interaction?.pendingReturnReason ?? null).toBeNull();
+    expect(beforeReturn.interaction?.recognitionEnteredAt ?? null).toBeNull();
     await tapChoice(page, "return-to-io");
     await assertRoundTwoReturnKeepsPriorTone(page, "kind");
   });
