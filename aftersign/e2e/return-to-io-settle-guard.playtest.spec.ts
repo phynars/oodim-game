@@ -18,24 +18,25 @@ import { IO_RETURN_TONE_OPTIONS } from "../../apps/web/src/aftersign/story/ioCon
 // "And last time you told me straight." — the false-memory
 // M-LOOP closeout cannot survive.
 //
-// Soren's PR #2176 REQUEST_CHANGES feedback:
-//   AI007 — the title was a fix but the diff was spec-only; the
-//           `main.js` stamp was missing. This revision pairs the
+// Soren's PR #2176 REQUEST_CHANGES feedback — iterations:
+//   AI007 (round 1) — the title was a fix but the diff was spec-only;
+//           the `main.js` stamp was missing. This revision pairs the
 //           spec with the stamp in `inputAdapters.js`.
-//   AI003 — the prior spec asserted `not.toContainText(BLUNT_REPLY)`
-//           once, immediately after the recognition beat became
-//           visible. A ghost click can land AFTER that single
-//           sample; the spec also never checked the evasive recall
-//           at the next offer. This revision (a) polls `#line`
-//           across the full settle window after the Return-to-Io
-//           tap and asserts the blunt reply stays absent for the
-//           whole window, and (b) traverses one full M-LOOP round
-//           to the next `packet-offered` beat and asserts Io's
-//           offer line carries the EVASIVE recall clause (`"dodged"`,
-//           from `ioOfferMemoryLine.js`), NOT the blunt one
-//           (`"told me straight"`). Without the stamp the ghost
-//           click records a blunt reason and that recall clause
-//           flips — the spec FAILS on `main`.
+//   AI003 (round 2) — the prior spec sampled `not.toContainText(BLUNT_REPLY)`
+//           once right after the beat flipped. One `.tap()` is one
+//           click, so on `main` a single-tap spec passes trivially
+//           (no second gesture ever lands on the Blunt node). The
+//           bug needs a REAL second physical click on the shared
+//           `#deliverButton` node AFTER the beat flips to
+//           `io-return-recognition`. That is what distinguishes
+//           main (no stamp → gate passes → second click records
+//           BLUNT → next offer recalls "told me straight") from the
+//           fix (stamp written on first tap → gate drops the second
+//           click within RECOGNITION_SETTLE_MS → return reason stays
+//           unset → an EVASIVE tap later lands cleanly → next offer
+//           recalls "dodged"). This revision performs that second
+//           physical tap on `#deliverButton` and asserts both
+//           acceptance signals.
 //
 // Acceptance (from the issue):
 //   1. after tapping "Return to Io" by pointer, NO tone-reply line
@@ -183,22 +184,44 @@ test.describe("AFTERSIGN return-to-Io settle guard (phone tap)", () => {
     await expect(deliverButton).toHaveText("Return to Io", { timeout: WAIT_MS });
     await deliverButton.tap();
 
-    // The tap must land us on the recognition beat with the tone
-    // buttons visible — observable through `[data-beat-id]` and the
-    // `[data-return-reason]` locators the renderer stamps.
+    // The tap must land us on the recognition beat and the SAME
+    // `#deliverButton` DOM node must now carry the Blunt return
+    // dataset — this is the exact element relabel that the bug
+    // exploits. We wait on the dataset flip (not just visibility)
+    // so the follow-up second tap below is deterministic.
     await waitForBeat(page, "io-return-recognition");
     await expect(
-      page.locator('button[data-return-reason="blunt"]'),
-      "blunt tone button should render on io-return-recognition",
-    ).toBeVisible({ timeout: WAIT_MS });
+      deliverButton,
+      "shared #deliverButton must relabel to the Blunt tone on io-return-recognition",
+    ).toHaveAttribute("data-return-reason", "blunt", { timeout: WAIT_MS });
 
-    // #2174 acceptance (1): NO tone reply is shown until a tone
-    // button is tapped. We POLL across the full ghost-click settle
-    // window so a late-landing ghost click (iOS pointerup/click
-    // dup, trailing pointer event on the re-rendered shared node)
-    // cannot sneak the blunt reply past a single-sample check.
-    // The prior spec sampled once — Soren PR #2176 AI003 flagged
-    // that as insufficient; this is the fix.
+    // #2174 PROOF OF FAILURE ON MAIN — the second physical tap.
+    //
+    // The bug is NOT a passive ghost click Playwright can observe
+    // on its own; it is a SECOND gesture on the re-rendered shared
+    // node that `main.js`'s settle gate is supposed to drop. On
+    // `main` the `return-to-io` handler never stamps
+    // `recognitionEnteredAt`, so the gate `now - entered >=
+    // RECOGNITION_SETTLE_MS` is trivially true and the second tap
+    // commits BLUNT. On the fixed branch the stamp lives inside
+    // `stampRecognitionEntryIfReturningToIo` (inputAdapters.js) and
+    // the gate drops this second tap.
+    //
+    // We perform the second tap FORCEFULLY on `#deliverButton` so
+    // the test does not care whether the renderer disabled the
+    // button mid-settle on the fix branch — Playwright's `force`
+    // bypasses the actionability check and dispatches the event
+    // regardless, which is exactly what the iOS pointerup/click
+    // duplicate does in the wild. On `main` this lands as a BLUNT
+    // tone commit; on the fix it is dropped by the settle gate.
+    await deliverButton.tap({ force: true });
+
+    // Immediate observable: on `main` the blunt reply surfaces in
+    // `#line` once the gate passes the second tap through. We
+    // poll across the full settle window so a slow render on
+    // underpowered CI hardware cannot false-pass by sampling too
+    // early. On the fix branch the gate holds and this stays
+    // absent for the whole window.
     await assertBluntReplyAbsentAcrossSettleWindow(page);
 
     // Now explicitly choose the EVASIVE tone through its dedicated
