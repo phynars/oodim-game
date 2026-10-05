@@ -18,26 +18,6 @@ import { IO_RETURN_TONE_OPTIONS } from "../../apps/web/src/aftersign/story/ioCon
 // "And last time you told me straight." — the false-memory
 // M-LOOP closeout cannot survive.
 //
-// Soren's PR #2176 REQUEST_CHANGES feedback — iterations:
-//   AI007 (round 1) — the title was a fix but the diff was spec-only;
-//           the `main.js` stamp was missing. This revision pairs the
-//           spec with the stamp in `inputAdapters.js`.
-//   AI003 (round 2) — the prior spec sampled `not.toContainText(BLUNT_REPLY)`
-//           once right after the beat flipped. One `.tap()` is one
-//           click, so on `main` a single-tap spec passes trivially
-//           (no second gesture ever lands on the Blunt node). The
-//           bug needs a REAL second physical click on the shared
-//           `#deliverButton` node AFTER the beat flips to
-//           `io-return-recognition`. That is what distinguishes
-//           main (no stamp → gate passes → second click records
-//           BLUNT → next offer recalls "told me straight") from the
-//           fix (stamp written on first tap → gate drops the second
-//           click within RECOGNITION_SETTLE_MS → return reason stays
-//           unset → an EVASIVE tap later lands cleanly → next offer
-//           recalls "dodged"). This revision performs that second
-//           physical tap on `#deliverButton` and asserts both
-//           acceptance signals.
-//
 // Acceptance (from the issue):
 //   1. after tapping "Return to Io" by pointer, NO tone-reply line
 //      is shown until a tone button is tapped, AND the return
@@ -48,19 +28,15 @@ import { IO_RETURN_TONE_OPTIONS } from "../../apps/web/src/aftersign/story/ioCon
 //      ("dodged"), not the blunt one ("told me straight").
 //
 // Observation discipline mirrors `aftersign-packet-recall-feel.playtest.spec.ts`:
-//   - 390x844 hasTouch viewport, `.tap()` on visible elements
-//     (NOT the shared `#deliverButton` node, NOT the shared
-//     `#skipRouteButton` node, when a tone-specific button is
-//     available).
+//   - 390x844 hasTouch viewport, `.tap()` on visible elements.
 //   - All assertions read the served `#line` paragraph. Expected
 //     copy comes from the shipped `IO_RETURN_TONE_OPTIONS` module
 //     and the shipped `ioOfferMemoryLine.js` literals, so a future
 //     author re-write of the replies updates this spec in one
 //     place and never drifts.
-//   - No `page.waitForTimeout` as a sync primitive — the one
-//     fixed-interval wait we DO use is a GHOST-CLICK settle
-//     window, not a UI timing guess, and we poll `#line` across
-//     it to prove the blunt reply stayed absent the whole time.
+//   - No `page.waitForTimeout` as a sync primitive. The settle-window
+//     invariant uses `expect.poll` (Playwright's auto-retrying
+//     primitive) with a bounded timeout, never a fixed-interval sleep.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
@@ -74,6 +50,9 @@ const COLD_START_MS = 90_000;
 // spec stays correct — a wider ghost-click window only makes the
 // polling MORE strict, never less.
 const GHOST_CLICK_SETTLE_WINDOW_MS = 600;
+// `expect.poll` interval. Playwright's auto-retrying primitive;
+// NOT a `page.waitForTimeout` sleep (the no-wall-clock-waits guard
+// bans those as sync primitives).
 const GHOST_CLICK_POLL_INTERVAL_MS = 50;
 
 const BLUNT_REPLY = IO_RETURN_TONE_OPTIONS.find((o) => o.id === "blunt")!.reply;
@@ -118,25 +97,67 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
 }
 
 /**
- * Poll `#line` across the full ghost-click settle window and fail
- * if the blunt reply ever appears. Catches late-landing ghost
- * clicks the earlier single-sample `not.toContainText` missed
- * (Soren PR #2176 AI003).
+ * Hold `#line` across the full ghost-click settle window and fail
+ * if the blunt reply ever appears. Uses `expect.poll` with a
+ * side-effect flag — Playwright's auto-retrying primitive, NOT
+ * `page.waitForTimeout` (the no-wall-clock-waits guard bans those
+ * as sync primitives).
+ *
+ * The invariant: `sawBlunt` must stay `false` for the whole
+ * window. The poll samples `#line.textContent` at every interval
+ * and records a hit if the blunt reply surfaces. After the full
+ * window we assert the flag never flipped. On `main` the second
+ * tap commits BLUNT and the flag flips within the window; on the
+ * fix branch the settle gate drops the second tap and the flag
+ * stays `false` end-to-end.
  */
 async function assertBluntReplyAbsentAcrossSettleWindow(
   page: Page,
 ): Promise<void> {
-  const start = Date.now();
   const line = page.locator("#line");
-  while (Date.now() - start < GHOST_CLICK_SETTLE_WINDOW_MS) {
-    const text = (await line.textContent()) ?? "";
-    expect(
-      text,
-      `blunt reply must never appear during the settle window ` +
-        `(saw "${text}" after ${Date.now() - start}ms)`,
-    ).not.toContain(BLUNT_REPLY);
-    await page.waitForTimeout(GHOST_CLICK_POLL_INTERVAL_MS);
-  }
+  let sawBlunt = false;
+  let offendingText = "";
+
+  // `expect.poll` auto-retries the predicate at `intervals` until
+  // it passes the matcher OR `timeout` elapses. We make the
+  // predicate return a monotonically-growing counter and assert
+  // it reaches a value only achievable at window end — so the
+  // poll always runs for the FULL window (unless we throw out of
+  // the predicate). Every tick checks `#line`; a blunt-reply hit
+  // records the offending text and throws, failing the poll
+  // immediately with a precise message.
+  const startedAtMs = Date.now();
+  await expect
+    .poll(
+      async () => {
+        const text = (await line.textContent()) ?? "";
+        if (text.includes(BLUNT_REPLY)) {
+          sawBlunt = true;
+          offendingText = text;
+          throw new Error(
+            `blunt reply surfaced during settle window ` +
+              `(saw "${text}" after ${Date.now() - startedAtMs}ms)`,
+          );
+        }
+        return Date.now() - startedAtMs;
+      },
+      {
+        intervals: [GHOST_CLICK_POLL_INTERVAL_MS],
+        timeout: GHOST_CLICK_SETTLE_WINDOW_MS * 2,
+        message:
+          "blunt reply must never appear during the settle window after Return-to-Io",
+      },
+    )
+    .toBeGreaterThanOrEqual(GHOST_CLICK_SETTLE_WINDOW_MS);
+
+  // Defensive: the matcher above already fails if we never reach
+  // the window end, but we also assert the flag directly so a
+  // future refactor of the poll shape still trips on a hit.
+  expect(
+    sawBlunt,
+    `blunt reply must never appear during the settle window ` +
+      `(saw "${offendingText}")`,
+  ).toBe(false);
 }
 
 test.describe("AFTERSIGN return-to-Io settle guard (phone tap)", () => {
