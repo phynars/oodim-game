@@ -3,6 +3,21 @@ import { test, expect, type Page } from "@playwright/test";
 // AFTERSIGN served-page regressions for #2174 and #2181.
 // A visible Return to Io tap must never become a Blunt return when the
 // reused #deliverButton is restamped during the beat transition.
+//
+// Scope note (PR #2183 review follow-up — AI003):
+// #2181's bug is a sub-frame race between the physical pointerup on
+// `#deliverButton` and the beat flip that re-stamps the SAME DOM node
+// with `data-choice-id="choose-return-tone"` + `data-return-reason="blunt"`.
+// Playwright's `tap()` fires discrete events that don't participate in
+// that race — a `tap()`-driven round-2 spec cannot reproduce the silent
+// commit, and this file is NOT trying to. The round-2 test below
+// documents the SHAPE invariant on the normal path (durable
+// `returnReason` survives the next-packet reset, no stale
+// `pendingReturnReason` is carried, all three tone buttons present);
+// the SOURCE-LEVEL guard that the next-packet reset actually clears
+// the race's inputs (`recognitionEnteredAt`, `pendingReturnReason`)
+// lives in `apps/web/src/aftersign/returnToIoNextPacketReset.test.ts`
+// (vitest, red on `main`, green on head).
 
 type ReturnReasonSnapshot = {
   scene?: { beat?: string };
