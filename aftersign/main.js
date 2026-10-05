@@ -3438,10 +3438,19 @@ const choose = async (choiceId) => {
     // for beat timing elsewhere in this file.
     //
     // #2174: the input adapter no longer writes `state.player.returnReason`
-    // on click — it stages `state.interaction.pendingReturnReason`, and the
-    // reason is committed HERE, only after both gates pass. A rejected
-    // same-gesture tap therefore leaves `returnReason` untouched (null),
-    // so no tone reply / next-offer recall can leak from it.
+    // on click — ALL THREE return-surface buttons (acknowledge / skip /
+    // deliver) stage into `state.interaction.pendingReturnReason`, and the
+    // reason is committed HERE, only after BOTH the `beat` guard AND the
+    // `RECOGNITION_SETTLE_MS` settle gate below pass. For the settle gate
+    // to actually reject the same-gesture "Return to Io" → "Blunt return"
+    // reinterpretation, `state.interaction.recognitionEnteredAt` must be
+    // stamped on every path into `io-return-recognition` — the
+    // `return-to-io` choice stamps it inside the input-adapter click
+    // handler (see `stampRecognitionEntryIfReturnToIo` in inputAdapters.js);
+    // the `deliverPacket()` setTimeout path stamps it at its own setBeat
+    // site. The pending reason is CLEARED unconditionally on entry here,
+    // so a stale stage from a rejected gesture never persists past the
+    // next `choose-return-tone` dispatch.
     const pendingReason = state.interaction.pendingReturnReason ?? null;
     state.interaction.pendingReturnReason = null;
     if (state.scene.beat !== "io-return-recognition") {
