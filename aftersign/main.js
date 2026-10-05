@@ -3436,6 +3436,23 @@ const choose = async (choiceId) => {
     // `_runtime.audio.*` fields exist), so a frame-index gate would
     // be dead code. `performance.now()` is monotonic and already used
     // for beat timing elsewhere in this file.
+    //
+    // #2174: the input adapter no longer writes `state.player.returnReason`
+    // on click — ALL THREE return-surface buttons (acknowledge / skip /
+    // deliver) stage into `state.interaction.pendingReturnReason`, and the
+    // reason is committed HERE, only after BOTH the `beat` guard AND the
+    // `RECOGNITION_SETTLE_MS` settle gate below pass. For the settle gate
+    // to actually reject the same-gesture "Return to Io" → "Blunt return"
+    // reinterpretation, `state.interaction.recognitionEnteredAt` must be
+    // stamped on every path into `io-return-recognition` — the
+    // `return-to-io` choice stamps it inside the input-adapter click
+    // handler (see `stampRecognitionEntryIfReturnToIo` in inputAdapters.js);
+    // the `deliverPacket()` setTimeout path stamps it at its own setBeat
+    // site. The pending reason is CLEARED unconditionally on entry here,
+    // so a stale stage from a rejected gesture never persists past the
+    // next `choose-return-tone` dispatch.
+    const pendingReason = state.interaction.pendingReturnReason ?? null;
+    state.interaction.pendingReturnReason = null;
     if (state.scene.beat !== "io-return-recognition") {
       return;
     }
@@ -3445,6 +3462,13 @@ const choose = async (choiceId) => {
       && performance.now() - enteredAt < RECOGNITION_SETTLE_MS
     ) {
       return;
+    }
+    if (
+      typeof pendingReason === "string"
+      && IO_RETURN_TONE_OPTIONS.some((o) => o.id === pendingReason)
+    ) {
+      state.player.returnReason = pendingReason;
+      markStateDirty();
     }
     setBeat("return-tone-choice");
     // #1234: the tone the player just struck is marked "for later

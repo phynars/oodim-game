@@ -224,16 +224,51 @@ export const attachRuntimeInputAdapters = ({
     packetPressY = null;
   });
 
+  // #2174: all three return-surface buttons (acknowledgeRouteButton,
+  // skipRouteButton, deliverButton) are DOM-reused across beats — the
+  // same `<button>` element renders "Acknowledge route" at kiosk,
+  // "Return to Io" at `packet-delivered`, and one of the three tone
+  // labels ("Kind / Evasive / Blunt return") at `io-return-recognition`.
+  // A same-gesture tap that commits "Return to Io" can land on the
+  // freshly-rendered tone control (its `data-return-reason` just got
+  // stamped) and reinterpret the player's "Return to Io" tap as a
+  // tone commit. Any direct `state.player.returnReason = …` write in
+  // these handlers races the beat flip and produces a false memory.
+  //
+  // The fix is a two-step stage/commit axis shared by all three
+  // handlers: here we only STAGE the DOM-read reason onto
+  // `state.interaction.pendingReturnReason`. The pending reason is
+  // COMMITTED in main.js's `choose === "choose-return-tone"` branch,
+  // AFTER both the `beat === "io-return-recognition"` guard and the
+  // `RECOGNITION_SETTLE_MS` settle gate pass. On the `return-to-io`
+  // path we additionally stamp `state.interaction.recognitionEnteredAt`
+  // right here so the settle gate has a reliable `now - entry` delta
+  // on EVERY path into `io-return-recognition` (the issue's root fix).
+  // A stale stage from a rejected gesture never persists: the commit
+  // branch clears `pendingReturnReason` unconditionally on entry.
+  const stagePendingReturnReason = (reason) => {
+    state.interaction.pendingReturnReason = reason || null;
+  };
+
+  const stampRecognitionEntryIfReturnToIo = (choiceId) => {
+    // Stamp `recognitionEnteredAt` on EVERY path that leads into
+    // `io-return-recognition` (issue #2174 acceptance). The
+    // `return-to-io` choice is the one path the original issue called
+    // out as unstamped; the `deliverPacket()` setTimeout path in
+    // main.js is the other and should stamp at its own site.
+    if (choiceId !== "return-to-io") return;
+    if (!state || !state.interaction) return;
+    state.interaction.recognitionEnteredAt = performance.now();
+  };
+
   acknowledgeRouteButton.addEventListener("click", () => {
     const reasonFromAck = readReturnReasonFromTarget(
       acknowledgeRouteButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    if (reasonFromAck) {
-      state.player.returnReason = reasonFromAck;
-      markStateDirty();
-    }
+    stagePendingReturnReason(reasonFromAck);
     const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
+    stampRecognitionEntryIfReturnToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);
     }
@@ -245,11 +280,9 @@ export const attachRuntimeInputAdapters = ({
       skipRouteButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    if (reasonFromSkip) {
-      state.player.returnReason = reasonFromSkip;
-      markStateDirty();
-    }
+    stagePendingReturnReason(reasonFromSkip);
     const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
+    stampRecognitionEntryIfReturnToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);
     }
@@ -261,11 +294,9 @@ export const attachRuntimeInputAdapters = ({
       deliverButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    if (reasonFromDeliver) {
-      state.player.returnReason = reasonFromDeliver;
-      markStateDirty();
-    }
+    stagePendingReturnReason(reasonFromDeliver);
     const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
+    stampRecognitionEntryIfReturnToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);
     }
