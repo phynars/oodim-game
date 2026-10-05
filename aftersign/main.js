@@ -3338,11 +3338,21 @@ const choose = async (choiceId) => {
       };
       state.delivery.outcome = "unknown";
       state.player.secondAction = null;
-      // A return posture belongs to one completed delivery only. Clear it
-      // before the next packet can reach the reused return surface: otherwise
-      // a stale or synthesized return-tone click can make the second return
-      // look already chosen.
-      state.player.returnReason = null;
+      // The TRANSIENT return-tone interaction (pending click + the
+      // recognition-beat entry stamp) belongs to one completed delivery
+      // only. Clear those before the next packet can reach the reused
+      // return surface: otherwise a stale or synthesized return-tone click
+      // can make the second return look already chosen.
+      //
+      // `state.player.returnReason` is DURABLE memory of the posture the
+      // player posted on the last delivery — Io's second-packet offer
+      // copy reads it to diverge round 2's line from round 1's
+      // (see `selectIoSecondPacketCopyForReturnReason` in
+      // `aftersign/src/ioSecondPacketCopy.ts`, and
+      // `m-loop-two-round-divergence.playtest.spec.ts`). Nulling it here
+      // collapses round 2 back onto the first-visit default tone and the
+      // two rounds read identically. Keep it; `return-to-io` restamps a
+      // new reason on the next completed delivery.
       state.interaction.pendingReturnReason = null;
       state.interaction.recognitionEnteredAt = null;
       // #1395: the next-packet loop is a NEW packet-tap gesture, not a
