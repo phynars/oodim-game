@@ -888,8 +888,25 @@ const offeredJobs = document.querySelector("#offeredJobs");
 // Keep the dynamically-built offer board inside a 390px touch viewport.
 // The tray is a vertical choice list, so each job owns a full row instead
 // of extending a horizontal flex row beyond the screen edge.
-const applyPhoneOfferLayout = () => {
-  if (!offeredJobs || window.innerWidth > 480) return;
+//
+// `visible` is forwarded from the caller so these styles are stamped
+// ONLY while the tray is on-beat (packet-offered). On every other beat
+// the tray is hidden by `setOfferTrayVisibility` and we clear the inline
+// styles so a persistent `max-height: 42vh` / `overflow: auto` can't
+// clip a sibling surface (e.g. the `#deliverButton` re-stamp used by
+// the `return-to-io` → `io-return-recognition` path).
+const applyPhoneOfferLayout = (visible) => {
+  if (!offeredJobs) return;
+  const phoneWidth = window.innerWidth <= 480;
+  if (!phoneWidth || !visible) {
+    offeredJobs.style.minWidth = "";
+    offeredJobs.style.maxWidth = "";
+    offeredJobs.style.overflowX = "";
+    offeredJobs.style.overflowY = "";
+    offeredJobs.style.maxHeight = "";
+    offeredJobs.style.overscrollBehavior = "";
+    return;
+  }
   offeredJobs.style.minWidth = "0";
   offeredJobs.style.maxWidth = "100%";
   offeredJobs.style.overflowX = "hidden";
@@ -2484,7 +2501,7 @@ const renderText = () => {
   });
   const isPacketOfferedBeat = offerTray.visible;
   if (offeredJobs) {
-    applyPhoneOfferLayout();
+    applyPhoneOfferLayout(isPacketOfferedBeat);
     setOfferTrayVisibility(offeredJobs, isPacketOfferedBeat);
     if (isPacketOfferedBeat) {
       // Soren review on PR #1396: the signal source must be a CAREER
