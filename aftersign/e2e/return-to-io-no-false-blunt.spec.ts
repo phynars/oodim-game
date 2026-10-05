@@ -89,6 +89,16 @@ test.describe("AFTERSIGN Return to Io does not silently record a blunt tone", ()
     await deliverFirstPacket(page);
     await tapChoice(page, "return-to-io");
     await assertUntonedRecognitionAfterReturn(page);
+
+    // Explicit tone taps must land on themselves — never silently blunt.
+    // The round-one defense is both: (a) return-to-io leaves the slot empty,
+    // and (b) a subsequent Evasive tap writes "evasive" and only "evasive".
+    await tapChoice(page, "choose-return-tone");
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "return-tone-evasive");
+    const afterEvasive = await snapshot(page);
+    expect(afterEvasive.player?.returnReason).toBe("evasive");
+    expect(afterEvasive.player?.returnReason).not.toBe("blunt");
   });
 
   test("round two: a touch tap on Return to Io leaves every return tone unconsumed", async ({ page }) => {
