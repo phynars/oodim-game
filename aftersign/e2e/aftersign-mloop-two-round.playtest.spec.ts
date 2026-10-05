@@ -38,30 +38,6 @@ async function expectFullyInsidePhone(page: Page, selector: string): Promise<voi
   expect(rect.bottom).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
 }
 
-// Walk one round from `packet-offered` (an offer tray button already
-// tapped and `data-aftersign-job-take="armed"`) through packet →
-// acknowledge → deliver → recognition → blunt tone → next-job →
-// deliver, landing back at `packet-offered` for the next round (or
-// terminating if there's no next round). This is the same gesture
-// loop a player repeats; sharing it between round one and round two
-// keeps the walk symmetric so a regression on EITHER round's
-// delivered-path still fails this spec.
-async function walkRoundThroughNextJob(page: Page): Promise<void> {
-  await page.locator("#packetButton").tap();
-  await waitForBeat(page, "packet-choice");
-  const acknowledgeRoute = page.locator('button[data-choice-id="acknowledge-kiosk"]');
-  await expect(acknowledgeRoute).toHaveText("Acknowledge route");
-  await acknowledgeRoute.tap();
-  await tapChoice(page, "deliver-packet");
-
-  await waitForBeat(page, "io-return-recognition");
-  await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
-  await waitForBeat(page, "return-tone-choice");
-  await tapChoice(page, "ask-for-next-job");
-  await waitForBeat(page, "io-next-job");
-  await tapChoice(page, "deliver-packet");
-}
-
 test.describe("AFTERSIGN M-LOOP round-two entry", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -87,7 +63,27 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
     await expect(firstRoundJob).toHaveCount(1);
     await firstRoundJob.tap();
-    await walkRoundThroughNextJob(page);
+
+    // Round-one walk: packet → acknowledge → deliver → recognition →
+    // blunt tone → next-job → deliver. Inlined (not extracted into a
+    // helper) because the served-divergence played-witness contract
+    // in `apps/web/src/aftersign/aftersignMloopServedDivergencePlaytestContract.test.ts`
+    // counts literal `waitForBeat(page, "io-return-recognition")`
+    // occurrences in the SOURCE text and requires >= 2. Collapsing
+    // this walk into a helper hides the beat behind a runtime call
+    // and reds the contract (PR #2184 re-review, Soren Vask).
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    const firstAcknowledgeRoute = page.locator('button[data-choice-id="acknowledge-kiosk"]');
+    await expect(firstAcknowledgeRoute).toHaveText("Acknowledge route");
+    await firstAcknowledgeRoute.tap();
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
 
     await waitForBeat(page, "packet-offered");
     const secondRoundTray = page.locator("#offeredJobs");
@@ -120,20 +116,36 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     // this spec ran and is the regression guard the reviewer flagged
     // in #2184 round two: if a refactor breaks night-transfer's
     // delivered path, this fails here before we ever touch the
-    // signed-receipt row.
+    // signed-receipt row. Walk inlined (see round-one comment above)
+    // to keep the beat literal visible in source.
     const nightTransfer = secondRoundTray.locator(
       'button[data-offered-job-id="job-night-transfer"]',
     );
     await expect(nightTransfer).toHaveText("Night transfer · medium risk");
     await nightTransfer.tap();
     await expect(nightTransfer).toHaveAttribute("data-aftersign-job-take", "armed");
-    await walkRoundThroughNextJob(page);
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    const nightTransferAcknowledgeRoute = page.locator(
+      'button[data-choice-id="acknowledge-kiosk"]',
+    );
+    await expect(nightTransferAcknowledgeRoute).toHaveText("Acknowledge route");
+    await nightTransferAcknowledgeRoute.tap();
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
 
     // Walk the SECOND round-two route — `job-signed-receipt` — which
     // is the row the stranger playtest in #2182 could not tap on
     // 390×844. Driving it the same way is the player-side proof the
     // phone fix works AND keeps the regression guard the reviewer
-    // wanted on BOTH round-two routes rather than one.
+    // wanted on BOTH round-two routes rather than one. Walk inlined
+    // (see round-one comment above) to keep the beat literal visible
+    // in source.
     await waitForBeat(page, "packet-offered");
     const thirdRoundTray = page.locator("#offeredJobs");
     const signedReceipt = thirdRoundTray.locator(
@@ -142,6 +154,19 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await expect(signedReceipt).toHaveText("Signed receipt · low risk");
     await signedReceipt.tap();
     await expect(signedReceipt).toHaveAttribute("data-aftersign-job-take", "armed");
-    await walkRoundThroughNextJob(page);
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    const signedReceiptAcknowledgeRoute = page.locator(
+      'button[data-choice-id="acknowledge-kiosk"]',
+    );
+    await expect(signedReceiptAcknowledgeRoute).toHaveText("Acknowledge route");
+    await signedReceiptAcknowledgeRoute.tap();
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
   });
 });
