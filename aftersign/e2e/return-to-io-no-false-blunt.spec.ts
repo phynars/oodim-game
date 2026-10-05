@@ -68,10 +68,35 @@ async function deliverFirstPacket(page: Page): Promise<void> {
   await waitForBeat(page, "packet-delivered");
 }
 
+// Round-one shape: the player has never tapped a return tone, so
+// `player.returnReason` is unset. All three tone buttons must be live.
 async function assertUntonedRecognitionAfterReturn(page: Page): Promise<void> {
   await waitForBeat(page, "io-return-recognition");
   const afterReturnToIo = await snapshot(page);
   expect(afterReturnToIo.player?.returnReason ?? null).toBeNull();
+  expect(afterReturnToIo.interaction?.pendingReturnReason ?? null).toBeNull();
+  await expect(
+    page.locator('button[data-return-reason]:not([disabled])'),
+  ).toHaveCount(3);
+}
+
+// Round-two shape: `player.returnReason` is DURABLE memory of the posture
+// posted on the prior delivery (Io's second-packet copy reads it to diverge
+// round 2 from round 1 — see `m-loop-two-round-divergence.playtest.spec.ts`
+// and `selectIoSecondPacketCopyForReturnReason`). The round-2 `Return to Io`
+// tap must NOT clobber it with a false blunt, and it must NOT null it: the
+// prior tone has to still read as the previous posture, and the fresh return
+// surface must still offer all three tones (so a new round-2 tone can be
+// chosen on top of the kept memory). The only transient slot (`pendingReturn
+// Reason`) is the one that must clear.
+async function assertRoundTwoReturnKeepsPriorTone(
+  page: Page,
+  priorTone: "kind" | "evasive" | "blunt",
+): Promise<void> {
+  await waitForBeat(page, "io-return-recognition");
+  const afterSecondReturnToIo = await snapshot(page);
+  expect(afterSecondReturnToIo.player?.returnReason ?? null).toBe(priorTone);
+  expect(afterSecondReturnToIo.interaction?.pendingReturnReason ?? null).toBeNull();
   await expect(
     page.locator('button[data-return-reason]:not([disabled])'),
   ).toHaveCount(3);
@@ -101,20 +126,31 @@ test.describe("AFTERSIGN Return to Io does not silently record a blunt tone", ()
     expect(afterEvasive.player?.returnReason).not.toBe("blunt");
   });
 
-  test("round two: a touch tap on Return to Io leaves every return tone unconsumed", async ({ page }) => {
+  test("round two: a touch tap on Return to Io keeps round-1's tone and never silently blunts", async ({ page }) => {
     test.setTimeout(SPEC_TIMEOUT_MS);
     await page.goto(`/aftersign/?slot=return-to-io-round-two-${Date.now()}`, {
       waitUntil: "load",
     });
 
+    // Round 1: deliver, Return to Io, then tap a REAL tone (kind) so
+    // round 1 posts durable return-tone memory. Round 2 must preserve
+    // that memory across the next-packet reset — this is exactly what
+    // `main.js`'s next-packet branch keeps (`state.player.returnReason`
+    // is durable, only `pendingReturnReason` + `recognitionEnteredAt`
+    // clear). If a future change nulls `returnReason` on the next-packet
+    // reset, this test will fail at the round-two assertion below.
     await deliverFirstPacket(page);
     await tapChoice(page, "return-to-io");
     await assertUntonedRecognitionAfterReturn(page);
-
-    // Choose an actual tone to reach Io's next-job surface, then take the
-    // second packet through the visible controls a player touches.
     await tapChoice(page, "choose-return-tone");
     await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "return-tone-kind");
+    const afterKindReturn = await snapshot(page);
+    expect(afterKindReturn.player?.returnReason).toBe("kind");
+
+    // Move to the next-job surface, take the second packet, then run
+    // through the round-two delivery via the visible controls a player
+    // actually touches on a phone.
     await tapChoice(page, "ask-for-next-job");
     await waitForBeat(page, "io-next-job");
     await tapChoice(page, "accept-second-packet");
@@ -129,9 +165,16 @@ test.describe("AFTERSIGN Return to Io does not silently record a blunt tone", ()
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "packet-delivered");
 
+    // Round-two Return to Io: the one tap under test. Nothing is staged
+    // yet (no tone button has been pressed on this beat), and the prior
+    // "kind" tone must survive — but the surface must still offer all
+    // three tone buttons so round 2 can post a new posture if the player
+    // chooses one. A silent commit to "blunt" would show up as either
+    // `returnReason === "blunt"` or as the Blunt tone button missing.
     const beforeReturn = await snapshot(page);
-    expect(beforeReturn.player?.returnReason ?? null).not.toBe("blunt");
+    expect(beforeReturn.player?.returnReason).toBe("kind");
+    expect(beforeReturn.interaction?.pendingReturnReason ?? null).toBeNull();
     await tapChoice(page, "return-to-io");
-    await assertUntonedRecognitionAfterReturn(page);
+    await assertRoundTwoReturnKeepsPriorTone(page, "kind");
   });
 });
