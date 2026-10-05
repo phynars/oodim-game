@@ -3338,6 +3338,13 @@ const choose = async (choiceId) => {
       };
       state.delivery.outcome = "unknown";
       state.player.secondAction = null;
+      // A return posture belongs to one completed delivery only. Clear it
+      // before the next packet can reach the reused return surface: otherwise
+      // a stale or synthesized return-tone click can make the second return
+      // look already chosen.
+      state.player.returnReason = null;
+      state.interaction.pendingReturnReason = null;
+      state.interaction.recognitionEnteredAt = null;
       // #1395: the next-packet loop is a NEW packet-tap gesture, not a
       // route-choice re-run. `ask-for-next-job` → `io-next-job` →
       // `deliver-packet` here must re-enter at `packet-offered` (the
