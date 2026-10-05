@@ -77,12 +77,29 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await expectFullyInsidePhone(page, 'button[data-offered-job-id="job-night-transfer"]');
     await expectFullyInsidePhone(page, 'button[data-offered-job-id="job-signed-receipt"]');
 
-    // This is the player outcome: the previously clipped second control is
-    // tapped through the actual touch surface, not the game-state harness.
+    // The second route (`job-signed-receipt`) is the one the stranger
+    // playtest in #2182 could not reach on 390×844. Tapping it is the
+    // player-side proof the phone fix works; walking it through the same
+    // packet → acknowledge → deliver → recognition → return-tone →
+    // next-job sequence that the old `job-night-transfer` branch played
+    // keeps round-two regression coverage so a future refactor breaking
+    // the signed-receipt route still fails this spec.
     const signedReceipt = secondRoundTray.locator(
       'button[data-offered-job-id="job-signed-receipt"]',
     );
+    await expect(signedReceipt).toHaveText("Signed receipt · low risk");
     await signedReceipt.tap();
     await expect(signedReceipt).toHaveAttribute("data-aftersign-job-take", "armed");
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+
+    await waitForBeat(page, "io-return-recognition");
+    await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
+    await tapChoice(page, "deliver-packet");
   });
 });
