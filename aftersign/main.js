@@ -885,6 +885,35 @@ const routeRiskChoice = document.querySelector("#routeRiskChoice");
 // stamps one `<button id="job-offer-<jobId>">` per selected job id at
 // the packet-offered beat; hidden + cleared off-beat.
 const offeredJobs = document.querySelector("#offeredJobs");
+// Keep the dynamically-built offer board inside a 390px touch viewport.
+// The tray is a vertical choice list, so each job owns a full row instead
+// of extending a horizontal flex row beyond the screen edge.
+//
+// `visible` is forwarded from the caller so these styles are stamped
+// ONLY while the tray is on-beat (packet-offered). On every other beat
+// the tray is hidden by `setOfferTrayVisibility` and we clear the inline
+// styles so a persistent `max-height: 42vh` / `overflow: auto` can't
+// clip a sibling surface (e.g. the `#deliverButton` re-stamp used by
+// the `return-to-io` → `io-return-recognition` path).
+const applyPhoneOfferLayout = (visible) => {
+  if (!offeredJobs) return;
+  const phoneWidth = window.innerWidth <= 480;
+  if (!phoneWidth || !visible) {
+    offeredJobs.style.minWidth = "";
+    offeredJobs.style.maxWidth = "";
+    offeredJobs.style.overflowX = "";
+    offeredJobs.style.overflowY = "";
+    offeredJobs.style.maxHeight = "";
+    offeredJobs.style.overscrollBehavior = "";
+    return;
+  }
+  offeredJobs.style.minWidth = "0";
+  offeredJobs.style.maxWidth = "100%";
+  offeredJobs.style.overflowX = "hidden";
+  offeredJobs.style.overflowY = "auto";
+  offeredJobs.style.maxHeight = "42vh";
+  offeredJobs.style.overscrollBehavior = "contain";
+};
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const resetButton = document.querySelector("#resetButton");
@@ -2472,6 +2501,7 @@ const renderText = () => {
   });
   const isPacketOfferedBeat = offerTray.visible;
   if (offeredJobs) {
+    applyPhoneOfferLayout(isPacketOfferedBeat);
     setOfferTrayVisibility(offeredJobs, isPacketOfferedBeat);
     if (isPacketOfferedBeat) {
       // Soren review on PR #1396: the signal source must be a CAREER
@@ -2669,6 +2699,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           button.setAttribute("aria-label", mloopAction.label);
           stampJobOfferData(button, offer.id);
           button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
+          if (window.innerWidth <= 480) {
+            button.style.boxSizing = "border-box";
+            button.style.width = "100%";
+            button.style.minWidth = "0";
+            button.style.whiteSpace = "normal";
+          }
           // PR #1549 — resolve + stamp the frozen aftersign-job-take
           // feel row onto the offer button. Same shape as
           // `applyFlagshipTapConfirmFeel` above: the render pass
@@ -2750,13 +2786,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
                 if (!acceptedNode) {
                   acceptedNode = document.createElement("p");
                   acceptedNode.id = "ioJobAcceptedLine";
-                  // The acknowledgement is a sibling overlay, not a new flex
-                  // item: adding it to the tray's flow shifted the offer the
-                  // player just tapped while its press was recovering.
-                  offeredJobsRoot.style.position = "relative";
-                  acceptedNode.style.position = "absolute";
-                  acceptedNode.style.inset = "0 auto auto 0";
-                  acceptedNode.style.margin = "0";
+                  // Keep the receipt in normal flow. An absolute overlay
+                  // covered the route column and could run beyond a phone's
+                  // right edge while the pressed offer recovered.
+                  acceptedNode.style.margin = "6px 0 0";
+                  acceptedNode.style.maxWidth = "100%";
+                  acceptedNode.style.overflowWrap = "anywhere";
                   acceptedNode.style.pointerEvents = "none";
                   offeredJobsRoot.appendChild(acceptedNode);
                 }

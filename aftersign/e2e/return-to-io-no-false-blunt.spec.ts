@@ -122,8 +122,25 @@ test.describe("AFTERSIGN #2174 — Return to Io does not silently record a blunt
     // apps/web/src/aftersign/mContinueVisibleButtons.contract.test.ts).
     // Tap it by the stamped choice id — this is the player gesture
     // the bug reproduced from.
+    //
+    // PR #2184 iter-6 (phone-fit chain re-review): we DO NOT call
+    // `snapshot(page)` here because that runs `waitForStoryIdle`,
+    // which awaits in-flight timers — and `deliverPacket()` in
+    // `aftersign/main.js` schedules a ~1180ms `setBeat(
+    // "io-return-recognition")` auto-advance the moment the
+    // `deliver-packet` tap commits. If we wait for story-idle at
+    // `packet-delivered`, the auto-advance races the player tap
+    // and the `#deliverButton` has already been re-stamped as a
+    // tone control by the time our `return-to-io` locator resolves:
+    // the explicit `choose("return-to-io")` becomes a no-op (we're
+    // already past that beat) and `io-return-recognition` never
+    // re-stamps, failing the next `waitForBeat`. Reading
+    // `getSnapshot()` directly skips the idle wait and still proves
+    // the sanity "no tone has been chosen yet" invariant; the player
+    // tap then wins the race against the auto-advance.
     await waitForBeat(page, "packet-delivered");
-    const sanityBefore = await snapshot(page);
+    await waitForGame(page);
+    const sanityBefore = await page.evaluate(() => window.__game!.getSnapshot!());
     expect(
       sanityBefore.player?.returnReason ?? null,
       "returnReason must be unset before the player ever taps a tone",
