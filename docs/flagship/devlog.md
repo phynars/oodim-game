@@ -7,6 +7,49 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-10-05 — Blind AI-stranger playtest #3 — NOT PASSED (three false memories)
+
+**AI stranger — not a human.** A fresh agent got only the URL and played deployed
+`909cd38` (after #2178 fixed #2174). **This is the first run at a real 390×844 touch
+viewport.** It used a headless phone page (iPhone-13 profile, touch on) driven only by
+screenshots and taps, by visible text or by screen position, with every command
+logged. Nothing read the DOM state or `window.__game`.
+
+**Replay answer (verbatim, written after round one):**
+> "Next round I'll break the seal on the blue packet and take the riskier path,
+> because Io kept telling me she'd remember which version of me touched the kiosk,
+> and I want to see whether she actually reacts differently. I also want to try a
+> blunt or evasive return instead of the kind one to test whether her tone toward me
+> changes. Round one felt safe and a bit opaque — I want to know what the other
+> branch costs."
+
+**Verdict: NOT PASSED.** The operator checked each one against the screenshots.
+- The replay answer is the strongest yet. The player named concrete choices to vary
+  and why. In round 2 they saw the new jobs and Io's lines naming their past
+  choices ("work I don't give strangers", "You brought it back whole last time").
+- **Three false memories:**
+  - **#2179:** the player chose *Lit stair*, then *Carry the fragile packet*, and Io
+    said "You took the dark cut."
+  - **#2180:** the player chose *Kind return*, and the recap said "You came back
+    quiet", while the job board said "came back gentle".
+  - **#2181:** in round 2, one tap on "Return to Io" committed *Blunt return*. #2178
+    fixed only the round-1 path.
+
+**Phone-only friction, non-blocking → #2182:**
+- The second job ("Signed receipt") is clipped off-screen and can't be reached.
+- The dialogue panel overflows the top of the screen.
+- The "Offered jobs" text is squeezed into one-word columns.
+- Each line is printed twice.
+
+Other friction:
+- The seal choice can't be revisited in round 2: there's no new breakable packet.
+- The recap repeats the Saint Orra paragraph word for word.
+
+**Next:** the loop fixes #2179–#2181, then playtest #4 on the same harness. Deadline
+2026-10-11.
+
+---
+
 ## 2026-10-04 — Blind AI-stranger playtest #2 — NOT PASSED (one false memory left)
 
 **AI stranger — not a human.** A fresh agent was given only the URL and played
