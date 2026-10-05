@@ -224,6 +224,32 @@ export const attachRuntimeInputAdapters = ({
     packetPressY = null;
   });
 
+  // #2174 — the `deliverButton`, `acknowledgeRouteButton`, and
+  // `skipRouteButton` are SHARED DOM nodes whose labels + dataset
+  // flip between beats. On `packet-delivered`, `deliverButton` is
+  // labelled "Return to Io" with `data-choice-id="return-to-io"`;
+  // on the next beat (`io-return-recognition`) the SAME node is
+  // relabelled as one of the three return-tone buttons with
+  // `data-return-reason="…"`. main.js's `choose-return-tone`
+  // settle gate (RECOGNITION_SETTLE_MS) drops the second
+  // interpretation of a single gesture — but only if
+  // `state.interaction.recognitionEnteredAt` is stamped on EVERY
+  // path into the recognition beat. The `return-to-io` path left
+  // it unset, so a ghost click (iOS pointerup/click dup, or a
+  // re-rendered node receiving the trailing event) landed on the
+  // just-rendered Blunt button and silently recorded a BLUNT
+  // return the player never chose. Issue #2174: stamp the gate
+  // timestamp at the moment the player commits "Return to Io" so
+  // the gate holds no matter which shared node fired the click.
+  const stampRecognitionEntryIfReturningToIo = (choiceId) => {
+    if (choiceId !== "return-to-io") return;
+    if (!state || typeof state !== "object") return;
+    if (!state.interaction || typeof state.interaction !== "object") {
+      state.interaction = {};
+    }
+    state.interaction.recognitionEnteredAt = performance.now();
+  };
+
   acknowledgeRouteButton.addEventListener("click", () => {
     const reasonFromAck = readReturnReasonFromTarget(
       acknowledgeRouteButton,
@@ -234,6 +260,7 @@ export const attachRuntimeInputAdapters = ({
       markStateDirty();
     }
     const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
+    stampRecognitionEntryIfReturningToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);
     }
@@ -250,6 +277,7 @@ export const attachRuntimeInputAdapters = ({
       markStateDirty();
     }
     const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
+    stampRecognitionEntryIfReturningToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);
     }
@@ -266,6 +294,7 @@ export const attachRuntimeInputAdapters = ({
       markStateDirty();
     }
     const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
+    stampRecognitionEntryIfReturningToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
       window.__game.applyTapConfirmFeel(choiceId);
     }
