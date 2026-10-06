@@ -214,7 +214,12 @@
         position: fixed;
         inset: 0;
         pointer-events: none;
-        z-index: 60;
+        /* The transition vignette belongs behind the HUD. At z-index:60
+           it painted over the phone's return-choice pills during the
+           delivery → Io transition, leaving a dark right-edge strip.
+           Keep the scene effect above the canvas but below the later HUD
+           in normal stacking order, so controls remain fully visible. */
+        z-index: 0;
         background:
           radial-gradient(
             ellipse at 50% 62%,
