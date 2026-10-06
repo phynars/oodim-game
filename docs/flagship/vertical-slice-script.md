@@ -184,7 +184,7 @@ Packet outcome is the primary recognition line when it is the only remembered fa
 
 **If previous packet outcome was opened (single-memory):**
 
-**Io:** “You came back. The seal did not. I can use one of those facts.”
+**Io:** “You made it back. The seal did not. I can use one of those facts.”
 
 When BOTH packet outcome and route behavior are remembered, Io chains both facts into one dispatcher line:
 
@@ -257,8 +257,8 @@ If these labels ever obscure player understanding on phone, clarity wins. The fa
 
 - A first-session sealed delivery produces the sealed same-session Io response and persists the sealed memory sentence.
 - A first-session opened delivery produces the opened same-session Io response and persists the opened memory sentence.
-- A returning session after sealed delivery displays: “You came back. So did the blue seal, unbroken. That makes two reasons to trust you.”
-- A returning session after opened delivery displays: “You came back. The seal did not. I can use one of those facts.”
+- A returning session after sealed delivery displays: “You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.”
+- A returning session after opened delivery displays: “You made it back. The seal did not. I can use one of those facts.”
 - A returning-session line fails harness validation if it references the wrong packet outcome.
 - Route-behavior lines never replace the packet outcome line.
 - A returning session with no remembered facts displays the bare-return line: “You came back. That is the only fact I have on you, and it is the one I weigh heaviest.”

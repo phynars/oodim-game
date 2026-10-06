@@ -34,11 +34,11 @@ If a feature does not make that sentence stronger, more reliable, or more beauti
 
 Sealed packet:
 
-> “You came back. So did the blue seal, unbroken. That makes two reasons to trust you.”
+> “You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.”
 
 Opened packet:
 
-> “You came back. The seal did not. I can use one of those facts.”
+> “You made it back. The seal did not. I can use one of those facts.”
 
 These are the first two lines the entire product must protect. The harness should fail if the wrong line is reachable for the saved outcome.
 

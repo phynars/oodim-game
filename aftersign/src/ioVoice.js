@@ -22,7 +22,10 @@
  * stem and let an extensionless import resolve either file
  * non-deterministically (Soren's second blocker on PR #1829).
  */
-import { IO_SEALED_RETURN_LINE } from "./ioSealedReturn.ts";
+import {
+  IO_OPENED_RETURN_LINE,
+  IO_SEALED_RETURN_LINE,
+} from "./ioSealedReturn.ts";
 
 export const IO_VOICE = Object.freeze({
   greeting: "Night Post is closed to excuses. Open to couriers.",
@@ -31,8 +34,7 @@ export const IO_VOICE = Object.freeze({
     "Lanterns mark the dry boards. Brass signs mark the honest ones. Follow both.",
   returned: Object.freeze({
     sealed: IO_SEALED_RETURN_LINE,
-    opened:
-      "You came back. The seal did not. I can use one of those facts.",
+    opened: IO_OPENED_RETURN_LINE,
     unknown: "You came back. One fact isn't a history. Bring me the second.",
   }),
   listened: "You listened before you ran. Rare habit. Keep it.",

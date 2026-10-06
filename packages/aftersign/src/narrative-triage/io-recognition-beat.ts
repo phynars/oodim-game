@@ -55,14 +55,14 @@ export interface IoNextJobBeat extends IoSliceLine {
 
 export const FIRST_PACKET_DELIVERY_ID = 'io-blue-packet';
 const PLAYER_RETURNED_MEMORY = 'the player returned';
-export const IO_OPENED_SEAL_LINE = 'You came back. The seal did not. I can use one of those facts.';
+export const IO_OPENED_SEAL_LINE = 'You made it back. The seal did not. I can use one of those facts.';
 
 const makeBeat = (beat: IoRecognitionBeat): IoRecognitionBeat => beat;
 
 const PACKET_BEATS: Record<IoPacketMemoryOutcome, IoRecognitionBeat> = {
   sealed: makeBeat({
     id: 'io-return-blue-seal-unbroken',
-    line: 'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
+    line: 'You made it back. So did the blue seal, unbroken. Two facts. I can work with two.',
     remembers: [PLAYER_RETURNED_MEMORY, 'the player delivered the blue packet unopened'],
     requiredMemory: { packetOutcome: 'sealed' },
   }),

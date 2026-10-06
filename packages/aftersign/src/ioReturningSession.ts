@@ -1,4 +1,7 @@
-import { IO_SEALED_RETURN_LINE } from '../../../aftersign/src/ioSealedReturn.ts'
+import {
+  IO_OPENED_RETURN_LINE,
+  IO_SEALED_RETURN_LINE,
+} from '../../../aftersign/src/ioSealedReturn.ts'
 
 export type IoPacketOutcome = 'sealed' | 'opened' | 'withheld' | 'returned'
 export type IoRouteAttention = 'listened' | 'skipped'
@@ -24,7 +27,7 @@ export type IoReturningSessionLineKey =
 // Do not paraphrase; the harness asserts these strings verbatim.
 export const ioReturningSessionLines: Record<IoReturningSessionLineKey, string> = {
   sealedPacket: IO_SEALED_RETURN_LINE,
-  openedPacket: 'You came back. The seal did not. I can use one of those facts.',
+  openedPacket: IO_OPENED_RETURN_LINE,
   withheldPacket:
     'You came back with the packet still in your pocket. That is not nothing. It is not delivery.',
   returnedPacket:

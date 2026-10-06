@@ -53,7 +53,7 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
   openedReturn: {
     key: "openedReturn",
-    text: "You came back. The seal did not. I can use one of those facts.",
+    text: "You made it back. The seal did not. I can use one of those facts.",
     memorySentence: "Io remembers that the courier opened the blue packet.",
   },
   kindReturn: {

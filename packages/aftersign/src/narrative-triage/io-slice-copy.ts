@@ -73,7 +73,7 @@ export function ioReturningLine(memory: IoSliceMemory): IoLine {
   if (memory.packetOutcome === 'opened') {
     return {
       id: 'io.return.packetOpened',
-      text: 'You came back. The seal did not. I can use one of those facts.',
+      text: 'You made it back. The seal did not. I can use one of those facts.',
       remembers: memory.returnedAfterClose
         ? ['packetOutcome:opened', 'returnedAfterClose']
         : ['packetOutcome:opened'],

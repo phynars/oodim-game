@@ -31,10 +31,10 @@ describe("Aftersign Io first-scene dialogue", () => {
     // Canonical source: packages/aftersign/src/ioReturningSession.ts:25
     // and docs/flagship/vertical-slice-script.md:183.
     expect(getAftersignIoFirstSceneLine("sealedReturn").text).toBe(
-      "You came back. So did the blue seal, unbroken. That makes two reasons to trust you.",
+      "You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     );
     expect(getAftersignIoFirstSceneLine("openedReturn").text).toBe(
-      "You came back. The seal did not. I can use one of those facts.",
+      "You made it back. The seal did not. I can use one of those facts.",
     );
     expect(getAftersignIoFirstSceneLine("listenedReturn").text).toBe(
       "You listened before you ran. Rare habit. Keep it.",
