@@ -3130,14 +3130,11 @@ const commitPacketOutcome = (outcome) => {
     });
   } catch { /* feedback must never block a committed choice */ }
 
-  // The second packet is a distinct route identity, not a generic packet
-  // outcome skin. The feedback writer above owns sealed/opened copy for the
-  // blue route; restore the accepted red-tag label after its packet-choice
-  // transition so the button the player just tapped never changes routes.
-  if (state.delivery.id === "red-tag" && packetButton) {
-    packetButton.textContent = "Red tag — Saint Orra";
-    packetButton.dataset.packetJob = "red-tag";
-  }
+  // Note: the red-tag label survives via the `applyButtonCopy` override
+  // inside `applyPacketFeedback` above — the feedback writer calls that
+  // callback synchronously, so by the time control returns here the
+  // button already reads "Red tag — Saint Orra" on the red-tag fork.
+  // No second write needed (reviewer dedupe on PR #2205 iter-2).
 
   if (state.packet.sealed !== interaction.packet.sealed) {
     state.packet.sealed = interaction.packet.sealed;
