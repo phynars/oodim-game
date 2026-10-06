@@ -130,4 +130,40 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     expect(await line.textContent()).toBe(fastOutcomeLine);
     expect(await snapshotIoLine(page)).toBe(fastOutcomeLine);
   });
+
+  // #2179 (blind playtest #3): Lit stair, then "Carry the fragile packet",
+  // then deliver. Io said "You took the dark cut" — a route the player
+  // never took. The fragile run must be named as the fragile run.
+  test("Lit stair then 'Carry the fragile packet' is never credited with the dark cut (#2179)", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    const fragileOutcomeLine = aftersignRouteOutcomeLine("fast", "carry-a-fragile-packet");
+    expect(fragileOutcomeLine, "the fragile run must have authored outcome copy").not.toBeNull();
+
+    const slot = `route-outcome-fragile-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForReady(page);
+    expect(await snapshotRouteRisk(page)).toBeNull();
+    await reachPacketChoiceFresh(page);
+
+    const tray = page.locator("#routeRiskChoice");
+    await expect(tray).toHaveAttribute("data-visible", "true", { timeout: WAIT_MS });
+    const litStair = tray.locator('button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])');
+    await expect(litStair).toBeVisible({ timeout: WAIT_MS });
+    await litStair.tap();
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "safe", succeeded: true, lastAction: "take-the-long-way" });
+
+    const unlockAfter = await page.evaluate((lockMs) => Date.now() + lockMs, ROUTE_RISK_CHOICE_LOCK_MS);
+    await page.waitForFunction((deadline) => Date.now() >= deadline, unlockAfter, { timeout: WAIT_MS });
+    const fragile = tray.locator('button[data-aftersign-tap-choice="carry-a-fragile-packet"]:not([disabled])');
+    await expect(fragile).toBeVisible({ timeout: WAIT_MS });
+    await fragile.tap();
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "fast", succeeded: true, lastAction: "carry-a-fragile-packet" });
+
+    await deliverFromRouteChoice(page);
+    const line = page.locator("#line");
+    await expect(line).toBeVisible({ timeout: WAIT_MS });
+    await expect(line).toHaveText(fragileOutcomeLine!, { timeout: WAIT_MS });
+    expect((await line.textContent()) ?? "").not.toContain("dark cut");
+    expect(await snapshotIoLine(page)).toBe(fragileOutcomeLine);
+  });
 });

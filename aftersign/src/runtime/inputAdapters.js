@@ -246,9 +246,31 @@ export const attachRuntimeInputAdapters = ({
   // on EVERY path into `io-return-recognition` (the issue's root fix).
   // A stale stage from a rejected gesture never persists: the commit
   // branch clears `pendingReturnReason` unconditionally on entry.
-  const stagePendingReturnReason = (reason) => {
-    state.interaction.pendingReturnReason = reason || null;
+  // #2181: the same element ALSO changes meaning on a timer. deliverPacket()
+  // auto-advances `packet-delivered` → `io-return-recognition` ~1180ms after
+  // delivery, re-labelling "Return to Io" as "Blunt return" in place. A
+  // finger that went down on "Return to Io" and lifts after the swap would
+  // commit a tone the player never saw. So each return-surface button
+  // records when its gesture STARTED, the click stages that time with the
+  // reason, and main.js refuses a tone commit whose gesture began before the
+  // recognition beat did. Keyboard activation (click.detail === 0) has no
+  // pointerdown and stages no time, so this rule never refuses it.
+  const markReturnSurfacePointerDown = () => {
+    if (!state || !state.interaction) return;
+    state.interaction.returnSurfaceDownAt = performance.now();
   };
+
+  const stagePendingReturnReason = (reason, event) => {
+    state.interaction.pendingReturnReason = reason || null;
+    const downAt = state.interaction.returnSurfaceDownAt;
+    state.interaction.pendingReturnDownAt =
+      event && event.detail > 0 && typeof downAt === "number" ? downAt : null;
+    state.interaction.returnSurfaceDownAt = null;
+  };
+
+  for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
+    button.addEventListener("pointerdown", markReturnSurfacePointerDown, { passive: true });
+  }
 
   const stampRecognitionEntryIfReturnToIo = (choiceId) => {
     // Stamp `recognitionEnteredAt` on EVERY path that leads into
@@ -261,12 +283,12 @@ export const attachRuntimeInputAdapters = ({
     state.interaction.recognitionEnteredAt = performance.now();
   };
 
-  acknowledgeRouteButton.addEventListener("click", () => {
+  acknowledgeRouteButton.addEventListener("click", (event) => {
     const reasonFromAck = readReturnReasonFromTarget(
       acknowledgeRouteButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    stagePendingReturnReason(reasonFromAck);
+    stagePendingReturnReason(reasonFromAck, event);
     const choiceId = acknowledgeRouteButton.dataset.choiceId || "acknowledge-kiosk";
     stampRecognitionEntryIfReturnToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
@@ -275,12 +297,12 @@ export const attachRuntimeInputAdapters = ({
     choose(choiceId);
   });
 
-  skipRouteButton.addEventListener("click", () => {
+  skipRouteButton.addEventListener("click", (event) => {
     const reasonFromSkip = readReturnReasonFromTarget(
       skipRouteButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    stagePendingReturnReason(reasonFromSkip);
+    stagePendingReturnReason(reasonFromSkip, event);
     const choiceId = skipRouteButton.dataset.choiceId || "skip-kiosk-acknowledge";
     stampRecognitionEntryIfReturnToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {
@@ -289,12 +311,12 @@ export const attachRuntimeInputAdapters = ({
     choose(choiceId);
   });
 
-  deliverButton.addEventListener("click", () => {
+  deliverButton.addEventListener("click", (event) => {
     const reasonFromDeliver = readReturnReasonFromTarget(
       deliverButton,
       IO_RETURN_TONE_OPTIONS,
     );
-    stagePendingReturnReason(reasonFromDeliver);
+    stagePendingReturnReason(reasonFromDeliver, event);
     const choiceId = deliverButton.dataset.choiceId || "deliver-packet";
     stampRecognitionEntryIfReturnToIo(choiceId);
     if (window.__game && typeof window.__game.applyTapConfirmFeel === "function") {

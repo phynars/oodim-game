@@ -3490,6 +3490,8 @@ const choose = async (choiceId) => {
     // next `choose-return-tone` dispatch.
     const pendingReason = state.interaction.pendingReturnReason ?? null;
     state.interaction.pendingReturnReason = null;
+    const pendingDownAt = state.interaction.pendingReturnDownAt ?? null;
+    state.interaction.pendingReturnDownAt = null;
     if (state.scene.beat !== "io-return-recognition") {
       return;
     }
@@ -3497,6 +3499,17 @@ const choose = async (choiceId) => {
     if (
       typeof enteredAt === "number"
       && performance.now() - enteredAt < RECOGNITION_SETTLE_MS
+    ) {
+      return;
+    }
+    // #2181: a gesture that STARTED before the recognition beat began was
+    // aimed at whatever the button said then ("Return to Io"), not at the
+    // tone the ~1180ms auto-advance re-labelled it to. Refuse it; the
+    // player's next deliberate tap on a tone commits normally.
+    if (
+      typeof pendingDownAt === "number"
+      && typeof enteredAt === "number"
+      && pendingDownAt < enteredAt
     ) {
       return;
     }
