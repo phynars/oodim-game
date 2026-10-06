@@ -60,7 +60,7 @@ describe('io-memory-lines shim', () => {
     it('opened returning line reads the canonical opened-seal constant', () => {
       expect(ioReturningMemoryLines.opened.text).toBe(IO_OPENED_SEAL_LINE);
       expect(IO_OPENED_SEAL_LINE).toBe(
-        'You came back. The seal did not. I can use one of those facts.',
+        'You made it back. The seal did not. I can use one of those facts.',
       );
     });
   });

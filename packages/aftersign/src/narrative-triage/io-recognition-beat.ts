@@ -62,7 +62,7 @@ const makeBeat = (beat: IoRecognitionBeat): IoRecognitionBeat => beat;
 const PACKET_BEATS: Record<IoPacketMemoryOutcome, IoRecognitionBeat> = {
   sealed: makeBeat({
     id: 'io-return-blue-seal-unbroken',
-    line: 'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
+    line: 'You made it back. So did the blue seal, unbroken. Two facts. I can work with two.',
     remembers: [PLAYER_RETURNED_MEMORY, 'the player delivered the blue packet unopened'],
     requiredMemory: { packetOutcome: 'sealed' },
   }),

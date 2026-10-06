@@ -34,7 +34,7 @@ describe("Aftersign Io first-scene dialogue", () => {
       "You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     );
     expect(getAftersignIoFirstSceneLine("openedReturn").text).toBe(
-      "You came back. The seal did not. I can use one of those facts.",
+      "You made it back. The seal did not. I can use one of those facts.",
     );
     expect(getAftersignIoFirstSceneLine("listenedReturn").text).toBe(
       "You listened before you ran. Rare habit. Keep it.",
