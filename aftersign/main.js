@@ -1414,7 +1414,9 @@ const lineForBeat = () => {
       const routeLine = aftersignRouteOutcomeLine(routeMemory.lastRoute, routeMemory.lastAction);
       if (routeLine) return routeLine;
     }
-    return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+    return state.delivery.id === "red-tag"
+      ? "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer."
+      : "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
   }
 
   if (state.scene.beat === "return-tone-choice") {
@@ -3373,8 +3375,15 @@ const choose = async (choiceId) => {
         sealed: true,
         deliveredAt: null,
       };
-      state.delivery.outcome = "unknown";
+      state.delivery = {
+        id: state.player.secondPacketHandoffAccepted ? "red-tag" : "blue-packet",
+        outcome: "unknown",
+      };
       state.player.secondAction = null;
+      if (state.delivery.id === "red-tag" && packetButton) {
+        packetButton.textContent = "Red tag — Saint Orra";
+        packetButton.dataset.packetJob = "red-tag";
+      }
       // #1395: the next-packet loop is a NEW packet-tap gesture, not a
       // route-choice re-run. `ask-for-next-job` → `io-next-job` →
       // `deliver-packet` here must re-enter at `packet-offered` (the
