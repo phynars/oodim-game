@@ -156,6 +156,14 @@ export type AftersignRouteRiskRenderInput = {
    */
   labelForAction?: (action: AftersignOfferedAction) => string;
   /**
+   * Optional action ids to drop from the computed offered set BEFORE
+   * rendering. Used by the kept-seal path: a sealed first packet is
+   * not a loss to repair, so `main.js` passes `["repair-the-loss"]`
+   * here to hide the recovery button without changing the pure
+   * contract. Idempotent — hidden actions never produce a button.
+   */
+  hideActions?: readonly AftersignOfferedAction[];
+  /**
    * Optional clock the writer reads to gate the 180ms route-risk tap
    * lock. Defaults to `Date.now`. Tests supply a fake clock so a
    * "two taps in 60ms" scenario is deterministic.
@@ -188,9 +196,13 @@ const ROUTE_RISK_LOCKS: WeakMap<HTMLElement, RouteRiskChoiceLock> =
 export function renderRouteRiskChoice(
   input: AftersignRouteRiskRenderInput,
 ): readonly AftersignOfferedAction[] {
-  const { container, memory, onChoose, labelForAction, now } = input;
+  const { container, memory, onChoose, labelForAction, now, hideActions } =
+    input;
   const readNow = now ?? (() => Date.now());
-  const actions = computeOfferedActions(memory);
+  const computed = computeOfferedActions(memory);
+  const actions = hideActions && hideActions.length > 0
+    ? computed.filter((a) => !hideActions.includes(a))
+    : computed;
   container.setAttribute(AFTERSIGN_ROUTE_RISK_SURFACE_ATTRIBUTE, "");
   // Clear any previous render (idempotency).
   while (container.firstChild) {
