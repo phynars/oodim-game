@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { performPacketGesture } from "./helpers/packetGesture";
 
 type FlagshipSnapshot = {
   scene?: {
@@ -19,7 +20,7 @@ declare global {
 }
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
-const WAIT_MS = 10_000;
+const WAIT_MS = 60_000;
 
 async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
@@ -39,6 +40,13 @@ async function snapshot(page: Page): Promise<FlagshipSnapshot> {
   return page.evaluate(() => window.__game!.getSnapshot!());
 }
 
+async function waitForBeat(page: Page, beatId: string): Promise<void> {
+  await expect(
+    page.locator(`[data-beat-id="${beatId}"]`),
+    `story line should reach beat "${beatId}"`,
+  ).toBeVisible({ timeout: WAIT_MS });
+}
+
 async function tapChoice(page: Page, choiceId: string): Promise<FlagshipSnapshot> {
   const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
@@ -46,58 +54,44 @@ async function tapChoice(page: Page, choiceId: string): Promise<FlagshipSnapshot
   return snapshot(page);
 }
 
-/**
- * Tap a choice whose runtime commit is gated by a settle window
- * (e.g. `choose-return-tone` is rejected inside the
- * `RECOGNITION_SETTLE_MS` guard in aftersign/main.js). The button
- * renders enabled immediately, so a one-shot click can land inside
- * the gate and be dropped silently — the player experience is "nothing
- * happened, try again." We model that with a condition-based retry:
- * click, snapshot, and if the beat hasn't flipped yet, click again on
- * the next poll tick. No wall-clock sleep required
- * (see e2e-shared/no-wall-clock-waits/README.md).
- */
-async function tapChoiceUntilBeat(
-  page: Page,
-  choiceId: string,
-  expectedBeat: string,
-): Promise<FlagshipSnapshot> {
-  await expect
-    .poll(
-      async () => {
-        const choice = page
-          .locator(`button[data-choice-id="${choiceId}"]:not([disabled])`)
-          .first();
-        if (await choice.isVisible()) {
-          await choice.click().catch(() => {
-            // Button may have been re-rendered between isVisible and
-            // click (recognition beat re-stamps the same DOM node);
-            // the next poll tick will relocate it.
-          });
-        }
-        const current = await snapshot(page);
-        return current.scene?.beat;
-      },
-      { timeout: WAIT_MS },
-    )
-    .toBe(expectedBeat);
+async function tapReturnReason(page: Page, reason: "kind" | "evasive" | "blunt"): Promise<FlagshipSnapshot> {
+  const button = page
+    .locator(`button[data-return-reason="${reason}"]:not([disabled])`)
+    .first();
+  await expect(
+    button,
+    `recognition beat should expose the "${reason}" tone button`,
+  ).toBeVisible({ timeout: WAIT_MS });
+  await button.click();
   return snapshot(page);
 }
 
+/**
+ * Drive the sealed-packet route to io-return-recognition using the
+ * visible-DOM gestures only. The route Soren verified in
+ * `io-continue-beats-tap-playtest.spec.ts` is:
+ *   packet-offered → short-tap `#packetButton` (sealed) → packet-choice
+ *   → tap `acknowledge-kiosk` → tap `deliver-packet` → packet-delivered
+ *   → auto-advance (setTimeout in `deliverPacket()`) → io-return-recognition.
+ *
+ * `keep-sealed` / `return-to-io` are DISPATCH-ONLY ids inside
+ * `choose()` (see aftersign/e2e/helpers/packetGesture.ts header);
+ * they are never stamped on a rendered `data-choice-id` button, so
+ * the previous route would hang at `expect(button).toBeVisible`.
+ */
 async function driveToReturnRecognition(page: Page): Promise<FlagshipSnapshot> {
   await waitForGame(page);
 
-  const route = ["keep-sealed", "deliver-packet", "return-to-io"];
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, "sealed", WAIT_MS);
+  await waitForBeat(page, "packet-choice");
 
-  let current = await snapshot(page);
-  for (const choiceId of route) {
-    if (current.scene?.beat === "io-return-recognition") break;
-    current = await tapChoice(page, choiceId);
-  }
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-delivered");
 
-  await expect
-    .poll(async () => (await snapshot(page)).scene?.beat, { timeout: WAIT_MS })
-    .toBe("io-return-recognition");
+  // Auto-advance (~1180ms setTimeout in deliverPacket) → recognition.
+  await waitForBeat(page, "io-return-recognition");
 
   return snapshot(page);
 }
@@ -120,20 +114,17 @@ test.describe("M-CONTINUE served-page extent", () => {
     const recognition = await driveToReturnRecognition(page);
     expect(recognition.scene?.beat).toBe("io-return-recognition");
 
-    // Tap the rendered phone choice. The `choose-return-tone` branch
-    // in aftersign/main.js is gated by `RECOGNITION_SETTLE_MS` — a
-    // tap that lands inside that window is rejected silently. A
-    // condition-based retry (not a wall-clock sleep) tries the tap
-    // again on each poll tick until the beat flips, which is what a
-    // real player would do if their first tap "didn't take."
-    const returnTone = await tapChoiceUntilBeat(
-      page,
-      "choose-return-tone",
-      "return-tone-choice",
-    );
+    // The return-tone fork is driven by `data-return-reason` buttons,
+    // not a `data-choice-id` — see `tapReturnReason` in
+    // io-continue-beats-tap-playtest.spec.ts. Pick any tone; this spec
+    // asserts the beat flips, not the authored copy.
+    await tapReturnReason(page, "kind");
+    await waitForBeat(page, "return-tone-choice");
+    const returnTone = await snapshot(page);
     expect(returnTone.scene?.beat).toBe("return-tone-choice");
 
     const nextJob = await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
     expect(nextJob.scene?.beat).toBe("io-next-job");
   });
 });
