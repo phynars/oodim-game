@@ -907,6 +907,35 @@
         filter: brightness(1.08);
       }
 
+      /* A route choice remains a warm, explicit selection—not a greyed-out
+         action—until the player moves on. The container stamps
+         `data-aftersign-selected-action="<action>"` after a tap (see
+         `renderText()` in aftersign/main.js); each rule below matches
+         the child button whose `data-aftersign-tap-choice` equals that
+         action, so the warm selected state lands on the exact button
+         the finger pressed. One rule per offered-action id (see
+         `AftersignOfferedAction` in `routeRiskMemory.ts`). */
+      /* RE-REVIEW PR #2197 (Soren): the warm selected state must land
+         on the OFFERED-ACTION tray — the four take-the-shortcut /
+         take-the-long-way / repair-the-loss / carry-a-fragile-packet
+         buttons rendered by `renderRouteRiskChoice` into
+         `#routeRiskChoice` (see aftersign/index.html line 1159). The
+         sibling `#routeChoice` holds only "I listened" / "I ran early"
+         — a different element, a different fork, no selected-action
+         dataset lands there. main.js stamps
+         `routeRiskChoice.dataset.aftersignSelectedAction` after a tap,
+         so these rules must key off `#routeRiskChoice`. */
+      #routeRiskChoice[data-aftersign-selected-action="take-the-shortcut"] button[data-aftersign-tap-choice="take-the-shortcut"],
+      #routeRiskChoice[data-aftersign-selected-action="take-the-long-way"] button[data-aftersign-tap-choice="take-the-long-way"],
+      #routeRiskChoice[data-aftersign-selected-action="repair-the-loss"] button[data-aftersign-tap-choice="repair-the-loss"],
+      #routeRiskChoice[data-aftersign-selected-action="carry-a-fragile-packet"] button[data-aftersign-tap-choice="carry-a-fragile-packet"] {
+        border-color: rgba(255, 214, 151, 0.96);
+        background: rgba(92, 58, 30, 0.9);
+        box-shadow:
+          0 0 24px rgba(255, 184, 107, 0.42),
+          inset 0 0 18px rgba(255, 214, 151, 0.16);
+      }
+
       @media (prefers-reduced-motion: reduce) {
         /* Reduced-motion: keep the state marker (so any dependent
            CSS keys off it correctly) but collapse the transform
@@ -1126,7 +1155,7 @@
           -->
           <button id="packetButton" class="packet-button" type="button" data-aftersign-tap-choice="packet" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
           <div id="routeChoice" class="route-choice" data-visible="false" aria-label="Choose whether you listened to Io's route before delivery">
-            <span class="route-choice-label">Route memory</span>
+            <span class="route-choice-label">Your route choice</span>
             <button id="acknowledgeRouteButton" type="button" data-aftersign-tap-choice="acknowledge-kiosk">I listened</button>
             <button id="skipRouteButton" type="button" data-aftersign-tap-choice="skip-kiosk-acknowledge">I ran early</button>
           </div>
@@ -1138,7 +1167,7 @@
                payload clones — so the fact round-trips across reload
                and feeds `computeOfferedActions` on the next run. -->
           <div id="routeRiskChoice" class="route-choice" data-visible="false" data-aftersign-route-risk-surface aria-label="Choose a fast or safe route for this delivery run">
-            <span class="route-choice-label">Route risk</span>
+            <span class="route-choice-label">Your route</span>
           </div>
           <!-- #1395 M-CONTINUE — computeOfferedJobs served surface.
                At the packet-offered beat, main.js's renderText() stamps
