@@ -20,11 +20,6 @@ declare global {
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
-// The shipped return-tone input deliberately rejects choices made within
-// RECOGNITION_SETTLE_MS (120 ms) of entering recognition. Give the
-// harness-only driver a small margin so auto-advance timing cannot make
-// this acceptance test race that player-protection gate.
-const RECOGNITION_SETTLE_WAIT_MS = 150;
 
 async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
@@ -48,6 +43,44 @@ async function tapChoice(page: Page, choiceId: string): Promise<FlagshipSnapshot
   const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
   await choice.click();
+  return snapshot(page);
+}
+
+/**
+ * Tap a choice whose runtime commit is gated by a settle window
+ * (e.g. `choose-return-tone` is rejected inside the
+ * `RECOGNITION_SETTLE_MS` guard in aftersign/main.js). The button
+ * renders enabled immediately, so a one-shot click can land inside
+ * the gate and be dropped silently — the player experience is "nothing
+ * happened, try again." We model that with a condition-based retry:
+ * click, snapshot, and if the beat hasn't flipped yet, click again on
+ * the next poll tick. No wall-clock sleep required
+ * (see e2e-shared/no-wall-clock-waits/README.md).
+ */
+async function tapChoiceUntilBeat(
+  page: Page,
+  choiceId: string,
+  expectedBeat: string,
+): Promise<FlagshipSnapshot> {
+  await expect
+    .poll(
+      async () => {
+        const choice = page
+          .locator(`button[data-choice-id="${choiceId}"]:not([disabled])`)
+          .first();
+        if (await choice.isVisible()) {
+          await choice.click().catch(() => {
+            // Button may have been re-rendered between isVisible and
+            // click (recognition beat re-stamps the same DOM node);
+            // the next poll tick will relocate it.
+          });
+        }
+        const current = await snapshot(page);
+        return current.scene?.beat;
+      },
+      { timeout: WAIT_MS },
+    )
+    .toBe(expectedBeat);
   return snapshot(page);
 }
 
@@ -87,11 +120,17 @@ test.describe("M-CONTINUE served-page extent", () => {
     const recognition = await driveToReturnRecognition(page);
     expect(recognition.scene?.beat).toBe("io-return-recognition");
 
-    await page.waitForTimeout(RECOGNITION_SETTLE_WAIT_MS);
-    // Tap the rendered phone choice. This production path stamps the
-    // recognition interaction before the return-tone transition; the old
-    // window.__game harness call bypassed that timing contract.
-    const returnTone = await tapChoice(page, "choose-return-tone");
+    // Tap the rendered phone choice. The `choose-return-tone` branch
+    // in aftersign/main.js is gated by `RECOGNITION_SETTLE_MS` — a
+    // tap that lands inside that window is rejected silently. A
+    // condition-based retry (not a wall-clock sleep) tries the tap
+    // again on each poll tick until the beat flips, which is what a
+    // real player would do if their first tap "didn't take."
+    const returnTone = await tapChoiceUntilBeat(
+      page,
+      "choose-return-tone",
+      "return-tone-choice",
+    );
     expect(returnTone.scene?.beat).toBe("return-tone-choice");
 
     const nextJob = await tapChoice(page, "ask-for-next-job");
