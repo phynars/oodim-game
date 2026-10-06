@@ -2704,23 +2704,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             button.style.boxSizing = "border-box";
             button.style.width = "100%";
             button.style.minWidth = "0";
-            // Offer labels are compact route names, not prose: keep each
-            // word intact so narrow phone trays never split "delivery" or
-            // "return" across lines. Keep `white-space: normal` so word-
-            // level wrapping still works (prose-style multi-word labels
-            // flow onto a second line), but forbid mid-word breaking via
-            // `word-break: keep-all` + `overflow-wrap: normal`. That
-            // leaves the button's bounding-box dimensions unchanged
-            // relative to the pre-fix layout, so the press-juice
-            // sibling spec (aftersign-job-offer-press-juice.playtest.spec.ts)
-            // that measures the same button's transformed rect reads
-            // the authored scale(0.97) envelope — not a layout-driven
-            // height collapse masquerading as a scale drop (PR #2196
-            // first-pass regression: nowrap+ellipsis dropped the single-
-            // line height and the spec saw scaleDrop = 0.188 vs 0.08 cap).
             button.style.whiteSpace = "normal";
-            button.style.wordBreak = "keep-all";
-            button.style.overflowWrap = "normal";
           }
           // PR #1549 — resolve + stamp the frozen aftersign-job-take
           // feel row onto the offer button. Same shape as
