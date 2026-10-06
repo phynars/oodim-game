@@ -1495,6 +1495,12 @@ const lineForBeat = () => {
   }
 
   if (state.scene.beat === "io-return-recognition") {
+    // The second packet keeps its own recognition thread; sealed/opened is
+    // an outcome, not permission to collapse Saint Orra back to blue-route
+    // copy on the following return beat.
+    if (state.delivery.id === "red-tag") {
+      return "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it.";
+    }
     // Red-guard hook (#653): wrong-io-line deliberately swaps the
     // recognition line so the harness can prove it would catch a
     // line/outcome mismatch. No-op when breakMode is "".
@@ -1681,7 +1687,9 @@ const syncIoLine = () => {
     const selected = selectIoRecognitionDialogueLine(snippets, {
       memory: state.npcs.io.memory,
     });
-    nextLine = selected.line;
+    nextLine = state.delivery.id === "red-tag"
+      ? `${selected.line} Red tag delivered to Saint Orra.`
+      : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The
@@ -3106,9 +3114,30 @@ const commitPacketOutcome = (outcome) => {
       reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
     });
     applyPacketFeedback(interaction.feedback, {
-      applyButtonCopy: (copy) => applyPacketButtonCopy(packetButton, copy),
+      applyButtonCopy: (copy) => {
+        // The packet interaction owns the sealed/opened affordance, but not
+        // the destination identity. Round two carries Io's red tag through
+        // this same gesture, so the generic blue-packet copy must not erase
+        // the route the player just accepted.
+        if (state.delivery.id === "red-tag") {
+          packetButton.textContent = "Red tag — Saint Orra";
+          packetButton.dataset.packetJob = "red-tag";
+          packetButton.dataset.packetButtonCopyState = copy;
+          return;
+        }
+        applyPacketButtonCopy(packetButton, copy);
+      },
     });
   } catch { /* feedback must never block a committed choice */ }
+
+  // The second packet is a distinct route identity, not a generic packet
+  // outcome skin. The feedback writer above owns sealed/opened copy for the
+  // blue route; restore the accepted red-tag label after its packet-choice
+  // transition so the button the player just tapped never changes routes.
+  if (state.delivery.id === "red-tag" && packetButton) {
+    packetButton.textContent = "Red tag — Saint Orra";
+    packetButton.dataset.packetJob = "red-tag";
+  }
 
   if (state.packet.sealed !== interaction.packet.sealed) {
     state.packet.sealed = interaction.packet.sealed;
