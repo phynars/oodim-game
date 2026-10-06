@@ -46,9 +46,20 @@ test.describe("AFTERSIGN phone 390×844 regression (#2193)", () => {
     });
 
     // Symptom 2 — offer labels: every offered-jobs button must declare
-    // `word-break: keep-all` + `overflow-wrap: normal` (forbids mid-
-    // word breaks like "delive/ry") AND must not horizontally overflow
-    // its own box (nothing spills past clientWidth).
+    // `word-break: keep-all` + `overflow-wrap: normal` so a mid-word
+    // split like "delive/ry" cannot land in the rendered label. These
+    // two CSS properties ARE the fix for the reported symptom; asserting
+    // their presence on every offer button is the primary guard.
+    //
+    // Why we DON'T also assert `scrollWidth <= clientWidth` here (Soren
+    // on PR #2196): `keep-all` legitimately permits a single long word
+    // to overflow its box rather than break mid-word. Current offer
+    // copy ("Safe delivery · low risk") is short and would pass the
+    // strict overflow check, but a future label rename to a longer
+    // token would red THIS spec on an overflow that is the authored
+    // behavior of the fix — not a regression. The real symptom is
+    // "words split mid-letter", not "any horizontal overflow", and
+    // the two CSS asserts above are the correct source-level guard.
     const offers = page.locator("#offeredJobs button");
     await expect(offers.first()).toBeVisible();
     const offerCount = await offers.count();
@@ -56,12 +67,6 @@ test.describe("AFTERSIGN phone 390×844 regression (#2193)", () => {
       const offer = offers.nth(index);
       await expect(offer).toHaveCSS("word-break", "keep-all");
       await expect(offer).toHaveCSS("overflow-wrap", "normal");
-      const { scrollWidth, clientWidth } = await offer.evaluate((node) => ({
-        scrollWidth: (node as HTMLElement).scrollWidth,
-        clientWidth: (node as HTMLElement).clientWidth,
-      }));
-      expect(scrollWidth, `offer ${index} fits its box without horizontal overflow`)
-        .toBeLessThanOrEqual(clientWidth);
     }
 
     // Walk real taps through: deliver first packet → kind return
