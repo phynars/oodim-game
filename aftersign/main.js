@@ -2438,6 +2438,7 @@ const renderText = () => {
           // subsequent `renderRouteRiskChoice` pass.
           routeMemoryConfirmation = routeRiskActionLabel(action);
           routeRiskChoice.dataset.routeMemoryConfirmation = routeMemoryConfirmation;
+          routeRiskChoice.dataset.aftersignSelectedAction = action;
           stampRouteMemoryConfirmation();
           // The fork needs a tiny physical "yes" before its durable
           // write leaves the tab: 180ms, 4px lift, 1.025 peak scale.

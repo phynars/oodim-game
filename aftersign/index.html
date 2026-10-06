@@ -907,6 +907,16 @@
         filter: brightness(1.08);
       }
 
+      /* A route choice remains a warm, explicit selection—not a greyed-out
+         action—until the player moves on. */
+      #routeChoice button[data-aftersign-selected="true"] {
+        border-color: rgba(255, 214, 151, 0.96);
+        background: rgba(92, 58, 30, 0.9);
+        box-shadow:
+          0 0 24px rgba(255, 184, 107, 0.42),
+          inset 0 0 18px rgba(255, 214, 151, 0.16);
+      }
+
       @media (prefers-reduced-motion: reduce) {
         /* Reduced-motion: keep the state marker (so any dependent
            CSS keys off it correctly) but collapse the transform
@@ -1126,7 +1136,7 @@
           -->
           <button id="packetButton" class="packet-button" type="button" data-aftersign-tap-choice="packet" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
           <div id="routeChoice" class="route-choice" data-visible="false" aria-label="Choose whether you listened to Io's route before delivery">
-            <span class="route-choice-label">Route memory</span>
+            <span class="route-choice-label">Your route choice</span>
             <button id="acknowledgeRouteButton" type="button" data-aftersign-tap-choice="acknowledge-kiosk">I listened</button>
             <button id="skipRouteButton" type="button" data-aftersign-tap-choice="skip-kiosk-acknowledge">I ran early</button>
           </div>
