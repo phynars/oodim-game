@@ -1687,8 +1687,23 @@ const syncIoLine = () => {
     const selected = selectIoRecognitionDialogueLine(snippets, {
       memory: state.npcs.io.memory,
     });
+    // Red-tag return keeps its OWN recognition line — do NOT append the
+    // red-tag suffix to `selected.line`, because `selected.line` is a
+    // sealed/opened BLUE-ROUTE snippet from `RETURNING_LINES` /
+    // `DEEP_RECALL_LINES` (ioRecognitionDialogue.ts) and leaks "blue
+    // seal" / "blue route" / "broken seal" into `#line` on round-two.
+    // That's the exact bite reviewer AI007 flagged on PR #2205 iter-3:
+    // #line read `"I remember you: blue seal, unbroken… Red tag
+    // delivered to Saint Orra."` on the red-tag return beat.
+    //
+    // Single-source with `lineForBeat()`'s `io-return-recognition`
+    // red-tag branch above — both writers emit the SAME string, so
+    // whichever one lands on `#line` first (via `renderText()` reading
+    // `lineForBeat()` directly, or via the `state.npcs.io.lastLine`
+    // path syncIoLine feeds into) the beat reads identically. This
+    // closes the AI008 two-writers-one-assertion race.
     nextLine = state.delivery.id === "red-tag"
-      ? `${selected.line} Red tag delivered to Saint Orra.`
+      ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
       : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
