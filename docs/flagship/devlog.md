@@ -7,6 +7,87 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-10-05 — Blind AI-stranger playtest #4 — PASSED → M2 (M-LOOP) CLOSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`64a633c`, which includes:
+- #2186: fix for #2180;
+- #2188/#2189: fixes for #2179/#2181;
+- #2184: fix for #2182.
+
+It used the same harness as #3: a 390×844 headless phone page with touch on. It
+saw screenshots only after the DOM settled (oodim#1499) and acted only by tapping
+visible text or a screen position. It made 16 actions and took 1 extra screenshot
+(01:34–01:39Z 10-06). Nothing read the DOM state or `window.__game`.
+
+**Replay answer (verbatim, written after round one):**
+> "Next round I'll take the riskier path — break the seal or cut past the bell
+> rope — because round one I picked every careful option and Io just praised me
+> for it; I want to see if Io really remembers what I did and reacts differently.
+> I'll also try an evasive return instead of the kind one, since Io seemed wary
+> of me sounding too nice."
+
+**Run.**
+- **Round 1:**
+  - Safe delivery, then the blue packet kept sealed.
+  - Lit stair, then Acknowledge route, then Deliver.
+  - Kind return.
+- **Round 2:**
+  - Ask for next job, Ask what changed, Take the second packet.
+  - Broke the seal (hold and drag).
+  - Cut past the bell rope, Skip acknowledgment, Wake kiosk sound, Deliver.
+  - Evasive return.
+
+**Memory check. The operator verified each line against the screenshots:**
+
+| Io said | Player's action | Verdict |
+| --- | --- | --- |
+| "I will remember you as careful." | Safe delivery | true |
+| "blue seal unbroken, and you waited for my whole route" | kept seal + Acknowledge route | true |
+| "You came back. So did the blue seal, unbroken." (R1) | delivered and returned | true in-fiction. The player flagged "you came back" as confusing on a first run; it's copy friction, see #2194 |
+| "You kept the blue packet sealed… You acknowledged the route… You came back gentle." (R2 recap) | seal kept, Acknowledge, Kind return | true. #2180's "quiet" is gone |
+| "You opened it… curiosity got there first." | broke seal | true |
+| "The seal did not survive… I kept your name beside the risk." | broke seal, cut past the bell rope | true. "Beside the risk" is vague but not wrong |
+| "Careful… breakable things" / "Work is a clean word… until it stains" | Kind / Evasive return | correct tone each time. #2181's Blunt mis-commit is gone |
+
+**Verdict: PASSED (operator decision).**
+- Io states **no false memory**. #2179, #2180 and #2181 did not recur.
+- The answer names a change the player expects *because the game remembered*:
+  a riskier route, a broken seal and a different reaction.
+- In round 2 the player saw reactions keyed to memory: the recap, the seal-broken
+  lines and the tone-specific replies.
+
+**Borderline call, recorded:** the player marked "You came back" (R1) as
+"FALSE or UNCLEAR". The operator rules it **not a false memory**. The line
+follows Deliver, and the player had just done that: run the route and come back
+to Io. It still reads as a misremembering to a newcomer, so its copy fix is
+tracked in #2194. The founder may overrule.
+
+**Not memory errors. Filed, non-blocking for M2:**
+- **#2192 (P1):** *Take the second packet* (red tag to Saint Orra) drops back to
+  the round-1 blue-packet route. This is #2166's promise breaking again, in
+  another form. The player's words: "the dialogue reacted to the seal and the
+  return choice, but the world and the route did not."
+- **#2193 (P2):** three symptoms from #2182 are still on the phone after #2184:
+  - lines rendered twice (012/013);
+  - the jobs tray splits words (004);
+  - a dark right-edge strip clips controls after Deliver (008/009/018).
+- **#2194 (P3):**
+  - choosing a route or acknowledgement gives no feedback, and a selected route
+    looks disabled;
+  - "Repair the loss" appears before any loss;
+  - "Route memory" and "Reset slice save" are developer jargon;
+  - there's no round-over beat;
+  - the round-2 opener is a wall of text.
+
+**M2 (M-LOOP) is CLOSED as of 2026-10-05 (PT), six days before the 10-11 deadline.**
+- The automated divergence gate was green on the deployed Worker (10-04 record below).
+- The replay bar is met by this run under the BRIEF's M-LOOP closeout rules.
+- #2071 (a real human on a real device) stays open. Per the BRIEF, a human
+  answer recorded here outranks this one when it arrives.
+
+---
+
 ## 2026-10-05 — Blind AI-stranger playtest #3 — NOT PASSED (three false memories)
 
 **AI stranger — not a human.** A fresh agent got only the URL and played deployed
@@ -127,6 +208,10 @@ viewport. Deadline 2026-10-11.
 ---
 
 ## 2026-10-04 — M2 (M-LOOP) closeout record
+
+> **CLOSED 2026-10-05 (PT):** blind AI-stranger playtest #4 passed the replay
+> bar (entry above, operator decision under the BRIEF's M-LOOP closeout rules).
+> The human section below stays open as #2071. It is no longer a blocker.
 
 **Bar** (BRIEF, M-LOOP): two save-states with different memory records must
 produce different available actions on the served page; each completes two
