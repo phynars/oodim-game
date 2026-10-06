@@ -262,6 +262,7 @@ import {
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
 import { buildRouteRiskRenderSignature } from "./src/routeRiskRenderSignature.js";
+import { routeRiskMemoryForPacketChoice } from "./src/keptSealRouteRisk.js";
 import {
   playRouteRiskConfirmFeedback,
   ROUTE_RISK_CONFIRM_FEEL,
@@ -2400,14 +2401,22 @@ const renderText = () => {
       // renderText runs each frame. Keep this tray's real buttons stable
       // while its durable route-risk axis is unchanged; otherwise a phone
       // tap can land on a node that is replaced before its click resolves.
-      const routeRiskSignature = buildRouteRiskRenderSignature(
+      const routeRiskMemory = routeRiskMemoryForPacketChoice(
+        state.packet,
         state.player.routeRisk,
       );
+      const routeRiskSignature = buildRouteRiskRenderSignature(routeRiskMemory);
       if (routeRiskChoice.dataset.renderSignature !== routeRiskSignature) {
         routeRiskChoice.dataset.renderSignature = routeRiskSignature;
         renderRouteRiskChoice({
           container: routeRiskChoice,
-          memory: state.player.routeRisk,
+          // A sealed first packet is not a loss to repair. Feed the choice
+          // writer the successful safe-route baseline until the player has
+          // made a route-risk choice of their own, so this tray cannot offer
+          // recovery copy after a kept seal.
+          memory: state.player.routeRisk ?? (state.packet.sealed
+            ? { lastRoute: "safe", succeeded: true }
+            : null),
           labelForAction: routeRiskActionLabel,
           onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
