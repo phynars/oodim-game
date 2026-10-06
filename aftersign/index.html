@@ -214,7 +214,10 @@
         position: fixed;
         inset: 0;
         pointer-events: none;
-        z-index: 60;
+        /* Keep the transition beneath the HUD. It is a full-viewport visual
+           layer, but dialogue and its pills must remain the topmost surface
+           on a phone after delivery. */
+        z-index: 0;
         background:
           radial-gradient(
             ellipse at 50% 62%,
