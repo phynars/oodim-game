@@ -1,3 +1,8 @@
+import {
+  IO_OPENED_RETURN_LINE,
+  IO_SEALED_RETURN_LINE,
+} from "./ioSealedReturn.ts";
+
 export type PacketOutcome = "sealed" | "opened";
 export type RouteBehavior = "listened" | "skipped";
 

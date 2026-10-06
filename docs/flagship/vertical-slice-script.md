@@ -184,7 +184,7 @@ Packet outcome is the primary recognition line when it is the only remembered fa
 
 **If previous packet outcome was opened (single-memory):**
 
-**Io:** “You came back. The seal did not. I can use one of those facts.”
+**Io:** “You made it back. The seal did not. I can use one of those facts.”
 
 When BOTH packet outcome and route behavior are remembered, Io chains both facts into one dispatcher line:
 
