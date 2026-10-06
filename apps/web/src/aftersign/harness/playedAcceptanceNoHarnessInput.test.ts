@@ -92,15 +92,14 @@ const PLAYED_CATEGORIES: PlayedCategory[] = [
 // The allowlist is a SET of basenames, not a regex, so a new demotion
 // requires a named entry with a citation — no accidental widening.
 //
-// Current entries:
-//   - m-continue-served-beats.spec.ts — PR #1195; docs/plan/product-plan.md
-//     records under the 2026-08-15 "Played, not driven" amendment that
-//     this spec is HARNESS-ONLY (drives via `window.__game.input.choose`)
-//     and does NOT count as played acceptance.  The played sibling for
-//     the same milestone is `m-continue-next-job-played.spec.ts`.
-const HARNESS_ONLY_ALLOWLIST = new Set<string>([
-  'm-continue-served-beats.spec.ts',
-]);
+// Current entries: (none).  `m-continue-served-beats.spec.ts` was
+// previously demoted here (PR #1195) but was rewritten in PR #2191 to
+// drive via the visible DOM (`button[data-choice-id]`) and now counts
+// as played acceptance — the allowlist slot was removed with the
+// rewrite.  Empty is fine: a demotion must be named explicitly with a
+// citation when it's needed; drift back to harness-only without
+// updating this list will be caught by the offender check below.
+const HARNESS_ONLY_ALLOWLIST = new Set<string>([]);
 
 // Any read/write of `__game.input` — direct property access, bracket
 // access, or inside a `page.evaluate` string body — is disallowed in a
@@ -250,12 +249,11 @@ describe('AFTERSIGN played acceptance boundary', () => {
     expect(PLAYED_CATEGORIES.find(({ matches }) => matches('cold-start.playtest.spec.ts'))?.key).toBe('playtest');
   });
 
-  it('demoted harness-only specs are named — allowlist is non-vacuous, members exist, and each really drives the harness input', () => {
-    // If an allowlist entry ever stops existing under aftersign/e2e/,
-    // fail loudly.  A dangling name here would silently exempt
-    // nothing — which is fine — but the drift is worth catching so
-    // the allowlist stays honest to the tree.
-    expect(HARNESS_ONLY_ALLOWLIST.size, 'allowlist must name at least one demoted spec').toBeGreaterThan(0);
+  it('demoted harness-only specs are named — allowlist members exist and each really drives the harness input', () => {
+    // The allowlist is allowed to be empty (no spec currently demoted).
+    // When it has entries, each one must (a) exist in the tree and
+    // (b) actually drive `window.__game.input` — otherwise it's dead
+    // weight masking a future regression and should be removed.
     const specs = readPlayedSpecs();
     const byBasename = new Map(specs.map((spec) => [spec.basename, spec]));
     for (const name of HARNESS_ONLY_ALLOWLIST) {
