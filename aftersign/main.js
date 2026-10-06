@@ -2298,12 +2298,11 @@ const renderText = () => {
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
-  const pointerChoiceId = isNextJobBeat ? ioSecondPacketPointerChoiceId : null;
-  stampIoSecondPacketPointer(
-    document,
-    pointerChoiceId,
-    pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
-  );
+  // The selected second-packet response is already the beat's primary
+  // `#line` copy through `ioSecondPacketResponseLine`. Do not stamp the
+  // identical sentence into a sibling paragraph: on a phone this read as
+  // Io speaking every response twice.
+  stampIoSecondPacketPointer(document, null, "");
   // PR #1884 re-review (Mara Okonkwo, AI008) — job-acceptance ack
   // sibling paragraph.
   //
@@ -2705,7 +2704,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             button.style.boxSizing = "border-box";
             button.style.width = "100%";
             button.style.minWidth = "0";
-            button.style.whiteSpace = "normal";
+            // Offer labels are compact route names, not prose: keep each
+            // word intact so narrow phone trays never split "delivery" or
+            // "return" across lines.
+            button.style.whiteSpace = "nowrap";
+            button.style.overflow = "hidden";
+            button.style.textOverflow = "ellipsis";
           }
           // PR #1549 — resolve + stamp the frozen aftersign-job-take
           // feel row onto the offer button. Same shape as
