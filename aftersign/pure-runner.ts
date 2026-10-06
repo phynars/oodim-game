@@ -240,6 +240,22 @@ import { runRecognitionFeedbackModelChecks } from "./src/recognition-feedback.te
 // `typecheck:aftersign` green whether or not allowJs resolves it (TS7016).
 // @ts-ignore
 import { runPacketInteractionChecks } from "./src/packet-interaction.test.js";
+// Kept-seal route-risk filter (#2194 / PR #2206) — pure branch pins over
+// `routeRiskMemoryForPacketChoice`, the helper `aftersign/main.js` consults
+// at `packet-choice` to decide which route-risk actions to render. Soren
+// flagged AI001 (one e2e as the only witness) + AI008 (the earlier draft
+// gated the hide on `packet.sealed`, a runtime premise this module couldn't
+// verify in isolation). The current implementation keys the hide off
+// `routeRisk == null` alone — "no memory on record → no loss to repair" —
+// which removes the premise AND is pinned here across all five branches
+// (null / undefined / failed / safe-succeeded / fast-succeeded) plus the
+// seal-independence proof. The leaf (`./keptSealRouteRisk.js`) has ZERO
+// relative imports and the shim's sole relative import is the extensioned
+// `./keptSealRouteRisk.js`, so the subgraph satisfies the extension-
+// resolution contract documented above. The leaf is plain JS (no .d.ts);
+// `@ts-ignore` mirrors the `runPacketInteractionChecks` sibling above.
+// @ts-ignore
+import { runKeptSealRouteRiskChecks } from "./src/keptSealRouteRisk.test.js";
 
 type Runner = {
   label: string;
@@ -370,6 +386,14 @@ const runners: Runner[] = [
   // added in the initial wire-up but this entry was omitted, so the
   // runner never ran in CI — same gap Soren flagged on PRs #1528 / #1874).
   { label: "runPacketInteractionChecks", run: runPacketInteractionChecks },
+  // Kept-seal route-risk filter (#2194 / PR #2206) — pure branch pins over
+  // `routeRiskMemoryForPacketChoice`. Addresses Soren's AI001 on the first
+  // PR draft (one e2e was the only evidence) and AI008 on the second
+  // (the hide was gated on `packet.sealed`, an unverified runtime premise).
+  // The current implementation keys the hide off `routeRisk == null`
+  // alone, and this runner pins all five branches + the seal-independence
+  // proof so the e2e is no longer the sole witness.
+  { label: "runKeptSealRouteRiskChecks", run: runKeptSealRouteRiskChecks },
 ];
 
 let failed = 0;

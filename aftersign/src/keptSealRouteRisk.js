@@ -1,6 +1,6 @@
-// A sealed packet with no delivery history starts a clean route. Route-risk
-// recovery actions ("repair-the-loss") belong only to a recorded FAILED run,
-// never to the first decision after keeping the seal.
+// First visit has no delivery history to repair. "repair-the-loss" is a
+// recovery action for a RECORDED failed run — it has no referent when
+// `state.player.routeRisk` is still null (nothing has happened on record).
 //
 // We can't model this by synthesising a "safe + succeeded" memory and feeding
 // it into `computeOfferedActions`: that function's successful-safe branch
@@ -9,14 +9,26 @@
 // choice (see `aftersign/e2e/aftersign-packet-recall-feel.playtest.spec.ts`,
 // which taps `take-the-long-way` on a fresh slot to prove the memory round-
 // trip). So we keep the null-memory offer set (`repair-the-loss` +
-// `take-the-long-way`) and only HIDE the recovery entry when the seal is
-// kept and there's no prior run on record.
+// `take-the-long-way`) and only HIDE the recovery entry when `routeRisk` is
+// null — i.e. no prior run has been recorded at all.
 //
-// Return shape: the memory to feed `renderRouteRiskChoice` plus an optional
-// list of actions the renderer should drop from the offered set.
+// Why key off `routeRisk == null` instead of `packet.sealed`:
+//   An earlier draft gated the hide on `packet.sealed === true`, which added
+//   a runtime premise ("the `#packetButton` tap sets sealed BEFORE
+//   packet-choice renders") that this module cannot verify in isolation.
+//   The pure semantic — "no memory on record → nothing to repair" — covers
+//   the kept-seal first-visit case AND the opened-first-visit case AND the
+//   fresh-slot-no-tap case, without depending on `main.js` ordering.
+//
+// When `routeRisk` IS set, respect `computeOfferedActions`'s existing logic
+// in full: a recorded failure (`succeeded === false`) legitimately offers
+// `repair-the-loss`, and a success returns a set that doesn't contain it.
+//
+// Return shape: the memory to feed `renderRouteRiskChoice` plus the list of
+// actions the renderer should drop from the offered set.
 export const routeRiskMemoryForPacketChoice = (packet, routeRisk) => {
-  if (routeRisk == null && packet?.sealed) {
+  if (routeRisk == null) {
     return { memory: null, hideActions: ["repair-the-loss"] };
   }
-  return { memory: routeRisk ?? null, hideActions: [] };
+  return { memory: routeRisk, hideActions: [] };
 };
