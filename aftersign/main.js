@@ -1409,7 +1409,9 @@ const lineForBeat = () => {
       // isn't one the copy has a line for — fall through to the base
       // line rather than mis-crediting the player with a route Io
       // never watched (Soren #1963 review: no silent default).
-      const routeLine = aftersignRouteOutcomeLine(routeMemory.lastRoute);
+      // #2179: pass lastAction so a fragile-packet run (also route class
+      // "fast") speaks the fragile line, not the shortcut's phrasing.
+      const routeLine = aftersignRouteOutcomeLine(routeMemory.lastRoute, routeMemory.lastAction);
       if (routeLine) return routeLine;
     }
     return "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
