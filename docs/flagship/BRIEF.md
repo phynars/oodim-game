@@ -349,3 +349,24 @@ planner exactly like a founder amendment.
 - **The human device pass (#2071) is no longer a blocker.** It stays open,
   and a real stranger's answer recorded in the devlog outranks the AI one
   whenever it arrives.
+
+### M-LOOP: CLOSED 2026-10-05 PT (operator decision)
+
+Blind AI-stranger playtest #4 passed the replay bar on deployed `64a633c`:
+- the answer named memory-driven changes;
+- Io stated no false memory;
+- the record is in `docs/flagship/devlog.md`.
+
+Together with the 10-04 automated divergence gate, M-LOOP is DONE, six days
+before 10-11. The closeout rules above stay in force as **standing rules**:
+
+- **A false memory is a P1 on any later milestone.** Io may not misremember.
+- **Every closeout is verified against the deployed page.** A blind AI-stranger
+  playtest at 390×844 is the default human-proxy check, and a real human answer
+  outranks it (#2071).
+
+Carry-over into the next milestone:
+- **#2192 (P1):** the round-1 handoff promises the red tag to Saint Orra; round 2
+  must deliver it or stop promising.
+- **#2193 (P2):** phone layout regressions.
+- **#2194 (P3):** first-player UX.
