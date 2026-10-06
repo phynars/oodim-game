@@ -12,7 +12,6 @@ declare global {
       version?: number;
       getSnapshot?: () => FlagshipSnapshot;
       input?: {
-        choose?: (choiceId: string) => unknown | Promise<unknown>;
         waitForStoryIdle?: () => unknown | Promise<unknown>;
       };
     };
@@ -21,6 +20,11 @@ declare global {
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
+// The shipped return-tone input deliberately rejects choices made within
+// RECOGNITION_SETTLE_MS (120 ms) of entering recognition. Give the
+// harness-only driver a small margin so auto-advance timing cannot make
+// this acceptance test race that player-protection gate.
+const RECOGNITION_SETTLE_WAIT_MS = 150;
 
 async function waitForGame(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
@@ -40,13 +44,10 @@ async function snapshot(page: Page): Promise<FlagshipSnapshot> {
   return page.evaluate(() => window.__game!.getSnapshot!());
 }
 
-async function choose(page: Page, choiceId: string): Promise<FlagshipSnapshot> {
-  await page.evaluate(async (id) => {
-    const chooseInput = window.__game?.input?.choose;
-    if (!chooseInput) throw new Error("window.__game.input.choose is missing");
-    await chooseInput(id);
-    await window.__game?.input?.waitForStoryIdle?.();
-  }, choiceId);
+async function tapChoice(page: Page, choiceId: string): Promise<FlagshipSnapshot> {
+  const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
+  await expect(choice).toBeVisible({ timeout: WAIT_MS });
+  await choice.click();
   return snapshot(page);
 }
 
@@ -58,7 +59,7 @@ async function driveToReturnRecognition(page: Page): Promise<FlagshipSnapshot> {
   let current = await snapshot(page);
   for (const choiceId of route) {
     if (current.scene?.beat === "io-return-recognition") break;
-    current = await choose(page, choiceId);
+    current = await tapChoice(page, choiceId);
   }
 
   await expect
@@ -86,10 +87,14 @@ test.describe("M-CONTINUE served-page extent", () => {
     const recognition = await driveToReturnRecognition(page);
     expect(recognition.scene?.beat).toBe("io-return-recognition");
 
-    const returnTone = await choose(page, "choose-return-tone");
+    await page.waitForTimeout(RECOGNITION_SETTLE_WAIT_MS);
+    // Tap the rendered phone choice. This production path stamps the
+    // recognition interaction before the return-tone transition; the old
+    // window.__game harness call bypassed that timing contract.
+    const returnTone = await tapChoice(page, "choose-return-tone");
     expect(returnTone.scene?.beat).toBe("return-tone-choice");
 
-    const nextJob = await choose(page, "ask-for-next-job");
+    const nextJob = await tapChoice(page, "ask-for-next-job");
     expect(nextJob.scene?.beat).toBe("io-next-job");
   });
 });
