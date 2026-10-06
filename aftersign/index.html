@@ -908,8 +908,17 @@
       }
 
       /* A route choice remains a warm, explicit selection—not a greyed-out
-         action—until the player moves on. */
-      #routeChoice button[data-aftersign-selected="true"] {
+         action—until the player moves on. The container stamps
+         `data-aftersign-selected-action="<action>"` after a tap (see
+         `renderText()` in aftersign/main.js); each rule below matches
+         the child button whose `data-aftersign-tap-choice` equals that
+         action, so the warm selected state lands on the exact button
+         the finger pressed. One rule per offered-action id (see
+         `AftersignOfferedAction` in `routeRiskMemory.ts`). */
+      #routeChoice[data-aftersign-selected-action="take-the-shortcut"] button[data-aftersign-tap-choice="take-the-shortcut"],
+      #routeChoice[data-aftersign-selected-action="take-the-long-way"] button[data-aftersign-tap-choice="take-the-long-way"],
+      #routeChoice[data-aftersign-selected-action="repair-the-loss"] button[data-aftersign-tap-choice="repair-the-loss"],
+      #routeChoice[data-aftersign-selected-action="carry-a-fragile-packet"] button[data-aftersign-tap-choice="carry-a-fragile-packet"] {
         border-color: rgba(255, 214, 151, 0.96);
         background: rgba(92, 58, 30, 0.9);
         box-shadow:
