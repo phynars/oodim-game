@@ -10,8 +10,8 @@ import {
 // the words here.
 const expectedLines: Record<IoReturningSessionLineKey, string> = {
   sealedPacket:
-    'You came back. So did the blue seal, unbroken. That makes two reasons to trust you.',
-  openedPacket: 'You came back. The seal did not. I can use one of those facts.',
+    'You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.',
+  openedPacket: 'You made it back. The seal did not. I can use one of those facts.',
   sealedPacketListenedRoute:
     'You came back with the blue seal unbroken. You heard me out before you ran. I remember hands I can trust.',
   sealedPacketSkippedRoute:

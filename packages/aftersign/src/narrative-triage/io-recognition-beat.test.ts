@@ -29,7 +29,7 @@ describe('selectIoRecognitionBeat', () => {
     );
 
     expect(beat.id).toBe('io-return-blue-seal-unbroken');
-    expect(beat.line).toBe('You came back. So did the blue seal, unbroken. Two facts. I can work with two.');
+    expect(beat.line).toBe('You made it back. So did the blue seal, unbroken. Two facts. I can work with two.');
     expect(beat.remembers).toContain('the player delivered the blue packet unopened');
   });
 

@@ -24,7 +24,7 @@ export type IoReturningSessionLineKey =
 // Do not paraphrase; the harness asserts these strings verbatim.
 export const ioReturningSessionLines: Record<IoReturningSessionLineKey, string> = {
   sealedPacket: IO_SEALED_RETURN_LINE,
-  openedPacket: 'You came back. The seal did not. I can use one of those facts.',
+  openedPacket: 'You made it back. The seal did not. I can use one of those facts.',
   withheldPacket:
     'You came back with the packet still in your pocket. That is not nothing. It is not delivery.',
   returnedPacket:

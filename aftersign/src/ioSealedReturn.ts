@@ -7,7 +7,7 @@
  * must import it with its actual `.ts` extension.
  */
 export const IO_SEALED_RETURN_BEATS = [
-  "You came back.",
+  "You made it back.",
   "So did the blue seal, unbroken.",
   "That makes two reasons to trust you.",
 ] as const;

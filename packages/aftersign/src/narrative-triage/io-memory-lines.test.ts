@@ -53,7 +53,7 @@ describe('io-memory-lines shim', () => {
   describe('canonical text — the shim MUST inherit io-recognition-beat text verbatim', () => {
     it('kept-sealed returning line reads the canonical packet-sealed beat text', () => {
       expect(ioReturningMemoryLines.keptSealed.text).toBe(
-        'You came back. So did the blue seal, unbroken. Two facts. I can work with two.',
+        'You made it back. So did the blue seal, unbroken. Two facts. I can work with two.',
       );
     });
 
