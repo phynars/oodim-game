@@ -7,19 +7,27 @@ import {
   ioSecondPacketResponseLine,
 } from "../src/ioSecondPacketResponseVoice.ts";
 
-// Phone 390×844 regression spec for issue #2193. Pins the three
-// symptoms from blind playtest #4:
+// Phone 390×844 regression spec for issue #2193. Pins two of the
+// three symptoms from blind playtest #4 (the third — "right-edge
+// strip after Deliver" — has no reproducible source fix in this PR
+// and is tracked separately; see the inline comment at the end):
+//
 //   1. Dialogue double-rendered — `#line` and `#ioSecondPacketPointer`
 //      both carried the SAME response sentence, so a kind/evasive
 //      player saw "Good. Take the red tag…" twice in a row. The fix
 //      stops stamping the pointer paragraph (its copy is identical to
 //      `#line`'s response, so the sibling `<p>` was pure duplication).
 //   2. Offer labels wrapping mid-word in the narrow jobs tray
-//      ("Mark/ed", "delive/ry") — fixed by `white-space: nowrap` plus
-//      ellipsis on the offer buttons.
-//   3. A dark right-edge strip after Deliver clipping pills — a visible
-//      control must fit inside 390 CSS px AND the hit-test at its
-//      right edge must resolve to the control itself (not a cover).
+//      ("Mark/ed", "delive/ry") — fixed by `word-break: keep-all`
+//      plus `overflow-wrap: normal` on the offer buttons. Note we
+//      deliberately keep `white-space: normal` (not `nowrap`) so the
+//      button's bounding-box dimensions stay in the pre-fix layout
+//      flow and the sibling press-juice spec
+//      (`aftersign-job-offer-press-juice.playtest.spec.ts`) that
+//      measures the same button's transformed rect reads the
+//      authored scale(0.97) envelope — not a layout-driven height
+//      collapse masquerading as a scale drop (PR #2196 first pass
+//      regressed that spec with `nowrap + overflow:hidden + ellipsis`).
 //
 // The exact response literal is read from `ioSecondPacketCopy.ts` /
 // `ioSecondPacketResponseVoice.ts` so a copy rename reds this spec at
@@ -38,15 +46,16 @@ test.describe("AFTERSIGN phone 390×844 regression (#2193)", () => {
     });
 
     // Symptom 2 — offer labels: every offered-jobs button must declare
-    // `white-space: nowrap` and must NOT be horizontally clipped past
-    // its own clientWidth (nowrap + ellipsis keeps each route-name
-    // word intact in the narrow phone tray).
+    // `word-break: keep-all` + `overflow-wrap: normal` (forbids mid-
+    // word breaks like "delive/ry") AND must not horizontally overflow
+    // its own box (nothing spills past clientWidth).
     const offers = page.locator("#offeredJobs button");
     await expect(offers.first()).toBeVisible();
     const offerCount = await offers.count();
     for (let index = 0; index < offerCount; index += 1) {
       const offer = offers.nth(index);
-      await expect(offer).toHaveCSS("white-space", "nowrap");
+      await expect(offer).toHaveCSS("word-break", "keep-all");
+      await expect(offer).toHaveCSS("overflow-wrap", "normal");
       const { scrollWidth, clientWidth } = await offer.evaluate((node) => ({
         scrollWidth: (node as HTMLElement).scrollWidth,
         clientWidth: (node as HTMLElement).clientWidth,
@@ -99,43 +108,14 @@ test.describe("AFTERSIGN phone 390×844 regression (#2193)", () => {
     expect(occurrences, "response sentence appears in exactly one text node").toBe(1);
   });
 
-  test("keeps controls inside and uncovered after Deliver", async ({ page }) => {
-    await page.goto("/aftersign/?slot=phone-390-controls", { waitUntil: "load" });
-    await page.locator("#deliverButton").click();
-    await expect(page.locator("#acknowledgeRouteButton")).toBeVisible();
-
-    // Symptom 3 — every visible button after Deliver must fit inside
-    // the 390×844 viewport AND the hit-test at its right edge must
-    // resolve to that button, meaning nothing covers it.
-    const controls = page.locator("button:visible");
-    const count = await controls.count();
-    expect(count, "at least one visible control after Deliver").toBeGreaterThan(0);
-    for (let index = 0; index < count; index += 1) {
-      const control = controls.nth(index);
-      const id = (await control.getAttribute("id")) ?? `[unlabelled-${index}]`;
-      const box = await control.boundingBox();
-      expect(box, `visible control ${id} has a box`).not.toBeNull();
-      expect(box!.x, `${id} left edge inside viewport`).toBeGreaterThanOrEqual(0);
-      expect(box!.y, `${id} top edge inside viewport`).toBeGreaterThanOrEqual(0);
-      expect(
-        box!.x + box!.width,
-        `${id} right edge inside 390 CSS px viewport`,
-      ).toBeLessThanOrEqual(PHONE_VIEWPORT.width);
-      expect(
-        box!.y + box!.height,
-        `${id} bottom edge inside 844 CSS px viewport`,
-      ).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
-      // Hit-test 1 CSS px inside the right edge, at vertical center.
-      // If a dark strip covers the right side, elementFromPoint
-      // resolves to the cover, not to this button.
-      const hitId = await page.evaluate(
-        ({ x, y }) => document.elementFromPoint(x, y)?.closest("button")?.id ?? null,
-        {
-          x: box!.x + box!.width - 1,
-          y: box!.y + box!.height / 2,
-        },
-      );
-      expect(hitId, `${id} right edge is not covered by another element`).toBe(id);
-    }
-  });
+  // Symptom 3 (right-edge dark strip after Deliver, clipping pills
+  // past x≈332) is tracked separately. The PR #2196 first-pass
+  // attempt at a reproducer ("keeps controls inside and uncovered
+  // after Deliver") either passed on main already or failed for
+  // layout reasons unrelated to the covered strip, so Soren's
+  // "every new test must fail on main first" gate was not met. The
+  // strip source has not been localized in a reviewed diff; a
+  // follow-up issue owns the reproducer + fix. Do NOT re-add a
+  // speculative test here without a confirmed source fix in the
+  // same PR.
 });
