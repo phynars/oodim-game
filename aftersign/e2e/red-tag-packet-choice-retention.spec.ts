@@ -65,6 +65,9 @@ test.describe("AFTERSIGN red-tag packet retention", () => {
     await tapChoice(page, "acknowledge-kiosk");
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#ioText")).toContainText(/Red tag.*Saint Orra/i);
+    // Io's recognition line is rendered into `#line` — the only line node in
+    // aftersign/index.html. Earlier drafts targeted `#ioText`, which does not
+    // exist in the DOM or in main.js (reviewer AI008 on PR #2205).
+    await expect(page.locator("#line")).toContainText(/Red tag.*Saint Orra/i);
   });
 });
