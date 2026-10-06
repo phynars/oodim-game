@@ -1,7 +1,4 @@
-import {
-  IO_OPENED_RETURN_LINE,
-  IO_SEALED_RETURN_LINE,
-} from "./ioSealedReturn.ts";
+import { IO_OPENED_RETURN_LINE } from "./ioSealedReturn.ts";
 
 export type PacketOutcome = "sealed" | "opened";
 export type RouteBehavior = "listened" | "skipped";
@@ -17,9 +14,17 @@ export const IO_LINES = {
   routeListened: "You listened before you ran. Rare. Keep it.",
 } as const;
 
+// `opened` is the canonical opened-return line — single-owned by
+// `IO_OPENED_RETURN_LINE` in ./ioSealedReturn.ts (imported above).
+// `sealed` is a VARIANT of the sealed-return beat (different trailing
+// clause from `IO_SEALED_RETURN_LINE`'s "That makes two reasons to trust
+// you."); it stays as an inline literal in this module because it is a
+// distinct authored line, not a duplicate. The "You made it back" prefix
+// is held in sync with the canonical constants by hand — if the opening
+// beat ever changes in `IO_SEALED_RETURN_BEATS`, update this prefix too.
 export const IO_RETURNING_RECOGNITION_LINES: Record<PacketOutcome, string> = {
-  sealed: "You came back. So did the blue seal, unbroken. That's two facts I can trust.",
-  opened: "You came back. The seal did not. I can use one of those facts.",
+  sealed: "You made it back. So did the blue seal, unbroken. That's two facts I can trust.",
+  opened: IO_OPENED_RETURN_LINE,
 };
 
 export function getIoReturningRecognitionLine(packetOutcome: PacketOutcome): string {

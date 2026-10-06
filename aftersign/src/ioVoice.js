@@ -34,8 +34,7 @@ export const IO_VOICE = Object.freeze({
     "Lanterns mark the dry boards. Brass signs mark the honest ones. Follow both.",
   returned: Object.freeze({
     sealed: IO_SEALED_RETURN_LINE,
-    opened:
-      "You came back. The seal did not. I can use one of those facts.",
+    opened: IO_OPENED_RETURN_LINE,
     unknown: "You came back. One fact isn't a history. Bring me the second.",
   }),
   listened: "You listened before you ran. Rare habit. Keep it.",

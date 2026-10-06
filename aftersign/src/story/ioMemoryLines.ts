@@ -39,7 +39,7 @@ export const IO_FIRST_SESSION_LINES = {
 
 export const IO_RETURNING_MEMORY_LINES: Record<FirstPacketOutcome, string> = {
   sealed: IO_SEALED_RETURN_LINE,
-  opened: 'You came back. The seal did not. I can use one of those facts.',
+  opened: IO_OPENED_RETURN_LINE,
 } as const;
 
 export const IO_ROUTE_MEMORY_LINES: Record<FirstRouteBehavior, string> = {

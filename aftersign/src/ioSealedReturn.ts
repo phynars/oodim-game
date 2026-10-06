@@ -1,9 +1,23 @@
 /**
- * Io's sealed-return and opened-return copy: one owner for each line, so
- * every served-surface consumer (`ioVoice.js`, `story/ioMemoryLines.ts`,
- * `io-dialogue.ts`, plus the `packages/aftersign` triage layer) imports
- * the string instead of re-typing it. Duplicated literals were the AI005
- * finding on PR #2200 — this module is the single owner.
+ * Io's sealed-return and opened-return CANONICAL copy.
+ *
+ * The OPENED line is single-owned: `IO_OPENED_RETURN_LINE` is the only
+ * place that string lives in source. Consumers that render the canonical
+ * opened-return line (`aftersign/src/ioVoice.js`,
+ * `aftersign/src/story/ioMemoryLines.ts`, `aftersign/src/io-dialogue.ts`,
+ * and `packages/aftersign/src/ioReturningSession.ts`) all import it
+ * rather than re-typing the literal.
+ *
+ * The SEALED line is single-owned for the three-beat canonical form
+ * (`IO_SEALED_RETURN_LINE` = "You made it back. So did the blue seal,
+ * unbroken. That makes two reasons to trust you."). The narrative-triage
+ * layer (`packages/aftersign/src/narrative-triage/io-recognition-beat.ts`,
+ * `io-slice-copy.ts`) and `aftersign/src/io-dialogue.ts` author VARIANT
+ * sealed-return lines with different trailing clauses ("Two facts. I can
+ * work with two." / "That's two facts I can trust.") — those are not
+ * duplicates and intentionally stay as inline literals in their owning
+ * modules. They share only the "You made it back. So did the blue seal,
+ * unbroken." prefix, which is held in sync by hand.
  *
  * Keep the tuple shape explicit rather than asserting that splitting
  * arbitrary prose produces exactly three beats.
