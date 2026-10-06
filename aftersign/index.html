@@ -214,12 +214,18 @@
         position: fixed;
         inset: 0;
         pointer-events: none;
-        /* The transition vignette belongs behind the HUD. At z-index:60
-           it painted over the phone's return-choice pills during the
-           delivery → Io transition, leaving a dark right-edge strip.
-           Keep the scene effect above the canvas but below the later HUD
-           in normal stacking order, so controls remain fully visible. */
-        z-index: 0;
+        /* The transition vignette belongs behind the HUD. The layer is
+           appended to <body> as a LAST child by playAftersignSceneTransition
+           (see apps/web/src/aftersign/aftersignSceneTransitionFeel.ts),
+           so under equal painting-order rules (both position:fixed, same
+           effective z-index) it would otherwise paint ABOVE .hud. The HUD
+           carries an explicit higher z-index below (`.hud { z-index: 70 }`)
+           so this transition layer stays beneath the phone pills even
+           though it's the later-tree-order sibling. Reported bug #2202:
+           at the delivery → Io transition the vignette's dark right-edge
+           band clipped the return-choice pills; the HUD-side z-index
+           bump is the actual fix. */
+        z-index: 10;
         background:
           radial-gradient(
             ellipse at 50% 62%,
@@ -515,6 +521,16 @@
       .hud {
         position: fixed;
         inset: auto 0 0 0;
+        /* Paint ABOVE the scene-transition vignette layer. The transition
+           layer (`.aftersign-scene-transition`, z-index:10) is appended to
+           <body> as a late sibling by playAftersignSceneTransition; at
+           equal effective stacking level it would paint over this HUD by
+           tree-order rules alone. The HUD-side bump is the actual fix for
+           bug #2202 — the vignette's dark right-edge band had been clipping
+           the phone return-choice pills during the delivery → Io transition.
+           70 keeps the HUD below any future genuinely-blocking overlay
+           (modal, reduced-motion skip prompt) that would want 100+. */
+        z-index: 70;
         padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
         pointer-events: none;
         background:
