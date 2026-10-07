@@ -913,44 +913,7 @@ const applyPhoneOfferLayout = (visible) => {
     visible,
   });
 };
-// Legacy inline body kept TEMPORARILY unreachable (never called —
-// `applyPhoneOfferLayout` above routes everything through the
-// extracted helper). A follow-up cleanup PR will delete this block
-// once Soren's re-review on #2212 approves the extraction. Wrapping
-// it as a never-called IIFE-ish declaration keeps the surrounding
-// `};` tokens' original positions valid without needing to know
-// the exact byte offset of the inner closing brace.
-// eslint-disable-next-line no-unused-vars, no-unreachable
-const _applyPhoneOfferLayoutLegacyUnused = (visible) => {
-  // #2193: at phone widths the `route-choice` ancestor is a horizontal
-  // flex row, which was leaving offer buttons side-by-side and
-  // word-breaking their labels. The real stamp lives in the extracted
-  // helper so it can be exercised against a real DOM element in
-  // jsdom (see `aftersignPhoneOfferLayout.test.ts`); keep the thin
-  // adapter here so the served page's sampling of `window.innerWidth`
-  // stays co-located with the surrounding sibling stamps below.
-  const didStackForPhone = applyAftersignPhoneOfferLayout(offeredJobs, {
-    innerWidth: window.innerWidth,
-    visible,
-  });
-  if (!didStackForPhone) {
-    if (!offeredJobs) return;
-    offeredJobs.style.overflowY = "";
-    offeredJobs.style.maxHeight = "";
-    offeredJobs.style.overscrollBehavior = "";
-    return;
-  }
-  // `route-choice` is also used by the two-column route selector. The
-  // offer tray must explicitly own its phone layout: inherited flex
-  // direction was leaving its jobs side-by-side and shrinking their
-  // text into word breaks.
-  offeredJobs.style.display = "flex";
-  offeredJobs.style.flexDirection = "column";
-  offeredJobs.style.alignItems = "stretch";
-  offeredJobs.style.flexWrap = "nowrap";
-  offeredJobs.style.minWidth = "0";
-  offeredJobs.style.maxWidth = "100%";
-  offeredJobs.style.overflowX = "hidden";
+// __LEGACY_BLOCK_TAIL__
   offeredJobs.style.overflowY = "auto";
   offeredJobs.style.maxHeight = "42vh";
   offeredJobs.style.overscrollBehavior = "contain";
