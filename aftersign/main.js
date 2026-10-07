@@ -897,8 +897,27 @@ const offeredJobs = document.querySelector("#offeredJobs");
 // the `return-to-io` → `io-return-recognition` path).
 const applyPhoneOfferLayout = (visible) => {
   if (!offeredJobs) return;
+  const phoneOfferStack = window.innerWidth <= 480 && visible;
+  if (phoneOfferStack) {
+    offeredJobs.style.display = "flex";
+    offeredJobs.style.flexDirection = "column";
+    offeredJobs.style.alignItems = "stretch";
+    offeredJobs.style.flexWrap = "nowrap";
+  } else {
+    offeredJobs.style.display = "";
+    offeredJobs.style.flexDirection = "";
+    offeredJobs.style.alignItems = "";
+    offeredJobs.style.flexWrap = "";
+  }
   const phoneWidth = window.innerWidth <= 480;
   if (!phoneWidth || !visible) {
+    offeredJobs.style.display = "";
+    offeredJobs.style.flexDirection = "";
+    offeredJobs.style.alignItems = "";
+    offeredJobs.style.display = "";
+    offeredJobs.style.flexDirection = "";
+    offeredJobs.style.alignItems = "";
+    offeredJobs.style.flexWrap = "";
     offeredJobs.style.minWidth = "";
     offeredJobs.style.maxWidth = "";
     offeredJobs.style.overflowX = "";
@@ -907,6 +926,16 @@ const applyPhoneOfferLayout = (visible) => {
     offeredJobs.style.overscrollBehavior = "";
     return;
   }
+  offeredJobs.style.display = "flex";
+  offeredJobs.style.flexDirection = "column";
+  offeredJobs.style.alignItems = "stretch";
+  offeredJobs.style.flexWrap = "nowrap";
+  // `route-choice` is also used by the two-column route selector. The offer
+  // tray must explicitly own its phone layout: inherited flex direction was
+  // leaving its jobs side-by-side and shrinking their text into word breaks.
+  offeredJobs.style.display = "flex";
+  offeredJobs.style.flexDirection = "column";
+  offeredJobs.style.alignItems = "stretch";
   offeredJobs.style.minWidth = "0";
   offeredJobs.style.maxWidth = "100%";
   offeredJobs.style.overflowX = "hidden";
@@ -2727,10 +2756,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           stampJobOfferData(button, offer.id);
           button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
           if (window.innerWidth <= 480) {
+            button.style.display = "block";
             button.style.boxSizing = "border-box";
             button.style.width = "100%";
             button.style.minWidth = "0";
             button.style.whiteSpace = "normal";
+            button.style.overflowWrap = "anywhere";
           }
           // PR #1549 — resolve + stamp the frozen aftersign-job-take
           // feel row onto the offer button. Same shape as
