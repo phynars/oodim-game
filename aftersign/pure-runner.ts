@@ -240,6 +240,20 @@ import { runRecognitionFeedbackModelChecks } from "./src/recognition-feedback.te
 // `typecheck:aftersign` green whether or not allowJs resolves it (TS7016).
 // @ts-ignore
 import { runPacketInteractionChecks } from "./src/packet-interaction.test.js";
+// Kept-seal route-risk filter (#2194) — pure branch pins over
+// `routeRiskMemoryForPacketChoice`, the helper `aftersign/main.js` consults
+// at `packet-choice` to decide which route-risk actions to render. The hide
+// keys off `routeRisk == null` alone — "no memory on record → no loss to
+// repair" — which keeps the rule premise-free (no runtime assumption about
+// when `packet.sealed` is written) and is pinned here across every
+// branch (null / undefined / failed / safe-succeeded / fast-succeeded).
+// The leaf (`./keptSealRouteRisk.js`) has ZERO relative imports and the
+// shim's sole relative import is the extensioned `./keptSealRouteRisk.js`,
+// so the subgraph satisfies the extension-resolution contract documented
+// above. The leaf is plain JS (no .d.ts); `@ts-ignore` mirrors the
+// `runPacketInteractionChecks` sibling above.
+// @ts-ignore
+import { runKeptSealRouteRiskChecks } from "./src/keptSealRouteRisk.test.js";
 
 type Runner = {
   label: string;
@@ -370,6 +384,11 @@ const runners: Runner[] = [
   // added in the initial wire-up but this entry was omitted, so the
   // runner never ran in CI — same gap Soren flagged on PRs #1528 / #1874).
   { label: "runPacketInteractionChecks", run: runPacketInteractionChecks },
+  // Kept-seal route-risk filter (#2194) — pure branch pins over
+  // `routeRiskMemoryForPacketChoice`. The hide keys off `routeRisk == null`
+  // alone (no runtime premise on `packet.sealed`). This runner pins all
+  // branches so the served-page e2e is not the sole witness for the rule.
+  { label: "runKeptSealRouteRiskChecks", run: runKeptSealRouteRiskChecks },
 ];
 
 let failed = 0;

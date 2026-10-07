@@ -262,6 +262,7 @@ import {
   renderRouteRiskChoice,
 } from "../apps/web/src/aftersign/routeRiskMemory.ts";
 import { buildRouteRiskRenderSignature } from "./src/routeRiskRenderSignature.js";
+import { routeRiskMemoryForPacketChoice } from "./src/keptSealRouteRisk.js";
 import {
   playRouteRiskConfirmFeedback,
   ROUTE_RISK_CONFIRM_FEEL,
@@ -2430,14 +2431,33 @@ const renderText = () => {
       // renderText runs each frame. Keep this tray's real buttons stable
       // while its durable route-risk axis is unchanged; otherwise a phone
       // tap can land on a node that is replaced before its click resolves.
-      const routeRiskSignature = buildRouteRiskRenderSignature(
+      // First-visit route-risk: with NO prior run on record there is no
+      // "loss" to repair. The helper decides both the memory to feed
+      // `renderRouteRiskChoice` AND which offered actions to drop before
+      // the writer stamps buttons — one source of truth for the rule
+      // (no duplicated inline fallback here, and no `packet.sealed`
+      // runtime premise: the hide fires off `routeRisk == null` alone,
+      // which is premise-free and pinned by `runKeptSealRouteRiskChecks`
+      // in the pure lane).
+      const routeRiskRender = routeRiskMemoryForPacketChoice(
         state.player.routeRisk,
       );
+      // Include the hidden-actions axis in the signature so the two
+      // routeRisk states — "null memory with repair-the-loss hidden"
+      // and "null memory with full offer set" — never collide into a
+      // single cached signature. The pure signature alone sees `null`
+      // on both sides and would otherwise skip a re-render.
+      const routeRiskSignature =
+        buildRouteRiskRenderSignature(routeRiskRender.memory) +
+        (routeRiskRender.hideActions.length > 0
+          ? `|hide:${routeRiskRender.hideActions.join(",")}`
+          : "");
       if (routeRiskChoice.dataset.renderSignature !== routeRiskSignature) {
         routeRiskChoice.dataset.renderSignature = routeRiskSignature;
         renderRouteRiskChoice({
           container: routeRiskChoice,
-          memory: state.player.routeRisk,
+          memory: routeRiskRender.memory,
+          hideActions: routeRiskRender.hideActions,
           labelForAction: routeRiskActionLabel,
           onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
