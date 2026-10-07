@@ -509,6 +509,10 @@
 
       .hud {
         position: fixed;
+        /* The scene-transition vignette is a scene layer, not tray
+           chrome. Keep every live control above it so a narrow-phone
+           drift cannot darken or visually cut off a pill's right edge. */
+        z-index: 61;
         inset: auto 0 0 0;
         padding: 18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
         pointer-events: none;
@@ -724,6 +728,10 @@
         display: none;
         flex-basis: 100%;
         align-items: center;
+        /* Return-tone pills share this row at 390px. Wrapping keeps the
+           right edge of "Evasive return" inside the panel instead of
+           running beneath the viewport's dark gutter. */
+        flex-wrap: wrap;
         gap: 8px;
         color: rgba(237, 247, 255, 0.76);
         font-size: 12px;
