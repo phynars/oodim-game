@@ -1495,6 +1495,12 @@ const lineForBeat = () => {
   }
 
   if (state.scene.beat === "io-return-recognition") {
+    // The second packet keeps its own recognition thread; sealed/opened is
+    // an outcome, not permission to collapse Saint Orra back to blue-route
+    // copy on the following return beat.
+    if (state.delivery.id === "red-tag") {
+      return "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it.";
+    }
     // Red-guard hook (#653): wrong-io-line deliberately swaps the
     // recognition line so the harness can prove it would catch a
     // line/outcome mismatch. No-op when breakMode is "".
@@ -1681,7 +1687,24 @@ const syncIoLine = () => {
     const selected = selectIoRecognitionDialogueLine(snippets, {
       memory: state.npcs.io.memory,
     });
-    nextLine = selected.line;
+    // Red-tag return keeps its OWN recognition line — do NOT append the
+    // red-tag suffix to `selected.line`, because `selected.line` is a
+    // sealed/opened BLUE-ROUTE snippet from `RETURNING_LINES` /
+    // `DEEP_RECALL_LINES` (ioRecognitionDialogue.ts) and leaks "blue
+    // seal" / "blue route" / "broken seal" into `#line` on round-two.
+    // That's the exact bite reviewer AI007 flagged on PR #2205 iter-3:
+    // #line read `"I remember you: blue seal, unbroken… Red tag
+    // delivered to Saint Orra."` on the red-tag return beat.
+    //
+    // Single-source with `lineForBeat()`'s `io-return-recognition`
+    // red-tag branch above — both writers emit the SAME string, so
+    // whichever one lands on `#line` first (via `renderText()` reading
+    // `lineForBeat()` directly, or via the `state.npcs.io.lastLine`
+    // path syncIoLine feeds into) the beat reads identically. This
+    // closes the AI008 two-writers-one-assertion race.
+    nextLine = state.delivery.id === "red-tag"
+      ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
+      : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The
@@ -3106,9 +3129,27 @@ const commitPacketOutcome = (outcome) => {
       reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
     });
     applyPacketFeedback(interaction.feedback, {
-      applyButtonCopy: (copy) => applyPacketButtonCopy(packetButton, copy),
+      applyButtonCopy: (copy) => {
+        // The packet interaction owns the sealed/opened affordance, but not
+        // the destination identity. Round two carries Io's red tag through
+        // this same gesture, so the generic blue-packet copy must not erase
+        // the route the player just accepted.
+        if (state.delivery.id === "red-tag") {
+          packetButton.textContent = "Red tag — Saint Orra";
+          packetButton.dataset.packetJob = "red-tag";
+          packetButton.dataset.packetButtonCopyState = copy;
+          return;
+        }
+        applyPacketButtonCopy(packetButton, copy);
+      },
     });
   } catch { /* feedback must never block a committed choice */ }
+
+  // Note: the red-tag label survives via the `applyButtonCopy` override
+  // inside `applyPacketFeedback` above — the feedback writer calls that
+  // callback synchronously, so by the time control returns here the
+  // button already reads "Red tag — Saint Orra" on the red-tag fork.
+  // No second write needed (reviewer dedupe on PR #2205 iter-2).
 
   if (state.packet.sealed !== interaction.packet.sealed) {
     state.packet.sealed = interaction.packet.sealed;
