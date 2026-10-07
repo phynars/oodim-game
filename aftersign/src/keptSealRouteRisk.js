@@ -12,13 +12,17 @@
 // `take-the-long-way`) and only HIDE the recovery entry when `routeRisk` is
 // null — i.e. no prior run has been recorded at all.
 //
-// Why key off `routeRisk == null` and NOT `packet.sealed`:
+// Why key off `routeRisk == null` only (no `packet` argument at all):
 //   Gating the hide on `packet.sealed === true` would add a runtime premise
 //   ("the `#packetButton` tap sets sealed BEFORE packet-choice renders")
 //   that this module cannot verify in isolation. The pure semantic —
 //   "no memory on record → nothing to repair" — covers the kept-seal
 //   first-visit case AND the opened-first-visit case AND the fresh-slot-
-//   no-tap case, without depending on `main.js` ordering.
+//   no-tap case, without depending on `main.js` ordering. The signature
+//   deliberately takes no `packet` argument so a future contributor can't
+//   accidentally reintroduce the premise by reading `packet.sealed` here.
+//   Soren's PR #2206 review flagged the prior `packet` param as unread —
+//   dropping it from the signature nails that invariant into the contract.
 //
 // When `routeRisk` IS set, respect `computeOfferedActions`'s existing logic
 // in full: a recorded failure (`succeeded === false`) legitimately offers
@@ -26,7 +30,7 @@
 //
 // Return shape: the memory to feed `renderRouteRiskChoice` plus the list of
 // actions the renderer should drop from the offered set.
-export const routeRiskMemoryForPacketChoice = (packet, routeRisk) => {
+export const routeRiskMemoryForPacketChoice = (routeRisk) => {
   if (routeRisk == null) {
     return { memory: null, hideActions: ["repair-the-loss"] };
   }

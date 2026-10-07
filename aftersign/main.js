@@ -2410,7 +2410,6 @@ const renderText = () => {
       // which is premise-free and pinned by `runKeptSealRouteRiskChecks`
       // in the pure lane).
       const routeRiskRender = routeRiskMemoryForPacketChoice(
-        state.packet,
         state.player.routeRisk,
       );
       // Include the hidden-actions axis in the signature so the two

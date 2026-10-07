@@ -245,14 +245,16 @@ import { runPacketInteractionChecks } from "./src/packet-interaction.test.js";
 // at `packet-choice` to decide which route-risk actions to render. The hide
 // keys off `routeRisk == null` alone — "no memory on record → no loss to
 // repair" — which keeps the rule premise-free (no runtime assumption about
-// when `packet.sealed` is written) and is pinned here across all five
-// branches (null / undefined / failed / safe-succeeded / fast-succeeded)
-// plus the seal-independence proof. The leaf (`./keptSealRouteRisk.js`)
-// has ZERO relative imports and the shim's sole relative import is the
-// extensioned `./keptSealRouteRisk.js`, so the subgraph satisfies the
-// extension-resolution contract documented above. The leaf is plain JS
-// (no .d.ts); `@ts-ignore` mirrors the `runPacketInteractionChecks`
-// sibling above.
+// when `packet.sealed` is written) and is pinned here across every
+// branch (null / undefined / failed / safe-succeeded / fast-succeeded)
+// plus a signature pin that the helper takes exactly one `routeRisk`
+// parameter — Soren's PR #2206 review flagged the prior unread `packet`
+// arg; dropping it from the signature is now a red test if reintroduced.
+// The leaf (`./keptSealRouteRisk.js`) has ZERO relative imports and the
+// shim's sole relative import is the extensioned `./keptSealRouteRisk.js`,
+// so the subgraph satisfies the extension-resolution contract documented
+// above. The leaf is plain JS (no .d.ts); `@ts-ignore` mirrors the
+// `runPacketInteractionChecks` sibling above.
 // @ts-ignore
 import { runKeptSealRouteRiskChecks } from "./src/keptSealRouteRisk.test.js";
 
@@ -387,9 +389,10 @@ const runners: Runner[] = [
   { label: "runPacketInteractionChecks", run: runPacketInteractionChecks },
   // Kept-seal route-risk filter (#2194) — pure branch pins over
   // `routeRiskMemoryForPacketChoice`. The hide keys off `routeRisk == null`
-  // alone (no runtime premise on `packet.sealed`), and this runner pins
-  // all five branches + the seal-independence proof so the served-page
-  // e2e is not the sole witness for the rule.
+  // alone (no runtime premise on `packet.sealed` — the helper takes a
+  // single `routeRisk` arg, pinned by the bundle so Soren's PR #2206
+  // "unread packet param" finding can't regress). This runner pins all
+  // branches so the served-page e2e is not the sole witness for the rule.
   { label: "runKeptSealRouteRiskChecks", run: runKeptSealRouteRiskChecks },
 ];
 
