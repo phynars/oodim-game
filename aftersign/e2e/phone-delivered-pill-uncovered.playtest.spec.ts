@@ -12,63 +12,100 @@ import { expect, test } from "@playwright/test";
 // shots 008/009/018 (#2193 symptom 3) show the right side of the
 // "Evasive return" pill reading as cut off against a dark vertical band.
 //
-// WHY THE PRIOR PROBE DID NOT WORK (PR #2210 re-review, Soren Vask)
-// -----------------------------------------------------------------
-// The first draft of this spec used `document.elementFromPoint` on the
-// pill's right-edge pixel and asserted the owner was the pill, not the
-// transition surface. `.aftersign-scene-transition` is
-// `pointer-events: none` (`aftersign/index.html` CSS block). The HTML
-// spec says `elementFromPoint` SKIPS pointer-events:none elements, so
-// the probe could never return the transition surface — the assertion
-// passed on main (bug present) AND with the fix. A tautological probe
-// is not a regression gate. See AI008 (unverified runtime premise on
-// `elementFromPoint`) and AI003 (tautological test).
+// WHY THE PRIOR PROBES DID NOT WORK
+// ---------------------------------
+// Round 1 — `document.elementFromPoint` on the pill's right-edge
+// pixel. `.aftersign-scene-transition` is `pointer-events: none`
+// (`aftersign/index.html` CSS block). HTML spec: `elementFromPoint`
+// SKIPS pointer-events:none elements. The probe could never return the
+// transition surface — assertion passed on main AND with the fix. See
+// AI008 (unverified runtime premise) and AI003 (tautological test).
 //
-// WHAT THIS PROBE DOES INSTEAD
-// ----------------------------
-// Soren named the correct replacement: a probe that sees PAINT. We can
-// not pull in a PNG decoder (no `pngjs`/`sharp` in this harness — see
-// root package.json), and Playwright's visual-regression (toHaveScreenshot)
-// would require a committed baseline PNG the prior reviewer also flagged.
-// The clean alternative is a STACKING-ORDER paint invariant that is
-// decidable from `getComputedStyle` + `getBoundingClientRect` alone:
+// Round 2 (prior commit on this branch) — a `getComputedStyle` +
+// `getBoundingClientRect` stacking probe, but TIMING-DEPENDENT. The
+// transition layer auto-removes `totalDurationMs + SCENE_TRANSITION_CLEANUP_TAIL_MS`
+// after mount — 540ms + 80ms = 620ms — see
+// `apps/web/src/aftersign/aftersignSceneTransitionFeel.ts`
+// (`playAftersignSceneTransition` schedules a `setTimeoutRef`
+// that calls `layer.parentNode.removeChild(layer)`). The spec runs
+// several awaits after the deliver tap before probing; whether the
+// layer is still attached is a timing coin-flip. If gone, `!transition`
+// returned `stackingBroken: true` and the spec failed WITH the fix in
+// place. If still attached, it passed. The gate was non-deterministic
+// — Soren's third-round critique on #2210. See AI015 (timing-race
+// gate masquerading as regression gate).
 //
-//   At the delivered beat (`io-return-recognition`), if the
-//   `.aftersign-scene-transition` surface's rect intersects any visible
-//   HUD pill's rect, the HUD's effective `z-index` MUST be greater than
-//   or equal to the transition surface's `z-index`. Otherwise the dark
-//   band paints over the pill — the exact bug Diego saw.
+// HOW THIS ROUND PINS THE LAYER
+// -----------------------------
+// `page.addInitScript` installs — BEFORE any aftersign code runs — a
+// `removeChild` interceptor on `document.body`. Any attempt to remove
+// an `.aftersign-scene-transition` child is silently refused (we
+// return the node unchanged, as `removeChild` is spec'd to). The
+// `playAftersignSceneTransition` auto-dispose then no-ops; the
+// transition surface stays mounted at its real `z-index: 60` with its
+// real rect and real `pointer-events: none`. The stacking contest the
+// paint pipeline runs on frame-N is the same contest we assert — no
+// mock, no stub, no monkey-patched z-index. Only the dispose timer
+// loses, and only for the duration of this spec.
 //
-// Why this is a real regression gate (and NOT tautological):
+// WHY THIS IS A REAL REGRESSION GATE
+// ----------------------------------
 //   * On main, `.hud` has no `z-index` set — `getComputedStyle(.hud).zIndex`
-//     resolves to the string `"auto"`, which is NOT a stacking rank. The
+//     resolves to `"auto"`, which is NOT a stacking rank. The pinned
 //     transition surface's `z-index: 60` therefore wins the stacking
 //     contest wherever the two rects overlap — the probe FAILS on main.
 //   * With `.hud { z-index: 61 }` the HUD out-stacks the transition
 //     surface — the probe PASSES.
 //   * A future regression that removes `.hud { z-index: 61 }`, OR that
 //     bumps the transition surface to a higher stacking rank, re-reds
-//     this spec on the delivered beat.
+//     this spec.
 //
-// This is a stacking-paint invariant, not a hit-test invariant — it
-// does not depend on `pointer-events`, so Soren's AI008 critique does
-// not apply.
+// Stacking-paint invariant, not a hit-test invariant — independent of
+// `pointer-events` (AI008 does not apply) and independent of the
+// dispose timer (AI015 does not apply).
 //
 // WHY `hasTouch` + `isMobile` ARE REQUIRED
 // ----------------------------------------
 // `aftersign/playwright.config.ts`'s chromium project uses plain
-// `devices["Desktop Chrome"]` — no touch input device.
-// `Locator.tap()` throws without the touch opt-in. Every sibling phone
-// playtest spec sets both flags; the prior round of this spec red-CI'd
-// precisely because it forgot them. The acceptance-check from PR #2210
-// round one is baked in here.
+// `devices["Desktop Chrome"]` — no touch. `Locator.tap()` throws
+// without the touch opt-in. Every sibling phone playtest spec sets
+// both flags; the first round of this spec red-CI'd for exactly this
+// reason. The acceptance-check from PR #2210 round one is baked in.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
 
 test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-test("390×844 delivered beat: HUD out-stacks the scene-transition surface wherever they overlap", async ({
+test.beforeEach(async ({ page }) => {
+  // Pin the scene-transition layer so the stacking probe is
+  // deterministic regardless of when it fires relative to the
+  // 620ms auto-dispose. We hook ONLY the specific removal path
+  // `playAftersignSceneTransition` uses — `layer.parentNode.removeChild(layer)`
+  // where `parentNode` is `document.body`. We intercept at the
+  // Element.prototype level so the hook survives any body replacement
+  // and refuses detachment for `.aftersign-scene-transition` children
+  // only. Every other removal (dialogs, HUD rerenders, Playwright's
+  // own cleanup) passes through untouched.
+  await page.addInitScript(() => {
+    const nativeRemoveChild = Element.prototype.removeChild;
+    Element.prototype.removeChild = function patchedRemoveChild<
+      T extends Node,
+    >(this: Element, child: T): T {
+      if (
+        child instanceof Element &&
+        child.classList.contains("aftersign-scene-transition")
+      ) {
+        // Spec-shaped no-op: return the node unchanged. The caller
+        // thinks the removal succeeded; the DOM keeps the layer.
+        return child;
+      }
+      return nativeRemoveChild.call(this, child) as T;
+    };
+  });
+});
+
+test("390×844 delivered beat: HUD out-stacks the (pinned) scene-transition surface wherever they overlap", async ({
   page,
 }) => {
   await page.goto("/aftersign/", { waitUntil: "load" });
@@ -101,12 +138,19 @@ test("390×844 delivered beat: HUD out-stacks the scene-transition surface where
     page.locator("button[data-return-reason]:not([disabled])").first(),
   ).toBeVisible({ timeout: WAIT_MS });
 
+  // With the pin installed, `.aftersign-scene-transition` MUST still be
+  // attached — the auto-dispose was intercepted. If it's missing, the
+  // init-script never ran (test harness regression) and we fail LOUDLY
+  // rather than silently flipping the probe branch like round 2 did.
+  await expect(
+    page.locator(".aftersign-scene-transition"),
+    "scene-transition layer must stay pinned by the init-script interceptor",
+  ).toBeAttached({ timeout: WAIT_MS });
+
   type StackingReport = {
     pillLabel: string | null;
     pillRect: { left: number; top: number; right: number; bottom: number };
-    transitionRect:
-      | { left: number; top: number; right: number; bottom: number }
-      | null;
+    transitionRect: { left: number; top: number; right: number; bottom: number };
     transitionZIndex: string;
     hudZIndex: string;
     hudZIndexNumeric: number | null;
@@ -115,24 +159,16 @@ test("390×844 delivered beat: HUD out-stacks the scene-transition surface where
     stackingBroken: boolean;
   };
 
-  const report = await page.evaluate<StackingReport[]>(() => {
+  type ProbeResult =
+    | { kind: "pinned-missing" }
+    | { kind: "hud-missing" }
+    | { kind: "ok"; entries: StackingReport[] };
+
+  const probe = await page.evaluate<ProbeResult>(() => {
     const transition = document.querySelector<HTMLElement>(".aftersign-scene-transition");
     const hud = document.querySelector<HTMLElement>(".hud");
-    if (!transition || !hud) {
-      return [
-        {
-          pillLabel: "<no-pill-probed>",
-          pillRect: { left: 0, top: 0, right: 0, bottom: 0 },
-          transitionRect: null,
-          transitionZIndex: "<missing>",
-          hudZIndex: "<missing>",
-          hudZIndexNumeric: null,
-          transitionZIndexNumeric: null,
-          overlapsPill: false,
-          stackingBroken: true,
-        },
-      ];
-    }
+    if (!transition) return { kind: "pinned-missing" };
+    if (!hud) return { kind: "hud-missing" };
 
     const transitionRect = transition.getBoundingClientRect();
     const transitionZ = getComputedStyle(transition).zIndex;
@@ -153,11 +189,10 @@ test("390×844 delivered beat: HUD out-stacks the scene-transition surface where
       a.top < b.bottom &&
       a.bottom > b.top;
 
-    // Every return-tone pill PLUS the "Return to Io"-style route pills
-    // the delivered beat renders. The symptom Diego caught lived on
-    // the right edge of the return-tone row — scope the probe to the
-    // HUD subtree so a stray unrelated button elsewhere does not
-    // dilute the signal.
+    // Every HUD pill. The symptom Diego caught lived on the right
+    // edge of the return-tone row — scope the probe to the HUD
+    // subtree so a stray unrelated button elsewhere does not dilute
+    // the signal.
     const pills = Array.from(
       hud.querySelectorAll<HTMLButtonElement>("button"),
     ).filter((pill) => {
@@ -168,7 +203,7 @@ test("390×844 delivered beat: HUD out-stacks the scene-transition surface where
       return rect.width > 0 && rect.height > 0;
     });
 
-    return pills.map((pill) => {
+    const entries: StackingReport[] = pills.map((pill) => {
       const rect = pill.getBoundingClientRect();
       const pillRect = {
         left: rect.left,
@@ -206,13 +241,39 @@ test("390×844 delivered beat: HUD out-stacks the scene-transition surface where
         stackingBroken: !hudWins,
       };
     });
+
+    return { kind: "ok", entries };
   });
+
+  // Pin failure modes surface as explicit assertions, not as silent
+  // branches that flip the probe's verdict (round 2's exact failure
+  // mode).
+  expect(
+    probe.kind,
+    "scene-transition pin must be live and HUD must be present at the delivered beat",
+  ).toBe("ok");
+  if (probe.kind !== "ok") return; // narrow for TS
+
+  const report = probe.entries;
 
   // There must be at least one pill to probe at the delivered beat —
   // otherwise the walk never reached the beat and the test is silently
   // vacuous. (Prior reviewer AI003 flagged exactly this failure mode on
   // a sibling spec.)
   expect(report.length, "visible HUD pills at the delivered beat").toBeGreaterThan(0);
+
+  // At least one pill MUST overlap the transition surface's rect —
+  // otherwise the invariant is vacuous (no overlap means no stacking
+  // contest, and the probe passes trivially on both main and fix). The
+  // transition layer paints at `inset: 0` over the full viewport (see
+  // the CSS block in `aftersign/index.html`), so every visible pill
+  // should overlap it. Failing this assertion means the CSS or the
+  // pin regressed, not the fix.
+  const overlapping = report.filter((entry) => entry.overlapsPill);
+  expect(
+    overlapping.length,
+    "at least one HUD pill must overlap the pinned transition rect (otherwise the stacking contest is vacuous)",
+  ).toBeGreaterThan(0);
 
   // Any pill with stackingBroken=true is a pill the dark band would
   // paint over at this beat. The custom message surfaces hud vs
@@ -225,5 +286,94 @@ test("390×844 delivered beat: HUD out-stacks the scene-transition surface where
       `hud z-index=${report[0]?.hudZIndex ?? "<n/a>"}, ` +
       `transition z-index=${report[0]?.transitionZIndex ?? "<n/a>"}. ` +
       `Covered pills: ${broken.map((e) => e.pillLabel).join(" | ") || "<none>"}`,
+  ).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// Second gate — `.route-choice-row { flex-wrap: wrap }` wrap behavior.
+//
+// Soren's third-round critique closed with "nothing covers the
+// `flex-wrap`". The CSS fix in this PR adds `flex-wrap: wrap` to
+// `.route-choice-row` so the return-tone pills (Direct / Evasive /
+// Kind return) wrap inside the HUD panel at 390px instead of running
+// beneath the viewport's dark gutter. A regression that drops the
+// `flex-wrap` would re-strand the Evasive pill's right edge off-screen.
+//
+// The invariant: at 390×844, every visible return-tone pill's right
+// edge sits INSIDE the viewport (right <= viewport width). On a
+// no-wrap single-row layout at 390px, three gap-separated pills
+// overflow — the last pill's right edge lands past 390. Shrink-to-fit
+// does not save it; the pills have min-content from their labels and
+// the `gap: 8px` between them.
+// ---------------------------------------------------------------------------
+
+test("390×844 delivered beat: every return-tone pill's right edge stays inside the viewport (wrap gate)", async ({
+  page,
+}) => {
+  await page.goto("/aftersign/", { waitUntil: "load" });
+
+  const packet = page.locator("#packetButton");
+  await expect(packet).toBeVisible({ timeout: WAIT_MS });
+  await packet.tap();
+
+  const acknowledge = page.locator('button[data-choice-id="acknowledge-kiosk"]:not([disabled])');
+  await expect(acknowledge).toBeVisible({ timeout: WAIT_MS });
+  await acknowledge.tap();
+
+  const deliver = page.locator('button[data-choice-id="deliver-packet"]:not([disabled])');
+  await expect(deliver).toBeVisible({ timeout: WAIT_MS });
+  await deliver.tap();
+
+  await expect(page.locator('[data-beat-id="io-return-recognition"]'))
+    .toBeVisible({ timeout: WAIT_MS });
+
+  await expect(
+    page.locator("button[data-return-reason]:not([disabled])").first(),
+  ).toBeVisible({ timeout: WAIT_MS });
+
+  const overflow = await page.evaluate(() => {
+    const viewportWidth = window.innerWidth;
+    const pills = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        "button[data-return-reason]:not([disabled])",
+      ),
+    ).filter((pill) => {
+      const style = getComputedStyle(pill);
+      if (style.visibility === "hidden" || style.display === "none") return false;
+      const rect = pill.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+
+    return {
+      viewportWidth,
+      pills: pills.map((pill) => {
+        const rect = pill.getBoundingClientRect();
+        return {
+          label:
+            pill.getAttribute("aria-label") ||
+            (pill.textContent ?? "").trim() ||
+            pill.getAttribute("data-return-reason") ||
+            null,
+          right: rect.right,
+          left: rect.left,
+          top: rect.top,
+          overflowsRight: rect.right > viewportWidth + 0.5, // sub-pixel tolerance
+        };
+      }),
+    };
+  });
+
+  expect(
+    overflow.pills.length,
+    "visible return-tone pills at the delivered beat",
+  ).toBeGreaterThan(0);
+
+  const overflowing = overflow.pills.filter((pill) => pill.overflowsRight);
+  expect(
+    overflowing,
+    `return-tone pills escaped the viewport (viewport=${overflow.viewportWidth}px). ` +
+      `Overflowing: ${overflowing
+        .map((p) => `${p.label}@right=${p.right.toFixed(1)}`)
+        .join(" | ") || "<none>"}`,
   ).toEqual([]);
 });
