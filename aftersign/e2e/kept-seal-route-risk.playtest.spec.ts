@@ -11,10 +11,11 @@ const WAIT_MS = 10_000;
 // `aftersign-packet-recall-feel.playtest.spec.ts`, which taps it on a
 // fresh slot).
 //
-// Scope: this spec is the served-page witness for the AI001 finding on
-// PR #2206. It does not cover the other four live failures in #2204
-// (Acknowledge/sound taps, Reset slice placement, Acknowledge/Skip
-// labels) — those stay open as `Refs #2204` work in follow-up PRs.
+// Scope: this spec is the served-page witness for the one slice of
+// #2204 this PR covers (kept-seal first-visit route-risk tray). It
+// does not cover the other four live failures in #2204 (Acknowledge/
+// sound taps, Reset slice placement, Acknowledge/Skip labels) —
+// those stay open as `Refs #2204` work in follow-up PRs.
 test.describe("AFTERSIGN kept-seal route risk", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

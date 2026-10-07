@@ -12,13 +12,13 @@
 // `take-the-long-way`) and only HIDE the recovery entry when `routeRisk` is
 // null — i.e. no prior run has been recorded at all.
 //
-// Why key off `routeRisk == null` instead of `packet.sealed`:
-//   An earlier draft gated the hide on `packet.sealed === true`, which added
-//   a runtime premise ("the `#packetButton` tap sets sealed BEFORE
-//   packet-choice renders") that this module cannot verify in isolation.
-//   The pure semantic — "no memory on record → nothing to repair" — covers
-//   the kept-seal first-visit case AND the opened-first-visit case AND the
-//   fresh-slot-no-tap case, without depending on `main.js` ordering.
+// Why key off `routeRisk == null` and NOT `packet.sealed`:
+//   Gating the hide on `packet.sealed === true` would add a runtime premise
+//   ("the `#packetButton` tap sets sealed BEFORE packet-choice renders")
+//   that this module cannot verify in isolation. The pure semantic —
+//   "no memory on record → nothing to repair" — covers the kept-seal
+//   first-visit case AND the opened-first-visit case AND the fresh-slot-
+//   no-tap case, without depending on `main.js` ordering.
 //
 // When `routeRisk` IS set, respect `computeOfferedActions`'s existing logic
 // in full: a recorded failure (`succeeded === false`) legitimately offers

@@ -3,13 +3,12 @@
 // tray at `packet-choice` when there is NO recorded prior run.
 //
 // Why this bundle exists:
-//   Soren's REQUEST_CHANGES on PR #2206 flagged AI001 (one e2e as the
-//   only evidence this works) and AI008 (the earlier draft gated the
-//   hide on `packet.sealed`, a runtime premise this module couldn't
-//   verify in isolation). The fix: key the hide off `routeRisk == null`
-//   alone — "no memory on record → nothing to repair" — AND pin every
-//   branch of the resulting pure function here so the e2e isn't the
-//   only witness.
+//   The rule has one served-page witness (an e2e); this bundle pins the
+//   same rule in the pure lane so the e2e is not the only evidence. The
+//   hide keys off `routeRisk == null` alone — "no memory on record →
+//   nothing to repair" — so there is no runtime premise about
+//   `packet.sealed`, and every branch of the pure function is covered
+//   below (including the seal-independence proof).
 //
 // Branches pinned below:
 //   - null memory      → memory stays null, `repair-the-loss` hidden.
@@ -21,9 +20,8 @@
 //   - succeeded memory → memory passes through unchanged, no hide
 //                        (`computeOfferedActions`'s successful branches
 //                        already exclude `repair-the-loss`).
-//   - packet arg is NOT read on the no-record branch (the dependency
-//     on `packet.sealed` the earlier draft had is gone — same hide
-//     regardless of seal state, which is the premise-free fix).
+//   - packet arg is NOT read on the no-record branch (same hide
+//     regardless of seal state — the rule is premise-free).
 
 import { routeRiskMemoryForPacketChoice } from "./keptSealRouteRisk.js";
 
@@ -73,9 +71,9 @@ export const runKeptSealRouteRiskChecks = () => {
   }
 
   // Branch 3 — the hide fires INDEPENDENTLY of `packet.sealed`.
-  // The whole point of the AI008 fix: no runtime premise about when
-  // `packet.sealed` is written. Same no-record signal → same hide,
-  // whether sealed is true, false, or the packet arg is missing.
+  // No runtime premise about when `packet.sealed` is written: same
+  // no-record signal → same hide, whether sealed is true, false, or
+  // the packet arg is missing entirely.
   {
     const sealedTrue = routeRiskMemoryForPacketChoice({ sealed: true }, null);
     const sealedFalse = routeRiskMemoryForPacketChoice({ sealed: false }, null);
