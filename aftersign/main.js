@@ -901,6 +901,8 @@ const applyPhoneOfferLayout = (visible) => {
   if (!phoneWidth || !visible) {
     offeredJobs.style.minWidth = "";
     offeredJobs.style.maxWidth = "";
+    offeredJobs.style.flexDirection = "";
+    offeredJobs.style.alignItems = "";
     offeredJobs.style.overflowX = "";
     offeredJobs.style.overflowY = "";
     offeredJobs.style.maxHeight = "";
@@ -909,6 +911,12 @@ const applyPhoneOfferLayout = (visible) => {
   }
   offeredJobs.style.minWidth = "0";
   offeredJobs.style.maxWidth = "100%";
+  // Symptom 2 of #2193 (fixed by #2208): the offer buttons are full-width
+  // choices, not peers competing for one horizontal row. Without this
+  // column stack at phone widths flex-shrink compresses each pill until
+  // Latin labels break inside their words ("delive/ry", "Mark/ed").
+  offeredJobs.style.flexDirection = "column";
+  offeredJobs.style.alignItems = "stretch";
   offeredJobs.style.overflowX = "hidden";
   offeredJobs.style.overflowY = "auto";
   offeredJobs.style.maxHeight = "42vh";
