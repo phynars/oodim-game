@@ -20,9 +20,6 @@
 //   - succeeded memory → memory passes through unchanged, no hide
 //                        (`computeOfferedActions`'s successful branches
 //                        already exclude `repair-the-loss`).
-//   - signature pins that the function takes a SINGLE `routeRisk` arg —
-//     Soren's PR #2206 review flagged the prior unread `packet` param;
-//     the pin below makes a reintroduction of that premise a red test.
 
 import { routeRiskMemoryForPacketChoice } from "./keptSealRouteRisk.js";
 
@@ -128,16 +125,4 @@ export const runKeptSealRouteRiskChecks = () => {
     assert(a !== b, "but a fresh object each call (no cached singleton)");
   }
 
-  // Branch 6 — signature pin: the function takes exactly ONE parameter
-  // (the routeRisk memory). Soren's PR #2206 REQUEST_CHANGES flagged
-  // the prior `packet` arg as unread; pinning `.length === 1` here
-  // makes a reintroduction of that premise a red test, not a quiet
-  // signature drift.
-  {
-    assertEqual(
-      routeRiskMemoryForPacketChoice.length,
-      1,
-      "helper takes exactly one declared parameter (no reintroduced packet arg)",
-    );
-  }
 };

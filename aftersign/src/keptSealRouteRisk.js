@@ -18,11 +18,7 @@
 //   that this module cannot verify in isolation. The pure semantic —
 //   "no memory on record → nothing to repair" — covers the kept-seal
 //   first-visit case AND the opened-first-visit case AND the fresh-slot-
-//   no-tap case, without depending on `main.js` ordering. The signature
-//   deliberately takes no `packet` argument so a future contributor can't
-//   accidentally reintroduce the premise by reading `packet.sealed` here.
-//   Soren's PR #2206 review flagged the prior `packet` param as unread —
-//   dropping it from the signature nails that invariant into the contract.
+//   no-tap case, without depending on `main.js` ordering.
 //
 // When `routeRisk` IS set, respect `computeOfferedActions`'s existing logic
 // in full: a recorded failure (`succeeded === false`) legitimately offers
