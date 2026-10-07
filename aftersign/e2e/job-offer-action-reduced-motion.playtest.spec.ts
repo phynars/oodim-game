@@ -96,6 +96,24 @@ test("reduced-motion job offer confirms a real tap without lateral movement", as
     await new Promise((resolve) => requestAnimationFrame(resolve));
   });
 
+  // Pre-scroll the offer button into view BEFORE the initial measurement.
+  // Playwright's `.click()` auto-scrolls to center the target in the
+  // viewport if it's not fully visible, which can shift the button's
+  // `getBoundingClientRect()` from off-fold to on-fold between the
+  // pre-measurement here and the pointerdown sample inside the tap. That
+  // auto-scroll is NOT a press-animation movement — it's the harness
+  // staging the gesture — but the lateral assertion would see it as a
+  // positional shift and red at tens of pixels (observed 67px on 390×844).
+  // Scrolling here puts the button at its post-scroll resting position
+  // before we snapshot `initial`, so pointerdown reads the same rect and
+  // the only remaining motion that can register is the production press
+  // envelope — which under reduced-motion CSS collapses to zero (the
+  // contract this spec guards).
+  await offer.scrollIntoViewIfNeeded({ timeout: WAIT_MS });
+  await page.evaluate(
+    async () => new Promise((resolve) => requestAnimationFrame(resolve)),
+  );
+
   // Sample the button position DURING the press. Once the tap advances the
   // beat, the button re-hides (data-visible="false") or leaves the DOM, and a
   // post-tap `boundingBox()` returns null — which would make the lateral-

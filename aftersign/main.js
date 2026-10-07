@@ -2323,12 +2323,11 @@ const renderText = () => {
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
-  const pointerChoiceId = isNextJobBeat ? ioSecondPacketPointerChoiceId : null;
-  stampIoSecondPacketPointer(
-    document,
-    pointerChoiceId,
-    pointerChoiceId ? selectIoSecondPacketPointerLine(pointerChoiceId) : "",
-  );
+  // The selected second-packet response is already the beat's primary
+  // `#line` copy through `ioSecondPacketResponseLine`. Do not stamp the
+  // identical sentence into a sibling paragraph: on a phone this read as
+  // Io speaking every response twice.
+  stampIoSecondPacketPointer(document, null, "");
   // PR #1884 re-review (Mara Okonkwo, AI008) — job-acceptance ack
   // sibling paragraph.
   //
