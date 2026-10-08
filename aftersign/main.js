@@ -3489,6 +3489,23 @@ const choose = async (choiceId) => {
     const next = choiceId === "acknowledge-kiosk"
       ? SECOND_ACTION.DONE
       : SECOND_ACTION.SKIPPED;
+    // Keep the commitment on the exact visible control the player touched.
+    // `renderText()` intentionally leaves this selection state intact while
+    // packet-choice remains active, so the response survives the next frame.
+    const selectedRouteButton = choiceId === "acknowledge-kiosk"
+      ? acknowledgeRouteButton
+      : skipRouteButton;
+    const unselectedRouteButton = choiceId === "acknowledge-kiosk"
+      ? skipRouteButton
+      : acknowledgeRouteButton;
+    selectedRouteButton.setAttribute("aria-pressed", "true");
+    selectedRouteButton.dataset.aftersignSelected = "true";
+    selectedRouteButton.style.backgroundColor = "rgba(31, 91, 120, 0.92)";
+    selectedRouteButton.style.borderColor = "rgba(173, 242, 255, 0.95)";
+    unselectedRouteButton.setAttribute("aria-pressed", "false");
+    delete unselectedRouteButton.dataset.aftersignSelected;
+    unselectedRouteButton.style.backgroundColor = "";
+    unselectedRouteButton.style.borderColor = "";
     if (state.player.secondAction !== next) {
       state.player.secondAction = next;
       markStateDirty();
