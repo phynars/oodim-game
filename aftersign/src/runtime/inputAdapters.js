@@ -341,8 +341,16 @@ export const attachRuntimeInputAdapters = ({
   }, { passive: true });
   canvas.addEventListener("pointerup", (event) => {
     const down = scenePointerDown;
-    scenePointerDown = null;
+    // Only clear the stored press when THIS release matches the press's
+    // pointerId. A multi-touch stream can deliver a second finger's
+    // `pointerup` while the first finger is still down; the earlier
+    // version of this handler cleared `scenePointerDown` unconditionally,
+    // which erased the first finger's press and dropped the real tap
+    // when the first finger later released. Review feedback on PR #2233
+    // (AI007): the sibling identity-guard test was added without this
+    // source change, so it stayed red.
     if (!down || down.pointerId !== event.pointerId) return;
+    scenePointerDown = null;
     const dx = event.clientX - down.x;
     const dy = event.clientY - down.y;
     if (Math.hypot(dx, dy) > SCENE_TAP_DRIFT_PX) return;

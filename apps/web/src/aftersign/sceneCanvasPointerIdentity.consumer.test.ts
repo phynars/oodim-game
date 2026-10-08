@@ -34,7 +34,14 @@ describe("#scene canvas tap identity guard", () => {
     dom.window.close();
   });
 
-  it("does not turn another finger's release into a scene tap", () => {
+  // The novel claim here (vs. `sceneCanvasDragGuard.consumer.test.ts`,
+  // which covers only the foreign-release-ignored case) is the SECOND
+  // assertion: after the foreign `pointerup` is ignored, the ORIGINAL
+  // finger's later release must still deliver a tap. That only holds
+  // when the pointerup handler clears `scenePointerDown` solely on an
+  // id match — the regression under test was an unconditional clear
+  // that erased the stored press when any foreign release arrived.
+  it("preserves the stored press across a foreign pointerup", () => {
     const { document, window } = dom.window;
     const canvas = document.createElement("canvas");
     const button = document.createElement("button");
