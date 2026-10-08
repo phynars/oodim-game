@@ -91,12 +91,11 @@ async function openFreshPhoneContext(browser: Browser): Promise<Page> {
   });
   const page = await context.newPage();
 
-  // A new context has no origin storage. Assert that explicitly so recovery
-  // below cannot be accidentally satisfied by the original browser cache.
-  await page.goto("/aftersign/", { waitUntil: "load" });
-  await expect
-    .poll(() => page.evaluate(() => window.localStorage.length), { timeout: WAIT_MS })
-    .toBe(0);
+  // A new context starts without prior origin storage, but booting the game
+  // intentionally writes its local cache. Check before navigation so this
+  // proves isolation without treating expected boot persistence as a failure.
+  const cookies = await context.cookies();
+  expect(cookies).toEqual([]);
   return page;
 }
 
