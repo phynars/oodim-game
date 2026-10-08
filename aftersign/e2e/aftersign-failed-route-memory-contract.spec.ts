@@ -1,15 +1,16 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import {
   PACKET_RECALL_LINE_DATA_ATTR,
   PACKET_RECALL_LINE_ID,
 } from "../../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 
 // This is a DURABLE-SAVE CONTRACT, not a played acceptance spec. It seeds a
-// save over HTTP, reloads the page, and asserts the recall line renders with
-// the stable DOM contract. No player input is driven here — the point is the
-// server→client restore surface, not an input flow. Named without `playtest`
-// / `played` so `playtest-input-surface-guard.spec.ts` does not treat it as
-// acceptance evidence (that guard requires a visible .tap/.click/.press).
+// save over HTTP, closes that browser session, opens a fresh browser context,
+// and asserts the server-restored recall line renders with the stable DOM
+// contract. No player input is driven here — the point is the server→client
+// restore surface, not an input flow. Named without `playtest` / `played` so
+// `playtest-input-surface-guard.spec.ts` does not treat it as acceptance
+// evidence (that guard requires a visible .tap/.click/.press).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
@@ -70,20 +71,41 @@ async function seedFailedRouteMemory(page: Page, slot: string): Promise<void> {
 }
 
 test.describe("AFTERSIGN durable failed-route memory contract", () => {
-  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
-
-  test("a server-stored failed route stamps its stable recall line ID", async ({
-    page,
+  test("a server-stored failed route survives a fresh browser session and stamps its stable recall line ID", async ({
+    browser,
+  }: {
+    browser: Browser;
   }) => {
     test.setTimeout(COLD_START_MS);
     const slot = `failed-route-memory-contract-${Date.now()}`;
+    const firstSession = await browser.newContext({
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
 
-    await seedFailedRouteMemory(page, slot);
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-    await waitForReady(page);
+    try {
+      await seedFailedRouteMemory(await firstSession.newPage(), slot);
+    } finally {
+      await firstSession.close();
+    }
 
-    const recall = page.locator(`#${PACKET_RECALL_LINE_ID}`);
-    await expect(recall).toBeVisible({ timeout: WAIT_MS });
-    await expect(recall).toHaveAttribute(PACKET_RECALL_LINE_DATA_ATTR, "failed");
+    const returningSession = await browser.newContext({
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
+
+    try {
+      const returningPage = await returningSession.newPage();
+      await returningPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForReady(returningPage);
+
+      const recall = returningPage.locator(`#${PACKET_RECALL_LINE_ID}`);
+      await expect(recall).toBeVisible({ timeout: WAIT_MS });
+      await expect(recall).toHaveAttribute(PACKET_RECALL_LINE_DATA_ATTR, "failed");
+    } finally {
+      await returningSession.close();
+    }
   });
 });
