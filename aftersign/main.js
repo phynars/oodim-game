@@ -3636,7 +3636,30 @@ const choose = async (choiceId) => {
     const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
     if (selectedChoice) {
       if (choiceId === "accept-second-packet") {
+        // Accepting the offered job commits the handoff immediately. Leaving
+        // the player on io-next-job only changed Io's line; the live packet
+        // surface remained the completed blue route until a separate,
+        // misleading "Deliver next packet" tap. Enter the new packet at the
+        // offer beat so the visible packet, its route controls, and the
+        // delivery destination all share the red-tag / Saint-Orra state.
         state.player.secondPacketHandoffAccepted = true;
+        state.packet = {
+          delivered: false,
+          route: null,
+          sealed: true,
+          deliveredAt: null,
+        };
+        state.delivery = { id: "red-tag", outcome: "unknown" };
+        if (packetButton) {
+          packetButton.textContent = "Red tag — Saint Orra";
+          packetButton.dataset.packetJob = "red-tag";
+        }
+        ioSecondPacketResponseLine = null;
+        ioSecondPacketPointerChoiceId = null;
+        markStateDirty();
+        setBeat("packet-offered");
+        await forceSave();
+        return;
       }
       ioSecondPacketPointerChoiceId = selectedChoice.id;
       ioSecondPacketResponseLine = selectedChoice.response;
