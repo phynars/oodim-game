@@ -41,7 +41,7 @@ const FIRST_RUN_COPY =
   "Route: Take the lit stair. Do not stop under the bell rope. "
   + "Risk: Low risk. Long light. Io can see most of it from the kiosk.";
 const TRUSTED_COPY =
-  "Route: Cross behind the shuttered pharmacy before the bells count twice. "
+  "Route: Carry the red tag behind the shuttered pharmacy to Saint Orra before the bells count twice. "
   + "Risk: Short route. Unlit. Better pay because Io has one good fact about you.";
 
 async function waitForReady(page: Page): Promise<void> {
