@@ -35,13 +35,13 @@ describe("AFTERSIGN_JOB_TAKE_FEEL", () => {
     expect(
       resolveAftersignJobTakeFeel({
         actionId: "take-job-orra-name-risk",
-        route: "Cross behind the shuttered pharmacy before the bells count twice.",
+        route: "Carry the red tag behind the shuttered pharmacy to Saint Orra before the bells count twice.",
         risk: "Short route. Unlit. Better pay because Io trusts your hands.",
       }),
     ).toMatchObject({
       actionId: "take-job-orra-name-risk",
       ariaLabel: "Accepted orra name risk",
-      route: "Cross behind the shuttered pharmacy before the bells count twice.",
+      route: "Carry the red tag behind the shuttered pharmacy to Saint Orra before the bells count twice.",
       risk: "Short route. Unlit. Better pay because Io trusts your hands.",
     });
   });

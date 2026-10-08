@@ -3637,7 +3637,28 @@ const choose = async (choiceId) => {
     const selectedChoice = secondPacketCopy.choices.find((choice) => choice.id === choiceId);
     if (selectedChoice) {
       if (choiceId === "accept-second-packet") {
+        // #2217 live-verify: the player's finger finds `#packetButton`
+        // before the "Deliver next packet" choice (the big blue packet
+        // tile is right there, carried over from round one). The existing
+        // `choose("deliver-packet")` branch arms the red-tag identity —
+        // but only on that path. Mirror the identity arming here too, so
+        // whichever tap the player makes next (packet-first OR deliver-
+        // first), `#packetButton` already reads "Red tag — Saint Orra"
+        // and `state.delivery.id === "red-tag"` short-circuits the blue-
+        // packet copy writer in `commitPacketOutcome` and `lineForBeat`.
+        // We do NOT advance the beat here: the sibling specs
+        // `red-tag-second-packet-served.spec.ts` /
+        // `red-tag-packet-choice-retention.spec.ts` /
+        // `m-loop-second-packet-continuation.playtest.spec.ts` all tap
+        // `#deliverButton` ("Deliver next packet") right after accept to
+        // reach `packet-offered`, and the beat-transition continues to
+        // live in the `deliver-packet` branch (idempotent re-arm there).
         state.player.secondPacketHandoffAccepted = true;
+        state.delivery = { id: "red-tag", outcome: "unknown" };
+        if (packetButton) {
+          packetButton.textContent = "Red tag — Saint Orra";
+          packetButton.dataset.packetJob = "red-tag";
+        }
       }
       ioSecondPacketPointerChoiceId = selectedChoice.id;
       ioSecondPacketResponseLine = selectedChoice.response;

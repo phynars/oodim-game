@@ -36,14 +36,14 @@ const FIRST_RUN = Object.freeze({
 const TRUSTED = Object.freeze({
   id: "aftersign.jobOffer.trusted",
   tappableActionId: "take-job-orra-name-risk",
-  title: "Orra's name. A stranger door.",
-  actionLabel: "Take Orra's-name job",
-  summary: "You kept the seal once. Io widens the work: darker route, cleaner pay.",
-  ioLine: "You kept the seal once. I can risk your hands on a door that lies.",
+  title: "Red tag. Saint Orra's door.",
+  actionLabel: "Take the red-tag job",
+  summary: "Io hands you Saint Orra's red tag: darker route, cleaner pay, stranger door.",
+  ioLine: "Take the red tag to Saint Orra. You kept the seal once; I can risk your hands on a door that lies.",
   riskPrompt: "Short route, unlit. Better pay because Io has one good fact about you.",
   safeRouteLabel: "Long way — past the kiosk",
   riskyRouteLabel: "Behind the shuttered pharmacy",
-  route: "Cross behind the shuttered pharmacy before the bells count twice.",
+  route: "Carry the red tag behind the shuttered pharmacy to Saint Orra before the bells count twice.",
   risk: "Short route. Unlit. Better pay because Io has one good fact about you.",
 });
 

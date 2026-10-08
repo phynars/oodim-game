@@ -226,7 +226,7 @@ describe("aftersignJobOfferCopy consumer (window.__game wiring)", () => {
       "Low risk. Long light. Io can see most of it from the kiosk.",
     );
     expect(trustedRoute).toBe(
-      "Cross behind the shuttered pharmacy before the bells count twice.",
+      "Carry the red tag behind the shuttered pharmacy to Saint Orra before the bells count twice.",
     );
     expect(trustedRisk).toBe(
       "Short route. Unlit. Better pay because Io has one good fact about you.",
