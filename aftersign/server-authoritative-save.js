@@ -33,7 +33,7 @@
 //     state for the vertical slice.
 //
 // Endpoint shape:
-//   GET    /aftersign/save/:playerId/:slot   → 200 { payload } | 404
+//   GET    /aftersign/save/:playerId/:slot   → 200 { payload, exists }
 //   PUT    /aftersign/save/:playerId/:slot   → 204 (body: { payload })
 //   DELETE /aftersign/save/:playerId/:slot   → 204
 //
@@ -63,8 +63,9 @@ export async function readAuthoritativeSave({ slot, playerId }) {
       throw new Error(`Authoritative save read failed: HTTP ${response.status}`);
     }
     const body = await response.json();
-    // Endpoint returns { payload: ... } on hit; treat a missing payload as null
-    // so the caller's `|| null` fallback still routes correctly.
+    // A cold slot is a successful response. Keep legacy 404 above during
+    // rollout, but use `exists` to distinguish it from a stored null payload.
+    if (body?.exists === false) return null;
     return body?.payload ?? null;
   } catch (err) {
     // Surface the failure to the caller — the durable-load path must not

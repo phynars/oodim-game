@@ -120,10 +120,10 @@ async function handleAuthoritativeSave(
   if (method === "GET") {
     const payload = authoritativeSaveStore.get(key);
     if (payload === undefined) {
-      sendJson(res, 404, { payload: null });
+      sendJson(res, 200, { payload: null, exists: false });
       return true;
     }
-    sendJson(res, 200, { payload });
+    sendJson(res, 200, { payload, exists: true });
     return true;
   }
 
