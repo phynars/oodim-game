@@ -6,12 +6,27 @@ import { expect, test, type Page } from "@playwright/test";
 // visible kiosk/booth/counter prompt, activate it by touch/keyboard-class input,
 // and see a deterministic event on the public story-state surface. Reads from
 // window.__game are assertions only; this spec never calls window.__game.input.*.
+//
+// Scope note (PR #2230 re-review): the canvas drift-gate guard added by
+// `aftersign/src/runtime/inputAdapters.js` (SCENE_TAP_DRIFT_PX) is covered
+// by the sibling consumer test
+// `apps/web/src/aftersign/sceneCanvasDragGuard.consumer.test.ts`, which
+// drives `attachRuntimeInputAdapters` directly against JSDOM and spies on
+// `handleScenePointer`. The played spec here cannot exercise that guard —
+// the DOM offer button sits above the `#scene` canvas and swallows pointer
+// events, so a Playwright drag at the kiosk's screen coordinates never
+// reaches the canvas listeners the fix added. Soren flagged this as AI003
+// (tautological) on the prior draft of PR #2230; this re-shaping fixes it.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
 const SAFE_DELIVERY_OFFER_ID = "job-offer-job-safe-delivery";
 const SAFE_DELIVERY_ACTION_ID = "mloop-safe-delivery-take";
 const SAFE_DELIVERY_EVENT_ID = `${SAFE_DELIVERY_ACTION_ID}:job-safe-delivery`;
+
+type InteractionSnapshot = {
+  lastAction?: string | null;
+};
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -42,7 +57,7 @@ async function readLastInteractionAction(page: Page): Promise<string | null> {
   return page.evaluate(() => {
     const action = (
       window as unknown as {
-        __game?: { interaction?: { lastAction?: unknown } };
+        __game?: { interaction?: InteractionSnapshot };
       }
     ).__game?.interaction?.lastAction;
     return typeof action === "string" ? action : null;

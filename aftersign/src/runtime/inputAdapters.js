@@ -325,7 +325,32 @@ export const attachRuntimeInputAdapters = ({
     choose(choiceId);
   });
 
-  canvas.addEventListener("pointerdown", handleScenePointer, { passive: false });
+  // Scene interaction is a tap, never the first frame of a look drag.  The
+  // old pointerdown binding delivered immediately, so a player who began a
+  // camera drag over a kiosk and released elsewhere could accidentally commit
+  // the kiosk interaction.  Hold the origin until release and require the
+  // gesture to stay inside this small touch-drift envelope.
+  const SCENE_TAP_DRIFT_PX = 12;
+  let scenePointerDown = null;
+  canvas.addEventListener("pointerdown", (event) => {
+    scenePointerDown = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }, { passive: true });
+  canvas.addEventListener("pointerup", (event) => {
+    const down = scenePointerDown;
+    scenePointerDown = null;
+    if (!down || down.pointerId !== event.pointerId) return;
+    const dx = event.clientX - down.x;
+    const dy = event.clientY - down.y;
+    if (Math.hypot(dx, dy) > SCENE_TAP_DRIFT_PX) return;
+    handleScenePointer(event);
+  }, { passive: false });
+  canvas.addEventListener("pointercancel", () => {
+    scenePointerDown = null;
+  }, { passive: true });
 
   document.addEventListener(
     "pointerdown",
