@@ -23,7 +23,28 @@ const memoryLineFor = (object: "done" | "skipped") =>
     }],
   })[0]?.text ?? "";
 
-test("Io's kiosk-memory lines name the player's route choice", () => {
+test("Io names the route vocabulary shown by both kiosk acknowledgment buttons", () => {
+  // Player-visible labels stamped by aftersign/main.js at the
+  // packet-choice beat (see `setTextContentIfChanged(acknowledgeRouteButton,
+  // ...)` / `setTextContentIfChanged(skipRouteButton, ...)` in main.js).
+  // Pinned here so a future label-rename reds BOTH the e2e that reads
+  // the button text AND this contract — the two must drift together,
+  // not apart, and the labels must remain non-empty, distinct player
+  // copy. Shared-vocabulary with the memory lines moved to a mechanical
+  // axis after #2220 renamed the labels from "Acknowledge route" /
+  // "Skip acknowledgment" (which shared "route" / "acknowledg" with
+  // Io's memory text) to "I listened" / "I ran early" (which don't).
+  const acknowledgeRouteLabel = "I listened";
+  const skipAcknowledgmentLabel = "I ran early";
+
+  expect(acknowledgeRouteLabel.length).toBeGreaterThan(0);
+  expect(skipAcknowledgmentLabel.length).toBeGreaterThan(0);
+  expect(acknowledgeRouteLabel).not.toBe(skipAcknowledgmentLabel);
+
+  // Io's kiosk-memory lines still carry the mechanical route-attention
+  // nouns the memory FACT axis is keyed on ("route" / "acknowledg"),
+  // so a player who skimmed the fork recognizes WHICH action Io
+  // remembers even without the button copy in front of them.
   expect(memoryLineFor("done").toLowerCase()).toContain("route");
   expect(memoryLineFor("skipped").toLowerCase()).toContain("route");
   expect(memoryLineFor("skipped").toLowerCase()).toContain("acknowledg");

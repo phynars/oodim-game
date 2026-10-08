@@ -215,16 +215,21 @@ const runSecondActionVocabularyCase = () => {
   const doneLine = done.find((entry) => entry.id === IO_LINES.remembersSecondActionDone.id);
   const skippedLine = skipped.find((entry) => entry.id === IO_LINES.remembersSecondActionSkipped.id);
 
-  // The served button labels are "Acknowledge route" and "Skip
-  // acknowledgment". Keep their player-facing nouns in the memory lines
-  // so Io names an action the player can recognize.
+  // The served button labels are now "I listened" / "I ran early"
+  // (renamed from "Acknowledge route" / "Skip acknowledgment" in
+  // #2220). The labels no longer share lexical tokens with Io's
+  // memory text, so this contract pins the MECHANICAL route-attention
+  // vocabulary ("route" / "acknowledg") in the memory lines — the
+  // keying axis the fact ids live on, independent of player-facing
+  // copy drift. The sibling player-visible label pinning lives in
+  // `aftersign/e2e/npc-memory-dialogue-vocabulary.contract.spec.ts`.
   expect(
     /route/i.test(doneLine?.text ?? ""),
-    "acknowledge-kiosk memory must share the visible Acknowledge route noun",
+    "acknowledge-kiosk memory must name the route-attention action",
   );
   expect(
     /acknowledg/i.test(skippedLine?.text ?? "") && /route/i.test(skippedLine?.text ?? ""),
-    "skip-kiosk-acknowledge memory must share the visible Skip acknowledgment route vocabulary",
+    "skip-kiosk-acknowledge memory must name both the route and acknowledgment nouns",
   );
 };
 

@@ -2940,7 +2940,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
     setTextContentIfChanged(packetChoiceAffordance, PACKET_CHOICE_AFFORDANCE);
     setTextContentIfChanged(acknowledgeRouteButton, "I listened");
-    setTextContentIfChanged(skipRouteButton, "Skip acknowledgment");
+    setTextContentIfChanged(skipRouteButton, "I ran early");
     setTextContentIfChanged(deliverButton, "Deliver packet");
     stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");
     stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
