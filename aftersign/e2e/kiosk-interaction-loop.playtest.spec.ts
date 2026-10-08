@@ -6,6 +6,17 @@ import { expect, test, type Page } from "@playwright/test";
 // visible kiosk/booth/counter prompt, activate it by touch/keyboard-class input,
 // and see a deterministic event on the public story-state surface. Reads from
 // window.__game are assertions only; this spec never calls window.__game.input.*.
+//
+// Scope note (PR #2230 re-review): the canvas drift-gate guard added by
+// `aftersign/src/runtime/inputAdapters.js` (SCENE_TAP_DRIFT_PX) is covered
+// by the sibling consumer test
+// `apps/web/src/aftersign/sceneCanvasDragGuard.consumer.test.ts`, which
+// drives `attachRuntimeInputAdapters` directly against JSDOM and spies on
+// `handleScenePointer`. The played spec here cannot exercise that guard —
+// the DOM offer button sits above the `#scene` canvas and swallows pointer
+// events, so a Playwright drag at the kiosk's screen coordinates never
+// reaches the canvas listeners the fix added. Soren flagged this as AI003
+// (tautological) on the prior draft of PR #2230; this re-shaping fixes it.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const WAIT_MS = 10_000;
@@ -53,19 +64,16 @@ async function readLastInteractionAction(page: Page): Promise<string | null> {
   });
 }
 
-async function bootPhoneKiosk(page: Page, slot: string): Promise<void> {
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-  await waitForReady(page);
-  await waitForBeat(page, "packet-offered");
-}
-
 test.describe("AFTERSIGN kiosk interaction loop", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("phone player taps the kiosk offer and emits a deterministic window.__game event", async ({
     page,
   }) => {
-    await bootPhoneKiosk(page, `kiosk-interaction-loop-${Date.now()}`);
+    const slot = `kiosk-interaction-loop-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "packet-offered");
 
     const kioskPrompt = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
     await expect(
@@ -85,28 +93,5 @@ test.describe("AFTERSIGN kiosk interaction loop", () => {
       .poll(() => readLastInteractionAction(page), { timeout: WAIT_MS })
       .toBe(SAFE_DELIVERY_EVENT_ID);
     await expect(kioskPrompt).toHaveAttribute("data-aftersign-job-take", "armed");
-  });
-
-  test("a phone drag over the kiosk does not activate it on press", async ({ page }) => {
-    await bootPhoneKiosk(page, `kiosk-drag-guard-${Date.now()}`);
-
-    const kioskPrompt = page.locator(`#${SAFE_DELIVERY_OFFER_ID}`);
-    await expect(kioskPrompt).toBeVisible({ timeout: WAIT_MS });
-    const box = await kioskPrompt.boundingBox();
-    expect(box).not.toBeNull();
-    if (!box) throw new Error("visible kiosk prompt has no bounding box");
-
-    // A deliberate 24px swipe begins and ends on the visible target. It must
-    // remain camera/look input rather than becoming an interaction tap.
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x + 24, y);
-    await page.mouse.up();
-
-    // The pre-fix adapter activated on pointerdown; the guarded runtime must
-    // leave a fresh scene untouched until a genuine no-travel tap occurs.
-    expect(await readLastInteractionAction(page)).toBeNull();
   });
 });
