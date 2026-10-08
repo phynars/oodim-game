@@ -2940,8 +2940,25 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       packetButton.insertAdjacentElement("afterend", packetChoiceAffordance);
     }
     setTextContentIfChanged(packetChoiceAffordance, PACKET_CHOICE_AFFORDANCE);
-    setTextContentIfChanged(acknowledgeRouteButton, "I listened");
-    setTextContentIfChanged(skipRouteButton, "I ran early");
+    // #2225: the chosen fork names itself after the tap — the warm
+    // selected tile already lands via the inline bg/border + aria-pressed
+    // writes in `choose()` below, but the LABEL is what a phone player
+    // reads back as confirmation. Keep "I listened" / "I ran early" at
+    // rest; after the tap flip to the past-tense "You listened" /
+    // "You ran early" so the receipt rides on the exact button the
+    // finger touched, not just a color.
+    setTextContentIfChanged(
+      acknowledgeRouteButton,
+      state.player.secondAction === SECOND_ACTION.DONE
+        ? "You listened"
+        : "I listened",
+    );
+    setTextContentIfChanged(
+      skipRouteButton,
+      state.player.secondAction === SECOND_ACTION.SKIPPED
+        ? "You ran early"
+        : "I ran early",
+    );
     setTextContentIfChanged(deliverButton, "Deliver packet");
     stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");
     stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
@@ -3509,6 +3526,13 @@ const choose = async (choiceId) => {
     if (state.player.secondAction !== next) {
       state.player.secondAction = next;
       markStateDirty();
+      // #2225: re-run the label writer so the tapped button's text
+      // flips to its past-tense receipt in the same frame the
+      // inline bg/border/aria-pressed stamp lands. Without this
+      // call the label update waits until the next rAF-driven
+      // renderText — on a cold phone that reads as a stale "I
+      // listened" riding under the warm selected tile.
+      renderText();
       publishState();
     }
     return;

@@ -671,6 +671,24 @@
         flex-wrap: wrap;
         pointer-events: auto;
       }
+      /* #2225: the slice-save row is a sibling of `.controls` INSIDE
+         `.hud` — and `.hud` sets `pointer-events: none` (see rule
+         above) so the whole tray is inert by default and only
+         explicitly-opted-in rows take taps. Without this `auto` the
+         Start fresh button inherits `none` and the save-wipe cannot
+         be triggered on a phone (reset-route-risk-isolation.spec.ts
+         `#resetButton.tap()` would time out). Mirror `.controls` for
+         flex layout + a slightly larger top margin so the reset row
+         reads as a separated zone, not as the next pill in the
+         action strip — the whole point of #2225 is a mis-aimed thumb
+         reaching for the sound tile cannot land on Start fresh. */
+      .slice-save-controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+        pointer-events: auto;
+      }
 
       .move-pad {
         position: fixed;
@@ -1213,6 +1231,12 @@
           </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
+        </div>
+        <!-- #2225: the slice-save control lives in its own row so a
+             mis-aimed thumb cannot wipe the player's run while reaching
+             for the sound button. The spec locator
+             `.slice-save-controls #resetButton` pins the separation. -->
+        <div class="slice-save-controls" aria-label="Slice save">
           <button id="resetButton" type="button">Start fresh</button>
         </div>
       </div>

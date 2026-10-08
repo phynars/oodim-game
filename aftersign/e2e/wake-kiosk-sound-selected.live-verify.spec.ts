@@ -3,8 +3,9 @@ import { expect, test } from "@playwright/test";
 test("Wake kiosk sound tap retains its selected treatment through a render frame", async ({ page }) => {
   await page.goto("/aftersign/");
 
-  const soundButton = page.getByRole("button", { name: "Wake kiosk sound" });
+  const soundButton = page.locator("#soundButton");
   await expect(soundButton).toBeVisible();
+  await expect(soundButton).toHaveText("Wake kiosk sound");
   await soundButton.click();
 
   await expect(soundButton).toHaveAttribute("aria-pressed", "true");
