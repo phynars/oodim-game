@@ -24,6 +24,11 @@ import {
 // on the standard `Request`/`Response` fetch API (jsdom via
 // undici/whatwg) and a structural `DurableObjectState.storage`
 // (a `Map` fake covers it byte-for-byte).
+//
+// PR #2229 (#2227) switched the cold-slot GET from 404 to a 200
+// empty-save envelope `{ payload: null, exists: false }`. A stored
+// `null` payload stays distinguishable via `exists: true` — the
+// invariant the "accepts a null payload" test below pins.
 
 function createFakeStorage(): AftersignAuthoritativeSaveState["storage"] {
   const backing = new Map<string, unknown>();
@@ -138,14 +143,15 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     expect(res!.headers.get("allow")).toBe("GET, PUT, DELETE");
   });
 
-  it("GET on a cold slot returns 404", async () => {
+  it("GET on a cold slot returns 200 { payload: null, exists: false } (#2227)", async () => {
     const env = createFakeEnv();
     const res = await handleAuthoritativeSaveRequest(
       getSave("player-alpha", "default"),
       env,
     );
     expect(res).not.toBeNull();
-    expect(res!.status).toBe(404);
+    expect(res!.status).toBe(200);
+    expect(await readJson(res!)).toEqual({ payload: null, exists: false });
   });
 
   it("PUT then GET round-trips the payload (durable write-read)", async () => {
@@ -165,8 +171,9 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     );
     expect(getRes).not.toBeNull();
     expect(getRes!.status).toBe(200);
-    const body = (await readJson(getRes!)) as { payload: unknown };
+    const body = (await readJson(getRes!)) as { payload: unknown; exists: boolean };
     expect(body.payload).toEqual(payload);
+    expect(body.exists).toBe(true);
   });
 
   it("PUT overwrites the previous payload (single-writer semantics)", async () => {
@@ -187,7 +194,7 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     expect(body.payload.revision).toBe(2);
   });
 
-  it("DELETE removes the record; subsequent GET 404s", async () => {
+  it("DELETE removes the record; subsequent GET is cold (#2227: 200 { payload: null, exists: false })", async () => {
     const env = createFakeEnv();
     await handleAuthoritativeSaveRequest(
       putSave("player-alpha", "default", { revision: 1 }),
@@ -202,7 +209,8 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
       getSave("player-alpha", "default"),
       env,
     );
-    expect(getRes!.status).toBe(404);
+    expect(getRes!.status).toBe(200);
+    expect(await readJson(getRes!)).toEqual({ payload: null, exists: false });
   });
 
   it("DELETE of an unknown record succeeds (idempotent no-op)", async () => {
@@ -305,7 +313,7 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
     expect(res!.status).toBe(400);
   });
 
-  it("accepts a null payload (clears to null, distinct from absent)", async () => {
+  it("accepts a null payload (clears to null, stays distinct from a cold slot via exists:true — #2227)", async () => {
     const env = createFakeEnv();
     const req = new Request(`${ORIGIN}/aftersign/save/player-alpha/default`, {
       method: "PUT",
@@ -320,8 +328,10 @@ describe("aftersign authoritative-save backend (PR #2065 re-review)", () => {
       env,
     );
     expect(getRes!.status).toBe(200);
-    const body = (await readJson(getRes!)) as { payload: unknown };
-    expect(body.payload).toBeNull();
+    // Both fields matter: payload is null (what the client wrote) AND
+    // exists is true (so the client can distinguish "we stored null"
+    // from "nothing has been stored").
+    expect(await readJson(getRes!)).toEqual({ payload: null, exists: true });
   });
 
   it("rejects a PUT whose declared content-length exceeds the body cap with 413", async () => {

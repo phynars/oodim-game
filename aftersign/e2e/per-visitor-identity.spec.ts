@@ -80,9 +80,12 @@ test.describe("AFTERSIGN per-visitor identity", () => {
       // The save is keyed by A's capability id on the server.
       const saved = await pageA.request.get(`/aftersign/save/${idA}/${slot}`);
       expect(saved.status()).toBe(200);
-      // Nothing landed under the legacy shared id for this slot.
+      expect((await saved.json()).exists).toBe(true);
+      // Nothing landed under the legacy shared id for this slot. Cold
+      // slot returns 200 with { payload: null, exists: false } (#2227).
       const legacy = await pageA.request.get(`/aftersign/save/local-slice-player/${slot}`);
-      expect(legacy.status()).toBe(404);
+      expect(legacy.status()).toBe(200);
+      expect(await legacy.json()).toEqual({ payload: null, exists: false });
 
       // Same browser, reload: same id, save restored.
       await pageA.reload({ waitUntil: "load" });

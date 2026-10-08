@@ -244,9 +244,9 @@ export class AftersignAuthoritativeSave {
             SNAPSHOT_KEY,
           );
           if (slot === undefined) {
-            return json({ error: "Save slot not found" }, 404);
+            return json({ payload: null, exists: false });
           }
-          return json({ payload: slot.payload });
+          return json({ payload: slot.payload, exists: true });
         }
 
         case "PUT": {

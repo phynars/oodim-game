@@ -165,7 +165,7 @@ describe("/aftersign/save hardening", () => {
     expect((await handleAuthoritativeSaveRequest(put(path, { beat: "x" }), env))!.status).toBe(204);
     const res = await handleAuthoritativeSaveRequest(new Request(`${ORIGIN}${path}`), env);
     expect(res!.status).toBe(200);
-    expect(await res!.json()).toEqual({ payload: { beat: "x" } });
+    expect(await res!.json()).toEqual({ payload: { beat: "x" }, exists: true });
   });
 
   it("caps PUT bodies at MAX_SAVE_BYTES (413), accepting a body just under it", async () => {
@@ -203,7 +203,7 @@ describe("/aftersign/save hardening", () => {
       env,
     );
     expect(read!.status).toBe(200);
-    expect(await read!.json()).toEqual({ payload: 2 });
+    expect(await read!.json()).toEqual({ payload: 2, exists: true });
     // A different IP has its own budget.
     const other = await handleAuthoritativeSaveRequest(
       put(path, 3, { "CF-Connecting-IP": "198.51.100.9" }),

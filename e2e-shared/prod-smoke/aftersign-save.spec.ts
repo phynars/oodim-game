@@ -5,7 +5,10 @@ import { test, expect } from "@playwright/test";
 //   1. The save endpoint 404'd in prod for ~4 weeks (#1642 → #2065) while
 //      every CI lane was green, because CI only ever exercised the vite
 //      dev middleware, never the Worker + Durable Object. So: a real
-//      PUT → GET → DELETE round-trip against the live Worker.
+//      PUT → GET → DELETE round-trip against the live Worker. After
+//      #2227 the cold-slot read is 200 `{ payload: null, exists: false }`
+//      rather than a bare 404, so this smoke witnesses the DELETE by
+//      asserting the slot flips back to cold rather than by status code.
 //   2. Every visitor shared ONE save (`local-slice-player`). So: the live
 //      page must boot with a per-visitor UUID identity, never the legacy
 //      shared id.
@@ -53,7 +56,8 @@ test("aftersign: save round-trip against the deployed Worker (PUT → GET → DE
 
     const get = await request.get(url);
     expect(get.status(), "GET must read back the committed save").toBe(200);
-    expect(await get.json()).toEqual({ payload });
+    // Hot slot carries `exists: true` alongside the payload (#2227).
+    expect(await get.json()).toEqual({ payload, exists: true });
 
     // Server-side input validation is live: an out-of-alphabet id is a 400,
     // not a DO dispatch.
@@ -64,5 +68,12 @@ test("aftersign: save round-trip against the deployed Worker (PUT → GET → DE
     expect(del.status(), "DELETE must clean up the smoke save").toBe(204);
   }
   const gone = await request.get(url);
-  expect(gone.status(), "the smoke save must be gone after DELETE").toBe(404);
+  // Cold slot after DELETE: 200 with { payload: null, exists: false }
+  // (#2227). The point of this assertion is still "the smoke save is
+  // gone" — we witness that by `exists: false`, not by HTTP status.
+  expect(gone.status(), "cold slot must respond 200").toBe(200);
+  expect(
+    await gone.json(),
+    "the smoke save must be gone after DELETE",
+  ).toEqual({ payload: null, exists: false });
 });
