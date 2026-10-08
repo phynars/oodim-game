@@ -143,7 +143,13 @@ test.describe("AFTERSIGN reset route-risk isolation", () => {
       )
       .toEqual({ lastRoute: "fast", succeeded: true });
 
-    await page.getByRole("button", { name: /reset/i }).tap();
+    // Locate the reset button by its stable id (`#resetButton` in
+    // aftersign/index.html) rather than its visible label. The label
+    // was renamed from "Reset" → "Start fresh" in PR #2223, and a
+    // role+name regex over `/reset/i` no longer matches — the tap
+    // times out at 30s. The id is the authored handle main.js and
+    // the CSS both grip, so pin to it.
+    await page.locator("#resetButton").tap();
 
     await expect(
       page.locator('[data-beat-id="packet-offered"]'),
