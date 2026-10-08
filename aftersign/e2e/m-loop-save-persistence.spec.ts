@@ -7,7 +7,9 @@ import { expect, test, type Page } from "@playwright/test";
 //     returns 204), reloads rehydrate the exact payload (GET returns 200), and
 //     the player can start a second delivery after reload.
 //   - Two slots are isolated: the primary slot's save never appears under a
-//     sibling slot (GET on the sibling slot returns 404).
+//     sibling slot (GET on the sibling slot returns 200 with
+//     `{ payload: null, exists: false }` — the cold-slot contract after
+//     #2227; see aftersign/server-authoritative-save.js).
 //
 // NOT IN SCOPE (what this spec does NOT assert — do not read "Worker-backed"
 // into this file):
@@ -117,10 +119,16 @@ test.describe("AFTERSIGN save persistence (vite-preview save surface)", () => {
         ),
         primary.reload({ waitUntil: "load" }),
       ]);
-      // GET /aftersign/save/:playerId/:slot returns 200 with { payload }.
+      // GET /aftersign/save/:playerId/:slot returns 200 with
+      // { payload, exists: true } on a hot slot (#2227).
       expect(getResponse.status()).toBe(200);
-      // Reload must rehydrate the exact payload the game last PUT.
-      expect((await getResponse.json()) as SavePayload).toEqual(saved);
+      // Reload must rehydrate the exact payload the game last PUT. The
+      // response body also carries `exists: true` to distinguish a hot
+      // slot from a cold one that stored a null payload.
+      expect((await getResponse.json()) as SavePayload & { exists: boolean }).toEqual({
+        ...saved,
+        exists: true,
+      });
       await waitForBeat(primary, "io-next-job");
       await tap(primary, 'button[data-choice-id="deliver-packet"]');
       await waitForBeat(primary, "packet-offered");
@@ -129,7 +137,9 @@ test.describe("AFTERSIGN save persistence (vite-preview save surface)", () => {
       await boot(other, otherSlot);
       const otherSavePath = `/aftersign/save/local-slice-player/${encodeURIComponent(otherSlot)}`;
       const otherGet = await other.request.get(otherSavePath);
-      expect(otherGet.status()).toBe(404);
+      // Cold slot: 200 with { payload: null, exists: false } (#2227).
+      expect(otherGet.status()).toBe(200);
+      expect(await otherGet.json()).toEqual({ payload: null, exists: false });
     } finally {
       await primary.close();
       await other.close();
