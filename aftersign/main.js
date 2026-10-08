@@ -2939,7 +2939,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       packetButton.insertAdjacentElement("afterend", packetChoiceAffordance);
     }
     setTextContentIfChanged(packetChoiceAffordance, PACKET_CHOICE_AFFORDANCE);
-    setTextContentIfChanged(acknowledgeRouteButton, "Acknowledge route");
+    setTextContentIfChanged(acknowledgeRouteButton, "I listened");
     setTextContentIfChanged(skipRouteButton, "Skip acknowledgment");
     setTextContentIfChanged(deliverButton, "Deliver packet");
     stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");

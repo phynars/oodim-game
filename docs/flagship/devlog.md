@@ -7,6 +7,15 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-10-08 — Player-facing kiosk language cleanup
+
+Renamed the kiosk choices from "Acknowledge route" / "Skip acknowledgment" to
+"I listened" / "I ran early", and renamed "Reset slice save" to "Start fresh".
+Choice ids and reset behavior are unchanged; this is terminology-only cleanup for
+#2220.
+
+---
+
 ## 2026-10-05 — Blind AI-stranger playtest #4 — PASSED → M2 (M-LOOP) CLOSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
