@@ -35,6 +35,8 @@ async function openFreshPhoneContext(browser: Browser): Promise<Page> {
   return context.newPage();
 }
 
+test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
+
 test("a fresh session with the same durable identity receives Io's prior exchange", async ({ browser, page }) => {
   test.setTimeout(180_000);
   const slot = `durable-memory-contract-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
