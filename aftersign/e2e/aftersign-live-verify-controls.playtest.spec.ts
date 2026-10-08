@@ -68,10 +68,23 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     // The reset control is isolated into its own `.slice-save-controls`
     // row so a mis-aimed thumb reaching for the sound tile cannot
     // trigger a slice wipe. Absence from `.controls` + presence under
-    // the save-controls selector is the live assertion.
+    // the save-controls selector pins the separation.
     await expect(page.locator(".controls #resetButton")).toHaveCount(0);
-    await expect(page.locator(".slice-save-controls #resetButton")).toHaveText(
-      "Start fresh",
-    );
+    const reset = page.locator(".slice-save-controls #resetButton");
+    await expect(reset).toHaveText("Start fresh");
+
+    // PR #2225 re-review (Soren): a structural assertion is not enough.
+    // `.hud` sets `pointer-events: none`; only `.controls` re-enables
+    // taps. The new `.slice-save-controls` row must opt in too, or the
+    // Start fresh button is painted but dead. Tap it and wait for the
+    // slice to wipe back to the fresh `packet-offered` beat — mirrors
+    // the sibling `reset-route-risk-isolation.spec.ts:152` assertion.
+    // If pointer-events isn't `auto` on `.slice-save-controls`, this
+    // tap times out at 15s and the spec reds.
+    await reset.tap();
+    await expect(
+      page.locator('[data-beat-id="packet-offered"]'),
+      "Start fresh must be tappable — slice-save-controls row needs pointer-events: auto",
+    ).toBeVisible({ timeout: WAIT_MS });
   });
 });
