@@ -1213,6 +1213,12 @@
           </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
+        </div>
+        <!-- #2225: the slice-save control lives in its own row so a
+             mis-aimed thumb cannot wipe the player's run while reaching
+             for the sound button. The spec locator
+             `.slice-save-controls #resetButton` pins the separation. -->
+        <div class="slice-save-controls" aria-label="Slice save">
           <button id="resetButton" type="button">Start fresh</button>
         </div>
       </div>
