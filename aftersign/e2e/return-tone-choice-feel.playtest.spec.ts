@@ -51,8 +51,8 @@ import { expect, test, type Page } from "@playwright/test";
 //   #skipRouteButton        → "Evasive return"
 //   #deliverButton          → "Blunt return"
 // At the preceding `packet-choice` beat the SAME three DOM nodes
-// carry different labels (Acknowledge route / Skip acknowledgment /
-// Deliver packet) and the SAME `#acknowledgeRouteButton` node stamps
+// carry different labels (I listened / I ran early / Deliver packet)
+// and the SAME `#acknowledgeRouteButton` node stamps
 // `data-aftersign-tap-choice="acknowledge-kiosk"` — the label swap
 // is what makes the phone tap-lane trip-wire load-bearing.
 
