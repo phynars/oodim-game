@@ -62,6 +62,13 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     expect(firstRoundDivergence).toBe("fresh");
     const firstRoundJob = firstRoundTray.locator("button[data-offered-job-id]");
     await expect(firstRoundJob).toHaveCount(1);
+    // Fresh durable memory must expose the deterministic safe action,
+    // not merely any lone button. This makes the contrast with the
+    // completed-memory round below visible at the action level.
+    await expect(firstRoundJob).toHaveAttribute(
+      "data-offered-job-id",
+      "job-safe-delivery",
+    );
     await firstRoundJob.tap();
 
     // Round-one walk: packet → acknowledge → deliver → recognition →
