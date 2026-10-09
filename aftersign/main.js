@@ -2696,21 +2696,7 @@ const renderText = () => {
         });
         const routeRiskCopy = document.createElement("p");
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
-        // A player who accepted Io's second packet must see its promised
-        // destination on the route surface, not the blue-packet offer copy
-        // that happens to share this tray. The packet button and delivery
-        // beat already carry this same red-tag identity; keep the board in
-        // lockstep so the route remains legible before the next gesture.
-        //
-        // Soren #2239 (AI005): source the red-tag route+risk from the frozen
-        // `AFTERSIGN_JOB_OFFER_COPY.trusted` branch — the SAME table
-        // `chooseAftersignJobOfferCopy("sealed")` returns and the harness
-        // asserts against — so this surface cannot drift from the offer
-        // copy module. One axis, one lookup.
-        const redTagOfferCopy = AFTERSIGN_JOB_OFFER_COPY.trusted;
-        routeRiskCopy.textContent = secondPacketHandoffLine
-          ? `Route: ${redTagOfferCopy.route} Risk: ${redTagOfferCopy.risk}`
-          : `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
+        routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
