@@ -38,7 +38,17 @@
 //     compatibility. The round-2 red-tag wire-up swaps the second
 //     site to `labelForAction: routeRiskActionLabelForOffer(
 //     chooseAftersignJobOfferCopy(memory))` once `state.delivery.id`
-//     is known — see follow-up issue tracked in the PR body).
+//     is known — tracked in follow-up issue #2245 ([#2241 B2] Wire
+//     routeRiskActionLabelForOffer into main.js round-2 red-tag
+//     renderRouteRiskChoice call site; carries the e2e scaffold for
+//     the tap-driven assertion the resolver's consumer test cannot
+//     express). This PR ships the pure resolver + unit tests only;
+//     the wire-up itself is intentionally deferred so this diff
+//     stays reviewable at one logical step. The resolver is
+//     SHIPPED-READY: it imports from the frozen offer-copy module,
+//     accepts the exact row shape `chooseAftersignJobOfferCopy()`
+//     returns, and falls back to the firstRun labels on malformed
+//     input — #2245's wire-up is a two-line swap, not a redesign).
 //   - `routeRiskActionLabels.consumer.test.ts` — pins the source-of-
 //     truth invariant: `routeRiskActionLabel("take-the-long-way")`
 //     equals `AFTERSIGN_JOB_OFFER_COPY.firstRun.safeRouteLabel`.
