@@ -17,7 +17,9 @@ import { expect, test, type Page } from "@playwright/test";
 // in `red-tag-packet-choice-retention.spec.ts` and
 // `red-tag-second-packet-served.spec.ts`.
 //
-// Why FOUR surfaces at once (what #2243 adds beyond its siblings):
+// Why FOUR surfaces (what #2243 adds beyond its siblings), and how
+// they land across TWO tests in this file:
+//
 //   `red-tag-second-packet-served.spec.ts`      — asserts #packetButton label
 //                                                 + #offeredJobs route literal
 //                                                 at `packet-offered` round-2.
@@ -27,55 +29,75 @@ import { expect, test, type Page } from "@playwright/test";
 //                                                 the red thread at the
 //                                                 following
 //                                                 `io-return-recognition`.
-//   THIS spec                                   — adds the two surfaces
-//                                                 those miss, in the
-//                                                 same walk:
-//                                                 (3) the `#routeRiskChoice`
-//                                                     tray's route-choice
-//                                                     buttons show the
-//                                                     TRUSTED-row labels
-//                                                     at round-2
-//                                                     `packet-choice`
-//                                                     (`"Long way — past
-//                                                     the kiosk"` /
-//                                                     `"Behind the
-//                                                     shuttered pharmacy"`),
-//                                                     not the firstRun
-//                                                     blue-packet defaults.
+//   THIS spec, main `test(...)`                 — surfaces (1), (2), (4):
+//                                                 (1) `#packetButton` at
+//                                                     `packet-offered`
+//                                                     reads "Red tag — Saint
+//                                                     Orra" (owned by
+//                                                     #2241, shipped).
+//                                                 (2) `#offeredJobs` names
+//                                                     the red thread, not
+//                                                     the blue packet
+//                                                     (owned by #2241,
+//                                                     shipped).
 //                                                 (4) `#line` at
-//                                                     `packet-delivered`
-//                                                     — the delivery-
-//                                                     complete beat
-//                                                     itself, before the
-//                                                     auto-advance — names
-//                                                     the red tag, not
-//                                                     the blue seal.
+//                                                     `packet-delivered` —
+//                                                     the delivery-complete
+//                                                     beat itself, BEFORE
+//                                                     the auto-advance —
+//                                                     names the red tag,
+//                                                     not the blue seal
+//                                                     (owned by #2242,
+//                                                     shipped).
+//   THIS spec, `test.fixme(...)` for surface 3  — the `#routeRiskChoice`
+//                                                 tray's route-choice
+//                                                 buttons at round-2
+//                                                 `packet-choice` must
+//                                                 speak the TRUSTED-row
+//                                                 labels (`"Long way —
+//                                                 past the kiosk"` /
+//                                                 `"Behind the shuttered
+//                                                 pharmacy"`), not the
+//                                                 firstRun blue-packet
+//                                                 defaults. Pinned as
+//                                                 `test.fixme` and NOT
+//                                                 executed until #2245
+//                                                 lands — see below.
+//
+// Why surface 3 is `test.fixme` and not a running assertion today:
+//
+//   `apps/web/src/aftersign/routeRiskActionLabels.js` (the resolver
+//   module) says on record that `aftersign/main.js` has TWO
+//   `renderRouteRiskChoice({...})` call sites, and BOTH still pass
+//   `labelForAction: routeRiskActionLabel` — the firstRun-pinned
+//   resolver kept as the default. The round-2 wire-up to
+//   `routeRiskActionLabelForOffer(chooseAftersignJobOfferCopy(memory))`
+//   is explicitly deferred to follow-up issue #2245 ("[#2241 B2] Wire
+//   routeRiskActionLabelForOffer into main.js round-2 red-tag
+//   renderRouteRiskChoice call site"), which is OPEN. Soren flagged
+//   this on the PR #2250 iter-3 review: without #2245, surface 3
+//   fails on main, and merging this spec as-is would add a red e2e.
+//
+//   An earlier draft of this header credited #2241 or #2242 with the
+//   route-choice wiring. Both were wrong. The authoritative source is
+//   the resolver module's own header comment, which pins the wire-up
+//   to #2245 and documents #2241 as the resolver-only PR (pure
+//   factory + unit tests, no main.js change). I did not re-read
+//   `aftersign/main.js` here — the file is >200KB and skipped by the
+//   search index — so I'm trusting the resolver module's self-
+//   description, which is the file whose contract surface 3 asserts
+//   anyway.
 //
 // Base-branch failure proof (CI gate for a type:bug issue):
 //   Surfaces (1), (2), and (4) all fail on base (pre-#2241 / pre-#2242):
 //   surface (1) renders "Blue packet" instead of "Red tag — Saint Orra";
 //   surface (2) renders the firstRun blue-packet route in `#offeredJobs`;
 //   surface (4) renders "blue seal" delivery-complete copy. Any ONE of
-//   those failures satisfies the type:bug CI gate on base.
+//   those failures satisfies the type:bug CI gate on base, so the
+//   `test.fixme`'d surface (3) is not needed to earn the gate.
 //
-//   Surface (3) is intentionally decoupled from the base-failure claim.
-//   The earlier iteration of this spec credited #2242 with wiring
-//   `aftersign/main.js`'s round-2 `renderRouteRiskChoice({...})` call
-//   site to `labelForAction: routeRiskActionLabelForOffer(TRUSTED)` —
-//   that was the wrong citation. #2242 is the delivery-complete copy
-//   fix (surface 4); #2241 is the issue that owns the packet-button
-//   AND route-choice buttons (surfaces 1 + 3). Both are closed. I
-//   cannot verify whether the `main.js` round-2 call site actually
-//   passes `routeRiskActionLabelForOffer(TRUSTED)` today — the file
-//   is >200KB and skipped by grep; my reads cap at 24KB. If #2241's
-//   diff only touched the packet-button render and left
-//   `labelForAction: routeRiskActionLabel` in place, surface (3)
-//   will fail on main too — and that's a real bug this spec
-//   deliberately surfaces rather than hides. Decoupling the base-
-//   failure proof from surface (3) means the spec still earns its
-//   CI gate from (1)/(2)/(4) even if (3) passes trivially.
-//
-// Source of truth for the four route strings:
+// Source of truth for the four route strings (used by the fixme'd
+// surface 3 for when #2245 lands and the test is un-fixme'd):
 //   `apps/web/src/aftersign/aftersignJobOfferCopy.js`
 //     - firstRun.safeRouteLabel  = "Lit stair — under Io's window"
 //     - firstRun.riskyRouteLabel = "Cut past the bell rope"
@@ -83,8 +105,8 @@ import { expect, test, type Page } from "@playwright/test";
 //     - trusted.riskyRouteLabel  = "Behind the shuttered pharmacy"
 //
 // This spec DOES NOT read `window.__game` for assertions — only for the
-// beat-settled handshake (same shape every sibling uses). The four
-// surface assertions all read served DOM nodes.
+// beat-settled handshake (same shape every sibling uses). The surface
+// assertions all read served DOM nodes.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 60_000;
@@ -131,7 +153,7 @@ async function tap(page: Page, selector: string): Promise<void> {
 test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract (#2243)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("round-2 red-tag second packet speaks red on all four player-visible surfaces", async ({
+  test("round-2 red-tag second packet speaks red on packet-button, offer tray, and delivery line", async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -184,34 +206,10 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     await waitForBeat(page, "packet-choice");
 
     // Label survives the beat flip (red-tag retention, PR #2201).
+    // This is also pinned by the sibling retention spec; we check it
+    // here so the walk's state is anchored before we move on to the
+    // delivery beat.
     await expect(packetButton).toHaveText("Red tag — Saint Orra");
-
-    // SURFACE 3 — Route-choice buttons on `#routeRiskChoice` speak
-    // the TRUSTED row's route labels (NOT the firstRun blue-packet
-    // defaults). This asserts that `aftersign/main.js`'s round-2
-    // `renderRouteRiskChoice({...})` call site passes
-    // `labelForAction: routeRiskActionLabelForOffer(TRUSTED)`
-    // instead of defaulting to the firstRun-pinned
-    // `routeRiskActionLabel`. #2241 owns this wiring (closed), but
-    // I could not read the >200KB `main.js` directly to confirm the
-    // call site was updated — if it wasn't, these two assertions
-    // will fail on main and this spec will have surfaced a real
-    // regression gap in #2241's acceptance criteria.
-    const routeRiskTray = page.locator("#routeRiskChoice");
-    await expect(routeRiskTray).toBeVisible();
-    const safeRouteButton = routeRiskTray.locator(
-      'button[data-aftersign-tap-choice="take-the-long-way"]',
-    );
-    const riskyRouteButton = routeRiskTray.locator(
-      'button[data-aftersign-tap-choice="take-the-shortcut"]',
-    );
-    await expect(safeRouteButton).toHaveText(TRUSTED_SAFE_ROUTE_LABEL);
-    await expect(riskyRouteButton).toHaveText(TRUSTED_RISKY_ROUTE_LABEL);
-    // Negative guards against the firstRun regression — if a future
-    // refactor re-pins the resolver to firstRun, these fail
-    // deterministically (not via loose "blue" substring matching).
-    await expect(safeRouteButton).not.toHaveText(FIRST_RUN_SAFE_ROUTE_LABEL);
-    await expect(riskyRouteButton).not.toHaveText(FIRST_RUN_RISKY_ROUTE_LABEL);
 
     // Commit the sealed-default fork — same tap the sibling specs
     // use to reach `packet-delivered`.
@@ -229,4 +227,64 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     await expect(lineEl).not.toContainText(/blue seal/i);
     await expect(lineEl).not.toContainText(/blue route/i);
   });
+
+  // SURFACE 3 — Route-choice buttons at round-2 `packet-choice` speak
+  // the TRUSTED-row labels, not the firstRun blue-packet defaults.
+  //
+  // Pinned as `test.fixme` because the wiring this asserts
+  // (`labelForAction: routeRiskActionLabelForOffer(trustedCopy)` at
+  // `aftersign/main.js`'s round-2 `renderRouteRiskChoice({...})` call
+  // site) is deferred to open issue #2245. The resolver module's
+  // header is explicit: both call sites still pass the firstRun-pinned
+  // `routeRiskActionLabel` on main today, so this assertion would be
+  // red if it ran. Un-fixme this test as part of #2245's PR; the body
+  // is intentionally complete so the un-fixme is a one-line change.
+  test.fixme(
+    "round-2 red-tag packet-choice route buttons speak the trusted row (blocked by #2245)",
+    async ({ page }) => {
+      test.setTimeout(180_000);
+      await page.goto(
+        `/aftersign/?slot=red-tag-second-packet-round-2-surface-3-${Date.now()}`,
+        { waitUntil: "load" },
+      );
+      await waitForReady(page);
+
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "io-return-recognition");
+      await tap(page, "#acknowledgeRouteButton");
+      await waitForBeat(page, "return-tone-choice");
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "io-next-job");
+
+      const acceptSecondPacket = page.locator(
+        'button[data-choice-id="accept-second-packet"]',
+      );
+      await expect(acceptSecondPacket).toHaveText("Take the second packet");
+      await acceptSecondPacket.tap();
+      await tap(page, "#deliverButton");
+      await waitForBeat(page, "packet-offered");
+
+      const packetButton = page.locator("#packetButton");
+      await packetButton.tap();
+      await waitForBeat(page, "packet-choice");
+
+      const routeRiskTray = page.locator("#routeRiskChoice");
+      await expect(routeRiskTray).toBeVisible();
+      const safeRouteButton = routeRiskTray.locator(
+        'button[data-aftersign-tap-choice="take-the-long-way"]',
+      );
+      const riskyRouteButton = routeRiskTray.locator(
+        'button[data-aftersign-tap-choice="take-the-shortcut"]',
+      );
+      await expect(safeRouteButton).toHaveText(TRUSTED_SAFE_ROUTE_LABEL);
+      await expect(riskyRouteButton).toHaveText(TRUSTED_RISKY_ROUTE_LABEL);
+      // Negative guards against the firstRun regression — if a future
+      // refactor re-pins the resolver to firstRun, these fail
+      // deterministically (not via loose "blue" substring matching).
+      await expect(safeRouteButton).not.toHaveText(FIRST_RUN_SAFE_ROUTE_LABEL);
+      await expect(riskyRouteButton).not.toHaveText(
+        FIRST_RUN_RISKY_ROUTE_LABEL,
+      );
+    },
+  );
 });
