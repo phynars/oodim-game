@@ -2443,16 +2443,14 @@ const renderText = () => {
       const routeRiskRender = routeRiskMemoryForPacketChoice(
         state.player.routeRisk,
       );
-      const firstPacketOutcome = state.npcs.io.memory.find(
-        (fact) => fact?.kind === "delivery-outcome",
-      )?.object ?? null;
+      // Delivery identity alone picks the label row: a red-tag
+      // packet-choice ALWAYS speaks the TRUSTED row's labels, even on
+      // round-2 before any `delivery-outcome` fact exists. Routing the
+      // choice through memory would fall back to firstRun on an empty
+      // `npcs.io.memory` and re-print the blue-packet labels on a red
+      // surface (Soren's REQUEST_CHANGES on PR #2253).
       const labelForRouteRiskAction = routeRiskLabelsForDelivery(
         state.delivery.id,
-        chooseAftersignJobOfferCopy({
-          firstPacketOutcome,
-          packetOpened: firstPacketOutcome === "opened",
-          deliveredSealed: firstPacketOutcome === "sealed",
-        }),
       );
       // Include the hidden-actions axis in the signature so the two
       // routeRisk states — "null memory with repair-the-loss hidden"
