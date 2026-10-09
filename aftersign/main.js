@@ -283,6 +283,7 @@ import {
 // `aftersignJobOfferCopy.firstRun` — same vocabulary Io speaks in
 // her offer line, no drift. Soren's REQUEST_CHANGES on #1747.
 import { routeRiskActionLabel } from "../apps/web/src/aftersign/routeRiskActionLabels.js";
+import { redTagRouteRiskActionLabel } from "./src/redTagRouteLabels.js";
 // Scene-transition juice — the three-phase envelope (recognition-
 // settle → job-offer-rise → route-commit) that plays when the beat
 // crosses a scene boundary (kiosk → io-return, io-return → orra-
@@ -2443,6 +2444,9 @@ const renderText = () => {
       const routeRiskRender = routeRiskMemoryForPacketChoice(
         state.player.routeRisk,
       );
+      const labelForRouteRiskAction = state.delivery.id === "red-tag"
+        ? (action) => redTagRouteRiskActionLabel(action) ?? routeRiskActionLabel(action)
+        : routeRiskActionLabel;
       // Include the hidden-actions axis in the signature so the two
       // routeRisk states — "null memory with repair-the-loss hidden"
       // and "null memory with full offer set" — never collide into a
@@ -2459,7 +2463,7 @@ const renderText = () => {
           container: routeRiskChoice,
           memory: routeRiskRender.memory,
           hideActions: routeRiskRender.hideActions,
-          labelForAction: routeRiskActionLabel,
+          labelForAction: labelForRouteRiskAction,
           onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
           // shape the memory fact wants. "take-the-shortcut" and
@@ -2489,7 +2493,7 @@ const renderText = () => {
           // `routeMemoryConfirmation`) re-emit the `<p
           // data-aftersign-route-memory-confirmation>` child on every
           // subsequent `renderRouteRiskChoice` pass.
-          routeMemoryConfirmation = routeRiskActionLabel(action);
+          routeMemoryConfirmation = labelForRouteRiskAction(action);
           routeRiskChoice.dataset.routeMemoryConfirmation = routeMemoryConfirmation;
           routeRiskChoice.dataset.aftersignSelectedAction = action;
           stampRouteMemoryConfirmation();
