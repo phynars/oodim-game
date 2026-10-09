@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test";
 
 const WAIT_MS = 10_000;
 // The full rendered phone journey completed in 53.8s on the Oct. 2 Chromium
-// sandbox run. Keep a bounded 60s budget so cold boot and the final rendered
-// tap have headroom, independently of the 10s timeout enforced for each beat.
+// sandbox run and 29.8s on the Oct. 9 rerun. Keep a bounded 60s budget so
+// cold boot and the final rendered tap have headroom, independently of the
+// 10s timeout enforced for each beat.
 const JOURNEY_TIMEOUT_MS = 60_000;
 
 // M-CONTINUE player proof: after `io-return-recognition`, the served page must
