@@ -103,6 +103,7 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+import { aftersignDeliveryCompleteLine } from "../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";
 import { aftersignPacketRecallLine, aftersignPacketRecallToken } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
 import { stampPacketRecallLine } from "../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 import {
@@ -1424,9 +1425,7 @@ const lineForBeat = () => {
       const routeLine = aftersignRouteOutcomeLine(routeMemory.lastRoute, routeMemory.lastAction);
       if (routeLine) return routeLine;
     }
-    return state.delivery.id === "red-tag"
-      ? "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer."
-      : "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+    return aftersignDeliveryCompleteLine(state.delivery.id);
   }
 
   if (state.scene.beat === "return-tone-choice") {
