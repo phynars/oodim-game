@@ -1,29 +1,17 @@
 // Pure-lane coverage for `routeRiskLabelsForDelivery` — the resolver
 // `aftersign/main.js` consults at the `packet-choice` beat to label the
-// route-risk tray buttons.
+// route-risk tray buttons. Three axes:
+//   1. Red-tag → labels sourced from `AFTERSIGN_JOB_OFFER_COPY.trusted`
+//      (verbatim: "Long way — past the kiosk" / "Behind the shuttered
+//      pharmacy").
+//   2. Red-tag → NEVER returns the firstRun blue-packet literals,
+//      regardless of memory state (the resolver doesn't read memory;
+//      delivery identity alone is the signal).
+//   3. Non red-tag → identical behavior to the backwards-compatible
+//      `routeRiskActionLabel` default.
 //
-// Why this test exists (Soren's REQUEST_CHANGES on PR #2253):
-//   The first draft of #2245's wire-up routed label selection through
-//   `chooseAftersignJobOfferCopy` using a `delivery-outcome` fact in
-//   `npcs.io.memory`. On a red-tag delivery with no such fact (the
-//   state a round-2 red-tag second-packet handoff hits BEFORE the
-//   player makes any delivery), that selector returns FIRST_RUN —
-//   so the buttons rendered the blue-packet labels on a red surface.
-//
-//   This test pins the regression at the pure-resolver layer:
-//     1. Red-tag → labels sourced from
-//        `AFTERSIGN_JOB_OFFER_COPY.trusted` (verbatim: "Long way —
-//        past the kiosk" / "Behind the shuttered pharmacy").
-//     2. Red-tag → NEVER returns the firstRun blue-packet literals,
-//        regardless of memory state (the resolver doesn't even read
-//        memory anymore; delivery identity alone is the signal).
-//     3. Non red-tag → identical behavior to the backwards-compatible
-//        `routeRiskActionLabel` default (firstRun labels, generic
-//        fallback for unknown ids).
-//
-// Shape: pure .test.ts under vitest, no DOM, no harness. Pinned at the
-// resolver layer so a future wire-up swap in main.js keeps the ground
-// truth; the matching tap-driven e2e lives at
+// Pinned at the resolver layer so a future wire-up swap in main.js
+// keeps the ground truth; the matching tap-driven e2e lives at
 // `aftersign/e2e/red-tag-second-packet-round-2.spec.ts`.
 
 import { describe, expect, it } from "vitest";
@@ -51,12 +39,7 @@ describe("routeRiskLabelsForDelivery", () => {
 
   it("red-tag → NEVER returns the firstRun blue-packet labels (#2253 regression)", () => {
     const resolver = routeRiskLabelsForDelivery("red-tag");
-    // The previous iteration of this module took an `offerCopy`
-    // argument derived from `npcs.io.memory`; when memory was empty,
-    // `chooseAftersignJobOfferCopy({})` returned FIRST_RUN and the
-    // buttons rendered the blue-packet labels. The current resolver
-    // ignores memory entirely for red-tag deliveries, so the
-    // regression surface is closed by construction.
+    // Memory-less red-tag must not render the blue-packet row.
     expect(resolver("take-the-long-way")).not.toBe(
       AFTERSIGN_JOB_OFFER_COPY.firstRun.safeRouteLabel,
     );
