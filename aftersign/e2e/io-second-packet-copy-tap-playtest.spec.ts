@@ -34,7 +34,14 @@ async function tapReturnReason(page: Page, reason: IoReturnReason): Promise<void
 }
 
 async function playToToneFork(page: Page, slot: string): Promise<void> {
-  await page.goto(`?slot=${slot}`, { waitUntil: "load" });
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") {
+    throw new Error(
+      "This served-page playtest requires aftersign/playwright.config.ts so it has a base URL.",
+    );
+  }
+
+  await page.goto(new URL(`?slot=${slot}`, baseURL).toString(), { waitUntil: "load" });
   await waitForBeat(page, "packet-offered");
 
   await page.locator("#packetButton").click();
