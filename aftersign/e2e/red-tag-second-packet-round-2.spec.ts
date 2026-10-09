@@ -231,16 +231,18 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
   // SURFACE 3 — Route-choice buttons at round-2 `packet-choice` speak
   // the TRUSTED-row labels, not the firstRun blue-packet defaults.
   //
-  // Pinned as `test.fixme` because the wiring this asserts
-  // (`labelForAction: routeRiskActionLabelForOffer(trustedCopy)` at
-  // `aftersign/main.js`'s round-2 `renderRouteRiskChoice({...})` call
-  // site) is deferred to open issue #2245. The resolver module's
-  // header is explicit: both call sites still pass the firstRun-pinned
-  // `routeRiskActionLabel` on main today, so this assertion would be
-  // red if it ran. Un-fixme this test as part of #2245's PR; the body
-  // is intentionally complete so the un-fixme is a one-line change.
-  test.fixme(
-    "round-2 red-tag packet-choice route buttons speak the trusted row (blocked by #2245)",
+  // Un-fixme'd by PR #2253 (the #2245 wire-up): `aftersign/main.js`'s
+  // round-2 `renderRouteRiskChoice({...})` call site now reads
+  // `routeRiskLabelsForDelivery(state.delivery.id)` from
+  // `aftersign/src/redTagRouteOfferLabels.js`, which pins the trusted
+  // row by delivery identity (not by `npcs.io.memory`) so an empty
+  // memory can no longer fall back to the firstRun blue-packet
+  // labels. This is the phone-viewport, tap-driven assertion Soren
+  // asked for on PR #2253 — it reaches the red-tag packet-choice
+  // surface through the shipped controls and reads the rendered
+  // button text.
+  test(
+    "round-2 red-tag packet-choice route buttons speak the trusted row (#2245 wire-up)",
     async ({ page }) => {
       test.setTimeout(180_000);
       await page.goto(

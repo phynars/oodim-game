@@ -9,11 +9,16 @@
 //   whenever the outcome is missing — exactly the state a round-2
 //   red-tag second-packet handoff hits before the player has made ANY
 //   delivery, so the regression printed the blue-packet labels on a
-//   red-tag surface. The deleted `redTagRouteLabels.js` prevented this
-//   by hard-pinning the trusted row for every red-tag delivery; this
-//   module keeps that invariant while routing through the frozen
-//   offer-copy table so the two route strings stay sourced from one
-//   place (the same row Io speaks in her offer line).
+//   red-tag surface. This module hard-pins the trusted row for every
+//   red-tag delivery by delivery identity, while routing through the
+//   frozen offer-copy table so the two route strings stay sourced from
+//   one place (the same row Io speaks in her offer line).
+//
+//   Historical note: an earlier draft header described a sibling
+//   `redTagRouteLabels.js` as "deleted". That file is NOT deleted in
+//   this diff — Soren's AI007 on PR #2253 iter-1 flagged the stale
+//   claim. Nothing imports it anymore; its removal is a separate
+//   sweep outside the scope of #2245's wire-up fix.
 //
 // Rule:
 //   - `red-tag` delivery  → labels bound to `AFTERSIGN_JOB_OFFER_COPY.trusted`
