@@ -340,7 +340,10 @@ import {
   AFTERSIGN_JOB_TAKE_FEEL,
   resolveAftersignJobTakeFeel,
 } from "../apps/web/src/aftersign/aftersignJobTakeFeel.js";
-import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersignJobOfferCopy.js";
+import {
+  AFTERSIGN_JOB_OFFER_COPY,
+  chooseAftersignJobOfferCopy,
+} from "../apps/web/src/aftersign/aftersignJobOfferCopy.js";
 // #1765 (Soren's fourth REQUEST_CHANGES) — Io's round-to-round
 // consequence line. Wiring it in main.js here is what turns
 // `aftersign/src/ioLoopConsequenceCopy.js` from an isolated copy
@@ -2698,8 +2701,15 @@ const renderText = () => {
         // that happens to share this tray. The packet button and delivery
         // beat already carry this same red-tag identity; keep the board in
         // lockstep so the route remains legible before the next gesture.
+        //
+        // Soren #2239 (AI005): source the red-tag route+risk from the frozen
+        // `AFTERSIGN_JOB_OFFER_COPY.trusted` branch — the SAME table
+        // `chooseAftersignJobOfferCopy("sealed")` returns and the harness
+        // asserts against — so this surface cannot drift from the offer
+        // copy module. One axis, one lookup.
+        const redTagOfferCopy = AFTERSIGN_JOB_OFFER_COPY.trusted;
         routeRiskCopy.textContent = secondPacketHandoffLine
-          ? "Route: Saint Orra's pharmacy · Risk: the sign may call you by the wrong name"
+          ? `Route: ${redTagOfferCopy.route} Risk: ${redTagOfferCopy.risk}`
           : `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
         if (secondPacketHandoffLine) {
