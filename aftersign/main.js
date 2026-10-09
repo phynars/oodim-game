@@ -2693,7 +2693,14 @@ const renderText = () => {
         });
         const routeRiskCopy = document.createElement("p");
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
-        routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
+        // A player who accepted Io's second packet must see its promised
+        // destination on the route surface, not the blue-packet offer copy
+        // that happens to share this tray. The packet button and delivery
+        // beat already carry this same red-tag identity; keep the board in
+        // lockstep so the route remains legible before the next gesture.
+        routeRiskCopy.textContent = secondPacketHandoffLine
+          ? "Route: Saint Orra's pharmacy · Risk: the sign may call you by the wrong name"
+          : `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
