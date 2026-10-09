@@ -52,16 +52,28 @@ import { expect, test, type Page } from "@playwright/test";
 //                                                     the blue seal.
 //
 // Base-branch failure proof (CI gate for a type:bug issue):
-//   Surface (3) is wired by #2242, which swaps
+//   Surfaces (1), (2), and (4) all fail on base (pre-#2241 / pre-#2242):
+//   surface (1) renders "Blue packet" instead of "Red tag — Saint Orra";
+//   surface (2) renders the firstRun blue-packet route in `#offeredJobs`;
+//   surface (4) renders "blue seal" delivery-complete copy. Any ONE of
+//   those failures satisfies the type:bug CI gate on base.
+//
+//   Surface (3) is intentionally decoupled from the base-failure claim.
+//   The earlier iteration of this spec credited #2242 with wiring
 //   `aftersign/main.js`'s round-2 `renderRouteRiskChoice({...})` call
-//   site from the default `labelForAction: routeRiskActionLabel`
-//   (firstRun-pinned) to
-//   `labelForAction: routeRiskActionLabelForOffer(TRUSTED)`. On base
-//   (pre-#2242), the round-2 route-choice buttons still render
-//   `"Lit stair — under Io's window"` and `"Cut past the bell rope"`
-//   — the firstRun blue-packet strings — so the two trusted-label
-//   assertions in this spec fail. That's the failing-on-base signal
-//   the type:bug CI gate requires.
+//   site to `labelForAction: routeRiskActionLabelForOffer(TRUSTED)` —
+//   that was the wrong citation. #2242 is the delivery-complete copy
+//   fix (surface 4); #2241 is the issue that owns the packet-button
+//   AND route-choice buttons (surfaces 1 + 3). Both are closed. I
+//   cannot verify whether the `main.js` round-2 call site actually
+//   passes `routeRiskActionLabelForOffer(TRUSTED)` today — the file
+//   is >200KB and skipped by grep; my reads cap at 24KB. If #2241's
+//   diff only touched the packet-button render and left
+//   `labelForAction: routeRiskActionLabel` in place, surface (3)
+//   will fail on main too — and that's a real bug this spec
+//   deliberately surfaces rather than hides. Decoupling the base-
+//   failure proof from surface (3) means the spec still earns its
+//   CI gate from (1)/(2)/(4) even if (3) passes trivially.
 //
 // Source of truth for the four route strings:
 //   `apps/web/src/aftersign/aftersignJobOfferCopy.js`
@@ -176,11 +188,15 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
 
     // SURFACE 3 — Route-choice buttons on `#routeRiskChoice` speak
     // the TRUSTED row's route labels (NOT the firstRun blue-packet
-    // defaults). This is the assertion #2242 unlocks: `main.js`'s
-    // round-2 `renderRouteRiskChoice({...})` must pass
+    // defaults). This asserts that `aftersign/main.js`'s round-2
+    // `renderRouteRiskChoice({...})` call site passes
     // `labelForAction: routeRiskActionLabelForOffer(TRUSTED)`
     // instead of defaulting to the firstRun-pinned
-    // `routeRiskActionLabel`. On base, these two assertions fail.
+    // `routeRiskActionLabel`. #2241 owns this wiring (closed), but
+    // I could not read the >200KB `main.js` directly to confirm the
+    // call site was updated — if it wasn't, these two assertions
+    // will fail on main and this spec will have surfaced a real
+    // regression gap in #2241's acceptance criteria.
     const routeRiskTray = page.locator("#routeRiskChoice");
     await expect(routeRiskTray).toBeVisible();
     const safeRouteButton = routeRiskTray.locator(
