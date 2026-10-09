@@ -284,7 +284,7 @@ import {
 // `aftersignJobOfferCopy.firstRun` — same vocabulary Io speaks in
 // her offer line, no drift. Soren's REQUEST_CHANGES on #1747.
 import { routeRiskActionLabel } from "../apps/web/src/aftersign/routeRiskActionLabels.js";
-import { redTagRouteRiskActionLabel } from "./src/redTagRouteLabels.js";
+import { routeRiskLabelsForDelivery } from "./src/redTagRouteOfferLabels.js";
 // Scene-transition juice — the three-phase envelope (recognition-
 // settle → job-offer-rise → route-commit) that plays when the beat
 // crosses a scene boundary (kiosk → io-return, io-return → orra-
@@ -2443,9 +2443,17 @@ const renderText = () => {
       const routeRiskRender = routeRiskMemoryForPacketChoice(
         state.player.routeRisk,
       );
-      const labelForRouteRiskAction = state.delivery.id === "red-tag"
-        ? (action) => redTagRouteRiskActionLabel(action) ?? routeRiskActionLabel(action)
-        : routeRiskActionLabel;
+      const firstPacketOutcome = state.npcs.io.memory.find(
+        (fact) => fact?.kind === "delivery-outcome",
+      )?.object ?? null;
+      const labelForRouteRiskAction = routeRiskLabelsForDelivery(
+        state.delivery.id,
+        chooseAftersignJobOfferCopy({
+          firstPacketOutcome,
+          packetOpened: firstPacketOutcome === "opened",
+          deliveredSealed: firstPacketOutcome === "sealed",
+        }),
+      );
       // Include the hidden-actions axis in the signature so the two
       // routeRisk states — "null memory with repair-the-loss hidden"
       // and "null memory with full offer set" — never collide into a
