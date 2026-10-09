@@ -13,6 +13,26 @@
 //     Narratively distinct from the button label: the label names the
 //     available work; this line confirms the choice landed and keeps
 //     the loop open.
+//   • It does NOT own the packet-button label or the route-choice
+//     button labels on a round-2 red-tag second packet. The
+//     packet-button label is set by `commitPacketOutcome` in
+//     `aftersign/main.js` (override pins `#packetButton.textContent`
+//     to "Red tag — Saint Orra" when `state.delivery.id === "red-tag"`
+//     — see `aftersign/e2e/red-tag-packet-choice-retention.spec.ts`
+//     for the live-tapped contract). The route-choice button labels
+//     are authored by `aftersignJobOfferCopy.js` (one row per memory
+//     branch, each carrying `safeRouteLabel` + `riskyRouteLabel`) and
+//     resolved for a given state's offer-copy by
+//     `routeRiskActionLabelForOffer()` in `routeRiskActionLabels.js`
+//     (the SHIPPED wire of that resolver into main.js's second
+//     `renderRouteRiskChoice({...})` call site is tracked in
+//     follow-up issue #2245 — this PR ships only the pure resolver
+//     plus its consumer test, deliberately split so each diff stays
+//     reviewable).
+//     Both surfaces live outside this module on purpose: an
+//     acceptance acknowledgement is NOT a selectable route, so a
+//     renderer that mistakes one for the other will read the wrong
+//     table.
 //
 // Consumer contract (why this module is not orphaned — Mara's
 // REQUEST_CHANGES on PR #1884 was correct: an unrendered copy string
