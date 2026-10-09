@@ -128,6 +128,14 @@ test.describe("AFTERSIGN red-tag packet retention (#2201)", () => {
     await waitForBeat(page, "packet-choice");
     await expect(packetButton).toHaveText("Red tag — Saint Orra");
 
+    // #2248: this is the real live-verifier failure path. The player taps
+    // the visible red-tag packet, then reads the visible route choice. It
+    // must not retain the first-run blue route label.
+    const routeChoice = page.locator("#routeRiskChoice");
+    await expect(routeChoice).toBeVisible();
+    await expect(routeChoice).toContainText("Long way — past the kiosk");
+    await expect(routeChoice).not.toContainText("Lit stair — under Io's window");
+
     // Commit the sealed-default fork — same `#deliverButton` tap the
     // sibling red-tag spec uses to reach `packet-delivered`.
     await tap(page, "#deliverButton");
