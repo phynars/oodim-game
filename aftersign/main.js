@@ -282,7 +282,10 @@ import {
 // (`"take-the-shortcut"`). The two route strings are sourced from
 // `aftersignJobOfferCopy.firstRun` — same vocabulary Io speaks in
 // her offer line, no drift. Soren's REQUEST_CHANGES on #1747.
-import { routeRiskActionLabel } from "../apps/web/src/aftersign/routeRiskActionLabels.js";
+import {
+  routeRiskActionLabel,
+  routeRiskActionLabelForOffer,
+} from "../apps/web/src/aftersign/routeRiskActionLabels.js";
 // Scene-transition juice — the three-phase envelope (recognition-
 // settle → job-offer-rise → route-commit) that plays when the beat
 // crosses a scene boundary (kiosk → io-return, io-return → orra-
@@ -2459,7 +2462,19 @@ const renderText = () => {
           container: routeRiskChoice,
           memory: routeRiskRender.memory,
           hideActions: routeRiskRender.hideActions,
-          labelForAction: routeRiskActionLabel,
+          labelForAction: state.delivery.id === "red-tag"
+            ? routeRiskActionLabelForOffer(chooseAftersignJobOfferCopy({
+                firstPacketOutcome: state.npcs.io.memory.find(
+                  (fact) => fact?.kind === "delivery-outcome",
+                )?.object ?? null,
+                packetOpened: state.npcs.io.memory.some(
+                  (fact) => fact?.kind === "delivery-outcome" && fact.object === "opened",
+                ),
+                deliveredSealed: state.npcs.io.memory.some(
+                  (fact) => fact?.kind === "delivery-outcome" && fact.object === "sealed",
+                ),
+              }))
+            : routeRiskActionLabel,
           onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
           // shape the memory fact wants. "take-the-shortcut" and
