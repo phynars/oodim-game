@@ -72,51 +72,74 @@ test("packet target loss clears the aim reticle immediately and fades its prompt
     };
   });
 
-  // The sampler must have observed at least one rendered frame before the
-  // played release. Otherwise a cold renderer can complete the 100ms fade
-  // before its first callback and report a false zero peak.
-  await expect
-    .poll(() => page.evaluate(() => window.__targetLossSamplerStarted?.() === true))
-    .toBe(true);
+  try {
+    // The sampler must have observed at least one rendered frame before the
+    // played release. Otherwise a cold renderer can complete the 100ms fade
+    // before its first callback and report a false zero peak.
+    await expect
+      .poll(() => page.evaluate(() => window.__targetLossSamplerStarted?.() === true))
+      .toBe(true);
 
-  const packet = page.locator('[data-aftersign-tap-choice="packet"]');
-  await packet.click();
+    const packet = page.locator('[data-aftersign-tap-choice="packet"]');
+    await packet.click();
 
-  // (a) The envelope was observed — peak > 0.5 proves the fade played.
-  await expect
-    .poll(() => page.evaluate(() => window.__targetLossOpacityPeak?.() ?? 0))
-    .toBeGreaterThan(0.5);
+    // (a) The envelope was observed — peak > 0.5 proves the fade played.
+    await expect
+      .poll(() => page.evaluate(() => window.__targetLossOpacityPeak?.() ?? 0))
+      .toBeGreaterThan(0.5);
 
-  // (b) The reticle went into target-loss-active state and its transform
-  //     was neutral during the envelope ("clears the aim reticle immediately").
-  await expect
-    .poll(() => page.evaluate(() => window.__targetLossSawActive?.() === true))
-    .toBe(true);
-  await expect
-    .poll(() => page.evaluate(() => window.__targetLossSawNeutralReticle?.() === true))
-    .toBe(true);
+    // (b) The reticle went into target-loss-active state and its transform
+    //     was neutral during the envelope ("clears the aim reticle immediately").
+    await expect
+      .poll(() => page.evaluate(() => window.__targetLossSawActive?.() === true))
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => window.__targetLossSawNeutralReticle?.() === true))
+      .toBe(true);
 
-  // (c) Io-voice contract from #1829 — the served DOM text equals the
-  //     canonical constant, proving `main.js` stamped from `./src/ioVoice.js`.
-  await expect(page.locator("#targetLossPrompt")).toHaveText(IO_TARGET_LOSS_LINE);
+    // (c) Io-voice contract from #1829 — the served DOM text equals the
+    //     canonical constant, proving `main.js` stamped from `./src/ioVoice.js`.
+    await expect(page.locator("#targetLossPrompt")).toHaveText(IO_TARGET_LOSS_LINE);
 
-  // Stop the sampler and prove the prompt fades all the way back to 0
-  // past the envelope — "fades its prompt" in the title.
-  await page.evaluate(() => window.__stopTargetLossOpacitySampler?.());
+    // Prove the prompt fades all the way back to 0 past the envelope —
+    // "fades its prompt" in the title.
+    await page.evaluate(() => window.__stopTargetLossOpacitySampler?.());
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const el = document.querySelector("#targetLossPrompt");
+            return el instanceof HTMLElement
+              ? Number(getComputedStyle(el).opacity)
+              : NaN;
+          }),
+        { timeout: 3000 },
+      )
+      .toBe(0);
+    await expect(page.locator("#aimReticle")).toHaveAttribute(
+      "data-target-loss-active",
+      "false",
+    );
+  } finally {
+    await page.evaluate(() => {
+      window.__stopTargetLossOpacitySampler?.();
+      delete window.__targetLossOpacityPeak;
+      delete window.__targetLossSamplerStarted;
+      delete window.__targetLossSawActive;
+      delete window.__targetLossSawNeutralReticle;
+      delete window.__stopTargetLossOpacitySampler;
+    });
+  }
+
   await expect
-    .poll(
-      () =>
-        page.evaluate(() => {
-          const el = document.querySelector("#targetLossPrompt");
-          return el instanceof HTMLElement
-            ? Number(getComputedStyle(el).opacity)
-            : NaN;
-        }),
-      { timeout: 3000 },
+    .poll(() =>
+      page.evaluate(() => [
+        window.__targetLossOpacityPeak,
+        window.__targetLossSamplerStarted,
+        window.__targetLossSawActive,
+        window.__targetLossSawNeutralReticle,
+        window.__stopTargetLossOpacitySampler,
+      ].every((callback) => callback === undefined)),
     )
-    .toBe(0);
-  await expect(page.locator("#aimReticle")).toHaveAttribute(
-    "data-target-loss-active",
-    "false",
-  );
+    .toBe(true);
 });
