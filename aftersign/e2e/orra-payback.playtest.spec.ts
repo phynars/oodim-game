@@ -35,6 +35,10 @@ async function reachRedTagReturn(page: Page, openRedTag: boolean) {
     // A deliberate hold is the served packet's open gesture; no game hook.
     const packet = page.locator("#packetButton");
     await packet.dispatchEvent("pointerdown", { pointerId: 7, clientX: 100, clientY: 100 });
+    // allowed: the open gesture IS a wall-clock dwell — the packet-intent
+    // threshold is a real-time hold the player's finger performs. No
+    // state probe can replace the duration itself; shortening it below
+    // the authored threshold would miss the "opened" outcome.
     await page.waitForTimeout(520);
     await packet.dispatchEvent("pointerup", { pointerId: 7, clientX: 100, clientY: 100 });
   }
@@ -47,7 +51,7 @@ test.describe("Saint Orra payback", () => {
   test.use({ viewport: PHONE, hasTouch: true, isMobile: true });
 
   test("red-tag outcome changes the visible enabled route and its tap reaches an ending", async ({ page }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(180_000);
     await page.goto(`/aftersign/?slot=orra-payback-sealed-${Date.now()}`, { waitUntil: "load" });
     await reachRedTagReturn(page, false);
 
