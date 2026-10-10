@@ -3670,6 +3670,16 @@ const choose = async (choiceId) => {
     if (state.scene.beat !== "return-tone-choice") {
       return;
     }
+    // Io's handoff is a promise attached to the packet already on the
+    // counter. Arm its identity now, not only after the optional
+    // “Take the second packet” acknowledgement: a player can touch the
+    // visible packet as soon as the red-tag job is spoken.
+    state.player.secondPacketHandoffAccepted = true;
+    state.delivery = { id: "red-tag", outcome: "unknown" };
+    if (packetButton) {
+      packetButton.textContent = "Red tag — Saint Orra";
+      packetButton.dataset.packetJob = "red-tag";
+    }
     setBeat("io-next-job");
     await forceSave();
     publishState();
