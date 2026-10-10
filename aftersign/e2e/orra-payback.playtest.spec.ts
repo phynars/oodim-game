@@ -32,13 +32,12 @@ async function reachRedTagReturn(page: Page, openRedTag: boolean) {
   await page.locator("#packetButton").tap();
   await beat(page, "packet-choice");
   if (openRedTag) {
-    // A deliberate hold is the served packet's open gesture; no game hook.
+    // The packet's open gesture IS a wall-clock dwell: the authored
+    // packet-intent threshold is a real-time finger hold. No state probe
+    // can replace the duration — shortening it misses the "opened" outcome.
     const packet = page.locator("#packetButton");
     await packet.dispatchEvent("pointerdown", { pointerId: 7, clientX: 100, clientY: 100 });
-    // allowed: the open gesture IS a wall-clock dwell — the packet-intent
-    // threshold is a real-time hold the player's finger performs. No
-    // state probe can replace the duration itself; shortening it below
-    // the authored threshold would miss the "opened" outcome.
+    // allowed: packet open-gesture dwell; the hold duration IS the mechanic.
     await page.waitForTimeout(520);
     await packet.dispatchEvent("pointerup", { pointerId: 7, clientX: 100, clientY: 100 });
   }
