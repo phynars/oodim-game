@@ -239,81 +239,79 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
   // asked for on PR #2253 — it reaches the red-tag packet-choice
   // surface through the shipped controls and reads the rendered
   // button text.
-  test(
-    "round-2 red-tag packet-choice route buttons speak the trusted row (#2245 wire-up)",
-    async ({ page }) => {
-      test.setTimeout(180_000);
-      await page.goto(
-        `/aftersign/?slot=red-tag-second-packet-round-2-surface-3-${Date.now()}`,
-        { waitUntil: "load" },
-      );
-      await waitForReady(page);
+  test("round-2 red-tag packet-choice route buttons speak the trusted row (#2245 wire-up)", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.goto(
+      `/aftersign/?slot=red-tag-second-packet-round-2-surface-3-${Date.now()}`,
+      { waitUntil: "load" },
+    );
+    await waitForReady(page);
 
-      // Round-1: tap the long-way route BEFORE committing delivery so
-      // `recordRouteRun` writes `{lastRoute:"safe", succeeded:true}`
-      // into `state.player.routeRisk`. Round-2's `packet-choice` then
-      // sees a non-null memory → `routeRiskMemoryForPacketChoice`
-      // leaves `repair-the-loss` in, AND `computeOfferedActions`
-      // returns `["take-the-shortcut","carry-a-fragile-packet"]` for
-      // the safe+succeeded case — which is the ONLY offered set that
-      // renders the `take-the-shortcut` button this spec asserts
-      // against. Taking null-memory into round-2 hides
-      // `repair-the-loss` and offers only `take-the-long-way`, with
-      // NO shortcut button to assert the trusted-row risky label on
-      // (Soren's AI008 on PR #2253 iter-3).
-      const roundOneRouteRiskTray = page.locator("#routeRiskChoice");
-      await expect(roundOneRouteRiskTray).toBeVisible({ timeout: WAIT_MS });
-      const roundOneLongWay = roundOneRouteRiskTray.locator(
-        'button[data-aftersign-tap-choice="take-the-long-way"]',
-      );
-      await expect(roundOneLongWay).toBeVisible({ timeout: WAIT_MS });
-      await expect(roundOneLongWay).toBeEnabled();
-      await roundOneLongWay.tap();
+    // Round 1 begins at `packet-offered`, not `packet-choice`. Take
+    // the shipped safe-delivery offer and inspect the packet before
+    // trying to tap a route button. This writes
+    // `{lastRoute:"safe", succeeded:true}` so round 2 offers the
+    // shortcut button whose trusted label is the regression symptom.
+    await waitForBeat(page, "packet-offered");
+    const firstJob = page.locator("#job-offer-job-safe-delivery");
+    await expect(firstJob).toBeVisible({ timeout: WAIT_MS });
+    await firstJob.tap();
+    const firstPacket = page.locator("#packetButton");
+    await expect(firstPacket).toBeEnabled({ timeout: WAIT_MS });
+    await firstPacket.tap();
+    await waitForBeat(page, "packet-choice");
 
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "io-return-recognition");
-      await tap(page, "#acknowledgeRouteButton");
-      await waitForBeat(page, "return-tone-choice");
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "io-next-job");
+    const roundOneRouteRiskTray = page.locator("#routeRiskChoice");
+    const roundOneLongWay = roundOneRouteRiskTray.locator(
+      'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
+    );
+    await expect(roundOneLongWay).toBeVisible({ timeout: WAIT_MS });
+    await roundOneLongWay.tap();
 
-      const acceptSecondPacket = page.locator(
-        'button[data-choice-id="accept-second-packet"]',
-      );
-      await expect(acceptSecondPacket).toHaveText("Take the second packet");
-      await acceptSecondPacket.tap();
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "packet-offered");
+    await tap(page, "#acknowledgeRouteButton");
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-return-recognition");
+    await tap(page, "#acknowledgeRouteButton");
+    await waitForBeat(page, "return-tone-choice");
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-next-job");
 
-      const packetButton = page.locator("#packetButton");
-      await packetButton.tap();
-      await waitForBeat(page, "packet-choice");
+    const acceptSecondPacket = page.locator(
+      'button[data-choice-id="accept-second-packet"]',
+    );
+    await expect(acceptSecondPacket).toHaveText("Take the second packet");
+    await acceptSecondPacket.tap();
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "packet-offered");
 
-      const routeRiskTray = page.locator("#routeRiskChoice");
-      await expect(routeRiskTray).toBeVisible();
-      // After a safe+succeeded round-1,
-      // `computeOfferedActions({lastRoute:"safe",succeeded:true})`
-      // returns `["take-the-shortcut","carry-a-fragile-packet"]`
-      // (see `apps/web/src/aftersign/routeRiskMemory.ts`). The
-      // long-way button is NOT in that offered set — it only ever
-      // renders alongside `repair-the-loss` on a null / failed memory
-      // (and then WITHOUT a shortcut sibling). The two trusted
-      // route-label strings this spec guards therefore cannot both
-      // render on the same packet-choice; we assert on the shortcut
-      // (which carries the regression's player-visible symptom:
-      // "Behind the shuttered pharmacy" vs the firstRun "Cut past
-      // the bell rope"). The sibling retention spec asserts the
-      // long-way label on a null-memory flow.
-      const riskyRouteButton = routeRiskTray.locator(
-        'button[data-aftersign-tap-choice="take-the-shortcut"]',
-      );
-      await expect(riskyRouteButton).toHaveText(TRUSTED_RISKY_ROUTE_LABEL);
-      // Negative guard against the firstRun regression — if a future
-      // refactor re-pins the resolver to firstRun, this fails
-      // deterministically (not via loose "blue" substring matching).
-      await expect(riskyRouteButton).not.toHaveText(
-        FIRST_RUN_RISKY_ROUTE_LABEL,
-      );
-    },
-  );
+    const packetButton = page.locator("#packetButton");
+    await packetButton.tap();
+    await waitForBeat(page, "packet-choice");
+
+    const routeRiskTray = page.locator("#routeRiskChoice");
+    await expect(routeRiskTray).toBeVisible();
+    // After a safe+succeeded round-1,
+    // `computeOfferedActions({lastRoute:"safe",succeeded:true})`
+    // returns `["take-the-shortcut","carry-a-fragile-packet"]`
+    // (see `apps/web/src/aftersign/routeRiskMemory.ts`). The
+    // long-way button is NOT in that offered set — it only ever
+    // renders alongside `repair-the-loss` on a null / failed memory
+    // (and then WITHOUT a shortcut sibling). The two trusted
+    // route-label strings this spec guards therefore cannot both
+    // render on the same packet-choice; we assert on the shortcut
+    // (which carries the regression's player-visible symptom:
+    // "Behind the shuttered pharmacy" vs the firstRun "Cut past
+    // the bell rope"). The sibling retention spec asserts the
+    // long-way label on a null-memory flow.
+    const riskyRouteButton = routeRiskTray.locator(
+      'button[data-aftersign-tap-choice="take-the-shortcut"]',
+    );
+    await expect(riskyRouteButton).toHaveText(TRUSTED_RISKY_ROUTE_LABEL);
+    // Negative guard against the firstRun regression — if a future
+    // refactor re-pins the resolver to firstRun, this fails
+    // deterministically (not via loose "blue" substring matching).
+    await expect(riskyRouteButton).not.toHaveText(FIRST_RUN_RISKY_ROUTE_LABEL);
+  });
 });
