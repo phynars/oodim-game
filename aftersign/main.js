@@ -644,6 +644,10 @@ import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
+import {
+  renderEpisodeOneEnding,
+  resolveEpisodeOneEnding,
+} from "./src/episodeOneEnding.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -1081,6 +1085,7 @@ const state = {
     currentNpcId: null,
     memoryBeat: null,
     offeredJobs: [],
+    endingId: null,
   },
   delivery: {
     id: "blue-packet",
@@ -1393,6 +1398,9 @@ let kioskHum;
 let kioskHumGain;
 
 const lineForBeat = () => {
+  if (state.story.endingId) {
+    return resolveEpisodeOneEnding({ packetSealed: state.packet.sealed }).line;
+  }
   // #957: If a returning-session boot line was computed at module init
   // (delivered save, restored via readAuthoritativeSave / readStored),
   // speak it while the scene is still at the persisted boot beat. As
@@ -3443,6 +3451,23 @@ const packetRelease = (input) => {
   return state.interaction.packetIntent;
 };
 
+const resolveEpisodeOneEnding = ({ packetSealed, redTagCarried }) => {
+  if (packetSealed && redTagCarried) {
+    return {
+      id: "ending-bell-true",
+      bellLine: "The Bell Archive rings Saint Orra's true name.",
+      ioLine: "You kept the blue packet sealed. I kept that clean handoff beside Orra's name.",
+      lightState: "lit",
+    };
+  }
+  return {
+    id: "ending-light-out",
+    bellLine: "The Bell Archive rings for the wrong name.",
+    ioLine: "You withheld the red tag. The archive had to guess who the dark belonged to.",
+    lightState: "out",
+  };
+};
+
 const choose = async (choiceId) => {
   if (choiceId === "open-packet") {
     if (state.packet.sealed) {
@@ -3558,6 +3583,31 @@ const choose = async (choiceId) => {
     });
     state.save.revision = nextRevision;
     state.npcs.orra.memory = [nextFact];
+    const ending = resolveEpisodeOneEnding({
+      packetSealed: state.packet.sealed,
+      redTagCarried: state.delivery.id === "red-tag",
+    });
+    state.story.endingId = ending.id;
+    const endingSurface = document.getElementById("episodeOneEnding");
+    if (endingSurface) {
+      endingSurface.replaceChildren();
+      const card = document.createElement("section");
+      card.className = "episode-one-ending";
+      card.setAttribute("data-ending-id", ending.id);
+      const title = document.createElement("strong");
+      title.textContent = "Episode 1 — complete";
+      const bell = document.createElement("p");
+      bell.textContent = ending.bellLine;
+      const recall = document.createElement("p");
+      recall.textContent = ending.ioLine;
+      const districtLight = document.createElement("p");
+      districtLight.setAttribute("data-district-light", ending.lightState);
+      districtLight.textContent = ending.lightState === "out"
+        ? "South district light: out"
+        : "South district light: lit";
+      card.append(title, bell, recall, districtLight);
+      endingSurface.appendChild(card);
+    }
     // Keep Orra's spoken surface in lockstep with her memory at the
     // mint site — and route the chosen action through the canonical
     // action→line map so `light-vigil`/`spare-vigil` can never bypass
@@ -3568,6 +3618,11 @@ const choose = async (choiceId) => {
     // aftersign/e2e/orra-served-recognition.spec.ts can prove Orra
     // recognized the vigil action by REFERENCE (not by English text).
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
+    const ending = resolveEpisodeOneEnding({ packetSealed: state.packet.sealed });
+    state.story.endingId = ending.id;
+    state.npcs.io.lastLine = ending.line;
+    state.npcs.io.lastLineMemoryRefs = [];
+    renderEpisodeOneEnding(document, ending);
     markStateDirty();
     await forceSave();
     publishState();
@@ -3669,16 +3724,6 @@ const choose = async (choiceId) => {
     // is the contract this branch honors — same posture, same gate.
     if (state.scene.beat !== "return-tone-choice") {
       return;
-    }
-    // Io's handoff is a promise attached to the packet already on the
-    // counter. Arm its identity now, not only after the optional
-    // “Take the second packet” acknowledgement: a player can touch the
-    // visible packet as soon as the red-tag job is spoken.
-    state.player.secondPacketHandoffAccepted = true;
-    state.delivery = { id: "red-tag", outcome: "unknown" };
-    if (packetButton) {
-      packetButton.textContent = "Red tag — Saint Orra";
-      packetButton.dataset.packetJob = "red-tag";
     }
     setBeat("io-next-job");
     await forceSave();
