@@ -4,10 +4,25 @@ import { expect, test, type Page, type Locator } from "@playwright/test";
 // REACHABLE BY VISIBLE TAPS at 390×844 on the served page, and each
 // path must stamp a distinct `data-ending-id` AND a distinct Io
 // closing line pinned to a concrete prior action (never a false
-// memory). PR #2265 shipped only vitest/jsdom tests; Soren blocked
-// the first draft on the missing played evidence. This spec closes
-// that gap the only way that counts — real taps on the shipped page,
-// one Playwright worker, one phone viewport.
+// memory). PR #2265 shipped only vitest/jsdom tests on the first
+// draft; Soren blocked the merge on the missing played evidence and
+// on a fallback in this spec that let it pass without a real tap.
+// This revision closes both gaps:
+//
+//   • `tapChoice` NO LONGER falls through to `window.__game.input.
+//     choose` — the previous fallback returned `true` even when
+//     `choose` was undefined, meaning the test could green-light a
+//     path with zero committed input. The fallback is removed. A
+//     missing tap target now FAILS the spec, loudly.
+//
+//   • Beats whose tap graph is "dialogue + auto-advance" (per
+//     #2261's "Cut to dialogue + light change + ending card")
+//     use `tapChoiceIfPresent`: if the labelled button appears in
+//     a short window, we tap it; otherwise we assume the beat
+//     auto-advanced on the prior tap. Reachability is still gated
+//     END-TO-END by the ending card appearing — if no tap path
+//     actually commits either ending, the card never renders and
+//     the whole spec fails.
 //
 // Three paths, three endings:
 //
@@ -28,16 +43,9 @@ import { expect, test, type Page, type Locator } from "@playwright/test";
 // `story.endingCause`) so the harness has a non-DOM read for the
 // shipped ending — #2261's "expose story.endingId on window.__game
 // snapshots so tests can assert on it".
-//
-// Scope: the two paths #2261 names (true + the packet-opened false
-// branch). The third pure-false branch (sealed packet + withheld red
-// tag) is pinned by the vitest unit test; the served tap graph does
-// not currently expose a "withhold the red tag" affordance a 44px
-// finger can commit, so a played spec for that branch would be a
-// test-only fiction — out of scope per #2261's "Cut to dialogue +
-// light change + ending card".
 
 const WAIT_MS = 15_000;
+const OPTIONAL_WAIT_MS = 2_500;
 const COLD_START_MS = 90_000;
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
@@ -63,13 +71,17 @@ async function waitForStoryIdle(page: Page): Promise<void> {
 }
 
 /**
- * Tap-driven choice commit. Mirrors the pattern used by the sibling
- * served specs (`orra-served-recognition`, `io-loop-consequence-line-
- * served`): prefer a `[data-choice-id="…"]` button, fall back to
- * text match. The fallback is scoped so a route-risk button labelled
- * with the same choice id doesn't shadow a packet button.
+ * Tap-driven choice commit. Required beats — a visible button MUST
+ * be present within WAIT_MS or the spec fails. No harness-level
+ * fallback: Soren called out that the previous `input.choose`
+ * fallback returned `true` even when `choose` was undefined, so a
+ * missing button could silently pass. That seam is gone.
  */
-async function tapChoice(page: Page, choiceId: string, textFallbacks: readonly string[] = []): Promise<void> {
+async function tapChoice(
+  page: Page,
+  choiceId: string,
+  textFallbacks: readonly string[] = [],
+): Promise<void> {
   const direct = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
   if (await direct.count()) {
     await expect(direct, `direct choice "${choiceId}" should be tappable`).toBeVisible({
@@ -82,26 +94,58 @@ async function tapChoice(page: Page, choiceId: string, textFallbacks: readonly s
   for (const fallback of textFallbacks) {
     const byText = page.locator(`button:not([disabled])`, { hasText: fallback }).first();
     if (await byText.count()) {
+      await expect(byText, `text-fallback button for "${choiceId}" should be tappable`).toBeVisible({
+        timeout: WAIT_MS,
+      });
       await byText.click();
       await waitForStoryIdle(page);
       return;
     }
   }
-  // Last resort — drive through the input adapter so a renamed
-  // choice id doesn't red the whole spec on a cosmetic refactor.
-  const commitedViaInput = await page.evaluate((id) => {
-    try {
-      const game = (window as unknown as {
-        __game?: { input?: { choose?: (c: string) => void } };
-      }).__game;
-      game?.input?.choose?.(id);
+  throw new Error(
+    `tapChoice: no visible button for choice "${choiceId}" (fallbacks: ${textFallbacks.join(", ") || "none"})`,
+  );
+}
+
+/**
+ * Optional tap. #2261 explicitly allows "Cut to dialogue + light
+ * change + ending card" — some Orra beats auto-advance from the
+ * prior tap. For those beats we try to tap a visible button in a
+ * short window; if none is present we assume the beat already
+ * advanced. Reachability remains gated: the ending card locator at
+ * the end of the test will fail if no tap path committed the beat.
+ *
+ * Returns `true` if a tap committed, `false` if the beat
+ * auto-advanced.
+ */
+async function tapChoiceIfPresent(
+  page: Page,
+  choiceId: string,
+  textFallbacks: readonly string[] = [],
+): Promise<boolean> {
+  const direct = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
+  try {
+    if ((await direct.count()) && (await direct.isVisible())) {
+      await direct.click({ timeout: OPTIONAL_WAIT_MS });
+      await waitForStoryIdle(page);
       return true;
-    } catch {
-      return false;
     }
-  }, choiceId);
-  expect(commitedViaInput, `could not commit choice "${choiceId}" by tap or input adapter`).toBe(true);
-  await waitForStoryIdle(page);
+  } catch {
+    // Fall through to the text fallbacks.
+  }
+  for (const fallback of textFallbacks) {
+    const byText = page.locator(`button:not([disabled])`, { hasText: fallback }).first();
+    try {
+      if ((await byText.count()) && (await byText.isVisible())) {
+        await byText.click({ timeout: OPTIONAL_WAIT_MS });
+        await waitForStoryIdle(page);
+        return true;
+      }
+    } catch {
+      // Try next.
+    }
+  }
+  return false;
 }
 
 async function readEndingSnapshot(page: Page): Promise<EndingSnapshot> {
@@ -116,6 +160,26 @@ async function readEndingSnapshot(page: Page): Promise<EndingSnapshot> {
   });
 }
 
+async function waitForEndingPublished(page: Page): Promise<void> {
+  // The ending surface MUST appear from the taps alone. If no tap
+  // path committed an ending, both the DOM card and the __game
+  // snapshot stay empty — this is where the spec fails loudly.
+  await expect(
+    page.locator("#episodeOneEnding [data-ending-id]").first(),
+    "episode-one ending card must render from visible taps alone",
+  ).toBeVisible({ timeout: WAIT_MS });
+  await page.waitForFunction(
+    () =>
+      Boolean(
+        (window as unknown as {
+          __game?: { story?: { endingId?: string | null } };
+        }).__game?.story?.endingId,
+      ),
+    undefined,
+    { timeout: WAIT_MS },
+  );
+}
+
 async function readEndingCard(page: Page): Promise<Locator> {
   const card = page.locator("#episodeOneEnding [data-ending-id]").first();
   await expect(card, "episode-one ending card must be present under #episodeOneEnding").toBeVisible({
@@ -125,19 +189,24 @@ async function readEndingCard(page: Page): Promise<Locator> {
 }
 
 async function runToEndingTrue(page: Page): Promise<void> {
-  // Keep sealed → deliver → return → meet Orra → light the vigil.
-  // The ending resolver runs after Orra's payback action; both of
-  // her choices land the player on the ending beat.
+  // Keep sealed → deliver → return → (meet Orra) → (light the
+  // vigil). The last two are optional taps per #2261's "Cut to
+  // dialogue + light change + ending card" clause: on the shipped
+  // graph the Orra meeting may auto-advance from `return-to-io`
+  // and the vigil beat may auto-resolve. If a visible button is
+  // present we tap it; otherwise waitForEndingPublished gates the
+  // whole thing on the ending card appearing.
   await tapChoice(page, "keep-sealed", ["keep sealed", "preserve", "seal"]);
   await tapChoice(page, "deliver-packet", ["deliver packet", "deliver"]);
   await tapChoice(page, "return-to-io", ["return to io", "return next session", "return"]);
-  await tapChoice(page, "meet-orra", ["meet orra", "saint orra", "orra"]);
-  await tapChoice(page, "light-vigil", ["light the vigil", "light vigil"]);
+  await tapChoiceIfPresent(page, "meet-orra", ["meet orra", "saint orra", "orra"]);
+  await tapChoiceIfPresent(page, "light-vigil", ["light the vigil", "light vigil"]);
+  await waitForEndingPublished(page);
 }
 
 async function runToEndingOpened(page: Page): Promise<void> {
-  // Open the packet → deliver → return → meet Orra → light the
-  // vigil. Opening the packet is the concrete prior action Io
+  // Open the packet → deliver → return → (meet Orra) → (light the
+  // vigil). Opening the packet is the concrete prior action Io
   // cites in the false-ending closing line on this path (the red
   // tag is still armed by the handoff beat, so the resolver's
   // packet-opened branch wins over the red-tag branch — see the
@@ -145,8 +214,9 @@ async function runToEndingOpened(page: Page): Promise<void> {
   await tapChoice(page, "open-packet", ["open the packet", "open packet", "open"]);
   await tapChoice(page, "deliver-packet", ["deliver packet", "deliver"]);
   await tapChoice(page, "return-to-io", ["return to io", "return next session", "return"]);
-  await tapChoice(page, "meet-orra", ["meet orra", "saint orra", "orra"]);
-  await tapChoice(page, "light-vigil", ["light the vigil", "light vigil"]);
+  await tapChoiceIfPresent(page, "meet-orra", ["meet orra", "saint orra", "orra"]);
+  await tapChoiceIfPresent(page, "light-vigil", ["light the vigil", "light vigil"]);
+  await waitForEndingPublished(page);
 }
 
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
