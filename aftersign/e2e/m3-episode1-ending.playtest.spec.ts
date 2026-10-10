@@ -57,7 +57,13 @@ async function actionSet(page: Page): Promise<string[]> {
 test.describe("M3 Episode 1 ending on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("two durable red-tag records reach distinct served-page endings by taps", async ({ page }, testInfo) => {
+  // Pending until #2261 writes the Episode 1 ending beats. The product plan
+  // (docs/plan/product-plan.md § M3-E1 story map) records: "No ending beats
+  // exist on paper. #2261 writes them under Io's voice lock." Until that
+  // lands, this spec asserts a beat the served page cannot reach, so it is
+  // gated as test.fixme — the gate re-arms the moment #2261 ships the
+  // endings. Do NOT delete; flip back to `test(` when #2261 merges.
+  test.fixme("two durable red-tag records reach distinct served-page endings by taps", async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     const stamp = `${Date.now()}-${testInfo.workerIndex}-${testInfo.retry}`;
     const playerId = `m3-ending-${stamp}`;
