@@ -644,6 +644,11 @@ import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
+import {
+  publishEpisodeOneEndingToWindowGame,
+  renderEpisodeOneEnding,
+  resolveEpisodeOneEnding,
+} from "./src/episodeOneEnding.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -1081,6 +1086,8 @@ const state = {
     currentNpcId: null,
     memoryBeat: null,
     offeredJobs: [],
+    endingId: null,
+    endingCause: null,
   },
   delivery: {
     id: "blue-packet",
@@ -1393,6 +1400,25 @@ let kioskHum;
 let kioskHumGain;
 
 const lineForBeat = () => {
+  if (state.story.endingId) {
+    const resolvedEnding = resolveEpisodeOneEnding({
+      packetSealed: state.packet.sealed,
+      redTagCarried: state.delivery.id === "red-tag",
+    });
+    // Reload path: re-render the ending card and re-publish
+    // `story.endingId` onto window.__game so a restored session
+    // lands on the ending beat with the same surface the live run
+    // produced. renderEpisodeOneEnding is idempotent (short-circuits
+    // on a matching id+cause), so this is safe to call every tick.
+    if (typeof document !== "undefined") {
+      renderEpisodeOneEnding(document, resolvedEnding);
+    }
+    publishEpisodeOneEndingToWindowGame(
+      typeof window !== "undefined" ? window : undefined,
+      resolvedEnding,
+    );
+    return resolvedEnding.ioLine;
+  }
   // #957: If a returning-session boot line was computed at module init
   // (delivered save, restored via readAuthoritativeSave / readStored),
   // speak it while the scene is still at the persisted boot beat. As
@@ -3568,6 +3594,28 @@ const choose = async (choiceId) => {
     // aftersign/e2e/orra-served-recognition.spec.ts can prove Orra
     // recognized the vigil action by REFERENCE (not by English text).
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
+    const ending = resolveEpisodeOneEnding({
+      packetSealed: state.packet.sealed,
+      redTagCarried: state.delivery.id === "red-tag",
+    });
+    state.story.endingId = ending.id;
+    state.story.endingCause = ending.cause ?? null;
+    state.npcs.io.lastLine = ending.ioLine;
+    state.npcs.io.lastLineMemoryRefs = [];
+    renderEpisodeOneEnding(document, ending);
+    // Stamp `story.endingId` + `story.endingCause` onto window.__game
+    // so #2259's consumer spec (and the sibling tap-driven e2e) can
+    // read the shipped ending by id without reaching into DOM text.
+    // #2261's acceptance: "Expose story.endingId on window.__game
+    // snapshots so tests can assert on it (read-only)." We do this
+    // in two places — here, so the live run surfaces it immediately
+    // after the ending beat, and in lineForBeat()'s ending branch,
+    // so a reloaded run also lands with the field published once
+    // the beat is re-spoken.
+    publishEpisodeOneEndingToWindowGame(
+      typeof window !== "undefined" ? window : undefined,
+      ending,
+    );
     markStateDirty();
     await forceSave();
     publishState();
@@ -3673,7 +3721,11 @@ const choose = async (choiceId) => {
     // Io's handoff is a promise attached to the packet already on the
     // counter. Arm its identity now, not only after the optional
     // “Take the second packet” acknowledgement: a player can touch the
-    // visible packet as soon as the red-tag job is spoken.
+    // visible packet as soon as the red-tag job is spoken. This is
+    // also what the Episode 1 ending resolver reads
+    // (`state.delivery.id === "red-tag"`) when picking ending-true vs
+    // ending-false — removing this arming would strand every run on
+    // the light-out branch.
     state.player.secondPacketHandoffAccepted = true;
     state.delivery = { id: "red-tag", outcome: "unknown" };
     if (packetButton) {
