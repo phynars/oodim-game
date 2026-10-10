@@ -20,7 +20,7 @@
 //     louder commitment; the archive never got far enough to care
 //     about the tag).
 
-export const EPISODE_ONE_ENDINGS = Object.freeze({
+const ENDINGS = {
   true: Object.freeze({
     id: "ending-bell-true",
     cause: "sealed-and-tagged",
@@ -48,7 +48,7 @@ export const EPISODE_ONE_ENDINGS = Object.freeze({
       "You withheld the red tag. The archive had to guess who the dark belonged to.",
     line: "The Bell Archive rings the wrong name. The red tag was withheld, and the district light goes out.",
   }),
-});
+};
 
 // Back-compat alias: a prior draft of this module exposed one `false`
 // ending with the red-tag line. External callers (any that import the
@@ -56,12 +56,16 @@ export const EPISODE_ONE_ENDINGS = Object.freeze({
 // cause-branched outputs. The alias points at the red-tag variant so
 // snapshot consumers that keyed on the old `false` id keep their
 // shape until they migrate.
-Object.defineProperty(EPISODE_ONE_ENDINGS, "false", {
-  value: EPISODE_ONE_ENDINGS.redTagWithheld,
+// Define the alias BEFORE freezing: defineProperty on a frozen object
+// throws at module evaluation, which aborts main.js's import graph and
+// leaves the page un-ready (PR #2265 browser-test timeouts).
+Object.defineProperty(ENDINGS, "false", {
+  value: ENDINGS.redTagWithheld,
   enumerable: false,
   configurable: false,
   writable: false,
 });
+export const EPISODE_ONE_ENDINGS = Object.freeze(ENDINGS);
 
 // Preserved shim for any pre-existing caller that keyed on packet-seal
 // alone. New consumers should call `resolveEpisodeOneEnding(...)`.
