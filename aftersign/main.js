@@ -246,9 +246,19 @@ import {
 } from "../apps/web/src/aftersign/orraFirstNameDialogue.ts";
 // M3-E1 (#2260) — Saint Orra's red-tag payback. The three symbols
 // below drive renderText()'s payback button and choose()'s commit
-// branch at the io-return-recognition beat. Without this import,
-// renderText throws ReferenceError every frame on the red-tag
-// return — which is exactly what reds the aftersign webgl e2e.
+// branch at the io-return-recognition beat. The pure contract lives
+// in `./src/orraPayback.js`:
+//   • orraPaybackActionForDelivery({ id, outcome }) → the stable
+//     action id the button stamps as `data-orra-payback-action`.
+//   • orraPaybackLabel(action) → the authored button copy.
+//   • orraPaybackEndingBeat(action) → the ending-beat id the action
+//     carries forward for #2259's consumer spec (the engine's
+//     `AftersignStoryBeatId` union has no slot for an ending beat
+//     today; this token is a forward hook, not a current render).
+// Played-not-driven proof lives in
+// `aftersign/e2e/orra-payback.playtest.spec.ts` — sealed-outcome
+// commit → `carry-name-to-bell-archive` button visible + enabled,
+// and the id survives a reload against the same slot.
 import {
   orraPaybackActionForDelivery,
   orraPaybackLabel,
