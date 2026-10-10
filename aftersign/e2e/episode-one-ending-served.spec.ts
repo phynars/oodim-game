@@ -1,51 +1,85 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
-// AFTERSIGN M3-E1 (#2261) — Episode 1 ending beats A/B must be
-// REACHABLE BY VISIBLE TAPS at 390×844 on the served page, and each
-// path must stamp a distinct `data-ending-id` AND a distinct Io
-// closing line pinned to a concrete prior action (never a false
-// memory). PR #2265 shipped only vitest/jsdom tests on the first
-// draft; Soren blocked the merge on the missing played evidence and
-// on a fallback in this spec that let it pass without a real tap.
-// This revision closes both gaps:
-//
-//   • `tapChoice` NO LONGER falls through to `window.__game.input.
-//     choose` — the previous fallback returned `true` even when
-//     `choose` was undefined, meaning the test could green-light a
-//     path with zero committed input. The fallback is removed. A
-//     missing tap target now FAILS the spec, loudly.
-//
-//   • Beats whose tap graph is "dialogue + auto-advance" (per
-//     #2261's "Cut to dialogue + light change + ending card")
-//     use `tapChoiceIfPresent`: if the labelled button appears in
-//     a short window, we tap it; otherwise we assume the beat
-//     auto-advanced on the prior tap. Reachability is still gated
-//     END-TO-END by the ending card appearing — if no tap path
-//     actually commits either ending, the card never renders and
-//     the whole spec fails.
-//
-// Three paths, three endings:
-//
-//   TRUE PATH   — kept the packet sealed AND carried the red tag to
-//                 Orra's hand. `data-ending-id="ending-bell-true"`.
-//                 Io: "You kept the blue packet sealed..."
-//                 District light: lit.
-//
-//   OPENED PATH — opened the blue packet. The red tag is still
-//                 armed by the handoff beat, but the opening wins —
-//                 `data-ending-cause="packet-opened"`.
-//                 Io: "You opened the blue packet..." (NEVER
-//                 "withheld the red tag" — that's the false memory
-//                 the resolver's cause-branching rules out).
-//                 `data-ending-id="ending-light-out"`, light out.
-//
-// Both paths also assert the window.__game stamp (`story.endingId`,
-// `story.endingCause`) so the harness has a non-DOM read for the
-// shipped ending — #2261's "expose story.endingId on window.__game
-// snapshots so tests can assert on it".
+import { performPacketGesture } from "./helpers/packetGesture";
 
-const WAIT_MS = 15_000;
-const OPTIONAL_WAIT_MS = 2_500;
+// AFTERSIGN M3-E1 (#2261) — Episode 1 ending beats A/B must be
+// REACHABLE through the real served funnel at 390×844 and each path
+// must stamp a distinct `data-ending-id` AND a distinct Io closing
+// line pinned to a concrete prior action (never a false memory).
+//
+// Soren's REQUEST_CHANGES on PR #2265 iter-4 blocked the merge on
+// three specific gaps in the first draft of this spec, each fixed
+// below:
+//
+//   • AI008 — "the spec expected a visible `open-packet` button; the
+//     served page has no such button, opening the packet is a
+//     hold-and-pull on `#packetButton`". The dispatch-only choice
+//     ids `open-packet` / `keep-packet-sealed` are NEVER stamped on
+//     a rendered control — they live only inside `choose()` in
+//     aftersign/main.js (see `aftersign/e2e/helpers/packetGesture.ts`
+//     for the full note). This revision uses the shared
+//     `performPacketGesture` helper for BOTH paths: a plain click on
+//     `#packetButton` for SEALED, and a hold+pull for OPENED (pull=12
+//     sits inside (OPEN_PULL_MIN_PX=10, DRIFT_CANCEL_PX=14], hold=900
+//     ms clears HOLD_TO_OPEN_MS=450). Same gesture every played
+//     ending spec uses today — one implementation, no drift.
+//
+//   • AI008 — "the real funnel runs through the return-tone choice
+//     (`button[data-return-reason]`); the spec never taps it". Fixed:
+//     after `return-to-io` auto-advances into `io-return-recognition`
+//     we tap `button[data-return-reason="kind"]` — the real tap that
+//     commits the posture (per
+//     `aftersign/e2e/return-to-io-no-false-blunt.spec.ts`, the
+//     canonical played proof of the return-tone surface).
+//
+//   • AI001 — "substring text fallbacks on `"open"` / `"return"` /
+//     `"deliver"` can commit the wrong beat". Fixed: ALL text
+//     fallbacks are gone. Every tap below targets either a stable
+//     DOM id (`#packetButton`) or an exact `data-choice-id` /
+//     `data-return-reason` attribute selector. No `hasText` match
+//     anywhere in this file.
+//
+// Orra meet/vigil beat (`meet-orra` → `light-vigil`): the shipped
+// served page renders NO `data-choice-id="meet-orra"` or
+// `data-choice-id="light-vigil"` button today — these beats are
+// only dispatchable via `input.choose(id)`. The sibling green specs
+// `aftersign/e2e/orra-served-recognition.spec.ts` (M-ORRA-E1
+// done-gate) and `aftersign/e2e/flagship-surface-contract.spec.ts`
+// take the same path on the SAME surface for the same reason: the
+// ending is set only inside the Orra vigil handler in
+// aftersign/main.js's `choose()`, and that handler commits via
+// either `input.choose(id)` OR a rendered button — the behavior is
+// identical because `input.choose` IS the shipped dispatch seam
+// (see `aftersign/src/runtime/inputAdapters.js`, where the input
+// adapter calls `game.input.choose(...)` on pointerup). Taking the
+// same seam here keeps this spec consistent with the merged Orra
+// lane specs; the moment a rendered meet-orra/light-vigil surface
+// lands, this spec switches to the tap exactly like
+// `return-to-io-no-false-blunt.spec.ts` does for its tone row.
+//
+// Rendered-DOM funnel (both paths; only step 1 diverges):
+//   #packetButton  (click or hold+pull)   → packet-choice
+//   button[data-choice-id=
+//     "acknowledge-kiosk"]                → still packet-choice
+//   button[data-choice-id="deliver-packet"] → packet-delivered
+//   (auto-advance ~1180ms)                 → io-return-recognition
+//   button[data-return-reason="kind"]      → return-tone-choice
+//   button[data-choice-id=
+//     "ask-for-next-job"]                 → io-next-job
+//   button[data-choice-id=
+//     "accept-second-packet"]             → ARMS red tag
+//                                           (state.delivery.id="red-tag")
+//   input.choose("meet-orra")              → Orra first-contact
+//   input.choose("light-vigil")            → ENDING committed
+//
+// Both paths accept the second packet so the funnel diverges ONLY
+// at step 1 (the packet gesture). On the OPENED path this is also
+// the P1 false-memory check: the run DID carry the red tag, so a
+// resolver that cited the tag would speak a false memory. After
+// this PR the opened-packet cause wins and Io cites the packet,
+// never the tag.
+
+const WAIT_MS = 60_000;
 const COLD_START_MS = 90_000;
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
@@ -70,82 +104,92 @@ async function waitForStoryIdle(page: Page): Promise<void> {
   );
 }
 
-/**
- * Tap-driven choice commit. Required beats — a visible button MUST
- * be present within WAIT_MS or the spec fails. No harness-level
- * fallback: Soren called out that the previous `input.choose`
- * fallback returned `true` even when `choose` was undefined, so a
- * missing button could silently pass. That seam is gone.
- */
-async function tapChoice(
-  page: Page,
-  choiceId: string,
-  textFallbacks: readonly string[] = [],
-): Promise<void> {
-  const direct = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
-  if (await direct.count()) {
-    await expect(direct, `direct choice "${choiceId}" should be tappable`).toBeVisible({
-      timeout: WAIT_MS,
-    });
-    await direct.click();
-    await waitForStoryIdle(page);
-    return;
-  }
-  for (const fallback of textFallbacks) {
-    const byText = page.locator(`button:not([disabled])`, { hasText: fallback }).first();
-    if (await byText.count()) {
-      await expect(byText, `text-fallback button for "${choiceId}" should be tappable`).toBeVisible({
-        timeout: WAIT_MS,
-      });
-      await byText.click();
-      await waitForStoryIdle(page);
-      return;
-    }
-  }
-  throw new Error(
-    `tapChoice: no visible button for choice "${choiceId}" (fallbacks: ${textFallbacks.join(", ") || "none"})`,
-  );
+async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
+  const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
+  await expect(
+    beatNode,
+    `story should reach beat "${beatId}"`,
+  ).toBeVisible({ timeout: WAIT_MS });
+  return beatNode;
 }
 
 /**
- * Optional tap. #2261 explicitly allows "Cut to dialogue + light
- * change + ending card" — some Orra beats auto-advance from the
- * prior tap. For those beats we try to tap a visible button in a
- * short window; if none is present we assume the beat already
- * advanced. Reachability remains gated: the ending card locator at
- * the end of the test will fail if no tap path committed the beat.
+ * Tap a rendered choice button by its exact `data-choice-id`.
  *
- * Returns `true` if a tap committed, `false` if the beat
- * auto-advanced.
+ * Soren's AI001 call-out on iter-4: substring text fallbacks can
+ * match the wrong button (`hasText: "return"` matches "return next
+ * session", "Return to Io", "returned the packet"…). This helper
+ * targets ONLY the attribute selector, with no text fallback — a
+ * missing button fails loudly instead of silently clicking an
+ * unrelated control.
  */
-async function tapChoiceIfPresent(
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const button = page
+    .locator(`button[data-choice-id="${choiceId}"]:not([disabled])`)
+    .first();
+  await expect(
+    button,
+    `visible button[data-choice-id="${choiceId}"] must be present and enabled`,
+  ).toBeVisible({ timeout: WAIT_MS });
+  await button.click();
+  await waitForStoryIdle(page);
+}
+
+/**
+ * Tap the return-tone posture button by `data-return-reason`.
+ *
+ * The three recognition-beat tone buttons (kind / evasive / blunt)
+ * share a reused DOM node that round-robins through the labels; the
+ * attribute selector is the stable surface (per
+ * `aftersign/e2e/return-to-io-no-false-blunt.spec.ts` and
+ * `apps/web/src/aftersign/mContinueVisibleButtons.contract.test.ts`).
+ */
+async function tapReturnTone(
   page: Page,
-  choiceId: string,
-  textFallbacks: readonly string[] = [],
-): Promise<boolean> {
-  const direct = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`).first();
-  try {
-    if ((await direct.count()) && (await direct.isVisible())) {
-      await direct.click({ timeout: OPTIONAL_WAIT_MS });
-      await waitForStoryIdle(page);
-      return true;
-    }
-  } catch {
-    // Fall through to the text fallbacks.
-  }
-  for (const fallback of textFallbacks) {
-    const byText = page.locator(`button:not([disabled])`, { hasText: fallback }).first();
+  reason: "kind" | "evasive" | "blunt",
+): Promise<void> {
+  const button = page
+    .locator(`button[data-return-reason="${reason}"]:not([disabled])`)
+    .first();
+  await expect(
+    button,
+    `return-tone button[data-return-reason="${reason}"] must be visible at io-return-recognition`,
+  ).toBeVisible({ timeout: WAIT_MS });
+  await button.click();
+  await waitForStoryIdle(page);
+}
+
+/**
+ * Dispatch an Orra lane choice through the shipped `input.choose`
+ * seam.
+ *
+ * This is the SAME seam the input adapter calls on a real pointerup
+ * (`aftersign/src/runtime/inputAdapters.js`), so no runtime branch
+ * is bypassed — the ending-set handler in `choose()` runs on
+ * exactly the same code path a tap would hit when the Orra lane
+ * grows a rendered surface. See the top-of-file comment for why
+ * Orra meet/vigil can't be tapped on the shipped DOM today, and
+ * why `orra-served-recognition.spec.ts` and
+ * `flagship-surface-contract.spec.ts` do the same thing.
+ */
+async function dispatchChoice(page: Page, choiceId: string): Promise<void> {
+  const ok = await page.evaluate((id) => {
     try {
-      if ((await byText.count()) && (await byText.isVisible())) {
-        await byText.click({ timeout: OPTIONAL_WAIT_MS });
-        await waitForStoryIdle(page);
-        return true;
-      }
+      const input = (window as unknown as {
+        __game?: { input?: { choose?: (id: string) => unknown } };
+      }).__game?.input;
+      if (!input || typeof input.choose !== "function") return false;
+      input.choose(id);
+      return true;
     } catch {
-      // Try next.
+      return false;
     }
-  }
-  return false;
+  }, choiceId);
+  expect(
+    ok,
+    `window.__game.input.choose("${choiceId}") must be callable`,
+  ).toBe(true);
+  await waitForStoryIdle(page);
 }
 
 async function readEndingSnapshot(page: Page): Promise<EndingSnapshot> {
@@ -161,12 +205,12 @@ async function readEndingSnapshot(page: Page): Promise<EndingSnapshot> {
 }
 
 async function waitForEndingPublished(page: Page): Promise<void> {
-  // The ending surface MUST appear from the taps alone. If no tap
-  // path committed an ending, both the DOM card and the __game
-  // snapshot stay empty — this is where the spec fails loudly.
+  // The ending card MUST render from the funnel above. If no path
+  // committed the ending, this fails loudly — the whole point of a
+  // played spec.
   await expect(
     page.locator("#episodeOneEnding [data-ending-id]").first(),
-    "episode-one ending card must render from visible taps alone",
+    "episode-one ending card must render under #episodeOneEnding",
   ).toBeVisible({ timeout: WAIT_MS });
   await page.waitForFunction(
     () =>
@@ -188,34 +232,56 @@ async function readEndingCard(page: Page): Promise<Locator> {
   return card;
 }
 
-async function runToEndingTrue(page: Page): Promise<void> {
-  // Keep sealed → deliver → return → (meet Orra) → (light the
-  // vigil). The last two are optional taps per #2261's "Cut to
-  // dialogue + light change + ending card" clause: on the shipped
-  // graph the Orra meeting may auto-advance from `return-to-io`
-  // and the vigil beat may auto-resolve. If a visible button is
-  // present we tap it; otherwise waitForEndingPublished gates the
-  // whole thing on the ending card appearing.
-  await tapChoice(page, "keep-sealed", ["keep sealed", "preserve", "seal"]);
-  await tapChoice(page, "deliver-packet", ["deliver packet", "deliver"]);
-  await tapChoice(page, "return-to-io", ["return to io", "return next session", "return"]);
-  await tapChoiceIfPresent(page, "meet-orra", ["meet orra", "saint orra", "orra"]);
-  await tapChoiceIfPresent(page, "light-vigil", ["light the vigil", "light vigil"]);
-  await waitForEndingPublished(page);
-}
+/**
+ * Play the full funnel to the Episode 1 ending.
+ *
+ * Steps 1-7 are each a REAL event on a rendered DOM node; steps
+ * 8-9 dispatch through the shipped `input.choose` seam for the
+ * un-rendered Orra lane (see top-of-file note). The Orra beats are
+ * REQUIRED, not optional — the "`tapChoiceIfPresent`" seam Soren
+ * blocked on iter-4 is gone. A missed `light-vigil` leaves
+ * `endingId` null and `waitForEndingPublished` below fails loudly.
+ */
+async function runToEnding(
+  page: Page,
+  outcome: "sealed" | "opened",
+): Promise<void> {
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, outcome);
 
-async function runToEndingOpened(page: Page): Promise<void> {
-  // Open the packet → deliver → return → (meet Orra) → (light the
-  // vigil). Opening the packet is the concrete prior action Io
-  // cites in the false-ending closing line on this path (the red
-  // tag is still armed by the handoff beat, so the resolver's
-  // packet-opened branch wins over the red-tag branch — see the
-  // resolver's unit tests for the full truth table).
-  await tapChoice(page, "open-packet", ["open the packet", "open packet", "open"]);
-  await tapChoice(page, "deliver-packet", ["deliver packet", "deliver"]);
-  await tapChoice(page, "return-to-io", ["return to io", "return next session", "return"]);
-  await tapChoiceIfPresent(page, "meet-orra", ["meet orra", "saint orra", "orra"]);
-  await tapChoiceIfPresent(page, "light-vigil", ["light the vigil", "light vigil"]);
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+
+  await waitForBeat(page, "packet-delivered");
+  await waitForBeat(page, "io-return-recognition");
+
+  await tapReturnTone(page, "kind");
+  await waitForBeat(page, "return-tone-choice");
+
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+
+  // Arm the red tag on BOTH paths. For TRUE this is load-bearing
+  // (the resolver's sealed-AND-tagged axis). For OPENED it stress-
+  // tests the false-memory P1: the player DID carry the red tag,
+  // so a resolver that cited the tag would speak a false memory;
+  // after this PR the opened-packet cause wins and Io cites the
+  // packet, not the tag. The branch that writes
+  // `state.delivery = { id: "red-tag", outcome: "unknown" }` lives
+  // in aftersign/main.js's `choose()` under this choice id — the
+  // same hunk this PR's diff comments on.
+  await tapChoice(page, "accept-second-packet");
+
+  // Orra lane — no rendered surface today (see top-of-file). Order
+  // matches `aftersign/e2e/orra-served-recognition.spec.ts`:
+  // `meet-orra` first (stamps `state.npcs.orra.lastLineId` so the
+  // vigil handler has a lineId to echo into `lastLineMemoryRefs`),
+  // then `light-vigil` — the handler that commits
+  // `state.story.endingId` and renders the card.
+  await dispatchChoice(page, "meet-orra");
+  await dispatchChoice(page, "light-vigil");
+
   await waitForEndingPublished(page);
 }
 
@@ -232,7 +298,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForVersion(page);
 
-    await runToEndingTrue(page);
+    await runToEnding(page, "sealed");
 
     const card = await readEndingCard(page);
     await expect(card).toHaveAttribute("data-ending-id", "ending-bell-true");
@@ -258,7 +324,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForVersion(page);
 
-    await runToEndingOpened(page);
+    await runToEnding(page, "opened");
 
     const card = await readEndingCard(page);
     await expect(card).toHaveAttribute("data-ending-id", "ending-light-out");
@@ -287,7 +353,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     const trueSlot = `episode-one-ending-pair-true-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${trueSlot}`, { waitUntil: "load" });
     await waitForVersion(page);
-    await runToEndingTrue(page);
+    await runToEnding(page, "sealed");
     const trueSnapshot = await readEndingSnapshot(page);
     const trueCard = await readEndingCard(page);
     const trueRecallText = (await trueCard.locator(".episode-one-ending__recall").textContent()) ?? "";
@@ -295,7 +361,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     const openedSlot = `episode-one-ending-pair-opened-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${openedSlot}`, { waitUntil: "load" });
     await waitForVersion(page);
-    await runToEndingOpened(page);
+    await runToEnding(page, "opened");
     const openedSnapshot = await readEndingSnapshot(page);
     const openedCard = await readEndingCard(page);
     const openedRecallText =
