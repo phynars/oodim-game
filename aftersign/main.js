@@ -645,6 +645,7 @@ import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
 import {
+  publishEpisodeOneEndingToWindowGame,
   renderEpisodeOneEnding,
   resolveEpisodeOneEnding,
 } from "./src/episodeOneEnding.js";
@@ -1086,6 +1087,7 @@ const state = {
     memoryBeat: null,
     offeredJobs: [],
     endingId: null,
+    endingCause: null,
   },
   delivery: {
     id: "blue-packet",
