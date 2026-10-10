@@ -2444,7 +2444,11 @@ const renderText = () => {
         state.player.routeRisk,
       );
       const labelForRouteRiskAction = state.delivery.id === "red-tag"
-        ? (action) => redTagRouteRiskActionLabel(action) ?? routeRiskActionLabel(action)
+        ? (action) => redTagRouteRiskActionLabel(action, {
+            firstPacketOutcome: "sealed",
+            deliveredSealed: true,
+            packetOpened: false,
+          })
         : routeRiskActionLabel;
       // Include the hidden-actions axis in the signature so the two
       // routeRisk states — "null memory with repair-the-loss hidden"
