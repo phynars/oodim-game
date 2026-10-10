@@ -244,6 +244,16 @@ import {
 import {
   renderOrraFirstNameDialogue,
 } from "../apps/web/src/aftersign/orraFirstNameDialogue.ts";
+// M3-E1 (#2260) — Saint Orra's red-tag payback. The three symbols
+// below drive renderText()'s payback button and choose()'s commit
+// branch at the io-return-recognition beat. Without this import,
+// renderText throws ReferenceError every frame on the red-tag
+// return — which is exactly what reds the aftersign webgl e2e.
+import {
+  orraPaybackActionForDelivery,
+  orraPaybackLabel,
+  orraPaybackEndingBeat,
+} from "./src/orraPayback.js";
 // M-LOOP-E1 (#1372) — route/risk choice each run, recorded as a
 // memory fact that feeds the next run. Wiring it into main.js here
 // turns `routeRiskMemory.ts` from a pure contract into a SHIPPED
