@@ -200,18 +200,44 @@ test.describe("AFTERSIGN job-offer press juice", () => {
         const value = Number.parseFloat(raw);
         return Number.isFinite(value) && value > 0 && value < 1 ? value : 0.97;
       };
+      // Sampling window scope — read before touching rect/attr:
+      //   • scale (minScale) is sampled across the WHOLE 600ms window
+      //     so a stuck "pressed" scale that survives the recovery
+      //     window still trips the maxPressedScaleDrop ceiling.
+      //   • travel (maxTravel) is sampled ONLY while the authored
+      //     press envelope is active (`data-aftersign-job-take ===
+      //     "pressing"`). The press envelope in aftersign/index.html
+      //     is a pure `transform: scale(...)` around the 50%/50%
+      //     origin — it CANNOT translate the bounding-box center on
+      //     its own, so any travel observed WHILE pressing is a
+      //     real press-animation bug. Travel observed AFTER the
+      //     envelope ends is beat-driven layout (the job-accepted
+      //     sibling insertion the recovery-block comment below
+      //     already documents) — same cause as the 4px #1926 reflow,
+      //     scaled up to 42px when the kiosk tray restructures on
+      //     beat advance. The recovery block's `waitForRectSettle`
+      //     is the gate for "is the press animation still running
+      //     after the recovery window"; `maxTravel` is the gate for
+      //     "did the press animation itself translate the button".
+      //     Those are two different claims and must have two
+      //     different scopes. (Soren's REQUEST_CHANGES on PR #2253
+      //     iter-2 — CI received maxTravel=42 against a 6px ceiling
+      //     because beat-advance reflow leaked into the travel
+      //     window.)
       const sample = () => {
         const rect = button.getBoundingClientRect();
         if (rect.width > 0 && base.width > 0) {
           const scale = Math.min(rect.width / base.width, rect.height / base.height);
           record.minScale = Math.min(record.minScale, scale);
-          record.maxTravel = Math.max(
-            record.maxTravel,
-            Math.hypot(
-              rect.left + rect.width / 2 - (base.left + base.width / 2),
-              rect.top + rect.height / 2 - (base.top + base.height / 2),
-            ),
-          );
+          if (button.getAttribute("data-aftersign-job-take") === "pressing") {
+            record.maxTravel = Math.max(
+              record.maxTravel,
+              Math.hypot(
+                rect.left + rect.width / 2 - (base.left + base.width / 2),
+                rect.top + rect.height / 2 - (base.top + base.height / 2),
+              ),
+            );
+          }
         }
         record.samples += 1;
       };

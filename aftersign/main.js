@@ -284,7 +284,7 @@ import {
 // `aftersignJobOfferCopy.firstRun` — same vocabulary Io speaks in
 // her offer line, no drift. Soren's REQUEST_CHANGES on #1747.
 import { routeRiskActionLabel } from "../apps/web/src/aftersign/routeRiskActionLabels.js";
-import { redTagRouteRiskActionLabel } from "./src/redTagRouteLabels.js";
+import { routeRiskLabelsForDelivery } from "./src/redTagRouteOfferLabels.js";
 // Scene-transition juice — the three-phase envelope (recognition-
 // settle → job-offer-rise → route-commit) that plays when the beat
 // crosses a scene boundary (kiosk → io-return, io-return → orra-
@@ -2443,9 +2443,15 @@ const renderText = () => {
       const routeRiskRender = routeRiskMemoryForPacketChoice(
         state.player.routeRisk,
       );
-      const labelForRouteRiskAction = state.delivery.id === "red-tag"
-        ? (action) => redTagRouteRiskActionLabel(action) ?? routeRiskActionLabel(action)
-        : routeRiskActionLabel;
+      // Delivery identity alone picks the label row: a red-tag
+      // packet-choice ALWAYS speaks the TRUSTED row's labels, even on
+      // round-2 before any `delivery-outcome` fact exists. Routing the
+      // choice through memory would fall back to firstRun on an empty
+      // `npcs.io.memory` and re-print the blue-packet labels on a red
+      // surface (Soren's REQUEST_CHANGES on PR #2253).
+      const labelForRouteRiskAction = routeRiskLabelsForDelivery(
+        state.delivery.id,
+      );
       // Include the hidden-actions axis in the signature so the two
       // routeRisk states — "null memory with repair-the-loss hidden"
       // and "null memory with full offer set" — never collide into a

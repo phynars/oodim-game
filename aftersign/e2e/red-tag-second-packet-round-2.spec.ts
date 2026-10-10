@@ -111,9 +111,7 @@ import { expect, test, type Page } from "@playwright/test";
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 60_000;
 
-const TRUSTED_SAFE_ROUTE_LABEL = "Long way — past the kiosk";
 const TRUSTED_RISKY_ROUTE_LABEL = "Behind the shuttered pharmacy";
-const FIRST_RUN_SAFE_ROUTE_LABEL = "Lit stair — under Io's window";
 const FIRST_RUN_RISKY_ROUTE_LABEL = "Cut past the bell rope";
 
 declare global {
@@ -148,6 +146,22 @@ async function tap(page: Page, selector: string): Promise<void> {
   await expect(target).toBeVisible({ timeout: WAIT_MS });
   await expect(target).toBeEnabled();
   await target.tap();
+}
+
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const choice = page
+    .locator(`button[data-choice-id="${choiceId}"]:not([disabled])`)
+    .first();
+  await expect(choice).toBeVisible({ timeout: WAIT_MS });
+  await choice.tap();
+}
+
+async function tapReturnReason(page: Page, reason: string): Promise<void> {
+  const button = page
+    .locator(`button[data-return-reason="${reason}"]:not([disabled])`)
+    .first();
+  await expect(button).toBeVisible({ timeout: WAIT_MS });
+  await button.tap();
 }
 
 test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract (#2243)", () => {
@@ -231,60 +245,125 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
   // SURFACE 3 — Route-choice buttons at round-2 `packet-choice` speak
   // the TRUSTED-row labels, not the firstRun blue-packet defaults.
   //
-  // Pinned as `test.fixme` because the wiring this asserts
-  // (`labelForAction: routeRiskActionLabelForOffer(trustedCopy)` at
-  // `aftersign/main.js`'s round-2 `renderRouteRiskChoice({...})` call
-  // site) is deferred to open issue #2245. The resolver module's
-  // header is explicit: both call sites still pass the firstRun-pinned
-  // `routeRiskActionLabel` on main today, so this assertion would be
-  // red if it ran. Un-fixme this test as part of #2245's PR; the body
-  // is intentionally complete so the un-fixme is a one-line change.
-  test.fixme(
-    "round-2 red-tag packet-choice route buttons speak the trusted row (blocked by #2245)",
-    async ({ page }) => {
-      test.setTimeout(180_000);
-      await page.goto(
-        `/aftersign/?slot=red-tag-second-packet-round-2-surface-3-${Date.now()}`,
-        { waitUntil: "load" },
-      );
-      await waitForReady(page);
+  // Un-fixme'd by PR #2253 (the #2245 wire-up): `aftersign/main.js`'s
+  // round-2 `renderRouteRiskChoice({...})` call site now reads
+  // `routeRiskLabelsForDelivery(state.delivery.id)` from
+  // `aftersign/src/redTagRouteOfferLabels.js`, which pins the trusted
+  // row by delivery identity (not by `npcs.io.memory`) so an empty
+  // memory can no longer fall back to the firstRun blue-packet
+  // labels. This is the phone-viewport, tap-driven assertion Soren
+  // asked for on PR #2253 — it reaches the red-tag packet-choice
+  // surface through the shipped controls and reads the rendered
+  // button text.
+  test("round-2 red-tag packet-choice route buttons speak the trusted row (#2245 wire-up)", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.goto(
+      `/aftersign/?slot=red-tag-second-packet-round-2-surface-3-${Date.now()}`,
+      { waitUntil: "load" },
+    );
+    await waitForReady(page);
 
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "io-return-recognition");
-      await tap(page, "#acknowledgeRouteButton");
-      await waitForBeat(page, "return-tone-choice");
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "io-next-job");
+    // Round 1 begins at `packet-offered`, not `packet-choice`. Take
+    // the shipped safe-delivery offer and inspect the packet before
+    // trying to tap a route button. This writes
+    // `{lastRoute:"safe", succeeded:true}` so round 2 offers the
+    // shortcut button whose trusted label is the regression symptom.
+    //
+    // Round-1 opening + route tap mirror the PASSING sibling at
+    // `aftersign/e2e/aftersign-packet-recall-feel.playtest.spec.ts`
+    // (lines ~96-120): we must wait for the tray's
+    // `data-visible="true"` BEFORE asserting the button is visible,
+    // because the shipped tray is `data-visible="false"` with
+    // `display: none` at every beat other than `packet-choice`
+    // (`aftersign/index.html` line 759: `.route-choice[data-visible="true"]`
+    // is the CSS selector that unhides it). Playwright's
+    // `toBeVisible` reads display state, so a race between
+    // `waitForBeat("packet-choice")` returning and the DOM flipping
+    // `data-visible` fails exactly the way CI reported ("Expected:
+    // visible, Received: hidden"). Soren's REQUEST_CHANGES on
+    // PR #2253 iter-3 — AI008: the earlier draft asserted the button
+    // visible without gating on the tray's own visibility handshake.
+    await waitForBeat(page, "packet-offered");
+    const firstJob = page.locator("#job-offer-job-safe-delivery");
+    await expect(firstJob).toBeVisible({ timeout: WAIT_MS });
+    await firstJob.tap();
+    const firstPacket = page.locator("#packetButton");
+    await expect(firstPacket).toBeEnabled({ timeout: WAIT_MS });
+    await firstPacket.tap();
+    await waitForBeat(page, "packet-choice");
 
-      const acceptSecondPacket = page.locator(
-        'button[data-choice-id="accept-second-packet"]',
-      );
-      await expect(acceptSecondPacket).toHaveText("Take the second packet");
-      await acceptSecondPacket.tap();
-      await tap(page, "#deliverButton");
-      await waitForBeat(page, "packet-offered");
+    const roundOneRouteRiskTray = page.locator("#routeRiskChoice");
+    await expect(roundOneRouteRiskTray).toHaveAttribute(
+      "data-visible",
+      "true",
+      { timeout: WAIT_MS },
+    );
+    const roundOneLongWay = roundOneRouteRiskTray.locator(
+      'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
+    );
+    await expect(roundOneLongWay).toBeVisible({ timeout: WAIT_MS });
+    await roundOneLongWay.tap();
+    // The tray flipping back to hidden is the player-visible proof
+    // the route tap committed; same handshake the recall spec uses.
+    await expect(roundOneLongWay).toBeHidden({ timeout: WAIT_MS });
 
-      const packetButton = page.locator("#packetButton");
-      await packetButton.tap();
-      await waitForBeat(page, "packet-choice");
+    // After the route tap the beat advances to
+    // `delivery-acknowledgment`; the shipped controls there are the
+    // `data-choice-id` buttons the recall spec taps, NOT
+    // `#acknowledgeRouteButton` / `#deliverButton` (those belong to
+    // the sealed-default fork the top-level test uses). Mirroring
+    // the sibling spec keeps round-1 drivable without the fork.
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+    await tapReturnReason(page, "blunt");
+    await waitForBeat(page, "return-tone-choice");
+    await tapChoice(page, "ask-for-next-job");
+    await waitForBeat(page, "io-next-job");
 
-      const routeRiskTray = page.locator("#routeRiskChoice");
-      await expect(routeRiskTray).toBeVisible();
-      const safeRouteButton = routeRiskTray.locator(
-        'button[data-aftersign-tap-choice="take-the-long-way"]',
-      );
-      const riskyRouteButton = routeRiskTray.locator(
-        'button[data-aftersign-tap-choice="take-the-shortcut"]',
-      );
-      await expect(safeRouteButton).toHaveText(TRUSTED_SAFE_ROUTE_LABEL);
-      await expect(riskyRouteButton).toHaveText(TRUSTED_RISKY_ROUTE_LABEL);
-      // Negative guards against the firstRun regression — if a future
-      // refactor re-pins the resolver to firstRun, these fail
-      // deterministically (not via loose "blue" substring matching).
-      await expect(safeRouteButton).not.toHaveText(FIRST_RUN_SAFE_ROUTE_LABEL);
-      await expect(riskyRouteButton).not.toHaveText(
-        FIRST_RUN_RISKY_ROUTE_LABEL,
-      );
-    },
-  );
+    const acceptSecondPacket = page.locator(
+      'button[data-choice-id="accept-second-packet"]',
+    );
+    await expect(acceptSecondPacket).toHaveText("Take the second packet");
+    await acceptSecondPacket.tap();
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "packet-offered");
+
+    const packetButton = page.locator("#packetButton");
+    await packetButton.tap();
+    await waitForBeat(page, "packet-choice");
+
+    const routeRiskTray = page.locator("#routeRiskChoice");
+    // Same tray-visibility handshake as round 1 — gate on the
+    // shipped `data-visible="true"` flip, not Playwright's generic
+    // visibility heuristic, so the assertion can't race the
+    // `packet-choice` beat flip. (Soren's REQUEST_CHANGES on
+    // PR #2253 iter-3.)
+    await expect(routeRiskTray).toHaveAttribute("data-visible", "true", {
+      timeout: WAIT_MS,
+    });
+    // After a safe+succeeded round-1,
+    // `computeOfferedActions({lastRoute:"safe",succeeded:true})`
+    // returns `["take-the-shortcut","carry-a-fragile-packet"]`
+    // (see `apps/web/src/aftersign/routeRiskMemory.ts`). The
+    // long-way button is NOT in that offered set — it only ever
+    // renders alongside `repair-the-loss` on a null / failed memory
+    // (and then WITHOUT a shortcut sibling). The two trusted
+    // route-label strings this spec guards therefore cannot both
+    // render on the same packet-choice; we assert on the shortcut
+    // (which carries the regression's player-visible symptom:
+    // "Behind the shuttered pharmacy" vs the firstRun "Cut past
+    // the bell rope"). The sibling retention spec asserts the
+    // long-way label on a null-memory flow.
+    const riskyRouteButton = routeRiskTray.locator(
+      'button[data-aftersign-tap-choice="take-the-shortcut"]',
+    );
+    await expect(riskyRouteButton).toHaveText(TRUSTED_RISKY_ROUTE_LABEL);
+    // Negative guard against the firstRun regression — if a future
+    // refactor re-pins the resolver to firstRun, this fails
+    // deterministically (not via loose "blue" substring matching).
+    await expect(riskyRouteButton).not.toHaveText(FIRST_RUN_RISKY_ROUTE_LABEL);
+  });
 });
