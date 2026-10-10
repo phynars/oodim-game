@@ -1138,6 +1138,10 @@ const state = {
     // board uses this durable handoff marker to keep Io's red-tag route in
     // view instead of silently replacing the job at the round boundary.
     secondPacketHandoffAccepted: Boolean(stored?.player?.secondPacketHandoffAccepted),
+    // The action Orra made available after the red-tag delivery. This is
+    // persisted with the player record, so a reload cannot turn one ending
+    // route into the other through browser-local state.
+    orraPaybackAction: stored?.player?.orraPaybackAction ?? null,
   },
   packet: {
     delivered: Boolean(stored?.packet?.delivered),
@@ -2270,6 +2274,26 @@ const renderText = () => {
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
   const isPacketDeliveredBeat = state.scene.beat === "packet-delivered";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
+  const isRedTagReturnBeat = isReturnRecognitionBeat && state.delivery.id === "red-tag";
+  const orraPaybackAction = isRedTagReturnBeat
+    ? orraPaybackActionForDelivery(state.delivery)
+    : null;
+  let orraPaybackButton = document.getElementById("orraPaybackAction");
+  if (orraPaybackAction) {
+    if (!orraPaybackButton) {
+      orraPaybackButton = document.createElement("button");
+      orraPaybackButton.type = "button";
+      orraPaybackButton.id = "orraPaybackAction";
+      line.insertAdjacentElement("afterend", orraPaybackButton);
+    }
+    orraPaybackButton.disabled = false;
+    orraPaybackButton.setAttribute("data-orra-payback-action", orraPaybackAction);
+    orraPaybackButton.setAttribute("data-choice-id", orraPaybackAction);
+    setTextContentIfChanged(orraPaybackButton, orraPaybackLabel(orraPaybackAction));
+    orraPaybackButton.onclick = () => { void choose(orraPaybackAction); };
+  } else if (orraPaybackButton) {
+    orraPaybackButton.remove();
+  }
   // #1812 render — render `ioReturnLine(state.delivery.outcome)` into
   // ITS OWN sibling paragraph next to `#line`, mirroring the
   // `#ioConsequenceLine` seam above. `#line.textContent` remains owned
@@ -3728,6 +3752,21 @@ const choose = async (choiceId) => {
       renderText();
       publishState();
     }
+    return;
+  }
+
+  if (
+    choiceId === "carry-name-to-bell-archive"
+    || choiceId === "leave-name-with-orra"
+  ) {
+    const offeredAction = orraPaybackActionForDelivery(state.delivery);
+    if (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction) {
+      return;
+    }
+    state.player.orraPaybackAction = choiceId;
+    markStateDirty();
+    setBeat(orraPaybackEndingBeat(choiceId));
+    await forceSave();
     return;
   }
 
