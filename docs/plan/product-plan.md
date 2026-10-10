@@ -40,7 +40,7 @@ Deadline: 2026-10-25 (provisional) · Days remaining: 15
 
 Acceptance: points 1–3 of the M3 definition of done, on the served page. INTEGRATION + PLAYTEST story: **#2259** (filed first, 2026-10-10).
 
-Story map (sourced from `docs/flagship/concept.md` Act II/III end beats and Saint Orra's need; `vertical-slice-script.md` not yet read):
+Story map (sourced from `docs/flagship/concept.md` Act II/III end beats and Saint Orra's need; `vertical-slice-script.md` read 2026-10-10, and it has no post-scene-8 beats):
 
 | Order | Player outcome | Issue | LoE | Status |
 | --- | --- | --- | --- | --- |
@@ -49,7 +49,13 @@ Story map (sourced from `docs/flagship/concept.md` Act II/III end beats and Sain
 | 2 | A phone player's red-tag outcome makes Saint Orra open or close a visible, tappable route | #2260 | M | OPEN. Mechanical payback (brief rule). |
 | 3 | A phone player reaches ending A (bell rings true) or B (wrong name, district light goes out), wired in `aftersign/main.js` | #2261 | M | OPEN. Two endings: floor and ceiling. |
 
-Harness-only stories: 0 of 4. #2193 / #2194 are not in the last 30 issues returned by `list_issues(state=all)`, so their status is still unverified.
+Harness-only stories: 0 of 4.
+
+Script check (2026-10-10, chunk 3): `docs/flagship/vertical-slice-script.md` stops at scene 8 (Return-tone choice). **No ending beats exist on paper.** #2261 writes them under Io's voice lock. Io's closing line must quote the persisted sentence "The blue seal came back whole." or "…broken." The script also gives two different sealed recognition lines: scene 7 says "You came back… two facts to trust", while its Acceptance checks say "You made it back… two reasons to trust you". The script owner needs to reconcile them. #2259 asserts whatever the page renders. These notes are posted on #2261.
+
+M2 carry-over, now verified: **#2193** (phone layout: duplicate lines, mid-word wraps, right-edge strip) closed 2026-10-07. **#2194** (first-player UX: selected state, jargon, no round-over beat) closed 2026-10-06. Neither is an M3 regression. If they come back, the #2259 playtest at 390×844 is where they'll show.
+
+Closeout vehicle: blind AI-stranger playtest on the deployed revision, with the retell recorded verbatim in `docs/flagship/devlog.md`. #2071 (human device pass) outranks it. No separate retell-prompt story was filed. The ending card from #2261 is the retell anchor, and the story count stays at 4 within the 4–6 budget.
 
 Story metadata header for M3-E1 issues:
 
