@@ -148,6 +148,22 @@ async function tap(page: Page, selector: string): Promise<void> {
   await target.tap();
 }
 
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const choice = page
+    .locator(`button[data-choice-id="${choiceId}"]:not([disabled])`)
+    .first();
+  await expect(choice).toBeVisible({ timeout: WAIT_MS });
+  await choice.tap();
+}
+
+async function tapReturnReason(page: Page, reason: string): Promise<void> {
+  const button = page
+    .locator(`button[data-return-reason="${reason}"]:not([disabled])`)
+    .first();
+  await expect(button).toBeVisible({ timeout: WAIT_MS });
+  await button.tap();
+}
+
 test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract (#2243)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -254,6 +270,21 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     // trying to tap a route button. This writes
     // `{lastRoute:"safe", succeeded:true}` so round 2 offers the
     // shortcut button whose trusted label is the regression symptom.
+    //
+    // Round-1 opening + route tap mirror the PASSING sibling at
+    // `aftersign/e2e/aftersign-packet-recall-feel.playtest.spec.ts`
+    // (lines ~96-120): we must wait for the tray's
+    // `data-visible="true"` BEFORE asserting the button is visible,
+    // because the shipped tray is `data-visible="false"` with
+    // `display: none` at every beat other than `packet-choice`
+    // (`aftersign/index.html` line 759: `.route-choice[data-visible="true"]`
+    // is the CSS selector that unhides it). Playwright's
+    // `toBeVisible` reads display state, so a race between
+    // `waitForBeat("packet-choice")` returning and the DOM flipping
+    // `data-visible` fails exactly the way CI reported ("Expected:
+    // visible, Received: hidden"). Soren's REQUEST_CHANGES on
+    // PR #2253 iter-3 — AI008: the earlier draft asserted the button
+    // visible without gating on the tray's own visibility handshake.
     await waitForBeat(page, "packet-offered");
     const firstJob = page.locator("#job-offer-job-safe-delivery");
     await expect(firstJob).toBeVisible({ timeout: WAIT_MS });
@@ -264,18 +295,32 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     await waitForBeat(page, "packet-choice");
 
     const roundOneRouteRiskTray = page.locator("#routeRiskChoice");
+    await expect(roundOneRouteRiskTray).toHaveAttribute(
+      "data-visible",
+      "true",
+      { timeout: WAIT_MS },
+    );
     const roundOneLongWay = roundOneRouteRiskTray.locator(
       'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
     );
     await expect(roundOneLongWay).toBeVisible({ timeout: WAIT_MS });
     await roundOneLongWay.tap();
+    // The tray flipping back to hidden is the player-visible proof
+    // the route tap committed; same handshake the recall spec uses.
+    await expect(roundOneLongWay).toBeHidden({ timeout: WAIT_MS });
 
-    await tap(page, "#acknowledgeRouteButton");
-    await tap(page, "#deliverButton");
+    // After the route tap the beat advances to
+    // `delivery-acknowledgment`; the shipped controls there are the
+    // `data-choice-id` buttons the recall spec taps, NOT
+    // `#acknowledgeRouteButton` / `#deliverButton` (those belong to
+    // the sealed-default fork the top-level test uses). Mirroring
+    // the sibling spec keeps round-1 drivable without the fork.
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
-    await tap(page, "#acknowledgeRouteButton");
+    await tapReturnReason(page, "blunt");
     await waitForBeat(page, "return-tone-choice");
-    await tap(page, "#deliverButton");
+    await tapChoice(page, "ask-for-next-job");
     await waitForBeat(page, "io-next-job");
 
     const acceptSecondPacket = page.locator(
@@ -291,7 +336,14 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     await waitForBeat(page, "packet-choice");
 
     const routeRiskTray = page.locator("#routeRiskChoice");
-    await expect(routeRiskTray).toBeVisible();
+    // Same tray-visibility handshake as round 1 — gate on the
+    // shipped `data-visible="true"` flip, not Playwright's generic
+    // visibility heuristic, so the assertion can't race the
+    // `packet-choice` beat flip. (Soren's REQUEST_CHANGES on
+    // PR #2253 iter-3.)
+    await expect(routeRiskTray).toHaveAttribute("data-visible", "true", {
+      timeout: WAIT_MS,
+    });
     // After a safe+succeeded round-1,
     // `computeOfferedActions({lastRoute:"safe",succeeded:true})`
     // returns `["take-the-shortcut","carry-a-fragile-packet"]`
