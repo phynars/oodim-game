@@ -4,7 +4,61 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-Planning checkpoint: **2026-09-26**. Authority: `docs/flagship/BRIEF.md`. M2 / M2-E1 are planning aliases for M-LOOP / M-LOOP-E1, not code-renaming work. Exactly one milestone and one epic are active.
+## Planning checkpoint — 2026-10-10 (supersedes everything below; sections below are history)
+
+Source: `docs/flagship/BRIEF.md` § "M-LOOP closeout rules" and § "M-LOOP: CLOSED 2026-10-05 PT".
+
+### M2 (M-LOOP) — CLOSED 2026-10-05
+
+Deadline: 2026-10-11 (binding, set by operator under founder delegation; the earlier 2026-09-05 date is retired)
+
+Status: **DONE**, six days before the deadline. The brief records that blind AI-stranger playtest #4 passed the replay bar on deployed `64a633c`, and that the automated divergence gate passed on 10-04. The record is in `docs/flagship/devlog.md`. This plan quotes the brief's closeout and does not re-certify it. The "-21/-28 days overdue" lines below are history: they counted against the retired date.
+
+Carry-over named by the brief: #2192 (red tag promised to Saint Orra), #2193 (phone layout), #2194 (first-player UX). None of them is on the open board as of 2026-10-10. The #2240 → #2241/#2242/#2243/#2245/#2248 decomposition of #2192 is closed. #2193 and #2194 still need closure evidence, which chunk 2 will check.
+
+Standing rules carried forward: a false memory is a P1 on any milestone; every closeout is verified on the deployed page (blind AI stranger at 390×844 by default; a real human answer outranks it, #2071).
+
+### M3 — ACTIVE (proposed): Episode 1 — a phone player finishes a full Episode 1 arc that memory shapes, and can retell how it ended
+
+Deadline: 2026-10-25 (**PROVISIONAL**. The brief has no M3 date, so this is a planner estimate of two weeks, in line with M-LOOP's closeout cadence. Operator/founder: confirm or replace it. Do not treat it as binding until confirmed.)
+
+Days remaining: **15** as of 2026-10-10.
+
+Why this milestone comes next: the brief's Order of Work, step 3, is "**Episode 1** — an ordered, converging backlog, gameplay-gated, shipped." The slice (step 2) and the loop are done. `docs/flagship/concept.md` already authors "Core locations for Episode 1" and Saint Orra as "moral pressure point for Episode 1".
+
+Definition of done (falsifiable, played):
+1. On https://game.oodim.com/aftersign, a phone player at 390×844 uses visible taps only to go from boot through the existing loop rounds into an Episode 1 **ending beat**. That beat must be visible and must not exist on the page today. It must be reached because of what the player's memory record holds, and at least two records must reach distinguishably different ending states.
+2. Saint Orra pays a memory back **mechanically** (a price, an open or closed route, or a job), not just in dialogue. This uses the brief's existing "no new NPCs before both existing ones pay memories back mechanically" rule.
+3. PLAYTEST: one taps-only phone-viewport spec plays from boot to the Episode 1 ending and asserts each visible dialogue change. `window.__game` is assert-only.
+4. Closeout: a blind AI-stranger playtest on the deployed revision retells the ending beat and states no false memory. The run is recorded verbatim in the devlog.
+
+LoE budget: one epic and 4–6 S/M stories. One scene and the existing cast. If the date approaches, cut ending variety down to two endings before cutting the date.
+
+#### M3-E1 — A phone player reaches an Episode 1 ending their memory record chose, by taps
+
+Deadline: 2026-10-25 (provisional) · Days remaining: 15
+
+Acceptance: points 1–3 of the M3 definition of done, on the served page. INTEGRATION + PLAYTEST story: **not yet filed** (chunk 2 files it first).
+
+Story map: **empty, pending chunk 2.** Before filing, chunk 2 must read `docs/flagship/concept.md` (act structure and Episode 1 sections) and `docs/flagship/vertical-slice-script.md` so that the ending beats come from authored content, not from invention.
+
+Story metadata header for M3-E1 issues:
+
+```text
+Milestone: M3 — a phone player finishes an Episode 1 arc that memory shapes, and can retell how it ended
+Epic: M3-E1 — a phone player reaches a memory-chosen Episode 1 ending by taps on the served page
+Deadline: 2026-10-25 (provisional) · Days remaining: <n> as of <date>
+```
+
+### Drift (open board, 2026-10-10)
+
+- **#2255**: a P3 refactor (redTagRouteRiskActionLabel duplication). It is maintenance and serves no M3 outcome. Keep it under the DoD ration.
+- **#2080**: audit tracking. Operator lane.
+- **#2071**: human device pass. Not drift: it is the standing human-outranks-AI closeout vehicle. Map it to M3 closeout.
+
+---
+
+Planning checkpoint (historical): **2026-09-26**. Authority: `docs/flagship/BRIEF.md`. M2 / M2-E1 are planning aliases for M-LOOP / M-LOOP-E1, not code-renaming work. Exactly one milestone and one epic are active.
 
 **Planning status: acceptance reconciliation incomplete.** This revision corrects stale issue states and records the inspected boundary of PR #1934; it does not certify deployed acceptance or implement a fix. Refs #1818, #1819, #1827. No issue is closed by this document.
 
