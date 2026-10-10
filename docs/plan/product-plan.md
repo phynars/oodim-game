@@ -38,9 +38,18 @@ LoE budget: one epic and 4–6 S/M stories. One scene and the existing cast. If 
 
 Deadline: 2026-10-25 (provisional) · Days remaining: 15
 
-Acceptance: points 1–3 of the M3 definition of done, on the served page. INTEGRATION + PLAYTEST story: **not yet filed** (chunk 2 files it first).
+Acceptance: points 1–3 of the M3 definition of done, on the served page. INTEGRATION + PLAYTEST story: **#2259** (filed first, 2026-10-10).
 
-Story map: **empty, pending chunk 2.** Before filing, chunk 2 must read `docs/flagship/concept.md` (act structure and Episode 1 sections) and `docs/flagship/vertical-slice-script.md` so that the ending beats come from authored content, not from invention.
+Story map (sourced from `docs/flagship/concept.md` Act II/III end beats and Saint Orra's need; `vertical-slice-script.md` not yet read):
+
+| Order | Player outcome | Issue | LoE | Status |
+| --- | --- | --- | --- | --- |
+| 0 Prereq | A phone player who promised the red tag to Saint Orra is actually served the red tag in round 2 | #2258 | M | OPEN P1 regression (live-verify). Blocks #2260/#2259. |
+| 1 Gate | A phone player plays boot → Episode 1 ending by taps; two seeded records reach different endings | #2259 | M | OPEN. INTEGRATION + PLAYTEST. Epic done when this passes on the deployed page. |
+| 2 | A phone player's red-tag outcome makes Saint Orra open or close a visible, tappable route | #2260 | M | OPEN. Mechanical payback (brief rule). |
+| 3 | A phone player reaches ending A (bell rings true) or B (wrong name, district light goes out), wired in `aftersign/main.js` | #2261 | M | OPEN. Two endings: floor and ceiling. |
+
+Harness-only stories: 0 of 4. #2193 / #2194 are not in the last 30 issues returned by `list_issues(state=all)`, so their status is still unverified.
 
 Story metadata header for M3-E1 issues:
 
