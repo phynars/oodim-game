@@ -39,23 +39,30 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //     `data-return-reason` attribute selector. No `hasText` match
 //     anywhere in this file.
 //
-// Orra meet/vigil beat (`meet-orra` → `light-vigil`): the shipped
-// served page renders NO `data-choice-id="meet-orra"` or
-// `data-choice-id="light-vigil"` button today — these beats are
-// only dispatchable via `input.choose(id)`. The sibling green specs
-// `aftersign/e2e/orra-served-recognition.spec.ts` (M-ORRA-E1
-// done-gate) and `aftersign/e2e/flagship-surface-contract.spec.ts`
-// take the same path on the SAME surface for the same reason: the
-// ending is set only inside the Orra vigil handler in
-// aftersign/main.js's `choose()`, and that handler commits via
-// either `input.choose(id)` OR a rendered button — the behavior is
-// identical because `input.choose` IS the shipped dispatch seam
-// (see `aftersign/src/runtime/inputAdapters.js`, where the input
-// adapter calls `game.input.choose(...)` on pointerup). Taking the
-// same seam here keeps this spec consistent with the merged Orra
-// lane specs; the moment a rendered meet-orra/light-vigil surface
-// lands, this spec switches to the tap exactly like
-// `return-to-io-no-false-blunt.spec.ts` does for its tone row.
+// Orra meet/vigil beat (`meet-orra` → `light-vigil`):
+//
+//   • `meet-orra` is still a dispatch-only id — the shipped page
+//     does not render a `data-choice-id="meet-orra"` button today
+//     (the first-contact beat is a settle no-op the vigil surface
+//     fronts). The sibling `orra-served-recognition.spec.ts`
+//     dispatches it the same way through `game.input.choose`.
+//   • `light-vigil` / `spare-vigil` ARE rendered buttons as of this
+//     PR — `#lightVigilButton` + `#spareVigilButton` inside the new
+//     `#vigilChoice` tray (aftersign/index.html). The tray appears
+//     at the `io-next-job` beat once `secondPacketHandoffAccepted`
+//     is true. The shipped document-level delegate in
+//     `aftersign/main.js` routes a click on either button through
+//     the canonical `choose()` seam — the SAME seam `game.input
+//     .choose(id)` lands on. Fixes Soren's iter-5 AI007 blocker on
+//     PR #2265 ("the ending can only be committed through a harness
+//     call, not by a player").
+//   • AI001 (same review): the ending commit in `choose()` is now
+//     gated on `choiceId === "light-vigil"`, so a `spare-vigil` run
+//     mints Orra's memory fact but does NOT stamp
+//     `state.story.endingId` or render the ending card. The
+//     `flagship-surface-contract.spec.ts:934` loop that drives both
+//     vigil actions is therefore unchanged for the sibling
+//     invariants and no longer piggy-backs on the ending commit.
 //
 // Rendered-DOM funnel (both paths; only step 1 diverges):
 //   #packetButton  (click or hold+pull)   → packet-choice
@@ -69,8 +76,8 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //   button[data-choice-id=
 //     "accept-second-packet"]             → ARMS red tag
 //                                           (state.delivery.id="red-tag")
-//   input.choose("meet-orra")              → Orra first-contact
-//   input.choose("light-vigil")            → ENDING committed
+//   input.choose("meet-orra")              → Orra first-contact (no-op)
+//   button[data-choice-id="light-vigil"]   → ENDING committed (tap)
 //
 // Both paths accept the second packet so the funnel diverges ONLY
 // at step 1 (the packet gesture). On the OPENED path this is also
@@ -273,14 +280,16 @@ async function runToEnding(
   // same hunk this PR's diff comments on.
   await tapChoice(page, "accept-second-packet");
 
-  // Orra lane — no rendered surface today (see top-of-file). Order
-  // matches `aftersign/e2e/orra-served-recognition.spec.ts`:
-  // `meet-orra` first (stamps `state.npcs.orra.lastLineId` so the
-  // vigil handler has a lineId to echo into `lastLineMemoryRefs`),
-  // then `light-vigil` — the handler that commits
-  // `state.story.endingId` and renders the card.
+  // Orra lane. `meet-orra` is still dispatch-only (first-contact
+  // settle, no rendered button) — same posture as the sibling
+  // `orra-served-recognition.spec.ts`. `light-vigil` is now a REAL
+  // tap on `#lightVigilButton` inside the `#vigilChoice` tray,
+  // which `renderText()` flips visible at `io-next-job` once the
+  // red-tag handoff has been accepted. The commit lands in the
+  // shipped `choose()` seam the delegate routes to, same branch
+  // that stamps `state.story.endingId` and renders the ending card.
   await dispatchChoice(page, "meet-orra");
-  await dispatchChoice(page, "light-vigil");
+  await tapChoice(page, "light-vigil");
 
   await waitForEndingPublished(page);
 }

@@ -894,6 +894,14 @@ const routeRiskChoice = document.querySelector("#routeRiskChoice");
 // stamps one `<button id="job-offer-<jobId>">` per selected job id at
 // the packet-offered beat; hidden + cleared off-beat.
 const offeredJobs = document.querySelector("#offeredJobs");
+// M3-E1 (#2261) — Episode 1 vigil surface. The two tappable vigil
+// controls live inside this container (see aftersign/index.html:
+// `#lightVigilButton` / `#spareVigilButton`). renderText() flips the
+// surface visible at the `io-next-job` beat once the player has
+// accepted the red-tag handoff; off-beat the container is hidden.
+// The buttons' `click` events dispatch through the document-level
+// vigil-click delegate installed below `attachRuntimeInputAdapters`.
+const vigilChoice = document.querySelector("#vigilChoice");
 // Keep the dynamically-built offer board inside a 390px touch viewport.
 // The tray is a vertical choice list, so each job owns a full row instead
 // of extending a horizontal flex row beyond the screen edge.
@@ -2441,6 +2449,28 @@ const renderText = () => {
     routeChoice.dataset.visible = String(routeChoiceVisible);
   }
 
+  // M3-E1 (#2261) — Episode 1 vigil surface visibility. The two
+  // vigil buttons appear at the `io-next-job` beat, but only AFTER
+  // the player has accepted the red-tag handoff (either via
+  // `accept-second-packet` or `ask-for-next-job`'s inline arming,
+  // both of which flip `state.player.secondPacketHandoffAccepted`
+  // and set `state.delivery.id = "red-tag"`). Soren's blocker on
+  // iter-5 was that the ending committed only through a harness
+  // hook; this surface closes the gap. Off-beat (and once the ending
+  // has committed) the container is hidden so the vigil never
+  // round-trips a stale control into a later beat. Null-guarded
+  // because a stale cached index.html (pre-#2261) may not have the
+  // element yet — same posture as `ioLedgerLine` above.
+  if (vigilChoice) {
+    const vigilVisible =
+      isNextJobBeat
+      && Boolean(state.player.secondPacketHandoffAccepted)
+      && !state.story.endingId;
+    if (vigilChoice.dataset.visible !== String(vigilVisible)) {
+      vigilChoice.dataset.visible = String(vigilVisible);
+    }
+  }
+
   // #1372 — M-LOOP-E1: the ROUTE/RISK choice is only offered at
   // the packet-choice beat (same beat as the route-memory
   // "listened / ran early" fork above). Off-beat the container is
@@ -3594,30 +3624,62 @@ const choose = async (choiceId) => {
     // aftersign/e2e/orra-served-recognition.spec.ts can prove Orra
     // recognized the vigil action by REFERENCE (not by English text).
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
-    const ending = resolveEpisodeOneEnding({
-      packetSealed: state.packet.sealed,
-      redTagCarried: state.delivery.id === "red-tag",
-    });
-    state.story.endingId = ending.id;
-    state.story.endingCause = ending.cause ?? null;
-    state.npcs.io.lastLine = ending.ioLine;
-    state.npcs.io.lastLineMemoryRefs = [];
-    renderEpisodeOneEnding(document, ending);
-    // Stamp `story.endingId` + `story.endingCause` onto window.__game
-    // so #2259's consumer spec (and the sibling tap-driven e2e) can
-    // read the shipped ending by id without reaching into DOM text.
-    // #2261's acceptance: "Expose story.endingId on window.__game
-    // snapshots so tests can assert on it (read-only)." We do this
-    // in two places — here, so the live run surfaces it immediately
-    // after the ending beat, and in lineForBeat()'s ending branch,
-    // so a reloaded run also lands with the field published once
-    // the beat is re-spoken.
-    publishEpisodeOneEndingToWindowGame(
-      typeof window !== "undefined" ? window : undefined,
-      ending,
-    );
+    // M3-E1 (#2261) — the Episode 1 ending beats commit ONLY on
+    // `light-vigil` ("carried Orra's name" → the bell can ring).
+    // `spare-vigil` is a distinct Orra action (mercy row): it mints
+    // the memory fact and updates her spoken surface above, but does
+    // NOT stamp `story.endingId`, does NOT overwrite Io's last line,
+    // and does NOT render the ending card. Soren's AI001 call-out on
+    // PR #2265: the prior draft fired the ending on BOTH vigil
+    // actions indistinguishably, so a `spare-vigil` run silently
+    // committed the same ending the sibling `flagship-surface-contract
+    // .spec.ts:934` loop drives. Scoping the commit to the light-vigil
+    // choiceId is what keeps the two actions narratively distinct.
+    if (choiceId === "light-vigil") {
+      const ending = resolveEpisodeOneEnding({
+        packetSealed: state.packet.sealed,
+        redTagCarried: state.delivery.id === "red-tag",
+      });
+      state.story.endingId = ending.id;
+      state.story.endingCause = ending.cause ?? null;
+      state.npcs.io.lastLine = ending.ioLine;
+      state.npcs.io.lastLineMemoryRefs = [];
+      renderEpisodeOneEnding(document, ending);
+      // Stamp `story.endingId` + `story.endingCause` onto window.__game
+      // so #2259's consumer spec (and the sibling tap-driven e2e) can
+      // read the shipped ending by id without reaching into DOM text.
+      // #2261's acceptance: "Expose story.endingId on window.__game
+      // snapshots so tests can assert on it (read-only)." We do this
+      // in two places — here, so the live run surfaces it immediately
+      // after the ending beat, and in lineForBeat()'s ending branch,
+      // so a reloaded run also lands with the field published once
+      // the beat is re-spoken.
+      publishEpisodeOneEndingToWindowGame(
+        typeof window !== "undefined" ? window : undefined,
+        ending,
+      );
+    }
     markStateDirty();
     await forceSave();
+    publishState();
+    return;
+  }
+
+  if (choiceId === "meet-orra") {
+    // M3-E1 (#2261) — settle no-op for the Orra lane's first-contact
+    // dispatch. The shipped page does not render a `meet-orra` button
+    // today; sibling specs (`orra-served-recognition.spec.ts`, the
+    // tap-played ending spec) dispatch this id through
+    // `game.input.choose("meet-orra")` to STAGE Orra's first-contact
+    // surface before the vigil tap. Without this branch `choose()`'s
+    // trailing `throw new Error("Unknown AFTERSIGN choice: …")` would
+    // explode a tap-played e2e. We only stamp the first-contact line
+    // id — no memory fact (that's the vigil action's job), no
+    // story.endingId mutation (that's `light-vigil`'s job alone).
+    state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
+    state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
+    state.npcs.orra.lastLineMemoryRefs = [];
+    markStateDirty();
     publishState();
     return;
   }
@@ -5148,6 +5210,41 @@ attachRuntimeInputAdapters({
   choose,
   markStateDirty,
   markPointerIntent,
+});
+
+// M3-E1 (#2261) — Episode 1 vigil click delegate. The two vigil
+// buttons in `#vigilChoice` (aftersign/index.html) carry a
+// `data-choice-id="light-vigil" | "spare-vigil"` attribute instead
+// of being wired by `attachRuntimeInputAdapters` directly, because
+// the input adapters are specialized to the four DOM-reused control
+// buttons (packet / ack / skip / deliver) that round-robin their
+// `data-choice-id` across beats. The vigil buttons are dedicated to
+// a single choice each and only live under `#vigilChoice`, so a
+// narrow document-level delegate is the right surface. We scope the
+// delegate to EXACTLY the two vigil ids (not a generic
+// `[data-choice-id]` selector) so no other button's attribute can
+// accidentally be routed through this seam. Each tap dispatches
+// through the canonical `choose()` seam the ending commit lives on
+// — same path a `game.input.choose(id)` dispatch takes — so a
+// tap-played spec and a harness dispatch converge on one branch.
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!target || typeof target.closest !== "function") return;
+  const vigilButton = target.closest(
+    "button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled])",
+  );
+  if (!vigilButton) return;
+  const vigilId = vigilButton.getAttribute("data-choice-id");
+  if (vigilId !== "light-vigil" && vigilId !== "spare-vigil") return;
+  // Fire-and-forget; `choose()` is async but all consumers (adapter
+  // click handlers above, harness `game.input.choose`) call it
+  // without awaiting the returned promise. Errors are intentionally
+  // not caught here — a thrown "Unknown AFTERSIGN choice" is the
+  // same loud failure a dispatch through `game.input.choose` would
+  // produce, and the two vigil ids are terminal branches in
+  // `choose()` by construction (see the orraAction + `meet-orra`
+  // branches in `aftersign/main.js`).
+  void choose(vigilId);
 });
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
