@@ -1230,27 +1230,29 @@
           <div id="offeredJobs" class="route-choice" data-visible="false" data-aftersign-offered-jobs-surface aria-label="Choose the next packet Io hands you">
             <span class="route-choice-label">Offered jobs</span>
           </div>
-          <!-- M3-E1 (#2261) — Episode 1 vigil surface. Appears at the
-               `io-next-job` beat once `state.player.secondPacketHandoffAccepted`
-               is true (the red-tag has been handed over). The player picks
-               ONE of two vigil actions for Saint Orra:
-                 • light-vigil → commits the Episode 1 ending (the ending
-                   resolver reads `packet.sealed` + `delivery.id` and stamps
-                   `state.story.endingId` / renders #episodeOneEnding).
-                 • spare-vigil → mints an Orra memory fact (mercy row) but
-                   does NOT commit an ending — the arc is left open-ended,
-                   per Soren's AI001 call-out on PR #2265 that the ending
-                   must not fire on BOTH Orra actions indistinguishably.
-               Both buttons carry `data-choice-id="…"` so the shipped
-               document-level delegate in main.js can route the tap through
-               the canonical `choose()` seam a tap-played spec drives. -->
-          <div id="vigilChoice" class="route-choice" data-visible="false" aria-label="Choose Saint Orra's vigil action">
-            <span class="route-choice-label">Saint Orra's vigil</span>
-            <button id="lightVigilButton" type="button" data-choice-id="light-vigil" data-aftersign-tap-choice="light-vigil">Light the vigil</button>
-            <button id="spareVigilButton" type="button" data-choice-id="spare-vigil" data-aftersign-tap-choice="spare-vigil">Spare the vigil</button>
-          </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
+        </div>
+        <!-- M3-E1 (#2261) — lives OUTSIDE .controls so toggling it
+             during the job-take press cannot re-lay out the tray.
+             Episode 1 vigil surface. Appears at the
+             `io-next-job` beat once `state.player.secondPacketHandoffAccepted`
+             is true (the red-tag has been handed over). The player picks
+             ONE of two vigil actions for Saint Orra:
+               • light-vigil → commits the Episode 1 ending (the ending
+                 resolver reads `packet.sealed` + `delivery.id` and stamps
+                 `state.story.endingId` / renders #episodeOneEnding).
+               • spare-vigil → mints an Orra memory fact (mercy row) but
+                 does NOT commit an ending — the arc is left open-ended,
+                 per Soren's AI001 call-out on PR #2265 that the ending
+                 must not fire on BOTH Orra actions indistinguishably.
+             Both buttons carry `data-choice-id="…"` so the shipped
+             document-level delegate in main.js can route the tap through
+             the canonical `choose()` seam a tap-played spec drives. -->
+        <div id="vigilChoice" class="route-choice" data-visible="false" aria-label="Choose Saint Orra's vigil action">
+          <span class="route-choice-label">Saint Orra's vigil</span>
+          <button id="lightVigilButton" type="button" data-choice-id="light-vigil" data-aftersign-tap-choice="light-vigil">Light the vigil</button>
+          <button id="spareVigilButton" type="button" data-choice-id="spare-vigil" data-aftersign-tap-choice="spare-vigil">Spare the vigil</button>
         </div>
         <!-- #2225: the slice-save control lives in its own row so a
              mis-aimed thumb cannot wipe the player's run while reaching
