@@ -1,24 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// M3-E1 (#2260) — Saint Orra's red-tag payback: the player's committed
-// red-tag outcome must change which action id is enabled when they
-// come back to Orra. The issue's acceptance criteria are:
+// M3-E1 (#2260) — Saint Orra's red-tag payback. The player's red-tag
+// outcome must change which action id is enabled when they come back
+// to Orra. The issue's acceptance criteria:
 //   A. Two records with different outcomes expose different enabled
-//      action ids. Assert ELEMENT IDS, not copy.
+//      action ids (assert ELEMENT IDS, not copy).
 //   B. The payback survives a reload (server-authoritative).
-//   C. The new action is a real `button` with stable `data-*` ids.
-// This spec does NOT assert any "ending beat" renders — the engine's
-// `AftersignStoryBeatId` union (apps/web/src/aftersign/windowGameSurface.ts)
-// is a fixed terminal set that ends at `io-next-job`. Walking into an
-// ending beat belongs to #2259's consumer spec, not this M3-E1 proof.
+//   C. The new action is a real `button` with a stable `data-*` id.
 //
-// The walk reuses the canonical selectors proven by
-// `aftersign/e2e/aftersign-mloop-two-round.playtest.spec.ts` — same
-// `#offeredJobs button[data-offered-job-id]` entry, same
-// `button[data-choice-id="acknowledge-kiosk"]` route-ack, same
-// `button[data-return-reason=".."]:not([disabled])` posture tap. A
-// divergent selector reds CI with a timeout before any payback
-// assertion runs.
+// This spec does NOT assert any "ending beat" renders — the engine's
+// `AftersignStoryBeatId` union terminates at `io-next-job`. Walking
+// into an ending beat belongs to #2259's consumer spec.
+//
+// WALK NOTE (Soren PR #2264 review): the payback button only renders
+// when `state.delivery.id === "red-tag"`, and that id is only armed
+// on the SECOND round — through `ask-for-next-job` →
+// `accept-second-packet` → round-two `deliver-packet`. Round one's
+// `io-return-recognition` is a `blue-packet` return, where no
+// payback button is expected. An earlier draft of this spec stopped
+// at the round-one return beat and timed out waiting for the button;
+// this version drives two full rounds.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
@@ -47,96 +48,141 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.tap();
 }
 
-async function reachIoReturnRecognition(page: Page): Promise<void> {
+// Walk ROUND 1 from a fresh slot through `io-return-recognition`
+// (blue-packet) → `return-tone-choice` → `ask-for-next-job` →
+// `io-next-job`, then arm the red-tag second packet and drive ROUND
+// 2 to its own `io-return-recognition` — which is the first beat
+// where `state.delivery.id === "red-tag"` and the Orra payback
+// button is rendered. The round-one walk mirrors the canonical
+// sequence pinned by `aftersign-mloop-two-round.playtest.spec.ts`;
+// the round-two walk mirrors `red-tag-second-packet-round-2.spec.ts`
+// (accept the red-tag packet at `io-next-job`, deliver, play the
+// round through acknowledge → deliver → recognition).
+async function reachRedTagIoReturnRecognition(page: Page): Promise<void> {
   await waitForReady(page);
+
+  // Round 1 — fresh slot. The sole offered row is job-safe-delivery
+  // (durable memory is "fresh"); taking it carries us through the
+  // blue-packet route to the first io-return-recognition.
   await waitForBeat(page, "packet-offered");
-  const offer = page
+  const firstRoundOffer = page
     .locator("#offeredJobs")
     .locator('button[data-offered-job-id="job-safe-delivery"]');
-  await expect(offer).toBeVisible({ timeout: WAIT_MS });
-  await offer.tap();
+  await expect(firstRoundOffer).toBeVisible({ timeout: WAIT_MS });
+  await firstRoundOffer.tap();
   await page.locator("#packetButton").tap();
   await waitForBeat(page, "packet-choice");
-  const acknowledge = page.locator(
-    'button[data-choice-id="acknowledge-kiosk"]',
-  );
-  await expect(acknowledge).toBeVisible({ timeout: WAIT_MS });
-  await acknowledge.tap();
+  await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "io-return-recognition");
+
+  // Pick any return posture to pass through — `blunt` is the same
+  // control the two-round spec uses. The posture does not gate the
+  // payback branch; the next-job hand-off does.
+  const bluntReturn = page.locator(
+    'button[data-return-reason="blunt"]:not([disabled])',
+  );
+  await expect(bluntReturn).toBeVisible({ timeout: WAIT_MS });
+  await bluntReturn.tap();
+  await waitForBeat(page, "return-tone-choice");
+
+  // `ask-for-next-job` arms `state.delivery.id = "red-tag"` and
+  // advances to `io-next-job`. From here, `accept-second-packet`
+  // commits the hand-off and `deliver-packet` re-enters round-two
+  // `packet-offered` with the red-tag identity preserved.
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+  await tapChoice(page, "accept-second-packet");
+  await tapChoice(page, "deliver-packet");
+
+  // Round 2 — the red-tag identity is already armed. The offered
+  // tray exposes two red-tag jobs (`job-night-transfer` /
+  // `job-signed-receipt`); the choice doesn't gate the payback —
+  // we drive night-transfer, same as the two-round spec's round-two
+  // walk.
+  await waitForBeat(page, "packet-offered");
+  const secondRoundOffer = page
+    .locator("#offeredJobs")
+    .locator('button[data-offered-job-id="job-night-transfer"]');
+  await expect(secondRoundOffer).toBeVisible({ timeout: WAIT_MS });
+  await secondRoundOffer.tap();
+  await page.locator("#packetButton").tap();
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "io-return-recognition");
+
+  // Guard the invariant the whole spec depends on: this
+  // `io-return-recognition` is the red-tag one. If the guard trips,
+  // the walk — not the payback render — is wrong.
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __game?: { delivery?: { id?: string } } })
+        .__game?.delivery?.id === "red-tag",
+    undefined,
+    { timeout: WAIT_MS },
+  );
 }
 
 test.describe("Saint Orra payback — red-tag outcome gates the next action", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  // Criterion A + C: two records with different outcomes expose
-  // different enabled action ids, each rendered as a real `button`
-  // with a stable `data-orra-payback-action` id. Asserts element ids,
-  // not copy — same shape as #2260's "assert these as element ids,
-  // not copy" line.
+  // Criteria A + C: at round-two `io-return-recognition` with the
+  // sealed red-tag outcome, the enabled payback action is rendered
+  // as a real `button` with the stable id
+  // `data-orra-payback-action="carry-name-to-bell-archive"`. Asserts
+  // the element id, not copy.
   //
-  // The two outcomes are reached by TWO fresh slots driven through
-  // the same canonical walk; each slot ends at `io-return-recognition`
-  // where the payback button is rendered by `main.js`'s renderText
-  // branch. The sealed-outcome slot must show
-  // `data-orra-payback-action="carry-name-to-bell-archive"` enabled;
-  // the opened-outcome slot must show
-  // `data-orra-payback-action="leave-name-with-orra"` enabled AND
-  // must NOT expose the carry-name action.
-  test("sealed vs opened red-tag outcome yields different enabled payback action ids", async ({
-    browser,
+  // The opened-outcome branch is not driven here — the "open" gesture
+  // on today's served kiosk is a timed packet hold that is
+  // non-deterministic in CI. #2260's "two records with different
+  // outcomes" criterion is covered by the pure module
+  // (`aftersign/src/orraPayback.js`) and its unit coverage; the
+  // played-not-driven proof below anchors the sealed branch, which
+  // is the one the issue names as the enabling outcome.
+  test("sealed red-tag outcome exposes the carry-name payback action with a stable element id", async ({
+    page,
   }) => {
-    test.setTimeout(120_000);
-
-    const sealedContext = await browser.newContext({
-      viewport: PHONE_VIEWPORT,
-      hasTouch: true,
-      isMobile: true,
-    });
-    const sealedPage = await sealedContext.newPage();
-    await sealedPage.goto(
+    test.setTimeout(180_000);
+    await page.goto(
       `/aftersign/?slot=orra-payback-sealed-${Date.now()}`,
       { waitUntil: "load" },
     );
-    await reachIoReturnRecognition(sealedPage);
-    // Sealed-outcome commit: the player completed delivery via the
-    // acknowledge-kiosk → deliver-packet path above without opening
-    // the packet. `orraPaybackActionForDelivery({ id: "red-tag",
-    // outcome: "sealed" })` returns `carry-name-to-bell-archive`;
-    // that action id is what main.js's renderText branch stamps
-    // onto the visible payback button.
-    const carryName = sealedPage.locator(
+    await reachRedTagIoReturnRecognition(page);
+
+    const carryName = page.locator(
       'button[data-orra-payback-action="carry-name-to-bell-archive"]',
     );
     await expect(carryName).toBeVisible({ timeout: WAIT_MS });
     await expect(carryName).toBeEnabled();
-    await sealedContext.close();
 
-    // Opened-outcome commit is NOT reproducible by taps on today's
-    // served kiosk flow — the "open" gesture is a timed packet hold
-    // that is non-deterministic in CI. #2260's "two records with
-    // different outcomes" criterion is satisfied by the pure module
-    // (`aftersign/src/orraPayback.js`) + its unit coverage; the
-    // played-not-driven proof above anchors the sealed branch, which
-    // is the one the issue names as the enabling outcome ("Delivered
-    // intact: ... a visible, enabled 'Carry the name...' action
-    // appears"). The opened branch is covered by the pure test and
-    // by #2259's consumer spec once it exists.
+    // The leave-with-Orra alternative must NOT be exposed on the
+    // sealed branch — "two different outcomes expose different
+    // enabled action ids" (criterion A). The sealed branch exposes
+    // exactly one.
+    const leaveWithOrra = page.locator(
+      'button[data-orra-payback-action="leave-name-with-orra"]',
+    );
+    await expect(leaveWithOrra).toHaveCount(0);
   });
 
-  // Criterion B: payback survives a reload. The sealed-outcome slot
-  // is replayed, the carry-name button is tapped, the page reloads
-  // against the SAME slot, and the carry-name button must still be
-  // present with its stable id — proving the outcome is
-  // server-authoritative (not localStorage-faked) because the slot
-  // param is what server-authoritative-save.js keys on.
+  // Criterion B: the payback action survives a reload. We reach the
+  // red-tag `io-return-recognition` beat, assert the carry-name
+  // button is visible, reload against the SAME slot, and assert the
+  // button is visible AGAIN — proving that `delivery.id === "red-tag"`
+  // and `scene.beat === "io-return-recognition"` both round-trip
+  // through the authoritative save. Before this PR, boot and
+  // `applyRestoredState` both collapsed `delivery.id` back to
+  // `"blue-packet"` on restore, which would silently remove the
+  // payback button on reload.
   test("the payback action id survives a reload against the same slot", async ({
     page,
   }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     const slot = `orra-payback-reload-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-    await reachIoReturnRecognition(page);
+    await reachRedTagIoReturnRecognition(page);
+
     const carryName = page.locator(
       'button[data-orra-payback-action="carry-name-to-bell-archive"]',
     );
@@ -144,13 +190,24 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     await expect(carryName).toBeEnabled();
 
     await page.reload({ waitUntil: "load" });
-    // The restored state should land back at or past
-    // io-return-recognition with the sealed outcome committed, so
-    // the same stable action id must be present. We assert on the
-    // id (criterion A) rather than copy (which can drift).
+    await waitForReady(page);
+    await waitForBeat(page, "io-return-recognition");
+
+    // Delivery identity must survive the reload. Without this guard
+    // a regression that re-collapses `delivery.id` to "blue-packet"
+    // on restore would read as a bare "button missing" failure.
+    await page.waitForFunction(
+      () =>
+        (window as unknown as { __game?: { delivery?: { id?: string } } })
+          .__game?.delivery?.id === "red-tag",
+      undefined,
+      { timeout: WAIT_MS },
+    );
+
     const carryNameAfterReload = page.locator(
       'button[data-orra-payback-action="carry-name-to-bell-archive"]',
     );
     await expect(carryNameAfterReload).toBeVisible({ timeout: WAIT_MS });
+    await expect(carryNameAfterReload).toBeEnabled();
   });
 });

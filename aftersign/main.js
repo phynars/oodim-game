@@ -1103,7 +1103,14 @@ const state = {
     offeredJobs: [],
   },
   delivery: {
-    id: "blue-packet",
+    // #2260 (Soren review): boot must honor the persisted delivery
+    // identity. Hard-coding "blue-packet" here lost the round-two
+    // red-tag identity across reload — the io-return-recognition
+    // beat would re-render as blue-packet and the Saint Orra payback
+    // button (gated on `delivery.id === "red-tag"`) would silently
+    // disappear. Whitelist the two shipped values; anything else is
+    // treated as a fresh round-one blue-packet default.
+    id: stored?.delivery?.id === "red-tag" ? "red-tag" : "blue-packet",
     outcome: stored?.delivery?.outcome || "unknown",
   },
   player: {
@@ -5002,7 +5009,15 @@ const reset = (snapshot) => {
     state.packet = { ...state.packet, ...restored.packet };
   }
   if (restored.delivery && typeof restored.delivery === "object") {
-    state.delivery = { id: "blue-packet", outcome: restored.delivery.outcome || "unknown" };
+    // #2260 (Soren review): restore must honor the persisted delivery
+    // identity, same whitelist as boot. The old hard-coded "blue-packet"
+    // collapsed a round-two red-tag slot onto round-one on restore,
+    // which erased Saint Orra's payback button (gated on
+    // `delivery.id === "red-tag"` at `io-return-recognition`).
+    state.delivery = {
+      id: restored.delivery.id === "red-tag" ? "red-tag" : "blue-packet",
+      outcome: restored.delivery.outcome || "unknown",
+    };
   }
   if (restored.npcs && restored.npcs.io) {
     state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
