@@ -1168,7 +1168,6 @@
           real player taps.
         -->
         <p class="io-ledger-line" id="ioLedgerLine" data-io-ledger-fact=""></p>
-        <div id="episodeOneEnding" aria-live="polite"></div>
         <div class="controls">
           <!--
             data-aftersign-tap-choice: names the buttons that COMMIT a
@@ -1233,6 +1232,9 @@
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
         </div>
+        <!-- #2265: ending host sits AFTER .controls so its appearance
+             cannot push the job-offer button mid-press (maxTravel <= 6px). -->
+        <div id="episodeOneEnding" aria-live="polite"></div>
         <!-- M3-E1 (#2261) — lives OUTSIDE .controls so toggling it
              during the job-take press cannot re-lay out the tray.
              Episode 1 vigil surface. Appears at the
