@@ -1103,14 +1103,15 @@ const state = {
     offeredJobs: [],
   },
   delivery: {
-    // #2260 (Soren review): boot must honor the persisted delivery
-    // identity. Hard-coding "blue-packet" here lost the round-two
-    // red-tag identity across reload — the io-return-recognition
-    // beat would re-render as blue-packet and the Saint Orra payback
-    // button (gated on `delivery.id === "red-tag"`) would silently
-    // disappear. Whitelist the two shipped values; anything else is
-    // treated as a fresh round-one blue-packet default.
-    id: stored?.delivery?.id === "red-tag" ? "red-tag" : "blue-packet",
+    // #2267: restore the saved job so a reload after "Ask for next job"
+    // keeps the red-tag packet instead of falling back to round-1 blue.
+    // Old saves (no delivery.id) derive it from the accepted handoff.
+    id:
+      stored?.delivery?.id === "red-tag" || stored?.delivery?.id === "blue-packet"
+        ? stored.delivery.id
+        : stored?.player?.secondPacketHandoffAccepted
+          ? "red-tag"
+          : "blue-packet",
     outcome: stored?.delivery?.outcome || "unknown",
   },
   player: {
@@ -1297,6 +1298,13 @@ const state = {
     },
   },
 };
+
+// #2267: a reloaded red-tag job must show the red-tag packet, mirroring the
+// in-session relabel at the `deliver-packet` handler.
+if (state.delivery.id === "red-tag" && packetButton) {
+  packetButton.textContent = "Red tag — Saint Orra";
+  packetButton.dataset.packetJob = "red-tag";
+}
 
 let statePublishVersion = 0;
 let publishedStateVersion = -1;
@@ -4077,20 +4085,35 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     },
   };
   state.packet = { ...state.packet, ...saved.packet };
-  // M3-E1 (#2260) — Soren PR #2264 review AI008: before this fix the
-  // restored delivery hard-coded `id: "blue-packet"`, which silently
-  // dropped a saved `"red-tag"` identity on reload and collapsed Saint
-  // Orra's payback button. The id is now preserved from the saved slot
-  // and only falls back to the pre-fix default when the save carries no
-  // delivery.id (older payloads). This is the restore-side of the Orra
-  // payback durability contract the e2e in orra-payback.playtest.spec.ts
-  // pins: reload against the same slot MUST keep `delivery.id === "red-tag"`.
+  // #2267: restore `delivery.id` from the save instead of hardcoding
+  // "blue-packet". Before this fix, a reload between `ask-for-next-job`
+  // and the next deliver dropped the red-tag identity, so the packet
+  // button fell back to the idle blue copy and the second-symptom
+  // (post-red-tag-delivery reload) also reverted to round-1 copy.
+  // Fallback chain: (1) the saved id when present (new saves write it
+  // via `deliverySnapshotState`); (2) `secondPacketHandoffAccepted` as
+  // a legacy-save bridge — any save that recorded the handoff accept
+  // but predates the id write still restores to the red-tag identity;
+  // (3) "blue-packet" default for cold / round-1 saves.
+  const savedDeliveryId = typeof saved.delivery?.id === "string"
+    ? saved.delivery.id
+    : null;
+  const restoredDeliveryId = savedDeliveryId
+    ?? (state.player?.secondPacketHandoffAccepted ? "red-tag" : "blue-packet");
   state.delivery = {
-    id: typeof saved.delivery?.id === "string" && saved.delivery.id.length > 0
-      ? saved.delivery.id
-      : "blue-packet",
+    id: restoredDeliveryId,
     outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
   };
+  // #2267: once `delivery.id === "red-tag"`, mirror the in-session
+  // relabel the `ask-for-next-job` handler does on `#packetButton`.
+  // The boot-time stamp at line ~1281 runs BEFORE restore and so can't
+  // see the saved id; this stamp runs AFTER the state has been
+  // hydrated from `saved`, and it runs AFTER the idle-copy stamp at
+  // line ~824 so ordering can't clobber the red-tag label on reload.
+  if (restoredDeliveryId === "red-tag" && packetButton) {
+    packetButton.textContent = "Red tag — Saint Orra";
+    packetButton.dataset.packetJob = "red-tag";
+  }
   // Red-guard hook (#653): drop-memory deliberately loses Io's
   // persisted memory on reload so the harness can prove it would
   // catch a dropped-memory regression. No-op when breakMode is "".
@@ -5082,15 +5105,23 @@ const reset = (snapshot) => {
     state.packet = { ...state.packet, ...restored.packet };
   }
   if (restored.delivery && typeof restored.delivery === "object") {
-    // #2260 (Soren review): restore must honor the persisted delivery
-    // identity, same whitelist as boot. The old hard-coded "blue-packet"
-    // collapsed a round-two red-tag slot onto round-one on restore,
-    // which erased Saint Orra's payback button (gated on
-    // `delivery.id === "red-tag"` at `io-return-recognition`).
+    // #2267: preserve the restored `delivery.id` (round-1 "blue-packet"
+    // vs round-2 "red-tag"). The same hardcoded-id regression that bit
+    // the full-reload restore above also lived here on the in-page
+    // apply path, so an `applySnapshot` taken at `io-next-job` dropped
+    // the red-tag identity. Falls back to `secondPacketHandoffAccepted`
+    // for legacy snapshots that predate the id write.
+    const restoredDeliveryIdInline = typeof restored.delivery.id === "string"
+      ? restored.delivery.id
+      : (state.player?.secondPacketHandoffAccepted ? "red-tag" : "blue-packet");
     state.delivery = {
-      id: restored.delivery.id === "red-tag" ? "red-tag" : "blue-packet",
+      id: restoredDeliveryIdInline,
       outcome: restored.delivery.outcome || "unknown",
     };
+    if (restoredDeliveryIdInline === "red-tag" && packetButton) {
+      packetButton.textContent = "Red tag — Saint Orra";
+      packetButton.dataset.packetJob = "red-tag";
+    }
   }
   if (restored.npcs && restored.npcs.io) {
     state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)
