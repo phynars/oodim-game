@@ -1083,7 +1083,15 @@ const state = {
     offeredJobs: [],
   },
   delivery: {
-    id: "blue-packet",
+    // #2267: restore the saved job so a reload after "Ask for next job"
+    // keeps the red-tag packet instead of falling back to round-1 blue.
+    // Old saves (no delivery.id) derive it from the accepted handoff.
+    id:
+      stored?.delivery?.id === "red-tag" || stored?.delivery?.id === "blue-packet"
+        ? stored.delivery.id
+        : stored?.player?.secondPacketHandoffAccepted
+          ? "red-tag"
+          : "blue-packet",
     outcome: stored?.delivery?.outcome || "unknown",
   },
   player: {
@@ -1266,6 +1274,13 @@ const state = {
     },
   },
 };
+
+// #2267: a reloaded red-tag job must show the red-tag packet, mirroring the
+// in-session relabel at the `deliver-packet` handler.
+if (state.delivery.id === "red-tag" && packetButton) {
+  packetButton.textContent = "Red tag — Saint Orra";
+  packetButton.dataset.packetJob = "red-tag";
+}
 
 let statePublishVersion = 0;
 let publishedStateVersion = -1;
