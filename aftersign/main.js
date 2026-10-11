@@ -2323,6 +2323,14 @@ const renderText = () => {
       orraPaybackButton.id = "orraPaybackAction";
       line.insertAdjacentElement("afterend", orraPaybackButton);
     }
+    // ROOT CAUSE of the 180s e2e timeout (PR #2264): this button is
+    // mounted after `#line` inside `.panel`, and `.hud` sets
+    // `pointer-events: none` (aftersign/index.html `.hud` rule). Only
+    // `.controls` / `.slice-save-controls` opt back in, so the button
+    // inherited `none`: it was visible + enabled but every tap fell
+    // through to the canvas, and Playwright's untimed `tap()` retried
+    // its hit-target check until the test timeout. Opt in explicitly.
+    orraPaybackButton.style.pointerEvents = "auto";
     orraPaybackButton.setAttribute("data-orra-payback-action", orraPaybackAction);
     orraPaybackButton.setAttribute("data-choice-id", orraPaybackAction);
     setTextContentIfChanged(orraPaybackButton, orraPaybackLabel(orraPaybackAction));

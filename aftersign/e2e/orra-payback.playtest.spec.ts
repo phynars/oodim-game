@@ -125,7 +125,15 @@ async function reachRedTagIoReturnRecognition(page: Page): Promise<void> {
 }
 
 test.describe("Saint Orra payback — red-tag outcome gates the next action", () => {
-  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
+  // `actionTimeout` bounds EVERY tap in the two-round walk, so a stall
+  // names the exact step instead of burning the whole 180s budget
+  // (Soren PR #2264 review: "diagnose where the walk stalls").
+  test.use({
+    viewport: PHONE_VIEWPORT,
+    hasTouch: true,
+    isMobile: true,
+    actionTimeout: WAIT_MS,
+  });
 
   // Criteria A + C: at round-two `io-return-recognition` with the
   // sealed red-tag outcome, the enabled payback action is rendered
@@ -182,7 +190,11 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     // beat; this version keeps the beat on `io-return-recognition`
     // and surfaces the commit as a durable state field + stamped
     // data attribute, both of which the spec reads below.
-    await carryName.tap();
+    // Bounded tap: the prior CI failure was an UNBOUNDED tap retrying
+    // its hit-target check for 180s because the button inherited
+    // `.hud { pointer-events: none }`. A bounded tap turns any
+    // regression of that into a named 15s failure on this line.
+    await carryName.tap({ timeout: WAIT_MS });
 
     // Durable state surface — `state.player.orraPaybackAction`.
     await page.waitForFunction(
@@ -239,6 +251,17 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
 
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
+    // A restored delivered slot may come back on the recognition beat
+    // directly, or one step earlier with `#deliverButton` reading
+    // "Return to Io" (the path `advance()` re-enters through, as the
+    // existing sealed-reload spec pins). Accept either, then drive the
+    // return tap if needed — both land on io-return-recognition.
+    const recognition = page.locator('[data-beat-id="io-return-recognition"]');
+    const returnToIo = page.locator("#deliverButton", { hasText: "Return to Io" });
+    await expect(recognition.or(returnToIo).first()).toBeVisible({ timeout: WAIT_MS });
+    if (!(await recognition.isVisible())) {
+      await returnToIo.tap();
+    }
     await waitForBeat(page, "io-return-recognition");
 
     // Delivery identity must survive the reload. Without this guard
