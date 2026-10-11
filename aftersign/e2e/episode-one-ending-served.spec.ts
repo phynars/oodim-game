@@ -39,29 +39,37 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //     `data-return-reason` attribute selector. No `hasText` match
 //     anywhere in this file.
 //
-// Orra meet/vigil beat (`meet-orra` → `light-vigil`):
+// Orra vigil beat (`light-vigil`):
 //
-//   • `meet-orra` is still a dispatch-only id — the shipped page
-//     does not render a `data-choice-id="meet-orra"` button today
-//     (the first-contact beat is a settle no-op the vigil surface
-//     fronts). The sibling `orra-served-recognition.spec.ts`
-//     dispatches it the same way through `game.input.choose`.
 //   • `light-vigil` / `spare-vigil` ARE rendered buttons as of this
 //     PR — `#lightVigilButton` + `#spareVigilButton` inside the new
 //     `#vigilChoice` tray (aftersign/index.html). The tray appears
 //     at the `io-next-job` beat once `secondPacketHandoffAccepted`
 //     is true. The shipped document-level delegate in
 //     `aftersign/main.js` routes a click on either button through
-//     the canonical `choose()` seam — the SAME seam `game.input
-//     .choose(id)` lands on. Fixes Soren's iter-5 AI007 blocker on
-//     PR #2265 ("the ending can only be committed through a harness
-//     call, not by a player").
-//   • AI001 (same review): the ending commit in `choose()` is now
-//     gated on `choiceId === "light-vigil"`, so a `spare-vigil` run
-//     mints Orra's memory fact but does NOT stamp
+//     the canonical `choose()` seam the input adapter would land
+//     on for a rendered tap — no runtime branch is bypassed.
+//     Fixes Soren's iter-5 AI007 blocker on PR #2265 ("the ending
+//     can only be committed through a harness call, not by a
+//     player").
+//   • The vigil tray's visibility is gated on
+//     `isNextJobBeat && secondPacketHandoffAccepted && !endingId`
+//     (aftersign/main.js:2464-2472). There is NO `meet-orra`
+//     prerequisite — the tray appears the moment the handoff is
+//     accepted, which is what `accept-second-packet` below does.
+//     The spec therefore taps straight from the handoff into
+//     `#lightVigilButton`; no dispatch of `meet-orra` through the
+//     harness input seam is required or performed (fixes Soren's
+//     iter-6 blocker on PR #2265: the played-acceptance guard
+//     `playedAcceptanceNoHarnessInput.test.ts` forbids any
+//     `window.__game.input.*` reference in a `*-served*.spec.ts`,
+//     and this file now has none).
+//   • AI001 (iter-5 same review): the ending commit in `choose()`
+//     is gated on `choiceId === "light-vigil"`, so a `spare-vigil`
+//     run mints Orra's memory fact but does NOT stamp
 //     `state.story.endingId` or render the ending card. The
-//     `flagship-surface-contract.spec.ts:934` loop that drives both
-//     vigil actions is therefore unchanged for the sibling
+//     `flagship-surface-contract.spec.ts:934` loop that drives
+//     both vigil actions is therefore unchanged for the sibling
 //     invariants and no longer piggy-backs on the ending commit.
 //
 // Rendered-DOM funnel (both paths; only step 1 diverges):
@@ -76,8 +84,9 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //   button[data-choice-id=
 //     "accept-second-packet"]             → ARMS red tag
 //                                           (state.delivery.id="red-tag")
-//   input.choose("meet-orra")              → Orra first-contact (no-op)
-//   button[data-choice-id="light-vigil"]   → ENDING committed (tap)
+//                                           → vigil tray renders
+//   button#lightVigilButton
+//     ([data-choice-id="light-vigil"])    → ENDING committed (tap)
 //
 // Both paths accept the second packet so the funnel diverges ONLY
 // at step 1 (the packet gesture). On the OPENED path this is also
@@ -103,14 +112,6 @@ async function waitForVersion(page: Page): Promise<void> {
   );
 }
 
-async function waitForStoryIdle(page: Page): Promise<void> {
-  await page.evaluate(() =>
-    (window as unknown as {
-      __game?: { input?: { waitForStoryIdle?: () => Promise<void> | void } };
-    }).__game?.input?.waitForStoryIdle?.(),
-  );
-}
-
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
   await expect(
@@ -129,6 +130,14 @@ async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
  * targets ONLY the attribute selector, with no text fallback — a
  * missing button fails loudly instead of silently clicking an
  * unrelated control.
+ *
+ * No harness-idle wait after the click: the played-acceptance
+ * guard forbids any `window.__game.input.*` reference in a
+ * `*-served*.spec.ts`, and each caller follows the tap with a
+ * `waitForBeat(...)` or another `tapChoice(...)` whose
+ * `toBeVisible({ timeout: WAIT_MS })` already polls the DOM for
+ * the next beat's control — functionally the same settle wait,
+ * via the visible surface.
  */
 async function tapChoice(page: Page, choiceId: string): Promise<void> {
   const button = page
@@ -139,7 +148,6 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
     `visible button[data-choice-id="${choiceId}"] must be present and enabled`,
   ).toBeVisible({ timeout: WAIT_MS });
   await button.click();
-  await waitForStoryIdle(page);
 }
 
 /**
@@ -163,40 +171,6 @@ async function tapReturnTone(
     `return-tone button[data-return-reason="${reason}"] must be visible at io-return-recognition`,
   ).toBeVisible({ timeout: WAIT_MS });
   await button.click();
-  await waitForStoryIdle(page);
-}
-
-/**
- * Dispatch an Orra lane choice through the shipped `input.choose`
- * seam.
- *
- * This is the SAME seam the input adapter calls on a real pointerup
- * (`aftersign/src/runtime/inputAdapters.js`), so no runtime branch
- * is bypassed — the ending-set handler in `choose()` runs on
- * exactly the same code path a tap would hit when the Orra lane
- * grows a rendered surface. See the top-of-file comment for why
- * Orra meet/vigil can't be tapped on the shipped DOM today, and
- * why `orra-served-recognition.spec.ts` and
- * `flagship-surface-contract.spec.ts` do the same thing.
- */
-async function dispatchChoice(page: Page, choiceId: string): Promise<void> {
-  const ok = await page.evaluate((id) => {
-    try {
-      const input = (window as unknown as {
-        __game?: { input?: { choose?: (id: string) => unknown } };
-      }).__game?.input;
-      if (!input || typeof input.choose !== "function") return false;
-      input.choose(id);
-      return true;
-    } catch {
-      return false;
-    }
-  }, choiceId);
-  expect(
-    ok,
-    `window.__game.input.choose("${choiceId}") must be callable`,
-  ).toBe(true);
-  await waitForStoryIdle(page);
 }
 
 async function readEndingSnapshot(page: Page): Promise<EndingSnapshot> {
@@ -242,12 +216,12 @@ async function readEndingCard(page: Page): Promise<Locator> {
 /**
  * Play the full funnel to the Episode 1 ending.
  *
- * Steps 1-7 are each a REAL event on a rendered DOM node; steps
- * 8-9 dispatch through the shipped `input.choose` seam for the
- * un-rendered Orra lane (see top-of-file note). The Orra beats are
- * REQUIRED, not optional — the "`tapChoiceIfPresent`" seam Soren
- * blocked on iter-4 is gone. A missed `light-vigil` leaves
- * `endingId` null and `waitForEndingPublished` below fails loudly.
+ * Every step is a REAL event on a rendered DOM node — no harness
+ * input dispatch anywhere. The `tapChoiceIfPresent` seam Soren
+ * blocked on iter-4 is gone, and the `meet-orra` harness dispatch
+ * Soren blocked on iter-6 is gone too. A missed `light-vigil`
+ * leaves `endingId` null and `waitForEndingPublished` below fails
+ * loudly.
  */
 async function runToEnding(
   page: Page,
@@ -280,15 +254,17 @@ async function runToEnding(
   // same hunk this PR's diff comments on.
   await tapChoice(page, "accept-second-packet");
 
-  // Orra lane. `meet-orra` is still dispatch-only (first-contact
-  // settle, no rendered button) — same posture as the sibling
-  // `orra-served-recognition.spec.ts`. `light-vigil` is now a REAL
-  // tap on `#lightVigilButton` inside the `#vigilChoice` tray,
-  // which `renderText()` flips visible at `io-next-job` once the
-  // red-tag handoff has been accepted. The commit lands in the
-  // shipped `choose()` seam the delegate routes to, same branch
-  // that stamps `state.story.endingId` and renders the ending card.
-  await dispatchChoice(page, "meet-orra");
+  // Vigil tap. The vigil tray's visibility flips to `true` at
+  // `io-next-job` once `secondPacketHandoffAccepted` is set —
+  // which `accept-second-packet` above does. No `meet-orra`
+  // prerequisite exists in the shipped renderText() gate (see
+  // aftersign/main.js:2464-2472), so the funnel skips straight
+  // from the handoff tap to the vigil button. The click lands
+  // on the shipped document-level delegate which routes through
+  // the canonical `choose()` seam — the SAME path a rendered
+  // tap would hit, so no runtime branch is bypassed. This is
+  // the step that stamps `state.story.endingId` and renders
+  // the ending card.
   await tapChoice(page, "light-vigil");
 
   await waitForEndingPublished(page);

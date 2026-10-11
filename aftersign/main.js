@@ -3666,16 +3666,26 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "meet-orra") {
-    // M3-E1 (#2261) — settle no-op for the Orra lane's first-contact
-    // dispatch. The shipped page does not render a `meet-orra` button
-    // today; sibling specs (`orra-served-recognition.spec.ts`, the
-    // tap-played ending spec) dispatch this id through
+    // M-ORRA-E1 (#1173) — settle no-op for the Orra lane's
+    // first-contact dispatch. The shipped page does not render a
+    // `meet-orra` button today; the sibling
+    // `aftersign/e2e/orra-served-recognition.spec.ts` (and the
+    // flagship-surface-contract loop) dispatches this id through
     // `game.input.choose("meet-orra")` to STAGE Orra's first-contact
     // surface before the vigil tap. Without this branch `choose()`'s
     // trailing `throw new Error("Unknown AFTERSIGN choice: …")` would
-    // explode a tap-played e2e. We only stamp the first-contact line
-    // id — no memory fact (that's the vigil action's job), no
+    // explode that spec. We only stamp the first-contact line id —
+    // no memory fact (that's the vigil action's job), no
     // story.endingId mutation (that's `light-vigil`'s job alone).
+    //
+    // M3-E1 note (PR #2265 iter-6 — Soren AI006): the M3-E1
+    // tap-played ending spec `episode-one-ending-served.spec.ts`
+    // does NOT dispatch `meet-orra`. The vigil tray's render gate
+    // (above, ~line 2464) is `isNextJobBeat &&
+    // secondPacketHandoffAccepted && !endingId` — no `meet-orra`
+    // prerequisite — so the ending spec goes straight from the
+    // handoff tap into `#lightVigilButton`. This branch persists
+    // only to keep `orra-served-recognition.spec.ts` reachable.
     state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
     state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
     state.npcs.orra.lastLineMemoryRefs = [];
