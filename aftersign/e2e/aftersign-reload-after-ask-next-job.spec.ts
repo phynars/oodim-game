@@ -27,66 +27,64 @@ import { expect, test, type Page } from "@playwright/test";
 // save-restoration audit. PR #2268 is Refs #2267, not Closes.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
-const WAIT_MS = 60_000;
-
-declare global {
-  interface Window {
-    __game?: {
-      version?: number;
-      scene?: { ready?: boolean };
-      getSnapshot?: () => { scene: { beat: string } };
-    };
-  }
-}
+const WAIT_MS = 15_000;
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
-    () => window.__game?.version === 1 && window.__game?.scene?.ready === true,
+    () =>
+      (window as unknown as { __game?: { scene?: { ready?: boolean } } })
+        .__game?.scene?.ready === true,
     undefined,
     { timeout: WAIT_MS },
   );
 }
 
-async function waitForBeat(page: Page, beat: string): Promise<void> {
-  await expect
-    .poll(
-      () => page.evaluate(() => window.__game?.getSnapshot?.().scene.beat),
-      { timeout: WAIT_MS },
-    )
-    .toBe(beat);
+async function waitForBeat(page: Page, beatId: string): Promise<void> {
+  await expect(page.locator(`[data-beat-id="${beatId}"]`)).toBeVisible({
+    timeout: WAIT_MS,
+  });
 }
 
-async function tap(page: Page, selector: string): Promise<void> {
-  const target = page.locator(selector);
-  await expect(target).toBeVisible({ timeout: WAIT_MS });
-  await expect(target).toBeEnabled();
-  await target.tap();
+async function tapChoice(page: Page, choiceId: string): Promise<void> {
+  const choice = page.locator(
+    `button[data-choice-id="${choiceId}"]:not([disabled])`,
+  );
+  await expect(choice).toBeVisible({ timeout: WAIT_MS });
+  await choice.tap();
 }
 
 // Reach `io-next-job` — the beat where Io has just promised the red tag
-// to Saint Orra and the three handoff buttons are visible. Mirrors
-// `reachNextJob` in `red-tag-packet-choice-retention.spec.ts`, but
-// walking through the full round-1 blue-packet flow from a cold boot.
+// to Saint Orra and the three handoff buttons are visible. Mirrors the
+// round-one walk in `aftersign-mloop-two-round.playtest.spec.ts:82-93`:
+// packet → "I listened" (acknowledge-kiosk) → deliver-packet →
+// recognition → blunt return → ask-for-next-job → deliver-packet.
 async function reachNextJobFromBoot(page: Page): Promise<void> {
-  // packet-offered → tap the blue packet → packet-choice (keep seal)
-  await tap(page, "#packetButton");
+  await waitForBeat(page, "packet-offered");
+
+  // Tap the blue packet → packet-choice.
+  await page.locator("#packetButton").tap();
   await waitForBeat(page, "packet-choice");
 
-  // "I listened" (keep seal)
-  const keepSeal = page.locator('button[data-choice-id="keep-seal"]');
-  await expect(keepSeal).toBeVisible({ timeout: WAIT_MS });
-  await keepSeal.tap();
+  // "I listened" — the real choice id is `acknowledge-kiosk`, NOT
+  // `keep-seal`. See aftersign-mloop-two-round.playtest.spec.ts:84-86.
+  const acknowledge = page.locator(
+    'button[data-choice-id="acknowledge-kiosk"]',
+  );
+  await expect(acknowledge).toHaveText("I listened");
+  await acknowledge.tap();
 
-  // Deliver packet → io-return-recognition
-  await tap(page, "#deliverButton");
+  // Deliver packet → io-return-recognition.
+  await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "io-return-recognition");
 
-  // Acknowledge the route (Kind return)
-  await tap(page, "#acknowledgeRouteButton");
+  // Return tone — pick the blunt reason (same as the sibling spec).
+  await page
+    .locator('button[data-return-reason="blunt"]:not([disabled])')
+    .tap();
   await waitForBeat(page, "return-tone-choice");
 
-  // Deliver next (Ask for next job) → io-next-job
-  await tap(page, "#deliverButton");
+  // Ask Io for the next job → io-next-job.
+  await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
 }
 
@@ -96,19 +94,24 @@ test.describe("AFTERSIGN reload after 'Ask for next job' keeps red tag (#2267)",
   test("after reload at io-next-job, #packetButton shows 'Red tag — Saint Orra'", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(120_000);
     const slot = `reload-after-next-job-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
 
     await reachNextJobFromBoot(page);
 
-    // Sanity: in the same session, the handoff label already reads red tag.
-    // (This isn't the regression — the regression is what happens on reload.)
     const packetButton = page.locator("#packetButton");
 
-    // Reload the same slot — this re-runs boot and the state constructor
-    // that hard-coded `delivery.id = "blue-packet"` on main.
+    // In-session the red-tag label is already applied by the
+    // `ask-for-next-job` handler. Assert it so the spec fails loudly
+    // if a future refactor also breaks the in-session relabel — not
+    // just the reload path.
+    await expect(packetButton).toHaveText("Red tag — Saint Orra");
+    await expect(packetButton).toHaveAttribute("data-packet-job", "red-tag");
+
+    // Reload the same slot — this re-runs boot and the state
+    // constructor that hard-coded `delivery.id = "blue-packet"` on main.
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "io-next-job");
