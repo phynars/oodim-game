@@ -254,6 +254,17 @@ import { runPacketInteractionChecks } from "./src/packet-interaction.test.js";
 // `runPacketInteractionChecks` sibling above.
 // @ts-ignore
 import { runKeptSealRouteRiskChecks } from "./src/keptSealRouteRisk.test.js";
+// Delivery-snapshot write-side roundtrip (#2267 / #2269 re-review). The
+// snapshot helper is a shallow spread, but the LOAD-BEARING claim the
+// restore side depends on is: `delivery.id` ("blue-packet" vs "red-tag")
+// survives the write. This bundle pins the three roundtrips (round-1,
+// round-2 handoff, round-2 delivered) and the shallow-clone guarantee
+// against the shipped `deliverySnapshotState.js` so a future "trim this
+// to just `packet`" edit can't silently drop the red-tag id and
+// re-regress #2267 on the restore side.  Leaf is plain JS (no .d.ts);
+// `@ts-ignore` mirrors the `runKeptSealRouteRiskChecks` sibling above.
+// @ts-ignore
+import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test.js";
 
 type Runner = {
   label: string;
@@ -389,6 +400,14 @@ const runners: Runner[] = [
   // alone (no runtime premise on `packet.sealed`). This runner pins all
   // branches so the served-page e2e is not the sole witness for the rule.
   { label: "runKeptSealRouteRiskChecks", run: runKeptSealRouteRiskChecks },
+  // Delivery-snapshot write-side roundtrip (#2267 / #2269 re-review) —
+  // pins `delivery.id` ("blue-packet" vs "red-tag") preservation across
+  // the shallow spread in `deliverySnapshotState.js`. The restore side
+  // in `aftersign/main.js` was hardcoding `id: "blue-packet"` and
+  // discarding the saved id; this bundle is the write-side contract
+  // the restore fix depends on. Reds if a future edit trims the
+  // snapshot to just `packet` and silently drops the red-tag id.
+  { label: "runDeliverySnapshotStateChecks", run: runDeliverySnapshotStateChecks },
 ];
 
 let failed = 0;
