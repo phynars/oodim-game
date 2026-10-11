@@ -131,16 +131,27 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
   // sealed red-tag outcome, the enabled payback action is rendered
   // as a real `button` with the stable id
   // `data-orra-payback-action="carry-name-to-bell-archive"`. Asserts
-  // the element id, not copy.
+  // the element id, not copy. Tapping the button commits the
+  // outcome, which lands on three observable surfaces:
+  //   - `state.player.orraPaybackAction` records the chosen id
+  //     (durable; survives reload — the reload spec below pins it).
+  //   - The button stamps `data-orra-payback-committed="<id>"` so
+  //     the DOM proof is independent of a yet-unrendered ending beat.
+  //   - The forward-hook ending-beat id (`ending-bell-archive`) is
+  //     surfaced as `data-orra-payback-ending` for #2259's consumer.
   //
   // The opened-outcome branch is not driven here — the "open" gesture
   // on today's served kiosk is a timed packet hold that is
   // non-deterministic in CI. #2260's "two records with different
   // outcomes" criterion is covered by the pure module
-  // (`aftersign/src/orraPayback.js`) and its unit coverage; the
+  // (`aftersign/src/orraPayback.js`) and its unit coverage in
+  // `aftersign/src/orraPayback.test.ts` (registered in
+  // `aftersign/pure-runner.ts` under `runOrraPaybackChecks`); the
   // played-not-driven proof below anchors the sealed branch, which
-  // is the one the issue names as the enabling outcome.
-  test("sealed red-tag outcome exposes the carry-name payback action with a stable element id", async ({
+  // is the one the issue names as the enabling outcome, AND taps
+  // the button to prove the commit lands on a surface the player
+  // can observe.
+  test("sealed red-tag outcome exposes the carry-name payback action with a stable element id and the tap commits durably", async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -164,6 +175,43 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
       'button[data-orra-payback-action="leave-name-with-orra"]',
     );
     await expect(leaveWithOrra).toHaveCount(0);
+
+    // Soren PR #2264 review AI006: the tap must land on a surface
+    // nothing silently drops. Prior drafts routed the commit through
+    // `setBeat("ending-bell-archive")` where no renderer owns the
+    // beat; this version keeps the beat on `io-return-recognition`
+    // and surfaces the commit as a durable state field + stamped
+    // data attribute, both of which the spec reads below.
+    await carryName.tap();
+
+    // Durable state surface — `state.player.orraPaybackAction`.
+    await page.waitForFunction(
+      () =>
+        (
+          window as unknown as {
+            __game?: { player?: { orraPaybackAction?: string | null } };
+          }
+        ).__game?.player?.orraPaybackAction === "carry-name-to-bell-archive",
+      undefined,
+      { timeout: WAIT_MS },
+    );
+
+    // DOM commit surface — the button stamps the committed action
+    // and the forward-hook ending-beat id, and goes disabled so the
+    // player can't double-commit.
+    const committed = page.locator(
+      'button[data-orra-payback-action="carry-name-to-bell-archive"]',
+    );
+    await expect(committed).toHaveAttribute(
+      "data-orra-payback-committed",
+      "carry-name-to-bell-archive",
+      { timeout: WAIT_MS },
+    );
+    await expect(committed).toHaveAttribute(
+      "data-orra-payback-ending",
+      "ending-bell-archive",
+    );
+    await expect(committed).toBeDisabled();
   });
 
   // Criterion B: the payback action survives a reload. We reach the

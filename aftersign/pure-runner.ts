@@ -254,6 +254,19 @@ import { runPacketInteractionChecks } from "./src/packet-interaction.test.js";
 // `runPacketInteractionChecks` sibling above.
 // @ts-ignore
 import { runKeptSealRouteRiskChecks } from "./src/keptSealRouteRisk.test.js";
+// Saint-Orra red-tag payback (#2260, Soren PR #2264 review AI007) —
+// pure contract pins for `aftersign/src/orraPayback.js`, the module
+// `aftersign/main.js` reads at the io-return-recognition red-tag beat.
+// The leaf is plain `.js` but ships a sibling `./orraPayback.d.ts` so
+// the test's `.ts` resolves it under the blocking `typecheck:aftersign`
+// gate (no allowJs needed) — the shim's sole relative import is the
+// extensioned `./orraPayback.js`, satisfying the pure-runner
+// extension-resolution contract documented above. Pins the
+// two-outcomes/two-action-ids invariant (criterion A) that the e2e
+// walk pins only on the sealed branch — the pure lane covers the
+// opened branch, which is non-deterministic to drive through today's
+// kiosk hold gesture in CI.
+import { runOrraPaybackChecks } from "./src/orraPayback.test.ts";
 
 type Runner = {
   label: string;
@@ -389,6 +402,13 @@ const runners: Runner[] = [
   // alone (no runtime premise on `packet.sealed`). This runner pins all
   // branches so the served-page e2e is not the sole witness for the rule.
   { label: "runKeptSealRouteRiskChecks", run: runKeptSealRouteRiskChecks },
+  // Saint-Orra red-tag payback (#2260) — pins the pure contract
+  // (`orraPaybackActionForDelivery` / `orraPaybackLabel` /
+  // `orraPaybackEndingBeat`) `aftersign/main.js` reads at the
+  // io-return-recognition red-tag beat. Covers the opened-outcome
+  // branch (CRITERION A opened) that the e2e walk can't drive
+  // deterministically through today's kiosk hold gesture.
+  { label: "runOrraPaybackChecks", run: runOrraPaybackChecks },
 ];
 
 let failed = 0;

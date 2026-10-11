@@ -2306,6 +2306,16 @@ const renderText = () => {
     ? orraPaybackActionForDelivery(state.delivery)
     : null;
   let orraPaybackButton = document.getElementById("orraPaybackAction");
+  // Soren PR #2264 review AI006: once the player has committed the
+  // payback action (recorded on `state.player.orraPaybackAction` by
+  // `choose()` and persisted across reload), the beat stays on
+  // `io-return-recognition` but the button must stay stamped as
+  // committed on every subsequent `renderText()` frame — otherwise
+  // the ~60Hz tick would silently repaint the button into its
+  // pre-commit state and the played proof could never observe the
+  // commit. The `data-orra-payback-committed` surface is what the
+  // e2e in orra-payback.playtest.spec.ts asserts.
+  const committedPaybackAction = state.player?.orraPaybackAction ?? null;
   if (orraPaybackAction) {
     if (!orraPaybackButton) {
       orraPaybackButton = document.createElement("button");
@@ -2313,11 +2323,26 @@ const renderText = () => {
       orraPaybackButton.id = "orraPaybackAction";
       line.insertAdjacentElement("afterend", orraPaybackButton);
     }
-    orraPaybackButton.disabled = false;
     orraPaybackButton.setAttribute("data-orra-payback-action", orraPaybackAction);
     orraPaybackButton.setAttribute("data-choice-id", orraPaybackAction);
     setTextContentIfChanged(orraPaybackButton, orraPaybackLabel(orraPaybackAction));
-    orraPaybackButton.onclick = () => { void choose(orraPaybackAction); };
+    if (committedPaybackAction) {
+      orraPaybackButton.disabled = true;
+      orraPaybackButton.setAttribute(
+        "data-orra-payback-committed",
+        committedPaybackAction,
+      );
+      orraPaybackButton.setAttribute(
+        "data-orra-payback-ending",
+        orraPaybackEndingBeat(committedPaybackAction),
+      );
+      orraPaybackButton.onclick = null;
+    } else {
+      orraPaybackButton.disabled = false;
+      orraPaybackButton.removeAttribute("data-orra-payback-committed");
+      orraPaybackButton.removeAttribute("data-orra-payback-ending");
+      orraPaybackButton.onclick = () => { void choose(orraPaybackAction); };
+    }
   } else if (orraPaybackButton) {
     orraPaybackButton.remove();
   }
@@ -3790,10 +3815,40 @@ const choose = async (choiceId) => {
     if (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction) {
       return;
     }
+    // M3-E1 (#2260) — Soren PR #2264 review AI006: the earlier draft
+    // called `setBeat(orraPaybackEndingBeat(choiceId))` where the
+    // ending-beat id (`ending-bell-archive` / `ending-orra-keeps-name`)
+    // is NOT in the engine's `AftersignStoryBeatId` union and no
+    // renderer owns it — the tap landed on a beat nothing drew.
+    // The engine's ending-beat renderer is #2259's slice; today the
+    // commit is proven by the DURABLE record on
+    // `state.player.orraPaybackAction` (survives reload via
+    // deliverySnapshotState / applyRestoredState) plus the committed
+    // data stamp on the payback button below. The beat deliberately
+    // stays on `io-return-recognition` so the DOM remains in a beat
+    // the renderer owns.
     state.player.orraPaybackAction = choiceId;
+    // Mark the committed outcome on the button itself so the played
+    // proof (`aftersign/e2e/orra-payback.playtest.spec.ts`) can
+    // observe the tap landing without depending on a yet-unrendered
+    // ending beat. The forward-hook ending-beat id is also surfaced
+    // for #2259's downstream consumer; keeping the symbol imported
+    // and read from here prevents a dead-import regression as the
+    // consumer lands.
+    const endingBeatId = orraPaybackEndingBeat(choiceId);
+    const committedButton = document.getElementById("orraPaybackAction");
+    if (committedButton) {
+      committedButton.setAttribute("data-orra-payback-committed", choiceId);
+      committedButton.setAttribute("data-orra-payback-ending", endingBeatId);
+      committedButton.disabled = true;
+    }
     markStateDirty();
-    setBeat(orraPaybackEndingBeat(choiceId));
     await forceSave();
+    // Do NOT call renderText() here — it would re-build the payback
+    // button without the committed stamp and re-enable it. The commit
+    // is terminal for this beat; the DOM mutation above IS the surface
+    // the player and the spec read.
+    publishState();
     return;
   }
 
@@ -4014,8 +4069,18 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     },
   };
   state.packet = { ...state.packet, ...saved.packet };
+  // M3-E1 (#2260) — Soren PR #2264 review AI008: before this fix the
+  // restored delivery hard-coded `id: "blue-packet"`, which silently
+  // dropped a saved `"red-tag"` identity on reload and collapsed Saint
+  // Orra's payback button. The id is now preserved from the saved slot
+  // and only falls back to the pre-fix default when the save carries no
+  // delivery.id (older payloads). This is the restore-side of the Orra
+  // payback durability contract the e2e in orra-payback.playtest.spec.ts
+  // pins: reload against the same slot MUST keep `delivery.id === "red-tag"`.
   state.delivery = {
-    id: "blue-packet",
+    id: typeof saved.delivery?.id === "string" && saved.delivery.id.length > 0
+      ? saved.delivery.id
+      : "blue-packet",
     outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
   };
   // Red-guard hook (#653): drop-memory deliberately loses Io's
