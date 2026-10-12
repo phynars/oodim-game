@@ -2275,7 +2275,11 @@ const renderText = () => {
     line,
     speaker,
     speakerName: "Io",
-    dialogueLine: state.npcs.io.lastLine,
+    // Getter, not a value: syncIoLine() (invoked inside the helper) is what
+    // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
+    // would snapshot the stale line before syncIoLine runs on the render where
+    // the beat changes.
+    getDialogueLine: () => state.npcs.io.lastLine,
     syncIoLine,
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
