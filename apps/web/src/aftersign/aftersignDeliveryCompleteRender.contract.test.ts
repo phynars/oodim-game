@@ -35,7 +35,7 @@ const servedRendererSource = readFileSync(
 const RED_TAG_LINE =
   "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer.";
 const BLUE_PACKET_LINE =
-  "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+  "Done. Blue route, clean handoff. When you come back, I’ll know the mark was yours.";
 
 describe("aftersignDeliveryCompleteLine (frozen copy)", () => {
   it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-route copy", () => {
@@ -108,7 +108,7 @@ describe("served delivery-complete wiring in aftersign/main.js", () => {
       "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer.",
     );
     expect(servedRendererSource).not.toContain(
-      "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.",
+      "Done. Blue route, clean handoff. When you come back, I’ll know the mark was yours.",
     );
   });
 });
