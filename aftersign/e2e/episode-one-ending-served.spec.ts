@@ -170,7 +170,7 @@ async function tapReturnTone(
     button,
     `return-tone button[data-return-reason="${reason}"] must be visible at io-return-recognition`,
   ).toBeVisible({ timeout: WAIT_MS });
-  await button.click();
+  await button.click({ timeout: CLICK_MS });
 }
 
 async function readEndingSnapshot(page: Page): Promise<EndingSnapshot> {

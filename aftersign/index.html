@@ -691,6 +691,18 @@
       #episodeOneEnding:empty {
         display: none;
       }
+
+      /* PR #2265 root cause of the served-ending 90s timeout: the
+         vigil tray is a sibling of `.controls` directly under `.hud`,
+         and `.hud` is `pointer-events: none`. `.route-choice` does
+         not re-enable pointer events (its other instances live INSIDE
+         `.controls`, which does), so #lightVigilButton inherited
+         `none`, the tap fell through to the canvas, and the ending
+         could never be committed by a player. Opt the tray back in,
+         same posture as `.slice-save-controls` (#2225) below. */
+      #vigilChoice {
+        pointer-events: auto;
+      }
       /* #2225: the slice-save row is a sibling of `.controls` INSIDE
          `.hud` — and `.hud` sets `pointer-events: none` (see rule
          above) so the whole tray is inert by default and only
