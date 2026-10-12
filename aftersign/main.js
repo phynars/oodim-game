@@ -32,6 +32,7 @@ import {
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
+import { renderAftersignDialogue } from "./src/aftersignDialogueRenderer.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { playRecognitionFeedback } from "./recognition-feedback.js";
@@ -2269,10 +2270,16 @@ const publishState = () => {
 };
 
 const renderText = () => {
-  syncIoLine();
-  stampAftersignBeat(line, state.scene.beat);
-  setTextContentIfChanged(speaker, "Io");
-  setTextContentIfChanged(line, state.npcs.io.lastLine);
+  renderAftersignDialogue({
+    beat: state.scene.beat,
+    line,
+    speaker,
+    speakerName: "Io",
+    dialogueLine: state.npcs.io.lastLine,
+    syncIoLine,
+    stampBeat: stampAftersignBeat,
+    setTextContentIfChanged,
+  });
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;
