@@ -671,6 +671,26 @@
         flex-wrap: wrap;
         pointer-events: auto;
       }
+
+      /* M3-E1 (#2261 / PR #2265) — the Episode 1 ending host is
+         empty until the player's vigil tap commits an ending. While
+         empty it must contribute ZERO to layout so a sibling tray
+         (e.g. `.controls` above, containing the job-offer button
+         the `aftersign-job-offer-press-juice.playtest.spec.ts`
+         trip-wire presses) cannot shift mid-press. `display: none`
+         on `:empty` collapses the host out of normal flow until
+         `renderEpisodeOneEnding` appends the ending card child —
+         at which point the `:empty` guard no longer matches, the
+         host paints, and the served ending spec locates the card
+         via `#episodeOneEnding [data-ending-id]` as before. Belt-
+         and-suspenders against the AI007 regression Soren flagged
+         on iter-7: the host already sits AFTER `.controls` (a
+         block-flow sibling), but a defensive collapse here means
+         ANY future flex/grid refactor of `.panel` still cannot
+         let an empty host leak layout into the press window. */
+      #episodeOneEnding:empty {
+        display: none;
+      }
       /* #2225: the slice-save row is a sibling of `.controls` INSIDE
          `.hud` — and `.hud` sets `pointer-events: none` (see rule
          above) so the whole tray is inert by default and only
