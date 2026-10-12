@@ -107,8 +107,6 @@ describe("served delivery-complete wiring in aftersign/main.js", () => {
     expect(servedRendererSource).not.toContain(
       "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer.",
     );
-    expect(servedRendererSource).not.toContain(
-      "Done. Blue route, clean handoff. When you come back, I’ll know the mark was yours.",
-    );
+    expect(servedRendererSource).not.toContain(BLUE_PACKET_LINE);
   });
 });
