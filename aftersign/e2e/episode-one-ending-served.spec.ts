@@ -97,6 +97,7 @@ import { performPacketGesture } from "./helpers/packetGesture";
 
 const WAIT_MS = 60_000;
 const COLD_START_MS = 90_000;
+const CLICK_MS = WAIT_MS;
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
 type EndingSnapshot = {
