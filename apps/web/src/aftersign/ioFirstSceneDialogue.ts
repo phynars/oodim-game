@@ -77,7 +77,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "openedReturn",
     intent: "returnPacket",
-    text: "You made it back. The seal did not. I can use one of those facts.",
+    text: "You came back with the packet open. That is a kind of answer. I know where to put it.",
     memoryKey: "io_return_packet_opened",
   },
   {
