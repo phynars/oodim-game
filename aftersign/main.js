@@ -32,6 +32,7 @@ import {
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
+import { renderAftersignDialogue } from "./src/aftersignDialogueRenderer.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { playRecognitionFeedback } from "./recognition-feedback.js";
@@ -2303,10 +2304,20 @@ const publishState = () => {
 };
 
 const renderText = () => {
-  syncIoLine();
-  stampAftersignBeat(line, state.scene.beat);
-  setTextContentIfChanged(speaker, "Io");
-  setTextContentIfChanged(line, state.npcs.io.lastLine);
+  renderAftersignDialogue({
+    beat: state.scene.beat,
+    line,
+    speaker,
+    speakerName: "Io",
+    // Getter, not a value: syncIoLine() (invoked inside the helper) is what
+    // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
+    // would snapshot the stale line before syncIoLine runs on the render where
+    // the beat changes.
+    getDialogueLine: () => state.npcs.io.lastLine,
+    syncIoLine,
+    stampBeat: stampAftersignBeat,
+    setTextContentIfChanged,
+  });
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;
@@ -4087,10 +4098,35 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     },
   };
   state.packet = { ...state.packet, ...saved.packet };
+  // #2267: restore `delivery.id` from the save instead of hardcoding
+  // "blue-packet". Before this fix, a reload between `ask-for-next-job`
+  // and the next deliver dropped the red-tag identity, so the packet
+  // button fell back to the idle blue copy and the second-symptom
+  // (post-red-tag-delivery reload) also reverted to round-1 copy.
+  // Fallback chain: (1) the saved id when present (new saves write it
+  // via `deliverySnapshotState`); (2) `secondPacketHandoffAccepted` as
+  // a legacy-save bridge — any save that recorded the handoff accept
+  // but predates the id write still restores to the red-tag identity;
+  // (3) "blue-packet" default for cold / round-1 saves.
+  const savedDeliveryId = typeof saved.delivery?.id === "string"
+    ? saved.delivery.id
+    : null;
+  const restoredDeliveryId = savedDeliveryId
+    ?? (state.player?.secondPacketHandoffAccepted ? "red-tag" : "blue-packet");
   state.delivery = {
-    id: "blue-packet",
+    id: restoredDeliveryId,
     outcome: saved.delivery?.outcome || (state.packet.delivered ? (state.packet.sealed ? "sealed" : "opened") : "unknown"),
   };
+  // #2267: once `delivery.id === "red-tag"`, mirror the in-session
+  // relabel the `ask-for-next-job` handler does on `#packetButton`.
+  // The boot-time stamp at line ~1281 runs BEFORE restore and so can't
+  // see the saved id; this stamp runs AFTER the state has been
+  // hydrated from `saved`, and it runs AFTER the idle-copy stamp at
+  // line ~824 so ordering can't clobber the red-tag label on reload.
+  if (restoredDeliveryId === "red-tag" && packetButton) {
+    packetButton.textContent = "Red tag — Saint Orra";
+    packetButton.dataset.packetJob = "red-tag";
+  }
   // Red-guard hook (#653): drop-memory deliberately loses Io's
   // persisted memory on reload so the harness can prove it would
   // catch a dropped-memory regression. No-op when breakMode is "".
@@ -5082,7 +5118,23 @@ const reset = (snapshot) => {
     state.packet = { ...state.packet, ...restored.packet };
   }
   if (restored.delivery && typeof restored.delivery === "object") {
-    state.delivery = { id: "blue-packet", outcome: restored.delivery.outcome || "unknown" };
+    // #2267: preserve the restored `delivery.id` (round-1 "blue-packet"
+    // vs round-2 "red-tag"). The same hardcoded-id regression that bit
+    // the full-reload restore above also lived here on the in-page
+    // apply path, so an `applySnapshot` taken at `io-next-job` dropped
+    // the red-tag identity. Falls back to `secondPacketHandoffAccepted`
+    // for legacy snapshots that predate the id write.
+    const restoredDeliveryIdInline = typeof restored.delivery.id === "string"
+      ? restored.delivery.id
+      : (state.player?.secondPacketHandoffAccepted ? "red-tag" : "blue-packet");
+    state.delivery = {
+      id: restoredDeliveryIdInline,
+      outcome: restored.delivery.outcome || "unknown",
+    };
+    if (restoredDeliveryIdInline === "red-tag" && packetButton) {
+      packetButton.textContent = "Red tag — Saint Orra";
+      packetButton.dataset.packetJob = "red-tag";
+    }
   }
   if (restored.npcs && restored.npcs.io) {
     state.npcs.io.memory = Array.isArray(restored.npcs.io.memory)

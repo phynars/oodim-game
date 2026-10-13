@@ -11,14 +11,14 @@
 // `aftersignPacketRecallRender.consumer.test.ts` stays green across copy
 // edits — the test asserts that phrase, not the whole line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
-  safe: "Io remembers you brought the packet back sealed. The lit route stays open. Take the next packet.",
+  safe: "Io remembers you brought the packet back sealed. The lit route is still open. Take the next packet.",
   fast: "Io remembers you beat the bell. She saved the fast packet for you. It will not wait through another ring.",
-  failed: "Io remembers the packet came back broken. She set the next one aside. Bring it home whole.",
+  failed: "Io remembers what did not come home. This one waited. Bring it home whole.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
-  fragile: "Io remembers you carried the fragile packet in one piece. A delicate one is waiting where only you can find it.",
+  fragile: "Io remembers how carefully you carried the fragile packet. She kept another from the rush. Carry it gently.",
   // Old saves recorded only the route class. Name no specific action.
-  fastUnknown: "Io remembers you ran the quick side last time. She kept a packet back for you.",
+  fastUnknown: "Io remembers you ran the quick side last time. She held this packet until you came back for it.",
 });
 
 /**

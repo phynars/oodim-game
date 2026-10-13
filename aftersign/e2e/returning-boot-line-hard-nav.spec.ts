@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 const COLD_START_MS = 120_000;
 const WAIT_MS = 60_000;
 const FRESH_HANDOFF_LINE =
-  'Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.';
+  'Done. Blue route, clean handoff. I kept the mark beside your name. Come back; I\u2019ll know it was yours.';
 const RETURNING_BEATS = ['packet-delivered', 'io-return-recognition'] as const;
 
 type ReturningBootProbe = {

@@ -35,7 +35,7 @@ declare global {
 const WAIT_MS = 10_000;
 const COLD_START_MS = 90_000;
 const FRESH_DELIVERED_LINE =
-  "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+  "Done. Blue route, clean handoff. I kept the mark beside your name. Come back; I\u2019ll know it was yours.";
 
 type PacketPath = {
   name: string;

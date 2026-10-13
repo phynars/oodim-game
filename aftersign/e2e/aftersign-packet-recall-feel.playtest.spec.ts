@@ -59,7 +59,10 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
     choice,
     `choice "${choiceId}" should be visible and tappable`,
   ).toBeVisible({ timeout: WAIT_MS });
-  await choice.tap();
+  // `locator.tap()` can remain pending after this choice commits on mobile
+  // Chromium. A pointer click still exercises the visible, enabled served
+  // control, while letting the next beat assertion synchronize the transition.
+  await choice.click();
 }
 
 async function tapReturnReason(page: Page, reason: string): Promise<void> {
