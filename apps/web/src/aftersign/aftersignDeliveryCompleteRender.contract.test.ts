@@ -33,7 +33,7 @@ const servedRendererSource = readFileSync(
 );
 
 const RED_TAG_LINE =
-  "Done. Red tag delivered to Saint Orra. She keeps it under your name. The debt is yours to answer.";
+  "Done. Red tag delivered to Saint Orra. She keeps it under your name. When you come back, she will know what you carried.";
 const BLUE_PACKET_LINE =
   "Done. Blue route, clean handoff. I kept the mark beside your name. Come back; I’ll know it was yours.";
 
@@ -104,9 +104,7 @@ describe("served delivery-complete wiring in aftersign/main.js", () => {
     // The two literals that used to live in the ternary must be
     // sourced only from the frozen module now. If either reappears
     // in main.js (copy-paste regression), red the test.
-    expect(servedRendererSource).not.toContain(
-      "Done. Red tag delivered to Saint Orra. She keeps it under your name. The debt is yours to answer.",
-    );
+    expect(servedRendererSource).not.toContain(RED_TAG_LINE);
     expect(servedRendererSource).not.toContain(BLUE_PACKET_LINE);
   });
 });
