@@ -4,6 +4,21 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 // served save endpoint, discard the seeding session, then inspect it from a
 // fresh phone browser context. This deliberately does not use localStorage or
 // an in-page snapshot: only D1-backed boot can satisfy the assertion.
+//
+// GATED (test.fixme): the Orra payback UI — a single
+// `button[data-orra-payback-action]` whose action id is one of
+// `carry-name-to-bell-archive` / `leave-name-with-orra` — is not yet
+// rendered on main (grep: the markup appears only in this spec). The
+// seed payload below is also provisional until it is checked against
+// the real save schema + boot-restore code.
+//
+// Flip these to `test(...)` once BOTH land:
+//   1. The payback scene renders the two buttons with the ids above.
+//   2. `seedRedTagReturn`'s payload shape matches what the
+//      `/aftersign/save/:player/:slot` PUT handler + boot restore
+//      actually consume (verify against the schema module and the
+//      boot path that reads it).
+// Until then this file stands as the executable contract for #2260.
 
 const PLAYER_ID = "local-slice-player";
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
@@ -95,7 +110,9 @@ async function assertRestoredAction(
 
 test.describe("Saint Orra payback survives D1-backed fresh sessions", () => {
   for (const expected of cases) {
-    test(`${expected.outcome} red-tag restores ${expected.actionId} in independent browser sessions`, async ({ browser }) => {
+    // Gated until the payback UI + verified save schema land. See the
+    // header comment for the precise flip-criteria.
+    test.fixme(`${expected.outcome} red-tag restores ${expected.actionId} in independent browser sessions`, async ({ browser }) => {
       test.setTimeout(90_000);
       const slot = `orra-payback-d1-${expected.outcome}-${Date.now()}`;
 
