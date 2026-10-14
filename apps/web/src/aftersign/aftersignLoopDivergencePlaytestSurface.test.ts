@@ -95,7 +95,7 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     const main = readFileSync(SERVED_MAIN_PATH, "utf8");
     expect(main).toContain('import { fingerprintJobOfferAction } from "../packages/aftersign/src/jobOfferActionFingerprint"');
     expect(main).toContain('"data-offer-fingerprint"');
-    expect(main).toContain("armJobOfferFeel(button, () => {");
+    expect(main).toContain("armJobOfferFeel(button, () => jobOfferController.handleInput(() => {");
     expect(main).toContain("offeredJobs.appendChild(button);");
   });
 });
