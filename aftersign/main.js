@@ -5321,6 +5321,9 @@ document.addEventListener("click", (event) => {
   // produce, and the two vigil ids are terminal branches in
   // `choose()` by construction (see the orraAction + `meet-orra`
   // branches in `aftersign/main.js`).
+  // Tap-confirm feel BEFORE choose(), matching the choice-click path
+  // contract (see the applyTapConfirmFeel call-site note near the top).
+  window.__game?.applyTapConfirmFeel?.(vigilId);
   void choose(vigilId);
 });
 window.addEventListener("keydown", (event) => {
