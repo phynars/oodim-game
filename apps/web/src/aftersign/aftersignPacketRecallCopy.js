@@ -13,12 +13,12 @@
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io remembers you brought the packet back sealed. The lit route is still open. Take the next packet.",
   fast: "Io remembers you beat the bell. She saved the fast packet for you. It will not wait through another ring.",
-  failed: "Io remembers what did not come home. This one waited. Bring it home whole.",
+  failed: "Io remembers the last packet did not come home. She kept this one off the road until you returned. Bring it home whole.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
   fragile: "Io remembers how carefully you carried the fragile packet. She kept another from the rush. Carry it gently.",
   // Old saves recorded only the route class. Name no specific action.
-  fastUnknown: "Io remembers you ran the quick side last time. She held this packet until you came back for it.",
+  fastUnknown: "Io remembers you ran the quick side last time. She kept this packet off that road. Take it at your pace.",
 });
 
 /**
