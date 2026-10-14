@@ -265,6 +265,19 @@ import { runKeptSealRouteRiskChecks } from "./src/keptSealRouteRisk.test.js";
 // `@ts-ignore` mirrors the `runKeptSealRouteRiskChecks` sibling above.
 // @ts-ignore
 import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test.js";
+// Interaction-surface controller (#2305 / #2309 re-review) — the single
+// factory `createInteractionSurfaceController` composes aftersign's three
+// interaction surfaces (job offer, packet offer, route choice). Pins
+// label-flavored TypeError validation on missing wires, exact-once
+// forwarding of getState and handleInput, input-argument preservation,
+// and the Object.freeze contract that keeps consumers from bolting on
+// hidden state. The leaf (`./interactionSurfaceController.js`) has ZERO
+// relative imports and the shim's only relative import is the
+// extensioned `./interactionSurfaceController.js`, so the subgraph
+// resolves under `node --experimental-strip-types`. The leaf is plain
+// JS (no .d.ts); `@ts-ignore` mirrors the siblings above.
+// @ts-ignore
+import { runInteractionSurfaceControllerChecks } from "./src/interactions/interactionSurfaceController.test.js";
 
 type Runner = {
   label: string;
@@ -408,6 +421,15 @@ const runners: Runner[] = [
   // the restore fix depends on. Reds if a future edit trims the
   // snapshot to just `packet` and silently drops the red-tag id.
   { label: "runDeliverySnapshotStateChecks", run: runDeliverySnapshotStateChecks },
+  // Interaction-surface controller (#2305 / #2309 re-review) — the single
+  // factory used for all three interaction surfaces. Reds if a future
+  // edit drops the label-flavored TypeError validation, breaks the
+  // exact-once forwarding of getState/handleInput, or removes the
+  // Object.freeze contract on the returned controller.
+  {
+    label: "runInteractionSurfaceControllerChecks",
+    run: runInteractionSurfaceControllerChecks,
+  },
 ];
 
 let failed = 0;

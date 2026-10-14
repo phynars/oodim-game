@@ -645,9 +645,7 @@ import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
-import { createJobOfferController } from "./src/interactions/jobOfferController.js";
-import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
-import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
+import { createInteractionSurfaceController } from "./src/interactions/interactionSurfaceController.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -5149,21 +5147,25 @@ if (hudPanelForClearance && typeof ResizeObserver === "function") {
 }
 
 // Interaction surfaces compose here while their controllers retain the
-// explicit input/state/render boundary. Their handlers remain the established
+// explicit input/state boundary. Their handlers remain the established
 // durable funnels, preserving the served page's public interaction contract.
-const jobOfferController = createJobOfferController({
+// Rendering stays with renderText(); routing it back through the controller
+// would add a dead hop (no consumer calls controller.render).
+const jobOfferController = createInteractionSurfaceController({
+  label: "jobOffer",
   getState: () => state,
-  render: renderText,
+  // The job surface's commit is the closure built per-offer inside
+  // renderText; the controller simply invokes whatever commit was armed.
   handleInput: (commit) => commit(),
 });
-const packetOfferController = createPacketOfferController({
+const packetOfferController = createInteractionSurfaceController({
+  label: "packetOffer",
   getState: () => state,
-  render: renderText,
   handleInput: (input) => packetPress(input),
 });
-const routeChoiceController = createRouteChoiceController({
+const routeChoiceController = createInteractionSurfaceController({
+  label: "routeChoice",
   getState: () => state,
-  render: renderText,
   handleInput: choose,
 });
 
@@ -5186,9 +5188,8 @@ attachRuntimeInputAdapters({
   markStateDirty,
   markPointerIntent,
 });
-// The job surface is rendered dynamically inside renderText(); retain its
-// controller as the composition owner for the visible offer callbacks.
-void jobOfferController;
+// jobOfferController is consumed by the per-offer arming closure built
+// inside renderText() (see armJobOfferFeel call site above).
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
   syncKeyboardInput();
