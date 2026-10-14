@@ -645,6 +645,9 @@ import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
+import { createJobOfferController } from "./src/interactions/jobOfferController.js";
+import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
+import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -2821,7 +2824,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             aftersignRouteRiskToJobTone(offer.routeRisk),
           );
           attachJobOfferPressFeedback(button, jobTakeFeelRow.scaleFrom);
-          armJobOfferFeel(button, () => {
+          armJobOfferFeel(button, () => jobOfferController.handleInput(() => {
             // The decision lands immediately on the exact rendered button,
             // before audio unlock or persistence can defer the response.
             applyJobOfferChoiceFeedback(button, offer.routeRisk);
@@ -2915,7 +2918,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             }
             markStateDirty();
             publishState();
-          });
+          }));
           offeredJobs.appendChild(button);
         }
       }
@@ -5145,6 +5148,25 @@ if (hudPanelForClearance && typeof ResizeObserver === "function") {
   }).observe(hudPanelForClearance);
 }
 
+// Interaction surfaces compose here while their controllers retain the
+// explicit input/state/render boundary. Their handlers remain the established
+// durable funnels, preserving the served page's public interaction contract.
+const jobOfferController = createJobOfferController({
+  getState: () => state,
+  render: renderText,
+  handleInput: (commit) => commit(),
+});
+const packetOfferController = createPacketOfferController({
+  getState: () => state,
+  render: renderText,
+  handleInput: (input) => packetPress(input),
+});
+const routeChoiceController = createRouteChoiceController({
+  getState: () => state,
+  render: renderText,
+  handleInput: choose,
+});
+
 attachRuntimeInputAdapters({
   packetButton,
   acknowledgeRouteButton,
@@ -5156,14 +5178,17 @@ attachRuntimeInputAdapters({
   state,
   IO_RETURN_TONE_OPTIONS,
   AFTERSIGN_TAP_CHOICE_SURFACE_SELECTOR,
-  packetPress,
+  packetPress: packetOfferController.handleInput,
   packetMove,
   packetRelease,
   handleScenePointer,
-  choose,
+  choose: routeChoiceController.handleInput,
   markStateDirty,
   markPointerIntent,
 });
+// The job surface is rendered dynamically inside renderText(); retain its
+// controller as the composition owner for the visible offer callbacks.
+void jobOfferController;
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
   syncKeyboardInput();
