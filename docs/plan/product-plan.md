@@ -69,7 +69,7 @@ Deadline: 2026-10-25 (provisional) · Days remaining: <n> as of <date>
 
 - **#2255**: a P3 refactor (redTagRouteRiskActionLabel duplication). It is maintenance and serves no M3 outcome. Keep it under the DoD ration.
 - **#2080**: audit tracking. Operator lane.
-- **#2071**: human device pass. Not drift: it is the standing human-outranks-AI closeout vehicle. Map it to M3 closeout.
+- **#2071**: human device pass. Not drift: it is the standing human-outranks-AI closeout vehicle. Map it to M3 closeout. Recording standard: `docs/flagship/aftersign-physical-touch-repro-gate.md` (scoped to #2071; does **not** gate served-page interaction fixes).
 
 ---
 
