@@ -1,14 +1,20 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
-// Playtest: #2326 (live-verify of #2322). The restore guard in
-// `reloadFromSave` (aftersign/main.js:4040-4057) remaps a persisted
-// `packet-delivered` beat to `packet-choice` when `packet.delivered`
-// is false. That contradictory pair is the shape a LEGACY save (pre
-// PR #2324) carries when the player was mid route-choice: the earlier
-// build labelled the choice screen `packet-delivered` even though the
-// packet had not yet been delivered. On reload, the "I ran early /
-// I listened / Return to Io" post-delivery recognition fork would
-// paint over a player who never delivered.
+// Playtest: #2326 (live-verify of #2322). The restore guard —
+// `restoreFlagshipBeat` in `aftersign/flagship-beat-migration.js` —
+// remaps a persisted `packet-delivered` beat to `packet-choice` when
+// `packet.delivered` is false. It is invoked at BOTH restore paths:
+//   - cold-boot hydration (`aftersign/main.js:1079`-ish, inside the
+//     `state` literal's `scene.beat`), which is what a real
+//     `page.reload()` goes through;
+//   - `reloadFromSave` (`aftersign/main.js:4040-...`), reached only
+//     via the in-page `input.forceReload` surface.
+// The contradictory pair is the shape a LEGACY save (pre PR #2324)
+// carries when the player was mid route-choice: the earlier build
+// labelled the choice screen `packet-delivered` even though the packet
+// had not yet been delivered. On reload, the "I ran early / I listened
+// / Return to Io" post-delivery recognition fork would paint over a
+// player who never delivered.
 //
 // Why this spec is shaped the way it is (Soren's PR #2327 REQUEST_CHANGES):
 //   - In the CURRENT build, `deliverPacket` sets `packet.delivered=true`
@@ -137,12 +143,16 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
         expect(mutation.seededDelivered).toBe(false);
       }
 
-      // --- Reload. Without the guard, `reloadFromSave` would restore
-      // `scene.beat = "packet-delivered"` from the seeded save, and
-      // the DOM would show that beat's post-delivery recognition fork.
-      // With the guard at main.js:4040-4057, the contradictory pair is
-      // remapped to `packet-choice` and the player sees their actual
-      // unfinished route choice.
+      // --- Reload. A real `page.reload()` goes through cold-boot
+      // hydration, NOT through `reloadFromSave` (which is only reached
+      // by the in-page `input.forceReload` surface). Without the guard
+      // at the boot path, cold-boot would restore `scene.beat =
+      // "packet-delivered"` from the seeded save and the DOM would
+      // show that beat's post-delivery recognition fork. The shared
+      // `restoreFlagshipBeat` helper is called at BOTH restore sites,
+      // so the contradictory pair is remapped to `packet-choice` and
+      // the player sees their actual unfinished route choice regardless
+      // of which restore path fires.
       await page.reload({ waitUntil: "load" });
 
       // The restored beat MUST be `packet-choice`. This is the single
