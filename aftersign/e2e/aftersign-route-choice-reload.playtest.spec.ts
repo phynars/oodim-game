@@ -17,45 +17,54 @@ import { expect, test, type Page, type Locator } from "@playwright/test";
 // / Return to Io" post-delivery recognition fork would paint over a
 // player who never delivered.
 //
-// Seeding shape (PR #2327 iter-2, addressing Soren's REQUEST_CHANGES):
-//   - The prior shape of this spec tapped to `packet-choice`, then GET
-//     the server save, mutated the payload, and PUT it back. That GET
-//     races the cold-boot authoritative save (there is no guarantee a
-//     server-side save exists at the moment the player is first visible
-//     at `packet-choice` — `writeStored` is local-only and the
-//     authoritative write is async). The sibling
-//     `aftersign-packet-recall-failed-feel.playtest.spec.ts` solves the
-//     same category of problem by PUTTING a complete legacy payload
-//     DIRECTLY against the slot-scoped authoritative endpoint BEFORE
-//     navigation. We adopt that pattern: no GET, no race, one PUT, one
-//     navigation, one reload-equivalent cold boot through the guard.
+// Seeding + input shape (PR #2327 iter-3):
+//   - Prior iters tried GET-mutate-PUT after a tap into `packet-choice`,
+//     which races cold-boot's own authoritative write. The sibling
+//     `reset-route-risk-isolation.spec.ts` solves the same problem by
+//     PUTTING a complete payload DIRECTLY against the slot-scoped
+//     authoritative endpoint BEFORE navigation. We adopt that pattern:
+//     one PUT, one navigation, one reload-equivalent cold boot through
+//     the guard — no race, no mutation of a server-written save.
 //   - Payload mirrors `buildPersistPayload` in
-//     `aftersign/src/runtime/persistence.js:54-77`: top-level `beat`,
+//     `aftersign/src/runtime/persistence.js`: top-level `beat`,
 //     `packet`, `player`, `delivery`, `memory`, `npcs`, `save`. The two
 //     fields that MUST be contradictory to exercise the guard are
 //     `beat="packet-delivered"` + `packet.delivered=false`. All other
 //     fields carry neutral defaults so no sibling invariant drifts.
+//   - After the restore assertion, we tap the first visible button in
+//     `#routeRiskChoice` (same shape driven by
+//     `packet-choice-layout-and-route-memory-feedback.spec.ts`) and
+//     then assert the `data-aftersign-route-memory-confirmation`
+//     label echoes the choice name. Two reasons:
+//       (a) `playtest-input-surface-guard.spec.ts` fails the whole
+//           suite if a `*.playtest.spec.ts` file carries no real
+//           `.click/.tap/.press`. That guard was the CI blocker on
+//           this PR's prior pushes.
+//       (b) It strengthens the regression — a restored DOM that
+//           LOOKS like `packet-choice` but is a frozen remount would
+//           not update the confirmation stamp on a tap.
 //
 // Runtime premises validated against shipped code at session commit:
-//   - Save key: `aftersign:kiosk-slice:${slot}` (main.js:1009); server
-//     payload shape produced by `buildPersistPayload`
-//     (aftersign/src/runtime/persistence.js:54-77) includes
-//     `beat` + `packet` + `player` + `save` fields.
+//   - Server payload shape produced by `buildPersistPayload`
+//     (aftersign/src/runtime/persistence.js) includes `beat` +
+//     `packet` + `player` + `save` fields.
 //   - Slot-scoped authoritative endpoint:
 //     `PUT /aftersign/save/:playerId/:slot` (see
-//     `aftersign/server-authoritative-save.js:78`) — the same lane
-//     `aftersign-packet-recall-failed-feel.playtest.spec.ts` uses to
-//     force a divergent memory shape at cold boot.
+//     `aftersign/server-authoritative-save.js`) — the lane
+//     `reset-route-risk-isolation.spec.ts` already uses to force a
+//     divergent payload at cold boot.
 //   - `hasTouch: true` is required for `.tap()` on the phone context.
 //   - `data-beat-id` on the rendered line is the DOM contract asserted
 //     by apps/web/src/aftersign/servedSurface.contract.test.ts.
+//   - `#routeRiskChoice` + `[data-aftersign-route-memory-confirmation]`
+//     are the stable DOM handles exercised by
+//     `packet-choice-layout-and-route-memory-feedback.spec.ts`.
 //
 // Why we do NOT assert `#skipRouteButton` hidden: the current build
 // renders it visible at `packet-choice` as the "I ran early" fork
-// label (main.js ~2988-2996). The symptom the fix addresses is the
-// BEAT ID flipping to `packet-delivered` on restore, not any button
-// visibility — so the assertion is `data-beat-id="packet-choice"`
-// after cold boot.
+// label. The symptom the fix addresses is the BEAT ID flipping to
+// `packet-delivered` on restore, not any button visibility — so the
+// assertion is `data-beat-id="packet-choice"` after cold boot.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
@@ -80,8 +89,7 @@ async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
 // full payload up front — no GET, no mutation of a server-written
 // save — so there is no race between cold-boot's authoritative write
 // and the test's seed. Mirrors the sibling
-// `aftersign-packet-recall-failed-feel.playtest.spec.ts` seeding
-// pattern.
+// `reset-route-risk-isolation.spec.ts` seeding pattern.
 async function seedLegacyPacketDeliveredSave(
   page: Page,
   slot: string,
@@ -198,7 +206,11 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       // see aftersignDurableStoryStateSaveLoadSurface.test.ts for the
       // read-only `getSnapshot()` contract.
       const restoredBeat = await page.evaluate(() => {
-        const game = (window as unknown as { __game?: { getSnapshot: () => { scene: { beat: string } } } }).__game;
+        const game = (
+          window as unknown as {
+            __game?: { getSnapshot: () => { scene: { beat: string } } };
+          }
+        ).__game;
         return game?.getSnapshot?.().scene?.beat ?? null;
       });
       expect(
@@ -215,6 +227,36 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       // ever flipping to the post-delivery fork.
       await page.reload({ waitUntil: "load" });
       await waitForBeat(page, "packet-choice");
+
+      // Visible-player-input proof. The played-input guard
+      // (`playtest-input-surface-guard.spec.ts`) requires every
+      // `*.playtest.spec.ts` to carry a real `.click/.tap/.press`;
+      // without one, the whole suite fails before our restore
+      // assertions even run. We tap the first route-memory choice
+      // inside `#routeRiskChoice` — same shape
+      // `packet-choice-layout-and-route-memory-feedback.spec.ts`
+      // drives — and then assert the
+      // `data-aftersign-route-memory-confirmation` label echoes the
+      // tapped choice name. That echo is the one assertion proving
+      // the restored `packet-choice` is a LIVE interactive beat, not
+      // a static DOM painted by a stale last-render snapshot: a
+      // frozen remount wouldn't update the confirmation label.
+      const routeChoice = page.locator("#routeRiskChoice");
+      const firstRouteMemoryChoice = routeChoice.locator("button").first();
+      await expect(
+        firstRouteMemoryChoice,
+        "restored packet-choice should expose a tappable route-memory choice button",
+      ).toBeVisible({ timeout: WAIT_MS });
+      const choiceName = (await firstRouteMemoryChoice.innerText()).trim();
+      expect(
+        choiceName.length,
+        "route-memory choice button should carry a visible label before we tap it",
+      ).toBeGreaterThan(0);
+      await firstRouteMemoryChoice.click();
+      await expect(
+        routeChoice.locator("[data-aftersign-route-memory-confirmation]"),
+        "tapping a route-memory choice on a restored packet-choice should surface its label in the confirmation stamp",
+      ).toHaveText(choiceName, { timeout: WAIT_MS });
     },
   );
 });
