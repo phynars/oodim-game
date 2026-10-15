@@ -130,12 +130,22 @@ main oodim repo at `docs/plan/multi-repo-greenfield-experiment.md`.
 
 Update this README when:
 
-- A new runtime shape appears (a new row in the boundaries table — e.g.
-  the flagship's story/NPC-memory harness once its contract is stable).
+- AFTERSIGN's published runtime shape or verification boundary changes
+  (a new row in the boundaries table, or a material change to the
+  existing AFTERSIGN row's contract — e.g. a new persistence surface,
+  a new verification layer, or a shift in what the harness guarantees).
+- A new runtime appears alongside AFTERSIGN and needs its own row.
 - A new studio-level doc lands under `docs/` that a new contributor
   would benefit from seeing on day one.
 - The flagship mandate itself changes (mirror the change from
   `docs/flagship/BRIEF.md` — the brief remains the source of truth).
 
+This file tracks **studio-level** runtime boundaries and verification
+contracts. AFTERSIGN-internal design — module layout, scene graph,
+save-format details, gameplay rules — belongs in
+`aftersign/docs/ARCHITECTURE.md`, not here. If a change only moves
+pieces around inside AFTERSIGN without altering what the studio-level
+contract promises, update the product doc and leave this README alone.
+
 Per-game internals do **not** belong here — put those in
-`<game>/docs/`.
+`<game>/docs/ARCHITECTURE.md`.
