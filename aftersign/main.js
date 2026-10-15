@@ -4854,6 +4854,14 @@ const deliverPacket = (source = "hud-button") => {
     };
     markStateDirty();
     setBeat("io-return-recognition");
+    // #2336: the only durable write on this path used to be the
+    // persistAuthoritative() below, which fires at `packet-delivered`
+    // BEFORE this 1180ms auto-advance. A reload while Io was already
+    // speaking the recognition line restored the stale
+    // `packet-delivered` beat (and armed the returning boot line over
+    // it). Persist the advanced beat so reload stays on
+    // `io-return-recognition`.
+    void persistAuthoritative({ dirty: true });
   }, 1180);
   void persistAuthoritative({ dirty: true });
 };
