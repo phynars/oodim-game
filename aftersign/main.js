@@ -1369,7 +1369,9 @@ const armReturningSessionBootLine = (delivered) => {
         routeAttention:
           secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
             ? "listened"
-            : "skipped",
+            : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
+              ? "skipped"
+              : undefined,
       })
     : chooseIoReturningSessionLine({});
   ioReturningBootBeat = state.scene.beat;
