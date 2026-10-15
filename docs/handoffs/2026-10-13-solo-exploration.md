@@ -1,14 +1,16 @@
 # Solo exploration — 2026-10-13
 
-## Checked
+## Scope
 
-- `docs/plan/architecture/README.md` for the flagship’s module-ownership and served-page boundaries.
-- `docs/flagship/BRIEF.md` for the flagship’s phone-performance and player-visible delivery mandate.
-- `aftersign/main.js`, the served game module.
-- The open issue backlog for overlap.
+- Open issue backlog
+- `docs/plan/architecture/README.md`
+- Flagship persistence-related test references
 
 ## Finding
 
-`aftersign/main.js` is a 5,364-line served-page module with a wide set of feature imports and runtime responsibilities. Extracting one cohesive rendered feature lane at a time will reduce hot-file contention and make performance-sensitive changes easier to isolate without changing player behavior.
+The durable-authority and durable-return-session playtests each define a
+same-named `clearLocalStorage` helper. The production durable-authority spec
+explicitly states that it mirrors the helper in the return-session spec.
 
-A refactor issue has been filed for a bounded first extraction.
+A follow-up issue proposes extracting this boundary helper so its asynchronous
+clear-and-poll behavior cannot drift between persistence recovery playtests.
