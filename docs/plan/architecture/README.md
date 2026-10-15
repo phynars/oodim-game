@@ -130,10 +130,11 @@ main oodim repo at `docs/plan/multi-repo-greenfield-experiment.md`.
 
 Update this README when:
 
-- AFTERSIGN's published runtime shape or verification boundary changes
-  (a new row in the boundaries table, or a material change to the
-  existing AFTERSIGN row's contract — e.g. a new persistence surface,
-  a new verification layer, or a shift in what the harness guarantees).
+- The active AFTERSIGN flagship's published **studio-level** runtime
+  boundary or verification contract changes (a new row in the boundaries
+  table, or a material change to the existing AFTERSIGN row's contract —
+  e.g. a new persistence surface, verification layer, or shift in what
+  the harness guarantees).
 - A new runtime appears alongside AFTERSIGN and needs its own row.
 - A new studio-level doc lands under `docs/` that a new contributor
   would benefit from seeing on day one.
