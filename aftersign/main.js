@@ -31,7 +31,7 @@ import {
   ORRA_RETURN_LINE_BY_ACTION,
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
-import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
+import { canonicalFlagshipBeat, restoreFlagshipBeat } from "./flagship-beat-migration.js";
 import { renderAftersignDialogue } from "./src/aftersignDialogueRenderer.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
@@ -1076,7 +1076,16 @@ const state = {
     // Flipped true once listeners + first render are wired (boot tail)
     // — the harness's "safe to drive input" signal.
     ready: false,
-    beat: canonicalFlagshipBeat(stored?.beat) ?? "packet-offered",
+    // Shared restore guard — covers BOTH a real `page.reload()` (which
+    // lands here, not in `reloadFromSave`) AND the first authoritative
+    // hydration. See `restoreFlagshipBeat` for why a legacy
+    // `packet-delivered` + `packet.delivered=false` pair must be
+    // remapped to `packet-choice` instead of projecting the later
+    // recognition fork over an undelivered player.
+    beat: restoreFlagshipBeat({
+      savedBeat: stored?.beat,
+      packetDelivered: Boolean(stored?.packet?.delivered),
+    }),
   },
   story: {
     currentNpcId: null,
@@ -4037,12 +4046,19 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     revision: state.save.revision,
     playerId: state.player.id,
   };
-  // A delivered save is a returning player's next offer, not a terminal
-  // delivery screen. Preserve the completed memory while restoring the
-  // offer beat so its divergent completed-set actions can render.
-  state.scene.beat = typeof saved.beat === "string"
-    ? canonicalFlagshipBeat(saved.beat)
-    : "packet-offered";
+  // A route-return screen is only valid after a delivery. A save made
+  // while the player is still choosing a route can otherwise carry the
+  // older `packet-delivered` beat while its packet remains undelivered;
+  // restoring that contradictory pair projects the later "I ran early"
+  // fork even though the player never chose it. The same guard runs at
+  // the cold-boot path (`page.reload()` lands there, not here) so both
+  // restore sites remap the one invalid persisted shape to
+  // `packet-choice` — see `restoreFlagshipBeat` in
+  // `./flagship-beat-migration.js`.
+  state.scene.beat = restoreFlagshipBeat({
+    savedBeat: saved.beat,
+    packetDelivered: state.packet.delivered,
+  });
 
   // PR #1249 (Soren review) — READ the io-next-job durability stamp
   // written by `buildIoNextJobDurabilityStamp` at save time. This is
