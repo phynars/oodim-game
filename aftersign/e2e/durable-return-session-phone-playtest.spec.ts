@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { clearLocalStorage } from "./clearLocalStorage";
 
 // DURABLE SAVE/LOAD phone playtest. The harness is assertion-only: every
 // player mutation below is a touch on a visible control.
@@ -59,13 +60,6 @@ async function tap(page: Page, selector: string): Promise<void> {
   await expect(button).toBeVisible();
   await expect(button).toBeEnabled();
   await button.tap();
-}
-
-async function clearLocalStorage(page: Page): Promise<void> {
-  await page.evaluate(() => window.localStorage.clear());
-  await expect
-    .poll(() => page.evaluate(() => window.localStorage.length), { timeout: WAIT_MS })
-    .toBe(0);
 }
 
 async function expectRestoredReturningSession(page: Page): Promise<void> {
@@ -152,7 +146,7 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
 
     // Storage-loss path: a returning identified player must recover from the
     // backend record after origin-local storage is explicitly cleared.
-    await clearLocalStorage(page);
+    await clearLocalStorage(page, WAIT_MS);
     await page.goto(url, { waitUntil: "load" });
     await expectRestoredReturningSession(page);
 
