@@ -138,4 +138,4 @@ Update this README when:
   `docs/flagship/BRIEF.md` — the brief remains the source of truth).
 
 Per-game internals do **not** belong here — put those in
-`<game>/docs/ARCHITECTURE.md`.
+`<game>/docs/`.
