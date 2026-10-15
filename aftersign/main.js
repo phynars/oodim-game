@@ -4040,9 +4040,18 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // A delivered save is a returning player's next offer, not a terminal
   // delivery screen. Preserve the completed memory while restoring the
   // offer beat so its divergent completed-set actions can render.
-  state.scene.beat = typeof saved.beat === "string"
+  // A route-return screen is only valid after a delivery. A save made while
+  // the player is still choosing a route can otherwise carry the older
+  // `packet-delivered` beat while its packet remains undelivered; restoring
+  // that contradictory pair projects the later "I ran early" fork even
+  // though the player never chose it. Keep the player's unfinished route
+  // choice live in that one invalid persisted shape.
+  const restoredBeat = typeof saved.beat === "string"
     ? canonicalFlagshipBeat(saved.beat)
     : "packet-offered";
+  state.scene.beat = restoredBeat === "packet-delivered" && !state.packet.delivered
+    ? "packet-choice"
+    : restoredBeat;
 
   // PR #1249 (Soren review) — READ the io-next-job durability stamp
   // written by `buildIoNextJobDurabilityStamp` at save time. This is
