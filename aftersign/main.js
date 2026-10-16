@@ -3856,6 +3856,13 @@ const advance = async () => {
     }
     state.interaction.recognitionEnteredAt = performance.now();
     setBeat("io-return-recognition");
+    // #2336 follow-up: persist the recognition beat on the reload→return
+    // path too. Without this save the authoritative record keeps the
+    // pre-transition `packet-delivered` beat, and a later page.reload()
+    // restores it and paints the returning-session line over it.
+    // Fire-and-forget, matching deliverPacket's save; a failed write must
+    // not break the in-memory transition.
+    void forceSave().catch(() => null);
   }
 };
 
