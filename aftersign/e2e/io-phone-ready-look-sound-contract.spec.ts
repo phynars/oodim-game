@@ -102,17 +102,23 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
 const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
-  await installPhoneReadyRuntimeMarks(page);
+  // forceReload replaces the runtime that owns the observed audio state. Mark
+  // only after it completes: marks installed before this reset retain stale
+  // references and can never observe packet-confirmed.
   await page.evaluate(async () => {
-    const game = (window as Window & { __game?: { input?: { choose?: (choiceId: string) => Promise<void>; advance?: () => Promise<void>; forceReload?: () => Promise<void> }; story?: { memoryBeat?: unknown }; enableAudio?: () => Promise<boolean> } }).__game;
-    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) throw new Error('window.__game.input is not available');
+    const game = (window as Window & { __game?: { input?: { forceReload?: () => Promise<void> }; story?: { memoryBeat?: unknown } } }).__game;
+    if (!game?.input?.forceReload) throw new Error('window.__game.input.forceReload is not available');
     await game.input.forceReload();
     if (game.story) game.story.memoryBeat = null;
-    if (typeof game.enableAudio === 'function') await game.enableAudio();
-    await game.input.choose('keep-packet-sealed');
-    await game.input.choose('deliver-packet');
-    await game.input.advance();
   });
+  await waitForGame(page);
+  await installPhoneReadyRuntimeMarks(page);
+
+  // Drive the shipped controls exactly as a phone player does. __game remains
+  // assertion-only elsewhere in this spec; it is not used to cause progress.
+  await page.locator('#packetButton').click();
+  await page.locator('#deliverButton').click();
+  await page.getByRole('button', { name: 'Return to Io' }).click();
 
   // Separate authored state from diagnostic marks: neither slow condition can
   // consume the full old WAIT_MS window, and their composed budget stays ≤WAIT_MS.
