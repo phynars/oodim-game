@@ -37,11 +37,21 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_BOOT_MS = 180_000;
 const WAIT_MS = 60_000;
 
-// Sealed-packet path: keep-sealed → deliver-packet. `packet-delivered`
-// restores with the returning-session sealed/skipped-route line, and the
-// recognition line the visible advance control must produce is the
-// "sealed, skipped-route" branch of `expectedIoRecognitionLine`.
-const SEALED_DELIVERED_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
+// Sealed-packet path: keep-sealed → deliver-packet (NO
+// acknowledge-kiosk / skip-kiosk-acknowledge tap in between). Before
+// #2326, the restored `packet-delivered` boot line read the normalized
+// `SECOND_ACTION.SKIPPED` memory fact (null → SKIPPED default) and spoke
+// `sealedPacketSkippedRoute` ("…ran before the route finished. Reliable
+// hands, impatient feet.") — a false memory accusing a player who never
+// tapped a route button. The served `armReturningSessionBootLine` gate
+// now reads `state.player.secondAction` directly: null → undefined
+// routeAttention → NEUTRAL `sealedPacket` line. The recognition line that
+// the visible advance control must produce is the sealed-returning tier
+// (the skipped-route axis still rides the
+// `expectedIoRecognitionLine(…, false)` branch for the recognition
+// selector, which continues to anchor on `routeListened === false` for
+// the deep-recall gate).
+const SEALED_DELIVERED_LINE = ioReturningSessionLines.sealedPacket;
 const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
 
 type ColdBootSnapshot = {

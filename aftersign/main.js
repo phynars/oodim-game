@@ -1372,15 +1372,49 @@ const armReturningSessionBootLine = (delivered) => {
   const outcomeFact = state.npcs.io.memory.find(
     (fact) => fact?.kind === "delivery-outcome",
   );
+  // #2326 false-memory fix. `memoryFacts()` at delivery time maps a
+  // null `state.player.secondAction` (player NEVER tapped
+  // "I listened" / "I ran early" before Deliver) to
+  // `SECOND_ACTION.SKIPPED` so the fact SHAPE stays invariant across
+  // the two delivery outcomes. That default is fine for the ledger's
+  // shape invariants but it is NOT a player choice — Io must not
+  // boot a restored save by telling the player they "ran before the
+  // route finished" when they never ran. Gate the route axis on the
+  // durable player-input flag `state.player.secondAction` (restored
+  // from `stored?.player?.secondAction ?? null` at cold boot): only
+  // translate the memory fact into a route attention axis when the
+  // player's own commitment flag confirms the tap happened.
+  //
+  // Without the gate, `secondActionFromMemory` returns SKIPPED on a
+  // no-tap delivery → `chooseIoReturningSessionLine` picks
+  // `sealedPacketSkippedRoute` ("…you still ran before the route
+  // finished. Reliable hands, impatient feet.") — the exact false
+  // memory #2322 / #2326 report. Scope note: #2336 landed a second
+  // `persistAuthoritative()` inside `deliverPacket()`'s 1180ms
+  // setTimeout, which moves the authoritative restore target to
+  // `io-return-recognition` for most sessions — that beat is in the
+  // skip list above and the gate here never runs. The gate still
+  // matters on three paths #2336 did NOT cover:
+  //   (a) a reload racing BEFORE the 1180ms second write commits —
+  //       the restore lands at `packet-delivered` and reaches here;
+  //   (b) `packet-delivered-cold-boot-affordance.spec.ts` which
+  //       deliberately drops the 1180ms callback to prove the
+  //       `packet-delivered` affordance, so its restore is here;
+  //   (c) `flagship-reload-beat-regression.spec.ts` which forks on
+  //       `beat === "packet-delivered"` vs `io-return-recognition`
+  //       at line 128 — the `packet-delivered` branch asserts the
+  //       returning-session line, which runs through this gate.
+  const committedSecondAction = state.player.secondAction;
+  const bootRouteAttention =
+    committedSecondAction === SECOND_ACTION.DONE
+      ? "listened"
+      : committedSecondAction === SECOND_ACTION.SKIPPED
+        ? "skipped"
+        : undefined;
   ioReturningBootLine = outcomeFact
     ? chooseIoReturningSessionLine({
         packetOutcome: outcomeFact.object,
-        routeAttention:
-          secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-            ? "listened"
-            : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
-              ? "skipped"
-              : undefined,
+        routeAttention: bootRouteAttention,
       })
     : chooseIoReturningSessionLine({});
   ioReturningBootBeat = state.scene.beat;

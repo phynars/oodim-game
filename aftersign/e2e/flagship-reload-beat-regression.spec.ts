@@ -46,6 +46,22 @@ type PacketPath = {
   expectedReloadedDeliveredLine: string;
 };
 
+// #2326 fix (served `armReturningSessionBootLine`): these paths tap
+// `keep-sealed` / `open-packet` → `deliver-packet` with NO intervening
+// `acknowledge-kiosk` / `skip-kiosk-acknowledge` tap, so
+// `state.player.secondAction === null` at delivery. `memoryFacts()` still
+// normalises that null → `SECOND_ACTION.SKIPPED` to keep the memory fact
+// SHAPE invariant, but the `armReturningSessionBootLine` gate now consults
+// the durable player-input flag directly: a null commitment yields
+// `routeAttention: undefined`, so `chooseIoReturningSessionLine` returns
+// the NEUTRAL `sealedPacket` / `openedPacket` line — not the
+// `sealedPacketSkippedRoute` / `openedPacketSkippedRoute` false memory
+// that used to accuse an un-tapped player of running early. This branch
+// of the test only runs when the restored beat is `packet-delivered`
+// (see `expectReloadedOutcome` fork, line 128) — i.e. when the #2336
+// 1180ms second write has not yet taken effect. The previous expectations
+// here encoded the false memory as "correct"; updating them matches the
+// fix.
 const PACKET_PATHS: PacketPath[] = [
   {
     name: "sealed packet",
@@ -53,7 +69,7 @@ const PACKET_PATHS: PacketPath[] = [
     expectedOutcome: "sealed",
     expectedRecognitionLine: expectedIoRecognitionLine("sealed", false),
     wrongRecognitionLine: expectedIoRecognitionLine("opened", false),
-    expectedReloadedDeliveredLine: ioReturningSessionLines.sealedPacketSkippedRoute,
+    expectedReloadedDeliveredLine: ioReturningSessionLines.sealedPacket,
   },
   {
     name: "opened packet",
@@ -61,7 +77,7 @@ const PACKET_PATHS: PacketPath[] = [
     expectedOutcome: "opened",
     expectedRecognitionLine: expectedIoRecognitionLine("opened", false),
     wrongRecognitionLine: expectedIoRecognitionLine("sealed", false),
-    expectedReloadedDeliveredLine: ioReturningSessionLines.openedPacketSkippedRoute,
+    expectedReloadedDeliveredLine: ioReturningSessionLines.openedPacket,
   },
 ];
 
