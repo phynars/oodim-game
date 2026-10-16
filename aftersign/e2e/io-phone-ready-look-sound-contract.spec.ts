@@ -148,9 +148,20 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
 
   // Drive the shipped controls exactly as a phone player does. __game remains
   // assertion-only elsewhere in this spec; it is not used to cause progress.
+  //
+  // We tap `#packetButton` then `#deliverButton` and STOP. `deliverPacket()`
+  // auto-advances `packet-delivered` → `io-return-recognition` ~1180ms later
+  // (same transition pinned by `durable-return-session-phone-playtest.spec.ts`
+  // lines 160-167 and `return-to-io-gesture-spans-auto-advance.spec.ts`
+  // lines 1-12). The SAME `#deliverButton` is re-labelled in place from
+  // "Return to Io" to a tone control at the moment the beat flips. A third
+  // click on `Return to Io` would race that relabel: a cold boot that lands
+  // the tap after the swap commits a tone the player never chose; a run
+  // that lands it before gets refused by the 120ms settle gate and times
+  // out. The existing `waitForFunction` on `scene.beat === 'io-return-recognition'`
+  // below already covers the auto-advance — no synthetic click needed.
   await page.locator('#packetButton').click();
   await page.locator('#deliverButton').click();
-  await page.getByRole('button', { name: 'Return to Io' }).click();
 
   // Separate authored state from diagnostic marks: neither slow condition can
   // consume the full old WAIT_MS window, and their composed budget stays ≤WAIT_MS.
