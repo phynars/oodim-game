@@ -42,12 +42,20 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 //   the restored payload reds on the second pass before any
 //   player-visible drift.
 //
-// Runtime premises validated against shipped code at session commit:
+// Runtime premises read off shipped code at session commit (the
+// final arbiter is a green CI run — iter history on this PR shows
+// the header is cheap talk otherwise):
 //   - `restoreFlagshipBeat({ savedBeat: "packet-delivered", packetDelivered: false })`
 //     returns `"packet-choice"` (aftersign/flagship-beat-migration.js:40-45).
 //   - Cold-boot hydration at `aftersign/main.js:1081-1089` invokes
 //     `restoreFlagshipBeat` — reached by BOTH first `page.goto()` on
 //     a slot with a seeded save AND by `page.reload()`.
+//   - The DOM is only safe to query after `window.__game.scene.ready
+//     === true` (same ready-gate the green sibling
+//     `aftersign-packet-recall-failed-feel.playtest.spec.ts` uses).
+//     Earlier iters of this spec skipped the gate and asserted on
+//     `[data-beat-id="packet-choice"]` before cold-boot had painted
+//     the restored beat — that's the red-CI failure Mara called out.
 //   - Server payload shape produced by `buildPersistPayload`
 //     (`aftersign/src/runtime/persistence.js`) carries top-level
 //     `beat`, `packet`, `player`, `delivery`, `memory`, `npcs`,
@@ -69,6 +77,21 @@ const WAIT_MS = 60_000;
 
 const BOOTSTRAP_PLAYER_ID = "local-slice-player";
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
+
+async function waitForReady(page: Page): Promise<void> {
+  // Same ready-gate the green sibling (failed-feel) uses. The DOM
+  // isn't safe to query for `[data-beat-id]` until `scene.ready` is
+  // true — before that, cold-boot restore has not yet called
+  // `renderText()` and `[data-beat-id="packet-choice"]` is not
+  // mounted. Skipping this gate is what reds the spec.
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __game?: { scene?: { ready?: boolean } } }).__game
+        ?.scene?.ready === true,
+    undefined,
+    { timeout: WAIT_MS },
+  );
+}
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
@@ -227,9 +250,10 @@ test.describe("AFTERSIGN failed-route recall reload (phone tap)", () => {
     // in `aftersign/main.js:1081-1089` calls `restoreFlagshipBeat`
     // with the stored `beat` and `packet.delivered`, demoting the
     // contradictory pair to `packet-choice`.
-    await page.goto(`/aftersign/index.html?slot=${slot}`, {
+    await page.goto(`/aftersign/?slot=${slot}`, {
       waitUntil: "load",
     });
+    await waitForReady(page);
 
     // (1) FIRST pass: cold-boot restore lands at packet-choice with
     // the failed-memory offer tray.
@@ -242,6 +266,7 @@ test.describe("AFTERSIGN failed-route recall reload (phone tap)", () => {
     // guard + the failed-memory branch are idempotent across repeated
     // cold boots — the "survives a hard reload" contract.
     await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
     const repairRoute = await expectFailedRouteOfferTray(page, "after reload");
 
     // Visible-player-input proof. The played-input guard
@@ -255,12 +280,31 @@ test.describe("AFTERSIGN failed-route recall reload (phone tap)", () => {
     // by a stale last-render snapshot) would not emit it, so this is
     // the one assertion proving the restored `packet-choice` is a
     // live interactive beat, not just a static DOM.
+    // Filter the save PUT on the specific `routeRisk.lastAction` the
+    // tap writes — Mara's note on #2339: a boot-time PUT under
+    // `/aftersign/save/` can race the real one and false-positive
+    // this handshake. Matching on the tap-written field means only
+    // the authoritative PUT fired by `repair-the-loss`'s onChoose
+    // satisfies this wait; a stray boot write is ignored and the
+    // test waits for the real one.
     const [savePutResponse] = await Promise.all([
       page.waitForResponse((response) => {
         const request = response.request();
+        if (request.method() !== "PUT") return false;
+        if (
+          !new URL(response.url()).pathname.startsWith(`${SAVE_ENDPOINT_BASE}/`)
+        ) {
+          return false;
+        }
+        const body = request.postDataJSON() as
+          | {
+              payload?: {
+                player?: { routeRisk?: { lastAction?: string } };
+              };
+            }
+          | null;
         return (
-          request.method() === "PUT" &&
-          new URL(response.url()).pathname.startsWith(`${SAVE_ENDPOINT_BASE}/`)
+          body?.payload?.player?.routeRisk?.lastAction === "repair-the-loss"
         );
       }, { timeout: WAIT_MS }),
       repairRoute.tap(),
