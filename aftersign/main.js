@@ -3723,9 +3723,19 @@ const choose = async (choiceId) => {
     // prerequisite — so the ending spec goes straight from the
     // handoff tap into `#lightVigilButton`. This branch persists
     // only to keep `orra-served-recognition.spec.ts` reachable.
-    state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
-    state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
-    state.npcs.orra.lastLineMemoryRefs = [];
+    //
+    // Reload safety: the served-recognition spec re-dispatches
+    // `meet-orra` after `page.reload()`. If Orra already holds a vigil
+    // memory fact, re-select the recalled return line (same selector
+    // the boot hydration uses) instead of wiping it back to first
+    // contact. A fresh slot (no fact) still gets first contact.
+    const orraLine = selectOrraRecognitionLine(state.npcs.orra.memory);
+    const orraLineId = orraLine?.lineId || ORRA_FIRST_CONTACT_LINE_ID;
+    state.npcs.orra.lastLineId = orraLineId;
+    state.npcs.orra.lastLine = lineCopyForOrraLineId(orraLineId);
+    state.npcs.orra.lastLineMemoryRefs = orraLineId === ORRA_FIRST_CONTACT_LINE_ID
+      ? []
+      : [orraLineId];
     markStateDirty();
     publishState();
     return;
