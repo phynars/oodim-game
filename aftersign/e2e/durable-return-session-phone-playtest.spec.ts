@@ -3,7 +3,7 @@ import { clearLocalStorage } from "./clearLocalStorage";
 
 // DURABLE SAVE/LOAD phone playtest. The harness is assertion-only: every
 // player mutation below is a touch on a visible control.
-import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 // Cold-start budget for two full WebGL boots + a reload boot.  The
@@ -19,7 +19,21 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 // use 60s for the same reason — see `durable-save-load.spec.ts:10`
 // (`WAIT_MS = 60_000`) and every 60s WAIT_MS in this directory.
 const WAIT_MS = 60_000;
-const RETURNING_SESSION_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
+// #2336: deliverPacket() now writes the durable save twice — a
+// synchronous `persistAuthoritative()` at `packet-delivered`, then a
+// SECOND one inside a 1180ms setTimeout AFTER
+// `setBeat("io-return-recognition")`. On the reload/clear/fresh-context
+// restore paths below we wait for `io-return-recognition` BEFORE the
+// restore so the second write has committed; the authoritative restore
+// target is therefore `io-return-recognition` with the recognition line,
+// not `packet-delivered` with the returning-session line.
+// Sealed-outcome, route NOT listened (route is still armed at the kiosk
+// in this spec because `#acknowledgeRouteButton` / `#skipRouteButton`
+// are disabled before delivery). Mirrors
+// expectedIoRecognitionLine("sealed", false) and matches
+// SEALED_RECOGNITION_LINE in
+// packet-delivered-cold-boot-affordance.spec.ts.
+const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
 
 type FlagshipReadOnlySnapshot = {
   scene: { beat: string };
@@ -62,19 +76,22 @@ async function tap(page: Page, selector: string): Promise<void> {
   await button.tap();
 }
 
-async function expectRestoredReturningSession(page: Page): Promise<void> {
+async function expectRestoredRecognitionSession(page: Page): Promise<void> {
   await waitForReady(page);
   await expect(page.locator("#line")).toBeVisible();
-  await expect(page.locator("#line")).toHaveText(RETURNING_SESSION_LINE);
+  // #2336: the authoritative save pins `io-return-recognition` (the
+  // 1180ms setTimeout in deliverPacket() writes AFTER setBeat(...)),
+  // so the recognition tier line lands on `#line` directly on restore.
+  await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE);
 
   const restored = await snapshot(page);
-  expect(restored.scene.beat).toBe("packet-delivered");
+  expect(restored.scene.beat).toBe("io-return-recognition");
   expect(restored.packet.delivered).toBe(true);
   expect(restored.packet.sealed).toBe(true);
   expect(restored.delivery.outcome).toBe("sealed");
   expect(restored.npcs.io.memory.length).toBeGreaterThan(0);
   expect(restored.npcs.io.memory.some((fact) => fact.object === "sealed")).toBe(true);
-  expect(restored.npcs.io.lastLine).toBe(RETURNING_SESSION_LINE);
+  expect(restored.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
 }
 
 async function openFreshPhoneContext(browser: Browser): Promise<Page> {
@@ -140,15 +157,28 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     expect(delivered.delivery.outcome).toBe("sealed");
     expect(delivered.npcs.io.memory.length).toBeGreaterThan(0);
 
+    // #2336: deliverPacket() auto-advances to `io-return-recognition`
+    // ~1180ms after the delivery tap AND fires a SECOND
+    // `persistAuthoritative()` inside that setTimeout. We MUST wait
+    // for the beat transition before reloading — otherwise the reload
+    // races the second persist and the restore target is undefined.
+    // Once the beat is `io-return-recognition` in-memory, the second
+    // write has already been issued and the authoritative save is
+    // `io-return-recognition`, not `packet-delivered`.
+    await expect
+      .poll(async () => (await snapshot(page)).scene.beat, { timeout: WAIT_MS })
+      .toBe("io-return-recognition");
+
     // Existing reload path: same context, a real document reload.
+    // Restores DIRECTLY into `io-return-recognition` now.
     await page.reload({ waitUntil: "load" });
-    await expectRestoredReturningSession(page);
+    await expectRestoredRecognitionSession(page);
 
     // Storage-loss path: a returning identified player must recover from the
     // backend record after origin-local storage is explicitly cleared.
     await clearLocalStorage(page, WAIT_MS);
     await page.goto(url, { waitUntil: "load" });
-    await expectRestoredReturningSession(page);
+    await expectRestoredRecognitionSession(page);
 
     // Cross-context path: no cookies or localStorage are carried over. The
     // same identified slot must therefore recover from the backend record,
@@ -156,7 +186,7 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     const freshPage = await openFreshPhoneContext(browser);
     try {
       await freshPage.goto(url, { waitUntil: "load" });
-      await expectRestoredReturningSession(freshPage);
+      await expectRestoredRecognitionSession(freshPage);
     } finally {
       await freshPage.context().close();
     }

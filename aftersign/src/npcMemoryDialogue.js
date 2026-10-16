@@ -23,12 +23,12 @@ const IO_LINES = Object.freeze({
   remembersSecondActionDone: Object.freeze({
     id: "io-memory-kiosk-second-action-done",
     speaker: "Io",
-    text: "You acknowledged the route. Most couriers let the second signal die.",
+    text: "You listened to the route. Most couriers let the second signal die.",
   }),
   remembersSecondActionSkipped: Object.freeze({
     id: "io-memory-kiosk-second-action-skipped",
     speaker: "Io",
-    text: "You skipped the route acknowledgment. Speed has a voice too.",
+    text: "You ran early, before the route acknowledgment finished. Speed has a voice too.",
   }),
   remembersNoDurableFact: Object.freeze({
     id: "io-memory-intro-seen-no-fact",
