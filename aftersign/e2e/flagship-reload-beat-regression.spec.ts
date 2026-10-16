@@ -244,6 +244,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
   }
 
   test("sealed and opened reload paths produce distinct Io recognition lines", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page, PACKET_PATHS[0]);
     await playSaveReloadPath(page, PACKET_PATHS[1]);
