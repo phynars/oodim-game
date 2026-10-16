@@ -1,9 +1,20 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 // AFTERSIGN failed-route recall must survive a real browser reload after the
 // player has re-entered the packet flow. This is deliberately a served-page
 // contract: the save is seeded through the authoritative endpoint, player
 // movement is taps only, and window.__game is not used to drive the run.
+//
+// Reload race (why `tapAndWaitForSave` matters):
+//   `#packetButton` triggers the transition to `packet-choice`, which the
+//   persistence layer debounces into a PUT /aftersign/save/{player}/{slot}.
+//   If the spec reloads immediately after the tap, the browser may tear
+//   down the page before that PUT has flushed — and `restoreFlagshipBeat`
+//   on next boot will see the stale `packet-offered` payload, not
+//   `packet-choice`. That is exactly the failure mode CI hit on the first
+//   version of this spec. We wait for the specific PUT whose payload beat
+//   is `packet-choice` before reloading, matching the pattern pinned by
+//   `m-loop-two-round-divergence.playtest.spec.ts :: tapAndWaitForSave`.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
@@ -15,6 +26,28 @@ async function waitForBeat(page: Page, beatId: string): Promise<void> {
   await expect(page.locator(`[data-beat-id="${beatId}"]`)).toBeVisible({
     timeout: WAIT_MS,
   });
+}
+
+async function tapAndWaitForSave(
+  page: Page,
+  control: Locator,
+  beat: string,
+): Promise<void> {
+  // Wait for the PUT whose payload beat matches THIS tap's transition.
+  // A prior save can already be in flight with the old beat; filtering by
+  // `payload.beat === beat` guarantees we don't false-positive on it.
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => {
+      const request = response.request();
+      return (
+        request.method() === "PUT" &&
+        new URL(response.url()).pathname.startsWith(`${SAVE_ENDPOINT_BASE}/`) &&
+        request.postDataJSON()?.payload?.beat === beat
+      );
+    }, { timeout: WAIT_MS }),
+    control.tap(),
+  ]);
+  expect(response.ok(), `save at ${beat} must succeed`).toBe(true);
 }
 
 async function seedFailedRouteRiskSave(page: Page, slot: string): Promise<void> {
@@ -63,7 +96,10 @@ test.describe("AFTERSIGN failed-route recall reload (phone tap)", () => {
     await waitForBeat(page, "packet-offered");
 
     await page.locator("#job-offer-job-safe-delivery").tap();
-    await page.locator("#packetButton").tap();
+    // Wait for the authoritative PUT carrying the `packet-choice` beat to
+    // flush before reload — otherwise the browser can tear down mid-write
+    // and `restoreFlagshipBeat` rehydrates the stale `packet-offered`.
+    await tapAndWaitForSave(page, page.locator("#packetButton"), "packet-choice");
     await waitForBeat(page, "packet-choice");
 
     await page.reload({ waitUntil: "load" });
