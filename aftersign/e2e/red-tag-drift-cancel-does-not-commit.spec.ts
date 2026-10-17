@@ -74,12 +74,26 @@ test("drift-cancelled pointer drag does not commit SEALED via synthesised click"
 
   // Readout format (main.js:3150) is plain text:
   //   `story: <beat> · packet <sealed|opened|delivered X> · route … · memory: … · player …`
-  // So the beat stays at `packet-offered` and the packet-status
-  // substring must remain `packet opened` (initial state), never
-  // `packet sealed`. Both assertions are falsifiable: if the fix
-  // regressed to the stale `active+beat` guard, the synthesised
-  // click would commit SEALED → beat advances to `packet-choice`
-  // and the readout would read `packet sealed`.
-  await expect(page.locator("#stateReadout")).toContainText("packet-offered");
-  await expect(page.locator("#stateReadout")).not.toContainText("packet sealed");
+  //
+  // Soren iter-4 (AI008/AI007 blocking): the earlier draft asserted
+  // the readout did NOT contain `packet sealed`, but a fresh slot
+  // defaults `state.packet.sealed = true` (main.js:1163) and the
+  // readout maps that to the literal `packet sealed` whenever the
+  // packet is undelivered (main.js:3139-3143). So that negative
+  // assertion fails even when drift-cancel works correctly — it
+  // was a false guard.
+  //
+  // The one unambiguous signal that the synthesised click did NOT
+  // walk through `commitPacketOutcome(SEALED)` is the beat: SEALED
+  // calls `setBeat("packet-choice")` right after it stamps
+  // `state.interaction.lastAction`, so if the regression came back
+  // the readout prefix would flip from `story: packet-offered` to
+  // `story: packet-choice`. If `event.detail === 0` holds, the
+  // listener returns early and the beat stays at `packet-offered`.
+  //
+  // Falsifiability: delete the `if (event.detail !== 0) return;`
+  // guard in `inputAdapters.js` and this assertion fails (the
+  // synthesised click commits SEALED and the beat advances).
+  await expect(page.locator("#stateReadout")).toContainText("story: packet-offered");
+  await expect(page.locator("#stateReadout")).not.toContainText("story: packet-choice");
 });
