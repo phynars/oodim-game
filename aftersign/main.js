@@ -5228,6 +5228,14 @@ attachRuntimeInputAdapters({
   packetRelease,
   handleScenePointer,
   choose,
+  // #2356 iter-2: the click/keyboard activation seam inside the adapter
+  // commits SEALED through the SAME funnel the pointer path uses so
+  // round-two red-tag runs registerPacketChoice + the red-tag copy
+  // override + lastAction + the beat transition. Threading these two
+  // closes the gap Soren flagged (AI008) between the shipped pointer
+  // path and the non-pointer activation path.
+  commitPacketOutcome,
+  PACKET_OUTCOME,
   markStateDirty,
   markPointerIntent,
 });

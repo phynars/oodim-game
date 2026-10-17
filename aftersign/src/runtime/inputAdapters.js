@@ -46,6 +46,16 @@ export const attachRuntimeInputAdapters = ({
   packetRelease,
   handleScenePointer,
   choose,
+  // #2356 iter-2 (Soren AI008): the click/keyboard activation seam must
+  // route through `commitPacketOutcome(SEALED)` so it runs the SAME
+  // funnel as the pointer path — `registerPacketChoice`, the red-tag
+  // button-copy override, `applyPacketFeedback`, intent feedback, and
+  // `state.interaction.lastAction` — not through `choose("keep-sealed")`,
+  // which only flips `state.packet.sealed` and advances the beat and
+  // would leave `lastAction` / the red-tag copy write / the memory-
+  // fact registration unexecuted.
+  commitPacketOutcome,
+  PACKET_OUTCOME,
   markStateDirty,
   markPointerIntent,
 }) => {
@@ -224,15 +234,29 @@ export const attachRuntimeInputAdapters = ({
     packetPressY = null;
   });
 
-  // `HTMLElement.click()` and keyboard activation do not emit the pointer
-  // stream above. They must still commit the same visible packet choice;
-  // otherwise the round-two red-tag button can retain its label yet do
-  // nothing. Pointer-originated clicks arrive after pointerup, when the
-  // choice has already advanced out of packet-offered, so this guard also
-  // prevents a second commit for ordinary touch/mouse play.
+  // #2356 — `HTMLElement.click()` and keyboard activation (Enter / Space
+  // on a focused `<button>`) do NOT emit the pointer stream above. On
+  // round-two red-tag the harness delivers the packet, the player
+  // returns, Io hands off, and `#packetButton` re-renders with the
+  // "Red tag — Saint Orra" label but no pointer-side handler is
+  // registered — tapping the button becomes a dead affordance.
+  //
+  // The commit MUST go through `commitPacketOutcome(SEALED)` — the same
+  // funnel the pointer-driven `packetRelease` uses — so this activation
+  // runs `registerPacketChoice`, the red-tag button-copy override,
+  // `applyPacketFeedback` + intent feedback, and sets
+  // `state.interaction.lastAction` before `setBeat("packet-choice")`.
+  // Routing through `choose("keep-sealed")` (prior draft, Soren AI008)
+  // skipped every one of those and reached packet-choice stripped of
+  // the memory-fact + lastAction stamps the rest of the pipeline reads.
+  //
+  // Pointer-originated clicks arrive AFTER `pointerup` has already
+  // called `commitPacketOutcome`, so by the time this `click` fires
+  // the beat has advanced out of `packet-offered` — the beat guard
+  // below short-circuits the second commit for normal touch/mouse play.
   packetButton.addEventListener("click", () => {
     if (state.interaction.packetIntent.active || state.scene.beat !== "packet-offered") return;
-    choose("keep-sealed");
+    commitPacketOutcome(PACKET_OUTCOME.SEALED);
   });
 
   // #2174: all three return-surface buttons (acknowledgeRouteButton,
