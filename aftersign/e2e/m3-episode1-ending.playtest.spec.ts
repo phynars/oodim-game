@@ -95,7 +95,12 @@ async function visibleEndingActions(ending: Locator): Promise<string[]> {
 test.describe("M3 Episode 1 ending phone playtest", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("two durable red-tag records play by visible taps into different endings", async ({ page }) => {
+  // Gated until #2261 ships Episode 1 ending beats A/B into aftersign/main.js.
+  // This spec asserts `[data-episode-ending]:visible` and `#packetButton[data-sealed]`,
+  // neither of which exists on the served surface yet (see Soren's review on #2350
+  // and docs/plan/product-plan.md: no ending beats present). Removing the fixme
+  // would turn CI red on main. Lift this `test.fixme` in the same PR as #2261.
+  test.fixme("two durable red-tag records play by visible taps into different endings", async ({ page }) => {
     test.setTimeout(120_000);
     const intactSlot = `m3-episode1-intact-${Date.now()}`;
     const openedSlot = `m3-episode1-opened-${Date.now()}`;
