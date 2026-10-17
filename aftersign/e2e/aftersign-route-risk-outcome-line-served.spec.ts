@@ -15,7 +15,7 @@ if (!SAFE_OUTCOME_LINE) {
   throw new Error("aftersignRouteOutcomeLine('safe') returned null — the copy module lost its SAFE entry; fix the copy, don't skip the spec.");
 }
 const FRESH_DELIVERED_LINE =
-  "Done. Blue route, clean handoff. I set its mark beside your name. Come back — I will know which road held you.";
+  "Done. Blue route, clean handoff. I put its mark beside your name. Come back — I will know which road held you.";
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
