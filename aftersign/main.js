@@ -642,6 +642,7 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
@@ -746,6 +747,7 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
   stateReadout.hidden = true;
 }
 const failureSting = document.querySelector(".failure-sting");
+const feedbackController = createFeedbackController({ document, failureSting });
 const packetButton = document.querySelector("#packetButton");
 let packetPressFeedback = { isPressed: false, releaseAtMs: null };
 let packetPressFeedbackFrame = null;
@@ -5348,13 +5350,13 @@ const tick = (now) => {
   camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
   camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
   sampleMemoryBeatCameraProbe();
-  document.documentElement.style.setProperty("--confirm-shake-x", `${confirmEnvelope.hudShakeX - Math.round(failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
-  document.documentElement.style.setProperty("--confirm-shake-y", `${confirmEnvelope.hudLiftY + Math.round(failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
-  document.documentElement.style.setProperty("--confirm-reticle-scale", `${confirmEnvelope.reticleScale.toFixed(3)}`);
-  document.documentElement.style.setProperty("--confirm-reticle-y", `${confirmEnvelope.reticleLiftPx.toFixed(2)}px`);
-  if (failureSting) {
-    failureSting.style.opacity = `${failureEnvelope.flashAlpha.toFixed(3)}`;
-  }
+  feedbackController.renderFrame({
+    confirmEnvelope,
+    failureEnvelope,
+    failureWobble,
+    failureFalloff,
+    failureFeel: FAILURE_FEEDBACK,
+  });
   screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
   slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45 + packetProgress * 0.4;
   signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3 + recognitionMotion.signGlowBoost + packetProgress * 1.1;
