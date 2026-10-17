@@ -671,6 +671,38 @@
         flex-wrap: wrap;
         pointer-events: auto;
       }
+
+      /* M3-E1 (#2261 / PR #2265) — the Episode 1 ending host is
+         empty until the player's vigil tap commits an ending. While
+         empty it must contribute ZERO to layout so a sibling tray
+         (e.g. `.controls` above, containing the job-offer button
+         the `aftersign-job-offer-press-juice.playtest.spec.ts`
+         trip-wire presses) cannot shift mid-press. `display: none`
+         on `:empty` collapses the host out of normal flow until
+         `renderEpisodeOneEnding` appends the ending card child —
+         at which point the `:empty` guard no longer matches, the
+         host paints, and the served ending spec locates the card
+         via `#episodeOneEnding [data-ending-id]` as before. Belt-
+         and-suspenders against the AI007 regression Soren flagged
+         on iter-7: the host already sits AFTER `.controls` (a
+         block-flow sibling), but a defensive collapse here means
+         ANY future flex/grid refactor of `.panel` still cannot
+         let an empty host leak layout into the press window. */
+      #episodeOneEnding:empty {
+        display: none;
+      }
+
+      /* PR #2265 root cause of the served-ending 90s timeout: the
+         vigil tray is a sibling of `.controls` directly under `.hud`,
+         and `.hud` is `pointer-events: none`. `.route-choice` does
+         not re-enable pointer events (its other instances live INSIDE
+         `.controls`, which does), so #lightVigilButton inherited
+         `none`, the tap fell through to the canvas, and the ending
+         could never be committed by a player. Opt the tray back in,
+         same posture as `.slice-save-controls` (#2225) below. */
+      #vigilChoice {
+        pointer-events: auto;
+      }
       /* #2225: the slice-save row is a sibling of `.controls` INSIDE
          `.hud` — and `.hud` sets `pointer-events: none` (see rule
          above) so the whole tray is inert by default and only
@@ -1231,6 +1263,30 @@
           </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
           <button id="soundButton" type="button">Wake kiosk sound</button>
+        </div>
+        <!-- #2265: ending host sits AFTER .controls so its appearance
+             cannot push the job-offer button mid-press (maxTravel <= 6px). -->
+        <div id="episodeOneEnding" aria-live="polite"></div>
+        <!-- M3-E1 (#2261) — lives OUTSIDE .controls so toggling it
+             during the job-take press cannot re-lay out the tray.
+             Episode 1 vigil surface. Appears at the
+             `io-next-job` beat once `state.player.secondPacketHandoffAccepted`
+             is true (the red-tag has been handed over). The player picks
+             ONE of two vigil actions for Saint Orra:
+               • light-vigil → commits the Episode 1 ending (the ending
+                 resolver reads `packet.sealed` + `delivery.id` and stamps
+                 `state.story.endingId` / renders #episodeOneEnding).
+               • spare-vigil → mints an Orra memory fact (mercy row) but
+                 does NOT commit an ending — the arc is left open-ended,
+                 per Soren's AI001 call-out on PR #2265 that the ending
+                 must not fire on BOTH Orra actions indistinguishably.
+             Both buttons carry `data-choice-id="…"` so the shipped
+             document-level delegate in main.js can route the tap through
+             the canonical `choose()` seam a tap-played spec drives. -->
+        <div id="vigilChoice" class="route-choice" data-visible="false" aria-label="Choose Saint Orra's vigil action">
+          <span class="route-choice-label">Saint Orra's vigil</span>
+          <button id="lightVigilButton" type="button" data-choice-id="light-vigil" data-aftersign-tap-choice="light-vigil">Light the vigil</button>
+          <button id="spareVigilButton" type="button" data-choice-id="spare-vigil" data-aftersign-tap-choice="spare-vigil">Spare the vigil</button>
         </div>
         <!-- #2225: the slice-save control lives in its own row so a
              mis-aimed thumb cannot wipe the player's run while reaching
