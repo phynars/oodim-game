@@ -21,4 +21,4 @@ Run Context B against a different fresh slot. It must not render an ending card 
 
 ## Scope boundary
 
-This contract consumes an existing served ending renderer. It does not introduce a second ending UI, forward-hook attributes, or a pure-only substitute for the fresh-context proof.
+This contract is a target, not a report: no served ending renderer exists in the repo yet. The renderer and its `data-ending-id` / `data-ending-cause` attributes land with #2261 (Bell Archive A/B wired into `aftersign/main.js`); the two-context 390×844 proof and the fresh-slot negative control land in the taps-only harness owned by #2259. This document does not introduce a second ending UI, forward-hook attributes, or a pure-only substitute for the fresh-context proof — those must come from the stories above.
