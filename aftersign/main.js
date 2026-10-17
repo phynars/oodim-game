@@ -245,6 +245,26 @@ import {
 import {
   renderOrraFirstNameDialogue,
 } from "../apps/web/src/aftersign/orraFirstNameDialogue.ts";
+// M3-E1 (#2260) — Saint Orra's red-tag payback. The three symbols
+// below drive renderText()'s payback button and choose()'s commit
+// branch at the io-return-recognition beat. The pure contract lives
+// in `./src/orraPayback.js`:
+//   • orraPaybackActionForDelivery({ id, outcome }) → the stable
+//     action id the button stamps as `data-orra-payback-action`.
+//   • orraPaybackLabel(action) → the authored button copy.
+//   • orraPaybackEndingBeat(action) → the ending-beat id the action
+//     carries forward for #2259's consumer spec (the engine's
+//     `AftersignStoryBeatId` union has no slot for an ending beat
+//     today; this token is a forward hook, not a current render).
+// Played-not-driven proof lives in
+// `aftersign/e2e/orra-payback.playtest.spec.ts` — sealed-outcome
+// commit → `carry-name-to-bell-archive` button visible + enabled,
+// and the id survives a reload against the same slot.
+import {
+  orraPaybackActionForDelivery,
+  orraPaybackLabel,
+  orraPaybackEndingBeat,
+} from "./src/orraPayback.js";
 // M-LOOP-E1 (#1372) — route/risk choice each run, recorded as a
 // memory fact that feeds the next run. Wiring it into main.js here
 // turns `routeRiskMemory.ts` from a pure contract into a SHIPPED
@@ -1156,6 +1176,10 @@ const state = {
     // board uses this durable handoff marker to keep Io's red-tag route in
     // view instead of silently replacing the job at the round boundary.
     secondPacketHandoffAccepted: Boolean(stored?.player?.secondPacketHandoffAccepted),
+    // The action Orra made available after the red-tag delivery. This is
+    // persisted with the player record, so a reload cannot turn one ending
+    // route into the other through browser-local state.
+    orraPaybackAction: stored?.player?.orraPaybackAction ?? null,
   },
   packet: {
     delivered: Boolean(stored?.packet?.delivered),
@@ -2341,6 +2365,59 @@ const renderText = () => {
   const isPacketChoiceBeat = state.scene.beat === "packet-choice";
   const isPacketDeliveredBeat = state.scene.beat === "packet-delivered";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
+  const isRedTagReturnBeat = isReturnRecognitionBeat && state.delivery.id === "red-tag";
+  const orraPaybackAction = isRedTagReturnBeat
+    ? orraPaybackActionForDelivery(state.delivery)
+    : null;
+  let orraPaybackButton = document.getElementById("orraPaybackAction");
+  // Soren PR #2264 review AI006: once the player has committed the
+  // payback action (recorded on `state.player.orraPaybackAction` by
+  // `choose()` and persisted across reload), the beat stays on
+  // `io-return-recognition` but the button must stay stamped as
+  // committed on every subsequent `renderText()` frame — otherwise
+  // the ~60Hz tick would silently repaint the button into its
+  // pre-commit state and the played proof could never observe the
+  // commit. The `data-orra-payback-committed` surface is what the
+  // e2e in orra-payback.playtest.spec.ts asserts.
+  const committedPaybackAction = state.player?.orraPaybackAction ?? null;
+  if (orraPaybackAction) {
+    if (!orraPaybackButton) {
+      orraPaybackButton = document.createElement("button");
+      orraPaybackButton.type = "button";
+      orraPaybackButton.id = "orraPaybackAction";
+      line.insertAdjacentElement("afterend", orraPaybackButton);
+    }
+    // ROOT CAUSE of the 180s e2e timeout (PR #2264): this button is
+    // mounted after `#line` inside `.panel`, and `.hud` sets
+    // `pointer-events: none` (aftersign/index.html `.hud` rule). Only
+    // `.controls` / `.slice-save-controls` opt back in, so the button
+    // inherited `none`: it was visible + enabled but every tap fell
+    // through to the canvas, and Playwright's untimed `tap()` retried
+    // its hit-target check until the test timeout. Opt in explicitly.
+    orraPaybackButton.style.pointerEvents = "auto";
+    orraPaybackButton.setAttribute("data-orra-payback-action", orraPaybackAction);
+    orraPaybackButton.setAttribute("data-choice-id", orraPaybackAction);
+    setTextContentIfChanged(orraPaybackButton, orraPaybackLabel(orraPaybackAction));
+    if (committedPaybackAction) {
+      orraPaybackButton.disabled = true;
+      orraPaybackButton.setAttribute(
+        "data-orra-payback-committed",
+        committedPaybackAction,
+      );
+      orraPaybackButton.setAttribute(
+        "data-orra-payback-ending",
+        orraPaybackEndingBeat(committedPaybackAction),
+      );
+      orraPaybackButton.onclick = null;
+    } else {
+      orraPaybackButton.disabled = false;
+      orraPaybackButton.removeAttribute("data-orra-payback-committed");
+      orraPaybackButton.removeAttribute("data-orra-payback-ending");
+      orraPaybackButton.onclick = () => { void choose(orraPaybackAction); };
+    }
+  } else if (orraPaybackButton) {
+    orraPaybackButton.remove();
+  }
   // #1812 render — render `ioReturnLine(state.delivery.outcome)` into
   // ITS OWN sibling paragraph next to `#line`, mirroring the
   // `#ioConsequenceLine` seam above. `#line.textContent` remains owned
@@ -3799,6 +3876,51 @@ const choose = async (choiceId) => {
       renderText();
       publishState();
     }
+    return;
+  }
+
+  if (
+    choiceId === "carry-name-to-bell-archive"
+    || choiceId === "leave-name-with-orra"
+  ) {
+    const offeredAction = orraPaybackActionForDelivery(state.delivery);
+    if (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction) {
+      return;
+    }
+    // M3-E1 (#2260) — Soren PR #2264 review AI006: the earlier draft
+    // called `setBeat(orraPaybackEndingBeat(choiceId))` where the
+    // ending-beat id (`ending-bell-archive` / `ending-orra-keeps-name`)
+    // is NOT in the engine's `AftersignStoryBeatId` union and no
+    // renderer owns it — the tap landed on a beat nothing drew.
+    // The engine's ending-beat renderer is #2259's slice; today the
+    // commit is proven by the DURABLE record on
+    // `state.player.orraPaybackAction` (survives reload via
+    // deliverySnapshotState / applyRestoredState) plus the committed
+    // data stamp on the payback button below. The beat deliberately
+    // stays on `io-return-recognition` so the DOM remains in a beat
+    // the renderer owns.
+    state.player.orraPaybackAction = choiceId;
+    // Mark the committed outcome on the button itself so the played
+    // proof (`aftersign/e2e/orra-payback.playtest.spec.ts`) can
+    // observe the tap landing without depending on a yet-unrendered
+    // ending beat. The forward-hook ending-beat id is also surfaced
+    // for #2259's downstream consumer; keeping the symbol imported
+    // and read from here prevents a dead-import regression as the
+    // consumer lands.
+    const endingBeatId = orraPaybackEndingBeat(choiceId);
+    const committedButton = document.getElementById("orraPaybackAction");
+    if (committedButton) {
+      committedButton.setAttribute("data-orra-payback-committed", choiceId);
+      committedButton.setAttribute("data-orra-payback-ending", endingBeatId);
+      committedButton.disabled = true;
+    }
+    markStateDirty();
+    await forceSave();
+    // Do NOT call renderText() here — it would re-build the payback
+    // button without the committed stamp and re-enable it. The commit
+    // is terminal for this beat; the DOM mutation above IS the surface
+    // the player and the spec read.
+    publishState();
     return;
   }
 
