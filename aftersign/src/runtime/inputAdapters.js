@@ -250,11 +250,22 @@ export const attachRuntimeInputAdapters = ({
   // skipped every one of those and reached packet-choice stripped of
   // the memory-fact + lastAction stamps the rest of the pipeline reads.
   //
-  // Pointer-originated clicks arrive AFTER `pointerup` has already
-  // called `commitPacketOutcome`, so by the time this `click` fires
-  // the beat has advanced out of `packet-offered` — the beat guard
-  // below short-circuits the second commit for normal touch/mouse play.
-  packetButton.addEventListener("click", () => {
+  // Soren #2357 iter-3 (AI007/blocking): a pointer-driven DRAG that
+  // drifts past `DRIFT_CANCEL_PX` is CANCELLED inside `packetMove`
+  // without committing (CANCELLED is not an `isCommittedOutcome` —
+  // see `main.js:3380`). The beat STAYS at `packet-offered` and
+  // `packetIntent.active` flips to `false` on release — then the
+  // browser still fires `click`. The prior guard (active + beat only)
+  // would commit SEALED on top of the player's failed drag, overriding
+  // the cancel path. Gate on `event.detail === 0`, which is the browser
+  // signal for a non-pointer activation (keyboard Enter/Space on a
+  // focused `<button>`, or a scripted `HTMLElement.click()`). A real
+  // pointer click always has `detail >= 1` (the click count), so this
+  // listener is a strict no-op for mouse/touch — pointer play keeps
+  // flowing exclusively through `pointerdown` → `pointerup` /
+  // `pointercancel`, including the drift-cancel failure path.
+  packetButton.addEventListener("click", (event) => {
+    if (event.detail !== 0) return;
     if (state.interaction.packetIntent.active || state.scene.beat !== "packet-offered") return;
     commitPacketOutcome(PACKET_OUTCOME.SEALED);
   });
