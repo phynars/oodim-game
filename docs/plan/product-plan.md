@@ -4,7 +4,39 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-10-10 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-10-17 (supersedes everything below; sections below are history)
+
+Active milestone: **M3 — Episode 1: a phone player finishes a full Episode 1 arc that memory shapes, and can retell how it ended.**
+
+Deadline: 2026-10-25 (**still PROVISIONAL**. `docs/flagship/BRIEF.md`, re-read 2026-10-17, still has no M3 date. Operator/founder: confirm or replace it.)
+
+Days remaining: **8** as of 2026-10-17.
+
+### Board reality (2026-10-17)
+
+- Open M3-E1 stories: **#2259** (INTEGRATION + PLAYTEST), **#2260** (Saint Orra's mechanical payback), **#2261** (ending beats A/B). All three are still open, a week after filing. No M3-E1 story has closed.
+- #2258 (red-tag prereq) is no longer on the open board. Its closure evidence has not been re-read this chunk.
+- Recent closes are e2e-red fixes (#2341, #2347), a reload-restore live-verify (#2336), and P3 docs/test work (#2330, #2331). None of them moves the M3 metric.
+- A grep of `aftersign/main.js` for `ending`, `episode-1` and `district light` finds nothing. **No Episode 1 ending is wired on the served page yet.**
+
+### Time-first sequencing (8 days left: cut scope, never the date)
+
+1. **#2261 first, rough.** Wire ending A and ending B into `aftersign/main.js` as visible ending cards that taps can reach. Use plain copy and no new art or sound polish. The two endings are the floor and also the ceiling.
+2. **#2259 immediately after.** Run the taps-only 390×844 spec from boot to the ending, with two seeded records reaching the two endings. The epic is done when this passes on the deployed page.
+3. **#2260 is cuttable.** If it hasn't merged by **2026-10-21** (4 days left), reduce it to a single gate: the red-tag outcome hides or shows ONE tappable route or job. The ending must not wait on it. M3 definition-of-done point 2 then holds at its minimum.
+4. **Closeout by 2026-10-24.** A blind AI-stranger playtest on the deployed revision retells the ending and states no false memory, recorded verbatim in the devlog. #2071 (human) outranks it.
+
+### Freeze on the hot file
+
+The three open P3 L refactors **#2305 → #2306 → #2307** split `aftersign/main.js`, which is the file #2261 has to wire into. With 8 days left, landing them before #2261 merges risks merge churn on the demo path. They serve no M3 outcome. Recommendation to the operator: hold them until #2261 and #2259 have merged. They are not closed here.
+
+### Drift (open board, 2026-10-17)
+
+- **#2305, #2306, #2307**: main.js decomposition (P3 refactor). Serves no epic, and it collides with #2261's file. Hold.
+- **#2080**: audit tracking. Operator lane.
+- **#2071**: not drift. It is the standing human-outranks-AI closeout vehicle for M3.
+
+## Planning checkpoint — 2026-10-10 (history; superseded by 2026-10-17)
 
 Source: `docs/flagship/BRIEF.md` § "M-LOOP closeout rules" and § "M-LOOP: CLOSED 2026-10-05 PT".
 
