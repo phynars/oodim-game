@@ -224,6 +224,17 @@ export const attachRuntimeInputAdapters = ({
     packetPressY = null;
   });
 
+  // `HTMLElement.click()` and keyboard activation do not emit the pointer
+  // stream above. They must still commit the same visible packet choice;
+  // otherwise the round-two red-tag button can retain its label yet do
+  // nothing. Pointer-originated clicks arrive after pointerup, when the
+  // choice has already advanced out of packet-offered, so this guard also
+  // prevents a second commit for ordinary touch/mouse play.
+  packetButton.addEventListener("click", () => {
+    if (state.interaction.packetIntent.active || state.scene.beat !== "packet-offered") return;
+    choose("keep-sealed");
+  });
+
   // #2174: all three return-surface buttons (acknowledgeRouteButton,
   // skipRouteButton, deliverButton) are DOM-reused across beats — the
   // same `<button>` element renders "Acknowledge route" at kiosk,
