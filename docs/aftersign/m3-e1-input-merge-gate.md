@@ -1,22 +1,20 @@
-# M3-E1 merge sequencing note
+# M3-E1 input merge gate
 
-> **Expiry:** delete this file when PR #2265 merges or closes. It exists only to coordinate landing order; it is not a standing input-work spec.
+**Status: synthetic served coverage only — not physical-phone validation.**
 
-## Why this note exists
+PR #2265 adds a tap-driven served ending funnel and a dedicated vigil-button click route. That is useful regression coverage, but it does not reproduce or resolve the tactile interaction concern tracked under #2071: no served physical-phone reproduction exists as of 2026-10-18.
 
-PR #2265 is the active owner of the Episode 1 vigil-choice tap surface and the served phone E2E funnel for the ending. While that branch is open, parallel edits to the same files can land first and force a painful rebase on #2265, or introduce a second dispatch path that races the one being reviewed.
+## Merge boundary
 
-This is a sequencing concern, not an input-work directive. No tactile thresholds, hit-target sizes, or gesture timings change as a result of this note.
+- Treat the new served Playwright path as a DOM/input-routing regression check only.
+- Do not describe its result as confirmation of real-device touch latency, hit-target accuracy, gesture recognition, or haptic/tactile feel.
+- Do not add a parallel input-adapter or touch-feel patch while #2265/#2264 are in flight.
+- If a physical phone repro becomes available, record device, browser, viewport, exact gesture, observed result, and a short recording before changing tactile input behavior.
 
-## Sequencing rule
+## Review checkpoint for #2265
 
-While #2265 is open, do not land edits to:
+The PR diff adds `#lightVigilButton` and `#spareVigilButton`, each marked with `data-aftersign-tap-choice`, plus a document-level click delegate that forwards their `data-choice-id` to `choose()`. The served spec targets the rendered button by exact `data-choice-id` after the packet/return-tone funnel. Review this as a routing and coverage change; it is not evidence that a human thumb completed the path on hardware.
 
-- the vigil-choice controls or their click/tap dispatch
-- the Episode 1 ending funnel wired to that choice
+## Exit condition
 
-Any interaction defect found in that area during the window should be reproduced on the served page and filed as a follow-up against #2265 — not fixed in a racing PR.
-
-## When to delete
-
-Delete this file in the same PR that merges or closes #2265. If #2265 is abandoned, delete it then too; the sequencing rule has no meaning without an active owning branch.
+Lift this gate only after the same interaction has a reproducible physical-device report and the served game has been exercised on that device. Until then, keep input work limited to clearly demonstrated served regressions.
