@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+import { aftersignDeliveryCompleteLine } from "../../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";
 
 type IoMemory = { id?: string; object?: string; action?: string };
 type ReloadSnapshot = {
@@ -34,8 +35,10 @@ declare global {
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 90_000;
-const FRESH_DELIVERED_LINE =
-  "Done. Blue route, clean handoff. I put its mark beside your name. Come back — I will know which road held you.";
+// Source of truth: the live copy module. Hard-coding the string here would
+// let this spec's `.not.toBe(FRESH_DELIVERED_LINE)` guard pass trivially
+// after any copy reword (AI003 tautological test — see PR #2361 review).
+const FRESH_DELIVERED_LINE = aftersignDeliveryCompleteLine("blue-packet");
 
 type PacketPath = {
   name: string;

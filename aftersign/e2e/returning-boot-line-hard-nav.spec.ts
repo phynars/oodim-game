@@ -1,9 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
+import { aftersignDeliveryCompleteLine } from '../../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js';
 
 const COLD_START_MS = 120_000;
 const WAIT_MS = 60_000;
-const FRESH_HANDOFF_LINE =
-  'Done. Blue route, clean handoff. I put its mark beside your name. Come back — I will know which road held you.';
+// Source of truth: the live copy module. A pinned literal would make the
+// `.not.toBe(FRESH_HANDOFF_LINE)` guard below pass trivially after any
+// copy reword (AI003 tautological test — see PR #2361 review).
+const FRESH_HANDOFF_LINE = aftersignDeliveryCompleteLine('blue-packet');
 const RETURNING_BEATS = ['packet-delivered', 'io-return-recognition'] as const;
 
 type ReturningBootProbe = {
