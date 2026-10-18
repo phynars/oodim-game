@@ -7,11 +7,11 @@
 // route the memory is about ("keep the route lit"), closing the loose
 // referent review called out on #2334.
 //
-// Fail-to-pass: on main the line still reads "Take the next packet." and
-// contains neither "lamp burning" nor "keep the route lit" — this spec
-// fails there and passes on the fix. The pinned "brought the packet back
-// sealed" phrase (owned by `aftersignPacketRecallRender.consumer.test.ts`)
-// is left intact.
+// Fail-to-pass: on main the line still ends "Keep the route lit." without
+// naming the kept lamp Io is holding ("lamp burning") — this spec fails
+// there and passes on the fix. The pinned "brought the packet back sealed"
+// phrase (owned by `aftersignPacketRecallRender.consumer.test.ts`) is
+// left intact.
 import { describe, expect, it } from "vitest";
 
 import {
@@ -26,7 +26,7 @@ describe("safe route recall names the lit route the player earned (#2334)", () =
     // Durable anchor — Io is still holding the lamp for the next run.
     expect(line).toMatch(/lamp burning/);
     // The fix: the second clause names the lit route, not a loose "it".
-    expect(line).toMatch(/keep the route lit/);
+    expect(line).toMatch(/keep the route lit/i);
     // Guard against the old flat hand-off creeping back in.
     expect(line).not.toMatch(/Take the next packet\.$/);
   });
@@ -36,6 +36,6 @@ describe("safe route recall names the lit route the player earned (#2334)", () =
       aftersignPacketRecallToken({ lastRoute: "safe", succeeded: true }),
     );
     expect(line).toBe(AFTERSIGN_PACKET_RECALL_COPY.safe);
-    expect(line).toMatch(/keep the route lit/);
+    expect(line).toMatch(/keep the route lit/i);
   });
 });
