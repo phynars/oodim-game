@@ -300,6 +300,45 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     expect(snapshot.endingCause).toBe("sealed-and-tagged");
   });
 
+  test("TRUE ending survives a fresh browser context on the same slot (durable restore)", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+
+    const slot = `episode-one-ending-restore-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+    await runToEnding(page, "sealed");
+    await expect(await readEndingCard(page)).toHaveAttribute("data-ending-id", "ending-bell-true");
+
+    // A brand-new context shares NO localStorage / sessionStorage /
+    // cookies with the first one, so the ending can only come back
+    // through the durable same-slot restore path — never an in-tab
+    // cache. Mirrors aftersign-saint-orra-durable-route.spec.ts.
+    const returningContext = await browser.newContext({
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
+    const returningPage = await returningContext.newPage();
+    try {
+      await returningPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForVersion(returningPage);
+      await waitForEndingPublished(returningPage);
+      const card = await readEndingCard(returningPage);
+      await expect(card).toHaveAttribute("data-ending-id", "ending-bell-true");
+      await expect(card.locator(".episode-one-ending__recall")).toContainText(/blue packet sealed/i);
+      await expect(card.locator(".episode-one-ending__recall")).not.toContainText(/withheld the red tag/i);
+      const snapshot = await readEndingSnapshot(returningPage);
+      expect(snapshot.endingId).toBe("ending-bell-true");
+      expect(snapshot.endingCause).toBe("sealed-and-tagged");
+    } finally {
+      await returningContext.close();
+    }
+  });
+
   test("FALSE ending (packet opened): ending-light-out, Io cites the opened packet, NEVER the red tag", async ({
     page,
   }) => {
