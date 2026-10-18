@@ -8,6 +8,7 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
@@ -3348,22 +3349,17 @@ const publishPacketIntentEvaluation = () => {
   }
 };
 
-const packetPress = (input) => {
-  playPacketPressFeedback();
-  lastHadTargetMs = null;
-  targetLossFirstFramePending = false;
-  if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
-  // Fresh gesture — drop the previous log so the evaluator sees only
-  // this attempt (mirrors PacketIntentController.press's reset of
-  // its own internal fields).
-  resetPacketGestureLog();
-  recordPacketGestureSample("press", input);
-  const snapshot = packetIntent.press(input);
-  lastPacketOutcomeForFailure = snapshot.outcome;
-  syncPacketIntent(snapshot);
-  publishState();
-  return state.interaction.packetIntent;
-};
+const packetOfferController = createPacketOfferController({
+  playPressFeedback: playPacketPressFeedback,
+  resetTargetLoss: () => { lastHadTargetMs = null; targetLossFirstFramePending = false; if (targetLossPrompt) targetLossPrompt.style.opacity = "0"; },
+  resetGestureLog: resetPacketGestureLog, recordGestureSample: recordPacketGestureSample,
+  pressIntent: (input) => packetIntent.press(input),
+  setLastOutcome: (outcome) => { lastPacketOutcomeForFailure = outcome; },
+  syncIntent: syncPacketIntent, publishState,
+  getState: () => state.interaction.packetIntent,
+});
+
+const packetPress = (input) => packetOfferController.input.press(input);
 
 // #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
 // The pure controller emits PREVIEWED only through `previewRelease(...)`

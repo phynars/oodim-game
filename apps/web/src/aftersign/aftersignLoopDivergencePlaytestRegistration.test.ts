@@ -83,6 +83,14 @@ describe("M-LOOP divergence played-acceptance surface — body guard", () => {
     expect(surfaceSource).toContain("offeredJobs.appendChild(button);");
   });
 
+  it("guards the packet-offer controller boundary", () => {
+    expect(surfaceSource).toContain("keeps packet press logic behind the packet-offer controller boundary");
+    expect(surfaceSource).toContain("PACKET_OFFER_CONTROLLER_PATH");
+    expect(surfaceSource).toContain("const packetOfferController = createPacketOfferController({");
+    expect(surfaceSource).toContain("const packetPress = (input) => packetOfferController.input.press(input);");
+    expect(surfaceSource).toContain("export const createPacketOfferController");
+  });
+
   it("keeps the surface `it` blocks unskipped", () => {
     // A `.skip` / `.todo` on either M-LOOP surface case turns the guard into
     // a silent green. This reds if that ever happens.
