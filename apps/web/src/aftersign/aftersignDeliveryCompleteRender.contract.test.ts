@@ -35,7 +35,7 @@ const servedRendererSource = readFileSync(
 const RED_TAG_LINE =
   "Done. Red tag delivered to Saint Orra. She keeps it under your name. When you come back, she will know what you carried.";
 const BLUE_PACKET_LINE =
-  "Done. Blue packet delivered. I set its mark beside your name. Come back — I will know which road held you.";
+  "Done. Blue packet delivered. I set its mark beside your name. When you return, you will not have to explain which road held you.";
 
 describe("aftersignDeliveryCompleteLine (frozen copy)", () => {
   it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-packet copy", () => {
