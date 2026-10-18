@@ -801,8 +801,17 @@ describe("Aftersign served surface contract", () => {
     expect(main).toContain("advancePacketPressFeedback");
     // (b) `packetPress` actually invokes the writer — a refactor
     // that "cleans up" the call site (import kept, invocation
-    // dropped) reds here.
-    expect(main).toContain("playPacketPressFeedback(");
+    // dropped) reds here. Post-#2370 the call site lives in
+    // `packetOfferController.js`, which main.js wires with
+    // `playPressFeedback: playPacketPressFeedback`. We assert BOTH
+    // the wire (writer passed by reference in main.js) AND the
+    // invocation (controller calls `playPressFeedback()` once per
+    // press) so neither half can rot without reding here.
+    expect(main).toContain("playPressFeedback: playPacketPressFeedback");
+    const controller = readServedAftersignFile(
+      "src/interactions/packetOfferController.js",
+    );
+    expect(controller).toContain("playPressFeedback();");
     // (c) The stamp lands on `#packetButton.dataset.packetPressFeedback`
     // — the very attribute the CSS consumer rule keys off. A rename
     // that forks the attribute name silently unwires the paint.
