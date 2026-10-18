@@ -12,7 +12,7 @@
 // edits — the test asserts that phrase, not the whole line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io remembers you brought the packet back sealed. She keeps the lamp burning because you did. Take the next one. Keep the route lit.",
-  fast: "Io remembers you beat the bell. The fast packet waits where its echo cannot reach. Take it before the next ring finds it.",
+  fast: "Io remembers you took the shortcut and beat the bell. The fast packet waits where its echo cannot reach. Take it before the next ring finds it.",
   failed: "Io remembers the last packet did not come home. This one she gives you with both hands. Bring it home whole.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
