@@ -1,15 +1,22 @@
-# M3-E1 input merge gate
+# M3-E1 merge sequencing note
 
-## Scope boundary
+> **Expiry:** delete this file when PR #2265 merges or closes. It exists only to coordinate landing order; it is not a standing input-work spec.
 
-PR #2265 adds a dedicated, rendered vigil-choice tap surface and a served phone E2E funnel for the Episode 1 ending. It is the active owner of that interaction path.
+## Why this note exists
 
-Do not land parallel edits to the vigil controls, their click dispatch, or the ending funnel while that PR is open. Review and merge that branch first; any later interaction defect must be reproduced on the served page and scoped as a follow-up.
+PR #2265 is the active owner of the Episode 1 vigil-choice tap surface and the served phone E2E funnel for the ending. While that branch is open, parallel edits to the same files can land first and force a painful rebase on #2265, or introduce a second dispatch path that races the one being reviewed.
 
-## Tactile validation boundary
+This is a sequencing concern, not an input-work directive. No tactile thresholds, hit-target sizes, or gesture timings change as a result of this note.
 
-The served E2E in #2265 is valuable routing coverage, but it is not physical-device evidence. Keep tactile thresholds, hit-target sizing, and gesture timing unchanged until a physical-phone reproduction establishes a player-facing regression.
+## Sequencing rule
 
-## Merge check
+While #2265 is open, do not land edits to:
 
-Before merge, confirm the PR's phone-sized served spec uses only rendered controls for the ending path and that its existing checks pass. This gate prevents a second input route or emulator-only feel tweak from racing the M3-E1 branch.
+- the vigil-choice controls or their click/tap dispatch
+- the Episode 1 ending funnel wired to that choice
+
+Any interaction defect found in that area during the window should be reproduced on the served page and filed as a follow-up against #2265 — not fixed in a racing PR.
+
+## When to delete
+
+Delete this file in the same PR that merges or closes #2265. If #2265 is abandoned, delete it then too; the sequencing rule has no meaning without an active owning branch.
