@@ -14,6 +14,13 @@ function findRepoRoot(start: string): string {
 const REPO_ROOT = findRepoRoot(process.cwd());
 const AFTERSIGN_E2E_DIR = join(REPO_ROOT, "aftersign", "e2e");
 const SERVED_MAIN_PATH = join(REPO_ROOT, "aftersign", "main.js");
+const PACKET_OFFER_CONTROLLER_PATH = join(
+  REPO_ROOT,
+  "aftersign",
+  "src",
+  "interactions",
+  "packetOfferController.js",
+);
 const PLAYTEST_FILENAME_PATTERN = /(?:playtest.*\.spec\.(?:ts|js)$|\.playtest\.spec\.(?:ts|js)$|-played\.spec\.(?:ts|js)$|-served[^.]*\.spec\.(?:ts|js)$)/i;
 const PHONE_VIEWPORT = /(?:width\s*:\s*3[0-9]{2}\s*,\s*height\s*:\s*(?:6|7|8|9)[0-9]{2}|iphone|pixel|mobile|isMobile\s*:\s*true|hasTouch\s*:\s*true)/i;
 const HARNESS_INPUT = /(?:window\.)?__game\s*\.\s*input\s*\./;
@@ -97,5 +104,17 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(main).toContain('"data-offer-fingerprint"');
     expect(main).toContain("armJobOfferFeel(button, () => {");
     expect(main).toContain("offeredJobs.appendChild(button);");
+  });
+
+  it("keeps packet press logic behind the packet-offer controller boundary", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+    const controller = readFileSync(PACKET_OFFER_CONTROLLER_PATH, "utf8");
+    expect(main).toContain('import { createPacketOfferController } from "./src/interactions/packetOfferController.js"');
+    expect(main).toContain("const packetOfferController = createPacketOfferController({");
+    expect(main).toContain("const packetPress = (input) => packetOfferController.input.press(input);");
+    expect(controller).toContain("export const createPacketOfferController");
+    expect(controller).toContain("const press = (input) => {");
+    expect(controller).toContain('recordGestureSample("press", input);');
+    expect(controller).toContain("const snapshot = pressIntent(input);");
   });
 });

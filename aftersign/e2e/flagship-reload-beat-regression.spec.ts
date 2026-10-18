@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
+import { aftersignDeliveryCompleteLine } from "../../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";
 
 type IoMemory = { id?: string; object?: string; action?: string };
 type ReloadSnapshot = {
@@ -34,8 +35,10 @@ declare global {
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 90_000;
-const FRESH_DELIVERED_LINE =
-  "Done. Blue route, clean handoff. I kept the mark beside your name. Come back; I\u2019ll know it was yours.";
+// Source of truth: the live copy module. Hard-coding the string here would
+// let this spec's `.not.toBe(FRESH_DELIVERED_LINE)` guard pass trivially
+// after any copy reword (AI003 tautological test — see PR #2361 review).
+const FRESH_DELIVERED_LINE = aftersignDeliveryCompleteLine("blue-packet");
 
 type PacketPath = {
   name: string;
@@ -46,6 +49,22 @@ type PacketPath = {
   expectedReloadedDeliveredLine: string;
 };
 
+// #2326 fix (served `armReturningSessionBootLine`): these paths tap
+// `keep-sealed` / `open-packet` → `deliver-packet` with NO intervening
+// `acknowledge-kiosk` / `skip-kiosk-acknowledge` tap, so
+// `state.player.secondAction === null` at delivery. `memoryFacts()` still
+// normalises that null → `SECOND_ACTION.SKIPPED` to keep the memory fact
+// SHAPE invariant, but the `armReturningSessionBootLine` gate now consults
+// the durable player-input flag directly: a null commitment yields
+// `routeAttention: undefined`, so `chooseIoReturningSessionLine` returns
+// the NEUTRAL `sealedPacket` / `openedPacket` line — not the
+// `sealedPacketSkippedRoute` / `openedPacketSkippedRoute` false memory
+// that used to accuse an un-tapped player of running early. This branch
+// of the test only runs when the restored beat is `packet-delivered`
+// (see `expectReloadedOutcome` fork, line 128) — i.e. when the #2336
+// 1180ms second write has not yet taken effect. The previous expectations
+// here encoded the false memory as "correct"; updating them matches the
+// fix.
 const PACKET_PATHS: PacketPath[] = [
   {
     name: "sealed packet",
@@ -53,7 +72,7 @@ const PACKET_PATHS: PacketPath[] = [
     expectedOutcome: "sealed",
     expectedRecognitionLine: expectedIoRecognitionLine("sealed", false),
     wrongRecognitionLine: expectedIoRecognitionLine("opened", false),
-    expectedReloadedDeliveredLine: ioReturningSessionLines.sealedPacketSkippedRoute,
+    expectedReloadedDeliveredLine: ioReturningSessionLines.sealedPacket,
   },
   {
     name: "opened packet",
@@ -61,7 +80,7 @@ const PACKET_PATHS: PacketPath[] = [
     expectedOutcome: "opened",
     expectedRecognitionLine: expectedIoRecognitionLine("opened", false),
     wrongRecognitionLine: expectedIoRecognitionLine("sealed", false),
-    expectedReloadedDeliveredLine: ioReturningSessionLines.openedPacketSkippedRoute,
+    expectedReloadedDeliveredLine: ioReturningSessionLines.openedPacket,
   },
 ];
 
@@ -228,6 +247,7 @@ test.describe("AFTERSIGN reload beat regression", () => {
   }
 
   test("sealed and opened reload paths produce distinct Io recognition lines", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
     await playSaveReloadPath(page, PACKET_PATHS[0]);
     const sealed = await advanceToRecognition(page, PACKET_PATHS[0]);
     await playSaveReloadPath(page, PACKET_PATHS[1]);

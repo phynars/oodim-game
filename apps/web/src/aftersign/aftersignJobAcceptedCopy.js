@@ -63,9 +63,9 @@
 // never renders template-token leakage.
 const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
   "job-safe-delivery":
-    "The lit stair, then. Keep the seal closed. I will remember you as careful.",
+    "The lit stair, then. Keep the seal closed. Return with it whole; I will know you chose care.",
   "job-sealed-return":
-    "Take it back sealed. If the box refuses it, bring the refusal to me. I remember who kept faith.",
+    "Take it back sealed. If the box refuses it, bring the refusal to me. When you return, I will know what you kept faith with.",
   "job-private-ledger":
     "A private ledger leaves no clean hands. Bring yours back. I remember what you chose to carry.",
   "job-night-transfer":

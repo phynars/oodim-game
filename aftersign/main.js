@@ -8,6 +8,7 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
@@ -642,6 +643,7 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
@@ -751,6 +753,7 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
   stateReadout.hidden = true;
 }
 const failureSting = document.querySelector(".failure-sting");
+const feedbackController = createFeedbackController({ document, failureSting });
 const packetButton = document.querySelector("#packetButton");
 let packetPressFeedback = { isPressed: false, releaseAtMs: null };
 let packetPressFeedbackFrame = null;
@@ -1387,15 +1390,49 @@ const armReturningSessionBootLine = (delivered) => {
   const outcomeFact = state.npcs.io.memory.find(
     (fact) => fact?.kind === "delivery-outcome",
   );
+  // #2326 false-memory fix. `memoryFacts()` at delivery time maps a
+  // null `state.player.secondAction` (player NEVER tapped
+  // "I listened" / "I ran early" before Deliver) to
+  // `SECOND_ACTION.SKIPPED` so the fact SHAPE stays invariant across
+  // the two delivery outcomes. That default is fine for the ledger's
+  // shape invariants but it is NOT a player choice — Io must not
+  // boot a restored save by telling the player they "ran before the
+  // route finished" when they never ran. Gate the route axis on the
+  // durable player-input flag `state.player.secondAction` (restored
+  // from `stored?.player?.secondAction ?? null` at cold boot): only
+  // translate the memory fact into a route attention axis when the
+  // player's own commitment flag confirms the tap happened.
+  //
+  // Without the gate, `secondActionFromMemory` returns SKIPPED on a
+  // no-tap delivery → `chooseIoReturningSessionLine` picks
+  // `sealedPacketSkippedRoute` ("…you still ran before the route
+  // finished. Reliable hands, impatient feet.") — the exact false
+  // memory #2322 / #2326 report. Scope note: #2336 landed a second
+  // `persistAuthoritative()` inside `deliverPacket()`'s 1180ms
+  // setTimeout, which moves the authoritative restore target to
+  // `io-return-recognition` for most sessions — that beat is in the
+  // skip list above and the gate here never runs. The gate still
+  // matters on three paths #2336 did NOT cover:
+  //   (a) a reload racing BEFORE the 1180ms second write commits —
+  //       the restore lands at `packet-delivered` and reaches here;
+  //   (b) `packet-delivered-cold-boot-affordance.spec.ts` which
+  //       deliberately drops the 1180ms callback to prove the
+  //       `packet-delivered` affordance, so its restore is here;
+  //   (c) `flagship-reload-beat-regression.spec.ts` which forks on
+  //       `beat === "packet-delivered"` vs `io-return-recognition`
+  //       at line 128 — the `packet-delivered` branch asserts the
+  //       returning-session line, which runs through this gate.
+  const committedSecondAction = state.player.secondAction;
+  const bootRouteAttention =
+    committedSecondAction === SECOND_ACTION.DONE
+      ? "listened"
+      : committedSecondAction === SECOND_ACTION.SKIPPED
+        ? "skipped"
+        : undefined;
   ioReturningBootLine = outcomeFact
     ? chooseIoReturningSessionLine({
         packetOutcome: outcomeFact.object,
-        routeAttention:
-          secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-            ? "listened"
-            : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
-              ? "skipped"
-              : undefined,
+        routeAttention: bootRouteAttention,
       })
     : chooseIoReturningSessionLine({});
   ioReturningBootBeat = state.scene.beat;
@@ -3368,22 +3405,17 @@ const publishPacketIntentEvaluation = () => {
   }
 };
 
-const packetPress = (input) => {
-  playPacketPressFeedback();
-  lastHadTargetMs = null;
-  targetLossFirstFramePending = false;
-  if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
-  // Fresh gesture — drop the previous log so the evaluator sees only
-  // this attempt (mirrors PacketIntentController.press's reset of
-  // its own internal fields).
-  resetPacketGestureLog();
-  recordPacketGestureSample("press", input);
-  const snapshot = packetIntent.press(input);
-  lastPacketOutcomeForFailure = snapshot.outcome;
-  syncPacketIntent(snapshot);
-  publishState();
-  return state.interaction.packetIntent;
-};
+const packetOfferController = createPacketOfferController({
+  playPressFeedback: playPacketPressFeedback,
+  resetTargetLoss: () => { lastHadTargetMs = null; targetLossFirstFramePending = false; if (targetLossPrompt) targetLossPrompt.style.opacity = "0"; },
+  resetGestureLog: resetPacketGestureLog, recordGestureSample: recordPacketGestureSample,
+  pressIntent: (input) => packetIntent.press(input),
+  setLastOutcome: (outcome) => { lastPacketOutcomeForFailure = outcome; },
+  syncIntent: syncPacketIntent, publishState,
+  getState: () => state.interaction.packetIntent,
+});
+
+const packetPress = (input) => packetOfferController.input.press(input);
 
 // #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
 // The pure controller emits PREVIEWED only through `previewRelease(...)`
@@ -3956,6 +3988,13 @@ const advance = async () => {
     }
     state.interaction.recognitionEnteredAt = performance.now();
     setBeat("io-return-recognition");
+    // #2336 follow-up: persist the recognition beat on the reload→return
+    // path too. Without this save the authoritative record keeps the
+    // pre-transition `packet-delivered` beat, and a later page.reload()
+    // restores it and paints the returning-session line over it.
+    // Fire-and-forget, matching deliverPacket's save; a failed write must
+    // not break the in-memory transition.
+    void forceSave().catch(() => null);
   }
 };
 
@@ -5321,6 +5360,14 @@ attachRuntimeInputAdapters({
   packetRelease,
   handleScenePointer,
   choose,
+  // #2356 iter-2: the click/keyboard activation seam inside the adapter
+  // commits SEALED through the SAME funnel the pointer path uses so
+  // round-two red-tag runs registerPacketChoice + the red-tag copy
+  // override + lastAction + the beat transition. Threading these two
+  // closes the gap Soren flagged (AI008) between the shipped pointer
+  // path and the non-pointer activation path.
+  commitPacketOutcome,
+  PACKET_OUTCOME,
   markStateDirty,
   markPointerIntent,
 });
@@ -5471,13 +5518,13 @@ const tick = (now) => {
   camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
   camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
   sampleMemoryBeatCameraProbe();
-  document.documentElement.style.setProperty("--confirm-shake-x", `${confirmEnvelope.hudShakeX - Math.round(failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
-  document.documentElement.style.setProperty("--confirm-shake-y", `${confirmEnvelope.hudLiftY + Math.round(failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
-  document.documentElement.style.setProperty("--confirm-reticle-scale", `${confirmEnvelope.reticleScale.toFixed(3)}`);
-  document.documentElement.style.setProperty("--confirm-reticle-y", `${confirmEnvelope.reticleLiftPx.toFixed(2)}px`);
-  if (failureSting) {
-    failureSting.style.opacity = `${failureEnvelope.flashAlpha.toFixed(3)}`;
-  }
+  feedbackController.renderFrame({
+    confirmEnvelope,
+    failureEnvelope,
+    failureWobble,
+    failureFalloff,
+    failureFeel: FAILURE_FEEDBACK,
+  });
   screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
   slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45 + packetProgress * 0.4;
   signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3 + recognitionMotion.signGlowBoost + packetProgress * 1.1;
