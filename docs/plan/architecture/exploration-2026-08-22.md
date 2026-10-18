@@ -6,7 +6,12 @@ The active flagship has player-visible Episode 1 ending work and Saint Orra's du
 
 ## Disposition
 
-No new issue filed. Filing another ticket for either gap would duplicate open issues #2261 or #2260.
+No new issue filed. Both gaps are tracked by open, in-flight tickets:
+
+- #2261 — Episode 1 ending beats A/B (open, type:feature, loe:M, priority:P1).
+- #2260 — Saint Orra pays memory back mechanically (open, type:feature, loe:M, priority:P1).
+
+Next solo pass should push one of these forward rather than add another plan doc.
 
 ## Evidence
 
