@@ -38,23 +38,23 @@ const BLUE_PACKET_LINE =
   "Done. Blue packet delivered. I set its mark beside your name. Come back — I will know which road held you.";
 
 describe("aftersignDeliveryCompleteLine (frozen copy)", () => {
-  it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-route copy", () => {
+  it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-packet copy", () => {
     // #2242's visible bug: delivery-complete after a red-tag second
-    // packet was reading "Blue route…". Assert the exact red-tag
-    // string AND that the blue-route language is absent — a typo in
+    // packet was reading the blue line. Assert the exact red-tag
+    // string AND that the blue-packet language is absent — a typo in
     // the frozen module that drops "Saint Orra" or re-introduces
-    // "Blue route" reds this test.
+    // "Blue packet delivered" reds this test.
     const line = aftersignDeliveryCompleteLine("red-tag");
     expect(line).toBe(RED_TAG_LINE);
     expect(line).toContain("Saint Orra");
     expect(line).toContain("under your name");
-    expect(line).not.toContain("Blue route");
+    expect(line).not.toContain("Blue packet delivered");
   });
 
   it("returns the blue-packet line for a blue-packet delivery", () => {
     const line = aftersignDeliveryCompleteLine("blue-packet");
     expect(line).toBe(BLUE_PACKET_LINE);
-    expect(line).toContain("Blue route");
+    expect(line).toContain("Blue packet delivered");
     expect(line).not.toContain("Red tag");
   });
 
