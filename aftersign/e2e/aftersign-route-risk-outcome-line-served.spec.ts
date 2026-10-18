@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { aftersignRouteOutcomeLine } from "../../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
+import { aftersignDeliveryCompleteLine } from "../../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";
 import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRiskChoiceIntent.ts";
 
 // AFTERSIGN #1963 — route-outcome line rendered on the served page.
@@ -14,8 +15,10 @@ const SAFE_OUTCOME_LINE = aftersignRouteOutcomeLine("safe") ?? "";
 if (!SAFE_OUTCOME_LINE) {
   throw new Error("aftersignRouteOutcomeLine('safe') returned null — the copy module lost its SAFE entry; fix the copy, don't skip the spec.");
 }
-const FRESH_DELIVERED_LINE =
-  "Done. Blue route, clean handoff. I put its mark beside your name. Come back — I will know which road held you.";
+// Source of truth: the live copy module. A pinned literal would make the
+// `.not.toBe(FRESH_DELIVERED_LINE)` guard pass trivially after any copy
+// reword (AI003 tautological test — see PR #2361 review).
+const FRESH_DELIVERED_LINE = aftersignDeliveryCompleteLine("blue-packet");
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(

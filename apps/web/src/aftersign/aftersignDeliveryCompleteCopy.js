@@ -2,7 +2,7 @@
 // delivery id; this module owns the player-facing route language.
 const DELIVERY_COMPLETE_LINE_BY_ID = Object.freeze({
   "red-tag": "Done. Red tag delivered to Saint Orra. She keeps it under your name. When you come back, she will know what you carried.",
-  "blue-packet": "Done. Blue route, clean handoff. I put its mark beside your name. Come back — I will know which road held you.",
+  "blue-packet": "Done. Blue route, clean handoff. I set its mark beside your name. Come back — I will know which road held you.",
 });
 
 const DEFAULT_DELIVERY_COMPLETE_LINE = DELIVERY_COMPLETE_LINE_BY_ID["blue-packet"];
