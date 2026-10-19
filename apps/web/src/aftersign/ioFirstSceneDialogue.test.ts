@@ -34,13 +34,13 @@ describe("Aftersign Io first-scene dialogue", () => {
       "You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     );
     expect(getAftersignIoFirstSceneLine("openedReturn").text).toBe(
-      "You made it back. The seal did not. I can use one of those facts.",
+      "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
     );
     expect(getAftersignIoFirstSceneLine("listenedReturn").text).toBe(
-      "You listened before you ran. Rare habit. Keep it.",
+      "You listened. So when the city lied, you heard the hinge. Keep that.",
     );
     expect(getAftersignIoFirstSceneLine("skippedReturn").text).toBe(
-      "You found the box anyway. Next time, let me finish saving your life.",
+      "You came back by instinct. It worked once. Don't make a religion of it.",
     );
   });
 
