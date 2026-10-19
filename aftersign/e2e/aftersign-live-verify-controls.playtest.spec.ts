@@ -40,6 +40,23 @@ async function reachPacketChoice(page: Page): Promise<void> {
   await waitForBeat(page, "packet-choice");
 }
 
+type Rect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return (
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+  );
+}
+
+const MIN_TOUCH_PX = 44;
+
 test.describe("AFTERSIGN live-verify control and save path", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -86,5 +103,69 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
       page.locator('[data-beat-id="packet-offered"]'),
       "Start fresh must be tappable — slice-save-controls row needs pointer-events: auto",
     ).toBeVisible({ timeout: WAIT_MS });
+  });
+
+  // GEOMETRY baseline for the same three controls the behavior test
+  // above taps. The behavior test proves ack / sound / reset each FIRE
+  // on a phone tap and that Start fresh is structurally outside
+  // `.controls`. It does NOT prove the three controls are thumb-safe:
+  //   - each ≥ 44 CSS-px (WCAG 2.5.5 / Apple HIG touch minimum), AND
+  //   - no pairwise overlap in rendered boxes
+  // The second point is the exact "mis-aimed thumb reaching for the
+  // sound tile triggers a slice wipe" risk the behavior test's inline
+  // comment gestures at but never measures. If Start fresh ever grew
+  // into sound/ack, the structural `.controls #resetButton` count
+  // would still be 0 and the behavior test would still pass — only
+  // this geometry check catches that drift.
+  // `packet-button-touch-target.contract.spec.ts` covers `#packetButton`
+  // at the earlier `packet-offered` beat; this covers the three
+  // post-choice controls.
+  test("ack, sound, and Start fresh each meet the 44px touch minimum and never overlap", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await reachPacketChoice(page);
+
+    const selectors = {
+      acknowledge: "#acknowledgeRouteButton",
+      sound: "#soundButton",
+      reset: ".slice-save-controls #resetButton",
+    } as const;
+
+    for (const sel of Object.values(selectors)) {
+      await expect(page.locator(sel)).toBeVisible({ timeout: WAIT_MS });
+    }
+
+    const boxes: Record<keyof typeof selectors, Rect | null> = {
+      acknowledge: await page.locator(selectors.acknowledge).boundingBox(),
+      sound: await page.locator(selectors.sound).boundingBox(),
+      reset: await page.locator(selectors.reset).boundingBox(),
+    } as Record<keyof typeof selectors, Rect | null>;
+
+    for (const [name, box] of Object.entries(boxes) as Array<
+      [keyof typeof selectors, Rect | null]
+    >) {
+      expect(box, `${name} must have a rendered hit area`).not.toBeNull();
+      expect(
+        box!.width,
+        `${name} width must meet the ${MIN_TOUCH_PX}px touch minimum`,
+      ).toBeGreaterThanOrEqual(MIN_TOUCH_PX);
+      expect(
+        box!.height,
+        `${name} height must meet the ${MIN_TOUCH_PX}px touch minimum`,
+      ).toBeGreaterThanOrEqual(MIN_TOUCH_PX);
+    }
+
+    const pairs: Array<[keyof typeof selectors, keyof typeof selectors]> = [
+      ["acknowledge", "sound"],
+      ["acknowledge", "reset"],
+      ["sound", "reset"],
+    ];
+    for (const [a, b] of pairs) {
+      expect(
+        overlaps(boxes[a]!, boxes[b]!),
+        `${a} (${JSON.stringify(boxes[a])}) must not overlap ${b} (${JSON.stringify(boxes[b])}) — mis-aimed thumb would hit the wrong control`,
+      ).toBe(false);
+    }
   });
 });
