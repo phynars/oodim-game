@@ -99,6 +99,7 @@ test.describe("Saint Orra payback fresh-session durability (#2264)", () => {
       'button[data-orra-payback-action="carry-name-to-bell-archive"]',
     );
     await expect(carryName).toBeVisible({ timeout: WAIT_MS });
+    await expect(carryName).toBeEnabled();
     await carryName.tap({ timeout: WAIT_MS });
     await expect(carryName).toHaveAttribute(
       "data-orra-payback-committed",
