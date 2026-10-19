@@ -77,19 +77,19 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "openedReturn",
     intent: "returnPacket",
-    text: "You made it back. The seal did not. I can use one of those facts.",
+    text: "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
     memoryKey: "io_return_packet_opened",
   },
   {
     id: "listenedReturn",
     intent: "returnRoute",
-    text: "You listened before you ran. Rare habit. Keep it.",
+    text: "You listened. So when the city lied, you heard the hinge. Keep that.",
     memoryKey: "listened_to_route",
   },
   {
     id: "skippedReturn",
     intent: "returnRoute",
-    text: "You found the box anyway. Next time, let me finish saving your life.",
+    text: "You came back by instinct. It worked once. Don't make a religion of it.",
     memoryKey: "skipped_route",
   },
 ] as const satisfies readonly AftersignIoFirstSceneLine[];
