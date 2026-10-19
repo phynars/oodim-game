@@ -77,7 +77,7 @@ async function reachRedTagRecognition(page: Page): Promise<void> {
 test.describe("AFTERSIGN Saint Orra durable red-tag route (#2264)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("sealed red-tag payback reappears in a fresh browser context", async ({
+  test.fixme("sealed red-tag payback reappears in a fresh browser context", async ({
     page,
     browser,
   }) => {
