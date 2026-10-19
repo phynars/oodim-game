@@ -38,7 +38,7 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
   routeHeard: {
     key: "routeHeard",
-    text: "You listened before you ran. Rare habit. Keep it.",
+    text: "You listened. So when the city lied, you heard the hinge. Keep that.",
     memorySentence: "Io remembers that the courier listened to the route before leaving.",
   },
   routeSkipped: {
@@ -53,7 +53,7 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
   openedReturn: {
     key: "openedReturn",
-    text: "You made it back. The seal did not. I can use one of those facts.",
+    text: "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
     memorySentence: "Io remembers that the courier opened the blue packet.",
   },
   kindReturn: {
