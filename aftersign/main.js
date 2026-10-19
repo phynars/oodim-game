@@ -3513,12 +3513,16 @@ const packetRelease = (input) => {
   return state.interaction.packetIntent;
 };
 
+// Hoisted above the route-choice controller (#2369): passed by value at
+// construction, so it must be initialized before createRouteChoiceController.
+const RECOGNITION_SETTLE_MS = 120;
+
 const { choose } = createRouteChoiceController({
   state,
   markStateDirty,
   publishState,
-  forceSave,
-  deliverPacket,
+  forceSave: (...args) => forceSave(...args),
+  deliverPacket: (...args) => deliverPacket(...args),
   setBeat,
   renderText,
   sessionId,
@@ -4549,7 +4553,6 @@ let deliveryRecognitionTimeout = null;
 // budget (16.6ms) so a human tap never notices the gate, but comfortably
 // above the pointer/click event ordering skew a single gesture produces
 // as `setBeat("io-return-recognition")` re-renders the button tree.
-const RECOGNITION_SETTLE_MS = 120;
 
 const deliverPacket = (source = "hud-button") => {
   triggerKioskFeedback(source);
