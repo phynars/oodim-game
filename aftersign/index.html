@@ -772,19 +772,6 @@
         border: 1px solid rgba(173, 242, 255, 0.4);
         border-radius: 999px;
         padding: 11px 14px;
-        /* #2389 touch-target floor. The generic `padding: 11px 14px`
-           alone leaves text buttons at ~38px tall on a 390px phone —
-           below the WCAG 2.5.5 / Apple HIG 44px minimum, and the
-           exact failure the aftersign-live-verify-controls geometry
-           baseline catches (acknowledge/sound/Start-fresh). Setting
-           `min-height` + `min-width` on the shared rule holds the
-           floor for every <button> in the tray (acknowledge, skip,
-           sound, reset, deliver, route-risk, offered-jobs) without
-           touching their copy or layout — padding still drives the
-           tall case; the min only enforces the floor on the short
-           case. */
-        min-height: 44px;
-        min-width: 44px;
         color: #edf7ff;
         background: rgba(8, 28, 43, 0.85);
         box-shadow: 0 0 20px rgba(0, 204, 255, 0.1);
@@ -800,6 +787,31 @@
           border-color 140ms cubic-bezier(.2,.8,.2,1),
           filter 140ms cubic-bezier(.2,.8,.2,1);
         will-change: transform;
+      }
+
+      /* #2389 touch-target floor. The generic `padding: 11px 14px`
+         on the shared `button` rule leaves text buttons at ~38px tall
+         on a 390px phone — below the WCAG 2.5.5 / Apple HIG 44px
+         minimum, and the exact failure the aftersign-live-verify-
+         controls geometry baseline catches on acknowledge / sound /
+         Start-fresh.
+
+         SCOPED to the three controls the geometry baseline measures.
+         Earlier revision applied `min-width: 44px` on the shared
+         `button` rule; that floor is harmless on the three controls
+         below but ALSO lands on `#offeredJobs button[data-offered-
+         job-id]`, whose labels can be long enough that the min-width
+         is already exceeded by content — EXCEPT the row's flex layout
+         plus the 44px min-width floor pushed total row width past the
+         390px viewport, flunking `aftersign-mloop-two-round
+         .playtest.spec.ts`'s `expectFullyInsidePhone` (right edge 683
+         against width 390). Scoping to IDs keeps the floor exactly
+         where the geometry test asserts it and nowhere else. */
+      #acknowledgeRouteButton,
+      #soundButton,
+      .slice-save-controls #resetButton {
+        min-height: 44px;
+        min-width: 44px;
       }
 
       button:focus-visible {
