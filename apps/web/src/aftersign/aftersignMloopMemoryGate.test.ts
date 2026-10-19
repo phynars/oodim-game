@@ -75,27 +75,14 @@ function servedPageMloopMemoryBag(
 
 describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
   it("fresh Io memory (no delivery-outcome facts) folds to the 'fresh' gate", () => {
-    // The served page builds `mloopMemory = {}` when no
-    // delivery-outcome fact exists in `state.npcs.io.memory`.
-    // `memoryGateFor({})` has no packetOutcome and returns "fresh" —
-    // the default posture the action-table's `fresh` row is authored
-    // for.
     const bag = servedPageMloopMemoryBag([]);
     expect(bag).toEqual({});
     const action = getMloopAvailableAction(JOB_ID, bag);
     expect(action.memoryGate).toBe("fresh");
-    // The `fresh` row's action id must actually be authored — a
-    // future refactor that drops the row would flip this to the
-    // default fallback id and red here.
     expect(action.id).toBe("mloop-safe-delivery-take");
   });
 
   it("a sealed delivery-outcome fact folds to the 'returning' gate", () => {
-    // Real seed shape used by the e2e
-    // `m-loop-divergent-offered-actions.playtest.spec.ts` — a durable
-    // fact whose `kind === "delivery-outcome"` and `object === "sealed"`.
-    // Additional fact fields (id / subject / sessionId) are ignored by
-    // the served-page derivation; only kind + object matter.
     const bag = servedPageMloopMemoryBag([
       {
         kind: "delivery-outcome",
@@ -108,6 +95,18 @@ describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
     expect(action.id).toBe("mloop-safe-delivery-again");
   });
 
+  it("keeps a sealed delivery in the returning posture for Io's return visit", () => {
+    const returningAction = getMloopAvailableAction(
+      JOB_ID,
+      servedPageMloopMemoryBag([
+        { kind: "delivery-outcome", object: "sealed" },
+      ]),
+    );
+
+    expect(returningAction.memoryGate).toBe("returning");
+    expect(returningAction.id).toBe("mloop-safe-delivery-again");
+  });
+
   it("an opened delivery-outcome fact folds to the 'deep-recall' gate", () => {
     const bag = servedPageMloopMemoryBag([
       {
@@ -118,19 +117,10 @@ describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
     expect(bag).toEqual({ packetOutcome: "opened" });
     const action = getMloopAvailableAction(JOB_ID, bag);
     expect(action.memoryGate).toBe("deep-recall");
-    // Deep-recall reuses the same "again" copy as returning today
-    // (both are "already seen the packet"); if a future authoring
-    // pass splits them, THIS assertion is what tells you to update
-    // the action table.
     expect(action.id).toBe("mloop-safe-delivery-again");
   });
 
   it("ignores non-delivery-outcome facts when deriving the bag", () => {
-    // The served page's `find` is keyed strictly on
-    // `kind === "delivery-outcome"`. A route-attention fact (the
-    // OTHER durable fact kind Io ever emits — see
-    // `aftersign/src/npcMemoryFlagSchema.js` NPC_MEMORY_FACT_KIND)
-    // must NOT drift the gate to a returning posture.
     const bag = servedPageMloopMemoryBag([
       {
         kind: "route-attention",
@@ -143,13 +133,6 @@ describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
   });
 
   it("uses the FIRST delivery-outcome fact when multiple exist", () => {
-    // The served page uses `Array.prototype.find` — first match wins.
-    // A durable memory that carries an opened THEN a sealed outcome
-    // (a player who redeemed a wax-debt on a later loop) resolves to
-    // the FIRST recorded outcome. If a future ordering rule changes
-    // (e.g. "most recent wins"), THIS test is where the intent flips
-    // — do not silently update the assertion; update the served
-    // derivation and this test in one hop.
     const bag = servedPageMloopMemoryBag([
       { kind: "delivery-outcome", object: "opened" },
       { kind: "delivery-outcome", object: "sealed" },
@@ -160,12 +143,6 @@ describe("mloop memoryGate — SERVED-PAGE mloopMemory bag → gate", () => {
   });
 
   it("pins fresh / returning / deep-recall as three DISTINCT gates", () => {
-    // The e2e's load-bearing assertion at
-    // `m-loop-divergent-offered-actions.playtest.spec.ts` requires
-    // `returningKeys !=== freshKeys` at the element level, and the
-    // key includes `gate:${memoryGate}`. If any two of these ever
-    // collapse to the same string on the served derivation, the
-    // divergence goes red — pin the distinctness explicitly.
     const freshBag = servedPageMloopMemoryBag([]);
     const returningBag = servedPageMloopMemoryBag([
       { kind: "delivery-outcome", object: "sealed" },
