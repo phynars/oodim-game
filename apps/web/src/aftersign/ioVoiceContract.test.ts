@@ -25,7 +25,9 @@ describe("Aftersign Io voice contract", () => {
   });
 
   it("keeps Io's route memory concrete and short", () => {
-    expect(ioRouteAttentionLine("heard").text).toBe("You listened before you ran. Rare habit. Keep it.");
+    expect(ioRouteAttentionLine("heard").text).toBe(
+      "You listened. So when the city lied, you heard the hinge. Keep that.",
+    );
     expect(ioRouteAttentionLine("skipped").text).toBe(
       "You found the box anyway. Next time, let me finish saving your life.",
     );
