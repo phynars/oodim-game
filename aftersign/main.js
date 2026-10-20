@@ -1781,9 +1781,43 @@ const syncIoLine = () => {
     // `lineForBeat()` directly, or via the `state.npcs.io.lastLine`
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
+    //
+    // SKIPPED-ROUTE OVERRIDE (#2397, re-review): when the player
+    // EXPLICITLY tapped "I ran early" (`skip-kiosk-acknowledge` →
+    // `state.player.secondAction === SECOND_ACTION.SKIPPED`), speak the
+    // authored `skippedReturn` line instead of the sealed/opened
+    // RETURNING line. This gate is narrow by design:
+    //   • Memory-default skips are OUT. `secondActionFromMemory`
+    //     returns SKIPPED when the memory fact object is "skipped" OR
+    //     when the fact is absent (null commitment, #2326 false-memory
+    //     fix). The authored `skippedReturn` line names a PLAYER
+    //     ACTION ("You skipped my route") so it must only speak when
+    //     the player committed that tap — same durable player-input
+    //     flag `armReturningSessionBootLine` consults at line 1413.
+    //     Specs that reach recognition WITHOUT the skip tap
+    //     (`durable-return-session-phone-playtest`,
+    //      `flagship-reload-beat-regression`,
+    //      `io-phone-ready-look-sound-contract`) have
+    //     `state.player.secondAction === null` and keep the sealed/
+    //     opened RETURNING line.
+    //   • Deep-recall is OUT. `selectIoRecognitionDialogueLine` picks
+    //     the deep-recall tier only when `listened === true` (route
+    //     fact object === "done"); the skip flag can never produce
+    //     deep-recall, so `selected.tier` here is `returning` or
+    //     `first-meeting`. The deep-recall sealedSkipped /
+    //     openedSkipped lines ALREADY carry the two-dimensional
+    //     recognition and must not be overwritten.
+    // Packet-outcome dimension stays legible via `nextMemoryRefs` and
+    // `nextFeelCue` below — both still sourced from the sealed/opened
+    // snippet, so `assertVisualFeel("sealed"|"opened")` and
+    // `waitForMemoryBeat("sealed"|"opened")` continue to discriminate
+    // the outcomes even when `#line` names the route behavior.
+    const explicitSkip =
+      state.player.secondAction === SECOND_ACTION.SKIPPED
+      && selected.tier === "returning";
     nextLine = state.delivery.id === "red-tag"
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
-      : routeAttention === "skipped"
+      : explicitSkip
         ? getAftersignIoRouteReturnLine(false).text
         : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];

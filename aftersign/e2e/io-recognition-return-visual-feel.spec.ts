@@ -49,17 +49,23 @@ const BEAT_LIMITS = {
   inputLockMsMax: 1220,
 } as const;
 
-// The two verbatim lines Io speaks at io-return-recognition (see
-// aftersign/main.js `lineForBeat`).
-// Canonical copy module (#595 cleanup, #1077); these flows skip the
-// kiosk route, so the RETURNING tier speaks.
-import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
-const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
+// The line Io speaks at io-return-recognition for both branches of this
+// spec. #2397 re-review: both the sealed and the opened branches below
+// tap `skip-kiosk-acknowledge` (so `state.player.secondAction ===
+// SECOND_ACTION.SKIPPED`), and the main.js SKIPPED-ROUTE OVERRIDE at
+// `syncIoLine` ~L1783 speaks the authored `skippedReturn` line in that
+// case regardless of packet outcome. The packet dimension still
+// discriminates sealed vs opened via `memoryRefs` → the
+// `io_return_packet_sealed` / `io_return_packet_opened` memory beat
+// (asserted by `waitForMemoryBeat`) and the sealed/opened snippet's
+// `feelCue` (asserted by `assertVisualFeel`).
+// Canonical copy module (#595 cleanup, #1077).
+import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
+const SKIPPED_ROUTE_RETURN_LINE = getAftersignIoRouteReturnLine(false).text;
 
 const EXPECTED_LINE: Record<RecognitionOutcome, string> = {
-  sealed: SEALED_RECOGNITION_LINE,
-  opened: OPENED_RECOGNITION_LINE,
+  sealed: SKIPPED_ROUTE_RETURN_LINE,
+  opened: SKIPPED_ROUTE_RETURN_LINE,
 };
 
 const EXPECTED_LINE_ID: Record<RecognitionOutcome, string> = {
@@ -264,9 +270,13 @@ test("io return recognition, played by taps: sealed branch publishes readable vi
   await playToRecognition(page, `io-return-visual-feel-sealed-${Date.now()}`, "sealed");
 
   // Visible-DOM proof of the recognition transition: Io's line for the
-  // sealed outcome must render in `#line` after the auto-advance —
-  // NOT read from window.__game.
-  await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
+  // sealed-outcome / skipped-route combination must render in `#line`
+  // after the auto-advance — NOT read from window.__game. #2397
+  // re-review: this spec taps `skip-kiosk-acknowledge` so main.js
+  // speaks the authored `skippedReturn` line; the sealed-vs-opened
+  // packet dimension is still asserted below via the memory beat +
+  // feel-cue snippet (both still sourced from the sealed snippet).
+  await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
     timeout: WAIT_MS,
   });
 
@@ -280,7 +290,11 @@ test("io return recognition, played by taps: opened branch publishes readable vi
 
   await playToRecognition(page, `io-return-visual-feel-opened-${Date.now()}`, "opened");
 
-  await expect(page.locator("#line")).toHaveText(OPENED_RECOGNITION_LINE, {
+  // #2397 re-review: same `skippedReturn` line as the sealed branch
+  // (both tap `skip-kiosk-acknowledge`); the opened dimension is
+  // asserted via `waitForMemoryBeat("opened")` + `assertVisualFeel(…,
+  // "opened")` below.
+  await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
     timeout: WAIT_MS,
   });
 
