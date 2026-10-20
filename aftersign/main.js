@@ -9,6 +9,7 @@
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
+import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
