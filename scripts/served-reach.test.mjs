@@ -53,6 +53,8 @@ test("inBundle matches re-quoted and re-escaped spellings", () => {
   assert.equal(inBundle("Don't run before the bell rings", `x='Don\\'t run before the bell rings'`), true);
   assert.equal(inBundle("keep the route lit — always", 'x="keep the route lit \\u2014 always"'), true);
   assert.equal(inBundle("a line that never shipped at all", `x="something else entirely"`), false);
+  // A backslash in the text is escaped before the quote in single-quoted output.
+  assert.equal(inBundle("Io's path is C:\\games right there", `x='Io\\'s path is C:\\\\games right there'`), true);
 });
 
 test("exemptReason reads the PR-body line", () => {

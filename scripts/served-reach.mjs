@@ -77,7 +77,8 @@ function unescapeJs(s) {
 /** Is the literal present in bundled code? Minifiers re-quote and re-escape,
  *  so check the raw text and its common escaped spellings. */
 export function inBundle(s, bundle) {
-  const forms = new Set([s, JSON.stringify(s).slice(1, -1), s.replace(/'/g, "\\'"), s.replace(/`/g, "\\`")]);
+  const bs = s.replace(/\\/g, "\\\\");
+  const forms = new Set([s, JSON.stringify(s).slice(1, -1), bs.replace(/'/g, "\\'"), bs.replace(/`/g, "\\`")]);
   // Non-ASCII may be emitted as \uXXXX.
   forms.add(s.replace(/[^\x20-\x7e]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")));
   for (const f of forms) if (bundle.includes(f)) return true;
