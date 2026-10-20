@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
-import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
+import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
 
 // Playtest: after a phone-player reload, the story restores DIRECTLY to
 // `io-return-recognition` with the correct returning-tier line + the
@@ -60,7 +60,7 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
+const SKIPPED_ROUTE_RETURN_LINE = getAftersignIoRouteReturnLine(false).text;
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
@@ -113,7 +113,7 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     // AFTER `setBeat("io-return-recognition")` so reload will restore
     // to this beat, not `packet-delivered`.
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
+    await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
       timeout: WAIT_MS,
     });
     await expect(
@@ -128,7 +128,7 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     await page.reload({ waitUntil: "load" });
 
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
+    await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
       timeout: WAIT_MS,
     });
     await expect(

@@ -86,6 +86,7 @@ import {
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
+import { getAftersignIoRouteReturnLine } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
 // Keep the pointer selector distinct from the existing immediate-response
 // state below. The accepted-choice path owns both; renderText projects them.
@@ -1761,6 +1762,10 @@ const syncIoLine = () => {
     const selected = selectIoRecognitionDialogueLine(snippets, {
       memory: state.npcs.io.memory,
     });
+    const routeAttention =
+      secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+        ? "listened"
+        : "skipped";
     // Red-tag return keeps its OWN recognition line — do NOT append the
     // red-tag suffix to `selected.line`, because `selected.line` is a
     // sealed/opened BLUE-ROUTE snippet from `RETURNING_LINES` /
@@ -1778,7 +1783,9 @@ const syncIoLine = () => {
     // closes the AI008 two-writers-one-assertion race.
     nextLine = state.delivery.id === "red-tag"
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
-      : selected.line;
+      : routeAttention === "skipped"
+        ? getAftersignIoRouteReturnLine(false).text
+        : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The
@@ -1800,10 +1807,6 @@ const syncIoLine = () => {
     // property the harness / e2e drive means the shipped page and
     // the tests can't disagree about what "kind" means on the DOM
     // surface — the seam is proved runnable, not just defined.
-    const routeAttention =
-      secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-        ? "listened"
-        : "skipped";
     const returnToneReason = !state.packet.sealed
       ? "evasive"
       : routeAttention === "listened"
