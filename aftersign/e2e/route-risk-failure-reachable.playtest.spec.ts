@@ -47,9 +47,17 @@ import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRis
 // branch; this spec's job is to prove the READ path reaches that
 // seeded fixture from a fresh slot, not to re-pin the write.
 
+//   (4) after a real `page.reload()` (gated on the server save
+//       carrying the PLAYED failed fact — read-only GET, no seed),
+//       the next run's `#packetRecallLine` still renders "failed";
+//   (5) that next run's `#routeRiskChoice` offers `repair-the-loss`
+//       and not the succeeded-branch offers.
+
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
-const COLD_START_MS = 45_000;
+const COLD_START_MS = 90_000;
+const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -204,5 +212,97 @@ test.describe("AFTERSIGN failed-route reachable without seed (#2401)", () => {
       isNextSibling,
       "failed-route recall paragraph must be the immediate next sibling of #line",
     ).toBe(true);
+
+    // ── RELOAD — #2401 acceptance: "The state survives a reload." ────
+    // Gate the reload on the AUTHORITATIVE save actually carrying the
+    // tap-written failed fact. The fragile tap's `onChoose` fires
+    // `persistAuthoritative`, and `ask-for-next-job` awaits
+    // `forceSave()` (aftersign/main.js), but neither write is awaited
+    // by the DOM — reloading before the PUT lands would race it. This
+    // GET reads what the game wrote; it seeds nothing.
+    const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(BOOTSTRAP_PLAYER_ID)}/${encodeURIComponent(slot)}`;
+    await expect
+      .poll(
+        async () => {
+          const response = await page.request.get(saveUrl, {
+            headers: { accept: "application/json" },
+          });
+          if (!response.ok()) return null;
+          const body = (await response.json()) as {
+            payload?: {
+              player?: {
+                routeRisk?: { succeeded?: boolean; lastAction?: string };
+              };
+            } | null;
+          };
+          const rr = body.payload?.player?.routeRisk;
+          return rr ? { succeeded: rr.succeeded, lastAction: rr.lastAction } : null;
+        },
+        {
+          timeout: WAIT_MS,
+          message: "the played fragile failure must be durable on the server before reload",
+        },
+      )
+      .toEqual({ succeeded: false, lastAction: "carry-a-fragile-packet" });
+
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+
+    // The last explicit persist before round-2 `packet-offered` is the
+    // `io-next-job` forceSave (`setBeat("packet-offered")` itself does
+    // not persist), so cold boot may restore either beat. If it lands
+    // on `io-next-job`, the player taps the visible `deliver-packet`
+    // to start the next run — same affordance as round 1's loop.
+    const restoredBeat = page.locator(
+      '[data-beat-id="packet-offered"], [data-beat-id="io-next-job"]',
+    );
+    await expect(
+      restoredBeat.first(),
+      "reload must restore into the next run (io-next-job or packet-offered)",
+    ).toBeVisible({ timeout: WAIT_MS });
+    if ((await restoredBeat.first().getAttribute("data-beat-id")) === "io-next-job") {
+      await tapChoice(page, "deliver-packet");
+    }
+    await waitForBeat(page, "packet-offered");
+
+    // (4) After reload, Io still visibly remembers the failed run.
+    const recallAfterReload = page.locator(`#${PACKET_RECALL_LINE_ID}`);
+    await expect(
+      recallAfterReload,
+      "failed-route recall paragraph must survive a reload",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await expect(recallAfterReload).toHaveAttribute(
+      PACKET_RECALL_LINE_DATA_ATTR,
+      "failed",
+    );
+    await expect(recallAfterReload).toHaveText(expectedRecall);
+
+    // (5) After reload, the next run's route tray offers the recovery
+    // branch the failure unlocks — `repair-the-loss` — and NOT the
+    // succeeded-branch offers. Before #2401 this tray was unreachable
+    // from a fresh slot without a seeded save.
+    const nextRunPacket = page.locator("#packetButton");
+    await expect(nextRunPacket).toBeEnabled({ timeout: WAIT_MS });
+    await nextRunPacket.click();
+    await waitForBeat(page, "packet-choice");
+
+    const nextTray = page.locator("#routeRiskChoice");
+    await expect(nextTray).toHaveAttribute("data-visible", "true", {
+      timeout: WAIT_MS,
+    });
+    await expect(
+      nextTray.locator(
+        'button[data-aftersign-tap-choice="repair-the-loss"]:not([disabled])',
+      ),
+      "after reload, the next run must offer repair-the-loss",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await expect(
+      nextTray.locator('button[data-aftersign-tap-choice="take-the-shortcut"]'),
+      "succeeded-branch offer must not render after a failed run",
+    ).toHaveCount(0);
+    await expect(
+      nextTray.locator('button[data-aftersign-tap-choice="carry-a-fragile-packet"]'),
+      "succeeded-branch offer must not render after a failed run",
+    ).toHaveCount(0);
   });
 });
