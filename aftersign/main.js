@@ -3512,24 +3512,14 @@ const packetRelease = (input) => {
   return state.interaction.packetIntent;
 };
 
-const choose = async (choiceId) => {
-  if (choiceId === "open-packet") {
-    if (state.packet.sealed) {
-      state.packet.sealed = false;
-      markStateDirty();
-    }
-    setBeat("packet-choice");
-    return;
-  }
+const routeChoiceController = createRouteChoiceController({
+  getState: () => state,
+  setBeat: (beat) => setBeat(beat),
+  markStateDirty: () => markStateDirty(),
+});
 
-  if (choiceId === "keep-packet-sealed" || choiceId === "keep-sealed") {
-    if (!state.packet.sealed) {
-      state.packet.sealed = true;
-      markStateDirty();
-    }
-    setBeat("packet-choice");
-    return;
-  }
+const choose = async (choiceId) => {
+  if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {
     if (state.scene.beat === "io-next-job") {

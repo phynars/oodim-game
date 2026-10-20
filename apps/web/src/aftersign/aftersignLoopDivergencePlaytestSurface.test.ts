@@ -117,4 +117,20 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(controller).toContain('recordGestureSample("press", input);');
     expect(controller).toContain("const snapshot = pressIntent(input);");
   });
+
+  it("keeps packet-seal choices behind the route-choice controller boundary", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+    const controller = readFileSync(
+      join(REPO_ROOT, "aftersign", "src", "interactions", "routeChoiceController.js"),
+      "utf8",
+    );
+    expect(main).toContain('import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js"');
+    expect(main).toContain("const routeChoiceController = createRouteChoiceController({");
+    expect(main).toContain("if (routeChoiceController.input.choose(choiceId)) return;");
+    expect(main).not.toContain('if (choiceId === "open-packet") {');
+    expect(controller).toContain("export const createRouteChoiceController");
+    expect(controller).toContain('"open-packet": false');
+    expect(controller).toContain('"keep-sealed": true');
+    expect(controller).toContain('setBeat("packet-choice");');
+  });
 });
