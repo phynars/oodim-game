@@ -1782,11 +1782,31 @@ const syncIoLine = () => {
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
     //
-    // SKIPPED-ROUTE OVERRIDE (#2397, re-review): when the player
+    // SKIPPED-ROUTE SUFFIX (#2397, re-review): when the player
     // EXPLICITLY tapped "I ran early" (`skip-kiosk-acknowledge` →
-    // `state.player.secondAction === SECOND_ACTION.SKIPPED`), speak the
-    // authored `skippedReturn` line instead of the sealed/opened
-    // RETURNING line. This gate is narrow by design:
+    // `state.player.secondAction === SECOND_ACTION.SKIPPED`), APPEND
+    // the authored `skippedReturn` line to the sealed/opened RETURNING
+    // line so `#line` names BOTH dimensions (packet outcome + route
+    // skip) in one spoken beat. This is a SUFFIX, not a replacement —
+    // the fixes from the previous review:
+    //   • AI003 (test-tautology): sealed vs opened still produce
+    //     DIFFERENT `#line` strings (`RETURNING_LINES.sealed/opened`
+    //     prefixes are retained). A bug that always speaks the sealed
+    //     line now fails the opened-branch spec, which the pure
+    //     replacement masked.
+    //   • AI008 (half-override): `selected.line`, `selected.memoryRefs`,
+    //     and `selected.feelCue` all stay sourced from the same
+    //     sealed/opened snippet — line text now INCLUDES the packet
+    //     dimension the memoryRefs point to, so `expectedIoRecognition
+    //     Line("sealed"|"opened", false)` is still a prefix of what
+    //     `#line` reads and no spec that pins the returning line via
+    //     that helper is contradicted on paths that don't tap the
+    //     explicit skip.
+    //   • Live-verify (#2397): the authored `skippedReturn` text
+    //     ("You skipped my route…") now appears in the served bundle's
+    //     `#line` on the explicit-skip path — the surface Diego's
+    //     Playwright probe asserted was missing.
+    // The gate is narrow by design:
     //   • Memory-default skips are OUT. `secondActionFromMemory`
     //     returns SKIPPED when the memory fact object is "skipped" OR
     //     when the fact is absent (null commitment, #2326 false-memory
@@ -1797,29 +1817,28 @@ const syncIoLine = () => {
     //     Specs that reach recognition WITHOUT the skip tap
     //     (`durable-return-session-phone-playtest`,
     //      `flagship-reload-beat-regression`,
-    //      `io-phone-ready-look-sound-contract`) have
+    //      `io-phone-ready-look-sound-contract`,
+    //      `packet-delivered-cold-boot-affordance`,
+    //      `npc-memory-line-contract`,
+    //      `e2e-shared/prod-smoke/aftersign-save-reload`) have
     //     `state.player.secondAction === null` and keep the sealed/
-    //     opened RETURNING line.
+    //     opened RETURNING line verbatim.
     //   • Deep-recall is OUT. `selectIoRecognitionDialogueLine` picks
     //     the deep-recall tier only when `listened === true` (route
     //     fact object === "done"); the skip flag can never produce
     //     deep-recall, so `selected.tier` here is `returning` or
     //     `first-meeting`. The deep-recall sealedSkipped /
     //     openedSkipped lines ALREADY carry the two-dimensional
-    //     recognition and must not be overwritten.
-    // Packet-outcome dimension stays legible via `nextMemoryRefs` and
-    // `nextFeelCue` below — both still sourced from the sealed/opened
-    // snippet, so `assertVisualFeel("sealed"|"opened")` and
-    // `waitForMemoryBeat("sealed"|"opened")` continue to discriminate
-    // the outcomes even when `#line` names the route behavior.
+    //     recognition and must not be suffixed.
     const explicitSkip =
       state.player.secondAction === SECOND_ACTION.SKIPPED
       && selected.tier === "returning";
+    const recognitionLine = explicitSkip
+      ? `${selected.line} ${getAftersignIoRouteReturnLine(false).text}`
+      : selected.line;
     nextLine = state.delivery.id === "red-tag"
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
-      : explicitSkip
-        ? getAftersignIoRouteReturnLine(false).text
-        : selected.line;
+      : recognitionLine;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The

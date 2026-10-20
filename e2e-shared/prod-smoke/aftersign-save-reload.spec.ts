@@ -75,7 +75,17 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const TEST_TIMEOUT_MS = 240_000;
 const WAIT_MS = 90_000;
 
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
+// #2397 re-review: this spec taps `skip-kiosk-acknowledge` below, so
+// `state.player.secondAction === SECOND_ACTION.SKIPPED` and the main.js
+// SKIPPED-ROUTE SUFFIX at `syncIoLine` ~L1783 APPENDS the authored
+// `skippedReturn` line to the sealed RETURNING line — `#line` names
+// BOTH dimensions. The prefix still comes from `ioRecognitionDialogue`,
+// so a prod bundle that drops the recognition dialogue module still
+// fails here (the prefix won't match); the suffix proves the
+// `ioFirstSceneDialogue` module is also wired into the served bundle,
+// which is the fix issue #2397 asked for.
+import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
+const SEALED_RECOGNITION_LINE = `${expectedIoRecognitionLine("sealed", false)} ${getAftersignIoRouteReturnLine(false).text}`;
 
 function slotUrl(slot: string): string {
   // `baseURL` resolves `SMOKE_BASE_URL` (see

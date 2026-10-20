@@ -49,23 +49,28 @@ const BEAT_LIMITS = {
   inputLockMsMax: 1220,
 } as const;
 
-// The line Io speaks at io-return-recognition for both branches of this
-// spec. #2397 re-review: both the sealed and the opened branches below
-// tap `skip-kiosk-acknowledge` (so `state.player.secondAction ===
-// SECOND_ACTION.SKIPPED`), and the main.js SKIPPED-ROUTE OVERRIDE at
-// `syncIoLine` ~L1783 speaks the authored `skippedReturn` line in that
-// case regardless of packet outcome. The packet dimension still
-// discriminates sealed vs opened via `memoryRefs` → the
-// `io_return_packet_sealed` / `io_return_packet_opened` memory beat
-// (asserted by `waitForMemoryBeat`) and the sealed/opened snippet's
-// `feelCue` (asserted by `assertVisualFeel`).
-// Canonical copy module (#595 cleanup, #1077).
+// The lines Io speaks at io-return-recognition. #2397 re-review: both
+// branches below tap `skip-kiosk-acknowledge` (so
+// `state.player.secondAction === SECOND_ACTION.SKIPPED`), and the
+// main.js SKIPPED-ROUTE SUFFIX at `syncIoLine` ~L1783 APPENDS the
+// authored `skippedReturn` line to the sealed/opened RETURNING line
+// — `#line` names BOTH dimensions. Sealed vs opened therefore produce
+// DIFFERENT strings (sealed packet prefix + skip suffix vs opened
+// packet prefix + skip suffix): a bug that spoke only the sealed line
+// on the opened branch (or vice versa) now reds this spec.
+// Canonical copy modules (#595 cleanup, #1077): the packet-outcome
+// prefix comes from `ioRecognitionDialogue` (the returning tier the
+// runtime selector yields), the skip suffix from `ioFirstSceneDialogue`
+// — same two sources `syncIoLine` composes from.
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
-const SKIPPED_ROUTE_RETURN_LINE = getAftersignIoRouteReturnLine(false).text;
+const SKIPPED_ROUTE_SUFFIX = getAftersignIoRouteReturnLine(false).text;
+const SEALED_RECOGNITION_LINE = `${expectedIoRecognitionLine("sealed", false)} ${SKIPPED_ROUTE_SUFFIX}`;
+const OPENED_RECOGNITION_LINE = `${expectedIoRecognitionLine("opened", false)} ${SKIPPED_ROUTE_SUFFIX}`;
 
 const EXPECTED_LINE: Record<RecognitionOutcome, string> = {
-  sealed: SKIPPED_ROUTE_RETURN_LINE,
-  opened: SKIPPED_ROUTE_RETURN_LINE,
+  sealed: SEALED_RECOGNITION_LINE,
+  opened: OPENED_RECOGNITION_LINE,
 };
 
 const EXPECTED_LINE_ID: Record<RecognitionOutcome, string> = {
@@ -273,10 +278,11 @@ test("io return recognition, played by taps: sealed branch publishes readable vi
   // sealed-outcome / skipped-route combination must render in `#line`
   // after the auto-advance — NOT read from window.__game. #2397
   // re-review: this spec taps `skip-kiosk-acknowledge` so main.js
-  // speaks the authored `skippedReturn` line; the sealed-vs-opened
-  // packet dimension is still asserted below via the memory beat +
-  // feel-cue snippet (both still sourced from the sealed snippet).
-  await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
+  // appends the authored `skippedReturn` suffix to the sealed
+  // RETURNING line. The sealed-vs-opened packet dimension is asserted
+  // BOTH on `#line` (sealed prefix differs from opened prefix) AND
+  // below via the memory beat + feel-cue snippet.
+  await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
     timeout: WAIT_MS,
   });
 
@@ -290,11 +296,13 @@ test("io return recognition, played by taps: opened branch publishes readable vi
 
   await playToRecognition(page, `io-return-visual-feel-opened-${Date.now()}`, "opened");
 
-  // #2397 re-review: same `skippedReturn` line as the sealed branch
-  // (both tap `skip-kiosk-acknowledge`); the opened dimension is
-  // asserted via `waitForMemoryBeat("opened")` + `assertVisualFeel(…,
-  // "opened")` below.
-  await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
+  // #2397 re-review: same `skippedReturn` suffix as the sealed branch
+  // (both tap `skip-kiosk-acknowledge`) but a DIFFERENT prefix — the
+  // opened RETURNING line names the broken seal. The sealed vs opened
+  // dimension is discriminated here on `#line` (prefix differs) AND
+  // below via `waitForMemoryBeat("opened")` + `assertVisualFeel(…,
+  // "opened")`.
+  await expect(page.locator("#line")).toHaveText(OPENED_RECOGNITION_LINE, {
     timeout: WAIT_MS,
   });
 

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
 
 // Playtest: after a phone-player reload, the story restores DIRECTLY to
@@ -60,7 +61,16 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
-const SKIPPED_ROUTE_RETURN_LINE = getAftersignIoRouteReturnLine(false).text;
+// #2397 re-review: `skip-kiosk-acknowledge` sets
+// `state.player.secondAction = SECOND_ACTION.SKIPPED`, and the main.js
+// SKIPPED-ROUTE SUFFIX at `syncIoLine` ~L1783 APPENDS the authored
+// `skippedReturn` line to the sealed RETURNING line — `#line` names
+// BOTH dimensions (packet outcome + skip). The opened-branch sibling
+// spec (`aftersign-recognition-reload-restoration.playtest.spec.ts`)
+// asserts the opened prefix + the same suffix, so a bug that spoke the
+// sealed line on the opened branch (or vice versa) reds the
+// corresponding spec.
+const SEALED_RECOGNITION_LINE = `${expectedIoRecognitionLine("sealed", false)} ${getAftersignIoRouteReturnLine(false).text}`;
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
@@ -113,7 +123,7 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     // AFTER `setBeat("io-return-recognition")` so reload will restore
     // to this beat, not `packet-delivered`.
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
+    await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
       timeout: WAIT_MS,
     });
     await expect(
@@ -128,7 +138,7 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     await page.reload({ waitUntil: "load" });
 
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
+    await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
       timeout: WAIT_MS,
     });
     await expect(

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
+import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
 import { performPacketGesture } from "./helpers/packetGesture";
 
@@ -51,13 +52,14 @@ const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
 // `skip-kiosk-acknowledge` sets `state.player.secondAction =
-// SECOND_ACTION.SKIPPED`, so the recognition beat speaks the authored
-// `skippedReturn` line regardless of packet outcome (see
-// aftersign/main.js `syncIoLine` SKIPPED-ROUTE OVERRIDE at ~L1783). The
-// opened-vs-sealed packet dimension still discriminates via
-// `data-return-reason` tone controls (asserted below) and the
-// memoryRefs/feelCue sourced from the opened snippet.
-const SKIPPED_ROUTE_RETURN_LINE = getAftersignIoRouteReturnLine(false).text;
+// SECOND_ACTION.SKIPPED`, so the recognition beat APPENDS the authored
+// `skippedReturn` line to the opened RETURNING line (see aftersign/
+// main.js `syncIoLine` SKIPPED-ROUTE SUFFIX at ~L1783) — `#line` names
+// BOTH dimensions (packet outcome + skip). The opened prefix differs
+// from the sealed prefix the sibling `aftersign-recognition-reload`
+// spec asserts, so a bug that spoke the sealed line on the opened
+// branch (or vice versa) reds the corresponding spec.
+const OPENED_RECOGNITION_LINE = `${expectedIoRecognitionLine("opened", false)} ${getAftersignIoRouteReturnLine(false).text}`;
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
@@ -108,7 +110,7 @@ test.describe("AFTERSIGN recognition reload restoration (opened)", () => {
     // ~1180ms setTimeout — the SECOND auto-save fires here, pinning
     // `io-return-recognition` as the durable restore target.
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
+    await expect(page.locator("#line")).toHaveText(OPENED_RECOGNITION_LINE, {
       timeout: WAIT_MS,
     });
     await expect(
@@ -123,7 +125,7 @@ test.describe("AFTERSIGN recognition reload restoration (opened)", () => {
     await page.reload({ waitUntil: "load" });
 
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).toHaveText(SKIPPED_ROUTE_RETURN_LINE, {
+    await expect(page.locator("#line")).toHaveText(OPENED_RECOGNITION_LINE, {
       timeout: WAIT_MS,
     });
     await expect(
