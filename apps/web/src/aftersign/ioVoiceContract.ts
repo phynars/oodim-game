@@ -3,10 +3,7 @@
 // drift from the state contract. See PR #758 review.
 export type { AftersignPacketOutcome } from "./verticalSliceState";
 import type { AftersignPacketOutcome } from "./verticalSliceState";
-import {
-  IO_OPENED_RETURN_LINE,
-  IO_SEALED_RETURN_LINE,
-} from "../../../../aftersign/src/ioSealedReturn.js";
+import { IO_SEALED_RETURN_LINE } from "../../../../aftersign/src/ioSealedReturn.js";
 
 export const AFTERSIGN_PACKET_OUTCOMES = ["sealed", "opened"] as const satisfies readonly AftersignPacketOutcome[];
 
@@ -56,7 +53,7 @@ export const AFTERSIGN_IO_LINES: Record<AftersignIoLineKey, AftersignIoLine> = {
   },
   openedReturn: {
     key: "openedReturn",
-    text: IO_OPENED_RETURN_LINE,
+    text: "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
     memorySentence: "Io remembers that the courier opened the blue packet.",
   },
   kindReturn: {

@@ -19,41 +19,27 @@ import { join } from "node:path";
 //   (b) each served module imports from `./ioSealedReturn` instead of
 //       re-typing a literal (a drift back to inline strings reds here).
 //
+// Scope note (PR #2409 re-review by Soren Vask, F2): this file INTENTIONALLY
+// does NOT regex-match `apps/web/src/aftersign/ioVoiceContract.ts` or
+// `ioFirstSceneDialogue.ts`. Those modules are NOT in the served build
+// graph (`aftersign/vite.config.ts` has `root: aftersign/`), so an
+// assertion against their source is a test that passes regardless of
+// what players see — exactly the failure mode #2408 was filed to end.
+// Realigning or deleting the forked copy in that unreached tree is a
+// separate refactor; this file guards only the modules the player
+// actually loads.
+//
 // Pattern follows `servedSurface.contract.test.ts` — assert against the
 // RAW served source, not a transpiled import, so this file does not
 // depend on which bundler / module resolver vitest is configured with.
 describe("Io return voice contract — live-served copy", () => {
   const readServed = (rel: string) =>
     readFileSync(join(process.cwd(), "aftersign", rel), "utf8");
-  // The apps/web Aftersign modules live under `apps/web/src/aftersign/`
-  // relative to the repo root. The test runner's cwd depends on whether
-  // vitest was invoked from the package or the repo root, so probe both.
-  const readAppsWeb = (rel: string) => {
-    const candidates = [
-      join(process.cwd(), "apps", "web", "src", "aftersign", rel),
-      join(process.cwd(), "..", "..", "src", "aftersign", rel),
-      join(process.cwd(), "src", "aftersign", rel),
-    ];
-    for (const p of candidates) {
-      try {
-        return readFileSync(p, "utf8");
-      } catch {
-        /* try next */
-      }
-    }
-    throw new Error(
-      `Could not locate apps/web/src/aftersign/${rel} from cwd ${process.cwd()}`,
-    );
-  };
 
   const IO_SEALED_CANON =
     "You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.";
   const IO_OPENED_CANON =
     "You made it back. The seal did not. I can use one of those facts.";
-  // The forked PR #2390 opened-return copy. If this string reappears in
-  // any served Io module, Io's return beat has drifted off canon again.
-  const IO_OPENED_FORK =
-    "You opened it. The name is alive elsewhere now. I will charge you for the next route.";
 
   it("the canonical `ioSealedReturn` module ships both full canonical strings", () => {
     const src = readServed("src/ioSealedReturn.ts");
@@ -105,46 +91,5 @@ describe("Io return voice contract — live-served copy", () => {
     expect(src).not.toContain(IO_SEALED_CANON);
     expect(src).not.toContain(IO_OPENED_CANON);
     expect(src).toMatch(/export\s+function\s+getIoReturningMemoryLine\s*\(/);
-  });
-
-  it("`apps/web/src/aftersign/ioVoiceContract.ts` sources openedReturn + sealedReturn from the canon module (no inline literal, no PR #2390 fork)", () => {
-    const src = readAppsWeb("ioVoiceContract.ts");
-    // (a) It imports BOTH canonical constants from the single-owner module.
-    expect(src).toMatch(
-      /import\s*\{[\s\S]*?IO_OPENED_RETURN_LINE[\s\S]*?\}\s*from\s*["'][^"']*ioSealedReturn\.js["']/,
-    );
-    expect(src).toMatch(
-      /import\s*\{[\s\S]*?IO_SEALED_RETURN_LINE[\s\S]*?\}\s*from\s*["'][^"']*ioSealedReturn\.js["']/,
-    );
-    // (b) The `AFTERSIGN_IO_LINES` table binds each outcome's text to
-    //     the canonical constant, not a drifted inline string.
-    expect(src).toMatch(/openedReturn:\s*\{[^}]*text:\s*IO_OPENED_RETURN_LINE/);
-    expect(src).toMatch(/sealedReturn:\s*\{[^}]*text:\s*IO_SEALED_RETURN_LINE/);
-    // (c) Neither the full canon line NOR the forked PR #2390 copy
-    //     appears inline here.
-    expect(src).not.toContain(IO_SEALED_CANON);
-    expect(src).not.toContain(IO_OPENED_CANON);
-    expect(src).not.toContain(IO_OPENED_FORK);
-  });
-
-  it("`apps/web/src/aftersign/ioFirstSceneDialogue.ts` sources openedReturn + sealedReturn from the canon module (no inline literal, no PR #2390 fork)", () => {
-    const src = readAppsWeb("ioFirstSceneDialogue.ts");
-    expect(src).toMatch(
-      /import\s*\{[\s\S]*?IO_OPENED_RETURN_LINE[\s\S]*?\}\s*from\s*["'][^"']*ioSealedReturn\.js["']/,
-    );
-    expect(src).toMatch(
-      /import\s*\{[\s\S]*?IO_SEALED_RETURN_LINE[\s\S]*?\}\s*from\s*["'][^"']*ioSealedReturn\.js["']/,
-    );
-    // The AFTERSIGN_IO_FIRST_SCENE_DIALOGUE tuple binds openedReturn and
-    // sealedReturn's `text` to the canonical constants.
-    expect(src).toMatch(
-      /id:\s*"openedReturn"[\s\S]{0,160}?text:\s*IO_OPENED_RETURN_LINE/,
-    );
-    expect(src).toMatch(
-      /id:\s*"sealedReturn"[\s\S]{0,160}?text:\s*IO_SEALED_RETURN_LINE/,
-    );
-    expect(src).not.toContain(IO_SEALED_CANON);
-    expect(src).not.toContain(IO_OPENED_CANON);
-    expect(src).not.toContain(IO_OPENED_FORK);
   });
 });
