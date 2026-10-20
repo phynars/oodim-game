@@ -3515,8 +3515,13 @@ const packetRelease = (input) => {
 
 const routeChoiceController = createRouteChoiceController({
   getState: () => state,
-  setBeat: (beat) => setBeat(beat),
-  markStateDirty: () => markStateDirty(),
+  setState: ({ packetSealed, beat }) => {
+    if (packetSealed !== null) {
+      state.packet.sealed = packetSealed;
+      markStateDirty();
+    }
+    setBeat(beat);
+  },
 });
 
 const choose = async (choiceId) => {

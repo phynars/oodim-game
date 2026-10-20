@@ -131,111 +131,102 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(controller).toContain("export const createRouteChoiceController");
     expect(controller).toContain('"open-packet": false');
     expect(controller).toContain('"keep-sealed": true');
-    expect(controller).toContain('setBeat("packet-choice");');
+    // The post-choice beat is emitted via setState's `beat` field — this
+    // string anchors the "packet-choice" scene wiring in the controller
+    // so a stray rename cannot pass tests silently.
+    expect(controller).toContain('beat: "packet-choice"');
   });
 
-  it("route-choice controller unseals the packet on open-packet and seals it on keep-sealed", async () => {
+  it("route-choice controller emits a setState payload that seals/unseals the packet and advances the beat", async () => {
     const controllerModule = await import(
       /* @vite-ignore */ join(REPO_ROOT, "aftersign", "src", "interactions", "routeChoiceController.js")
     );
+    type SetStatePayload = { packetSealed: boolean | null; beat: string };
     const createRouteChoiceController = controllerModule.createRouteChoiceController as (deps: {
       getState: () => { packet: { sealed: boolean } };
-      setBeat: (beat: string) => void;
-      markStateDirty: () => void;
+      setState: (payload: SetStatePayload) => void;
     }) => { input: { choose: (choiceId: string) => boolean } };
 
-    // open-packet: sealed → unsealed, dirty flag + beat fire.
+    // open-packet with a sealed packet: controller tells main.js to unseal
+    // and advance to packet-choice.
     {
       const state = { packet: { sealed: true } };
-      const beats: string[] = [];
-      let dirtyCount = 0;
+      const calls: SetStatePayload[] = [];
       const controller = createRouteChoiceController({
         getState: () => state,
-        setBeat: (beat) => beats.push(beat),
-        markStateDirty: () => {
-          dirtyCount += 1;
-        },
+        setState: (payload) => calls.push(payload),
       });
       const handled = controller.input.choose("open-packet");
       expect(handled).toBe(true);
-      expect(state.packet.sealed).toBe(false);
-      expect(dirtyCount).toBe(1);
-      expect(beats).toEqual(["packet-choice"]);
+      expect(calls).toEqual([{ packetSealed: false, beat: "packet-choice" }]);
     }
 
-    // open-packet when already unsealed: no dirty flag, beat still fires.
+    // open-packet when already unsealed: packetSealed is null (no mutation)
+    // but the beat still fires so main.js can re-render.
     {
       const state = { packet: { sealed: false } };
-      const beats: string[] = [];
-      let dirtyCount = 0;
+      const calls: SetStatePayload[] = [];
       const controller = createRouteChoiceController({
         getState: () => state,
-        setBeat: (beat) => beats.push(beat),
-        markStateDirty: () => {
-          dirtyCount += 1;
-        },
+        setState: (payload) => calls.push(payload),
       });
       controller.input.choose("open-packet");
-      expect(state.packet.sealed).toBe(false);
-      expect(dirtyCount).toBe(0);
-      expect(beats).toEqual(["packet-choice"]);
+      expect(calls).toEqual([{ packetSealed: null, beat: "packet-choice" }]);
     }
 
-    // keep-sealed: unsealed → sealed, dirty flag + beat fire.
+    // keep-sealed on an unsealed packet: controller tells main.js to seal
+    // and advance to packet-choice.
     {
       const state = { packet: { sealed: false } };
-      const beats: string[] = [];
-      let dirtyCount = 0;
+      const calls: SetStatePayload[] = [];
       const controller = createRouteChoiceController({
         getState: () => state,
-        setBeat: (beat) => beats.push(beat),
-        markStateDirty: () => {
-          dirtyCount += 1;
-        },
+        setState: (payload) => calls.push(payload),
       });
       const handled = controller.input.choose("keep-sealed");
       expect(handled).toBe(true);
-      expect(state.packet.sealed).toBe(true);
-      expect(dirtyCount).toBe(1);
-      expect(beats).toEqual(["packet-choice"]);
+      expect(calls).toEqual([{ packetSealed: true, beat: "packet-choice" }]);
     }
 
-    // keep-packet-sealed alias behaves identically.
+    // keep-packet-sealed alias behaves identically to keep-sealed — proves
+    // the alias row in PACKET_SEAL_CHOICES is wired, not just declared.
     {
       const state = { packet: { sealed: false } };
-      const beats: string[] = [];
-      let dirtyCount = 0;
+      const calls: SetStatePayload[] = [];
       const controller = createRouteChoiceController({
         getState: () => state,
-        setBeat: (beat) => beats.push(beat),
-        markStateDirty: () => {
-          dirtyCount += 1;
-        },
+        setState: (payload) => calls.push(payload),
       });
       const handled = controller.input.choose("keep-packet-sealed");
       expect(handled).toBe(true);
-      expect(state.packet.sealed).toBe(true);
-      expect(dirtyCount).toBe(1);
-      expect(beats).toEqual(["packet-choice"]);
+      expect(calls).toEqual([{ packetSealed: true, beat: "packet-choice" }]);
     }
 
-    // Unknown choice is not handled — caller must keep dispatching.
+    // keep-sealed when already sealed: no mutation (packetSealed is null),
+    // beat still fires so the scene re-renders.
     {
       const state = { packet: { sealed: true } };
-      const beats: string[] = [];
-      let dirtyCount = 0;
+      const calls: SetStatePayload[] = [];
       const controller = createRouteChoiceController({
         getState: () => state,
-        setBeat: (beat) => beats.push(beat),
-        markStateDirty: () => {
-          dirtyCount += 1;
-        },
+        setState: (payload) => calls.push(payload),
+      });
+      controller.input.choose("keep-sealed");
+      expect(calls).toEqual([{ packetSealed: null, beat: "packet-choice" }]);
+    }
+
+    // Unknown choice is not handled — caller (main.js `choose`) must keep
+    // dispatching. The controller must not call setState at all.
+    {
+      const state = { packet: { sealed: true } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
       });
       const handled = controller.input.choose("deliver-packet");
       expect(handled).toBe(false);
-      expect(state.packet.sealed).toBe(true);
-      expect(dirtyCount).toBe(0);
-      expect(beats).toEqual([]);
+      expect(calls).toEqual([]);
     }
   });
 });
