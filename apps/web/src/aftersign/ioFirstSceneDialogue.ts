@@ -80,7 +80,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "openedReturn",
     intent: "returnPacket",
-    text: IO_SEALED_RETURN_LINE,
+    text: IO_OPENED_RETURN_LINE,
     memoryKey: "io_return_packet_opened",
   },
   {
