@@ -1,15 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Cold-start budget matches sibling AFTERSIGN specs: SwiftShader + three.js
-// first WebGL context regularly blows the default 30s in CI. Every spec in
-// aftersign/e2e/ opts into 90s and uses waitUntil: 'load' — 'networkidle'
-// never fires when the render loop keeps requesting frames.
 const COLD_START_MS = 90_000;
-// Sequential waits sum to 75s (45 + 15 + 10 + 5), leaving 15s of headroom
-// under the 90s test timeout for page.goto, the driving evaluate, and the
-// final synchronous probe. SwiftShader boot gets the largest slice; after
-// authored state arrives, the MutationObserver/task-queue marks and the final
-// DOM probe need only short, independent windows.
 const GAME_READY_WAIT_MS = 45_000;
 const RECOGNITION_BEAT_WAIT_MS = 15_000;
 const RECOGNITION_MARKS_WAIT_MS = 10_000;
@@ -20,9 +11,6 @@ const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 const MAX_VIEWPORT_EDGE_EPSILON_PX = 1;
-
-// Issue #544 contract thresholds are pinned as literals here so the harness
-// itself enforces the product envelope even if shared feel constants drift.
 const MAX_UI_SETTLE_MS = 360;
 const MAX_AV_DRIFT_MS = 50;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
@@ -44,31 +32,13 @@ type PhoneReadyProbe = {
 };
 
 type RuntimeMarks = {
-  // Beat entry — stamp instant `scene.beat === "io-return-recognition"`.
   readonly recognitionTriggeredAt: number;
-  // Recognition line text ready — stamp instant `#line` starts with
-  // "I remember you". Paired with `recognitionTriggeredAt` to measure
-  // `settleMs`: how fast the authored line arrives after the beat enters.
   readonly lineSettledAt: number;
-  // Confirm-feedback envelope stamp — `state.interaction.confirmStartedAt`.
-  // This is the VISUAL half of the look/sound couple: `deliverPacket()`
-  // calls `triggerKioskFeedback()` (stamps `confirmStartedAt`) and
-  // `playKioskConfirm()` (stamps `audio.lastCueAt = "packet-confirmed"`)
-  // in the SAME synchronous call. Pairing these two stamps is what the
-  // ≤50ms drift budget actually tests — "sound landed on the frame the
-  // confirm envelope landed". Using the `#line` text transition instead
-  // measures the authored ~1180ms recognition-transition timeout, which
-  // is a settle budget, not a coupling budget.
   readonly confirmVisualAt: number;
   readonly audioCueAt: number;
 };
 
 const waitForGame = async (page: Page) => {
-  // Same 100ms clock-driven poll used by the recognition gates below: on a
-  // cold SwiftShader worker rAF can stall long enough that even the pre-boot
-  // input-readiness check inherits the flake vector #1852 documented for the
-  // downstream gates. Using an explicit interval decouples readiness from
-  // the render loop; the default polling='raf' would re-introduce it here.
   await page.waitForFunction(
     () => {
       const input = (window as Window & {
@@ -92,36 +62,41 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
       };
     };
     win.__ioPhoneReadyMarks = {};
-    const initialLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
-    const initialAudioCueAt = win.__game?._runtime?.audio?.lastCueAt ?? null;
-    const initialConfirmStartedAt = win.__game?.interaction?.confirmStartedAt ?? null;
-
-    // MutationObserver stamps the DOM write as a microtask. Sample game/audio
-    // state on the task queue as well: a cold SwiftShader worker can starve
-    // rAF, but it must not prevent this test-only diagnostic stamp from seeing
-    // the authored cue. Capture the cue independently of the beat: otherwise
-    // a cue that lands just before the beat stamp is permanently missed.
+    // Why no "non-initial" guard against a pre-tap confirm/cue timestamp:
     //
-    // `confirmVisualAt` is the VISUAL half of the look/sound couple: both
-    // `confirmStartedAt` and `audio.lastCueAt="packet-confirmed"` are stamped
-    // inside the SAME synchronous `deliverPacket()` call (triggerKioskFeedback
-    // then playKioskConfirm, back-to-back). Latching the first non-initial
-    // confirm stamp pairs it with `audioCueAt` for the ≤50ms drift budget.
-    // `lineSettledAt` is a SEPARATE settle measurement — how fast the
-    // recognition line arrives after the beat enters — not an audio-visual
-    // couple. The ~1180ms deliver→recognition transition is intentional and
-    // measured by `settleMs`, which runs from `recognitionTriggeredAt`.
+    // The spec starts with `page.goto(...)` on a fresh Playwright page, so
+    // the aftersign module just loaded. At that point both candidate stamps
+    // are null by construction:
+    //   * `state.interaction.confirmStartedAt` — initialised null at
+    //     aftersign/main.js:1230 and only written by `triggerKioskFeedback`
+    //     at aftersign/main.js:4409 (the deliver tap).
+    //   * `state._runtime.audio.lastCueAt` — initialised null at
+    //     aftersign/main.js:1287 and only written when a cue plays
+    //     (aftersign/main.js:476, 4261, 4282, 4326, 4334, 4359).
+    // `installPhoneReadyRuntimeMarks` runs AFTER the deterministic
+    // `forceReload`, immediately before the packet/deliver taps that
+    // produce the first confirm + first `packet-confirmed` cue. There is
+    // no prior tap in this page session, so the first non-null value we
+    // observe belongs to the delivery we just drove. A "non-initial"
+    // guard against a baseline value is unnecessary — and worse, it was
+    // the race: when the runtime clock reports the same `performance.now()`
+    // integer for the baseline read and the real stamp (common at this
+    // poll cadence), the guard rejects the authentic confirm and the gate
+    // never resolves.
     const stampMarks = () => {
       const game = win.__game;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
       const marks = win.__ioPhoneReadyMarks;
       if (!marks) return;
       const audio = game?._runtime?.audio;
-      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null && audio.lastCueAt !== initialAudioCueAt) marks.audioCueAt = audio.lastCueAt;
+      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null) marks.audioCueAt = audio.lastCueAt;
       const confirmStartedAt = game?.interaction?.confirmStartedAt ?? null;
-      if (marks.confirmVisualAt === undefined && confirmStartedAt !== null && confirmStartedAt !== initialConfirmStartedAt) marks.confirmVisualAt = confirmStartedAt;
+      if (marks.confirmVisualAt === undefined && confirmStartedAt !== null) marks.confirmVisualAt = confirmStartedAt;
       if (marks.recognitionTriggeredAt === undefined && game?.scene?.beat === 'io-return-recognition') marks.recognitionTriggeredAt = performance.now();
-      if (marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt === undefined && lineText.startsWith('I remember you') && lineText !== initialLineText) marks.lineSettledAt = performance.now();
+      // The line can be rendered before the next task after the beat changes.
+      // Do not require a DOM-text delta: that race made this diagnostic mark
+      // permanently unreachable even though the authored recognition beat was live.
+      if (marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt === undefined && lineText.startsWith('I remember you')) marks.lineSettledAt = performance.now();
     };
 
     const lineNode = document.querySelector('#line');
@@ -133,10 +108,6 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
 const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
-  // forceReload replaces the runtime that owns `state._runtime.audio` and
-  // `state.interaction.confirmStartedAt`. Install marks AFTER the reset so
-  // `initialAudioCueAt` / `initialConfirmStartedAt` reflect the fresh runtime
-  // — otherwise the "non-initial" guards latch on the pre-reload cue stamp.
   await page.evaluate(async () => {
     const game = (window as Window & { __game?: { input?: { forceReload?: () => Promise<void> }; story?: { memoryBeat?: unknown } } }).__game;
     if (!game?.input?.forceReload) throw new Error('window.__game.input.forceReload is not available');
@@ -146,25 +117,9 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
   await installPhoneReadyRuntimeMarks(page);
 
-  // Drive the shipped controls exactly as a phone player does. __game remains
-  // assertion-only elsewhere in this spec; it is not used to cause progress.
-  //
-  // We tap `#packetButton` then `#deliverButton` and STOP. `deliverPacket()`
-  // auto-advances `packet-delivered` → `io-return-recognition` ~1180ms later
-  // (same transition pinned by `durable-return-session-phone-playtest.spec.ts`
-  // lines 160-167 and `return-to-io-gesture-spans-auto-advance.spec.ts`
-  // lines 1-12). The SAME `#deliverButton` is re-labelled in place from
-  // "Return to Io" to a tone control at the moment the beat flips. A third
-  // click on `Return to Io` would race that relabel: a cold boot that lands
-  // the tap after the swap commits a tone the player never chose; a run
-  // that lands it before gets refused by the 120ms settle gate and times
-  // out. The existing `waitForFunction` on `scene.beat === 'io-return-recognition'`
-  // below already covers the auto-advance — no synthetic click needed.
   await page.locator('#packetButton').click();
   await page.locator('#deliverButton').click();
 
-  // Separate authored state from diagnostic marks: neither slow condition can
-  // consume the full old WAIT_MS window, and their composed budget stays ≤WAIT_MS.
   await page.waitForFunction(
     () => {
       const game = (window as Window & { __game?: { scene?: { beat?: string }; story?: { memoryBeat?: unknown } } }).__game;
@@ -202,15 +157,7 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => p
     viewport,
     horizontalOverflowPx: Math.max(0, root.scrollWidth - viewport.width, -rect.left, rect.right - viewport.width),
     verticalOverflowPx: Math.max(0, root.scrollHeight - viewport.height, -rect.top, rect.bottom - viewport.height),
-    // settleMs: time from recognition-beat entry to the authored recognition
-    // line being readable. Separate budget from `avDriftMs`; the authored
-    // ~1180ms deliver→recognition transition does NOT count against the
-    // ≤50ms audio-visual couple below.
     settleMs: Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt),
-    // avDriftMs: audio-visual coupling at the confirm envelope. Both stamps
-    // are written inside the same synchronous `deliverPacket()` call, so the
-    // ≤50ms budget tests "the cue dispatched on the same tick as the visual
-    // envelope" — the actual look/sound promise the contract names.
     avDriftMs: Math.abs(marks.audioCueAt - marks.confirmVisualAt),
     audioLastCue: win.__game?._runtime?.audio?.lastCue ?? null,
   } satisfies PhoneReadyProbe;
