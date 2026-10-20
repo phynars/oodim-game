@@ -62,11 +62,27 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
       };
     };
     win.__ioPhoneReadyMarks = {};
-    // Marks are installed immediately before the visible delivery tap, so the
-    // first matching confirm/cue belongs to that delivery. Comparing against
-    // pre-reload timestamps is unsafe: the runtime clock can reuse a
-    // millisecond value across reload and delivery, making a real confirm look
-    // unchanged and leaving the diagnostic gate permanently unreachable.
+    // Why no "non-initial" guard against a pre-tap confirm/cue timestamp:
+    //
+    // The spec starts with `page.goto(...)` on a fresh Playwright page, so
+    // the aftersign module just loaded. At that point both candidate stamps
+    // are null by construction:
+    //   * `state.interaction.confirmStartedAt` — initialised null at
+    //     aftersign/main.js:1230 and only written by `triggerKioskFeedback`
+    //     at aftersign/main.js:4409 (the deliver tap).
+    //   * `state._runtime.audio.lastCueAt` — initialised null at
+    //     aftersign/main.js:1287 and only written when a cue plays
+    //     (aftersign/main.js:476, 4261, 4282, 4326, 4334, 4359).
+    // `installPhoneReadyRuntimeMarks` runs AFTER the deterministic
+    // `forceReload`, immediately before the packet/deliver taps that
+    // produce the first confirm + first `packet-confirmed` cue. There is
+    // no prior tap in this page session, so the first non-null value we
+    // observe belongs to the delivery we just drove. A "non-initial"
+    // guard against a baseline value is unnecessary — and worse, it was
+    // the race: when the runtime clock reports the same `performance.now()`
+    // integer for the baseline read and the real stamp (common at this
+    // poll cadence), the guard rejects the authentic confirm and the gate
+    // never resolves.
     const stampMarks = () => {
       const game = win.__game;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
