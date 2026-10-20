@@ -137,10 +137,21 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
   // #2179 (blind playtest #3): Lit stair, then "Carry the fragile packet",
   // then deliver. Io said "You took the dark cut" — a route the player
   // never took. The fragile run must be named as the fragile run.
-  test("Lit stair then 'Carry the fragile packet' is never credited with the dark cut (#2179)", async ({ page }) => {
+  //
+  // #2401: the fragile route now RECORDS `succeeded: false` — that's the
+  // one visible player-driven condition that fails a run so the shipped
+  // `repair-the-loss` recovery branch becomes reachable (see
+  // `aftersign/main.js` onChoose ~2301 / renderText ~2563). The route-
+  // outcome line at `packet-delivered` is only rendered on
+  // `routeMemory.succeeded` (`main.js` ~1483); a failed fragile run
+  // falls through to the base `aftersignDeliveryCompleteLine("blue-packet")`.
+  // The #2179 anchor still holds: whichever line Io speaks must not
+  // credit the player with the dark cut — the base delivery line
+  // naturally doesn't, and the `succeeded: false` fact feeds the
+  // next-run `#packetRecallLine` ("failed") covered by
+  // `aftersign-packet-recall-failed-feel.playtest.spec.ts`.
+  test("Lit stair then 'Carry the fragile packet' records a failed run and is never credited with the dark cut (#2179 + #2401)", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
-    const fragileOutcomeLine = aftersignRouteOutcomeLine("fast", "carry-a-fragile-packet");
-    expect(fragileOutcomeLine, "the fragile run must have authored outcome copy").not.toBeNull();
 
     const slot = `route-outcome-fragile-${Date.now()}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
@@ -160,13 +171,19 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     const fragile = tray.locator('button[data-aftersign-tap-choice="carry-a-fragile-packet"]:not([disabled])');
     await expect(fragile).toBeVisible({ timeout: WAIT_MS });
     await fragile.tap();
-    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "fast", succeeded: true, lastAction: "carry-a-fragile-packet" });
+    // #2401: fragile is the player-visible failure that makes
+    // `succeeded: false` reachable without a seeded save.
+    await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "fast", succeeded: false, lastAction: "carry-a-fragile-packet" });
 
     await deliverFromRouteChoice(page);
     const line = page.locator("#line");
     await expect(line).toBeVisible({ timeout: WAIT_MS });
-    await expect(line).toHaveText(fragileOutcomeLine!, { timeout: WAIT_MS });
+    // Failed fragile run → the route-outcome branch (succeeded-only)
+    // is skipped and the base delivery line speaks. Both the pure
+    // delivery copy and Io's lastLine must agree, and neither may
+    // credit the player with the dark cut (#2179 anchor).
+    await expect(line).toHaveText(FRESH_DELIVERED_LINE, { timeout: WAIT_MS });
     expect((await line.textContent()) ?? "").not.toContain("dark cut");
-    expect(await snapshotIoLine(page)).toBe(fragileOutcomeLine);
+    expect(await snapshotIoLine(page)).toBe(FRESH_DELIVERED_LINE);
   });
 });
