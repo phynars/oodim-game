@@ -117,4 +117,125 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(controller).toContain('recordGestureSample("press", input);');
     expect(controller).toContain("const snapshot = pressIntent(input);");
   });
+
+  it("keeps packet-seal choices behind the route-choice controller boundary", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+    const controller = readFileSync(
+      join(REPO_ROOT, "aftersign", "src", "interactions", "routeChoiceController.js"),
+      "utf8",
+    );
+    expect(main).toContain('import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js"');
+    expect(main).toContain("const routeChoiceController = createRouteChoiceController({");
+    expect(main).toContain("if (routeChoiceController.input.choose(choiceId)) return;");
+    expect(main).not.toContain('if (choiceId === "open-packet") {');
+    expect(controller).toContain("export const createRouteChoiceController");
+    expect(controller).toContain('"open-packet": false');
+    expect(controller).toContain('"keep-sealed": true');
+    expect(controller).toContain('setBeat("packet-choice");');
+  });
+
+  it("route-choice controller unseals the packet on open-packet and seals it on keep-sealed", async () => {
+    const controllerModule = await import(
+      /* @vite-ignore */ join(REPO_ROOT, "aftersign", "src", "interactions", "routeChoiceController.js")
+    );
+    const createRouteChoiceController = controllerModule.createRouteChoiceController as (deps: {
+      getState: () => { packet: { sealed: boolean } };
+      setBeat: (beat: string) => void;
+      markStateDirty: () => void;
+    }) => { input: { choose: (choiceId: string) => boolean } };
+
+    // open-packet: sealed → unsealed, dirty flag + beat fire.
+    {
+      const state = { packet: { sealed: true } };
+      const beats: string[] = [];
+      let dirtyCount = 0;
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setBeat: (beat) => beats.push(beat),
+        markStateDirty: () => {
+          dirtyCount += 1;
+        },
+      });
+      const handled = controller.input.choose("open-packet");
+      expect(handled).toBe(true);
+      expect(state.packet.sealed).toBe(false);
+      expect(dirtyCount).toBe(1);
+      expect(beats).toEqual(["packet-choice"]);
+    }
+
+    // open-packet when already unsealed: no dirty flag, beat still fires.
+    {
+      const state = { packet: { sealed: false } };
+      const beats: string[] = [];
+      let dirtyCount = 0;
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setBeat: (beat) => beats.push(beat),
+        markStateDirty: () => {
+          dirtyCount += 1;
+        },
+      });
+      controller.input.choose("open-packet");
+      expect(state.packet.sealed).toBe(false);
+      expect(dirtyCount).toBe(0);
+      expect(beats).toEqual(["packet-choice"]);
+    }
+
+    // keep-sealed: unsealed → sealed, dirty flag + beat fire.
+    {
+      const state = { packet: { sealed: false } };
+      const beats: string[] = [];
+      let dirtyCount = 0;
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setBeat: (beat) => beats.push(beat),
+        markStateDirty: () => {
+          dirtyCount += 1;
+        },
+      });
+      const handled = controller.input.choose("keep-sealed");
+      expect(handled).toBe(true);
+      expect(state.packet.sealed).toBe(true);
+      expect(dirtyCount).toBe(1);
+      expect(beats).toEqual(["packet-choice"]);
+    }
+
+    // keep-packet-sealed alias behaves identically.
+    {
+      const state = { packet: { sealed: false } };
+      const beats: string[] = [];
+      let dirtyCount = 0;
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setBeat: (beat) => beats.push(beat),
+        markStateDirty: () => {
+          dirtyCount += 1;
+        },
+      });
+      const handled = controller.input.choose("keep-packet-sealed");
+      expect(handled).toBe(true);
+      expect(state.packet.sealed).toBe(true);
+      expect(dirtyCount).toBe(1);
+      expect(beats).toEqual(["packet-choice"]);
+    }
+
+    // Unknown choice is not handled — caller must keep dispatching.
+    {
+      const state = { packet: { sealed: true } };
+      const beats: string[] = [];
+      let dirtyCount = 0;
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setBeat: (beat) => beats.push(beat),
+        markStateDirty: () => {
+          dirtyCount += 1;
+        },
+      });
+      const handled = controller.input.choose("deliver-packet");
+      expect(handled).toBe(false);
+      expect(state.packet.sealed).toBe(true);
+      expect(dirtyCount).toBe(0);
+      expect(beats).toEqual([]);
+    }
+  });
 });
