@@ -77,7 +77,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "openedReturn",
     intent: "returnPacket",
-    text: "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
+    text: IO_SEALED_RETURN_LINE,
     memoryKey: "io_return_packet_opened",
   },
   {
