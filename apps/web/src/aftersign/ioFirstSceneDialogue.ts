@@ -89,7 +89,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "skippedReturn",
     intent: "returnRoute",
-    text: "You came back by instinct. It worked once. Don't make a religion of it.",
+    text: "You skipped my route. Instinct carried you once. It will not learn the next stair.",
     memoryKey: "skipped_route",
   },
 ] as const satisfies readonly AftersignIoFirstSceneLine[];
