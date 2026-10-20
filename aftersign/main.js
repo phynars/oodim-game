@@ -2295,9 +2295,12 @@ const publishState = () => {
       onChoose: (action) => {
         let route = state.player.routeRisk?.lastRoute ?? "safe";
         let succeeded = true;
-        if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+        if (action === "take-the-shortcut") {
           route = "fast";
           succeeded = true;
+        } else if (action === "carry-a-fragile-packet") {
+          route = "fast";
+          succeeded = false;
         } else if (action === "take-the-long-way") {
           route = "safe";
           succeeded = true;
@@ -2554,9 +2557,12 @@ const renderText = () => {
           // path).
           let route = state.player.routeRisk?.lastRoute ?? "safe";
           let succeeded = true;
-          if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+          if (action === "take-the-shortcut") {
             route = "fast";
             succeeded = true;
+          } else if (action === "carry-a-fragile-packet") {
+            route = "fast";
+            succeeded = false;
           } else if (action === "take-the-long-way") {
             route = "safe";
             succeeded = true;
