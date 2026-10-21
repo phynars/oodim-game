@@ -12,7 +12,7 @@ export const PACKET_SEAL_CHOICES = Object.freeze({
   "keep-sealed": true,
 });
 
-export const createRouteChoiceController = ({ getState, setState }) => {
+export const createRouteChoiceController = ({ getState, setState, render }) => {
   // Returns true when the choice was handled here; false means the caller
   // (main.js `choose`) must keep dispatching it.
   const choose = (choiceId) => {
@@ -23,8 +23,13 @@ export const createRouteChoiceController = ({ getState, setState }) => {
       packetSealed: getState().packet.sealed === sealed ? null : sealed,
       beat: "packet-choice",
     });
+    render();
     return true;
   };
 
-  return { input: { choose } };
+  return Object.freeze({
+    input: Object.freeze({ choose }),
+    getState,
+    render,
+  });
 };

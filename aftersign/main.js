@@ -8,6 +8,7 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
 import {
@@ -2969,7 +2970,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
               /* feel projection must never break state commit */
             }
             markStateDirty();
-            publishState();
+            jobOfferController.input.press();
           });
           offeredJobs.appendChild(button);
         }
@@ -3368,6 +3369,11 @@ const packetOfferController = createPacketOfferController({
 
 const packetPress = (input) => packetOfferController.input.press(input);
 
+const jobOfferController = createJobOfferController({
+  getState: () => state.interaction,
+  render: publishState,
+});
+
 // #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
 // The pure controller emits PREVIEWED only through `previewRelease(...)`
 // for a very-quick glance under `PACKET_INTENT.PREVIEW_MAX_MS`; it is
@@ -3521,6 +3527,7 @@ const packetRelease = (input) => {
 
 const routeChoiceController = createRouteChoiceController({
   getState: () => state,
+  render: publishState,
   setState: ({ packetSealed, beat }) => {
     if (packetSealed !== null) {
       state.packet.sealed = packetSealed;
