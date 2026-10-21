@@ -6,7 +6,7 @@ import type { AftersignPacketOutcome } from "./verticalSliceState";
 import {
   IO_OPENED_RETURN_LINE,
   IO_SEALED_RETURN_LINE,
-} from "../../../../aftersign/src/ioSealedReturn.js";
+} from "../../../../aftersign/src/ioSealedReturn.ts";
 
 export const AFTERSIGN_PACKET_OUTCOMES = ["sealed", "opened"] as const satisfies readonly AftersignPacketOutcome[];
 
