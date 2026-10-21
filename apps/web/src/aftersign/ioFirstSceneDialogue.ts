@@ -80,7 +80,7 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "openedReturn",
     intent: "returnPacket",
-    text: "You made it back. The seal did not. I can use one of those facts.",
+    text: IO_OPENED_RETURN_LINE,
     memoryKey: "io_return_packet_opened",
   },
   {
