@@ -3,6 +3,7 @@ import {
   PACKET_RECALL_LINE_DATA_ATTR,
   PACKET_RECALL_LINE_ID,
 } from "../../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
+import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRiskChoiceIntent.ts";
 
 // This contract drives the player-visible failure path from an empty slot,
 // then proves the resulting fact is recovered from the server in a browser
@@ -59,11 +60,37 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
       await firstPage.locator("#job-offer-job-safe-delivery").tap();
       await firstPage.locator("#packetButton").tap();
       await waitForBeat(firstPage, "packet-choice");
-      await firstPage
-        .locator(
-          '#routeRiskChoice button[data-aftersign-tap-choice="carry-a-fragile-packet"]:not([disabled])',
-        )
-        .tap();
+
+      // On a fresh slot `computeOfferedActions(null)` returns only
+      // ["repair-the-loss", "take-the-long-way"] — fragile isn't on the
+      // tray yet. Tap the lit stair first (records safe/succeeded:true),
+      // wait out the 180ms route-risk tap lock, then tap fragile — which
+      // overwrites the memory to fast/succeeded:false, the condition this
+      // contract pins across a fresh browser context. See the sibling
+      // `aftersign-route-risk-outcome-line-served.spec.ts` #2179+#2401 case
+      // (safeRouteButton → wait → fragile) for the same ritual.
+      const tray = firstPage.locator("#routeRiskChoice");
+      const litStair = tray.locator(
+        'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
+      );
+      await expect(litStair).toBeVisible({ timeout: WAIT_MS });
+      await litStair.tap();
+
+      const unlockAfter = await firstPage.evaluate(
+        (lockMs) => Date.now() + lockMs,
+        ROUTE_RISK_CHOICE_LOCK_MS,
+      );
+      await firstPage.waitForFunction(
+        (deadline) => Date.now() >= deadline,
+        unlockAfter,
+        { timeout: WAIT_MS },
+      );
+
+      const fragile = tray.locator(
+        'button[data-aftersign-tap-choice="carry-a-fragile-packet"]:not([disabled])',
+      );
+      await expect(fragile).toBeVisible({ timeout: WAIT_MS });
+      await fragile.tap();
 
       const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(PLAYER_ID)}/${encodeURIComponent(slot)}`;
       await expect
