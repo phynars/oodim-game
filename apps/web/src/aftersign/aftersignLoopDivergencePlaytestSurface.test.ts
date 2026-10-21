@@ -228,5 +228,96 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
       expect(handled).toBe(false);
       expect(calls).toEqual([]);
     }
+
+    // Inherited keys like "constructor" / "toString" must NOT be treated
+    // as handled — PACKET_SEAL_CHOICES is a plain frozen object, so a
+    // bare `obj[key]` lookup would resolve to Object.prototype methods
+    // and sneak a function value through setState. The own-property
+    // guard is what prevents that; this assertion locks it in.
+    for (const inheritedKey of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
+      const state = { packet: { sealed: true } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      const handled = controller.input.choose(inheritedKey);
+      expect(handled).toBe(false);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("keeps job-offer press logic behind the job-offer controller boundary", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+    const controller = readFileSync(
+      join(REPO_ROOT, "aftersign", "src", "interactions", "jobOfferController.js"),
+      "utf8",
+    );
+    expect(main).toContain('import { createJobOfferController } from "./src/interactions/jobOfferController.js"');
+    expect(main).toContain("const jobOfferController = createJobOfferController({");
+    expect(main).toContain("jobOfferController.input.press({");
+    // The inline arithmetic that used to live at the call site is now the
+    // controller's job — assert the former literals are gone from main.js
+    // so a drive-by edit can't restore the duplication silently.
+    expect(main).not.toContain("state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;");
+    expect(controller).toContain("export const createJobOfferController");
+    expect(controller).toContain("const press = ({ actionId, offerId }) => {");
+    expect(controller).toContain("setLastAction(`${actionId}:${offerId}`);");
+    expect(controller).toContain("incrementConfirmCount();");
+    expect(controller).toContain("markStateDirty();");
+    expect(controller).toContain("render();");
+  });
+
+  it("job-offer controller composes actionId:offerId, bumps confirmCount, persists, and publishes — in that order", async () => {
+    const controllerModule = await import(
+      /* @vite-ignore */ join(REPO_ROOT, "aftersign", "src", "interactions", "jobOfferController.js")
+    );
+    type JobOfferDeps = {
+      setLastAction: (nextLastAction: string) => void;
+      incrementConfirmCount: () => void;
+      markStateDirty: () => void;
+      render: () => void;
+      getState: () => { lastAction: string; confirmCount: number };
+    };
+    const createJobOfferController = controllerModule.createJobOfferController as (
+      deps: JobOfferDeps,
+    ) => {
+      input: { press: (input: { actionId: string; offerId: string }) => unknown };
+    };
+
+    // Observable press: records each dep call in order, mutates a plain
+    // interaction snapshot the way main.js does, and asserts the exposed
+    // read-back matches.
+    const interaction = { lastAction: "", confirmCount: 0 };
+    const order: string[] = [];
+    const controller = createJobOfferController({
+      setLastAction: (nextLastAction) => {
+        order.push(`setLastAction:${nextLastAction}`);
+        interaction.lastAction = nextLastAction;
+      },
+      incrementConfirmCount: () => {
+        order.push("incrementConfirmCount");
+        interaction.confirmCount += 1;
+      },
+      markStateDirty: () => order.push("markStateDirty"),
+      render: () => order.push("render"),
+      getState: () => interaction,
+    });
+
+    const result = controller.input.press({ actionId: "mloop-a", offerId: "job-42" });
+
+    expect(order).toEqual([
+      "setLastAction:mloop-a:job-42",
+      "incrementConfirmCount",
+      "markStateDirty",
+      "render",
+    ]);
+    expect(interaction).toEqual({ lastAction: "mloop-a:job-42", confirmCount: 1 });
+    expect(result).toBe(interaction);
+
+    // Second press increments cumulatively — proves confirmCount is a
+    // host-owned counter the controller advances, not reset per press.
+    controller.input.press({ actionId: "mloop-b", offerId: "job-7" });
+    expect(interaction).toEqual({ lastAction: "mloop-b:job-7", confirmCount: 2 });
   });
 });

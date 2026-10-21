@@ -3539,7 +3539,6 @@ const packetRelease = (input) => {
 
 const routeChoiceController = createRouteChoiceController({
   getState: () => state,
-  render: publishState,
   setState: ({ packetSealed, beat }) => {
     if (packetSealed !== null) {
       state.packet.sealed = packetSealed;
