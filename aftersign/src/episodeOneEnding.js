@@ -142,7 +142,7 @@ export const renderEpisodeOneEnding = (doc, ending) => {
     existing &&
     existing.getAttribute &&
     existing.getAttribute("data-ending-id") === ending.id &&
-    existing.getAttribute("data-ending-cause") === (ending.cause ?? "")
+    (existing.getAttribute("data-ending-cause") ?? "") === (ending.cause ?? "")
   ) {
     return existing;
   }
