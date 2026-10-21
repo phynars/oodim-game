@@ -138,8 +138,11 @@ jobs:
             test-results/
           if-no-files-found: warn
           retention-days: 14
+      # Evidence publication is observational: a GitHub-comment failure must not
+      # overturn the already-completed deploy and M-LOOP gate.
       - name: Post M-LOOP deployment evidence
         if: ${{ always() && steps.m_loop_gate.outcome != 'skipped' }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
