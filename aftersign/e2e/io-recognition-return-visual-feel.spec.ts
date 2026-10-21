@@ -275,13 +275,8 @@ test("io return recognition, played by taps: sealed branch publishes readable vi
   await playToRecognition(page, `io-return-visual-feel-sealed-${Date.now()}`, "sealed");
 
   // Visible-DOM proof of the recognition transition: Io's line for the
-  // sealed-outcome / skipped-route combination must render in `#line`
-  // after the auto-advance — NOT read from window.__game. #2397
-  // re-review: this spec taps `skip-kiosk-acknowledge` so main.js
-  // appends the authored `skippedReturn` suffix to the sealed
-  // RETURNING line. The sealed-vs-opened packet dimension is asserted
-  // BOTH on `#line` (sealed prefix differs from opened prefix) AND
-  // below via the memory beat + feel-cue snippet.
+  // sealed outcome must render in `#line` after the auto-advance —
+  // NOT read from window.__game.
   await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
     timeout: WAIT_MS,
   });

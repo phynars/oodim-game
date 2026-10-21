@@ -122,6 +122,11 @@ test.describe("aftersign: production save+reload (prod-smoke)", () => {
   }, testInfo) => {
     test.setTimeout(TEST_TIMEOUT_MS);
 
+    // Copy-module drift guard: the source selector must still yield the
+    // literal above. If it diverges, the literal (player-visible contract)
+    // wins and the module change needs an explicit review.
+    expect(expectedIoRecognitionLine("sealed", false)).toBe(SEALED_RECOGNITION_LINE);
+
     // Dedicated per-run/per-retry slot. We fold BOTH `testInfo.retry`
     // AND `Date.now()` into the name so that:
     //   - A retry of the same job gets a FRESH slot (otherwise

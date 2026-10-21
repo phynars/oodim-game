@@ -86,7 +86,6 @@ import {
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
-import { getAftersignIoRouteReturnLine } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
 // Keep the pointer selector distinct from the existing immediate-response
 // state below. The accepted-choice path owns both; renderText projects them.
@@ -1762,10 +1761,6 @@ const syncIoLine = () => {
     const selected = selectIoRecognitionDialogueLine(snippets, {
       memory: state.npcs.io.memory,
     });
-    const routeAttention =
-      secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-        ? "listened"
-        : "skipped";
     // Red-tag return keeps its OWN recognition line — do NOT append the
     // red-tag suffix to `selected.line`, because `selected.line` is a
     // sealed/opened BLUE-ROUTE snippet from `RETURNING_LINES` /
@@ -1781,64 +1776,9 @@ const syncIoLine = () => {
     // `lineForBeat()` directly, or via the `state.npcs.io.lastLine`
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
-    //
-    // SKIPPED-ROUTE SUFFIX (#2397, re-review): when the player
-    // EXPLICITLY tapped "I ran early" (`skip-kiosk-acknowledge` →
-    // `state.player.secondAction === SECOND_ACTION.SKIPPED`), APPEND
-    // the authored `skippedReturn` line to the sealed/opened RETURNING
-    // line so `#line` names BOTH dimensions (packet outcome + route
-    // skip) in one spoken beat. This is a SUFFIX, not a replacement —
-    // the fixes from the previous review:
-    //   • AI003 (test-tautology): sealed vs opened still produce
-    //     DIFFERENT `#line` strings (`RETURNING_LINES.sealed/opened`
-    //     prefixes are retained). A bug that always speaks the sealed
-    //     line now fails the opened-branch spec, which the pure
-    //     replacement masked.
-    //   • AI008 (half-override): `selected.line`, `selected.memoryRefs`,
-    //     and `selected.feelCue` all stay sourced from the same
-    //     sealed/opened snippet — line text now INCLUDES the packet
-    //     dimension the memoryRefs point to, so `expectedIoRecognition
-    //     Line("sealed"|"opened", false)` is still a prefix of what
-    //     `#line` reads and no spec that pins the returning line via
-    //     that helper is contradicted on paths that don't tap the
-    //     explicit skip.
-    //   • Live-verify (#2397): the authored `skippedReturn` text
-    //     ("You skipped my route…") now appears in the served bundle's
-    //     `#line` on the explicit-skip path — the surface Diego's
-    //     Playwright probe asserted was missing.
-    // The gate is narrow by design:
-    //   • Memory-default skips are OUT. `secondActionFromMemory`
-    //     returns SKIPPED when the memory fact object is "skipped" OR
-    //     when the fact is absent (null commitment, #2326 false-memory
-    //     fix). The authored `skippedReturn` line names a PLAYER
-    //     ACTION ("You skipped my route") so it must only speak when
-    //     the player committed that tap — same durable player-input
-    //     flag `armReturningSessionBootLine` consults at line 1413.
-    //     Specs that reach recognition WITHOUT the skip tap
-    //     (`durable-return-session-phone-playtest`,
-    //      `flagship-reload-beat-regression`,
-    //      `io-phone-ready-look-sound-contract`,
-    //      `packet-delivered-cold-boot-affordance`,
-    //      `npc-memory-line-contract`,
-    //      `e2e-shared/prod-smoke/aftersign-save-reload`) have
-    //     `state.player.secondAction === null` and keep the sealed/
-    //     opened RETURNING line verbatim.
-    //   • Deep-recall is OUT. `selectIoRecognitionDialogueLine` picks
-    //     the deep-recall tier only when `listened === true` (route
-    //     fact object === "done"); the skip flag can never produce
-    //     deep-recall, so `selected.tier` here is `returning` or
-    //     `first-meeting`. The deep-recall sealedSkipped /
-    //     openedSkipped lines ALREADY carry the two-dimensional
-    //     recognition and must not be suffixed.
-    const explicitSkip =
-      state.player.secondAction === SECOND_ACTION.SKIPPED
-      && selected.tier === "returning";
-    const recognitionLine = explicitSkip
-      ? `${selected.line} ${getAftersignIoRouteReturnLine(false).text}`
-      : selected.line;
     nextLine = state.delivery.id === "red-tag"
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
-      : recognitionLine;
+      : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The
@@ -1860,6 +1800,10 @@ const syncIoLine = () => {
     // property the harness / e2e drive means the shipped page and
     // the tests can't disagree about what "kind" means on the DOM
     // surface — the seam is proved runnable, not just defined.
+    const routeAttention =
+      secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+        ? "listened"
+        : "skipped";
     const returnToneReason = !state.packet.sealed
       ? "evasive"
       : routeAttention === "listened"

@@ -1,7 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
-import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
 import { performPacketGesture } from "./helpers/packetGesture";
 
 // Playtest: after a phone-player reload, the OPENED-packet recognition
