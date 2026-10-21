@@ -80,19 +80,21 @@ export const AFTERSIGN_IO_FIRST_SCENE_DIALOGUE = [
   {
     id: "openedReturn",
     intent: "returnPacket",
-    text: "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
+    text: IO_OPENED_RETURN_LINE,
     memoryKey: "io_return_packet_opened",
   },
+  // Route lines pinned to docs/flagship/vertical-slice-script.md:211,215
+  // (same strings as packages/aftersign/src/ioReturningSession.ts).
   {
     id: "listenedReturn",
     intent: "returnRoute",
-    text: "You listened. So when the city lied, you heard the hinge. Keep that.",
+    text: "You listened before you ran. Rare habit. Keep it.",
     memoryKey: "listened_to_route",
   },
   {
     id: "skippedReturn",
     intent: "returnRoute",
-    text: "You skipped my route. Instinct carried you once. It will not learn the next stair.",
+    text: "You found the box anyway. Next time, let me finish saving your life.",
     memoryKey: "skipped_route",
   },
 ] as const satisfies readonly AftersignIoFirstSceneLine[];

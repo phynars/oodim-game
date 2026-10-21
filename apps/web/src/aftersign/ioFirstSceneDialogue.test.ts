@@ -7,6 +7,7 @@ import {
   getAftersignIoPacketReturnLine,
   getAftersignIoRouteReturnLine,
 } from "./ioFirstSceneDialogue";
+import { ioReturningSessionLines } from "../../../../packages/aftersign/src/ioReturningSession";
 import {
   createAftersignVerticalSliceState,
   meetIoForAftersignSlice,
@@ -34,13 +35,19 @@ describe("Aftersign Io first-scene dialogue", () => {
       "You made it back. So did the blue seal, unbroken. That makes two reasons to trust you.",
     );
     expect(getAftersignIoFirstSceneLine("openedReturn").text).toBe(
-      "You opened it. The name is alive elsewhere now. I will charge you for the next route.",
+      "You made it back. The seal did not. I can use one of those facts.",
+    );
+    expect(getAftersignIoFirstSceneLine("openedReturn").text).toBe(
+      ioReturningSessionLines.openedPacket,
+    );
+    expect(getAftersignIoFirstSceneLine("sealedReturn").text).toBe(
+      ioReturningSessionLines.sealedPacket,
     );
     expect(getAftersignIoFirstSceneLine("listenedReturn").text).toBe(
-      "You listened. So when the city lied, you heard the hinge. Keep that.",
+      ioReturningSessionLines.listenedRoute,
     );
     expect(getAftersignIoFirstSceneLine("skippedReturn").text).toBe(
-      "You skipped my route. Instinct carried you once. It will not learn the next stair.",
+      ioReturningSessionLines.skippedRoute,
     );
   });
 

@@ -9,6 +9,7 @@ import {
   ioRouteAttentionLine,
   normalizeAftersignPacketOutcome,
 } from "./ioVoiceContract";
+import { ioReturningSessionLines } from "../../../../packages/aftersign/src/ioReturningSession";
 
 describe("Aftersign Io voice contract", () => {
   it("selects the exact remembered packet line for the prior player action", () => {
@@ -26,11 +27,20 @@ describe("Aftersign Io voice contract", () => {
 
   it("keeps Io's route memory concrete and short", () => {
     expect(ioRouteAttentionLine("heard").text).toBe(
-      "You listened. So when the city lied, you heard the hinge. Keep that.",
+      ioReturningSessionLines.listenedRoute,
     );
     expect(ioRouteAttentionLine("skipped").text).toBe(
-      "You found the box anyway. Next time, let me finish saving your life.",
+      ioReturningSessionLines.skippedRoute,
     );
+  });
+
+  // #2408: the apps/web copy must not fork the vertical-slice-script canon.
+  it("binds packet return lines to the script-pinned canon", () => {
+    expect(ioPacketReturnLine("opened").text).toBe(
+      "You made it back. The seal did not. I can use one of those facts.",
+    );
+    expect(ioPacketReturnLine("opened").text).toBe(ioReturningSessionLines.openedPacket);
+    expect(ioPacketReturnLine("sealed").text).toBe(ioReturningSessionLines.sealedPacket);
   });
 
   it("maps the return answer posture into authored memory lines", () => {
