@@ -113,46 +113,31 @@ import {
   stampAftersignBeat,
   stampAftersignChoice,
 } from "./src/playerVisibleBeatDom.js";
-// Served-reach anchor for Io's first-scene opened-return copy (PR #2419
-// F1/F2). `apps/web/src/aftersign/ioFirstSceneDialogue.ts` owns the
-// typed first-scene dialogue table that `windowGameSurface.ts` renders
-// in the harness and that reviewers pin against — but main.js never
-// imported it, so any copy edit there was invisible to the served-reach
-// gate (and, by extension, invisible to players). Pulling the value
-// export here puts the module in the shipped graph, so an edit to its
-// `openedReturn.text` IS proven to reach the live bundle. The runtime
-// invariant below pins the opened-return copy to its single source of
-// truth (`IO_OPENED_RETURN_LINE` in `./src/ioSealedReturn.ts`, the same
-// constant `packages/aftersign/src/ioReturningSession.ts` reads for the
-// shipped `openedPacket` line) so a future fork fails loudly on module
-// load instead of silently drifting across the three modules that
-// surface the opened-return beat.
+// Served-reach anchors for Io's opened-return copy (PR #2419 F1/F2).
+// `apps/web/src/aftersign/ioFirstSceneDialogue.ts` and
+// `apps/web/src/aftersign/ioVoiceContract.ts` own the two typed Io-line
+// tables that render the opened-return beat; both resolve
+// `openedReturn.text` through `IO_OPENED_RETURN_LINE` in
+// `aftersign/src/ioSealedReturn.ts` (the same canonical constant
+// `packages/aftersign/src/ioReturningSession.ts` reads for the shipped
+// `openedPacket` line). Pulling the VALUE exports here puts both
+// modules in the shipped graph so any future copy edit through
+// `IO_OPENED_RETURN_LINE` is proven to reach the live bundle by the
+// served-reach gate. The three-module alignment invariant lives in
+// `apps/web/src/aftersign/ioOpenedReturnLineAlignment.test.ts` — kept
+// as a pure vitest check (not a module-load `throw`) so a drift fails
+// CI without ever risking the shipped main.js module from aborting
+// before `window.__game` is wired, which would starve every e2e that
+// taps the recognition beats.
 import { AFTERSIGN_IO_FIRST_SCENE_DIALOGUE } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
-// Served-reach anchor for `ioVoiceContract.ts` (PR #2419 re-review F1).
-// `AFTERSIGN_IO_LINES` is a value export; pulling it here puts the
-// module in the shipped graph alongside its sibling first-scene table
-// above, so a future edit to `openedReturn.text` on the voice contract
-// is proven to reach the live bundle. The invariant below asserts both
-// surfaces agree with `IO_OPENED_RETURN_LINE`, so the three modules
-// that speak Io's opened-return beat (ioSealedReturn, ioFirstSceneDialogue,
-// ioVoiceContract) cannot drift silently on module load.
 import { AFTERSIGN_IO_LINES } from "../apps/web/src/aftersign/ioVoiceContract.ts";
-import { IO_OPENED_RETURN_LINE } from "./src/ioSealedReturn.ts";
-{
-  const openedReturn = AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.find(
-    (line) => line.id === "openedReturn",
-  );
-  if (!openedReturn || openedReturn.text !== IO_OPENED_RETURN_LINE) {
-    throw new Error(
-      "Aftersign Io first-scene openedReturn copy drifted from IO_OPENED_RETURN_LINE — align ioFirstSceneDialogue.ts, ioVoiceContract.ts, and ioSealedReturn.ts on the same canonical string.",
-    );
-  }
-  if (AFTERSIGN_IO_LINES.openedReturn.text !== IO_OPENED_RETURN_LINE) {
-    throw new Error(
-      "Aftersign Io voice-contract openedReturn copy drifted from IO_OPENED_RETURN_LINE — align ioVoiceContract.ts, ioFirstSceneDialogue.ts, and ioSealedReturn.ts on the same canonical string.",
-    );
-  }
-}
+// Keep both named imports LIVE at module scope so Vite's tree-shaker
+// does not drop these anchors. Reading one property each is enough to
+// prove the value binding reaches a runtime use; the read is pure and
+// cannot throw (both tables are plain object literals populated at
+// module init with string fields).
+void AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.length;
+void AFTERSIGN_IO_LINES.openedReturn;
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through
