@@ -113,6 +113,32 @@ import {
   stampAftersignBeat,
   stampAftersignChoice,
 } from "./src/playerVisibleBeatDom.js";
+// Served-reach anchor for Io's first-scene opened-return copy (PR #2419
+// F1/F2). `apps/web/src/aftersign/ioFirstSceneDialogue.ts` owns the
+// typed first-scene dialogue table that `windowGameSurface.ts` renders
+// in the harness and that reviewers pin against — but main.js never
+// imported it, so any copy edit there was invisible to the served-reach
+// gate (and, by extension, invisible to players). Pulling the value
+// export here puts the module in the shipped graph, so an edit to its
+// `openedReturn.text` IS proven to reach the live bundle. The runtime
+// invariant below pins the opened-return copy to its single source of
+// truth (`IO_OPENED_RETURN_LINE` in `./src/ioSealedReturn.ts`, the same
+// constant `packages/aftersign/src/ioReturningSession.ts` reads for the
+// shipped `openedPacket` line) so a future fork fails loudly on module
+// load instead of silently drifting across the three modules that
+// surface the opened-return beat.
+import { AFTERSIGN_IO_FIRST_SCENE_DIALOGUE } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
+import { IO_OPENED_RETURN_LINE } from "./src/ioSealedReturn.ts";
+{
+  const openedReturn = AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.find(
+    (line) => line.id === "openedReturn",
+  );
+  if (!openedReturn || openedReturn.text !== IO_OPENED_RETURN_LINE) {
+    throw new Error(
+      "Aftersign Io first-scene openedReturn copy drifted from IO_OPENED_RETURN_LINE — align ioFirstSceneDialogue.ts, ioVoiceContract.ts, and ioSealedReturn.ts on the same canonical string.",
+    );
+  }
+}
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through

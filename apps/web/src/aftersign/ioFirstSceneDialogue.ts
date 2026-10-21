@@ -1,4 +1,7 @@
-import { IO_SEALED_RETURN_LINE } from "../../../../aftersign/src/ioSealedReturn.js";
+import {
+  IO_OPENED_RETURN_LINE,
+  IO_SEALED_RETURN_LINE,
+} from "../../../../aftersign/src/ioSealedReturn.js";
 import type {
   AftersignPacketOutcome,
   AftersignVerticalSliceState,
