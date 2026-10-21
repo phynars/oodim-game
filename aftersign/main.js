@@ -2907,8 +2907,11 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // downstream consumer that split on `:` still gets the
             // jobId as the tail token, and now also gets the mloop
             // action id (memory-gated) as the head.
-            state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;
-            state.interaction.confirmCount += 1;
+            // State-level transition (lastAction + confirmCount + persistence
+            // + publish) is owned by jobOfferController.input.press below —
+            // the extraction surfaced by #2305. The decorative effects above
+            // (FEEL, haptics, audio, DOM receipt) stay here because they are
+            // host-shaped render concerns, not interaction state.
             // A job selection must answer the player's tap on the served
             // dialogue surface. `#line.textContent` and `state.npcs.io.lastLine`
             // are OWNED by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
@@ -2969,8 +2972,10 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             } catch {
               /* feel projection must never break state commit */
             }
-            markStateDirty();
-            jobOfferController.input.press();
+            jobOfferController.input.press({
+              actionId: mloopAction.id,
+              offerId: offer.id,
+            });
           });
           offeredJobs.appendChild(button);
         }
@@ -3370,8 +3375,15 @@ const packetOfferController = createPacketOfferController({
 const packetPress = (input) => packetOfferController.input.press(input);
 
 const jobOfferController = createJobOfferController({
-  getState: () => state.interaction,
+  setLastAction: (nextLastAction) => {
+    state.interaction.lastAction = nextLastAction;
+  },
+  incrementConfirmCount: () => {
+    state.interaction.confirmCount += 1;
+  },
+  markStateDirty,
   render: publishState,
+  getState: () => state.interaction,
 });
 
 // #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
