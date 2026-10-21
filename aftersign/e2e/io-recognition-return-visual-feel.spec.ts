@@ -49,24 +49,9 @@ const BEAT_LIMITS = {
   inputLockMsMax: 1220,
 } as const;
 
-// The lines Io speaks at io-return-recognition. #2397 re-review: both
-// branches below tap `skip-kiosk-acknowledge` (so
-// `state.player.secondAction === SECOND_ACTION.SKIPPED`), and the
-// main.js SKIPPED-ROUTE SUFFIX at `syncIoLine` ~L1783 APPENDS the
-// authored `skippedReturn` line to the sealed/opened RETURNING line
-// — `#line` names BOTH dimensions. Sealed vs opened therefore produce
-// DIFFERENT strings (sealed packet prefix + skip suffix vs opened
-// packet prefix + skip suffix): a bug that spoke only the sealed line
-// on the opened branch (or vice versa) now reds this spec.
-// Canonical copy modules (#595 cleanup, #1077): the packet-outcome
-// prefix comes from `ioRecognitionDialogue` (the returning tier the
-// runtime selector yields), the skip suffix from `ioFirstSceneDialogue`
-// — same two sources `syncIoLine` composes from.
-import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
-import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
-const SKIPPED_ROUTE_SUFFIX = getAftersignIoRouteReturnLine(false).text;
-const SEALED_RECOGNITION_LINE = `${expectedIoRecognitionLine("sealed", false)} ${SKIPPED_ROUTE_SUFFIX}`;
-const OPENED_RECOGNITION_LINE = `${expectedIoRecognitionLine("opened", false)} ${SKIPPED_ROUTE_SUFFIX}`;
+// Independently authored served-copy baselines for the two returning branches.
+const SEALED_RECOGNITION_LINE = "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
+const OPENED_RECOGNITION_LINE = "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept your name beside the risk.";
 
 const EXPECTED_LINE: Record<RecognitionOutcome, string> = {
   sealed: SEALED_RECOGNITION_LINE,

@@ -50,15 +50,8 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
-// `skip-kiosk-acknowledge` sets `state.player.secondAction =
-// SECOND_ACTION.SKIPPED`, so the recognition beat APPENDS the authored
-// `skippedReturn` line to the opened RETURNING line (see aftersign/
-// main.js `syncIoLine` SKIPPED-ROUTE SUFFIX at ~L1783) — `#line` names
-// BOTH dimensions (packet outcome + skip). The opened prefix differs
-// from the sealed prefix the sibling `aftersign-recognition-reload`
-// spec asserts, so a bug that spoke the sealed line on the opened
-// branch (or vice versa) reds the corresponding spec.
-const OPENED_RECOGNITION_LINE = `${expectedIoRecognitionLine("opened", false)} ${getAftersignIoRouteReturnLine(false).text}`;
+// Independently authored served-copy baseline for the opened returning branch.
+const OPENED_RECOGNITION_LINE = "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept your name beside the risk.";
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);

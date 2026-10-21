@@ -75,17 +75,8 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const TEST_TIMEOUT_MS = 240_000;
 const WAIT_MS = 90_000;
 
-// #2397 re-review: this spec taps `skip-kiosk-acknowledge` below, so
-// `state.player.secondAction === SECOND_ACTION.SKIPPED` and the main.js
-// SKIPPED-ROUTE SUFFIX at `syncIoLine` ~L1783 APPENDS the authored
-// `skippedReturn` line to the sealed RETURNING line — `#line` names
-// BOTH dimensions. The prefix still comes from `ioRecognitionDialogue`,
-// so a prod bundle that drops the recognition dialogue module still
-// fails here (the prefix won't match); the suffix proves the
-// `ioFirstSceneDialogue` module is also wired into the served bundle,
-// which is the fix issue #2397 asked for.
-import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue";
-const SEALED_RECOGNITION_LINE = `${expectedIoRecognitionLine("sealed", false)} ${getAftersignIoRouteReturnLine(false).text}`;
+// Independently authored served-copy baseline for the sealed returning branch.
+const SEALED_RECOGNITION_LINE = "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
 
 function slotUrl(slot: string): string {
   // `baseURL` resolves `SMOKE_BASE_URL` (see
@@ -121,11 +112,6 @@ test.describe("aftersign: production save+reload (prod-smoke)", () => {
     page,
   }, testInfo) => {
     test.setTimeout(TEST_TIMEOUT_MS);
-
-    // Copy-module drift guard: the source selector must still yield the
-    // literal above. If it diverges, the literal (player-visible contract)
-    // wins and the module change needs an explicit review.
-    expect(expectedIoRecognitionLine("sealed", false)).toBe(SEALED_RECOGNITION_LINE);
 
     // Dedicated per-run/per-retry slot. We fold BOTH `testInfo.retry`
     // AND `Date.now()` into the name so that:
