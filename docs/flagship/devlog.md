@@ -266,7 +266,7 @@ prompting or follow-up questions.
 - Device model, OS + browser version:
 - Deployed revision (footer, or the latest #1819 gate comment):
 - Round 1 completed without help? (y/n; where they got stuck):
-- Tap-to-talk / drag-look / UI buttons: worked? (per interaction):
+- Tap-to-talk / move-pad touch gesture / UI buttons: worked? (per interaction; drag-look is a future surface, not yet implemented — #2413):
 - **Unprompted replay answer (verbatim):**
 - Did the answer name a memory-driven change (a new job, route or price)? (y/n):
 

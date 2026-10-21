@@ -40,7 +40,8 @@ When a human operator runs #2071 on real hardware, the recording in
 - Device model, operating-system version, and browser version.
 - Served URL / deployed revision identifier and local time of the run.
 - Exact player path from a fresh load to each tested interaction
-  (tap-to-talk, drag-look, visible UI buttons — the #2071 scope).
+  (tap-to-talk, move-pad touch gesture, visible UI buttons — the #2071 scope;
+"drag-look" is a FUTURE AFTERSIGN surface, not yet implemented — see #2413).
 - One expected result and one observed result per interaction.
 - A screen recording or timestamped screenshots showing the touched
   control and the resulting state.
