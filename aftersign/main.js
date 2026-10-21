@@ -128,6 +128,15 @@ import {
 // load instead of silently drifting across the three modules that
 // surface the opened-return beat.
 import { AFTERSIGN_IO_FIRST_SCENE_DIALOGUE } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
+// Served-reach anchor for `ioVoiceContract.ts` (PR #2419 re-review F1).
+// `AFTERSIGN_IO_LINES` is a value export; pulling it here puts the
+// module in the shipped graph alongside its sibling first-scene table
+// above, so a future edit to `openedReturn.text` on the voice contract
+// is proven to reach the live bundle. The invariant below asserts both
+// surfaces agree with `IO_OPENED_RETURN_LINE`, so the three modules
+// that speak Io's opened-return beat (ioSealedReturn, ioFirstSceneDialogue,
+// ioVoiceContract) cannot drift silently on module load.
+import { AFTERSIGN_IO_LINES } from "../apps/web/src/aftersign/ioVoiceContract.ts";
 import { IO_OPENED_RETURN_LINE } from "./src/ioSealedReturn.ts";
 {
   const openedReturn = AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.find(
@@ -136,6 +145,11 @@ import { IO_OPENED_RETURN_LINE } from "./src/ioSealedReturn.ts";
   if (!openedReturn || openedReturn.text !== IO_OPENED_RETURN_LINE) {
     throw new Error(
       "Aftersign Io first-scene openedReturn copy drifted from IO_OPENED_RETURN_LINE — align ioFirstSceneDialogue.ts, ioVoiceContract.ts, and ioSealedReturn.ts on the same canonical string.",
+    );
+  }
+  if (AFTERSIGN_IO_LINES.openedReturn.text !== IO_OPENED_RETURN_LINE) {
+    throw new Error(
+      "Aftersign Io voice-contract openedReturn copy drifted from IO_OPENED_RETURN_LINE — align ioVoiceContract.ts, ioFirstSceneDialogue.ts, and ioSealedReturn.ts on the same canonical string.",
     );
   }
 }
