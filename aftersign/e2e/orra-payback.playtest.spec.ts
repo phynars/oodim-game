@@ -237,6 +237,7 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
   // payback button on reload.
   test("the payback action id survives a reload against the same slot", async ({
     page,
+    browser,
   }) => {
     test.setTimeout(180_000);
     const slot = `orra-payback-reload-${Date.now()}`;
@@ -280,5 +281,49 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     );
     await expect(carryNameAfterReload).toBeVisible({ timeout: WAIT_MS });
     await expect(carryNameAfterReload).toBeEnabled();
+
+    // Server authority: a FRESH BrowserContext shares no cookies,
+    // localStorage, or page memory with the context that played the
+    // route. If the same slot still restores red-tag + the payback
+    // button there, the state came from the server save, not from
+    // client residue in the original context.
+    const fresh = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      const freshPage = await fresh.newPage();
+      await freshPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForReady(freshPage);
+      const freshRecognition = freshPage.locator(
+        '[data-beat-id="io-return-recognition"]',
+      );
+      const freshReturnToIo = freshPage.locator("#deliverButton", {
+        hasText: "Return to Io",
+      });
+      await expect(
+        freshRecognition.or(freshReturnToIo).first(),
+      ).toBeVisible({ timeout: WAIT_MS });
+      if (!(await freshRecognition.isVisible())) {
+        await freshReturnToIo.tap();
+      }
+      await waitForBeat(freshPage, "io-return-recognition");
+      await freshPage.waitForFunction(
+        () =>
+          (window as unknown as { __game?: { delivery?: { id?: string } } })
+            .__game?.delivery?.id === "red-tag",
+        undefined,
+        { timeout: WAIT_MS },
+      );
+      const carryNameFresh = freshPage.locator(
+        'button[data-orra-payback-action="carry-name-to-bell-archive"]',
+      );
+      await expect(carryNameFresh).toBeVisible({ timeout: WAIT_MS });
+      await expect(carryNameFresh).toBeEnabled();
+    } finally {
+      await fresh.close();
+    }
   });
 });
