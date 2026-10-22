@@ -29,7 +29,7 @@ const ROUTE_OUTCOME_LINES = Object.freeze({
   // a direct `aftersignRouteOutcomeLine("fragile")` call returns null, so
   // the token isn't accepted as a route class in its own right.
   fragile: "You carried the fragile one and it arrived whole. The ledger marks you steady.",
-  failed: "The dark kept its due. You came back. The ledger marks the cost.",
+  failed: "The dark kept its due. You brought the packet back. I mark its cost so it does not disappear.",
 });
 
 /**
