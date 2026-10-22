@@ -2972,10 +2972,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             } catch {
               /* feel projection must never break state commit */
             }
-            jobOfferController.input.press({
-              actionId: mloopAction.id,
-              offerId: offer.id,
-            });
+            jobOfferController.commit();
           });
           offeredJobs.appendChild(button);
         }

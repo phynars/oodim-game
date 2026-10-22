@@ -256,6 +256,14 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(main).toContain('import { createJobOfferController } from "./src/interactions/jobOfferController.js"');
     expect(main).toContain("const jobOfferController = createJobOfferController({");
     expect(main).toContain("jobOfferController.input.press({");
+    expect(main).toContain("jobOfferController.commit();");
+    // State transition must precede the DOM receipt (pre-extraction order).
+    expect(main.indexOf("jobOfferController.input.press({")).toBeLessThan(
+      main.indexOf('acceptedNode.id = "ioJobAcceptedLine";'),
+    );
+    expect(main.indexOf('acceptedNode.id = "ioJobAcceptedLine";')).toBeLessThan(
+      main.indexOf("jobOfferController.commit();"),
+    );
     // The inline arithmetic that used to live at the call site is now the
     // controller's job — assert the former literals are gone from main.js
     // so a drive-by edit can't restore the duplication silently.
@@ -283,6 +291,7 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
       deps: JobOfferDeps,
     ) => {
       input: { press: (input: { actionId: string; offerId: string }) => unknown };
+      commit: () => unknown;
     };
 
     // Observable press: records each dep call in order, mutates a plain
@@ -306,14 +315,19 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
 
     const result = controller.input.press({ actionId: "mloop-a", offerId: "job-42" });
 
+    // press is the state transition only — no persistence/publish yet.
+    expect(order).toEqual(["setLastAction:mloop-a:job-42", "incrementConfirmCount"]);
+    expect(interaction).toEqual({ lastAction: "mloop-a:job-42", confirmCount: 1 });
+    expect(result).toBe(interaction);
+
+    const committed = controller.commit();
     expect(order).toEqual([
       "setLastAction:mloop-a:job-42",
       "incrementConfirmCount",
       "markStateDirty",
       "render",
     ]);
-    expect(interaction).toEqual({ lastAction: "mloop-a:job-42", confirmCount: 1 });
-    expect(result).toBe(interaction);
+    expect(committed).toBe(interaction);
 
     // Second press increments cumulatively — proves confirmCount is a
     // host-owned counter the controller advances, not reset per press.

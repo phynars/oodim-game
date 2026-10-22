@@ -2,9 +2,16 @@
 // commits. The press composes the memory-gated M-LOOP action id with the
 // underlying offer id onto `state.interaction.lastAction` (both axes ride
 // on one field — the mloop head, the jobId tail; see the comment at the
-// former call site in main.js) and increments `confirmCount`. Presentation
+// call site in main.js) and increments `confirmCount`. Presentation
 // (haptics, audio, FEEL, DOM receipt paragraph) stays at the main.js call
 // site — those are rendered effects, not state-level interaction logic.
+//
+// Two phases, preserving the pre-extraction ordering in main.js:
+//   - press({ actionId, offerId }) — state transition, runs BEFORE the DOM
+//     receipt / feel code so a presentation throw can never leave the
+//     interaction state uncommitted.
+//   - commit() — persistence + publish, runs AFTER presentation (the old
+//     `markStateDirty(); publishState();` tail).
 //
 // The host injects:
 //   - setLastAction(nextLastAction)  — writes state.interaction.lastAction
@@ -23,6 +30,10 @@ export const createJobOfferController = ({
   const press = ({ actionId, offerId }) => {
     setLastAction(`${actionId}:${offerId}`);
     incrementConfirmCount();
+    return getState();
+  };
+
+  const commit = () => {
     markStateDirty();
     render();
     return getState();
@@ -30,7 +41,7 @@ export const createJobOfferController = ({
 
   return Object.freeze({
     input: Object.freeze({ press }),
+    commit,
     getState,
-    render,
   });
 };
