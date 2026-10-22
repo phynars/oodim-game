@@ -14,7 +14,7 @@
 //
 //   2. `AftersignAuthoritativeSave` — a Cloudflare Durable Object class
 //      declared in `wrangler.jsonc` under
-//      `[[durable_objects]] name = "AFTERSIGN_SAVE"` (migration `v3`,
+//      `[[durable_objects]] name = "AFTERSIGN_SAVE" (migration `v3`,
 //      `new_classes = ["AftersignAuthoritativeSave"]`). Both the
 //      binding AND the migration landed in PR #2065 (commit `0e439ce`,
 //      wrangler.jsonc lines ~35 and ~61) and are reused as-is by this
@@ -201,7 +201,19 @@ export async function handleAuthoritativeSaveRequest(
   }
 
   const id = env.AFTERSIGN_SAVE.idFromName(`${parsed.playerId}::${parsed.slot}`);
-  return env.AFTERSIGN_SAVE.get(id).fetch(forwarded);
+  const stub = env.AFTERSIGN_SAVE.get(id);
+  if (method !== "PUT") return stub.fetch(forwarded);
+
+  // A request body is single-use. Clone before the first attempt so one
+  // intermittent DO 5xx or rejected dispatch can retry the same save once.
+  const retry = forwarded.clone();
+  try {
+    const first = await stub.fetch(forwarded);
+    if (first.status < 500) return first;
+  } catch {
+    // A DO wake/restart can reject dispatch before producing a Response.
+  }
+  return stub.fetch(retry);
 }
 
 /**
@@ -209,8 +221,8 @@ export async function handleAuthoritativeSaveRequest(
  * `(playerId, slot)` pair.
  *
  * Wired in `wrangler.jsonc`:
- *   `[[durable_objects]] { name: "AFTERSIGN_SAVE",
- *      class_name: "AftersignAuthoritativeSave" }`
+ *   `[[durable_objects]] { name = "AFTERSIGN_SAVE",
+ *      class_name = "AftersignAuthoritativeSave" }`
  * and re-exported from `src/server.ts` so wrangler can locate the
  * class during bundle/deploy. Migration tag `v3` registers the class.
  *
