@@ -105,9 +105,14 @@ test.describe("AFTERSIGN save slot contract", () => {
       sealed: true,
     });
     expect(dirtySnapshot.save).toMatchObject({ revision: 1, dirty: true });
-    // Two facts after a delivered packet: the delivery-outcome fact minted
-    // by deliverPacket, plus the route-attention follow-up action fact.
-    expect(dirtySnapshot.npcs.io.memory).toHaveLength(2);
+    // One fact after a no-tap delivery (#2437 false-memory fix): the
+    // delivery-outcome fact is minted by deliverPacket, but the
+    // route-attention fact is omitted because the player never tapped
+    // "I listened" / "I ran early" at packet-choice — `state.player.
+    // secondAction` is null, so `memoryFacts()` returns a null
+    // secondActionFact and `deliverPacket`'s `.filter(Boolean)` drops it.
+    expect(dirtySnapshot.npcs.io.memory).toHaveLength(1);
+    expect(dirtySnapshot.npcs.io.memory[0]?.kind).toBe("delivery-outcome");
 
     await firstPage.evaluate(() => window.__game!.input.forceSave());
     await firstPage.waitForFunction(() => window.__game?.save.dirty === false);
