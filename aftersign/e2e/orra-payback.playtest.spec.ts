@@ -226,16 +226,17 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     await expect(committed).toBeDisabled();
   });
 
-  // Criterion B: the payback action survives a reload. We reach the
-  // red-tag `io-return-recognition` beat, assert the carry-name
-  // button is visible, reload against the SAME slot, and assert the
-  // button is visible AGAIN — proving that `delivery.id === "red-tag"`
-  // and `scene.beat === "io-return-recognition"` both round-trip
-  // through the authoritative save. Before this PR, boot and
-  // `applyRestoredState` both collapsed `delivery.id` back to
-  // `"blue-packet"` on restore, which would silently remove the
-  // payback button on reload.
-  test("the payback action id survives a reload against the same slot", async ({
+  // Criterion B (Soren PR #2264 merge gate): the COMMITTED payback
+  // survives the server-authoritative save. The played context taps
+  // the carry-name action, then (1) a same-context reload and (2) a
+  // separate, storage-free `browser.newContext()` on the same `?slot=`
+  // must both boot with `__game.player.orraPaybackAction` set and the
+  // button stamped committed + disabled. The fresh context shares no
+  // cookies, localStorage or page memory with the played one, so the
+  // restore can only come from the DO/D1 save written by
+  // `buildPersistPayload` (player clone) and read back at boot
+  // (`stored.player.orraPaybackAction` in aftersign/main.js).
+  test("the committed payback action survives a reload and a storage-free fresh context on the same slot", async ({
     page,
     browser,
   }) => {
@@ -249,44 +250,16 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     );
     await expect(carryName).toBeVisible({ timeout: WAIT_MS });
     await expect(carryName).toBeEnabled();
-
-    await page.reload({ waitUntil: "load" });
-    await waitForReady(page);
-    // A restored delivered slot may come back on the recognition beat
-    // directly, or one step earlier with `#deliverButton` reading
-    // "Return to Io" (the path `advance()` re-enters through, as the
-    // existing sealed-reload spec pins). Accept either, then drive the
-    // return tap if needed — both land on io-return-recognition.
-    const recognition = page.locator('[data-beat-id="io-return-recognition"]');
-    const returnToIo = page.locator("#deliverButton", { hasText: "Return to Io" });
-    await expect(recognition.or(returnToIo).first()).toBeVisible({ timeout: WAIT_MS });
-    if (!(await recognition.isVisible())) {
-      await returnToIo.tap();
-    }
-    await waitForBeat(page, "io-return-recognition");
-
-    // Delivery identity must survive the reload. Without this guard
-    // a regression that re-collapses `delivery.id` to "blue-packet"
-    // on restore would read as a bare "button missing" failure.
-    await page.waitForFunction(
-      () =>
-        (window as unknown as { __game?: { delivery?: { id?: string } } })
-          .__game?.delivery?.id === "red-tag",
-      undefined,
+    await carryName.tap({ timeout: WAIT_MS });
+    await expect(carryName).toHaveAttribute(
+      "data-orra-payback-committed",
+      "carry-name-to-bell-archive",
       { timeout: WAIT_MS },
     );
 
-    const carryNameAfterReload = page.locator(
-      'button[data-orra-payback-action="carry-name-to-bell-archive"]',
-    );
-    await expect(carryNameAfterReload).toBeVisible({ timeout: WAIT_MS });
-    await expect(carryNameAfterReload).toBeEnabled();
+    await page.reload({ waitUntil: "load" });
+    await expectCommittedPaybackRestored(page);
 
-    // Server authority: a FRESH BrowserContext shares no cookies,
-    // localStorage, or page memory with the context that played the
-    // route. If the same slot still restores red-tag + the payback
-    // button there, the state came from the server save, not from
-    // client residue in the original context.
     const fresh = await browser.newContext({
       baseURL: test.info().project.use.baseURL,
       viewport: PHONE_VIEWPORT,
@@ -294,36 +267,60 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
       isMobile: true,
     });
     try {
+      // Storage-free by construction: assert it, so a future fixture
+      // change that seeds storage cannot silently weaken the proof.
+      const seeded = await fresh.storageState();
+      expect(seeded.cookies).toHaveLength(0);
+      expect(seeded.origins).toHaveLength(0);
       const freshPage = await fresh.newPage();
       await freshPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-      await waitForReady(freshPage);
-      const freshRecognition = freshPage.locator(
-        '[data-beat-id="io-return-recognition"]',
-      );
-      const freshReturnToIo = freshPage.locator("#deliverButton", {
-        hasText: "Return to Io",
-      });
-      await expect(
-        freshRecognition.or(freshReturnToIo).first(),
-      ).toBeVisible({ timeout: WAIT_MS });
-      if (!(await freshRecognition.isVisible())) {
-        await freshReturnToIo.tap();
-      }
-      await waitForBeat(freshPage, "io-return-recognition");
-      await freshPage.waitForFunction(
-        () =>
-          (window as unknown as { __game?: { delivery?: { id?: string } } })
-            .__game?.delivery?.id === "red-tag",
-        undefined,
-        { timeout: WAIT_MS },
-      );
-      const carryNameFresh = freshPage.locator(
-        'button[data-orra-payback-action="carry-name-to-bell-archive"]',
-      );
-      await expect(carryNameFresh).toBeVisible({ timeout: WAIT_MS });
-      await expect(carryNameFresh).toBeEnabled();
+      await expectCommittedPaybackRestored(freshPage);
     } finally {
       await fresh.close();
     }
   });
 });
+
+// Boot a page on a slot whose payback was already committed and assert
+// the committed state came back: red-tag identity, the recognition beat
+// (via "Return to Io" when the restore lands one step earlier), the
+// durable `player.orraPaybackAction`, and the committed + disabled
+// button stamps.
+async function expectCommittedPaybackRestored(page: Page): Promise<void> {
+  await waitForReady(page);
+  const recognition = page.locator('[data-beat-id="io-return-recognition"]');
+  const returnToIo = page.locator("#deliverButton", { hasText: "Return to Io" });
+  await expect(recognition.or(returnToIo).first()).toBeVisible({ timeout: WAIT_MS });
+  if (!(await recognition.isVisible())) {
+    await returnToIo.tap();
+  }
+  await waitForBeat(page, "io-return-recognition");
+  await page.waitForFunction(
+    () => {
+      const g = (window as unknown as {
+        __game?: {
+          delivery?: { id?: string };
+          player?: { orraPaybackAction?: string | null };
+        };
+      }).__game;
+      return g?.delivery?.id === "red-tag"
+        && g?.player?.orraPaybackAction === "carry-name-to-bell-archive";
+    },
+    undefined,
+    { timeout: WAIT_MS },
+  );
+  const restored = page.locator(
+    'button[data-orra-payback-action="carry-name-to-bell-archive"]',
+  );
+  await expect(restored).toBeVisible({ timeout: WAIT_MS });
+  await expect(restored).toHaveAttribute(
+    "data-orra-payback-committed",
+    "carry-name-to-bell-archive",
+    { timeout: WAIT_MS },
+  );
+  await expect(restored).toHaveAttribute(
+    "data-orra-payback-ending",
+    "ending-bell-archive",
+  );
+  await expect(restored).toBeDisabled();
+}
