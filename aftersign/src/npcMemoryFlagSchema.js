@@ -76,11 +76,14 @@ const lookupNpcMemoryFactId = (kind, object) => {
 
 // Shipped mint path (memoryFacts.js → main.js:deliverPacket) always
 // passes a valid (kind, object) pair — outcome is derived from
-// `state.packet.sealed ? "sealed" : "opened"` and secondAction from
-// `normalizeSecondAction(...)` (done | skipped). Throwing on unknown
-// pairs converts silent id drift ("io-remembers-blue-packet-undefined")
-// into a runtime error that fails the mint loudly instead of writing
-// a malformed fact into durable memory. See PR #1224 review.
+// `state.packet.sealed ? "sealed" : "opened"` and secondAction is
+// `state.player.secondAction` guarded by `memoryFacts()` so the fact is
+// only built when the player actually chose done | skipped (#2437
+// removed the null → SKIPPED normalization that previously minted a
+// fact on no-tap deliveries). Throwing on unknown pairs converts silent
+// id drift ("io-remembers-blue-packet-undefined") into a runtime error
+// that fails the mint loudly instead of writing a malformed fact into
+// durable memory. See PR #1224 review.
 export const npcMemoryFactIdFor = ({ kind, object }) => {
   const id = lookupNpcMemoryFactId(kind, object);
   if (id === null) {

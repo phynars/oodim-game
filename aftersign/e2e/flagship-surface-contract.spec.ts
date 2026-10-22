@@ -359,16 +359,20 @@ function assertSkippedSecondActionMemoryBeat(
   outcome: IoPacketOutcome,
 ): void {
   // Player never called acknowledge-kiosk / skip-kiosk-acknowledge —
-  // deliverPacket normalizes null → "skipped" at fact-mint. The two-memory
-  // SHAPE is invariant; only the route-attention `object` differs (see
-  // state-contract.ts secondAction docs). So both refs are still present.
+  // #2437 removed the null → SKIPPED normalization in `memoryFacts()`,
+  // so NO route-attention fact lands in durable memory on a no-tap run.
+  // `memoryRefsFromMemory` therefore returns `secondAction: null`, which
+  // the beat publishes as `secondAction_memory_ref === null`. The beat's
+  // own `secondAction` field still reads "skipped" because
+  // `secondActionFromMemory` falls back to SKIPPED when the fact is
+  // absent — that fallback is a published surface default, not a durable
+  // record. The outcome ref remains minted + published.
   expect(memoryBeat.outcome).toBe(outcome);
   expect(memoryBeat.lineId).toBe(IO_RECOGNITION_LINE_ID[outcome]);
   expect(memoryBeat.secondAction).toBe("skipped");
   expect(typeof memoryBeat.memory_ref).toBe("string");
   expect(memoryBeat.memory_ref).toBeTruthy();
-  expect(typeof memoryBeat.secondAction_memory_ref).toBe("string");
-  expect(memoryBeat.secondAction_memory_ref).toBeTruthy();
+  expect(memoryBeat.secondAction_memory_ref).toBeNull();
 }
 
 test.describe("AFTERSIGN flagship surface contract (shared)", () => {
@@ -569,11 +573,14 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
       assertChainedMemoryBeat(chainedBeat, outcome, "done");
 
       // Contrast branch — same packet outcome, but the player never called
-      // acknowledge-kiosk/skip-kiosk-acknowledge. deliverPacket normalizes
-      // null → "skipped" at fact-mint; the two-memory shape is invariant,
-      // only the recorded secondAction differs. This proves the recorded
-      // second action actually reaches the published beat (not a hardcoded
-      // literal).
+      // acknowledge-kiosk/skip-kiosk-acknowledge. #2437: deliverPacket no
+      // longer normalizes null → "skipped" at fact-mint, so the no-tap
+      // branch durably stores ONLY the delivery-outcome fact; the beat's
+      // `secondAction_memory_ref` surfaces as null, while
+      // `secondAction` still reads "skipped" via secondActionFromMemory's
+      // absence fallback. The chained vs skipped runs now differ in BOTH
+      // the recorded second action and whether the second-action ref was
+      // minted — a stronger proof that player input reaches the beat.
       const skippedSlot = `flagship-m2-${outcome}-skipped-${Date.now()}`;
       const skippedUrl = `/aftersign/?slot=${skippedSlot}`;
 
