@@ -6,8 +6,8 @@
 // base branch's source it fails, and on the PR head it passes. Head-pass is
 // already the aftersign lane's job; this script owns the base half.
 //
-//   scope   — the PR body links an issue (Closes/Fixes/Resolves #N) labeled
-//             `type:bug`. Free-will and refactor PRs are out of scope.
+//   scope   — the PR body links an issue (Closes/Fixes/Resolves #N) titled
+//             `bug: …` or labeled `type:bug`. Free-will and refactor PRs are out of scope.
 //   exempt  — a PR-body line `f2p-exempt: <reason>` (e.g. a CSS-only fix
 //             with no assertable surface). The reason is echoed to the
 //             summary so review can judge it.
@@ -91,13 +91,21 @@ function event() {
   return { body: e.pull_request?.body ?? "", base: e.pull_request?.base?.sha, head: e.pull_request?.head?.sha };
 }
 
-async function issueLabels(n) {
+// A bug issue: its title type is `bug:` (the engine's `{type}: {subject}`
+// titles; since oodim labels PR B, 10-22, the engine no longer posts a
+// `type:bug` label, it keeps that fact in its ledger, which CI can't read),
+// or a `type:bug` label a human or a workflow set.
+export function isBugIssue({ title, labels }) {
+  return /^\s*bug:/i.test(title ?? "") || (labels ?? []).includes("type:bug");
+}
+
+async function issueFacts(n) {
   const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/${n}`, {
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "User-Agent": "oodim-f2p", Accept: "application/vnd.github+json" },
   });
-  if (!r.ok) return [];
+  if (!r.ok) return { title: "", labels: [] };
   const j = await r.json();
-  return (j.labels ?? []).map((l) => (typeof l === "string" ? l : l.name));
+  return { title: j.title ?? "", labels: (j.labels ?? []).map((l) => (typeof l === "string" ? l : l.name)) };
 }
 
 function changedFiles(base, head) {
@@ -107,16 +115,15 @@ function changedFiles(base, head) {
 async function plan() {
   const { body, base, head } = event();
   const issues = linkedIssues(body);
-  const labels = (await Promise.all(issues.map(issueLabels))).flat();
-  const isBug = labels.includes("type:bug");
+  const isBug = (await Promise.all(issues.map(issueFacts))).some(isBugIssue);
   const exempt = exemptReason(body);
   const { tests, source } = classify(changedFiles(base, head));
   const d = decide({ isBug, exempt, tests, source });
   output("result", d.result);
   output("needs_browser", tests.some((t) => t.includes("/e2e/")) ? "true" : "false");
-  summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; type:bug: ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${exempt ? `\n- **exempt:** ${exempt}` : ""}\n- plan: \`${d.result}\``);
+  summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; bug issue: ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${exempt ? `\n- **exempt:** ${exempt}` : ""}\n- plan: \`${d.result}\``);
   if (d.result === "no_test") {
-    console.log(`::error title=fail-to-pass: bug fix without a test::This PR closes a type:bug issue and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (or add a 'f2p-exempt: <reason>' line to the PR body if the fix truly has no assertable surface).`);
+    console.log(`::error title=fail-to-pass: bug fix without a test::This PR closes a bug issue (a 'bug:' title or a 'type:bug' label) and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (or add a 'f2p-exempt: <reason>' line to the PR body if the fix truly has no assertable surface).`);
   }
   console.log(`F2P_RESULT=${d.result}`);
   if (d.fail) process.exit(1);

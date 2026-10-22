@@ -2,7 +2,7 @@
 // fail-to-pass CI job before the gate itself: `node --test scripts/fail-to-pass.test.mjs`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classify, decide, exemptReason, linkedIssues, verdict } from "./fail-to-pass.mjs";
+import { classify, decide, exemptReason, isBugIssue, linkedIssues, verdict } from "./fail-to-pass.mjs";
 
 test("linkedIssues: closing keywords only, deduped", () => {
   assert.deepEqual(linkedIssues("Closes #2116\nfixes #12, Resolves: #7. Refs #99"), [2116, 12, 7]);
@@ -52,4 +52,13 @@ test("verdict: reproduced / no_repro / load-error inconclusive / undiscovered", 
   );
   assert.deepEqual(verdict([{ runner: "vitest", exit: 1, output: "No test files found, exiting with code 1" }]), { result: "inconclusive:load_error", fail: false });
   assert.deepEqual(verdict([{ runner: null, exit: null, output: "" }, { runner: "vitest", exit: 1, output: "assert" }]), { result: "undiscovered", fail: true });
+});
+
+test("isBugIssue: a bug: title (engine facts live in its ledger since oodim labels PR B) or a type:bug label", () => {
+  assert.equal(isBugIssue({ title: "bug: Io's recall line is missing on reload", labels: ["agent-filed"] }), true);
+  assert.equal(isBugIssue({ title: "Bug: deploy RED", labels: [] }), true);
+  assert.equal(isBugIssue({ title: "aftersign e2e RED on main @ ce7d0673", labels: ["agent-filed", "type:bug", "priority:P1"] }), true);
+  assert.equal(isBugIssue({ title: "feature: Bell Archive ending", labels: ["agent-filed"] }), false);
+  assert.equal(isBugIssue({ title: "task: debug overlay cleanup", labels: [] }), false);
+  assert.equal(isBugIssue({ title: "", labels: [] }), false);
 });
