@@ -13,7 +13,14 @@
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io remembers you brought the packet back sealed. She kept a lamp burning for the way you earned — keep the route lit.",
   fast: "Io remembers you took the shortcut and beat the bell. The fast packet waits where its echo cannot reach. Take it before the next ring finds it.",
-  failed: "Io remembers the last packet did not come home. She does not call it bad luck: mend it, or carry its damage forward.",
+  // #2427: the pre-#2427 line ("the last packet did not come home") was
+  // vague — the packet DOES come home on a failed route, it just comes
+  // home damaged (recordRouteRun writes succeeded:false when the fragile
+  // packet is carried, see apps/web/src/aftersign/src/routeRiskFeel.ts).
+  // The revised line names the fact Io is remembering: the player went
+  // into the dark and brought back what the dark left. "Mend" / "damage"
+  // are the durable anchors — see `aftersignPacketRecallFailedCopy.test.ts`.
+  failed: "Io remembers you carried the packet into the dark and brought back what the dark left. She does not call it bad luck: mend it, or carry its damage forward.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
   fragile: "Io remembers how carefully you carried the fragile packet. She saved another from the rush. Carry it gently.",
