@@ -7,6 +7,8 @@
   }) {
     let audioContext;
     let impactBurstChirpGain;
+    let rainFilter;
+    let kioskHum;
 
     const stamp = (cue) => {
       state._runtime.audio.lastCue = cue;
@@ -28,19 +30,19 @@
       const rain = audioContext.createBufferSource();
       rain.buffer = makeRainBuffer(audioContext);
       rain.loop = true;
-      const filter = audioContext.createBiquadFilter();
-      filter.type = "bandpass";
-      filter.frequency.value = 1350;
-      filter.Q.value = 0.72;
-      rain.connect(filter).connect(gain);
+      rainFilter = audioContext.createBiquadFilter();
+      rainFilter.type = "bandpass";
+      rainFilter.frequency.value = 1350;
+      rainFilter.Q.value = 0.72;
+      rain.connect(rainFilter).connect(gain);
       rain.start();
-      const hum = audioContext.createOscillator();
-      hum.type = "sine";
-      hum.frequency.value = 91;
+      kioskHum = audioContext.createOscillator();
+      kioskHum.type = "sine";
+      kioskHum.frequency.value = 91;
       const humGain = audioContext.createGain();
       humGain.gain.value = 0.018;
-      hum.connect(humGain).connect(gain);
-      hum.start();
+      kioskHum.connect(humGain).connect(gain);
+      kioskHum.start();
       state._runtime.audio.ambientStarted = true;
       state._runtime.audio.ambientState = "playing";
       markStateDirty();
@@ -106,6 +108,14 @@
       if (await enableAudio()) playTone(144, 120, 0.09, "triangle", 12);
       stamp("packet-cancelled");
     };
-    return { enableAudio, playKioskConfirm, playJobOfferConfirm, triggerRecognitionImpactChirp, playFailureStingAudio };
+    const updateAmbient = (t) => {
+      if (rainFilter) {
+        rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
+      }
+      if (kioskHum) {
+        kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
+      }
+    };
+    return { enableAudio, playKioskConfirm, playJobOfferConfirm, triggerRecognitionImpactChirp, playFailureStingAudio, updateAmbient };
   };
 })(window);

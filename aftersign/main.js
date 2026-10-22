@@ -5378,11 +5378,11 @@ const tick = (now) => {
       state.interaction.failureStartedAt = null;
     }
   }
-  if (rainFilter) {
-    rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
-  }
-  if (kioskHum) {
-    kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
+  // Ambient modulation lives on the audio controller (see aftersign/audio.js);
+  // it internally guards on whether startAmbientAudio() has run, so this is a
+  // no-op before the AudioContext unlocks.
+  if (audioController) {
+    audioController.updateAmbient(t);
   }
   rain.children.forEach((drop, index) => {
     drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
