@@ -1488,7 +1488,7 @@ const setTextContentIfChanged = (node, value) => {
 
 let audioController;
 const getAudioController = () => {
-  audioController ??= window.createAftersignAudioController({
+  audioController ??= createAftersignAudioController({
     state,
     markStateDirty,
     publishState,
