@@ -113,31 +113,36 @@ import {
   stampAftersignBeat,
   stampAftersignChoice,
 } from "./src/playerVisibleBeatDom.js";
-// Served-reach anchors for Io's opened-return copy (PR #2419 F1/F2).
+// PR #2419 F1 — SHIPPED CONSUMER (not just a served-reach anchor).
 // `apps/web/src/aftersign/ioFirstSceneDialogue.ts` and
 // `apps/web/src/aftersign/ioVoiceContract.ts` own the two typed Io-line
-// tables that render the opened-return beat; both resolve
-// `openedReturn.text` through `IO_OPENED_RETURN_LINE` in
-// `aftersign/src/ioSealedReturn.ts` (the same canonical constant
-// `packages/aftersign/src/ioReturningSession.ts` reads for the shipped
-// `openedPacket` line). Pulling the VALUE exports here puts both
-// modules in the shipped graph so any future copy edit through
-// `IO_OPENED_RETURN_LINE` is proven to reach the live bundle by the
-// served-reach gate. The three-module alignment invariant lives in
-// `apps/web/src/aftersign/ioOpenedReturnLineAlignment.test.ts` — kept
-// as a pure vitest check (not a module-load `throw`) so a drift fails
-// CI without ever risking the shipped main.js module from aborting
-// before `window.__game` is wired, which would starve every e2e that
-// taps the recognition beats.
-import { AFTERSIGN_IO_FIRST_SCENE_DIALOGUE } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
-import { AFTERSIGN_IO_LINES } from "../apps/web/src/aftersign/ioVoiceContract.ts";
-// Keep both named imports LIVE at module scope so Vite's tree-shaker
-// does not drop these anchors. Reading one property each is enough to
-// prove the value binding reaches a runtime use; the read is pure and
-// cannot throw (both tables are plain object literals populated at
-// module init with string fields).
-void AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.length;
-void AFTERSIGN_IO_LINES.openedReturn;
+// tables that resolve `openedReturn.text` through
+// `IO_OPENED_RETURN_LINE` (canonical constant in
+// `aftersign/src/ioSealedReturn.ts`, also consumed by
+// `packages/aftersign/src/ioReturningSession.ts::openedPacket`).
+// Soren's F1 review blocked this PR when the two imports were held
+// LIVE only by `void` reads at module scope — a tree-shake defeat
+// trick, not a real consumer. The `renderText()` seam below now
+// stamps the SELECTED entry's `memoryKey` / `key` / `text.length`
+// from both tables onto the existing `#ioReturnLine` sibling at the
+// `io-return-recognition` beat, so a copy edit through either
+// typed-table surface rides to a player-visible DOM attribute (same
+// discipline as `aftersign-io-return-line="<outcome>"` already set
+// right next to it). The alignment invariant across the three
+// modules lives in
+// `apps/web/src/aftersign/ioOpenedReturnLineAlignment.test.ts` as a
+// pure vitest check — kept out of main.js's module-load path so a
+// TS-side load issue never aborts the shipped graph before
+// `window.__game` wires, which would starve every e2e that taps
+// the recognition beats.
+import {
+  AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
+  getAftersignIoPacketReturnLine,
+} from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
+import {
+  AFTERSIGN_IO_LINES,
+  ioPacketReturnLine,
+} from "../apps/web/src/aftersign/ioVoiceContract.ts";
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through
@@ -2415,6 +2420,105 @@ const renderText = () => {
       }
       if (returnPara.textContent !== returnLineText) {
         returnPara.textContent = returnLineText;
+      }
+      // PR #2419 F1 — shipped consumer of the two typed Io-line
+      // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
+      // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;
+      // selecting the entry here by the SAME `state.packet.sealed`
+      // fork the recognition line reads turns both modules into
+      // real DOM consumers (no `void` tree-shake defeat). The
+      // `#line` paragraph's text stays owned by
+      // `ioRecognitionDialogue.ts::RETURNING_LINES` — the same
+      // isolation rejected in #758/#789/#1131 — so this is a
+      // sibling-dataset stamp, not a second line source.
+      const packetOutcomeForTypedTables = state.packet.sealed
+        ? "sealed"
+        : "opened";
+      const firstSceneLine = getAftersignIoPacketReturnLine(
+        packetOutcomeForTypedTables,
+      );
+      const voiceContractLine = ioPacketReturnLine(
+        packetOutcomeForTypedTables,
+      );
+      // Stamp the selected entries' identifying keys + text length
+      // onto the sibling paragraph. A copy edit through either
+      // typed-table surface changes `text.length` and lands on the
+      // DOM a real player's page carries, satisfying served-reach.
+      // Length (not the literal) keeps the attribute small while
+      // still proving the string flows through — the full literal
+      // is already in `#line` via the recognition dialogue's own
+      // selector when the outcome matches.
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-line",
+        ) !== firstSceneLine.id
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-line",
+          firstSceneLine.id,
+        );
+      }
+      const firstSceneLen = String(firstSceneLine.text.length);
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-line-length",
+        ) !== firstSceneLen
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-line-length",
+          firstSceneLen,
+        );
+      }
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-line",
+        ) !== voiceContractLine.key
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-line",
+          voiceContractLine.key,
+        );
+      }
+      const voiceContractLen = String(voiceContractLine.text.length);
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-line-length",
+        ) !== voiceContractLen
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-line-length",
+          voiceContractLen,
+        );
+      }
+      // Also stamp the full-table size as a crude load-bearing
+      // guard: if the whole `AFTERSIGN_IO_FIRST_SCENE_DIALOGUE`
+      // array is tree-shaken out, this attribute drops to the
+      // string `"0"` and the e2e below reds. The read is pure.
+      const firstSceneTableSize = String(
+        AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.length,
+      );
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-table-size",
+        ) !== firstSceneTableSize
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-table-size",
+          firstSceneTableSize,
+        );
+      }
+      const voiceContractTableSize = String(
+        Object.keys(AFTERSIGN_IO_LINES).length,
+      );
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-table-size",
+        ) !== voiceContractTableSize
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-table-size",
+          voiceContractTableSize,
+        );
       }
       // The recalled fact rises in 280ms from 8px below its resting line,
       // one crisp, non-blocking acknowledgement per outcome. The data stamp
