@@ -259,6 +259,15 @@ export type AftersignStoryStateSnapshot = {
             orraAction: AftersignOrraAction | null;
           };
         }
+      | {
+          id: "red-tag-recipient";
+          name: "Red Tag Recipient";
+          disposition: "waiting" | "recognizes-player";
+          rememberedSessionIds: string[];
+          memory: {
+            redTagDeliveredToThirdNpc: boolean;
+          };
+        }
     >;
   };
 };
@@ -408,6 +417,17 @@ export function getAftersignStoryState(
               },
             ]
           : []),
+        {
+          id: "red-tag-recipient",
+          name: "Red Tag Recipient",
+          disposition: state.redTagDeliveredToThirdNpc
+            ? "recognizes-player"
+            : "waiting",
+          rememberedSessionIds,
+          memory: {
+            redTagDeliveredToThirdNpc: state.redTagDeliveredToThirdNpc,
+          },
+        },
       ],
     },
   };
