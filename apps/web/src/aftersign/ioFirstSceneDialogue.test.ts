@@ -37,10 +37,10 @@ describe("Aftersign Io first-scene dialogue", () => {
       "You made it back. The seal did not. I can use one of those facts.",
     );
     expect(getAftersignIoFirstSceneLine("listenedReturn").text).toBe(
-      "You listened before you ran. Rare habit. Keep it.",
+      "You listened. So when the city lied, you heard the hinge. Keep that.",
     );
     expect(getAftersignIoFirstSceneLine("skippedReturn").text).toBe(
-      "You found the box anyway. Next time, let me finish saving your life.",
+      "You skipped my route. Instinct carried you once. It will not learn the next stair.",
     );
   });
 

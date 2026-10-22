@@ -117,4 +117,221 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(controller).toContain('recordGestureSample("press", input);');
     expect(controller).toContain("const snapshot = pressIntent(input);");
   });
+
+  it("keeps packet-seal choices behind the route-choice controller boundary", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+    const controller = readFileSync(
+      join(REPO_ROOT, "aftersign", "src", "interactions", "routeChoiceController.js"),
+      "utf8",
+    );
+    expect(main).toContain('import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js"');
+    expect(main).toContain("const routeChoiceController = createRouteChoiceController({");
+    expect(main).toContain("if (routeChoiceController.input.choose(choiceId)) return;");
+    expect(main).not.toContain('if (choiceId === "open-packet") {');
+    expect(controller).toContain("export const createRouteChoiceController");
+    expect(controller).toContain('"open-packet": false');
+    expect(controller).toContain('"keep-sealed": true');
+    // The post-choice beat is emitted via setState's `beat` field — this
+    // string anchors the "packet-choice" scene wiring in the controller
+    // so a stray rename cannot pass tests silently.
+    expect(controller).toContain('beat: "packet-choice"');
+  });
+
+  it("route-choice controller emits a setState payload that seals/unseals the packet and advances the beat", async () => {
+    const controllerModule = await import(
+      /* @vite-ignore */ join(REPO_ROOT, "aftersign", "src", "interactions", "routeChoiceController.js")
+    );
+    type SetStatePayload = { packetSealed: boolean | null; beat: string };
+    const createRouteChoiceController = controllerModule.createRouteChoiceController as (deps: {
+      getState: () => { packet: { sealed: boolean } };
+      setState: (payload: SetStatePayload) => void;
+    }) => { input: { choose: (choiceId: string) => boolean } };
+
+    // open-packet with a sealed packet: controller tells main.js to unseal
+    // and advance to packet-choice.
+    {
+      const state = { packet: { sealed: true } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      const handled = controller.input.choose("open-packet");
+      expect(handled).toBe(true);
+      expect(calls).toEqual([{ packetSealed: false, beat: "packet-choice" }]);
+    }
+
+    // open-packet when already unsealed: packetSealed is null (no mutation)
+    // but the beat still fires so main.js can re-render.
+    {
+      const state = { packet: { sealed: false } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      controller.input.choose("open-packet");
+      expect(calls).toEqual([{ packetSealed: null, beat: "packet-choice" }]);
+    }
+
+    // keep-sealed on an unsealed packet: controller tells main.js to seal
+    // and advance to packet-choice.
+    {
+      const state = { packet: { sealed: false } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      const handled = controller.input.choose("keep-sealed");
+      expect(handled).toBe(true);
+      expect(calls).toEqual([{ packetSealed: true, beat: "packet-choice" }]);
+    }
+
+    // keep-packet-sealed alias behaves identically to keep-sealed — proves
+    // the alias row in PACKET_SEAL_CHOICES is wired, not just declared.
+    {
+      const state = { packet: { sealed: false } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      const handled = controller.input.choose("keep-packet-sealed");
+      expect(handled).toBe(true);
+      expect(calls).toEqual([{ packetSealed: true, beat: "packet-choice" }]);
+    }
+
+    // keep-sealed when already sealed: no mutation (packetSealed is null),
+    // beat still fires so the scene re-renders.
+    {
+      const state = { packet: { sealed: true } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      controller.input.choose("keep-sealed");
+      expect(calls).toEqual([{ packetSealed: null, beat: "packet-choice" }]);
+    }
+
+    // Unknown choice is not handled — caller (main.js `choose`) must keep
+    // dispatching. The controller must not call setState at all.
+    {
+      const state = { packet: { sealed: true } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      const handled = controller.input.choose("deliver-packet");
+      expect(handled).toBe(false);
+      expect(calls).toEqual([]);
+    }
+
+    // Inherited keys like "constructor" / "toString" must NOT be treated
+    // as handled — PACKET_SEAL_CHOICES is a plain frozen object, so a
+    // bare `obj[key]` lookup would resolve to Object.prototype methods
+    // and sneak a function value through setState. The own-property
+    // guard is what prevents that; this assertion locks it in.
+    for (const inheritedKey of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
+      const state = { packet: { sealed: true } };
+      const calls: SetStatePayload[] = [];
+      const controller = createRouteChoiceController({
+        getState: () => state,
+        setState: (payload) => calls.push(payload),
+      });
+      const handled = controller.input.choose(inheritedKey);
+      expect(handled).toBe(false);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("keeps job-offer press logic behind the job-offer controller boundary", () => {
+    const main = readFileSync(SERVED_MAIN_PATH, "utf8");
+    const controller = readFileSync(
+      join(REPO_ROOT, "aftersign", "src", "interactions", "jobOfferController.js"),
+      "utf8",
+    );
+    expect(main).toContain('import { createJobOfferController } from "./src/interactions/jobOfferController.js"');
+    expect(main).toContain("const jobOfferController = createJobOfferController({");
+    expect(main).toContain("jobOfferController.input.press({");
+    expect(main).toContain("jobOfferController.commit();");
+    // State transition must precede the DOM receipt (pre-extraction order).
+    expect(main.indexOf("jobOfferController.input.press({")).toBeLessThan(
+      main.indexOf('acceptedNode.id = "ioJobAcceptedLine";'),
+    );
+    expect(main.indexOf('acceptedNode.id = "ioJobAcceptedLine";')).toBeLessThan(
+      main.indexOf("jobOfferController.commit();"),
+    );
+    // The inline arithmetic that used to live at the call site is now the
+    // controller's job — assert the former literals are gone from main.js
+    // so a drive-by edit can't restore the duplication silently.
+    expect(main).not.toContain("state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;");
+    expect(controller).toContain("export const createJobOfferController");
+    expect(controller).toContain("const press = ({ actionId, offerId }) => {");
+    expect(controller).toContain("setLastAction(`${actionId}:${offerId}`);");
+    expect(controller).toContain("incrementConfirmCount();");
+    expect(controller).toContain("markStateDirty();");
+    expect(controller).toContain("render();");
+  });
+
+  it("job-offer controller composes actionId:offerId, bumps confirmCount, persists, and publishes — in that order", async () => {
+    const controllerModule = await import(
+      /* @vite-ignore */ join(REPO_ROOT, "aftersign", "src", "interactions", "jobOfferController.js")
+    );
+    type JobOfferDeps = {
+      setLastAction: (nextLastAction: string) => void;
+      incrementConfirmCount: () => void;
+      markStateDirty: () => void;
+      render: () => void;
+      getState: () => { lastAction: string; confirmCount: number };
+    };
+    const createJobOfferController = controllerModule.createJobOfferController as (
+      deps: JobOfferDeps,
+    ) => {
+      input: { press: (input: { actionId: string; offerId: string }) => unknown };
+      commit: () => unknown;
+    };
+
+    // Observable press: records each dep call in order, mutates a plain
+    // interaction snapshot the way main.js does, and asserts the exposed
+    // read-back matches.
+    const interaction = { lastAction: "", confirmCount: 0 };
+    const order: string[] = [];
+    const controller = createJobOfferController({
+      setLastAction: (nextLastAction) => {
+        order.push(`setLastAction:${nextLastAction}`);
+        interaction.lastAction = nextLastAction;
+      },
+      incrementConfirmCount: () => {
+        order.push("incrementConfirmCount");
+        interaction.confirmCount += 1;
+      },
+      markStateDirty: () => order.push("markStateDirty"),
+      render: () => order.push("render"),
+      getState: () => interaction,
+    });
+
+    const result = controller.input.press({ actionId: "mloop-a", offerId: "job-42" });
+
+    // press is the state transition only — no persistence/publish yet.
+    expect(order).toEqual(["setLastAction:mloop-a:job-42", "incrementConfirmCount"]);
+    expect(interaction).toEqual({ lastAction: "mloop-a:job-42", confirmCount: 1 });
+    expect(result).toBe(interaction);
+
+    const committed = controller.commit();
+    expect(order).toEqual([
+      "setLastAction:mloop-a:job-42",
+      "incrementConfirmCount",
+      "markStateDirty",
+      "render",
+    ]);
+    expect(committed).toBe(interaction);
+
+    // Second press increments cumulatively — proves confirmCount is a
+    // host-owned counter the controller advances, not reset per press.
+    controller.input.press({ actionId: "mloop-b", offerId: "job-7" });
+    expect(interaction).toEqual({ lastAction: "mloop-b:job-7", confirmCount: 2 });
+  });
 });

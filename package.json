@@ -8,6 +8,7 @@
     "test:aftersign:pure": "node --experimental-strip-types aftersign/pure-runner.ts && node aftersign/m-loop-playtest.acceptance.mjs && playwright test --config aftersign/playwright.pure.config.ts",
     "test:aftersign": "npm run test:aftersign:pure && npm run test:e2e:aftersign",
     "test:unit:aftersign": "vitest run --config apps/web/src/aftersign/vitest.config.ts",
+    "check:served": "node scripts/served-reach.mjs --base origin/main",
     "dev:pacman": "vite --config pacman/vite.config.ts",
     "build:pacman": "tsc --noEmit -p pacman/tsconfig.json && vite build --config pacman/vite.config.ts",
     "preview:pacman": "vite preview --config pacman/vite.config.ts",

@@ -8,7 +8,13 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { createCameraController } from "./src/presentation/cameraController.js";
+import { createDialogueController } from "./src/presentation/dialogueController.js";
+import { createMobileInputController } from "./src/presentation/mobileInputController.js";
+import { createFeedbackController } from "./src/presentation/feedbackController.js";
+import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
+import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
@@ -33,7 +39,6 @@ import {
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat, restoreFlagshipBeat } from "./flagship-beat-migration.js";
-import { renderAftersignDialogue } from "./src/aftersignDialogueRenderer.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { playRecognitionFeedback } from "./recognition-feedback.js";
@@ -112,6 +117,36 @@ import {
   stampAftersignBeat,
   stampAftersignChoice,
 } from "./src/playerVisibleBeatDom.js";
+// PR #2419 F1 — SHIPPED CONSUMER (not just a served-reach anchor).
+// `apps/web/src/aftersign/ioFirstSceneDialogue.ts` and
+// `apps/web/src/aftersign/ioVoiceContract.ts` own the two typed Io-line
+// tables that resolve `openedReturn.text` through
+// `IO_OPENED_RETURN_LINE` (canonical constant in
+// `aftersign/src/ioSealedReturn.ts`, also consumed by
+// `packages/aftersign/src/ioReturningSession.ts::openedPacket`).
+// Soren's F1 review blocked this PR when the two imports were held
+// LIVE only by `void` reads at module scope — a tree-shake defeat
+// trick, not a real consumer. The `renderText()` seam below now
+// stamps the SELECTED entry's `memoryKey` / `key` / `text.length`
+// from both tables onto the existing `#ioReturnLine` sibling at the
+// `io-return-recognition` beat, so a copy edit through either
+// typed-table surface rides to a player-visible DOM attribute (same
+// discipline as `aftersign-io-return-line="<outcome>"` already set
+// right next to it). The alignment invariant across the three
+// modules lives in
+// `apps/web/src/aftersign/ioOpenedReturnLineAlignment.test.ts` as a
+// pure vitest check — kept out of main.js's module-load path so a
+// TS-side load issue never aborts the shipped graph before
+// `window.__game` wires, which would starve every e2e that taps
+// the recognition beats.
+import {
+  AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
+  getAftersignIoPacketReturnLine,
+} from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
+import {
+  AFTERSIGN_IO_LINES,
+  ioPacketReturnLine,
+} from "../apps/web/src/aftersign/ioVoiceContract.ts";
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through
@@ -643,7 +678,6 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
-import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
@@ -754,6 +788,7 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
 }
 const failureSting = document.querySelector(".failure-sting");
 const feedbackController = createFeedbackController({ document, failureSting });
+const dialogueController = createDialogueController({ line, speaker });
 const packetButton = document.querySelector("#packetButton");
 let packetPressFeedback = { isPressed: false, releaseAtMs: null };
 let packetPressFeedbackFrame = null;
@@ -1299,6 +1334,7 @@ const state = {
     audio: {
       unlocked: false,
       ambientStarted: false,
+      ambientState: "idle",
       lastCue: null,
       lastCueAt: null,
     },
@@ -2330,9 +2366,12 @@ const publishState = () => {
       onChoose: (action) => {
         let route = state.player.routeRisk?.lastRoute ?? "safe";
         let succeeded = true;
-        if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+        if (action === "take-the-shortcut") {
           route = "fast";
           succeeded = true;
+        } else if (action === "carry-a-fragile-packet") {
+          route = "fast";
+          succeeded = false;
         } else if (action === "take-the-long-way") {
           route = "safe";
           succeeded = true;
@@ -2354,10 +2393,8 @@ const publishState = () => {
 };
 
 const renderText = () => {
-  renderAftersignDialogue({
+  dialogueController.render({
     beat: state.scene.beat,
-    line,
-    speaker,
     speakerName: "Io",
     // Getter, not a value: syncIoLine() (invoked inside the helper) is what
     // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
@@ -2422,6 +2459,105 @@ const renderText = () => {
       }
       if (returnPara.textContent !== returnLineText) {
         returnPara.textContent = returnLineText;
+      }
+      // PR #2419 F1 — shipped consumer of the two typed Io-line
+      // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
+      // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;
+      // selecting the entry here by the SAME `state.packet.sealed`
+      // fork the recognition line reads turns both modules into
+      // real DOM consumers (no `void` tree-shake defeat). The
+      // `#line` paragraph's text stays owned by
+      // `ioRecognitionDialogue.ts::RETURNING_LINES` — the same
+      // isolation rejected in #758/#789/#1131 — so this is a
+      // sibling-dataset stamp, not a second line source.
+      const packetOutcomeForTypedTables = state.packet.sealed
+        ? "sealed"
+        : "opened";
+      const firstSceneLine = getAftersignIoPacketReturnLine(
+        packetOutcomeForTypedTables,
+      );
+      const voiceContractLine = ioPacketReturnLine(
+        packetOutcomeForTypedTables,
+      );
+      // Stamp the selected entries' identifying keys + text length
+      // onto the sibling paragraph. A copy edit through either
+      // typed-table surface changes `text.length` and lands on the
+      // DOM a real player's page carries, satisfying served-reach.
+      // Length (not the literal) keeps the attribute small while
+      // still proving the string flows through — the full literal
+      // is already in `#line` via the recognition dialogue's own
+      // selector when the outcome matches.
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-line",
+        ) !== firstSceneLine.id
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-line",
+          firstSceneLine.id,
+        );
+      }
+      const firstSceneLen = String(firstSceneLine.text.length);
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-line-length",
+        ) !== firstSceneLen
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-line-length",
+          firstSceneLen,
+        );
+      }
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-line",
+        ) !== voiceContractLine.key
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-line",
+          voiceContractLine.key,
+        );
+      }
+      const voiceContractLen = String(voiceContractLine.text.length);
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-line-length",
+        ) !== voiceContractLen
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-line-length",
+          voiceContractLen,
+        );
+      }
+      // Also stamp the full-table size as a crude load-bearing
+      // guard: if the whole `AFTERSIGN_IO_FIRST_SCENE_DIALOGUE`
+      // array is tree-shaken out, this attribute drops to the
+      // string `"0"` and the e2e below reds. The read is pure.
+      const firstSceneTableSize = String(
+        AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.length,
+      );
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-table-size",
+        ) !== firstSceneTableSize
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-table-size",
+          firstSceneTableSize,
+        );
+      }
+      const voiceContractTableSize = String(
+        Object.keys(AFTERSIGN_IO_LINES).length,
+      );
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-table-size",
+        ) !== voiceContractTableSize
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-table-size",
+          voiceContractTableSize,
+        );
       }
       // The recalled fact rises in 280ms from 8px below its resting line,
       // one crisp, non-blocking acknowledgement per outcome. The data stamp
@@ -2611,9 +2747,12 @@ const renderText = () => {
           // path).
           let route = state.player.routeRisk?.lastRoute ?? "safe";
           let succeeded = true;
-          if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+          if (action === "take-the-shortcut") {
             route = "fast";
             succeeded = true;
+          } else if (action === "carry-a-fragile-packet") {
+            route = "fast";
+            succeeded = false;
           } else if (action === "take-the-long-way") {
             route = "safe";
             succeeded = true;
@@ -2957,8 +3096,16 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // downstream consumer that split on `:` still gets the
             // jobId as the tail token, and now also gets the mloop
             // action id (memory-gated) as the head.
-            state.interaction.lastAction = `${mloopAction.id}:${offer.id}`;
-            state.interaction.confirmCount += 1;
+            // State-level transition (lastAction + confirmCount) is owned by
+            // jobOfferController.input.press here, BEFORE the DOM receipt;
+            // persistence + publish by jobOfferController.commit() at the
+            // end of this handler — the extraction surfaced by #2305. The decorative effects above
+            // (FEEL, haptics, audio, DOM receipt) stay here because they are
+            // host-shaped render concerns, not interaction state.
+            jobOfferController.input.press({
+              actionId: mloopAction.id,
+              offerId: offer.id,
+            });
             // A job selection must answer the player's tap on the served
             // dialogue surface. `#line.textContent` and `state.npcs.io.lastLine`
             // are OWNED by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
@@ -3019,8 +3166,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             } catch {
               /* feel projection must never break state commit */
             }
-            markStateDirty();
-            publishState();
+            jobOfferController.commit();
           });
           offeredJobs.appendChild(button);
         }
@@ -3419,6 +3565,18 @@ const packetOfferController = createPacketOfferController({
 
 const packetPress = (input) => packetOfferController.input.press(input);
 
+const jobOfferController = createJobOfferController({
+  setLastAction: (nextLastAction) => {
+    state.interaction.lastAction = nextLastAction;
+  },
+  incrementConfirmCount: () => {
+    state.interaction.confirmCount += 1;
+  },
+  markStateDirty,
+  render: publishState,
+  getState: () => state.interaction,
+});
+
 // #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
 // The pure controller emits PREVIEWED only through `previewRelease(...)`
 // for a very-quick glance under `PACKET_INTENT.PREVIEW_MAX_MS`; it is
@@ -3570,24 +3728,19 @@ const packetRelease = (input) => {
   return state.interaction.packetIntent;
 };
 
-const choose = async (choiceId) => {
-  if (choiceId === "open-packet") {
-    if (state.packet.sealed) {
-      state.packet.sealed = false;
+const routeChoiceController = createRouteChoiceController({
+  getState: () => state,
+  setState: ({ packetSealed, beat }) => {
+    if (packetSealed !== null) {
+      state.packet.sealed = packetSealed;
       markStateDirty();
     }
-    setBeat("packet-choice");
-    return;
-  }
+    setBeat(beat);
+  },
+});
 
-  if (choiceId === "keep-packet-sealed" || choiceId === "keep-sealed") {
-    if (!state.packet.sealed) {
-      state.packet.sealed = true;
-      markStateDirty();
-    }
-    setBeat("packet-choice");
-    return;
-  }
+const choose = async (choiceId) => {
+  if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {
     if (state.scene.beat === "io-next-job") {
@@ -4377,6 +4530,7 @@ const startAmbientAudio = () => {
   kioskHum.start();
 
   state._runtime.audio.ambientStarted = true;
+  state._runtime.audio.ambientState = "playing";
   markStateDirty();
 };
 
@@ -5277,6 +5431,12 @@ const {
   return kioskScene;
 })();
 
+// F1 fix: cameraController depends on `camera`, which is destructured
+// from createKioskScene above. Constructing it at module top-level
+// (before the destructure) hit the TDZ and threw at module evaluation,
+// so the served page couldn't boot. Construct it AFTER the destructure.
+const cameraController = createCameraController({ camera, THREE });
+
 const handleScenePointer = (event) => {
   const rect = canvas.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -5305,7 +5465,7 @@ const syncKeyboardInput = () => {
   setMoveInput(x, z, x || z ? "keyboard" : "none");
 };
 
-mobileMovePadController = attachMobileMovePad({
+mobileMovePadController = createMobileInputController({
   root: movePad,
   knob: movePadKnob,
   onInput: setMobileMovePadInput,
@@ -5514,11 +5674,17 @@ const tick = (now) => {
     }
   }
   const rig = stepCameraRig(dt);
-  camera.position.x = rig.position.x + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
-  camera.position.y = rig.position.y;
-  camera.position.z = rig.position.z;
-  camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
-  camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+  cameraController.render({
+    rig,
+    recognitionDeltaMeters: recognitionMotion.cameraDeltaMeters,
+    recognitionYawDegrees: recognitionMotion.cameraYawDegrees,
+    confirmWobble,
+    confirmKickWorldX: state.interaction.confirmFeedback.cameraKickWorldX,
+    confirmKickDegrees: state.interaction.confirmFeedback.cameraKickDeg,
+    failureWobble,
+    failureKickWorldX: FAILURE_FEEDBACK.cameraKickWorldX,
+    failureKickDegrees: FAILURE_FEEDBACK.cameraKickDeg,
+  });
   sampleMemoryBeatCameraProbe();
   feedbackController.renderFrame({
     confirmEnvelope,

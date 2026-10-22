@@ -4,6 +4,9 @@ import { expect, test, type Page } from "@playwright/test";
 // must restore the committed route in a browser context with no client storage.
 // The first context performs the played write; the second proves DO/D1 restore.
 //
+// Prose contract: docs/aftersign-orra-payback-fresh-context-contract.md
+// (the doc describes the same proof this spec executes; keep in sync).
+//
 // GATED (test.fixme): the player-visible payback affordance — a single
 // `button[data-orra-payback-action="carry-name-to-bell-archive"]` whose
 // committed state is exposed via `data-orra-payback-committed` — is not yet
@@ -99,6 +102,7 @@ test.describe("Saint Orra payback fresh-session durability (#2264)", () => {
       'button[data-orra-payback-action="carry-name-to-bell-archive"]',
     );
     await expect(carryName).toBeVisible({ timeout: WAIT_MS });
+    await expect(carryName).toBeEnabled();
     await carryName.tap({ timeout: WAIT_MS });
     await expect(carryName).toHaveAttribute(
       "data-orra-payback-committed",

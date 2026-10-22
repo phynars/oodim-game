@@ -62,9 +62,18 @@ or keyboard input. Phone-viewport specs live in the same folder.
 
 `window.__game` is an assertion surface only: tests may read its published
 state to verify an outcome — story beats, save/load round-trips, NPC-memory
-recognition, feel envelopes — but must not call it (or another harness hook)
-to cause a player action. A state transition reached only through a harness
-input is not served-page acceptance evidence.
+recognition, feel envelopes, and `_runtime.audio` unlock/ambient/cue state —
+but must not call it (or another harness hook) to cause a player action. A
+state transition reached only through a harness input is not served-page
+acceptance evidence.
+
+## Audio runtime
+
+The existing `aftersign/main.js` runtime owns served WebAudio. Its visible
+interactions use the gesture-gated `enableAudio()` path before the synthesized
+rainline ambient bed can start. `_runtime.audio` is the read-only verification
+boundary: browser tests must tap rendered controls, then may inspect its
+unlock, ambient, and cue state. No external audio assets are required.
 
 Red/green polarity lanes use `FLAGSHIP_BREAK_MODE` to prove the guards catch
 deliberate breaks; the post-merge `main-e2e` lane re-plays the served page

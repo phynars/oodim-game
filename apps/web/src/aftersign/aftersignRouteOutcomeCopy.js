@@ -29,6 +29,15 @@ const ROUTE_OUTCOME_LINES = Object.freeze({
   // a direct `aftersignRouteOutcomeLine("fragile")` call returns null, so
   // the token isn't accepted as a route class in its own right.
   fragile: "You carried the fragile one and it arrived whole. The ledger marks you steady.",
+  // UNREACHABLE via the shipped caller (aftersign/main.js:1514 gates the
+  // call on `routeMemory.succeeded === true`), so this entry's copy never
+  // reaches a player — it is kept only so the keyed lookup below returns
+  // a string instead of null if a future caller ever wires a failed path.
+  // The live failed-route line Io actually speaks lives in
+  // `aftersignPacketRecallCopy.js :: failed` (reached via
+  // `aftersignPacketRecallToken({ succeeded: false })` at the
+  // `io-return-recognition` beat — see aftersign/main.js:2375).
+  // #2427 review (Mara F1): don't edit this entry — edit the live one.
   failed: "The dark kept its due. You came back. The ledger marks the cost.",
 });
 
