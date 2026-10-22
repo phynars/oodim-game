@@ -1279,7 +1279,13 @@ const state = {
         : [orraLineFromStored.lineId],
     },
   },
-  save: stored?.save ? { ...emptySave(), ...stored.save, dirty: false } : emptySave(),
+  // `stored` is non-null only when readAuthoritativeSave returned the
+  // server's payload, so boot reports the server as the authority. Saves
+  // never carry `authority` (buildPersistPayload doesn't write it), so the
+  // spread alone kept emptySave()'s "local-fallback" on a server restore.
+  save: stored?.save
+    ? { ...emptySave(), ...stored.save, dirty: false, authority: "server" }
+    : stored ? { ...emptySave(), authority: "server" } : emptySave(),
   movement: {
     input: { x: 0, z: 0, source: "none", active: false },
     velocityX: 0,
