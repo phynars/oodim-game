@@ -161,7 +161,7 @@ jobs:
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file "$comment_file"
           else
-            gh issue create --title "$title_prefix @ ${sha:0:8}" --body-file "$body_file" --label "agent-filed" --label "type:bug" --label "priority:P1"
+            gh issue create --title "bug: $title_prefix @ ${sha:0:8}" --body-file "$body_file" --label "agent-filed" --label "type:bug" --label "priority:P1"
           fi
 
       - name: Close the main-RED issue if this run is green
