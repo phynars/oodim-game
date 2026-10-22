@@ -3719,6 +3719,13 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "return-to-io") {
+    // A player explicitly returning to Io owns this transition. Cancel the
+    // delivery timer before advancing so it cannot fire later and replay the
+    // recognition entry after this visible choice has already committed.
+    if (deliveryRecognitionTimeout !== null) {
+      clearTimeout(deliveryRecognitionTimeout);
+      deliveryRecognitionTimeout = null;
+    }
     await advance();
     return;
   }
