@@ -56,6 +56,10 @@ export const createPersistHelpers = ({
     player: clone(state.player),
     packet: clone(state.packet),
     delivery: clone(state.delivery),
+    story: {
+      endingId: state.story?.endingId ?? null,
+      endingCause: state.story?.endingCause ?? null,
+    },
     memory: clone(state.npcs.io.memory),
     npcs: {
       orra: {

@@ -16,5 +16,5 @@ Next solo pass should push one of these forward rather than add another plan doc
 ## Evidence
 
 - `docs/flagship/BRIEF.md` defines the flagship's player-visible, tap-driven acceptance requirement.
-- `aftersign/e2e/m3-episode1-ending.playtest.spec.ts` documents that the ending surface is gated pending #2261.
+- The ending surface (#2261) is covered by `aftersign/e2e/episode-one-ending-served.spec.ts` (#2265); the earlier gated `m3-episode1-ending.playtest.spec.ts` was superseded and removed.
 - `aftersign/e2e/orra-payback-durable-contract.spec.ts` and `aftersign/e2e/orra-payback-fresh-session-contract.spec.ts` document that the payback affordance is gated pending its shipped UI.
