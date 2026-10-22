@@ -4093,16 +4093,23 @@ const forceSave = async () => {
 };
 
 const reloadFromSave = async ({ clearLocalState = false } = {}) => {
-  // NOTE: intentionally do NOT cancel `deliveryRecognitionTimeout` here.
-  // Its callback is the sole publisher of `state.story.memoryBeat` (and
-  // the transition into `io-return-recognition`), and M2-E1 in
-  // `flagship-surface-contract.spec.ts` depends on that publish surviving
-  // an in-page reload. The #1918 tap-race is covered by the
-  // `RECOGNITION_SETTLE_MS` gate in the `choose-return-tone` branch of
-  // `choose()` above — `recognitionEnteredAt` is stamped in the same
-  // synchronous callback body that sets the beat, so a `pointerup` on
-  // a re-rendered return-tone control within one gesture is rejected
-  // by the settle window without needing to cancel the timer here.
+  // NOTE: the `deliveryRecognitionTimeout` callback is the sole publisher
+  // of `state.story.memoryBeat` (and the transition into
+  // `io-return-recognition`), and M2-E1 in `flagship-surface-contract.spec.ts`
+  // depends on that publish surviving an in-page reload. Any handling of
+  // this timer during reload MUST either run the callback (preserve the
+  // publish) or re-arm an equivalent one — never silently drop it. See
+  // the `pendingDeliveryRecognitionPublish` block further down (after
+  // `restoreFlagshipBeat`) where the stale pre-reload timer is either
+  // rescheduled (restored into `packet-delivered` → fresh 1180ms window
+  // on the restored "Return to Io" affordance; fixes #2429 F1) or
+  // flushed synchronously (restored past the advance → publish NOW).
+  //
+  // The #1918 tap-race is covered by the `RECOGNITION_SETTLE_MS` gate in
+  // the `choose-return-tone` branch of `choose()` above — `recognitionEnteredAt`
+  // is stamped in the same synchronous callback body that sets the beat,
+  // so a `pointerup` on a re-rendered return-tone control within one
+  // gesture is rejected by the settle window.
   const playerId = state.player.id;
 
   if (clearLocalState) {
@@ -4309,6 +4316,53 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // player exactly like a real page reload does — re-arm the #957
   // boot override from the restored memory + beat.
   armReturningSessionBootLine(Boolean(state.packet.delivered));
+
+  // #2429 F1: a pending `deliveryRecognitionTimeout` scheduled BEFORE
+  // this reload survives the restore (module-level, not in `state`).
+  // If we leave it alone, two bad shapes land:
+  //   (a) restored beat === `packet-delivered`: the stale timer fires
+  //       at some arbitrary offset after reload (anywhere from 0ms
+  //       to ~1180ms depending on when the pre-reload tap happened)
+  //       and re-stamps `#deliverButton` from `Return to Io` to
+  //       `Blunt return`. `flagship-reload-beat-regression.spec.ts`'s
+  //       `toHaveText("Return to Io", { timeout: WAIT_MS })` then
+  //       races it — on cold CI the timer wins (the exact failure
+  //       Mara's F1 pins). The player sees the restored
+  //       affordance for a fraction of its intended ~1180ms window.
+  //   (b) restored beat === `io-return-recognition` (or later): the
+  //       stale timer still fires and runs the memoryBeat / setBeat
+  //       callback a SECOND time against post-reload state — a
+  //       redundant publish nobody is waiting for, plus a redundant
+  //       `persistAuthoritative` write.
+  //
+  // Fix: cancel the stale timer here and either reschedule a fresh
+  // 1180ms window (shape a — the restored `packet-delivered`
+  // affordance deserves a full tap/auto-advance window) or flush
+  // the callback synchronously (shape b — the beat already moved
+  // past, so publish memoryBeat NOW and clear the slot). Both
+  // paths preserve the invariant from the comment above: the
+  // callback body — the SOLE publisher of `state.story.memoryBeat`
+  // — still runs. M2-E1 in `flagship-surface-contract.spec.ts`
+  // keeps seeing the publish.
+  if (pendingDeliveryRecognitionPublish) {
+    const pending = pendingDeliveryRecognitionPublish;
+    if (deliveryRecognitionTimeout !== null) {
+      clearTimeout(deliveryRecognitionTimeout);
+      deliveryRecognitionTimeout = null;
+    }
+    if (state.scene.beat === "packet-delivered") {
+      // Restored into the pre-advance beat: re-arm so the restored
+      // `#deliverButton` carries its full "Return to Io" window.
+      deliveryRecognitionTimeout = setTimeout(pending, 1180);
+    } else {
+      // Restored past the advance: run the callback now so
+      // `state.story.memoryBeat` is published against the current
+      // (post-reload) state, matching what the live timer would
+      // have done. The callback null's `pendingDeliveryRecognitionPublish`
+      // on entry so no further fire can happen.
+      pending();
+    }
+  }
 
   // Mara's re-review on PR #1139: `forceReload({ clearLocalState: true })`
   // was leaving a STALE `recognitionDomFeedback` snapshot on
