@@ -20,6 +20,11 @@ in this order:
 3. `./routeChoicePressing.js`
 4. `./main.js` — the game runtime
 
+This order is a served-page contract: the pressing modules precede the runtime
+entry point. Keep it stable unless the served-page contracts are updated in the
+same change. This document does not establish a runtime failure mode for a
+different order.
+
 A player reaches story and game actions through rendered controls on that
 served page. Product changes belong in the module that owns the slice;
 `index.html` is the document shell, not a general-purpose gameplay module.
@@ -28,6 +33,29 @@ The served-page contracts (`aftersign/routeChoicePressServedContract.ts`,
 `aftersign/pure-runner.ts`, `aftersign/m-loop-playtest.acceptance.mjs`)
 inspect these script tags directly. Renaming or reordering an entry script
 means updating those contracts in the same PR.
+
+## Controller ownership
+
+Interaction controllers own the temporary physical state of the specific
+rendered control they attach to. `jobOfferPressing.js` exports
+`attachJobOfferPressing(button)`: its input is a rendered
+`button[data-aftersign-job-take]`, its state is the button's attached/pressing
+lifecycle, and its render output is the press marker and visual compression on
+that button. `packetOfferPressing.js` and `routeChoicePressing.js` have the
+same boundary for packet-offer and route-choice controls respectively: they
+consume their own rendered button surfaces, retain only press lifecycle state,
+and render the pressed presentation back onto those surfaces.
+
+`main.js` imports and composes the presentation controllers
+`createCameraController`, `createDialogueController`, and
+`createMobileInputController`. Their documented boundaries are camera,
+dialogue, and mobile-input presentation respectively; this architecture map
+does not restate their internal input/output shapes. `main.js` retains boot
+and global runtime composition.
+
+`aftersign/main.js` also retains served audio behavior, persistence
+integration, and substantial render blocks as known extraction debt. That debt
+does not transfer controller ownership back into `index.html`.
 
 ## Client contracts
 
@@ -60,12 +88,12 @@ Flagship browser acceptance tests live in `aftersign/e2e/`. They play the
 served page using visible rendered controls with player-like pointer, touch,
 or keyboard input. Phone-viewport specs live in the same folder.
 
-`window.__game` is an assertion surface only: tests may read its published
-state to verify an outcome — story beats, save/load round-trips, NPC-memory
-recognition, feel envelopes, and `_runtime.audio` unlock/ambient/cue state —
-but must not call it (or another harness hook) to cause a player action. A
-state transition reached only through a harness input is not served-page
-acceptance evidence.
+`window.__game` is a stable e2e assertion contract, not a gameplay input API.
+Tests may read its published state to verify outcomes — story beats, save/load
+round-trips, NPC-memory recognition, feel envelopes, and
+`_runtime.audio` unlock/ambient/cue state — but must not call it (or another
+harness hook) to cause a player action. A state transition reached only through
+a harness input is not served-page acceptance evidence.
 
 ## Audio runtime
 
