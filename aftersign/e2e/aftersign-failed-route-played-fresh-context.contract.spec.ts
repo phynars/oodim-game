@@ -218,6 +218,7 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
       const recall = returningPage.locator(`#${PACKET_RECALL_LINE_ID}`);
       await expect(recall).toBeVisible({ timeout: WAIT_MS });
       await expect(recall).toHaveAttribute(PACKET_RECALL_LINE_DATA_ATTR, "failed");
+      await expect(recall).toHaveText(/\S/);
     } finally {
       await returningSession.close();
     }
