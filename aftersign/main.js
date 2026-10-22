@@ -4862,8 +4862,6 @@ const syncRecognitionDomFeedback = (nowMs) => {
 // while still reading LIVE state (cameraKickWorldX / cameraKickDeg /
 // state.player.x/z) so an override like setConfirmCameraKick({0,0})
 // still zeros the reported motion.
-const cameraController = createCameraController({ camera, THREE });
-
 const { computeCameraPoseAt } = createCameraPoseSampler({
   state,
   CONFIRM_FEEDBACK,
@@ -5294,6 +5292,12 @@ const {
   kioskSceneInitContract = kioskScene.sceneInitContract;
   return kioskScene;
 })();
+
+// F1 fix: cameraController depends on `camera`, which is destructured
+// from createKioskScene above. Constructing it at module top-level
+// (before the destructure) hit the TDZ and threw at module evaluation,
+// so the served page couldn't boot. Construct it AFTER the destructure.
+const cameraController = createCameraController({ camera, THREE });
 
 const handleScenePointer = (event) => {
   const rect = canvas.getBoundingClientRect();
