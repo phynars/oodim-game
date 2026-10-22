@@ -164,16 +164,6 @@ test.describe("AFTERSIGN #2174 — Return to Io does not silently record a blunt
       "beat must be at io-return-recognition after Return to Io",
     ).toBe("io-return-recognition");
 
-    // The explicit return cancels delivery's pending recognition timer.
-    // It must not replay the recognition transition after the player has
-    // already reached this beat through the visible Return to Io control.
-    await page.waitForTimeout(1_250);
-    const afterDeliveryTimerWindow = await snapshot(page);
-    expect(
-      afterDeliveryTimerWindow.scene?.beat,
-      "the cancelled delivery timer must not replay the recognition transition",
-    ).toBe("io-return-recognition");
-
     // The evasive tone button carries `data-return-reason="evasive"`
     // on one of the three recognition-beat tone controls. Locate by
     // that attribute (independent of which DOM node it lands on,

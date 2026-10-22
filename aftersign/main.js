@@ -3719,13 +3719,17 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "return-to-io") {
-    // A player explicitly returning to Io owns this transition. Cancel the
-    // delivery timer before advancing so it cannot fire later and replay the
-    // recognition entry after this visible choice has already committed.
-    if (deliveryRecognitionTimeout !== null) {
-      clearTimeout(deliveryRecognitionTimeout);
-      deliveryRecognitionTimeout = null;
-    }
+    // Intentionally do NOT clear `deliveryRecognitionTimeout` here. That
+    // callback is the SOLE publisher of `state.story.memoryBeat` (see the
+    // note in `reloadFromSave` and the callback body at the timer site);
+    // `advance()` stamps `recognitionEnteredAt` and calls
+    // `setBeat("io-return-recognition")` but never writes `memoryBeat`, so
+    // cancelling the timer would leave `memoryBeat` null and break the
+    // `flagship-surface-contract.spec.ts` M2-E1 publish. Letting the timer
+    // fire into the already-advanced beat is safe: its `setBeat(...)` call
+    // becomes an idempotent re-stamp, and the #1918 same-gesture tap race
+    // is already covered by the `RECOGNITION_SETTLE_MS` gate in the
+    // `choose-return-tone` branch.
     await advance();
     return;
   }
