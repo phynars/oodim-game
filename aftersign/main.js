@@ -8,6 +8,10 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { createCameraController } from "./src/presentation/cameraController.js";
+import { createDialogueController } from "./src/presentation/dialogueController.js";
+import { createMobileInputController } from "./src/presentation/mobileInputController.js";
+import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
@@ -35,7 +39,6 @@ import {
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
 import { canonicalFlagshipBeat, restoreFlagshipBeat } from "./flagship-beat-migration.js";
-import { renderAftersignDialogue } from "./src/aftersignDialogueRenderer.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { playRecognitionFeedback } from "./recognition-feedback.js";
@@ -675,7 +678,6 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
-import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
@@ -781,6 +783,7 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
 }
 const failureSting = document.querySelector(".failure-sting");
 const feedbackController = createFeedbackController({ document, failureSting });
+const dialogueController = createDialogueController({ line, speaker });
 const packetButton = document.querySelector("#packetButton");
 let packetPressFeedback = { isPressed: false, releaseAtMs: null };
 let packetPressFeedbackFrame = null;
@@ -2353,10 +2356,8 @@ const publishState = () => {
 };
 
 const renderText = () => {
-  renderAftersignDialogue({
+  dialogueController.render({
     beat: state.scene.beat,
-    line,
-    speaker,
     speakerName: "Io",
     // Getter, not a value: syncIoLine() (invoked inside the helper) is what
     // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
@@ -4861,6 +4862,8 @@ const syncRecognitionDomFeedback = (nowMs) => {
 // while still reading LIVE state (cameraKickWorldX / cameraKickDeg /
 // state.player.x/z) so an override like setConfirmCameraKick({0,0})
 // still zeros the reported motion.
+const cameraController = createCameraController({ camera, THREE });
+
 const { computeCameraPoseAt } = createCameraPoseSampler({
   state,
   CONFIRM_FEEDBACK,
@@ -5320,7 +5323,7 @@ const syncKeyboardInput = () => {
   setMoveInput(x, z, x || z ? "keyboard" : "none");
 };
 
-mobileMovePadController = attachMobileMovePad({
+mobileMovePadController = createMobileInputController({
   root: movePad,
   knob: movePadKnob,
   onInput: setMobileMovePadInput,
@@ -5491,11 +5494,17 @@ const tick = (now) => {
     }
   }
   const rig = stepCameraRig(dt);
-  camera.position.x = rig.position.x + recognitionMotion.cameraDeltaMeters + confirmWobble * state.interaction.confirmFeedback.cameraKickWorldX - failureWobble * FAILURE_FEEDBACK.cameraKickWorldX;
-  camera.position.y = rig.position.y;
-  camera.position.z = rig.position.z;
-  camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
-  camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
+  cameraController.render({
+    rig,
+    recognitionDeltaMeters: recognitionMotion.cameraDeltaMeters,
+    recognitionYawDegrees: recognitionMotion.cameraYawDegrees,
+    confirmWobble,
+    confirmKickWorldX: state.interaction.confirmFeedback.cameraKickWorldX,
+    confirmKickDegrees: state.interaction.confirmFeedback.cameraKickDeg,
+    failureWobble,
+    failureKickWorldX: FAILURE_FEEDBACK.cameraKickWorldX,
+    failureKickDegrees: FAILURE_FEEDBACK.cameraKickDeg,
+  });
   sampleMemoryBeatCameraProbe();
   feedbackController.renderFrame({
     confirmEnvelope,
