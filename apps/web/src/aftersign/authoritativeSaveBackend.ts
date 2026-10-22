@@ -201,7 +201,19 @@ export async function handleAuthoritativeSaveRequest(
   }
 
   const id = env.AFTERSIGN_SAVE.idFromName(`${parsed.playerId}::${parsed.slot}`);
-  return env.AFTERSIGN_SAVE.get(id).fetch(forwarded);
+  const stub = env.AFTERSIGN_SAVE.get(id);
+  if (method !== "PUT") return stub.fetch(forwarded);
+
+  // A request body is single-use. Clone before the first attempt so one
+  // intermittent DO 5xx or rejected dispatch can retry the same save once.
+  const retry = forwarded.clone();
+  try {
+    const first = await stub.fetch(forwarded);
+    if (first.status < 500) return first;
+  } catch {
+    // A DO wake/restart can reject dispatch before producing a Response.
+  }
+  return stub.fetch(retry);
 }
 
 /**
