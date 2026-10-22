@@ -3719,29 +3719,6 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "return-to-io") {
-    // #2429: the 1180ms auto-advance from `deliverPacket()` re-stamps
-    // `#deliverButton` from `data-choice-id="return-to-io"` to
-    // `choose-return-tone`. On cold CI / slow phones, that timer can
-    // fire before a human tap resolves — the explicit "Return to Io"
-    // tap then finds no button and the story stalls at
-    // `packet-delivered`, which is exactly the failure the issue pins
-    // (`return-to-io-no-false-blunt.spec.ts:86` times out waiting for
-    // `io-return-recognition`). Flush the pending timer SYNCHRONOUSLY
-    // under the tap: the hoisted callback publishes `memoryBeat`
-    // (reviewer F2 — sole publisher must stay intact; M2-E1 depends on
-    // it) and calls `setBeat("io-return-recognition")`. After flush we
-    // can skip `advance()` because the callback already stamped
-    // `recognitionEnteredAt` and advanced the beat. On the no-race
-    // path (timer already fired or never scheduled), fall through to
-    // `advance()` as before — identical behavior.
-    if (pendingDeliveryRecognitionPublish) {
-      const flush = pendingDeliveryRecognitionPublish;
-      if (deliveryRecognitionTimeout !== null) {
-        clearTimeout(deliveryRecognitionTimeout);
-      }
-      flush();
-      return;
-    }
     await advance();
     return;
   }
@@ -4096,14 +4073,8 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // NOTE: the `deliveryRecognitionTimeout` callback is the sole publisher
   // of `state.story.memoryBeat` (and the transition into
   // `io-return-recognition`), and M2-E1 in `flagship-surface-contract.spec.ts`
-  // depends on that publish surviving an in-page reload. Any handling of
-  // this timer during reload MUST either run the callback (preserve the
-  // publish) or re-arm an equivalent one — never silently drop it. See
-  // the `pendingDeliveryRecognitionPublish` block further down (after
-  // `restoreFlagshipBeat`) where the stale pre-reload timer is either
-  // rescheduled (restored into `packet-delivered` → fresh 1180ms window
-  // on the restored "Return to Io" affordance; fixes #2429 F1) or
-  // flushed synchronously (restored past the advance → publish NOW).
+  // depends on that publish. The timer is NOT cancelled on reload so an
+  // in-flight publish still lands against the restored state.
   //
   // The #1918 tap-race is covered by the `RECOGNITION_SETTLE_MS` gate in
   // the `choose-return-tone` branch of `choose()` above — `recognitionEnteredAt`
@@ -4316,53 +4287,6 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // player exactly like a real page reload does — re-arm the #957
   // boot override from the restored memory + beat.
   armReturningSessionBootLine(Boolean(state.packet.delivered));
-
-  // #2429 F1: a pending `deliveryRecognitionTimeout` scheduled BEFORE
-  // this reload survives the restore (module-level, not in `state`).
-  // If we leave it alone, two bad shapes land:
-  //   (a) restored beat === `packet-delivered`: the stale timer fires
-  //       at some arbitrary offset after reload (anywhere from 0ms
-  //       to ~1180ms depending on when the pre-reload tap happened)
-  //       and re-stamps `#deliverButton` from `Return to Io` to
-  //       `Blunt return`. `flagship-reload-beat-regression.spec.ts`'s
-  //       `toHaveText("Return to Io", { timeout: WAIT_MS })` then
-  //       races it — on cold CI the timer wins (the exact failure
-  //       Mara's F1 pins). The player sees the restored
-  //       affordance for a fraction of its intended ~1180ms window.
-  //   (b) restored beat === `io-return-recognition` (or later): the
-  //       stale timer still fires and runs the memoryBeat / setBeat
-  //       callback a SECOND time against post-reload state — a
-  //       redundant publish nobody is waiting for, plus a redundant
-  //       `persistAuthoritative` write.
-  //
-  // Fix: cancel the stale timer here and either reschedule a fresh
-  // 1180ms window (shape a — the restored `packet-delivered`
-  // affordance deserves a full tap/auto-advance window) or flush
-  // the callback synchronously (shape b — the beat already moved
-  // past, so publish memoryBeat NOW and clear the slot). Both
-  // paths preserve the invariant from the comment above: the
-  // callback body — the SOLE publisher of `state.story.memoryBeat`
-  // — still runs. M2-E1 in `flagship-surface-contract.spec.ts`
-  // keeps seeing the publish.
-  if (pendingDeliveryRecognitionPublish) {
-    const pending = pendingDeliveryRecognitionPublish;
-    if (deliveryRecognitionTimeout !== null) {
-      clearTimeout(deliveryRecognitionTimeout);
-      deliveryRecognitionTimeout = null;
-    }
-    if (state.scene.beat === "packet-delivered") {
-      // Restored into the pre-advance beat: re-arm so the restored
-      // `#deliverButton` carries its full "Return to Io" window.
-      deliveryRecognitionTimeout = setTimeout(pending, 1180);
-    } else {
-      // Restored past the advance: run the callback now so
-      // `state.story.memoryBeat` is published against the current
-      // (post-reload) state, matching what the live timer would
-      // have done. The callback null's `pendingDeliveryRecognitionPublish`
-      // on entry so no further fire can happen.
-      pending();
-    }
-  }
 
   // Mara's re-review on PR #1139: `forceReload({ clearLocalState: true })`
   // was leaving a STALE `recognitionDomFeedback` snapshot on
@@ -5047,17 +4971,7 @@ const finishMemoryBeatCameraProbe = () => {
 // module-scoped so future work that needs to introspect the in-flight
 // publish has a seam to hook onto without touching call sites.
 let deliveryRecognitionTimeout = null;
-// #2429: holds the pending timer's callback body so the `return-to-io`
-// tap handler can FLUSH it synchronously when the player taps before
-// the 1180ms auto-advance fires. Without this flush, a slow CI/phone
-// can race: by the time the Playwright tap resolves, the timer has
-// already re-stamped `#deliverButton` from `data-choice-id="return-to-io"`
-// to `choose-return-tone`, and the explicit tap finds nothing — the
-// story stalls at `packet-delivered`. Flushing invokes the SAME body
-// (sole publisher of `state.story.memoryBeat` — see reviewer F2 on
-// #2430), so M2-E1 `flagship-surface-contract.spec.ts` still sees the
-// memoryBeat publish on the fast path. Null when no timer is pending.
-let pendingDeliveryRecognitionPublish = null;
+
 
 // Minimum wall-clock ms the recognition beat must be settled before a
 // `choose-return-tone` tap is accepted. Sized well under one 60Hz frame
@@ -5087,13 +5001,7 @@ const deliverPacket = (source = "hud-button") => {
   playKioskConfirm();
   markStateDirty();
   setBeat("packet-delivered");
-  // #2429: hoist the callback into a module-scope slot so the
-  // `return-to-io` tap handler can flush it synchronously (preserving
-  // the memoryBeat publish surface) when the player taps before the
-  // 1180ms auto-advance fires. The timer still schedules the same
-  // function — identical behavior when no player tap intervenes.
-  pendingDeliveryRecognitionPublish = () => {
-    pendingDeliveryRecognitionPublish = null;
+  deliveryRecognitionTimeout = setTimeout(() => {
     deliveryRecognitionTimeout = null;
     // Settle-gate producer for the `choose-return-tone` guard above.
     // This callback synchronously promotes the beat to
@@ -5147,8 +5055,7 @@ const deliverPacket = (source = "hud-button") => {
     // it). Persist the advanced beat so reload stays on
     // `io-return-recognition`.
     void persistAuthoritative({ dirty: true });
-  };
-  deliveryRecognitionTimeout = setTimeout(pendingDeliveryRecognitionPublish, 1180);
+  }, 1180);
   void persistAuthoritative({ dirty: true });
 };
 
