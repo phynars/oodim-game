@@ -2384,7 +2384,7 @@ const publishState = () => {
           succeeded = true;
         } else if (action === "carry-a-fragile-packet") {
           route = "fast";
-          succeeded = false;
+          succeeded = true;
         } else if (action === "take-the-long-way") {
           route = "safe";
           succeeded = true;
@@ -2818,7 +2818,7 @@ const renderText = () => {
             succeeded = true;
           } else if (action === "carry-a-fragile-packet") {
             route = "fast";
-            succeeded = false;
+            succeeded = true;
           } else if (action === "take-the-long-way") {
             route = "safe";
             succeeded = true;
