@@ -1317,6 +1317,7 @@ const state = {
     audio: {
       unlocked: false,
       ambientStarted: false,
+      ambientState: "idle",
       lastCue: null,
       lastCueAt: null,
     },
@@ -4393,6 +4394,7 @@ const startAmbientAudio = () => {
   kioskHum.start();
 
   state._runtime.audio.ambientStarted = true;
+  state._runtime.audio.ambientState = "playing";
   markStateDirty();
 };
 
