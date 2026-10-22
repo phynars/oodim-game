@@ -670,6 +670,7 @@ import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 import { applyJobOfferChoiceFeedback } from "./src/jobOfferChoiceFeedback.js";
 import { playJobOfferFocusFeedback } from "./src/jobOfferFocusFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
+import { createAftersignAudioController } from "./audio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
 import { playJobOfferAcknowledgementFeel } from "./src/jobOfferAcknowledgementFeel.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
@@ -1520,12 +1521,17 @@ const setTextContentIfChanged = (node, value) => {
   }
 };
 
-let audioContext;
-let ambientGain;
-let rainNoise;
-let rainFilter;
-let kioskHum;
-let kioskHumGain;
+let audioController;
+const getAudioController = () => {
+  audioController ??= createAftersignAudioController({
+    state,
+    markStateDirty,
+    publishState,
+    confirmFeedback: CONFIRM_FEEDBACK,
+    jobOfferConfirmAudio: JOB_OFFER_CONFIRM_AUDIO,
+  });
+  return audioController;
+};
 
 const lineForBeat = () => {
   if (state.story.endingId) {
@@ -4603,188 +4609,10 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   publishState();
 };
 
-const makeRainBuffer = (context) => {
-  const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < data.length; i += 1) {
-    data[i] = (Math.random() * 2 - 1) * 0.38;
-  }
-  return buffer;
-};
-
-const startAmbientAudio = () => {
-  if (!audioContext || state._runtime.audio.ambientStarted) {
-    return;
-  }
-
-  ambientGain = audioContext.createGain();
-  ambientGain.gain.value = 0.045;
-  ambientGain.connect(audioContext.destination);
-
-  rainNoise = audioContext.createBufferSource();
-  rainNoise.buffer = makeRainBuffer(audioContext);
-  rainNoise.loop = true;
-
-  rainFilter = audioContext.createBiquadFilter();
-  rainFilter.type = "bandpass";
-  rainFilter.frequency.value = 1350;
-  rainFilter.Q.value = 0.72;
-  rainNoise.connect(rainFilter).connect(ambientGain);
-  rainNoise.start();
-
-  kioskHum = audioContext.createOscillator();
-  kioskHum.type = "sine";
-  kioskHum.frequency.value = 91;
-  kioskHumGain = audioContext.createGain();
-  kioskHumGain.gain.value = 0.018;
-  kioskHum.connect(kioskHumGain).connect(ambientGain);
-  kioskHum.start();
-
-  state._runtime.audio.ambientStarted = true;
-  state._runtime.audio.ambientState = "playing";
-  markStateDirty();
-};
-
-const enableAudio = async () => {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) {
-    state._runtime.audio.lastCue = "unsupported";
-    markStateDirty();
-    publishState();
-    return false;
-  }
-
-  audioContext ||= new AudioContext();
-  if (audioContext.state === "suspended") {
-    await audioContext.resume();
-  }
-
-  state._runtime.audio.unlocked = audioContext.state === "running";
-  if (state._runtime.audio.unlocked && !state._runtime.audio.ambientStarted) {
-    startAmbientAudio();
-    state._runtime.audio.lastCue = "ambient-rainline";
-    state._runtime.audio.lastCueAt = performance.now();
-  }
-  markStateDirty();
-  publishState();
-  return state._runtime.audio.unlocked;
-};
-
-const playKioskConfirm = async () => {
-  // Stamp the STORY-LEVEL cue FIRST, before the audio-unlock gate.
-  // The look/sound contract is "the game dispatched a packet-confirmed
-  // cue on the same tick as the visual feedback" — that dispatch is
-  // deterministic and independent of whether the browser actually
-  // unlocked its AudioContext (headless CI without a user gesture
-  // leaves audioContext.state === "suspended" and enableAudio()
-  // returns false; if we gate lastCue on that we can never assert
-  // the coupling from an e2e harness). The actual oscillator tones
-  // are still gated on unlock — that's a real-audio concern — but
-  // the state marker is set unconditionally so the harness (and any
-  // downstream analytics consumer) can observe that the cue fired.
-  const stampConfirmCue = () => {
-    state._runtime.audio.lastCue = "packet-confirmed";
-    state._runtime.audio.lastCueAt = performance.now();
-    markStateDirty();
-    publishState();
-  };
-  stampConfirmCue();
-
-  const unlocked = await enableAudio();
-  // enableAudio() may overwrite lastCue with "ambient-rainline" on
-  // its FIRST successful unlock. Re-stamp packet-confirmed after —
-  // the CONFIRM cue is the more specific signal for this call.
-  stampConfirmCue();
-  if (!unlocked || !audioContext) {
-    return;
-  }
-
-  const now = audioContext.currentTime;
-  const gain = audioContext.createGain();
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.14, now + 0.018);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
-  gain.connect(audioContext.destination);
-
-  const cue = CONFIRM_FEEDBACK.audioCue;
-  const tone = audioContext.createOscillator();
-  tone.type = "triangle";
-  tone.frequency.setValueAtTime(cue.frequencyHz, now);
-  tone.connect(gain);
-  tone.start(now);
-  tone.stop(now + cue.durationMs / 1000);
-  };
-
-  // PR #1790 (Soren's REQUEST_CHANGES) — served-page consumer of the
-  // frozen `JOB_OFFER_CONFIRM_AUDIO` row. The first draft imported the
-  // module in main.js without wiring anything to play it: no click
-  // handler, no audio scheduler, no story-cue stamp. Same shape as
-  // `playKioskConfirm` above — stamp the STORY-LEVEL cue FIRST (so a
-  // headless harness whose AudioContext never unlocks can still assert
-  // `state._runtime.audio.lastCue === "job-offer-selected"` when the
-  // tap lands), then schedule the triangle burst on `audioContext`
-  // once `enableAudio()` returns unlocked. Called from the offer
-  // button's click callback below (inside `armJobOfferFeel(button, ...)`),
-  // so a real player tap on `#job-offer-<jobId>` actually hears the cue.
-  const playJobOfferConfirm = async () => {
-    state._runtime.audio.lastCue = JOB_OFFER_CONFIRM_AUDIO.cue;
-    state._runtime.audio.lastCueAt = performance.now();
-    markStateDirty();
-    publishState();
-    const unlocked = await enableAudio();
-    // enableAudio() may overwrite lastCue with "ambient-rainline" on
-    // its FIRST successful unlock. Re-stamp job-offer-selected after —
-    // this cue is the more specific signal for this call.
-    state._runtime.audio.lastCue = JOB_OFFER_CONFIRM_AUDIO.cue;
-    state._runtime.audio.lastCueAt = performance.now();
-    markStateDirty();
-    publishState();
-    if (!unlocked || !audioContext) return;
-
-    const now = audioContext.currentTime;
-    const attack = JOB_OFFER_CONFIRM_AUDIO.attackMs / 1000;
-    const duration = JOB_OFFER_CONFIRM_AUDIO.durationMs / 1000;
-    const peak = JOB_OFFER_CONFIRM_AUDIO.peakGain;
-    const gain = audioContext.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(peak, now + attack);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    gain.connect(audioContext.destination);
-
-    const tone = audioContext.createOscillator();
-    tone.type = JOB_OFFER_CONFIRM_AUDIO.waveform;
-    tone.frequency.setValueAtTime(JOB_OFFER_CONFIRM_AUDIO.frequencyHz, now);
-    tone.connect(gain);
-    tone.start(now);
-    tone.stop(now + duration);
-  };
-
-const triggerRecognitionImpactChirp = async ({ frequencyHz, durationMs }) => {
-  state._runtime.audio.lastCue = "recognition-impact-chirp";
-  state._runtime.audio.lastCueAt = performance.now();
-  markStateDirty();
-  publishState();
-
-  const unlocked = await enableAudio();
-  if (!unlocked || !audioContext) {
-    return;
-  }
-
-  const now = audioContext.currentTime;
-  impactBurstChirpGain ??= audioContext.createGain();
-  impactBurstChirpGain.connect(audioContext.destination);
-  impactBurstChirpGain.gain.cancelScheduledValues(now);
-  impactBurstChirpGain.gain.setValueAtTime(0.0001, now);
-  impactBurstChirpGain.gain.exponentialRampToValueAtTime(0.07, now + 0.01);
-  impactBurstChirpGain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
-
-  const chirp = audioContext.createOscillator();
-  chirp.type = "sine";
-  chirp.frequency.setValueAtTime(frequencyHz, now);
-  chirp.connect(impactBurstChirpGain);
-  chirp.start(now);
-  chirp.stop(now + durationMs / 1000);
-};
+const enableAudio = () => getAudioController().enableAudio();
+const playKioskConfirm = () => getAudioController().playKioskConfirm();
+const playJobOfferConfirm = () => getAudioController().playJobOfferConfirm();
+const triggerRecognitionImpactChirp = (cue) => getAudioController().triggerRecognitionImpactChirp(cue);
 
 const setConfirmCameraKick = ({ worldX = CONFIRM_FEEDBACK.cameraKickWorldX, yawDegrees = CONFIRM_FEEDBACK.cameraKickDeg } = {}) => {
   state.interaction.confirmFeedback.cameraKickWorldX = worldX;
@@ -4824,38 +4652,7 @@ const triggerKioskFeedback = (source) => {
   publishState();
 };
 
-// Failure-sting audio is coupled to the same cancel edge that arms the
-// 180ms visual envelope: a 144Hz triangle falls silent in 120ms, so the
-// sound exits before the flash recovers instead of hanging past the screen.
-// Stamp the cue before AudioContext unlock just like playKioskConfirm(), so
-// a real pointer test can observe the dispatch even when autoplay blocks sound.
-const playFailureStingAudio = async () => {
-  state._runtime.audio.lastCue = "packet-cancelled";
-  state._runtime.audio.lastCueAt = performance.now();
-  markStateDirty();
-  publishState();
-
-  const unlocked = await enableAudio();
-  state._runtime.audio.lastCue = "packet-cancelled";
-  state._runtime.audio.lastCueAt = performance.now();
-  markStateDirty();
-  publishState();
-  if (!unlocked || !audioContext) return;
-
-  const now = audioContext.currentTime;
-  const gain = audioContext.createGain();
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.09, now + 0.012);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-  gain.connect(audioContext.destination);
-
-  const tone = audioContext.createOscillator();
-  tone.type = "triangle";
-  tone.frequency.setValueAtTime(144, now);
-  tone.connect(gain);
-  tone.start(now);
-  tone.stop(now + 0.12);
-};
+const playFailureStingAudio = () => getAudioController().playFailureStingAudio();
 
 const triggerFailureFeedback = (source) => {
   state.interaction.lastAction = source;
@@ -4960,7 +4757,6 @@ const publishRecognitionBeatReport = (durationMs) => {
 let pendingRecognitionArm = false;
 let lastImpactBurstChirpAt = null;
 let impactBurstParticles = [];
-let impactBurstChirpGain = null;
 let recognitionDomFeedback = {
   active: false,
   signGlowPx: 0,
@@ -5868,11 +5664,11 @@ const tick = (now) => {
       state.interaction.failureStartedAt = null;
     }
   }
-  if (rainFilter) {
-    rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
-  }
-  if (kioskHum) {
-    kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
+  // Ambient modulation lives on the audio controller (see aftersign/audio.js);
+  // it internally guards on whether startAmbientAudio() has run, so this is a
+  // no-op before the AudioContext unlocks.
+  if (audioController) {
+    audioController.updateAmbient(t);
   }
   rain.children.forEach((drop, index) => {
     drop.position.y -= dt * (4.4 + (index % 5) * 0.38);
