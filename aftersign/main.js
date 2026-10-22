@@ -1107,8 +1107,10 @@ const state = {
     currentNpcId: null,
     memoryBeat: null,
     offeredJobs: [],
-    endingId: null,
-    endingCause: null,
+    // M3-E1 (#2261): hydrate the committed ending from the durable save
+    // so a fresh context on the same slot restores the ending card.
+    endingId: typeof stored?.story?.endingId === "string" ? stored.story.endingId : null,
+    endingCause: typeof stored?.story?.endingCause === "string" ? stored.story.endingCause : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
