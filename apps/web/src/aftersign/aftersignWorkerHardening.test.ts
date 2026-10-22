@@ -195,6 +195,29 @@ describe("/aftersign/save hardening", () => {
     });
   });
 
+  it("retries when a DO stub rejects dispatch before producing a Response", async () => {
+    const storage = fakeStorage();
+    const real = new AftersignAuthoritativeSave({ storage }, {} as AftersignAuthoritativeSaveEnv);
+    let calls = 0;
+    const env: AftersignAuthoritativeSaveEnv = {
+      AFTERSIGN_SAVE: {
+        idFromName: (name) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async (request) => {
+            calls += 1;
+            if (calls === 1) throw new Error("DO wake aborted dispatch");
+            return real.fetch(request);
+          },
+        }),
+      },
+    };
+    const path = "/aftersign/save/player-a/local";
+    expect((await handleAuthoritativeSaveRequest(put(path, { beat: "y" }), env))!.status).toBe(204);
+    expect(calls).toBe(2);
+    const saved = await handleAuthoritativeSaveRequest(new Request(`${ORIGIN}${path}`), env);
+    expect(await saved!.json()).toEqual({ payload: { beat: "y" }, exists: true });
+  });
+
   it("caps PUT bodies at MAX_SAVE_BYTES (413), accepting a body just under it", async () => {
     const { env, calls } = saveEnv();
     const path = "/aftersign/save/player-a/local";
