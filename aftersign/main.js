@@ -25,7 +25,6 @@ import {
   buildPacketOutcomeMemoryFact,
   buildSecondActionMemoryFact,
   memoryRefsFromMemory,
-  normalizeSecondAction,
   SECOND_ACTION,
   secondActionFromMemory,
 } from "./src/memoryFacts.js";
@@ -1411,24 +1410,11 @@ const armReturningSessionBootLine = (delivered) => {
   const outcomeFact = state.npcs.io.memory.find(
     (fact) => fact?.kind === "delivery-outcome",
   );
-  // #2326 false-memory fix. `memoryFacts()` at delivery time maps a
-  // null `state.player.secondAction` (player NEVER tapped
-  // "I listened" / "I ran early" before Deliver) to
-  // `SECOND_ACTION.SKIPPED` so the fact SHAPE stays invariant across
-  // the two delivery outcomes. That default is fine for the ledger's
-  // shape invariants but it is NOT a player choice — Io must not
-  // boot a restored save by telling the player they "ran before the
-  // route finished" when they never ran. Gate the route axis on the
-  // durable player-input flag `state.player.secondAction` (restored
-  // from `stored?.player?.secondAction ?? null` at cold boot): only
-  // translate the memory fact into a route attention axis when the
-  // player's own commitment flag confirms the tap happened.
-  //
-  // Without the gate, `secondActionFromMemory` returns SKIPPED on a
-  // no-tap delivery → `chooseIoReturningSessionLine` picks
-  // `sealedPacketSkippedRoute` ("…you still ran before the route
-  // finished. Reliable hands, impatient feet.") — the exact false
-  // memory #2322 / #2326 report. Scope note: #2336 landed a second
+  // #2437 false-memory guard. A route-attention axis is meaningful
+  // only when `state.player.secondAction` records an explicit kiosk
+  // tap. `memoryFacts()` now omits that fact when no action was chosen;
+  // this boot-time gate also prevents legacy saves from being promoted
+  // into an accusation. Scope note: #2336 landed a second
   // `persistAuthoritative()` inside `deliverPacket()`'s 1180ms
   // setTimeout, which moves the authoritative restore target to
   // `io-return-recognition` for most sessions — that beat is in the
@@ -1444,10 +1430,12 @@ const armReturningSessionBootLine = (delivered) => {
   //       at line 128 — the `packet-delivered` branch asserts the
   //       returning-session line, which runs through this gate.
   const committedSecondAction = state.player.secondAction;
+  const rememberedSecondAction = secondActionFromMemory(state.npcs.io.memory);
   const bootRouteAttention =
     committedSecondAction === SECOND_ACTION.DONE
       ? "listened"
       : committedSecondAction === SECOND_ACTION.SKIPPED
+        && rememberedSecondAction === SECOND_ACTION.SKIPPED
         ? "skipped"
         : undefined;
   ioReturningBootLine = outcomeFact
@@ -1665,23 +1653,18 @@ const lineForBeat = () => {
 
 const memoryFacts = () => {
   const outcome = state.packet.sealed ? "sealed" : "opened";
-  // Read the SECOND ACTION from the durable player-input flag, not
-  // from the beat. deliverPacket() runs while beat==="packet-choice"
-  // so a beat-derived value would be a constant. normalizeSecondAction
-  // maps `null` (player never acknowledged) → SKIPPED — that's the
-  // absence-of-action branch, and the reason both memory-length
-  // outcomes are 2 (fact SHAPE is invariant; only fact `object` differs).
-  const secondAction = normalizeSecondAction(state.player.secondAction);
+  // A route-attention fact is a record of a deliberate kiosk choice.
+  // Absence of that tap must not be normalized into an "I ran early"
+  // confession: the skipped fact is valid only when the player chose it.
+  const secondAction = state.player.secondAction;
   return {
     packetOutcomeFact: buildPacketOutcomeMemoryFact({
       outcome,
       sessionId,
     }),
-    secondActionFact: buildSecondActionMemoryFact({
-      secondAction,
-      sessionId,
-    }),
-    secondAction,
+    secondActionFact: secondAction === SECOND_ACTION.DONE || secondAction === SECOND_ACTION.SKIPPED
+      ? buildSecondActionMemoryFact({ secondAction, sessionId })
+      : null,
   };
 };
 
@@ -4987,7 +4970,7 @@ const deliverPacket = (source = "hud-button") => {
   state.packet.deliveredAt = new Date().toISOString();
   state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
   const { packetOutcomeFact, secondActionFact } = memoryFacts();
-  state.npcs.io.memory = [packetOutcomeFact, secondActionFact];
+  state.npcs.io.memory = [packetOutcomeFact, secondActionFact].filter(Boolean);
   state.save.revision += 1;
   state.save.dirty = true;
   const beatStartedAt = performance.now();

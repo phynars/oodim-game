@@ -80,15 +80,17 @@ test.describe("AFTERSIGN NPC memory dialogue — served surface consumer", () =>
     });
     await waitForGame(page);
 
-    // Deliver the packet sealed (default) with no second-action tap —
-    // mints IO_BLUE_PACKET_SEALED + IO_KIOSK_SECOND_ACTION_SKIPPED into
-    // durable memory.
+    // Deliver the packet sealed (default) without using the packet-choice
+    // route-acknowledgment controls ("I listened" / "I ran early").
     await page.locator("#deliverButton").click();
 
     const recognition = await waitForBeat(page, "io-return-recognition");
     expect(recognition.scene?.beat).toBe("io-return-recognition");
+    expect(recognition.npcs?.io?.memory).not.toContainEqual(
+      expect.objectContaining({ id: "io-remembers-kiosk-second-action-skipped" }),
+    );
 
-    // Kind return — advances to return-tone-choice.
+    // Kind return is a separate return-tone control, advancing to return-tone-choice.
     await page.locator("#acknowledgeRouteButton").click();
     await waitForBeat(page, "return-tone-choice");
 
@@ -97,11 +99,15 @@ test.describe("AFTERSIGN NPC memory dialogue — served surface consumer", () =>
     await page.locator("#deliverButton").click();
     const nextJob = await waitForBeat(page, "io-next-job");
 
-    // Served-surface proof only: at `io-next-job`, the runtime's spoken
-    // line (`lastLine`) and the rendered `#line` DOM stay in lockstep via
-    // `setTextContentIfChanged`.
+    // Served-surface proof: at `io-next-job`, the runtime's spoken line
+    // and rendered DOM agree, and no unchosen route-acknowledgment is
+    // attributed to this tap path.
     const lastLine = nextJob.npcs?.io?.lastLine;
     expect(typeof lastLine).toBe("string");
+    expect(lastLine).not.toContain("You ran early, before the route acknowledgment finished");
+    expect(nextJob.npcs?.io?.memory).not.toContainEqual(
+      expect.objectContaining({ id: "io-remembers-kiosk-second-action-skipped" }),
+    );
     await expect(page.locator("#line")).toHaveText(lastLine!);
 
     // And io_intro_seen has flipped true by boot-tail, which is the
