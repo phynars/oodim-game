@@ -92,11 +92,13 @@ Work flows the same way it does in the main oodim repo — issue →
 implementation → review → CI → merge — only here the pipeline targets *this*
 repo via the oodim Game dimension. Because a game's correctness is interactive
 (not just "does it compile"), gameplay is gated by an automated **play-test
-harness** — Playwright drives the served page and asserts a published
-state contract (`window.__game`): story beats, durable save/reload
-round-trips, NPC-memory recognition, and feel envelopes for the flagship;
-pellet counts, ghost modes, collisions, and win/lose for the frozen
-arcade ports — on top of the usual typecheck + build + code review.
+harness** — Playwright plays the served page through visible controls with
+player-like pointer, touch, or keyboard input, then reads the published
+state contract (`window.__game`) only to assert outcomes. For the flagship,
+those outcomes include story beats, durable save/reload round-trips,
+NPC-memory recognition, and feel envelopes; for the frozen arcade ports,
+they include pellet counts, ghost modes, collisions, and win/lose — on top
+of the usual typecheck + build + code review.
 
 Roadmap and rationale live in the oodim repo:
 `docs/plan/multi-repo-greenfield-experiment.md`.

@@ -37,11 +37,21 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_BOOT_MS = 180_000;
 const WAIT_MS = 60_000;
 
-// Sealed-packet path: keep-sealed → deliver-packet. `packet-delivered`
-// restores with the returning-session sealed/skipped-route line, and the
-// recognition line the visible advance control must produce is the
-// "sealed, skipped-route" branch of `expectedIoRecognitionLine`.
-const SEALED_DELIVERED_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
+// Sealed-packet path: keep-sealed → deliver-packet (NO
+// acknowledge-kiosk / skip-kiosk-acknowledge tap in between). Before
+// #2326, the restored `packet-delivered` boot line read the normalized
+// `SECOND_ACTION.SKIPPED` memory fact (null → SKIPPED default) and spoke
+// `sealedPacketSkippedRoute` ("…ran before the route finished. Reliable
+// hands, impatient feet.") — a false memory accusing a player who never
+// tapped a route button. The served `armReturningSessionBootLine` gate
+// now reads `state.player.secondAction` directly: null → undefined
+// routeAttention → NEUTRAL `sealedPacket` line. The recognition line that
+// the visible advance control must produce is the sealed-returning tier
+// (the skipped-route axis still rides the
+// `expectedIoRecognitionLine(…, false)` branch for the recognition
+// selector, which continues to anchor on `routeListened === false` for
+// the deep-recall gate).
+const SEALED_DELIVERED_LINE = ioReturningSessionLines.sealedPacket;
 const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
 
 type ColdBootSnapshot = {
@@ -123,6 +133,42 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
       // tap on the rendered `#deliverButton` lands `packet-delivered`
       // with `delivery.outcome === "sealed"` and writes the server-
       // authoritative save. NO `window.__game.input.*` for drive.
+      //
+      // #2336 timing: deliverPacket() writes the durable save TWICE —
+      // a synchronous `persistAuthoritative()` at `packet-delivered`
+      // AND a second write inside a 1180ms setTimeout AFTER
+      // `setBeat("io-return-recognition")`. If the second write
+      // lands, the authoritative restore target becomes
+      // `io-return-recognition`, not `packet-delivered`, and this
+      // spec's premise (cold-boot into `packet-delivered`) disappears.
+      // To keep the seed save at `packet-delivered` we patch
+      // `window.setTimeout` BEFORE boot to drop any 1180ms-delay
+      // scheduled callback — that is the only setTimeout in
+      // deliverPacket() and dropping it leaves the synchronous
+      // `packet-delivered` save as the authoritative one.
+      // `page.addInitScript` runs this before any page JS executes,
+      // including the composer/three.js boot, so the patched timer
+      // is in place when deliverPacket() queues its callback.
+      await page.addInitScript(() => {
+        const originalSetTimeout = window.setTimeout.bind(window);
+        // Preserve the Window & NodeJS.Timeout overload signatures.
+        type SetTimeoutFn = typeof window.setTimeout;
+        window.setTimeout = ((
+          handler: TimerHandler,
+          timeout?: number,
+          ...rest: unknown[]
+        ) => {
+          // deliverPacket()'s auto-advance is the only 1180ms timer in
+          // the aftersign client. Dropping that specific delay keeps
+          // the sealed `packet-delivered` save authoritative.
+          if (timeout === 1180) {
+            // Return a fake id so callers that store it don't blow up.
+            return 0 as unknown as ReturnType<SetTimeoutFn>;
+          }
+          return originalSetTimeout(handler as never, timeout, ...rest);
+        }) as SetTimeoutFn;
+      });
+
       await page.goto(url, { waitUntil: "load" });
       await waitForReady(page);
 
@@ -137,6 +183,11 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
 
       const delivered = await snapshot(page);
       expect(delivered.delivery.outcome).toBe("sealed");
+      // The 1180ms auto-advance was dropped by the init-script patch
+      // above, so the beat stays at `packet-delivered`. If this ever
+      // reds, deliverPacket()'s delay changed and the patch filter
+      // needs to track it.
+      expect(delivered.scene.beat).toBe("packet-delivered");
 
       // --- ACT: fresh browser context (no storage) → boot the same slot.
       const coldPage = await openFreshPhoneContext(browser);

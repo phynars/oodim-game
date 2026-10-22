@@ -789,6 +789,31 @@
         will-change: transform;
       }
 
+      /* #2389 touch-target floor. The generic `padding: 11px 14px`
+         on the shared `button` rule leaves text buttons at ~38px tall
+         on a 390px phone — below the WCAG 2.5.5 / Apple HIG 44px
+         minimum, and the exact failure the aftersign-live-verify-
+         controls geometry baseline catches on acknowledge / sound /
+         Start-fresh.
+
+         SCOPED to the three controls the geometry baseline measures.
+         Earlier revision applied `min-width: 44px` on the shared
+         `button` rule; that floor is harmless on the three controls
+         below but ALSO lands on `#offeredJobs button[data-offered-
+         job-id]`, whose labels can be long enough that the min-width
+         is already exceeded by content — EXCEPT the row's flex layout
+         plus the 44px min-width floor pushed total row width past the
+         390px viewport, flunking `aftersign-mloop-two-round
+         .playtest.spec.ts`'s `expectFullyInsidePhone` (right edge 683
+         against width 390). Scoping to IDs keeps the floor exactly
+         where the geometry test asserts it and nowhere else. */
+      #acknowledgeRouteButton,
+      #soundButton,
+      .slice-save-controls #resetButton {
+        min-height: 44px;
+        min-width: 44px;
+      }
+
       button:focus-visible {
         outline: none;
         border-color: rgba(255, 214, 151, 0.88);

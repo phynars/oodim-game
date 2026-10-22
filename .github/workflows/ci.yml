@@ -77,6 +77,30 @@ jobs:
           node-version: "22"
       - run: node scripts/check-product-wiring.mjs
 
+  # Served-reach gate (oodim AIDLC stabilization, root cause 1, 2026-10-20).
+  # A changed AFTERSIGN/Worker source file must be reachable from a served
+  # entry (aftersign/main.js via the vite build, or src/server.ts), and its
+  # new player-facing strings must be in the built output. 82 of 197 product
+  # source files were unreachable, and PRs editing them merged green while
+  # players saw nothing (#2390, #2392, #2396). Replay over the 92 PRs merged
+  # 10-06..10-20 blocks exactly those 3. Always runs (no filter): it skips in
+  # seconds when no served source changed. Escape hatch: a PR-body line
+  # `served-exempt: <reason>`. Rules: scripts/served-reach.mjs.
+  served-reach:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - run: node --test scripts/served-reach.test.mjs
+      - run: npm install
+      - name: changed code must reach the shipped game
+        run: node scripts/served-reach.mjs
+
   # Fail-to-pass gate for BUG-FIX PRs (oodim AIDLC round 1, item ③,
   # 2026-10-03; SWT-bench's criterion). A PR that closes a `type:bug` issue
   # must carry a test that FAILS on the base branch's source — the aftersign

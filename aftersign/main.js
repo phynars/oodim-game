@@ -8,6 +8,8 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
+import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
@@ -31,7 +33,8 @@ import {
   ORRA_RETURN_LINE_BY_ACTION,
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
-import { canonicalFlagshipBeat } from "./flagship-beat-migration.js";
+import { canonicalFlagshipBeat, restoreFlagshipBeat } from "./flagship-beat-migration.js";
+import { renderAftersignDialogue } from "./src/aftersignDialogueRenderer.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { playRecognitionFeedback } from "./recognition-feedback.js";
@@ -110,6 +113,36 @@ import {
   stampAftersignBeat,
   stampAftersignChoice,
 } from "./src/playerVisibleBeatDom.js";
+// PR #2419 F1 — SHIPPED CONSUMER (not just a served-reach anchor).
+// `apps/web/src/aftersign/ioFirstSceneDialogue.ts` and
+// `apps/web/src/aftersign/ioVoiceContract.ts` own the two typed Io-line
+// tables that resolve `openedReturn.text` through
+// `IO_OPENED_RETURN_LINE` (canonical constant in
+// `aftersign/src/ioSealedReturn.ts`, also consumed by
+// `packages/aftersign/src/ioReturningSession.ts::openedPacket`).
+// Soren's F1 review blocked this PR when the two imports were held
+// LIVE only by `void` reads at module scope — a tree-shake defeat
+// trick, not a real consumer. The `renderText()` seam below now
+// stamps the SELECTED entry's `memoryKey` / `key` / `text.length`
+// from both tables onto the existing `#ioReturnLine` sibling at the
+// `io-return-recognition` beat, so a copy edit through either
+// typed-table surface rides to a player-visible DOM attribute (same
+// discipline as `aftersign-io-return-line="<outcome>"` already set
+// right next to it). The alignment invariant across the three
+// modules lives in
+// `apps/web/src/aftersign/ioOpenedReturnLineAlignment.test.ts` as a
+// pure vitest check — kept out of main.js's module-load path so a
+// TS-side load issue never aborts the shipped graph before
+// `window.__game` wires, which would starve every e2e that taps
+// the recognition beats.
+import {
+  AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
+  getAftersignIoPacketReturnLine,
+} from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
+import {
+  AFTERSIGN_IO_LINES,
+  ioPacketReturnLine,
+} from "../apps/web/src/aftersign/ioVoiceContract.ts";
 // Shipped consumer of the NPC-memory dialogue dispatcher — turns the
 // exports from a spec-only module into a load-bearing surface. At the
 // terminal beat in `lineForBeat()` below (reached by tapping through
@@ -661,6 +694,7 @@ import {
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
+import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
 import { deliverySnapshotState } from "./src/deliverySnapshotState.js";
@@ -765,6 +799,7 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
   stateReadout.hidden = true;
 }
 const failureSting = document.querySelector(".failure-sting");
+const feedbackController = createFeedbackController({ document, failureSting });
 const packetButton = document.querySelector("#packetButton");
 let packetPressFeedback = { isPressed: false, releaseAtMs: null };
 let packetPressFeedbackFrame = null;
@@ -1095,7 +1130,16 @@ const state = {
     // Flipped true once listeners + first render are wired (boot tail)
     // — the harness's "safe to drive input" signal.
     ready: false,
-    beat: canonicalFlagshipBeat(stored?.beat) ?? "packet-offered",
+    // Shared restore guard — covers BOTH a real `page.reload()` (which
+    // lands here, not in `reloadFromSave`) AND the first authoritative
+    // hydration. See `restoreFlagshipBeat` for why a legacy
+    // `packet-delivered` + `packet.delivered=false` pair must be
+    // remapped to `packet-choice` instead of projecting the later
+    // recognition fork over an undelivered player.
+    beat: restoreFlagshipBeat({
+      savedBeat: stored?.beat,
+      packetDelivered: Boolean(stored?.packet?.delivered),
+    }),
   },
   story: {
     currentNpcId: null,
@@ -1386,13 +1430,49 @@ const armReturningSessionBootLine = (delivered) => {
   const outcomeFact = state.npcs.io.memory.find(
     (fact) => fact?.kind === "delivery-outcome",
   );
+  // #2326 false-memory fix. `memoryFacts()` at delivery time maps a
+  // null `state.player.secondAction` (player NEVER tapped
+  // "I listened" / "I ran early" before Deliver) to
+  // `SECOND_ACTION.SKIPPED` so the fact SHAPE stays invariant across
+  // the two delivery outcomes. That default is fine for the ledger's
+  // shape invariants but it is NOT a player choice — Io must not
+  // boot a restored save by telling the player they "ran before the
+  // route finished" when they never ran. Gate the route axis on the
+  // durable player-input flag `state.player.secondAction` (restored
+  // from `stored?.player?.secondAction ?? null` at cold boot): only
+  // translate the memory fact into a route attention axis when the
+  // player's own commitment flag confirms the tap happened.
+  //
+  // Without the gate, `secondActionFromMemory` returns SKIPPED on a
+  // no-tap delivery → `chooseIoReturningSessionLine` picks
+  // `sealedPacketSkippedRoute` ("…you still ran before the route
+  // finished. Reliable hands, impatient feet.") — the exact false
+  // memory #2322 / #2326 report. Scope note: #2336 landed a second
+  // `persistAuthoritative()` inside `deliverPacket()`'s 1180ms
+  // setTimeout, which moves the authoritative restore target to
+  // `io-return-recognition` for most sessions — that beat is in the
+  // skip list above and the gate here never runs. The gate still
+  // matters on three paths #2336 did NOT cover:
+  //   (a) a reload racing BEFORE the 1180ms second write commits —
+  //       the restore lands at `packet-delivered` and reaches here;
+  //   (b) `packet-delivered-cold-boot-affordance.spec.ts` which
+  //       deliberately drops the 1180ms callback to prove the
+  //       `packet-delivered` affordance, so its restore is here;
+  //   (c) `flagship-reload-beat-regression.spec.ts` which forks on
+  //       `beat === "packet-delivered"` vs `io-return-recognition`
+  //       at line 128 — the `packet-delivered` branch asserts the
+  //       returning-session line, which runs through this gate.
+  const committedSecondAction = state.player.secondAction;
+  const bootRouteAttention =
+    committedSecondAction === SECOND_ACTION.DONE
+      ? "listened"
+      : committedSecondAction === SECOND_ACTION.SKIPPED
+        ? "skipped"
+        : undefined;
   ioReturningBootLine = outcomeFact
     ? chooseIoReturningSessionLine({
         packetOutcome: outcomeFact.object,
-        routeAttention:
-          secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-            ? "listened"
-            : "skipped",
+        routeAttention: bootRouteAttention,
       })
     : chooseIoReturningSessionLine({});
   ioReturningBootBeat = state.scene.beat;
@@ -2269,9 +2349,12 @@ const publishState = () => {
       onChoose: (action) => {
         let route = state.player.routeRisk?.lastRoute ?? "safe";
         let succeeded = true;
-        if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+        if (action === "take-the-shortcut") {
           route = "fast";
           succeeded = true;
+        } else if (action === "carry-a-fragile-packet") {
+          route = "fast";
+          succeeded = false;
         } else if (action === "take-the-long-way") {
           route = "safe";
           succeeded = true;
@@ -2293,10 +2376,20 @@ const publishState = () => {
 };
 
 const renderText = () => {
-  syncIoLine();
-  stampAftersignBeat(line, state.scene.beat);
-  setTextContentIfChanged(speaker, "Io");
-  setTextContentIfChanged(line, state.npcs.io.lastLine);
+  renderAftersignDialogue({
+    beat: state.scene.beat,
+    line,
+    speaker,
+    speakerName: "Io",
+    // Getter, not a value: syncIoLine() (invoked inside the helper) is what
+    // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
+    // would snapshot the stale line before syncIoLine runs on the render where
+    // the beat changes.
+    getDialogueLine: () => state.npcs.io.lastLine,
+    syncIoLine,
+    stampBeat: stampAftersignBeat,
+    setTextContentIfChanged,
+  });
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;
@@ -2404,6 +2497,105 @@ const renderText = () => {
       }
       if (returnPara.textContent !== returnLineText) {
         returnPara.textContent = returnLineText;
+      }
+      // PR #2419 F1 — shipped consumer of the two typed Io-line
+      // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
+      // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;
+      // selecting the entry here by the SAME `state.packet.sealed`
+      // fork the recognition line reads turns both modules into
+      // real DOM consumers (no `void` tree-shake defeat). The
+      // `#line` paragraph's text stays owned by
+      // `ioRecognitionDialogue.ts::RETURNING_LINES` — the same
+      // isolation rejected in #758/#789/#1131 — so this is a
+      // sibling-dataset stamp, not a second line source.
+      const packetOutcomeForTypedTables = state.packet.sealed
+        ? "sealed"
+        : "opened";
+      const firstSceneLine = getAftersignIoPacketReturnLine(
+        packetOutcomeForTypedTables,
+      );
+      const voiceContractLine = ioPacketReturnLine(
+        packetOutcomeForTypedTables,
+      );
+      // Stamp the selected entries' identifying keys + text length
+      // onto the sibling paragraph. A copy edit through either
+      // typed-table surface changes `text.length` and lands on the
+      // DOM a real player's page carries, satisfying served-reach.
+      // Length (not the literal) keeps the attribute small while
+      // still proving the string flows through — the full literal
+      // is already in `#line` via the recognition dialogue's own
+      // selector when the outcome matches.
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-line",
+        ) !== firstSceneLine.id
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-line",
+          firstSceneLine.id,
+        );
+      }
+      const firstSceneLen = String(firstSceneLine.text.length);
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-line-length",
+        ) !== firstSceneLen
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-line-length",
+          firstSceneLen,
+        );
+      }
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-line",
+        ) !== voiceContractLine.key
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-line",
+          voiceContractLine.key,
+        );
+      }
+      const voiceContractLen = String(voiceContractLine.text.length);
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-line-length",
+        ) !== voiceContractLen
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-line-length",
+          voiceContractLen,
+        );
+      }
+      // Also stamp the full-table size as a crude load-bearing
+      // guard: if the whole `AFTERSIGN_IO_FIRST_SCENE_DIALOGUE`
+      // array is tree-shaken out, this attribute drops to the
+      // string `"0"` and the e2e below reds. The read is pure.
+      const firstSceneTableSize = String(
+        AFTERSIGN_IO_FIRST_SCENE_DIALOGUE.length,
+      );
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-first-scene-table-size",
+        ) !== firstSceneTableSize
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-first-scene-table-size",
+          firstSceneTableSize,
+        );
+      }
+      const voiceContractTableSize = String(
+        Object.keys(AFTERSIGN_IO_LINES).length,
+      );
+      if (
+        returnPara.getAttribute(
+          "data-aftersign-io-voice-contract-table-size",
+        ) !== voiceContractTableSize
+      ) {
+        returnPara.setAttribute(
+          "data-aftersign-io-voice-contract-table-size",
+          voiceContractTableSize,
+        );
       }
       // The recalled fact rises in 280ms from 8px below its resting line,
       // one crisp, non-blocking acknowledgement per outcome. The data stamp
@@ -2571,9 +2763,12 @@ const renderText = () => {
           // path).
           let route = state.player.routeRisk?.lastRoute ?? "safe";
           let succeeded = true;
-          if (action === "take-the-shortcut" || action === "carry-a-fragile-packet") {
+          if (action === "take-the-shortcut") {
             route = "fast";
             succeeded = true;
+          } else if (action === "carry-a-fragile-packet") {
+            route = "fast";
+            succeeded = false;
           } else if (action === "take-the-long-way") {
             route = "safe";
             succeeded = true;
@@ -3367,22 +3562,17 @@ const publishPacketIntentEvaluation = () => {
   }
 };
 
-const packetPress = (input) => {
-  playPacketPressFeedback();
-  lastHadTargetMs = null;
-  targetLossFirstFramePending = false;
-  if (targetLossPrompt) targetLossPrompt.style.opacity = "0";
-  // Fresh gesture — drop the previous log so the evaluator sees only
-  // this attempt (mirrors PacketIntentController.press's reset of
-  // its own internal fields).
-  resetPacketGestureLog();
-  recordPacketGestureSample("press", input);
-  const snapshot = packetIntent.press(input);
-  lastPacketOutcomeForFailure = snapshot.outcome;
-  syncPacketIntent(snapshot);
-  publishState();
-  return state.interaction.packetIntent;
-};
+const packetOfferController = createPacketOfferController({
+  playPressFeedback: playPacketPressFeedback,
+  resetTargetLoss: () => { lastHadTargetMs = null; targetLossFirstFramePending = false; if (targetLossPrompt) targetLossPrompt.style.opacity = "0"; },
+  resetGestureLog: resetPacketGestureLog, recordGestureSample: recordPacketGestureSample,
+  pressIntent: (input) => packetIntent.press(input),
+  setLastOutcome: (outcome) => { lastPacketOutcomeForFailure = outcome; },
+  syncIntent: syncPacketIntent, publishState,
+  getState: () => state.interaction.packetIntent,
+});
+
+const packetPress = (input) => packetOfferController.input.press(input);
 
 // #1701 (Refs #1698) — PREVIEWED is EXCLUDED from "committed" here.
 // The pure controller emits PREVIEWED only through `previewRelease(...)`
@@ -3535,24 +3725,19 @@ const packetRelease = (input) => {
   return state.interaction.packetIntent;
 };
 
-const choose = async (choiceId) => {
-  if (choiceId === "open-packet") {
-    if (state.packet.sealed) {
-      state.packet.sealed = false;
+const routeChoiceController = createRouteChoiceController({
+  getState: () => state,
+  setState: ({ packetSealed, beat }) => {
+    if (packetSealed !== null) {
+      state.packet.sealed = packetSealed;
       markStateDirty();
     }
-    setBeat("packet-choice");
-    return;
-  }
+    setBeat(beat);
+  },
+});
 
-  if (choiceId === "keep-packet-sealed" || choiceId === "keep-sealed") {
-    if (!state.packet.sealed) {
-      state.packet.sealed = true;
-      markStateDirty();
-    }
-    setBeat("packet-choice");
-    return;
-  }
+const choose = async (choiceId) => {
+  if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {
     if (state.scene.beat === "io-next-job") {
@@ -3922,6 +4107,13 @@ const advance = async () => {
     }
     state.interaction.recognitionEnteredAt = performance.now();
     setBeat("io-return-recognition");
+    // #2336 follow-up: persist the recognition beat on the reload→return
+    // path too. Without this save the authoritative record keeps the
+    // pre-transition `packet-delivered` beat, and a later page.reload()
+    // restores it and paints the returning-session line over it.
+    // Fire-and-forget, matching deliverPacket's save; a failed write must
+    // not break the in-memory transition.
+    void forceSave().catch(() => null);
   }
 };
 
@@ -4146,12 +4338,19 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     revision: state.save.revision,
     playerId: state.player.id,
   };
-  // A delivered save is a returning player's next offer, not a terminal
-  // delivery screen. Preserve the completed memory while restoring the
-  // offer beat so its divergent completed-set actions can render.
-  state.scene.beat = typeof saved.beat === "string"
-    ? canonicalFlagshipBeat(saved.beat)
-    : "packet-offered";
+  // A route-return screen is only valid after a delivery. A save made
+  // while the player is still choosing a route can otherwise carry the
+  // older `packet-delivered` beat while its packet remains undelivered;
+  // restoring that contradictory pair projects the later "I ran early"
+  // fork even though the player never chose it. The same guard runs at
+  // the cold-boot path (`page.reload()` lands there, not here) so both
+  // restore sites remap the one invalid persisted shape to
+  // `packet-choice` — see `restoreFlagshipBeat` in
+  // `./flagship-beat-migration.js`.
+  state.scene.beat = restoreFlagshipBeat({
+    savedBeat: saved.beat,
+    packetDelivered: state.packet.delivered,
+  });
 
   // PR #1249 (Soren review) — READ the io-next-job durability stamp
   // written by `buildIoNextJobDurabilityStamp` at save time. This is
@@ -4947,6 +5146,14 @@ const deliverPacket = (source = "hud-button") => {
     };
     markStateDirty();
     setBeat("io-return-recognition");
+    // #2336: the only durable write on this path used to be the
+    // persistAuthoritative() below, which fires at `packet-delivered`
+    // BEFORE this 1180ms auto-advance. A reload while Io was already
+    // speaking the recognition line restored the stale
+    // `packet-delivered` beat (and armed the returning boot line over
+    // it). Persist the advanced beat so reload stays on
+    // `io-return-recognition`.
+    void persistAuthoritative({ dirty: true });
   }, 1180);
   void persistAuthoritative({ dirty: true });
 };
@@ -5272,6 +5479,14 @@ attachRuntimeInputAdapters({
   packetRelease,
   handleScenePointer,
   choose,
+  // #2356 iter-2: the click/keyboard activation seam inside the adapter
+  // commits SEALED through the SAME funnel the pointer path uses so
+  // round-two red-tag runs registerPacketChoice + the red-tag copy
+  // override + lastAction + the beat transition. Threading these two
+  // closes the gap Soren flagged (AI008) between the shipped pointer
+  // path and the non-pointer activation path.
+  commitPacketOutcome,
+  PACKET_OUTCOME,
   markStateDirty,
   markPointerIntent,
 });
@@ -5384,13 +5599,13 @@ const tick = (now) => {
   camera.lookAt(rig.lookAt.x, rig.lookAt.y, rig.lookAt.z);
   camera.rotation.z += THREE.MathUtils.degToRad(recognitionMotion.cameraYawDegrees + confirmWobble * state.interaction.confirmFeedback.cameraKickDeg - failureWobble * FAILURE_FEEDBACK.cameraKickDeg);
   sampleMemoryBeatCameraProbe();
-  document.documentElement.style.setProperty("--confirm-shake-x", `${confirmEnvelope.hudShakeX - Math.round(failureWobble * FAILURE_FEEDBACK.hudShakePx)}px`);
-  document.documentElement.style.setProperty("--confirm-shake-y", `${confirmEnvelope.hudLiftY + Math.round(failureFalloff * FAILURE_FEEDBACK.hudDropPx)}px`);
-  document.documentElement.style.setProperty("--confirm-reticle-scale", `${confirmEnvelope.reticleScale.toFixed(3)}`);
-  document.documentElement.style.setProperty("--confirm-reticle-y", `${confirmEnvelope.reticleLiftPx.toFixed(2)}px`);
-  if (failureSting) {
-    failureSting.style.opacity = `${failureEnvelope.flashAlpha.toFixed(3)}`;
-  }
+  feedbackController.renderFrame({
+    confirmEnvelope,
+    failureEnvelope,
+    failureWobble,
+    failureFalloff,
+    failureFeel: FAILURE_FEEDBACK,
+  });
   screen.material.emissiveIntensity = 1.55 + Math.sin(t * 3.2) * 0.25 + kioskPulse * 1.2 + confirmFalloff * 0.7 + packetProgress * 0.65;
   slotMesh.material.emissiveIntensity = 0.7 + kioskPulse * 1.5 + confirmFalloff * 0.45 + packetProgress * 0.4;
   signLight.intensity = 7.4 + Math.sin(t * 2.4) * 0.8 + kioskPulse * 2.4 + confirmFalloff * 1.3 + recognitionMotion.signGlowBoost + packetProgress * 1.1;

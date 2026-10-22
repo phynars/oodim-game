@@ -53,7 +53,7 @@ const OPENED = Object.freeze({
   title: "Wax debt. Narrow work.",
   actionLabel: "Take the wax-debt job",
   summary: "The seal opened. Io narrows the work: torn receipt, watched return.",
-  ioLine: "The seal opened. I can still use you. Not wide work.",
+  ioLine: "The seal opened. I can still use you. Not wide work. Earn the room back.",
   riskPrompt: "Narrow work. Debt carried. Io keeps the receipt until the wax is paid.",
   safeRouteLabel: "Dark cut — quickest, watched only at the end",
   riskyRouteLabel: "Long way — across the lit square",

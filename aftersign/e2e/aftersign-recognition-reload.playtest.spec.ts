@@ -2,27 +2,29 @@ import { expect, test, type Page, type Locator } from "@playwright/test";
 
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 
-// Playtest: after a phone-player reload, the story restores to
-// `packet-delivered`, and a single visible tap on the rendered advance
-// control (`#deliverButton`, labelled "Return to Io") reaches
+// Playtest: after a phone-player reload, the story restores DIRECTLY to
 // `io-return-recognition` with the correct returning-tier line + the
-// authored return-tone controls.
+// authored return-tone controls — no extra tap required.
 //
 // This spec is the "reload" companion to
 // aftersign/e2e/packet-delivered-cold-boot-affordance.spec.ts — that one
 // uses a fresh browser context (cleared storage) to prove the cold-boot
-// affordance; this one uses `page.reload()` in the SAME context to prove
-// the phone-player's most common restore path (they backgrounded the
-// tab, came back, refreshed) lands on the same visible affordance.
+// affordance at `packet-delivered`; this one uses `page.reload()` in
+// the SAME context to prove the phone-player's most common restore
+// path (they backgrounded the tab, came back, refreshed) lands on
+// recognition, because the live runtime now persists the auto-advanced
+// beat (see aftersign/main.js deliverPacket(): the 1180ms setTimeout
+// calls `persistAuthoritative({ dirty: true })` AFTER `setBeat(
+// "io-return-recognition")`, so reload stays on recognition rather
+// than snapping back to the stale `packet-delivered` save).
 //
 // Runtime premises this spec depends on (validated against shipped code
-// on 2026-09-29):
-//   1. `deliver-packet` triggers an auto-save at `packet-delivered`.
-//      Reload therefore restores to `packet-delivered`, NOT
-//      `io-return-recognition`. See
-//      packet-delivered-cold-boot-affordance.spec.ts:156 — the same
-//      restore path requires a subsequent tap on `#deliverButton`
-//      ("Return to Io") to reach the recognition beat.
+// on 2026-10-15):
+//   1. `deliverPacket()` writes the durable save TWICE: once at
+//      `packet-delivered` (synchronous), once at
+//      `io-return-recognition` inside the 1180ms setTimeout AFTER
+//      `setBeat(...)`. The second write wins; reload restores to
+//      `io-return-recognition`, NOT `packet-delivered`.
 //   2. The RETURNING-tier line for outcome=sealed + routeListened=false
 //      is Io's canonical copy in aftersign/src/ioRecognitionDialogue.ts:
 //      "I remember you: blue seal, unbroken. The kiosk kept the route;
@@ -80,22 +82,6 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await choice.click();
 }
 
-// Advance from `packet-delivered` into `io-return-recognition` by
-// tapping the visible `#deliverButton` ("Return to Io") — the same
-// affordance the cold-boot spec pins at line 156. This is the ONLY
-// path from the restored `packet-delivered` beat back into recognition
-// on a reloaded phone; there is no auto-advance from a persisted save.
-async function tapReturnToIo(page: Page): Promise<void> {
-  const advance = page.locator("#deliverButton");
-  await expect(
-    advance,
-    `#deliverButton should be visible at packet-delivered`,
-  ).toBeVisible({ timeout: WAIT_MS });
-  await expect(advance).toBeEnabled({ timeout: WAIT_MS });
-  await expect(advance).toHaveText("Return to Io", { timeout: WAIT_MS });
-  await advance.tap();
-}
-
 test.describe("AFTERSIGN recognition reload playtest", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -123,8 +109,9 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     await waitForBeat(page, "packet-delivered");
 
     // The runtime auto-advances into the recognition beat after
-    // deliverPacket()'s ~1180ms setTimeout — no additional tap needed
-    // BEFORE the reload.
+    // deliverPacket()'s ~1180ms setTimeout — the SECOND auto-save fires
+    // AFTER `setBeat("io-return-recognition")` so reload will restore
+    // to this beat, not `packet-delivered`.
     await waitForBeat(page, "io-return-recognition");
     await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
       timeout: WAIT_MS,
@@ -133,16 +120,12 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
       page.getByRole("button", { name: "Kind return", exact: true }),
     ).toBeVisible({ timeout: WAIT_MS });
 
-    // --- Reload. Auto-save fired on the `deliver-packet` tap, so the
-    // restored beat is `packet-delivered`, NOT `io-return-recognition`.
-    // The phone-player path must (a) restore the returning-session copy
-    // on `#line`, (b) render the "Return to Io" advance control, and
-    // (c) reach `io-return-recognition` with the correct line + tone
-    // controls after ONE visible tap on that control.
+    // --- Reload. Both auto-saves have fired; the LATER one
+    // (post-`setBeat("io-return-recognition")`) is the one that
+    // persists. The phone-player path must restore directly to
+    // `io-return-recognition` with the sealed-outcome line + the
+    // "Kind return" tone control intact — no "Return to Io" tap.
     await page.reload({ waitUntil: "load" });
-
-    await waitForBeat(page, "packet-delivered");
-    await tapReturnToIo(page);
 
     await waitForBeat(page, "io-return-recognition");
     await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {

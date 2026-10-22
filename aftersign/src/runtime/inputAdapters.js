@@ -46,6 +46,16 @@ export const attachRuntimeInputAdapters = ({
   packetRelease,
   handleScenePointer,
   choose,
+  // #2356 iter-2 (Soren AI008): the click/keyboard activation seam must
+  // route through `commitPacketOutcome(SEALED)` so it runs the SAME
+  // funnel as the pointer path — `registerPacketChoice`, the red-tag
+  // button-copy override, `applyPacketFeedback`, intent feedback, and
+  // `state.interaction.lastAction` — not through `choose("keep-sealed")`,
+  // which only flips `state.packet.sealed` and advances the beat and
+  // would leave `lastAction` / the red-tag copy write / the memory-
+  // fact registration unexecuted.
+  commitPacketOutcome,
+  PACKET_OUTCOME,
   markStateDirty,
   markPointerIntent,
 }) => {
@@ -222,6 +232,42 @@ export const attachRuntimeInputAdapters = ({
     packetPressAtMs = null;
     packetPressX = null;
     packetPressY = null;
+  });
+
+  // #2356 — `HTMLElement.click()` and keyboard activation (Enter / Space
+  // on a focused `<button>`) do NOT emit the pointer stream above. On
+  // round-two red-tag the harness delivers the packet, the player
+  // returns, Io hands off, and `#packetButton` re-renders with the
+  // "Red tag — Saint Orra" label but no pointer-side handler is
+  // registered — tapping the button becomes a dead affordance.
+  //
+  // The commit MUST go through `commitPacketOutcome(SEALED)` — the same
+  // funnel the pointer-driven `packetRelease` uses — so this activation
+  // runs `registerPacketChoice`, the red-tag button-copy override,
+  // `applyPacketFeedback` + intent feedback, and sets
+  // `state.interaction.lastAction` before `setBeat("packet-choice")`.
+  // Routing through `choose("keep-sealed")` (prior draft, Soren AI008)
+  // skipped every one of those and reached packet-choice stripped of
+  // the memory-fact + lastAction stamps the rest of the pipeline reads.
+  //
+  // Soren #2357 iter-3 (AI007/blocking): a pointer-driven DRAG that
+  // drifts past `DRIFT_CANCEL_PX` is CANCELLED inside `packetMove`
+  // without committing (CANCELLED is not an `isCommittedOutcome` —
+  // see `main.js:3380`). The beat STAYS at `packet-offered` and
+  // `packetIntent.active` flips to `false` on release — then the
+  // browser still fires `click`. The prior guard (active + beat only)
+  // would commit SEALED on top of the player's failed drag, overriding
+  // the cancel path. Gate on `event.detail === 0`, which is the browser
+  // signal for a non-pointer activation (keyboard Enter/Space on a
+  // focused `<button>`, or a scripted `HTMLElement.click()`). A real
+  // pointer click always has `detail >= 1` (the click count), so this
+  // listener is a strict no-op for mouse/touch — pointer play keeps
+  // flowing exclusively through `pointerdown` → `pointerup` /
+  // `pointercancel`, including the drift-cancel failure path.
+  packetButton.addEventListener("click", (event) => {
+    if (event.detail !== 0) return;
+    if (state.interaction.packetIntent.active || state.scene.beat !== "packet-offered") return;
+    commitPacketOutcome(PACKET_OUTCOME.SEALED);
   });
 
   // #2174: all three return-surface buttons (acknowledgeRouteButton,

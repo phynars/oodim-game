@@ -33,28 +33,28 @@ const servedRendererSource = readFileSync(
 );
 
 const RED_TAG_LINE =
-  "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer.";
+  "Done. Red tag delivered to Saint Orra. She keeps it under your name. When you come back, she will know what you carried.";
 const BLUE_PACKET_LINE =
-  "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.";
+  "Done. Blue packet delivered. I set its mark beside your name. When you return, you will not have to explain which road held you.";
 
 describe("aftersignDeliveryCompleteLine (frozen copy)", () => {
-  it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-route copy", () => {
+  it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-packet copy", () => {
     // #2242's visible bug: delivery-complete after a red-tag second
-    // packet was reading "Blue route…". Assert the exact red-tag
-    // string AND that the blue-route language is absent — a typo in
+    // packet was reading the blue line. Assert the exact red-tag
+    // string AND that the blue-packet language is absent — a typo in
     // the frozen module that drops "Saint Orra" or re-introduces
-    // "Blue route" reds this test.
+    // "Blue packet delivered" reds this test.
     const line = aftersignDeliveryCompleteLine("red-tag");
     expect(line).toBe(RED_TAG_LINE);
     expect(line).toContain("Saint Orra");
-    expect(line).toContain("pharmacy sign");
-    expect(line).not.toContain("Blue route");
+    expect(line).toContain("under your name");
+    expect(line).not.toContain("Blue packet delivered");
   });
 
   it("returns the blue-packet line for a blue-packet delivery", () => {
     const line = aftersignDeliveryCompleteLine("blue-packet");
     expect(line).toBe(BLUE_PACKET_LINE);
-    expect(line).toContain("Blue route");
+    expect(line).toContain("Blue packet delivered");
     expect(line).not.toContain("Red tag");
   });
 
@@ -104,11 +104,7 @@ describe("served delivery-complete wiring in aftersign/main.js", () => {
     // The two literals that used to live in the ternary must be
     // sourced only from the frozen module now. If either reappears
     // in main.js (copy-paste regression), red the test.
-    expect(servedRendererSource).not.toContain(
-      "Done. Red tag delivered to Saint Orra. The pharmacy sign kept your name; the debt is yours to answer.",
-    );
-    expect(servedRendererSource).not.toContain(
-      "Done. Blue route, clean handoff. Come back after the rain; I will know the mark was yours.",
-    );
+    expect(servedRendererSource).not.toContain(RED_TAG_LINE);
+    expect(servedRendererSource).not.toContain(BLUE_PACKET_LINE);
   });
 });

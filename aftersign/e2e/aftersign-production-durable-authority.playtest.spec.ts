@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { clearLocalStorage } from "./clearLocalStorage";
 
 // Opt-in production harness. Default aftersign/playwright.config.ts targets
 // the local vite preview (baseURL http://localhost:4374/aftersign/); this
@@ -72,19 +73,6 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   const choice = page.locator(`button[data-choice-id="${choiceId}"]:not([disabled])`);
   await expect(choice).toBeVisible({ timeout: WAIT_MS });
   await choice.tap();
-}
-
-// Mirrors `durable-return-session-phone-playtest.spec.ts`'s helper of the
-// same name. Clears origin localStorage AND polls until the clear is
-// observable, so a stale key written during the final beat (the save
-// path is async) can't survive the subsequent navigation and silently
-// serve the restored tray from the local-fallback branch of
-// `aftersign/src/runtime/persistence.js:23`.
-async function clearLocalStorage(page: Page): Promise<void> {
-  await page.evaluate(() => window.localStorage.clear());
-  await expect
-    .poll(() => page.evaluate(() => window.localStorage.length), { timeout: WAIT_MS })
-    .toBe(0);
 }
 
 test.describe("production durable authority", () => {
@@ -161,7 +149,7 @@ test.describe("production durable authority", () => {
     // missing or stale, `computeOfferedJobs(undefined)` falls back to
     // `[SAFE_DEFAULT_JOB_ID]` with stamp `fresh`, and the assertions
     // below go red — which is the whole point of this spec.
-    await clearLocalStorage(page);
+    await clearLocalStorage(page, WAIT_MS);
     await page.goto(url, { waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "packet-offered");

@@ -87,7 +87,7 @@ export const ORRA_FIRST_NAME_DIALOGUE: OrraFirstNameDialogue = Object.freeze({
       label: "Refuse the case.",
       playerLine: "Find another courier.",
       orraLine:
-        "I have been a sign for ninety years. I know how to wait where guilt can see me.",
+        "I have been a sign for ninety years. I know how to wait where guilt has to pass.",
     }),
   }),
   memorySentences: Object.freeze({

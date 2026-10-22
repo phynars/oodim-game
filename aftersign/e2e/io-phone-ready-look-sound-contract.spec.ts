@@ -1,15 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Cold-start budget matches sibling AFTERSIGN specs: SwiftShader + three.js
-// first WebGL context regularly blows the default 30s in CI. Every spec in
-// aftersign/e2e/ opts into 90s and uses waitUntil: 'load' — 'networkidle'
-// never fires when the render loop keeps requesting frames.
 const COLD_START_MS = 90_000;
-// Sequential waits sum to 75s (45 + 15 + 10 + 5), leaving 15s of headroom
-// under the 90s test timeout for page.goto, the driving evaluate, and the
-// final synchronous probe. SwiftShader boot gets the largest slice; after
-// authored state arrives, the MutationObserver/task-queue marks and the final
-// DOM probe need only short, independent windows.
 const GAME_READY_WAIT_MS = 45_000;
 const RECOGNITION_BEAT_WAIT_MS = 15_000;
 const RECOGNITION_MARKS_WAIT_MS = 10_000;
@@ -20,9 +11,6 @@ const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 const MAX_VIEWPORT_EDGE_EPSILON_PX = 1;
-
-// Issue #544 contract thresholds are pinned as literals here so the harness
-// itself enforces the product envelope even if shared feel constants drift.
 const MAX_UI_SETTLE_MS = 360;
 const MAX_AV_DRIFT_MS = 50;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
@@ -46,15 +34,11 @@ type PhoneReadyProbe = {
 type RuntimeMarks = {
   readonly recognitionTriggeredAt: number;
   readonly lineSettledAt: number;
+  readonly confirmVisualAt: number;
   readonly audioCueAt: number;
 };
 
 const waitForGame = async (page: Page) => {
-  // Same 100ms clock-driven poll used by the recognition gates below: on a
-  // cold SwiftShader worker rAF can stall long enough that even the pre-boot
-  // input-readiness check inherits the flake vector #1852 documented for the
-  // downstream gates. Using an explicit interval decouples readiness from
-  // the render loop; the default polling='raf' would re-introduce it here.
   await page.waitForFunction(
     () => {
       const input = (window as Window & {
@@ -70,27 +54,49 @@ const waitForGame = async (page: Page) => {
 const installPhoneReadyRuntimeMarks = async (page: Page) => {
   await page.evaluate(({ expectedCue, pollIntervalMs }) => {
     const win = window as Window & {
-      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; audioCueAt?: number };
-      __game?: { scene?: { beat?: string }; _runtime?: { audio?: { lastCue?: string | null; lastCueAt?: number | null } } };
+      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; confirmVisualAt?: number; audioCueAt?: number };
+      __game?: {
+        scene?: { beat?: string };
+        interaction?: { confirmStartedAt?: number | null };
+        _runtime?: { audio?: { lastCue?: string | null; lastCueAt?: number | null } };
+      };
     };
     win.__ioPhoneReadyMarks = {};
-    const initialLineText = document.querySelector('#line')?.textContent?.trim() ?? '';
-    const initialAudioCueAt = win.__game?._runtime?.audio?.lastCueAt ?? null;
-
-    // MutationObserver stamps the DOM write as a microtask. Sample game/audio
-    // state on the task queue as well: a cold SwiftShader worker can starve
-    // rAF, but it must not prevent this test-only diagnostic stamp from seeing
-    // the authored cue. Capture the cue independently of the beat: otherwise
-    // a cue that lands just before the beat stamp is permanently missed.
+    // Why no "non-initial" guard against a pre-tap confirm/cue timestamp:
+    //
+    // The spec starts with `page.goto(...)` on a fresh Playwright page, so
+    // the aftersign module just loaded. At that point both candidate stamps
+    // are null by construction:
+    //   * `state.interaction.confirmStartedAt` — initialised null at
+    //     aftersign/main.js:1230 and only written by `triggerKioskFeedback`
+    //     at aftersign/main.js:4409 (the deliver tap).
+    //   * `state._runtime.audio.lastCueAt` — initialised null at
+    //     aftersign/main.js:1287 and only written when a cue plays
+    //     (aftersign/main.js:476, 4261, 4282, 4326, 4334, 4359).
+    // `installPhoneReadyRuntimeMarks` runs AFTER the deterministic
+    // `forceReload`, immediately before the packet/deliver taps that
+    // produce the first confirm + first `packet-confirmed` cue. There is
+    // no prior tap in this page session, so the first non-null value we
+    // observe belongs to the delivery we just drove. A "non-initial"
+    // guard against a baseline value is unnecessary — and worse, it was
+    // the race: when the runtime clock reports the same `performance.now()`
+    // integer for the baseline read and the real stamp (common at this
+    // poll cadence), the guard rejects the authentic confirm and the gate
+    // never resolves.
     const stampMarks = () => {
       const game = win.__game;
       const lineText = document.querySelector('#line')?.textContent?.trim() ?? '';
       const marks = win.__ioPhoneReadyMarks;
       if (!marks) return;
       const audio = game?._runtime?.audio;
-      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null && audio.lastCueAt !== initialAudioCueAt) marks.audioCueAt = audio.lastCueAt;
+      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null) marks.audioCueAt = audio.lastCueAt;
+      const confirmStartedAt = game?.interaction?.confirmStartedAt ?? null;
+      if (marks.confirmVisualAt === undefined && confirmStartedAt !== null) marks.confirmVisualAt = confirmStartedAt;
       if (marks.recognitionTriggeredAt === undefined && game?.scene?.beat === 'io-return-recognition') marks.recognitionTriggeredAt = performance.now();
-      if (marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt === undefined && lineText.startsWith('I remember you') && lineText !== initialLineText) marks.lineSettledAt = performance.now();
+      // The line can be rendered before the next task after the beat changes.
+      // Do not require a DOM-text delta: that race made this diagnostic mark
+      // permanently unreachable even though the authored recognition beat was live.
+      if (marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt === undefined && lineText.startsWith('I remember you')) marks.lineSettledAt = performance.now();
     };
 
     const lineNode = document.querySelector('#line');
@@ -102,20 +108,18 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
 
 const driveToSealedRecognitionBeat = async (page: Page) => {
   await waitForGame(page);
-  await installPhoneReadyRuntimeMarks(page);
   await page.evaluate(async () => {
-    const game = (window as Window & { __game?: { input?: { choose?: (choiceId: string) => Promise<void>; advance?: () => Promise<void>; forceReload?: () => Promise<void> }; story?: { memoryBeat?: unknown }; enableAudio?: () => Promise<boolean> } }).__game;
-    if (!game?.input?.choose || !game.input.advance || !game.input.forceReload) throw new Error('window.__game.input is not available');
+    const game = (window as Window & { __game?: { input?: { forceReload?: () => Promise<void> }; story?: { memoryBeat?: unknown } } }).__game;
+    if (!game?.input?.forceReload) throw new Error('window.__game.input.forceReload is not available');
     await game.input.forceReload();
     if (game.story) game.story.memoryBeat = null;
-    if (typeof game.enableAudio === 'function') await game.enableAudio();
-    await game.input.choose('keep-packet-sealed');
-    await game.input.choose('deliver-packet');
-    await game.input.advance();
   });
+  await waitForGame(page);
+  await installPhoneReadyRuntimeMarks(page);
 
-  // Separate authored state from diagnostic marks: neither slow condition can
-  // consume the full old WAIT_MS window, and their composed budget stays ≤WAIT_MS.
+  await page.locator('#packetButton').click();
+  await page.locator('#deliverButton').click();
+
   await page.waitForFunction(
     () => {
       const game = (window as Window & { __game?: { scene?: { beat?: string }; story?: { memoryBeat?: unknown } } }).__game;
@@ -128,7 +132,7 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
     (expectedCue) => {
       const win = window as Window & { __game?: { _runtime?: { audio?: { lastCue?: string | null } } }; __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
       const marks = win.__ioPhoneReadyMarks;
-      return win.__game?._runtime?.audio?.lastCue === expectedCue && marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.audioCueAt !== undefined;
+      return win.__game?._runtime?.audio?.lastCue === expectedCue && marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
     },
     EXPECTED_AUDIO_CUE,
     { timeout: RECOGNITION_MARKS_WAIT_MS, polling: POLL_INTERVAL_MS },
@@ -144,7 +148,7 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => p
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   const win = window as Window & { __game?: { _runtime?: { audio?: { lastCue?: string | null } } }; __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
   const marks = win.__ioPhoneReadyMarks;
-  if (marks?.recognitionTriggeredAt === undefined || marks.lineSettledAt === undefined || marks.audioCueAt === undefined) throw new Error('Missing Io phone-ready runtime marks');
+  if (marks?.recognitionTriggeredAt === undefined || marks.lineSettledAt === undefined || marks.confirmVisualAt === undefined || marks.audioCueAt === undefined) throw new Error('Missing Io phone-ready runtime marks');
   return {
     lineText: lineNode.innerText.trim(),
     lineVisible: rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none',
@@ -154,7 +158,7 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => p
     horizontalOverflowPx: Math.max(0, root.scrollWidth - viewport.width, -rect.left, rect.right - viewport.width),
     verticalOverflowPx: Math.max(0, root.scrollHeight - viewport.height, -rect.top, rect.bottom - viewport.height),
     settleMs: Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt),
-    avDriftMs: Math.abs(marks.audioCueAt - marks.lineSettledAt),
+    avDriftMs: Math.abs(marks.audioCueAt - marks.confirmVisualAt),
     audioLastCue: win.__game?._runtime?.audio?.lastCue ?? null,
   } satisfies PhoneReadyProbe;
 }, undefined);
