@@ -651,6 +651,7 @@ import { attachJobOfferPressFeedback } from "./src/jobOfferPressFeedback.js";
 import { applyJobOfferChoiceFeedback } from "./src/jobOfferChoiceFeedback.js";
 import { playJobOfferFocusFeedback } from "./src/jobOfferFocusFeedback.js";
 import { JOB_OFFER_CONFIRM_AUDIO } from "./src/jobOfferConfirmAudio.js";
+import { createAftersignAudioController } from "./audio.js";
 import { playJobOfferTapHaptic } from "./src/jobOfferTapHaptics.ts";
 import { playJobOfferAcknowledgementFeel } from "./src/jobOfferAcknowledgementFeel.js";
 import { buildMloopJobOfferSignature } from "./src/mloopJobOfferSignature.ts";
