@@ -2907,11 +2907,16 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // downstream consumer that split on `:` still gets the
             // jobId as the tail token, and now also gets the mloop
             // action id (memory-gated) as the head.
-            // State-level transition (lastAction + confirmCount + persistence
-            // + publish) is owned by jobOfferController.input.press below —
-            // the extraction surfaced by #2305. The decorative effects above
+            // State-level transition (lastAction + confirmCount) is owned by
+            // jobOfferController.input.press here, BEFORE the DOM receipt;
+            // persistence + publish by jobOfferController.commit() at the
+            // end of this handler — the extraction surfaced by #2305. The decorative effects above
             // (FEEL, haptics, audio, DOM receipt) stay here because they are
             // host-shaped render concerns, not interaction state.
+            jobOfferController.input.press({
+              actionId: mloopAction.id,
+              offerId: offer.id,
+            });
             // A job selection must answer the player's tap on the served
             // dialogue surface. `#line.textContent` and `state.npcs.io.lastLine`
             // are OWNED by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
