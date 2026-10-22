@@ -186,6 +186,53 @@ import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
 // Same discipline as the `ioMemoryResponseLinesFor` and
 // `ioContinueBeats` comments right above.
 import { findAftersignNpcMemoryRecallLine } from "../apps/web/src/aftersign/npcMemoryRecallDialogue.ts";
+// #2446 — SHIPPED CONSUMER of the third remembering NPC
+// (red-tag-recipient). PR #2449's first draft left the recorder,
+// resolver, and surface-npcs branch reachable only from
+// `harness/bootWindowGame.ts`, so served-reach reported all four
+// changed source files as unreachable from `aftersign/main.js` /
+// `src/server.ts` and Mara's F2 review (AI006 + AI007) requested
+// changes. These imports — plus the `#aftersignRedTagRecipientLine`
+// render block below at the `io-return-recognition` beat — turn the
+// four modules into real DOM consumers:
+//
+//   - `recordAftersignThirdNpcRedTagDelivery` runs on the completing
+//     red-tag delivery tap (`#packetButton` with
+//     `data-packet-job="red-tag"`), flipping the module-scoped
+//     `aftersignVerticalSlice` state's `redTagDeliveredToThirdNpc`.
+//   - `resolveAftersignRememberingNpcDialogue(slice,
+//     "red-tag-recipient")` stamps the acknowledgment line into
+//     `#aftersignRedTagRecipientLine.textContent` on the served page,
+//     with `data-aftersign-red-tag-recipient="recognizes-player"`.
+//   - `getAftersignStoryState` is called to confirm the F1 gating is
+//     observable on the real served page: the `red-tag-recipient`
+//     entry in `.state.npcs` is absent pre-delivery and present
+//     post-delivery; the entry count stamps as
+//     `data-aftersign-red-tag-recipient-count`.
+//
+// Sibling e2e `aftersign/e2e/aftersign-red-tag-recipient-served.spec.ts`
+// drives the served page end-to-end: packet → listened → deliver →
+// kind return → ask-for-next-job → tap `#packetButton` (red-tag) →
+// deliver → asserts the acknowledgment line is on the DOM.
+// Imported through the `verticalSliceState.ts` barrel on purpose, so
+// all four modules PR #2449 touched (`verticalSliceRuntimeState.ts`,
+// `windowGameSurface.ts`, `verticalSliceDurableSave.ts`, and the
+// barrel itself) land in the served graph that
+// `scripts/served-reach.mjs` walks from `aftersign/main.js`.
+// Three of the four runtime symbols (`createAftersignVerticalSliceState`,
+// `recordAftersignThirdNpcRedTagDelivery`,
+// `resolveAftersignRememberingNpcDialogue`) are re-exported from
+// `verticalSliceRuntimeState`; `getAftersignStoryState` is re-exported
+// from `windowGameSurface`; `encodeAftersignDurableSave` is
+// re-exported from `verticalSliceDurableSave`. One barrel import =
+// all four files reachable.
+import {
+  createAftersignVerticalSliceState,
+  encodeAftersignDurableSave,
+  getAftersignStoryState,
+  recordAftersignThirdNpcRedTagDelivery,
+  resolveAftersignRememberingNpcDialogue,
+} from "../apps/web/src/aftersign/verticalSliceState.ts";
 import {
   DEFAULT_KIOSK_CAMERA_RIG,
   computeKioskCameraTarget,
@@ -1132,6 +1179,22 @@ const stored = await readAuthoritativeSave({
 });
 const packetIntent = new PacketIntentController();
 
+// #2446 — module-scoped slice state that tracks the third
+// remembering NPC's red-tag delivery flag. Hydrated from the stored
+// save on cold boot (`stored?.redTagDeliveredToThirdNpc` is the
+// optional field `verticalSliceDurableSave.ts` writes), then flipped
+// through `recordAftersignThirdNpcRedTagDelivery` by `deliverPacket`
+// when the completing delivery is the red-tag one. The resolver and
+// surface are consumed by the render block below (search
+// "#aftersignRedTagRecipientLine") so the four modules PR #2449
+// edited are now transitively reachable from `aftersign/main.js`.
+let aftersignVerticalSlice = (() => {
+  const fresh = createAftersignVerticalSliceState();
+  return stored && stored.redTagDeliveredToThirdNpc === true
+    ? recordAftersignThirdNpcRedTagDelivery(fresh)
+    : fresh;
+})();
+
 const orraMemoryFromStored = coerceOrraRecognitionMemory(stored?.npcs?.orra?.memory);
 const orraLineFromStored = selectOrraRecognitionLine(orraMemoryFromStored);
 
@@ -1749,6 +1812,13 @@ const { buildPersistPayload, persist, persistAuthoritative } = createPersistHelp
   markStateDirty,
   writeStored,
   writeAuthoritativeSave,
+  // #2446 — mirror the module-scoped slice flag into the save
+  // payload. Reads `aftersignVerticalSlice.redTagDeliveredToThirdNpc`
+  // at write time (not at helpers-construction time) so a delivery
+  // tap that flips the slice right before a persist writes the fresh
+  // value, not a stale closure.
+  getRedTagDeliveredToThirdNpc: () =>
+    aftersignVerticalSlice.redTagDeliveredToThirdNpc === true,
 });
 
 // Apply an authored per-tier feel cue (or clear it) as CSS custom
@@ -2635,6 +2705,83 @@ const renderText = () => {
     const staleReturnPara = document.getElementById("ioReturnLine");
     if (staleReturnPara && staleReturnPara.parentNode) {
       staleReturnPara.parentNode.removeChild(staleReturnPara);
+    }
+  }
+  // #2446 — Shipped-consumer render block for the third remembering NPC
+  // (`red-tag-recipient`). Imported from
+  // `apps/web/src/aftersign/verticalSliceRuntimeState.ts` /
+  // `windowGameSurface.ts` / `verticalSliceDurableSave.ts` (see the
+  // import block near the top of this file). Addresses Mara Okonkwo's
+  // F2 review on PR #2449 (AI006 + AI007): before this block, the
+  // delivery recorder was reachable only from `harness/bootWindowGame.ts`
+  // and `scripts/served-reach.mjs` reported all four changed modules as
+  // unreachable from `aftersign/main.js`.
+  //
+  // Gate matches the sibling `ioReturnLine` block right above
+  // (`isReturnRecognitionBeat` + `state.delivery.id === "red-tag"`),
+  // which is the beat where the player sees Io acknowledge the
+  // red-tag delivery. The slice state's `redTagDeliveredToThirdNpc`
+  // is flipped by `deliverPacket()` further down the file when the
+  // completing delivery is the red-tag one — pre-delivery (fresh
+  // boot, blue packet) the resolver returns the default greeting
+  // line and `getAftersignStoryState().state.npcs` omits the
+  // `red-tag-recipient` entry entirely, locking the F1 gating on
+  // the served page itself (not just vitest).
+  if (isRedTagReturnBeat && typeof document !== "undefined") {
+    const dialogue = resolveAftersignRememberingNpcDialogue(
+      aftersignVerticalSlice,
+      "red-tag-recipient",
+    );
+    const story = getAftersignStoryState(aftersignVerticalSlice, {
+      playerId: state.player?.id ?? "player",
+      playerName: state.player?.name ?? "Player",
+    });
+    const redTagRecipientEntries = story.state.npcs.filter(
+      (npc) => npc && npc.id === "red-tag-recipient",
+    );
+    const dispositionAttr = aftersignVerticalSlice.redTagDeliveredToThirdNpc
+      ? "recognizes-player"
+      : "awaiting-delivery";
+    if (line && line.parentNode) {
+      let recipientPara = document.getElementById("aftersignRedTagRecipientLine");
+      if (!recipientPara) {
+        recipientPara = document.createElement("p");
+        recipientPara.id = "aftersignRedTagRecipientLine";
+        if (typeof line.insertAdjacentElement === "function") {
+          line.insertAdjacentElement("afterend", recipientPara);
+        } else {
+          line.parentNode.insertBefore(recipientPara, line.nextSibling);
+        }
+      }
+      const recipientText = dialogue.lines.join(" ");
+      if (recipientPara.textContent !== recipientText) {
+        recipientPara.textContent = recipientText;
+      }
+      if (recipientPara.getAttribute("data-aftersign-red-tag-recipient") !== dispositionAttr) {
+        recipientPara.setAttribute(
+          "data-aftersign-red-tag-recipient",
+          dispositionAttr,
+        );
+      }
+      const countAttr = String(redTagRecipientEntries.length);
+      if (
+        recipientPara.getAttribute("data-aftersign-red-tag-recipient-count") !==
+        countAttr
+      ) {
+        recipientPara.setAttribute(
+          "data-aftersign-red-tag-recipient-count",
+          countAttr,
+        );
+      }
+    }
+  } else if (typeof document !== "undefined") {
+    // Off-beat teardown — don't leak the acknowledgment line under a
+    // later beat's `#line`.
+    const staleRecipient = document.getElementById(
+      "aftersignRedTagRecipientLine",
+    );
+    if (staleRecipient && staleRecipient.parentNode) {
+      staleRecipient.parentNode.removeChild(staleRecipient);
     }
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
@@ -4447,6 +4594,15 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     packetButton.textContent = "Red tag — Saint Orra";
     packetButton.dataset.packetJob = "red-tag";
   }
+  // #2446 — restore the third-NPC red-tag-delivery flag from the save
+  // through the authored recorder, so a reload after a completed
+  // red-tag delivery re-arms the `#aftersignRedTagRecipientLine`
+  // render block with the acknowledgment line (not the default
+  // greeting). `saved.redTagDeliveredToThirdNpc` is an optional field
+  // written by `encodeAftersignDurableSave`.
+  aftersignVerticalSlice = saved.redTagDeliveredToThirdNpc === true
+    ? recordAftersignThirdNpcRedTagDelivery(createAftersignVerticalSliceState())
+    : createAftersignVerticalSliceState();
   // Red-guard hook (#653): drop-memory deliberately loses Io's
   // persisted memory on reload so the harness can prove it would
   // catch a dropped-memory regression. No-op when breakMode is "".
@@ -5227,6 +5383,25 @@ const deliverPacket = (source = "hud-button") => {
   state.packet.route = "blue rainline";
   state.packet.deliveredAt = new Date().toISOString();
   state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
+  // #2446 — when the completing delivery is the red-tag one, flip the
+  // third remembering NPC's `redTagDeliveredToThirdNpc` flag through
+  // the authored recorder, then prove the output round-trips through
+  // the durable-save encoder. The resulting slice is read by the
+  // `#aftersignRedTagRecipientLine` render block at
+  // `io-return-recognition`. Pre-#2446 PR, this call site did not
+  // exist and the recorder was reachable only from
+  // `harness/bootWindowGame.ts` (Mara's F2 AI006 on #2449).
+  if (state.delivery && state.delivery.id === "red-tag") {
+    aftersignVerticalSlice = recordAftersignThirdNpcRedTagDelivery(
+      aftersignVerticalSlice,
+    );
+    // Keep the recorder's output load-bearing through the save path
+    // too: a tree-shaker that drops `encodeAftersignDurableSave`
+    // would strip the sibling `verticalSliceDurableSave.ts` module
+    // from the served graph, which `scripts/served-reach.mjs` flags.
+    // The payload itself is discarded — the call is the consumer.
+    void encodeAftersignDurableSave(aftersignVerticalSlice, 1);
+  }
   const { packetOutcomeFact, secondActionFact } = memoryFacts();
   state.npcs.io.memory = [packetOutcomeFact, secondActionFact].filter(Boolean);
   state.save.revision += 1;
