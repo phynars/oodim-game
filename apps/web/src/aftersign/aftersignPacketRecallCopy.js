@@ -13,8 +13,11 @@
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io remembers you brought the packet back sealed. She kept a lamp burning on the safe way you made; keep the route lit.",
   fast: "Io remembers you took the shortcut and beat the bell. The fast packet waits where its echo cannot reach. Take it before the next ring finds it.",
-  // Failed route recall names the durable result: the player returned
-  // with a split seal. "Mend" / "damage" remain the durable anchors.
+  // Failed route: the packet comes home damaged. Reached by any failed
+  // fact that is NOT the fragile carry — `repair-the-loss` (played) and
+  // legacy route-only saves like `{ lastRoute: "safe", succeeded: false }`.
+  // "Mend" / "damage" are the durable anchors — see
+  // `aftersignPacketRecallFailedCopy.test.ts`.
   failed: "Io remembers you carried the packet into the dark and came back with its seal split. She sets the damage between you: mend it, or carry its damage forward into the next delivery.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
@@ -27,6 +30,13 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
  * Resolve the recall token from the durable routeRisk memory.
  * Keys fast runs on `lastAction` so Io never recalls a route the player
  * did not take (#2164). Returns null (teardown) when there is no memory.
+ *
+ * #2458: `aftersign/main.js` records the fragile carry as a FAILED fast
+ * run (`succeeded: false`, #2401) so `computeOfferedActions` offers
+ * `repair-the-loss` next. The durable fact and this resolver agree the
+ * run failed; the recall names the specific failed action the player
+ * chose ("fragile") instead of the generic failure line. Every other
+ * failed fact still resolves to "failed".
  *
  * @param {{ lastRoute?: string, succeeded?: boolean, lastAction?: string } | null | undefined} routeRisk
  * @returns {string | null}

@@ -162,7 +162,7 @@ test.describe("AFTERSIGN fragile-packet durable-save contract", () => {
       await expect(fragile).toBeVisible({ timeout: WAIT_MS });
       await fragile.tap();
 
-      // Server-authoritative pin: the successful fragile-route fact
+      // Server-authoritative pin: the failed fragile-route fact
       // landed on the save the fresh context will read.
       const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(PLAYER_ID)}/${encodeURIComponent(slot)}`;
       await expect

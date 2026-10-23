@@ -2457,8 +2457,12 @@ const publishState = () => {
           route = "fast";
           succeeded = true;
         } else if (action === "carry-a-fragile-packet") {
+          // #2401: the fragile carry is the visible, player-caused
+          // failure that unlocks repair-the-loss from a fresh slot.
+          // #2458: its recall is named by lastAction ("fragile"), not
+          // by the failed flag — see aftersignPacketRecallToken.
           route = "fast";
-          succeeded = true;
+          succeeded = false;
         } else if (action === "take-the-long-way") {
           route = "safe";
           succeeded = true;
@@ -2956,10 +2960,12 @@ const renderText = () => {
           labelForAction: labelForRouteRiskAction,
           onChoose: (action) => {
           // Map the offered action back to the {route, succeeded}
-          // shape the memory fact wants. "take-the-shortcut" and
-          // "carry-a-fragile-packet" record a successful fast run;
-          // "take-the-long-way" a successful safe run;
-          // "repair-the-loss" records a failed run on whatever
+          // shape the memory fact wants. "take-the-shortcut" records a
+          // successful fast run; "carry-a-fragile-packet" a FAILED fast
+          // run (#2401 — the visible failure that unlocks
+          // repair-the-loss; its recall is still named "fragile" by
+          // lastAction, #2458); "take-the-long-way" a successful safe
+          // run; "repair-the-loss" records a failed run on whatever
           // route the last one used (default: safe — the recovery
           // path).
           let route = state.player.routeRisk?.lastRoute ?? "safe";
@@ -2969,7 +2975,7 @@ const renderText = () => {
             succeeded = true;
           } else if (action === "carry-a-fragile-packet") {
             route = "fast";
-            succeeded = true;
+            succeeded = false;
           } else if (action === "take-the-long-way") {
             route = "safe";
             succeeded = true;
