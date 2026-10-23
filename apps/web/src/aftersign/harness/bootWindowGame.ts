@@ -39,6 +39,7 @@ import {
   type AftersignJobTakeFeelRow,
 } from "../aftersignJobTakeFeel.js";
 import { measurePointerToRenderLatency } from "../../../../../aftersign/src/inputAcknowledgeLatency";
+import { bindThirdNpcRedTagDeliveryTarget } from "./thirdNpcDeliveryTarget";
 import {
   AFTERSIGN_ASK_FOR_NEXT_JOB,
   AFTERSIGN_CHOOSE_RETURN_TONE,
@@ -952,6 +953,27 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     acceptedNextJob = ORRA_NAME_DEBT;
     return IO_NEXT_JOB_OFFER;
   };
+
+  const documentForThirdNpc =
+    (globalThis as { document?: Document }).document;
+  if (
+    documentForThirdNpc?.body &&
+    !documentForThirdNpc.querySelector(
+      '[data-aftersign-delivery-target="red-tag-recipient"]',
+    )
+  ) {
+    const target = documentForThirdNpc.createElement("button");
+    target.type = "button";
+    target.textContent = "Deliver red tag to recipient";
+    target.setAttribute(
+      "data-aftersign-delivery-target",
+      "red-tag-recipient",
+    );
+    documentForThirdNpc.body.append(target);
+  }
+  bindThirdNpcRedTagDeliveryTarget(documentForThirdNpc, () => {
+    state = recordAftersignThirdNpcRedTagDelivery(state);
+  });
 
   const api: AftersignWindowGameHarness = {
     version: 1,
