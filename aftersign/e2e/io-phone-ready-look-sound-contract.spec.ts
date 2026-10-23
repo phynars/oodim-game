@@ -13,29 +13,35 @@ const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 const MAX_VIEWPORT_EDGE_EPSILON_PX = 1;
 const MAX_UI_SETTLE_MS = 360;
 // `avDriftMs = |audioCueAt - confirmVisualAt|` measures the gap between
-// two deliberate stamp points, so the budget is a sum of authored latency
-// and platform scheduling slack, NOT a tight fit around one observation:
+// two stamp points that bracket the `enableAudio()` async step, so the
+// budget is a sum of authored async work and poll sampling slack — NOT
+// the `ioReturnActionFeedback` `couplingDelayMs: 28` timer, which is
+// irrelevant on this path (that timer gates the io-return-action beat's
+// own feedback, not `packet-confirmed`).
 //
-//   * `confirmVisualAt` is stamped SYNCHRONOUSLY on the `deliver` tap by
-//     `triggerKioskFeedback` (aftersign/main.js:4642 — `state.interaction
-//     .confirmStartedAt = performance.now()`).
-//   * `audioCueAt` is stamped inside the `armIoReturnActionFeedback`
-//     callback (aftersign/main.js:529 — `state._runtime.audio.lastCueAt
-//     = performance.now()`), which fires on a `setTimeout(..., 28)` —
-//     the authored A/V coupling delay (`couplingDelayMs: 28` at
-//     aftersign/src/ioReturnActionFeedback.js:19). That 28ms is a design
-//     choice: haptic → tiny gap → tone reads as one event in-hand.
+// Actual stamp points on the `deliver` tap (aftersign/main.js:5027,5044):
+//   * `confirmVisualAt` ← `state.interaction.confirmStartedAt`, written
+//     SYNCHRONOUSLY by `triggerKioskFeedback` (aftersign/main.js:4642)
+//     before `playKioskConfirm()` returns.
+//   * `audioCueAt` ← `state._runtime.audio.lastCueAt`, written by
+//     `stamp("packet-confirmed")` inside `playKioskConfirm`
+//     (aftersign/audio.js:79-83). `playKioskConfirm` stamps TWICE:
+//     once synchronously before `await enableAudio()`, once after.
+//     Both writes satisfy `audio.lastCue === 'packet-confirmed'`, so
+//     the 100ms-polled `stampMarks` reader can latch either one.
 //
-// Minimum achievable drift is therefore the authored 28ms. On top of
-// that, headless Chromium's `setTimeout` dispatch under e2e load regularly
-// adds 20-30ms of jitter (observed: 54.4ms repeatable on CI → ~26ms of
-// slack over design). The budget is set at 100ms = 28ms authored + ~70ms
-// CI headroom, which also stays well under the published audiovisual
-// simultaneity window (~80-100ms is the perceptual threshold for "fused"
-// A/V events, per standard psychophysics). If this ever exceeds 100ms the
-// correct fix is to inspect the two stamp points, not to raise the cap:
-// a real regression would be a drift increase in `couplingDelayMs` or a
-// `confirmStartedAt` write that moved off the synchronous tap path.
+// If the poll catches the pre-await stamp, drift is ~0ms. If it catches
+// the post-await stamp (common when `audioContext.resume()` has to run
+// or when the microtask queue defers the second `stamp` past one poll
+// tick), drift is `enableAudio()` cost + up to one `POLL_INTERVAL_MS`
+// (100ms) of sampling slack. The budget is set at 100ms to cover that
+// worst case without flaking; it is a CEILING on scheduler jitter, not
+// a target or a perceptual threshold.
+//
+// If this ever exceeds 100ms the first thing to inspect is the two
+// `stamp("packet-confirmed")` calls in `playKioskConfirm` — a regression
+// would be `enableAudio()` growing an unexpected await (e.g. a new fetch
+// or decode), not a shift in `couplingDelayMs`.
 const MAX_AV_DRIFT_MS = 100;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
