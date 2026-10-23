@@ -173,11 +173,15 @@ test.describe("AFTERSIGN fragile-packet durable-save contract", () => {
           async () => {
             const response = await firstPage.request.get(saveUrl);
             const saved = (await response.json()) as RouteRiskSave;
-            return saved.payload?.player?.routeRisk?.succeeded;
+            const routeRisk = saved.payload?.player?.routeRisk;
+            return {
+              lastAction: routeRisk?.lastAction,
+              succeeded: routeRisk?.succeeded,
+            };
           },
           { timeout: WAIT_MS },
         )
-        .toBe(true);
+        .toEqual({ lastAction: "carry-a-fragile-packet", succeeded: false });
 
       // Play on past packet-choice so the next cold boot lands on a
       // beat the recall paragraph can render. `ask-for-next-job` is
