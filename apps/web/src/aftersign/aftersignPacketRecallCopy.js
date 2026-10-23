@@ -20,7 +20,7 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   // The revised line names the fact Io is remembering: the player went
   // into the dark and brought back what the dark left. "Mend" / "damage"
   // are the durable anchors — see `aftersignPacketRecallFailedCopy.test.ts`.
-  failed: "Io remembers you carried the packet into the dark and brought back what the dark left. She does not call it bad luck: mend it, or carry its damage forward.",
+  failed: "Io remembers you carried the packet into the dark and came back with its seal split. She sets the damage between you: mend it, or carry its damage forward into the next delivery.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
   fragile: "Io remembers how carefully you carried the fragile packet. She kept another clear of the rush because you did. Carry this one gently, too.",
