@@ -1313,7 +1313,7 @@ describe("Aftersign window.__game harness (#918)", () => {
   // `red-tag-recipient` NPC entry in the story snapshot (gated per F1
   // so it never appears before delivery), and routes the recognition
   // acknowledgment line through the shared resolver.
-  it("wires window.__game.deliverRedTagToThirdNpc through the shipped surface", () => {
+  it("makes the third NPC reachable through the red-tag delivery choice", () => {
     const game = window.__game;
     expect(game).toBeDefined();
 
@@ -1332,8 +1332,8 @@ describe("Aftersign window.__game harness (#918)", () => {
       preSnapshot?.state.npcs.some((npc) => npc?.id === "red-tag-recipient"),
     ).toBe(false);
 
-    // Fire the shipped-surface recorder.
-    game?.deliverRedTagToThirdNpc();
+    // The delivery choice is the harness-reachable target.
+    game?.input.choose("deliver-red-tag-to-third-npc");
 
     // Post-delivery: the entry appears with the acknowledgment memory.
     const postSnapshot = game?.getStoryState();

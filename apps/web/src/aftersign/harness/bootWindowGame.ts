@@ -355,7 +355,7 @@ export type AftersignWindowGameHarness = {
    * intents.
    */
   input: {
-    choose: (choiceId: "accept-next-job" | "choose-return-tone" | "ask-for-next-job" | string) => IoNextJobBeat | null;
+    choose: (choiceId: "accept-next-job" | "choose-return-tone" | "ask-for-next-job" | "deliver-red-tag-to-third-npc" | string) => IoNextJobBeat | null;
     resetPointerToRenderLatency: () => void;
     markPointerIntent: (input: { pointerAtMs: number; pointerId: number }) => void;
     markPointerRendered: (input: { renderedAtMs: number; pointerId: number }) => void;
@@ -1160,6 +1160,10 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
         }
         if (choiceId === AFTERSIGN_ASK_FOR_NEXT_JOB) {
           state = recordAftersignNextJobRequest(state);
+          return null;
+        }
+        if (choiceId === "deliver-red-tag-to-third-npc") {
+          state = recordAftersignThirdNpcRedTagDelivery(state);
           return null;
         }
         return null;
