@@ -136,10 +136,10 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
       await firstPage.locator("#packetButton").tap();
       await waitForBeat(firstPage, "packet-choice");
 
-      // Ritual: fragile isn't on the tray for a fresh slot. Tap the
+      // Ritual: recovery isn't on the tray for a fresh slot. Tap the
       // lit stair (safe, succeeded:true), wait out the route-risk
-      // choice lock, then tap fragile to overwrite the memory with
-      // fast/succeeded:false — the fact pinned across contexts.
+      // choice lock, then repair the loss to overwrite the memory with
+      // safe/succeeded:false — the fact pinned across contexts.
       const tray = firstPage.locator("#routeRiskChoice");
       const litStair = tray.locator(
         'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
@@ -157,11 +157,11 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
         { timeout: WAIT_MS },
       );
 
-      const fragile = tray.locator(
-        'button[data-aftersign-tap-choice="carry-a-fragile-packet"]:not([disabled])',
+      const repair = tray.locator(
+        'button[data-aftersign-tap-choice="repair-the-loss"]:not([disabled])',
       );
-      await expect(fragile).toBeVisible({ timeout: WAIT_MS });
-      await fragile.tap();
+      await expect(repair).toBeVisible({ timeout: WAIT_MS });
+      await repair.tap();
 
       // Server-authoritative pin: the failed fact landed on the save
       // the fresh context will read. (The beat is still packet-choice
