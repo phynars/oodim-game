@@ -102,7 +102,11 @@ test.describe("AFTERSIGN M-CONTINUE next-packet loop", () => {
     await expect(nextPacketDeliver, "fresh packet deliver choice should be visible after the loop resets").toBeVisible({
       timeout: WAIT_MS,
     });
-    await expect(nextPacketDeliver).toHaveText(/Deliver packet/i);
+    // The second packet in the loop is Io's red tag
+    // (`state.delivery.id === "red-tag"` after round 1), so the
+    // packet-choice deliver control names the red tag and its recipient
+    // (main.js packet-choice branch) instead of the generic copy.
+    await expect(nextPacketDeliver).toHaveText(/Deliver red tag to the recipient/i);
     await nextPacketDeliver.click({ trial: true, timeout: WAIT_MS });
   });
 });
