@@ -38,11 +38,11 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
  */
 export function aftersignPacketRecallToken(routeRisk) {
   if (!routeRisk || typeof routeRisk !== "object") return null;
-  if (routeRisk.lastAction === "carry-a-fragile-packet") return "fragile";
   if (routeRisk.succeeded === false) return "failed";
   if (routeRisk.lastRoute === "safe") return "safe";
   if (routeRisk.lastRoute === "fast") {
     if (routeRisk.lastAction === "take-the-shortcut") return "fast";
+    if (routeRisk.lastAction === "carry-a-fragile-packet") return "fragile";
     return "fastUnknown";
   }
   return null;

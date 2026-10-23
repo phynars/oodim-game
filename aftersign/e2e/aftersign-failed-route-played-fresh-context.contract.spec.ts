@@ -157,11 +157,11 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
         { timeout: WAIT_MS },
       );
 
-      const repair = tray.locator(
-        'button[data-aftersign-tap-choice="repair-the-loss"]:not([disabled])',
+      const fragile = tray.locator(
+        'button[data-aftersign-tap-choice="carry-a-fragile-packet"]:not([disabled])',
       );
-      await expect(repair).toBeVisible({ timeout: WAIT_MS });
-      await repair.tap();
+      await expect(fragile).toBeVisible({ timeout: WAIT_MS });
+      await fragile.tap();
 
       // Server-authoritative pin: the failed fact landed on the save
       // the fresh context will read. (The beat is still packet-choice
