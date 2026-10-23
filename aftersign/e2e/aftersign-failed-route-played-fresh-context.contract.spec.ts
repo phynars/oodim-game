@@ -112,8 +112,8 @@ async function tapReturnReason(page: Page, reason: string): Promise<void> {
   await button.tap();
 }
 
-test.describe("AFTERSIGN played failed-route durable-save contract", () => {
-  test("a fresh player's fragile packet failure survives a storage-free browser session", async ({
+test.describe("AFTERSIGN fragile-packet durable-save contract", () => {
+  test("a fresh player's fragile-packet recall survives a storage-free browser session", async ({
     browser,
   }: {
     browser: Browser;
@@ -136,10 +136,9 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
       await firstPage.locator("#packetButton").tap();
       await waitForBeat(firstPage, "packet-choice");
 
-      // Ritual: fragile isn't on the tray for a fresh slot. Tap the
-      // lit stair (safe, succeeded:true), wait out the route-risk
-      // choice lock, then tap fragile to overwrite the memory with
-      // fast/succeeded:false — the fact pinned across contexts.
+      // Fragile is not on the fresh-slot tray. Tap the lit stair first,
+      // then wait out the choice lock before choosing the visible fragile
+      // packet route; it overwrites memory with fast/succeeded:true.
       const tray = firstPage.locator("#routeRiskChoice");
       const litStair = tray.locator(
         'button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
@@ -163,9 +162,8 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
       await expect(fragile).toBeVisible({ timeout: WAIT_MS });
       await fragile.tap();
 
-      // Server-authoritative pin: the failed fact landed on the save
-      // the fresh context will read. (The beat is still packet-choice
-      // here — see the file header.)
+      // Server-authoritative pin: the successful fragile-route fact
+      // landed on the save the fresh context will read.
       const saveUrl = `${SAVE_ENDPOINT_BASE}/${encodeURIComponent(PLAYER_ID)}/${encodeURIComponent(slot)}`;
       await expect
         .poll(
@@ -176,7 +174,7 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
           },
           { timeout: WAIT_MS },
         )
-        .toBe(false);
+        .toBe(true);
 
       // Play on past packet-choice so the next cold boot lands on a
       // beat the recall paragraph can render. `ask-for-next-job` is
@@ -217,7 +215,8 @@ test.describe("AFTERSIGN played failed-route durable-save contract", () => {
 
       const recall = returningPage.locator(`#${PACKET_RECALL_LINE_ID}`);
       await expect(recall).toBeVisible({ timeout: WAIT_MS });
-      await expect(recall).toHaveAttribute(PACKET_RECALL_LINE_DATA_ATTR, "failed");
+      await expect(recall).toHaveAttribute(PACKET_RECALL_LINE_DATA_ATTR, "fragile");
+      await expect(recall).toContainText("carefully you carried the fragile packet");
       await expect(recall).toHaveText(/\S/);
     } finally {
       await returningSession.close();

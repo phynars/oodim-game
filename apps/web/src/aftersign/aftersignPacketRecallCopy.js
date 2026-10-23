@@ -13,13 +13,8 @@
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   safe: "Io remembers you brought the packet back sealed. She kept a lamp burning on the safe way you made; keep the route lit.",
   fast: "Io remembers you took the shortcut and beat the bell. The fast packet waits where its echo cannot reach. Take it before the next ring finds it.",
-  // #2427: the pre-#2427 line ("the last packet did not come home") was
-  // vague — the packet DOES come home on a failed route, it just comes
-  // home damaged (recordRouteRun writes succeeded:false when the fragile
-  // packet is carried, see apps/web/src/aftersign/src/routeRiskFeel.ts).
-  // The revised line names the fact Io is remembering: the player went
-  // into the dark and brought back what the dark left. "Mend" / "damage"
-  // are the durable anchors — see `aftersignPacketRecallFailedCopy.test.ts`.
+  // Failed route recall names the durable result: the player returned
+  // with a split seal. "Mend" / "damage" remain the durable anchors.
   failed: "Io remembers you carried the packet into the dark and came back with its seal split. She sets the damage between you: mend it, or carry its damage forward into the next delivery.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
@@ -38,11 +33,16 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
  */
 export function aftersignPacketRecallToken(routeRisk) {
   if (!routeRisk || typeof routeRisk !== "object") return null;
+  if (
+    routeRisk.lastRoute === "fast" &&
+    routeRisk.lastAction === "carry-a-fragile-packet"
+  ) {
+    return "fragile";
+  }
   if (routeRisk.succeeded === false) return "failed";
   if (routeRisk.lastRoute === "safe") return "safe";
   if (routeRisk.lastRoute === "fast") {
     if (routeRisk.lastAction === "take-the-shortcut") return "fast";
-    if (routeRisk.lastAction === "carry-a-fragile-packet") return "fragile";
     return "fastUnknown";
   }
   return null;
