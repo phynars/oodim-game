@@ -51,8 +51,11 @@ import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRis
 //     is the one used by `aftersign-route-risk-outcome-line-served.spec.ts`:
 //     tap `take-the-long-way` first (records safe/succeeded:true), wait
 //     out `ROUTE_RISK_CHOICE_LOCK_MS`, then tap fragile — which
-//     overwrites the memory to fast/succeeded:false. That is the fact
-//     this contract pins across a fresh browser context.
+//     overwrites the memory to lastAction carry-a-fragile-packet,
+//     fast/succeeded:false (a failed run). The save poll gates on that
+//     lastAction so the earlier stair save cannot satisfy it; the
+//     recall paragraph is then named by lastAction ("fragile"). That
+//     is the fact this contract pins across a fresh browser context.
 //
 // Timeout budget mirrors the sibling specs that drive a full M-loop +
 // a cross-boot restore (e.g. `m-loop-two-rounds-phone-playtest.spec.ts`
