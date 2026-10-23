@@ -203,6 +203,11 @@ export type AftersignWindowGameHarness = {
    * `recordAftersignThirdNpcRedTagDelivery` — without it the recorder
    * is only reachable from vitest.
    */
+  /**
+   * Harness-only red-tag delivery target. No served UI consumes this
+   * collection yet; tests or a future renderer may call `deliver()`.
+   */
+  redTagDeliveryTargets: readonly [{ id: "red-tag-recipient"; deliver: () => void }];
   deliverRedTagToThirdNpc: () => void;
   /**
    * Record the posture the player struck when Io asked why they came
@@ -961,6 +966,12 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     meetNpc(id) {
       state = applyMeet(id, state);
     },
+    redTagDeliveryTargets: [{
+      id: "red-tag-recipient",
+      deliver() {
+        state = recordAftersignThirdNpcRedTagDelivery(state);
+      },
+    }],
     deliverRedTagToThirdNpc() {
       state = recordAftersignThirdNpcRedTagDelivery(state);
     },
