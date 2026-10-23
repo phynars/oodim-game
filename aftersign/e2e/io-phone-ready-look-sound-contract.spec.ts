@@ -12,7 +12,55 @@ const DETERMINISTIC_SLOT = 'io-phone-ready-contract';
 const STORAGE_KEY = `aftersign:kiosk-slice:${DETERMINISTIC_SLOT}`;
 const MAX_VIEWPORT_EDGE_EPSILON_PX = 1;
 const MAX_UI_SETTLE_MS = 360;
-const MAX_AV_DRIFT_MS = 50;
+// `avDriftMs = |audioCueAt - confirmVisualAt|` is the delta between two
+// `performance.now()` values stamped by the runtime itself:
+//   * `confirmVisualAt` ← `state.interaction.confirmStartedAt`, written
+//     by `triggerKioskFeedback` (aftersign/main.js:4642).
+//   * `audioCueAt`      ← `state._runtime.audio.lastCueAt`, written by
+//     `stamp("packet-confirmed")` in `playKioskConfirm`
+//     (aftersign/audio.js:14-15, called at audio.js:79 and audio.js:81).
+// The spec's `stampMarks` reader (installed above) latches the first
+// non-undefined values it sees; `POLL_INTERVAL_MS` governs which stamp
+// pair gets latched (pre- vs post-`await enableAudio()`), but it does
+// NOT add ms to the delta — the delta is fixed by the two timestamps
+// at the moment they were written. Poll slack is a selection effect,
+// not a drift contributor.
+//
+// The drift is the SYNCHRONOUS work the runtime does between the two
+// stamp calls. On the `deliver` tap that work is:
+//
+//   1. `triggerKioskFeedback` writes `confirmStartedAt` (main.js:4642),
+//      then `markStateDirty()` + `publishState()` (main.js:4651-4652).
+//      `publishState` (main.js:2051) does a full `clone(state.story)`,
+//      `clone(state.player)`, Io/Orra line resync, and the window.__game
+//      rebuild — tens of ms on cold CI.
+//   2. `deliverPacket` runs more synchronous work: packet mutations,
+//      `memoryFacts()`, `startMemoryBeatCameraProbe()`, more
+//      `markStateDirty()` calls (main.js:5029-5042).
+//   3. `playKioskConfirm` (audio.js:78) calls `stamp("packet-confirmed")`
+//      which reads `performance.now()` into `lastCueAt`. This is the
+//      pre-await stamp; drift here is (1)+(2) above.
+//   4. If the poll instead latches the post-await stamp (audio.js:81),
+//      drift also includes `enableAudio()` (audio.js:50-61): the first
+//      call constructs a new `AudioContext` and `await`s
+//      `audioContext.resume()`, both of which can take tens of ms on
+//      cold CI the first time the context is unlocked.
+//
+// The pre-flake baseline of 50ms assumed the two stamps were adjacent;
+// they are not. #2452 reports a reproducible ~54ms reading on cold CI,
+// which is consistent with the publishState+clone cost in (1)+(2) when
+// the pre-await stamp is caught, or with AudioContext construction when
+// the post-await stamp is caught. 100ms is a conservative CI ceiling —
+// ~2x the observed cold reading — chosen to cover both branches without
+// needing a measurement run to pin the exact p99. It is NOT a perceptual
+// threshold and NOT a target; it is a flake-ceiling on scheduler jitter.
+//
+// If this ever exceeds 100ms, the first thing to inspect is NOT
+// `couplingDelayMs` (that timer is on the io-return-action beat path,
+// not `packet-confirmed`) but either (a) `publishState` growing a new
+// synchronous clone on the deliver tap or (b) `enableAudio()` growing
+// a new await (e.g. a decode or fetch).
+const MAX_AV_DRIFT_MS = 100;
 const EXPECTED_AUDIO_CUE = 'packet-confirmed';
 
 import { expectedIoRecognitionLine } from '../src/ioRecognitionDialogue';
