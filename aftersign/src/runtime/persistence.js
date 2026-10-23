@@ -50,6 +50,14 @@ export const createPersistHelpers = ({
   markStateDirty,
   writeStored,
   writeAuthoritativeSave,
+  // #2446 — thunk returning the third-NPC red-tag-delivery flag from
+  // the slice state in main.js. Optional for backwards-compat with
+  // any contract test that constructs the helpers without it; when
+  // omitted the field is simply absent from the payload (same
+  // byte-for-byte shape as pre-#2446). The field is `undefined` /
+  // omitted when the flag is false, mirroring
+  // `encodeAftersignDurableSave`'s optional emit.
+  getRedTagDeliveredToThirdNpc = () => false,
 }) => {
   const buildPersistPayload = ({ dirty = false } = {}) => ({
     beat: state.scene.beat,
@@ -69,6 +77,9 @@ export const createPersistHelpers = ({
         lastLineMemoryRefs: [...(state.npcs.orra.lastLineMemoryRefs ?? [])],
       },
     },
+    ...(getRedTagDeliveredToThirdNpc() === true
+      ? { redTagDeliveredToThirdNpc: true }
+      : {}),
     save: {
       revision: state.save.revision,
       dirty,

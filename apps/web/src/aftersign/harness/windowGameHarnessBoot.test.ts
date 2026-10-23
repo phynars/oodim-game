@@ -1304,4 +1304,71 @@ describe("Aftersign window.__game harness (#918)", () => {
     expect(atNegative?.phase).toBe("press");
     expect(atNegative?.elapsedMs).toBe(0);
   });
+
+  // #2446 — the harness is the shipped-surface consumer of
+  // `recordAftersignThirdNpcRedTagDelivery`. Without this test the
+  // recorder is reachable only from vitest (the AI006 Mara flagged in
+  // F2); with it, the aftersign blocking lane proves `window.__game.
+  // deliverRedTagToThirdNpc()` flips the runtime flag, surfaces the
+  // `red-tag-recipient` NPC entry in the story snapshot (gated per F1
+  // so it never appears before delivery), and routes the recognition
+  // acknowledgment line through the shared resolver.
+  it("wires window.__game.deliverRedTagToThirdNpc through the shipped surface", () => {
+    const game = window.__game;
+    expect(game).toBeDefined();
+
+    // Start fresh — no delivery recorded yet.
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+
+    // Pre-delivery: the `red-tag-recipient` entry MUST be absent from
+    // the surface npcs array. This locks the F1 gating in the lane
+    // CI actually runs — a regression that reintroduces the
+    // unconditional append fails HERE before it fails the exact-match
+    // `toEqual([io])` assertions in the sibling specs.
+    const preSnapshot = game?.getStoryState();
+    expect(
+      preSnapshot?.state.npcs.some((npc) => npc?.id === "red-tag-recipient"),
+    ).toBe(false);
+
+    // Fire the shipped-surface recorder.
+    game?.deliverRedTagToThirdNpc();
+
+    // Post-delivery: the entry appears with the acknowledgment memory.
+    const postSnapshot = game?.getStoryState();
+    const redTagNpc = postSnapshot?.state.npcs.find(
+      (npc) => npc?.id === "red-tag-recipient",
+    );
+    expect(redTagNpc).toMatchObject({
+      id: "red-tag-recipient",
+      name: "Red Tag Recipient",
+      disposition: "recognizes-player",
+      memory: { redTagDeliveredToThirdNpc: true },
+    });
+
+    // Durable round-trip: the flag survives save/restore through the
+    // harness verbs (`save()` → `load()`), proving the recorder's
+    // effect is persisted end-to-end, not just held in the harness's
+    // in-memory state.
+    const payload = game?.save();
+    expect(typeof payload).toBe("string");
+    game?.restoreDurableSave(
+      encodeAftersignDurableSave(createAftersignVerticalSliceState(), 1),
+    );
+    expect(
+      game
+        ?.getStoryState()
+        .state.npcs.some((npc) => npc?.id === "red-tag-recipient"),
+    ).toBe(false);
+    game?.load(payload!);
+    const reloaded = game?.getStoryState();
+    expect(
+      reloaded?.state.npcs.find((npc) => npc?.id === "red-tag-recipient"),
+    ).toMatchObject({
+      disposition: "recognizes-player",
+      memory: { redTagDeliveredToThirdNpc: true },
+    });
+    expect(JSON.parse(JSON.stringify(reloaded))).toEqual(reloaded);
+  });
 });

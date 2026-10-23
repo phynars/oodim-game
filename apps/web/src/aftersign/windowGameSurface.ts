@@ -259,6 +259,19 @@ export type AftersignStoryStateSnapshot = {
             orraAction: AftersignOrraAction | null;
           };
         }
+      | {
+          // Only emitted once `redTagDeliveredToThirdNpc === true`;
+          // omitted from `state.npcs` before delivery. The entry's
+          // presence is itself the recognition signal, matching Orra's
+          // gated-emission pattern above.
+          id: "red-tag-recipient";
+          name: "Red Tag Recipient";
+          disposition: "recognizes-player";
+          rememberedSessionIds: string[];
+          memory: {
+            redTagDeliveredToThirdNpc: true;
+          };
+        }
     >;
   };
 };
@@ -404,6 +417,25 @@ export function getAftersignStoryState(
                 memory: {
                   recognizesPlayer: state.orraRecognizesPlayer,
                   orraAction: state.orraAction,
+                },
+              },
+            ]
+          : []),
+        // The third remembering NPC only appears on the surface
+        // snapshot once the player has completed the red-tag delivery.
+        // Pre-delivery the entry is omitted entirely so existing
+        // exact-match npc assertions ([io] / [io, orra]) stay green —
+        // the entry's presence IS the "recognizes-player" signal, same
+        // shape as Orra's gated branch above.
+        ...(state.redTagDeliveredToThirdNpc
+          ? [
+              {
+                id: "red-tag-recipient" as const,
+                name: "Red Tag Recipient" as const,
+                disposition: "recognizes-player" as const,
+                rememberedSessionIds,
+                memory: {
+                  redTagDeliveredToThirdNpc: true,
                 },
               },
             ]

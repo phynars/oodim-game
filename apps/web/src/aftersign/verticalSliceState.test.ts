@@ -20,6 +20,10 @@ describe("verticalSliceState", () => {
       orraHasMetPlayer: false,
       orraRecognizesPlayer: false,
       orraAction: null,
+      // #2446: third remembering NPC's red-tag-delivery flag. Flipped
+      // by `recordAftersignThirdNpcRedTagDelivery` on the completing
+      // red-tag deliver tap; fresh slice starts false.
+      redTagDeliveredToThirdNpc: false,
       hasChosenReturnTone: false,
       hasAskedForNextJob: false,
       rememberedTone: undefined,

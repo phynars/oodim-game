@@ -92,6 +92,7 @@ import {
   meetOrraForAftersignSlice,
   recordAftersignNextJobRequest,
   recordAftersignReturnToneChoice,
+  recordAftersignThirdNpcRedTagDelivery,
   resolveAftersignRememberingNpcDialogue,
   restoreAftersignDurableSave,
   type AftersignRememberedTone,
@@ -191,6 +192,18 @@ export type AftersignWindowGameHarness = {
   version: 1;
   restoreDurableSave: (payload: string) => void;
   meetNpc: (id: "io" | "orra") => void;
+  /**
+   * Record the player's completed red-tag delivery to the third
+   * remembering NPC (#2446). Flips `redTagDeliveredToThirdNpc` on the
+   * runtime state so the next `getStoryState()` emits the
+   * `red-tag-recipient` entry in `state.npcs` and
+   * `resolveAftersignRememberingNpcDialogue("red-tag-recipient")`
+   * returns the acknowledgment line instead of the default greeting.
+   * This is the shipped surface consumer of
+   * `recordAftersignThirdNpcRedTagDelivery` — without it the recorder
+   * is only reachable from vitest.
+   */
+  deliverRedTagToThirdNpc: () => void;
   /**
    * Record the posture the player struck when Io asked why they came
    * back — third axis on the return beat, per `ioVoiceContract.ts`.
@@ -947,6 +960,9 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     },
     meetNpc(id) {
       state = applyMeet(id, state);
+    },
+    deliverRedTagToThirdNpc() {
+      state = recordAftersignThirdNpcRedTagDelivery(state);
     },
     setIoReturnReason(reason) {
       ioReturnReason = reason;

@@ -11,6 +11,8 @@ export type AftersignVerticalSliceSave = {
   ioHasMetPlayer: boolean;
   orraAction?: AftersignOrraAction | null;
   orraHasMetPlayer?: boolean;
+  /** Optional for compatibility with saves written before red-tag delivery existed. */
+  redTagDeliveredToThirdNpc?: boolean;
   /**
    * M-CONTINUE-E2: the returning player has committed a return-tone
    * choice. Persisted so a fresh boot restore lands back on
@@ -51,6 +53,9 @@ export function createAftersignVerticalSliceSave(
           orraHasMetPlayer: state.orraHasMetPlayer,
           orraAction: state.orraAction,
         }
+      : {}),
+    ...(state.redTagDeliveredToThirdNpc
+      ? { redTagDeliveredToThirdNpc: true }
       : {}),
     // M-CONTINUE-E2: only stamp the tone axes when the player has
     // actually committed a choice — pre-E2 saves stay byte-identical.
@@ -123,6 +128,7 @@ export function restoreAftersignVerticalSliceState(
     orraAction: save.orraAction ?? null,
     orraHasMetPlayer: save.orraHasMetPlayer ?? false,
     orraRecognizesPlayer: false,
+    redTagDeliveredToThirdNpc: save.redTagDeliveredToThirdNpc === true,
     // M-CONTINUE-E2: rehydrate the durable tone axes. `hasAskedForNextJob`
     // is intentionally omitted (see save-shape comment) — restore lands
     // the player back at `return-tone-choice`, remembering their posture
@@ -165,6 +171,8 @@ function isVerticalSliceSave(save: unknown): save is AftersignVerticalSliceSave 
     typeof save.ioHasMetPlayer === "boolean" &&
     (save.orraAction === undefined || isOrraActionOrNull(save.orraAction)) &&
     (save.orraHasMetPlayer === undefined || typeof save.orraHasMetPlayer === "boolean") &&
+    (save.redTagDeliveredToThirdNpc === undefined ||
+      typeof save.redTagDeliveredToThirdNpc === "boolean") &&
     (save.hasChosenReturnTone === undefined ||
       typeof save.hasChosenReturnTone === "boolean") &&
     (save.rememberedTone === undefined || isRememberedTone(save.rememberedTone))

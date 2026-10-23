@@ -11,6 +11,7 @@ export {
   createAftersignVerticalSliceState,
   recordAftersignPacketChoice,
   recordAftersignOrraAction,
+  recordAftersignThirdNpcRedTagDelivery,
   recordAftersignReturnToneChoice,
   recordAftersignAskedForNextJob,
   recordAftersignNextJobRequest,

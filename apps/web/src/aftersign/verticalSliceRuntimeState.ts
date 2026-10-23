@@ -13,7 +13,7 @@ export type AftersignPacketOutcome = "sealed" | "opened";
 export type AftersignOrraAction = "answered-saint-orra";
 
 export type AftersignSceneId = "kiosk" | "io-return" | "orra-return";
-export type AftersignRememberingNpcId = "io" | "orra";
+export type AftersignRememberingNpcId = "io" | "orra" | "red-tag-recipient";
 /**
  * M-CONTINUE-E2: the durable posture the returning player struck when
  * answering Io. Same three-token axis as
@@ -33,6 +33,8 @@ export type AftersignVerticalSliceState = {
   orraAction: AftersignOrraAction | null;
   orraHasMetPlayer: boolean;
   orraRecognizesPlayer: boolean;
+  /** Persisted when the player completes the red-tag delivery for the third NPC. */
+  redTagDeliveredToThirdNpc: boolean;
   /**
    * M-CONTINUE-E1 (docs/plan/product-plan.md:194): the returning
    * player has picked a tone to answer Io in, advancing the story
@@ -140,6 +142,7 @@ export function createAftersignVerticalSliceState(): AftersignVerticalSliceState
     orraAction: null,
     orraHasMetPlayer: false,
     orraRecognizesPlayer: false,
+    redTagDeliveredToThirdNpc: false,
     hasChosenReturnTone: false,
     hasAskedForNextJob: false,
     rememberedTone: undefined,
@@ -163,6 +166,16 @@ export function recordAftersignOrraAction(
   return {
     ...state,
     orraAction,
+  };
+}
+
+/** Persist the completed red-tag delivery to the third remembering NPC. */
+export function recordAftersignThirdNpcRedTagDelivery(
+  state: AftersignVerticalSliceState,
+): AftersignVerticalSliceState {
+  return {
+    ...state,
+    redTagDeliveredToThirdNpc: true,
   };
 }
 
@@ -305,6 +318,22 @@ export function resolveAftersignRememberingNpcDialogue(
   state: AftersignVerticalSliceState,
   npc: AftersignRememberingNpcId,
 ): AftersignRememberingNpcDialogue {
+  if (npc === "red-tag-recipient") {
+    const recognizesPlayer = state.redTagDeliveredToThirdNpc;
+    return {
+      npc,
+      recognizesPlayer,
+      lines: [
+        recognizesPlayer
+          ? "Red tag received. I kept its mark under your name."
+          : "I am waiting for the red tag.",
+      ],
+      recognitionFeel: recognizesPlayer
+        ? AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL
+        : null,
+    };
+  }
+
   if (npc === "io") {
     const recognizesPlayer = state.ioRecognizesPlayer;
     const lines = recognizesPlayer
