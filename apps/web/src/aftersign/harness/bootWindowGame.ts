@@ -954,27 +954,6 @@ export const bootAftersignWindowGame = (): AftersignWindowGameHarness => {
     return IO_NEXT_JOB_OFFER;
   };
 
-  const documentForThirdNpc =
-    (globalThis as { document?: Document }).document;
-  if (
-    documentForThirdNpc?.body &&
-    !documentForThirdNpc.querySelector(
-      '[data-aftersign-delivery-target="red-tag-recipient"]',
-    )
-  ) {
-    const target = documentForThirdNpc.createElement("button");
-    target.type = "button";
-    target.textContent = "Deliver red tag to recipient";
-    target.setAttribute(
-      "data-aftersign-delivery-target",
-      "red-tag-recipient",
-    );
-    documentForThirdNpc.body.append(target);
-  }
-  bindThirdNpcRedTagDeliveryTarget(documentForThirdNpc, () => {
-    state = recordAftersignThirdNpcRedTagDelivery(state);
-  });
-
   const api: AftersignWindowGameHarness = {
     version: 1,
     restoreDurableSave(payload) {
