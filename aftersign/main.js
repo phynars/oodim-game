@@ -187,48 +187,46 @@ import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
 // `ioContinueBeats` comments right above.
 import { findAftersignNpcMemoryRecallLine } from "../apps/web/src/aftersign/npcMemoryRecallDialogue.ts";
 // #2446 — SHIPPED CONSUMER of the third remembering NPC
-// (red-tag-recipient). PR #2449's first draft left the recorder,
-// resolver, and surface-npcs branch reachable only from
-// `harness/bootWindowGame.ts`, so served-reach reported all four
-// changed source files as unreachable from `aftersign/main.js` /
-// `src/server.ts` and Mara's F2 review (AI006 + AI007) requested
-// changes. These imports — plus the `#aftersignRedTagRecipientLine`
-// render block below at the `io-return-recognition` beat — turn the
-// four modules into real DOM consumers:
+// (red-tag-recipient). Each symbol below has a load-bearing call in
+// this file; the render block search `#aftersignRedTagRecipientLine`
+// and the `deliverPacket` red-tag branch are where they land in the
+// player-visible DOM:
 //
 //   - `recordAftersignThirdNpcRedTagDelivery` runs on the completing
 //     red-tag delivery tap (`#packetButton` with
 //     `data-packet-job="red-tag"`), flipping the module-scoped
 //     `aftersignVerticalSlice` state's `redTagDeliveredToThirdNpc`.
+//     It also runs on cold boot / reload to re-hydrate the flag from
+//     a saved `redTagDeliveredToThirdNpc: true`.
 //   - `resolveAftersignRememberingNpcDialogue(slice,
 //     "red-tag-recipient")` stamps the acknowledgment line into
 //     `#aftersignRedTagRecipientLine.textContent` on the served page,
 //     with `data-aftersign-red-tag-recipient="recognizes-player"`.
-//   - `getAftersignStoryState` is called to confirm the F1 gating is
-//     observable on the real served page: the `red-tag-recipient`
-//     entry in `.state.npcs` is absent pre-delivery and present
-//     post-delivery; the entry count stamps as
+//   - `getAftersignStoryState` is read at render time to confirm F1
+//     gating is observable on the real served page: the
+//     `red-tag-recipient` entry in `.state.npcs` is absent
+//     pre-delivery and present post-delivery; its count stamps as
 //     `data-aftersign-red-tag-recipient-count`.
+//   - `createAftersignVerticalSliceState` constructs the fresh slice
+//     on cold boot and reload.
 //
-// Sibling e2e `aftersign/e2e/aftersign-red-tag-recipient-served.spec.ts`
-// drives the served page end-to-end: packet → listened → deliver →
-// kind return → ask-for-next-job → tap `#packetButton` (red-tag) →
-// deliver → asserts the acknowledgment line is on the DOM.
-// Imported through the `verticalSliceState.ts` barrel on purpose, so
-// all four modules PR #2449 touched (`verticalSliceRuntimeState.ts`,
-// `windowGameSurface.ts`, `verticalSliceDurableSave.ts`, and the
-// barrel itself) land in the served graph that
-// `scripts/served-reach.mjs` walks from `aftersign/main.js`.
-// Three of the four runtime symbols (`createAftersignVerticalSliceState`,
-// `recordAftersignThirdNpcRedTagDelivery`,
-// `resolveAftersignRememberingNpcDialogue`) are re-exported from
-// `verticalSliceRuntimeState`; `getAftersignStoryState` is re-exported
-// from `windowGameSurface`; `encodeAftersignDurableSave` is
-// re-exported from `verticalSliceDurableSave`. One barrel import =
-// all four files reachable.
+// The flag is persisted into the save payload via
+// `persistence.js`'s `getRedTagDeliveredToThirdNpc` thunk (below in
+// `createPersistHelpers(...)`), and read back on cold-boot restore
+// just below the `const stored = ...` line, so the "deliver → reload
+// → still acknowledged" loop is covered without any disposable
+// pass-through call. Sibling e2e
+// `aftersign/e2e/aftersign-red-tag-recipient-served.spec.ts` drives
+// the served page end-to-end.
+//
+// Note on served-reach: the barrel `apps/web/src/aftersign/
+// verticalSliceState.ts` re-exports from `verticalSliceRuntimeState`,
+// `windowGameSurface`, AND `verticalSliceDurableSave`. Vite's module
+// loader walks every re-export declaration (not just the names main.js
+// pulls), so all three sibling modules land in the served graph that
+// `scripts/served-reach.mjs` checks — no disposable call needed.
 import {
   createAftersignVerticalSliceState,
-  encodeAftersignDurableSave,
   getAftersignStoryState,
   recordAftersignThirdNpcRedTagDelivery,
   resolveAftersignRememberingNpcDialogue,
@@ -5385,22 +5383,16 @@ const deliverPacket = (source = "hud-button") => {
   state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
   // #2446 — when the completing delivery is the red-tag one, flip the
   // third remembering NPC's `redTagDeliveredToThirdNpc` flag through
-  // the authored recorder, then prove the output round-trips through
-  // the durable-save encoder. The resulting slice is read by the
+  // the authored recorder. The resulting slice is read by the
   // `#aftersignRedTagRecipientLine` render block at
-  // `io-return-recognition`. Pre-#2446 PR, this call site did not
-  // exist and the recorder was reachable only from
-  // `harness/bootWindowGame.ts` (Mara's F2 AI006 on #2449).
+  // `io-return-recognition`, and the flag is mirrored into the save
+  // payload by `createPersistHelpers`' `getRedTagDeliveredToThirdNpc`
+  // thunk (see `aftersign/src/runtime/persistence.js`), so a reload
+  // after delivery re-arms the acknowledgment line.
   if (state.delivery && state.delivery.id === "red-tag") {
     aftersignVerticalSlice = recordAftersignThirdNpcRedTagDelivery(
       aftersignVerticalSlice,
     );
-    // Keep the recorder's output load-bearing through the save path
-    // too: a tree-shaker that drops `encodeAftersignDurableSave`
-    // would strip the sibling `verticalSliceDurableSave.ts` module
-    // from the served graph, which `scripts/served-reach.mjs` flags.
-    // The payload itself is discarded — the call is the consumer.
-    void encodeAftersignDurableSave(aftersignVerticalSlice, 1);
   }
   const { packetOutcomeFact, secondActionFact } = memoryFacts();
   state.npcs.io.memory = [packetOutcomeFact, secondActionFact].filter(Boolean);
