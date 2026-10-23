@@ -133,6 +133,11 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     await page
       .locator('button[data-choice-id="acknowledge-kiosk"]')
       .tap();
+    // The red-tag round's deliver control names the red tag and its
+    // recipient, not the generic "Deliver packet" copy.
+    await expect(
+      page.locator('button[data-choice-id="deliver-packet"]:not([disabled])').first(),
+    ).toHaveText("Deliver red tag to the recipient");
     await tapChoice(page, "deliver-packet");
 
     // Land on the red-tag recognition beat. The shipped render block

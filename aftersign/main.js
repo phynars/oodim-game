@@ -3463,7 +3463,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
         ? "You ran early"
         : "I ran early",
     );
-    setTextContentIfChanged(deliverButton, "Deliver packet");
+    setTextContentIfChanged(
+      deliverButton,
+      state.delivery.id === "red-tag"
+        ? "Deliver red tag to the recipient"
+        : "Deliver packet",
+    );
     stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");
     stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
     stampAftersignChoice(deliverButton, "deliver-packet");
