@@ -3,6 +3,7 @@ import {
   createAftersignVerticalSliceState,
   recordAftersignThirdNpcRedTagDelivery,
   resolveAftersignRememberingNpcDialogue,
+  SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID,
 } from "./verticalSliceRuntimeState";
 import {
   encodeAftersignDurableSave,
@@ -11,6 +12,40 @@ import {
 import { getAftersignStoryState } from "./windowGameSurface";
 
 describe("third red-tag remembering NPC", () => {
+  it("greets on first visit, then acknowledges by ID after delivery and reload (#2448)", () => {
+    // (1) First visit: no flag, default greeting, no acknowledgment ID.
+    const fresh = createAftersignVerticalSliceState();
+    expect(fresh.redTagDeliveredToThirdNpc).toBe(false);
+    const greeting = resolveAftersignRememberingNpcDialogue(fresh, "red-tag-recipient");
+    expect(greeting.recognizesPlayer).toBe(false);
+    expect(greeting.lines).toEqual(["I am waiting for the red tag."]);
+    expect(greeting.acknowledgmentId).toBeNull();
+
+    // (2) Red-tag delivery completes and the flag is set.
+    const delivered = recordAftersignThirdNpcRedTagDelivery(fresh);
+    expect(delivered.redTagDeliveredToThirdNpc).toBe(true);
+
+    // (3) Reload: round-trip through the durable save encoding.
+    const reloaded = restoreAftersignDurableSave(
+      encodeAftersignDurableSave(delivered, 1),
+    );
+    expect(reloaded.redTagDeliveredToThirdNpc).toBe(true);
+
+    // (4) Return visit renders the acknowledgment line + stable ID.
+    const acknowledgment = resolveAftersignRememberingNpcDialogue(
+      reloaded,
+      "red-tag-recipient",
+    );
+    expect(acknowledgment.recognizesPlayer).toBe(true);
+    expect(acknowledgment.acknowledgmentId).toBe(
+      SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID,
+    );
+    expect(acknowledgment.acknowledgmentId).toBe("saint-orra-red-tag-return");
+    expect(acknowledgment.lines).toEqual([
+      "You brought the red tag yourself. I remember the courier who did not leave it for the rain.",
+    ]);
+  });
+
   it("persists a completed delivery and resolves acknowledgment dialogue after restore", () => {
     const delivered = recordAftersignThirdNpcRedTagDelivery(
       createAftersignVerticalSliceState(),

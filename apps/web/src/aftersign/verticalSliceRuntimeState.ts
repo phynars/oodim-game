@@ -9,6 +9,24 @@ import {
 } from "../../../../packages/aftersign/src/ioReturningSession";
 import { getIoFirstSessionLine } from "./ioFirstSessionCopy";
 
+// Frozen return-copy contract for the red-tag recipient's persisted recognition.
+export const SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID =
+  "saint-orra-red-tag-return";
+
+const SAINT_ORRA_RED_TAG_RETURN_LINE =
+  "You brought the red tag yourself. I remember the courier who did not leave it for the rain.";
+
+export function resolveSaintOrraRedTagReturnCopy(
+  deliveredRedTag: boolean,
+): { id: string; line: string } | null {
+  return deliveredRedTag
+    ? {
+        id: SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID,
+        line: SAINT_ORRA_RED_TAG_RETURN_LINE,
+      }
+    : null;
+}
+
 export type AftersignPacketOutcome = "sealed" | "opened";
 export type AftersignOrraAction = "answered-saint-orra";
 
@@ -112,6 +130,12 @@ export type AftersignRememberingNpcDialogue = {
   recognizesPlayer: boolean;
   lines: readonly string[];
   recognitionFeel: AftersignRememberingNpcRecognitionFeel | null;
+  /**
+   * Stable ID of the authored return acknowledgment, when the NPC's
+   * line is state-driven recognition copy (e.g. the red-tag recipient's
+   * `saint-orra-red-tag-return`). `null`/absent for default greetings.
+   */
+  acknowledgmentId?: string | null;
 };
 
 /**
@@ -319,15 +343,15 @@ export function resolveAftersignRememberingNpcDialogue(
   npc: AftersignRememberingNpcId,
 ): AftersignRememberingNpcDialogue {
   if (npc === "red-tag-recipient") {
-    const recognizesPlayer = state.redTagDeliveredToThirdNpc;
+    const returnCopy = resolveSaintOrraRedTagReturnCopy(
+      state.redTagDeliveredToThirdNpc,
+    );
+    const recognizesPlayer = returnCopy !== null;
     return {
       npc,
       recognizesPlayer,
-      lines: [
-        recognizesPlayer
-          ? "You brought the red tag yourself. I remember the courier who did not leave it for the rain."
-          : "I am waiting for the red tag.",
-      ],
+      lines: [returnCopy?.line ?? "I am waiting for the red tag."],
+      acknowledgmentId: returnCopy?.id ?? null,
       recognitionFeel: recognizesPlayer
         ? AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL
         : null,
