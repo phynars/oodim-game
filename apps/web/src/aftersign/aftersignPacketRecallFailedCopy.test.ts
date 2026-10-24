@@ -27,7 +27,7 @@ import {
 } from "./aftersignPacketRecallCopy.js";
 
 const FAILED_LINE_VERBATIM =
-  "Io remembers you carried the packet into the dark and came back with its seal split. She sets the damage between you: mend it, or carry its damage forward into the next delivery.";
+  "Io remembers the split seal you brought back. She leaves it open between you: mend it, or carry its damage forward into the next delivery.";
 
 describe("failed-route recall names what the dark actually took (#2427)", () => {
   it("the failed entry matches the authored sentence verbatim", () => {
