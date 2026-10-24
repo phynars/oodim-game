@@ -45,7 +45,9 @@ test.describe("AFTERSIGN M-CONTINUE visible continuation", () => {
     };
 
     await waitForBeat("packet-offered");
-    await page.locator("#packetButton").tap();
+    const packetButton = page.locator("#packetButton");
+    await expect(packetButton, "packet HUD button should be visible before touch input").toBeVisible({ timeout: WAIT_MS });
+    await packetButton.tap();
     await waitForBeat("packet-choice");
 
     await tapChoice("acknowledge-kiosk");
