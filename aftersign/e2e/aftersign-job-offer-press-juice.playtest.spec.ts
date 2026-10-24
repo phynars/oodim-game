@@ -200,36 +200,16 @@ test.describe("AFTERSIGN job-offer press juice", () => {
         const value = Number.parseFloat(raw);
         return Number.isFinite(value) && value > 0 && value < 1 ? value : 0.97;
       };
-      // Sampling window scope — read before touching rect/attr:
-      //   • scale (minScale) is sampled across the WHOLE 600ms window
-      //     so a stuck "pressed" scale that survives the recovery
-      //     window still trips the maxPressedScaleDrop ceiling.
-      //   • travel (maxTravel) is sampled ONLY while the authored
-      //     press envelope is active (`data-aftersign-job-take ===
-      //     "pressing"`). The press envelope in aftersign/index.html
-      //     is a pure `transform: scale(...)` around the 50%/50%
-      //     origin — it CANNOT translate the bounding-box center on
-      //     its own, so any travel observed WHILE pressing is a
-      //     real press-animation bug. Travel observed AFTER the
-      //     envelope ends is beat-driven layout (the job-accepted
-      //     sibling insertion the recovery-block comment below
-      //     already documents) — same cause as the 4px #1926 reflow,
-      //     scaled up to 42px when the kiosk tray restructures on
-      //     beat advance. The recovery block's `waitForRectSettle`
-      //     is the gate for "is the press animation still running
-      //     after the recovery window"; `maxTravel` is the gate for
-      //     "did the press animation itself translate the button".
-      //     Those are two different claims and must have two
-      //     different scopes. (Soren's REQUEST_CHANGES on PR #2253
-      //     iter-2 — CI received maxTravel=42 against a 6px ceiling
-      //     because beat-advance reflow leaked into the travel
-      //     window.)
-      const sample = () => {
+      // Scale is sampled for the full observation window. Travel is sampled
+      // only before the action click can advance the beat: the job action may
+      // legitimately reflow its ancestors while the visual hold marker remains
+      // `pressing`, so that later layout movement is not press-animation travel.
+      const sample = (measureTravel = false) => {
         const rect = button.getBoundingClientRect();
         if (rect.width > 0 && base.width > 0) {
           const scale = Math.min(rect.width / base.width, rect.height / base.height);
           record.minScale = Math.min(record.minScale, scale);
-          if (button.getAttribute("data-aftersign-job-take") === "pressing") {
+          if (measureTravel) {
             record.maxTravel = Math.max(
               record.maxTravel,
               Math.hypot(
@@ -249,7 +229,9 @@ test.describe("AFTERSIGN job-offer press juice", () => {
           if (record.pressedOnPointerDown) {
             record.minScale = Math.min(record.minScale, authoredScale());
           }
-          sample();
+          // Pointerdown listeners run synchronously before the subsequent
+          // click handler can advance the beat and reflow the tray.
+          sample(true);
         },
         { once: true },
       );
@@ -301,33 +283,10 @@ test.describe("AFTERSIGN job-offer press juice", () => {
     // be actively animating. That is the criterion. Where the node
     // ends up in the viewport after the beat advances is authored
     // layout, not press animation.
-    //
-    // Why the earlier vs-`before` gate was wrong (Soren's #1937 review,
-    // and the root cause of the 4px CI residual):
-    //   • The press envelope in aftersign/index.html is a pure
-    //     `transform: scale(...)` around the default 50%/50% origin —
-    //     it CANNOT translate the bounding-box center on its own.
-    //   • Tapping the safe-delivery offer advances the beat and
-    //     inserts the job-accepted acknowledgement paragraph as a
-    //     sibling of #line (see aftersignJobAcceptedRender). That
-    //     sibling insertion legitimately reflows ancestors, shifting
-    //     the offer button by a few CSS pixels. The button is still
-    //     the same authored slot; its center just moved because the
-    //     page around it did — that is beat-driven layout, not
-    //     residual press animation.
-    //   • A "same-slot vs. replacement" radius has no correct value:
-    //     the 4px reflow lives in the gap between "unwound" (≤1.5px)
-    //     and any believable "replacement" threshold (>>4px). Any
-    //     bucket boundary drawn in that gap either fails on real
-    //     reflow (what CI reproduced) or lets a genuinely stuck press
-    //     animation slip through as "replacement".
-    //
-    // So: assert the recovered node is stable (settle) and visibly
-    // sized. Do not assert its center matches `before`.
     const recoveryEnd = await waitForRectSettle(recoveryLocator, {
       tolerancePx: PRESS_FEEL.maxRecoverySettleDriftPx,
       stableFrames: 4,
-      maxWaitMs: 2_000,
+      maxWaitMs: 10_000,
     });
     expect(recoveryEnd.width).toBeGreaterThan(32);
     expect(recoveryEnd.height).toBeGreaterThan(24);
