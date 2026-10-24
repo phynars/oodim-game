@@ -8,6 +8,7 @@ import {
   orraRecognitionLines,
 } from "../../../../packages/aftersign/src/ioReturningSession";
 import { getIoFirstSessionLine } from "./ioFirstSessionCopy";
+import { resolveSaintOrraRedTagReturnCopy } from "./aftersignSaintOrraReturnCopy.js";
 
 export type AftersignPacketOutcome = "sealed" | "opened";
 export type AftersignOrraAction = "answered-saint-orra";
@@ -319,15 +320,14 @@ export function resolveAftersignRememberingNpcDialogue(
   npc: AftersignRememberingNpcId,
 ): AftersignRememberingNpcDialogue {
   if (npc === "red-tag-recipient") {
-    const recognizesPlayer = state.redTagDeliveredToThirdNpc;
+    const returnCopy = resolveSaintOrraRedTagReturnCopy(
+      state.redTagDeliveredToThirdNpc,
+    );
+    const recognizesPlayer = returnCopy !== null;
     return {
       npc,
       recognizesPlayer,
-      lines: [
-        recognizesPlayer
-          ? "You brought the red tag yourself. I remember the courier who did not leave it for the rain."
-          : "I am waiting for the red tag.",
-      ],
+      lines: [returnCopy?.line ?? "I am waiting for the red tag."],
       recognitionFeel: recognizesPlayer
         ? AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL
         : null,
