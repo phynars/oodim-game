@@ -122,7 +122,7 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     // spec before the deliver tap below.
     await expect(
       page.locator(
-        'text="Red tag received. I kept its mark under your name."',
+        'text="You brought the red tag yourself. I remember the courier who did not leave it for the rain."',
       ),
     ).toHaveCount(0);
 

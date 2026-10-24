@@ -21,7 +21,7 @@ describe("third red-tag remembering NPC", () => {
 
     expect(restored.redTagDeliveredToThirdNpc).toBe(true);
     expect(resolveAftersignRememberingNpcDialogue(restored, "red-tag-recipient").lines).toEqual([
-      "Red tag received. I kept its mark under your name.",
+      "You brought the red tag yourself. I remember the courier who did not leave it for the rain.",
     ]);
     expect(
       getAftersignStoryState(restored, { playerId: "player", playerName: "Player" }).state.npcs,

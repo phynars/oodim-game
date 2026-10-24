@@ -2768,9 +2768,7 @@ const renderText = () => {
           line.parentNode.insertBefore(recipientPara, line.nextSibling);
         }
       }
-      const recipientText = aftersignVerticalSlice.redTagDeliveredToThirdNpc
-        ? RED_TAG_RECIPIENT_ACKNOWLEDGEMENT
-        : dialogue.lines.join(" ");
+      const recipientText = dialogue.lines.join(" ");
       if (recipientPara.textContent !== recipientText) {
         recipientPara.textContent = recipientText;
       }
