@@ -4429,16 +4429,17 @@ const forceSave = async () => {
 };
 
 const reloadFromSave = async ({ clearLocalState = false } = {}) => {
-  // NOTE: intentionally do NOT cancel `deliveryRecognitionTimeout` here.
-  // Its callback is the sole publisher of `state.story.memoryBeat` (and
-  // the transition into `io-return-recognition`), and M2-E1 in
-  // `flagship-surface-contract.spec.ts` depends on that publish surviving
-  // an in-page reload. The #1918 tap-race is covered by the
-  // `RECOGNITION_SETTLE_MS` gate in the `choose-return-tone` branch of
-  // `choose()` above — `recognitionEnteredAt` is stamped in the same
-  // synchronous callback body that sets the beat, so a `pointerup` on
-  // a re-rendered return-tone control within one gesture is rejected
-  // by the settle window without needing to cancel the timer here.
+  // NOTE: the `deliveryRecognitionTimeout` callback is the sole publisher
+  // of `state.story.memoryBeat` (and the transition into
+  // `io-return-recognition`), and M2-E1 in `flagship-surface-contract.spec.ts`
+  // depends on that publish. The timer is NOT cancelled on reload so an
+  // in-flight publish still lands against the restored state.
+  //
+  // The #1918 tap-race is covered by the `RECOGNITION_SETTLE_MS` gate in
+  // the `choose-return-tone` branch of `choose()` above — `recognitionEnteredAt`
+  // is stamped in the same synchronous callback body that sets the beat,
+  // so a `pointerup` on a re-rendered return-tone control within one
+  // gesture is rejected by the settle window.
   const playerId = state.player.id;
 
   if (clearLocalState) {
@@ -5129,6 +5130,7 @@ const finishMemoryBeatCameraProbe = () => {
 // module-scoped so future work that needs to introspect the in-flight
 // publish has a seam to hook onto without touching call sites.
 let deliveryRecognitionTimeout = null;
+
 
 // Minimum wall-clock ms the recognition beat must be settled before a
 // `choose-return-tone` tap is accepted. Sized well under one 60Hz frame
