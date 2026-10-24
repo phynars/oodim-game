@@ -41,7 +41,7 @@
     "dev:aftersign": "vite --config aftersign/vite.config.ts",
     "build:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && vite build --config aftersign/vite.config.ts",
     "preview:aftersign": "vite preview --config aftersign/vite.config.ts",
-    "typecheck:aftersign": "tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure",
+    "typecheck:aftersign": "node scripts/check-aftersign-location.mjs && tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure",
     "typecheck:aftersign:apps-web": "tsc --noEmit -p aftersign/tsconfig.apps-web.json",
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
     "test:e2e:aftersign:m-loop": "playwright test --config aftersign/playwright.config.ts e2e/m-loop-two-round-divergence.playtest.spec.ts --workers=1 --retries=0",
