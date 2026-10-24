@@ -3,6 +3,7 @@ import {
   createAftersignVerticalSliceState,
   recordAftersignThirdNpcRedTagDelivery,
   resolveAftersignRememberingNpcDialogue,
+  SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID,
 } from "./verticalSliceRuntimeState";
 import {
   encodeAftersignDurableSave,
