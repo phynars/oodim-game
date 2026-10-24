@@ -8,7 +8,6 @@ import {
   orraRecognitionLines,
 } from "../../../../packages/aftersign/src/ioReturningSession";
 import { getIoFirstSessionLine } from "./ioFirstSessionCopy";
-import { resolveSaintOrraRedTagReturnCopy } from "./aftersignSaintOrraReturnCopy.js";
 
 // Frozen return-copy contract for the red-tag recipient's persisted recognition.
 export const SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID =
