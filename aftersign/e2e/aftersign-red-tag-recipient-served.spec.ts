@@ -156,7 +156,7 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     // the PR edited stops shipping (served-reach regression), this
     // text is not on the page and the spec reds.
     await expect(recipientLine).toHaveText(
-      "Red tag received. I kept its mark under your name.",
+      "You brought the red tag yourself. I remember the courier who did not leave it for the rain.",
     );
     await expect(recipientLine).toHaveAttribute(
       "data-aftersign-red-tag-recipient",

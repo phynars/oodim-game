@@ -186,6 +186,7 @@ import { ioMemoryResponseLinesFor } from "./src/npcMemoryDialogue.js";
 // Same discipline as the `ioMemoryResponseLinesFor` and
 // `ioContinueBeats` comments right above.
 import { findAftersignNpcMemoryRecallLine } from "../apps/web/src/aftersign/npcMemoryRecallDialogue.ts";
+import { RED_TAG_RECIPIENT_ACKNOWLEDGEMENT } from "./red-tag-recipient-copy.js";
 // #2446 — SHIPPED CONSUMER of the third remembering NPC
 // (red-tag-recipient). Each symbol below has a load-bearing call in
 // this file; the render block search `#aftersignRedTagRecipientLine`
@@ -2767,7 +2768,9 @@ const renderText = () => {
           line.parentNode.insertBefore(recipientPara, line.nextSibling);
         }
       }
-      const recipientText = dialogue.lines.join(" ");
+      const recipientText = aftersignVerticalSlice.redTagDeliveredToThirdNpc
+        ? RED_TAG_RECIPIENT_ACKNOWLEDGEMENT
+        : dialogue.lines.join(" ");
       if (recipientPara.textContent !== recipientText) {
         recipientPara.textContent = recipientText;
       }
