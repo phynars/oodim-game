@@ -12,6 +12,7 @@ import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
 import { createFeedbackController } from "./src/presentation/feedbackController.js";
+import { createPacketPressFeedbackRenderer } from "./src/packetPressFeedbackRenderer.js";
 import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
@@ -855,76 +856,24 @@ const failureSting = document.querySelector(".failure-sting");
 const feedbackController = createFeedbackController({ document, failureSting });
 const dialogueController = createDialogueController({ line, speaker });
 const packetButton = document.querySelector("#packetButton");
-let packetPressFeedback = { isPressed: false, releaseAtMs: null };
-let packetPressFeedbackFrame = null;
-
-const renderPacketPressFeedback = () => {
-  if (!packetButton) return;
-  packetButton.dataset.packetPressFeedback = packetPressFeedback.isPressed ? "pressed" : "idle";
-};
-
-const tickPacketPressFeedback = (nowMs) => {
-  packetPressFeedback = advancePacketPressFeedback(packetPressFeedback, nowMs);
-  renderPacketPressFeedback();
-  if (packetPressFeedback.isPressed) {
-    packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
-  } else {
-    packetPressFeedbackFrame = null;
-  }
-};
-
-const playPacketPressFeedback = () => {
-  packetPressFeedback = beginPacketPressFeedback(performance.now());
-  renderPacketPressFeedback();
-  // Decorative WAAPI + haptic envelope. The served-surface pin path
-  // (#1879) routes through `packetPress(input)` — this cue MUST NOT throw
-  // through to the durable commit. Mirror the contract in
-  // `aftersign/src/routeRiskConfirmFeedback.js`: reduced-motion players
-  // get a brightness flicker (no translate/scale), and the whole
-  // `.animate()` call is wrapped in try/catch so a partial Web Animations
-  // implementation cannot break the packet commit.
-  const packetPressReducedMotion = packetPressPrefersReducedMotion();
-  if (packetButton && typeof packetButton.animate === "function") {
+const packetPressFeedbackRenderer = createPacketPressFeedbackRenderer({
+  button: packetButton,
+  beginFeedback: beginPacketPressFeedback,
+  advanceFeedback: advancePacketPressFeedback,
+  tactileCue: PACKET_PRESS_TACTILE_CUE,
+  prefersReducedMotion: packetPressPrefersReducedMotion,
+  now: () => performance.now(),
+  requestFrame: requestAnimationFrame,
+  vibrate: (durationMs) => {
+    if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
     try {
-      packetButton.animate(
-        packetPressReducedMotion
-          ? [
-              { filter: "brightness(1)" },
-              { filter: "brightness(1.12)", offset: 0.35 },
-              { filter: "brightness(1)" },
-            ]
-          : [
-              { transform: "translateY(0) scale(1)" },
-              {
-                transform: `translateY(${PACKET_PRESS_TACTILE_CUE.travelPx}px) scale(${PACKET_PRESS_TACTILE_CUE.scale})`,
-                offset: 0.35,
-              },
-              { transform: "translateY(0) scale(1)" },
-            ],
-        {
-          duration: PACKET_PRESS_TACTILE_CUE.durationMs,
-          easing: PACKET_PRESS_TACTILE_CUE.easing,
-        },
-      );
-    } catch {
-      // Decorative feedback must never interrupt the durable packet commit.
-    }
-  }
-  if (
-    !packetPressReducedMotion
-    && typeof navigator !== "undefined"
-    && typeof navigator.vibrate === "function"
-  ) {
-    try {
-      navigator.vibrate(PACKET_PRESS_TACTILE_CUE.vibrationMs);
+      navigator.vibrate(durationMs);
     } catch {
       // Haptic pulse is decorative; blocked or unsupported vibrate is silent.
     }
-  }
-  if (packetPressFeedbackFrame === null) {
-    packetPressFeedbackFrame = requestAnimationFrame(tickPacketPressFeedback);
-  }
-};
+  },
+});
+const playPacketPressFeedback = () => packetPressFeedbackRenderer.play();
 
 // #1563 — stamp the idle label + hint on the packet button at boot,
 // before any tap. `applyPacketButtonCopy` is null-safe, so a jsdom
