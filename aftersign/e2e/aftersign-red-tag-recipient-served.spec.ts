@@ -133,12 +133,15 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     await page
       .locator('button[data-choice-id="acknowledge-kiosk"]')
       .tap();
-    // The red-tag round's deliver control names the red tag and its
-    // recipient, not the generic "Deliver packet" copy.
-    await expect(
-      page.locator('button[data-choice-id="deliver-packet"]:not([disabled])').first(),
-    ).toHaveText("Deliver red tag to the recipient");
-    await tapChoice(page, "deliver-packet");
+    // The existing delivery control exposes its third-recipient target;
+    // this verifies the served target identity without harness input.
+    const thirdRecipientDelivery = page.locator(
+      'button[data-choice-id="deliver-packet"][data-red-tag-delivery-target="third-npc"]:not([disabled])',
+    );
+    await expect(thirdRecipientDelivery).toHaveText(
+      "Deliver red tag to the recipient — third recipient",
+    );
+    await thirdRecipientDelivery.tap();
 
     // Land on the red-tag recognition beat. The shipped render block
     // in `aftersign/main.js` now gates on

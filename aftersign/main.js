@@ -3418,12 +3418,18 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
         ? "You ran early"
         : "I ran early",
     );
+    const isThirdNpcRedTagDelivery = state.delivery.id === "red-tag";
     setTextContentIfChanged(
       deliverButton,
-      state.delivery.id === "red-tag"
-        ? "Deliver red tag to the recipient"
+      isThirdNpcRedTagDelivery
+        ? "Deliver red tag to the recipient — third recipient"
         : "Deliver packet",
     );
+    if (isThirdNpcRedTagDelivery) {
+      deliverButton.dataset.redTagDeliveryTarget = "third-npc";
+    } else {
+      delete deliverButton.dataset.redTagDeliveryTarget;
+    }
     stampAftersignChoice(acknowledgeRouteButton, "acknowledge-kiosk");
     stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
     stampAftersignChoice(deliverButton, "deliver-packet");
