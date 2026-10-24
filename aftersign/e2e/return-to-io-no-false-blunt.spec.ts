@@ -146,7 +146,38 @@ test.describe("AFTERSIGN #2174 — Return to Io does not silently record a blunt
       "returnReason must be unset before the player ever taps a tone",
     ).toBeNull();
 
-    await tapChoice(page, "return-to-io");
+    // PR #2460 CI: a Playwright `.tap()` here resolves the locator, then
+    // waits for actionability (stable across rAFs) before dispatching.
+    // Under parallel WebGL load that gap can exceed the ~1180ms
+    // `deliverPacket()` auto-advance, so the touch lands AFTER
+    // `#deliverButton` is re-stamped "Blunt return". The pointerdown then
+    // post-dates `recognitionEnteredAt`, the #2181 gate correctly accepts
+    // it as a deliberate blunt tap, and the beat jumps to
+    // `return-tone-choice`. That is a race in the spec, not the #2174 bug.
+    // Dispatch the same pointerdown → click gesture (detail: 1, the
+    // pointer-click shape the input adapter stages a down-time for) in
+    // ONE page task, so the timer cannot fire between locate and tap. If
+    // the auto-advance already won, there is no `return-to-io` control
+    // left. We are then already at `io-return-recognition` with no tone
+    // tapped, and the invariant below still holds.
+    await page.evaluate(() => {
+      const button = document.querySelector<HTMLButtonElement>(
+        'button[data-choice-id="return-to-io"]:not([disabled])',
+      );
+      if (!button) return;
+      button.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          pointerType: "touch",
+          isPrimary: true,
+        }),
+      );
+      button.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+      );
+    });
 
     // The runtime advances to `io-return-recognition` and re-stamps
     // `#deliverButton` as the "Blunt return" tone control. The bug
