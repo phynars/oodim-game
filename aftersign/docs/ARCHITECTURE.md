@@ -53,8 +53,10 @@ dialogue, and mobile-input presentation respectively; this architecture map
 does not restate their internal input/output shapes. `main.js` retains boot
 and global runtime composition.
 
-`aftersign/main.js` also retains served audio behavior, persistence
-integration, and substantial render blocks as known extraction debt. That debt
+`aftersign/main.js` retains served audio behavior, persistence integration,
+and global runtime composition. `src/packetPressFeedbackRenderer.js` owns the
+packet-button press-feedback render slice; `main.js` injects its button,
+feedback state transitions, tactile cue, and browser adapters. That boundary
 does not transfer controller ownership back into `index.html`.
 
 ## Client contracts
