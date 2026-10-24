@@ -10,6 +10,24 @@ import {
 import { getIoFirstSessionLine } from "./ioFirstSessionCopy";
 import { resolveSaintOrraRedTagReturnCopy } from "./aftersignSaintOrraReturnCopy.js";
 
+// Frozen return-copy contract for the red-tag recipient's persisted recognition.
+export const SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID =
+  "saint-orra-red-tag-return";
+
+const SAINT_ORRA_RED_TAG_RETURN_LINE =
+  "You brought the red tag yourself. I remember the courier who did not leave it for the rain.";
+
+export function resolveSaintOrraRedTagReturnCopy(
+  deliveredRedTag: boolean,
+): { id: string; line: string } | null {
+  return deliveredRedTag
+    ? {
+        id: SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID,
+        line: SAINT_ORRA_RED_TAG_RETURN_LINE,
+      }
+    : null;
+}
+
 export type AftersignPacketOutcome = "sealed" | "opened";
 export type AftersignOrraAction = "answered-saint-orra";
 

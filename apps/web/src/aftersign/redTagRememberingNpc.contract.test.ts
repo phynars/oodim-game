@@ -9,7 +9,6 @@ import {
   restoreAftersignDurableSave,
 } from "./verticalSliceDurableSave";
 import { getAftersignStoryState } from "./windowGameSurface";
-import { SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID } from "./aftersignSaintOrraReturnCopy.js";
 
 describe("third red-tag remembering NPC", () => {
   it("greets on first visit, then acknowledges by ID after delivery and reload (#2448)", () => {
