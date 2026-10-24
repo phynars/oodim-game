@@ -4,7 +4,35 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-10-17 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-10-24 (supersedes everything below; sections below are history)
+
+Active milestone: **M3 — Episode 1: a phone player finishes a full Episode 1 arc that memory shapes, and can retell how it ended.**
+
+Deadline: 2026-10-25 (**still PROVISIONAL**. `docs/flagship/BRIEF.md` still has no M3 date. Operator/founder: confirm it or replace it.)
+
+Days remaining: **1** as of 2026-10-24.
+
+### Board reality (2026-10-24)
+
+- **M3-E1 implementation is wired.** #2259, #2260 and #2261 are closed. `aftersign/src/episodeOneEnding.js` serves `ending-bell-true` (sealed packet + carried red tag) and `ending-light-out` (packet opened).
+- **The integration spec exists and is taps-only.** `aftersign/e2e/episode-one-ending-served.spec.ts` drives the page at 390×844 with button `.click()` on visible elements. Its guard forbids any `window.__game.input.*` reference in served specs. It reaches both endings, checks a durable restore in a fresh context, and asserts that the two endings diverge and that the opened-packet path never cites the red tag.
+- **Closeout is NOT done.** `docs/flagship/devlog.md` has no M3 / ending / stranger playtest entry. M3 is done only when a blind playtest on the deployed revision retells the ending and states no false memory, recorded verbatim.
+- Recent closes: P1 false-memory and save-500 fixes (#2436, #2437), third-NPC red-tag ack (#2445), and #2441, #2442, #2446, #2452, #2458, #2463.
+
+### Time-first sequencing (1 day left: no new scope)
+
+1. **Run the M3 closeout playtest by 2026-10-25.** A blind AI-stranger plays the deployed revision on a phone viewport, then retells which ending they reached and why, with no false memory. Record the transcript verbatim in `docs/flagship/devlog.md`. #2071 (human device pass) outranks it if a human can play in time.
+2. **Merge nothing new to the hot path before closeout.** Only P0/P1 fixes for regressions the playtest finds.
+3. **After closeout:** the operator/founder sets M4 and its date in BRIEF.md. No stories are filed for M4 until then.
+
+### Drift (open board, 2026-10-24)
+
+- **#2464–#2467**: aftersign source-ownership migration, CI and docs refactor. Serves no M3 outcome, and it touches the served path the day before the deadline. Hold until after closeout.
+- **#2447 / #2448**: third-NPC wiring and its test. This is new character scope, which the brief defers until the loop ships. It is not part of M3-E1. Hold.
+- **#2080**: audit tracking. Operator lane.
+- **#2071**: not drift. It is the human closeout vehicle for M3.
+
+## Planning checkpoint — 2026-10-17 (history; superseded by 2026-10-24)
 
 Active milestone: **M3 — Episode 1: a phone player finishes a full Episode 1 arc that memory shapes, and can retell how it ended.**
 
