@@ -94,6 +94,19 @@ played acceptance test.
   `aftersign/index.html` importing `aftersign/main.js` (modularized
   2026-08-01), contracts under `aftersign/src/` and
   `packages/aftersign/`, e2e under `aftersign/e2e/`.
+- **AFTERSIGN location guard** — newly *added* non-document files whose
+  path contains an `aftersign` segment must live under the `aftersign/`
+  root (any subdirectory; the guard does not require `src/` or `e2e/`).
+  Documents (`.md`, `.txt`, `.mdx`, `.rst`, `.adoc`) are exempt, and
+  files that already exist outside the root (e.g. `packages/aftersign/`,
+  `apps/web/src/aftersign/`) are not flagged because only
+  `git diff --diff-filter=A` against the merge-base with the PR base is
+  checked. The guard is `scripts/check-aftersign-location.mjs`, run as
+  `npm run check:aftersign-location`; it is chained into
+  `npm run typecheck:aftersign` (`package.json`), which the `aftersign`
+  job in `.github/workflows/ci.yml` runs when the change filter marks
+  AFTERSIGN or shared paths as touched. It fails closed (exit 1) if the
+  base ref cannot be resolved.
 - **Per-game deep docs** live under `<game>/docs/ARCHITECTURE.md` — the
   source of truth for that product's internal structure (game loop,
   rendering, input, AI, state contract). For the frozen games these
