@@ -75,7 +75,8 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const TEST_TIMEOUT_MS = 240_000;
 const WAIT_MS = 90_000;
 
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
+// Independently authored served-copy baseline for the sealed returning branch.
+const SEALED_RECOGNITION_LINE = "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
 
 function slotUrl(slot: string): string {
   // `baseURL` resolves `SMOKE_BASE_URL` (see

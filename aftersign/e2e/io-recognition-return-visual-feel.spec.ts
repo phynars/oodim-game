@@ -49,13 +49,9 @@ const BEAT_LIMITS = {
   inputLockMsMax: 1220,
 } as const;
 
-// The two verbatim lines Io speaks at io-return-recognition (see
-// aftersign/main.js `lineForBeat`).
-// Canonical copy module (#595 cleanup, #1077); these flows skip the
-// kiosk route, so the RETURNING tier speaks.
-import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
-const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
+// Independently authored served-copy baselines for the two returning branches.
+const SEALED_RECOGNITION_LINE = "I remember you: blue seal, unbroken. The kiosk kept the route; I kept your name beside it.";
+const OPENED_RECOGNITION_LINE = "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept your name beside the risk.";
 
 const EXPECTED_LINE: Record<RecognitionOutcome, string> = {
   sealed: SEALED_RECOGNITION_LINE,
@@ -280,6 +276,12 @@ test("io return recognition, played by taps: opened branch publishes readable vi
 
   await playToRecognition(page, `io-return-visual-feel-opened-${Date.now()}`, "opened");
 
+  // #2397 re-review: same `skippedReturn` suffix as the sealed branch
+  // (both tap `skip-kiosk-acknowledge`) but a DIFFERENT prefix — the
+  // opened RETURNING line names the broken seal. The sealed vs opened
+  // dimension is discriminated here on `#line` (prefix differs) AND
+  // below via `waitForMemoryBeat("opened")` + `assertVisualFeel(…,
+  // "opened")`.
   await expect(page.locator("#line")).toHaveText(OPENED_RECOGNITION_LINE, {
     timeout: WAIT_MS,
   });

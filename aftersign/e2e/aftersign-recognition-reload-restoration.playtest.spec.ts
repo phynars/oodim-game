@@ -50,7 +50,8 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
-const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
+// Independently authored served-copy baseline for the opened returning branch.
+const OPENED_RECOGNITION_LINE = "I remember you: blue route delivered. The seal did not survive. The kiosk kept the route; I kept your name beside the risk.";
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
