@@ -815,8 +815,21 @@ describe("Aftersign served surface contract", () => {
     // (c) The stamp lands on `#packetButton.dataset.packetPressFeedback`
     // — the very attribute the CSS consumer rule keys off. A rename
     // that forks the attribute name silently unwires the paint.
+    // Post-#2475 the stamp lives in the extracted renderer; main.js
+    // must import it and inject `#packetButton` as its `button`, so we
+    // pin all three halves (import, injection, stamp).
+    expect(main).toContain(
+      'import { createPacketPressFeedbackRenderer } from "./src/packetPressFeedbackRenderer.js";',
+    );
     expect(main).toMatch(
-      /packetButton\.dataset\.packetPressFeedback\s*=/,
+      /createPacketPressFeedbackRenderer\(\{[\s\S]*?button:\s*packetButton\b/,
+    );
+    expect(main).toContain("packetPressFeedbackRenderer.play()");
+    const renderer = readServedAftersignFile(
+      "src/packetPressFeedbackRenderer.js",
+    );
+    expect(renderer).toMatch(
+      /button\.dataset\.packetPressFeedback\s*=/,
     );
 
     const html = readServedAftersignFile("index.html");
