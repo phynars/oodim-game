@@ -94,6 +94,11 @@ played acceptance test.
   `aftersign/index.html` importing `aftersign/main.js` (modularized
   2026-08-01), contracts under `aftersign/src/` and
   `packages/aftersign/`, e2e under `aftersign/e2e/`.
+- **AFTERSIGN ownership boundary** — all non-document implementation
+  source lives under `aftersign/src/`, and all end-to-end tests live
+  under `aftersign/e2e/`. CI enforces this boundary so runtime and test
+  changes remain discoverable and covered by the flagship validation
+  lanes; documentation may live outside these roots.
 - **Per-game deep docs** live under `<game>/docs/ARCHITECTURE.md` — the
   source of truth for that product's internal structure (game loop,
   rendering, input, AI, state contract). For the frozen games these
