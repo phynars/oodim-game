@@ -325,7 +325,7 @@ export function resolveAftersignRememberingNpcDialogue(
       recognizesPlayer,
       lines: [
         recognizesPlayer
-          ? "Red tag received. I kept its mark under your name."
+          ? "You brought the red tag yourself. I remember the courier who did not leave it for the rain."
           : "I am waiting for the red tag.",
       ],
       recognitionFeel: recognizesPlayer
