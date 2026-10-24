@@ -113,6 +113,12 @@ export type AftersignRememberingNpcDialogue = {
   recognizesPlayer: boolean;
   lines: readonly string[];
   recognitionFeel: AftersignRememberingNpcRecognitionFeel | null;
+  /**
+   * Stable ID of the authored return acknowledgment, when the NPC's
+   * line is state-driven recognition copy (e.g. the red-tag recipient's
+   * `saint-orra-red-tag-return`). `null`/absent for default greetings.
+   */
+  acknowledgmentId?: string | null;
 };
 
 /**
@@ -328,6 +334,7 @@ export function resolveAftersignRememberingNpcDialogue(
       npc,
       recognizesPlayer,
       lines: [returnCopy?.line ?? "I am waiting for the red tag."],
+      acknowledgmentId: returnCopy?.id ?? null,
       recognitionFeel: recognizesPlayer
         ? AFTERSIGN_REMEMBERING_NPC_RECOGNITION_FEEL
         : null,
