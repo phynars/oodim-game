@@ -69,7 +69,7 @@ const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
   "job-private-ledger":
     "A private ledger leaves no clean hands. Bring yours back, and do not ask me to call it clean. I will remember what you chose to carry.",
   "job-night-transfer":
-    "Cross after the bell. Do not mistake the quiet for permission. I will remember you took the dark.",
+    "Cross after the bell. Do not mistake the quiet for permission. When you return, I will remember that you chose the dark — and whether you let it choose your way home.",
   "job-signed-receipt":
     "Get it in ink. A promise is lighter when someone has to carry it. I remember who made it answer.",
   "job-low-risk-errand":
