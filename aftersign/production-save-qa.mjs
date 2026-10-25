@@ -162,9 +162,9 @@ try {
   const roundTwoBody = await roundTwoSaved.json();
   expect(roundTwo.save.revision).toBe(2);
   expect(roundTwoBody.payload.save.revision).toBe(2);
-  // main.js (#2336) persists io-return-recognition after the 1180ms advance;
-  // round() awaited that PUT, so the saved beat is the recognition beat, not
-  // the transient packet-delivered write.
+  // main.js (#2336) persists io-return-recognition after the 1180ms advance.
+  // round() waited for that PUT to succeed before this GET, so the saved beat
+  // is the recognition beat, not the earlier packet-delivered write.
   expect(roundTwoBody.payload.beat).toBe('io-return-recognition');
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.requests.every(request => request.status >= 200 && request.status < 300)).toBe(true);
