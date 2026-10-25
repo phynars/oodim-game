@@ -14,6 +14,7 @@ test("servedCandidates keeps product source, drops tests, harness, tooling and o
     "aftersign/playwright.config.ts",
     "aftersign/pure-runner.ts",
     "aftersign/m-loop-playtest.acceptance.mjs",
+    "aftersign/production-save-qa.mjs",
     "apps/web/src/aftersign/harness/bootWindowGame.ts",
     "apps/web/src/aftersign/routeRiskActionLabels.d.ts",
     "packages/aftersign/src/ioReturningSession.ts",

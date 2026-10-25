@@ -35,7 +35,9 @@ export const PRODUCT_ROOTS = ["aftersign/", "apps/web/src/aftersign/", "packages
 const SOURCE_RE = /\.(m?js|cjs|ts|tsx|jsx)$/;
 // Test, harness and tooling files are never served by design.
 const NOT_SERVED_RE =
-  /(\.(test|spec|playtest)\.[cm]?[jt]sx?$|\.d\.ts$|(^|\/)(e2e|harness|tests?|__tests__|fixtures|scripts)\/|\.config\.[cm]?[jt]s$|(^|\/)pure-runner\.ts$|\.acceptance\.mjs$)/;
+  /(\.(test|spec|playtest)\.[cm]?[jt]sx?$|\.d\.ts$|(^|\/)(e2e|harness|tests?|__tests__|fixtures|scripts)\/|\.config\.[cm]?[jt]s$|(^|\/)pure-runner\.ts$|\.acceptance\.mjs$|-qa\.mjs$)/;
+// `-qa.mjs`: standalone QA harnesses run via package.json scripts (e.g.
+// aftersign/production-save-qa.mjs → `npm run test:aftersign:production-save`).
 
 export function exemptReason(body) {
   const m = (body ?? "").match(/^\s*served-exempt:\s*(\S.*)$/im);
