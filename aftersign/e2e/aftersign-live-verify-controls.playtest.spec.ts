@@ -105,6 +105,25 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     ).toBeVisible({ timeout: WAIT_MS });
   });
 
+  test("phone taps reach the acknowledgement HUD button as touch pointers", async ({ page }) => {
+    test.setTimeout(120_000);
+    await reachPacketChoice(page);
+
+    const acknowledge = page.locator("#acknowledgeRouteButton");
+    await expect(acknowledge).toBeVisible({ timeout: WAIT_MS });
+    await acknowledge.evaluate((button) => {
+      button.addEventListener(
+        "pointerdown",
+        (event) => button.setAttribute("data-last-pointer-type", event.pointerType),
+        { once: true },
+      );
+    });
+
+    await acknowledge.tap();
+    await expect(acknowledge).toHaveAttribute("data-last-pointer-type", "touch");
+    await expect(acknowledge).toHaveAttribute("aria-pressed", "true");
+  });
+
   // GEOMETRY baseline for the same three controls the behavior test
   // above taps. The behavior test proves ack / sound / reset each FIRE
   // on a phone tap and that Start fresh is structurally outside
