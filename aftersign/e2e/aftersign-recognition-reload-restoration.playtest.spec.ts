@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
-import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
+import { OPENED_RETURNING_RECOGNITION_LINE } from "./servedRecognitionCopy";
 import { performPacketGesture } from "./helpers/packetGesture";
 
 // Playtest: after a phone-player reload, the OPENED-packet recognition
