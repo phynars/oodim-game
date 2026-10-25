@@ -87,13 +87,24 @@ played acceptance test.
 
 ## Key package/app boundaries
 
-- **Per-game code** lives entirely under that game's subdirectory —
+- **Per-game code** belongs under that game's subdirectory —
   `<game>/src/`, `<game>/index.html`, `<game>/vite.config.ts`,
-  `<game>/tsconfig.json`, `<game>/tests/` (Playwright). The flagship
-  **follows this shape today** in `aftersign/` — served page
-  `aftersign/index.html` importing `aftersign/main.js` (modularized
-  2026-08-01), contracts under `aftersign/src/` and
-  `packages/aftersign/`, e2e under `aftersign/e2e/`.
+  `<game>/tsconfig.json`, `<game>/tests/` (Playwright). This is the
+  target for all *new* game files. The flagship AFTERSIGN is **not yet
+  entirely** in that shape; its code is split across three locations:
+  - `aftersign/` — the **served runtime and the home for new work**:
+    page `aftersign/index.html` importing `aftersign/main.js`
+    (modularized 2026-08-01), contracts under `aftersign/src/`, e2e
+    under `aftersign/e2e/`. Fix runtime behavior here first.
+  - `packages/aftersign/` — **existing shared, framework-free
+    contracts** (e.g. `src/computeOfferedJobs.ts`,
+    `src/ioFirstArrival.ts`, `src/ioReturningSession.ts`,
+    `src/feel/interactionConfirm.ts`, `next-job-beat.js`). Editing these
+    files is fine; do not add new files here (the guard below flags them).
+  - `apps/web/src/aftersign/` — **existing web-side AFTERSIGN contracts
+    from before the root move**. Not the served runtime: changing them
+    does not change what `aftersign/index.html` plays unless the runtime
+    imports them. Edit existing files only; new files go under `aftersign/`.
 - **AFTERSIGN location guard** — newly *added* non-document files whose
   path contains an `aftersign` segment must live under the `aftersign/`
   root (any subdirectory; the guard does not require `src/` or `e2e/`).
