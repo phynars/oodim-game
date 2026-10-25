@@ -147,7 +147,13 @@ try {
   ));
   expect(evidence.returningOffers).toEqual(['job-night-transfer', 'job-signed-receipt']);
   await round('job-signed-receipt');
-  await expect.poll(async () => (await read()).save.revision, { timeout: 60000 }).toBe(2);
+  // round() already awaited the io-return-recognition PUT; also require the
+  // client to report the save as clean so no later write is pending.
+  await expect.poll(async () => (await read()).save, { timeout: 60000 }).toMatchObject({
+    revision: 2,
+    authority: 'server',
+    dirty: false,
+  });
 
   const roundTwo = await checkpoint('round-two-delivered');
   const roundTwoSaved = await context.request.get(endpoint);
@@ -156,8 +162,9 @@ try {
   const roundTwoBody = await roundTwoSaved.json();
   expect(roundTwo.save.revision).toBe(2);
   expect(roundTwoBody.payload.save.revision).toBe(2);
-  // Production QA observed this persisted round-two beat as io-return-recognition.
-  // This harness checks the saved result, not the transient UI transition.
+  // main.js (#2336) persists io-return-recognition after the 1180ms advance;
+  // round() awaited that PUT, so the saved beat is the recognition beat, not
+  // the transient packet-delivered write.
   expect(roundTwoBody.payload.beat).toBe('io-return-recognition');
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.requests.every(request => request.status >= 200 && request.status < 300)).toBe(true);
