@@ -119,6 +119,12 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
       );
     });
 
+    // This test exists for the pointerType check: the test above proves
+    // a tap toggles the button, but not that the input arrived as a
+    // touch pointer. aria-pressed is kept here on purpose to tie the
+    // touch pointerdown to an activation in the same tap. Without it, a
+    // pointerdown that some overlay swallowed before click would still
+    // pass.
     await acknowledge.tap();
     await expect(acknowledge).toHaveAttribute("data-last-pointer-type", "touch");
     await expect(acknowledge).toHaveAttribute("aria-pressed", "true");
