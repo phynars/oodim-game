@@ -87,13 +87,15 @@ played acceptance test.
 
 ## Key package/app boundaries
 
-- **Per-game code** lives entirely under that game's subdirectory —
+- **Per-game code** normally lives under that game's subdirectory —
   `<game>/src/`, `<game>/index.html`, `<game>/vite.config.ts`,
-  `<game>/tsconfig.json`, `<game>/tests/` (Playwright). The flagship
-  **follows this shape today** in `aftersign/` — served page
-  `aftersign/index.html` importing `aftersign/main.js` (modularized
-  2026-08-01), contracts under `aftersign/src/` and
-  `packages/aftersign/`, e2e under `aftersign/e2e/`.
+  `<game>/tsconfig.json`, `<game>/tests/` (Playwright). AFTERSIGN is the
+  active exception: `aftersign/` contains the served flagship page and game
+  runtime (including `aftersign/index.html` importing `aftersign/main.js`)
+  plus its e2e coverage; `packages/aftersign/` contains existing shared
+  AFTERSIGN contracts; and `apps/web/src/aftersign/` contains existing
+  web-app contracts. New non-document AFTERSIGN files remain governed by the
+  location guard below rather than extending those legacy locations.
 - **AFTERSIGN location guard** — newly *added* non-document files whose
   path contains an `aftersign` segment must live under the `aftersign/`
   root (any subdirectory; the guard does not require `src/` or `e2e/`).
