@@ -78,9 +78,19 @@ async function forceSave(page: Page): Promise<void> {
     await game.input.forceSave();
     await game.input.waitForStoryIdle?.();
   });
-  await page.waitForFunction(() => window.__game?.save?.dirty === false, undefined, {
-    timeout: WAIT_MS,
-  });
+  // Do NOT wait for `save.dirty === false`. deliverPacket fires
+  // `persistAuthoritative({ dirty: true })` synchronously (main.js:5244) and
+  // again from its 1180ms timer (main.js:5242). Either PUT can resolve after
+  // forceSave's clean write. persistence.js then sets `dirty` back to true,
+  // and nothing clears it, so a dirty:false wait can hang until timeout.
+  // forceSave is awaited above, so its server write has resolved by now.
+  // Gate on the load proof it stamps after that write.
+  await page.waitForFunction(
+    () => window.__game?.save?.lastLoadProof?.source === 'server'
+      && window.__game?.save?.authority === 'server',
+    undefined,
+    { timeout: WAIT_MS },
+  );
 }
 
 test('returning-session boot speaks recognition copy after a hard document navigation', async ({ page }) => {
