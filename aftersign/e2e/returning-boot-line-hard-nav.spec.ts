@@ -83,8 +83,11 @@ async function forceSave(page: Page): Promise<void> {
   // again from its 1180ms timer (main.js:5242). Either PUT can resolve after
   // forceSave's clean write. persistence.js then sets `dirty` back to true,
   // and nothing clears it, so a dirty:false wait can hang until timeout.
-  // forceSave is awaited above, so its server write has resolved by now.
-  // Gate on the load proof it stamps after that write.
+  // forceSave is awaited above, so its server write has resolved by now; the
+  // durable proof is the post-navigation readProbe in the test body. The check
+  // below is only a sanity guard that the page is still server-authoritative —
+  // lastLoadProof.source is already 'server' after boot, so it does NOT by
+  // itself prove forceSave's write landed.
   await page.waitForFunction(
     () => window.__game?.save?.lastLoadProof?.source === 'server'
       && window.__game?.save?.authority === 'server',
