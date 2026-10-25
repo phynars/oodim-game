@@ -105,6 +105,31 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     ).toBeVisible({ timeout: WAIT_MS });
   });
 
+  test("phone taps reach the acknowledgement HUD button as touch pointers", async ({ page }) => {
+    test.setTimeout(120_000);
+    await reachPacketChoice(page);
+
+    const acknowledge = page.locator("#acknowledgeRouteButton");
+    await expect(acknowledge).toBeVisible({ timeout: WAIT_MS });
+    await acknowledge.evaluate((button) => {
+      button.addEventListener(
+        "pointerdown",
+        (event) => button.setAttribute("data-last-pointer-type", event.pointerType),
+        { once: true },
+      );
+    });
+
+    // This test exists for the pointerType check: the test above proves
+    // a tap toggles the button, but not that the input arrived as a
+    // touch pointer. aria-pressed is kept here on purpose to tie the
+    // touch pointerdown to an activation in the same tap. Without it, a
+    // pointerdown that some overlay swallowed before click would still
+    // pass.
+    await acknowledge.tap();
+    await expect(acknowledge).toHaveAttribute("data-last-pointer-type", "touch");
+    await expect(acknowledge).toHaveAttribute("aria-pressed", "true");
+  });
+
   // GEOMETRY baseline for the same three controls the behavior test
   // above taps. The behavior test proves ack / sound / reset each FIRE
   // on a phone tap and that Start fresh is structurally outside
