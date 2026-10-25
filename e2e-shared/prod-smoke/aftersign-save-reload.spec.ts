@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
-import { expectedIoRecognitionLine } from "../../aftersign/src/ioRecognitionDialogue";
+import { SEALED_RETURNING_RECOGNITION_LINE } from "../../aftersign/e2e/servedRecognitionCopy";
 
 // three.js needs WebGL; force SwiftShader like `aftersign-save.spec.ts`
 // (its `test.use({ launchOptions: ... })`) so a headless CI runner

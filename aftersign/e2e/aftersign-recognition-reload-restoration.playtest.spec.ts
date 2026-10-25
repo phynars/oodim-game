@@ -50,7 +50,7 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
-const OPENED_RECOGNITION_LINE = expectedIoRecognitionLine("opened", false);
+const OPENED_RECOGNITION_LINE = OPENED_RETURNING_RECOGNITION_LINE;
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);
