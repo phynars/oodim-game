@@ -18,7 +18,7 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   // legacy route-only saves like `{ lastRoute: "safe", succeeded: false }`.
   // `mend` / `damage` are the durable anchors — see
   // `aftersignPacketRecallFailedCopy.test.ts`.
-  failed: "Io remembers the split seal you brought back. She leaves it open between you: mend it, or carry its damage forward into the next delivery.",
+  failed: "Io remembers the split seal you brought back. She keeps the next packet waiting: mend this loss, or carry its damage into the next delivery.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
   fragile: "Io remembers how carefully you carried the fragile packet. She kept another clear of the rush because you did. Carry this one gently, too.",
