@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
-import { expectedIoRecognitionLine } from "../../aftersign/src/ioRecognitionDialogue";
+import { SEALED_RETURNING_RECOGNITION_LINE } from "../../aftersign/e2e/servedRecognitionCopy";
 
 // three.js needs WebGL; force SwiftShader like `aftersign-save.spec.ts`
 // (its `test.use({ launchOptions: ... })`) so a headless CI runner
@@ -60,10 +60,11 @@ type AftersignWindow = {
  *      opener). That is the save-restore proof against prod.
  *   6. Tap `#deliverButton` ("Return to Io") on the restored surface
  *      to prove it is interactive, and assert the authored RETURNING
- *      line via `expectedIoRecognitionLine("sealed", false)` — same
- *      copy-contract hook the local spec uses, so if the deployed
- *      bundle drops/garbles the recognition dialogue module, this
- *      fails loudly (not just a beat-id check).
+ *      line via the independent `SEALED_RETURNING_RECOGNITION_LINE`
+ *      baseline (aftersign/e2e/servedRecognitionCopy.ts) — not the
+ *      runtime dialogue module under test, so if the deployed bundle
+ *      drops/garbles/drifts the recognition copy, this fails loudly
+ *      (not just a beat-id check).
  *
  * `hasTouch: true` is required on phone context — see
  * `aftersign/e2e/io-voice-served.spec.ts:74-80` for the sibling rule.
@@ -75,7 +76,7 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const TEST_TIMEOUT_MS = 240_000;
 const WAIT_MS = 90_000;
 
-const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
+const SEALED_RECOGNITION_LINE = SEALED_RETURNING_RECOGNITION_LINE;
 
 function slotUrl(slot: string): string {
   // `baseURL` resolves `SMOKE_BASE_URL` (see
@@ -173,7 +174,7 @@ test.describe("aftersign: production save+reload (prod-smoke)", () => {
 
       // --- The recognition beat has to render the AUTHORED returning
       // line, not an empty / fallback string. Going through
-      // `expectedIoRecognitionLine` keeps the copy contract owned by a
+      // `SEALED_RETURNING_RECOGNITION_LINE` keeps the copy contract owned by a
       // single module (the local-preview sibling asserts the same way),
       // so a prod bundle that drops `ioRecognitionDialogue` fails here.
       await waitForBeat(page, "io-return-recognition");
