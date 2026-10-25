@@ -146,17 +146,39 @@ try {
     nodes.map(node => node.getAttribute('data-offered-job-id')).sort()
   ));
   expect(evidence.returningOffers).toEqual(['job-night-transfer', 'job-signed-receipt']);
+  // Round two's last write is deliverPacket's delayed
+  // persistAuthoritative({ dirty: true }) for io-return-recognition, issued
+  // after setBeat updates the DOM. No clean write follows it, so state.save.dirty
+  // stays true. Don't wait for dirty:false. Instead, register the wait for that
+  // PUT before the round starts so its response can't be missed.
+  const recognitionPut = page.waitForResponse(candidate => (
+    candidate.url() === endpoint
+    && candidate.request().method() === 'PUT'
+    && candidate.request().postDataJSON()?.payload?.beat === 'io-return-recognition'
+  ), { timeout: 60000 });
   await round('job-signed-receipt');
-  await expect.poll(async () => (await read()).save.revision, { timeout: 60000 }).toBe(2);
+  const recognitionResponse = await recognitionPut;
+  expect(recognitionResponse.ok(), `PUT io-return-recognition: ${recognitionResponse.status()}`).toBe(true);
 
+  // The recognition PUT has resolved by this point. Still poll the server copy
+  // so the assertion depends on what was persisted, not on response ordering.
+  let roundTwoBody = null;
+  await expect.poll(async () => {
+    const response = await context.request.get(endpoint);
+    evidence.roundTwoGetStatus = response.status();
+    if (!response.ok()) return null;
+    roundTwoBody = await response.json();
+    return roundTwoBody.payload?.beat;
+  }, { timeout: 60000 }).toBe('io-return-recognition');
+
+  await expect.poll(async () => (await read()).save, { timeout: 60000 }).toMatchObject({
+    revision: 2,
+    authority: 'server',
+  });
   const roundTwo = await checkpoint('round-two-delivered');
-  const roundTwoSaved = await context.request.get(endpoint);
-  evidence.roundTwoGetStatus = roundTwoSaved.status();
-  expect(roundTwoSaved.ok()).toBe(true);
-  const roundTwoBody = await roundTwoSaved.json();
   expect(roundTwo.save.revision).toBe(2);
   expect(roundTwoBody.payload.save.revision).toBe(2);
-  expect(roundTwoBody.payload.beat).toBe('packet-delivered');
+  expect(roundTwoBody.payload.beat).toBe('io-return-recognition');
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.requests.every(request => request.status >= 200 && request.status < 300)).toBe(true);
 
