@@ -87,13 +87,22 @@ played acceptance test.
 
 ## Key package/app boundaries
 
-- **Per-game code** lives entirely under that game's subdirectory —
-  `<game>/src/`, `<game>/index.html`, `<game>/vite.config.ts`,
-  `<game>/tsconfig.json`, `<game>/tests/` (Playwright). The flagship
-  **follows this shape today** in `aftersign/` — served page
-  `aftersign/index.html` importing `aftersign/main.js` (modularized
-  2026-08-01), contracts under `aftersign/src/` and
-  `packages/aftersign/`, e2e under `aftersign/e2e/`.
+- **Per-game code** — new per-game code belongs under that game's
+  subdirectory — `<game>/src/`, `<game>/index.html`,
+  `<game>/vite.config.ts`, `<game>/tsconfig.json`, `<game>/tests/`
+  (Playwright). AFTERSIGN is **not** entirely under its root today; its
+  code is split across three locations with distinct roles:
+  - `aftersign/` — the served flagship runtime: `aftersign/index.html`
+    importing `aftersign/main.js` (modularized 2026-08-01), its
+    contracts under `aftersign/src/`, and e2e under `aftersign/e2e/`.
+    This is where gameplay changes and all **new** AFTERSIGN files go.
+  - `packages/aftersign/` — pre-existing shared AFTERSIGN contracts
+    (types/logic consumed outside the served page). Existing files are
+    maintained in place; do not add new files here.
+  - `apps/web/src/aftersign/` — pre-existing web-app-side AFTERSIGN
+    contracts. Existing files are maintained in place; this is **not**
+    the served game runtime, so gameplay fixes made only here do not
+    reach players.
 - **AFTERSIGN location guard** — newly *added* non-document files whose
   path contains an `aftersign` segment must live under the `aftersign/`
   root (any subdirectory; the guard does not require `src/` or `e2e/`).
