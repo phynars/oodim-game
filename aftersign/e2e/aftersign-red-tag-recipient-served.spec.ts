@@ -165,6 +165,10 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
       "data-aftersign-red-tag-recipient",
       "recognizes-player",
     );
+    await expect(recipientLine).toHaveAttribute(
+      "data-aftersign-acknowledgment-id",
+      "saint-orra-red-tag-return",
+    );
     // Proves `getAftersignStoryState(...).state.npcs` emits the
     // `red-tag-recipient` entry post-delivery on the SERVED page —
     // not just in vitest. Locks F1 on the real DOM: a regression

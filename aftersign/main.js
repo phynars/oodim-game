@@ -2726,6 +2726,15 @@ const renderText = () => {
           dispositionAttr,
         );
       }
+      const acknowledgmentId = dialogue.acknowledgmentId;
+      if (acknowledgmentId) {
+        recipientPara.setAttribute(
+          "data-aftersign-acknowledgment-id",
+          acknowledgmentId,
+        );
+      } else {
+        recipientPara.removeAttribute("data-aftersign-acknowledgment-id");
+      }
       const countAttr = String(redTagRecipientEntries.length);
       if (
         recipientPara.getAttribute("data-aftersign-red-tag-recipient-count") !==
