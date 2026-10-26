@@ -2710,6 +2710,10 @@ const renderText = () => {
     if (staleSkippedRoutePara && staleSkippedRoutePara.parentNode) {
       staleSkippedRoutePara.parentNode.removeChild(staleSkippedRoutePara);
     }
+    const staleRouteReturnPara = document.getElementById("ioRouteReturnLine");
+    if (staleRouteReturnPara && staleRouteReturnPara.parentNode) {
+      staleRouteReturnPara.parentNode.removeChild(staleRouteReturnPara);
+    }
   }
   // #2446 — Shipped-consumer render block for the third remembering NPC
   // (`red-tag-recipient`). Imported from

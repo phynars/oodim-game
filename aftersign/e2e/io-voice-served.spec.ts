@@ -204,6 +204,22 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
     );
     await expect(skippedRouteLine).toHaveText(IO_ROUTE_MEMORY_LINES.skipped.text);
 
+    // #2511 — Io's first-scene skipped-route recognition line, selected
+    // from the durable second-action memory written by the tapped
+    // `skip-kiosk-acknowledge` choice and surviving the reload above.
+    const expectedRouteReturn = getAftersignIoRouteReturnLine(false);
+    const routeReturnLine = page.locator("#ioRouteReturnLine");
+    await expect(routeReturnLine).toBeVisible({ timeout: WAIT_MS });
+    await expect(routeReturnLine).toHaveAttribute(
+      "data-aftersign-io-route-return-line",
+      "skippedReturn",
+    );
+    await expect(routeReturnLine).toHaveAttribute(
+      "data-aftersign-io-route-memory-key",
+      "skipped_route",
+    );
+    await expect(routeReturnLine).toHaveText(expectedRouteReturn.text);
+
     const returnLine = page.locator("#ioReturnLine");
     await expect(
       returnLine,
