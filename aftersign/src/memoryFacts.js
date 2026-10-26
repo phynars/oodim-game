@@ -71,6 +71,18 @@ export const secondActionFromMemory = (memory = []) => {
   return fact?.object === SECOND_ACTION.DONE ? SECOND_ACTION.DONE : SECOND_ACTION.SKIPPED;
 };
 
+/** #2511 — true ONLY when Io durably holds an explicit skipped
+ *  route-attention fact (the player tapped skip-kiosk-acknowledge).
+ *  Unlike `secondActionFromMemory`, absence of the fact is NOT treated
+ *  as skipped (#2437: no tap must not become an "I ran early" line). */
+export const rememberedSkippedRoute = (memory = []) => (
+  Array.isArray(memory)
+  && memory.some((entry) => (
+    entry?.predicate === NPC_MEMORY_PREDICATE.KIOSK_SECOND_ACTION
+    && entry?.object === SECOND_ACTION.SKIPPED
+  ))
+);
+
 export const memoryRefsFromMemory = (memory = []) => {
   const packetOutcome = memory.find((entry) => entry.kind === NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME)?.id ?? null;
   const secondAction = memory.find((entry) => entry.predicate === NPC_MEMORY_PREDICATE.KIOSK_SECOND_ACTION)?.id ?? null;

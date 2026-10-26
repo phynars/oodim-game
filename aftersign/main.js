@@ -26,6 +26,7 @@ import {
   buildPacketOutcomeMemoryFact,
   buildSecondActionMemoryFact,
   memoryRefsFromMemory,
+  rememberedSkippedRoute,
   SECOND_ACTION,
   secondActionFromMemory,
 } from "./src/memoryFacts.js";
@@ -110,6 +111,7 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 // the safe-delivery offer and pins the stamped line + jobId axis.
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
+import { stampIoRouteReturnLine } from "../apps/web/src/aftersign/aftersignIoRouteReturnRender.ts";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
 import { aftersignDeliveryCompleteLine } from "../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";
 import { aftersignPacketRecallLine, aftersignPacketRecallToken } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
@@ -1898,10 +1900,7 @@ const syncIoLine = () => {
     // closes the AI008 two-writers-one-assertion race.
     nextLine = state.delivery.id === "red-tag"
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
-      : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
-        // #2511: same skippedReturn suffix as lineForBeat (two writers, one line).
-        ? `${selected.line} ${getAftersignIoRouteReturnLine(false).text}`
-        : selected.line;
+      : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The
@@ -2848,6 +2847,22 @@ const renderText = () => {
     document,
     jobTakeAckJobId,
     jobTakeAckJobId ? aftersignJobAcceptedLine(jobTakeAckJobId) : "",
+  );
+  // #2511 — Io's skipped-route recognition. Only rendered at
+  // `io-return-recognition` when Io durably remembers the player tapped
+  // `skip-kiosk-acknowledge` (explicit route-attention fact, object
+  // "skipped" — absence of the fact does NOT count, see #2437). The line
+  // goes into its own sibling paragraph `#ioRouteReturnLine` rather than
+  // being appended to `#line`: `#line` textContent is contract-pinned to
+  // the recognition dialogue table by the reload/recognition playtests.
+  // Copy is the shipped `skippedReturn` line from ioFirstSceneDialogue.ts.
+  const showSkippedRouteReturn =
+    isReturnRecognitionBeat
+    && state.delivery?.id !== "red-tag"
+    && rememberedSkippedRoute(state.npcs.io.memory);
+  stampIoRouteReturnLine(
+    document,
+    showSkippedRouteReturn ? getAftersignIoRouteReturnLine(false) : null,
   );
   // PR #1715 (#1714) — Io ledger copy contract, wired to the two
   // beats where Io names the ledger-facing fact:
