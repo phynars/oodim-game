@@ -39,6 +39,10 @@ export default defineConfig({
       "packages/aftersign/src/narrative-triage/orra-returning-memory-surface.test.ts",
       // packages/flagship vitest specs
       "packages/flagship/src/packetSeal.test.ts",
+      // aftersign/src vitest specs (explicit allow-list — most siblings
+      // there are pure-runner bundles without a vitest import)
+      // #2511 — Io skipped-route recognition writer + memory gate
+      "aftersign/src/ioRouteReturnRender.test.js",
     ],
   },
 });
