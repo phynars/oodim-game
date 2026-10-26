@@ -134,7 +134,7 @@ describe('Io returning-session lines (web view sources from package)', () => {
     ).toBe(IO_RETURN_POSTURE_LINES.evasive)
   })
 
-  it('assembles the full recognition surface: chained packet+route line, then posture', () => {
+  it('assembles the full recognition surface: packet, route, then posture', () => {
     expect(
       getIoReturningSessionRecognitionLines({
         packetOutcome: 'sealed',
@@ -143,8 +143,30 @@ describe('Io returning-session lines (web view sources from package)', () => {
       }),
     ).toEqual([
       IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketListenedRoute,
+      IO_ROUTE_MEMORY_LINES.listened,
       IO_RETURN_POSTURE_LINES.evasive,
     ])
+  })
+
+  it('renders the skipped-route beat alongside the returning packet memory', () => {
+    expect(
+      getIoReturningSessionRecognitionLines({
+        packetOutcome: 'sealed',
+        routeInstructionBehavior: 'skipped',
+      }),
+    ).toEqual([
+      IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketSkippedRoute,
+      IO_ROUTE_MEMORY_LINES.skipped,
+    ])
+  })
+
+  it('renders the skipped-route recognition beat after returning with a delivered packet', () => {
+    const lines = getIoReturningSessionRecognitionLines({
+      packetOutcome: 'sealed',
+      routeInstructionBehavior: 'skipped',
+    })
+
+    expect(lines).toContainEqual(IO_RETURNING_SESSION_CHAINED_LINES.sealedPacketSkippedRoute)
   })
 
   it('returns only the packet line when no route or posture is remembered', () => {

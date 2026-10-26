@@ -54,6 +54,7 @@ import {
   writeAuthoritativeSave,
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
+import { getIoReturningSessionRecognitionLines } from "../apps/web/src/aftersign/ioReturningSessionLines.ts";
 // Note (PR #1236): the direct import of `AFTERSIGN_NEXT_JOB_BEAT` was
 // removed here — the served-page handoff line is now sourced through
 // `buildIoContinueBeats(reason)[1].line` (see the import right below).
@@ -2529,6 +2530,16 @@ const renderText = () => {
       state.delivery && typeof state.delivery.outcome === "string"
         ? state.delivery.outcome
         : "unknown";
+    const routeAttention = secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
+      ? "skipped"
+      : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+        ? "listened"
+        : undefined;
+    const recognitionLines = getIoReturningSessionRecognitionLines({
+      packetOutcome: state.packet.sealed ? "sealed" : "opened",
+      routeInstructionBehavior: routeAttention,
+    });
+    const skippedRouteLine = recognitionLines.find((entry) => entry.id === "io-route-skipped");
     const returnLineText = ioReturnLine(returnOutcome);
     if (line && line.parentNode && typeof document !== "undefined") {
       let returnPara = document.getElementById("ioReturnLine");
@@ -2552,6 +2563,20 @@ const renderText = () => {
       }
       if (returnPara.textContent !== returnLineText) {
         returnPara.textContent = returnLineText;
+      }
+      let skippedRoutePara = document.getElementById("ioSkippedRouteLine");
+      if (skippedRouteLine) {
+        if (!skippedRoutePara) {
+          skippedRoutePara = document.createElement("p");
+          skippedRoutePara.id = "ioSkippedRouteLine";
+          returnPara.insertAdjacentElement("afterend", skippedRoutePara);
+        }
+        skippedRoutePara.setAttribute("data-aftersign-io-route-memory", "skipped");
+        if (skippedRoutePara.textContent !== skippedRouteLine.text) {
+          skippedRoutePara.textContent = skippedRouteLine.text;
+        }
+      } else if (skippedRoutePara?.parentNode) {
+        skippedRoutePara.parentNode.removeChild(skippedRoutePara);
       }
       // PR #2419 F1 — shipped consumer of the two typed Io-line
       // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
@@ -2668,6 +2693,10 @@ const renderText = () => {
     const staleReturnPara = document.getElementById("ioReturnLine");
     if (staleReturnPara && staleReturnPara.parentNode) {
       staleReturnPara.parentNode.removeChild(staleReturnPara);
+    }
+    const staleSkippedRoutePara = document.getElementById("ioSkippedRouteLine");
+    if (staleSkippedRoutePara && staleSkippedRoutePara.parentNode) {
+      staleSkippedRoutePara.parentNode.removeChild(staleSkippedRoutePara);
     }
   }
   // #2446 — Shipped-consumer render block for the third remembering NPC

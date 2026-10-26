@@ -205,15 +205,18 @@ export function getIoReturnPostureLine(
   return IO_RETURN_POSTURE_LINES[memory.returnAnswerTone]
 }
 
-// Full recognition surface for a returning session: the packet-return line
-// (always present — it's what Io opens with), then optional posture reflection.
-// Route memory is folded into the packet line when both memories are present.
+// Full recognition surface for a returning session: packet-return memory
+// (always present), its independently legible route-memory beat when saved,
+// then optional posture reflection.
 export function getIoReturningSessionRecognitionLines(
   memory: IoReturningSessionMemory,
 ): readonly IoReturningSessionMemoryLine[] {
   const lines: IoReturningSessionMemoryLine[] = [
     getIoReturningSessionMemoryLine(memory),
   ]
+
+  const route = getIoRouteMemoryLine(memory)
+  if (route) lines.push(route)
 
   const posture = getIoReturnPostureLine(memory)
   if (posture) lines.push(posture)

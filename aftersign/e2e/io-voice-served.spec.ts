@@ -63,6 +63,7 @@ import { expect, test, type Page } from "@playwright/test";
 // branch. Deriving both from the module — instead of duplicating —
 // keeps the served stamp + the e2e assertion on ONE table.
 import { IO_VOICE } from "../src/ioVoice.js";
+import { IO_ROUTE_MEMORY_LINES } from "../../apps/web/src/aftersign/ioReturningSessionLines.ts";
 
 const SEALED_OUTCOME_KEY = "sealed" as const;
 const OPENED_OUTCOME_KEY = "opened" as const;
@@ -190,7 +191,18 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
     // never crosses OPEN thresholds).
     await page.locator("#packetButton").tap();
     await waitForBeat(page, "packet-choice");
+    await page.locator('[data-choice-id="skip-kiosk-acknowledge"]').tap();
     await tapDeliverToRecognition(page);
+    await page.reload();
+    await waitForBeat(page, "io-return-recognition");
+
+    const skippedRouteLine = page.locator("#ioSkippedRouteLine");
+    await expect(skippedRouteLine).toBeVisible({ timeout: WAIT_MS });
+    await expect(skippedRouteLine).toHaveAttribute(
+      "data-aftersign-io-route-memory",
+      "skipped",
+    );
+    await expect(skippedRouteLine).toHaveText(IO_ROUTE_MEMORY_LINES.skipped.text);
 
     const returnLine = page.locator("#ioReturnLine");
     await expect(
