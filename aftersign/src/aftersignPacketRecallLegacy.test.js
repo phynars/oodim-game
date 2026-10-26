@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aftersignPacketRecallLine,
   aftersignPacketRecallToken,
-} from "./aftersignPacketRecallCopy.js";
+} from "../../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
 
 describe("legacy fast-route packet recall", () => {
   it("keeps an actionless fast record migration-only rather than rendering it to a player", () => {

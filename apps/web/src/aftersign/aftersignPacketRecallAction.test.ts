@@ -24,7 +24,7 @@ describe("packet-offered recall keys on lastAction (#2164)", () => {
 
   it("old fast saves without lastAction render no recall (never an unplayed action)", () => {
     // Route-only fast records predate action persistence; see
-    // aftersignPacketRecallLegacy.test.ts. The token is null, so the line
+    // aftersign/src/aftersignPacketRecallLegacy.test.js. The token is null, so the line
     // is empty and the packet-offered recall is torn down.
     expect(aftersignPacketRecallToken({ lastRoute: "fast", succeeded: true })).toBeNull();
     const line = recall({ lastRoute: "fast", succeeded: true });
