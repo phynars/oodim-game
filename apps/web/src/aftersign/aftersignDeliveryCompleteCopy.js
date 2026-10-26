@@ -1,7 +1,7 @@
 // Player-facing confirmation copy is keyed by the persisted completed
 // delivery id; this module owns the player-facing route language.
 const DELIVERY_COMPLETE_LINE_BY_ID = Object.freeze({
-  "red-tag": "Done. Red tag delivered to Saint Orra. She files it under your name. When you return, she will know you carried it.",
+  "red-tag": "Done. Red tag delivered to Saint Orra. She files it under your name. Come back, and she will know the courier who carried it.",
   "blue-packet": "Done. Blue packet delivered. I set its mark beside your name. When you return, I will remember the road that kept you away.",
 });
 
