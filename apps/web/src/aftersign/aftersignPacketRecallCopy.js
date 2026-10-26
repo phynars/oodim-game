@@ -53,7 +53,9 @@ export function aftersignPacketRecallToken(routeRisk) {
   if (routeRisk.lastRoute === "safe") return "safe";
   if (routeRisk.lastRoute === "fast") {
     if (routeRisk.lastAction === "take-the-shortcut") return "fast";
-    return "fastUnknown";
+    // Route-only fast records predate action persistence. Keep their copy
+    // for migration tooling, but do not present an unplayed recall to users.
+    return null;
   }
   return null;
 }
