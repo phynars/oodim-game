@@ -1898,7 +1898,10 @@ const syncIoLine = () => {
     // closes the AI008 two-writers-one-assertion race.
     nextLine = state.delivery.id === "red-tag"
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
-      : selected.line;
+      : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
+        // #2511: same skippedReturn suffix as lineForBeat (two writers, one line).
+        ? `${selected.line} ${getAftersignIoRouteReturnLine(false).text}`
+        : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
     // Return-tone feel — REAL call site (PR #1205 re-review). The
