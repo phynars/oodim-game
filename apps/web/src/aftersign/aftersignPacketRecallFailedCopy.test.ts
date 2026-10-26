@@ -29,6 +29,9 @@ import {
 const FAILED_LINE_VERBATIM =
   "Io remembers the split seal you brought back. She keeps the next packet waiting: mend this loss, or carry its damage into the next delivery.";
 
+const FRAGILE_LINE_VERBATIM =
+  "Io remembers how carefully you carried the fragile packet. It still came back torn. She leaves the next one with you: mend what was torn before you carry again.";
+
 describe("failed-route recall names what the dark actually took (#2427)", () => {
   it("the failed entry matches the authored sentence verbatim", () => {
     expect(AFTERSIGN_PACKET_RECALL_COPY.failed).toBe(FAILED_LINE_VERBATIM);
