@@ -1536,6 +1536,12 @@ const setTextContentIfChanged = (node, value) => {
 };
 
 let audioController;
+const syncMusicButton = ({ started, muted }) => {
+  if (!musicButton) return;
+  musicButton.hidden = !started;
+  musicButton.textContent = muted ? "Unmute music" : "Mute music";
+  musicButton.setAttribute("aria-pressed", String(!muted));
+};
 const getAudioController = () => {
   audioController ??= createAftersignAudioController({
     state,
@@ -1543,6 +1549,7 @@ const getAudioController = () => {
     publishState,
     confirmFeedback: CONFIRM_FEEDBACK,
     jobOfferConfirmAudio: JOB_OFFER_CONFIRM_AUDIO,
+    onMusicStateChange: syncMusicButton,
   });
   return audioController;
 };
@@ -5633,15 +5640,11 @@ window.addEventListener("keyup", (event) => {
   syncKeyboardInput();
 });
 soundButton.addEventListener("click", () => {
-  void enableAudio().then(() => {
-    musicButton.hidden = !state._runtime.audio.musicStarted;
-    musicButton.setAttribute("aria-pressed", String(!state._runtime.audio.musicMuted));
-  });
+  void enableAudio();
 });
-musicButton.addEventListener("click", async () => {
-  const muted = await getAudioController().toggleMusic();
-  musicButton.textContent = muted ? "Unmute music" : "Mute music";
-  musicButton.setAttribute("aria-pressed", String(!muted));
+// Label/aria/hidden are synced by onMusicStateChange (syncMusicButton).
+musicButton.addEventListener("click", () => {
+  void getAudioController().toggleMusic();
 });
 resetButton.addEventListener("click", resetSliceSave);
 window.addEventListener("resize", resize, { passive: true });

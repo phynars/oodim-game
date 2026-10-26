@@ -27,6 +27,9 @@ test.describe("AFTERSIGN served audio", () => {
 
     const offer = page.locator("button[data-offered-job-id]").first();
     await expect(offer).toBeVisible({ timeout: WAIT_MS });
+    // Music control stays hidden until a gesture unlocks audio.
+    await expect(page.locator("#musicButton")).toBeHidden();
+    // Job-offer tap (not the kiosk sound button) must be enough to reveal it.
     await offer.tap();
 
     await expect.poll(() => page.evaluate(() => window.__game?._runtime?.audio?.ambientStarted), { timeout: WAIT_MS }).toBe(true);

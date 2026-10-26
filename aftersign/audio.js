@@ -4,6 +4,7 @@ import { createAftersignMusicLayer } from "./music-layer.js";
 
 export const createAftersignAudioController = ({
   state, markStateDirty, publishState, confirmFeedback, jobOfferConfirmAudio,
+  onMusicStateChange = () => {},
 }) => {
   let audioContext;
   let impactBurstChirpGain;
@@ -52,6 +53,9 @@ export const createAftersignAudioController = ({
     state._runtime.audio.musicMuted = musicLayer.muted;
     state._runtime.audio.musicState = musicLayer.started ? (musicLayer.muted ? "muted" : "playing") : "idle";
     markStateDirty();
+    // Any unlocking gesture (kiosk sound, job offer, confirm) reaches here,
+    // so the music control's visibility is synced from the music layer itself.
+    onMusicStateChange({ started: musicLayer.started, muted: musicLayer.muted });
   };
   const enableAudio = async () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
