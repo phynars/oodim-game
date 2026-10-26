@@ -1,7 +1,7 @@
-// Frozen delivery-complete copy. The served renderer supplies the durable
+// Player-facing confirmation copy is keyed by the persisted completed
 // delivery id; this module owns the player-facing route language.
 const DELIVERY_COMPLETE_LINE_BY_ID = Object.freeze({
-  "red-tag": "Done. Red tag delivered to Saint Orra. She keeps it under your name. When you come back, she will know what you carried.",
+  "red-tag": "Done. Red tag delivered to Saint Orra. She files it under your name. When you return, she will know you carried it.",
   "blue-packet": "Done. Blue packet delivered. I set its mark beside your name. When you return, I will remember the road that kept you away.",
 });
 
@@ -10,11 +10,7 @@ const DEFAULT_DELIVERY_COMPLETE_LINE = DELIVERY_COMPLETE_LINE_BY_ID["blue-packet
 export const AFTERSIGN_DELIVERY_COMPLETE_COPY = DELIVERY_COMPLETE_LINE_BY_ID;
 
 /**
- * Resolve completion copy for the delivered packet identity. Unknown ids keep
- * the established blue-packet fallback rather than exposing a missing token.
- *
- * @param {unknown} deliveryId
- * @returns {string}
+ * Returns a safe player-facing completion line for a persisted delivery id.
  */
 export function aftersignDeliveryCompleteLine(deliveryId) {
   if (typeof deliveryId !== "string") return DEFAULT_DELIVERY_COMPLETE_LINE;
