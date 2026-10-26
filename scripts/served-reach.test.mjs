@@ -2,7 +2,31 @@
 // CI job runs the real gate). Run: node --test scripts/served-reach.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addedStrings, decide, exemptReason, inBundle, servedCandidates } from "./served-reach.mjs";
+import { addedStrings, clientCandidates, decide, exemptReason, inBundle, inRendered, renderedVerdict, servedCandidates } from "./served-reach.mjs";
+
+test("rendered rule: bundled-but-never-shown copy fails, shown copy passes (#2499)", () => {
+  const rendered = [
+    "You came back. The packet is where you left it.",
+    "You left before I finished the route. Keep that in mind next time.",
+    "Deliver red tag to the recipient",
+  ];
+  assert.equal(inRendered("You left before I finished the route.", rendered), true);
+  assert.equal(inRendered("You  came back.\n The packet", rendered), true, "whitespace in the literal is squashed");
+  assert.equal(inRendered("You skipped my route. Instinct carried you once;", rendered), false);
+});
+
+test("rendered verdict: warn mode reports, fail mode blocks, exempt and no-text skip", () => {
+  const miss = [{ file: "aftersign/main.js", text: "x y z" }];
+  assert.deepEqual(renderedVerdict({ exempt: null, checked: 0, unrendered: [], mode: "fail" }), { result: "skipped:no_new_text", fail: false });
+  assert.deepEqual(renderedVerdict({ exempt: "legacy save", checked: 1, unrendered: miss, mode: "fail" }), { result: "skipped:exempt", fail: false });
+  assert.deepEqual(renderedVerdict({ exempt: null, checked: 1, unrendered: [], mode: "fail" }), { result: "rendered", fail: false });
+  assert.deepEqual(renderedVerdict({ exempt: null, checked: 1, unrendered: miss, mode: "warn" }), { result: "text_not_rendered", fail: false });
+  assert.deepEqual(renderedVerdict({ exempt: null, checked: 1, unrendered: miss, mode: "fail" }), { result: "text_not_rendered", fail: true });
+});
+
+test("clientCandidates drops the Worker (its strings are not rendered by the client)", () => {
+  assert.deepEqual(clientCandidates(["src/server.ts", "aftersign/main.js", "apps/web/src/aftersign/x.test.ts"]), ["aftersign/main.js"]);
+});
 
 test("servedCandidates keeps product source, drops tests, harness, tooling and other games", () => {
   const files = [

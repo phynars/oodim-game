@@ -87,6 +87,30 @@ export function inBundle(s, bundle) {
   return false;
 }
 
+/** Files whose strings a player could see in the AFTERSIGN client (the
+ *  Worker's strings are not rendered by the client build). */
+export function clientCandidates(files) {
+  return servedCandidates(files).filter((f) => !f.startsWith("src/"));
+}
+
+const squash = (s) => s.replace(/\s+/g, " ").trim();
+
+/** Did a served playtest render the literal? `rendered` = the recorder's
+ *  lines (element text + aria-label/title/placeholder/alt). A literal can be
+ *  part of a longer line (a sentence inside Io's paragraph), so substring. */
+export function inRendered(s, rendered) {
+  const t = squash(s);
+  return rendered.some((line) => line.includes(t));
+}
+
+/** Pure verdict for the `rendered` rule. `mode` warn = report only. */
+export function renderedVerdict({ exempt, checked, unrendered, mode }) {
+  if (checked === 0) return { result: "skipped:no_new_text", fail: false };
+  if (exempt) return { result: "skipped:exempt", fail: false };
+  if (unrendered.length === 0) return { result: "rendered", fail: false };
+  return { result: "text_not_rendered", fail: mode === "fail" };
+}
+
 /** Pure verdict. */
 export function decide({ exempt, candidates, unreachable, missingText }) {
   if (candidates.length === 0) return { result: "skipped:no_served_source", fail: false };
@@ -144,7 +168,39 @@ export async function servedGraph() {
 function args() {
   const a = process.argv.slice(2);
   const get = (k) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : undefined; };
-  return { base: get("--base"), files: get("--files"), list: a.includes("--list-unserved") };
+  return { base: get("--base"), files: get("--files"), list: a.includes("--list-unserved"), rendered: get("--rendered"), mode: get("--mode") ?? "warn" };
+}
+
+/** `--rendered <file>`: run after the aftersign e2e step, against the text
+ *  its served playtests showed (scripts/rendered-text-recorder.js). Every new
+ *  player-facing literal in a client file must have been rendered by at least
+ *  one served playtest. Bundled is not enough (#2499: the copy was bundled
+ *  but its selector was never called). */
+function renderedRule(opt, base, ev) {
+  const rendered = existsSync(opt.rendered)
+    ? readFileSync(opt.rendered, "utf8").split("\n").filter(Boolean).map((l) => { try { return squash(JSON.parse(l)); } catch { return ""; } }).filter(Boolean)
+    : [];
+  const files = git("diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`).split("\n").filter(Boolean);
+  const added = clientCandidates(files).flatMap((f) => addedStrings(git("diff", "-U0", `${base}...HEAD`, "--", f)).map((text) => ({ file: f, text })));
+  const unrendered = added.filter((a) => !inRendered(a.text, rendered));
+  const exempt = exemptReason(ev?.body);
+  const d = renderedVerdict({ exempt, checked: added.length, unrendered, mode: opt.mode });
+  const lines = [
+    `### served-reach: rendered text (${opt.mode === "fail" ? "blocking" : "report only"})`,
+    `- recorded lines from served playtests: ${rendered.length}${rendered.length === 0 ? " (none: did the e2e step run with AFTERSIGN_RENDERED_OUT?)" : ""}`,
+    `- new player-facing strings: ${added.length}, rendered ${added.length - unrendered.length}, not rendered ${unrendered.length}`,
+    ...unrendered.map((u) => `  - never rendered by a served playtest (\`${u.file}\`): "${u.text.slice(0, 120)}"`),
+    exempt ? `- **exempt:** ${exempt}` : "",
+    `- result: \`${d.result}\``,
+  ].filter(Boolean);
+  console.log(lines.join("\n"));
+  summary(lines.join("\n"));
+  if (d.result === "text_not_rendered") {
+    const level = d.fail ? "error" : "warning";
+    console.log(`::${level} title=served-reach: new text never shown in play::${unrendered.length} new string(s) are in the build but no served playtest rendered them, e.g. "${unrendered[0].text.slice(0, 80)}" in ${unrendered[0].file}. Bundled is not shown: wire the line into the live render path and add a served playtest (aftersign/e2e/) that plays to it with visible input, or add a 'served-exempt: <reason>' line to the PR body.`);
+  }
+  console.log(`RENDERED_REACH_RESULT=${d.result}`);
+  if (d.fail) process.exitCode = 1;
 }
 
 function prEvent() {
@@ -159,6 +215,13 @@ const summary = (md) => process.env.GITHUB_STEP_SUMMARY && appendFileSync(proces
 
 async function main() {
   const opt = args();
+  if (opt.rendered) {
+    const ev = prEvent();
+    const base = opt.base ?? ev?.base;
+    if (!base) { console.log("RENDERED_REACH_RESULT=skipped:no_base"); return; }
+    renderedRule(opt, base, ev);
+    return;
+  }
   const graph = await servedGraph();
 
   if (opt.list) {
