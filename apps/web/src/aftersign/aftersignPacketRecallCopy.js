@@ -11,7 +11,7 @@
 // `aftersignPacketRecallRender.consumer.test.ts` stays green across copy
 // edits — the test asserts that phrase, not the whole line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
-  safe: "Io remembers you brought the packet back sealed. She kept a lamp burning on the safe way you made; keep the route lit.",
+  safe: "Io remembers you brought the packet back sealed. She kept a lamp burning for the safe route; keep the route lit for the next packet.",
   fast: "Io remembers you took the shortcut and beat the bell. The fast packet waits where its echo cannot reach. Take it before the next ring finds it.",
   // Failed route: the packet comes home damaged. Reached by any failed
   // fact that is NOT the fragile carry — `repair-the-loss` (played) and
