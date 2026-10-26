@@ -143,6 +143,7 @@ import {
 import {
   AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
   getAftersignIoPacketReturnLine,
+  getAftersignIoRouteReturnLine,
 } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 import {
   AFTERSIGN_IO_LINES,
