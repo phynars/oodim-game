@@ -994,6 +994,7 @@ const applyPhoneOfferLayout = (visible) => {
 };
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
+const musicButton = document.querySelector("#musicButton");
 const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
@@ -1375,6 +1376,9 @@ const state = {
       unlocked: false,
       ambientStarted: false,
       ambientState: "idle",
+      musicStarted: false,
+      musicMuted: false,
+      musicState: "idle",
       lastCue: null,
       lastCueAt: null,
     },
@@ -4739,6 +4743,12 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
 };
 
 const enableAudio = () => getAudioController().enableAudio();
+const toggleMusic = () => {
+  getAudioController().toggleMusic();
+  const muted = state._runtime.audio.musicMuted;
+  musicButton.textContent = muted ? "Unmute music" : "Mute music";
+  musicButton.setAttribute("aria-pressed", String(!muted));
+};
 const playKioskConfirm = () => getAudioController().playKioskConfirm();
 const playJobOfferConfirm = () => getAudioController().playJobOfferConfirm();
 const triggerRecognitionImpactChirp = (cue) => getAudioController().triggerRecognitionImpactChirp(cue);
@@ -5628,7 +5638,17 @@ window.addEventListener("keyup", (event) => {
   pressedKeys.delete(event.code);
   syncKeyboardInput();
 });
-soundButton.addEventListener("click", enableAudio);
+soundButton.addEventListener("click", () => {
+  void enableAudio().then(() => {
+    musicButton.hidden = !state._runtime.audio.musicStarted;
+    musicButton.setAttribute("aria-pressed", String(!state._runtime.audio.musicMuted));
+  });
+});
+musicButton.addEventListener("click", async () => {
+  const muted = await getAudioController().toggleMusic();
+  musicButton.textContent = muted ? "Unmute music" : "Mute music";
+  musicButton.setAttribute("aria-pressed", String(muted));
+});
 resetButton.addEventListener("click", resetSliceSave);
 window.addEventListener("resize", resize, { passive: true });
 

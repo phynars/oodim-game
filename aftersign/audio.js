@@ -1,7 +1,7 @@
 // AFTERSIGN audio controller. ES module — imported by main.js so Vite
-// bundles it into dist-aftersign. The prior classic-script version (loaded
-// via <script src="./audio.js">) was skipped by `vite build`, leaving
-// window.createAftersignAudioController undefined in the preview lane.
+// bundles it into dist-aftersign.
+import { createAftersignMusicLayer } from "./music-layer.js";
+
 export const createAftersignAudioController = ({
   state, markStateDirty, publishState, confirmFeedback, jobOfferConfirmAudio,
 }) => {
@@ -9,6 +9,7 @@ export const createAftersignAudioController = ({
   let impactBurstChirpGain;
   let rainFilter;
   let kioskHum;
+  let musicLayer;
 
   const stamp = (cue) => {
     state._runtime.audio.lastCue = cue;
@@ -45,6 +46,10 @@ export const createAftersignAudioController = ({
     kioskHum.start();
     state._runtime.audio.ambientStarted = true;
     state._runtime.audio.ambientState = "playing";
+    musicLayer = createAftersignMusicLayer({ audioContext, destination: audioContext.destination });
+    musicLayer.start();
+    state._runtime.audio.musicStarted = musicLayer.started;
+    state._runtime.audio.musicMuted = musicLayer.muted;
     markStateDirty();
   };
   const enableAudio = async () => {
@@ -60,6 +65,13 @@ export const createAftersignAudioController = ({
     markStateDirty();
     publishState();
     return state._runtime.audio.unlocked;
+  };
+  const toggleMusic = async () => {
+    if (!(await enableAudio()) || !musicLayer) return false;
+    musicLayer.setMuted(!musicLayer.muted);
+    state._runtime.audio.musicMuted = musicLayer.muted;
+    stamp(musicLayer.muted ? "music-muted" : "music-unmuted");
+    return musicLayer.muted;
   };
   const playTone = (frequencyHz, durationMs, peakGain, waveform = "triangle", attackMs = 18) => {
     if (!audioContext) return;
@@ -109,12 +121,8 @@ export const createAftersignAudioController = ({
     stamp("packet-cancelled");
   };
   const updateAmbient = (t) => {
-    if (rainFilter) {
-      rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
-    }
-    if (kioskHum) {
-      kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
-    }
+    if (rainFilter) rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
+    if (kioskHum) kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
   };
-  return { enableAudio, playKioskConfirm, playJobOfferConfirm, triggerRecognitionImpactChirp, playFailureStingAudio, updateAmbient };
+  return { enableAudio, toggleMusic, playKioskConfirm, playJobOfferConfirm, triggerRecognitionImpactChirp, playFailureStingAudio, updateAmbient };
 };
