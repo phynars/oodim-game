@@ -23,7 +23,7 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   // the bell rope — it must not borrow the shortcut's memory.
   fragile: "Io remembers how carefully you carried the fragile packet. She kept another clear of the rush because you did. Carry this one gently, too.",
   // Old saves recorded only the route class. Name no specific action.
-  fastUnknown: "Io remembers you ran the quick side last time. This time, she has held the packet off that road for you. Take it at your pace.",
+  fastUnknown: "Io remembers you took the quick side last time. The old record kept no more than that. The next packet is yours to carry at your pace.",
 });
 
 /**
