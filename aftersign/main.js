@@ -111,7 +111,7 @@ import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPa
 // the safe-delivery offer and pins the stamped line + jobId axis.
 import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
-import { stampIoRouteReturnLine } from "../apps/web/src/aftersign/aftersignIoRouteReturnRender.ts";
+import { stampIoRouteReturnLine } from "./src/ioRouteReturnRender.js";
 import { aftersignRouteOutcomeLine } from "../apps/web/src/aftersign/aftersignRouteOutcomeCopy.js";
 import { aftersignDeliveryCompleteLine } from "../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";
 import { aftersignPacketRecallLine, aftersignPacketRecallToken } from "../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
@@ -145,6 +145,7 @@ import {
 import {
   AFTERSIGN_IO_FIRST_SCENE_DIALOGUE,
   getAftersignIoPacketReturnLine,
+  getAftersignIoRouteReturnLine,
 } from "../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 import {
   AFTERSIGN_IO_LINES,

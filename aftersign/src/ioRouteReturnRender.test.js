@@ -7,19 +7,19 @@ import {
   IO_ROUTE_RETURN_LINE_DATA_ATTR,
   IO_ROUTE_RETURN_LINE_ID,
   stampIoRouteReturnLine,
-} from "./aftersignIoRouteReturnRender.ts";
-import { getAftersignIoRouteReturnLine } from "./ioFirstSceneDialogue.ts";
+} from "./ioRouteReturnRender.js";
+import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 import {
   buildPacketOutcomeMemoryFact,
   buildSecondActionMemoryFact,
   rememberedSkippedRoute,
   SECOND_ACTION,
-} from "../../../../aftersign/src/memoryFacts.js";
+} from "./memoryFacts.js";
 
 const SKIPPED_TEXT =
   "You skipped my route. Instinct carried you once; the next stair will remember you guessed.";
 
-function mountLineFixture(): void {
+function mountLineFixture() {
   document.body.innerHTML = `
     <main>
       <p id="speaker"></p>
@@ -35,15 +35,15 @@ describe("stampIoRouteReturnLine", () => {
   it("stamps the shipped skippedReturn copy as #line's next sibling", () => {
     const el = stampIoRouteReturnLine(document, getAftersignIoRouteReturnLine(false));
     expect(el).not.toBeNull();
-    expect(el!.id).toBe(IO_ROUTE_RETURN_LINE_ID);
-    expect(el!.textContent).toBe(SKIPPED_TEXT);
-    expect(el!.getAttribute(IO_ROUTE_RETURN_LINE_DATA_ATTR)).toBe("skippedReturn");
-    expect(document.getElementById("line")!.nextElementSibling).toBe(el);
+    expect(el.id).toBe(IO_ROUTE_RETURN_LINE_ID);
+    expect(el.textContent).toBe(SKIPPED_TEXT);
+    expect(el.getAttribute(IO_ROUTE_RETURN_LINE_DATA_ATTR)).toBe("skippedReturn");
+    expect(document.getElementById("line").nextElementSibling).toBe(el);
   });
 
   it("does not modify #line textContent", () => {
     stampIoRouteReturnLine(document, getAftersignIoRouteReturnLine(false));
-    expect(document.getElementById("line")!.textContent).toBe(
+    expect(document.getElementById("line").textContent).toBe(
       "I remember you: blue seal, unbroken.",
     );
   });
