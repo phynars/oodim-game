@@ -4059,6 +4059,7 @@ const routeChoiceController = createRouteChoiceController({
 });
 
 const choose = async (choiceId) => {
+  orraHasDialogueFloor = choiceId === "meet-orra" || choiceId === "return-to-orra";
   if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {
