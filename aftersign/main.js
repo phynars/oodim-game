@@ -2450,12 +2450,16 @@ const publishState = () => {
 const renderText = () => {
   dialogueController.render({
     beat: state.scene.beat,
-    speakerName: "Io",
+    speakerName: orraHasDialogueFloor ? "Saint Orra" : "Io",
     // Getter, not a value: syncIoLine() (invoked inside the helper) is what
     // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
     // would snapshot the stale line before syncIoLine runs on the render where
-    // the beat changes.
-    getDialogueLine: () => state.npcs.io.lastLine,
+    // the beat changes. When Orra holds the floor (#2520), `#line` renders
+    // her recalled line instead; Io's state line is left untouched.
+    getDialogueLine: () =>
+      orraHasDialogueFloor && state.npcs.orra.lastLine
+        ? state.npcs.orra.lastLine
+        : state.npcs.io.lastLine,
     syncIoLine,
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
