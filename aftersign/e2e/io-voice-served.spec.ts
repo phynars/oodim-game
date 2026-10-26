@@ -64,6 +64,9 @@ import { expect, test, type Page } from "@playwright/test";
 // keeps the served stamp + the e2e assertion on ONE table.
 import { IO_VOICE } from "../src/ioVoice.js";
 import { IO_ROUTE_MEMORY_LINES } from "../../apps/web/src/aftersign/ioReturningSessionLines.ts";
+// #2511 — first-scene route-return selector; the served
+// `#ioRouteReturnLine` paragraph renders its `skippedReturn` entry.
+import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 
 const SEALED_OUTCOME_KEY = "sealed" as const;
 const OPENED_OUTCOME_KEY = "opened" as const;
@@ -203,6 +206,22 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
       "skipped",
     );
     await expect(skippedRouteLine).toHaveText(IO_ROUTE_MEMORY_LINES.skipped.text);
+
+    // #2511 — Io's first-scene skipped-route recognition line, selected
+    // from the durable second-action memory written by the tapped
+    // `skip-kiosk-acknowledge` choice and surviving the reload above.
+    const expectedRouteReturn = getAftersignIoRouteReturnLine(false);
+    const routeReturnLine = page.locator("#ioRouteReturnLine");
+    await expect(routeReturnLine).toBeVisible({ timeout: WAIT_MS });
+    await expect(routeReturnLine).toHaveAttribute(
+      "data-aftersign-io-route-return-line",
+      "skippedReturn",
+    );
+    await expect(routeReturnLine).toHaveAttribute(
+      "data-aftersign-io-route-memory-key",
+      "skipped_route",
+    );
+    await expect(routeReturnLine).toHaveText(expectedRouteReturn.text);
 
     const returnLine = page.locator("#ioReturnLine");
     await expect(

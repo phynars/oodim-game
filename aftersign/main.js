@@ -2592,6 +2592,70 @@ const renderText = () => {
       } else if (skippedRoutePara?.parentNode) {
         skippedRoutePara.parentNode.removeChild(skippedRoutePara);
       }
+      // #2511 — Io's first-scene skipped-route recognition line. The
+      // selection reads the same durable route-attention state
+      // (`routeAttention`, persisted second-action memory) that drives
+      // `io-route-skipped` above: a skipped route resolves
+      // `getAftersignIoRouteReturnLine(false)` → `skippedReturn`. Rendered
+      // as its own sibling <p> so the pinned `#line` text stays untouched.
+      let routeReturnPara = document.getElementById("ioRouteReturnLine");
+      if (skippedRouteLine) {
+        const routeReturnLine = getAftersignIoRouteReturnLine(false);
+        if (!routeReturnPara) {
+          routeReturnPara = document.createElement("p");
+          routeReturnPara.id = "ioRouteReturnLine";
+          // PR #2514 F2 — the phone-viewport contract
+          // (io-phone-ready-look-sound-contract.spec.ts) caps document
+          // overflow at 1px on a 390x844 viewport. Main is green with
+          // #ioReturnLine + #ioSkippedRouteLine; a default-margin <p>
+          // here pushed scrollHeight 16.2px past the viewport. Collapse
+          // the vertical margins of this sibling and the skipped-route
+          // sibling it follows so the added line fits the existing
+          // HUD block instead of growing the page.
+          // PR #2514 F1 — margin collapse alone left 3.198px of overflow.
+          // Trim the line box itself: a 0.85em / 1.1 line takes back
+          // ~6px per rendered line, and zeroing BOTH vertical margins of
+          // the skipped-route sibling removes its remaining top margin.
+          // The line stays a visible sibling <p> (pinned by
+          // io-voice-served.spec.ts), it just no longer grows the page.
+          routeReturnPara.style.margin = "0";
+          routeReturnPara.style.padding = "0";
+          routeReturnPara.style.fontSize = "0.85em";
+          routeReturnPara.style.lineHeight = "1.1";
+          const skippedSibling = document.getElementById("ioSkippedRouteLine");
+          if (skippedSibling) {
+            skippedSibling.style.marginTop = "0";
+            skippedSibling.style.marginBottom = "0";
+          }
+          const anchor =
+            document.getElementById("ioSkippedRouteLine") || returnPara;
+          anchor.insertAdjacentElement("afterend", routeReturnPara);
+        }
+        if (
+          routeReturnPara.getAttribute("data-aftersign-io-route-return-line") !==
+          routeReturnLine.id
+        ) {
+          routeReturnPara.setAttribute(
+            "data-aftersign-io-route-return-line",
+            routeReturnLine.id,
+          );
+        }
+        const routeMemoryKey = String(routeReturnLine.memoryKey ?? "");
+        if (
+          routeReturnPara.getAttribute("data-aftersign-io-route-memory-key") !==
+          routeMemoryKey
+        ) {
+          routeReturnPara.setAttribute(
+            "data-aftersign-io-route-memory-key",
+            routeMemoryKey,
+          );
+        }
+        if (routeReturnPara.textContent !== routeReturnLine.text) {
+          routeReturnPara.textContent = routeReturnLine.text;
+        }
+      } else if (routeReturnPara?.parentNode) {
+        routeReturnPara.parentNode.removeChild(routeReturnPara);
+      }
       // PR #2419 F1 — shipped consumer of the two typed Io-line
       // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
       // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;
@@ -2711,6 +2775,10 @@ const renderText = () => {
     const staleSkippedRoutePara = document.getElementById("ioSkippedRouteLine");
     if (staleSkippedRoutePara && staleSkippedRoutePara.parentNode) {
       staleSkippedRoutePara.parentNode.removeChild(staleSkippedRoutePara);
+    }
+    const staleRouteReturnPara = document.getElementById("ioRouteReturnLine");
+    if (staleRouteReturnPara && staleRouteReturnPara.parentNode) {
+      staleRouteReturnPara.parentNode.removeChild(staleRouteReturnPara);
     }
   }
   // #2446 — Shipped-consumer render block for the third remembering NPC
