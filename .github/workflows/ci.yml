@@ -324,7 +324,9 @@ jobs:
       - name: new text must be shown in a served playtest (report only)
         if: github.event_name == 'pull_request' && steps.e2e.conclusion == 'success'
         run: node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode warn
-      - if: github.event_name == 'pull_request' && steps.e2e.conclusion == 'success'
+      # Upload whenever the e2e step ran: a red run's text is still a corpus
+      # for replaying the rule.
+      - if: always() && github.event_name == 'pull_request' && (steps.e2e.conclusion == 'success' || steps.e2e.conclusion == 'failure')
         uses: actions/upload-artifact@v7
         with:
           name: aftersign-rendered-text

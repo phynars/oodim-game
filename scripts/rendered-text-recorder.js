@@ -53,7 +53,13 @@
     fetch(ENDPOINT, { method: "POST", body, keepalive: true, headers: { "content-type": "application/json" } }).catch(() => {});
   };
 
-  const schedule = () => { if (!timer) timer = setTimeout(collect, 150); };
+  // Collect when the page is idle so the recorder never competes with a
+  // spec's own timing marks (frame, audio, settle budgets).
+  const idle = (fn) =>
+    typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: 250 }) : setTimeout(fn, 0);
+  // Short on purpose: a spec can end (page closed) right after a line shows,
+  // and a 300 ms debounce lost 7 of 41 lines in the skipped-route playtest.
+  const schedule = () => { if (!timer) timer = setTimeout(() => idle(collect), 120); };
 
   const start = () => {
     new MutationObserver(schedule).observe(document.body, {
@@ -62,7 +68,7 @@
     });
     // Backstop for changes no mutation reports (a parent's visibility via a
     // stylesheet swap, media queries).
-    setInterval(collect, 1000);
+    setInterval(schedule, 1000);
     addEventListener("pagehide", collect);
     collect();
   };
