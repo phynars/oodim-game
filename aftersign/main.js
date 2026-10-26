@@ -2610,10 +2610,21 @@ const renderText = () => {
           // the vertical margins of this sibling and the skipped-route
           // sibling it follows so the added line fits the existing
           // HUD block instead of growing the page.
+          // PR #2514 F1 — margin collapse alone left 3.198px of overflow.
+          // Trim the line box itself: a 0.85em / 1.1 line takes back
+          // ~6px per rendered line, and zeroing BOTH vertical margins of
+          // the skipped-route sibling removes its remaining top margin.
+          // The line stays a visible sibling <p> (pinned by
+          // io-voice-served.spec.ts), it just no longer grows the page.
           routeReturnPara.style.margin = "0";
-          routeReturnPara.style.lineHeight = "1.25";
+          routeReturnPara.style.padding = "0";
+          routeReturnPara.style.fontSize = "0.85em";
+          routeReturnPara.style.lineHeight = "1.1";
           const skippedSibling = document.getElementById("ioSkippedRouteLine");
-          if (skippedSibling) skippedSibling.style.marginBottom = "0";
+          if (skippedSibling) {
+            skippedSibling.style.marginTop = "0";
+            skippedSibling.style.marginBottom = "0";
+          }
           const anchor =
             document.getElementById("ioSkippedRouteLine") || returnPara;
           anchor.insertAdjacentElement("afterend", routeReturnPara);
