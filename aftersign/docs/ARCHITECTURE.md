@@ -101,10 +101,17 @@ a harness input is not served-page acceptance evidence.
 
 The existing `aftersign/main.js` runtime owns served WebAudio. Its visible
 interactions use the gesture-gated `enableAudio()` path before the synthesized
-rainline ambient bed can start. `_runtime.audio` is the read-only verification
-boundary: browser tests must tap rendered controls, then may inspect its
-unlock, ambient, and cue state. No external audio assets are required.
+rainline ambient bed and `music-layer.js`'s repeating synthesized triangle-note
+music can start. The phone-visible `#musicButton` mutes only the music gain;
+interaction cues retain their audio path. `_runtime.audio` is the read-only
+verification boundary: browser tests must tap rendered controls, then may
+inspect unlock, ambient, music, and cue state. No external audio assets are
+required.
 
 Red/green polarity lanes use `FLAGSHIP_BREAK_MODE` to prove the guards catch
 deliberate breaks; the post-merge `main-e2e` lane re-plays the served page
 against main after every merge.
+
+## Synthesized music layer
+
+`aftersign/audio.js` starts a low-volume WebAudio triangle-note loop alongside the rainline ambient bed after the player taps the visible **Wake kiosk sound** control. `#musicButton` remains hidden until that gesture unlocks audio, then lets the player mute or unmute only the music gain; interaction cues retain their existing audio path. The existing published `window.__game._runtime.audio` state includes `ambientStarted`, `musicStarted`, `musicMuted`, and `musicState` (`idle` → `playing` ⇄ `muted`, written by `aftersign/audio.js`) for e2e outcome assertions. `aftersign/e2e/aftersign-audio-runtime.playtest.spec.ts` uses phone viewport taps on those visible controls and does not use harness input to cause actions.

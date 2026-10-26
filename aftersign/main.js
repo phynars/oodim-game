@@ -994,6 +994,7 @@ const applyPhoneOfferLayout = (visible) => {
 };
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
+const musicButton = document.querySelector("#musicButton");
 const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
@@ -1375,6 +1376,9 @@ const state = {
       unlocked: false,
       ambientStarted: false,
       ambientState: "idle",
+      musicStarted: false,
+      musicMuted: false,
+      musicState: "idle",
       lastCue: null,
       lastCueAt: null,
     },
@@ -1532,6 +1536,12 @@ const setTextContentIfChanged = (node, value) => {
 };
 
 let audioController;
+const syncMusicButton = ({ started, muted }) => {
+  if (!musicButton) return;
+  musicButton.hidden = !started;
+  musicButton.textContent = muted ? "Unmute music" : "Mute music";
+  musicButton.setAttribute("aria-pressed", String(!muted));
+};
 const getAudioController = () => {
   audioController ??= createAftersignAudioController({
     state,
@@ -1539,6 +1549,7 @@ const getAudioController = () => {
     publishState,
     confirmFeedback: CONFIRM_FEEDBACK,
     jobOfferConfirmAudio: JOB_OFFER_CONFIRM_AUDIO,
+    onMusicStateChange: syncMusicButton,
   });
   return audioController;
 };
@@ -5628,7 +5639,13 @@ window.addEventListener("keyup", (event) => {
   pressedKeys.delete(event.code);
   syncKeyboardInput();
 });
-soundButton.addEventListener("click", enableAudio);
+soundButton.addEventListener("click", () => {
+  void enableAudio();
+});
+// Label/aria/hidden are synced by onMusicStateChange (syncMusicButton).
+musicButton.addEventListener("click", () => {
+  void getAudioController().toggleMusic();
+});
 resetButton.addEventListener("click", resetSliceSave);
 window.addEventListener("resize", resize, { passive: true });
 
