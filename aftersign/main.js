@@ -2602,6 +2602,18 @@ const renderText = () => {
         if (!routeReturnPara) {
           routeReturnPara = document.createElement("p");
           routeReturnPara.id = "ioRouteReturnLine";
+          // PR #2514 F2 — the phone-viewport contract
+          // (io-phone-ready-look-sound-contract.spec.ts) caps document
+          // overflow at 1px on a 390x844 viewport. Main is green with
+          // #ioReturnLine + #ioSkippedRouteLine; a default-margin <p>
+          // here pushed scrollHeight 16.2px past the viewport. Collapse
+          // the vertical margins of this sibling and the skipped-route
+          // sibling it follows so the added line fits the existing
+          // HUD block instead of growing the page.
+          routeReturnPara.style.margin = "0";
+          routeReturnPara.style.lineHeight = "1.25";
+          const skippedSibling = document.getElementById("ioSkippedRouteLine");
+          if (skippedSibling) skippedSibling.style.marginBottom = "0";
           const anchor =
             document.getElementById("ioSkippedRouteLine") || returnPara;
           anchor.insertAdjacentElement("afterend", routeReturnPara);
