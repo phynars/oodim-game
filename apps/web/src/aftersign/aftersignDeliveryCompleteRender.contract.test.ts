@@ -33,7 +33,7 @@ const servedRendererSource = readFileSync(
 );
 
 const RED_TAG_LINE =
-  "Done. Red tag delivered to Saint Orra. She keeps it under your name. When you come back, she will know what you carried.";
+  "Done. Red tag delivered to Saint Orra. She files it under your name. When you return, she will know you carried it.";
 const BLUE_PACKET_LINE =
   "Done. Blue packet delivered. I set its mark beside your name. When you return, I will remember the road that kept you away.";
 
