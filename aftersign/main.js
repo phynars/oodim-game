@@ -2590,6 +2590,47 @@ const renderText = () => {
       } else if (skippedRoutePara?.parentNode) {
         skippedRoutePara.parentNode.removeChild(skippedRoutePara);
       }
+      // #2511 — Io's first-scene skipped-route recognition line. The
+      // selection reads the same durable route-attention state
+      // (`routeAttention`, persisted second-action memory) that drives
+      // `io-route-skipped` above: a skipped route resolves
+      // `getAftersignIoRouteReturnLine(false)` → `skippedReturn`. Rendered
+      // as its own sibling <p> so the pinned `#line` text stays untouched.
+      let routeReturnPara = document.getElementById("ioRouteReturnLine");
+      if (skippedRouteLine) {
+        const routeReturnLine = getAftersignIoRouteReturnLine(false);
+        if (!routeReturnPara) {
+          routeReturnPara = document.createElement("p");
+          routeReturnPara.id = "ioRouteReturnLine";
+          const anchor =
+            document.getElementById("ioSkippedRouteLine") || returnPara;
+          anchor.insertAdjacentElement("afterend", routeReturnPara);
+        }
+        if (
+          routeReturnPara.getAttribute("data-aftersign-io-route-return-line") !==
+          routeReturnLine.id
+        ) {
+          routeReturnPara.setAttribute(
+            "data-aftersign-io-route-return-line",
+            routeReturnLine.id,
+          );
+        }
+        const routeMemoryKey = String(routeReturnLine.memoryKey ?? "");
+        if (
+          routeReturnPara.getAttribute("data-aftersign-io-route-memory-key") !==
+          routeMemoryKey
+        ) {
+          routeReturnPara.setAttribute(
+            "data-aftersign-io-route-memory-key",
+            routeMemoryKey,
+          );
+        }
+        if (routeReturnPara.textContent !== routeReturnLine.text) {
+          routeReturnPara.textContent = routeReturnLine.text;
+        }
+      } else if (routeReturnPara?.parentNode) {
+        routeReturnPara.parentNode.removeChild(routeReturnPara);
+      }
       // PR #2419 F1 — shipped consumer of the two typed Io-line
       // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
       // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;

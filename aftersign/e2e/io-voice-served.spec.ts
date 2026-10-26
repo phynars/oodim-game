@@ -64,6 +64,9 @@ import { expect, test, type Page } from "@playwright/test";
 // keeps the served stamp + the e2e assertion on ONE table.
 import { IO_VOICE } from "../src/ioVoice.js";
 import { IO_ROUTE_MEMORY_LINES } from "../../apps/web/src/aftersign/ioReturningSessionLines.ts";
+// #2511 — first-scene route-return selector; the served
+// `#ioRouteReturnLine` paragraph renders its `skippedReturn` entry.
+import { getAftersignIoRouteReturnLine } from "../../apps/web/src/aftersign/ioFirstSceneDialogue.ts";
 
 const SEALED_OUTCOME_KEY = "sealed" as const;
 const OPENED_OUTCOME_KEY = "opened" as const;
