@@ -78,6 +78,8 @@ export const createAftersignAudioController = ({
     state._runtime.audio.musicState = musicLayer.muted ? "muted" : "playing";
     markStateDirty();
     stamp(musicLayer.muted ? "music-muted" : "music-unmuted");
+    // Resync the control so its label/aria flip ("Mute music" <-> "Unmute music").
+    onMusicStateChange({ started: musicLayer.started, muted: musicLayer.muted });
     return musicLayer.muted;
   };
   const playTone = (frequencyHz, durationMs, peakGain, waveform = "triangle", attackMs = 18) => {
