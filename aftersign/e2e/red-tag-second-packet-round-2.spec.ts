@@ -49,55 +49,24 @@ import { expect, test, type Page } from "@playwright/test";
 //                                                     not the blue seal
 //                                                     (owned by #2242,
 //                                                     shipped).
-//   THIS spec, `test.fixme(...)` for surface 3  — the `#routeRiskChoice`
-//                                                 tray's route-choice
-//                                                 buttons at round-2
-//                                                 `packet-choice` must
-//                                                 speak the TRUSTED-row
-//                                                 labels (`"Long way —
-//                                                 past the kiosk"` /
-//                                                 `"Behind the shuttered
-//                                                 pharmacy"`), not the
-//                                                 firstRun blue-packet
-//                                                 defaults. Pinned as
-//                                                 `test.fixme` and NOT
-//                                                 executed until #2245
-//                                                 lands — see below.
+//   THIS spec, second `test(...)`               — surface (3): the
+//                                                 `#routeRiskChoice` tray's
+//                                                 round-2 route-choice
+//                                                 buttons are reached by
+//                                                 shipped taps and assert
+//                                                 the trusted-row label,
+//                                                 rather than firstRun's
+//                                                 blue-packet default.
 //
-// Why surface 3 is `test.fixme` and not a running assertion today:
+// Surface 3's active label source is
+// `routeRiskLabelsForDelivery(state.delivery.id)` from
+// `aftersign/src/redTagRouteOfferLabels.js`. The delivery-identity resolver
+// pins red-tag offers to the trusted row instead of allowing empty memory to
+// fall back to firstRun labels. The test below drives the rendered controls
+// to `packet-choice`, waits for `#routeRiskChoice[data-visible="true"]`, and
+// reads its button text.
 //
-//   `apps/web/src/aftersign/routeRiskActionLabels.js` (the resolver
-//   module) says on record that `aftersign/main.js` has TWO
-//   `renderRouteRiskChoice({...})` call sites, and BOTH still pass
-//   `labelForAction: routeRiskActionLabel` — the firstRun-pinned
-//   resolver kept as the default. The round-2 wire-up to
-//   `routeRiskActionLabelForOffer(chooseAftersignJobOfferCopy(memory))`
-//   is explicitly deferred to follow-up issue #2245 ("[#2241 B2] Wire
-//   routeRiskActionLabelForOffer into main.js round-2 red-tag
-//   renderRouteRiskChoice call site"), which is OPEN. Soren flagged
-//   this on the PR #2250 iter-3 review: without #2245, surface 3
-//   fails on main, and merging this spec as-is would add a red e2e.
-//
-//   An earlier draft of this header credited #2241 or #2242 with the
-//   route-choice wiring. Both were wrong. The authoritative source is
-//   the resolver module's own header comment, which pins the wire-up
-//   to #2245 and documents #2241 as the resolver-only PR (pure
-//   factory + unit tests, no main.js change). I did not re-read
-//   `aftersign/main.js` here — the file is >200KB and skipped by the
-//   search index — so I'm trusting the resolver module's self-
-//   description, which is the file whose contract surface 3 asserts
-//   anyway.
-//
-// Base-branch failure proof (CI gate for a type:bug issue):
-//   Surfaces (1), (2), and (4) all fail on base (pre-#2241 / pre-#2242):
-//   surface (1) renders "Blue packet" instead of "Red tag — Saint Orra";
-//   surface (2) renders the firstRun blue-packet route in `#offeredJobs`;
-//   surface (4) renders "blue seal" delivery-complete copy. Any ONE of
-//   those failures satisfies the type:bug CI gate on base, so the
-//   `test.fixme`'d surface (3) is not needed to earn the gate.
-//
-// Source of truth for the four route strings (used by the fixme'd
-// surface 3 for when #2245 lands and the test is un-fixme'd):
+// Source of truth for the route strings:
 //   `apps/web/src/aftersign/aftersignJobOfferCopy.js`
 //     - firstRun.safeRouteLabel  = "Lit stair — under Io's window"
 //     - firstRun.riskyRouteLabel = "Cut past the bell rope"
@@ -245,16 +214,14 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
   // SURFACE 3 — Route-choice buttons at round-2 `packet-choice` speak
   // the TRUSTED-row labels, not the firstRun blue-packet defaults.
   //
-  // Un-fixme'd by PR #2253 (the #2245 wire-up): `aftersign/main.js`'s
-  // round-2 `renderRouteRiskChoice({...})` call site now reads
+  // The #2245 wire-up is active: `aftersign/main.js` reads
   // `routeRiskLabelsForDelivery(state.delivery.id)` from
   // `aftersign/src/redTagRouteOfferLabels.js`, which pins the trusted
   // row by delivery identity (not by `npcs.io.memory`) so an empty
-  // memory can no longer fall back to the firstRun blue-packet
-  // labels. This is the phone-viewport, tap-driven assertion Soren
-  // asked for on PR #2253 — it reaches the red-tag packet-choice
-  // surface through the shipped controls and reads the rendered
-  // button text.
+  // memory cannot fall back to the firstRun blue-packet labels. This
+  // phone-viewport, tap-driven assertion reaches the red-tag
+  // `packet-choice` surface through shipped controls and reads the
+  // rendered button text.
   test("round-2 red-tag packet-choice route buttons speak the trusted row (#2245 wire-up)", async ({
     page,
   }) => {
