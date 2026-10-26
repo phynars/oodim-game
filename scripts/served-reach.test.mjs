@@ -24,6 +24,15 @@ test("rendered verdict: warn mode reports, fail mode blocks, exempt and no-text 
   assert.deepEqual(renderedVerdict({ exempt: null, checked: 1, unrendered: miss, mode: "fail" }), { result: "text_not_rendered", fail: true });
 });
 
+test("addedStrings skips CSS function values but keeps copy with parentheses", () => {
+  const diff = [
+    `+  el.style.transform = "translateY(0) scale(1)";`,
+    `+  el.style.filter = 'drop-shadow(0 0 4px) blur(2px)';`,
+    `+  const line = "Io waits (again) for the packet you promised.";`,
+  ].join("\n");
+  assert.deepEqual(addedStrings(diff), ["Io waits (again) for the packet you promised."]);
+});
+
 test("clientCandidates drops the Worker (its strings are not rendered by the client)", () => {
   assert.deepEqual(clientCandidates(["src/server.ts", "aftersign/main.js", "apps/web/src/aftersign/x.test.ts"]), ["aftersign/main.js"]);
 });

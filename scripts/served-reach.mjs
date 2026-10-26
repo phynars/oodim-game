@@ -52,6 +52,8 @@ export function servedCandidates(files) {
 /** New player-facing string literals on the `+` lines of a unified diff.
  *  Heuristic on purpose: a sentence-like literal (≥16 chars, a space, a
  *  letter), no interpolation, not on a comment line, not an import path. */
+const CSS_VALUE_RE = /^[a-zA-Z-]+\([^()]*\)(\s+[a-zA-Z-]+\([^()]*\))*$/;
+
 export function addedStrings(diffText) {
   const out = new Set();
   for (const line of (diffText ?? "").split("\n")) {
@@ -62,6 +64,9 @@ export function addedStrings(diffText) {
       const s = m[2];
       if (m[1] === "`" && s.includes("${")) continue;
       if (s.length < 16 || !/\s/.test(s) || !/[A-Za-z]/.test(s)) continue;
+      // CSS function values (`translateY(0) scale(1)`) are not copy; the
+      // rendered-rule replay flagged one (10-26).
+      if (CSS_VALUE_RE.test(s.trim())) continue;
       out.add(unescapeJs(s));
     }
   }
