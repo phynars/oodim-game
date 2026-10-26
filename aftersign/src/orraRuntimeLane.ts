@@ -18,8 +18,8 @@ export type OrraChoiceId = keyof typeof ORRA_CHOICE_TO_ACTION;
 
 export const ORRA_LINE_COPY_BY_ID: Record<string, string> = {
   [ORRA_FIRST_CONTACT_LINE_ID]: "The lantern is still warm. If you return with intention, I will remember.",
-  [ORRA_RETURN_LINE_BY_ACTION.lit]: "You lit the vigil. I remember the light, and the hand that kept it alive.",
-  [ORRA_RETURN_LINE_BY_ACTION.spared]: "You spared the vigil. I remember the mercy, and the weight you carried away.",
+  [ORRA_RETURN_LINE_BY_ACTION.lit]: "You lit the vigil. Its light crossed the marsh after you left; I remember the hand that kept it alive.",
+  [ORRA_RETURN_LINE_BY_ACTION.spared]: "You spared the vigil. I carried its mercy through the night; I remember the weight you chose not to leave behind.",
 };
 
 export const actionForOrraChoice = (choiceId: string): OrraDeliberateAction | null =>

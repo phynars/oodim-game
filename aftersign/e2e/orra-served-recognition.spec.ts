@@ -199,6 +199,12 @@ test.describe("served Orra recognition lane", () => {
       }
 
       assertRecognized();
+      expect(await page.locator("#line").textContent()).toBe(actedSnapshot.orraLine);
+      expect(actedSnapshot.orraLine).toBe(
+        choiceId === "light-vigil"
+          ? "You lit the vigil. Its light crossed the marsh after you left; I remember the hand that kept it alive."
+          : "You spared the vigil. I carried its mercy through the night; I remember the weight you chose not to leave behind.",
+      );
 
       const controlSlot = `orra-control-${choiceId}-${Date.now()}`;
       // Control run: NO breakMode — this proves first-contact/recognition split
