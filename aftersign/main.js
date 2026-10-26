@@ -4743,12 +4743,6 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
 };
 
 const enableAudio = () => getAudioController().enableAudio();
-const toggleMusic = () => {
-  getAudioController().toggleMusic();
-  const muted = state._runtime.audio.musicMuted;
-  musicButton.textContent = muted ? "Unmute music" : "Mute music";
-  musicButton.setAttribute("aria-pressed", String(!muted));
-};
 const playKioskConfirm = () => getAudioController().playKioskConfirm();
 const playJobOfferConfirm = () => getAudioController().playJobOfferConfirm();
 const triggerRecognitionImpactChirp = (cue) => getAudioController().triggerRecognitionImpactChirp(cue);
@@ -5647,7 +5641,7 @@ soundButton.addEventListener("click", () => {
 musicButton.addEventListener("click", async () => {
   const muted = await getAudioController().toggleMusic();
   musicButton.textContent = muted ? "Unmute music" : "Mute music";
-  musicButton.setAttribute("aria-pressed", String(muted));
+  musicButton.setAttribute("aria-pressed", String(!muted));
 });
 resetButton.addEventListener("click", resetSliceSave);
 window.addEventListener("resize", resize, { passive: true });

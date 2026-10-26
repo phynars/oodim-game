@@ -50,6 +50,7 @@ export const createAftersignAudioController = ({
     musicLayer.start();
     state._runtime.audio.musicStarted = musicLayer.started;
     state._runtime.audio.musicMuted = musicLayer.muted;
+    state._runtime.audio.musicState = musicLayer.started ? (musicLayer.muted ? "muted" : "playing") : "idle";
     markStateDirty();
   };
   const enableAudio = async () => {
@@ -70,6 +71,8 @@ export const createAftersignAudioController = ({
     if (!(await enableAudio()) || !musicLayer) return false;
     musicLayer.setMuted(!musicLayer.muted);
     state._runtime.audio.musicMuted = musicLayer.muted;
+    state._runtime.audio.musicState = musicLayer.muted ? "muted" : "playing";
+    markStateDirty();
     stamp(musicLayer.muted ? "music-muted" : "music-unmuted");
     return musicLayer.muted;
   };
