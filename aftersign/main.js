@@ -1442,6 +1442,10 @@ let ioReturningBootBeat = null;
 let ioSecondPacketResponseLine = null;
 // Transient presentation, owned by the accepted choice (not a DOM event).
 let ioSecondPacketPointerChoiceId = null;
+// True while Saint Orra holds the dialogue floor (set by choose() on
+// "meet-orra" / "return-to-orra"); renderText() reads it to swap #line
+// to Orra's lastLine. Must be declared — an undeclared read throws.
+let orraHasDialogueFloor = false;
 
 // Recompute the returning-session boot override from the CURRENT state
 // (memory facts + scene beat). Called at module init AND from
