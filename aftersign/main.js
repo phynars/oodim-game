@@ -1559,10 +1559,6 @@ const getAudioController = () => {
 };
 
 const lineForBeat = () => {
-  if (state.scene.beat === "meet-orra") {
-    return state.npcs.orra.lastLine;
-  }
-
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
@@ -4468,7 +4464,7 @@ const choose = async (choiceId) => {
     state.npcs.orra.lastLineMemoryRefs = selected.lineId === ORRA_FIRST_CONTACT_LINE_ID
       ? []
       : [selected.lineId];
-    setBeat("meet-orra");
+    markStateDirty();
     publishState();
     return;
   }

@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { IO_RETURN_MEMORY_ID } from "../../e2e-shared/flagshipStoryStateContract";
+
 const WAIT_MS = 60_000;
 const COLD_START_MS = 90_000;
 
