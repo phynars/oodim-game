@@ -43,6 +43,10 @@ export default defineConfig({
       // there are pure-runner bundles without a vitest import)
       // #2511 — Io skipped-route recognition writer + memory gate
       "aftersign/src/ioRouteReturnRender.test.js",
+      // Legacy route-only fast saves render no packet recall
+      "aftersign/src/aftersignPacketRecallLegacy.test.js",
+      // #2517 — Episode 1 ending card renders bell, outcome line, recall
+      "aftersign/src/episodeOneEnding.test.js",
     ],
   },
 });

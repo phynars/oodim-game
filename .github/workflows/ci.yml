@@ -238,11 +238,17 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
+    # Successful runs take 18–32 min (10-26); a hung run (PR #2520) otherwise
+    # holds a runner for GitHub's 6h default.
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The rendered-text rule diffs the PR against its base.
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -307,9 +313,29 @@ jobs:
         # missing — a pre-spec crash (webServer boot failure) writes no
         # JSON report, and without the raw log the summary was useless
         # (#1065).
+        # AFTERSIGN_RENDERED_OUT turns on the rendered-text recorder in the
+        # test build only (aftersign/vite.config.ts); the deploy never sets it.
+        env:
+          AFTERSIGN_RENDERED_OUT: /tmp/aftersign-rendered.jsonl
         run: |
           set -o pipefail
           npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
+      # Rendered-text rule (oodim engine review 2026-10-26, game #2511): every
+      # new player-facing string must be SHOWN by a served playtest, not just
+      # bundled. Report-only (--mode warn) until its false-fail rate is read
+      # over a week of PRs; then switch to --mode fail.
+      - name: new text must be shown in a served playtest (report only)
+        if: github.event_name == 'pull_request' && steps.e2e.conclusion == 'success'
+        run: node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode warn
+      # Upload whenever the e2e step ran: a red run's text is still a corpus
+      # for replaying the rule.
+      - if: always() && github.event_name == 'pull_request' && (steps.e2e.conclusion == 'success' || steps.e2e.conclusion == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: aftersign-rendered-text
+          path: /tmp/aftersign-rendered.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Print aftersign failure summary
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |

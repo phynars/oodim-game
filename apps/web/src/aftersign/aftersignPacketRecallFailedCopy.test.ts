@@ -27,7 +27,7 @@ import {
 } from "./aftersignPacketRecallCopy.js";
 
 const FAILED_LINE_VERBATIM =
-  "Io remembers the split seal you brought back. She keeps the next packet waiting: mend this loss, or carry its damage into the next delivery.";
+  "Io remembers the split seal you brought back. The next packet stays on the hook until you mend this loss; leave it torn, and the damage follows the next delivery.";
 
 const FRAGILE_LINE_VERBATIM =
   "Io remembers how carefully you carried the fragile packet. It still came back torn. She leaves the next one with you: mend what was torn before you carry again.";
