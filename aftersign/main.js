@@ -4198,18 +4198,9 @@ const choose = async (choiceId) => {
     // aftersign/e2e/orra-served-recognition.spec.ts can prove Orra
     // recognized the vigil action by REFERENCE (not by English text).
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
-    // M3-E1 (#2261) — the Episode 1 ending beats commit ONLY on
-    // `light-vigil` ("carried Orra's name" → the bell can ring).
-    // `spare-vigil` is a distinct Orra action (mercy row): it mints
-    // the memory fact and updates her spoken surface above, but does
-    // NOT stamp `story.endingId`, does NOT overwrite Io's last line,
-    // and does NOT render the ending card. Soren's AI001 call-out on
-    // PR #2265: the prior draft fired the ending on BOTH vigil
-    // actions indistinguishably, so a `spare-vigil` run silently
-    // committed the same ending the sibling `flagship-surface-contract
-    // .spec.ts:934` loop drives. Scoping the commit to the light-vigil
-    // choiceId is what keeps the two actions narratively distinct.
-    if (choiceId === "light-vigil") {
+    // Both visible vigil choices complete the episode. The action-specific
+    // memory fact and Orra return line above preserve their distinction.
+    if (choiceId === "light-vigil" || choiceId === "spare-vigil") {
       const ending = resolveEpisodeOneEnding({
         packetSealed: state.packet.sealed,
         redTagCarried: state.delivery.id === "red-tag",
