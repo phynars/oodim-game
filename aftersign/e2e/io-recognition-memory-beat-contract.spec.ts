@@ -1,3 +1,7 @@
+// HARNESS-ONLY: This spec deliberately drives internal story transitions through
+// `window.__game.input` to measure the recognition-beat telemetry envelope.
+// It is not player-facing served-page acceptance evidence; player-driven
+// acceptance must use rendered controls and may only read `window.__game`.
 import { expect, test, type Page } from "@playwright/test";
 
 // Cold-start budget matches other AFTERSIGN e2e specs: SwiftShader init +
