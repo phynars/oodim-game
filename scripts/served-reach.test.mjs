@@ -2,7 +2,32 @@
 // CI job runs the real gate). Run: node --test scripts/served-reach.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addedStrings, clientCandidates, decide, exemptReason, inBundle, inRendered, renderedVerdict, servedCandidates } from "./served-reach.mjs";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import { addedStrings, clientCandidates, decide, exemptReason, inBundle, inRendered, parseRendered, renderedVerdict, servedCandidates } from "./served-reach.mjs";
+
+test("parseRendered: plain lines are real input, { t, via } lines are harness-only (#2529)", () => {
+  const jsonl = [
+    JSON.stringify("You came back.  The packet is where you left it."),
+    JSON.stringify({ t: "Saint Orra: You said you'd come back. You did.", via: "input.choose" }),
+    "not json",
+    JSON.stringify({ t: "   " , via: "input.advance" }),
+    "",
+  ].join("\n");
+  const { ui, harness } = parseRendered(jsonl);
+  assert.deepEqual(ui, ["You came back. The packet is where you left it."]);
+  assert.deepEqual(harness, [{ text: "Saint Orra: You said you'd come back. You did.", via: "input.choose" }]);
+  // #2520's greeting: shown, but only through the harness, so it does not count.
+  assert.equal(inRendered("You said you'd come back. You did.", ui), false);
+});
+
+test("rendered verdict: harness-only text is its own result and blocks in fail mode (#2529)", () => {
+  const viaHarness = [{ file: "aftersign/main.js", text: "x y z", via: "input.choose" }];
+  assert.deepEqual(renderedVerdict({ exempt: null, checked: 1, unrendered: viaHarness, mode: "warn" }), { result: "text_harness_only", fail: false });
+  assert.deepEqual(renderedVerdict({ exempt: null, checked: 1, unrendered: viaHarness, mode: "fail" }), { result: "text_harness_only", fail: true });
+  const mixed = [...viaHarness, { file: "aftersign/main.js", text: "a b c" }];
+  assert.equal(renderedVerdict({ exempt: null, checked: 2, unrendered: mixed, mode: "warn" }).result, "text_not_rendered");
+});
 
 test("rendered rule: bundled-but-never-shown copy fails, shown copy passes (#2499)", () => {
   const rendered = [
@@ -104,4 +129,62 @@ test("decide: unreachable fails before text; exempt and no-source skip", () => {
   assert.deepEqual(decide({ ...base, unreachable: ["a.ts"], missingText: [{}] }), { result: "unreachable", fail: true });
   assert.deepEqual(decide({ ...base, missingText: [{ file: "a.ts", text: "t" }] }), { result: "text_not_shipped", fail: true });
   assert.deepEqual(decide(base), { result: "served", fail: false });
+});
+
+// Runs the real recorder (scripts/rendered-text-recorder.js) in a VM with a
+// stub DOM, so the harness taint is tested without a browser (#2529).
+function recorderPage(storage = new Map()) {
+  const els = [];
+  const posted = [];
+  const on = {};
+  const el = (text) => ({ tagName: "DIV", textContent: text, childNodes: [{ nodeType: 3, nodeValue: text }], getAttribute: () => null, checkVisibility: () => true });
+  const body = { tagName: "BODY", textContent: "", childNodes: [], getAttribute: () => null, checkVisibility: () => true };
+  const ctx = vm.createContext({
+    document: { body, createTreeWalker: () => { const list = [body, ...els]; let i = 0; return { currentNode: list[0], nextNode: () => list[++i] ?? null }; } },
+    location: { origin: "http://x" }, NodeFilter: { SHOW_ELEMENT: 1 },
+    sessionStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
+    fetch: (_u, o) => { posted.push(...JSON.parse(o.body)); return Promise.resolve(); },
+    MutationObserver: class { observe() {} }, setInterval: () => 0, setTimeout: () => 0,
+    addEventListener: (type, fn) => { on[type] = fn; },
+  });
+  // `window` and the global are one object in a browser.
+  vm.runInContext("var window = globalThis;", ctx);
+  vm.runInContext(readFileSync(new URL("./rendered-text-recorder.js", import.meta.url), "utf8"), ctx);
+  return { ctx, posted, show: (text) => els.push(el(text)), pagehide: () => on.pagehide() };
+}
+
+test("recorder: lines after a story-moving harness call are tagged; read-only calls never taint; reset clears it (#2529)", () => {
+  const p = recorderPage();
+  const calls = [];
+  p.ctx.__game = { getSnapshot: () => ({}), reset: () => calls.push("reset"), input: { choose: (id) => { calls.push(id); return true; }, waitForStoryIdle: () => {} } };
+  const g = p.ctx.__game;
+  p.show("Io: Take the blue packet to the kiosk.");
+  g.getSnapshot();
+  g.input.waitForStoryIdle();
+  assert.equal(g.input.choose("return-to-orra"), true, "the wrapped call still runs and returns");
+  p.show("Saint Orra: You said you'd come back. You did.");
+  p.pagehide();
+  g.reset(); // fresh player
+  p.show("A real-input line after reset, shown by a click.");
+  p.pagehide();
+  assert.deepEqual(calls, ["return-to-orra", "reset"]);
+  assert.deepEqual(p.posted, [
+    "Io: Take the blue packet to the kiosk.",
+    { t: "Io: Take the blue packet to the kiosk.", via: "input.choose" },
+    { t: "Saint Orra: You said you'd come back. You did.", via: "input.choose" },
+    // Orra's line is still on screen after reset; it stays harness-only.
+    "A real-input line after reset, shown by a click.",
+  ]);
+});
+
+test("recorder: the taint survives a reload in the same tab (harness, forceSave, reload)", () => {
+  const storage = new Map();
+  const a = recorderPage(storage);
+  a.ctx.__game = { input: { choose: () => {}, forceSave: () => {} } };
+  a.ctx.__game.input.choose("meet-orra");
+  a.ctx.__game.input.forceSave();
+  const b = recorderPage(storage); // page.reload(): new document, same sessionStorage
+  b.show("Saint Orra: The kiosk remembers you.");
+  b.pagehide();
+  assert.deepEqual(b.posted, [{ t: "Saint Orra: The kiosk remembers you.", via: "input.choose" }]);
 });

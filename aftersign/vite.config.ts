@@ -202,7 +202,12 @@ const renderedTextPlugin = {
       readJsonBody(req)
         .then((lines) => {
           if (Array.isArray(lines)) {
-            const text = lines.filter((l) => typeof l === "string").map((l) => JSON.stringify(l)).join("\n");
+            // A line is a string (reached by real input) or `{ t, via }`
+            // (shown only after a harness call; see the recorder).
+            const text = lines
+              .filter((l) => typeof l === "string" || (l && typeof l.t === "string" && typeof l.via === "string"))
+              .map((l) => JSON.stringify(l))
+              .join("\n");
             if (text) appendFileSync(renderedOut, text + "\n");
           }
           res.statusCode = 204;

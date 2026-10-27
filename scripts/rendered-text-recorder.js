@@ -12,12 +12,31 @@
 // and the preview server appends what it posts to that file. It records the
 // text of every element a player could see, plus the aria-label / title /
 // placeholder / alt values, as each Playwright spec plays.
+//
+// Harness input (game #2529, 2026-10-27): a line counts only if the spec
+// reached it through real input (click, key, tap, page reload). #2520's
+// Orra greeting passed this rule, but its spec reached it through
+// `window.__game.input.choose("return-to-orra")`, an id no served button
+// sends, so no player could see it. So `window.__game` is wrapped here:
+// the first call to a harness method that can move the story (choose,
+// advance, packet*, render*, forceReload, ...) taints the page. Lines first
+// seen after that are posted as `{ t, via }` and the rule does not count
+// them. The taint survives a reload in the same tab (sessionStorage), so
+// "advance by harness, forceSave, reload" is still harness. `reset` /
+// `resetSliceSave` start a fresh player and clear it. Read-only methods
+// (get*, assert*, waitFor*, ...) and feel/style probes never taint.
 (() => {
   const ENDPOINT = `${location.origin}/aftersign/__rendered`;
   const ATTRS = ["aria-label", "title", "placeholder", "alt"];
+  const TAINT_KEY = "aftersign:rendered-harness";
+  // Harness methods that cannot change which text is on screen.
+  const READ_ONLY = /^(get|assert|waitFor|measure|is|has)[A-Z]|^(enableAudio|forceSave|stepCameraRig|setConfirmCameraKick|setRecognitionCameraEnvelope|resetPointerToRenderLatency|markPointerIntent|markPointerRendered|apply[A-Za-z]*Feel)$/;
+  const FRESH = /^(reset|resetSliceSave)$/;
   const seen = new Set();
   let pending = [];
   let timer = 0;
+  let via = null;
+  try { via = sessionStorage.getItem(TAINT_KEY); } catch {}
 
   const norm = (s) => s.replace(/\s+/g, " ").trim();
   // Opacity is ignored on purpose: lines fade in by CSS transition, which
@@ -25,12 +44,54 @@
   const visible = (el) =>
     typeof el.checkVisibility === "function" ? el.checkVisibility({ visibilityProperty: true }) : true;
 
+  // Text first shown after harness input never counts as real input on this
+  // page, even after a reset: it can still be on screen until the next render.
+  const harnessText = new Set();
+
   const add = (s) => {
     const t = norm(s);
-    if (t.length < 4 || seen.has(t)) return;
-    seen.add(t);
-    pending.push(t);
+    const key = (via ? "h\0" : "u\0") + t;
+    if (t.length < 4 || seen.has(key) || (!via && harnessText.has(t))) return;
+    seen.add(key);
+    if (via) harnessText.add(t);
+    pending.push(via ? { t, via } : t);
   };
+
+  const harnessCall = (name) => {
+    if (READ_ONLY.test(name.split(".").pop())) return;
+    if (FRESH.test(name)) {
+      if (via) collect();
+      via = null;
+      try { sessionStorage.removeItem(TAINT_KEY); } catch {}
+      return;
+    }
+    if (via) return;
+    // Lines already on screen were reached by real input: record them first.
+    collect();
+    via = name;
+    try { sessionStorage.setItem(TAINT_KEY, name); } catch {}
+  };
+
+  const wrap = (obj, prefix) =>
+    new Proxy(obj, {
+      get(target, key, receiver) {
+        const v = Reflect.get(target, key, receiver);
+        if (typeof key !== "string") return v;
+        if (typeof v === "function") {
+          return function (...a) { harnessCall(prefix + key); return v.apply(this === receiver ? target : this, a); };
+        }
+        if (key === "input" && v && typeof v === "object") return wrap(v, "input.");
+        return v;
+      },
+    });
+
+  // main.js assigns `window.__game = {...}` on every publish; wrap each one.
+  let game;
+  Object.defineProperty(window, "__game", {
+    configurable: true,
+    get: () => game,
+    set: (v) => { game = v && typeof v === "object" ? wrap(v, "") : v; },
+  });
 
   const collect = () => {
     timer = 0;

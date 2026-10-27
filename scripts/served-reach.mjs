@@ -108,12 +108,31 @@ export function inRendered(s, rendered) {
   return rendered.some((line) => line.includes(t));
 }
 
-/** Pure verdict for the `rendered` rule. `mode` warn = report only. */
+/** Split the recorder's JSONL into lines reached by real input (`ui`) and
+ *  lines first shown after a harness call (`harness`: `{ text, via }`).
+ *  A plain string is a real-input line; `{ t, via }` is harness (#2529). */
+export function parseRendered(jsonl) {
+  const ui = [];
+  const harness = [];
+  for (const l of (jsonl ?? "").split("\n")) {
+    if (!l) continue;
+    let v;
+    try { v = JSON.parse(l); } catch { continue; }
+    if (typeof v === "string") { if (squash(v)) ui.push(squash(v)); }
+    else if (v && typeof v.t === "string" && squash(v.t)) harness.push({ text: squash(v.t), via: String(v.via ?? "harness") });
+  }
+  return { ui, harness };
+}
+
+/** Pure verdict for the `rendered` rule. `mode` warn = report only.
+ *  `text_harness_only`: every unrendered literal was shown, but only after
+ *  harness input no player can send (#2529). */
 export function renderedVerdict({ exempt, checked, unrendered, mode }) {
   if (checked === 0) return { result: "skipped:no_new_text", fail: false };
   if (exempt) return { result: "skipped:exempt", fail: false };
   if (unrendered.length === 0) return { result: "rendered", fail: false };
-  return { result: "text_not_rendered", fail: mode === "fail" };
+  const result = unrendered.every((u) => u.via) ? "text_harness_only" : "text_not_rendered";
+  return { result, fail: mode === "fail" };
 }
 
 /** Pure verdict. */
@@ -180,29 +199,37 @@ function args() {
  *  its served playtests showed (scripts/rendered-text-recorder.js). Every new
  *  player-facing literal in a client file must have been rendered by at least
  *  one served playtest. Bundled is not enough (#2499: the copy was bundled
- *  but its selector was never called). */
+ *  but its selector was never called). Only lines a spec reached through
+ *  real input count: a line first shown after a `window.__game` harness
+ *  call (e.g. `input.choose`) does not (#2529). */
 function renderedRule(opt, base, ev) {
-  const rendered = existsSync(opt.rendered)
-    ? readFileSync(opt.rendered, "utf8").split("\n").filter(Boolean).map((l) => { try { return squash(JSON.parse(l)); } catch { return ""; } }).filter(Boolean)
-    : [];
+  const { ui, harness } = parseRendered(existsSync(opt.rendered) ? readFileSync(opt.rendered, "utf8") : "");
   const files = git("diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`).split("\n").filter(Boolean);
   const added = clientCandidates(files).flatMap((f) => addedStrings(git("diff", "-U0", `${base}...HEAD`, "--", f)).map((text) => ({ file: f, text })));
-  const unrendered = added.filter((a) => !inRendered(a.text, rendered));
+  const unrendered = added
+    .filter((a) => !inRendered(a.text, ui))
+    .map((a) => ({ ...a, via: harness.find((h) => h.text.includes(squash(a.text)))?.via }));
   const exempt = exemptReason(ev?.body);
   const d = renderedVerdict({ exempt, checked: added.length, unrendered, mode: opt.mode });
   const lines = [
     `### served-reach: rendered text (${opt.mode === "fail" ? "blocking" : "report only"})`,
-    `- recorded lines from served playtests: ${rendered.length}${rendered.length === 0 ? " (none: did the e2e step run with AFTERSIGN_RENDERED_OUT?)" : ""}`,
+    `- recorded lines from served playtests: ${ui.length} by real input, ${harness.length} only after harness input${ui.length + harness.length === 0 ? " (none: did the e2e step run with AFTERSIGN_RENDERED_OUT?)" : ""}`,
     `- new player-facing strings: ${added.length}, rendered ${added.length - unrendered.length}, not rendered ${unrendered.length}`,
-    ...unrendered.map((u) => `  - never rendered by a served playtest (\`${u.file}\`): "${u.text.slice(0, 120)}"`),
+    ...unrendered.map((u) => u.via
+      ? `  - shown only after harness \`window.__game.${u.via}\`, which no player can send (\`${u.file}\`): "${u.text.slice(0, 120)}"`
+      : `  - never rendered by a served playtest (\`${u.file}\`): "${u.text.slice(0, 120)}"`),
     exempt ? `- **exempt:** ${exempt}` : "",
     `- result: \`${d.result}\``,
   ].filter(Boolean);
   console.log(lines.join("\n"));
   summary(lines.join("\n"));
-  if (d.result === "text_not_rendered") {
+  if (d.result === "text_not_rendered" || d.result === "text_harness_only") {
     const level = d.fail ? "error" : "warning";
-    console.log(`::${level} title=served-reach: new text never shown in play::${unrendered.length} new string(s) are in the build but no served playtest rendered them, e.g. "${unrendered[0].text.slice(0, 80)}" in ${unrendered[0].file}. Bundled is not shown: wire the line into the live render path and add a served playtest (aftersign/e2e/) that plays to it with visible input, or add a 'served-exempt: <reason>' line to the PR body.`);
+    const u = unrendered[0];
+    const what = u.via
+      ? `no served playtest reached them through real input (the first was shown only after harness \`window.__game.${u.via}\`)`
+      : "no served playtest rendered them";
+    console.log(`::${level} title=served-reach: new text never shown in play::${unrendered.length} new string(s) are in the build but ${what}, e.g. "${u.text.slice(0, 80)}" in ${u.file}. Bundled is not shown: wire the line into the live render path and add a served playtest (aftersign/e2e/) that plays to it with visible input (click, key, reload), or add a 'served-exempt: <reason>' line to the PR body.`);
   }
   console.log(`RENDERED_REACH_RESULT=${d.result}`);
   if (d.fail) process.exitCode = 1;
