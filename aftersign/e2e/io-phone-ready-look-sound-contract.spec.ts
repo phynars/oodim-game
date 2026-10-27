@@ -84,6 +84,7 @@ type RuntimeMarks = {
   readonly lineSettledAt: number;
   readonly confirmVisualAt: number;
   readonly audioCueAt: number;
+  readonly audioCue: string;
 };
 
 const waitForGame = async (page: Page) => {
@@ -207,7 +208,8 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => p
     verticalOverflowPx: Math.max(0, root.scrollHeight - viewport.height, -rect.top, rect.bottom - viewport.height),
     settleMs: Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt),
     avDriftMs: Math.abs(marks.audioCueAt - marks.confirmVisualAt),
-    audioLastCue: win.__game?._runtime?.audio?.lastCue ?? null,
+    // Latched at the moment `packet-confirmed` was stamped — see stampMarks.
+    audioLastCue: marks.audioCue ?? null,
   } satisfies PhoneReadyProbe;
 }, undefined);
 
