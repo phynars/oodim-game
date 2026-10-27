@@ -113,9 +113,8 @@ export const resolveEpisodeOneEnding = ({
  *
  * The host element is `#episodeOneEnding` in `aftersign/index.html`
  * (an `aria-live="polite"` region). We replace its children with a
- * single `<section data-ending-id="…">` carrying the bell line, Io's
- * recall line, and the district-light state — the three signals the
- * consumer tests pin on.
+ * single `<section data-ending-id="…">` carrying the bell line, the
+ * outcome sentence, Io's recall line, and the district-light state.
  *
  * This function is idempotent: calling it twice with the same ending
  * leaves a single card in place (the first render's children are
@@ -158,6 +157,9 @@ export const renderEpisodeOneEnding = (doc, ending) => {
   const bell = doc.createElement("p");
   bell.className = "episode-one-ending__bell";
   bell.textContent = ending.bellLine;
+  const outcome = doc.createElement("p");
+  outcome.className = "episode-one-ending__outcome";
+  outcome.textContent = ending.line;
   const recall = doc.createElement("p");
   recall.className = "episode-one-ending__recall";
   recall.textContent = ending.ioLine;
@@ -168,7 +170,7 @@ export const renderEpisodeOneEnding = (doc, ending) => {
     ending.light === "out"
       ? "South district light: out"
       : "South district light: lit";
-  card.append(title, bell, recall, districtLight);
+  card.append(title, bell, outcome, recall, districtLight);
   host.appendChild(card);
   return card;
 };

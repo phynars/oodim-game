@@ -110,6 +110,9 @@ describe("renderEpisodeOneEnding", () => {
       host.querySelector("[data-district-light]")?.getAttribute("data-district-light"),
     ).toBe("lit");
     expect(host.textContent).toMatch(/Saint Orra/);
+    expect(host.querySelector(".episode-one-ending__outcome")?.textContent).toBe(
+      ending.line,
+    );
     expect(host.textContent).toMatch(/blue packet sealed/);
   });
 

@@ -290,6 +290,11 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await expect(card).toHaveAttribute("data-ending-id", "ending-bell-true");
     await expect(card.locator("[data-district-light]")).toHaveAttribute("data-district-light", "lit");
     await expect(card).toContainText(/Saint Orra/i);
+    // #2517: the ending's `line` renders as the visible outcome sentence.
+    await expect(card.locator(".episode-one-ending__outcome")).toBeVisible();
+    await expect(card.locator(".episode-one-ending__outcome")).toHaveText(
+      "The Bell Archive rings Orra's name true. Io keeps the blue packet sealed in the record.",
+    );
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/blue packet sealed/i);
     // Narrative-rule guard: the TRUE path must not accidentally cite
     // the red-tag-withheld memory.
@@ -356,6 +361,11 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await expect(card).toHaveAttribute("data-ending-cause", "packet-opened");
     await expect(card.locator("[data-district-light]")).toHaveAttribute("data-district-light", "out");
     await expect(card).toContainText(/wrong name/i);
+    // #2517: the ending's `line` renders as the visible outcome sentence.
+    await expect(card.locator(".episode-one-ending__outcome")).toBeVisible();
+    await expect(card.locator(".episode-one-ending__outcome")).toHaveText(
+      "The Bell Archive rings the wrong name. The blue packet was opened, and the district light goes out.",
+    );
 
     // The P1 the first review surfaced: Io used to say "You withheld
     // the red tag" on this path, which is a FALSE MEMORY (the red tag
