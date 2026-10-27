@@ -208,7 +208,8 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => p
     verticalOverflowPx: Math.max(0, root.scrollHeight - viewport.height, -rect.top, rect.bottom - viewport.height),
     settleMs: Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt),
     avDriftMs: Math.abs(marks.audioCueAt - marks.confirmVisualAt),
-    // Latched at the moment `packet-confirmed` was stamped — see stampMarks.
+    // Cue name latched by stampMarks alongside audioCueAt (the live
+    // `_runtime.audio.lastCue` may have moved on to a later cue by now).
     audioLastCue: marks.audioCue ?? null,
   } satisfies PhoneReadyProbe;
 }, undefined);
