@@ -137,21 +137,35 @@ function recorderPage(storage = new Map()) {
   const els = [];
   const posted = [];
   const on = {};
-  const el = (text) => ({ tagName: "DIV", textContent: text, childNodes: [{ nodeType: 3, nodeValue: text }], getAttribute: () => null, checkVisibility: () => true });
+  let observer = null;
+  const el = (text) => ({ nodeType: 1, isConnected: true, tagName: "DIV", textContent: text, childNodes: [{ nodeType: 3, nodeValue: text }], getAttribute: () => null, checkVisibility: () => true });
   const body = { tagName: "BODY", textContent: "", childNodes: [], getAttribute: () => null, checkVisibility: () => true };
+  // A walker over the whole page from body, or over just one changed element.
+  const walk = (root) => { const list = root === body ? [body, ...els] : [root]; let i = 0; return { currentNode: list[0], nextNode: () => list[++i] ?? null }; };
   const ctx = vm.createContext({
-    document: { body, createTreeWalker: () => { const list = [body, ...els]; let i = 0; return { currentNode: list[0], nextNode: () => list[++i] ?? null }; } },
+    document: { body, createTreeWalker: walk },
     location: { origin: "http://x" }, NodeFilter: { SHOW_ELEMENT: 1 },
     sessionStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
     fetch: (_u, o) => { posted.push(...JSON.parse(o.body)); return Promise.resolve(); },
-    MutationObserver: class { observe() {} }, setInterval: () => 0, setTimeout: () => 0,
+    MutationObserver: class { constructor(cb) { observer = cb; } observe() {} }, setInterval: () => 0, setTimeout: () => 0,
     addEventListener: (type, fn) => { on[type] = fn; },
   });
   // `window` and the global are one object in a browser.
   vm.runInContext("var window = globalThis;", ctx);
   vm.runInContext(readFileSync(new URL("./rendered-text-recorder.js", import.meta.url), "utf8"), ctx);
-  return { ctx, posted, show: (text) => els.push(el(text)), pagehide: () => on.pagehide() };
+  return {
+    ctx, posted, show: (text) => els.push(el(text)), pagehide: () => on.pagehide(),
+    // The game sets an element's text: the observer sees the added text node.
+    setText: (text) => { const e = el(text); els.push(e); observer([{ type: "childList", addedNodes: [{ nodeType: 3, parentElement: e }] }]); },
+  };
 }
+
+test("recorder: a text change is posted at once, so a spec that ends on the line still records it (#2530's greeting)", () => {
+  const p = recorderPage();
+  p.setText("Saint Orra: You lit the vigil. I remember the hand that kept it alive.");
+  // No timer, no pagehide: the page may close right after the assertion.
+  assert.deepEqual(p.posted, ["Saint Orra: You lit the vigil. I remember the hand that kept it alive."]);
+});
 
 test("recorder: lines after a story-moving harness call are tagged; read-only calls never taint; reset clears it (#2529)", () => {
   const p = recorderPage();
