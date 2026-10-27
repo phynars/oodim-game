@@ -2,6 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
+const OFFERED_SAFE_DELIVERY_SELECTOR =
+  'button[data-offered-job-id="job-safe-delivery"]';
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -31,9 +33,7 @@ async function reachPacketChoice(page: Page): Promise<void> {
   });
   await waitForReady(page);
   await waitForBeat(page, "packet-offered");
-  const offered = page.locator(
-    'button[data-offered-job-id="job-safe-delivery"]',
-  );
+  const offered = page.locator(OFFERED_SAFE_DELIVERY_SELECTOR);
   await expect(offered).toBeVisible({ timeout: WAIT_MS });
   await offered.tap();
   await page.locator("#packetButton").tap();
