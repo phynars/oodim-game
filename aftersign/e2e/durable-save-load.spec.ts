@@ -1,3 +1,7 @@
+// HARNESS-ONLY: This spec invokes `window.__game.input.forceSave` and
+// `forceReload` to exercise persistence boundaries. It is not player-facing
+// served-page acceptance evidence; player-driven specs must use rendered
+// controls and only read `window.__game` for outcome assertions.
 // Hard-navigation survival for the AFTERSIGN save surface.
 //
 // This is NOT the durable/authoritative contract test — that lives at
@@ -76,7 +80,7 @@ async function forceReload(page: Page): Promise<void> {
   });
 }
 
-test.describe('AFTERSIGN hard-navigation save survival', () => {
+test.describe('HARNESS-ONLY: AFTERSIGN hard-navigation save survival', () => {
   test('slot, revision, playerId, timestamp, clean-state, authority, and lastLoadProof survive a full page.goto boundary', async ({ page }) => {
     // #1801: the durable save/load round-trip is part of the flagship
     // verification contract and must run in the ordinary flagship E2E lane

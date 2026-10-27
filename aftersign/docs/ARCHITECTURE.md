@@ -91,11 +91,19 @@ served page using visible rendered controls with player-like pointer, touch,
 or keyboard input. Phone-viewport specs live in the same folder.
 
 `window.__game` is a stable e2e assertion contract, not a gameplay input API.
-Tests may read its published state to verify outcomes — story beats, save/load
-round-trips, NPC-memory recognition, feel envelopes, and
+Player-facing acceptance tests may read its published state to verify outcomes —
+story beats, save/load round-trips, NPC-memory recognition, feel envelopes, and
 `_runtime.audio` unlock/ambient/cue state — but must not call it (or another
 harness hook) to cause a player action. A state transition reached only through
 a harness input is not served-page acceptance evidence.
+
+Harness-only contract specs may invoke `window.__game.input` or test-only
+runtime overrides to isolate non-player seams. They must declare
+`HARNESS-ONLY` in their header and test description, and they must not be cited
+as player-facing acceptance evidence. The current harness-only callers are
+`durable-save-load.spec.ts`, `returning-boot-line-hard-nav.spec.ts`, and
+`io-recognition-memory-beat-contract.spec.ts`. This list records the audited
+specs for this contract change; it is not a repository-wide inventory.
 
 ## Audio runtime
 
