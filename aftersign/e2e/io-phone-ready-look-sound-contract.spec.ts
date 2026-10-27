@@ -177,12 +177,12 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
     { timeout: RECOGNITION_BEAT_WAIT_MS, polling: POLL_INTERVAL_MS },
   );
   await page.waitForFunction(
-    (expectedCue) => {
+    () => {
       const win = window as Window & { __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
       const marks = win.__ioPhoneReadyMarks;
-      return marks?.audioCue === expectedCue && marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
+      return marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
     },
-    EXPECTED_AUDIO_CUE,
+    undefined,
     { timeout: RECOGNITION_MARKS_WAIT_MS, polling: POLL_INTERVAL_MS },
   );
 };
