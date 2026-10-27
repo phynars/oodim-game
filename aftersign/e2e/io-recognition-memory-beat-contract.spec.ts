@@ -1,7 +1,7 @@
-// HARNESS-ONLY: This spec deliberately drives internal story transitions through
-// `window.__game.input` to measure the recognition-beat telemetry envelope.
-// It is not player-facing served-page acceptance evidence; player-driven
-// acceptance must use rendered controls and may only read `window.__game`.
+// HARNESS-ONLY CONTRACT: this spec invokes window.__game.input and camera
+// overrides to isolate the recognition measurement contract. It is not
+// player-facing served-page acceptance evidence; player-facing specs must use
+// visible rendered controls.
 import { expect, test, type Page } from "@playwright/test";
 
 // Cold-start budget matches other AFTERSIGN e2e specs: SwiftShader init +
@@ -134,7 +134,7 @@ const collectBeat = async (page: Page, outcome: RecognitionOutcome) => {
   return (await beatHandle.jsonValue()) as MemoryBeat;
 };
 
-test("io recognition publishes range-checked story.memoryBeat", async ({ page }) => {
+test("HARNESS-ONLY: io recognition publishes range-checked story.memoryBeat", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
   await page.goto("/aftersign/index.html?slot=io-memory-beat-contract", { waitUntil: "load" });
 
@@ -149,7 +149,7 @@ test("io recognition publishes range-checked story.memoryBeat", async ({ page })
   expect(beats.map((beat) => beat.outcome).sort()).toEqual(["opened", "sealed"]);
 });
 
-test("io recognition reports measured camera motion, not canned literals", async ({ page }) => {
+test("HARNESS-ONLY: io recognition reports measured camera motion, not canned literals", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
   await page.goto("/aftersign/index.html?slot=io-memory-beat-measured-camera", { waitUntil: "load" });
 

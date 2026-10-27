@@ -1,3 +1,7 @@
+// HARNESS-ONLY: This spec invokes `window.__game.input.choose` and `forceSave`
+// to construct a returning-session persistence fixture. It is not player-facing
+// served-page acceptance evidence; player-driven specs must use rendered
+// controls and only read `window.__game` for outcome assertions.
 import { expect, test, type Page } from '@playwright/test';
 import { aftersignDeliveryCompleteLine } from '../../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js';
 
@@ -96,7 +100,7 @@ async function forceSave(page: Page): Promise<void> {
   );
 }
 
-test('returning-session boot speaks recognition copy after a hard document navigation', async ({ page }) => {
+test('HARNESS-ONLY: returning-session boot speaks recognition copy after a hard document navigation', async ({ page }) => {
   test.setTimeout(COLD_START_MS);
 
   const slot = `returning-boot-hard-nav-${Date.now()}`;
