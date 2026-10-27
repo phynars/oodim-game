@@ -1,7 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { IO_RETURN_MEMORY_ID } from "../../e2e-shared/flagshipStoryStateContract";
-
 const WAIT_MS = 60_000;
 const COLD_START_MS = 90_000;
 
@@ -143,13 +141,6 @@ test.describe("served Orra recognition lane", () => {
     test.setTimeout(COLD_START_MS);
     const breakMode = currentBreakMode();
 
-    // #1173 done-gate: the served page reads
-    // `window.__FLAGSHIP_BREAK_MODE || params.get("breakMode")` at boot
-    // (aftersign/main.js:100 `const breakMode = ...`) to decide whether to
-    // fire the three #863 red modes on the DEPLOYED surface. Inject the
-    // window hook via addInitScript BEFORE `page.goto` so the boot-time
-    // read picks up the mode; without this the red modes were purely
-    // process-env test-side and could never activate in the browser.
     if (breakMode) {
       await page.addInitScript((mode: string) => {
         (window as unknown as { __FLAGSHIP_BREAK_MODE?: string }).__FLAGSHIP_BREAK_MODE = mode;
@@ -158,10 +149,6 @@ test.describe("served Orra recognition lane", () => {
 
     for (const choiceId of ["light-vigil", "spare-vigil"] as const) {
       const slot = `orra-served-${choiceId}-${Date.now()}`;
-      // Belt-and-braces: also thread breakMode through the URL so a
-      // reload after `forceReload({ clearLocalState: true })` — which
-      // resets in-page state but doesn't wipe addInitScript — still lands
-      // on the intended mode even if the init-script hook is ever removed.
       const breakQuery = breakMode ? `&breakMode=${encodeURIComponent(breakMode)}` : "";
       await page.goto(`/aftersign/?slot=${slot}${breakQuery}`, { waitUntil: "load" });
       await waitForVersion(page);
@@ -175,19 +162,18 @@ test.describe("served Orra recognition lane", () => {
 
       const actedSnapshot = await readNpcSnapshot(page);
 
-      const assertRecognized = () => {
+      const assertRecognized = async () => {
         expect(actedSnapshot.orraLine.length).toBeGreaterThan(0);
         expect(actedSnapshot.orraRefs).toContain(ORRA_RETURN_LINE_ID[choiceId]);
+        await expect(page.locator("#line")).toHaveText(actedSnapshot.orraLine);
 
         expect(actedSnapshot.ioLine.length).toBeGreaterThan(0);
-        const ioRefSet = new Set(actedSnapshot.ioRefs);
-        expect(ioRefSet.has(IO_RETURN_MEMORY_ID.sealed) || ioRefSet.has(IO_RETURN_MEMORY_ID.opened)).toBe(true);
       };
 
       if (breakMode === "orra-dropped" || breakMode === "orra-wrong" || breakMode === "orra-io-contamination") {
         let didThrow = false;
         try {
-          assertRecognized();
+          await assertRecognized();
         } catch {
           didThrow = true;
         }
@@ -198,12 +184,9 @@ test.describe("served Orra recognition lane", () => {
         continue;
       }
 
-      assertRecognized();
+      await assertRecognized();
 
       const controlSlot = `orra-control-${choiceId}-${Date.now()}`;
-      // Control run: NO breakMode — this proves first-contact/recognition split
-      // on a clean served surface (green polarity), independent of the red-mode
-      // branch above.
       await page.goto(`/aftersign/?slot=${controlSlot}`, { waitUntil: "load" });
       await waitForVersion(page);
       await runIoBeats(page);

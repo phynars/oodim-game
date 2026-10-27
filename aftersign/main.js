@@ -1559,6 +1559,10 @@ const getAudioController = () => {
 };
 
 const lineForBeat = () => {
+  if (state.scene.beat === "meet-orra") {
+    return state.npcs.orra.lastLine;
+  }
+
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
@@ -1687,6 +1691,10 @@ const lineForBeat = () => {
     });
     const secondPacketLine = secondPacketCopy.lines.join(" ");
     return [reflection, recallLine, handoffLine, secondPacketLine].filter(Boolean).join(" ");
+  }
+
+  if (state.scene.beat === "meet-orra") {
+    return state.npcs.orra.lastLine;
   }
 
   if (state.scene.beat === "io-return-recognition") {
@@ -4242,7 +4250,7 @@ const choose = async (choiceId) => {
     state.npcs.orra.lastLineMemoryRefs = orraLineId === ORRA_FIRST_CONTACT_LINE_ID
       ? []
       : [orraLineId];
-    markStateDirty();
+    setBeat("meet-orra");
     publishState();
     return;
   }
@@ -4460,7 +4468,7 @@ const choose = async (choiceId) => {
     state.npcs.orra.lastLineMemoryRefs = selected.lineId === ORRA_FIRST_CONTACT_LINE_ID
       ? []
       : [selected.lineId];
-    markStateDirty();
+    setBeat("meet-orra");
     publishState();
     return;
   }
