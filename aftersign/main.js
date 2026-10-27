@@ -1442,6 +1442,10 @@ let ioReturningBootBeat = null;
 let ioSecondPacketResponseLine = null;
 // Transient presentation, owned by the accepted choice (not a DOM event).
 let ioSecondPacketPointerChoiceId = null;
+// True while Saint Orra holds the dialogue floor (set by choose() on
+// "meet-orra" / "return-to-orra"); renderText() reads it to swap #line
+// to Orra's lastLine. Must be declared — an undeclared read throws.
+let orraHasDialogueFloor = false;
 
 // Recompute the returning-session boot override from the CURRENT state
 // (memory facts + scene beat). Called at module init AND from
@@ -2450,12 +2454,16 @@ const publishState = () => {
 const renderText = () => {
   dialogueController.render({
     beat: state.scene.beat,
-    speakerName: "Io",
+    speakerName: orraHasDialogueFloor ? "Saint Orra" : "Io",
     // Getter, not a value: syncIoLine() (invoked inside the helper) is what
     // writes state.npcs.io.lastLine. An eager `dialogueLine: state.npcs.io.lastLine`
     // would snapshot the stale line before syncIoLine runs on the render where
-    // the beat changes.
-    getDialogueLine: () => state.npcs.io.lastLine,
+    // the beat changes. When Orra holds the floor (#2520), `#line` renders
+    // her recalled line instead; Io's state line is left untouched.
+    getDialogueLine: () =>
+      orraHasDialogueFloor && state.npcs.orra.lastLine
+        ? state.npcs.orra.lastLine
+        : state.npcs.io.lastLine,
     syncIoLine,
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
@@ -4059,6 +4067,7 @@ const routeChoiceController = createRouteChoiceController({
 });
 
 const choose = async (choiceId) => {
+  orraHasDialogueFloor = choiceId === "meet-orra" || choiceId === "return-to-orra";
   if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {

@@ -84,6 +84,7 @@ type RuntimeMarks = {
   readonly lineSettledAt: number;
   readonly confirmVisualAt: number;
   readonly audioCueAt: number;
+  readonly audioCue: string;
 };
 
 const waitForGame = async (page: Page) => {
@@ -102,7 +103,7 @@ const waitForGame = async (page: Page) => {
 const installPhoneReadyRuntimeMarks = async (page: Page) => {
   await page.evaluate(({ expectedCue, pollIntervalMs }) => {
     const win = window as Window & {
-      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; confirmVisualAt?: number; audioCueAt?: number };
+      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; confirmVisualAt?: number; audioCueAt?: number; audioCue?: string };
       __game?: {
         scene?: { beat?: string };
         interaction?: { confirmStartedAt?: number | null };
@@ -137,7 +138,7 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
       const marks = win.__ioPhoneReadyMarks;
       if (!marks) return;
       const audio = game?._runtime?.audio;
-      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null) marks.audioCueAt = audio.lastCueAt;
+      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null) { marks.audioCueAt = audio.lastCueAt; marks.audioCue = audio.lastCue; }
       const confirmStartedAt = game?.interaction?.confirmStartedAt ?? null;
       if (marks.confirmVisualAt === undefined && confirmStartedAt !== null) marks.confirmVisualAt = confirmStartedAt;
       if (marks.recognitionTriggeredAt === undefined && game?.scene?.beat === 'io-return-recognition') marks.recognitionTriggeredAt = performance.now();
@@ -177,12 +178,12 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
     { timeout: RECOGNITION_BEAT_WAIT_MS, polling: POLL_INTERVAL_MS },
   );
   await page.waitForFunction(
-    (expectedCue) => {
-      const win = window as Window & { __game?: { _runtime?: { audio?: { lastCue?: string | null } } }; __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
+    () => {
+      const win = window as Window & { __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
       const marks = win.__ioPhoneReadyMarks;
-      return win.__game?._runtime?.audio?.lastCue === expectedCue && marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
+      return marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
     },
-    EXPECTED_AUDIO_CUE,
+    undefined,
     { timeout: RECOGNITION_MARKS_WAIT_MS, polling: POLL_INTERVAL_MS },
   );
 };
@@ -207,7 +208,9 @@ const measurePhoneReadyProbe = async (page: Page): Promise<PhoneReadyProbe> => p
     verticalOverflowPx: Math.max(0, root.scrollHeight - viewport.height, -rect.top, rect.bottom - viewport.height),
     settleMs: Math.max(0, marks.lineSettledAt - marks.recognitionTriggeredAt),
     avDriftMs: Math.abs(marks.audioCueAt - marks.confirmVisualAt),
-    audioLastCue: win.__game?._runtime?.audio?.lastCue ?? null,
+    // Cue name latched by stampMarks alongside audioCueAt (the live
+    // `_runtime.audio.lastCue` may have moved on to a later cue by now).
+    audioLastCue: marks.audioCue ?? null,
   } satisfies PhoneReadyProbe;
 }, undefined);
 

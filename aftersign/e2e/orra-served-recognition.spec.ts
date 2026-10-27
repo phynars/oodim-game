@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { IO_RETURN_MEMORY_ID } from "../../e2e-shared/flagshipStoryStateContract";
+import { ORRA_LINE_COPY_BY_ID } from "../src/orraRuntimeLane";
 
 const WAIT_MS = 60_000;
 const COLD_START_MS = 90_000;
@@ -199,6 +200,12 @@ test.describe("served Orra recognition lane", () => {
       }
 
       assertRecognized();
+      // Expected copy comes from the shipped copy table, not from
+      // window.__game, so the served `#line` check is not self-referential.
+      const expectedOrraLine = ORRA_LINE_COPY_BY_ID[ORRA_RETURN_LINE_ID[choiceId]];
+      expect(expectedOrraLine, `missing Orra copy for ${ORRA_RETURN_LINE_ID[choiceId]}`).toBeTruthy();
+      await expect(page.locator("#line")).toHaveText(expectedOrraLine, { timeout: WAIT_MS });
+      expect(actedSnapshot.orraLine).toBe(expectedOrraLine);
 
       const controlSlot = `orra-control-${choiceId}-${Date.now()}`;
       // Control run: NO breakMode — this proves first-contact/recognition split
