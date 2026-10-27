@@ -178,9 +178,9 @@ const driveToSealedRecognitionBeat = async (page: Page) => {
   );
   await page.waitForFunction(
     (expectedCue) => {
-      const win = window as Window & { __game?: { _runtime?: { audio?: { lastCue?: string | null } } }; __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
+      const win = window as Window & { __ioPhoneReadyMarks?: Partial<RuntimeMarks> };
       const marks = win.__ioPhoneReadyMarks;
-      return win.__game?._runtime?.audio?.lastCue === expectedCue && marks?.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
+      return marks?.audioCue === expectedCue && marks.recognitionTriggeredAt !== undefined && marks.lineSettledAt !== undefined && marks.confirmVisualAt !== undefined && marks.audioCueAt !== undefined;
     },
     EXPECTED_AUDIO_CUE,
     { timeout: RECOGNITION_MARKS_WAIT_MS, polling: POLL_INTERVAL_MS },
