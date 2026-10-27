@@ -322,8 +322,10 @@ jobs:
           npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
       # Rendered-text rule (oodim engine review 2026-10-26, game #2511): every
       # new player-facing string must be SHOWN by a served playtest, not just
-      # bundled. Report-only (--mode warn) until its false-fail rate is read
-      # over a week of PRs; then switch to --mode fail.
+      # bundled, and reached through real input: text first shown after a
+      # story-moving `window.__game` harness call does not count (#2529;
+      # result `text_harness_only`). Report-only (--mode warn) until its
+      # false-fail rate is read over a week of PRs; then switch to --mode fail.
       - name: new text must be shown in a served playtest (report only)
         if: github.event_name == 'pull_request' && steps.e2e.conclusion == 'success'
         run: node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode warn
