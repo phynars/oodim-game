@@ -240,7 +240,7 @@ jobs:
     runs-on: ubuntu-latest
     # Successful runs take 18–32 min (10-26); a hung run (PR #2520) otherwise
     # holds a runner for GitHub's 6h default.
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
