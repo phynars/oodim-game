@@ -93,10 +93,8 @@
     set: (v) => { game = v && typeof v === "object" ? wrap(v, "") : v; },
   });
 
-  const collect = () => {
-    timer = 0;
-    if (!document.body) return;
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+  const collectFrom = (root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
     for (let el = walker.currentNode; el; el = walker.nextNode()) {
       if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || !visible(el)) continue;
       let own = false;
@@ -104,7 +102,36 @@
       if (own) add(el.textContent ?? "");
       for (const a of ATTRS) { const v = el.getAttribute(a); if (v) add(v); }
     }
+  };
+
+  const collect = () => {
+    timer = 0;
+    if (!document.body) return;
+    collectFrom(document.body);
     flush();
+  };
+
+  // Text changes are recorded at once, from the changed elements only (game
+  // #2532 follow-up, 10-27): a spec that ends on `expect(#line).toContainText`
+  // closes the page before the timed scan runs, so the last line it asserted
+  // was never recorded. #2530's Orra greeting was lost this way. A mutation
+  // callback runs before Playwright's next poll can see the text, so the POST
+  // is already sent when the assertion passes. The timed full scan stays the
+  // backstop for visibility-only changes (class, style, hidden).
+  const onMutations = (mutations) => {
+    const roots = new Set();
+    for (const m of mutations) {
+      if (m.type === "characterData") { if (m.target.parentElement) roots.add(m.target.parentElement); }
+      else if (m.type === "childList") {
+        for (const n of m.addedNodes) {
+          if (n.nodeType === 1) roots.add(n);
+          else if (n.nodeType === 3 && n.parentElement) roots.add(n.parentElement);
+        }
+      }
+    }
+    for (const r of roots) if (r.isConnected) collectFrom(r);
+    flush();
+    schedule();
   };
 
   const flush = () => {
@@ -123,7 +150,7 @@
   const schedule = () => { if (!timer) timer = setTimeout(() => idle(collect), 120); };
 
   const start = () => {
-    new MutationObserver(schedule).observe(document.body, {
+    new MutationObserver(onMutations).observe(document.body, {
       subtree: true, childList: true, characterData: true,
       attributes: true, attributeFilter: ["class", "style", "hidden", "open", "aria-hidden", ...ATTRS],
     });
