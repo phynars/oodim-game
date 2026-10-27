@@ -55,6 +55,10 @@ jobs:
               - 'aftersign/**'
               - 'apps/web/src/aftersign/**'
               - 'e2e-shared/aftersign/**'
+              # The rendered-text recorder is inlined into the aftersign test
+              # build, and the rule reads its output in the aftersign job.
+              - 'scripts/rendered-text-recorder.js'
+              - 'scripts/served-reach.mjs'
               - 'packages/**'
             landing:
               - 'landing/**'
