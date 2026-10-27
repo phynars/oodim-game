@@ -103,7 +103,7 @@ const waitForGame = async (page: Page) => {
 const installPhoneReadyRuntimeMarks = async (page: Page) => {
   await page.evaluate(({ expectedCue, pollIntervalMs }) => {
     const win = window as Window & {
-      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; confirmVisualAt?: number; audioCueAt?: number };
+      __ioPhoneReadyMarks?: { recognitionTriggeredAt?: number; lineSettledAt?: number; confirmVisualAt?: number; audioCueAt?: number; audioCue?: string };
       __game?: {
         scene?: { beat?: string };
         interaction?: { confirmStartedAt?: number | null };
@@ -138,7 +138,7 @@ const installPhoneReadyRuntimeMarks = async (page: Page) => {
       const marks = win.__ioPhoneReadyMarks;
       if (!marks) return;
       const audio = game?._runtime?.audio;
-      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null) marks.audioCueAt = audio.lastCueAt;
+      if (marks.audioCueAt === undefined && audio?.lastCue === expectedCue && audio.lastCueAt !== null) { marks.audioCueAt = audio.lastCueAt; marks.audioCue = audio.lastCue; }
       const confirmStartedAt = game?.interaction?.confirmStartedAt ?? null;
       if (marks.confirmVisualAt === undefined && confirmStartedAt !== null) marks.confirmVisualAt = confirmStartedAt;
       if (marks.recognitionTriggeredAt === undefined && game?.scene?.beat === 'io-return-recognition') marks.recognitionTriggeredAt = performance.now();
