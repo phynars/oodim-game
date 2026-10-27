@@ -59,6 +59,7 @@ jobs:
               # build, and the rule reads its output in the aftersign job.
               - 'scripts/rendered-text-recorder.js'
               - 'scripts/served-reach.mjs'
+              - 'scripts/pr-ci-evidence*.mjs'
               - 'packages/**'
             landing:
               - 'landing/**'
@@ -332,7 +333,23 @@ jobs:
       # false-fail rate is read over a week of PRs; then switch to --mode fail.
       - name: new text must be shown in a served playtest (report only)
         if: github.event_name == 'pull_request' && steps.e2e.conclusion == 'success'
-        run: node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode warn
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode warn 2>&1 | tee /tmp/rendered-reach.log
+      # CI-evidence block (2026-10-27): write this run's e2e totals and the
+      # rendered-rule result into the PR body between markers, replacing the
+      # last run's block. PR bodies are the implementing session's pre-CI notes,
+      # so readers who only see the body read "unverified" after CI passed.
+      # Report only: never fails the job. Rules: scripts/pr-ci-evidence.mjs.
+      - name: Write CI evidence into the PR body
+        if: always() && github.event_name == 'pull_request' && (steps.e2e.conclusion == 'success' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node --test scripts/pr-ci-evidence.test.mjs
+          node scripts/pr-ci-evidence.mjs --e2e "${{ steps.e2e.conclusion }}" --results aftersign/playwright-report/results.json --rendered /tmp/rendered-reach.log
       # Upload whenever the e2e step ran: a red run's text is still a corpus
       # for replaying the rule.
       - if: always() && github.event_name == 'pull_request' && (steps.e2e.conclusion == 'success' || steps.e2e.conclusion == 'failure')
