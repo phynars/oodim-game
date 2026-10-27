@@ -4084,6 +4084,12 @@ const routeChoiceController = createRouteChoiceController({
 });
 
 const choose = async (choiceId) => {
+  // Non-Orra choices still release the floor (prior behavior). Only the
+  // Orra branches below GRANT it, so an Orra id rejected/handled by the
+  // route controller can no longer grab the floor.
+  if (choiceId !== "meet-orra" && choiceId !== "return-to-orra") {
+    orraHasDialogueFloor = false;
+  }
   if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {
