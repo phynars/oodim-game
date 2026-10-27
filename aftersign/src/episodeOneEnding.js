@@ -9,8 +9,8 @@
 //
 // Both outcomes cite CONCRETE prior actions — never a generic affinity
 // line (issue #2261's narrative rule). The false branch has TWO
-// cause-specific closing lines so Io never speaks a FALSE MEMORY (Soren's P1
-// on PR #2265):
+// cause-specific closing lines so Io never speaks a FALSE MEMORY
+// (Soren's P1 on PR #2265):
 //
 //   • Packet opened → "You opened the blue packet." — the archive
 //     lost its name because the courier read what wasn't theirs.
