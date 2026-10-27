@@ -2533,6 +2533,23 @@ const renderText = () => {
   } else if (orraPaybackButton) {
     orraPaybackButton.remove();
   }
+  // A persisted Orra memory must have a player-reachable return path after reload.
+  const hasOrraMemory = state.npcs.orra.memory.length > 0;
+  let returnToOrraButton = document.getElementById("returnToOrra");
+  if (hasOrraMemory) {
+    if (!returnToOrraButton) {
+      returnToOrraButton = document.createElement("button");
+      returnToOrraButton.type = "button";
+      returnToOrraButton.id = "returnToOrra";
+      line.insertAdjacentElement("afterend", returnToOrraButton);
+    }
+    returnToOrraButton.style.pointerEvents = "auto";
+    returnToOrraButton.setAttribute("data-choice-id", "return-to-orra");
+    setTextContentIfChanged(returnToOrraButton, "Return to Saint Orra");
+    returnToOrraButton.onclick = () => { void choose("return-to-orra"); };
+  } else if (returnToOrraButton) {
+    returnToOrraButton.remove();
+  }
   // #1812 render — render `ioReturnLine(state.delivery.outcome)` into
   // ITS OWN sibling paragraph next to `#line`, mirroring the
   // `#ioConsequenceLine` seam above. `#line.textContent` remains owned
@@ -4067,7 +4084,12 @@ const routeChoiceController = createRouteChoiceController({
 });
 
 const choose = async (choiceId) => {
-  orraHasDialogueFloor = choiceId === "meet-orra" || choiceId === "return-to-orra";
+  // Non-Orra choices still release the floor (prior behavior). Only the
+  // Orra branches below GRANT it, so an Orra id rejected/handled by the
+  // route controller can no longer grab the floor.
+  if (choiceId !== "meet-orra" && choiceId !== "return-to-orra") {
+    orraHasDialogueFloor = false;
+  }
   if (routeChoiceController.input.choose(choiceId)) return;
 
   if (choiceId === "deliver-packet") {
@@ -4218,6 +4240,7 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "meet-orra") {
+    orraHasDialogueFloor = true;
     // M-ORRA-E1 (#1173) — settle no-op for the Orra lane's
     // first-contact dispatch. The shipped page does not render a
     // `meet-orra` button today; the sibling
@@ -4463,6 +4486,7 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "return-to-orra") {
+    orraHasDialogueFloor = true;
     const selected = selectOrraRecognitionLine(state.npcs.orra.memory);
     state.npcs.orra.lastLineId = selected.lineId;
     state.npcs.orra.lastLine = lineCopyForOrraLineId(selected.lineId);
