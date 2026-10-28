@@ -3308,6 +3308,10 @@ const renderText = () => {
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
         routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
+        const ioOfferLine = document.createElement("p");
+        ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
+        ioOfferLine.textContent = offerCopy.ioLine;
+        offeredJobs.appendChild(ioOfferLine);
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
           handoffNode.setAttribute("data-aftersign-second-packet-handoff", "accepted");
