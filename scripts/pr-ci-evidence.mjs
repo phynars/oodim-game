@@ -1,18 +1,10 @@
 #!/usr/bin/env node
 // CI-evidence block for PR bodies (oodim AIDLC, 2026-10-27).
 //
-// A PR body is the implementing session's pre-CI note ("no served run
-// verified"), and nothing wrote CI's result back. Readers who only see the
-// body (review agents, the auditor, Muse, humans) read "unverified" after CI
-// had passed. This step writes the aftersign lane's result into the body
-// between two markers, replacing the previous run's block, so the body always
-// carries the newest run's evidence with the head SHA it ran on.
-//
-// Inputs (all optional; a missing file is reported, never fatal):
-//   --results <playwright results.json>  --rendered <served-reach --rendered log>
-//   --e2e <success|failure|...>          env GITHUB_TOKEN, GITHUB_REPOSITORY,
-//   GITHUB_EVENT_PATH, GITHUB_SERVER_URL, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT.
-// Never fails the job: evidence is a report, not a gate.
+// A PR body is the implementing session's pre-CI note, while this report is
+// CI's durable evidence. The block is replaced on each run so it always names
+// the head SHA that produced it. Inputs are optional and missing data is
+// reported rather than causing this non-gating reporter to fail.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -47,17 +39,26 @@ export function renderedSummary(log) {
   return { result, section };
 }
 
-export function renderEvidence({ sha, runUrl, e2e, stats, rendered, at }) {
+/** Normalize the served gate's cross-job outputs for the evidence block. */
+export function servedSummary({ result, counts } = {}) {
+  return {
+    result: result || "(not reported)",
+    counts: counts || null,
+  };
+}
+
+export function renderEvidence({ sha, runUrl, e2e, stats, rendered, served, at }) {
+  const servedReach = servedSummary(served);
   const out = [
     START,
     "### CI evidence (written by CI, replaced on each run)",
     `- head: \`${sha ? sha.slice(0, 7) : "?"}\` · run: ${runUrl ?? "?"} · ${at}`,
     `- aftersign served e2e: **${e2e ?? "not run"}**` +
       (stats ? ` (${stats.passed} passed, ${stats.failed} failed, ${stats.flaky} flaky, ${stats.skipped} skipped)` : " (no results.json)"),
+    `- served-reach: \`${servedReach.result}\`${servedReach.counts ? `; served source files changed: ${servedReach.counts}` : ""}`,
     `- rendered rule: \`${rendered?.result ?? "not run"}\``,
   ];
-  // Fenced so quoted game text can never read as a PR-body directive
-  // (served-exempt:, f2p-exempt:, closing keywords).
+  // Fenced so quoted game text can never read as a PR-body directive.
   if (rendered?.section?.length) out.push("", "```text", ...rendered.section, "```");
   out.push(END);
   return out.join("\n");
@@ -80,11 +81,11 @@ async function main() {
     e2e: arg(a, "--e2e"),
     stats: results && existsSync(results) ? e2eStats(readJson(results)) : null,
     rendered: log && existsSync(log) ? renderedSummary(readFileSync(log, "utf8")) : null,
+    served: { result: arg(a, "--served-result"), counts: arg(a, "--served-counts") },
     at: new Date().toISOString().slice(0, 16).replace("T", " ") + "Z",
   });
   console.log(block);
 
-  // Read the body fresh: the event's copy is stale if anyone edited it mid-run.
   const url = `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/pulls/${pr.number}`;
   const headers = { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" };
   const cur = await fetch(url, { headers });

@@ -94,6 +94,9 @@ jobs:
   served-reach:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.reach.outputs.result }}
+      counts: ${{ steps.reach.outputs.counts }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -104,7 +107,18 @@ jobs:
       - run: node --test scripts/served-reach.test.mjs
       - run: npm install
       - name: changed code must reach the shipped game
-        run: node scripts/served-reach.mjs
+        id: reach
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          node scripts/served-reach.mjs 2>&1 | tee /tmp/served-reach.log
+          status=${PIPESTATUS[0]}
+          result="$(sed -n 's/^SERVED_REACH_RESULT=//p' /tmp/served-reach.log | tail -1)"
+          counts="$(sed -n 's/^- served source files changed: //p' /tmp/served-reach.log | tail -1)"
+          echo "result=${result}" >> "$GITHUB_OUTPUT"
+          echo "counts=${counts}" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
   # Fail-to-pass gate for BUG-FIX PRs (oodim AIDLC round 1, item ③,
   # 2026-10-03; SWT-bench's criterion). A PR that closes a `type:bug` issue
@@ -240,7 +254,7 @@ jobs:
           retention-days: 7
 
   aftersign:
-    needs: changes
+    needs: [changes, served-reach]
     if: ${{ needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
     # Successful runs take 18–32 min (10-26); a hung run (PR #2520) otherwise
@@ -349,7 +363,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node --test scripts/pr-ci-evidence.test.mjs
-          node scripts/pr-ci-evidence.mjs --e2e "${{ steps.e2e.conclusion }}" --results aftersign/playwright-report/results.json --rendered /tmp/rendered-reach.log
+          node scripts/pr-ci-evidence.mjs --e2e "${{ steps.e2e.conclusion }}" --results aftersign/playwright-report/results.json --rendered /tmp/rendered-reach.log --served-result "${{ needs.served-reach.outputs.result }}" --served-counts "${{ needs.served-reach.outputs.counts }}"
       # Upload whenever the e2e step ran: a red run's text is still a corpus
       # for replaying the rule.
       - if: always() && github.event_name == 'pull_request' && (steps.e2e.conclusion == 'success' || steps.e2e.conclusion == 'failure')

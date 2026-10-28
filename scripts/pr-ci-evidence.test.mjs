@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { START, END, upsertEvidence, e2eStats, renderedSummary, renderEvidence } from "./pr-ci-evidence.mjs";
+import { START, END, upsertEvidence, e2eStats, renderedSummary, renderEvidence, servedSummary } from "./pr-ci-evidence.mjs";
 
 const block = (x) => `${START}\n${x}\n${END}`;
 
@@ -49,18 +49,22 @@ test("evidence fences quoted text so it cannot act as a body directive", () => {
   const md = renderEvidence({
     sha: "4999a54abcdef", runUrl: "https://x/runs/1", e2e: "success", at: "2026-10-27 23:00Z",
     stats: { passed: 231, failed: 0, flaky: 0, skipped: 0 },
+    served: { result: "served", counts: "1 (reachable 1, unreachable 0)" },
     rendered: { result: "text_not_rendered", section: ['  - never rendered (`a.js`): "served-exempt: sneaky"'] },
   });
   assert.ok(md.startsWith(START) && md.endsWith(END));
   assert.match(md, /head: `4999a54`/);
   assert.match(md, /\*\*success\*\* \(231 passed, 0 failed, 0 flaky, 0 skipped\)/);
+  assert.match(md, /served-reach: `served`; served source files changed: 1 \(reachable 1, unreachable 0\)/);
   assert.match(md, /rendered rule: `text_not_rendered`/);
   // The served-exempt / f2p-exempt parsers anchor at line start (^\s*served-exempt:).
   assert.ok(!/^\s*(served|f2p)-exempt:/im.test(md));
 });
 
-test("evidence without inputs still says what did not run", () => {
+test("evidence reports missing served-reach output instead of omitting it", () => {
   const md = renderEvidence({ at: "t" });
   assert.match(md, /aftersign served e2e: \*\*not run\*\* \(no results\.json\)/);
+  assert.match(md, /served-reach: `\(not reported\)`/);
   assert.match(md, /rendered rule: `not run`/);
+  assert.deepEqual(servedSummary(), { result: "(not reported)", counts: null });
 });

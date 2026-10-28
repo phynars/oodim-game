@@ -122,8 +122,9 @@ test("exemptReason reads the PR-body line", () => {
   assert.equal(exemptReason(undefined), null);
 });
 
-test("decide: unreachable fails before text; exempt and no-source skip", () => {
-  const base = { exempt: null, candidates: ["a.ts"], unreachable: [], missingText: [] };
+test("decide: no changes is distinct from non-served source", () => {
+  const base = { exempt: null, files: ["a.ts"], candidates: ["a.ts"], unreachable: [], missingText: [] };
+  assert.deepEqual(decide({ ...base, files: [] }), { result: "skipped:no_changes", fail: false });
   assert.deepEqual(decide({ ...base, candidates: [] }), { result: "skipped:no_served_source", fail: false });
   assert.deepEqual(decide({ ...base, exempt: "why", unreachable: ["a.ts"] }), { result: "skipped:exempt", fail: false });
   assert.deepEqual(decide({ ...base, unreachable: ["a.ts"], missingText: [{}] }), { result: "unreachable", fail: true });
