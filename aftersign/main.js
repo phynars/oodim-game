@@ -3311,23 +3311,39 @@ const renderText = () => {
         const ioOfferLine = document.createElement("p");
         ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
         ioOfferLine.textContent = offerCopy.ioLine;
-        // Phone-fit: the trusted ioLine is a long sentence. Its max-content
-        // width drove the shrink-to-fit #offeredJobs tray to ~683px on a
-        // 390px phone (aftersign-mloop-two-round.playtest.spec.ts rect
-        // checks). Percentage sizing (`width: 0; min-width: 100%`) did NOT
-        // fix it: inside a shrink-to-fit tray the percentage is cyclic and
-        // ignored for intrinsic sizing, so CI stayed at 683px. A max-width
-        // in viewport units is definite, so it caps the line's max-content
-        // contribution to the tray, and the tray can no longer grow past the
-        // phone width. The line keeps its normal word-level min-content
-        // width. That avoids the earlier `overflow-wrap: anywhere` collapse,
-        // where the line wrapped one glyph per line and covered the buttons.
-        // `pointer-events: none` keeps this read-only line from ever
+        // Phone-fit (unverified until CI runs): the trusted ioLine is a
+        // ~125-char sentence, ~700px at the tray's 12px max-content. On
+        // the 390px mobile-emulated phone, CI measured the tray rows at
+        // right=683, i.e. the full 680px `.panel`. That means the
+        // `.hud` (position: fixed) itself was laid out wider than 390px.
+        // A `calc(100vw - 64px)` cap did NOT fix it (CI stayed at 683),
+        // which fits that reading: once the viewport the fixed HUD is
+        // sized against grows, `100vw` grows with it, so any cap
+        // expressed in viewport or percentage units stays circular.
+        // This cap is font-relative instead (26em = 312px at 12px). It
+        // cannot track the viewport, so the line's max-content can never
+        // be wider than the 320px panel content box on a 390px phone, and
+        // there is nothing left to push that layout wider. `min(100%, …)`
+        // still lets it shrink inside a narrower tray. `flex: 0 1 100%`
+        // gives the line its own row in the wrapping tray. `min-width: 0`
+        // drops the flex `auto` minimum. `overflow-wrap: break-word`
+        // keeps the normal word-level min-content (not `anywhere`, which
+        // collapsed the line to one glyph per line over the buttons).
+        // `pointer-events: none` keeps this read-only line from
         // intercepting a tap meant for a button.
         ioOfferLine.style.display = "block";
         ioOfferLine.style.boxSizing = "border-box";
+        ioOfferLine.style.flex = "0 1 100%";
+        ioOfferLine.style.minWidth = "0";
+        // `contain: inline-size` removes the line's text from every
+        // intrinsic-width computation up the tree: its min/max-content
+        // width is computed as if it were empty. The tray, panel and HUD
+        // therefore size exactly as they did before this PR added the
+        // line, and the line then fills whatever width it is given.
+        ioOfferLine.style.contain = "inline-size";
         ioOfferLine.style.width = "auto";
-        ioOfferLine.style.maxWidth = "calc(100vw - 64px)";
+        ioOfferLine.style.maxWidth = "min(100%, 26em)";
+        ioOfferLine.style.margin = "0";
         ioOfferLine.style.whiteSpace = "normal";
         ioOfferLine.style.overflowWrap = "break-word";
         ioOfferLine.style.pointerEvents = "none";
