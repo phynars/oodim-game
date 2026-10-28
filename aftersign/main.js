@@ -3583,7 +3583,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     setTextContentIfChanged(
       deliverButton,
       isThirdNpcRedTagDelivery
-        ? "Deliver red tag to the recipient — third recipient"
+        ? "Deliver red tag to Saint Orra"
         : "Deliver packet",
     );
     if (isThirdNpcRedTagDelivery) {

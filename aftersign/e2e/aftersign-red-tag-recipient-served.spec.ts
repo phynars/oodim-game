@@ -139,7 +139,7 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
       'button[data-choice-id="deliver-packet"][data-red-tag-delivery-target="third-npc"]:not([disabled])',
     );
     await expect(thirdRecipientDelivery).toHaveText(
-      "Deliver red tag to the recipient — third recipient",
+      "Deliver red tag to Saint Orra",
     );
     await thirdRecipientDelivery.tap();
 
