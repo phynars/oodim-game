@@ -3308,35 +3308,29 @@ const renderText = () => {
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
         routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
-        // #2544 — Io's offer line (offerCopy.ioLine) is built here but
-        // appended AFTER the offer buttons (see the end of the offer loop
-        // below). Unverified hypothesis, to be confirmed by CI: on a
-        // phone the tray is capped at `max-height: 42vh; overflow-y: auto`
-        // (applyPhoneOfferLayout). Earlier revisions of this PR put the
-        // line before the buttons. That pushed the offer button down
-        // inside the scroll clip, and press-juice's elementFromPoint at
-        // the button centre found nothing. Appending the line last keeps
-        // the buttons where they sat before this PR.
+        // #2544 — Io's offer line (offerCopy.ioLine). Appended AFTER the
+        // offer buttons (end of the offer loop below) so the buttons keep
+        // the position press-juice's hit-test expects inside the phone
+        // tray's 42vh scroll clip.
         //
-        // Width: `width: 0` + `min-width: 100%` makes the line add zero
-        // to any min/max-content width computed up the tree (a percentage
-        // min-width counts as 0 for intrinsic contributions). It still
-        // lays out at exactly the tray's width, whether the tray is the
-        // phone column or the desktop wrapping row. Read-only, so
-        // `pointer-events: none`.
+        // Width: `contain: inline-size` gives the line a zero intrinsic
+        // inline size, so its long copy cannot feed the tray's min/max-
+        // content width. `width: 100%` then lays it out at the tray's
+        // own width and the text wraps inside it. The tray's styles are
+        // left alone. Read-only, so `pointer-events: none`.
         const ioOfferLine = document.createElement("p");
         ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
         ioOfferLine.textContent = offerCopy.ioLine;
         ioOfferLine.style.display = "block";
         ioOfferLine.style.boxSizing = "border-box";
+        ioOfferLine.style.contain = "inline-size";
         ioOfferLine.style.flex = "0 0 auto";
-        ioOfferLine.style.alignSelf = "stretch";
-        ioOfferLine.style.width = "0";
-        ioOfferLine.style.minWidth = "100%";
+        ioOfferLine.style.width = "100%";
+        ioOfferLine.style.minWidth = "0";
         ioOfferLine.style.maxWidth = "100%";
         ioOfferLine.style.margin = "0";
         ioOfferLine.style.whiteSpace = "normal";
-        ioOfferLine.style.overflowWrap = "break-word";
+        ioOfferLine.style.overflowWrap = "anywhere";
         ioOfferLine.style.pointerEvents = "none";
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
