@@ -3312,19 +3312,22 @@ const renderText = () => {
         ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
         ioOfferLine.textContent = offerCopy.ioLine;
         // Phone-fit: the trusted ioLine is a long sentence. Its max-content
-        // width drove the #offeredJobs tray to ~683px on a 390px phone.
-        // `width: 0; min-width: 100%` removes it from the tray's intrinsic
-        // sizing while letting it fill the tray's existing width. The earlier
-        // `contain: inline-size` + `overflow-wrap: anywhere` pair collapsed
-        // its min-content width, so in shrink-to-fit trays it wrapped one
-        // glyph per line into a very tall block that covered the offer and
-        // choice buttons (press-juice failures, io-second-packet tap
-        // timeouts). `pointer-events: none` keeps this read-only line from
-        // ever intercepting a tap meant for a button.
+        // width drove the shrink-to-fit #offeredJobs tray to ~683px on a
+        // 390px phone (aftersign-mloop-two-round.playtest.spec.ts rect
+        // checks). Percentage sizing (`width: 0; min-width: 100%`) did NOT
+        // fix it: inside a shrink-to-fit tray the percentage is cyclic and
+        // ignored for intrinsic sizing, so CI stayed at 683px. A max-width
+        // in viewport units is definite, so it caps the line's max-content
+        // contribution to the tray, and the tray can no longer grow past the
+        // phone width. The line keeps its normal word-level min-content
+        // width. That avoids the earlier `overflow-wrap: anywhere` collapse,
+        // where the line wrapped one glyph per line and covered the buttons.
+        // `pointer-events: none` keeps this read-only line from ever
+        // intercepting a tap meant for a button.
         ioOfferLine.style.display = "block";
         ioOfferLine.style.boxSizing = "border-box";
-        ioOfferLine.style.width = "0";
-        ioOfferLine.style.minWidth = "100%";
+        ioOfferLine.style.width = "auto";
+        ioOfferLine.style.maxWidth = "calc(100vw - 64px)";
         ioOfferLine.style.whiteSpace = "normal";
         ioOfferLine.style.overflowWrap = "break-word";
         ioOfferLine.style.pointerEvents = "none";
