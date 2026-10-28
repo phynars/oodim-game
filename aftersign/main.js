@@ -3311,18 +3311,23 @@ const renderText = () => {
         const ioOfferLine = document.createElement("p");
         ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
         ioOfferLine.textContent = offerCopy.ioLine;
-        // Phone-fit (#2545 F1): the trusted ioLine is a long sentence. Without
-        // a constraint its max-content width drove the #offeredJobs tray to
-        // ~683px on a 390px phone (aftersign-mloop-two-round.playtest.spec.ts).
-        // `contain: inline-size` zeroes its intrinsic width contribution so
-        // the tray keeps its existing width, and the text wraps inside it.
+        // Phone-fit: the trusted ioLine is a long sentence. Its max-content
+        // width drove the #offeredJobs tray to ~683px on a 390px phone.
+        // `width: 0; min-width: 100%` removes it from the tray's intrinsic
+        // sizing while letting it fill the tray's existing width. The earlier
+        // `contain: inline-size` + `overflow-wrap: anywhere` pair collapsed
+        // its min-content width, so in shrink-to-fit trays it wrapped one
+        // glyph per line into a very tall block that covered the offer and
+        // choice buttons (press-juice failures, io-second-packet tap
+        // timeouts). `pointer-events: none` keeps this read-only line from
+        // ever intercepting a tap meant for a button.
         ioOfferLine.style.display = "block";
         ioOfferLine.style.boxSizing = "border-box";
-        ioOfferLine.style.maxWidth = "100%";
-        ioOfferLine.style.minWidth = "0";
-        ioOfferLine.style.contain = "inline-size";
+        ioOfferLine.style.width = "0";
+        ioOfferLine.style.minWidth = "100%";
         ioOfferLine.style.whiteSpace = "normal";
-        ioOfferLine.style.overflowWrap = "anywhere";
+        ioOfferLine.style.overflowWrap = "break-word";
+        ioOfferLine.style.pointerEvents = "none";
         offeredJobs.appendChild(ioOfferLine);
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
