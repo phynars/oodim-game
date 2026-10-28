@@ -255,7 +255,10 @@ jobs:
 
   aftersign:
     needs: [changes, served-reach]
-    if: ${{ needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true' }}
+    # always(): a failed or skipped served-reach (schedule/workflow_dispatch
+    # skip it) must not suppress aftersign — the evidence block exists to
+    # report a red served-reach.
+    if: ${{ always() && needs.changes.result == 'success' && (needs.changes.outputs.aftersign == 'true' || needs.changes.outputs.shared == 'true') }}
     runs-on: ubuntu-latest
     # Successful runs take 18–32 min (10-26); a hung run (PR #2520) otherwise
     # holds a runner for GitHub's 6h default.

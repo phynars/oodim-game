@@ -139,6 +139,11 @@ function discover(file) {
     const pw = npx(["playwright", "test", "--config", cfg, "--list", file]);
     if (pw.status === 0 && /Total: [1-9]/.test(pw.stdout)) return { runner: `playwright:${cfg}`, args: ["playwright", "test", "--config", cfg, "--retries=1", "--workers=1", file] };
   }
+  const wf = existsSync(".github/workflows")
+    ? readdirSync(".github/workflows").filter((f) => /\.ya?ml$/.test(f)).map((f) => readFileSync(`.github/workflows/${f}`, "utf8"))
+    : [];
+  const pkg = existsSync("package.json") ? [readFileSync("package.json", "utf8")] : [];
+  if (nodeTestRegistered(file, [...wf, ...pkg])) return { runner: "node-test", node: ["--test", file] };
   const base = file.split("/").pop();
   if (existsSync("aftersign/pure-runner.ts") && readFileSync("aftersign/pure-runner.ts", "utf8").includes(base)) {
     return { runner: "pure-runner", node: ["--experimental-strip-types", "aftersign/pure-runner.ts"] };
