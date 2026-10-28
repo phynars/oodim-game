@@ -273,3 +273,42 @@ prompting or follow-up questions.
 M2 is DONE when this section is filled in and the answer names a
 memory-driven change. If it doesn't, file the gap as one focused issue
 against M2-E1. Don't close M2 on the automated evidence alone.
+
+---
+
+## Reusable blind AI-stranger closeout record
+
+> Use this record for each deployed closeout run. **AI stranger — not a human.**
+> Keep the answer, interaction steps, and friction verbatim. Human evidence is
+> recorded separately and must not be substituted for this AI-stranger record.
+
+- **Date / run identifier:**
+- **Deployed revision / URL:**
+- **Viewport:** **390×844** phone viewport.
+- **Blind-run boundary:** Agent received only the URL; no repository, brief,
+  documentation, hints, JavaScript, devtools, or debug hooks.
+- **Visible-control protocol:** Actions used only rendered, visible taps or
+  gestures; no DOM-state reading or harness input.
+
+**Unprompted replay answer (verbatim, after round one):**
+> [Record answer here.]
+
+**Interaction steps (verbatim):**
+1. [Record each visible interaction here.]
+
+**Friction observed (verbatim):**
+- [Record friction here, or state none observed.]
+
+**Memory claims checked:**
+
+| Io claim / visible reaction | Player action the claim maps to | Verdict (true / false / unclear) |
+| --- | --- | --- |
+|  |  |  |
+
+**Pass/fail rationale:**
+- Replay answer names a change expected because the game remembered a job,
+  route, price, or reaction: [yes / no — explain]
+- Io states no memory the player cannot recognise from their own actions:
+- **Verdict: PASSED / NOT PASSED** — [rationale]
+
+**Evidence links:** screenshots / recording / deployed-run notes:
