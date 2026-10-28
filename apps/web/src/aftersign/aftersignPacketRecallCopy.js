@@ -21,7 +21,7 @@ export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
   failed: "Io remembers the split seal you brought back. The next packet stays on the hook until you mend this loss. Bring the tear to Io now, before its damage follows the next delivery.",
   // #2164: "Carry the fragile packet" is a fast run that never touched
   // the bell rope — it must not borrow the shortcut's memory.
-  fragile: "Io remembers how carefully you carried the fragile packet. It still came back torn. She leaves the next one with you: mend what was torn before you carry again.",
+  fragile: "Io remembers how carefully you carried the fragile packet. It came back torn anyway. The next packet stays on her hook until you mend the tear; bring it to Io before you carry again.",
 });
 
 /**
