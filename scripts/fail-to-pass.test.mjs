@@ -2,7 +2,20 @@
 // fail-to-pass CI job before the gate itself: `node --test scripts/fail-to-pass.test.mjs`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classify, decide, exemptReason, isBugIssue, linkedIssues, verdict } from "./fail-to-pass.mjs";
+import { classify, decide, exemptReason, isBugIssue, linkedIssues, nodeTestRegistered, verdict } from "./fail-to-pass.mjs";
+
+test("nodeTestRegistered: scripts run by `node --test` in CI or package.json are discovered", () => {
+  const ci = "      - run: node --test scripts/served-reach.test.mjs\n          node --test scripts/pr-ci-evidence.test.mjs\n";
+  const pkg = '"test:x": "node --test scripts/check-aftersign-location.test.mjs",';
+  assert.equal(nodeTestRegistered("scripts/served-reach.test.mjs", [ci]), true);
+  assert.equal(nodeTestRegistered("scripts/pr-ci-evidence.test.mjs", [ci]), true);
+  assert.equal(nodeTestRegistered("scripts/check-aftersign-location.test.mjs", [pkg]), true);
+  // Mentioned but not run by node --test → still undiscovered.
+  assert.equal(nodeTestRegistered("scripts/orphan.test.mjs", ["# see scripts/orphan.test.mjs"]), false);
+  // No prefix/substring matches.
+  assert.equal(nodeTestRegistered("scripts/served-reach.test.m", [ci]), false);
+  assert.equal(nodeTestRegistered("x.test.mjs", undefined), false);
+});
 
 test("linkedIssues: closing keywords only, deduped", () => {
   assert.deepEqual(linkedIssues("Closes #2116\nfixes #12, Resolves: #7. Refs #99"), [2116, 12, 7]);

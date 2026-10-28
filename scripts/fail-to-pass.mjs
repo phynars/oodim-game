@@ -29,7 +29,7 @@
 // Modes: `plan` (classify, write outputs) and `run` (base run). The final
 // line of each mode is `F2P_RESULT=<result>` for log scrapers.
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 
 export const TEST_RE = /\.(test|spec)\.(ts|tsx|mjs|js)$/;
 const NON_SOURCE_RE = /(^docs\/|\.md$|^\.github\/|^LICENSE)/;
@@ -76,6 +76,20 @@ export function verdict(runs) {
   if (realFail.length > 0) return { result: "reproduced", fail: false };
   if (failed.length > 0) return { result: "inconclusive:load_error", fail: false };
   return { result: "no_repro", fail: true };
+}
+
+/**
+ * Pure: is `file` an argument of a `node --test` invocation in any of the
+ * given texts (workflow YAML, package.json)? Exact token match only — a mere
+ * mention, or a prefix of a registered path, does not count.
+ */
+export function nodeTestRegistered(file, sources) {
+  for (const text of sources ?? []) {
+    for (const m of String(text).matchAll(/node\s+--test((?:[ \t]+[^\s"'`;&|]+)+)/g)) {
+      if (m[1].trim().split(/[ \t]+/).includes(file)) return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------- I/O below
@@ -139,6 +153,11 @@ function discover(file) {
     const pw = npx(["playwright", "test", "--config", cfg, "--list", file]);
     if (pw.status === 0 && /Total: [1-9]/.test(pw.stdout)) return { runner: `playwright:${cfg}`, args: ["playwright", "test", "--config", cfg, "--retries=1", "--workers=1", file] };
   }
+  const wf = existsSync(".github/workflows")
+    ? readdirSync(".github/workflows").filter((f) => /\.ya?ml$/.test(f)).map((f) => readFileSync(`.github/workflows/${f}`, "utf8"))
+    : [];
+  const pkg = existsSync("package.json") ? [readFileSync("package.json", "utf8")] : [];
+  if (nodeTestRegistered(file, [...wf, ...pkg])) return { runner: "node-test", node: ["--test", file] };
   const base = file.split("/").pop();
   if (existsSync("aftersign/pure-runner.ts") && readFileSync("aftersign/pure-runner.ts", "utf8").includes(base)) {
     return { runner: "pure-runner", node: ["--experimental-strip-types", "aftersign/pure-runner.ts"] };

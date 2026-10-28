@@ -135,8 +135,9 @@ export function renderedVerdict({ exempt, checked, unrendered, mode }) {
   return { result, fail: mode === "fail" };
 }
 
-/** Pure verdict. */
-export function decide({ exempt, candidates, unreachable, missingText }) {
+/** Pure verdict. `files` distinguishes no diff from a non-served diff. */
+export function decide({ exempt, files, candidates, unreachable, missingText }) {
+  if (files.length === 0) return { result: "skipped:no_changes", fail: false };
   if (candidates.length === 0) return { result: "skipped:no_served_source", fail: false };
   if (exempt) return { result: "skipped:exempt", fail: false };
   if (unreachable.length > 0) return { result: "unreachable", fail: true };
@@ -288,11 +289,12 @@ async function main() {
     }
   }
   const exempt = exemptReason(ev?.body);
-  const d = decide({ exempt, candidates, unreachable, missingText });
+  const d = decide({ exempt, files, candidates, unreachable, missingText });
 
   const lines = [
     `### served-reach gate`,
     `- served source files changed: ${candidates.length} (reachable ${reachable.length}, unreachable ${unreachable.length})`,
+    ...(opt.base && files.length === 0 ? ["- no changed files were found; if edits are uncommitted, re-run with `--files <paths>`."] : []),
     ...unreachable.map((f) => `  - not reachable from a served entry: \`${f}\``),
     ...missingText.map((m) => `  - new text not in the built game (\`${m.file}\`): "${m.text.slice(0, 120)}"`),
     exempt ? `- **exempt:** ${exempt}` : "",
