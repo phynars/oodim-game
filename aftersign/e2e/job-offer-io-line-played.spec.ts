@@ -111,6 +111,23 @@ test.describe("AFTERSIGN job-offer Io line — played, sealed packet (#2544)", (
     ).toHaveText(TRUSTED_IO_LINE, { timeout: WAIT_MS });
     await expect(ioLine, "exactly one Io offer line in the tray").toHaveCount(1);
 
+    // Phone-fit (#2545 F1): the long trusted line must wrap inside the
+    // phone viewport, and must not widen the tray's other rows.
+    for (const selector of [
+      IO_LINE_SELECTOR,
+      "#offeredJobs [data-aftersign-job-offer-route-risk]",
+    ]) {
+      const rect = await page.locator(selector).first().evaluate((element) => {
+        const { left, right, width } = element.getBoundingClientRect();
+        return { left, right, width };
+      });
+      expect(rect.width, `${selector} must have width`).toBeGreaterThan(0);
+      expect(rect.left, `${selector} left edge on-screen`).toBeGreaterThanOrEqual(0);
+      expect(rect.right, `${selector} right edge inside phone`).toBeLessThanOrEqual(
+        PHONE_VIEWPORT.width,
+      );
+    }
+
     // Replacement, not accumulation: the firstRun line is gone.
     await expect(
       page.locator(IO_LINE_SELECTOR, { hasText: FIRST_RUN_IO_LINE }),

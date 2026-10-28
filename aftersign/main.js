@@ -3311,6 +3311,18 @@ const renderText = () => {
         const ioOfferLine = document.createElement("p");
         ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
         ioOfferLine.textContent = offerCopy.ioLine;
+        // Phone-fit (#2545 F1): the trusted ioLine is a long sentence. Without
+        // a constraint its max-content width drove the #offeredJobs tray to
+        // ~683px on a 390px phone (aftersign-mloop-two-round.playtest.spec.ts).
+        // `contain: inline-size` zeroes its intrinsic width contribution so
+        // the tray keeps its existing width, and the text wraps inside it.
+        ioOfferLine.style.display = "block";
+        ioOfferLine.style.boxSizing = "border-box";
+        ioOfferLine.style.maxWidth = "100%";
+        ioOfferLine.style.minWidth = "0";
+        ioOfferLine.style.contain = "inline-size";
+        ioOfferLine.style.whiteSpace = "normal";
+        ioOfferLine.style.overflowWrap = "anywhere";
         offeredJobs.appendChild(ioOfferLine);
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
