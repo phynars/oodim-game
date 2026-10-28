@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>AFTERSIGN — Kiosk Slice</title>
+    <style>:root{--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;color:#edf7ff;--confirm-shake-x:0px;--confirm-shake-y:0px;--confirm-reticle-scale:1;--confirm-reticle-y:0px;--packet-progress:0;--recognition-sign-glow:0px;--recognition-seal-glow:0px;--recognition-rain-rim-alpha:0;--recognition-haptic-scale:1;--recognition-warmth:0;--io-recognition-duration-ms:0s;--io-recognition-camera-dolly-cm:0;--io-recognition-camera-yaw-deg:0;--io-recognition-vignette-alpha:0;--io-recognition-bloom-alpha:0;--io-recognition-bloom-ring-alpha:0;--io-recognition-line-reveal-delay-ms:0s;--io-recognition-line-reveal-duration-ms:0s;--io-recognition-easing:linear;--aftersign-return-press-ms:0s;--aftersign-return-lift-px:0px;--aftersign-return-settle-ms:0s;--aftersign-return-easing:linear;--aftersign-return-halo-scale:1;--aftersign-return-halo-fade-ms:0s;--aftersign-return-shake-px:0px;--aftersign-return-tone-hz:0;--aftersign-return-tone-attack-ms:0s;--aftersign-return-tone-release-ms:0s;--aftersign-return-tone-gain:0;--aftersign-tap-confirm-press-scale:1;--aftersign-tap-confirm-release-scale:1;--aftersign-tap-confirm-press-ms:0s;--aftersign-tap-confirm-release-ms:0s;--aftersign-tap-confirm-release-easing:linear;--aftersign-tap-confirm-glow-px:0px;--aftersign-tap-confirm-glow-ms:0s;--aftersign-tap-confirm-shake-px:0px;--aftersign-tap-confirm-shake-ms:0s;--aftersign-scene-transition-total-ms:0s;--aftersign-scene-transition-camera-drift-px:0px;--aftersign-scene-transition-camera-roll-deg:0deg;--aftersign-scene-transition-vignette-alpha:0;--aftersign-scene-transition-bloom-alpha:0;--aftersign-scene-transition-easing:linear;--aftersign-packet-press-scale-from:.97;--aftersign-packet-press-hold-ms:96ms;--aftersign-packet-press-easing:cubic-bezier(.2, .8, .2, 1);--aftersign-packet-press-feedback-hold-ms:92ms;--aftersign-packet-press-feedback-scale-from:.97;--aftersign-packet-press-feedback-easing:cubic-bezier(.2, .8, .2, 1);--aftersign-route-choice-press-scale-from:.972;--aftersign-route-choice-press-lift-px:1px;--aftersign-route-choice-press-hold-ms:96ms;--aftersign-route-choice-press-easing:cubic-bezier(.2, .8, .2, 1);background:#05070c;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}.aftersign-scene-transition{pointer-events:none;z-index:60;background:radial-gradient(ellipse at 50% 62%, transparent 60%, rgba(0, 0, 0, var(--aftersign-scene-transition-vignette-alpha,0)) 100%);transform:translateX(calc(var(--aftersign-scene-transition-camera-drift-px,0px) * .15)) rotate(var(--aftersign-scene-transition-camera-roll-deg,0deg));transition:transform var(--aftersign-scene-transition-total-ms,0s) var(--aftersign-scene-transition-easing,linear), background var(--aftersign-scene-transition-total-ms,0s) var(--aftersign-scene-transition-easing,linear);box-shadow:inset 0 0 calc(var(--aftersign-scene-transition-bloom-alpha,0) * 60px) rgba(200, 210, 255, var(--aftersign-scene-transition-bloom-alpha,0));position:fixed;inset:0}@media (prefers-reduced-motion:reduce){.aftersign-scene-transition{transition:background var(--aftersign-scene-transition-total-ms,0s) var(--aftersign-scene-transition-easing,linear);transform:none}}[data-aftersign-return-surface]{transform:translateY(0) scale(var(--aftersign-return-halo-scale,1));transition:transform var(--aftersign-return-press-ms,0s) var(--aftersign-return-easing,linear), opacity var(--aftersign-return-halo-fade-ms,0s) var(--aftersign-return-easing,linear);filter:blur(calc(var(--aftersign-return-shake-px,0px) * .25)) brightness(calc(1 + var(--aftersign-return-tone-gain,0) * 4))}[data-aftersign-return-surface][data-aftersign-return-tone]{transform:translateY(calc(var(--aftersign-return-lift-px,0px) * -1)) scale(var(--aftersign-return-halo-scale,1));transition:transform var(--aftersign-return-settle-ms,0s) var(--aftersign-return-easing,linear) var(--aftersign-return-tone-attack-ms,0s), box-shadow var(--aftersign-return-tone-release-ms,0s) var(--aftersign-return-easing,linear);box-shadow:0 0 var(--aftersign-return-shake-px,0px) rgba(255, 214, 138, var(--aftersign-return-tone-gain,0))}button[data-aftersign-tap-confirm=armed]{transform:translate3d(0, 0, 0) scale(var(--aftersign-tap-confirm-release-scale,1));transition:transform var(--aftersign-tap-confirm-release-ms,0s) var(--aftersign-tap-confirm-release-easing,linear), box-shadow var(--aftersign-tap-confirm-glow-ms,0s) var(--aftersign-tap-confirm-release-easing,linear);animation:aftersign-tap-confirm-shake var(--aftersign-tap-confirm-shake-ms,0s) var(--aftersign-tap-confirm-release-easing,linear) 1}button[data-aftersign-tap-confirm=armed]:active{transform:translate3d(0, 1px, 0) scale(var(--aftersign-tap-confirm-press-scale,1));transition:transform var(--aftersign-tap-confirm-press-ms,0s) var(--aftersign-tap-confirm-release-easing,linear), box-shadow var(--aftersign-tap-confirm-glow-ms,0s) var(--aftersign-tap-confirm-release-easing,linear);box-shadow:0 0 var(--aftersign-tap-confirm-glow-px,0px) #7ae7ff8f, inset 0 0 18px #78e9ff1f}@keyframes aftersign-tap-confirm-shake{0%{translate:0}25%{translate:var(--aftersign-tap-confirm-shake-px,0px) 0}50%{translate:0}75%{translate:calc(var(--aftersign-tap-confirm-shake-px,0px) * -1) 0}to{translate:0}}button[data-aftersign-job-take=ready],button[data-aftersign-job-take=armed]{transform:scale(var(--aftersign-job-take-scale-settle,1));transition:transform var(--aftersign-job-take-hold-ms,0s) var(--aftersign-job-take-easing-release,linear), box-shadow var(--aftersign-job-take-hold-ms,0s) var(--aftersign-job-take-easing-glow,linear);will-change:transform}button[data-aftersign-job-take=pressing]{transform:scale(var(--aftersign-job-take-scale-from,1));transition:transform 24ms var(--aftersign-job-take-easing-press,linear), box-shadow var(--aftersign-job-take-hold-ms,0s) var(--aftersign-job-take-easing-glow,linear);box-shadow:0 var(--aftersign-job-take-shadow-lift-px,0px) calc(var(--aftersign-job-take-shadow-lift-px,0px) * 2) #7ae7ff52, inset 0 0 18px #78e9ff24;will-change:transform}@media (prefers-reduced-motion:reduce){button[data-aftersign-job-take=ready],button[data-aftersign-job-take=armed],button[data-aftersign-job-take=pressing]{transition:box-shadow var(--aftersign-job-take-hold-ms,0s) var(--aftersign-job-take-easing-glow,linear);transform:none}}*{box-sizing:border-box}body{touch-action:manipulation;background:radial-gradient(circle at 50% 20%,#182033 0%,#05070c 65%);min-height:100vh;margin:0;overflow:hidden}body:before{content:"";pointer-events:none;background:linear-gradient(180deg, rgba(173, 216, 255, calc(var(--recognition-rain-rim-alpha) * 1)) 0%, #add8ff00 100%);mix-blend-mode:screen;z-index:0;height:42vh;transition:none;position:fixed;inset:0 0 auto}body:after{content:"";pointer-events:none;opacity:var(--io-recognition-vignette-alpha);z-index:1;transition:opacity var(--io-recognition-line-reveal-duration-ms) var(--io-recognition-easing) var(--io-recognition-line-reveal-delay-ms);mix-blend-mode:multiply;background:radial-gradient(at 50% 55%,#0000 40%,#000000e6 100%);position:fixed;inset:0}canvas{cursor:pointer;touch-action:none;width:100vw;height:100vh;display:block}.hud{z-index:61;padding:18px max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));pointer-events:none;background:linear-gradient(0deg, rgba(255, 176, 96, calc(var(--recognition-warmth) * .22)) 0%, #ffb06000 62%), linear-gradient(0deg, #02050adb 0%, #02050a80 58%, #02050a00 100%);transform:translate3d(var(--confirm-shake-x), var(--confirm-shake-y), 0);will-change:transform;position:fixed;inset:auto 0 0}.aim-reticle{pointer-events:none;touch-action:none;z-index:3;border:2px solid #78e9ffe6;border-radius:50%;width:32px;height:32px;margin:-16px 0 0 -16px;position:fixed;top:50%;left:50%;transform:translate(0,0)scale(1)}.target-loss-prompt{color:#edf7ffd1;letter-spacing:.14em;pointer-events:none;opacity:0;z-index:3;margin:0;font-size:12px;position:fixed;top:calc(50% + 28px);left:50%;transform:translate(-50%)}.failure-sting{pointer-events:none;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle at 50% 60%,#ff5d803d 0%,#ff3a602e 28%,#0000 72%);position:fixed;inset:0}.panel{width:min(680px,100%);box-shadow:0 0 40px #00ccff1f, inset 0 0 30px #16598224, 0 0 calc(var(--io-recognition-bloom-alpha) * 120px) rgba(255, 214, 151, var(--io-recognition-bloom-ring-alpha));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);transform:scale(var(--recognition-haptic-scale)) translateZ(calc(var(--io-recognition-camera-dolly-cm) * .6px)) rotateY(calc(var(--io-recognition-camera-yaw-deg) * 1deg));transform-origin:50% 100%;transition:transform var(--io-recognition-line-reveal-duration-ms) var(--io-recognition-easing) var(--io-recognition-line-reveal-delay-ms), box-shadow var(--io-recognition-line-reveal-duration-ms) var(--io-recognition-easing) var(--io-recognition-line-reveal-delay-ms);will-change:transform, box-shadow;background:#050a13b8;border:1px solid #77e8ff57;border-radius:18px;padding:16px;position:relative}.hud{perspective:1600px;perspective-origin:50% 100%;transform-style:preserve-3d;transition:background var(--io-recognition-duration-ms) var(--io-recognition-easing)}.speaker{color:#78e9ff;letter-spacing:.18em;text-transform:uppercase;margin:0 0 8px;font-size:12px;font-weight:800}.line{text-wrap:balance;transition:opacity var(--io-recognition-line-reveal-duration-ms) var(--io-recognition-easing) var(--io-recognition-line-reveal-delay-ms), letter-spacing var(--io-recognition-line-reveal-duration-ms) var(--io-recognition-easing) var(--io-recognition-line-reveal-delay-ms);margin:0;font-size:clamp(17px,3.6vw,24px);line-height:1.32}.controls{pointer-events:auto;flex-wrap:wrap;gap:10px;margin-top:12px;display:flex}#episodeOneEnding:empty{display:none}#vigilChoice{pointer-events:auto}.slice-save-controls{pointer-events:auto;flex-wrap:wrap;gap:10px;margin-top:20px;display:flex}.move-pad{left:max(18px, env(safe-area-inset-left));bottom:max(146px, calc(env(safe-area-inset-bottom) + 146px), calc(var(--aftersign-hud-height,128px) + 14px));pointer-events:auto;touch-action:none;opacity:.88;background:radial-gradient(circle,#78e9ff29,#071423ad 62%,#02060cc2);border:1px solid #adf2ff52;border-radius:999px;width:116px;height:116px;position:fixed;box-shadow:0 0 28px #00ccff1f,inset 0 0 22px #78e9ff17}.move-pad[data-active=true]{opacity:1;border-color:#ffd69794;box-shadow:0 0 34px #ffb86b29,inset 0 0 24px #78e9ff24}.move-pad-knob{will-change:transform;background:linear-gradient(#edf7ffeb,#78e9ffa3);border-radius:999px;width:42px;height:42px;margin:-21px 0 0 -21px;position:absolute;top:50%;left:50%;transform:translate(0,0);box-shadow:0 0 18px #78e9ff3d}.route-choice{color:#edf7ffc2;letter-spacing:.03em;flex-wrap:wrap;flex-basis:100%;align-items:center;gap:8px;font-size:12px;display:none}.route-choice[data-visible=true]{display:flex}.route-choice-label{text-transform:uppercase;letter-spacing:.12em;color:#78e9ffd1;margin-right:2px;font-weight:750}button{color:#edf7ff;font:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;will-change:transform;background:#081c2bd9;border:1px solid #adf2ff66;border-radius:999px;padding:11px 14px;font-weight:750;transition:transform 84ms cubic-bezier(.2,.8,.2,1),box-shadow .14s cubic-bezier(.2,.8,.2,1),border-color .14s cubic-bezier(.2,.8,.2,1),filter .14s cubic-bezier(.2,.8,.2,1);transform:translate(0,0)scale(1);box-shadow:0 0 20px #00ccff1a}#acknowledgeRouteButton,#soundButton,.slice-save-controls #resetButton{min-width:44px;min-height:44px}button:focus-visible{border-color:#ffd697e0;outline:none;box-shadow:0 0 0 3px #ffd6972e,0 0 24px #00ccff29}button:active{filter:brightness(1.14);transform:translateY(1px)scale(.975);box-shadow:0 0 12px #00ccff29,inset 0 0 18px #78e9ff1f}.packet-button{box-shadow:0 0 20px #00ccff1a, 0 0 var(--recognition-seal-glow) #ffca8a8c;position:relative;overflow:hidden}.packet-button:after{content:"";width:calc(var(--packet-progress) * 100%);pointer-events:none;background:linear-gradient(90deg,#78e9ff33,#ffb86b47);transition:width 40ms linear;position:absolute;inset:0}.packet-button span{z-index:1;transform:translate3d(0, var(--confirm-reticle-y), 0) scale(var(--confirm-reticle-scale));transition:transform 84ms cubic-bezier(.2,.8,.2,1);display:inline-block;position:relative}.packet-button:active span{transform:translateY(1px)scale(.99)}#packetButton[data-aftersign-packet-press=pressing]{transform:scale(var(--aftersign-packet-press-scale-from,1));transition:transform 24ms var(--aftersign-packet-press-easing,linear);will-change:transform}@media (prefers-reduced-motion:reduce){#packetButton[data-aftersign-packet-press=pressing]{transition:none;transform:none}}#packetButton[data-packet-press-feedback=pressed]{transform:scale(var(--aftersign-packet-press-feedback-scale-from,1));transition:transform var(--aftersign-packet-press-feedback-hold-ms,0s) var(--aftersign-packet-press-feedback-easing,linear);will-change:transform}@media (prefers-reduced-motion:reduce){#packetButton[data-packet-press-feedback=pressed]{transition:none;transform:none}}#routeChoice button[data-aftersign-route-choice-press=pressing]{transform:translateY(var(--aftersign-route-choice-press-lift-px,0px)) scale(var(--aftersign-route-choice-press-scale-from,1));transition:transform 24ms var(--aftersign-route-choice-press-easing,linear);will-change:transform;filter:brightness(1.08)}#routeRiskChoice[data-aftersign-selected-action=take-the-shortcut] button[data-aftersign-tap-choice=take-the-shortcut],#routeRiskChoice[data-aftersign-selected-action=take-the-long-way] button[data-aftersign-tap-choice=take-the-long-way],#routeRiskChoice[data-aftersign-selected-action=repair-the-loss] button[data-aftersign-tap-choice=repair-the-loss],#routeRiskChoice[data-aftersign-selected-action=carry-a-fragile-packet] button[data-aftersign-tap-choice=carry-a-fragile-packet]{background:#5c3a1ee6;border-color:#ffd697f5;box-shadow:0 0 24px #ffb86b6b,inset 0 0 18px #ffd69729}@media (prefers-reduced-motion:reduce){#routeChoice button[data-aftersign-route-choice-press=pressing]{filter:none;transition:none;transform:none}}.impact-burst{pointer-events:none;z-index:2;width:0;height:0;position:fixed;top:34vh;left:50%}.impact-burst-particle{mix-blend-mode:screen;will-change:transform, opacity;opacity:0;background:radial-gradient(circle,#ffecbef2 0%,#ffca8ab8 45%,#ffb06000 100%);border-radius:999px;width:6px;height:6px;margin:-3px 0 0 -3px;position:absolute;top:0;left:0;transform:translate(0,0)scale(1);box-shadow:0 0 8px #ffd697b3}@media (prefers-reduced-motion:reduce){.impact-burst-particle{display:none}}.state-readout{top:max(14px, env(safe-area-inset-top));left:max(14px, env(safe-area-inset-left));color:#edf7ffbd;letter-spacing:.04em;box-shadow:0 0 var(--recognition-sign-glow) #78e9ff8c;background:#03070d94;border-radius:999px;margin:0;padding:8px 10px;font-size:12px;position:fixed}@media (prefers-reduced-motion:reduce){button,.packet-button span{transition:none}button:active{transform:none}button[data-aftersign-tap-confirm=armed],button[data-aftersign-tap-confirm=armed]:active{transition:box-shadow var(--aftersign-tap-confirm-glow-ms,0s) var(--aftersign-tap-confirm-release-easing,linear);animation:none;transform:none}.packet-button:active span{transform:translate3d(0, var(--confirm-reticle-y), 0) scale(var(--confirm-reticle-scale))}body:after,.panel,.line,.hud{transition:none}}</style>
+    <script type="module" crossorigin src="/aftersign/assets/index-CrhhmyQf.js"></script>
+  </head>
+  <body>
+    <canvas id="scene" aria-label="AFTERSIGN first kiosk scene"></canvas>
+    <div id="aimReticle" class="aim-reticle" data-target-loss-active="false" aria-hidden="true"></div>
+    <!-- Io's voice on the target-loss beat. This paragraph ships
+         EMPTY on purpose — `aftersign/main.js` imports
+         `IO_TARGET_LOSS_LINE` from `./src/ioVoice.js` and stamps it
+         onto this node's `textContent` at boot (a `<script
+         type="module">` is deferred, so the DOM is parsed by the
+         time the stamp runs). That makes `ioVoice.js` the SINGLE
+         SOURCE OF TRUTH for the line — no HTML mirror to hold in
+         sync via a string-equality contract pin, no risk of the
+         two literals drifting. The pin in
+         `apps/web/src/aftersign/servedSurface.contract.test.ts`
+         asserts the IMPORT + the STAMP live in main.js (not that
+         the HTML contains the string). Rendered live for the full
+         100ms target-loss envelope authored in
+         `aftersign/src/targetLossFeedback.ts`; the played-not-
+         driven proof lives in
+         `aftersign/e2e/target-loss-feedback.spec.ts`, which
+         `toHaveText(IO_TARGET_LOSS_LINE)`s after a real packet
+         release. -->
+    <p id="targetLossPrompt" class="target-loss-prompt" aria-live="polite"></p>
+    <div class="failure-sting" aria-hidden="true"></div>
+    <!-- #2152 (Refs #1724): the inert reticle placeholder div
+         (selector hash-reticle, no quotes used here on purpose —
+         see below) was removed. It was never consumed — no CSS
+         rule, no JS importer, no e2e locator — and the real
+         target-loss feedback ships on `#aimReticle` +
+         `#targetLossPrompt` above. Its absence is pinned by
+         `servedSurface.contract.test.ts` with a substring guard
+         against the literal attribute form, which is why this
+         comment deliberately avoids writing that attribute form
+         (the comment is part of the served HTML the guard scans).
+         The companion placeholder near `#targetLossPrompt` was
+         removed earlier in #1815 for the same reason (id
+         near-collision made `document.getElementById()` a
+         readability trap). -->
+    <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
+      <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
+    </div>
+    <div id="recognitionImpactBurst" class="impact-burst" aria-hidden="true"></div>
+    <!--
+      Return-tone feel surface. Stamped by main.js ::
+      window.__game.applyReturnToneFeel(reason) — writes the 11 CSS
+      variables + dataset marker authored by
+      apps/web/src/aftersign/returnToneChoiceFeel.ts onto this element
+      so the eventual "why did you come back?" beat can drive its press
+      envelope from ONE tuned table (kind/evasive/blunt).
+      `hidden` here keeps the node out of the layout tree until the beat
+      wires visible chrome to the same [data-aftersign-return-surface]
+      selector; the CSS variables land on the node regardless of the
+      hidden attribute (they're consulted by any descendant styling
+      that opts into them later).
+    -->
+    <div id="aftersignReturnSurface" data-aftersign-return-surface hidden aria-hidden="true"></div>
+    <!--
+      Scene-transition juice mount point (see
+      apps/web/src/aftersign/aftersignSceneTransitionFeel.ts).
+      `main.js`'s setBeat calls `resolveAndPlayAftersignSceneTransition`
+      when a beat crosses a scene boundary (kiosk → io-return,
+      io-return → orra-return). The resolver appends
+      `.aftersign-scene-transition` as a child of this surface with
+      every ms/px/deg/alpha stamped as `dataset.*`, and the CSS
+      rule up in <style> reads the mirrored CSS custom properties
+      into a real vignette + camera-drift + bloom on the shipped
+      surface. `aria-hidden` keeps the layer out of the a11y tree —
+      the beat's #speaker/#line update is what a screen reader
+      announces, not the flourish. The container stays empty until
+      a beat fires, then holds one transient child at a time
+      (setBeat disposes any previous handle before mounting a
+      fresh one, so back-to-back beat advances don't stack).
+    -->
+    <div
+      id="aftersignSceneTransitionSurface"
+      data-aftersign-scene-transition-surface
+      aria-hidden="true"
+    ></div>
+    <p class="state-readout" id="stateReadout">story: packet-offered · memory: pending</p>
+    <section class="hud" aria-live="polite">
+      <div class="panel">
+        <p class="speaker" id="speaker">Io</p>
+        <p class="line" id="line">Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.</p>
+        <!--
+          PR #1715 (#1714) — Io ledger copy contract surface.
+          `aftersign/main.js` renderText() writes the resolved
+          chooseIoLedgerLine(fact) here on the two beats where Io
+          names the ledger-facing fact (io-return-recognition →
+          sealed/opened, io-next-job → returned), and mirrors the
+          fact as `data-io-ledger-fact`. Off both beats textContent
+          and the data-attr clear so a stale stamp can't smear.
+          Sibling `aftersign/e2e/io-ledger-line-served.spec.ts`
+          drives the served page and pins the three literals via
+          real player taps.
+        -->
+        <p class="io-ledger-line" id="ioLedgerLine" data-io-ledger-fact=""></p>
+        <div class="controls">
+          <!--
+            data-aftersign-tap-choice: names the buttons that COMMIT a
+            fork so the harness's `getTapChoiceFeelReport()` can measure
+            each rendered rect against the 44px minimum tap target on
+            the live DOM (see apps/web/src/aftersign/tapChoiceFeel.ts
+            + servedSurface.contract.test.ts). The four buttons below
+            are the choice-commit surfaces — packet gesture, the two
+            route-memory forks, and the delivery commit; sound/reset
+            are utility controls, not forks, and stay unlabeled.
+          -->
+          <button id="packetButton" class="packet-button" type="button" data-aftersign-tap-choice="packet" aria-label="Tap the packet to preserve the seal, or hold to open it"><span>Tap packet / hold to open</span></button>
+          <div id="routeChoice" class="route-choice" data-visible="false" aria-label="Choose whether you listened to Io's route before delivery">
+            <span class="route-choice-label">Your route choice</span>
+            <button id="acknowledgeRouteButton" type="button" data-aftersign-tap-choice="acknowledge-kiosk">I listened</button>
+            <button id="skipRouteButton" type="button" data-aftersign-tap-choice="skip-kiosk-acknowledge">I ran early</button>
+          </div>
+          <!-- M-LOOP-E1 route/risk choice (#1372). Two tappable route
+               options ("fast" vs "safe") stamped every run at the
+               packet-choice beat by `renderRouteRiskChoice` (see
+               apps/web/src/aftersign/routeRiskMemory.ts). The pick
+               writes `state.player.routeRisk`, which the persist
+               payload clones — so the fact round-trips across reload
+               and feeds `computeOfferedActions` on the next run. -->
+          <div id="routeRiskChoice" class="route-choice" data-visible="false" data-aftersign-route-risk-surface aria-label="Choose a fast or safe route for this delivery run">
+            <span class="route-choice-label">Your route</span>
+          </div>
+          <!-- #1395 M-CONTINUE — computeOfferedJobs served surface.
+               At the packet-offered beat, main.js's renderText() stamps
+               one `<button id="job-offer-<jobId>" data-aftersign-tap-choice="offer-<jobId>">`
+               into this container per id returned by
+               `computeOfferedJobs(memory)` (packages/aftersign/src/computeOfferedJobs.ts).
+               First-visit players get `[SAFE_DEFAULT_JOB_ID]` → one
+               `#job-offer-job-safe-delivery` button. A returning
+               player (state.packet.delivered → priorOutcome:"completed")
+               gets the completed set (`#job-offer-job-night-transfer`
+               + `#job-offer-job-signed-receipt`), and the safe-default
+               button is absent — the divergent render #1393 asked for.
+               Off-beat the surface stays hidden (data-visible="false")
+               and its children are cleared; same discipline as the
+               sibling #routeRiskChoice surface just above.
+
+           #1549 aftersign-job-take feel — each offer button ALSO
+           carries:
+             data-aftersign-job-take         "ready" | "armed"
+             data-aftersign-job-take-action  the memory-gated mloop
+                                             action id (e.g.
+                                             "mloop-safe-delivery-take")
+           stamped by main.js's
+           `applyAftersignJobTakeFeelToButton()` via
+           `resolveAftersignJobTakeFeel({actionId, route, risk})`.
+           The `[data-aftersign-job-take]` locator is what the
+           sibling e2e `aftersign-job-take-feel.playtest.spec.ts`
+           real-taps (played, not driven) and what CSS overlays
+           can consume via the `--aftersign-job-take-*` custom
+           properties this writer stamps alongside the marker.
+           Ready at render, armed on tap — same shape as the
+           tap-confirm seam a few nodes up. -->
+          <div id="offeredJobs" class="route-choice" data-visible="false" data-aftersign-offered-jobs-surface aria-label="Choose the next packet Io hands you">
+            <span class="route-choice-label">Offered jobs</span>
+          </div>
+          <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
+          <button id="soundButton" type="button">Wake kiosk sound</button>
+              <button id="musicButton" type="button" aria-pressed="true" hidden>Mute music</button>
+        </div>
+        <!-- #2265: ending host sits AFTER .controls so its appearance
+             cannot push the job-offer button mid-press (maxTravel <= 6px). -->
+        <div id="episodeOneEnding" aria-live="polite"></div>
+        <!-- M3-E1 (#2261) — lives OUTSIDE .controls so toggling it
+             during the job-take press cannot re-lay out the tray.
+             Episode 1 vigil surface. Appears at the
+             `io-next-job` beat once `state.player.secondPacketHandoffAccepted`
+             is true (the red-tag has been handed over). The player picks
+             ONE of two vigil actions for Saint Orra:
+               • light-vigil → commits the Episode 1 ending (the ending
+                 resolver reads `packet.sealed` + `delivery.id` and stamps
+                 `state.story.endingId` / renders #episodeOneEnding).
+               • spare-vigil → mints an Orra memory fact (mercy row) but
+                 does NOT commit an ending — the arc is left open-ended,
+                 per Soren's AI001 call-out on PR #2265 that the ending
+                 must not fire on BOTH Orra actions indistinguishably.
+             Both buttons carry `data-choice-id="…"` so the shipped
+             document-level delegate in main.js can route the tap through
+             the canonical `choose()` seam a tap-played spec drives. -->
+        <div id="vigilChoice" class="route-choice" data-visible="false" aria-label="Choose Saint Orra's vigil action">
+          <span class="route-choice-label">Saint Orra's vigil</span>
+          <button id="lightVigilButton" type="button" data-choice-id="light-vigil" data-aftersign-tap-choice="light-vigil">Light the vigil</button>
+          <button id="spareVigilButton" type="button" data-choice-id="spare-vigil" data-aftersign-tap-choice="spare-vigil">Spare the vigil</button>
+        </div>
+        <!-- #2225: the slice-save control lives in its own row so a
+             mis-aimed thumb cannot wipe the player's run while reaching
+             for the sound button. The spec locator
+             `.slice-save-controls #resetButton` pins the separation. -->
+        <div class="slice-save-controls" aria-label="Slice save">
+          <button id="resetButton" type="button">Start fresh</button>
+        </div>
+      </div>
+    </section>
+
+    <!--
+      PR #1649 re-review (Soren) — JS `pressing` marker.
+
+      Why: the CSS press envelope for `[data-aftersign-job-take]`
+      cannot be triggered by `:active` on a Playwright
+      `touchscreen.tap()`. The tap dispatches touchstart+touchend
+      in ~1ms, so `:active` lasts ~1ms — the transition toward
+      scale-from barely starts before the return begins. The e2e
+      trip-wire `aftersign-job-offer-press-juice.playtest.spec.ts`
+      samples at 64ms and needs the button to still be compressed;
+      that requires the pressed marker to be held for `holdMs`
+      (96ms in `aftersignJobTakeFeel`), independent of finger
+      contact duration.
+
+      What: a delegated `pointerdown` listener on `document`.
+      When the target is a `[data-aftersign-job-take]` button, we
+      save the prior state (`ready` or `armed`), stamp
+      `data-aftersign-job-take="pressing"`, and schedule a
+      restore via `setTimeout(holdMs)`. The CSS rule for
+      `[data-aftersign-job-take="pressing"]` above holds
+      `transform: scale(scale-from)` for the full window, so the
+      e2e's 64ms sample lands INSIDE the compressed envelope.
+
+      Held state precedence: if `applyAftersignJobTakeFeelToButton()`
+      re-stamps the marker to `"armed"` DURING the press window
+      (the click handler in main.js does this), the restore-to-
+      prior at holdMs would clobber `"armed"` back to `"ready"`.
+      We read the CURRENT `data-aftersign-job-take` at restore
+      time — if the value is still `"pressing"` we restore to the
+      prior we captured; if it's already something else (armed,
+      or removed), we leave it. Read on restore, not on
+      pointerdown.
+
+      Reduced motion: the CSS rule already collapses transform
+      for `prefers-reduced-motion: reduce`, so this listener still
+      runs (state marker stays consistent for any dependent CSS)
+      but paints no compression. The press-juice spec is not
+      gated on the reduced-motion branch.
+
+      Why inline: this must run before the very first tap; a
+      user could theoretically tap the offer within one frame of
+      `main.js`'s `resolveAftersignJobTakeFeel(...)` stamping the
+      button. An inline listener wins that race with zero import
+      cost.
+
+      hold-ms lookup: the writer stamps
+      `--aftersign-job-take-hold-ms` as `<n>ms` on the element's
+      inline style (see `applyAftersignJobTakeFeelToButton` in
+      main.js). We `parseFloat` it via `getPropertyValue()`; if
+      missing (unstamped button, defensive fallback), we use the
+      frozen `AFTERSIGN_JOB_TAKE_FEEL.holdMs` of 96ms.
+    -->
+    <script>
+      (function () {
+        var FALLBACK_HOLD_MS = 96;
+
+        // #1658 — same-id replacement inherit map. main.js re-renders
+        // `#offeredJobs` after the click advances state; the physical
+        // <button> node whose pointerdown we just stamped can be
+        // detached and replaced by a fresh node reusing the same
+        // `id` before the holdMs window elapses. Without this map,
+        // the replacement mounts at identity scale (no
+        // `data-aftersign-job-take="pressing"` marker) and
+        // scaleDrop momentarily reads 0 — exactly what
+        // aftersign-job-offer-press-juice.playtest.spec.ts flagged.
+        //
+        // Shape: { [buttonId]: { until: epochMs, prior: "ready" | "armed" } }
+        // - `until`  → epoch ms when the original hold expires; a
+        //   same-id inherit uses `Math.max(0, until - now)` as its
+        //   remaining hold budget, so total compression time across
+        //   the swap equals a single holdMs window (not doubled).
+        // - `prior`  → the state we captured from the ORIGINAL node
+        //   at pointerdown. The replacement's own attribute may read
+        //   `ready` again (main.js writes it fresh); we restore to
+        //   the ORIGINAL prior so a mid-hold transition (e.g.
+        //   ready→armed) still lands after the compression envelope.
+        //
+        // Cleanup: the setTimeout below deletes the entry when the
+        // hold expires, so a stale record can't shadow a later press
+        // on the same id.  `Object.create(null)` avoids prototype
+        // key collisions with an id like "toString".
+        var inFlight = Object.create(null);
+
+        function resolveHoldMs(el) {
+          try {
+            var raw = el.style && typeof el.style.getPropertyValue === "function"
+              ? el.style.getPropertyValue("--aftersign-job-take-hold-ms")
+              : "";
+            var n = parseFloat(raw);
+            if (Number.isFinite(n) && n > 0) return n;
+          } catch (_err) {
+            /* fall through */
+          }
+          return FALLBACK_HOLD_MS;
+        }
+
+        function armPressing(button) {
+          if (!button || typeof button.getAttribute !== "function") return;
+          var prior = button.getAttribute("data-aftersign-job-take");
+          // Only meaningful states — ignore already-pressing (a
+          // second pointerdown inside the hold) and empty/unknown.
+          if (prior !== "ready" && prior !== "armed") return;
+          var holdMs = resolveHoldMs(button);
+
+          // #1658 — READ side of the inFlight map. If a prior press
+          // on a node with the SAME id is still mid-hold (main.js
+          // re-rendered #offeredJobs and mounted a fresh node whose
+          // pointerdown we're now seeing, OR the same physical node
+          // is being re-pressed after a swap), inherit two things
+          // from the original press:
+          //   1. `prior` — restore to the ORIGINAL captured state
+          //      when the compression window ends, not the fresh
+          //      node's current attr (which main.js just wrote to
+          //      "ready" and would otherwise clobber an "armed"
+          //      intent that predated the swap).
+          //   2. remaining hold budget — so the total compressed
+          //      envelope across the swap equals a single holdMs
+          //      window, not two stacked windows (which would
+          //      over-hold the pressing marker and delay the
+          //      restore visibly past the design 96ms).
+          // If the entry has already expired (defensive: setTimeout
+          // hasn't fired yet due to event loop scheduling), fall
+          // through to a normal fresh press.
+          var now = Date.now();
+          if (button.id && inFlight[button.id]) {
+            var live = inFlight[button.id];
+            var remaining = live.until - now;
+            if (remaining > 0) {
+              prior = live.prior;
+              holdMs = remaining;
+            }
+          }
+
+          try {
+            button.setAttribute("data-aftersign-job-take", "pressing");
+          } catch (_err) {
+            return;
+          }
+
+          // #1663 re-review (Soren, round 2): the `pressing` selector
+          // depends on the CSS transition to compress toward
+          // `scale(--aftersign-job-take-scale-from)` over 24ms. The
+          // e2e still measured `received 0` — the transition either
+          // fails to start (var-cascade timing on the phone project)
+          // or is clobbered before the 64ms sample paints. Belt-and-
+          // suspenders: stamp the compressed transform INLINE on the
+          // button so `getBoundingClientRect()` returns the target
+          // scale from the very first frame after pointerdown, no
+          // transition required. Inline style has higher specificity
+          // than the rule set, so this wins during the hold; the
+          // setTimeout restore below clears it
+          // (`button.style.transform = ""`) so the rule on the
+          // `ready` / `armed` selector takes over again for the
+          // release path. Reads scale-from from computed style
+          // (main.js already stamped it as a CSS var), falls back to
+          // the frozen 0.97 from `AFTERSIGN_JOB_TAKE_FEEL` so the
+          // envelope still paints on a defensive-fallback button.
+          // Skipped when the user opted into reduced motion — the
+          // @media rule already collapses transform there and the
+          // press-juice spec is not gated on that branch.
+          try {
+            var reducedMotion = false;
+            if (typeof window !== "undefined" &&
+                typeof window.matchMedia === "function") {
+              var mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+              reducedMotion = !!(mq && mq.matches);
+            }
+            if (!reducedMotion) {
+              var scaleFromRaw = "";
+              if (typeof window !== "undefined" &&
+                  typeof window.getComputedStyle === "function") {
+                var cs = window.getComputedStyle(button);
+                if (cs && typeof cs.getPropertyValue === "function") {
+                  scaleFromRaw = cs.getPropertyValue("--aftersign-job-take-scale-from");
+                }
+              }
+              var scaleFrom = parseFloat(scaleFromRaw);
+              if (!isFinite(scaleFrom) || scaleFrom <= 0) {
+                scaleFrom = 0.97; // frozen fallback from aftersignJobTakeFeel.js
+              }
+              button.style.transform = "scale(" + scaleFrom + ")";
+            }
+          } catch (_styleErr) {
+            /* inline stamp is belt-and-suspenders; a throw here must
+               not undo the marker + observer that already landed. */
+          }
+          // #1658 — WRITE side of the inFlight map. Record the
+          // in-flight press by element id so a same-id replacement
+          // node (main.js re-renders #offeredJobs after the click
+          // advances state) inherits the remaining hold + original
+          // prior via the READ block above, instead of appearing at
+          // identity scale mid-hold. The setTimeout at the tail of
+          // this function deletes the entry when the hold expires.
+          if (button.id) {
+            inFlight[button.id] = { until: now + holdMs, prior: prior };
+          }
+
+          // PR #1649 re-review (Soren): the click handler in
+          // main.js (`onOfferClick` → `applyAftersignJobTakeFeelToButton`
+          // at main.js:2076) synchronously re-stamps
+          // `data-aftersign-job-take="armed"` within ~1ms of
+          // pointerdown under Playwright's `touchscreen.tap()`, so
+          // the CSS transition toward `scale-from` is interrupted
+          // before it can travel meaningfully. The prior fix only
+          // guarded the *restore* path — nothing prevented the
+          // click-time "armed" write from clobbering "pressing"
+          // mid-hold.
+          //
+          // Defer the "armed" transition until the compression has
+          // held for its full 96ms. During the hold window we:
+          //   (a) observe attribute mutations on this button via
+          //       MutationObserver. Any external writer that flips
+          //       `data-aftersign-job-take` to a non-"pressing"
+          //       value has its intent recorded on `pendingIntent`
+          //       and the attribute is re-stamped to "pressing"
+          //       synchronously inside the observer callback. The
+          //       observer callback runs as a microtask BEFORE
+          //       style/layout/paint (HTML spec: the "perform a
+          //       microtask checkpoint" step happens before the
+          //       rendering steps of the event loop), so the browser
+          //       never paints the interrupted state — the CSS
+          //       transition toward scale-from runs uninterrupted.
+          //   (b) once holdMs elapses, disconnect the observer and
+          //       apply the pending intent (or restore `prior` if
+          //       nothing else asked to write during the hold).
+          //
+          // The click callback in main.js still runs its side effects
+          // (state transitions, memory writes, next beat) — only the
+          // DOM marker's compression window is protected. This
+          // implements Soren's proposed "stamp 'armed' after holdMs"
+          // fix at the DOM layer so no coupling with main.js's writer
+          // is needed.
+          var pendingIntent = null;
+          var observer = null;
+          if (typeof MutationObserver === "function") {
+            observer = new MutationObserver(function (records) {
+              try {
+                for (var i = 0; i < records.length; i += 1) {
+                  var record = records[i];
+                  if (record.attributeName !== "data-aftersign-job-take") continue;
+                  var value = button.getAttribute("data-aftersign-job-take");
+                  if (value === "pressing" || value === null) continue;
+                  // External writer tried to flip us out of the
+                  // compression window. Remember its intent for
+                  // post-hold, and re-assert "pressing" before the
+                  // frame paints.
+                  pendingIntent = value;
+                  button.setAttribute("data-aftersign-job-take", "pressing");
+                }
+              } catch (_err) {
+                /* observer callback MUST NOT throw */
+              }
+            });
+            try {
+              observer.observe(button, {
+                attributes: true,
+                attributeFilter: ["data-aftersign-job-take"],
+              });
+            } catch (_err) {
+              observer = null;
+            }
+          }
+
+          setTimeout(function () {
+            try {
+              if (observer && typeof observer.disconnect === "function") {
+                observer.disconnect();
+              }
+              // #1658 — release the inFlight slot for this id so a
+              // later press on the same id starts a fresh envelope
+              // rather than inheriting an expired remaining-hold of
+              // ~0ms (which would render the press marker invisibly
+              // short). Guarded on button.id to match the write
+              // site's guard above.
+              if (button.id && inFlight[button.id]) {
+                delete inFlight[button.id];
+              }
+              var current = button.getAttribute("data-aftersign-job-take");
+              // Priority order for the post-hold state:
+              //   1. Pending intent from a deferred external write
+              //      (e.g. click flipped to "armed" during the hold).
+              //      Apply it now — the beat has already advanced in
+              //      main.js, we're only catching up the DOM marker
+              //      so the recovery paint runs and the e2e's
+              //      recovered-scale sample lands on the intended
+              //      final state.
+              //   2. If nothing external wrote and we're still
+              //      "pressing", restore the prior marker so the
+              //      button decays back to its at-rest scale.
+              //   3. If external writes landed AFTER the observer
+              //      disconnected (a very late click), leave them.
+              if (pendingIntent !== null) {
+                button.setAttribute("data-aftersign-job-take", pendingIntent);
+              } else if (current === "pressing") {
+                button.setAttribute("data-aftersign-job-take", prior);
+              }
+
+              // #1663 re-review: unwind the inline compression stamped
+              // at pointerdown so the base `ready`/`armed` rule takes
+              // over the release path. Clearing to "" hands the
+              // transform back to the CSS cascade (scale-settle → 1.0)
+              // rather than pinning it at the pressed value forever.
+              // Guarded by a try/catch so a detached node (main.js
+              // re-rendered #offeredJobs mid-hold) doesn't red the
+              // observer teardown that follows.
+              try {
+                if (button && button.style) {
+                  button.style.transform = "";
+                }
+              } catch (_clearErr) {
+                /* release path stays soft — the marker restore above
+                   has already landed. */
+              }
+            } catch (_err) {
+              /* swallow — feel projection MUST NOT throw */
+            }
+          }, holdMs);
+        }
+
+        function onPointerDown(event) {
+          var target = event.target;
+          if (!target || typeof target.closest !== "function") return;
+          var button = target.closest("button[data-aftersign-job-take]");
+          if (!button) return;
+          armPressing(button);
+        }
+
+        // Use pointerdown (fires for touch + mouse + pen); passive
+        // so we never delay scroll. Delegated on document so
+        // dynamically rendered offer buttons are covered without a
+        // rewire on every render.
+        // Direct per-offer listeners in jobOfferPressing.js own the served
+        // touch surface. Keep this diagnostic helper inert: delegated
+        // capture target resolution was the delivery failure under Playwright.
+        void onPointerDown;
+
+        // #1661 — ADOPTION side of the inFlight map (the missing half
+        // of the #1658/#1660 inherit design). The click that follows
+        // pointerdown advances the beat and main.js re-renders
+        // #offeredJobs, REPLACING the pressed node mid-hold. The
+        // replacement mounts at identity scale with marker "ready";
+        // the inherit map only activated on a SECOND pointerdown that
+        // never comes, and the #1663 inline transform sits on the
+        // now-DETACHED original — so the e2e's 64ms same-id sample
+        // reads scaleDrop 0 (the exact red on main this fixes).
+        // Watch childList mutations; when a button whose id is
+        // mid-hold in `inFlight` mounts, run it through armPressing —
+        // whose existing inherit path stamps the pressing marker +
+        // inline compression for the REMAINING hold budget and
+        // restores the ORIGINAL prior afterward. Feel-only: the
+        // observer callback must never throw.
+        if (typeof MutationObserver === "function") {
+          var mountObserver = new MutationObserver(function (records) {
+            try {
+              var now = Date.now();
+              for (var i = 0; i < records.length; i += 1) {
+                var added = records[i].addedNodes;
+                for (var j = 0; j < added.length; j += 1) {
+                  var node = added[j];
+                  if (!node || node.nodeType !== 1) continue;
+                  var candidates = [];
+                  if (typeof node.matches === "function" &&
+                      node.matches("button[data-aftersign-job-take]")) {
+                    candidates.push(node);
+                  }
+                  if (typeof node.querySelectorAll === "function") {
+                    var inner = node.querySelectorAll("button[data-aftersign-job-take]");
+                    for (var k = 0; k < inner.length; k += 1) candidates.push(inner[k]);
+                  }
+                  for (var c = 0; c < candidates.length; c += 1) {
+                    var btn = candidates[c];
+                    if (btn.id && inFlight[btn.id] && inFlight[btn.id].until > now) {
+                      armPressing(btn);
+                    }
+                  }
+                }
+              }
+            } catch (_err) {
+              /* adoption is a feel projection — MUST NOT throw */
+            }
+          });
+          try {
+            mountObserver.observe(document.body, { childList: true, subtree: true });
+          } catch (_err) {
+            /* no adoption on an exotic DOM — pointerdown path still works */
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>

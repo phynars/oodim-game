@@ -977,6 +977,7 @@ const applyPhoneOfferLayout = (visible) => {
     offeredJobs.style.maxWidth = "";
     offeredJobs.style.flexDirection = "";
     offeredJobs.style.alignItems = "";
+    offeredJobs.style.flexWrap = "";
     offeredJobs.style.overflowX = "";
     offeredJobs.style.overflowY = "";
     offeredJobs.style.maxHeight = "";
@@ -991,6 +992,7 @@ const applyPhoneOfferLayout = (visible) => {
   // Latin labels break inside their words ("delive/ry", "Mark/ed").
   offeredJobs.style.flexDirection = "column";
   offeredJobs.style.alignItems = "stretch";
+  offeredJobs.style.flexWrap = "nowrap";
   offeredJobs.style.overflowX = "hidden";
   offeredJobs.style.overflowY = "auto";
   offeredJobs.style.maxHeight = "42vh";
