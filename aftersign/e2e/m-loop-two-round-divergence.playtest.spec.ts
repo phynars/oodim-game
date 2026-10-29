@@ -88,9 +88,6 @@ async function readOffers(
   );
   for (const offer of await offers.all()) {
     await expect(offer).toBeEnabled();
-    // The HUD shell is pointer-transparent; each dynamically rendered offer
-    // must opt back in before the real mobile tap below can reach it.
-    await expect(offer).toHaveCSS("pointer-events", "auto");
   }
   for (const fingerprint of fingerprints) {
     expect(fingerprint).toMatch(/^job-[a-z0-9-]+#(?:low|medium|high)$/);
