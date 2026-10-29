@@ -214,6 +214,26 @@ async function readEndingCard(page: Page): Promise<Locator> {
   return card;
 }
 
+async function expectEndingOnlyControls(page: Page): Promise<void> {
+  // The player reaches this state by tapping #lightVigilButton. Terminal
+  // UI must not leave any story-advancing control touchable or visible.
+  for (const selector of [
+    '#packetButton',
+    '#routeChoice button',
+    '#vigilChoice button',
+    '#offeredJobs button',
+    '#orraPaybackAction',
+    '#returnToOrra',
+  ]) {
+    for (const control of await page.locator(selector).all()) {
+      await expect(control, `${selector} must not be visible after the ending`).toBeHidden();
+    }
+  }
+  await expect(page.locator('#episodeOneEnding [data-ending-id]')).toBeVisible();
+  await expect(page.locator('#resetButton')).toBeVisible();
+  await expect(page.locator('#soundButton')).toBeVisible();
+}
+
 /**
  * Play the full funnel to the Episode 1 ending.
  *
@@ -296,9 +316,10 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
       "The Bell Archive rings Orra's name true. Io keeps the blue packet sealed in the record.",
     );
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/blue packet sealed/i);
-    // Narrative-rule guard: the TRUE path must not accidentally cite
-    // the red-tag-withheld memory.
-    await expect(card.locator(".episode-one-ending__recall")).not.toContainText(/withheld the red tag/i);
+    await expect(card.locator(".episode-one-ending__recall")).toContainText(/accepted the red tag/i);
+    await expect(card.locator(".episode-one-ending__recall")).not.toContainText(/handoff|delivered/i);
+    await expect(page.locator("#line")).not.toContainText(/handoff|delivered/i);
+    await expectEndingOnlyControls(page);
 
     const snapshot = await readEndingSnapshot(page);
     expect(snapshot.endingId).toBe("ending-bell-true");
@@ -375,6 +396,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     const recall = card.locator(".episode-one-ending__recall");
     await expect(recall).toContainText(/opened the blue packet/i);
     await expect(recall).not.toContainText(/withheld the red tag/i);
+    await expectEndingOnlyControls(page);
 
     const snapshot = await readEndingSnapshot(page);
     expect(snapshot.endingId).toBe("ending-light-out");

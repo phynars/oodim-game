@@ -2470,6 +2470,23 @@ const renderText = () => {
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
   });
+  // An ending is terminal for this episode. Keep only the ending card and
+  // the persistent reset/audio controls visible; no earlier story choice
+  // may imply that the player still has unfinished work to perform.
+  if (state.story.endingId) {
+    packetButton.hidden = true;
+    routeChoice.hidden = true;
+    routeChoice.dataset.visible = "false";
+    if (vigilChoice) vigilChoice.dataset.visible = "false";
+    if (offeredJobs) {
+      setOfferTrayVisibility(offeredJobs, false);
+      while (offeredJobs.firstChild) offeredJobs.removeChild(offeredJobs.firstChild);
+    }
+    for (const id of ["orraPaybackAction", "returnToOrra"]) {
+      document.getElementById(id)?.remove();
+    }
+    return;
+  }
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;
