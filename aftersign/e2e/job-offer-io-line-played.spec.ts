@@ -20,7 +20,7 @@ const COLD_START_MS = 45_000;
 const PHONE_VIEWPORT = { width: 375, height: 812 } as const;
 
 const FIRST_RUN_IO_LINE =
-  "Bring it back the way I gave it to you. Closed seal, open account.";
+  "Bring it back the way I gave it to you. Closed seal, open account. Then I will know whether to keep the lamp burning for you.";
 const TRUSTED_IO_LINE =
   "You brought my first seal home closed. I remember. Take the red tag to Saint Orra; I can risk your hands on a door that lies.";
 
