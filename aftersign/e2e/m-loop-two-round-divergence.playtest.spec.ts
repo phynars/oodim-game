@@ -268,6 +268,13 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
             `${cohort.memory}: round 2's offer line must differ from round 1's`,
           ).not.toBe(roundOneLine);
 
+          // Pin the rendered mobile hit-target floor before driving the real
+          // tap. Computed min-height is invariant even when label wrapping
+          // makes the element's rendered height larger than the floor.
+          await expect(
+            page.locator('[data-offered-job-id="job-signed-receipt"]'),
+          ).toHaveCSS("min-height", "44px");
+
           // Complete round two; just exposing the returning offers is not enough.
           const secondRevision = await completeRound(page, "job-signed-receipt");
           expect(secondRevision).toBe(firstRevision + 1);

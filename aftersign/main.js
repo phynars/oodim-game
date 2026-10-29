@@ -3398,6 +3398,9 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             button.style.boxSizing = "border-box";
             button.style.width = "100%";
             button.style.minWidth = "0";
+            // Keep the offer actionable as a mobile touch target even when
+            // its label wraps inside the constrained phone tray.
+            button.style.minHeight = "44px";
             button.style.whiteSpace = "normal";
           }
           // PR #1549 — resolve + stamp the frozen aftersign-job-take
