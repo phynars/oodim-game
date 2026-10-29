@@ -3394,6 +3394,9 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           button.setAttribute("aria-label", mloopAction.label);
           stampJobOfferData(button, offer.id);
           button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
+          // Keep native touch dispatch on the button itself: mobile browsers
+          // must not delay or hand this offer tap to the scrollable tray.
+          button.style.touchAction = "manipulation";
           if (window.innerWidth <= 480) {
             button.style.boxSizing = "border-box";
             button.style.width = "100%";
