@@ -27,8 +27,14 @@ test.describe("AFTERSIGN offered-job touch contract", () => {
     const offer = page.locator('[data-offered-job-id="job-signed-receipt"]');
     await expect(offer).toBeVisible();
     await expect(offer).toBeEnabled();
+    // Normal (non-forced) tap: Playwright's actionability + hit-target checks
+    // stay on, so an obstructed or moving offer fails here.
     await offer.tap();
 
-    await expect(page.locator("#packetButton")).toHaveAttribute("data-packet-job", "signed-receipt");
+    // Selection contract: the served tap handler arms the offered job
+    // (same contract as aftersign-mloop-two-round.playtest.spec.ts). Note
+    // `#packetButton[data-packet-job]` is only ever stamped "red-tag" in
+    // main.js, so it is not a signed-receipt selection signal.
+    await expect(offer).toHaveAttribute("data-aftersign-job-take", "armed");
   });
 });

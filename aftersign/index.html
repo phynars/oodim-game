@@ -414,11 +414,7 @@
         will-change: transform;
       }
       button[data-aftersign-job-take="pressing"] {
-        /* Keep the hit target stationary through touch release. Scaling the
-           button itself changes its actionability box mid-gesture, which can
-           make a normal mobile tap miss a visible enabled offer. The shadow
-           remains the pressed acknowledgement without moving the target. */
-        transform: none;
+        transform: scale(var(--aftersign-job-take-scale-from, 1));
         /* #1663: `hold-ms` keeps the marker alive for the full press
            envelope; it cannot also be the press-in duration. A touch
            tap returns after touchend, leaving the canonical 64ms sample
