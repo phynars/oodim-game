@@ -101,7 +101,10 @@ async function readOffers(
 async function completeRound(page: Page, jobId: string): Promise<number> {
   const before = await readGame(page);
   expect(before.packet.delivered).toBe(false);
-  await page.locator(`[data-offered-job-id="${jobId}"]`).tap();
+  // Real player tap: actionability and hit-target checks stay enabled.
+  const offer = page.locator(`[data-offered-job-id="${jobId}"]`);
+  await offer.tap();
+  await expect(offer).toHaveAttribute("data-aftersign-job-take", "armed", { timeout: WAIT_MS });
   await page.locator("#packetButton").tap();
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
