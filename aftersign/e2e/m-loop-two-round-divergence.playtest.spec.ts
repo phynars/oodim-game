@@ -88,6 +88,9 @@ async function readOffers(
   );
   for (const offer of await offers.all()) {
     await expect(offer).toBeEnabled();
+    // The HUD shell is pointer-transparent; each dynamically rendered offer
+    // must opt back in before the real mobile tap below can reach it.
+    await expect(offer).toHaveCSS("pointer-events", "auto");
   }
   for (const fingerprint of fingerprints) {
     expect(fingerprint).toMatch(/^job-[a-z0-9-]+#(?:low|medium|high)$/);
@@ -103,6 +106,11 @@ async function completeRound(page: Page, jobId: string): Promise<number> {
   expect(before.packet.delivered).toBe(false);
   // Real player tap: actionability and hit-target checks stay enabled.
   const offer = page.locator(`[data-offered-job-id="${jobId}"]`);
+  await expect(offer).toBeVisible({ timeout: WAIT_MS });
+  await expect(offer).toBeEnabled({ timeout: WAIT_MS });
+  // Assert the exact target is touch-interactive immediately before the
+  // player's real mobile tap, including the second-round signed receipt.
+  await expect(offer).toHaveCSS("pointer-events", "auto");
   await offer.tap();
   await expect(offer).toHaveAttribute("data-aftersign-job-take", "armed", { timeout: WAIT_MS });
   await page.locator("#packetButton").tap();

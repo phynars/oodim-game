@@ -3392,6 +3392,11 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       button.setAttribute("data-mloop-job-id", mloopCopy.id);
           button.setAttribute("data-mloop-memory-gate", mloopAction.memoryGate);
           button.setAttribute("aria-label", mloopAction.label);
+          // Offer buttons are mounted inside `.hud`, whose decorative shell
+          // disables pointer events. Unlike the persistent control rows,
+          // these dynamically rendered mobile targets must explicitly opt in
+          // or a visible, enabled offer cannot receive a real touch tap.
+          button.style.pointerEvents = "auto";
           stampJobOfferData(button, offer.id);
           button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
           if (window.innerWidth <= 480) {
