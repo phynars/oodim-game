@@ -35,7 +35,13 @@ const servedRendererSource = readFileSync(
 const RED_TAG_LINE =
   "Done. Red tag delivered to Saint Orra. She files it under your name. Come back, and she will know the courier who carried it.";
 const BLUE_PACKET_LINE =
-  "Done. Blue packet delivered. I set its mark beside your name. When you return, I will know you kept the seal closed.";
+  "Done. Blue packet delivered. I set its mark beside your name. When you return, I will know the courier who carried it.";
+
+// PR #2558 review F1/F2: the packet-delivered beat renders the
+// delivery-complete line keyed only by delivery id, on both the sealed
+// and the opened path. Any seal-state claim in this copy is false for
+// one of those players.
+const SEAL_STATE_CLAIM = /\bseal(ed)?\b|\bopened\b|\bclosed\b|\bunopened\b|\blooked inside\b/i;
 
 describe("aftersignDeliveryCompleteLine (frozen copy)", () => {
   it("returns the red-tag line for a red-tag delivery — the Saint Orra handoff never falls through to blue-packet copy", () => {
@@ -106,5 +112,27 @@ describe("served delivery-complete wiring in aftersign/main.js", () => {
     // in main.js (copy-paste regression), red the test.
     expect(servedRendererSource).not.toContain(RED_TAG_LINE);
     expect(servedRendererSource).not.toContain(BLUE_PACKET_LINE);
+  });
+
+  it("never claims a seal state, because the packet-delivered beat shows it on both sealed and opened paths (PR #2558 F1)", () => {
+    // Pin the renderer shape that makes this invariant necessary: the
+    // packet-delivered branch falls through to the id-keyed line with
+    // no `state.packet.sealed` check.
+    const branchStart = servedRendererSource.indexOf('if (state.scene.beat === "packet-delivered") {');
+    expect(branchStart).toBeGreaterThan(-1);
+    const branchEnd = servedRendererSource.indexOf(
+      "return aftersignDeliveryCompleteLine(state.delivery.id);",
+      branchStart,
+    );
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const branch = servedRendererSource.slice(branchStart, branchEnd);
+    expect(branch).not.toContain("packet.sealed");
+
+    // Since the line is seal-blind, every entry (and the fallback) must
+    // read true for a player who opened the packet and one who did not.
+    for (const [id, line] of Object.entries(AFTERSIGN_DELIVERY_COMPLETE_COPY)) {
+      expect(line, `delivery-complete copy for ${id}`).not.toMatch(SEAL_STATE_CLAIM);
+    }
+    expect(aftersignDeliveryCompleteLine(undefined)).not.toMatch(SEAL_STATE_CLAIM);
   });
 });
