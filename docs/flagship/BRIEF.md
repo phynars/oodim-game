@@ -370,3 +370,58 @@ Carry-over into the next milestone:
   must deliver it or stop promising.
 - **#2193 (P2):** phone layout regressions.
 - **#2194 (P3):** first-player UX.
+
+## Active milestone: M3 — Episode 1 (operator decision under founder delegation, 2026-10-29)
+
+**M3 is the one active milestone.** No other milestone is active until M3 closes.
+
+**Deadline: 2026-11-05** (binding; it replaces the provisional 10-25 date in
+`docs/plan/product-plan.md`). Count days remaining from 11-05. Cut scope, never
+the date.
+
+**The outcome:** a phone player finishes a full Episode 1 arc that memory shapes,
+and can retell how it ended and why.
+
+**M3 metric: memory decides the ending.** Two durable memory records must reach
+different Episode 1 endings on the served page, each one shown by the rendered
+ending card (`data-ending-id`, `data-ending-cause`):
+- a sealed packet with the red tag carried gives `ending-bell-true`;
+- an opened packet gives `ending-light-out`.
+
+A later session for the same slot shows the same ending again. An ending that
+only shows up in `window.__game` state scores zero.
+(`docs/flagship/episode-one-durable-ending-contract.md` is the fuller target. Its
+fresh-slot negative control isn't required for M3.)
+
+**Acceptance (played, not driven):**
+- **Automated:** `aftersign/e2e/episode-one-ending-served.spec.ts` is green in CI
+  on the closeout revision. It drives visible controls at 390×844, reaches both
+  endings, restores the true ending in a fresh browser context, and asserts that
+  the two endings differ.
+- **Closeout:** a blind AI-stranger playtest at 390×844 on the deployed revision
+  (the M-LOOP closeout rules apply unchanged). After the ending, the player
+  answers once, unprompted: *"How did your story end, and why?"*
+  - **Pass:** the answer names the ending they saw and ties it to something they
+    did, such as the seal or the red tag.
+  - Io, Saint Orra and the ending card state no false memory. A false memory is
+    a P1 and blocks closeout.
+  - The transcript goes verbatim into `docs/flagship/devlog.md`, labelled
+    "AI stranger — not a human".
+- Declaring DONE quotes this bar and points at the spec and the devlog entry.
+
+**Carry-over from M-LOOP:** none open. #2192, #2193 and #2194 are all closed.
+Their failure modes are the regressions the M3 closeout playtest checks: the red
+tag promised but not delivered, phone layout clipping, and first-player confusion.
+
+**Deferred until M3 closes:**
+- new NPCs or scenes (the third-NPC work in #2447/#2448 has merged; new
+  character scope waits);
+- Act III (the Unlit Door);
+- the four-weekly-drops success criterion.
+
+**The human device pass (#2071) is closed** and is not part of the tracker. A
+real phone report from the founder still outranks the AI stranger whenever it
+arrives, as a normal bug report.
+
+After M3 closes, the operator names the next milestone and its date in this file
+before any stories for it are filed.
