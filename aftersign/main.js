@@ -977,6 +977,7 @@ const applyPhoneOfferLayout = (visible) => {
     offeredJobs.style.maxWidth = "";
     offeredJobs.style.flexDirection = "";
     offeredJobs.style.alignItems = "";
+    offeredJobs.style.flexWrap = "";
     offeredJobs.style.overflowX = "";
     offeredJobs.style.overflowY = "";
     offeredJobs.style.maxHeight = "";
@@ -991,6 +992,7 @@ const applyPhoneOfferLayout = (visible) => {
   // Latin labels break inside their words ("delive/ry", "Mark/ed").
   offeredJobs.style.flexDirection = "column";
   offeredJobs.style.alignItems = "stretch";
+  offeredJobs.style.flexWrap = "nowrap";
   offeredJobs.style.overflowX = "hidden";
   offeredJobs.style.overflowY = "auto";
   offeredJobs.style.maxHeight = "42vh";
@@ -3308,6 +3310,30 @@ const renderText = () => {
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
         routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
+        // #2544 — Io's offer line (offerCopy.ioLine). Appended AFTER the
+        // offer buttons (end of the offer loop below) so the buttons keep
+        // the position press-juice's hit-test expects inside the phone
+        // tray's 42vh scroll clip.
+        //
+        // Width: `contain: inline-size` gives the line a zero intrinsic
+        // inline size, so its long copy cannot feed the tray's min/max-
+        // content width. `width: 100%` then lays it out at the tray's
+        // own width and the text wraps inside it. The tray's styles are
+        // left alone. Read-only, so `pointer-events: none`.
+        const ioOfferLine = document.createElement("p");
+        ioOfferLine.setAttribute("data-aftersign-job-offer-io-line", "true");
+        ioOfferLine.textContent = offerCopy.ioLine;
+        ioOfferLine.style.display = "block";
+        ioOfferLine.style.boxSizing = "border-box";
+        ioOfferLine.style.contain = "inline-size";
+        ioOfferLine.style.flex = "0 0 auto";
+        ioOfferLine.style.width = "100%";
+        ioOfferLine.style.minWidth = "0";
+        ioOfferLine.style.maxWidth = "100%";
+        ioOfferLine.style.margin = "0";
+        ioOfferLine.style.whiteSpace = "normal";
+        ioOfferLine.style.overflowWrap = "anywhere";
+        ioOfferLine.style.pointerEvents = "none";
         if (secondPacketHandoffLine) {
           const handoffNode = document.createElement("p");
           handoffNode.setAttribute("data-aftersign-second-packet-handoff", "accepted");
@@ -3503,6 +3529,8 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
           });
           offeredJobs.appendChild(button);
         }
+        // #2544 — appended after the buttons so it never displaces them.
+        offeredJobs.appendChild(ioOfferLine);
       }
     } else if (offeredJobs.firstChild) {
       while (offeredJobs.firstChild) {
