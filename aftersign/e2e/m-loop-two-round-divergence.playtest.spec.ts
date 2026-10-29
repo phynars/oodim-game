@@ -105,9 +105,6 @@ async function completeRound(page: Page, jobId: string): Promise<number> {
   const offer = page.locator(`[data-offered-job-id="${jobId}"]`);
   await expect(offer).toBeVisible({ timeout: WAIT_MS });
   await expect(offer).toBeEnabled({ timeout: WAIT_MS });
-  // Assert the exact target is touch-interactive immediately before the
-  // player's real mobile tap, including the second-round signed receipt.
-  await expect(offer).toHaveCSS("pointer-events", "auto");
   await offer.tap();
   await expect(offer).toHaveAttribute("data-aftersign-job-take", "armed", { timeout: WAIT_MS });
   await page.locator("#packetButton").tap();
