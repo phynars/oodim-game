@@ -25,7 +25,7 @@ const FIRST_RUN = Object.freeze({
   title: "One safe job. One blue seal.",
   actionLabel: "Take the blue-seal job",
   summary: "Io gives you the watched route: short walk, sealed packet, no witnesses needed.",
-  ioLine: "Bring it back the way I gave it to you. Closed seal, open account.",
+  ioLine: "Bring it back the way I gave it to you. Closed seal, open account. Then I will know whether to keep the lamp burning for you.",
   riskPrompt: "Low risk. Long light. The kiosk keeps eyes on you most of the way.",
   safeRouteLabel: "Lit stair — under Io's window",
   riskyRouteLabel: "Cut past the bell rope",
