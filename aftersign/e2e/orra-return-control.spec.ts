@@ -80,4 +80,17 @@ test("served vigil ending persists across reload with no return-to-Orra control"
   await expect(page.locator("#returnToOrra")).toHaveCount(0);
   await expect(page.locator('button[data-choice-id="return-to-orra"]')).toHaveCount(0);
   await expect(page.locator("#resetButton")).toBeVisible();
+
+  // Start fresh is the one control the ending keeps; it must leave the
+  // terminal state and reopen the funnel without a manual reload.
+  await page.locator("#resetButton").click();
+  await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0, { timeout: WAIT_MS });
+  await expect(page.locator("#packetButton")).toBeVisible({ timeout: WAIT_MS });
+  await expect(page.locator("#packetButton")).toBeEnabled();
+
+  // The cleared ending stays cleared across reload.
+  await page.reload({ waitUntil: "load" });
+  await waitForVersion(page);
+  await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
+  await expect(page.locator("#packetButton")).toBeVisible({ timeout: WAIT_MS });
 });
