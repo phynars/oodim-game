@@ -45,20 +45,30 @@ async function playToSpareVigil(page: Page): Promise<void> {
   await tapChoice(page, "spare-vigil");
 }
 
-test("served spare-vigil return-to-Orra control restores her mercy greeting after reload", async ({ page }) => {
+// Contract change (#2568): sparing the vigil ends Episode 1, and an
+// ending is terminal. The restored run shows only the ending card plus
+// Start fresh and the sound controls. "Return to Saint Orra" must not
+// stay live after the ending, and Orra's mercy greeting must not play.
+test("served spare-vigil ending persists across reload with no return-to-Orra control", async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto(`/aftersign/?slot=orra-spare-vigil-return-${Date.now()}`, { waitUntil: "load" });
   await waitForVersion(page);
 
   await playToSpareVigil(page);
-  await expect(page.locator("#episodeOneEnding [data-ending-id]").first()).toBeVisible({ timeout: WAIT_MS });
+  const ending = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(ending).toBeVisible({ timeout: WAIT_MS });
+  const endingId = await ending.getAttribute("data-ending-id");
+  expect(endingId).toBeTruthy();
+  await expect(page.locator("#returnToOrra")).toHaveCount(0);
 
   await page.reload({ waitUntil: "load" });
   await waitForVersion(page);
 
-  const returnToOrra = page.locator("#returnToOrra");
-  await expect(returnToOrra).toBeVisible({ timeout: WAIT_MS });
-  await returnToOrra.click();
-  await expect(page.locator("#speaker")).toHaveText("Saint Orra", { timeout: WAIT_MS });
-  await expect(page.locator("#line")).toContainText(SPARE_VIGIL_GREETING, { timeout: WAIT_MS });
+  const restored = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(restored).toBeVisible({ timeout: WAIT_MS });
+  await expect(restored).toHaveAttribute("data-ending-id", endingId as string);
+  await expect(page.locator("#returnToOrra")).toHaveCount(0);
+  await expect(page.locator('button[data-choice-id="return-to-orra"]')).toHaveCount(0);
+  await expect(page.locator("#line")).not.toContainText(SPARE_VIGIL_GREETING);
+  await expect(page.locator("#resetButton")).toBeVisible();
 });

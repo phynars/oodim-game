@@ -38,19 +38,26 @@ async function playToSpareVigil(page: Page): Promise<void> {
   await tapChoice(page, "spare-vigil");
 }
 
-test("served spare-vigil ending survives reload and returns Orra's greeting", async ({ page }) => {
+// Contract change (#2568): the spare-vigil ending is terminal. After
+// reload the same ending card is restored, and no story-advancing
+// control (including "Return to Saint Orra") is offered.
+test("served spare-vigil ending survives reload as a terminal ending", async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto(`/aftersign/?slot=orra-spare-vigil-${Date.now()}`, { waitUntil: "load" });
   await waitForVersion(page);
 
   await playToSpareVigil(page);
-  await expect(page.locator("#episodeOneEnding [data-ending-id]").first()).toBeVisible({ timeout: WAIT_MS });
+  const ending = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(ending).toBeVisible({ timeout: WAIT_MS });
+  const endingId = await ending.getAttribute("data-ending-id");
+  expect(endingId).toBeTruthy();
 
   await page.reload({ waitUntil: "load" });
   await waitForVersion(page);
-  const returnToOrra = page.locator("#returnToOrra:not([disabled])");
-  await expect(returnToOrra).toBeVisible({ timeout: WAIT_MS });
-  await returnToOrra.click();
-  await expect(page.locator("#speaker")).toHaveText("Saint Orra", { timeout: WAIT_MS });
-  await expect(page.locator("#line")).toContainText(/vigil/i, { timeout: WAIT_MS });
+  const restored = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(restored).toBeVisible({ timeout: WAIT_MS });
+  await expect(restored).toHaveAttribute("data-ending-id", endingId as string);
+  await expect(page.locator("#returnToOrra")).toHaveCount(0);
+  await expect(page.locator("#packetButton")).toBeHidden();
+  await expect(page.locator("#resetButton")).toBeVisible();
 });
