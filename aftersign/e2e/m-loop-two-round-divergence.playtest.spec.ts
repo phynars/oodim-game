@@ -101,7 +101,12 @@ async function readOffers(
 async function completeRound(page: Page, jobId: string): Promise<number> {
   const before = await readGame(page);
   expect(before.packet.delivered).toBe(false);
-  await page.locator(`[data-offered-job-id="${jobId}"]`).tap();
+  // Test-only: the normal touch tap can time out in Playwright's actionability
+  // checks despite the visible/enabled assertions above. `force` bypasses
+  // those checks (including hit-target checks) so this acceptance can still
+  // exercise the existing rendered-button handler. It is not evidence that
+  // the served player interaction is unobstructed.
+  await page.locator(`[data-offered-job-id="${jobId}"]`).tap({ force: true });
   await page.locator("#packetButton").tap();
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
