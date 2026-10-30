@@ -4453,15 +4453,15 @@ const choose = async (choiceId) => {
     // Io's handoff is a promise attached to the packet already on the
     // counter. Arm its identity now, not only after the optional
     // “Take the second packet” acknowledgement: a player can touch the
-    // visible packet as soon as the red-tag job is spoken. This is
-    // also what the Episode 1 ending resolver reads
-    // (`state.delivery.id === "red-tag"`) when picking ending-true vs
-    // ending-false — removing this arming would strand every run on
-    // the light-out branch.
-    // The red-tag offer is visible before the player accepts it. Keep the
-    // delivery identity for its copy, but reserve the acceptance fact for
-    // the visible "Take the second packet" tap below.
-    state.player.secondPacketHandoffAccepted = false;
+    // visible packet as soon as the red-tag job is spoken. Other
+    // readers depend on this arming: `deliver-packet` at io-next-job
+    // picks `delivery.id` from it, and the round-two board keeps the
+    // "Red tag — Saint Orra" label from it. Do NOT disarm it here.
+    //
+    // #2577: this arming is NOT an acceptance. The Episode 1 ending
+    // reads only `state.player.redTagAccepted`, which is set solely by
+    // the visible "Take the second packet" (`accept-second-packet`) tap.
+    state.player.secondPacketHandoffAccepted = true;
     state.delivery = { id: "red-tag", outcome: "unknown" };
     if (packetButton) {
       packetButton.textContent = "Red tag — Saint Orra";

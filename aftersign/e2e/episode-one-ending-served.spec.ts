@@ -291,9 +291,9 @@ async function runToEnding(
     ).toBeVisible({ timeout: WAIT_MS });
   }
 
-  // Vigil tap. The vigil tray's visibility flips to `true` at
-  // `io-next-job` once `secondPacketHandoffAccepted` is set —
-  // which `accept-second-packet` above does. No `meet-orra`
+  // Vigil tap. Since #2577 the vigil tray is visible at `io-next-job`
+  // whether or not the tag was accepted; the ending reads only
+  // `player.redTagAccepted`, set by the accept tap above. No `meet-orra`
   // prerequisite exists in the shipped renderText() gate (see
   // aftersign/main.js:2464-2472), so the funnel skips straight
   // from the handoff tap to the vigil button. The click lands
