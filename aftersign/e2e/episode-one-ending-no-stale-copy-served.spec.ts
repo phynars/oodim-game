@@ -28,6 +28,12 @@ async function runOpenedPacketToEnding(page: Page): Promise<void> {
   await waitForBeat(page, "return-tone-choice");
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
+  // Positive precondition (review AI003): both strings are on the page
+  // before the ending commits, so the post-ending absence checks can
+  // only pass because the ending clears them, not because they never
+  // rendered.
+  await expect(page.locator("body")).toContainText(STALE_PROMPT, { timeout: WAIT_MS });
+  await expect(page.locator("body")).toContainText(STALE_LEDGER_LINE, { timeout: WAIT_MS });
   await tapChoice(page, "accept-second-packet");
   await tapChoice(page, "light-vigil");
   await expect(page.locator("#episodeOneEnding [data-ending-id]").first()).toBeVisible({ timeout: WAIT_MS });
@@ -41,6 +47,6 @@ test("opened-packet ending removes stale prompt and returning-session ledger cop
 
   await runOpenedPacketToEnding(page);
 
-  await expect(page.locator("body")).not.toContainText("Choose before you leave: Io will remember whether the seal stayed whole.");
-  await expect(page.locator("body")).not.toContainText("You came back. I kept the work that remembers that.");
+  await expect(page.locator("body")).not.toContainText(STALE_PROMPT);
+  await expect(page.locator("body")).not.toContainText(STALE_LEDGER_LINE);
 });
