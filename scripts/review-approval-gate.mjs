@@ -4,11 +4,22 @@
 // Protected delivery-control paths (CI workflows + gate scripts) need an
 // APPROVED review from someone other than the PR author.
 //
-// This runs ONLY from .github/workflows/review-approval.yml on
-// `pull_request_review` events. It must never run as a failing job on
-// `pull_request`: the reviewer tool refuses APPROVE while any CI run is red.
-// That would deadlock the PR (see PR #2572 review, F1). Before an approval
-// exists the check is simply absent (pending), not failed.
+// Deadlock constraint (PR #2572 review, F1): the reviewer tool refuses
+// APPROVE while any check on the head is red. A gate that FAILS for a missing
+// approval therefore must never run before a review exists. That is why
+// .github/workflows/review-approval.yml triggers only on pull_request_review.
+//
+// Two output modes:
+//   exit   (default) — exit 1 when a protected PR has no non-author approval.
+//                      Only safe on pull_request_review events.
+//   status (REVIEW_GATE_MODE=status) — never fail for a missing approval.
+//                      Publish a `review-approval` commit status on the PR
+//                      head: `pending` until approved, then `success`. Pending
+//                      is not red, so it can't deadlock the reviewer, and it is
+//                      safe on pull_request too. Needs `statuses: write`.
+// Both modes exit 2 on real errors (missing env, GitHub API failure).
+
+export const STATUS_CONTEXT = 'review-approval';
 
 export const PROTECTED_PATH = /^(\.github\/workflows\/|scripts\/.*(gate|served-reach|fail-to-pass))/;
 
@@ -46,43 +57,91 @@ export function evaluateGate({ changedFiles, reviews, author }) {
   return { required: true, pass: approvers.length > 0, approvers, protectedFiles };
 }
 
-async function ghPaged(path, token) {
+/**
+ * Map a gate decision to a commit status. A missing approval is `pending`,
+ * never `failure` — a red status is what deadlocked PR #2572.
+ * @param {ReturnType<typeof evaluateGate>} result
+ * @returns {{ state: 'success' | 'pending', description: string }}
+ */
+export function statusFor(result) {
+  if (!result.required) return { state: 'success', description: 'No protected paths changed' };
+  if (result.pass) {
+    return { state: 'success', description: `Approved by ${result.approvers.join(', ')}`.slice(0, 140) };
+  }
+  return { state: 'pending', description: 'Protected paths changed: awaiting a non-author APPROVED review' };
+}
+
+async function gh(fetchImpl, token, method, path, body) {
+  const res = await fetchImpl(`https://api.github.com/${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/vnd.github+json',
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) throw new Error(`GitHub API ${method} ${path} → ${res.status}`);
+  return res.json();
+}
+
+async function ghPaged(fetchImpl, token, path) {
   const out = [];
   for (let page = 1; ; page++) {
-    const res = await fetch(`https://api.github.com/${path}?per_page=100&page=${page}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
-    });
-    if (!res.ok) throw new Error(`GitHub API ${path} → ${res.status}`);
-    const batch = await res.json();
+    const batch = await gh(fetchImpl, token, 'GET', `${path}?per_page=100&page=${page}`);
     out.push(...batch);
     if (batch.length < 100) return out;
   }
 }
 
-async function main() {
-  const { GH_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, PR_AUTHOR } = process.env;
-  if (!GH_TOKEN || !GITHUB_REPOSITORY || !PR_NUMBER || !PR_AUTHOR) {
-    console.error('review-approval-gate: missing GH_TOKEN/GITHUB_REPOSITORY/PR_NUMBER/PR_AUTHOR');
-    process.exit(2);
+/**
+ * Evaluate the gate for a PR against the live GitHub API.
+ * Returns the process exit code: 0 pass (or status published), 1 missing
+ * approval in exit mode. Throws on real errors.
+ * @param {{ env: Record<string, string | undefined>, fetchImpl?: typeof fetch, log?: (msg: string) => void, error?: (msg: string) => void }} opts
+ */
+export async function run({ env, fetchImpl = fetch, log = console.log, error = console.error }) {
+  const { GH_TOKEN, GITHUB_REPOSITORY, PR_NUMBER } = env;
+  if (!GH_TOKEN || !GITHUB_REPOSITORY || !PR_NUMBER) {
+    throw new Error('review-approval-gate: missing GH_TOKEN/GITHUB_REPOSITORY/PR_NUMBER');
   }
+  const mode = env.REVIEW_GATE_MODE === 'status' ? 'status' : 'exit';
   const base = `repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}`;
-  const files = await ghPaged(`${base}/files`, GH_TOKEN);
-  const reviews = await ghPaged(`${base}/reviews`, GH_TOKEN);
-  const result = evaluateGate({
-    changedFiles: files.map((f) => f.filename),
-    reviews,
-    author: PR_AUTHOR,
-  });
-  console.log(JSON.stringify(result));
-  if (!result.pass) {
-    console.error('Protected changes require an APPROVED review from someone other than the PR author.');
-    process.exit(1);
+  // Author + head come from the API, not the event payload: a push after the
+  // review moves the head, and the payload would be stale.
+  const pr = await gh(fetchImpl, GH_TOKEN, 'GET', base);
+  const author = pr.user?.login ?? env.PR_AUTHOR ?? '';
+  const files = await ghPaged(fetchImpl, GH_TOKEN, `${base}/files`);
+  const reviews = await ghPaged(fetchImpl, GH_TOKEN, `${base}/reviews`);
+  const result = evaluateGate({ changedFiles: files.map((f) => f.filename), reviews, author });
+
+  if (mode === 'status') {
+    const headSha = pr.head?.sha;
+    if (!headSha) throw new Error('review-approval-gate: PR has no head sha');
+    const status = statusFor(result);
+    await gh(fetchImpl, GH_TOKEN, 'POST', `repos/${GITHUB_REPOSITORY}/statuses/${headSha}`, {
+      state: status.state,
+      context: STATUS_CONTEXT,
+      description: status.description,
+    });
+    log(JSON.stringify({ mode, ...result, headSha, status }));
+    return 0;
   }
+
+  log(JSON.stringify({ mode, ...result }));
+  if (!result.pass) {
+    error('Protected changes require an APPROVED review from someone other than the PR author.');
+    return 1;
+  }
+  return 0;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(2);
-  });
+  run({ env: process.env }).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(err);
+      process.exit(2);
+    },
+  );
 }
