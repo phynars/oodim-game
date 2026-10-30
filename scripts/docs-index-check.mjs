@@ -45,7 +45,14 @@ export function constitutionIds(md) {
 }
 
 export function mermaidKinds(md) {
-  return [...md.matchAll(/```mermaid\s*\n\s*(\w+)/g)].map((m) => m[1]);
+  // Skip `%%` comment and `%%{init: …}%%` directive lines before the diagram type.
+  return [...md.matchAll(/```mermaid\s*\n(?:\s*%%[^\n]*\n)*\s*(\w+)/g)].map((m) => m[1]);
+}
+
+/** Article ids a Constitution check names: "C1: pass", "- **C1**: pass" or a
+ *  table row "| C1 | pass |". */
+export function checkedArticles(check) {
+  return new Set([...check.matchAll(/(?:^|[\s|*-])(C\d+)\**\s*[:|]/gm)].map((m) => m[1]));
 }
 
 export function checkResearch(file, md) {
@@ -63,7 +70,8 @@ export function checkSpec(file, md, articles) {
   if (refs === null) errors.push(`${file}: missing "## References"`);
   else if (!/References:\s*internal-only/i.test(refs) && !new RegExp(`research/${n}-`).test(refs)) errors.push(`${file}: "## References" must link docs/research/${n}-….md or say "References: internal-only"`);
   const check = section(md, "Constitution check") ?? "";
-  const missing = articles.filter((id) => !new RegExp(`\\b${id}\\b\\s*:`).test(check));
+  const named = checkedArticles(check);
+  const missing = articles.filter((id) => !named.has(id));
   if (missing.length) errors.push(`${file}: "## Constitution check" is missing ${missing.join(", ")}`);
   return errors;
 }

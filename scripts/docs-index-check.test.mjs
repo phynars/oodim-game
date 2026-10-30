@@ -2,7 +2,15 @@
 // the gate itself: `node --test scripts/docs-index-check.test.mjs`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { acceptanceCriteria, checkDesign, checkIndex, checkResearch, checkSpec, constitutionIds, mermaidKinds, storyNumber } from "./docs-index-check.mjs";
+import { acceptanceCriteria, checkDesign, checkIndex, checkResearch, checkSpec, checkedArticles, constitutionIds, mermaidKinds, storyNumber } from "./docs-index-check.mjs";
+
+test("Constitution check accepts plain, bold and table forms (review of #2581)", () => {
+  assert.deepEqual([...checkedArticles("- C1: pass\r\n- **C2**: pass\r\n| C3 | pass |\r\n| **C4** | n/a — docs |\r\nC5 is fine")], ["C1", "C2", "C3", "C4"]);
+});
+
+test("mermaidKinds skips %% comments and init directives", () => {
+  assert.deepEqual(mermaidKinds("```mermaid\n%%{init: {'theme':'dark'}}%%\n%% note\nsequenceDiagram\n```"), ["sequenceDiagram"]);
+});
 
 const SPEC = `# Spec — #2600 ending card honesty
 
