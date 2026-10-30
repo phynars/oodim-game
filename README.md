@@ -26,6 +26,15 @@ npm run typecheck:aftersign
 npm run test:unit:aftersign
 npm run test:e2e:aftersign
 
+# 3b) AFTERSIGN release gate — same steps as .github/workflows/main-e2e.yml
+#     (Node 22). Record the commit SHA and the final Playwright summary line
+#     (N passed / N failed / N flaky) as release evidence. A killed or
+#     backgrounded run is not evidence.
+npm install
+node scripts/install-playwright-chromium.mjs   # npx playwright install --with-deps chromium, with retries
+git rev-parse HEAD
+set -o pipefail; npm run test:e2e:aftersign 2>&1 | tee /tmp/aftersign-e2e-runner.log
+
 # 4) Aggregate validation across the whole portfolio
 npm run typecheck
 npm run build
