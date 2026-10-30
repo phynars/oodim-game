@@ -20,10 +20,10 @@ const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
 const PHONE_VIEWPORT = { width: 375, height: 812 } as const;
 
-const FIRST_RUN_IO_LINE =
-  "Bring it back the way I gave it to you. Closed seal, open account. Then I will know whether to keep the lamp burning for you.";
-const TRUSTED_IO_LINE =
-  "You brought my first seal home closed. I remember. Take the red tag to Saint Orra; I can risk your hands on a door that lies.";
+// Derived from the copy module (single source of truth) — no duplicated
+// literals, so a copy revision cannot drift from this spec.
+const FIRST_RUN_IO_LINE: string = AFTERSIGN_JOB_OFFER_COPY.firstRun.ioLine;
+const TRUSTED_IO_LINE: string = AFTERSIGN_JOB_OFFER_COPY.trusted.ioLine;
 
 const IO_LINE_SELECTOR = "#offeredJobs [data-aftersign-job-offer-io-line]";
 
