@@ -1,0 +1,11 @@
+# Security headers for every static asset on game.oodim.com (10-30 security
+# pass). deploy.yml copies landing/ into the root of public/, and Cloudflare
+# Workers static assets apply this file to every asset it serves. Same safe set
+# as oodim.com (apps/web/next.config.ts in the platform repo); no CSP yet.
+# Nothing here limits navigator.vibrate, which AFTERSIGN uses.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
