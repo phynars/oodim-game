@@ -371,7 +371,7 @@ Carry-over into the next milestone:
 - **#2193 (P2):** phone layout regressions.
 - **#2194 (P3):** first-player UX.
 
-## Active milestone: M3 — Episode 1 (operator decision under founder delegation, 2026-10-29)
+## M3 — Episode 1 (CLOSED 2026-10-30; operator decision under founder delegation, 2026-10-29)
 
 **M3 is the one active milestone.** No other milestone is active until M3 closes.
 
@@ -442,6 +442,56 @@ Carry-over (P2, not memory claims): #2583 (a new button looks pre-selected under
 the last tap) and #2584 (stale "Choose before you leave…" prompt and a duplicated
 recall line on the ending card). Epic #2579 is closed with M3.
 
-**No milestone is active until the operator names the next one here.** Until
-then the team works the open carry-over issues; sprint planning needs an open
-epic and plans nothing without one.
+The next milestone is named below (M4, same day).
+
+## Active milestone: M4 — Act II, the red tag reaches Saint Orra (operator decision under founder delegation, 2026-10-30)
+
+**M4 is the one active milestone. Deadline: 2026-11-19** (binding; three weekly
+sprints, W45–W47). Count days remaining from 11-19. Cut scope, never the date.
+
+**Why this one.** Every M3 playtest said some form of "I never actually carried
+the red tag anywhere" (#2568, #2577, playtests #1–#4). Episode 1 promises the
+red tag to Saint Orra and then ends. The concept's Act II, *The Name That Hurts*
+(`docs/flagship/concept.md`), starts exactly there: Orra asks the player to
+carry a forgotten name to Maud Underbell, and a bell rings for it. The founder's
+metric still holds: **beats reachable on the served page** (08-14 amendment).
+
+**The outcome:** after the vigil, a phone player carries the red tag to Saint
+Orra, hears what Orra needs, carries a name to Maud at the Bell Archive, and
+sees the bell ring for the name they chose. Then they can retell what happened
+and why.
+
+**M4 metric: memory decides what the bell rings.** Saint Orra and Maud react to
+facts the game already stores, and two different memory records reach two
+different Act II endings on the served page:
+- Orra recalls, from the real tap, whether the player took the red tag at once
+  ("Take the second packet") or asked first ("Ask what changed"). That is the
+  concept's "agreed to carry a name without asking who it would hurt".
+- The bell rings the right name (district light stays lit) or the wrong name
+  (one district light goes out, the concept's Act II end beat), decided by the
+  player's choice at the archive together with that memory.
+- A later session for the same slot shows the same Act II ending again.
+
+**Acceptance (played, not driven; standing rules C1–C8 in `docs/CONSTITUTION.md`):**
+- **Automated:** a served-page Playwright spec at 390×844 drives boot → Episode 1
+  ending → red tag to Orra → name to Maud → bell, by taps on visible controls
+  only. It reaches both Act II endings from two memory records, restores the
+  ending in a fresh browser context, and is green in `main-e2e` on the closeout
+  revision.
+- **Closeout:** a blind AI-stranger playtest on the deployed revision (M-LOOP
+  closeout rules unchanged). The player reaches the bell and answers once,
+  unprompted: *"What did the bell ring, and why?"* Pass = the answer names the
+  bell's outcome and ties it to something they did. No false memory from Io,
+  Orra, Maud or the ending cards; a false memory is a P1 and blocks closeout.
+  Transcript verbatim in `docs/flagship/devlog.md`.
+
+**How the work is planned:** epic #2587 (`epic:` title) with stories as its
+sub-issues. Each story goes research → spec (EARS acceptance) → design
+(diagrams, test map) → build with tests written first, through the weekly
+sprints and the daily scrum.
+
+**Carry-over:** #2583 and #2584 (P2) are worked first.
+
+**Deferred until M4 closes:** Niko Thread, the Unaddressed Child, Act III (the
+Unlit Door), new districts, and the four-weekly-drops success criterion. Maud
+appears only at the Bell Archive.
