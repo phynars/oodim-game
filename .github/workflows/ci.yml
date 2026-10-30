@@ -82,6 +82,18 @@ jobs:
           node-version: "22"
       - run: node scripts/check-product-wiring.mjs
 
+  # Review-approval gate logic tests (#2571). Runs the decision function only;
+  # it never needs an approval, so it can't deadlock the reviewer. Enforcement
+  # lives in review-approval.yml on pull_request_review events.
+  review-approval-gate-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test scripts/review-approval-gate.test.mjs
+
   # Served-reach gate (oodim AIDLC stabilization, root cause 1, 2026-10-20).
   # A changed AFTERSIGN/Worker source file must be reachable from a served
   # entry (aftersign/main.js via the vite build, or src/server.ts), and its
