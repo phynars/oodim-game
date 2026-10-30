@@ -1568,7 +1568,7 @@ const lineForBeat = () => {
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
-      redTagCarried: state.delivery.id === "red-tag",
+      redTagCarried: state.player.secondPacketHandoffAccepted === true,
     });
     // Reload path: re-render the ending card and re-publish
     // `story.endingId` onto window.__game so a restored session
@@ -3051,7 +3051,6 @@ const renderText = () => {
   if (vigilChoice) {
     const vigilVisible =
       isNextJobBeat
-      && Boolean(state.player.secondPacketHandoffAccepted)
       && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
@@ -4276,7 +4275,7 @@ const choose = async (choiceId) => {
     if (choiceId === "light-vigil" || choiceId === "spare-vigil") {
       const ending = resolveEpisodeOneEnding({
         packetSealed: state.packet.sealed,
-        redTagCarried: state.delivery.id === "red-tag",
+        redTagCarried: state.player.secondPacketHandoffAccepted === true,
       });
       state.story.endingId = ending.id;
       state.story.endingCause = ending.cause ?? null;
@@ -4447,7 +4446,10 @@ const choose = async (choiceId) => {
     // (`state.delivery.id === "red-tag"`) when picking ending-true vs
     // ending-false — removing this arming would strand every run on
     // the light-out branch.
-    state.player.secondPacketHandoffAccepted = true;
+    // The red-tag offer is visible before the player accepts it. Keep the
+    // delivery identity for its copy, but reserve the acceptance fact for
+    // the visible "Take the second packet" tap below.
+    state.player.secondPacketHandoffAccepted = false;
     state.delivery = { id: "red-tag", outcome: "unknown" };
     if (packetButton) {
       packetButton.textContent = "Red tag — Saint Orra";

@@ -255,6 +255,7 @@ async function expectEndingOnlyControls(page: Page): Promise<void> {
 async function runToEnding(
   page: Page,
   outcome: "sealed" | "opened",
+  acceptRedTag = true,
 ): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, outcome);
@@ -281,7 +282,14 @@ async function runToEnding(
   // `state.delivery = { id: "red-tag", outcome: "unknown" }` lives
   // in aftersign/main.js's `choose()` under this choice id — the
   // same hunk this PR's diff comments on.
-  await tapChoice(page, "accept-second-packet");
+  if (acceptRedTag) {
+    await tapChoice(page, "accept-second-packet");
+  } else {
+    await expect(
+      page.locator('button[data-choice-id="accept-second-packet"]'),
+      "the unaccepted red-tag offer must be visibly available",
+    ).toBeVisible({ timeout: WAIT_MS });
+  }
 
   // Vigil tap. The vigil tray's visibility flips to `true` at
   // `io-next-job` once `secondPacketHandoffAccepted` is set —
@@ -321,7 +329,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     // #2517: the ending's `line` renders as the visible outcome sentence.
     await expect(card.locator(".episode-one-ending__outcome")).toBeVisible();
     await expect(card.locator(".episode-one-ending__outcome")).toHaveText(
-      "The Bell Archive rings Orra's name true. Io keeps the blue packet sealed in the record.",
+      "Io keeps the blue packet sealed in the record.",
     );
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/blue packet sealed/i);
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/accepted the red tag/i);
@@ -332,6 +340,26 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     const snapshot = await readEndingSnapshot(page);
     expect(snapshot.endingId).toBe("ending-bell-true");
     expect(snapshot.endingCause).toBe("sealed-and-tagged");
+  });
+
+  test("offered red tag without an acceptance tap never becomes an accepted-memory ending", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+
+    const slot = `episode-one-ending-unaccepted-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+
+    await runToEnding(page, "sealed", false);
+
+    const card = await readEndingCard(page);
+    await expect(card).toHaveAttribute("data-ending-cause", "red-tag-withheld");
+    await expect(card).not.toContainText(/accepted the red tag/i);
+    await expect(card).toContainText(/red tag was offered/i);
+    await expect(page.locator("#line")).not.toContainText(/Choose before you leave/i);
+    await expect(card.locator(".episode-one-ending__bell")).toHaveCount(1);
+    await expect(card.locator(".episode-one-ending__outcome")).not.toContainText(/Bell Archive/i);
+    await expectEndingOnlyControls(page);
   });
 
   test("TRUE ending survives a fresh browser context on the same slot (durable restore)", async ({
@@ -393,7 +421,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     // #2517: the ending's `line` renders as the visible outcome sentence.
     await expect(card.locator(".episode-one-ending__outcome")).toBeVisible();
     await expect(card.locator(".episode-one-ending__outcome")).toHaveText(
-      "The Bell Archive rings the wrong name. The blue packet was opened, and the district light goes out.",
+      "The blue packet was opened, and the district light goes out.",
     );
 
     // The P1 the first review surfaced: Io used to say "You withheld
