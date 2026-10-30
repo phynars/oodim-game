@@ -12,9 +12,9 @@ import { AFTERSIGN_JOB_OFFER_COPY } from "../../apps/web/src/aftersign/aftersign
 // `job-offer-route-risk-copy-played.spec.ts`, which already proves that
 // this loop resolves the TRUSTED offer branch with the packet kept sealed.
 //
-// Copy strings are verbatim from
-// `apps/web/src/aftersign/aftersignJobOfferCopy.js` (FIRST_RUN.ioLine /
-// TRUSTED.ioLine) so a player-visible drift or an empty line reds this spec.
+// Copy strings are imported from
+// `apps/web/src/aftersign/aftersignJobOfferCopy.js` (firstRun.ioLine /
+// trusted.ioLine) so a render drift or an empty line reds this spec.
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
