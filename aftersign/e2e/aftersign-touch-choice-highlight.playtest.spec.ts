@@ -38,13 +38,15 @@ test("touch delivery does not pre-highlight a newly rendered return choice", asy
   const y = box.y + box.height / 2;
 
   const isActive = () => kindReturn.evaluate((el) => el.matches(":active"));
+  // Condition-based wait (no wall-clock sleep, per the #313 harness rule):
+  // expect.poll re-evaluates :active until it holds or the timeout expires.
   const waitActive = async (timeout: number) => {
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-      if (await isActive()) return true;
-      await page.waitForTimeout(50);
+    try {
+      await expect.poll(isActive, { timeout }).toBe(true);
+      return true;
+    } catch {
+      return false;
     }
-    return isActive();
   };
 
   // A fully specified touch point (id/radius/force) — the bare {x, y} form
