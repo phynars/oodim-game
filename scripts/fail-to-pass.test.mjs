@@ -2,7 +2,7 @@
 // fail-to-pass CI job before the gate itself: `node --test scripts/fail-to-pass.test.mjs`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classify, decide, exemptReason, isBugIssue, linkedIssues, nodeTestRegistered, verdict } from "./fail-to-pass.mjs";
+import { classify, decide, exemptReason, isBugIssue, isTddIssue, linkedIssues, nodeTestRegistered, verdict } from "./fail-to-pass.mjs";
 
 test("nodeTestRegistered: scripts run by `node --test` in CI or package.json are discovered", () => {
   const ci = "      - run: node --test scripts/served-reach.test.mjs\n          node --test scripts/pr-ci-evidence.test.mjs\n";
@@ -74,4 +74,18 @@ test("isBugIssue: a bug: title (engine facts live in its ledger since oodim labe
   assert.equal(isBugIssue({ title: "feature: Bell Archive ending", labels: ["agent-filed"] }), false);
   assert.equal(isBugIssue({ title: "task: debug overlay cleanup", labels: [] }), false);
   assert.equal(isBugIssue({ title: "", labels: [] }), false);
+});
+
+test("isTddIssue: test-first covers bugs plus fix/feature/enhancement/story; tasks, refactors and docs stay out", () => {
+  // game #2577's title: the old bug-only gate skipped it.
+  assert.equal(isTddIssue({ title: "fix: M3 ending says 'You accepted the red tag' when the player never accepted it (playtest #2)", labels: ["agent-filed"] }), true);
+  assert.equal(isTddIssue({ title: "feature: Bell Archive ending", labels: ["agent-filed"] }), true);
+  assert.equal(isTddIssue({ title: "Enhancement: phone tray spacing", labels: [] }), true);
+  assert.equal(isTddIssue({ title: "story: ending card shows one archive line", labels: [] }), true);
+  assert.equal(isTddIssue({ title: "aftersign e2e RED on main", labels: ["type:bug"] }), true);
+  assert.equal(isTddIssue({ title: "untyped title", labels: ["type:feature"] }), true);
+  assert.equal(isTddIssue({ title: "task: debug overlay cleanup", labels: [] }), false);
+  assert.equal(isTddIssue({ title: "refactor: split ioLoopCopy", labels: [] }), false);
+  assert.equal(isTddIssue({ title: "spec: #2600 research and design", labels: [] }), false);
+  assert.equal(isTddIssue({ title: "", labels: [] }), false);
 });

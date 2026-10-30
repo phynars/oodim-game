@@ -81,6 +81,10 @@ jobs:
         with:
           node-version: "22"
       - run: node scripts/check-product-wiring.mjs
+      # Doc-management gate (docs/CONSTITUTION.md C6): research/spec/design docs
+      # indexed and in shape (EARS ACs, diagrams, test map). Seconds, no install.
+      - run: node --test scripts/docs-index-check.test.mjs
+      - run: node scripts/docs-index-check.mjs
 
   # Review-approval gate logic tests (#2571). Runs the decision function only;
   # it never needs an approval, so it can't deadlock the reviewer. Enforcement

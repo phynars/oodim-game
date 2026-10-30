@@ -119,7 +119,172 @@ played acceptance test.
   handoffs. Nothing under `docs/` should describe game internals — that
   belongs in `<game>/docs/`.
 
+## AFTERSIGN at a glance (diagrams)
+
+High-level only: which parts exist, how a player's choice becomes a durable
+memory and an ending, and how a change reaches the served page. Module names
+are anchors for orientation; internals belong in
+[`aftersign/docs/ARCHITECTURE.md`](../../../aftersign/docs/ARCHITECTURE.md).
+Story designs (`docs/design/`) link the section here that they change, and a
+design that moves a box or an arrow updates the diagram in the same PR
+([`docs/CONSTITUTION.md`](../../CONSTITUTION.md) C6). Drawn from `main` at
+`9710955` (2026-10-30).
+
+### System context
+
+```mermaid
+flowchart LR
+  player([Player on a phone])
+  subgraph cf["Cloudflare: Worker oodim-game (src/server.ts) at game.oodim.com"]
+    assets["ASSETS: built pages<br/>/aftersign/ from dist-aftersign"]
+    saveApi["/aftersign/save/:player/:slot"]
+    saveDO[("Durable Object<br/>AftersignAuthoritativeSave<br/>one per player+slot")]
+  end
+  studio["AI studio (oodim avatars)<br/>sprints · scrum · implement · review"]
+  gh["GitHub: issues, PRs, CI<br/>(ci.yml, main-e2e.yml)"]
+  deploy["deploy.yml: build → wrangler deploy<br/>→ prod smoke → served M-LOOP gate"]
+
+  player -- "taps" --> assets
+  assets -- "GET/PUT save" --> saveApi --> saveDO
+  studio -- "issues, PRs, docs" --> gh
+  gh -- "merge to main" --> deploy --> cf
+```
+
+### Client components
+
+The page boots one module hub (`aftersign/main.js`, ~6,000 lines) that owns
+every beat and imports from three trees: `aftersign/src/`,
+`apps/web/src/aftersign/` and `packages/aftersign/src/`.
+
+```mermaid
+flowchart TB
+  html["aftersign/index.html<br/>canvas + dialogue panel + controls"]
+  hub["aftersign/main.js<br/>beats: choose() / setBeat()"]
+  scene["3D scene<br/>src/kioskScene.js (three.js + post)"]
+  panel["Dialogue panel<br/>presentation/dialogueController.js"]
+  input["Controls<br/>interactions/*Controller.js<br/>packet · route · job offer · vigil"]
+  copy["Io line modules<br/>src/io*Copy, ioRecognitionDialogue,<br/>apps/web/.../aftersign*Copy"]
+  ending["Ending decision<br/>src/episodeOneEnding.js (only decider)"]
+  persist["Save payload<br/>src/runtime/persistence.js<br/>→ server-authoritative-save.js"]
+  testsurf["window.__game<br/>(assertions only, C2)"]
+
+  html --> hub
+  hub --> scene
+  hub --> panel
+  input -- "player choice" --> hub
+  hub -- "facts" --> copy --> panel
+  hub -- "packet + red tag facts" --> ending --> panel
+  hub <--> persist
+  hub -. "publishes state" .-> testsurf
+```
+
+### Episode 1: from choices to the ending
+
+```mermaid
+sequenceDiagram
+  participant P as Player
+  participant UI as Panel + controls
+  participant G as main.js (beats)
+  participant S as Save API (Durable Object)
+  participant E as episodeOneEnding.js
+
+  P->>UI: tap packet (keep seal) or hold-and-pull (break)
+  UI->>G: packet-choice: packet.sealed
+  P->>UI: route choice, I listened / ran early
+  G->>G: route + routeAttention facts
+  P->>UI: Deliver packet
+  G->>S: PUT save (packet, memory facts)
+  G-->>UI: Io recognises the player (memory lines)
+  P->>UI: return tone (kind / evasive / blunt)
+  P->>UI: Ask for next job
+  G-->>UI: red-tag offer (Take the second packet / Ask what changed)
+  P->>UI: Light or spare the vigil
+  G->>E: resolveEpisodeOneEnding(packet sealed?, red tag?)
+  E-->>G: endingId + endingCause + recall line
+  G->>S: PUT save (story.endingId)
+  G-->>UI: ending card (data-ending-id, data-ending-cause)
+  Note over G,S: A later session reads the save at boot and shows the same ending
+```
+
+On `main` today the "red tag?" input is armed by **Ask for next job**, not by an
+explicit accept, which is why the card can say "You accepted the red tag" when
+the player never did (game #2577; PR #2578 adds a separate accept fact).
+
+### Durable memory
+
+```mermaid
+classDiagram
+  class AuthoritativeSave {
+    beat
+    revision
+    ioNextJob
+  }
+  class Packet {
+    sealed
+    delivered
+    route
+  }
+  class Player {
+    secondAction : acknowledged | skipped
+    returnReason : kind | evasive | blunt
+    routeRisk
+    secondPacketHandoffAccepted
+  }
+  class Delivery {
+    id : blue-packet | red-tag
+    outcome
+  }
+  class Story {
+    endingId
+    endingCause
+  }
+  class IoMemoryFacts {
+    deliveryOutcome : sealed | opened
+    routeAttention : listened | skipped
+  }
+  AuthoritativeSave *-- Packet
+  AuthoritativeSave *-- Player
+  AuthoritativeSave *-- Delivery
+  AuthoritativeSave *-- Story
+  AuthoritativeSave *-- IoMemoryFacts
+```
+
+Only the player id lives in `localStorage` (`aftersign:player-id:v1`). The
+`/player-memory` Durable Object is deployed, but the served client doesn't
+call it (tests only).
+
+### How a change reaches the player (top-down)
+
+```mermaid
+flowchart LR
+  brief["BRIEF milestone<br/>+ CONSTITUTION"] --> epic["epic: issue"]
+  epic --> story["story: issue<br/>EARS acceptance"]
+  story --> research["docs/research/N-*.md<br/>external sources"]
+  research --> spec["docs/specs/N-*.md<br/>AC-n (EARS)"]
+  spec --> design["docs/design/N-*.md<br/>diagrams + test map"]
+  design --> build["build PR<br/>AC tests fail on main first"]
+  build --> ci["CI: aftersign · served-reach ·<br/>fail-to-pass · docs-index"]
+  ci --> merge["merge to main"] --> deploy["deploy.yml → game.oodim.com"]
+  deploy --> playtest["blind AI-stranger playtest<br/>(operator, closeout)"]
+```
+
+### Known hotspots
+
+- `main.js` is a ~6,000-line hub across three source trees; `served-reach`
+  exists because edits elsewhere often never reached the page.
+- Io's lines come from many overlapping modules (two `ioLoopCopy`s, two
+  job-accepted lines rendered together, unserved memory-line tables). A
+  recall line must have one owning module (C5).
+- `dist-aftersign/` is committed but rebuilt by deploy, so the committed copy
+  can be stale.
+
 ## Deeper docs
+
+**Direction (top-down):**
+
+- Document index — [`docs/INDEX.md`](../../INDEX.md)
+- Studio constitution (C1–C8, EARS acceptance) — [`docs/CONSTITUTION.md`](../../CONSTITUTION.md)
+- Templates — [research](../../templates/research.md) · [spec](../../templates/spec.md) · [design](../../templates/design.md)
 
 **Flagship (start here for all new work):**
 
