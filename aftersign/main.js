@@ -2453,6 +2453,18 @@ const publishState = () => {
   return window.__game;
 };
 
+// Story-advancing controls the terminal ending hides (#2568). The three
+// .controls buttons are looked up by id because main.js has no module-level
+// handles for them; the ending must not leave "Deliver next packet" live.
+const endingHideableControls = () =>
+  [
+    packetButton,
+    routeChoice,
+    document.getElementById("deliverButton"),
+    document.getElementById("acknowledgeRouteButton"),
+    document.getElementById("skipRouteButton"),
+  ].filter(Boolean);
+
 const renderText = () => {
   dialogueController.render({
     beat: state.scene.beat,
@@ -2476,7 +2488,7 @@ const renderText = () => {
   if (state.story.endingId) {
     // Mark only nodes this branch hides, so Start fresh restores exactly
     // those (and leaves nodes hidden for other reasons untouched).
-    for (const node of [packetButton, routeChoice]) {
+    for (const node of endingHideableControls()) {
       if (!node.hidden) {
         node.hidden = true;
         node.dataset.endingHidden = "true";
@@ -2494,7 +2506,7 @@ const renderText = () => {
     return;
   }
   // Leaving the ending (Start fresh): undo only the terminal-branch hides.
-  for (const node of [packetButton, routeChoice]) {
+  for (const node of endingHideableControls()) {
     if (node.dataset.endingHidden === "true") {
       node.hidden = false;
       delete node.dataset.endingHidden;

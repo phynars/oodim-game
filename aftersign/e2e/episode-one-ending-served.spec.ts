@@ -217,8 +217,16 @@ async function readEndingCard(page: Page): Promise<Locator> {
 async function expectEndingOnlyControls(page: Page): Promise<void> {
   // The player reaches this state by tapping #lightVigilButton. Terminal
   // UI must not leave any story-advancing control touchable or visible.
+  // #deliverButton is the control #2568 names ("Deliver next packet");
+  // Assert it exists in the DOM AND is hidden, so a renamed or removed
+  // node cannot make the loop below pass vacuously.
+  await expect(page.locator('#deliverButton')).toHaveCount(1);
+  await expect(page.locator('#deliverButton'), '#deliverButton must not be visible after the ending').toBeHidden();
   for (const selector of [
     '#packetButton',
+    '#deliverButton',
+    '#acknowledgeRouteButton',
+    '#skipRouteButton',
     '#routeChoice button',
     '#vigilChoice button',
     '#offeredJobs button',
