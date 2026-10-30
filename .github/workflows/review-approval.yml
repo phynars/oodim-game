@@ -1,0 +1,38 @@
+name: review-approval
+
+# Review-approval gate (#2571). Protected changes (.github/workflows/**, gate
+# scripts) need a non-author APPROVED review.
+#
+# This intentionally triggers ONLY on review events, not on pull_request.
+# A failing job on pull_request deadlocks: APPROVE is refused while CI is red,
+# and CI could only go green after an APPROVE (PR #2572 review, F1). On review
+# events the check runs after the decision is recorded. It is green on a
+# non-author approval and red on changes-requested or a dismissal. Before any
+# review it is absent, so branch protection sees it as pending, not failed.
+# A new push needs a fresh review event to re-attach the check to the new head.
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: review-approval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: protected changes require a non-author approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: node scripts/review-approval-gate.mjs

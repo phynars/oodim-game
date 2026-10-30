@@ -82,37 +82,17 @@ jobs:
           node-version: "22"
       - run: node scripts/check-product-wiring.mjs
 
-  # Sensitive delivery controls cannot be self-approved. This job only blocks
-  # PRs that modify CI workflows or the gate scripts named below; ordinary
-  # product changes remain governed by their existing CI lanes.
-  review-approval:
-    if: github.event_name == 'pull_request'
+  # Review-approval gate logic tests (#2571). Runs the decision function only;
+  # it never needs an approval, so it can't deadlock the reviewer. Enforcement
+  # lives in review-approval.yml on pull_request_review events.
+  review-approval-gate-tests:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
         with:
-          fetch-depth: 0
-      - name: review-approval gate contract
-        run: node --test scripts/review-approval-gate.test.mjs
-      - name: protected changes require a non-author approval
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          changed_files="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
-          if ! grep -Eq '^(\.github/workflows/|scripts/.*(gate|served-reach|fail-to-pass))' <<<"$changed_files"; then
-            exit 0
-          fi
-          approvals="$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" --paginate \
-            --jq ".[] | select(.state == \"APPROVED\" and .user.login != \"$PR_AUTHOR\") | .user.login" | sort -u)"
-          test -n "$approvals" || {
-            echo 'Protected changes require an APPROVED review from someone other than the PR author.' >&2
-            exit 1
-          }
+          node-version: "22"
+      - run: node --test scripts/review-approval-gate.test.mjs
 
   # Served-reach gate (oodim AIDLC stabilization, root cause 1, 2026-10-20).
   # A changed AFTERSIGN/Worker source file must be reachable from a served
