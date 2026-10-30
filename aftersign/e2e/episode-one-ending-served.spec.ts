@@ -53,10 +53,10 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //     can only be committed through a harness call, not by a
 //     player").
 //   • The vigil tray's visibility is gated on
-//     `isNextJobBeat && secondPacketHandoffAccepted && !endingId`
-//     (aftersign/main.js:2464-2472). There is NO `meet-orra`
-//     prerequisite — the tray appears the moment the handoff is
-//     accepted, which is what `accept-second-packet` below does.
+//     `isNextJobBeat && !endingId` (aftersign/main.js renderText).
+//     There is NO `meet-orra` prerequisite and, since #2577, no
+//     acceptance prerequisite. The ending's red-tag axis reads only
+//     `player.redTagAccepted`, set solely by `accept-second-packet`.
 //     The spec therefore taps straight from the handoff into
 //     `#lightVigilButton`; no dispatch of `meet-orra` through the
 //     harness input seam is required or performed (fixes Soren's

@@ -4287,7 +4287,11 @@ const choose = async (choiceId) => {
     if (choiceId === "light-vigil" || choiceId === "spare-vigil") {
       const ending = resolveEpisodeOneEnding({
         packetSealed: state.packet.sealed,
-        redTagCarried: state.player.secondPacketHandoffAccepted === true,
+        // #2577: read ONLY the explicit acceptance fact. `ask-for-next-job`
+        // arms `secondPacketHandoffAccepted` without any accept tap, so
+        // reading it here would hand every run the "accepted" ending.
+        // Must match the reload path in lineForBeat().
+        redTagCarried: state.player.redTagAccepted === true,
       });
       state.story.endingId = ending.id;
       state.story.endingCause = ending.cause ?? null;
