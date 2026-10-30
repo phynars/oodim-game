@@ -7,7 +7,9 @@
 // already the aftersign lane's job; this script owns the base half.
 //
 //   scope   — the PR body links an issue (Closes/Fixes/Resolves #N) titled
-//             `bug: …` or labeled `type:bug`. Free-will and refactor PRs are out of scope.
+//             `bug:`, `fix:`, `feature:`, `enhancement:` or `story:`, or labeled
+//             type:bug/feature/enhancement (test-driven since 10-30, isTddIssue).
+//             Free-will, task, refactor and docs PRs are out of scope.
 //   exempt  — a PR-body line `f2p-exempt: <reason>` (e.g. a CSS-only fix
 //             with no assertable surface). The reason is echoed to the
 //             summary so review can judge it.
@@ -113,6 +115,17 @@ export function isBugIssue({ title, labels }) {
   return /^\s*bug:/i.test(title ?? "") || (labels ?? []).includes("type:bug");
 }
 
+// Test-driven scope (docs/CONSTITUTION.md C3, 10-30): every change that adds
+// or alters player-facing behaviour ships a test that fails on main first:
+// bugs, and also `fix:`, `feature:`, `enhancement:` and `story:` work. A
+// `fix:` title (game #2577) used to slip past the bug-only gate. Out of scope:
+// `task:`, `refactor:`, `spec:`, `docs:`, `perf:` (no new behaviour to fail).
+const TDD_TITLE_RE = /^\s*(bug|fix|feature|enhancement|story):/i;
+const TDD_LABELS = ["type:bug", "type:feature", "type:enhancement"];
+export function isTddIssue({ title, labels }) {
+  return isBugIssue({ title, labels }) || TDD_TITLE_RE.test(title ?? "") || (labels ?? []).some((l) => TDD_LABELS.includes(l));
+}
+
 async function issueFacts(n) {
   const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/${n}`, {
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "User-Agent": "oodim-f2p", Accept: "application/vnd.github+json" },
@@ -129,15 +142,15 @@ function changedFiles(base, head) {
 async function plan() {
   const { body, base, head } = event();
   const issues = linkedIssues(body);
-  const isBug = (await Promise.all(issues.map(issueFacts))).some(isBugIssue);
+  const isBug = (await Promise.all(issues.map(issueFacts))).some(isTddIssue);
   const exempt = exemptReason(body);
   const { tests, source } = classify(changedFiles(base, head));
   const d = decide({ isBug, exempt, tests, source });
   output("result", d.result);
   output("needs_browser", tests.some((t) => t.includes("/e2e/")) ? "true" : "false");
-  summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; bug issue: ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${exempt ? `\n- **exempt:** ${exempt}` : ""}\n- plan: \`${d.result}\``);
+  summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; test-first issue (bug/fix/feature/enhancement/story): ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${exempt ? `\n- **exempt:** ${exempt}` : ""}\n- plan: \`${d.result}\``);
   if (d.result === "no_test") {
-    console.log(`::error title=fail-to-pass: bug fix without a test::This PR closes a bug issue (a 'bug:' title or a 'type:bug' label) and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (or add a 'f2p-exempt: <reason>' line to the PR body if the fix truly has no assertable surface).`);
+    console.log(`::error title=fail-to-pass: change without a test::This PR closes a test-first issue (a 'bug:', 'fix:', 'feature:', 'enhancement:' or 'story:' title, or a type:bug/feature/enhancement label) and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (or add a 'f2p-exempt: <reason>' line to the PR body if the fix truly has no assertable surface).`);
   }
   console.log(`F2P_RESULT=${d.result}`);
   if (d.fail) process.exit(1);
