@@ -50,7 +50,12 @@ async function playToVigil(page: Page): Promise<void> {
   await tapChoice(page, "light-vigil");
 }
 
-test("served return-to-Orra control restores her action greeting after reload", async ({ page }) => {
+// Contract change (#2568): lighting the vigil ends Episode 1, and an
+// ending is terminal. After it, the restored run shows only the ending
+// card plus Start fresh and the sound controls. The "Return to Saint
+// Orra" control used to stay live here, and playtesters read it as
+// unfinished work, so the restored ending must NOT offer it.
+test("served vigil ending persists across reload with no return-to-Orra control", async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto(`/aftersign/?slot=orra-return-control-${Date.now()}`, { waitUntil: "load" });
   await waitForVersion(page);
@@ -59,13 +64,33 @@ test("served return-to-Orra control restores her action greeting after reload", 
   await expect(page.locator("#returnToOrra")).toHaveCount(0);
 
   await playToVigil(page);
-  await expect(page.locator("#episodeOneEnding [data-ending-id]").first()).toBeVisible({ timeout: WAIT_MS });
+  const ending = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(ending).toBeVisible({ timeout: WAIT_MS });
+  const endingId = await ending.getAttribute("data-ending-id");
+  expect(endingId).toBeTruthy();
+  await expect(page.locator("#returnToOrra")).toHaveCount(0);
 
   await page.reload({ waitUntil: "load" });
   await waitForVersion(page);
 
-  // Reload cannot pass unless the persisted Orra memory restored.
-  await tapChoice(page, "return-to-orra");
-  await expect(page.locator("#speaker")).toHaveText("Saint Orra", { timeout: WAIT_MS });
-  await expect(page.locator("#line")).toContainText(/vigil/i, { timeout: WAIT_MS });
+  // Reload restores the same terminal ending, not a live Orra action.
+  const restored = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(restored).toBeVisible({ timeout: WAIT_MS });
+  await expect(restored).toHaveAttribute("data-ending-id", endingId as string);
+  await expect(page.locator("#returnToOrra")).toHaveCount(0);
+  await expect(page.locator('button[data-choice-id="return-to-orra"]')).toHaveCount(0);
+  await expect(page.locator("#resetButton")).toBeVisible();
+
+  // Start fresh is the one control the ending keeps; it must leave the
+  // terminal state and reopen the funnel without a manual reload.
+  await page.locator("#resetButton").click();
+  await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0, { timeout: WAIT_MS });
+  await expect(page.locator("#packetButton")).toBeVisible({ timeout: WAIT_MS });
+  await expect(page.locator("#packetButton")).toBeEnabled();
+
+  // The cleared ending stays cleared across reload.
+  await page.reload({ waitUntil: "load" });
+  await waitForVersion(page);
+  await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
+  await expect(page.locator("#packetButton")).toBeVisible({ timeout: WAIT_MS });
 });

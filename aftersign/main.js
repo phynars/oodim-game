@@ -2453,6 +2453,18 @@ const publishState = () => {
   return window.__game;
 };
 
+// Story-advancing controls the terminal ending hides (#2568). The three
+// .controls buttons are looked up by id because main.js has no module-level
+// handles for them; the ending must not leave "Deliver next packet" live.
+const endingHideableControls = () =>
+  [
+    packetButton,
+    routeChoice,
+    document.getElementById("deliverButton"),
+    document.getElementById("acknowledgeRouteButton"),
+    document.getElementById("skipRouteButton"),
+  ].filter(Boolean);
+
 const renderText = () => {
   dialogueController.render({
     beat: state.scene.beat,
@@ -2470,6 +2482,36 @@ const renderText = () => {
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
   });
+  // An ending is terminal for this episode. Keep only the ending card and
+  // the persistent reset/audio controls visible; no earlier story choice
+  // may imply that the player still has unfinished work to perform.
+  if (state.story.endingId) {
+    // Mark only nodes this branch hides, so Start fresh restores exactly
+    // those (and leaves nodes hidden for other reasons untouched).
+    for (const node of endingHideableControls()) {
+      if (!node.hidden) {
+        node.hidden = true;
+        node.dataset.endingHidden = "true";
+      }
+    }
+    routeChoice.dataset.visible = "false";
+    if (vigilChoice) vigilChoice.dataset.visible = "false";
+    if (offeredJobs) {
+      setOfferTrayVisibility(offeredJobs, false);
+      while (offeredJobs.firstChild) offeredJobs.removeChild(offeredJobs.firstChild);
+    }
+    for (const id of ["orraPaybackAction", "returnToOrra"]) {
+      document.getElementById(id)?.remove();
+    }
+    return;
+  }
+  // Leaving the ending (Start fresh): undo only the terminal-branch hides.
+  for (const node of endingHideableControls()) {
+    if (node.dataset.endingHidden === "true") {
+      node.hidden = false;
+      delete node.dataset.endingHidden;
+    }
+  }
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;
@@ -5436,6 +5478,14 @@ const resetSliceSave = async () => {
   ioSecondPacketPointerChoiceId = null;
   state.story.currentNpcId = null;
   state.story.memoryBeat = null;
+  // Start fresh must leave the terminal ending: without this, renderText's
+  // endingId early return and lineForBeat's ending branch keep the page
+  // dead on the ending card until a manual reload (Mara PR #2569 F1).
+  state.story.endingId = null;
+  {
+    const endingHost = document.getElementById("episodeOneEnding");
+    while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
+  }
   state.player = {
     id: bootstrapPlayerId,
     // Reset must reproduce the SHAPE of the cold-boot `state.player`
