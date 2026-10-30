@@ -73,7 +73,9 @@ const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 type RouteRiskSave = {
   payload?: {
-    player?: { routeRisk?: { lastRoute?: string; succeeded?: boolean } };
+    player?: {
+      routeRisk?: { lastRoute?: string; lastAction?: string; succeeded?: boolean };
+    };
   } | null;
 };
 
