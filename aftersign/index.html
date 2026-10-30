@@ -1296,11 +1296,11 @@
         <!-- M3-E1 (#2261) — lives OUTSIDE .controls so toggling it
              during the job-take press cannot re-lay out the tray.
              Episode 1 vigil surface. Appears at the
-             `io-next-job` beat once `state.player.secondPacketHandoffAccepted`
-             is true (the red-tag has been handed over). The player picks
-             ONE of two vigil actions for Saint Orra:
+             `io-next-job` beat whether or not the red tag was accepted
+             (#2577). The player picks ONE of two vigil actions for Saint Orra:
                • light-vigil → commits the Episode 1 ending (the ending
-                 resolver reads `packet.sealed` + `delivery.id` and stamps
+                 resolver reads `packet.sealed` + `player.redTagAccepted`,
+                 set only by the visible accept tap, and stamps
                  `state.story.endingId` / renders #episodeOneEnding).
                • spare-vigil → mints an Orra memory fact (mercy row) but
                  does NOT commit an ending — the arc is left open-ended,

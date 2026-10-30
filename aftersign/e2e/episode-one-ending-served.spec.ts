@@ -44,8 +44,8 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //   • `light-vigil` / `spare-vigil` ARE rendered buttons as of this
 //     PR — `#lightVigilButton` + `#spareVigilButton` inside the new
 //     `#vigilChoice` tray (aftersign/index.html). The tray appears
-//     at the `io-next-job` beat once `secondPacketHandoffAccepted`
-//     is true. The shipped document-level delegate in
+//     at the `io-next-job` beat whether or not the red tag has been
+//     accepted (#2577). The shipped document-level delegate in
 //     `aftersign/main.js` routes a click on either button through
 //     the canonical `choose()` seam the input adapter would land
 //     on for a rendered tap — no runtime branch is bypassed.
