@@ -75,7 +75,12 @@ test("touch delivery does not pre-highlight a newly rendered return choice", asy
     // On main, button:active applies brightness(1.14) + a press transform
     // here; with the fix, touch :active carries no generic highlight.
     await expect(kindReturn).toHaveCSS("filter", "none", { timeout: 2000 });
-    await expect(kindReturn).toHaveCSS("transform", "none", { timeout: 2000 });
+    // The base `button` rule (index.html:815) sets
+    // `transform: translate3d(0, 0, 0) scale(1)`, which computes to the
+    // identity matrix — never "none". A press transform would scale it.
+    await expect(kindReturn).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)", {
+      timeout: 2000,
+    });
   } finally {
     if (heldWith === "mouse") {
       await page.mouse.up();
