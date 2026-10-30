@@ -1593,7 +1593,9 @@ const lineForBeat = () => {
       typeof window !== "undefined" ? window : undefined,
       resolvedEnding,
     );
-    return resolvedEnding.ioLine;
+    // The ending card owns the terminal recall. Returning it here would
+    // duplicate that sentence in the active-beat line surface.
+    return "";
   }
   // #957: If a returning-session boot line was computed at module init
   // (delivered save, restored via readAuthoritativeSave / readStored),
