@@ -2,6 +2,13 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { performPacketGesture } from "./helpers/packetGesture";
 
+// Verbatim from `aftersign/src/packetChoiceAffordance.js` (same literal as
+// packet-choice-affordance-served.spec.ts AFFORDANCE_LINE).
+const STALE_PROMPT = "Choose before you leave: Io will remember whether the seal stayed whole.";
+// Verbatim `returned` line from `aftersign/src/ioLedgerLine.ts` (same literal
+// as io-ledger-line-served.spec.ts LEDGER_LINE_BY_FACT.returned).
+const STALE_LEDGER_LINE = "You came back. I kept the work that remembers that.";
+
 const WAIT_MS = 60_000;
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
@@ -19,6 +26,9 @@ async function runOpenedPacketToEnding(page: Page): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, "opened");
   await waitForBeat(page, "packet-choice");
+  // Positive precondition (review AI003): the affordance prompt renders on
+  // packet-choice, so the post-ending absence check proves the ending clears it.
+  await expect(page.locator("body")).toContainText(STALE_PROMPT, { timeout: WAIT_MS });
   await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "io-return-recognition");
@@ -28,11 +38,8 @@ async function runOpenedPacketToEnding(page: Page): Promise<void> {
   await waitForBeat(page, "return-tone-choice");
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
-  // Positive precondition (review AI003): both strings are on the page
-  // before the ending commits, so the post-ending absence checks can
-  // only pass because the ending clears them, not because they never
-  // rendered.
-  await expect(page.locator("body")).toContainText(STALE_PROMPT, { timeout: WAIT_MS });
+  // Positive precondition (review AI003): Io's `returned` ledger line renders
+  // on io-next-job, before the ending commits.
   await expect(page.locator("body")).toContainText(STALE_LEDGER_LINE, { timeout: WAIT_MS });
   await tapChoice(page, "accept-second-packet");
   await tapChoice(page, "light-vigil");
