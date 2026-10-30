@@ -2474,8 +2474,14 @@ const renderText = () => {
   // the persistent reset/audio controls visible; no earlier story choice
   // may imply that the player still has unfinished work to perform.
   if (state.story.endingId) {
-    packetButton.hidden = true;
-    routeChoice.hidden = true;
+    // Mark only nodes this branch hides, so Start fresh restores exactly
+    // those (and leaves nodes hidden for other reasons untouched).
+    for (const node of [packetButton, routeChoice]) {
+      if (!node.hidden) {
+        node.hidden = true;
+        node.dataset.endingHidden = "true";
+      }
+    }
     routeChoice.dataset.visible = "false";
     if (vigilChoice) vigilChoice.dataset.visible = "false";
     if (offeredJobs) {
