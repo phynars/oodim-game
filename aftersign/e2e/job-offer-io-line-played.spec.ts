@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { AFTERSIGN_JOB_OFFER_COPY } from "../../apps/web/src/aftersign/aftersignJobOfferCopy.js";
 
 // AFTERSIGN #2544 — the trusted (sealed-packet) offer's Io line must be
 // VISIBLE on the served page, inside `#offeredJobs`, as the
