@@ -334,6 +334,9 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/blue packet sealed/i);
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/accepted the red tag/i);
     await expect(card.locator(".episode-one-ending__recall")).not.toContainText(/handoff|delivered/i);
+    await expect(card.locator(".episode-one-ending__recall")).toHaveCount(1);
+    await expect(page.locator("#line")).not.toContainText(/blue packet sealed|accepted the red tag/i);
+    await expect(page.locator("#line")).not.toContainText(/Choose before you leave/i);
     await expect(page.locator("#line")).not.toContainText(/handoff|delivered/i);
     await expectEndingOnlyControls(page);
 

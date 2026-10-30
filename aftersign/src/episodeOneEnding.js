@@ -108,6 +108,15 @@ export const renderEpisodeOneEnding = (doc, ending) => {
       : "South district light: lit";
   card.append(title, bell, outcome, recall, districtLight);
   host.appendChild(card);
+
+  // The line surface belongs to the active beat. Once its outcome has been
+  // committed to the ending card, leaving a prior recall or choice prompt
+  // there makes the card repeat the recall and invite a choice that is over.
+  const line = doc.getElementById("line");
+  if (line) {
+    line.replaceChildren();
+  }
+
   return card;
 };
 
