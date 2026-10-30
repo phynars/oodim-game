@@ -67,7 +67,7 @@ import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRis
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
-const COLD_START_MS = 90_000;
+const COLD_START_MS = 120_000;
 const PLAYER_ID = "local-slice-player";
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
