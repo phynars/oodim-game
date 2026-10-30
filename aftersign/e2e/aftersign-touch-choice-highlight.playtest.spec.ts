@@ -37,27 +37,49 @@ test("touch delivery does not pre-highlight a newly rendered return choice", asy
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
 
+  const isActive = () => kindReturn.evaluate((el) => el.matches(":active"));
+  const waitActive = async (timeout: number) => {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      if (await isActive()) return true;
+      await page.waitForTimeout(50);
+    }
+    return isActive();
+  };
+
+  // A fully specified touch point (id/radius/force) — the bare {x, y} form
+  // never set :active in CI (review F1 on PR #2586).
+  const point = { x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 };
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [{ x, y }],
-  });
+  let heldWith: "touch" | "mouse" = "touch";
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point] });
 
   try {
+    if (!(await waitActive(1500))) {
+      // Headless Chromium may not route an injected touch into :active.
+      // Fall back to a held primary press on the same control. The
+      // (hover/pointer) media query describes the DEVICE, not the event,
+      // so on this isMobile context the touch-only CSS still governs it.
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+      heldWith = "mouse";
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+    }
+
     // The retained state the bug depends on really is present.
-    await expect
-      .poll(() => kindReturn.evaluate((el) => el.matches(":active")), { timeout: 5000 })
-      .toBe(true);
+    expect(await waitActive(5000), `:active held via ${heldWith}`).toBe(true);
 
     // On main, button:active applies brightness(1.14) + a press transform
     // here; with the fix, touch :active carries no generic highlight.
     await expect(kindReturn).toHaveCSS("filter", "none", { timeout: 2000 });
     await expect(kindReturn).toHaveCSS("transform", "none", { timeout: 2000 });
   } finally {
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
+    if (heldWith === "mouse") {
+      await page.mouse.up();
+    } else {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    }
   }
 
   await expect(kindReturn).toBeDisabled();
