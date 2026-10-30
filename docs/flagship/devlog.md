@@ -7,6 +7,113 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-10-30 — Blind AI-stranger playtest #4 — PASSED → M3 (Episode 1) CLOSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`e03b9b7` (includes #2578, the fix for #2577) through the same harness as M2:
+a 390×844 headless phone page with touch on, screenshots only after the DOM
+settles, actions only by tapping visible text or a screen position. 9 commands,
+08:3xZ. Nothing read the DOM state or `window.__game`.
+
+**Path:** Safe delivery · low risk → hold Blue packet (no pull, so the seal stays
+whole) → I ran early → Deliver packet → (wait) → Kind return → Ask for next job →
+Take the second packet → Light the vigil.
+
+**"How did your story end, and why?" (verbatim, unprompted):**
+> Episode 1 ended well. I delivered the blue packet for Io with the seal unbroken,
+> and Io trusted me with a second job: a red tag for Saint Orra. I lit Saint
+> Orra's vigil. The ending says "The Bell Archive rings Orra's name true," Io keeps
+> the packet recorded as sealed, and the "South district light: lit." As far as I
+> can tell it ended this way because the seal held and I chose care: safe
+> delivery, a kind return, and taking the next packet. That earned Io's trust,
+> and lighting the vigil lit the district. Rushing ahead ("I ran early") only got
+> a mild warning.
+
+**False-memory check (operator, against the screenshots):** none.
+- "You accepted the red tag for Saint Orra": true. The player tapped "Take the
+  second packet" right after Io said "Take the red tag to Saint Orra … Second
+  packet … Take it if you mean to be remembered", and Io answered "Good. Take the
+  red tag." The player's own answer names the red-tag job.
+- "Seal intact": true. The control says "Hold and pull to break it"; the player
+  held without pulling.
+- "You found the box anyway…": true in fiction. The player tapped "I ran early",
+  which skips Io's route (same call as playtest #3).
+
+**Not memory claims, carried over (P2):** a newly rendered button looks
+pre-selected under the last tap and keeps the highlight after a different tap
+(#2583); the ending card keeps "Choose before you leave…" and shows the recall
+line twice (#2584).
+
+**Automated half:** `main-e2e` green on `e03b9b7` (run 41026135199), which
+includes `aftersign/e2e/episode-one-ending-served.spec.ts`.
+
+**Verdict:** PASSED. The answer names the ending and ties it to what the player
+did (the seal, the red tag, the vigil), and Io, Saint Orra and the ending card
+state no false memory. M3 is closed (BRIEF, operator decision). Kyoung approved
+closing with #2583/#2584 as follow-ups.
+
+## 2026-10-30 — Blind AI-stranger playtest #3 — regression run, NOT PASSED
+
+Deployed `54040a8` again (the #2577 fix had not shipped), 06:36–06:39Z, 11
+commands, same harness. **Path:** hold Blue packet (seal kept) → Lit stair → Carry
+the fragile packet → Deliver packet → Kind return → Ask for next job → Ask what
+changed → Light the vigil. No accept tap.
+
+**Answer (verbatim):**
+> I carried the blue packet back with its seal unbroken, by the lit stair, and
+> returned it kindly. Io trusted me for that and offered more work. I asked what
+> had changed, then chose to light Saint Orra's vigil, and Episode 1 ended. The
+> Bell Archive rang Saint Orra's true name, Io kept the sealed packet in the
+> record, and the south district light was lit. That happened because I kept the
+> seal and lit the vigil. The ending also says I accepted the red tag, which I
+> never did.
+
+**Grade:** NOT PASSED. The card said "You accepted the red tag for Saint Orra"
+(twice) on a second path, which showed the cause: "Ask for next job" itself armed
+the red tag. Fixed by #2578 (a separate accept fact set only by the accept tap).
+Full record: #2577.
+
+## 2026-10-30 — Blind AI-stranger playtest #2 — NOT PASSED
+
+Deployed `54040a8` (includes #2569), 05:37–05:40Z, 9 commands. **Path:** Safe
+delivery · low risk → Blue packet → Lit stair → I listened → Deliver packet → Kind
+return → Ask for next job → Ask what changed → Light the vigil.
+
+**Answer (verbatim):**
+> I was a courier for someone called Io. I took the "Safe delivery · low risk"
+> job, kept the blue packet's seal closed, went by the lit stair, chose "I
+> listened", and delivered it. Io said I had earned trust twice: the seal was
+> unbroken and I had waited for the whole route. I picked "Kind return", asked for
+> the next job, and was offered a red tag for Saint Orra. I asked what had
+> changed, then tapped "Light the vigil". That ended Episode 1 straight away. The
+> Bell Archive rang Saint Orra's true name, the blue packet was recorded as
+> sealed, and the south district light was lit. I never actually carried the red
+> tag anywhere; lighting the vigil just closed the episode.
+
+**Grade:** NOT PASSED on "no false memory": "You accepted the red tag for Saint
+Orra" with no accept tap. #2569's control fix held. Filed #2577.
+
+## 2026-10-29 — Blind AI-stranger playtest #1 (M3 closeout) — NOT PASSED
+
+Deployed `5a2591c`, ~21:15Z, 8 actions. **Path:** kept the seal → Lit stair →
+Deliver packet → Kind return → Ask for next job → Take the second packet → Light
+the vigil.
+
+**Answer (verbatim):**
+> My story ended with "Episode 1 — complete". The Bell Archive rang Saint Orra's
+> true name, the south district light was lit, and Io recorded the blue packet as
+> sealed. As far as I can tell, it ended that way because I never broke the seal
+> on the first packet: I tapped to keep it and delivered it whole, so Io trusted
+> me. Then I lit Saint Orra's vigil, and that seems to have ended the episode on
+> the spot. I never actually carried the red tag to Saint Orra, so the ending felt
+> sudden. It credits me with a delivery I don't remember making.
+
+**Grade:** NOT PASSED. Story controls stayed live after the ending, and "I kept
+that clean handoff beside Orra's name" read as a delivery that never happened.
+Fixed by #2569. Full record: #2568.
+
+---
+
 ## 2026-10-08 — Player-facing kiosk language cleanup
 
 Renamed the kiosk choices from "Acknowledge route" / "Skip acknowledgment" to

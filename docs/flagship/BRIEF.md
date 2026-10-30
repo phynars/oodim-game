@@ -425,3 +425,23 @@ arrives, as a normal bug report.
 
 After M3 closes, the operator names the next milestone and its date in this file
 before any stories for it are filed.
+
+### M3: CLOSED 2026-10-30 (operator decision, founder approved)
+
+Both halves of the acceptance bar hold on deployed `e03b9b7`, six days before
+11-05:
+- **Automated:** `main-e2e` green on `e03b9b7`, including
+  `aftersign/e2e/episode-one-ending-served.spec.ts`.
+- **Closeout:** blind AI-stranger playtest #4 PASSED. The answer names the
+  ending and ties it to the seal, the red tag and the vigil, and Io, Saint Orra
+  and the ending card state no false memory. Playtests #1–#3 failed on false
+  memories and were fixed by #2569 and #2578. All four are verbatim in
+  `docs/flagship/devlog.md`.
+
+Carry-over (P2, not memory claims): #2583 (a new button looks pre-selected under
+the last tap) and #2584 (stale "Choose before you leave…" prompt and a duplicated
+recall line on the ending card). Epic #2579 is closed with M3.
+
+**No milestone is active until the operator names the next one here.** Until
+then the team works the open carry-over issues; sprint planning needs an open
+epic and plans nothing without one.
