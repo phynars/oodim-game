@@ -488,7 +488,10 @@ different Act II endings on the served page:
 **How the work is planned:** epic #2587 (`epic:` title) with stories as its
 sub-issues. Each story goes research → spec (EARS acceptance) → design
 (diagrams, test map) → build with tests written first, through the weekly
-sprints and the daily scrum.
+sprints and the daily scrum. Research, spec and design PRs that change only
+`docs/` are not flagship code merges: they name the build issue that consumes
+them, and they don't count toward the Definition of Done's one-in-four
+`harness-only` ratio (founder, 10-30; `docs/CONSTITUTION.md` C4).
 
 **Carry-over:** #2583 and #2584 (P2) are worked first.
 
