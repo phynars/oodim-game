@@ -1248,6 +1248,17 @@ const state = {
     // board uses this durable handoff marker to keep Io's red-tag route in
     // view instead of silently replacing the job at the round boundary.
     secondPacketHandoffAccepted: Boolean(stored?.player?.secondPacketHandoffAccepted),
+    // #2577: the explicit acceptance fact for the Episode 1 ending. Set
+    // ONLY by the visible "Take the second packet" (`accept-second-packet`)
+    // tap. Distinct from `secondPacketHandoffAccepted`, which
+    // `ask-for-next-job` also arms so delivery.id / the round-two board /
+    // restore fallbacks keep the red-tag job identity. Strict `=== true`
+    // so legacy saves without the field never claim an acceptance.
+    // A save that already committed the TRUE ending (pre-#2577) keeps it:
+    // that cause was the recorded outcome, so reload must not rewrite it.
+    redTagAccepted:
+      stored?.player?.redTagAccepted === true
+      || stored?.story?.endingCause === "sealed-and-tagged",
     // The action Orra made available after the red-tag delivery. This is
     // persisted with the player record, so a reload cannot turn one ending
     // route into the other through browser-local state.
@@ -1568,7 +1579,7 @@ const lineForBeat = () => {
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
-      redTagCarried: state.delivery.id === "red-tag",
+      redTagCarried: state.player.redTagAccepted === true,
     });
     // Reload path: re-render the ending card and re-publish
     // `story.endingId` onto window.__game so a restored session
@@ -3037,11 +3048,12 @@ const renderText = () => {
   }
 
   // M3-E1 (#2261) — Episode 1 vigil surface visibility. The two
-  // vigil buttons appear at the `io-next-job` beat, but only AFTER
-  // the player has accepted the red-tag handoff (either via
-  // `accept-second-packet` or `ask-for-next-job`'s inline arming,
-  // both of which flip `state.player.secondPacketHandoffAccepted`
-  // and set `state.delivery.id = "red-tag"`). Soren's blocker on
+  // vigil buttons appear at the `io-next-job` beat whether or not
+  // the player has tapped `accept-second-packet` (#2577): the red-tag
+  // offer is visible, and declining to take it is a real choice that
+  // resolves to the `red-tag-withheld` ending. Only the explicit
+  // accept tap sets `state.player.redTagAccepted`, which is the sole
+  // input the ending resolver uses for the red-tag axis. Soren's blocker on
   // iter-5 was that the ending committed only through a harness
   // hook; this surface closes the gap. Off-beat (and once the ending
   // has committed) the container is hidden so the vigil never
@@ -3051,7 +3063,6 @@ const renderText = () => {
   if (vigilChoice) {
     const vigilVisible =
       isNextJobBeat
-      && Boolean(state.player.secondPacketHandoffAccepted)
       && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
@@ -4276,7 +4287,11 @@ const choose = async (choiceId) => {
     if (choiceId === "light-vigil" || choiceId === "spare-vigil") {
       const ending = resolveEpisodeOneEnding({
         packetSealed: state.packet.sealed,
-        redTagCarried: state.delivery.id === "red-tag",
+        // #2577: read ONLY the explicit acceptance fact. `ask-for-next-job`
+        // arms `secondPacketHandoffAccepted` without any accept tap, so
+        // reading it here would hand every run the "accepted" ending.
+        // Must match the reload path in lineForBeat().
+        redTagCarried: state.player.redTagAccepted === true,
       });
       state.story.endingId = ending.id;
       state.story.endingCause = ending.cause ?? null;
@@ -4320,10 +4335,10 @@ const choose = async (choiceId) => {
     // M3-E1 note (PR #2265 iter-6 — Soren AI006): the M3-E1
     // tap-played ending spec `episode-one-ending-served.spec.ts`
     // does NOT dispatch `meet-orra`. The vigil tray's render gate
-    // (above, ~line 2464) is `isNextJobBeat &&
-    // secondPacketHandoffAccepted && !endingId` — no `meet-orra`
-    // prerequisite — so the ending spec goes straight from the
-    // handoff tap into `#lightVigilButton`. This branch persists
+    // (renderText) is `isNextJobBeat && !endingId` — no `meet-orra`
+    // prerequisite and, since #2577, no acceptance prerequisite — so
+    // the ending spec goes straight from the io-next-job beat into
+    // `#lightVigilButton`. This branch persists
     // only to keep `orra-served-recognition.spec.ts` reachable.
     //
     // Reload safety: the served-recognition spec re-dispatches
@@ -4442,11 +4457,14 @@ const choose = async (choiceId) => {
     // Io's handoff is a promise attached to the packet already on the
     // counter. Arm its identity now, not only after the optional
     // “Take the second packet” acknowledgement: a player can touch the
-    // visible packet as soon as the red-tag job is spoken. This is
-    // also what the Episode 1 ending resolver reads
-    // (`state.delivery.id === "red-tag"`) when picking ending-true vs
-    // ending-false — removing this arming would strand every run on
-    // the light-out branch.
+    // visible packet as soon as the red-tag job is spoken. Other
+    // readers depend on this arming: `deliver-packet` at io-next-job
+    // picks `delivery.id` from it, and the round-two board keeps the
+    // "Red tag — Saint Orra" label from it. Do NOT disarm it here.
+    //
+    // #2577: this arming is NOT an acceptance. The Episode 1 ending
+    // reads only `state.player.redTagAccepted`, which is set solely by
+    // the visible "Take the second packet" (`accept-second-packet`) tap.
     state.player.secondPacketHandoffAccepted = true;
     state.delivery = { id: "red-tag", outcome: "unknown" };
     if (packetButton) {
@@ -4487,6 +4505,9 @@ const choose = async (choiceId) => {
         // reach `packet-offered`, and the beat-transition continues to
         // live in the `deliver-packet` branch (idempotent re-arm there).
         state.player.secondPacketHandoffAccepted = true;
+        // #2577: the explicit acceptance fact — the only input the
+        // Episode 1 ending resolver accepts for "you accepted the red tag".
+        state.player.redTagAccepted = true;
         state.delivery = { id: "red-tag", outcome: "unknown" };
         if (packetButton) {
           packetButton.textContent = "Red tag — Saint Orra";

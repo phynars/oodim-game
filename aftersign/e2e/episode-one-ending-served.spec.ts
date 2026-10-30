@@ -44,8 +44,8 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //   • `light-vigil` / `spare-vigil` ARE rendered buttons as of this
 //     PR — `#lightVigilButton` + `#spareVigilButton` inside the new
 //     `#vigilChoice` tray (aftersign/index.html). The tray appears
-//     at the `io-next-job` beat once `secondPacketHandoffAccepted`
-//     is true. The shipped document-level delegate in
+//     at the `io-next-job` beat whether or not the red tag has been
+//     accepted (#2577). The shipped document-level delegate in
 //     `aftersign/main.js` routes a click on either button through
 //     the canonical `choose()` seam the input adapter would land
 //     on for a rendered tap — no runtime branch is bypassed.
@@ -53,10 +53,10 @@ import { performPacketGesture } from "./helpers/packetGesture";
 //     can only be committed through a harness call, not by a
 //     player").
 //   • The vigil tray's visibility is gated on
-//     `isNextJobBeat && secondPacketHandoffAccepted && !endingId`
-//     (aftersign/main.js:2464-2472). There is NO `meet-orra`
-//     prerequisite — the tray appears the moment the handoff is
-//     accepted, which is what `accept-second-packet` below does.
+//     `isNextJobBeat && !endingId` (aftersign/main.js renderText).
+//     There is NO `meet-orra` prerequisite and, since #2577, no
+//     acceptance prerequisite. The ending's red-tag axis reads only
+//     `player.redTagAccepted`, set solely by `accept-second-packet`.
 //     The spec therefore taps straight from the handoff into
 //     `#lightVigilButton`; no dispatch of `meet-orra` through the
 //     harness input seam is required or performed (fixes Soren's
@@ -255,6 +255,7 @@ async function expectEndingOnlyControls(page: Page): Promise<void> {
 async function runToEnding(
   page: Page,
   outcome: "sealed" | "opened",
+  acceptRedTag = true,
 ): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, outcome);
@@ -281,11 +282,18 @@ async function runToEnding(
   // `state.delivery = { id: "red-tag", outcome: "unknown" }` lives
   // in aftersign/main.js's `choose()` under this choice id — the
   // same hunk this PR's diff comments on.
-  await tapChoice(page, "accept-second-packet");
+  if (acceptRedTag) {
+    await tapChoice(page, "accept-second-packet");
+  } else {
+    await expect(
+      page.locator('button[data-choice-id="accept-second-packet"]'),
+      "the unaccepted red-tag offer must be visibly available",
+    ).toBeVisible({ timeout: WAIT_MS });
+  }
 
-  // Vigil tap. The vigil tray's visibility flips to `true` at
-  // `io-next-job` once `secondPacketHandoffAccepted` is set —
-  // which `accept-second-packet` above does. No `meet-orra`
+  // Vigil tap. Since #2577 the vigil tray is visible at `io-next-job`
+  // whether or not the tag was accepted; the ending reads only
+  // `player.redTagAccepted`, set by the accept tap above. No `meet-orra`
   // prerequisite exists in the shipped renderText() gate (see
   // aftersign/main.js:2464-2472), so the funnel skips straight
   // from the handoff tap to the vigil button. The click lands
@@ -321,7 +329,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     // #2517: the ending's `line` renders as the visible outcome sentence.
     await expect(card.locator(".episode-one-ending__outcome")).toBeVisible();
     await expect(card.locator(".episode-one-ending__outcome")).toHaveText(
-      "The Bell Archive rings Orra's name true. Io keeps the blue packet sealed in the record.",
+      "Io keeps the blue packet sealed in the record.",
     );
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/blue packet sealed/i);
     await expect(card.locator(".episode-one-ending__recall")).toContainText(/accepted the red tag/i);
@@ -332,6 +340,26 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     const snapshot = await readEndingSnapshot(page);
     expect(snapshot.endingId).toBe("ending-bell-true");
     expect(snapshot.endingCause).toBe("sealed-and-tagged");
+  });
+
+  test("offered red tag without an acceptance tap never becomes an accepted-memory ending", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+
+    const slot = `episode-one-ending-unaccepted-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+
+    await runToEnding(page, "sealed", false);
+
+    const card = await readEndingCard(page);
+    await expect(card).toHaveAttribute("data-ending-cause", "red-tag-withheld");
+    await expect(card).not.toContainText(/accepted the red tag/i);
+    await expect(card).toContainText(/red tag was offered/i);
+    await expect(page.locator("#line")).not.toContainText(/Choose before you leave/i);
+    await expect(card.locator(".episode-one-ending__bell")).toHaveCount(1);
+    await expect(card.locator(".episode-one-ending__outcome")).not.toContainText(/Bell Archive/i);
+    await expectEndingOnlyControls(page);
   });
 
   test("TRUE ending survives a fresh browser context on the same slot (durable restore)", async ({
@@ -393,7 +421,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     // #2517: the ending's `line` renders as the visible outcome sentence.
     await expect(card.locator(".episode-one-ending__outcome")).toBeVisible();
     await expect(card.locator(".episode-one-ending__outcome")).toHaveText(
-      "The Bell Archive rings the wrong name. The blue packet was opened, and the district light goes out.",
+      "The blue packet was opened, and the district light goes out.",
     );
 
     // The P1 the first review surfaced: Io used to say "You withheld

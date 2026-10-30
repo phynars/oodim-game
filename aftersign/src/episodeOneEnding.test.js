@@ -52,8 +52,25 @@ describe("resolveEpisodeOneEnding", () => {
     expect(ending.cause).toBe("red-tag-withheld");
     // Symmetric to the opened-packet case: the sealed-but-dropped-tag
     // run must NOT be told it opened the packet.
-    expect(ending.ioLine).toMatch(/withheld the red tag/i);
+    // #2577: the tag was offered but never accepted — Io must say so,
+    // never "you accepted the red tag".
+    expect(ending.ioLine).toMatch(/red tag was offered, but you did not accept it/i);
+    expect(ending.ioLine).not.toMatch(/accepted the red tag/i);
     expect(ending.ioLine).not.toMatch(/opened the blue packet/i);
+  });
+
+  it("#2577: only an explicit boolean true counts as acceptance (truthy markers do not)", () => {
+    for (const marker of ["red-tag", 1, {}, "true"]) {
+      const ending = resolveEpisodeOneEnding({ packetSealed: true, redTagCarried: marker });
+      expect(ending).toBe(EPISODE_ONE_ENDINGS.redTagWithheld);
+      expect(ending.ioLine).not.toMatch(/accepted the red tag/i);
+    }
+  });
+
+  it("#2577: outcome lines do not repeat the Bell Archive sentence already shown in bellLine", () => {
+    for (const ending of Object.values(EPISODE_ONE_ENDINGS)) {
+      expect(ending.line).not.toMatch(/Bell Archive/i);
+    }
   });
 
   it("prefers the packet-opened line when BOTH concrete breaks happened in one run", () => {
@@ -77,7 +94,7 @@ describe("resolveEpisodeOneEnding", () => {
     expect(EPISODE_ONE_ENDINGS.packetOpened.ioLine).toMatch(/blue packet/i);
     expect(EPISODE_ONE_ENDINGS.packetOpened.ioLine).toMatch(/opened/i);
     expect(EPISODE_ONE_ENDINGS.redTagWithheld.ioLine).toMatch(/red tag/i);
-    expect(EPISODE_ONE_ENDINGS.redTagWithheld.ioLine).toMatch(/withheld/i);
+    expect(EPISODE_ONE_ENDINGS.redTagWithheld.ioLine).toMatch(/did not accept/i);
   });
 });
 
@@ -145,7 +162,8 @@ describe("renderEpisodeOneEnding", () => {
     expect(host.querySelector("[data-ending-cause]")?.getAttribute("data-ending-cause")).toBe(
       "red-tag-withheld",
     );
-    expect(host.textContent).toMatch(/withheld the red tag/);
+    expect(host.textContent).toMatch(/red tag was offered/);
+    expect(host.textContent).not.toMatch(/accepted the red tag/);
     expect(host.textContent).not.toMatch(/opened the blue packet/);
   });
 

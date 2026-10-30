@@ -2,18 +2,19 @@
 //
 // Single source of truth for the two M3-E1 endings. The true ending
 // records only the actions the player actually took: they kept the blue
-// packet sealed and accepted the red tag. It must not imply a delivery to
-// Saint Orra, because the episode ends before that delivery happens.
+// packet sealed and explicitly accepted the red tag. It must not imply a
+// delivery to Saint Orra, because the episode ends before that delivery
+// happens.
 
 const ENDINGS = {
   true: Object.freeze({
     id: "ending-bell-true",
     cause: "sealed-and-tagged",
     light: "lit",
-    bellLine: "The Bell Archive rings Saint Orra's true name.",
+    bellLine: "The Bell Archive rings Orra's name true.",
     ioLine:
       "You kept the blue packet sealed. You accepted the red tag for Saint Orra.",
-    line: "The Bell Archive rings Orra's name true. Io keeps the blue packet sealed in the record.",
+    line: "Io keeps the blue packet sealed in the record.",
   }),
   packetOpened: Object.freeze({
     id: "ending-light-out",
@@ -22,7 +23,7 @@ const ENDINGS = {
     bellLine: "The Bell Archive rings for the wrong name.",
     ioLine:
       "You opened the blue packet. The archive had to guess who the dark belonged to.",
-    line: "The Bell Archive rings the wrong name. The blue packet was opened, and the district light goes out.",
+    line: "The blue packet was opened, and the district light goes out.",
   }),
   redTagWithheld: Object.freeze({
     id: "ending-light-out",
@@ -30,8 +31,8 @@ const ENDINGS = {
     light: "out",
     bellLine: "The Bell Archive rings for the wrong name.",
     ioLine:
-      "You withheld the red tag. The archive had to guess who the dark belonged to.",
-    line: "The Bell Archive rings the wrong name. The red tag was withheld, and the district light goes out.",
+      "The red tag was offered, but you did not accept it. The archive had to guess who the dark belonged to.",
+    line: "The red tag was not accepted, and the district light goes out.",
   }),
 };
 
@@ -50,7 +51,10 @@ export const resolveEpisodeOneEnding = ({
   packetSealed,
   redTagCarried,
 } = {}) => {
-  if (packetSealed && redTagCarried) {
+  // A truthy delivery id or offered-job marker is not evidence that the
+  // player accepted the visible handoff control. Only the explicit boolean
+  // stamped by that tap may authorize the red-tag memory.
+  if (packetSealed && redTagCarried === true) {
     return EPISODE_ONE_ENDINGS.true;
   }
   if (!packetSealed) {
