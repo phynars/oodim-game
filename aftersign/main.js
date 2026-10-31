@@ -1841,7 +1841,7 @@ const persistAuthoritative = async (options) => {
     facts: { ioMemory: clone(state.npcs.io.memory) },
   }).catch((err) => {
     // eslint-disable-next-line no-console
-    console.error("[aftersign save] writePlayerMemory failed", err);
+    console.warn("[aftersign player-memory] write failed; save already committed", err);
   });
 };
 
