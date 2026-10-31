@@ -184,6 +184,12 @@ test('enforcement runs on pull_request_review, never as a failing pull_request j
   const gateWf = await readFile(fileURLToPath(new URL('../.github/workflows/review-approval.yml', import.meta.url)), 'utf8');
   const onBlock = gateWf.slice(gateWf.indexOf('\non:'), gateWf.indexOf('\npermissions:'));
   assert.match(onBlock, /pull_request_review:/);
+  assert.match(onBlock, /workflow_run:\s*\n\s+workflows: \[CI\]\s*\n\s+types: \[completed\]/);
+  assert.match(gateWf, /timeout-minutes:\s*[1-5]\b/);
+  assert.match(gateWf, /timeout-minutes:\s*[1-5]\b/);
+  assert.match(gateWf, /statuses:\s*write/);
+  assert.match(gateWf, /PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \|\| github\.event\.workflow_run\.pull_requests\[0\]\.number \}\}/);
+  assert.match(gateWf, /REVIEW_GATE_MODE: \$\{\{ github\.event_name == 'workflow_run' && 'status' \|\| 'exit' \}\}/);
   const statusMode = /REVIEW_GATE_MODE:\s*status/.test(gateWf);
   if (!statusMode) {
     assert.doesNotMatch(onBlock, /^\s{2}pull_request:/m, 'exit-mode gate must not run (and fail) on pull_request');
