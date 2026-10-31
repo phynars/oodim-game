@@ -1593,8 +1593,11 @@ const lineForBeat = () => {
       typeof window !== "undefined" ? window : undefined,
       resolvedEnding,
     );
-    // The ending card owns the terminal recall. Returning it here would
-    // duplicate that sentence in the active-beat line surface.
+    // The ending card owns the terminal recall. Clear the active dialogue
+    // state as well as returning an empty line: dialogueController renders
+    // its getter after this resolver, and otherwise a prior prompt or
+    // returning-session ledger line remains visible beside the ending card.
+    state.npcs.io.lastLine = "";
     return "";
   }
   // #957: If a returning-session boot line was computed at module init
@@ -3030,9 +3033,9 @@ const renderText = () => {
   // the element yet.
   if (ioLedgerLine) {
     let ledgerFact = null;
-    if (isReturnRecognitionBeat) {
+    if (!state.story.endingId && isReturnRecognitionBeat) {
       ledgerFact = state.packet.sealed ? "sealed" : "opened";
-    } else if (isNextJobBeat) {
+    } else if (!state.story.endingId && isNextJobBeat) {
       ledgerFact = "returned";
     }
     const ledgerText = ledgerFact ? chooseIoLedgerLine(ledgerFact) : "";
@@ -3608,7 +3611,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
   }
 
-  if (isPacketDeliveredBeat) {
+  if (state.story.endingId) {
+    const packetChoiceAffordance = document.querySelector(
+      "[data-aftersign-packet-choice-affordance]",
+    );
+    if (packetChoiceAffordance) packetChoiceAffordance.remove();
+  } else if (isPacketDeliveredBeat) {
     setTextContentIfChanged(deliverButton, "Return to Io");
     stampAftersignChoice(deliverButton, "return-to-io");
     acknowledgeRouteButton.disabled = true;
@@ -4297,8 +4305,16 @@ const choose = async (choiceId) => {
       });
       state.story.endingId = ending.id;
       state.story.endingCause = ending.cause ?? null;
-      state.npcs.io.lastLine = ending.ioLine;
+      // The ending card is the terminal spoken surface; clear all earlier
+      // beat-owned copy immediately because no later render is guaranteed
+      // after this choice commits the ending.
+      state.npcs.io.lastLine = "";
       state.npcs.io.lastLineMemoryRefs = [];
+      document.querySelector("[data-aftersign-packet-choice-affordance]")?.remove();
+      if (ioLedgerLine) {
+        ioLedgerLine.textContent = "";
+        ioLedgerLine.setAttribute("data-io-ledger-fact", "");
+      }
       renderEpisodeOneEnding(document, ending);
       // Stamp `story.endingId` + `story.endingCause` onto window.__game
       // so #2259's consumer spec (and the sibling tap-driven e2e) can
