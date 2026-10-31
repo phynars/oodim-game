@@ -1138,8 +1138,11 @@ const stored = await readAuthoritativeSave({
 const playerMemoryRecord = await readPlayerMemory({
   playerId: bootstrapPlayerId,
 }).catch((err) => {
+  // Non-fatal by design: warn (not error) under a non-boot prefix so the
+  // e2e boot-error filter ("[aftersign boot]" console.error) never trips
+  // when a preview deploy has no /player-memory route (404).
   // eslint-disable-next-line no-console
-  console.error("[aftersign boot] readPlayerMemory failed", err);
+  console.warn("[aftersign player-memory] read unavailable; using save memory", err);
   return { facts: {} };
 });
 const durableIoMemory = Array.isArray(playerMemoryRecord?.facts?.ioMemory)
