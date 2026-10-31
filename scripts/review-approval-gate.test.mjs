@@ -164,6 +164,39 @@ test('exit mode (review events only): 1 without approval, 0 with one, no status 
   assert.equal(await run({ env: ENV, fetchImpl: approved.fetchImpl, ...quiet }), 0);
 });
 
+// review mode (pull_request_review events): must POST the status first — so an
+// approval overwrites the pending status a CI-completion run left on the head —
+// and then fail the job on a missing approval. On main, 'review' fell through
+// to exit mode and posted nothing, so the statuses assertions fail there.
+test('review mode: posts status, then 1 without approval and 0 with one', async () => {
+  const blocked = fakeGitHub({
+    files: ['.github/workflows/ci.yml'],
+    reviews: [review('phynars-oodim', 'CHANGES_REQUESTED', '2026-10-30T01:00:00Z')],
+  });
+  const env = { ...ENV, REVIEW_GATE_MODE: 'review' };
+  assert.equal(await run({ env, fetchImpl: blocked.fetchImpl, ...quiet }), 1);
+  assert.deepEqual(
+    blocked.statuses.map((s) => [s.sha, s.context, s.state]),
+    [['abc123', STATUS_CONTEXT, 'pending']],
+  );
+
+  // Sequence: CI-completion run (status mode) leaves pending, then the
+  // approval review event (review mode) must flip the same context to success.
+  const reviews = [];
+  const gh = fakeGitHub({ files: ['.github/workflows/ci.yml'], reviews });
+  assert.equal(await run({ env: { ...ENV, REVIEW_GATE_MODE: 'status' }, fetchImpl: gh.fetchImpl, ...quiet }), 0);
+  assert.equal(gh.statuses.at(-1).state, 'pending');
+  reviews.push(review('phynars-oodim', 'APPROVED', '2026-10-30T02:00:00Z'));
+  assert.equal(await run({ env, fetchImpl: gh.fetchImpl, ...quiet }), 0);
+  assert.deepEqual(
+    gh.statuses.map((s) => [s.sha, s.context, s.state]),
+    [
+      ['abc123', STATUS_CONTEXT, 'pending'],
+      ['abc123', STATUS_CONTEXT, 'success'],
+    ],
+  );
+});
+
 test('author comes from the PR API: a wrong PR_AUTHOR env cannot unlock self-approval', async () => {
   const gh = fakeGitHub({
     files: ['.github/workflows/ci.yml'],

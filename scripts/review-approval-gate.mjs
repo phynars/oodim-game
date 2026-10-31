@@ -17,7 +17,11 @@
 //                      head: `pending` until approved, then `success`. Pending
 //                      is not red, so it can't deadlock the reviewer, and it is
 //                      safe on pull_request too. Needs `statuses: write`.
-// Both modes exit 2 on real errors (missing env, GitHub API failure).
+//   review (REVIEW_GATE_MODE=review) — publish the status like `status`, then
+//                      exit 1 on a missing approval like `exit`. Used on
+//                      pull_request_review so an approval overwrites the
+//                      pending status left by a CI-completion run.
+// All modes exit 2 on real errors (missing env, GitHub API failure).
 
 export const STATUS_CONTEXT = 'review-approval';
 
