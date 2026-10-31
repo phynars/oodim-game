@@ -4,7 +4,66 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-10-24 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-10-31 (supersedes everything below; sections below are history)
+
+Authority: `docs/flagship/BRIEF.md` § "Active milestone: M4 — Act II, the red tag reaches Saint Orra" (operator decision under founder delegation, 2026-10-30). This plan quotes the brief and does not restate its bar.
+
+### M3 — Episode 1: CLOSED 2026-10-30
+
+Deadline: 2026-11-05 (binding). Closed six days early per the brief: `main-e2e` green on `e03b9b7` including `aftersign/e2e/episode-one-ending-served.spec.ts`, and blind AI-stranger playtest #4 passed (`docs/flagship/devlog.md`). The provisional 10-25 date in the checkpoints below is retired.
+
+### M4 — ACTIVE: after the vigil, a phone player carries the red tag to Saint Orra, carries a name to Maud at the Bell Archive, and sees the bell ring for the name they chose
+
+Deadline: 2026-11-19 (binding; sprints W45–W47)
+
+Days remaining: **19** as of 2026-10-31.
+
+Founder bar, verbatim (brief):
+
+> **M4 metric: memory decides what the bell rings.** Saint Orra and Maud react to
+> facts the game already stores, and two different memory records reach two
+> different Act II endings on the served page
+
+Definition of done (from the brief's acceptance, played not driven):
+1. **Automated:** a served-page Playwright spec at 390×844 drives boot → Episode 1 ending → red tag to Orra → name to Maud → bell, by taps on visible controls only; reaches both Act II endings from two memory records; restores the ending in a fresh browser context; green in `main-e2e` on the closeout revision.
+2. **Closeout:** blind AI-stranger playtest on the deployed revision answers *"What did the bell ring, and why?"* naming the outcome and tying it to their action. No false memory from Io, Orra, Maud or the ending cards (P1, blocks closeout). Verbatim in the devlog.
+
+LoE budget: one epic (#2587), 3–4 S/M build stories. One scene, existing cast; Maud appears only at the Bell Archive. Cut list if the date nears: drop ending-card art/sound polish first, then reduce Maud's archive to a two-option name choice. Never cut below two reachable Act II endings.
+
+#### M4-E1 (#2587) — a phone player reaches a memory-decided Act II bell ending by taps on the served page
+
+Deadline: 2026-11-19 · Days remaining: 19
+
+Acceptance: the six EARS criteria in #2587 (red-tag control after the Episode 1 ending; Orra line matching the real first tap; bell + Act II ending card from archive choice × memory; same ending in a fresh context; no false memory; served Act II spec green in `main-e2e`).
+
+| Order | Player outcome | Issue | LoE | Status |
+| --- | --- | --- | --- | --- |
+| 0 Gate | A phone player plays boot → Episode 1 ending → Orra → Maud → bell by taps; two records reach the two Act II endings; fresh-context restore. INTEGRATION + PLAYTEST | _to file (chunk 2)_ | M | NOT FILED. Must exist before build work proceeds. |
+| 1 | A player carries the red tag to Saint Orra and hears Orra recall their real first tap | #2597 | M | OPEN. Research task #2599 is parked in human custody. |
+| 2 | A player carries a name to Maud at the Bell Archive and sees the bell ring with a lit or dark district light | #2598 | M | OPEN. Research task #2600 is parked in human custody. Depends on #2597. |
+
+Harness-only stories: 0 of 3.
+
+Time-first sequencing (19 days): #2597 rough-and-wired by **2026-11-07** (W45); #2598 by **2026-11-13** (W46); the gate spec green on main by **2026-11-15**; closeout playtest by **2026-11-17**, leaving two days for false-memory fixes. Research/spec docs for #2597/#2598 must not stall build: if #2599/#2600 are still parked on 11-03, build from `docs/flagship/concept.md` Act II directly.
+
+Carry-over #2583 / #2584 (P2): not on the open board as of 2026-10-31.
+
+Story metadata header for M4-E1 issues:
+
+```text
+Milestone: M4 — after the vigil, a phone player carries the red tag to Orra and a name to Maud, and sees the bell ring for the name they chose
+Epic: M4-E1 (#2587) — a phone player reaches a memory-decided Act II bell ending by taps on the served page
+Deadline: 2026-11-19 · Days remaining: <n> as of <date>
+```
+
+### Drift (open board, 2026-10-31)
+
+- **#2601**: review-approval check hangs. Pipeline/operator lane, no player outcome.
+- **#2570**: restore a trustworthy current-main E2E release gate. Infrastructure. The brief puts it in the operator lane, but M4 closeout needs a green `main-e2e`, so it blocks closeout indirectly.
+- **#2080**: audit tracking. Operator lane.
+- **#2599 / #2600**: not drift. Research tasks for #2597 / #2598, parked in human custody.
+
+## Planning checkpoint — 2026-10-24 (history; superseded by 2026-10-31)
 
 Active milestone: **M3 — Episode 1: a phone player finishes a full Episode 1 arc that memory shapes, and can retell how it ended.**
 
