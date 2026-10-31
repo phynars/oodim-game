@@ -1275,6 +1275,14 @@ const state = {
     redTagAccepted:
       stored?.player?.redTagAccepted === true
       || stored?.story?.endingCause === "sealed-and-tagged",
+    // #2597: persist the first visible second-packet choice; the ending
+    // recall must name what this player actually tapped.
+    redTagFirstTap:
+      stored?.player?.redTagFirstTap === "take-second-packet"
+        || stored?.player?.redTagFirstTap === "ask-what-changed"
+        ? stored.player.redTagFirstTap
+        : null,
+    redTagDeliveredToSaintOrra: stored?.player?.redTagDeliveredToSaintOrra === true,
     // The action Orra made available after the red-tag delivery. This is
     // persisted with the player record, so a reload cannot turn one ending
     // route into the other through browser-local state.
@@ -1613,6 +1621,7 @@ const lineForBeat = () => {
     // on a matching id+cause), so this is safe to call every tick.
     if (typeof document !== "undefined") {
       renderEpisodeOneEnding(document, resolvedEnding);
+      renderSaintOrraEndingRecall();
     }
     publishEpisodeOneEndingToWindowGame(
       typeof window !== "undefined" ? window : undefined,
@@ -2518,6 +2527,43 @@ const endingHideableControls = () =>
     document.getElementById("acknowledgeRouteButton"),
     document.getElementById("skipRouteButton"),
   ].filter(Boolean);
+
+const saintOrraRecallLine = () => {
+  if (state.player.redTagFirstTap === "take-second-packet") {
+    return "You took the red tag at once. I remember the hand that did not wait.";
+  }
+  if (state.player.redTagFirstTap === "ask-what-changed") {
+    return "You asked what changed before you carried it. I remember the question.";
+  }
+  return "You brought the red tag to my door. I remember the courier.";
+};
+
+const renderSaintOrraEndingRecall = () => {
+  const ending = document.querySelector("#episodeOneEnding [data-ending-id]");
+  if (!ending) return;
+  let control = document.getElementById("carryRedTagToSaintOrra");
+  let recall = document.getElementById("saintOrraRedTagRecall");
+  if (state.player.redTagDeliveredToSaintOrra) {
+    control?.remove();
+    if (!recall) {
+      recall = document.createElement("p");
+      recall.id = "saintOrraRedTagRecall";
+      ending.appendChild(recall);
+    }
+    setTextContentIfChanged(recall, saintOrraRecallLine());
+    return;
+  }
+  recall?.remove();
+  if (!control) {
+    control = document.createElement("button");
+    control.type = "button";
+    control.id = "carryRedTagToSaintOrra";
+    ending.appendChild(control);
+  }
+  control.style.pointerEvents = "auto";
+  control.setAttribute("data-choice-id", "carry-red-tag-to-saint-orra");
+  setTextContentIfChanged(control, "Carry the red tag to Saint Orra");
+};
 
 const renderText = () => {
   dialogueController.render({
@@ -4354,6 +4400,7 @@ const choose = async (choiceId) => {
         ioLedgerLine.setAttribute("data-io-ledger-fact", "");
       }
       renderEpisodeOneEnding(document, ending);
+      renderSaintOrraEndingRecall();
       // Stamp `story.endingId` + `story.endingCause` onto window.__game
       // so #2259's consumer spec (and the sibling tap-driven e2e) can
       // read the shipped ending by id without reaching into DOM text.
@@ -4537,6 +4584,11 @@ const choose = async (choiceId) => {
     if (state.scene.beat !== "io-next-job") {
       return;
     }
+    if (state.player.redTagFirstTap === null) {
+      state.player.redTagFirstTap = choiceId === "accept-second-packet"
+        ? "take-second-packet"
+        : "ask-what-changed";
+    }
     const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
       returnReason: state.player.returnReason,
       playerName: state.player.name,
@@ -4622,6 +4674,16 @@ const choose = async (choiceId) => {
     // button without the committed stamp and re-enable it. The commit
     // is terminal for this beat; the DOM mutation above IS the surface
     // the player and the spec read.
+    publishState();
+    return;
+  }
+
+  if (choiceId === "carry-red-tag-to-saint-orra") {
+    if (!state.story.endingId || state.player.redTagDeliveredToSaintOrra) return;
+    state.player.redTagDeliveredToSaintOrra = true;
+    markStateDirty();
+    await forceSave();
+    renderSaintOrraEndingRecall();
     publishState();
     return;
   }
@@ -5911,11 +5973,15 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (!target || typeof target.closest !== "function") return;
   const vigilButton = target.closest(
-    "button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled])",
+    "button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled]), button[data-choice-id=\"carry-red-tag-to-saint-orra\"]:not([disabled])",
   );
   if (!vigilButton) return;
   const vigilId = vigilButton.getAttribute("data-choice-id");
-  if (vigilId !== "light-vigil" && vigilId !== "spare-vigil") return;
+  if (
+    vigilId !== "light-vigil"
+    && vigilId !== "spare-vigil"
+    && vigilId !== "carry-red-tag-to-saint-orra"
+  ) return;
   // Fire-and-forget; `choose()` is async but all consumers (adapter
   // click handlers above, harness `game.input.choose`) call it
   // without awaiting the returned promise. Errors are intentionally
