@@ -10,8 +10,8 @@ What makes Maud Underbell's Bell Archive delivery legible as a player action and
 
 | # | Source (link) | Read | What it tells us |
 |---|---|---|---|
-| R1 | [Smithsonian Magazine, “Why Do Bells Ring?”](https://www.smithsonianmag.com/history/why-do-bells-ring-180963237/) | 2026-10-31 | Bells are public signals: the moment of ringing can mark an event for people beyond the ringer. The scene should make the ring a visible consequence of delivering the name, not ambient decoration. |
-| R2 | [The Metropolitan Museum of Art, “Bells”](https://www.metmuseum.org/art/collection/search/503563) | 2026-10-31 | A bell’s form and use connect sound, ritual, and collective attention. A single clear visual state can support the bell’s meaning when sound is unavailable or muted. |
+| R1 | [Wikipedia, “Church bell”](https://en.wikipedia.org/wiki/Church_bell) | 2026-10-31 | A church bell is "designed to be heard outside the building"; "before modern communications, church bells were a common way to call the community together". The death knell's striking pattern "could effectively identify who had just died" — a ring that announces a specific person to the community. The scene should make the ring a visible consequence of delivering the name, not ambient decoration. |
+| R2 | [Game Accessibility Guidelines, “Ensure no essential information is conveyed by sounds alone”](https://gameaccessibilityguidelines.com/ensure-no-essential-information-is-conveyed-by-sounds-alone/) | 2026-10-31 | Essential information must not depend on sound, because players may have hearing loss, noisy surroundings, poor speakers, or sound muted; it "needs to be conveyed by another means. Usually visually, through an icon, effect, text". Test by playing through with sound muted. |
 
 Internal references:
 
@@ -22,7 +22,7 @@ Internal references:
 
 - **Adopt:** Make the name handoff to Maud a distinct, visible player action, followed by an unmistakable bell-ring state and one district-light state. This makes the consequence readable as a public signal rather than incidental ambience. (R1)
 - **Adopt:** Pair the bell result with a lit or dark visual district-light state so the beat remains comprehensible when audio is muted. (R2)
-- **Reject:** Treating the bell as a background sound with no visible state change, because it would not establish that the delivery caused the outcome. (R1)
+- **Reject:** Treating the bell as a background sound with no visible state change, because it would not establish that the delivery caused the outcome, and a sound-only result fails a muted play-through. (R1, R2)
 - **Reject:** Claiming that a lit light proves moral correctness. The eventual story spec must describe the displayed state and the player’s actual handoff, not infer an unshown judgment.
 
 ## Open questions for the spec
