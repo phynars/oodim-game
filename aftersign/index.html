@@ -854,12 +854,17 @@
           0 0 24px rgba(0, 204, 255, 0.16);
       }
 
-      button:active {
-        transform: translate3d(0, 1px, 0) scale(0.975);
-        filter: brightness(1.14);
-        box-shadow:
-          0 0 12px rgba(0, 204, 255, 0.16),
-          inset 0 0 18px rgba(120, 233, 255, 0.12);
+      /* A touch browser can retain :active while a beat replaces the control
+         beneath the previous finger position. Reserve this generic preview
+         for mouse pointers so retained touch feedback cannot style it. */
+      @media (hover: hover) and (pointer: fine) {
+        button:active {
+          transform: translate3d(0, 1px, 0) scale(0.975);
+          filter: brightness(1.14);
+          box-shadow:
+            0 0 12px rgba(0, 204, 255, 0.16),
+            inset 0 0 18px rgba(120, 233, 255, 0.12);
+        }
       }
 
       .packet-button {
