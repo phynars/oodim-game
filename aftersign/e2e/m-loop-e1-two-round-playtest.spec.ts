@@ -248,6 +248,10 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
       ).not.toEqual(recordAOfferIds);
 
       // Record A's memory must be untouched by record B's play.
+      // pageA has been a background tab since pageB opened; a hidden
+      // page can have its frame loop throttled, so `scene.ready` may
+      // never flip within WAIT_MS. Foreground it before reloading.
+      await pageA.bringToFront();
       await pageA.reload({ waitUntil: "load" });
       await waitForReady(pageA);
       await waitForBeat(pageA, "packet-offered");
