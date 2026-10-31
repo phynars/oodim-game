@@ -186,12 +186,12 @@ test('enforcement runs on pull_request_review, never as a failing pull_request j
   assert.match(onBlock, /pull_request_review:/);
   assert.match(onBlock, /workflow_run:/);
   assert.match(gateWf, /statuses:\s*write/, 'status/review modes POST commit statuses');
-  // Review events must publish the status (F1); `exit` would leave a stale pending.
-  assert.doesNotMatch(gateWf, /REVIEW_GATE_MODE:.*'exit'/);
-  const statusMode = /REVIEW_GATE_MODE:\s*status/.test(gateWf);
-  if (!statusMode) {
-    assert.doesNotMatch(onBlock, /^\s{2}pull_request:/m, 'exit-mode gate must not run (and fail) on pull_request');
-  }
+  // Both event types must publish the status: workflow_run -> 'status',
+  // pull_request_review -> 'review'. No branch may fall through to 'exit'.
+  const modeLine = gateWf.split('\n').find((l) => /^\s*REVIEW_GATE_MODE:/.test(l)) ?? '';
+  const modes = [...modeLine.matchAll(/'(\w+)'/g)].map((m) => m[1]).filter((m) => m !== 'workflow_run');
+  assert.deepEqual(modes, ['status', 'review'], `unexpected REVIEW_GATE_MODE: ${modeLine.trim()}`);
+  assert.doesNotMatch(onBlock, /^\s{2}pull_request:/m, 'the failing gate must not run on pull_request');
   assert.match(gateWf, /node scripts\/review-approval-gate\.mjs/);
 
   const ci = await readFile(fileURLToPath(new URL('../.github/workflows/ci.yml', import.meta.url)), 'utf8');
