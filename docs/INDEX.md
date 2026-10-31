@@ -32,3 +32,4 @@ One row per story, filled in as its documents land (story → research → spec 
 
 | Story | Research | Spec | Design |
 |---|---|---|---|
+| [#2597](https://github.com/phynars/oodim-game/issues/2597) Orra recalls the first tap | [research/2597-orra-recalls-first-tap.md](research/2597-orra-recalls-first-tap.md) | — | — |
