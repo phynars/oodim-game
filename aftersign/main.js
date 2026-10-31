@@ -747,6 +747,7 @@ import {
   emptySave,
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
+import { readPlayerMemory, writePlayerMemory } from "./src/runtime/playerMemory.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
@@ -1132,6 +1133,21 @@ const stored = await readAuthoritativeSave({
   );
   return null;
 });
+// Recognition facts are owned by player-memory, independently of the full
+// authoritative save. An unavailable endpoint never blocks a playable boot.
+const playerMemoryRecord = await readPlayerMemory({
+  playerId: bootstrapPlayerId,
+}).catch((err) => {
+  // Non-fatal by design: warn (not error) under a non-boot prefix so the
+  // e2e boot-error filter ("[aftersign boot]" console.error) never trips
+  // when a preview deploy has no /player-memory route (404).
+  // eslint-disable-next-line no-console
+  console.warn("[aftersign player-memory] read unavailable; using save memory", err);
+  return { facts: {} };
+});
+const durableIoMemory = Array.isArray(playerMemoryRecord?.facts?.ioMemory)
+  ? playerMemoryRecord.facts.ioMemory
+  : null;
 const packetIntent = new PacketIntentController();
 
 // #2446 — module-scoped slice state that tracks the third
@@ -1283,8 +1299,17 @@ const state = {
       // though the seed round-trip GET showed a non-empty array —
       // the "seeded slots hydrate identical offered-actions" failure
       // Soren pinned on PR #1642.
+      // Ownership (#2612): the authoritative save is the source of truth
+      // for recognition memory whenever it carries any. Player-memory is a
+      // best-effort replica whose writes may fail (quota / 429), so it is
+      // only a FALLBACK when the save has no memory — a stale replica can
+      // never override a fresher committed save.
       memory: Array.isArray(stored?.memory) && stored.memory.length > 0
         ? clone(stored.memory)
+        : Array.isArray(stored?.npcs?.io?.memory) && stored.npcs.io.memory.length > 0
+        ? clone(stored.npcs.io.memory)
+        : Array.isArray(durableIoMemory)
+        ? clone(durableIoMemory)
         : Array.isArray(stored?.npcs?.io?.memory)
         ? clone(stored.npcs.io.memory)
         : [],
@@ -1801,7 +1826,7 @@ const memoryFacts = () => {
 // Pure: no closure over live state; every input is passed by the
 // caller so `buildPersistPayload` remains the single owner of what
 // gets snapshotted.
-const { buildPersistPayload, persist, persistAuthoritative } = createPersistHelpers({
+const persistence = createPersistHelpers({
   state,
   slot,
   clone,
@@ -1816,6 +1841,19 @@ const { buildPersistPayload, persist, persistAuthoritative } = createPersistHelp
   getRedTagDeliveredToThirdNpc: () =>
     aftersignVerticalSlice.redTagDeliveredToThirdNpc === true,
 });
+const { buildPersistPayload, persist } = persistence;
+const persistAuthoritative = async (options) => {
+  await persistence.persistAuthoritative(options);
+  // The full snapshot is already committed. Memory replication must not make
+  // that successful player-visible save reject when its endpoint is unavailable.
+  await writePlayerMemory({
+    playerId: state.player.id,
+    facts: { ioMemory: clone(state.npcs.io.memory) },
+  }).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn("[aftersign player-memory] write failed; save already committed", err);
+  });
+};
 
 // Apply an authored per-tier feel cue (or clear it) as CSS custom
 // properties on documentElement.  These `--io-recognition-*` vars are
