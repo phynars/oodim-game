@@ -9,22 +9,31 @@ name: review-approval
 # events the check runs after the decision is recorded. It is green on a
 # non-author approval and red on changes-requested or a dismissal. Before any
 # review it is absent, so branch protection sees it as pending, not failed.
-# A new push needs a fresh review event to re-attach the check to the new head.
+# CI completion also re-evaluates the current head, replacing a review check
+# that was cancelled or left in progress after an earlier review event.
 on:
   pull_request_review:
     types: [submitted, dismissed]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: read
   pull-requests: read
+  statuses: write
 
 concurrency:
-  group: review-approval-${{ github.event.pull_request.number }}
+  # Per-event group: a CI completion must not cancel an in-flight review run.
+  group: review-approval-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   review-approval:
+    # workflow_run is also raised for branch pushes; only recheck PR-associated CI.
+    if: github.event_name == 'pull_request_review' || github.event.workflow_run.pull_requests[0]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
@@ -33,6 +42,10 @@ jobs:
       - name: protected changes require a non-author approval
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          # workflow_run: publish status only (never fails the CI follow-up).
+          # pull_request_review: publish status AND fail on a missing approval,
+          # so the pending status written after CI is overwritten on approval.
+          REVIEW_GATE_MODE: ${{ github.event_name == 'workflow_run' && 'status' || 'review' }}
         run: node scripts/review-approval-gate.mjs

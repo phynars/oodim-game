@@ -17,7 +17,11 @@
 //                      head: `pending` until approved, then `success`. Pending
 //                      is not red, so it can't deadlock the reviewer, and it is
 //                      safe on pull_request too. Needs `statuses: write`.
-// Both modes exit 2 on real errors (missing env, GitHub API failure).
+//   review (REVIEW_GATE_MODE=review) — publish the status like `status`, then
+//                      exit 1 on a missing approval like `exit`. Used on
+//                      pull_request_review so an approval overwrites the
+//                      pending status left by a CI-completion run.
+// All modes exit 2 on real errors (missing env, GitHub API failure).
 
 export const STATUS_CONTEXT = 'review-approval';
 
@@ -105,7 +109,7 @@ export async function run({ env, fetchImpl = fetch, log = console.log, error = c
   if (!GH_TOKEN || !GITHUB_REPOSITORY || !PR_NUMBER) {
     throw new Error('review-approval-gate: missing GH_TOKEN/GITHUB_REPOSITORY/PR_NUMBER');
   }
-  const mode = env.REVIEW_GATE_MODE === 'status' ? 'status' : 'exit';
+  const mode = env.REVIEW_GATE_MODE === 'status' || env.REVIEW_GATE_MODE === 'review' ? env.REVIEW_GATE_MODE : 'exit';
   const base = `repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}`;
   // Author + head come from the API, not the event payload: a push after the
   // review moves the head, and the payload would be stale.
@@ -115,7 +119,7 @@ export async function run({ env, fetchImpl = fetch, log = console.log, error = c
   const reviews = await ghPaged(fetchImpl, GH_TOKEN, `${base}/reviews`);
   const result = evaluateGate({ changedFiles: files.map((f) => f.filename), reviews, author });
 
-  if (mode === 'status') {
+  if (mode === 'status' || mode === 'review') {
     const headSha = pr.head?.sha;
     if (!headSha) throw new Error('review-approval-gate: PR has no head sha');
     const status = statusFor(result);
@@ -125,10 +129,10 @@ export async function run({ env, fetchImpl = fetch, log = console.log, error = c
       description: status.description,
     });
     log(JSON.stringify({ mode, ...result, headSha, status }));
-    return 0;
+    if (mode === 'status') return 0;
+  } else {
+    log(JSON.stringify({ mode, ...result }));
   }
-
-  log(JSON.stringify({ mode, ...result }));
   if (!result.pass) {
     error('Protected changes require an APPROVED review from someone other than the PR author.');
     return 1;

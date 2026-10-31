@@ -164,6 +164,39 @@ test('exit mode (review events only): 1 without approval, 0 with one, no status 
   assert.equal(await run({ env: ENV, fetchImpl: approved.fetchImpl, ...quiet }), 0);
 });
 
+// review mode (pull_request_review events): must POST the status first — so an
+// approval overwrites the pending status a CI-completion run left on the head —
+// and then fail the job on a missing approval. On main, 'review' fell through
+// to exit mode and posted nothing, so the statuses assertions fail there.
+test('review mode: posts status, then 1 without approval and 0 with one', async () => {
+  const blocked = fakeGitHub({
+    files: ['.github/workflows/ci.yml'],
+    reviews: [review('phynars-oodim', 'CHANGES_REQUESTED', '2026-10-30T01:00:00Z')],
+  });
+  const env = { ...ENV, REVIEW_GATE_MODE: 'review' };
+  assert.equal(await run({ env, fetchImpl: blocked.fetchImpl, ...quiet }), 1);
+  assert.deepEqual(
+    blocked.statuses.map((s) => [s.sha, s.context, s.state]),
+    [['abc123', STATUS_CONTEXT, 'pending']],
+  );
+
+  // Sequence: CI-completion run (status mode) leaves pending, then the
+  // approval review event (review mode) must flip the same context to success.
+  const reviews = [];
+  const gh = fakeGitHub({ files: ['.github/workflows/ci.yml'], reviews });
+  assert.equal(await run({ env: { ...ENV, REVIEW_GATE_MODE: 'status' }, fetchImpl: gh.fetchImpl, ...quiet }), 0);
+  assert.equal(gh.statuses.at(-1).state, 'pending');
+  reviews.push(review('phynars-oodim', 'APPROVED', '2026-10-30T02:00:00Z'));
+  assert.equal(await run({ env, fetchImpl: gh.fetchImpl, ...quiet }), 0);
+  assert.deepEqual(
+    gh.statuses.map((s) => [s.sha, s.context, s.state]),
+    [
+      ['abc123', STATUS_CONTEXT, 'pending'],
+      ['abc123', STATUS_CONTEXT, 'success'],
+    ],
+  );
+});
+
 test('author comes from the PR API: a wrong PR_AUTHOR env cannot unlock self-approval', async () => {
   const gh = fakeGitHub({
     files: ['.github/workflows/ci.yml'],
@@ -184,10 +217,14 @@ test('enforcement runs on pull_request_review, never as a failing pull_request j
   const gateWf = await readFile(fileURLToPath(new URL('../.github/workflows/review-approval.yml', import.meta.url)), 'utf8');
   const onBlock = gateWf.slice(gateWf.indexOf('\non:'), gateWf.indexOf('\npermissions:'));
   assert.match(onBlock, /pull_request_review:/);
-  const statusMode = /REVIEW_GATE_MODE:\s*status/.test(gateWf);
-  if (!statusMode) {
-    assert.doesNotMatch(onBlock, /^\s{2}pull_request:/m, 'exit-mode gate must not run (and fail) on pull_request');
-  }
+  assert.match(onBlock, /workflow_run:/);
+  assert.match(gateWf, /statuses:\s*write/, 'status/review modes POST commit statuses');
+  // Both event types must publish the status: workflow_run -> 'status',
+  // pull_request_review -> 'review'. No branch may fall through to 'exit'.
+  const modeLine = gateWf.split('\n').find((l) => /^\s*REVIEW_GATE_MODE:/.test(l)) ?? '';
+  const modes = [...modeLine.matchAll(/'(\w+)'/g)].map((m) => m[1]).filter((m) => m !== 'workflow_run');
+  assert.deepEqual(modes, ['status', 'review'], `unexpected REVIEW_GATE_MODE: ${modeLine.trim()}`);
+  assert.doesNotMatch(onBlock, /^\s{2}pull_request:/m, 'the failing gate must not run on pull_request');
   assert.match(gateWf, /node scripts\/review-approval-gate\.mjs/);
 
   const ci = await readFile(fileURLToPath(new URL('../.github/workflows/ci.yml', import.meta.url)), 'utf8');
