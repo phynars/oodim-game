@@ -24,7 +24,8 @@ permissions:
   statuses: write
 
 concurrency:
-  group: review-approval-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  # Per-event group: a CI completion must not cancel an in-flight review run.
+  group: review-approval-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
