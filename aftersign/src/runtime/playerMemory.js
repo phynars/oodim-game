@@ -2,8 +2,10 @@
 //
 // Migration boundary: the authoritative save remains the complete playable
 // snapshot and continues mirroring recognition facts for legacy restore paths.
-// Player-memory is additionally read and written for returning-visit recognition;
-// it is not yet the sole durable owner of those facts.
+// Player-memory is a best-effort replica written after each committed save.
+// On boot the save's memory wins whenever present; player-memory is read only
+// as a fallback when the save carries no memory, so a failed (quota/429)
+// replica write can never restore stale memory over a fresher save.
 
 const PLAYER_MEMORY_PATH = "/player-memory";
 const PLAYER_IDENTITY_HEADER = "x-player-id";

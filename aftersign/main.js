@@ -1296,10 +1296,17 @@ const state = {
       // though the seed round-trip GET showed a non-empty array —
       // the "seeded slots hydrate identical offered-actions" failure
       // Soren pinned on PR #1642.
-      memory: Array.isArray(durableIoMemory)
-        ? clone(durableIoMemory)
-        : Array.isArray(stored?.memory) && stored.memory.length > 0
+      // Ownership (#2612): the authoritative save is the source of truth
+      // for recognition memory whenever it carries any. Player-memory is a
+      // best-effort replica whose writes may fail (quota / 429), so it is
+      // only a FALLBACK when the save has no memory — a stale replica can
+      // never override a fresher committed save.
+      memory: Array.isArray(stored?.memory) && stored.memory.length > 0
         ? clone(stored.memory)
+        : Array.isArray(stored?.npcs?.io?.memory) && stored.npcs.io.memory.length > 0
+        ? clone(stored.npcs.io.memory)
+        : Array.isArray(durableIoMemory)
+        ? clone(durableIoMemory)
         : Array.isArray(stored?.npcs?.io?.memory)
         ? clone(stored.npcs.io.memory)
         : [],
