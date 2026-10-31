@@ -256,6 +256,7 @@ async function runToEnding(
   page: Page,
   outcome: "sealed" | "opened",
   acceptRedTag = true,
+  secondPacketChoice: "accept-second-packet" | "ask-what-changed" = "accept-second-packet",
 ): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, outcome);
@@ -283,7 +284,7 @@ async function runToEnding(
   // in aftersign/main.js's `choose()` under this choice id — the
   // same hunk this PR's diff comments on.
   if (acceptRedTag) {
-    await tapChoice(page, "accept-second-packet");
+    await tapChoice(page, secondPacketChoice);
   } else {
     await expect(
       page.locator('button[data-choice-id="accept-second-packet"]'),
@@ -306,6 +307,38 @@ async function runToEnding(
 
   await waitForEndingPublished(page);
 }
+
+async function carryRedTagToSaintOrra(page: Page): Promise<void> {
+  const carry = page.locator(
+    'button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])',
+  );
+  await expect(carry).toBeVisible({ timeout: WAIT_MS });
+  await carry.click();
+}
+
+test.describe("Saint Orra red-tag recall", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
+
+  for (const [choiceId, expectedLine] of [
+    ["accept-second-packet", "You took the red tag at once. I remember the hand that did not wait."],
+    ["ask-what-changed", "You asked what changed before you carried it. I remember the question."],
+  ] as const) {
+    test(`recalls the real first tap after carrying the tag: ${choiceId}`, async ({ page }) => {
+      test.setTimeout(150_000);
+      const slot = `orra-recall-${choiceId}-${Date.now()}`;
+      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForVersion(page);
+
+      await runToEnding(page, "sealed", true, choiceId);
+      await carryRedTagToSaintOrra(page);
+      await expect(page.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
+
+      await page.reload({ waitUntil: "load" });
+      await waitForVersion(page);
+      await expect(page.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
+    });
+  }
+});
 
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
   test.describe.configure({ mode: "serial" });
