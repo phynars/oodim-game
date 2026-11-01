@@ -17,8 +17,10 @@
 //   text  — every new player-facing string literal the PR adds to a
 //           reachable file must appear in the built output. Missing → FAIL:
 //           it was tree-shaken (exported but never called on the live path).
-//   exempt — a PR-body line `served-exempt: <reason>` (e.g. a module wired
-//            in by a follow-up PR on purpose). Echoed to the summary.
+//   exempt — a PR-body line `served-exempt: <kind> <detail>` (e.g.
+//            `followup #N` for a module wired in by a later PR on purpose).
+//            Counts only with an approver's APPROVE on the head commit, never
+//            the author's own (scripts/gate-exempt.mjs, 2026-11-01).
 //
 // Local / sandbox use (agents: run this before opening a PR):
 //   node scripts/served-reach.mjs --base origin/main
@@ -28,6 +30,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { EXEMPT_KINDS, exemptFromEvent, exemptLine, exemptNote, exemptTag } from "./gate-exempt.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -40,8 +43,16 @@ const NOT_SERVED_RE =
 // aftersign/production-save-qa.mjs → `npm run test:aftersign:production-save`).
 
 export function exemptReason(body) {
-  const m = (body ?? "").match(/^\s*served-exempt:\s*(\S.*)$/im);
-  return m ? m[1].trim() : null;
+  return exemptLine(body, "served");
+}
+
+const EXEMPT_HINT = `or ask for an exemption: a 'served-exempt: <kind> <detail>' line in the PR body (kinds: ${Object.keys(EXEMPT_KINDS).join(", ")}) plus an approver's APPROVE on this head commit`;
+
+/** Only an approved exemption reaches the verdict; the rest is reported. */
+function applyExempt(ex) {
+  if (ex.state !== "none") console.log(`GATE_EXEMPT=${exemptTag("served", ex)}`);
+  if (ex.state === "invalid" || ex.state === "unapproved") console.log(`::notice title=served-reach: exemption not applied::${exemptNote(ex)}`);
+  return ex.state === "approved" ? ex.reason : null;
 }
 
 /** Changed files that must be served: source, under a product root, not test/tooling. */
@@ -203,14 +214,15 @@ function args() {
  *  but its selector was never called). Only lines a spec reached through
  *  real input count: a line first shown after a `window.__game` harness
  *  call (e.g. `input.choose`) does not (#2529). */
-function renderedRule(opt, base, ev) {
+async function renderedRule(opt, base, ev) {
   const { ui, harness } = parseRendered(existsSync(opt.rendered) ? readFileSync(opt.rendered, "utf8") : "");
   const files = git("diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`).split("\n").filter(Boolean);
   const added = clientCandidates(files).flatMap((f) => addedStrings(git("diff", "-U0", `${base}...HEAD`, "--", f)).map((text) => ({ file: f, text })));
   const unrendered = added
     .filter((a) => !inRendered(a.text, ui))
     .map((a) => ({ ...a, via: harness.find((h) => h.text.includes(squash(a.text)))?.via }));
-  const exempt = exemptReason(ev?.body);
+  const ex = await exemptFromEvent(ev?.pr, "served");
+  const exempt = applyExempt(ex);
   const d = renderedVerdict({ exempt, checked: added.length, unrendered, mode: opt.mode });
   const lines = [
     `### served-reach: rendered text (${opt.mode === "fail" ? "blocking" : "report only"})`,
@@ -219,7 +231,7 @@ function renderedRule(opt, base, ev) {
     ...unrendered.map((u) => u.via
       ? `  - shown only after harness \`window.__game.${u.via}\`, which no player can send (\`${u.file}\`): "${u.text.slice(0, 120)}"`
       : `  - never rendered by a served playtest (\`${u.file}\`): "${u.text.slice(0, 120)}"`),
-    exempt ? `- **exempt:** ${exempt}` : "",
+    ex.state !== "none" ? `- ${exemptNote(ex)}` : "",
     `- result: \`${d.result}\``,
   ].filter(Boolean);
   console.log(lines.join("\n"));
@@ -230,7 +242,7 @@ function renderedRule(opt, base, ev) {
     const what = u.via
       ? `no served playtest reached them through real input (the first was shown only after harness \`window.__game.${u.via}\`)`
       : "no served playtest rendered them";
-    console.log(`::${level} title=served-reach: new text never shown in play::${unrendered.length} new string(s) are in the build but ${what}, e.g. "${u.text.slice(0, 80)}" in ${u.file}. Bundled is not shown: wire the line into the live render path and add a served playtest (aftersign/e2e/) that plays to it with visible input (click, key, reload), or add a 'served-exempt: <reason>' line to the PR body.`);
+    console.log(`::${level} title=served-reach: new text never shown in play::${unrendered.length} new string(s) are in the build but ${what}, e.g. "${u.text.slice(0, 80)}" in ${u.file}. Bundled is not shown: wire the line into the live render path and add a served playtest (aftersign/e2e/) that plays to it with visible input (click, key, reload), ${EXEMPT_HINT}.`);
   }
   console.log(`RENDERED_REACH_RESULT=${d.result}`);
   if (d.fail) process.exitCode = 1;
@@ -240,7 +252,7 @@ function prEvent() {
   const p = process.env.GITHUB_EVENT_PATH;
   if (!p || !existsSync(p)) return null;
   const e = JSON.parse(readFileSync(p, "utf8"));
-  return e.pull_request ? { body: e.pull_request.body ?? "", base: e.pull_request.base?.sha } : null;
+  return e.pull_request ? { body: e.pull_request.body ?? "", base: e.pull_request.base?.sha, pr: e.pull_request } : null;
 }
 
 const git = (...a) => execFileSync("git", a, { cwd: REPO, encoding: "utf8", maxBuffer: 64 << 20 });
@@ -252,7 +264,7 @@ async function main() {
     const ev = prEvent();
     const base = opt.base ?? ev?.base;
     if (!base) { console.log("RENDERED_REACH_RESULT=skipped:no_base"); return; }
-    renderedRule(opt, base, ev);
+    await renderedRule(opt, base, ev);
     return;
   }
   const graph = await servedGraph();
@@ -288,7 +300,8 @@ async function main() {
       }
     }
   }
-  const exempt = exemptReason(ev?.body);
+  const ex = await exemptFromEvent(ev?.pr, "served");
+  const exempt = applyExempt(ex);
   const d = decide({ exempt, files, candidates, unreachable, missingText });
 
   const lines = [
@@ -297,16 +310,16 @@ async function main() {
     ...(opt.base && files.length === 0 ? ["- no changed files were found; if edits are uncommitted, re-run with `--files <paths>`."] : []),
     ...unreachable.map((f) => `  - not reachable from a served entry: \`${f}\``),
     ...missingText.map((m) => `  - new text not in the built game (\`${m.file}\`): "${m.text.slice(0, 120)}"`),
-    exempt ? `- **exempt:** ${exempt}` : "",
+    ex.state !== "none" ? `- ${exemptNote(ex)}` : "",
     `- result: \`${d.result}\``,
   ].filter(Boolean);
   console.log(lines.join("\n"));
   summary(lines.join("\n"));
 
   if (d.result === "unreachable") {
-    console.log(`::error title=served-reach: change never reaches players::${unreachable.join(", ")} ${unreachable.length === 1 ? "is" : "are"} not imported (directly or indirectly) by aftersign/main.js or src/server.ts, so this edit never ships. Wire it into the live code path in this PR (and assert it in an e2e that loads the built game), or add a 'served-exempt: <reason>' line to the PR body.`);
+    console.log(`::error title=served-reach: change never reaches players::${unreachable.join(", ")} ${unreachable.length === 1 ? "is" : "are"} not imported (directly or indirectly) by aftersign/main.js or src/server.ts, so this edit never ships. Wire it into the live code path in this PR (and assert it in an e2e that loads the built game), ${EXEMPT_HINT}.`);
   } else if (d.result === "text_not_shipped") {
-    console.log(`::error title=served-reach: new text is not in the built game::${missingText.length} new string(s) are missing from the production bundle, e.g. "${missingText[0].text.slice(0, 80)}" in ${missingText[0].file}. The code that uses them is never called on the live path, so the bundler dropped it. Call it from the live path, or add a 'served-exempt: <reason>' line to the PR body.`);
+    console.log(`::error title=served-reach: new text is not in the built game::${missingText.length} new string(s) are missing from the production bundle, e.g. "${missingText[0].text.slice(0, 80)}" in ${missingText[0].file}. The code that uses them is never called on the live path, so the bundler dropped it. Call it from the live path, ${EXEMPT_HINT}.`);
   }
   console.log(`SERVED_REACH_RESULT=${d.result}`);
   if (d.fail) process.exitCode = 1;

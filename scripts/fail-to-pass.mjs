@@ -10,9 +10,10 @@
 //             `bug:`, `fix:`, `feature:`, `enhancement:` or `story:`, or labeled
 //             type:bug/feature/enhancement (test-driven since 10-30, isTddIssue).
 //             Free-will, task, refactor and docs PRs are out of scope.
-//   exempt  — a PR-body line `f2p-exempt: <reason>` (e.g. a CSS-only fix
-//             with no assertable surface). The reason is echoed to the
-//             summary so review can judge it.
+//   exempt  — a PR-body line `f2p-exempt: <kind> <detail>` (e.g.
+//             `no-surface CSS-only z-index`, `flake <evidence>`). Counts only
+//             with an approver's APPROVE on the head commit, never the
+//             author's own (scripts/gate-exempt.mjs, 2026-11-01).
 //   no_test — source changed, no test file changed → FAIL ("a bug fix
 //             without a test can't show it fixed anything").
 //   test-only PR (the bug was in a spec) → skip: base-vs-head is moot.
@@ -32,6 +33,7 @@
 // line of each mode is `F2P_RESULT=<result>` for log scrapers.
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { EXEMPT_KINDS, exemptFromEvent, exemptLine, exemptNote, exemptTag } from "./gate-exempt.mjs";
 
 export const TEST_RE = /\.(test|spec)\.(ts|tsx|mjs|js)$/;
 const NON_SOURCE_RE = /(^docs\/|\.md$|^\.github\/|^LICENSE)/;
@@ -48,9 +50,10 @@ export function linkedIssues(body) {
 }
 
 export function exemptReason(body) {
-  const m = (body ?? "").match(/^\s*f2p-exempt:\s*(\S.*)$/im);
-  return m ? m[1].trim() : null;
+  return exemptLine(body, "f2p");
 }
+
+const EXEMPT_HINT = `ask for an exemption: a 'f2p-exempt: <kind> <detail>' line in the PR body (kinds: ${Object.keys(EXEMPT_KINDS).join(", ")}) plus an approver's APPROVE on this head commit`;
 
 export function classify(files) {
   const tests = files.filter((f) => TEST_RE.test(f));
@@ -104,7 +107,7 @@ const output = (k, v) => process.env.GITHUB_OUTPUT && appendFileSync(process.env
 
 function event() {
   const e = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
-  return { body: e.pull_request?.body ?? "", base: e.pull_request?.base?.sha, head: e.pull_request?.head?.sha };
+  return { body: e.pull_request?.body ?? "", base: e.pull_request?.base?.sha, head: e.pull_request?.head?.sha, pr: e.pull_request };
 }
 
 // A bug issue: its title type is `bug:` (the engine's `{type}: {subject}`
@@ -140,17 +143,24 @@ function changedFiles(base, head) {
 }
 
 async function plan() {
-  const { body, base, head } = event();
+  const { body, base, head, pr } = event();
   const issues = linkedIssues(body);
   const isBug = (await Promise.all(issues.map(issueFacts))).some(isTddIssue);
-  const exempt = exemptReason(body);
+  // Only an approved exemption reaches decide(); the rest is reported.
+  const ex = await exemptFromEvent(pr, "f2p");
+  const exempt = ex.state === "approved" ? ex.reason : null;
+  if (ex.state !== "none") {
+    output("exempt", exemptTag("f2p", ex));
+    console.log(`GATE_EXEMPT=${exemptTag("f2p", ex)}`);
+  }
+  if (ex.state === "invalid" || ex.state === "unapproved") console.log(`::notice title=fail-to-pass: exemption not applied::${exemptNote(ex)}`);
   const { tests, source } = classify(changedFiles(base, head));
   const d = decide({ isBug, exempt, tests, source });
   output("result", d.result);
   output("needs_browser", tests.some((t) => t.includes("/e2e/")) ? "true" : "false");
-  summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; test-first issue (bug/fix/feature/enhancement/story): ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${exempt ? `\n- **exempt:** ${exempt}` : ""}\n- plan: \`${d.result}\``);
+  summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; test-first issue (bug/fix/feature/enhancement/story): ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${ex.state !== "none" ? `\n- ${exemptNote(ex)}` : ""}\n- plan: \`${d.result}\``);
   if (d.result === "no_test") {
-    console.log(`::error title=fail-to-pass: change without a test::This PR closes a test-first issue (a 'bug:', 'fix:', 'feature:', 'enhancement:' or 'story:' title, or a type:bug/feature/enhancement label) and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (or add a 'f2p-exempt: <reason>' line to the PR body if the fix truly has no assertable surface).`);
+    console.log(`::error title=fail-to-pass: change without a test::This PR closes a test-first issue (a 'bug:', 'fix:', 'feature:', 'enhancement:' or 'story:' title, or a type:bug/feature/enhancement label) and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (if the fix truly has no assertable surface, ${EXEMPT_HINT}).`);
   }
   console.log(`F2P_RESULT=${d.result}`);
   if (d.fail) process.exit(1);
@@ -207,7 +217,7 @@ function run() {
     const dead = runs.filter((r) => !r.runner).map((r) => r.file).join(", ");
     console.log(`::error title=fail-to-pass: test is never run::No runner discovers ${dead} (vitest include list, playwright configs, aftersign/pure-runner.ts). Register it where CI runs it — an unrun test proves nothing.`);
   } else if (v.result === "no_repro") {
-    console.log(`::error title=fail-to-pass: test does not reproduce the bug::Every changed test PASSES against main's source, so it would not have caught this bug. Strengthen the assertion so it fails on main and passes with your fix. (A flaky-test fix can't reproduce deterministically: say so with an 'f2p-exempt: flake fix — <evidence>' line in the PR body.)`);
+    console.log(`::error title=fail-to-pass: test does not reproduce the bug::Every changed test PASSES against main's source, so it would not have caught this bug. Strengthen the assertion so it fails on main and passes with your fix. (A flaky-test fix can't reproduce deterministically: ${EXEMPT_HINT}, kind \`flake <evidence>\`.)`);
   } else if (v.result.startsWith("inconclusive")) {
     console.log(`::warning title=fail-to-pass: inconclusive::The changed test(s) fail on main only because they can't load or aren't collected there (e.g. they import something this PR adds). Prefer a test that asserts the buggy BEHAVIOUR through an existing entry point.`);
   }
