@@ -39,7 +39,7 @@ const TRUSTED = Object.freeze({
   title: "Red tag. Saint Orra's door.",
   actionLabel: "Take the red-tag job",
   summary: "Io hands you Saint Orra's red tag: darker route, cleaner pay, stranger door.",
-  ioLine: "You brought my first seal home closed. I kept the lamp burning because of that. Take the red tag to Saint Orra; I trust your hands on a door that lies.",
+  ioLine: "You brought my first seal home closed. I kept the lamp burning because you did. Take the red tag to Saint Orra; I trust your hands on a door that lies.",
   riskPrompt: "Short route, unlit. Better pay because Io has one good fact about you.",
   safeRouteLabel: "Long way — past the kiosk",
   riskyRouteLabel: "Behind the shuttered pharmacy",
