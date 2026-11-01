@@ -14,6 +14,14 @@ After the Episode 1 ending, the courier can carry Saint Orra's sealed name-case 
 4. Tapping a different name choice shows the same visible bell-ring state and an Act II ending card saying one district light goes out.
 5. The completed outcome is persisted through the game's save service; reopening the same slot in a fresh browser context shows the same ending card.
 
+## Interaction design
+
+- The onward-carry control is the sole visible transition from Saint Orra to the Bell Archive; it must remain actionable by tap at 390×844.
+- Maud's two name choices are simultaneously visible and visually separate before either is tapped. No choice may appear selected on arrival.
+- A choice resolves immediately into a stable result state: the name that was tapped, a visible bell-ring state, and exactly one district-light result.
+- The result state does not depend on audio playback. Its text and district-light state independently communicate the outcome.
+- On restore, the completed ending replaces the choice surface; the player must not be asked to choose again for that saved outcome.
+
 Narrative constraints:
 
 - Io, Orra, and Maud describe only the handoff and name choice the player actually tapped.
