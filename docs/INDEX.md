@@ -32,4 +32,4 @@ One row per story, filled in as its documents land (story → research → spec 
 
 | Story | Research | Spec | Design |
 |---|---|---|---|
-| [#2598](https://github.com/phynars/oodim-game/issues/2598) | [Bell Archive name delivery](research/2598-bell-archive-name.md) | — | — |
+| [#2598](https://github.com/phynars/oodim-game/issues/2598) | [Bell Archive name delivery](research/2598-bell-archive-name.md) | [Bell Archive name delivery](specs/2598-bell-archive-name.md) | — |
