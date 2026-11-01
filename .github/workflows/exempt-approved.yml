@@ -1,0 +1,45 @@
+name: exempt-approved
+
+# Gate exemptions need a second party (oodim engine watch, 2026-11-01).
+# served-reach and fail-to-pass honour a `served-exempt:` / `f2p-exempt:`
+# PR-body line only when an approver (vars.GATE_EXEMPT_APPROVERS, default
+# kyoungshin) who is not the author has APPROVED the head commit
+# (scripts/gate-exempt.mjs). Until then those gates stay red. This workflow
+# closes the loop: on such an approval it re-runs the head's failed CI jobs,
+# which read the approval live. It never checks out or runs PR code.
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: write
+
+concurrency:
+  group: exempt-approved-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The base branch's script, never the PR's: a PR cannot rewrite the
+          # rule that re-runs its own gates.
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Absent on the base until the PR adding it merges.
+      - if: hashFiles('scripts/gate-exempt.mjs') != ''
+        run: node --test scripts/gate-exempt.test.mjs
+      - name: re-run failed CI jobs after an approved exemption
+        if: hashFiles('scripts/gate-exempt.mjs') != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GATE_EXEMPT_APPROVERS: ${{ vars.GATE_EXEMPT_APPROVERS }}
+        run: node scripts/gate-exempt.mjs rerun

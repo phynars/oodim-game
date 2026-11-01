@@ -66,5 +66,11 @@ test("evidence reports missing served-reach output instead of omitting it", () =
   assert.match(md, /aftersign served e2e: \*\*not run\*\* \(no results\.json\)/);
   assert.match(md, /served-reach: `\(not reported\)`/);
   assert.match(md, /rendered rule: `not run`/);
-  assert.deepEqual(servedSummary(), { result: "(not reported)", counts: null });
+  assert.deepEqual(servedSummary(), { result: "(not reported)", counts: null, exempt: null });
+});
+
+test("evidence records the served-reach exemption tag", () => {
+  const md = renderEvidence({ at: "t", served: { result: "skipped:exempt", exempt: "served:approved:followup:kyoungshin" } });
+  assert.match(md, /served-reach: `skipped:exempt`; exemption: `served:approved:followup:kyoungshin`/);
+  assert.ok(!/^\s*(served|f2p)-exempt:/im.test(md));
 });

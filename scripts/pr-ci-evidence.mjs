@@ -40,10 +40,11 @@ export function renderedSummary(log) {
 }
 
 /** Normalize the served gate's cross-job outputs for the evidence block. */
-export function servedSummary({ result, counts } = {}) {
+export function servedSummary({ result, counts, exempt } = {}) {
   return {
     result: result || "(not reported)",
     counts: counts || null,
+    exempt: exempt || null,
   };
 }
 
@@ -55,7 +56,7 @@ export function renderEvidence({ sha, runUrl, e2e, stats, rendered, served, at }
     `- head: \`${sha ? sha.slice(0, 7) : "?"}\` · run: ${runUrl ?? "?"} · ${at}`,
     `- aftersign served e2e: **${e2e ?? "not run"}**` +
       (stats ? ` (${stats.passed} passed, ${stats.failed} failed, ${stats.flaky} flaky, ${stats.skipped} skipped)` : " (no results.json)"),
-    `- served-reach: \`${servedReach.result}\`${servedReach.counts ? `; served source files changed: ${servedReach.counts}` : ""}`,
+    `- served-reach: \`${servedReach.result}\`${servedReach.counts ? `; served source files changed: ${servedReach.counts}` : ""}${servedReach.exempt ? `; exemption: \`${servedReach.exempt}\`` : ""}`,
     `- rendered rule: \`${rendered?.result ?? "not run"}\``,
   ];
   // Fenced so quoted game text can never read as a PR-body directive.
@@ -81,7 +82,7 @@ async function main() {
     e2e: arg(a, "--e2e"),
     stats: results && existsSync(results) ? e2eStats(readJson(results)) : null,
     rendered: log && existsSync(log) ? renderedSummary(readFileSync(log, "utf8")) : null,
-    served: { result: arg(a, "--served-result"), counts: arg(a, "--served-counts") },
+    served: { result: arg(a, "--served-result"), counts: arg(a, "--served-counts"), exempt: arg(a, "--served-exempt") },
     at: new Date().toISOString().slice(0, 16).replace("T", " ") + "Z",
   });
   console.log(block);
