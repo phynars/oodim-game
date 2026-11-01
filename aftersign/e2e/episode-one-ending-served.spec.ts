@@ -323,7 +323,7 @@ test.describe("Saint Orra red-tag recall", () => {
     ["accept-second-packet", "You took the red tag at once. I remember the hand that did not wait."],
     ["ask-what-changed", "You asked what changed before you carried it. I remember the question."],
   ] as const) {
-    test(`recalls the real first tap after carrying the tag: ${choiceId}`, async ({ page }) => {
+    test(`recalls the real first tap after carrying the tag: ${choiceId}`, async ({ page, browser }) => {
       test.setTimeout(150_000);
       const slot = `orra-recall-${choiceId}-${Date.now()}`;
       await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
@@ -333,9 +333,16 @@ test.describe("Saint Orra red-tag recall", () => {
       await carryRedTagToSaintOrra(page);
       await expect(page.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
 
-      await page.reload({ waitUntil: "load" });
-      await waitForVersion(page);
-      await expect(page.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
+      const freshContext = await browser.newContext({
+        viewport: PHONE_VIEWPORT,
+        hasTouch: true,
+        isMobile: true,
+      });
+      const freshPage = await freshContext.newPage();
+      await freshPage.goto(page.url(), { waitUntil: "load" });
+      await waitForVersion(freshPage);
+      await expect(freshPage.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
+      await freshContext.close();
     });
   }
 });
