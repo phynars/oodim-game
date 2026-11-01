@@ -374,9 +374,12 @@ jobs:
       # new player-facing string must be SHOWN by a served playtest, not just
       # bundled, and reached through real input: text first shown after a
       # story-moving `window.__game` harness call does not count (#2529;
-      # result `text_harness_only`). Report-only (--mode warn) until its
-      # false-fail rate is read over a week of PRs; then switch to --mode fail.
-      - name: new text must be shown in a served playtest (report only)
+      # result `text_harness_only`). Blocking (--mode fail) since 2026-11-01:
+      # the report-only read counted 14 PRs from #2532/#2533 with 1 false flag
+      # (#2552), under the 1-in-10 bar. A PR whose new text is legitimately
+      # unplayable asks for an exemption: a 'served-exempt: <kind> <detail>'
+      # body line plus an approver's APPROVE of the head (#2643).
+      - name: new text must be shown in a served playtest
         if: github.event_name == 'pull_request' && steps.e2e.conclusion == 'success'
         shell: bash
         env:
@@ -384,7 +387,7 @@ jobs:
           GATE_EXEMPT_APPROVERS: ${{ vars.GATE_EXEMPT_APPROVERS }}
         run: |
           set -o pipefail
-          node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode warn 2>&1 | tee /tmp/rendered-reach.log
+          node scripts/served-reach.mjs --rendered /tmp/aftersign-rendered.jsonl --mode fail 2>&1 | tee /tmp/rendered-reach.log
       # CI-evidence block (2026-10-27): write this run's e2e totals and the
       # rendered-rule result into the PR body between markers, replacing the
       # last run's block. PR bodies are the implementing session's pre-CI notes,
