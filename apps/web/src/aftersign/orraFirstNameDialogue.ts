@@ -64,7 +64,7 @@ export const ORRA_FIRST_NAME_DIALOGUE: OrraFirstNameDialogue = Object.freeze({
   offerLines: Object.freeze([
     "A name was paid out of a mouth that loved it.",
     "Maud Underbell keeps the bell that can put it back.",
-    "Carry it sealed. Do not rehearse it. Some names wake when admired.",
+    "Carry it sealed. Do not rehearse it. When Maud asks, give her the name exactly as I sealed it.",
   ]),
   choicePrompt: "Take Orra's name-case?",
   choices: Object.freeze({
