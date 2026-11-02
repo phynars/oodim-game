@@ -67,6 +67,7 @@ export const createPersistHelpers = ({
     story: {
       endingId: state.story?.endingId ?? null,
       endingCause: state.story?.endingCause ?? null,
+      maudBellArchiveEndingId: state.story?.maudBellArchiveEndingId ?? null,
     },
     memory: clone(state.npcs.io.memory),
     npcs: {

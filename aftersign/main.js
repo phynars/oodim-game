@@ -755,7 +755,7 @@ import {
   renderEpisodeOneEnding,
   resolveEpisodeOneEnding,
 } from "./src/episodeOneEnding.js";
-import { renderMaudBellArchive } from "./src/maudBellArchive.js";
+import { hasLiveMaudChoices, renderMaudBellArchive } from "./src/maudBellArchive.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -1198,6 +1198,13 @@ const state = {
     // so a fresh context on the same slot restores the ending card.
     endingId: typeof stored?.story?.endingId === "string" ? stored.story.endingId : null,
     endingCause: typeof stored?.story?.endingCause === "string" ? stored.story.endingCause : null,
+    // Act II's terminal card is independent of the Episode One ending.
+    // Restore only the known ids so malformed legacy saves reopen Maud's beat.
+    maudBellArchiveEndingId:
+      stored?.story?.maudBellArchiveEndingId === "maud-bell-archive-lit"
+      || stored?.story?.maudBellArchiveEndingId === "maud-bell-archive-dark"
+        ? stored.story.maudBellArchiveEndingId
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1608,6 +1615,23 @@ const getAudioController = () => {
 };
 
 const lineForBeat = () => {
+  // Act II has its own durable terminal result. Check it before the Act I
+  // ending branch so restoring this slot never reopens Maud's name choices.
+  if (state.story.maudBellArchiveEndingId) {
+    // PR #2660 F1 (round 3): only a RESTORED slot gets the ending-only
+    // card. While the live name-choice card is on screen (the player just
+    // tapped a name), publishState → syncIoLine lands here too; re-rendering
+    // would wipe the name buttons and block the decoy re-pick that
+    // orra-payback.playtest.spec.ts relies on. The tap handler owns that card.
+    if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
+      renderMaudBellArchive(document, {
+        storedName: state.player.name,
+        endingId: state.story.maudBellArchiveEndingId,
+      });
+    }
+    state.npcs.io.lastLine = "";
+    return "";
+  }
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
@@ -1941,7 +1965,14 @@ const syncIoLine = () => {
   let nextMemoryRefs = [];
   let nextFeelCue = null;
   let nextLine;
-  if (state.scene.beat === "io-return-recognition") {
+  if (state.story.maudBellArchiveEndingId) {
+    // PR #2660 F1: Maud's choice is made (and saved) ON the
+    // io-return-recognition beat, so a restored slot never reaches the
+    // `else` branch below. Check the durable Act II result first so a
+    // fresh context renders the saved card instead of the recognition
+    // line + Maud's choice controls.
+    nextLine = lineForBeat();
+  } else if (state.scene.beat === "io-return-recognition") {
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
     const snippets = buildIoRecognitionDialogueSnippets({
@@ -4629,14 +4660,23 @@ const choose = async (choiceId) => {
     if (choiceId === "carry-name-to-bell-archive") {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
-        onSelect: (selected) => {
-          state.interaction.maudBellArchiveNameChoice = selected.id;
+        endingId: state.story.maudBellArchiveEndingId,
+        onSelect: (_selected, ending) => {
+          state.story.maudBellArchiveEndingId = ending.id;
+          markStateDirty();
+          // Persist after the visible card is rendered: a fresh browser
+          // context restores this terminal result instead of Maud's choices.
+          persistAuthoritative({ dirty: true }).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn(err);
+          });
           publishState();
         },
       });
     }
     // The Orra choice remains terminal on this beat. Bell Archive instead
-    // replaces the surface with Maud's local, non-durable name selection.
+    // replaces the surface with Maud's name selection; the chosen Act II
+    // ending is saved to story.maudBellArchiveEndingId (#2651).
     publishState();
     return;
   }
@@ -5584,6 +5624,7 @@ const resetSliceSave = async () => {
   // endingId early return and lineForBeat's ending branch keep the page
   // dead on the ending card until a manual reload (Mara PR #2569 F1).
   state.story.endingId = null;
+  state.story.maudBellArchiveEndingId = null;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
