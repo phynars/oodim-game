@@ -755,7 +755,7 @@ import {
   renderEpisodeOneEnding,
   resolveEpisodeOneEnding,
 } from "./src/episodeOneEnding.js";
-import { renderMaudBellArchive } from "./src/maudBellArchive.js";
+import { hasLiveMaudChoices, renderMaudBellArchive } from "./src/maudBellArchive.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -1623,12 +1623,7 @@ const lineForBeat = () => {
     // tapped a name), publishState → syncIoLine lands here too; re-rendering
     // would wipe the name buttons and block the decoy re-pick that
     // orra-payback.playtest.spec.ts relies on. The tap handler owns that card.
-    const liveMaudChoices =
-      typeof document !== "undefined"
-      && document.querySelector(
-        '#episodeOneEnding [data-beat="maud-bell-archive"] button[data-maud-name-choice]',
-      );
-    if (typeof document !== "undefined" && !liveMaudChoices) {
+    if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,

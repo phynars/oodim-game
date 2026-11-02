@@ -101,6 +101,20 @@ const ringBell = (doc, bell) => {
   );
 };
 
+/**
+ * True while Maud's live name-choice card (rendered below) is on screen.
+ * This module owns the data-beat / data-maud-name-choice markup, so callers
+ * ask here instead of duplicating the selector.
+ */
+export const hasLiveMaudChoices = (doc) => {
+  if (!doc || typeof doc.getElementById !== "function") return false;
+  const host = doc.getElementById("episodeOneEnding");
+  if (!host || typeof host.querySelector !== "function") return false;
+  return Boolean(
+    host.querySelector('[data-beat="maud-bell-archive"] button[data-maud-name-choice]'),
+  );
+};
+
 /** Render Maud's name-selection beat into a supplied scene host. */
 export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
