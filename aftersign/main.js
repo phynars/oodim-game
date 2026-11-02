@@ -1960,7 +1960,14 @@ const syncIoLine = () => {
   let nextMemoryRefs = [];
   let nextFeelCue = null;
   let nextLine;
-  if (state.scene.beat === "io-return-recognition") {
+  if (state.story.maudBellArchiveEndingId) {
+    // PR #2660 F1: Maud's choice is made (and saved) ON the
+    // io-return-recognition beat, so a restored slot never reaches the
+    // `else` branch below. Check the durable Act II result first so a
+    // fresh context renders the saved card instead of the recognition
+    // line + Maud's choice controls.
+    nextLine = lineForBeat();
+  } else if (state.scene.beat === "io-return-recognition") {
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
     const snippets = buildIoRecognitionDialogueSnippets({
