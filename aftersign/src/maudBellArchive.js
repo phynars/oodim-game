@@ -133,8 +133,18 @@ export const renderMaudBellArchive = (doc, { storedName, completedChoiceId, onSe
         if (typeof onSelect === "function") await onSelect(choice);
         renderEnding(doc, endingSlot, choice);
       } catch {
+        // A failed save must not produce a completed result (design #2598
+        // failure handling), but the player has to see why nothing rang:
+        // keep the choices tappable and say so in the live ending slot.
         button.removeAttribute("data-selected");
         button.setAttribute("aria-pressed", "false");
+        endingSlot.textContent = "";
+        const failure = doc.createElement("p");
+        failure.className = "maud-bell-archive__save-failure";
+        failure.setAttribute("role", "alert");
+        failure.setAttribute("data-maud-save-failed", "true");
+        failure.textContent = "The archive ledger didn't take the name. Try again.";
+        endingSlot.appendChild(failure);
       }
     });
     choices.appendChild(button);

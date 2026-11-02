@@ -315,6 +315,90 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     await expect(nameButtons).toHaveCount(3);
   });
 
+  // #2658 / #2598 AC-2, AC-4, AC-5: a tapped Maud name choice is saved
+  // before its result counts as complete, and the same slot restores the
+  // completed ending card, with no choice surface, after a reload and in a
+  // storage-free fresh context. Fails on main: there the selection is held
+  // only in `state.interaction` and is never written to the player save.
+  test("a tapped Maud name outcome survives a reload and a storage-free fresh context, with no choices shown again", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const slot = `maud-bell-archive-restore-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await reachRedTagIoReturnRecognition(page);
+
+    const carryName = page.locator(
+      'button[data-orra-payback-action="carry-name-to-bell-archive"]',
+    );
+    await expect(carryName).toBeVisible({ timeout: WAIT_MS });
+    await carryName.tap({ timeout: WAIT_MS });
+
+    const card = page.locator(
+      '#episodeOneEnding [data-beat="maud-bell-archive"]',
+    );
+    await expect(card).toBeVisible({ timeout: WAIT_MS });
+    const remembered = card.locator(
+      'button[data-maud-name-choice="remembered-name"]',
+    );
+    await expect(remembered).toBeVisible({ timeout: WAIT_MS });
+    await remembered.scrollIntoViewIfNeeded();
+    await remembered.tap({ timeout: WAIT_MS });
+
+    await expect(
+      page.locator('#episodeOneEnding [data-ending-id="maud-bell-archive-lit"]'),
+    ).toBeVisible({ timeout: WAIT_MS });
+    await expect(
+      page.locator("#episodeOneEnding [data-maud-save-failed]"),
+    ).toHaveCount(0);
+
+    // AC-4: the outcome is in the saved player record before storage clears.
+    await page.waitForFunction(
+      () =>
+        (
+          window as unknown as {
+            __game?: { player?: { bellArchiveChoiceId?: string | null } };
+          }
+        ).__game?.player?.bellArchiveChoiceId === "maud-bell-archive-lit",
+      undefined,
+      { timeout: WAIT_MS },
+    );
+
+    const expectRestored = async (target: typeof page) => {
+      const restored = target.locator(
+        '#episodeOneEnding [data-ending-id="maud-bell-archive-lit"]',
+      );
+      await expect(restored).toBeVisible({ timeout: WAIT_MS });
+      await expect(restored).toHaveAttribute("data-district-light", "lit");
+      await expect(
+        target.locator("#episodeOneEnding button[data-maud-name-choice]"),
+      ).toHaveCount(0);
+    };
+
+    await page.evaluate(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    });
+    await page.reload({ waitUntil: "load" });
+    await expectRestored(page);
+
+    const fresh = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      viewport: PHONE_VIEWPORT,
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      const freshPage = await fresh.newPage();
+      await freshPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      expect(await freshPage.evaluate(() => window.localStorage.length)).toBe(0);
+      await expectRestored(freshPage);
+    } finally {
+      await fresh.close();
+    }
+  });
+
   // Criterion B (Soren PR #2264 merge gate): the COMMITTED payback
   // survives the server-authoritative save. The played context taps
   // the carry-name action, then (1) a same-context reload and (2) a
