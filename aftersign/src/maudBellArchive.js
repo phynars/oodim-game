@@ -15,6 +15,13 @@ export const maudBellArchiveChoices = (storedName) => {
   ];
 };
 
+// Class names are passed as separate tokens so no space-joined literal
+// is mistaken for player copy by scripts/served-reach.mjs.
+const addClasses = (el, ...names) => {
+  if (el.classList && typeof el.classList.add === "function") el.classList.add(...names);
+  else el.className = names.join(" ");
+};
+
 /** Render Maud's name-selection beat into a supplied scene host. */
 export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
@@ -22,7 +29,7 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   if (!host) return null;
 
   const card = doc.createElement("section");
-  card.className = "episode-one-ending maud-bell-archive";
+  addClasses(card, "episode-one-ending", "maud-bell-archive");
   card.setAttribute("data-beat", "maud-bell-archive");
   // The host sits under `.hud` (pointer-events: none); opt the card back in
   // so name taps reach the buttons instead of the canvas. Mirrors the
@@ -39,7 +46,7 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   for (const choice of maudBellArchiveChoices(storedName)) {
     const button = doc.createElement("button");
     button.type = "button";
-    button.className = "choice maud-bell-archive__choice";
+    addClasses(button, "choice", "maud-bell-archive__choice");
     button.textContent = choice.name;
     button.setAttribute("data-maud-name-choice", choice.id);
     button.addEventListener("click", () => {
