@@ -1198,6 +1198,13 @@ const state = {
     // so a fresh context on the same slot restores the ending card.
     endingId: typeof stored?.story?.endingId === "string" ? stored.story.endingId : null,
     endingCause: typeof stored?.story?.endingCause === "string" ? stored.story.endingCause : null,
+    // Act II's terminal card is independent of the Episode One ending.
+    // Restore only the known ids so malformed legacy saves reopen Maud's beat.
+    maudBellArchiveEndingId:
+      stored?.story?.maudBellArchiveEndingId === "maud-bell-archive-lit"
+      || stored?.story?.maudBellArchiveEndingId === "maud-bell-archive-dark"
+        ? stored.story.maudBellArchiveEndingId
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1608,6 +1615,18 @@ const getAudioController = () => {
 };
 
 const lineForBeat = () => {
+  // Act II has its own durable terminal result. Check it before the Act I
+  // ending branch so restoring this slot never reopens Maud's name choices.
+  if (state.story.maudBellArchiveEndingId) {
+    if (typeof document !== "undefined") {
+      renderMaudBellArchive(document, {
+        storedName: state.player.name,
+        endingId: state.story.maudBellArchiveEndingId,
+      });
+    }
+    state.npcs.io.lastLine = "";
+    return "";
+  }
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
@@ -4629,8 +4648,13 @@ const choose = async (choiceId) => {
     if (choiceId === "carry-name-to-bell-archive") {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
-        onSelect: (selected) => {
-          state.interaction.maudBellArchiveNameChoice = selected.id;
+        endingId: state.story.maudBellArchiveEndingId,
+        onSelect: (_selected, ending) => {
+          state.story.maudBellArchiveEndingId = ending.id;
+          markStateDirty();
+          // Persist after the visible card is rendered: a fresh browser
+          // context restores this terminal result instead of Maud's choices.
+          void persistAuthoritative({ dirty: true });
           publishState();
         },
       });

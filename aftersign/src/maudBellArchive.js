@@ -1,5 +1,4 @@
 // Maud Underbell's Bell Archive beat.
-// Selection remains local to this scene until a later phase makes it durable.
 
 const cleanName = (value) => {
   const name = typeof value === "string" ? value.trim() : "";
@@ -22,8 +21,8 @@ const addClasses = (el, ...names) => {
   else el.className = names.join(" ");
 };
 
-const endingForChoice = (choice) =>
-  choice.matchesMemory
+export const maudBellArchiveEndingForChoice = (choice) =>
+  choice?.matchesMemory
     ? {
         id: "maud-bell-archive-lit",
         light: "lit",
@@ -37,8 +36,21 @@ const endingForChoice = (choice) =>
         dialogue: "Io records the miss. Orra hears the silence. Maud closes the archive.",
       };
 
-const renderEnding = (doc, host, choice) => {
-  const ending = endingForChoice(choice);
+export const maudBellArchiveEndingForId = (endingId) => {
+  if (endingId === "maud-bell-archive-lit") {
+    return maudBellArchiveEndingForChoice({ matchesMemory: true });
+  }
+  if (endingId === "maud-bell-archive-dark") {
+    return maudBellArchiveEndingForChoice({ matchesMemory: false });
+  }
+  return null;
+};
+
+export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice) => {
+  const ending = endingOrChoice?.light
+    ? endingOrChoice
+    : maudBellArchiveEndingForChoice(endingOrChoice);
+  if (!ending || !host) return null;
   const card = doc.createElement("section");
   addClasses(card, "episode-one-ending", "maud-bell-archive__ending", `maud-bell-archive__ending--${ending.light}`);
   card.setAttribute("data-ending-id", ending.id);
@@ -90,17 +102,17 @@ const ringBell = (doc, bell) => {
 };
 
 /** Render Maud's name-selection beat into a supplied scene host. */
-export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
+export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
   const host = doc.getElementById("episodeOneEnding") || doc.getElementById("line");
   if (!host) return null;
 
+  const restoredEnding = maudBellArchiveEndingForId(endingId);
+  if (restoredEnding) return renderMaudBellArchiveEnding(doc, host, restoredEnding);
+
   const card = doc.createElement("section");
   addClasses(card, "episode-one-ending", "maud-bell-archive");
   card.setAttribute("data-beat", "maud-bell-archive");
-  // The host sits under `.hud` (pointer-events: none); opt the card back in
-  // so name taps reach the buttons instead of the canvas. Mirrors the
-  // `#episodeOneEnding .maud-bell-archive` rule in index.html.
   card.style.pointerEvents = "auto";
   const title = doc.createElement("strong");
   title.textContent = "Maud Underbell — Bell Archive";
@@ -126,8 +138,9 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
-      renderEnding(doc, endingSlot, choice);
-      if (typeof onSelect === "function") onSelect(choice);
+      const ending = maudBellArchiveEndingForChoice(choice);
+      renderMaudBellArchiveEnding(doc, endingSlot, ending);
+      if (typeof onSelect === "function") onSelect(choice, ending);
     });
     choices.appendChild(button);
   }
