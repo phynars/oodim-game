@@ -18,7 +18,7 @@ Internal references: [#2656](https://github.com/phynars/oodim-game/issues/2656),
 ## What we adopt / what we reject
 
 - **Adopt:** Model the red tag as a single persistent player-earned quality, then use it to gate Saint Orra’s recall line rather than branch the entire Saint Orra encounter. (R2)
-- **Adopt:** Make the initial red-tag action legible and have Orra’s later acknowledgement describe only that recorded action. (R1)
+- **Adopt:** Treat the ending's red-tag action as content whose *effect* sets the world-state flag. Treat Orra's recall line as separate content whose *prerequisite* is that flag. Do not key the line to the exact route the player took. (R1)
 - **Reject:** An unconditional Saint Orra reference to the red tag, because it would create false memory for players who did not carry it.
 - **Reject:** Adding new alternative story routes; this story concerns continuity and acknowledgement, not a new ending branch.
 
