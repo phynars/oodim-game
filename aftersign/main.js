@@ -1618,7 +1618,17 @@ const lineForBeat = () => {
   // Act II has its own durable terminal result. Check it before the Act I
   // ending branch so restoring this slot never reopens Maud's name choices.
   if (state.story.maudBellArchiveEndingId) {
-    if (typeof document !== "undefined") {
+    // PR #2660 F1 (round 3): only a RESTORED slot gets the ending-only
+    // card. While the live name-choice card is on screen (the player just
+    // tapped a name), publishState → syncIoLine lands here too; re-rendering
+    // would wipe the name buttons and block the decoy re-pick that
+    // orra-payback.playtest.spec.ts relies on. The tap handler owns that card.
+    const liveMaudChoices =
+      typeof document !== "undefined"
+      && document.querySelector(
+        '#episodeOneEnding [data-beat="maud-bell-archive"] button[data-maud-name-choice]',
+      );
+    if (typeof document !== "undefined" && !liveMaudChoices) {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
