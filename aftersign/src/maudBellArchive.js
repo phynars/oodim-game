@@ -126,7 +126,7 @@ export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = 
 
   const card = doc.createElement("section");
   addClasses(card, "episode-one-ending", "maud-bell-archive");
-  card.setAttribute("data-beat", "maud-bell-archive");
+  card.setAttribute(BEAT_ATTR, MAUD_BEAT_ID);
   card.style.pointerEvents = "auto";
   const title = doc.createElement("strong");
   title.textContent = "Maud Underbell — Bell Archive";
