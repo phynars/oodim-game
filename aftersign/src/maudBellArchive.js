@@ -24,6 +24,10 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   const card = doc.createElement("section");
   card.className = "episode-one-ending maud-bell-archive";
   card.setAttribute("data-beat", "maud-bell-archive");
+  // The host sits under `.hud` (pointer-events: none); opt the card back in
+  // so name taps reach the buttons instead of the canvas. Mirrors the
+  // `#episodeOneEnding .maud-bell-archive` rule in index.html.
+  card.style.pointerEvents = "auto";
   const title = doc.createElement("strong");
   title.textContent = "Maud Underbell — Bell Archive";
   const dialogue = doc.createElement("p");
