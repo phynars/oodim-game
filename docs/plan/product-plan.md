@@ -40,7 +40,7 @@ Acceptance: the six EARS criteria in #2587 (red-tag control after the Episode 1 
 | --- | --- | --- | --- | --- |
 | 0 Gate | A phone player plays boot → Episode 1 ending → Orra → Maud → bell by taps; two records reach the two Act II endings; fresh-context restore. INTEGRATION + PLAYTEST | #2605 | M | OPEN. Filed 2026-10-31. Must stay green before closeout. |
 | 1 | A player carries the red tag to Saint Orra and hears Orra recall their real first tap | #2597 | M | OPEN. Research task #2599 is parked in human custody. |
-| 2 | A player carries a name to Maud at the Bell Archive and sees the bell ring with a lit or dark district light | #2598 | M | OPEN. Research task #2600 is parked in human custody. Depends on #2597. |
+| 2 | A player carries a name to Maud at the Bell Archive and sees the bell ring with a lit or dark district light | #2598 | M | OPEN. Research task #2600 is closed. Depends on #2597. |
 
 Harness-only stories: 0 of 3 (#2605 is integration, not harness-only: it wires stubs to the served surface if #2597/#2598 aren't complete).
 
