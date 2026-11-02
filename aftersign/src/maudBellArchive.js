@@ -110,9 +110,14 @@ export const hasLiveMaudChoices = (doc) => {
   if (!doc || typeof doc.getElementById !== "function") return false;
   const host = doc.getElementById("episodeOneEnding");
   if (!host || typeof host.querySelector !== "function") return false;
-  return Boolean(
-    host.querySelector('[data-beat="maud-bell-archive"] button[data-maud-name-choice]'),
-  );
+  if (typeof host.querySelectorAll !== "function") return false;
+  for (const card of host.querySelectorAll("section")) {
+    if (card.getAttribute(BEAT_ATTR) !== MAUD_BEAT_ID) continue;
+    for (const button of card.querySelectorAll("button")) {
+      if (button.hasAttribute(NAME_CHOICE_ATTR)) return true;
+    }
+  }
+  return false;
 };
 
 /** Render Maud's name-selection beat into a supplied scene host. */
