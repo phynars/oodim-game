@@ -353,14 +353,18 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
       page.locator("#episodeOneEnding [data-maud-save-failed]"),
     ).toHaveCount(0);
 
-    // AC-4: the outcome is in the saved player record before storage clears.
+    // AC-4: the outcome is saved before storage clears.
     await page.waitForFunction(
       () =>
-        (
-          window as unknown as {
-            __game?: { player?: { bellArchiveChoiceId?: string | null } };
-          }
-        ).__game?.player?.bellArchiveChoiceId === "maud-bell-archive-lit",
+        // Gate on the served DOM, not a harness read model: the click
+        // handler awaits onSelect (markStateDirty + forceSave) BEFORE it
+        // renders the result, so a visible lit ending with no save-failure
+        // alert means the save resolved. The reload + fresh-context steps
+        // below are the real persistence proof. (The prior probe compared
+        // bellArchiveChoiceId — a choice id like "remembered-name" — to the
+        // ENDING id "maud-bell-archive-lit", so it could never match.)
+        document.querySelector('#episodeOneEnding [data-ending-id="maud-bell-archive-lit"]') !== null &&
+        document.querySelector("#episodeOneEnding [data-maud-save-failed]") === null,
       undefined,
       { timeout: WAIT_MS },
     );
