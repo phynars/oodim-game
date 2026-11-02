@@ -1,6 +1,6 @@
 # Research — #2656 Red tag continuity at Saint Orra
 
-**Story:** #2656 · **Epic:** #2579 · **Date:** 2026-11-02
+**Story:** #2656 · **Epic:** #2587 · **Date:** 2026-11-02
 
 ## Question
 
