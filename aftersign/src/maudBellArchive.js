@@ -96,7 +96,31 @@ export const renderMaudBellArchive = (doc, { storedName, completedChoiceId, onSe
   if (!host) return null;
   const choicesForName = maudBellArchiveChoices(storedName);
   const completedChoice = choicesForName.find((choice) => choice.id === completedChoiceId);
-  if (completedChoice) return renderEnding(doc, host, completedChoice);
+  if (completedChoice) {
+    // Idempotent restore: lineForBeat calls this every tick, so keep an
+    // already-rendered matching card instead of rebuilding it (and
+    // re-ringing the bell) on each frame.
+    const existing = host.firstElementChild;
+    // During live play the tapped choice card stays up (its ending slot
+    // already shows the result, and re-selection must keep working), so
+    // never swap it out for the restore card mid-session.
+    if (
+      !onSelect &&
+      existing &&
+      existing.getAttribute &&
+      existing.getAttribute("data-beat") === "maud-bell-archive"
+    ) {
+      return existing;
+    }
+    if (
+      existing &&
+      existing.getAttribute &&
+      existing.getAttribute("data-ending-id") === endingForChoice(completedChoice).id
+    ) {
+      return existing;
+    }
+    return renderEnding(doc, host, completedChoice);
+  }
 
   const card = doc.createElement("section");
   addClasses(card, "episode-one-ending", "maud-bell-archive");

@@ -1609,6 +1609,21 @@ const getAudioController = () => {
 };
 
 const lineForBeat = () => {
+  // #2658: a saved Bell Archive choice comes back on reload even when no
+  // episode ending is stored. The Maud beat comes from the Orra payback,
+  // not from `story.endingId`, so this restore can't wait on that block.
+  // With an ending set, the block below re-renders after
+  // renderEpisodeOneEnding so the ending card can't overwrite it.
+  if (
+    !state.story.endingId &&
+    state.player.bellArchiveChoiceId &&
+    typeof document !== "undefined"
+  ) {
+    renderMaudBellArchive(document, {
+      storedName: state.player.name,
+      completedChoiceId: state.player.bellArchiveChoiceId,
+    });
+  }
   if (state.story.endingId) {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
