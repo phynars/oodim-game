@@ -4666,13 +4666,17 @@ const choose = async (choiceId) => {
           markStateDirty();
           // Persist after the visible card is rendered: a fresh browser
           // context restores this terminal result instead of Maud's choices.
-          void persistAuthoritative({ dirty: true });
+          persistAuthoritative({ dirty: true }).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn(err);
+          });
           publishState();
         },
       });
     }
     // The Orra choice remains terminal on this beat. Bell Archive instead
-    // replaces the surface with Maud's local, non-durable name selection.
+    // replaces the surface with Maud's name selection; the chosen Act II
+    // ending is saved to story.maudBellArchiveEndingId (#2651).
     publishState();
     return;
   }
@@ -5620,6 +5624,7 @@ const resetSliceSave = async () => {
   // endingId early return and lineForBeat's ending branch keep the page
   // dead on the ending card until a manual reload (Mara PR #2569 F1).
   state.story.endingId = null;
+  state.story.maudBellArchiveEndingId = null;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);

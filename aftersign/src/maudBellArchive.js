@@ -14,6 +14,11 @@ export const maudBellArchiveChoices = (storedName) => {
   ];
 };
 
+// Markup hooks this module owns (also read by hasLiveMaudChoices).
+const BEAT_ATTR = "data-beat";
+const MAUD_BEAT_ID = "maud-bell-archive";
+const NAME_CHOICE_ATTR = "data-maud-name-choice";
+
 // Class names are passed as separate tokens so no space-joined literal
 // is mistaken for player copy by scripts/served-reach.mjs.
 const addClasses = (el, ...names) => {
