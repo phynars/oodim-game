@@ -108,7 +108,7 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
     });
     choices.appendChild(button);
   }
-  card.append(title, dialogue, choices);
+  card.append(title, dialogue, choices, endingSlot);
   host.replaceChildren(card);
   return card;
 };

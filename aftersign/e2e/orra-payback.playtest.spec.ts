@@ -286,6 +286,14 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
       card.locator('button[data-maud-name-choice][data-selected="true"]'),
     ).toHaveCount(1);
 
+    // The remembered name keeps the district lit; the ending renders inside
+    // the Maud card's ending slot, leaving the name buttons in place.
+    const ending = card.locator("[data-ending-id]");
+    await expect(ending).toHaveCount(1, { timeout: WAIT_MS });
+    await expect(ending).toHaveAttribute("data-ending-id", "maud-bell-archive-lit");
+    await expect(ending).toHaveAttribute("data-district-light", "lit");
+    await expect(nameButtons).toHaveCount(3);
+
     // Re-selecting a decoy moves the selection — the tap handler, not a
     // one-shot render flag, owns the state.
     const decoy = card.locator(
