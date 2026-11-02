@@ -62,8 +62,31 @@ const renderEnding = (doc, host, choice) => {
   light.setAttribute("data-district-light", ending.light);
   light.textContent = ending.light === "lit" ? "District light: lit" : "District light: out";
   card.append(title, bell, outcome, dialogue, light);
-  slot.replaceChildren(card);
+  host.replaceChildren(card);
+  ringBell(doc, bell);
   return card;
+};
+
+// Bell ring: a short WAAPI swing on the bell line. Skipped when the
+// player prefers reduced motion or the runtime has no Element.animate.
+const ringBell = (doc, bell) => {
+  if (!bell || typeof bell.animate !== "function") return;
+  const view = doc.defaultView;
+  const reduced =
+    !!view &&
+    typeof view.matchMedia === "function" &&
+    view.matchMedia("(prefers-reduced-motion:reduce)").matches;
+  if (reduced) return;
+  bell.animate(
+    [
+      { transform: "rotate(0deg)" },
+      { transform: "rotate(-8deg)" },
+      { transform: "rotate(6deg)" },
+      { transform: "rotate(-3deg)" },
+      { transform: "rotate(0deg)" },
+    ],
+    { duration: 600, easing: "ease-out" },
+  );
 };
 
 /** Render Maud's name-selection beat into a supplied scene host. */
