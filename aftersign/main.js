@@ -2698,6 +2698,21 @@ const renderText = () => {
   } else if (orraPaybackButton) {
     orraPaybackButton.remove();
   }
+  // #2658: restore a saved Bell Archive result on every frame, not only
+  // through lineForBeat(). The authoritative save is applied asynchronously
+  // after boot, and the beat stays on `io-return-recognition`, so a
+  // beat-driven line resolve may never run again after `player` hydrates.
+  // renderMaudBellArchive is idempotent: during live play it keeps the
+  // tapped choice card, and on reload it renders the completed ending once.
+  if (
+    committedPaybackAction === "carry-name-to-bell-archive"
+    && typeof state.player?.bellArchiveChoiceId === "string"
+  ) {
+    renderMaudBellArchive(document, {
+      storedName: state.player.name,
+      completedChoiceId: state.player.bellArchiveChoiceId,
+    });
+  }
   // A persisted Orra memory must have a player-reachable return path after reload.
   const hasOrraMemory = state.npcs.orra.memory.length > 0;
   let returnToOrraButton = document.getElementById("returnToOrra");
