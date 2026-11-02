@@ -1282,6 +1282,7 @@ const state = {
         ? stored.player.redTagFirstTap
         : null,
     redTagDeliveredToSaintOrra: stored?.player?.redTagDeliveredToSaintOrra === true,
+    bellArchiveChoiceId: typeof stored?.player?.bellArchiveChoiceId === "string" ? stored.player.bellArchiveChoiceId : null,
     // The action Orra made available after the red-tag delivery. This is
     // persisted with the player record, so a reload cannot turn one ending
     // route into the other through browser-local state.
@@ -1621,6 +1622,12 @@ const lineForBeat = () => {
     if (typeof document !== "undefined") {
       renderEpisodeOneEnding(document, resolvedEnding);
       renderSaintOrraEndingRecall();
+      if (state.player.bellArchiveChoiceId) {
+        renderMaudBellArchive(document, {
+          storedName: state.player.name,
+          completedChoiceId: state.player.bellArchiveChoiceId,
+        });
+      }
     }
     publishEpisodeOneEndingToWindowGame(
       typeof window !== "undefined" ? window : undefined,
@@ -4629,14 +4636,18 @@ const choose = async (choiceId) => {
     if (choiceId === "carry-name-to-bell-archive") {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
-        onSelect: (selected) => {
+        completedChoiceId: state.player.bellArchiveChoiceId,
+        onSelect: async (selected) => {
+          state.player.bellArchiveChoiceId = selected.id;
           state.interaction.maudBellArchiveNameChoice = selected.id;
+          markStateDirty();
+          await forceSave();
           publishState();
         },
       });
     }
-    // The Orra choice remains terminal on this beat. Bell Archive instead
-    // replaces the surface with Maud's local, non-durable name selection.
+    // The Orra choice remains terminal on this beat. Bell Archive replaces
+    // the surface with Maud's durable name selection and restored result.
     publishState();
     return;
   }
@@ -5625,6 +5636,7 @@ const resetSliceSave = async () => {
     // must clear it with the rest of the player-input axes; otherwise
     // a fresh run can inherit the prior route posture.
     routeRisk: null,
+    bellArchiveChoiceId: null,
   };
   state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
   state.delivery = { id: "blue-packet", outcome: "unknown" };

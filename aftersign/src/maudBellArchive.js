@@ -90,10 +90,13 @@ const ringBell = (doc, bell) => {
 };
 
 /** Render Maud's name-selection beat into a supplied scene host. */
-export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
+export const renderMaudBellArchive = (doc, { storedName, completedChoiceId, onSelect } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
   const host = doc.getElementById("episodeOneEnding") || doc.getElementById("line");
   if (!host) return null;
+  const choicesForName = maudBellArchiveChoices(storedName);
+  const completedChoice = choicesForName.find((choice) => choice.id === completedChoiceId);
+  if (completedChoice) return renderEnding(doc, host, completedChoice);
 
   const card = doc.createElement("section");
   addClasses(card, "episode-one-ending", "maud-bell-archive");
@@ -113,21 +116,26 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   endingSlot.className = "maud-bell-archive__ending-slot";
   endingSlot.setAttribute("aria-live", "polite");
 
-  for (const choice of maudBellArchiveChoices(storedName)) {
+  for (const choice of choicesForName) {
     const button = doc.createElement("button");
     button.type = "button";
     addClasses(button, "choice", "maud-bell-archive__choice");
     button.textContent = choice.name;
     button.setAttribute("data-maud-name-choice", choice.id);
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       choices.querySelectorAll("button").forEach((item) => {
         item.removeAttribute("data-selected");
         item.setAttribute("aria-pressed", "false");
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
-      renderEnding(doc, endingSlot, choice);
-      if (typeof onSelect === "function") onSelect(choice);
+      try {
+        if (typeof onSelect === "function") await onSelect(choice);
+        renderEnding(doc, endingSlot, choice);
+      } catch {
+        button.removeAttribute("data-selected");
+        button.setAttribute("aria-pressed", "false");
+      }
     });
     choices.appendChild(button);
   }
