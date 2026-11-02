@@ -22,6 +22,73 @@ const addClasses = (el, ...names) => {
   else el.className = names.join(" ");
 };
 
+const endingForChoice = (choice) =>
+  choice.matchesMemory
+    ? {
+        id: "maud-bell-archive-lit",
+        light: "lit",
+        line: "The bell remembers the name. The district light stays lit.",
+        dialogue: "Io records the true name. Orra hears the bell answer. Maud lets the archive rest.",
+      }
+    : {
+        id: "maud-bell-archive-dark",
+        light: "out",
+        line: "The bell answers the wrong name. One district light goes out.",
+        dialogue: "Io records the miss. Orra hears the silence. Maud closes the archive.",
+      };
+
+const renderEnding = (doc, host, choice) => {
+  const ending = endingForChoice(choice);
+  const card = doc.createElement("section");
+  addClasses(card, "episode-one-ending", "maud-bell-archive__ending", `maud-bell-archive__ending--${ending.light}`);
+  card.setAttribute("data-ending-id", ending.id);
+  card.setAttribute("data-district-light", ending.light);
+  card.setAttribute("data-bell-ringing", "true");
+  card.style.pointerEvents = "auto";
+
+  const title = doc.createElement("strong");
+  title.textContent = "Act II — Bell Archive";
+  const bell = doc.createElement("p");
+  bell.className = "episode-one-ending__bell";
+  bell.textContent = "The Bell Archive rings.";
+  const outcome = doc.createElement("p");
+  outcome.className = "episode-one-ending__outcome";
+  outcome.textContent = ending.line;
+  const dialogue = doc.createElement("p");
+  dialogue.className = "episode-one-ending__recall";
+  dialogue.textContent = ending.dialogue;
+  const light = doc.createElement("p");
+  light.className = "episode-one-ending__light";
+  light.setAttribute("data-district-light", ending.light);
+  light.textContent = ending.light === "lit" ? "District light: lit" : "District light: out";
+  card.append(title, bell, outcome, dialogue, light);
+  host.replaceChildren(card);
+  ringBell(doc, bell);
+  return card;
+};
+
+// Bell ring: a short WAAPI swing on the bell line. Skipped when the
+// player prefers reduced motion or the runtime has no Element.animate.
+const ringBell = (doc, bell) => {
+  if (!bell || typeof bell.animate !== "function") return;
+  const view = doc.defaultView;
+  const reduced =
+    !!view &&
+    typeof view.matchMedia === "function" &&
+    view.matchMedia("(prefers-reduced-motion:reduce)").matches;
+  if (reduced) return;
+  bell.animate(
+    [
+      { transform: "rotate(0deg)" },
+      { transform: "rotate(-8deg)" },
+      { transform: "rotate(6deg)" },
+      { transform: "rotate(-3deg)" },
+      { transform: "rotate(0deg)" },
+    ],
+    { duration: 600, easing: "ease-out" },
+  );
+};
+
 /** Render Maud's name-selection beat into a supplied scene host. */
 export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
@@ -42,6 +109,9 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   dialogue.textContent = "Maud opens the archive. Which name did the bell keep?";
   const choices = doc.createElement("div");
   choices.className = "maud-bell-archive__choices";
+  const endingSlot = doc.createElement("div");
+  endingSlot.className = "maud-bell-archive__ending-slot";
+  endingSlot.setAttribute("aria-live", "polite");
 
   for (const choice of maudBellArchiveChoices(storedName)) {
     const button = doc.createElement("button");
@@ -56,11 +126,12 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
+      renderEnding(doc, endingSlot, choice);
       if (typeof onSelect === "function") onSelect(choice);
     });
     choices.appendChild(button);
   }
-  card.append(title, dialogue, choices);
+  card.append(title, dialogue, choices, endingSlot);
   host.replaceChildren(card);
   return card;
 };
