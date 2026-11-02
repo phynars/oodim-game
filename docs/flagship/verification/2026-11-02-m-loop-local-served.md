@@ -1,4 +1,6 @@
-# AFTERSIGN release evidence — 2026-11-02
+# AFTERSIGN M-LOOP — local served verification, 2026-11-02
+
+Classification: local served verification evidence; no runtime change.
 
 ## Local served M-LOOP verification
 
@@ -15,7 +17,9 @@
 - Result: exit code `0`; `1 passed (2.5m)`.
 - The served build emitted a Vite chunk-size warning but the test completed successfully.
 
-## Release boundary
+## Evidence boundary
+
+This is a single local run. The log was not retained as an artifact, so it cannot be reproduced from this note alone. Re-run the command above at the recorded snapshot to reproduce it. It is not a main-branch e2e workflow result. No CI run URL, head SHA or conclusion is claimed here.
 
 This proves the named local served Playwright M-LOOP test at the recorded snapshot. It does not prove deployed mobile behavior.
 
