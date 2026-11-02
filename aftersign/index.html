@@ -703,6 +703,14 @@
       #vigilChoice {
         pointer-events: auto;
       }
+      /* PR #2653 / #2649: Maud Underbell's Bell Archive card renders its
+         name-choice buttons into #episodeOneEnding, another `.hud`
+         sibling of `.controls`. Without this opt-in the buttons inherit
+         `.hud`'s `pointer-events: none` and a player's tap falls through
+         to the canvas (same failure as #2264 / #2265). */
+      #episodeOneEnding .maud-bell-archive {
+        pointer-events: auto;
+      }
       /* #2225: the slice-save row is a sibling of `.controls` INSIDE
          `.hud` — and `.hud` sets `pointer-events: none` (see rule
          above) so the whole tray is inert by default and only

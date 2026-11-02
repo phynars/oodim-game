@@ -755,6 +755,7 @@ import {
   renderEpisodeOneEnding,
   resolveEpisodeOneEnding,
 } from "./src/episodeOneEnding.js";
+import { renderMaudBellArchive } from "./src/maudBellArchive.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -4625,10 +4626,17 @@ const choose = async (choiceId) => {
     }
     markStateDirty();
     await forceSave();
-    // Do NOT call renderText() here — it would re-build the payback
-    // button without the committed stamp and re-enable it. The commit
-    // is terminal for this beat; the DOM mutation above IS the surface
-    // the player and the spec read.
+    if (choiceId === "carry-name-to-bell-archive") {
+      renderMaudBellArchive(document, {
+        storedName: state.player.name,
+        onSelect: (selected) => {
+          state.interaction.maudBellArchiveNameChoice = selected.id;
+          publishState();
+        },
+      });
+    }
+    // The Orra choice remains terminal on this beat. Bell Archive instead
+    // replaces the surface with Maud's local, non-durable name selection.
     publishState();
     return;
   }

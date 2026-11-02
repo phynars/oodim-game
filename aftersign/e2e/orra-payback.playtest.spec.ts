@@ -226,6 +226,79 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     await expect(committed).toBeDisabled();
   });
 
+  // PR #2653 / #2649 (Mara review F1/F2): after the carry-name commit,
+  // Maud's Bell Archive card renders into #episodeOneEnding — a `.hud`
+  // sibling of `.controls`, and `.hud` is `pointer-events: none`. This
+  // test TAPS a visible Maud name button (bounded, so an inherited
+  // `none` regression fails in 15s on the tap line instead of hanging),
+  // and asserts the hit-test at the button's centre lands on the button
+  // itself, not the canvas underneath.
+  test("Maud's Bell Archive name buttons are tappable after the carry-name commit and the tap selects the name", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.goto(`/aftersign/?slot=maud-bell-archive-${Date.now()}`, {
+      waitUntil: "load",
+    });
+    await reachRedTagIoReturnRecognition(page);
+
+    const carryName = page.locator(
+      'button[data-orra-payback-action="carry-name-to-bell-archive"]',
+    );
+    await expect(carryName).toBeVisible({ timeout: WAIT_MS });
+    await carryName.tap({ timeout: WAIT_MS });
+
+    const card = page.locator(
+      '#episodeOneEnding [data-beat="maud-bell-archive"]',
+    );
+    await expect(card).toBeVisible({ timeout: WAIT_MS });
+    const nameButtons = card.locator("button[data-maud-name-choice]");
+    await expect(nameButtons).toHaveCount(3);
+
+    const remembered = card.locator(
+      'button[data-maud-name-choice="remembered-name"]',
+    );
+    await expect(remembered).toBeVisible({ timeout: WAIT_MS });
+    await remembered.scrollIntoViewIfNeeded();
+
+    // The button must be the hit target at its own centre — proves the
+    // `.hud` pointer-events: none is overridden for the Maud card.
+    const hitsButton = await remembered.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return (
+        getComputedStyle(el).pointerEvents !== "none" &&
+        !!hit &&
+        (hit === el || el.contains(hit))
+      );
+    });
+    expect(hitsButton).toBe(true);
+
+    await remembered.tap({ timeout: WAIT_MS });
+    await expect(remembered).toHaveAttribute("data-selected", "true", {
+      timeout: WAIT_MS,
+    });
+    await expect(remembered).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      card.locator('button[data-maud-name-choice][data-selected="true"]'),
+    ).toHaveCount(1);
+
+    // Re-selecting a decoy moves the selection — the tap handler, not a
+    // one-shot render flag, owns the state.
+    const decoy = card.locator(
+      'button[data-maud-name-choice="archive-decoy"]',
+    );
+    await decoy.tap({ timeout: WAIT_MS });
+    await expect(decoy).toHaveAttribute("data-selected", "true", {
+      timeout: WAIT_MS,
+    });
+    await expect(remembered).not.toHaveAttribute("data-selected", "true");
+    await expect(remembered).toHaveAttribute("aria-pressed", "false");
+  });
+
   // Criterion B (Soren PR #2264 merge gate): the COMMITTED payback
   // survives the server-authoritative save. The played context taps
   // the carry-name action, then (1) a same-context reload and (2) a
