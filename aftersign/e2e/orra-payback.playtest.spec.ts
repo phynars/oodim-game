@@ -297,6 +297,14 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     });
     await expect(remembered).not.toHaveAttribute("data-selected", "true");
     await expect(remembered).toHaveAttribute("aria-pressed", "false");
+
+    // A decoy name dims the district: the ending switches to dark.
+    await expect(ending).toHaveCount(1);
+    await expect(ending).toHaveAttribute("data-ending-id", "maud-bell-archive-dark", {
+      timeout: WAIT_MS,
+    });
+    await expect(ending).toHaveAttribute("data-district-light", "out");
+    await expect(nameButtons).toHaveCount(3);
   });
 
   // Criterion B (Soren PR #2264 merge gate): the COMMITTED payback

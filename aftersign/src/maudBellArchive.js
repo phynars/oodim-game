@@ -62,7 +62,7 @@ const renderEnding = (doc, host, choice) => {
   light.setAttribute("data-district-light", ending.light);
   light.textContent = ending.light === "lit" ? "District light: lit" : "District light: out";
   card.append(title, bell, outcome, dialogue, light);
-  host.replaceChildren(card);
+  slot.replaceChildren(card);
   return card;
 };
 
@@ -86,6 +86,9 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
   dialogue.textContent = "Maud opens the archive. Which name did the bell keep?";
   const choices = doc.createElement("div");
   choices.className = "maud-bell-archive__choices";
+  const endingSlot = doc.createElement("div");
+  endingSlot.className = "maud-bell-archive__ending-slot";
+  endingSlot.setAttribute("aria-live", "polite");
 
   for (const choice of maudBellArchiveChoices(storedName)) {
     const button = doc.createElement("button");
@@ -100,7 +103,7 @@ export const renderMaudBellArchive = (doc, { storedName, onSelect } = {}) => {
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
-      renderEnding(doc, host, choice);
+      renderEnding(doc, endingSlot, choice);
       if (typeof onSelect === "function") onSelect(choice);
     });
     choices.appendChild(button);
