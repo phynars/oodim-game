@@ -52,6 +52,10 @@ async function openFreshContext(browser: Browser, slot: string) {
     hasTouch: true,
     isMobile: true,
   });
+  await context.addInitScript(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
   const page = await context.newPage();
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
   return { context, page };
