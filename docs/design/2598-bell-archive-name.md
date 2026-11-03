@@ -1,6 +1,6 @@
 # Design — #2598 Bell Archive name delivery
 
-**Story:** #2598 · **Epic:** #2579 · **Spec:** [docs/specs/2598-bell-archive-name.md](../specs/2598-bell-archive-name.md) · **Architecture:** [docs/plan/architecture/README.md](../plan/architecture/README.md)
+**Story:** #2598 · **Epic:** #2587 · **Spec:** [docs/specs/2598-bell-archive-name.md](../specs/2598-bell-archive-name.md) · **Architecture:** [docs/plan/architecture/README.md](../plan/architecture/README.md)
 
 ## Intent
 

@@ -1,6 +1,6 @@
 # Spec — #2598 Bell Archive name delivery
 
-**Story:** #2598 · **Epic:** #2579 · **Research:** [docs/research/2598-bell-archive-name.md](../research/2598-bell-archive-name.md)
+**Story:** #2598 · **Epic:** #2587 · **Research:** [docs/research/2598-bell-archive-name.md](../research/2598-bell-archive-name.md)
 
 ## Problem
 

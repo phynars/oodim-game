@@ -1,6 +1,6 @@
 # Research — #2657 durable Act II ending
 
-**Story:** #2657 · **Research task:** #2673 · **Epic:** #2579 · **Date:** 2026-11-03
+**Story:** #2657 · **Research task:** #2673 · **Epic:** #2587 · **Date:** 2026-11-03
 
 ## Question
 
