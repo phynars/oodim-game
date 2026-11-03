@@ -75,7 +75,7 @@ const CASES = [
 test.describe("Maud Bell Archive endings (#2652)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  for (const { choice, endingId, light } of CASES) {
+  for (const { choice, endingId, light, lightText } of CASES) {
     test(`tapping ${choice} rings and restores ${endingId}`, async ({
       page,
       browser,
@@ -106,6 +106,7 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
           await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });
           await expect(restoredCard).toHaveAttribute("data-district-light", light);
           await expect(restoredCard).toContainText("Act II — Bell Archive");
+          await expect(restoredCard).toContainText(lightText);
           await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
           await expect(returning.locator('[data-beat="maud-bell-archive"]')).toHaveCount(0);
         } finally {
