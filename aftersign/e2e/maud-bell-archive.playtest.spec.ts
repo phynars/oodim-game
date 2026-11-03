@@ -58,8 +58,18 @@ async function openFreshContext(browser: Browser, slot: string) {
 }
 
 const CASES = [
-  { choice: "remembered-name", endingId: "maud-bell-archive-lit", light: "lit" },
-  { choice: "archive-decoy", endingId: "maud-bell-archive-dark", light: "out" },
+  {
+    choice: "remembered-name",
+    endingId: "maud-bell-archive-lit",
+    light: "lit",
+    lightText: "The district light stays lit.",
+  },
+  {
+    choice: "archive-decoy",
+    endingId: "maud-bell-archive-dark",
+    light: "out",
+    lightText: "One district light goes out.",
+  },
 ] as const;
 
 test.describe("Maud Bell Archive endings (#2652)", () => {
