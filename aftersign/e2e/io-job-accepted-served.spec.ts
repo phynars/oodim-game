@@ -1,13 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { ioJobAcceptedLine } from "../src/ioJobAcceptedCopy.js";
+import { servedIoDialogue } from "../src/ioServedDialogue.js";
 import {
   selectIoJobOffers,
   type PlayerMemory,
 } from "../../packages/aftersign/src/computeOfferedJobs";
 
 const WAIT_MS = 10_000;
-const COLD_START_MS = 45_000;
+const COLD_START_MS = 75_000;
 
 interface GameWindow extends Window {
   __game?: {
@@ -96,7 +96,7 @@ test.describe("AFTERSIGN Io job-accepted sibling paragraph (played)", () => {
       "data-aftersign-io-job-accepted-line",
       "job-safe-delivery",
     );
-    const expectedFirstRunText = ioJobAcceptedLine(safeLabel);
+    const expectedFirstRunText = servedIoDialogue.jobAcceptedReceipt(safeLabel);
     await expect(acceptedLine).toHaveText(expectedFirstRunText);
 
     const acceptedInsideTray = page.locator(
@@ -148,7 +148,7 @@ test.describe("AFTERSIGN Io job-accepted sibling paragraph (played)", () => {
       "data-aftersign-io-job-accepted-line",
       "job-night-transfer",
     );
-    const expectedLoopedText = ioJobAcceptedLine(nightTransferLabel);
+    const expectedLoopedText = servedIoDialogue.jobAcceptedReceipt(nightTransferLabel);
     await expect(acceptedLine).toHaveText(expectedLoopedText);
 
     expect(

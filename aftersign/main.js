@@ -92,11 +92,7 @@ import {
   buildIoContinueBeats,
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
-import { ioNextJobLine } from "./src/ioNextJobDialogue.js";
-import { selectIoSecondPacketCopyForReturnReason } from "./src/ioSecondPacketCopy.ts";
-// Keep the pointer selector distinct from the existing immediate-response
-// state below. The accepted-choice path owns both; renderText projects them.
-import { ioSecondPacketResponseLine as selectIoSecondPacketPointerLine } from "./src/ioSecondPacketResponseVoice.ts";
+import { servedIoDialogue } from "./src/ioServedDialogue.js";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 // PR #1884 re-review (Mara Okonkwo) — Io's job-acceptance line, wired
 // into the served page as a SIBLING paragraph next to `#line` (same
@@ -467,7 +463,6 @@ import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 import { IO_DEFAULT_OFFER_LINE } from "./src/ioDefaultOfferCopy.js";
 import { ioOfferLineFor } from "./src/ioOfferMemoryLine.js";
 import { ioOfferHeading } from "./src/ioLoopCopy.js";
-import { ioJobAcceptedLine } from "./src/ioJobAcceptedCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
 // served page as a SIBLING paragraph next to `#line`. Same shape as
 // the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
@@ -1759,8 +1754,8 @@ const lineForBeat = () => {
       remembers: recallRemembers,
     });
     const recallLine = recallEntry ? recallEntry.line : null;
-    const handoffLine = ioNextJobLine();
-    const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
+    const handoffLine = servedIoDialogue.nextJobPrompt();
+    const secondPacketCopy = servedIoDialogue.secondPacketAcknowledgement({
       returnReason: state.player.returnReason,
       playerName: state.player.name,
     });
@@ -3612,7 +3607,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
             // per-jobId paragraph is idempotent — the same jobId re-tap
             // updates the existing node instead of appending a duplicate.
             {
-              const acceptedLineText = ioJobAcceptedLine(offer.label);
+              const acceptedLineText = servedIoDialogue.jobAcceptedReceipt(offer.label);
               const offeredJobsRoot =
                 document.getElementById("offeredJobs") ||
                 (typeof offeredJobs !== "undefined" ? offeredJobs : null);
@@ -3823,7 +3818,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     delete skipRouteButton.dataset.returnReason;
     delete deliverButton.dataset.returnReason;
   } else if (isNextJobBeat) {
-    const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
+    const secondPacketCopy = servedIoDialogue.secondPacketAcknowledgement({
       returnReason: state.player.returnReason,
       playerName: state.player.name,
     });
@@ -4576,7 +4571,7 @@ const choose = async (choiceId) => {
         ? "take-second-packet"
         : "ask-what-changed";
     }
-    const secondPacketCopy = selectIoSecondPacketCopyForReturnReason({
+    const secondPacketCopy = servedIoDialogue.secondPacketAcknowledgement({
       returnReason: state.player.returnReason,
       playerName: state.player.name,
     });
