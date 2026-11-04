@@ -26,6 +26,6 @@ Internal references: [#2656](https://github.com/phynars/oodim-game/issues/2656),
 ## Open questions for the spec
 
 - What exact visible ending control gives the player the red tag, and what canonical wording identifies that action?
-- Where is the carried-tag quality persisted between the ending and Saint Orra’s encounter?
-- What exact Saint Orra line acknowledges the tag, and what line or silence applies when the quality is absent?
-- Which served-page test taps the visible ending control and verifies both the tag-present and tag-absent outcomes?
+- Where is the first-tap value (`took-at-once` / `asked-first`) persisted between the ending and Saint Orra's encounter, and how is it written once only?
+- What exact Saint Orra wording is used for the "took the red tag at once" line and for the "asked first" line? What line or silence applies when no value was recorded?
+- Which served-page tests at 390×844 cover each first-tap path? One taps "Take the second packet" first and expects the at-once line. The other taps "Ask what changed" first and expects the asked-first line and no at-once line.
