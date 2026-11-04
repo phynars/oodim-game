@@ -31,7 +31,7 @@ jobs:
           # The base branch's script, never the PR's: a PR cannot rewrite the
           # rule that re-runs its own gates.
           ref: ${{ github.event.pull_request.base.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       # Absent on the base until the PR adding it merges.
