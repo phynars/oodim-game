@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { addedStrings, clientCandidates, decide, exemptReason, inBundle, inRendered, parseRendered, renderedVerdict, servedCandidates } from "./served-reach.mjs";
+import { addedStrings, clientCandidates, decide, exemptReason, ignoredSpecNames, inBundle, inRendered, parseRendered, renderedVerdict, servedCandidates, servedSpecs } from "./served-reach.mjs";
 
 test("parseRendered: plain lines are real input, { t, via } lines are harness-only (#2529)", () => {
   const jsonl = [
@@ -130,6 +130,39 @@ test("decide: no changes is distinct from non-served source", () => {
   assert.deepEqual(decide({ ...base, unreachable: ["a.ts"], missingText: [{}] }), { result: "unreachable", fail: true });
   assert.deepEqual(decide({ ...base, missingText: [{ file: "a.ts", text: "t" }] }), { result: "text_not_shipped", fail: true });
   assert.deepEqual(decide(base), { result: "served", fail: false });
+});
+
+test("decide: spec rule — a client change needs a served spec (RC1)", () => {
+  const base = { exempt: null, files: ["aftersign/x.ts"], candidates: ["aftersign/x.ts"], unreachable: [], missingText: [] };
+  assert.deepEqual(decide({ ...base, clientChanged: true, specs: [] }), { result: "no_served_spec", fail: true });
+  assert.deepEqual(decide({ ...base, clientChanged: true, specs: ["aftersign/e2e/a.spec.ts"] }), { result: "served", fail: false });
+  // Worker-only change (src/): no spec required.
+  assert.deepEqual(decide({ ...base, clientChanged: false, specs: [] }), { result: "served", fail: false });
+  // An approved exemption covers the spec rule too.
+  assert.deepEqual(decide({ ...base, exempt: "why", clientChanged: true, specs: [] }), { result: "skipped:exempt", fail: false });
+  // Earlier rules report first.
+  assert.deepEqual(decide({ ...base, unreachable: ["aftersign/x.ts"], clientChanged: true, specs: [] }), { result: "unreachable", fail: true });
+});
+
+test("ignoredSpecNames reads testIgnore; servedSpecs keeps only specs the served config runs", () => {
+  const cfg = `export default defineConfig({\n  testDir: "e2e",\n  testIgnore: [\n    "pure-a.spec.ts",\n    // why\n    'pure-b.spec.ts',\n  ],\n  retries: 3,\n});`;
+  assert.deepEqual(ignoredSpecNames(cfg), ["pure-a.spec.ts", "pure-b.spec.ts"]);
+  assert.deepEqual(ignoredSpecNames("no list here"), []);
+  const files = [
+    "aftersign/e2e/play.playtest.spec.ts",
+    "aftersign/e2e/pure-a.spec.ts",
+    "aftersign/e2e/nested/deep.spec.ts",
+    "aftersign/e2e/helpers.ts",
+    "agar/e2e/other.spec.ts",
+    "apps/web/src/aftersign/x.spec.ts",
+  ];
+  assert.deepEqual(servedSpecs(files, ["pure-a.spec.ts"]), ["aftersign/e2e/play.playtest.spec.ts", "aftersign/e2e/nested/deep.spec.ts"]);
+});
+
+test("the real AFTERSIGN config's testIgnore parses (every entry is a .spec.ts)", () => {
+  const names = ignoredSpecNames(readFileSync(new URL("../aftersign/playwright.config.ts", import.meta.url), "utf8"));
+  assert.ok(names.length >= 5, `expected the pure-lane list, got ${names.length}`);
+  assert.ok(names.includes("packet-intent-contract.spec.ts"));
 });
 
 // Runs the real recorder (scripts/rendered-text-recorder.js) in a VM with a

@@ -125,7 +125,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - run: node --test scripts/served-reach.test.mjs scripts/gate-exempt.test.mjs
+      - run: node --test scripts/served-reach.test.mjs scripts/gate-exempt.test.mjs scripts/served-replay.test.mjs
       - run: npm install
       - name: changed code must reach the shipped game
         id: reach
