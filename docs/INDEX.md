@@ -33,4 +33,5 @@ One row per story, filled in as its documents land (story → research → spec 
 | Story | Research | Spec | Design |
 |---|---|---|---|
 | [#2598](https://github.com/phynars/oodim-game/issues/2598) | [Bell Archive name delivery](research/2598-bell-archive-name.md) | [Bell Archive name delivery](specs/2598-bell-archive-name.md) | [Bell Archive name delivery](design/2598-bell-archive-name.md) |
+| [#2656](https://github.com/phynars/oodim-game/issues/2656) | [Red tag continuity at Saint Orra](research/2656-red-tag-saint-orra.md) | — | — |
 | [#2657](https://github.com/phynars/oodim-game/issues/2657) | [Durable Act II ending](research/2657-durable-act-ii-ending.md) | — | — |
