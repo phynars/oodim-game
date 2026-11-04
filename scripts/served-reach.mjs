@@ -146,13 +146,41 @@ export function renderedVerdict({ exempt, checked, unrendered, mode }) {
   return { result, fail: mode === "fail" };
 }
 
-/** Pure verdict. `files` distinguishes no diff from a non-served diff. */
-export function decide({ exempt, files, candidates, unreachable, missingText }) {
+// ---- spec rule (oodim RC1, 2026-11-04) ------------------------------------
+// A client change must come with a served spec: a Playwright spec the
+// AFTERSIGN config runs against the deployed site (AFTERSIGN_BASE_URL). The
+// deploy replays the specs a merge touched against game.oodim.com
+// (scripts/served-replay.mjs) and the live verifier takes that result as its
+// evidence. Without one it plays the game by hand from the title screen, and
+// 13 of 26 inconclusive live checks (10-20..11-03) ran out of steps before
+// the changed state (failed recall, Act II, reload persistence).
+
+export const SERVED_SPEC_CONFIG = "aftersign/playwright.config.ts";
+const SERVED_SPEC_RE = /^aftersign\/e2e\/.+\.spec\.ts$/;
+
+/** Spec basenames the AFTERSIGN config's `testIgnore` leaves out (pure-lane
+ *  specs: no page, so they prove nothing about the served game). */
+export function ignoredSpecNames(configText) {
+  const m = /testIgnore:\s*\[([\s\S]*?)\]/.exec(configText ?? "");
+  if (!m) return [];
+  return [...m[1].matchAll(/["'`]([^"'`]+\.spec\.ts)["'`]/g)].map((x) => x[1]);
+}
+
+/** Changed files that are specs the served config runs. */
+export function servedSpecs(files, ignored) {
+  const skip = new Set(ignored);
+  return files.filter((f) => SERVED_SPEC_RE.test(f) && !skip.has(f.split("/").pop()));
+}
+
+/** Pure verdict. `files` distinguishes no diff from a non-served diff.
+ *  `clientChanged` + `specs`: the spec rule (client source needs a served spec). */
+export function decide({ exempt, files, candidates, unreachable, missingText, clientChanged = false, specs = [] }) {
   if (files.length === 0) return { result: "skipped:no_changes", fail: false };
   if (candidates.length === 0) return { result: "skipped:no_served_source", fail: false };
   if (exempt) return { result: "skipped:exempt", fail: false };
   if (unreachable.length > 0) return { result: "unreachable", fail: true };
   if (missingText.length > 0) return { result: "text_not_shipped", fail: true };
+  if (clientChanged && specs.length === 0) return { result: "no_served_spec", fail: true };
   return { result: "served", fail: false };
 }
 
@@ -300,13 +328,16 @@ async function main() {
       }
     }
   }
+  const client = clientCandidates(files);
+  const specs = servedSpecs(files, ignoredSpecNames(readFileSync(path.join(REPO, SERVED_SPEC_CONFIG), "utf8")));
   const ex = await exemptFromEvent(ev?.pr, "served");
   const exempt = applyExempt(ex);
-  const d = decide({ exempt, files, candidates, unreachable, missingText });
+  const d = decide({ exempt, files, candidates, unreachable, missingText, clientChanged: client.length > 0, specs });
 
   const lines = [
     `### served-reach gate`,
     `- served source files changed: ${candidates.length} (reachable ${reachable.length}, unreachable ${unreachable.length})`,
+    ...(client.length > 0 ? [`- served specs changed: ${specs.length}${specs.length ? ` (${specs.map((s) => s.split("/").pop()).join(", ")})` : ""}`] : []),
     ...(opt.base && files.length === 0 ? ["- no changed files were found; if edits are uncommitted, re-run with `--files <paths>`."] : []),
     ...unreachable.map((f) => `  - not reachable from a served entry: \`${f}\``),
     ...missingText.map((m) => `  - new text not in the built game (\`${m.file}\`): "${m.text.slice(0, 120)}"`),
@@ -320,6 +351,8 @@ async function main() {
     console.log(`::error title=served-reach: change never reaches players::${unreachable.join(", ")} ${unreachable.length === 1 ? "is" : "are"} not imported (directly or indirectly) by aftersign/main.js or src/server.ts, so this edit never ships. Wire it into the live code path in this PR (and assert it in an e2e that loads the built game), ${EXEMPT_HINT}.`);
   } else if (d.result === "text_not_shipped") {
     console.log(`::error title=served-reach: new text is not in the built game::${missingText.length} new string(s) are missing from the production bundle, e.g. "${missingText[0].text.slice(0, 80)}" in ${missingText[0].file}. The code that uses them is never called on the live path, so the bundler dropped it. Call it from the live path, ${EXEMPT_HINT}.`);
+  } else if (d.result === "no_served_spec") {
+    console.log(`::error title=served-reach: no served spec for a client change::${client.join(", ")} changed, but this PR adds or edits no spec under aftersign/e2e/ that ${SERVED_SPEC_CONFIG} runs. Add or extend one that plays to the changed state with visible input (click, key, reload) and asserts what a player sees. After deploy it is replayed against game.oodim.com and is the live check's evidence. Pure-lane specs in testIgnore don't count. Alternatively ${EXEMPT_HINT}.`);
   }
   console.log(`SERVED_REACH_RESULT=${d.result}`);
   if (d.fail) process.exitCode = 1;

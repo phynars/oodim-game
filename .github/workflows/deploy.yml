@@ -10,9 +10,13 @@ name: Deploy game.oodim.com
 # the GITHUB_TOKEN. Jobs needing more declare their own block.
 # `issues: write` is required so the M-LOOP evidence step can comment on
 # #1819 / #2116 with the deployed run URL + parsed test count.
+# `actions: read` + `checks: write`: the served replay finds the last green
+# deploy and posts its `served-replay` check run on the deployed SHA.
 permissions:
   contents: read
   issues: write
+  actions: read
+  checks: write
 
 on:
   push:
@@ -190,6 +194,43 @@ jobs:
           body="M-LOOP deployed gate: **${GATE_STATUS}**. SHA: \`${GITHUB_SHA}\`. Playwright: ${executed} executed, ${skipped} skipped, ${failed} failed. Target: https://game.oodim.com/aftersign/. Run: ${RUN_URL}. Trace/video artifact: ${RUN_URL}#artifacts."
           gh issue comment 1819 --repo "${{ github.repository }}" --body "$body"
           gh issue comment 2116 --repo "${{ github.repository }}" --body "$body"
+      # SERVED REPLAY (oodim RC1, 2026-11-04). Re-run the served specs this
+      # deploy added or changed against the live site, and post the per-spec
+      # result as a `served-replay` check run on the deployed SHA. The oodim
+      # live verifier reads it as its evidence for each merged PR instead of
+      # playing to the changed state by hand (13 of 26 inconclusive checks ran
+      # out of steps first). The range starts at the last GREEN deploy, not
+      # the push's `before`: concurrency cancels in-progress deploys, and a
+      # cancelled merge's specs must still be replayed here.
+      # Observational: it never fails the deploy (a red here is the verifier's
+      # LIVE_FAILED evidence, not a rollback). Contract: scripts/served-replay.mjs.
+      - name: Served replay — this deploy's specs against game.oodim.com
+        if: ${{ steps.cf_deploy.outcome == 'success' && github.event_name == 'push' }}
+        continue-on-error: true
+        timeout-minutes: 25
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AFTERSIGN_BASE_URL: https://game.oodim.com/aftersign/
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -uo pipefail
+          repo="${{ github.repository }}"
+          base="$(gh run list -R "$repo" --workflow deploy.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // empty' || true)"
+          if [ -z "$base" ] || [ "$base" = "$GITHUB_SHA" ]; then base="$PUSH_BEFORE"; fi
+          : > /tmp/replay-files.txt
+          gh api "repos/$repo/compare/${base}...${GITHUB_SHA}" --jq '.files[] | select(.status != "removed") | .filename' > /tmp/replay-files.txt || echo "::warning::served replay: compare ${base}...${GITHUB_SHA} unreadable; replaying nothing"
+          node scripts/served-replay.mjs plan /tmp/replay-files.txt > /tmp/replay-specs.txt
+          echo "base ${base}; specs to replay:"; cat /tmp/replay-specs.txt
+          rm -f aftersign/playwright-report/results.json
+          if [ -s /tmp/replay-specs.txt ]; then
+            # The M-LOOP step above already installed chromium and posted its evidence,
+            # so reusing the config's results.json path is safe here.
+            npx playwright test $(tr '\n' ' ' < /tmp/replay-specs.txt) --config aftersign/playwright.config.ts || echo "::warning::served replay: at least one spec failed on the live site"
+          fi
+          node scripts/served-replay.mjs report --base "$base" --sha "$GITHUB_SHA" --specs /tmp/replay-specs.txt --results aftersign/playwright-report/results.json > /tmp/replay-check.json
+          gh api -X POST "repos/$repo/check-runs" --input /tmp/replay-check.json --jq '"served-replay check: \(.conclusion) \(.html_url)"'
       - name: Note if deploy skipped
         if: ${{ env.CF_TOKEN == '' }}
         run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set — built but did not publish. Add it in repo Settings → Secrets → Actions to enable auto-publish."
