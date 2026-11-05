@@ -136,48 +136,22 @@ export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = 
   const restoredEnding = maudBellArchiveEndingForId(endingId);
   if (restoredEnding) return renderMaudBellArchiveEnding(doc, host, restoredEnding);
 
-  const card = doc.createElement("section");
-  addClasses(card, "episode-one-ending", "maud-bell-archive");
-  card.setAttribute(BEAT_ATTR, MAUD_BEAT_ID);
-  card.style.pointerEvents = "auto";
-  const title = doc.createElement("strong");
-  title.textContent = "Maud Underbell — Bell Archive";
-  const dialogue = doc.createElement("p");
-  dialogue.className = "episode-one-ending__bell";
-  dialogue.textContent = "Maud opens the archive. Which name did the bell keep?";
-  const choices = doc.createElement("div");
-  choices.className = "maud-bell-archive__choices";
-  const endingSlot = doc.createElement("div");
-  endingSlot.className = "maud-bell-archive__ending-slot";
-  endingSlot.setAttribute("aria-live", "polite");
-
-  for (const choice of maudBellArchiveChoices(storedName)) {
-    const button = doc.createElement("button");
-    button.type = "button";
-    addClasses(button, "choice", "maud-bell-archive__choice");
-    button.textContent = choice.name;
-    button.setAttribute("data-maud-name-choice", choice.id);
-    button.addEventListener("click", () => {
-      choices.querySelectorAll("button").forEach((item) => {
-        item.removeAttribute("data-selected");
-        item.setAttribute("aria-pressed", "false");
-      });
-      button.setAttribute("data-selected", "true");
-      button.setAttribute("aria-pressed", "true");
-      const resolved = resolveBellArchiveOutcome(choice.name, {
-        name: cleanName(storedName),
-      });
-      const resolvedChoice = {
-        ...choice,
-        matchesMemory: resolved.outcome === "matched",
-      };
-      const ending = maudBellArchiveEndingForChoice(resolvedChoice);
-      if (typeof onSelect === "function") onSelect(resolvedChoice, ending);
-      renderMaudBellArchiveEnding(doc, endingSlot, ending);
-    });
-    choices.appendChild(button);
-  }
-  card.append(title, dialogue, choices, endingSlot);
+  // The scene module owns the choice UI and outcome; this wrapper maps the
+  // outcome onto the ending card and delegates persistence to onSelect.
+  // The card renders only after the promise onSelect returns has settled.
+  const endingFor = (resolved) =>
+    maudBellArchiveEndingForChoice({ matchesMemory: resolved.outcome === "matched" });
+  const card = renderBellArchiveScene(doc, {
+    sealedName: cleanName(storedName),
+    persistOutcome: (resolved, choice) => {
+      if (typeof onSelect !== "function") return undefined;
+      const resolvedChoice = { ...choice, matchesMemory: resolved.outcome === "matched" };
+      return onSelect(resolvedChoice, endingFor(resolved));
+    },
+    showEndingCard: (slot, resolved) => {
+      renderMaudBellArchiveEnding(doc, slot, endingFor(resolved));
+    },
+  });
   host.replaceChildren(card);
   return card;
 };

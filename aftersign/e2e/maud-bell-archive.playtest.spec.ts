@@ -98,28 +98,31 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
       await expect(nameButton).toBeVisible({ timeout: WAIT_MS });
       await nameButton.tap();
 
-      // Bell Archive outcome: a real touch replaces the choices with the
-      // persisted matched/unmatched ending card.
-      await expect(page.locator('[data-beat="maud-bell-archive"]')).toHaveCount(0);
+      // Bell Archive outcome: the scene module stamps matched/unmatched on
+      // the scene once the real touch resolves the name against memory.
+      await expect(page.locator('[data-beat="maud-bell-archive"]')).toHaveAttribute(
+        "data-bell-archive-outcome",
+        light === "lit" ? "matched" : "unmatched",
+      );
       const liveCard = page.locator(`[data-ending-id="${endingId}"]`);
       await expect(liveCard).toBeVisible({ timeout: WAIT_MS });
       await expect(liveCard).toHaveAttribute("data-district-light", light);
       await expect(liveCard).toHaveAttribute("data-bell-ringing", "true");
 
-      await expect(async () => {
-        const { context, page: returning } = await openFreshContext(browser, slot);
-        try {
-          const restoredCard = returning.locator(`[data-ending-id="${endingId}"]`);
-          await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });
-          await expect(restoredCard).toHaveAttribute("data-district-light", light);
-          await expect(restoredCard).toContainText("Act II — Bell Archive");
-          await expect(restoredCard).toContainText(lightText);
-          await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
-          await expect(returning.locator('[data-beat="maud-bell-archive"]')).toHaveCount(0);
-        } finally {
-          await context.close();
-        }
-      }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
+      // Persist-before-card: the card only renders after persistence settles,
+      // so the first fresh context must already restore it — no retry loop.
+      const { context, page: returning } = await openFreshContext(browser, slot);
+      try {
+        const restoredCard = returning.locator(`[data-ending-id="${endingId}"]`);
+        await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });
+        await expect(restoredCard).toHaveAttribute("data-district-light", light);
+        await expect(restoredCard).toContainText("Act II — Bell Archive");
+        await expect(restoredCard).toContainText(lightText);
+        await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
+        await expect(returning.locator('[data-beat="maud-bell-archive"]')).toHaveCount(0);
+      } finally {
+        await context.close();
+      }
     });
   }
 });
