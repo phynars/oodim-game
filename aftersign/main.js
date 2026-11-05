@@ -3492,6 +3492,24 @@ __ioConsequenceLineNode.textContent = ioLoopConsequenceLine(
   packetOutcomeFactObject,
 );
 offeredJobs.appendChild(__ioConsequenceLineNode);
+        // #2688 — Io's repeat-job affordance is a distinct, player-visible
+        // control. The returned copy follows the outcome fact recorded by
+        // deliverPacket: sealed → trusted route; opened → watched route;
+        // no fact → first run. Single declaration (PR #2689 review F1).
+        const ioLoopAffordance = document.createElement("section");
+        ioLoopAffordance.id = "ioLoopAffordance";
+        ioLoopAffordance.setAttribute("data-aftersign-io-loop-affordance", "true");
+        ioLoopAffordance.setAttribute("data-aftersign-io-loop-outcome", __ioConsequenceOutcome);
+        renderAftersignIoLoopAffordance(
+          ioLoopAffordance,
+          getAftersignIoLoopCopy({
+            packetOutcome:
+              __ioConsequenceOutcome === "sealed" || __ioConsequenceOutcome === "opened"
+                ? __ioConsequenceOutcome
+                : null,
+          }),
+        );
+        offeredJobs.appendChild(ioLoopAffordance);
         const ioLoopAffordance = document.createElement("section");
         ioLoopAffordance.id = "ioLoopAffordance";
         ioLoopAffordance.setAttribute("data-aftersign-io-loop-outcome", __ioConsequenceOutcome);
