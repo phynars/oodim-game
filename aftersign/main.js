@@ -56,10 +56,6 @@ import {
 } from "./server-authoritative-save.js";
 import { chooseIoReturningSessionLine } from "../packages/aftersign/src/ioReturningSession";
 import { getIoReturningSessionRecognitionLines } from "../apps/web/src/aftersign/ioReturningSessionLines.ts";
-import {
-  getAftersignIoLoopCopy,
-  renderAftersignIoLoopAffordance,
-} from "../apps/web/src/aftersign/ioLoopCopy";
 // Note (PR #1236): the direct import of `AFTERSIGN_NEXT_JOB_BEAT` was
 // removed here — the served-page handoff line is now sourced through
 // `buildIoContinueBeats(reason)[1].line` (see the import right below).
