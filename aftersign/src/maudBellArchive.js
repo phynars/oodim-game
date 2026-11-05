@@ -1,6 +1,6 @@
 // Maud Underbell's Bell Archive beat.
 
-import { resolveBellArchiveOutcome } from "../../apps/web/src/aftersign/bellArchiveScene.ts";
+import { renderBellArchiveScene } from "../../apps/web/src/aftersign/bellArchiveScene.ts";
 
 const cleanName = (value) => {
   const name = typeof value === "string" ? value.trim() : "";
