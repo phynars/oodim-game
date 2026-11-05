@@ -95,7 +95,11 @@ export function renderBellArchiveScene(
   endingSlot.className = "maud-bell-archive__ending-slot";
   endingSlot.setAttribute("aria-live", "polite");
 
-  let locked = false;
+  // Re-selection is allowed (orra-payback.playtest.spec.ts re-taps a decoy
+  // and expects the ending to flip to dark). A monotonically increasing tap
+  // id ensures only the LATEST tap renders the ending card once its persist
+  // settles — a slow earlier persist can never overwrite a newer choice.
+  let latestTap = 0;
   const sealedMemory = Object.freeze({ name: options.sealedName });
   for (const choice of bellArchiveChoices(options.sealedName)) {
     const button = doc.createElement("button");
@@ -104,12 +108,10 @@ export function renderBellArchiveScene(
     button.textContent = choice.name;
     button.setAttribute(NAME_CHOICE_ATTR, choice.id);
     button.addEventListener("click", async () => {
-      if (locked) return;
-      locked = true;
+      const tapId = ++latestTap;
       choices.querySelectorAll("button").forEach((item) => {
         item.removeAttribute("data-selected");
         item.setAttribute("aria-pressed", "false");
-        (item as HTMLButtonElement).disabled = true;
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
@@ -121,6 +123,9 @@ export function renderBellArchiveScene(
         // eslint-disable-next-line no-console
         console.warn(err);
       }
+      if (tapId !== latestTap) return;
+      // Exactly one ending card in the slot: replace, never append.
+      endingSlot.textContent = "";
       options.showEndingCard(endingSlot, resolved);
     });
     choices.appendChild(button);
