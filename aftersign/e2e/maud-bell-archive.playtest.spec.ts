@@ -98,6 +98,9 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
       await expect(nameButton).toBeVisible({ timeout: WAIT_MS });
       await nameButton.tap();
 
+      // Bell Archive outcome: a real touch replaces the choices with the
+      // persisted matched/unmatched ending card.
+      await expect(page.locator('[data-beat="maud-bell-archive"]')).toHaveCount(0);
       const liveCard = page.locator(`[data-ending-id="${endingId}"]`);
       await expect(liveCard).toBeVisible({ timeout: WAIT_MS });
       await expect(liveCard).toHaveAttribute("data-district-light", light);

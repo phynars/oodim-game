@@ -1,5 +1,7 @@
 // Maud Underbell's Bell Archive beat.
 
+import { resolveBellArchiveOutcome } from "../../apps/web/src/aftersign/bellArchiveScene.ts";
+
 const cleanName = (value) => {
   const name = typeof value === "string" ? value.trim() : "";
   return name || "the courier";
@@ -162,9 +164,16 @@ export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = 
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
-      const ending = maudBellArchiveEndingForChoice(choice);
+      const resolved = resolveBellArchiveOutcome(choice.name, {
+        name: cleanName(storedName),
+      });
+      const resolvedChoice = {
+        ...choice,
+        matchesMemory: resolved.outcome === "matched",
+      };
+      const ending = maudBellArchiveEndingForChoice(resolvedChoice);
+      if (typeof onSelect === "function") onSelect(resolvedChoice, ending);
       renderMaudBellArchiveEnding(doc, endingSlot, ending);
-      if (typeof onSelect === "function") onSelect(choice, ending);
     });
     choices.appendChild(button);
   }
