@@ -278,10 +278,19 @@ import { runOrraPaybackChecks } from "./src/orraPayback.test.ts";
 // `@ts-ignore` mirrors the `runKeptSealRouteRiskChecks` sibling above.
 // @ts-ignore
 import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test.js";
+// Bell Archive scene (#2691) — outcome resolution, Maud's three name
+// choices, and the persist-before-card gate. Sole relative import is the
+// extensioned `./bellArchiveScene.ts`, which has no relative imports.
+import { runBellArchiveSceneChecks } from "./src/bellArchiveScene.test.ts";
 
 type Runner = {
   label: string;
   run: () => void;
+};
+
+type AsyncRunner = {
+  label: string;
+  run: () => Promise<void>;
 };
 
 const runners: Runner[] = [
