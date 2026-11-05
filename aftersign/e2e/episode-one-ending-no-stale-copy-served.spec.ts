@@ -43,7 +43,13 @@ async function runOpenedPacketToEnding(page: Page): Promise<void> {
   await expect(page.locator("body")).toContainText(STALE_LEDGER_LINE, { timeout: WAIT_MS });
   await tapChoice(page, "accept-second-packet");
   await tapChoice(page, "light-vigil");
-  await expect(page.locator("#episodeOneEnding [data-ending-id]").first()).toBeVisible({ timeout: WAIT_MS });
+  const endingCard = page.locator("#episodeOneEnding [data-ending-id]").first();
+  await expect(endingCard).toBeVisible({ timeout: WAIT_MS });
+  // The opened-packet branch is resolved by `resolveEpisodeOneEnding`
+  // (packetSealed=false → EPISODE_ONE_ENDINGS.packetOpened). This pins the
+  // served reach for that branch now that the `episodeOneEndingForPacket`
+  // compat shim is gone.
+  await expect(endingCard).toHaveAttribute("data-ending-id", "ending-light-out");
 }
 
 test("opened-packet ending removes stale prompt and returning-session ledger copy from the visible page", async ({ page }) => {

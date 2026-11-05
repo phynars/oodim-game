@@ -44,9 +44,6 @@ Object.defineProperty(ENDINGS, "false", {
 });
 export const EPISODE_ONE_ENDINGS = Object.freeze(ENDINGS);
 
-export const episodeOneEndingForPacket = (sealed) =>
-  sealed ? EPISODE_ONE_ENDINGS.true : EPISODE_ONE_ENDINGS.packetOpened;
-
 export const resolveEpisodeOneEnding = ({
   packetSealed,
   redTagCarried,
