@@ -99,32 +99,36 @@ export async function runBellArchiveSceneChecks(): Promise<void> {
   assert((plain as unknown as StubElement).allText().includes("Maud Underbell"), "Maud is named");
   assert(plain.querySelectorAll("button").length === 3, "three name buttons");
 
-  // The ending card waits for persistence.
-  let release: () => void = () => undefined;
-  const persisted = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  let persistCalls = 0;
+  // The ending card waits for persistence, and the latest tap wins: a
+  // re-tap persists again, and a stale earlier persist that settles late
+  // never renders over the newer choice.
+  const releases: Array<() => void> = [];
   const cards: string[] = [];
   const gated = renderBellArchiveScene(stubDocument(), {
     sealedName: "Ada",
-    persistOutcome: () => {
-      persistCalls += 1;
-      return persisted;
-    },
+    persistOutcome: () =>
+      new Promise<void>((resolve) => {
+        releases.push(resolve);
+      }),
     showEndingCard: (_slot, resolved) => cards.push(resolved.outcome),
   });
   choiceButton(gated, "archive-decoy")!.click();
   await flush();
-  assert(persistCalls === 1, "persist runs once on tap");
+  assert(releases.length === 1, "persist runs once on first tap");
   assert(gated.getAttribute(BELL_ARCHIVE_OUTCOME_ATTRIBUTE) === "unmatched", "outcome stamped on tap");
   assert(cards.length === 0, "card does not render before persistence settles");
   choiceButton(gated, "remembered-name")!.click();
   await flush();
-  assert(persistCalls === 1, "second tap is ignored once locked");
-  release();
+  assert(releases.length === 2, "re-tap persists the new choice");
+  assert(gated.getAttribute(BELL_ARCHIVE_OUTCOME_ATTRIBUTE) === "matched", "latest tap re-stamps outcome");
+  assert(cards.length === 0, "no card before the latest persist settles");
+  releases[1]();
   await flush();
-  assert(cards.length === 1 && cards[0] === "unmatched", "card renders after persistence settles");
+  assert(cards.length === 1 && cards[0] === "matched", "latest tap's card renders after its persist");
+  releases[0]();
+  await flush();
+  assert(cards.length === 1 && cards[0] === "matched", "stale earlier persist never renders unmatched");
+  assert(gated.getAttribute(BELL_ARCHIVE_OUTCOME_ATTRIBUTE) === "matched", "stale persist leaves outcome matched");
 
   // A failed persist still shows the card.
   const originalWarn = console.warn;
