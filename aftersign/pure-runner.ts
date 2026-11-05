@@ -293,7 +293,7 @@ type AsyncRunner = {
   run: () => Promise<void>;
 };
 
-const runners: Runner[] = [
+const runners: Array<Runner | AsyncRunner> = [
   { label: "runPacketIntentChecks", run: runPacketIntentChecks },
   { label: "runNpcMemoryLineChecks", run: runNpcMemoryLineChecks },
   // Bridge between recognitionFeedback.ts (typed contract) and the
