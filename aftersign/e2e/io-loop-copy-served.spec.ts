@@ -26,8 +26,10 @@ async function choosePacketOutcome(page: Page, outcome: Outcome): Promise<void> 
   const y = box!.y + box!.height / 2;
   await page.mouse.move(x, y);
   await page.mouse.down();
+  // allowed: opened-packet gesture is a timed press-and-hold; the hold duration is the input itself, not a state wait
   await page.waitForTimeout(450);
   await page.mouse.move(x + 12, y);
+  // allowed: second half of the timed press-and-hold drag gesture (input duration, not a state wait)
   await page.waitForTimeout(450);
   await page.mouse.up();
 }
