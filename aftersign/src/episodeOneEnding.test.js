@@ -2,7 +2,6 @@ import { describe, expect, it, beforeEach } from "vitest";
 
 import {
   EPISODE_ONE_ENDINGS,
-  episodeOneEndingForPacket,
   publishEpisodeOneEndingToWindowGame,
   renderEpisodeOneEnding,
   resolveEpisodeOneEnding,
@@ -95,15 +94,6 @@ describe("resolveEpisodeOneEnding", () => {
     expect(EPISODE_ONE_ENDINGS.packetOpened.ioLine).toMatch(/opened/i);
     expect(EPISODE_ONE_ENDINGS.redTagWithheld.ioLine).toMatch(/red tag/i);
     expect(EPISODE_ONE_ENDINGS.redTagWithheld.ioLine).toMatch(/did not accept/i);
-  });
-});
-
-describe("episodeOneEndingForPacket (compat shim)", () => {
-  it("maps sealed → ending-true and opened → the packet-opened false branch", () => {
-    expect(episodeOneEndingForPacket(true)).toBe(EPISODE_ONE_ENDINGS.true);
-    expect(episodeOneEndingForPacket(false)).toBe(
-      EPISODE_ONE_ENDINGS.packetOpened,
-    );
   });
 });
 
