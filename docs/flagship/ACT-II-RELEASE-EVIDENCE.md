@@ -23,6 +23,15 @@ Record each item with UTC time, operator, deployed commit SHA, and an artifact l
 | _pending_ | _pending_ | 390×844 | Bell Archive light lit + fresh context | _pending_ | _pending_ | _pending_ |
 | _pending_ | _pending_ | 390×844 | Bell Archive light out + fresh context | _pending_ | _pending_ | _pending_ |
 
+## Repository evidence (not served-page evidence)
+
+These are repository-level checks for #2598 (epic #2587). They do **not** fill the served-page rows above. Those rows stay `_pending_` until an operator records a deployed SHA, a served URL and an artifact.
+
+| Story | Evidence | Source |
+| --- | --- | --- |
+| #2598 Bell Archive name choice, bell ring, lit/out ending card | Bell Archive scene module merged | PR #2695 |
+| #2598 lit/out outcome persisted per slot, restored in fresh context | Tap-only Playwright spec covering lit and out outcomes plus a fresh-context restore | `aftersign/e2e/maud-bell-archive.playtest.spec.ts` (PRs #2697, #2698) |
+
 ## Release decision
 
 Do not mark either story release-verified until every row has a successful served-page artifact. Missing deployment SHA, a nonzero release-gate exit, or a failed fresh-context restore blocks verification.
