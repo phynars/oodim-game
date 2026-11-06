@@ -250,8 +250,10 @@ classDiagram
 ```
 
 Only the player id lives in `localStorage` (`aftersign:player-id:v1`). The
-`/player-memory` Durable Object is deployed, but the served client doesn't
-call it (tests only).
+authoritative save remains the source of truth for the full player snapshot.
+The served client also reads `/player-memory` at boot and best-effort writes
+Io-memory facts there after an authoritative save; an unavailable
+`/player-memory` endpoint falls back to the save and never rejects that save.
 
 ### How a change reaches the player (top-down)
 
