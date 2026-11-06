@@ -46,7 +46,15 @@ async function reachOrraPayback(page: Page): Promise<void> {
   await waitForBeat(page, "io-return-recognition");
 }
 
-async function openFreshContext(browser: Browser, slot: string) {
+// The fresh context clears localStorage, so on game.oodim.com (a non-local
+// host) resolvePlayerId would mint a NEW visitor id and read a different save
+// (#2696). Pin the same player id via `?player=` in both contexts so the
+// restore check addresses the save the first context wrote.
+function slotUrl(slot: string, playerId: string): string {
+  return `/aftersign/?slot=${slot}&player=${playerId}`;
+}
+
+async function openFreshContext(browser: Browser, slot: string, playerId: string) {
   const context = await browser.newContext({
     viewport: PHONE_VIEWPORT,
     hasTouch: true,
@@ -57,11 +65,7 @@ async function openFreshContext(browser: Browser, slot: string) {
     window.sessionStorage.clear();
   });
   const page = await context.newPage();
-  // The fresh context clears localStorage, so on game.oodim.com (a
-  // non-local host) resolvePlayerId would mint a NEW visitor id and read a
-  // different save (#2696). Pin the same player id via `?player=` in both
-  // contexts so the restore check addresses the save the first context wrote.
-  await page.goto(`/aftersign/?slot=${slot}&player=${slot}`, { waitUntil: "load" });
+  await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
   return { context, page };
 }
 
@@ -89,9 +93,10 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
       browser,
     }) => {
       test.setTimeout(240_000);
-      // slot doubles as the player id; it matches PLAYER_ID_PATTERN.
-      const slot = `maud-bell-archive-${choice}-${Date.now()}`;
-      await page.goto(`/aftersign/?slot=${slot}&player=${slot}`, { waitUntil: "load" });
+      const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const slot = `maud-bell-archive-${choice}-${runId}`;
+      const playerId = `e2e-maud-bell-${choice}-${runId}`;
+      await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
       await reachOrraPayback(page);
 
       await tapVisible(
@@ -101,6 +106,8 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
 
       const nameButton = page.locator(`button[data-maud-name-choice="${choice}"]`);
       await expect(nameButton).toBeVisible({ timeout: WAIT_MS });
+      // Phone-first story: a real touch tap, same as orra-payback.playtest.spec.ts.
+      await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
       await nameButton.tap();
 
       // Bell Archive outcome: the scene module stamps matched/unmatched on
@@ -116,11 +123,12 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
 
       // Persist-before-card: the card only renders after persistence settles,
       // so the first fresh context must already restore it — no retry loop.
-      const { context, page: returning } = await openFreshContext(browser, slot);
+      const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
         const restoredCard = returning.locator(`[data-ending-id="${endingId}"]`);
         await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });
         await expect(restoredCard).toHaveAttribute("data-district-light", light);
+        await expect(restoredCard).toHaveAttribute("data-bell-ringing", "true");
         await expect(restoredCard).toContainText("Act II — Bell Archive");
         await expect(restoredCard).toContainText(lightText);
         await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
