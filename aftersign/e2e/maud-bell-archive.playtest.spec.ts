@@ -57,7 +57,11 @@ async function openFreshContext(browser: Browser, slot: string) {
     window.sessionStorage.clear();
   });
   const page = await context.newPage();
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+  // The fresh context clears localStorage, so on game.oodim.com (a
+  // non-local host) resolvePlayerId would mint a NEW visitor id and read a
+  // different save (#2696). Pin the same player id via `?player=` in both
+  // contexts so the restore check addresses the save the first context wrote.
+  await page.goto(`/aftersign/?slot=${slot}&player=${slot}`, { waitUntil: "load" });
   return { context, page };
 }
 
@@ -85,8 +89,9 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
       browser,
     }) => {
       test.setTimeout(240_000);
+      // slot doubles as the player id; it matches PLAYER_ID_PATTERN.
       const slot = `maud-bell-archive-${choice}-${Date.now()}`;
-      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await page.goto(`/aftersign/?slot=${slot}&player=${slot}`, { waitUntil: "load" });
       await reachOrraPayback(page);
 
       await tapVisible(
