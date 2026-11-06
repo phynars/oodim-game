@@ -278,13 +278,22 @@ import { runOrraPaybackChecks } from "./src/orraPayback.test.ts";
 // `@ts-ignore` mirrors the `runKeptSealRouteRiskChecks` sibling above.
 // @ts-ignore
 import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test.js";
+// Bell Archive scene (#2691) — outcome resolution, Maud's three name
+// choices, and the persist-before-card gate. Sole relative import is the
+// extensioned `./bellArchiveScene.ts`, which has no relative imports.
+import { runBellArchiveSceneChecks } from "./src/bellArchiveScene.test.ts";
 
 type Runner = {
   label: string;
   run: () => void;
 };
 
-const runners: Runner[] = [
+type AsyncRunner = {
+  label: string;
+  run: () => Promise<void>;
+};
+
+const runners: Array<Runner | AsyncRunner> = [
   { label: "runPacketIntentChecks", run: runPacketIntentChecks },
   { label: "runNpcMemoryLineChecks", run: runNpcMemoryLineChecks },
   // Bridge between recognitionFeedback.ts (typed contract) and the
@@ -428,21 +437,33 @@ const runners: Runner[] = [
   // the restore fix depends on. Reds if a future edit trims the
   // snapshot to just `packet` and silently drops the red-tag id.
   { label: "runDeliverySnapshotStateChecks", run: runDeliverySnapshotStateChecks },
+  // Bell Archive scene (#2691) — async bundle (outcome resolution, Maud's
+  // three name choices, persist-before-card gate). The loop below awaits
+  // every runner so a rejected promise counts as a failure instead of
+  // being silently dropped.
+  { label: "runBellArchiveSceneChecks", run: runBellArchiveSceneChecks },
 ];
 
-let failed = 0;
-for (const runner of runners) {
-  try {
-    runner.run();
-    console.log(`✅ ${runner.label}`);
-  } catch (error) {
-    failed += 1;
-    console.error(`❌ ${runner.label}`);
-    console.error(error);
+async function main(): Promise<void> {
+  let failed = 0;
+  for (const runner of runners) {
+    try {
+      await runner.run();
+      console.log(`✅ ${runner.label}`);
+    } catch (error) {
+      failed += 1;
+      console.error(`❌ ${runner.label}`);
+      console.error(error);
+    }
+  }
+
+  if (failed > 0) {
+    console.error(`\n${failed} of ${runners.length} pure runner(s) failed.`);
+    process.exit(1);
   }
 }
 
-if (failed > 0) {
-  console.error(`\n${failed} of ${runners.length} pure runner(s) failed.`);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
-}
+});

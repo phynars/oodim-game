@@ -4681,13 +4681,15 @@ const choose = async (choiceId) => {
         onSelect: (_selected, ending) => {
           state.story.maudBellArchiveEndingId = ending.id;
           markStateDirty();
-          // Persist after the visible card is rendered: a fresh browser
-          // context restores this terminal result instead of Maud's choices.
-          persistAuthoritative({ dirty: true }).catch((err) => {
-            // eslint-disable-next-line no-console
-            console.warn(err);
-          });
-          publishState();
+          // renderBellArchiveScene awaits this promise before rendering the
+          // terminal card, so the ending id is durable before the card shows.
+          // publishState runs whether or not persistence succeeds.
+          return persistAuthoritative({ dirty: true })
+            .catch((err) => {
+              // eslint-disable-next-line no-console
+              console.warn(err);
+            })
+            .finally(() => publishState());
         },
       });
     }
