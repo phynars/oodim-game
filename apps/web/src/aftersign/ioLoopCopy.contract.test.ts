@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ioOfferCopyFor, ioOfferHeading } from "../../../../aftersign/src/ioLoopCopy.js";
 import { getAftersignIoLoopCopy } from "./ioLoopCopy";
 import type { AftersignPacketOutcome, AftersignVerticalSliceState } from "./verticalSliceRuntimeState";
 
