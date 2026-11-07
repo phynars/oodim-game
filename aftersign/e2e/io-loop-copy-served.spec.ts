@@ -54,12 +54,28 @@ async function playToLoopAffordance(page: Page, outcome: Outcome): Promise<void>
 test.describe("AFTERSIGN Io loop copy is served and player-driven (#2688)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  for (const [outcome, label, line] of [
-    ["sealed", "Take another safe job", "You kept the seal. I have another quiet route for you."],
-    ["opened", "Take the careful job", "You opened it. This one stays in sight until you return."],
+  // #2703 — heading, label and return line now come from ONE authoritative
+  // bundle (aftersign/src/ioLoopCopy.js `ioOfferCopyFor`). Pin all three on
+  // the served page so a drift between heading and job copy fails here.
+  for (const [outcome, heading, label, line] of [
+    [
+      "sealed",
+      "You kept the seal. Take the harder work.",
+      "Take another safe job",
+      "You kept the seal. I have another quiet route for you.",
+    ],
+    [
+      "opened",
+      "You opened it. The work narrows.",
+      "Take the careful job",
+      "You opened it. This one stays in sight until you return.",
+    ],
   ] as const) {
-    test(`${outcome} packet shows its Io loop label and return line after a visible tap`, async ({ page }) => {
+    test(`${outcome} packet shows its Io offer heading, loop label and return line after a visible tap`, async ({ page }) => {
       await playToLoopAffordance(page, outcome);
+      const offerHeading = page.locator('[data-aftersign-io-offer-heading="true"]');
+      await expect(offerHeading).toBeVisible({ timeout: WAIT_MS });
+      await expect(offerHeading).toHaveText(heading);
       const affordance = page.locator("#ioLoopAffordance");
       await expect(affordance).toHaveAttribute("data-aftersign-io-loop-outcome", outcome);
       const button = affordance.getByRole("button", { name: label });
