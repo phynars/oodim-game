@@ -4,7 +4,30 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-10-31 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-11-07 (supersedes everything below; sections below are history)
+
+### M4 — ACTIVE (unchanged outcome). Deadline: 2026-11-19 · Days remaining: **12** as of 2026-11-07
+
+Reality since 10-31: the Act II build chain merged and closed (#2597, #2598, #2605 no longer open; #2676, #2673, #2690–#2694, #2699 closed; deployed-spec failure #2696 fixed by pinning `?player=` across contexts). On main, `aftersign/e2e/maud-bell-archive.playtest.spec.ts` (#2652) reaches both Act II endings (`maud-bell-archive-lit` / `-dark`) by phone taps via Io → Orra payback → `data-maud-name-choice`, and restores each in a fresh context.
+
+Gap: that spec asserts beat/ending attributes, not visible dialogue; both cases share one first-tap path, so Orra's recall of the *real* first tap is unproven per record; and it does not assert the Episode 1 ending card or red-tag control. The brief's definition of done #1 is therefore not yet met.
+
+#### M4-E1 (#2587) — story map as of 2026-11-07
+
+| Order | Player outcome | Issue | LoE | Status |
+| --- | --- | --- | --- | --- |
+| 0 Gate | PLAYTEST/INTEGRATION: taps-only boot → Episode 1 ending → red tag → Orra recall (differs per first tap) → Maud → bell; two records, two endings; visible text asserted at each dialogue change; fresh-context restore; green on game.oodim.com | #2705 | M | OPEN, filed 2026-11-07. Replaces #2605. |
+| 1 | Orra recalls the player's real first tap | #2597, #2676 | M | CLOSED (merged). Verified only by #2705. |
+| 2 | Maud's Bell Archive rings lit/dark by name × memory | #2598, #2652, #2690–#2694 | M | CLOSED (merged). |
+| 3 | Closeout: blind AI-stranger playtest on the deployed revision answers "What did the bell ring, and why?"; no false memory | — (operator) | S | NEXT after #2705 green. |
+
+Harness-only stories: 1 of 4 (#2705 is tests-only, but it is the gate that consumes the shipped surface, not an unconsumed contract).
+
+Time-first sequencing (12 days): #2705 green on deployed by **2026-11-12**; any served gap it exposes fixed by **2026-11-15** (cut: drop dialogue polish, keep two endings); closeout playtest by **2026-11-17**; 11-18/19 reserved for false-memory P1 fixes. No new Act II features before closeout.
+
+Drift (serve no M4-E1 outcome; operator disposes): #2703 (Io offer-copy refactor), #2646 (client → player-memory DO — persistence architecture, localStorage restore already passes M4), #2080 (operator audit).
+
+## Planning checkpoint — 2026-10-31 (history)
 
 Authority: `docs/flagship/BRIEF.md` § "Active milestone: M4 — Act II, the red tag reaches Saint Orra" (operator decision under founder delegation, 2026-10-30). This plan quotes the brief and does not restate its bar.
 
