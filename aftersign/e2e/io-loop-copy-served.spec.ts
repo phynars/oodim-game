@@ -54,6 +54,25 @@ async function playToLoopAffordance(page: Page, outcome: Outcome): Promise<void>
 test.describe("AFTERSIGN Io loop copy is served and player-driven (#2688)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
+  // PR #2704 review F1 — first run (no delivery-outcome fact yet): the
+  // affordance renders with outcome "pending" and ioOfferCopyFor(null)'s
+  // FIRST_RUN bundle. Tap the visible control and pin the return line.
+  test("first-run (no packet outcome) shows the first-run loop label and return line after a visible tap", async ({ page }) => {
+    await page.goto(`/aftersign/?slot=io-loop-copy-first-run-${Date.now()}`, { waitUntil: "load" });
+    await waitForBeat(page, "packet-offered");
+    const offerHeading = page.locator('[data-aftersign-io-offer-heading="true"]');
+    await expect(offerHeading).toBeVisible({ timeout: WAIT_MS });
+    await expect(offerHeading).toHaveText("One clean job. Start there.");
+    const affordance = page.locator("#ioLoopAffordance");
+    await expect(affordance).toHaveAttribute("data-aftersign-io-loop-outcome", "pending");
+    const button = affordance.getByRole("button", { name: "Take the safe job" });
+    await expect(button).toBeVisible({ timeout: WAIT_MS });
+    await button.click();
+    await expect(
+      affordance.getByText("Bring it back sealed. We can talk when you're through.", { exact: true }),
+    ).toBeVisible({ timeout: WAIT_MS });
+  });
+
   // #2703 — heading, label and return line now come from ONE authoritative
   // bundle (aftersign/src/ioLoopCopy.js `ioOfferCopyFor`). Pin all three on
   // the served page so a drift between heading and job copy fails here.
