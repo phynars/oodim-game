@@ -103,6 +103,11 @@ export const createPersistHelpers = ({
     payload.save.lastPersistedAt = new Date().toISOString();
     const persisted = writeStored(payload);
     if (persisted === false) {
+      // A browser storage failure is recoverable: leave the live save
+      // dirty so the caller can present a retryable, non-blocking
+      // failure state (#2715).
+      state.save.dirty = true;
+      markStateDirty();
       return false;
     }
     state.save.lastPersistedAt = payload.save.lastPersistedAt;
