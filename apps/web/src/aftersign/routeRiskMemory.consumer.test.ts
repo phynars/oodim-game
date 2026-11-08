@@ -300,7 +300,7 @@ describe("routeRiskMemory persistence round-trip (drives the served buildPersist
       },
       storageKey: "aftersign:test",
     }).writeStored;
-    const { state, helpers } = buildHelpers(null);
+    const { state } = buildHelpers(null);
     const failingHelpers = createPersistHelpers({
       state,
       slot: "test",
