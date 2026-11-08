@@ -93,8 +93,14 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
 
       await reachOrraPayback(page, scenario.firstTap);
 
-      const episodeOneEnding = page.locator('[data-ending-id="episode-one-ending"]');
+      // Episode 1 ending card: served page renders it as
+      // `#episodeOneEnding [data-ending-id]` with ids like `ending-bell-true`
+      // / `ending-light-out` (episode-one-ending-served.spec.ts,
+      // orra-return-control.spec.ts). Any `ending-*` id is accepted here; the
+      // Act II Maud ids (`maud-bell-archive-*`) are not yet rendered.
+      const episodeOneEnding = page.locator("#episodeOneEnding [data-ending-id]").first();
       await expect(episodeOneEnding).toBeVisible({ timeout: WAIT_MS });
+      await expect(episodeOneEnding).toHaveAttribute("data-ending-id", /^ending-/);
       await expect(episodeOneEnding).not.toBeEmpty();
 
       const redTag = page.locator('button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])');
