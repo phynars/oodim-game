@@ -518,69 +518,15 @@ import {
   IO_RETURN_ACTION_AUDIO,
   playIoReturnActionAudio,
 } from "./src/ioReturnActionFeedback.js";
-// PR #1885 (Soren, AI008): the return-action fork re-renders every
-// frame — its button nodes get REPLACED, so any listener bound to a
-// specific node dies with it. Arm the tactile feedback ONCE on the
-// document (a truly stable ancestor) and match participating buttons
-// by data-attribute. Node replacement across re-render is now
-// invisible to the gesture: `pointerup` fires on whichever fresh
-// node the selector matches, the coupling timer stamps
-// `state._runtime.audio.lastCue = "io-return-action"`, e2e reads it.
-//
-// PR #1885 iter-7 (Soren's REQUEST_CHANGES on iter-6's beat-gate,
-// AI008): the callback (1) stamps `state._runtime.audio.lastCue`
-// FIRST — the pre-unlock write survives autoplay-suspended
-// AudioContext, matching the sibling `playFailureStingAudio` /
-// `playJobOfferConfirm` discipline; (2) THEN schedules a REAL 165Hz
-// triangle-wave burst via `playIoReturnActionAudio()` — that's the
-// tone the player hears. NO beat-gate inside the audio callback:
-// `choose(choiceId)` fires SYNCHRONOUSLY on `pointerup` inside the
-// input adapter (see `aftersign/src/runtime/inputAdapters.js`), so
-// by the time the 28ms coupling timer runs, `state.scene.beat` has
-// already advanced past `io-return-recognition` — a beat-gate that
-// samples at-fire (not at-arm) would always reject the cue. The
-// real off-beat guard is the tag teardown in the return-tone-choice
-// branch below: deleting `dataset.ioReturnActionFeedbackTarget` from
-// every participating button when we leave the recognition beat
-// makes the document-scoped selector match nothing, so the callback
-// never runs on a stale/repurposed button in the first place.
-let __ioReturnActionFeedbackArmed = false;
-const armIoReturnActionFeedbackOnce = () => {
-  if (__ioReturnActionFeedbackArmed) return;
-  if (typeof document === "undefined") return;
-  armIoReturnActionFeedback(document, {
-    haptic: () => {
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate(28);
-      }
-    },
-    audio: () => {
-      // Story-level cue write FIRST — same shape as
-      // `playFailureStingAudio` / `playJobOfferConfirm` — survives
-      // autoplay-suspended AudioContext so the e2e contract lands
-      // even when the browser is silent (headless CI, muted tab).
-      //
-      // No beat-gate here (iter-7, AI008). `choose()` fires
-      // synchronously on `pointerup` — by the time this 28ms timer
-      // runs, the beat has already advanced past the recognition
-      // beat, so an at-fire beat-gate would always drop the cue.
-      // Off-beat protection lives in the tag teardown on the tone-
-      // choice branch below: no matching selector → this callback
-      // never runs on a repurposed button.
-      state._runtime = state._runtime || {};
-      state._runtime.audio = state._runtime.audio || {};
-      state._runtime.audio.lastCue = IO_RETURN_ACTION_AUDIO.cue;
-      state._runtime.audio.lastCueAt = performance.now();
+import { createIoReturnActionFeedbackController } from "./src/presentation/ioReturnActionFeedbackController.js";
 
-      // Then schedule the actual tone. `playIoReturnActionAudio`
-      // internally traps every WebAudio failure path (missing ctor,
-      // suspended context that won't resume, closed context) and
-      // returns false — the pre-unlock cue write is still authoritative.
-      playIoReturnActionAudio();
-    },
-  });
-  __ioReturnActionFeedbackArmed = true;
-};
+const ioReturnActionFeedbackController = createIoReturnActionFeedbackController({
+  getState: () => state,
+  armFeedback: armIoReturnActionFeedback,
+  playAudio: playIoReturnActionAudio,
+  audioCue: IO_RETURN_ACTION_AUDIO.cue,
+});
+const armIoReturnActionFeedbackOnce = () => ioReturnActionFeedbackController.armOnce();
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy

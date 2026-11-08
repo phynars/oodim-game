@@ -47,6 +47,8 @@ export default defineConfig({
       "aftersign/src/aftersignPacketRecallLegacy.test.js",
       // #2517 — Episode 1 ending card renders bell, outcome line, recall
       "aftersign/src/episodeOneEnding.test.js",
+      // #2710 — return-action feedback controller extracted from main.js
+      "aftersign/src/presentation/ioReturnActionFeedbackController.test.js",
     ],
   },
 });
