@@ -312,7 +312,9 @@ describe("routeRiskMemory persistence round-trip (drives the served buildPersist
 
     expect(failingHelpers.persist({ dirty: true })).toBe(false);
     expect(state.save.lastPersistedAt).toBeUndefined();
-    expect(state.save.dirty).toBe(false);
+    // #2715: a failed browser write is recoverable — the live save stays
+    // dirty so the next save retries instead of silently dropping progress.
+    expect(state.save.dirty).toBe(true);
   });
 
   it("carries state.player.routeRisk into the persist payload verbatim", () => {

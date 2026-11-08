@@ -1027,15 +1027,16 @@ const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 // Browser storage is deliberately not part of the player-memory authority
-// path. The backend receives every durable mutation; this no-op writer keeps
-// the persistence factory's synchronous cache seam from blocking a tap frame.
+// path. The backend receives every durable mutation via
+// `persistAuthoritative`; this cache seam is what the `local-only-save`
+// red probe writes through. #2715: `persist()` needs a real writer so
+// its failure branch actually fires against the browser storage and
+// surfaces to the player.
 const { writeStored: writeCachedSnapshot } = createStoragePersistence({
   storage: window.localStorage,
   storageKey,
 });
-const writeStored = () => {
-  void writeCachedSnapshot;
-};
+const writeStored = (payload) => writeCachedSnapshot(payload);
 
 // Io's trust posture is a pure function of the delivery outcome
 // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
@@ -4722,31 +4723,43 @@ const waitForStoryIdle = async () => {
   publishState();
 };
 
-const forceSave = async () => {
-  // #1642 follow-up: `persist({ dirty: false })` here was a no-op —
-  // `writeStored` is deliberately stubbed (the backend is the
-  // authority). The two branches below now each own their durable
-  // write explicitly: the `local-only-save` red probe writes to
-  // localStorage via `writeCachedSnapshot` (so the probe saves
-  // SOMEWHERE — that's what makes it a fallback, not silent data
-  // loss), and the default branch awaits `persistAuthoritative`.
+const setLocalSaveFailureNotice = (failed) => {
+  if (!line?.parentNode) return;
+  let notice = document.getElementById("localSaveFailureNotice");
+  if (!failed) {
+    notice?.remove();
+    return;
+  }
+  if (!notice) {
+    notice = document.createElement("p");
+    notice.id = "localSaveFailureNotice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    notice.style.pointerEvents = "none";
+    line.insertAdjacentElement("afterend", notice);
+  }
+  setTextContentIfChanged(
+    notice,
+    "Save failed locally. Your progress will retry on the next save.",
+  );
+};
 
+const forceSave = async () => {
   if (breakMode === "local-only-save") {
-    // Local-only red probe: write the built payload to localStorage
-    // directly. This is the ONLY path in the runtime that touches
-    // browser storage; every other write goes to the authoritative
-    // endpoint. Without this call the red probe silently discards
-    // the save.
-    const localPayload = buildPersistPayload({ dirty: false });
-    localPayload.save.lastPersistedAt = new Date().toISOString();
-    localPayload.save.authority = "local-fallback";
-    try {
-      writeCachedSnapshot(localPayload);
-    } catch {
-      // A storage-quota / privacy-mode failure must not black-screen
-      // the served page; the red probe is a diagnostic surface.
+    // #2715: `persist()` owns the local storage write AND reports a
+    // caught storage error via a `false` return. On failure, preserve
+    // dirty state + surface a non-blocking notice so the player knows
+    // the next save will retry; on success, clear any stale notice.
+    const persisted = persist({ dirty: false });
+    if (!persisted) {
+      state.save.dirty = true;
+      setLocalSaveFailureNotice(true);
+      markStateDirty();
+      renderText();
+      publishState();
+      return false;
     }
-    state.save.lastPersistedAt = localPayload.save.lastPersistedAt;
+    setLocalSaveFailureNotice(false);
     state.save.authority = "local-fallback";
     state.save.lastLoadProof = {
       source: "local-fallback",
@@ -4756,7 +4769,7 @@ const forceSave = async () => {
     markStateDirty();
     renderText();
     publishState();
-    return;
+    return true;
   }
 
   await persistAuthoritative({ dirty: false });
