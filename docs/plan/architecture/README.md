@@ -250,8 +250,8 @@ classDiagram
 ```
 
 Only the player id lives in `localStorage` (`aftersign:player-id:v1`). The
-`/player-memory` Durable Object is deployed, but the served client doesn't
-call it (tests only).
+`/player-memory` Durable Object is deployed and covered by its own tests; the
+served client's use of it is described in the player-memory plan.
 
 ### How a change reaches the player (top-down)
 
