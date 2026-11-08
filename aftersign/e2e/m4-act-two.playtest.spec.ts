@@ -93,11 +93,17 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
 
       await reachOrraPayback(page, scenario.firstTap);
 
-      // Episode 1 ending card: served page renders it as
-      // `#episodeOneEnding [data-ending-id]` with ids like `ending-bell-true`
-      // / `ending-light-out` (episode-one-ending-served.spec.ts,
-      // orra-return-control.spec.ts). Any `ending-*` id is accepted here; the
-      // Act II Maud ids (`maud-bell-archive-*`) are not yet rendered.
+      // Episode 1 ending is only committed by the light-vigil choice
+      // (episode-one-ending-no-stale-copy-served.spec.ts:44-47,
+      // episode-one-ending-served.spec.ts:67-71). Tap it by touch before
+      // reading the card. If the served page doesn't offer light-vigil at
+      // round-two io-return-recognition, this tap is where the spec fails,
+      // and that gap gets filed as a bug (#2705: never skip).
+      await tapChoice(page, "light-vigil");
+
+      // Episode 1 ending card: `#episodeOneEnding [data-ending-id]` with ids
+      // like `ending-bell-true` / `ending-light-out`. Any `ending-*` id is
+      // accepted; the Act II Maud ids (`maud-bell-archive-*`) come later.
       const episodeOneEnding = page.locator("#episodeOneEnding [data-ending-id]").first();
       await expect(episodeOneEnding).toBeVisible({ timeout: WAIT_MS });
       await expect(episodeOneEnding).toHaveAttribute("data-ending-id", /^ending-/);
