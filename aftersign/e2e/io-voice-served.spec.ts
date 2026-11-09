@@ -317,5 +317,11 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
       getComputedStyle(node).getPropertyValue("--io-return-accent").trim(),
     );
     expect(openedAccent).toBe("#d46b62");
+
+    // PR #2721 F1 — no-skipped-route branch of `renderReturnRecognition`:
+    // the route was never skipped, so `#ioReturnLine` renders alone and
+    // the two route siblings are absent at the recognition beat.
+    await expect(page.locator("#ioSkippedRouteLine")).toHaveCount(0);
+    await expect(page.locator("#ioRouteReturnLine")).toHaveCount(0);
   });
 });
