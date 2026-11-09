@@ -461,7 +461,7 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // the served page across a full loop and pins the fresh-boot
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
-import { renderAftersignIoLoopAffordance } from "../apps/web/src/aftersign/ioLoopCopy.ts";
+import { renderAftersignIoLoopAffordance } from "./ioLoopAffordance.js";
 import { IO_DEFAULT_OFFER_LINE } from "./src/ioDefaultOfferCopy.js";
 import { ioOfferLineFor } from "./src/ioOfferMemoryLine.js";
 import { ioOfferCopyFor, ioOfferHeading } from "./src/ioLoopCopy.js";
