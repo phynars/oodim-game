@@ -2805,7 +2805,6 @@ const renderText = () => {
       // the same remembered outcome remains on screen.
       playIoReturnLineFeedback(returnPara, returnOutcome);
       playIoReturnLineTactileFeedback(returnPara, returnOutcome);
-    }
   }
   // #2446 — Shipped-consumer render block for the third remembering NPC
   // (`red-tag-recipient`). Imported from
