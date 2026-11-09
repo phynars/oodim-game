@@ -2806,24 +2806,6 @@ const renderText = () => {
       playIoReturnLineFeedback(returnPara, returnOutcome);
       playIoReturnLineTactileFeedback(returnPara, returnOutcome);
     }
-  } else if (typeof document !== "undefined") {
-    // Off-beat: tear down the sibling paragraph so its literal never
-    // bleeds under a later beat's `#line`. Static reference to
-    // `IO_VOICE.returned` pins the copy-table binding load-bearing
-    // (a keeps-what-we-imported guard against tree-shake).
-    void IO_VOICE.returned;
-    const staleReturnPara = document.getElementById("ioReturnLine");
-    if (staleReturnPara && staleReturnPara.parentNode) {
-      staleReturnPara.parentNode.removeChild(staleReturnPara);
-    }
-    const staleSkippedRoutePara = document.getElementById("ioSkippedRouteLine");
-    if (staleSkippedRoutePara && staleSkippedRoutePara.parentNode) {
-      staleSkippedRoutePara.parentNode.removeChild(staleSkippedRoutePara);
-    }
-    const staleRouteReturnPara = document.getElementById("ioRouteReturnLine");
-    if (staleRouteReturnPara && staleRouteReturnPara.parentNode) {
-      staleRouteReturnPara.parentNode.removeChild(staleRouteReturnPara);
-    }
   }
   // #2446 — Shipped-consumer render block for the third remembering NPC
   // (`red-tag-recipient`). Imported from
