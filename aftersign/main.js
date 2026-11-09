@@ -12,6 +12,7 @@ import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
 import { createFeedbackController } from "./src/presentation/feedbackController.js";
+import { renderReturnRecognition } from "./src/presentation/returnRecognitionRenderer.js";
 import { createPacketPressFeedbackRenderer } from "./src/packetPressFeedbackRenderer.js";
 import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
@@ -2667,137 +2668,46 @@ const renderText = () => {
   } else if (returnToOrraButton) {
     returnToOrraButton.remove();
   }
-  // #1812 render — render `ioReturnLine(state.delivery.outcome)` into
-  // ITS OWN sibling paragraph next to `#line`, mirroring the
-  // `#ioConsequenceLine` seam above. `#line.textContent` remains owned
-  // by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES` (via
-  // `state.npcs.io.lastLine`, pinned by
-  // `io-phone-ready-look-sound-contract.spec.ts:287` on `lineText`),
-  // so this seam does NOT reproduce the second-source-of-truth drift
-  // rejected in #758 / #789 / #1131 — but the shipped copy module's
-  // literal still reaches the DOM a real player reads, closing
-  // #1812's acceptance criteria (import `ioReturnLine`; render
-  // `IO_VOICE.returned.sealed | .opened | .unknown`). Inserted as a
-  // next-sibling of `#line` when the beat opens, updated in place
-  // while the beat stays open, removed off-beat so a stale sibling
-  // never lingers under a different beat.
-  if (isReturnRecognitionBeat) {
-    const returnOutcome =
-      state.delivery && typeof state.delivery.outcome === "string"
-        ? state.delivery.outcome
-        : "unknown";
-    const routeAttention = secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
-      ? "skipped"
-      : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-        ? "listened"
-        : undefined;
-    const recognitionLines = getIoReturningSessionRecognitionLines({
-      packetOutcome: state.packet.sealed ? "sealed" : "opened",
-      routeInstructionBehavior: routeAttention,
-    });
-    const skippedRouteLine = recognitionLines.find((entry) => entry.id === "io-route-skipped");
-    const returnLineText = ioReturnLine(returnOutcome);
-    if (line && line.parentNode && typeof document !== "undefined") {
-      let returnPara = document.getElementById("ioReturnLine");
-      if (!returnPara) {
-        returnPara = document.createElement("p");
-        returnPara.id = "ioReturnLine";
-        if (typeof line.insertAdjacentElement === "function") {
-          line.insertAdjacentElement("afterend", returnPara);
-        } else {
-          line.parentNode.insertBefore(returnPara, line.nextSibling);
-        }
-      }
-      if (
-        returnPara.getAttribute("data-aftersign-io-return-line") !==
-        returnOutcome
-      ) {
-        returnPara.setAttribute(
-          "data-aftersign-io-return-line",
-          returnOutcome,
-        );
-      }
-      if (returnPara.textContent !== returnLineText) {
-        returnPara.textContent = returnLineText;
-      }
-      let skippedRoutePara = document.getElementById("ioSkippedRouteLine");
-      if (skippedRouteLine) {
-        if (!skippedRoutePara) {
-          skippedRoutePara = document.createElement("p");
-          skippedRoutePara.id = "ioSkippedRouteLine";
-          returnPara.insertAdjacentElement("afterend", skippedRoutePara);
-        }
-        skippedRoutePara.setAttribute("data-aftersign-io-route-memory", "skipped");
-        if (skippedRoutePara.textContent !== skippedRouteLine.text) {
-          skippedRoutePara.textContent = skippedRouteLine.text;
-        }
-      } else if (skippedRoutePara?.parentNode) {
-        skippedRoutePara.parentNode.removeChild(skippedRoutePara);
-      }
-      // #2511 — Io's first-scene skipped-route recognition line. The
-      // selection reads the same durable route-attention state
-      // (`routeAttention`, persisted second-action memory) that drives
-      // `io-route-skipped` above: a skipped route resolves
-      // `getAftersignIoRouteReturnLine(false)` → `skippedReturn`. Rendered
-      // as its own sibling <p> so the pinned `#line` text stays untouched.
-      let routeReturnPara = document.getElementById("ioRouteReturnLine");
-      if (skippedRouteLine) {
-        const routeReturnLine = getAftersignIoRouteReturnLine(false);
-        if (!routeReturnPara) {
-          routeReturnPara = document.createElement("p");
-          routeReturnPara.id = "ioRouteReturnLine";
-          // PR #2514 F2 — the phone-viewport contract
-          // (io-phone-ready-look-sound-contract.spec.ts) caps document
-          // overflow at 1px on a 390x844 viewport. Main is green with
-          // #ioReturnLine + #ioSkippedRouteLine; a default-margin <p>
-          // here pushed scrollHeight 16.2px past the viewport. Collapse
-          // the vertical margins of this sibling and the skipped-route
-          // sibling it follows so the added line fits the existing
-          // HUD block instead of growing the page.
-          // PR #2514 F1 — margin collapse alone left 3.198px of overflow.
-          // Trim the line box itself: a 0.85em / 1.1 line takes back
-          // ~6px per rendered line, and zeroing BOTH vertical margins of
-          // the skipped-route sibling removes its remaining top margin.
-          // The line stays a visible sibling <p> (pinned by
-          // io-voice-served.spec.ts), it just no longer grows the page.
-          routeReturnPara.style.margin = "0";
-          routeReturnPara.style.padding = "0";
-          routeReturnPara.style.fontSize = "0.85em";
-          routeReturnPara.style.lineHeight = "1.1";
-          const skippedSibling = document.getElementById("ioSkippedRouteLine");
-          if (skippedSibling) {
-            skippedSibling.style.marginTop = "0";
-            skippedSibling.style.marginBottom = "0";
-          }
-          const anchor =
-            document.getElementById("ioSkippedRouteLine") || returnPara;
-          anchor.insertAdjacentElement("afterend", routeReturnPara);
-        }
-        if (
-          routeReturnPara.getAttribute("data-aftersign-io-route-return-line") !==
-          routeReturnLine.id
-        ) {
-          routeReturnPara.setAttribute(
-            "data-aftersign-io-route-return-line",
-            routeReturnLine.id,
-          );
-        }
-        const routeMemoryKey = String(routeReturnLine.memoryKey ?? "");
-        if (
-          routeReturnPara.getAttribute("data-aftersign-io-route-memory-key") !==
-          routeMemoryKey
-        ) {
-          routeReturnPara.setAttribute(
-            "data-aftersign-io-route-memory-key",
-            routeMemoryKey,
-          );
-        }
-        if (routeReturnPara.textContent !== routeReturnLine.text) {
-          routeReturnPara.textContent = routeReturnLine.text;
-        }
-      } else if (routeReturnPara?.parentNode) {
-        routeReturnPara.parentNode.removeChild(routeReturnPara);
-      }
+  // Return-recognition copy remains a sibling of the beat-owned `#line`.
+  // State and copy selection stay in this runtime; the focused renderer owns
+  // the idempotent DOM lifecycle, ordering, and off-beat cleanup.
+  const returnOutcome =
+    state.delivery && typeof state.delivery.outcome === "string"
+      ? state.delivery.outcome
+      : "unknown";
+  const routeAttention = secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
+    ? "skipped"
+    : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+      ? "listened"
+      : undefined;
+  const recognitionLines = getIoReturningSessionRecognitionLines({
+    packetOutcome: state.packet.sealed ? "sealed" : "opened",
+    routeInstructionBehavior: routeAttention,
+  });
+  const skippedRouteLine = recognitionLines.find((entry) => entry.id === "io-route-skipped");
+  const returnPara = renderReturnRecognition({
+    document,
+    line,
+    isReturnRecognitionBeat,
+    returnOutcome,
+    returnLineText: ioReturnLine(returnOutcome),
+    skippedRouteLine,
+    // PR #2721 F2 — same gate as `showSkippedRouteReturn` /
+    // `stampIoRouteReturnLine` below: only an explicit remembered skipped
+    // fact renders `#ioRouteReturnLine` (absence is NOT skipped, #2437).
+    routeReturnLine:
+      skippedRouteLine
+      && state.delivery?.id !== "red-tag"
+      && rememberedSkippedRoute(state.npcs.io.memory)
+        ? getAftersignIoRouteReturnLine(false)
+        : null,
+  });
+  // Static reference to `IO_VOICE.returned` pins the copy-table binding
+  // load-bearing (a keeps-what-we-imported guard against tree-shake).
+  // Off-beat sibling teardown is owned by `renderReturnRecognition`,
+  // which returns null when the beat / `#line` anchor is absent.
+  void IO_VOICE.returned;
+  if (returnPara) {
       // PR #2419 F1 — shipped consumer of the two typed Io-line
       // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
       // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;
@@ -2903,25 +2813,6 @@ const renderText = () => {
       // the same remembered outcome remains on screen.
       playIoReturnLineFeedback(returnPara, returnOutcome);
       playIoReturnLineTactileFeedback(returnPara, returnOutcome);
-    }
-  } else if (typeof document !== "undefined") {
-    // Off-beat: tear down the sibling paragraph so its literal never
-    // bleeds under a later beat's `#line`. Static reference to
-    // `IO_VOICE.returned` pins the copy-table binding load-bearing
-    // (a keeps-what-we-imported guard against tree-shake).
-    void IO_VOICE.returned;
-    const staleReturnPara = document.getElementById("ioReturnLine");
-    if (staleReturnPara && staleReturnPara.parentNode) {
-      staleReturnPara.parentNode.removeChild(staleReturnPara);
-    }
-    const staleSkippedRoutePara = document.getElementById("ioSkippedRouteLine");
-    if (staleSkippedRoutePara && staleSkippedRoutePara.parentNode) {
-      staleSkippedRoutePara.parentNode.removeChild(staleSkippedRoutePara);
-    }
-    const staleRouteReturnPara = document.getElementById("ioRouteReturnLine");
-    if (staleRouteReturnPara && staleRouteReturnPara.parentNode) {
-      staleRouteReturnPara.parentNode.removeChild(staleRouteReturnPara);
-    }
   }
   // #2446 — Shipped-consumer render block for the third remembering NPC
   // (`red-tag-recipient`). Imported from
