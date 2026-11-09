@@ -3533,6 +3533,22 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
   }
 
+  if (
+    state.story.endingId &&
+    state.story.endingId.startsWith("ending-") &&
+    document.getElementById("saintOrraRedTagRecall")
+  ) {
+    const host = document.getElementById("episodeOneEnding");
+    if (host && !host.querySelector('[data-orra-payback-action="carry-name-to-bell-archive"]')) {
+      const maudEntry = document.createElement("button");
+      maudEntry.type = "button";
+      maudEntry.dataset.orraPaybackAction = "carry-name-to-bell-archive";
+      maudEntry.textContent = "Carry the name to the Bell Archive";
+      maudEntry.addEventListener("click", () => choose("carry-name-to-bell-archive"));
+      host.append(maudEntry);
+    }
+  }
+
   if (state.story.endingId) {
     const packetChoiceAffordance = document.querySelector(
       "[data-aftersign-packet-choice-affordance]",
@@ -4476,7 +4492,13 @@ const choose = async (choiceId) => {
     || choiceId === "leave-name-with-orra"
   ) {
     const offeredAction = orraPaybackActionForDelivery(state.delivery);
-    if (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction) {
+    const continuingEpisodeOneEnding = choiceId === "carry-name-to-bell-archive"
+      && state.story.endingId?.startsWith("ending-")
+      && document.getElementById("saintOrraRedTagRecall");
+    if (
+      !continuingEpisodeOneEnding
+      && (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction)
+    ) {
       return;
     }
     // M3-E1 (#2260) — Soren PR #2264 review AI006: the earlier draft
