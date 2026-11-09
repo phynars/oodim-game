@@ -318,10 +318,28 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
     );
     expect(openedAccent).toBe("#d46b62");
 
-    // PR #2721 F1 — no-skipped-route branch of `renderReturnRecognition`:
-    // the route was never skipped, so `#ioReturnLine` renders alone and
-    // the two route siblings are absent at the recognition beat.
-    await expect(page.locator("#ioSkippedRouteLine")).toHaveCount(0);
-    await expect(page.locator("#ioRouteReturnLine")).toHaveCount(0);
+    // PR #2721 F1 — skipped-route siblings on the played OPENED path.
+    // This path never taps the kiosk acknowledgement, so the served
+    // runtime's `secondActionFromMemory` resolves the route as skipped and
+    // `renderReturnRecognition` renders BOTH route siblings next to
+    // `#ioReturnLine` (CI observed `#ioSkippedRouteLine` count 1 here).
+    // Pin the extracted renderer's DOM output on this second played path.
+    const openedSkippedRouteLine = page.locator("#ioSkippedRouteLine");
+    await expect(openedSkippedRouteLine).toBeVisible({ timeout: WAIT_MS });
+    await expect(openedSkippedRouteLine).toHaveAttribute(
+      "data-aftersign-io-route-memory",
+      "skipped",
+    );
+    await expect(openedSkippedRouteLine).toHaveText(
+      IO_ROUTE_MEMORY_LINES.skipped.text,
+    );
+    const openedRouteReturn = getAftersignIoRouteReturnLine(false);
+    const openedRouteReturnLine = page.locator("#ioRouteReturnLine");
+    await expect(openedRouteReturnLine).toBeVisible({ timeout: WAIT_MS });
+    await expect(openedRouteReturnLine).toHaveAttribute(
+      "data-aftersign-io-route-return-line",
+      "skippedReturn",
+    );
+    await expect(openedRouteReturnLine).toHaveText(openedRouteReturn.text);
   });
 });
