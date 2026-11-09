@@ -3554,21 +3554,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
   }
 
-  if (
-    state.story.endingId &&
-    state.story.endingId.startsWith("ending-") &&
-    document.getElementById("saintOrraRedTagRecall")
-  ) {
-    const host = document.getElementById("episodeOneEnding");
-    if (host && !host.querySelector('[data-orra-payback-action="carry-name-to-bell-archive"]')) {
-      const maudEntry = document.createElement("button");
-      maudEntry.type = "button";
-      maudEntry.dataset.orraPaybackAction = "carry-name-to-bell-archive";
-      maudEntry.textContent = "Carry the name to the Bell Archive";
-      maudEntry.addEventListener("click", () => choose("carry-name-to-bell-archive"));
-      host.append(maudEntry);
-    }
-  }
+  renderMaudBellArchiveEntry();
 
   if (state.story.endingId) {
     const packetChoiceAffordance = document.querySelector(
