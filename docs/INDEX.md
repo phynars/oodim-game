@@ -36,3 +36,4 @@ One row per story, filled in as its documents land (story → research → spec 
 | [#2656](https://github.com/phynars/oodim-game/issues/2656) | [Red tag continuity at Saint Orra](research/2656-red-tag-saint-orra.md) | — | — |
 | [#2657](https://github.com/phynars/oodim-game/issues/2657) | [Durable Act II ending](research/2657-durable-act-ii-ending.md) | — | — |
 | [#2724](https://github.com/phynars/oodim-game/issues/2724) | [Red tag continuity at Saint Orra](research/2724-red-tag-saint-orra.md) | — | — |
+| [#2725](https://github.com/phynars/oodim-game/issues/2725) | [Bell Archive name choice](research/2725-bell-archive-name-choice.md) | — | — |
