@@ -2512,6 +2512,27 @@ const saintOrraRecallLine = () => {
   return "You brought the red tag to my door. I remember the courier.";
 };
 
+const renderMaudBellArchiveEntry = () => {
+  if (
+    !state.story.endingId ||
+    !state.story.endingId.startsWith("ending-") ||
+    !document.getElementById("saintOrraRedTagRecall")
+  ) {
+    return;
+  }
+  const host = document.getElementById("episodeOneEnding");
+  if (!host || host.querySelector('[data-orra-payback-action="carry-name-to-bell-archive"]')) {
+    return;
+  }
+  const maudEntry = document.createElement("button");
+  maudEntry.type = "button";
+  maudEntry.dataset.orraPaybackAction = "carry-name-to-bell-archive";
+  maudEntry.style.pointerEvents = "auto";
+  maudEntry.textContent = "Carry the name to the Bell Archive";
+  maudEntry.addEventListener("click", () => choose("carry-name-to-bell-archive"));
+  host.append(maudEntry);
+};
+
 const renderSaintOrraEndingRecall = () => {
   const ending = document.querySelector("#episodeOneEnding [data-ending-id]");
   if (!ending) return;
