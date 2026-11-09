@@ -102,6 +102,18 @@ test.describe("AFTERSIGN Io loop consequence line — played divergence (#1765)"
     const firstRunText = (await consequenceLine.textContent()) ?? "";
     expect(firstRunText).toBe(PENDING_LINE);
 
+    const ioLoopAffordance = page.locator("#ioLoopAffordance");
+    const repeatJobButton = ioLoopAffordance.getByRole("button");
+    await expect(
+      repeatJobButton,
+      "Io's repeat-job control must be visible and tappable on the served page",
+    ).toBeVisible({ timeout: WAIT_MS });
+    await repeatJobButton.click();
+    await expect(
+      ioLoopAffordance.locator("p"),
+      "a real tap on Io's repeat-job control must reveal its return line",
+    ).toBeVisible({ timeout: WAIT_MS });
+
     // Play one full loop, keeping the packet SEALED (the tap script
     // never opens it), so the durable delivery-outcome fact lands
     // with `object === "sealed"` and the looped return resolves the
