@@ -1586,7 +1586,13 @@ const lineForBeat = () => {
     // lands on the ending beat with the same surface the live run
     // produced. renderEpisodeOneEnding is idempotent (short-circuits
     // on a matching id+cause), so this is safe to call every tick.
-    if (typeof document !== "undefined") {
+    // PR #2731 F1: once the player taps into Maud's bell archive, the
+    // #episodeOneEnding host holds the live Maud name-choice card. A
+    // non-matching firstElementChild makes renderEpisodeOneEnding call
+    // host.replaceChildren(), which would wipe [data-beat="maud-bell-archive"]
+    // on the publishState tick right after the tap. The Maud tap handler
+    // owns the host while its choices are live.
+    if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderEpisodeOneEnding(document, resolvedEnding);
       renderSaintOrraEndingRecall();
     }
