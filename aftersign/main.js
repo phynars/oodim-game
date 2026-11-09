@@ -2694,6 +2694,12 @@ const renderText = () => {
     skippedRouteLine,
     routeReturnLine: skippedRouteLine ? getAftersignIoRouteReturnLine(false) : null,
   });
+  // Static reference to `IO_VOICE.returned` pins the copy-table binding
+  // load-bearing (a keeps-what-we-imported guard against tree-shake).
+  // Off-beat sibling teardown is owned by `renderReturnRecognition`,
+  // which returns null when the beat / `#line` anchor is absent.
+  void IO_VOICE.returned;
+  if (returnPara) {
       // PR #2419 F1 — shipped consumer of the two typed Io-line
       // tables. `ioFirstSceneDialogue` and `ioVoiceContract` both
       // resolve `openedReturn.text` through `IO_OPENED_RETURN_LINE`;
