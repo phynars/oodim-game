@@ -2546,6 +2546,11 @@ const renderSaintOrraEndingRecall = () => {
       ending.appendChild(recall);
     }
     setTextContentIfChanged(recall, saintOrraRecallLine());
+    // #2731 F1/F2 — the red-tag handler (choose "carry-red-tag-to-saint-orra")
+    // only calls this function + publishState, never renderText, so the
+    // Maud entry must be created here, right after the recall exists. The
+    // helper is idempotent (skips when the button is already in the host).
+    renderMaudBellArchiveEntry();
     return;
   }
   recall?.remove();

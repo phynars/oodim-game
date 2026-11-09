@@ -145,6 +145,20 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(page.locator("body")).not.toContainText(scenario.otherRecall);
       await expect(redTag).toHaveCount(0);
 
+      {
+        const { context, page: returning } = await openFreshContext(browser, slot, playerId);
+        try {
+          await expect(returning.locator("#episodeOneEnding [data-ending-id]").first())
+            .toHaveAttribute("data-ending-id", scenario.episodeOneEndingId, { timeout: WAIT_MS });
+          await expect(returning.locator("#saintOrraRedTagRecall")).toHaveText(scenario.recall, {
+            timeout: WAIT_MS,
+          });
+          await expect(returning.locator("body")).not.toContainText(scenario.otherRecall);
+        } finally {
+          await context.close();
+        }
+      }
+
       const maudEntry = page.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
       );
