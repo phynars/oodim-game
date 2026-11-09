@@ -333,13 +333,9 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
     await expect(openedSkippedRouteLine).toHaveText(
       IO_ROUTE_MEMORY_LINES.skipped.text,
     );
-    const openedRouteReturn = getAftersignIoRouteReturnLine(false);
-    const openedRouteReturnLine = page.locator("#ioRouteReturnLine");
-    await expect(openedRouteReturnLine).toBeVisible({ timeout: WAIT_MS });
-    await expect(openedRouteReturnLine).toHaveAttribute(
-      "data-aftersign-io-route-return-line",
-      "skippedReturn",
-    );
-    await expect(openedRouteReturnLine).toHaveText(openedRouteReturn.text);
+    // PR #2721 F1 — `#ioRouteReturnLine` requires an EXPLICIT remembered
+    // skipped fact (`rememberedSkippedRoute`, main.js `showSkippedRouteReturn`).
+    // This path never taps skip, so the route-return line is absent.
+    await expect(page.locator("#ioRouteReturnLine")).toHaveCount(0);
   });
 });

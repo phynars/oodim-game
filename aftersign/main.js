@@ -2692,7 +2692,15 @@ const renderText = () => {
     returnOutcome,
     returnLineText: ioReturnLine(returnOutcome),
     skippedRouteLine,
-    routeReturnLine: skippedRouteLine ? getAftersignIoRouteReturnLine(false) : null,
+    // PR #2721 F2 — same gate as `showSkippedRouteReturn` /
+    // `stampIoRouteReturnLine` below: only an explicit remembered skipped
+    // fact renders `#ioRouteReturnLine` (absence is NOT skipped, #2437).
+    routeReturnLine:
+      skippedRouteLine
+      && state.delivery?.id !== "red-tag"
+      && rememberedSkippedRoute(state.npcs.io.memory)
+        ? getAftersignIoRouteReturnLine(false)
+        : null,
   });
   // Static reference to `IO_VOICE.returned` pins the copy-table binding
   // load-bearing (a keeps-what-we-imported guard against tree-shake).

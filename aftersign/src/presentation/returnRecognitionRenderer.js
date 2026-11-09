@@ -68,6 +68,16 @@ export const renderReturnRecognition = ({
   );
   setTextIfChanged(skippedRoutePara, skippedRouteLine.text);
 
+  // PR #2721 F2 — the route-return sibling is gated by the caller on the
+  // EXPLICIT skipped route-attention fact (`rememberedSkippedRoute`), the
+  // same gate `stampIoRouteReturnLine` applies later in renderText. Absence
+  // of the fact (opened path, no kiosk tap) passes `null`, so this writer
+  // never creates a paragraph the second writer would remove each frame.
+  if (!routeReturnLine) {
+    removeSibling(document, "ioRouteReturnLine");
+    return returnPara;
+  }
+
   const routeReturnPara = ensureParagraphAfter(
     document,
     skippedRoutePara,
