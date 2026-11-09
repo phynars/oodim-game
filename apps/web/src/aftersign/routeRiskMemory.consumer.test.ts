@@ -40,7 +40,10 @@ import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createPersistHelpers } from "../../../../aftersign/src/runtime/persistence.js";
+import {
+  createPersistHelpers,
+  createStoragePersistence,
+} from "../../../../aftersign/src/runtime/persistence.js";
 
 import {
   AFTERSIGN_ROUTE_RISK_SURFACE_ATTRIBUTE,
@@ -272,6 +275,47 @@ describe("routeRiskMemory persistence round-trip (drives the served buildPersist
     });
     return { state, helpers, persistedBlobs };
   };
+
+  it("round-trips a successful storage write", () => {
+    const values = new Map<string, string>();
+    const persistence = createStoragePersistence({
+      storage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+      storageKey: "aftersign:test",
+    });
+
+    expect(persistence.writeStored({ beat: "arrival" })).toBe(true);
+    expect(persistence.readStored()).toEqual({ beat: "arrival" });
+  });
+
+  it("does not report a local save after a storage write failure", () => {
+    const writeStored = createStoragePersistence({
+      storage: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error("storage quota exceeded");
+        },
+      },
+      storageKey: "aftersign:test",
+    }).writeStored;
+    const { state } = buildHelpers(null);
+    const failingHelpers = createPersistHelpers({
+      state,
+      slot: "test",
+      clone: (value: unknown) => JSON.parse(JSON.stringify(value)),
+      markStateDirty: () => {},
+      writeStored,
+      writeAuthoritativeSave: async () => {},
+    });
+
+    expect(failingHelpers.persist({ dirty: true })).toBe(false);
+    expect(state.save.lastPersistedAt).toBeUndefined();
+    // #2715: a failed browser write is recoverable — the live save stays
+    // dirty so the next save retries instead of silently dropping progress.
+    expect(state.save.dirty).toBe(true);
+  });
 
   it("carries state.player.routeRisk into the persist payload verbatim", () => {
     const initial = recordRouteRun({ route: "fast", succeeded: true });

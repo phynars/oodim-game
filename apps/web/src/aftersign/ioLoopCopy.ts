@@ -1,3 +1,4 @@
+import { ioOfferCopyFor } from "../../../../aftersign/src/ioLoopCopy.js";
 import type { AftersignVerticalSliceState } from "./verticalSliceRuntimeState";
 
 export type AftersignIoLoopCopy = Readonly<{
@@ -5,32 +6,12 @@ export type AftersignIoLoopCopy = Readonly<{
   returnLine: string;
 }>;
 
-const FIRST_RUN = Object.freeze({
-  safeJobLabel: "Take the safe job",
-  returnLine: "Bring it back sealed. We can talk when you're through.",
-}) satisfies AftersignIoLoopCopy;
-
-const TRUSTED_RUN = Object.freeze({
-  safeJobLabel: "Take another safe job",
-  returnLine: "You kept the seal. I have another quiet route for you.",
-}) satisfies AftersignIoLoopCopy;
-
-const DISTRUSTED_RUN = Object.freeze({
-  safeJobLabel: "Take the careful job",
-  returnLine: "You opened it. This one stays in sight until you return.",
-}) satisfies AftersignIoLoopCopy;
-
-/** Resolves Io's repeat-job copy from the packet outcome recorded by the slice. */
+/** Typed adapter for the state-model surface; literals live in AFTERSIGN. */
 export function getAftersignIoLoopCopy(
   state: AftersignVerticalSliceState,
 ): AftersignIoLoopCopy {
-  if (state.packetOutcome === "sealed") {
-    return TRUSTED_RUN;
-  }
-  if (state.packetOutcome === "opened") {
-    return DISTRUSTED_RUN;
-  }
-  return FIRST_RUN;
+  const { safeJobLabel, returnLine } = ioOfferCopyFor(state.packetOutcome);
+  return Object.freeze({ safeJobLabel, returnLine });
 }
 
 /**

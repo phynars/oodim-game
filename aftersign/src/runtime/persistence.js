@@ -9,7 +9,12 @@ export const createStoragePersistence = ({ storage, storageKey }) => {
   };
 
   const writeStored = (payload) => {
-    storage.setItem(storageKey, JSON.stringify(payload));
+    try {
+      storage.setItem(storageKey, JSON.stringify(payload));
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   return { readStored, writeStored };
@@ -96,12 +101,21 @@ export const createPersistHelpers = ({
   const persist = ({ dirty = false } = {}) => {
     const payload = buildPersistPayload({ dirty });
     payload.save.lastPersistedAt = new Date().toISOString();
-    writeStored(payload);
+    const persisted = writeStored(payload);
+    if (persisted === false) {
+      // A browser storage failure is recoverable: leave the live save
+      // dirty so the caller can present a retryable, non-blocking
+      // failure state (#2715).
+      state.save.dirty = true;
+      markStateDirty();
+      return false;
+    }
     state.save.lastPersistedAt = payload.save.lastPersistedAt;
     if (state.save.dirty !== dirty) {
       state.save.dirty = dirty;
     }
     markStateDirty();
+    return true;
   };
 
   const persistAuthoritative = async ({ dirty = false } = {}) => {

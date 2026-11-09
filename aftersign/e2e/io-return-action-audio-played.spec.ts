@@ -192,4 +192,59 @@ test.describe("AFTERSIGN io-return-action audio — played cue coupling", () => 
       "audio.lastCueAt should be a numeric performance.now() timestamp after the return-action tap",
     ).toBe("number");
   });
+
+  // PR #2710 — the document-scoped arm + cue stamp moved out of main.js
+  // into `src/presentation/ioReturnActionFeedbackController.js`. This
+  // case plays a DIFFERENT fork branch (`#skipRouteButton`) through the
+  // real served `pointerup` path, so the extracted controller's
+  // `audio()` callback is exercised end-to-end with the real
+  // `armIoReturnActionFeedback` + `playIoReturnActionAudio`, no mocks.
+  test("a real tap on #skipRouteButton at io-return-recognition stamps lastCue via the extracted feedback controller and advances the beat", async ({
+    page,
+  }) => {
+    test.setTimeout(COLD_START_MS);
+
+    const slot = `io-return-action-skip-played-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForGame(page);
+    expect((await snapshot(page)).scene?.beat).toBe("packet-offered");
+
+    const deliver = page.locator("#deliverButton");
+    await expect(deliver).toBeEnabled();
+    await deliver.tap();
+    await waitForBeat(page, "io-return-recognition");
+
+    const skip = page.locator("#skipRouteButton");
+    await expect(skip).toBeVisible();
+    await expect(skip).toBeEnabled();
+
+    const priorCue = await page.evaluate(
+      () => window.__game?._runtime?.audio?.lastCue ?? null,
+    );
+    expect(priorCue).not.toBe("io-return-action");
+
+    await skip.tap();
+
+    await expect
+      .poll(
+        () => page.evaluate(() => window.__game?._runtime?.audio?.lastCue ?? null),
+        {
+          timeout: WAIT_MS,
+          message:
+            "audio.lastCue should flip to 'io-return-action' on a real tap of #skipRouteButton (extracted controller path)",
+        },
+      )
+      .toBe("io-return-action");
+
+    const lastCueAt = await page.evaluate(
+      () => window.__game?._runtime?.audio?.lastCueAt ?? null,
+    );
+    expect(typeof lastCueAt).toBe("number");
+
+    // The fork choice itself must still resolve: the tap leaves the
+    // recognition beat (choose() fires synchronously on pointerup).
+    await expect
+      .poll(async () => (await snapshot(page)).scene?.beat, { timeout: WAIT_MS })
+      .not.toBe("io-return-recognition");
+  });
 });

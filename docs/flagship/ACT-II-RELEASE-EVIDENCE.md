@@ -17,6 +17,16 @@ Record each item with UTC time, operator, deployed commit SHA, and an artifact l
 
 ## Evidence table
 
+### Shipped implementation evidence
+
+| Epic | Story | Capability | Result | Evidence |
+| --- | --- | --- | --- | --- |
+| [#2587](https://github.com/phynars/oodim/issues/2587) | #2598 | Maud presents two separate, unselected visible name choices | Complete | Scene: `aftersign/src/bellArchiveScene.ts`; unit coverage: `aftersign/src/bellArchiveScene.test.ts`; E2E: `aftersign/e2e/maud-bell-archive.playtest.spec.ts`. |
+| [#2587](https://github.com/phynars/oodim/issues/2587) | #2598 | Tapping either name rings the bell and produces the matching lit/out ending card | Complete | Module: `aftersign/src/maudBellArchive.js` (`maudBellArchiveEndingForChoice`); E2E: `aftersign/e2e/maud-bell-archive.playtest.spec.ts`. |
+| [#2587](https://github.com/phynars/oodim/issues/2587) | #2598 | Each selected outcome persists independently by explicit slot and restores without a choice surface | Complete | Persistence: `aftersign/src/runtime/persistence.js` (`maudBellArchiveEndingId`); E2E: `aftersign/e2e/maud-bell-archive-fresh-context.spec.ts`. |
+
+### Pending served-release evidence
+
 | Candidate SHA | Served URL | Viewport | Scenario | Result | Artifact | Operator |
 | --- | --- | --- | --- | --- | --- | --- |
 | _pending_ | _pending_ | 390×844 | Saint Orra first-choice recall | _pending_ | _pending_ | _pending_ |

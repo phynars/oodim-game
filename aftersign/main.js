@@ -460,13 +460,10 @@ import { chooseAftersignJobOfferCopy } from "../apps/web/src/aftersign/aftersign
 // the served page across a full loop and pins the fresh-boot
 // (`pending`) → sealed literal divergence element-level.
 import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
-import {
-  getAftersignIoLoopCopy,
-  renderAftersignIoLoopAffordance,
-} from "../apps/web/src/aftersign/ioLoopCopy.ts";
+import { renderAftersignIoLoopAffordance } from "../apps/web/src/aftersign/ioLoopCopy.ts";
 import { IO_DEFAULT_OFFER_LINE } from "./src/ioDefaultOfferCopy.js";
 import { ioOfferLineFor } from "./src/ioOfferMemoryLine.js";
-import { ioOfferHeading } from "./src/ioLoopCopy.js";
+import { ioOfferCopyFor, ioOfferHeading } from "./src/ioLoopCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
 // served page as a SIBLING paragraph next to `#line`. Same shape as
 // the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
@@ -521,69 +518,15 @@ import {
   IO_RETURN_ACTION_AUDIO,
   playIoReturnActionAudio,
 } from "./src/ioReturnActionFeedback.js";
-// PR #1885 (Soren, AI008): the return-action fork re-renders every
-// frame — its button nodes get REPLACED, so any listener bound to a
-// specific node dies with it. Arm the tactile feedback ONCE on the
-// document (a truly stable ancestor) and match participating buttons
-// by data-attribute. Node replacement across re-render is now
-// invisible to the gesture: `pointerup` fires on whichever fresh
-// node the selector matches, the coupling timer stamps
-// `state._runtime.audio.lastCue = "io-return-action"`, e2e reads it.
-//
-// PR #1885 iter-7 (Soren's REQUEST_CHANGES on iter-6's beat-gate,
-// AI008): the callback (1) stamps `state._runtime.audio.lastCue`
-// FIRST — the pre-unlock write survives autoplay-suspended
-// AudioContext, matching the sibling `playFailureStingAudio` /
-// `playJobOfferConfirm` discipline; (2) THEN schedules a REAL 165Hz
-// triangle-wave burst via `playIoReturnActionAudio()` — that's the
-// tone the player hears. NO beat-gate inside the audio callback:
-// `choose(choiceId)` fires SYNCHRONOUSLY on `pointerup` inside the
-// input adapter (see `aftersign/src/runtime/inputAdapters.js`), so
-// by the time the 28ms coupling timer runs, `state.scene.beat` has
-// already advanced past `io-return-recognition` — a beat-gate that
-// samples at-fire (not at-arm) would always reject the cue. The
-// real off-beat guard is the tag teardown in the return-tone-choice
-// branch below: deleting `dataset.ioReturnActionFeedbackTarget` from
-// every participating button when we leave the recognition beat
-// makes the document-scoped selector match nothing, so the callback
-// never runs on a stale/repurposed button in the first place.
-let __ioReturnActionFeedbackArmed = false;
-const armIoReturnActionFeedbackOnce = () => {
-  if (__ioReturnActionFeedbackArmed) return;
-  if (typeof document === "undefined") return;
-  armIoReturnActionFeedback(document, {
-    haptic: () => {
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate(28);
-      }
-    },
-    audio: () => {
-      // Story-level cue write FIRST — same shape as
-      // `playFailureStingAudio` / `playJobOfferConfirm` — survives
-      // autoplay-suspended AudioContext so the e2e contract lands
-      // even when the browser is silent (headless CI, muted tab).
-      //
-      // No beat-gate here (iter-7, AI008). `choose()` fires
-      // synchronously on `pointerup` — by the time this 28ms timer
-      // runs, the beat has already advanced past the recognition
-      // beat, so an at-fire beat-gate would always drop the cue.
-      // Off-beat protection lives in the tag teardown on the tone-
-      // choice branch below: no matching selector → this callback
-      // never runs on a repurposed button.
-      state._runtime = state._runtime || {};
-      state._runtime.audio = state._runtime.audio || {};
-      state._runtime.audio.lastCue = IO_RETURN_ACTION_AUDIO.cue;
-      state._runtime.audio.lastCueAt = performance.now();
+import { createIoReturnActionFeedbackController } from "./src/presentation/ioReturnActionFeedbackController.js";
 
-      // Then schedule the actual tone. `playIoReturnActionAudio`
-      // internally traps every WebAudio failure path (missing ctor,
-      // suspended context that won't resume, closed context) and
-      // returns false — the pre-unlock cue write is still authoritative.
-      playIoReturnActionAudio();
-    },
-  });
-  __ioReturnActionFeedbackArmed = true;
-};
+const ioReturnActionFeedbackController = createIoReturnActionFeedbackController({
+  getState: () => state,
+  armFeedback: armIoReturnActionFeedback,
+  playAudio: playIoReturnActionAudio,
+  audioCue: IO_RETURN_ACTION_AUDIO.cue,
+});
+const armIoReturnActionFeedbackOnce = () => ioReturnActionFeedbackController.armOnce();
 import { applyAftersignJobOfferActionFeel } from "../apps/web/src/aftersign/ioJobOfferActionFeel.ts";
 import { aftersignRouteRiskToJobTone } from "../apps/web/src/aftersign/aftersignRouteRiskToJobTone.ts";
 // PR #1563 follow-up (Soren's REQUEST_CHANGES on the unwired copy
@@ -1084,15 +1027,16 @@ const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 // Browser storage is deliberately not part of the player-memory authority
-// path. The backend receives every durable mutation; this no-op writer keeps
-// the persistence factory's synchronous cache seam from blocking a tap frame.
+// path. The backend receives every durable mutation via
+// `persistAuthoritative`; this cache seam is what the `local-only-save`
+// red probe writes through. #2715: `persist()` needs a real writer so
+// its failure branch actually fires against the browser storage and
+// surfaces to the player.
 const { writeStored: writeCachedSnapshot } = createStoragePersistence({
   storage: window.localStorage,
   storageKey,
 });
-const writeStored = () => {
-  void writeCachedSnapshot;
-};
+const writeStored = (payload) => writeCachedSnapshot(payload);
 
 // Io's trust posture is a pure function of the delivery outcome
 // (#564 test #1 asserts it; Phase 3 #566 grows the rest of npcs.io):
@@ -3498,12 +3442,11 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
         ioLoopAffordance.setAttribute("data-aftersign-io-loop-outcome", __ioConsequenceOutcome);
         renderAftersignIoLoopAffordance(
           ioLoopAffordance,
-          getAftersignIoLoopCopy({
-            packetOutcome:
-              __ioConsequenceOutcome === "sealed" || __ioConsequenceOutcome === "opened"
-                ? __ioConsequenceOutcome
-                : null,
-          }),
+          ioOfferCopyFor(
+            __ioConsequenceOutcome === "sealed" || __ioConsequenceOutcome === "opened"
+              ? __ioConsequenceOutcome
+              : null,
+          ),
         );
         offeredJobs.appendChild(ioLoopAffordance);
         for (const offer of offers) {
@@ -4780,31 +4723,43 @@ const waitForStoryIdle = async () => {
   publishState();
 };
 
-const forceSave = async () => {
-  // #1642 follow-up: `persist({ dirty: false })` here was a no-op —
-  // `writeStored` is deliberately stubbed (the backend is the
-  // authority). The two branches below now each own their durable
-  // write explicitly: the `local-only-save` red probe writes to
-  // localStorage via `writeCachedSnapshot` (so the probe saves
-  // SOMEWHERE — that's what makes it a fallback, not silent data
-  // loss), and the default branch awaits `persistAuthoritative`.
+const setLocalSaveFailureNotice = (failed) => {
+  if (!line?.parentNode) return;
+  let notice = document.getElementById("localSaveFailureNotice");
+  if (!failed) {
+    notice?.remove();
+    return;
+  }
+  if (!notice) {
+    notice = document.createElement("p");
+    notice.id = "localSaveFailureNotice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    notice.style.pointerEvents = "none";
+    line.insertAdjacentElement("afterend", notice);
+  }
+  setTextContentIfChanged(
+    notice,
+    "Save failed locally. Your progress will retry on the next save.",
+  );
+};
 
+const forceSave = async () => {
   if (breakMode === "local-only-save") {
-    // Local-only red probe: write the built payload to localStorage
-    // directly. This is the ONLY path in the runtime that touches
-    // browser storage; every other write goes to the authoritative
-    // endpoint. Without this call the red probe silently discards
-    // the save.
-    const localPayload = buildPersistPayload({ dirty: false });
-    localPayload.save.lastPersistedAt = new Date().toISOString();
-    localPayload.save.authority = "local-fallback";
-    try {
-      writeCachedSnapshot(localPayload);
-    } catch {
-      // A storage-quota / privacy-mode failure must not black-screen
-      // the served page; the red probe is a diagnostic surface.
+    // #2715: `persist()` owns the local storage write AND reports a
+    // caught storage error via a `false` return. On failure, preserve
+    // dirty state + surface a non-blocking notice so the player knows
+    // the next save will retry; on success, clear any stale notice.
+    const persisted = persist({ dirty: false });
+    if (!persisted) {
+      state.save.dirty = true;
+      setLocalSaveFailureNotice(true);
+      markStateDirty();
+      renderText();
+      publishState();
+      return false;
     }
-    state.save.lastPersistedAt = localPayload.save.lastPersistedAt;
+    setLocalSaveFailureNotice(false);
     state.save.authority = "local-fallback";
     state.save.lastLoadProof = {
       source: "local-fallback",
@@ -4814,7 +4769,7 @@ const forceSave = async () => {
     markStateDirty();
     renderText();
     publishState();
-    return;
+    return true;
   }
 
   await persistAuthoritative({ dirty: false });
