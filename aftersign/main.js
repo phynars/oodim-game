@@ -1586,7 +1586,13 @@ const lineForBeat = () => {
     // lands on the ending beat with the same surface the live run
     // produced. renderEpisodeOneEnding is idempotent (short-circuits
     // on a matching id+cause), so this is safe to call every tick.
-    if (typeof document !== "undefined") {
+    // PR #2731 F1: once the player taps into Maud's bell archive, the
+    // #episodeOneEnding host holds the live Maud name-choice card. A
+    // non-matching firstElementChild makes renderEpisodeOneEnding call
+    // host.replaceChildren(), which would wipe [data-beat="maud-bell-archive"]
+    // on the publishState tick right after the tap. The Maud tap handler
+    // owns the host while its choices are live.
+    if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderEpisodeOneEnding(document, resolvedEnding);
       renderSaintOrraEndingRecall();
     }
@@ -2512,6 +2518,27 @@ const saintOrraRecallLine = () => {
   return "You brought the red tag to my door. I remember the courier.";
 };
 
+const renderMaudBellArchiveEntry = () => {
+  if (
+    !state.story.endingId ||
+    !state.story.endingId.startsWith("ending-") ||
+    !document.getElementById("saintOrraRedTagRecall")
+  ) {
+    return;
+  }
+  const host = document.getElementById("episodeOneEnding");
+  if (!host || host.querySelector('[data-orra-payback-action="carry-name-to-bell-archive"]')) {
+    return;
+  }
+  const maudEntry = document.createElement("button");
+  maudEntry.type = "button";
+  maudEntry.dataset.orraPaybackAction = "carry-name-to-bell-archive";
+  maudEntry.style.pointerEvents = "auto";
+  maudEntry.textContent = "Carry the name to the Bell Archive";
+  maudEntry.addEventListener("click", () => choose("carry-name-to-bell-archive"));
+  host.append(maudEntry);
+};
+
 const renderSaintOrraEndingRecall = () => {
   const ending = document.querySelector("#episodeOneEnding [data-ending-id]");
   if (!ending) return;
@@ -2525,6 +2552,11 @@ const renderSaintOrraEndingRecall = () => {
       ending.appendChild(recall);
     }
     setTextContentIfChanged(recall, saintOrraRecallLine());
+    // #2731 F1/F2 — the red-tag handler (choose "carry-red-tag-to-saint-orra")
+    // only calls this function + publishState, never renderText, so the
+    // Maud entry must be created here, right after the recall exists. The
+    // helper is idempotent (skips when the button is already in the host).
+    renderMaudBellArchiveEntry();
     return;
   }
   recall?.remove();
@@ -3533,6 +3565,8 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     }
   }
 
+  renderMaudBellArchiveEntry();
+
   if (state.story.endingId) {
     const packetChoiceAffordance = document.querySelector(
       "[data-aftersign-packet-choice-affordance]",
@@ -4476,7 +4510,13 @@ const choose = async (choiceId) => {
     || choiceId === "leave-name-with-orra"
   ) {
     const offeredAction = orraPaybackActionForDelivery(state.delivery);
-    if (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction) {
+    const continuingEpisodeOneEnding = choiceId === "carry-name-to-bell-archive"
+      && state.story.endingId?.startsWith("ending-")
+      && document.getElementById("saintOrraRedTagRecall");
+    if (
+      !continuingEpisodeOneEnding
+      && (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction)
+    ) {
       return;
     }
     // M3-E1 (#2260) — Soren PR #2264 review AI006: the earlier draft

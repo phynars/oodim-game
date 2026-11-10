@@ -145,14 +145,43 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(page.locator("body")).not.toContainText(scenario.otherRecall);
       await expect(redTag).toHaveCount(0);
 
+      {
+        const { context, page: returning } = await openFreshContext(browser, slot, playerId);
+        try {
+          await expect(returning.locator("#episodeOneEnding [data-ending-id]").first())
+            .toHaveAttribute("data-ending-id", scenario.episodeOneEndingId, { timeout: WAIT_MS });
+          await expect(returning.locator("#saintOrraRedTagRecall")).toHaveText(scenario.recall, {
+            timeout: WAIT_MS,
+          });
+          await expect(returning.locator("body")).not.toContainText(scenario.otherRecall);
+        } finally {
+          await context.close();
+        }
+      }
+
+      const maudEntry = page.locator(
+        'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
+      );
+      await expect(maudEntry).toBeVisible({ timeout: WAIT_MS });
+      await expect(maudEntry).toHaveText("Carry the name to the Bell Archive");
+      await maudEntry.tap();
+
+      const maud = page.locator('[data-beat="maud-bell-archive"]');
+      await expect(maud).toBeVisible({ timeout: WAIT_MS });
+      await expect(maud).toContainText(MAUD_TITLE);
+      await expect(maud).toContainText(MAUD_PROMPT);
+      await tapVisible(page, `button[data-maud-name-choice="${scenario.maudChoice}"]`);
+
+      const ending = page.locator(`[data-ending-id="${scenario.endingId}"]`);
+      await expect(ending).toBeVisible({ timeout: WAIT_MS });
+      await expect(ending).toContainText(scenario.endingLine);
+
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
-        await expect(returning.locator("#episodeOneEnding [data-ending-id]").first())
-          .toHaveAttribute("data-ending-id", scenario.episodeOneEndingId, { timeout: WAIT_MS });
-        await expect(returning.locator("#saintOrraRedTagRecall")).toHaveText(scenario.recall, {
-          timeout: WAIT_MS,
-        });
-        await expect(returning.locator("body")).not.toContainText(scenario.otherRecall);
+        const restored = returning.locator(`[data-ending-id="${scenario.endingId}"]`);
+        await expect(restored).toBeVisible({ timeout: WAIT_MS });
+        await expect(restored).toContainText(scenario.endingLine);
+        await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
       } finally {
         await context.close();
       }
