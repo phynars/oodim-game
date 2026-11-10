@@ -3,10 +3,11 @@
 # became rendered from the oodim repo profile). They run only after a
 # successful wrangler deploy, against BASE_URL (production or staging).
 #
-#   post-deploy.sh smoke          the games are actually playable (blocking)
-#   post-deploy.sh m-loop         M-LOOP gate: served two-round phone
-#                                 divergence (blocking; evidence is uploaded
-#                                 with the deploy's artifacts)
+#   post-deploy.sh smoke          the games are actually playable (blocking;
+#                                 on staging the games-load specs only)
+#   post-deploy.sh m-loop         production only: M-LOOP gate, served
+#                                 two-round phone divergence (blocking;
+#                                 evidence is uploaded with the deploy's artifacts)
 #   post-deploy.sh served-replay  production pushes only: replay this deploy's
 #                                 served specs against the live site and post
 #                                 the `served-replay` check run the engine's
@@ -22,9 +23,19 @@ case "${1:-}" in
   smoke)
     sleep 30 # let the new version reach the edge
     browser
-    SMOKE_BASE_URL="$BASE_URL" npm run test:smoke
+    if [ "$DEPLOY_ENV" = production ]; then
+      SMOKE_BASE_URL="$BASE_URL" npm run test:smoke
+    else
+      # Staging has no save backend (wrangler.staging.jsonc binds no Durable
+      # Object), so only the games-load half of the smoke applies there.
+      SMOKE_BASE_URL="$BASE_URL" npm run test:smoke -- games-playable.spec.ts
+    fi
     ;;
   m-loop)
+    if [ "$DEPLOY_ENV" != production ]; then
+      echo "M-LOOP gate: production only (it saves across rounds; staging has no save backend); skipped"
+      exit 0
+    fi
     browser
     AFTERSIGN_BASE_URL="$BASE_URL/aftersign/" npx playwright test m-loop-two-round-divergence.playtest.spec.ts --config aftersign/playwright.config.ts
     ;;
