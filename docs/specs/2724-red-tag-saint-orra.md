@@ -26,11 +26,11 @@ The core of #2724 is **already shipped on main**. This spec records what exists,
 
 Each AC is reached by taps on the served page at a 390×844 viewport. No test sets `state` directly.
 
-- AC-1 (shipped): WHEN the player reaches the Episode 1 ending, THE game SHALL show the "Carry the red tag to Saint Orra" control.
-- AC-2 (shipped): WHEN the player first taps "Take the second packet" and then carries the tag, THE game SHALL show "You took the red tag at once. I remember the hand that did not wait."
-- AC-3 (shipped): WHEN the player first taps "Ask what changed" and then carries the tag, THE game SHALL show "You asked what changed before you carried it. I remember the question."
-- AC-4 (shipped): WHEN the player reloads the slot after the first tap, THE game SHALL still show the recall line for that tap.
-- AC-5 (gap): IF `redTagFirstTap` is `null` when the tag reaches Saint Orra, THEN THE recall SHALL read "You brought the red tag to my door. I remember the courier." AND SHALL NOT contain "at once" or "asked what changed".
+- AC-1: (shipped) WHEN the player reaches the Episode 1 ending, THE game SHALL show the "Carry the red tag to Saint Orra" control.
+- AC-2: (shipped) WHEN the player first taps "Take the second packet" and then carries the tag, THE game SHALL show "You took the red tag at once. I remember the hand that did not wait."
+- AC-3: (shipped) WHEN the player first taps "Ask what changed" and then carries the tag, THE game SHALL show "You asked what changed before you carried it. I remember the question."
+- AC-4: (shipped) WHEN the player reloads the slot after the first tap, THE game SHALL still show the recall line for that tap.
+- AC-5: (gap) IF `redTagFirstTap` is `null` when the tag reaches Saint Orra, THEN THE recall SHALL read "You brought the red tag to my door. I remember the courier." AND SHALL NOT contain "at once" or "asked what changed".
 
 ## Out of scope
 
