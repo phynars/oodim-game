@@ -92,8 +92,7 @@ test.describe("served Orra recognition lane", () => {
       await runIoBeats(page);
       await meetOrraAndChoose(page, choiceId);
       await reloadSavedRun(page);
-      await tapChoice(page, "return-to-io");
-      await tapChoice(page, "meet-orra");
+      await tapMeetOrra(page);
 
       const actedSnapshot = await readNpcSnapshot(page);
       const assertRecognized = () => {
