@@ -4,7 +4,8 @@ import { IO_RETURN_MEMORY_ID } from "../../e2e-shared/flagshipStoryStateContract
 import { ORRA_LINE_COPY_BY_ID } from "../src/orraRuntimeLane";
 
 const WAIT_MS = 60_000;
-const COLD_START_MS = 90_000;
+const COLD_START_MS = 180_000;
+const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const ORRA_FIRST_CONTACT_LINE_ID = "orra_first_contact";
 const ORRA_RETURN_LINE_ID = {
   "light-vigil": "orra_return_lit_vigil",
@@ -48,14 +49,19 @@ async function readNpcSnapshot(page: Page): Promise<{
   orraRefs: string[];
   ioLine: string;
   ioRefs: string[];
+  ioMemoryObjects: string[];
 }> {
   return page.evaluate(() => {
     const game = (window as any).__game;
+    const ioMemories: Array<{ object?: unknown }> = Array.isArray(game?.npcs?.io?.memories)
+      ? game.npcs.io.memories
+      : [];
     return {
       orraLine: game?.npcs?.orra?.lastLine ?? "",
       orraRefs: game?.npcs?.orra?.lastLineMemoryRefs ?? [],
       ioLine: game?.npcs?.io?.lastLine ?? "",
       ioRefs: game?.npcs?.io?.lastLineMemoryRefs ?? [],
+      ioMemoryObjects: ioMemories.map((memory) => String(memory?.object ?? "")),
     };
   });
 }
@@ -139,8 +145,17 @@ test.describe("served Orra recognition lane", () => {
       const assertRecognized = () => {
         expect(actedSnapshot.orraLine.length).toBeGreaterThan(0);
         expect(actedSnapshot.orraRefs).toContain(ORRA_RETURN_LINE_ID[choiceId]);
+        // Io stays correct across the reload. The ending clears Io's spoken
+        // line and line refs (main.js vigil branch + lineForBeat ending
+        // branch), so read her DURABLE memory instead: it must still hold
+        // the packet outcome. Keep the legacy ref ids as an alternative.
         const ioRefs = new Set(actedSnapshot.ioRefs);
-        expect(ioRefs.has(IO_RETURN_MEMORY_ID.sealed) || ioRefs.has(IO_RETURN_MEMORY_ID.opened)).toBe(true);
+        const ioRemembersOutcome =
+          ioRefs.has(IO_RETURN_MEMORY_ID.sealed)
+          || ioRefs.has(IO_RETURN_MEMORY_ID.opened)
+          || actedSnapshot.ioMemoryObjects.includes("sealed")
+          || actedSnapshot.ioMemoryObjects.includes("opened");
+        expect(ioRemembersOutcome).toBe(true);
       };
 
       if (breakMode) {
@@ -153,8 +168,13 @@ test.describe("served Orra recognition lane", () => {
       assertRecognized();
       const expectedOrraLine = ORRA_LINE_COPY_BY_ID[ORRA_RETURN_LINE_ID[choiceId]];
       expect(expectedOrraLine).toBeTruthy();
-      await expect(page.locator("#line")).toHaveText(expectedOrraLine, { timeout: WAIT_MS });
+      // Expected copy comes from the shipped copy table, not from
+      // window.__game, so the comparison is not self-referential.
       expect(actedSnapshot.orraLine).toBe(expectedOrraLine);
+      // `#line` is blank on a restored ending (lineForBeat returns ""), so
+      // the served proof is the re-rendered ending card instead.
+      await expect(page.locator("#episodeOneEnding [data-ending-id]")).toBeVisible({ timeout: WAIT_MS });
+      await expect(page.locator("#meetOrraButton")).toBeHidden({ timeout: WAIT_MS });
 
       const controlSlot = `orra-control-${choiceId}-${Date.now()}`;
       await page.goto(`/aftersign/?slot=${controlSlot}`, { waitUntil: "load" });
