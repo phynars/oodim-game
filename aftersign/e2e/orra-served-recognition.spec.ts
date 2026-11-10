@@ -60,14 +60,44 @@ async function readNpcSnapshot(page: Page): Promise<{
   });
 }
 
+async function waitForBeat(page: Page, beatId: string): Promise<void> {
+  await expect(page.locator(`[data-beat-id="${beatId}"]`)).toBeVisible({ timeout: WAIT_MS });
+}
+
+// Served Io walk, mirroring aftersign-mloop-two-round.playtest.spec.ts:
+// offered job → #packetButton → acknowledge-kiosk → deliver-packet →
+// io-return-recognition → blunt return → ask-for-next-job → io-next-job.
+// There is no served `keep-sealed` button, so it is not tapped.
 async function runIoBeats(page: Page): Promise<void> {
-  await tapChoice(page, "keep-sealed");
+  await waitForBeat(page, "packet-offered");
+  const offeredJob = page.locator("#offeredJobs button[data-offered-job-id]").first();
+  await expect(offeredJob).toBeVisible({ timeout: WAIT_MS });
+  await offeredJob.tap();
+  await page.locator("#packetButton").tap();
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
-  await tapChoice(page, "return-to-io");
+  await waitForBeat(page, "io-return-recognition");
+  await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
+  await waitForBeat(page, "return-tone-choice");
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+}
+
+// Orra's first-contact control is offered at the io-next-job park.
+// Accept either the dedicated #meetOrraButton or a meet-orra choice button.
+async function tapMeetOrra(page: Page): Promise<void> {
+  await waitForBeat(page, "io-next-job");
+  const control = page
+    .locator("#meetOrraButton:not([disabled])")
+    .or(page.locator('button[data-choice-id="meet-orra"]:not([disabled])'))
+    .first();
+  await expect(control).toBeVisible({ timeout: WAIT_MS });
+  await control.tap();
 }
 
 async function meetOrraAndChoose(page: Page, choiceId: OrraChoiceId): Promise<void> {
-  await tapChoice(page, "meet-orra");
+  await tapMeetOrra(page);
   await waitForFirstContact(page);
   await tapChoice(page, choiceId);
 }
