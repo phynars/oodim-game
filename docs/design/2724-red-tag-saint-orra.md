@@ -49,10 +49,10 @@ Every test taps the served page at a 390×844 viewport. No test sets `state` dir
 | AC | Status | Covered by |
 |---|---|---|
 | AC-1 carry control | Shipped, passing on main | `aftersign/e2e/episode-one-ending-served.spec.ts:322-364`; `aftersign/e2e/m4-act-two.playtest.spec.ts:118-153` |
-| AC-2 took-at-once line | Shipped, passing on main | same as AC-1 |
-| AC-3 asked-first line | Shipped, passing on main | same as AC-1 |
-| AC-4 reload keeps the tap | Shipped, passing on main (fresh-context reload) | `episode-one-ending-served.spec.ts:322-364` |
-| AC-5 neutral fallback | **Gap.** The code branch exists (`main.js:2519`), but the cited specs assert only the two tapped branches. | New case in `episode-one-ending-served.spec.ts`. Reach the ending without a first tap, through the existing visible reset path. Carry the tag. Assert "You brought the red tag to my door. I remember the courier." Assert that the recall contains neither "at once" nor "asked what changed". |
+| AC-2 | took-at-once line | Shipped, passing on main | same as AC-1 |
+| AC-3 | asked-first line | Shipped, passing on main | same as AC-1 |
+| AC-4 | reload keeps the tap | Shipped, passing on main (fresh-context reload) | `episode-one-ending-served.spec.ts:322-364` |
+| AC-5 | neutral fallback | **Gap.** The code branch exists (`main.js:2519`), but the cited specs assert only the two tapped branches. | New case in `episode-one-ending-served.spec.ts`. Reach the ending without a first tap, through the existing visible reset path. Carry the tag. Assert "You brought the red tag to my door. I remember the courier." Assert that the recall contains neither "at once" nor "asked what changed". |
 
 No row claims that a test fails on main. AC-1 to AC-4 already pass. AC-5 is a new coverage check on code that has already shipped, so it should pass on main as soon as it is written. Its value is regression protection.
 
