@@ -122,13 +122,23 @@ test.describe("served Orra recognition lane", () => {
       await runIoBeats(page);
       await meetOrraAndChoose(page, choiceId);
       await reloadSavedRun(page);
-      await tapMeetOrra(page);
+      // The vigil tap commits story.endingId and force-saves. On reload the
+      // ending is hydrated, #vigilChoice (and #meetOrraButton inside it) is
+      // hidden, and lineForBeat returns "" — so there is no meet-orra control
+      // to tap and #line is empty. Recognition is read from boot hydration of
+      // Orra's vigil memory, published on window.__game.
+      if (!breakMode) {
+        await page.waitForFunction(
+          (lineId) => (window as any).__game?.npcs?.orra?.lastLineId === lineId,
+          ORRA_RETURN_LINE_ID[choiceId],
+          { timeout: WAIT_MS },
+        );
+      }
 
       const actedSnapshot = await readNpcSnapshot(page);
       const assertRecognized = () => {
         expect(actedSnapshot.orraLine.length).toBeGreaterThan(0);
         expect(actedSnapshot.orraRefs).toContain(ORRA_RETURN_LINE_ID[choiceId]);
-        expect(actedSnapshot.ioLine.length).toBeGreaterThan(0);
         const ioRefs = new Set(actedSnapshot.ioRefs);
         expect(ioRefs.has(IO_RETURN_MEMORY_ID.sealed) || ioRefs.has(IO_RETURN_MEMORY_ID.opened)).toBe(true);
       };

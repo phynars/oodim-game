@@ -4312,11 +4312,15 @@ const choose = async (choiceId) => {
     // `#lightVigilButton`. This branch persists
     // only to keep `orra-served-recognition.spec.ts` reachable.
     //
-    // Reload safety: the served-recognition spec re-dispatches
-    // `meet-orra` after `page.reload()`. If Orra already holds a vigil
-    // memory fact, re-select the recalled return line (same selector
-    // the boot hydration uses) instead of wiping it back to first
-    // contact. A fresh slot (no fact) still gets first contact.
+    // Defensive guard: a vigil tap commits `story.endingId`, and on
+    // reload the ending branch hides `#vigilChoice` (and this button
+    // inside it), so `meet-orra` is NOT reachable by tap after a vigil.
+    // Post-reload recognition comes from boot hydration of Orra's
+    // memory, which the served-recognition spec reads off window.__game.
+    // If this action is ever dispatched while Orra already holds a vigil
+    // fact, re-select the recalled return line (same selector the boot
+    // hydration uses) instead of wiping it back to first contact. A
+    // fresh slot (no fact) gets first contact.
     const orraLine = selectOrraRecognitionLine(state.npcs.orra.memory);
     const orraLineId = orraLine?.lineId || ORRA_FIRST_CONTACT_LINE_ID;
     state.npcs.orra.lastLineId = orraLineId;
