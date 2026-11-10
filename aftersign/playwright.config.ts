@@ -62,6 +62,12 @@ export default defineConfig({
     "flagship-runnable-slice-spine-contract.spec.ts",
   ],
   fullyParallel: true,
+  // The PR lane ran 261 tests on Playwright's default of 2 workers (half of
+  // the runner's 4 cores) in 25.3 min (2026-11-09, PR #2736). 3 workers is a
+  // measured trial: keep it only while the flaky count stays near that run's
+  // 2. Served mode (the deploy's replay against the live site) keeps the
+  // default.
+  workers: process.env.CI && !servedBaseURL ? 3 : undefined,
   forbidOnly: !!process.env.CI,
   // AFTERSIGN gets two MORE retries than sibling three.js lanes (pacman /
   // galaga / doom / agar all use retries: 1). Rationale: the aftersign
