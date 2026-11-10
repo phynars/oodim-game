@@ -5882,8 +5882,8 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (!target || typeof target.closest !== "function") return;
   const vigilButton = target.closest(
-    "button[data-choice-id=\"meet-orra\"]:not([disabled]), button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled]), button[data-choice-id=\"carry-red-tag-to-saint-orra\"]:not([disabled])",
-  );
+    "button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled]), button[data-choice-id=\"carry-red-tag-to-saint-orra\"]:not([disabled])",
+  ) || target.closest("button[data-choice-id=\"meet-orra\"]:not([disabled])");
   if (!vigilButton) return;
   const vigilId = vigilButton.getAttribute("data-choice-id");
   if (
