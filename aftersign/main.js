@@ -5568,6 +5568,11 @@ const resetSliceSave = async () => {
     // player's kiosk acknowledgement.
     secondAction: null,
     returnReason: null,
+    // #2732: keep the red-tag record fields in the reset shape so the
+    // first-tap guard in choose() sees `null`, not `undefined`.
+    redTagAccepted: false,
+    redTagFirstTap: null,
+    redTagDeliveredToSaintOrra: false,
     // M-LOOP route/risk is progression memory. Resetting the slice
     // must clear it with the rest of the player-input axes; otherwise
     // a fresh run can inherit the prior route posture.
