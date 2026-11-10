@@ -110,6 +110,10 @@ async function meetOrraAndChoose(page: Page, choiceId: OrraChoiceId): Promise<vo
 
 test.describe("served Orra recognition lane", () => {
   test.describe.configure({ mode: "serial" });
+  // The served walk is tap-played (locator.tap()), which requires a touch
+  // context. The default project is "Desktop Chrome" (no touch), so opt in
+  // at phone size — same pattern as aftersign-audio-runtime.playtest.spec.ts.
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("M-ORRA-E1 served flow: visible first contact and vigil recognition survive reload", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
