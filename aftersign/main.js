@@ -2509,7 +2509,7 @@ const endingHideableControls = () =>
   ].filter(Boolean);
 
 const saintOrraRecallLine = () => {
-  if (state.player.redTagFirstTap === "take-second-packet") {
+  if (state.player.redTagFirstTap === "accept-second-packet") {
     return "You took the red tag at once. I remember the hand that did not wait.";
   }
   if (state.player.redTagFirstTap === "ask-what-changed") {
