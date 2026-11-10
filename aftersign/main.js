@@ -2509,7 +2509,8 @@ const endingHideableControls = () =>
   ].filter(Boolean);
 
 const saintOrraRecallLine = () => {
-  if (state.player.redTagFirstTap === "accept-second-packet") {
+  // Stored token (see choose() + hydrate whitelist), NOT the choice id.
+  if (state.player.redTagFirstTap === "take-second-packet") {
     return "You took the red tag at once. I remember the hand that did not wait.";
   }
   if (state.player.redTagFirstTap === "ask-what-changed") {
