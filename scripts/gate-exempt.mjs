@@ -16,7 +16,7 @@
 // Otherwise the gate runs as if no line were there. Every run prints
 // `GATE_EXEMPT=<gate>:<state>[:<kind>[:<approver>]]` so the trail records
 // requested, refused and granted exemptions alike.
-// Re-run on approval: .github/workflows/exempt-approved.yml.
+// Re-run on approval: .github/workflows/review-gate.yml (job rerun).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -146,7 +146,7 @@ export function shouldRerun({ review, pr, approvers }) {
   return GATES.some((g) => parseExempt(exemptLine(pr.body, g)));
 }
 
-// `node scripts/gate-exempt.mjs rerun` (.github/workflows/exempt-approved.yml):
+// `node scripts/gate-exempt.mjs rerun` (.github/workflows/review-gate.yml (job rerun)):
 // on an approver's APPROVE of a PR that asks for an exemption, re-run the
 // failed jobs of the head's CI run so the gates read the new approval.
 async function rerun() {

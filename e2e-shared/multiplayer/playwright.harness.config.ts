@@ -13,7 +13,7 @@ import { defineConfig } from "@playwright/test";
 // keeps the self-test job fast (no Chromium download, no preview build)
 // and crisp (a hung browser cannot make a logic test flake).
 //
-// CI gate: .github/workflows/harness-self-test.yml runs `npm run test:harness`
+// CI gate: scripts/ci/harness-self-test.sh (ci.yml job harness) runs `npm run test:harness`
 // four times — once with HARNESS_BREAK_MODE=off (expects exit 0 — contract
 // holds) and once per break mode (expects exit 0 — the self-test for that
 // mode asserts the sabotage positively, contract cases the sabotage would
