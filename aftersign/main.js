@@ -4295,18 +4295,14 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "meet-orra") {
+    // `meet-orra` is retained as the normal adapter target for the rendered
+    // first-contact control; it is not an assertion-surface-only test hook.
     orraHasDialogueFloor = true;
-    // M-ORRA-E1 (#1173) — settle no-op for the Orra lane's
-    // first-contact dispatch. The shipped page does not render a
-    // `meet-orra` button today; the sibling
-    // `aftersign/e2e/orra-served-recognition.spec.ts` (and the
-    // flagship-surface-contract loop) dispatches this id through
-    // `game.input.choose("meet-orra")` to STAGE Orra's first-contact
-    // surface before the vigil tap. Without this branch `choose()`'s
-    // trailing `throw new Error("Unknown AFTERSIGN choice: …")` would
-    // explode that spec. We only stamp the first-contact line id —
-    // no memory fact (that's the vigil action's job), no
-    // story.endingId mutation (that's `light-vigil`'s job alone).
+    // M-ORRA-E1 (#1173) — the visible `#meetOrraButton` dispatches this
+    // first-contact choice through the same canonical adapter as the vigil
+    // controls. We only stamp the first-contact line id — no memory fact
+    // (that's the vigil action's job), no story.endingId mutation (that's
+    // `light-vigil`'s job alone).
     //
     // M3-E1 note (PR #2265 iter-6 — Soren AI006): the M3-E1
     // tap-played ending spec `episode-one-ending-served.spec.ts`
@@ -4317,11 +4313,15 @@ const choose = async (choiceId) => {
     // `#lightVigilButton`. This branch persists
     // only to keep `orra-served-recognition.spec.ts` reachable.
     //
-    // Reload safety: the served-recognition spec re-dispatches
-    // `meet-orra` after `page.reload()`. If Orra already holds a vigil
-    // memory fact, re-select the recalled return line (same selector
-    // the boot hydration uses) instead of wiping it back to first
-    // contact. A fresh slot (no fact) still gets first contact.
+    // Defensive guard: a vigil tap commits `story.endingId`, and on
+    // reload the ending branch hides `#vigilChoice` (and this button
+    // inside it), so `meet-orra` is NOT reachable by tap after a vigil.
+    // Post-reload recognition comes from boot hydration of Orra's
+    // memory, which the served-recognition spec reads off window.__game.
+    // If this action is ever dispatched while Orra already holds a vigil
+    // fact, re-select the recalled return line (same selector the boot
+    // hydration uses) instead of wiping it back to first contact. A
+    // fresh slot (no fact) gets first contact.
     const orraLine = selectOrraRecognitionLine(state.npcs.orra.memory);
     const orraLineId = orraLine?.lineId || ORRA_FIRST_CONTACT_LINE_ID;
     state.npcs.orra.lastLineId = orraLineId;
@@ -5871,9 +5871,9 @@ attachRuntimeInputAdapters({
   markPointerIntent,
 });
 
-// M3-E1 (#2261) — Episode 1 vigil click delegate. The two vigil
-// buttons in `#vigilChoice` (aftersign/index.html) carry a
-// `data-choice-id="light-vigil" | "spare-vigil"` attribute instead
+// M3-E1 (#2261) — Episode 1 vigil click delegate. The first-contact and
+// vigil buttons in `#vigilChoice` (aftersign/index.html) carry a
+// `data-choice-id="meet-orra" | "light-vigil" | "spare-vigil"` attribute instead
 // of being wired by `attachRuntimeInputAdapters` directly, because
 // the input adapters are specialized to the four DOM-reused control
 // buttons (packet / ack / skip / deliver) that round-robin their
@@ -5891,11 +5891,12 @@ document.addEventListener("click", (event) => {
   if (!target || typeof target.closest !== "function") return;
   const vigilButton = target.closest(
     "button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled]), button[data-choice-id=\"carry-red-tag-to-saint-orra\"]:not([disabled])",
-  );
+  ) || target.closest("button[data-choice-id=\"meet-orra\"]:not([disabled])");
   if (!vigilButton) return;
   const vigilId = vigilButton.getAttribute("data-choice-id");
   if (
-    vigilId !== "light-vigil"
+    vigilId !== "meet-orra"
+    && vigilId !== "light-vigil"
     && vigilId !== "spare-vigil"
     && vigilId !== "carry-red-tag-to-saint-orra"
   ) return;

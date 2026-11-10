@@ -170,8 +170,26 @@ async function advanceToRecognition(page: Page, path: PacketPath): Promise<Reloa
     const advanceControl = page.locator("#deliverButton");
     await expect(advanceControl).toBeVisible({ timeout: WAIT_MS });
     await expect(advanceControl).toBeEnabled({ timeout: WAIT_MS });
-    await expect(advanceControl).toHaveText("Return to Io", { timeout: WAIT_MS });
-    await advanceControl.click();
+    // The restored `packet-delivered` beat can auto-advance into
+    // `io-return-recognition` on its own (the #2336 ~1180ms second write)
+    // between the beat read above and this check. #deliverButton then reads
+    // "Blunt return" — the recognition beat has already opened and the
+    // observer installed above captures it. Clicking now would commit a
+    // return tone, so only click while the button still says "Return to Io".
+    await expect
+      .poll(
+        async () => {
+          const current = await page.evaluate(() => window.__game!.getSnapshot().scene.beat);
+          if (current !== "packet-delivered") return "advanced";
+          return (await advanceControl.textContent())?.trim() === "Return to Io" ? "ready" : "pending";
+        },
+        { timeout: WAIT_MS },
+      )
+      .not.toBe("pending");
+    const stillDelivered =
+      (await page.evaluate(() => window.__game!.getSnapshot().scene.beat)) === "packet-delivered"
+      && (await advanceControl.textContent())?.trim() === "Return to Io";
+    if (stillDelivered) await advanceControl.click();
     // see #1949, #1931 — the beat gate is now the observer below,
     // not a coarse poll that can miss the transient recognition beat.
   }
