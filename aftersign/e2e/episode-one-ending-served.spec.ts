@@ -344,6 +344,24 @@ test.describe("Saint Orra red-tag recall", () => {
       await expect(freshPage.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
       await freshContext.close();
     });
+
+    // #2732: the reset path rebuilds `state.player` in resetSliceSave().
+    // Tap the visible reset control first, then play the funnel, so the
+    // first-tap record is proven to survive the reset player shape.
+    test(`recalls the real first tap after a visible reset: ${choiceId}`, async ({ page }) => {
+      test.setTimeout(150_000);
+      const slot = `orra-recall-reset-${choiceId}-${Date.now()}`;
+      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await waitForVersion(page);
+
+      const reset = page.locator("#resetButton");
+      await expect(reset).toBeVisible({ timeout: WAIT_MS });
+      await reset.click();
+
+      await runToEnding(page, "sealed", true, choiceId);
+      await carryRedTagToSaintOrra(page);
+      await expect(page.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
+    });
   }
 });
 
