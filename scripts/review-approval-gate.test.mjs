@@ -211,23 +211,23 @@ test('real errors reject (exit 2), distinct from a missing approval', async () =
   await assert.rejects(run({ env: {}, fetchImpl, ...quiet }), /missing/);
 });
 
-// Workflow contract: the failing (exit-mode) gate must only run on review
-// events, and a review must re-trigger it.
-test('enforcement runs on pull_request_review, never as a failing pull_request job', async () => {
-  const gateWf = await readFile(fileURLToPath(new URL('../.github/workflows/review-approval.yml', import.meta.url)), 'utf8');
+// Workflow contract (rendered from the oodim repo profile since 11-09): the
+// failing gate runs only on review events; on a PR, CI publishes the status
+// and never fails for a missing approval. No step may fall through to 'exit'.
+test('enforcement runs on pull_request_review; on a PR the gate only publishes a status', async () => {
+  const read = (f) => readFile(fileURLToPath(new URL(`../.github/workflows/${f}`, import.meta.url)), 'utf8');
+  const modesOf = (text) => [...text.matchAll(/^\s*REVIEW_GATE_MODE:\s*"?(\w+)"?\s*$/gm)].map((m) => m[1]);
+
+  const gateWf = await read('review-gate.yml');
   const onBlock = gateWf.slice(gateWf.indexOf('\non:'), gateWf.indexOf('\npermissions:'));
   assert.match(onBlock, /pull_request_review:/);
-  assert.match(onBlock, /workflow_run:/);
-  assert.match(gateWf, /statuses:\s*write/, 'status/review modes POST commit statuses');
-  // Both event types must publish the status: workflow_run -> 'status',
-  // pull_request_review -> 'review'. No branch may fall through to 'exit'.
-  const modeLine = gateWf.split('\n').find((l) => /^\s*REVIEW_GATE_MODE:/.test(l)) ?? '';
-  const modes = [...modeLine.matchAll(/'(\w+)'/g)].map((m) => m[1]).filter((m) => m !== 'workflow_run');
-  assert.deepEqual(modes, ['status', 'review'], `unexpected REVIEW_GATE_MODE: ${modeLine.trim()}`);
   assert.doesNotMatch(onBlock, /^\s{2}pull_request:/m, 'the failing gate must not run on pull_request');
+  assert.match(gateWf, /statuses:\s*write/, 'status/review modes POST commit statuses');
   assert.match(gateWf, /node scripts\/review-approval-gate\.mjs/);
+  assert.deepEqual([...new Set(modesOf(gateWf))], ['review']);
 
-  const ci = await readFile(fileURLToPath(new URL('../.github/workflows/ci.yml', import.meta.url)), 'utf8');
-  assert.doesNotMatch(ci, /node scripts\/review-approval-gate\.mjs/, 'ci.yml must not enforce approval');
+  const ci = await read('ci.yml');
+  assert.match(ci, /node scripts\/review-approval-gate\.mjs/, 'CI publishes the approval status on each PR head');
+  assert.deepEqual([...new Set(modesOf(ci))], ['status'], 'in CI the gate runs in status mode only (never fails a PR)');
   assert.match(ci, /node --test scripts\/review-approval-gate\.test\.mjs/, 'ci.yml must run the gate logic tests');
 });

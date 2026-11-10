@@ -26,7 +26,7 @@ npm run typecheck:aftersign
 npm run test:unit:aftersign
 npm run test:e2e:aftersign
 
-# 3b) AFTERSIGN release gate — same steps as .github/workflows/main-e2e.yml
+# 3b) AFTERSIGN release gate — the same e2e the daily scheduled CI run (ci.yml) uses on main
 #     (Node 22). Record the commit SHA and the final Playwright summary line
 #     (N passed / N failed / N flaky) as release evidence. A killed or
 #     backgrounded run is not evidence.

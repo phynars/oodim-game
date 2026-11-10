@@ -31,3 +31,14 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
+    # ci.yml, review-gate.yml, security-scan.yml and rebase-pr.yml are
+    # rendered from the oodim repo profile (11-09), which owns these pins: a
+    # bump in a generated file fails the workflows-drift job. Deploy files
+    # still get bumps for any other action.
+    ignore:
+      - dependency-name: "actions/checkout"
+      - dependency-name: "actions/setup-node"
+      - dependency-name: "actions/cache"
+      - dependency-name: "actions/upload-artifact"
+      - dependency-name: "actions/download-artifact"
+      - dependency-name: "dorny/paths-filter"

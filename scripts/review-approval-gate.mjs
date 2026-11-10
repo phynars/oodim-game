@@ -7,7 +7,7 @@
 // Deadlock constraint (PR #2572 review, F1): the reviewer tool refuses
 // APPROVE while any check on the head is red. A gate that FAILS for a missing
 // approval therefore must never run before a review exists. That is why
-// .github/workflows/review-approval.yml triggers only on pull_request_review.
+// .github/workflows/review-gate.yml triggers only on pull_request_review (rendered from the oodim repo profile).
 //
 // Two output modes:
 //   exit   (default) — exit 1 when a protected PR has no non-author approval.
