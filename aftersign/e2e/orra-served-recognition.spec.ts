@@ -121,7 +121,8 @@ test.describe("served Orra recognition lane", () => {
       await page.goto(`/aftersign/?slot=${controlSlot}`, { waitUntil: "load" });
       await waitForVersion(page);
       await runIoBeats(page);
-      await tapChoice(page, "meet-orra");
+      await tapMeetOrra(page);
+      await waitForFirstContact(page);
       const controlSnapshot = await readNpcSnapshot(page);
       expect(controlSnapshot.orraLine.length).toBeGreaterThan(0);
       expect(controlSnapshot.orraRefs.includes(ORRA_FIRST_CONTACT_LINE_ID) || controlSnapshot.orraLine !== actedSnapshot.orraLine).toBe(true);
