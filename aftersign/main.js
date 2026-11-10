@@ -4457,7 +4457,9 @@ const choose = async (choiceId) => {
     if (state.scene.beat !== "io-next-job") {
       return;
     }
-    if (state.player.redTagFirstTap === null) {
+    // #2732: `== null` so a player shape missing the field (undefined)
+    // still records the first tap instead of silently skipping it.
+    if (state.player.redTagFirstTap == null) {
       state.player.redTagFirstTap = choiceId === "accept-second-packet"
         ? "take-second-packet"
         : "ask-what-changed";
