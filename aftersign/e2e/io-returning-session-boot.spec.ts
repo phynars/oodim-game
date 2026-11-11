@@ -3,12 +3,13 @@ import { expect, test, type Page } from "@playwright/test";
 // #957 — returning-session boot recognition.
 //
 // A DELIVERED save that is reloaded (real page reload, fresh module
-// evaluation) must open with Io's RETURNING-SESSION line — chosen by
-// chooseIoReturningSessionLine from the durable memory facts (packet
-// outcome + route attention) — instead of replaying the fresh
-// "clean handoff" packet-delivered copy. Once the player advances to
-// the io-return-recognition beat, that beat's own verbatim-asserted
-// strings must win unchanged.
+// evaluation) must never replay the fresh "clean handoff"
+// packet-delivered copy. Since #2747, restoreFlagshipBeat
+// (aftersign/flagship-beat-migration.js) promotes a delivered
+// packet-delivered save to io-return-recognition on BOTH restore
+// paths, so the reload lands directly on the recognition beat and that
+// beat's verbatim-asserted strings win over the returning-session boot
+// line. The route-attention fact still selects the line tier.
 //
 // Expected strings come from the CANONICAL copy modules (#595 cleanup,
 // #1077): boot lines from packages/aftersign/src/ioReturningSession.ts,
@@ -22,6 +23,7 @@ const SEALED_SKIPPED_LINE = ioReturningSessionLines.sealedPacketSkippedRoute;
 // This spec's "listened" flow acknowledges the kiosk route, so the
 // recognition beat speaks the DEEP-RECALL tier (route memory present).
 const RECOGNITION_SEALED_LISTENED_LINE = expectedIoRecognitionLine("sealed", true);
+const RECOGNITION_SEALED_SKIPPED_LINE = expectedIoRecognitionLine("sealed", false);
 
 type GameProbe = {
   version?: number;
@@ -82,16 +84,12 @@ test("reloaded delivered save (route listened) boots on Io's returning line, the
   const booted = await snapshot(page);
   expect(booted.packet.delivered).toBe(true);
   expect(booted.packet.sealed).toBe(true);
-  expect(booted.scene.beat).toBe("packet-delivered");
-  expect(booted.npcs.io.lastLine).toBe(SEALED_LISTENED_LINE);
-
-  // Advancing to the recognition beat: its verbatim-asserted line must
-  // win over the boot line (the boot line never overrides that beat).
-  await page.evaluate(() => window.__game!.input!.choose("return-to-io"));
-  await page.evaluate(() => window.__game!.input!.waitForStoryIdle());
-  const advanced = await snapshot(page);
-  expect(advanced.scene.beat).toBe("io-return-recognition");
-  expect(advanced.npcs.io.lastLine).toBe(RECOGNITION_SEALED_LISTENED_LINE);
+  // #2747 — restoreFlagshipBeat promotes a delivered save straight to
+  // the recognition beat on reload; packet-delivered is unreachable.
+  expect(booted.scene.beat).toBe("io-return-recognition");
+  // The recognition beat's verbatim line wins over the boot line.
+  expect(booted.npcs.io.lastLine).toBe(RECOGNITION_SEALED_LISTENED_LINE);
+  expect(booted.npcs.io.lastLine).not.toBe(SEALED_LISTENED_LINE);
 });
 
 test("reloaded delivered save (route skipped) boots on the skipped-route returning line", async ({ page }) => {
@@ -105,8 +103,11 @@ test("reloaded delivered save (route skipped) boots on the skipped-route returni
 
   const booted = await snapshot(page);
   expect(booted.packet.delivered).toBe(true);
-  expect(booted.scene.beat).toBe("packet-delivered");
-  // routeAttention must be wired from the durable route-attention fact,
-  // not inferred from delivery alone — the skipped branch differs.
-  expect(booted.npcs.io.lastLine).toBe(SEALED_SKIPPED_LINE);
+  expect(booted.scene.beat).toBe("io-return-recognition");
+  // Route memory must be wired from the durable route-attention fact,
+  // not inferred from delivery alone — the skipped branch speaks the
+  // non-route recognition tier, not the listened deep-recall tier.
+  expect(booted.npcs.io.lastLine).toBe(RECOGNITION_SEALED_SKIPPED_LINE);
+  expect(booted.npcs.io.lastLine).not.toBe(RECOGNITION_SEALED_LISTENED_LINE);
+  expect(booted.npcs.io.lastLine).not.toBe(SEALED_SKIPPED_LINE);
 });

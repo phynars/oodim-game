@@ -12,7 +12,7 @@ const COLD_START_MS = 90_000;
 // import + WebGL bring-up on the *first* navigation.
 const WAIT_MS = 60_000;
 
-type Beat = "packet-offered" | "packet-choice" | "packet-delivered";
+type Beat = "packet-offered" | "packet-choice" | "packet-delivered" | "io-return-recognition";
 
 type GameSurface = {
   version: 1;
@@ -121,7 +121,9 @@ test.describe("AFTERSIGN save slot contract", () => {
     const returningPage = await context.newPage();
     watchPageErrors(returningPage, "returning");
     await returningPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
-    await waitForBeat(returningPage, "packet-delivered");
+    // A restored delivered save is promoted by restoreFlagshipBeat to the
+    // io-return-recognition beat on boot (#2747), so wait for that beat.
+    await waitForBeat(returningPage, "io-return-recognition");
 
     const returningSnapshot = await snapshot(returningPage);
     expect(returningSnapshot.packet).toMatchObject({

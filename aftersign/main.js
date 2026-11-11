@@ -1485,16 +1485,15 @@ const armReturningSessionBootLine = (delivered) => {
   // setTimeout, which moves the authoritative restore target to
   // `io-return-recognition` for most sessions — that beat is in the
   // skip list above and the gate here never runs. The gate still
-  // matters on three paths #2336 did NOT cover:
-  //   (a) a reload racing BEFORE the 1180ms second write commits —
-  //       the restore lands at `packet-delivered` and reaches here;
-  //   (b) `packet-delivered-cold-boot-affordance.spec.ts` which
-  //       deliberately drops the 1180ms callback to prove the
-  //       `packet-delivered` affordance, so its restore is here;
-  //   (c) `flagship-reload-beat-regression.spec.ts` which forks on
-  //       `beat === "packet-delivered"` vs `io-return-recognition`
-  //       at line 128 — the `packet-delivered` branch asserts the
-  //       returning-session line, which runs through this gate.
+  // used to matter for a reload racing BEFORE the 1180ms second write
+  // commits (restoring `packet-delivered`). Since #2747 the shared
+  // `restoreFlagshipBeat` guard promotes every delivered
+  // `packet-delivered` save to `io-return-recognition` on BOTH restore
+  // paths, so neither that race nor
+  // `packet-delivered-cold-boot-affordance.spec.ts` (which drops the
+  // 1180ms callback to reproduce it) reaches this gate any more. The
+  // gate now runs only for legacy/hand-seeded saves whose restored
+  // beat is not in the skip list above.
   const committedSecondAction = state.player.secondAction;
   const rememberedSecondAction = secondActionFromMemory(state.npcs.io.memory);
   const bootRouteAttention =
@@ -4907,6 +4906,9 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     savedBeat: saved.beat,
     packetDelivered: state.packet.delivered,
   });
+  // #2747: the delivered-but-pre-recognition-save promotion to
+  // `io-return-recognition` lives inside `restoreFlagshipBeat`, so this
+  // path and the cold-boot path stay on one guard.
 
   // PR #1249 (Soren review) — READ the io-next-job durability stamp
   // written by `buildIoNextJobDurabilityStamp` at save time. This is

@@ -141,17 +141,16 @@ async function playSaveReloadPath(page: Page, path: PacketPath): Promise<ReloadS
 
 function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
   expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
-  expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
+  // A completed delivery must restore directly to the durable recognition
+  // beat. `restoreFlagshipBeat` is the shared guard for BOTH restore
+  // paths (cold-boot `page.reload()` and `forceReload`), so this
+  // in-page check covers the same promotion the cold boot uses.
+  expect(afterReload.scene.beat).toBe("io-return-recognition");
   expect(afterReload.npcs.io.memories.length).toBeGreaterThan(0);
   expect(afterReload.npcs.io.memories.some((memory) => memory.object === path.expectedOutcome)).toBe(true);
-
-  if (afterReload.scene.beat === "packet-delivered") {
-    expect(afterReload.npcs.io.lastLine).toBe(path.expectedReloadedDeliveredLine);
-    expect(afterReload.npcs.io.lastLine).not.toBe(FRESH_DELIVERED_LINE);
-  } else {
-    expect(afterReload.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
-    expect(afterReload.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
-  }
+  expect(afterReload.npcs.io.lastLine).toBe(path.expectedRecognitionLine);
+  expect(afterReload.npcs.io.lastLine).not.toBe(path.wrongRecognitionLine);
+  expect(afterReload.npcs.io.lastLine).not.toBe(FRESH_DELIVERED_LINE);
 }
 
 async function advanceToRecognition(page: Page, path: PacketPath): Promise<ReloadSnapshot> {

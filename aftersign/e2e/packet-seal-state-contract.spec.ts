@@ -87,12 +87,11 @@ test.describe("packet seal state contract", () => {
       timeout: WAIT_MS,
     });
 
+    // A delivered save (beat=packet-delivered + packet.delivered=true) is
+    // promoted by restoreFlagshipBeat straight to io-return-recognition on
+    // restore, so `packet-delivered` is unreachable after the reload. Wait
+    // for the promoted beat directly — no advance() needed.
     await page.goto(`/aftersign/?slot=${slot}`);
-    await waitForBeat(page, "packet-delivered");
-
-    // AFTER the reload, advance into the returning recognition beat.
-    // Doing this before the reload would be dropped by the save restore.
-    await page.evaluate(() => window.__game!.input.advance());
     await waitForBeat(page, "io-return-recognition");
 
     expect(await readSealed(page)).toBe(true);

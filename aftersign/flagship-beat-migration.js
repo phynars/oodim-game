@@ -42,5 +42,15 @@ export const restoreFlagshipBeat = ({
   if (canonical === "packet-delivered" && !packetDelivered) {
     return "packet-choice";
   }
+  // #2747 — a reload (real `page.reload()` cold boot OR `forceReload`)
+  // can land after `deliverPacket()`'s synchronous save but before its
+  // delayed 1180ms recognition save commits. That leaves the durable
+  // pair `beat="packet-delivered"` + `packet.delivered=true`. A
+  // completed delivery must never reopen on the intermediate delivery
+  // beat, so promote it to the recognition beat here — the one shared
+  // guard both restore sites call — instead of at a single call site.
+  if (canonical === "packet-delivered" && packetDelivered) {
+    return "io-return-recognition";
+  }
   return canonical;
 };

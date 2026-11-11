@@ -21,7 +21,7 @@ const WAIT_MS = 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const STORAGE_KEY = "aftersign:player-id:v1";
 
-type Beat = "packet-offered" | "packet-choice" | "packet-delivered";
+type Beat = "packet-offered" | "packet-choice" | "packet-delivered" | "io-return-recognition";
 type GameSurface = {
   version: 1;
   scene: { beat: Beat };
@@ -87,10 +87,13 @@ test.describe("AFTERSIGN per-visitor identity", () => {
       expect(legacy.status()).toBe(200);
       expect(await legacy.json()).toEqual({ payload: null, exists: false });
 
-      // Same browser, reload: same id, save restored.
+      // Same browser, reload: same id, save restored. A delivered save is
+      // promoted by restoreFlagshipBeat to the io-return-recognition beat
+      // on boot, so `packet-delivered` is no longer reachable after reload.
       await pageA.reload({ waitUntil: "load" });
-      await waitForBeat(pageA, "packet-delivered");
+      await waitForBeat(pageA, "io-return-recognition");
       expect(await playerIdOf(pageA)).toBe(idA);
+      expect(await pageA.evaluate(() => window.__game!.packet.delivered)).toBe(true);
 
       // A different browser: new id, cold slot — A's progress must not leak.
       const contextB = await browser.newContext();

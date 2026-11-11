@@ -2,6 +2,13 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 
 // #1907 visible-DOM-only cold-boot affordance spec.
 //
+// #2747 UPDATE: the shared `restoreFlagshipBeat` guard now promotes a
+// delivered `packet-delivered` save to `io-return-recognition`, so the
+// cold boot no longer stops on `packet-delivered` and the "Return to
+// Io" tap is not needed. The spec below now pins that the racy seed
+// save restores straight to the recognition beat + line. The history
+// notes that follow describe the original #1907 premise.
+//
 // This spec proves the acceptance-criterion axis Mara filed on #1907:
 // on a fresh browser context / cleared-storage restore of an identified
 // slot that persisted at `scene.beat === "packet-delivered"`, a rendered,
@@ -117,7 +124,7 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test(
-    "cold-boot restore into packet-delivered exposes a visible advance control that reaches io-return-recognition on tap",
+    "cold-boot restore of a delivered packet-delivered save lands directly on io-return-recognition (#2747)",
     async ({ browser, page }) => {
       test.setTimeout(COLD_BOOT_MS);
 
@@ -195,41 +202,21 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
         await coldPage.goto(url, { waitUntil: "load" });
         await waitForReady(coldPage);
 
-        // Restored line assertion: the returning-session sealed/skipped-
-        // route line lands in `#line` before ANY player tap. This is the
-        // "correct dialogue restored, zero visible taps" precondition
-        // Mara flagged on #1907 — we prove the line is right AND that
-        // an advance control is present, in that order.
-        await expect(coldPage.locator("#line")).toBeVisible();
-        await expect(coldPage.locator("#line")).toHaveText(SEALED_DELIVERED_LINE);
-
+        // #2747: the shared `restoreFlagshipBeat` guard promotes a
+        // delivered `packet-delivered` save to `io-return-recognition`
+        // on cold boot. The seed save above is exactly that racy pair
+        // (sync save landed, 1180ms recognition save dropped), so the
+        // returning player must land DIRECTLY on the recognition beat
+        // with zero taps — no intermediate "Return to Io" step, and
+        // never the intermediate delivery line.
         const restored = await snapshot(coldPage);
-        expect(restored.scene.beat).toBe("packet-delivered");
+        expect(restored.scene.beat).toBe("io-return-recognition");
         expect(restored.packet.delivered).toBe(true);
         expect(restored.delivery.outcome).toBe("sealed");
 
-        // The advance control must be RENDERED, VISIBLE, ENABLED, and
-        // carry the authored "Return to Io" label — the shipped
-        // affordance for the packet-delivered restore path.
-        const advanceControl = coldPage.locator("#deliverButton");
-        await expect(advanceControl).toBeVisible();
-        await expect(advanceControl).toBeEnabled();
-        await expect(advanceControl).toHaveText("Return to Io");
-
-        // The tap — the ONLY drive on the cold-boot page. No
-        // `window.__game.input.*`, no forceSave/forceReload, no
-        // choice injection; just the finger the returning player
-        // has on the phone.
-        await advanceControl.tap();
-
-        // Recognition line lands in `#line`. This is the acceptance
-        // criterion: the visible advance control produced the
-        // io-return-recognition beat + line, not the harness.
+        await expect(coldPage.locator("#line")).toBeVisible();
         await expect(coldPage.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE);
-
-        const advanced = await snapshot(coldPage);
-        expect(advanced.scene.beat).toBe("io-return-recognition");
-        expect(advanced.npcs.io.lastLine).toBe(SEALED_RECOGNITION_LINE);
+        await expect(coldPage.locator("#line")).not.toHaveText(SEALED_DELIVERED_LINE);
       } finally {
         await coldPage.context().close();
       }
