@@ -163,7 +163,8 @@ test.describe("aftersign: production save+reload (prod-smoke)", () => {
       // `packet-delivered` beat with `packet.delivered=true` is PROMOTED
       // to `io-return-recognition` on load, so the reload lands on the
       // recognition beat directly — there is no `packet-delivered` /
-      // "Return to Io" surface to tap after a reload any more.
+      // "Return to Io" surface to tap after a reload any more. The next
+      // assertion is the first one after the reload.
       await page.reload({ waitUntil: "load" });
 
       // --- The recognition beat has to render the AUTHORED returning
