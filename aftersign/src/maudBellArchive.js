@@ -28,20 +28,23 @@ const addClasses = (el, ...names) => {
   else el.className = names.join(" ");
 };
 
-export const maudBellArchiveEndingForChoice = (choice) =>
-  choice?.matchesMemory
+export const maudBellArchiveEndingForChoice = (choice) => {
+  const name = cleanName(choice?.name);
+  const nameLine = ` The bell rings for ${name}.`;
+  return choice?.matchesMemory
     ? {
         id: "maud-bell-archive-lit",
         light: "lit",
-        line: "The bell remembers the name. The district light stays lit.",
-        dialogue: "Io records the true name. Orra hears the bell answer. Maud lets the archive rest.",
+        line: `The district light stays lit.${nameLine}`,
+        dialogue: `Maud records ${name}. The archive rests.`,
       }
     : {
         id: "maud-bell-archive-dark",
         light: "out",
-        line: "The bell answers the wrong name. One district light goes out.",
-        dialogue: "Io records the miss. Orra hears the silence. Maud closes the archive.",
+        line: `One district light goes out.${nameLine}`,
+        dialogue: `Maud records ${name}. The archive closes.`,
       };
+};
 
 export const maudBellArchiveEndingForId = (endingId) => {
   if (endingId === "maud-bell-archive-lit") {
@@ -140,7 +143,10 @@ export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = 
   // outcome onto the ending card and delegates persistence to onSelect.
   // The card renders only after the promise onSelect returns has settled.
   const endingFor = (resolved) =>
-    maudBellArchiveEndingForChoice({ matchesMemory: resolved.outcome === "matched" });
+    maudBellArchiveEndingForChoice({
+      name: resolved.selectedName,
+      matchesMemory: resolved.outcome === "matched",
+    });
   const card = renderBellArchiveScene(doc, {
     sealedName: cleanName(storedName),
     persistOutcome: (resolved, choice) => {
