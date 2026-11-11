@@ -18,6 +18,8 @@ test.describe("AFTERSIGN phone job offer stability", () => {
     const offer = page.locator('[data-aftersign-tap-choice="offer-job-safe-delivery"]');
     await expect(offer).toBeVisible({ timeout: 60_000 });
     await expect(offer).toBeEnabled();
+    await expect(offer.locator("xpath=..")).toHaveCSS("flex-direction", "column");
+    await expect(offer.locator("xpath=..")).toHaveCSS("overflow-y", "auto");
 
     const initialHandle = await offer.elementHandle();
     expect(initialHandle, "a visible offer must have a concrete DOM node").not.toBeNull();

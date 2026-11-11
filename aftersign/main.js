@@ -17,6 +17,7 @@ import { createPacketPressFeedbackRenderer } from "./src/packetPressFeedbackRend
 import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
+import { applyPhoneOfferLayout } from "./src/runtime/phoneOfferLayout.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
@@ -902,45 +903,6 @@ const offeredJobs = document.querySelector("#offeredJobs");
 // The buttons' `click` events dispatch through the document-level
 // vigil-click delegate installed below `attachRuntimeInputAdapters`.
 const vigilChoice = document.querySelector("#vigilChoice");
-// Keep the dynamically-built offer board inside a 390px touch viewport.
-// The tray is a vertical choice list, so each job owns a full row instead
-// of extending a horizontal flex row beyond the screen edge.
-//
-// `visible` is forwarded from the caller so these styles are stamped
-// ONLY while the tray is on-beat (packet-offered). On every other beat
-// the tray is hidden by `setOfferTrayVisibility` and we clear the inline
-// styles so a persistent `max-height: 42vh` / `overflow: auto` can't
-// clip a sibling surface (e.g. the `#deliverButton` re-stamp used by
-// the `return-to-io` → `io-return-recognition` path).
-const applyPhoneOfferLayout = (visible) => {
-  if (!offeredJobs) return;
-  const phoneWidth = window.innerWidth <= 480;
-  if (!phoneWidth || !visible) {
-    offeredJobs.style.minWidth = "";
-    offeredJobs.style.maxWidth = "";
-    offeredJobs.style.flexDirection = "";
-    offeredJobs.style.alignItems = "";
-    offeredJobs.style.flexWrap = "";
-    offeredJobs.style.overflowX = "";
-    offeredJobs.style.overflowY = "";
-    offeredJobs.style.maxHeight = "";
-    offeredJobs.style.overscrollBehavior = "";
-    return;
-  }
-  offeredJobs.style.minWidth = "0";
-  offeredJobs.style.maxWidth = "100%";
-  // Symptom 2 of #2193 (fixed by #2208): the offer buttons are full-width
-  // choices, not peers competing for one horizontal row. Without this
-  // column stack at phone widths flex-shrink compresses each pill until
-  // Latin labels break inside their words ("delive/ry", "Mark/ed").
-  offeredJobs.style.flexDirection = "column";
-  offeredJobs.style.alignItems = "stretch";
-  offeredJobs.style.flexWrap = "nowrap";
-  offeredJobs.style.overflowX = "hidden";
-  offeredJobs.style.overflowY = "auto";
-  offeredJobs.style.maxHeight = "42vh";
-  offeredJobs.style.overscrollBehavior = "contain";
-};
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
 const musicButton = document.querySelector("#musicButton");
@@ -3167,7 +3129,7 @@ const renderText = () => {
   });
   const isPacketOfferedBeat = offerTray.visible;
   if (offeredJobs) {
-    applyPhoneOfferLayout(isPacketOfferedBeat);
+    applyPhoneOfferLayout(offeredJobs, window, isPacketOfferedBeat);
     setOfferTrayVisibility(offeredJobs, isPacketOfferedBeat);
     if (isPacketOfferedBeat) {
       // Soren review on PR #1396: the signal source must be a CAREER
