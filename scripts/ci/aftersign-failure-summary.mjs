@@ -1,6 +1,7 @@
 // The AFTERSIGN WebGL e2e failure summary (was inline `node -e` in ci.yml and
 // main-e2e.yml, moved 11-09 when the workflows became rendered from the oodim
-// repo profile). Prints markdown: the first failing spec + error from
+// repo profile). Prints markdown: every failing spec (one line each) and the
+// first failing spec + error from
 // aftersign/playwright-report/results.json, or the raw runner-log tail when
 // the report is missing or has no usable error (a pre-spec crash such as a
 // webServer boot failure writes no JSON report, #1065).
@@ -42,8 +43,41 @@ export function findFirstFailingSpec(node) {
   return null;
 }
 
-/** The first failing spec, else a collection/global error, else null. Pure. */
+/** Every spec whose test ended failed, in report order: `{ title, where,
+ *  message }`. A test Playwright marks `flaky` (failed, then passed on a
+ *  retry) or `skipped`/`expected` is left out; a test with no status counts
+ *  when one of its results carries an error. Pure.
+ *
+ *  Why: the summary named one spec, so a change that broke six read as one
+ *  failure. #2748 (11-10) took seven review rounds, one spec per round. */
+export function findFailingSpecs(node, out = []) {
+  if (!node || typeof node !== "object") return out;
+  for (const spec of Array.isArray(node.specs) ? node.specs : []) {
+    for (const test of spec.tests || []) {
+      if (test.status && test.status !== "unexpected") continue;
+      let message = null;
+      for (const result of test.results || []) {
+        message = errorMessage(result.errors);
+        if (message) break;
+      }
+      if (!message) continue;
+      const where = spec.file ? `${spec.file}${spec.line ? `:${spec.line}` : ""}` : "";
+      out.push({ title: spec.title || spec.file || "(unknown spec)", where, message });
+      break;
+    }
+  }
+  for (const suite of node.suites || []) findFailingSpecs(suite, out);
+  return out;
+}
+
+/** Most specs the list names. */
+export const FAILING_SPECS_MAX = 30;
+
+/** The first failing spec, else a collection/global error, else null. Pure.
+ *  A spec that ended failed is named before one that passed on a retry. */
 export function findFailure(report) {
+  const failed = findFailingSpecs(report)[0];
+  if (failed) return { title: failed.title, message: failed.message };
   const spec = findFirstFailingSpec(report);
   if (spec) return spec;
   const message = errorMessage(report && report.errors);
@@ -64,6 +98,16 @@ export function renderSummary(report, logTail) {
     out.push("(aftersign/playwright-report/results.json not found — the run crashed BEFORE any spec ran, e.g. a webServer boot failure. Raw runner log tail below — #1065.)", ...tail());
   } else {
     const found = findFailure(report);
+    const failing = findFailingSpecs(report);
+    if (failing.length > 1) {
+      const firstLine = (message) => message.split("\n").find((l) => l.trim()) || "";
+      out.push(
+        `### every failing spec: ${failing.length} (fix them together; the detail below covers only the first)`,
+        ...failing.slice(0, FAILING_SPECS_MAX).map((f) => `- ${f.where ? `${f.where} › ` : ""}${f.title} :: ${firstLine(f.message).trim().slice(0, 200)}`),
+        ...(failing.length > FAILING_SPECS_MAX ? [`- (+${failing.length - FAILING_SPECS_MAX} more)`] : []),
+        "",
+      );
+    }
     if (found) {
       out.push("### first failing spec (from aftersign/playwright-report/results.json)", "```", `spec: ${found.title}`, "error:", found.message.split("\n").slice(0, 20).join("\n"), "```");
     } else {
