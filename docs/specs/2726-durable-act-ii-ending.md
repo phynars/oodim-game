@@ -12,9 +12,9 @@ After a player reaches an Act II ending, reopening the same slot in a fresh brow
 
 ## Acceptance criteria
 
-- AC-1: WHEN a player completes an Act II ending for a slot, THE save system SHALL persist the ending outcome for that slot.
-- AC-2: WHEN a player opens the same slot in a fresh browser context after completing an Act II ending, THE AFTERSIGN page SHALL display the saved Act II ending.
-- AC-3: IF a slot has a saved Act II ending, THEN THE AFTERSIGN page SHALL NOT present a choice that can replace that saved ending on reopen.
+- AC-1: WHEN the same save slot is opened in a fresh browser context after the Act II ending, THE game SHALL show the same Act II ending outcome and the same name.
+- AC-2: WHEN `main-e2e` runs, THE served Act II spec SHALL reach both the lit and the dimmed ending by taps only at a 390×844 viewport and pass.
+- AC-3: IF a slot has a saved Act II ending, THEN THE AFTERSIGN page SHALL NOT present a choice that can replace that saved ending or name on reopen.
 
 ## Out of scope
 
