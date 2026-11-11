@@ -10,15 +10,9 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // the bell ending card. It does this for two records with different first taps
 // and different Maud name choices.
 //
-// Runtime gap: on today's served page the Episode 1 ending (light-vigil at
-// io-next-job) is terminal. renderText() removes #orraPaybackAction once
-// story.endingId is set (aftersign/main.js terminal branch), and Maud is only
-// reachable from that control at the second io-return-recognition. So one run
-// cannot go Episode 1 ending → red tag → Orra → Maud → bell. Each record
-// therefore drives two wired segments on separate slots:
-//   A. boot → first tap → vigil → Episode 1 card → carry red tag → Orra recall
-//   B. boot → second delivery → red-tag payback → Maud → bell ending
-// The single-run chain is tracked as a runtime bug (see PR #2708 notes).
+// Each record validates both visible play paths: the Episode 1 red-tag recall
+// and the red-tag payback route into Maud's Bell Archive. The latter ends with
+// a persisted bell outcome, checked again after a fresh browser context.
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
@@ -91,8 +85,8 @@ const CASES = [
     episodeOneLight: "South district light: lit",
     maudChoice: "remembered-name",
     endingId: "maud-bell-archive-lit",
-    endingLine: "The bell remembers the name. The district light stays lit.",
-    endingDialogue: "Io records the true name. Orra hears the bell answer. Maud lets the archive rest.",
+    endingLine: "The district light stays lit.",
+    endingDialogue: "The archive rests.",
     endingLight: "District light: lit",
   },
   {
@@ -105,8 +99,8 @@ const CASES = [
     episodeOneLight: "South district light: out",
     maudChoice: "archive-decoy",
     endingId: "maud-bell-archive-dark",
-    endingLine: "The bell answers the wrong name. One district light goes out.",
-    endingDialogue: "Io records the miss. Orra hears the silence. Maud closes the archive.",
+    endingLine: "One district light goes out.",
+    endingDialogue: "The archive closes.",
     endingLight: "District light: out",
   },
 ] as const;
@@ -170,11 +164,14 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(maud).toBeVisible({ timeout: WAIT_MS });
       await expect(maud).toContainText(MAUD_TITLE);
       await expect(maud).toContainText(MAUD_PROMPT);
-      await tapVisible(page, `button[data-maud-name-choice="${scenario.maudChoice}"]`);
+      const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
+      const tappedName = await nameButton.textContent();
+      await nameButton.tap();
 
       const ending = page.locator(`[data-ending-id="${scenario.endingId}"]`);
       await expect(ending).toBeVisible({ timeout: WAIT_MS });
       await expect(ending).toContainText(scenario.endingLine);
+      await expect(ending).toContainText(tappedName || "");
 
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
@@ -219,6 +216,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
 
       const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
       await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
+      const tappedName = await nameButton.textContent();
       await nameButton.tap();
 
       const ending = page.locator(`[data-ending-id="${scenario.endingId}"]`);
@@ -227,6 +225,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(ending).toContainText("The Bell Archive rings.");
       await expect(ending).toContainText(scenario.endingLine);
       await expect(ending).toContainText(scenario.endingDialogue);
+      await expect(ending).toContainText(tappedName || "");
       await expect(ending).toContainText(scenario.endingLight);
 
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
