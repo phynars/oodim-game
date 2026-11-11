@@ -169,12 +169,17 @@ test("full page reload restores delivered save straight to recognition with memo
     };
   });
 
-  expect(afterReload.beat).toBe("packet-delivered");
+  expect(afterReload.beat).toBe("io-return-recognition");
   expect(afterReload.memoryCount).toBeGreaterThan(0);
   expect(afterReload.hasDeliveredFact).toBe(true);
 
-  await page.evaluate(() => window.__game!.input.advance());
-  await waitForBeat(page, "io-return-recognition");
+  // No advance(): the restored beat IS recognition. Wait for syncIoLine to
+  // cite the persisted memory fact on the restored line.
+  await page.waitForFunction(
+    () => (window.__game?.npcs.io.lastLineMemoryRefs.length ?? 0) > 0,
+    undefined,
+    { timeout: WAIT_MS },
+  );
 
   const recognition = await page.evaluate(() => {
     const snapshot = window.__game!;
