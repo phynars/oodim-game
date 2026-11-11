@@ -44,6 +44,7 @@
     "typecheck:aftersign": "npm run test:aftersign-location-guard && npm run check:aftersign-location && tsc --noEmit -p aftersign/tsconfig.json && npm run test:aftersign:pure",
     "check:aftersign-location": "node scripts/check-aftersign-location.mjs",
     "test:aftersign-location-guard": "node --test scripts/check-aftersign-location.test.mjs",
+    "test:playwright-installer": "node --test scripts/install-playwright-chromium.test.mjs",
     "typecheck:aftersign:apps-web": "tsc --noEmit -p aftersign/tsconfig.apps-web.json",
     "test:e2e:aftersign": "playwright test --config aftersign/playwright.config.ts",
     "test:e2e:aftersign:m-loop": "playwright test --config aftersign/playwright.config.ts aftersign/e2e/m-loop-two-round-divergence.playtest.spec.ts --workers=1 --retries=0",
