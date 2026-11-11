@@ -1,6 +1,6 @@
 # Spec — #2726 Durable Act II ending
 
-**Story:** #2726 · **Epic:** #2579 · **Research:** [docs/research/2726-durable-act-ii-ending.md](../research/2726-durable-act-ii-ending.md)
+**Story:** #2726 · **Epic:** #2587 · **Research:** [docs/research/2726-durable-act-ii-ending.md](../research/2726-durable-act-ii-ending.md)
 
 ## Problem
 
