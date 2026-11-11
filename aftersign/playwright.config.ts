@@ -61,12 +61,15 @@ export default defineConfig({
     "hard-navigation-save-survival-contract.spec.ts",
     "flagship-runnable-slice-spine-contract.spec.ts",
   ],
-  // AFTERSIGN's WebGL boots share a limited SwiftShader/GPU budget on
-  // scheduled runners. Keep local and served runs parallel, but serialize the
-  // CI lane so one cold start cannot starve another and turn the shared main
-  // branch red before a spec body runs.
-  fullyParallel: !process.env.CI || Boolean(servedBaseURL),
-  workers: process.env.CI && !servedBaseURL ? 1 : undefined,
+  fullyParallel: true,
+  // The PR lane ran 261 tests on Playwright's default of 2 workers (half of
+  // the runner's 4 cores) in 25.3 min (2026-11-09, PR #2736). A 3-worker
+  // trial followed, and scheduled CI on main then went red in the aftersign
+  // job (#2757). This pins the CI lane back to the measured 2-worker
+  // baseline. 1 worker would project to ~50 min against the job's 60-min
+  // timeout (ci.yml), so it is not used without a measured run. Served mode
+  // (the deploy's replay against the live site) keeps the default.
+  workers: process.env.CI && !servedBaseURL ? 2 : undefined,
   forbidOnly: !!process.env.CI,
   // AFTERSIGN gets two MORE retries than sibling three.js lanes (pacman /
   // galaga / doom / agar all use retries: 1). Rationale: the aftersign
