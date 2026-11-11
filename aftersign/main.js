@@ -689,7 +689,6 @@ import {
   emptySave,
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
-import { applyPhoneOfferLayout } from "./src/runtime/phoneOfferLayout.js";
 import { readPlayerMemory, writePlayerMemory } from "./src/runtime/playerMemory.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
