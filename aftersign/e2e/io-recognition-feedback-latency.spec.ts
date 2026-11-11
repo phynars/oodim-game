@@ -125,7 +125,16 @@ test("Io recognition line lands within the feel budget after a returning advance
   expect(result.dt).toBeLessThanOrEqual(RECOGNITION_FEEDBACK_BUDGET_MS);
 });
 
-test("full page reload keeps packet-delivered state and memory before recognition advances", async ({
+// Contract change (#2747 / PR #2748): `restoreFlagshipBeat`
+// (aftersign/flagship-beat-migration.js) now promotes a saved
+// `packet-delivered` beat whose packet IS delivered to
+// `io-return-recognition` on every restore path, including the cold boot
+// a real `page.reload()` takes. That closes the reload race where a
+// returning player could land on a stale delivery frame. A full reload no
+// longer parks at `packet-delivered` waiting for `advance()`. It lands
+// straight on recognition, and that recognition must still rest on the
+// persisted delivered-packet memory fact.
+test("full page reload restores delivered save straight to recognition with memory intact", async ({
   page,
 }) => {
   test.setTimeout(COLD_START_MS);
