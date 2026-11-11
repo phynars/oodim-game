@@ -141,7 +141,10 @@ async function playSaveReloadPath(page: Page, path: PacketPath): Promise<ReloadS
 
 function expectReloadedOutcome(afterReload: ReloadSnapshot, path: PacketPath): void {
   expect(afterReload.delivery.outcome).toBe(path.expectedOutcome);
-  expect(["packet-delivered", "io-return-recognition"]).toContain(afterReload.scene.beat);
+  // A completed delivery must restore directly to the durable recognition
+  // beat. Permitting packet-delivered here hid the delayed persistence race
+  // that the deployed build exposed after a real browser reload.
+  expect(afterReload.scene.beat).toBe("io-return-recognition");
   expect(afterReload.npcs.io.memories.length).toBeGreaterThan(0);
   expect(afterReload.npcs.io.memories.some((memory) => memory.object === path.expectedOutcome)).toBe(true);
 

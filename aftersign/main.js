@@ -4907,6 +4907,13 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     savedBeat: saved.beat,
     packetDelivered: state.packet.delivered,
   });
+  // A reload can occur after the delivery save but before the delayed
+  // recognition save commits. A completed packet must never reopen on the
+  // intermediate delivery beat: promote that stale persisted marker to the
+  // outcome-specific recognition beat from the restored durable memory.
+  if (state.packet.delivered && state.scene.beat === "packet-delivered") {
+    state.scene.beat = "io-return-recognition";
+  }
 
   // PR #1249 (Soren review) — READ the io-next-job durability stamp
   // written by `buildIoNextJobDurabilityStamp` at save time. This is
