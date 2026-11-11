@@ -17,6 +17,9 @@
 //   served-replay v1
 //   base <sha>
 //   <passed|flaky|failed|skipped|not_run> <repo path of the spec>
+//   failure <repo path of the spec> :: <test title> :: <first error lines>
+// (`failure` lines: one per failed test of a failed spec, at most 8; shown to
+// the fixer as evidence, they decide nothing.)
 //
 //   node scripts/served-replay.mjs plan <changed-files.txt>
 //     → the served specs to replay, one per line (at most MAX_SPECS)
@@ -67,6 +70,36 @@ export function fileStatuses(report) {
   return result;
 }
 
+export const MAX_FAILURES = 8;
+const FIELD_MAX = 300;
+// ANSI colour codes, built from a char code.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "g");
+const one = (s) => String(s ?? "").replace(ANSI, "").replace(/\s+/g, " ").trim().slice(0, FIELD_MAX);
+
+/** Each failed test of the report: its file (relative to the testDir), its
+ *  title and the first lines of its last error, as one line each. At most
+ *  MAX_FAILURES. 11-10: the follow-up issue for a failed replay named only
+ *  the spec file, and its implementer declined it for lack of a failed
+ *  assertion (#2747). Pure. */
+export function fileFailures(report, max = MAX_FAILURES) {
+  const out = [];
+  const walk = (suite, file) => {
+    const f = suite.file ?? file;
+    for (const spec of suite.specs ?? []) {
+      for (const t of spec.tests ?? []) {
+        if (t.status !== "unexpected" || out.length >= max) continue;
+        const last = [...(t.results ?? [])].reverse().find((r) => r?.error?.message || r?.errors?.length);
+        const raw = last?.error?.message ?? last?.errors?.[0]?.message ?? "";
+        const message = one(String(raw).replace(ANSI, "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 4).join(" | ")) || "failed with no error message in the report";
+        out.push({ file: String(spec.file ?? f ?? "").split(path.sep).join("/"), test: one(spec.title).split(" :: ").join(" : ") || "(untitled)", message });
+      }
+    }
+    for (const s of suite.suites ?? []) walk(s, f);
+  };
+  for (const s of report?.suites ?? []) walk(s, s.file);
+  return out;
+}
+
 /** The served config's testDir, as a repo path: report files are relative to it. */
 export const SPEC_DIR = "aftersign/e2e/";
 
@@ -77,7 +110,13 @@ export function specStatuses(planned, statuses) {
 }
 
 /** The check-run body. Pure. */
-export function checkRunBody({ sha, base, rows, runUrl }) {
+export function checkRunBody({ sha, base, rows, runUrl, failures = [] }) {
+  // Only failures of a planned spec that failed, named by its repo path.
+  const failedSpecs = new Set(rows.filter((r) => r.status === "failed").map((r) => r.spec));
+  const failureLines = failures
+    .map((f) => ({ ...f, spec: `${SPEC_DIR}${f.file}` }))
+    .filter((f) => failedSpecs.has(f.spec))
+    .map((f) => `failure ${f.spec} :: ${f.test} :: ${f.message}`);
   const failed = rows.filter((r) => r.status === "failed" || r.status === "not_run");
   const conclusion = rows.length === 0 ? "neutral" : failed.length ? "failure" : "success";
   const count = (s) => rows.filter((r) => r.status === s).length;
@@ -87,9 +126,10 @@ export function checkRunBody({ sha, base, rows, runUrl }) {
   const summary = [
     `Replayed against the deployed build at https://game.oodim.com/aftersign/ (base \`${String(base).slice(0, 12)}\`).`,
     rows.length ? `passed ${count("passed")}, flaky ${count("flaky")}, failed ${count("failed")}, skipped ${count("skipped")}, not run ${count("not_run")}.` : "",
+    failureLines.length ? ["Failed tests:", "```", ...failureLines.map((l) => l.slice("failure ".length).split("`").join("'")), "```"].join("\n") : "",
     runUrl ? `Run: ${runUrl}` : "",
   ].filter(Boolean).join("\n\n");
-  const text = ["served-replay v1", `base ${base}`, ...rows.map((r) => `${r.status} ${r.spec}`)].join("\n");
+  const text = ["served-replay v1", `base ${base}`, ...rows.map((r) => `${r.status} ${r.spec}`), ...failureLines].join("\n");
   return {
     name: CHECK_NAME,
     head_sha: sha,
@@ -121,7 +161,7 @@ function main() {
     let report = null;
     try { report = resultsPath && existsSync(resultsPath) ? JSON.parse(readFileSync(resultsPath, "utf8")) : null; } catch { report = null; }
     const rows = specStatuses(planned, report ? fileStatuses(report) : new Map());
-    const body = checkRunBody({ sha: arg(a, "--sha"), base: arg(a, "--base") ?? "unknown", rows, runUrl: process.env.RUN_URL });
+    const body = checkRunBody({ sha: arg(a, "--sha"), base: arg(a, "--base") ?? "unknown", rows, runUrl: process.env.RUN_URL, failures: report ? fileFailures(report) : [] });
     process.stdout.write(JSON.stringify(body));
     return;
   }

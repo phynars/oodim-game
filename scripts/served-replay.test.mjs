@@ -4,7 +4,7 @@
 // 11-04): suite.file is relative to the config's testDir (aftersign/e2e).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkRunBody, fileStatuses, replayPlan, specStatuses } from "./served-replay.mjs";
+import { checkRunBody, fileFailures, fileStatuses, replayPlan, specStatuses } from "./served-replay.mjs";
 
 const suite = (file, statuses, nested = []) => ({
   file,
@@ -59,4 +59,37 @@ test("checkRunBody: the v1 text contract and the conclusion", () => {
   const none = checkRunBody({ sha: "a", base: "b", rows: [] });
   assert.equal(none.conclusion, "neutral");
   assert.equal(none.output.text, "served-replay v1\nbase b");
+});
+
+test("fileFailures + checkRunBody: a failed test's title and error reach the report", () => {
+  const esc = String.fromCharCode(27);
+  const report = {
+    suites: [{
+      file: "bad.spec.ts", title: "bad.spec.ts", specs: [],
+      suites: [{
+        file: "bad.spec.ts", title: "describe",
+        specs: [
+          { file: "bad.spec.ts", title: "keeps the line", tests: [{ status: "unexpected", results: [{ error: { message: "first try" } }, { error: { message: `${esc}[31mError: expect(received).toHaveLength(expected)${esc}[39m\n\nExpected length: 0\nReceived length: 1\nReceived array: [x]\n    at spec.ts:129` } }] }] },
+          { file: "bad.spec.ts", title: "passes", tests: [{ status: "expected", results: [{}] }] },
+          { file: "bad.spec.ts", title: "a :: b", tests: [{ status: "unexpected", results: [] }] },
+        ],
+      }],
+    }, suite("ok.spec.ts", ["expected"])],
+  };
+  const f = fileFailures(report);
+  assert.deepEqual(f, [
+    { file: "bad.spec.ts", test: "keeps the line", message: "Error: expect(received).toHaveLength(expected) | Expected length: 0 | Received length: 1 | Received array: [x]" },
+    { file: "bad.spec.ts", test: "a : b", message: "failed with no error message in the report" },
+  ]);
+  assert.equal(fileFailures(report, 1).length, 1);
+  assert.deepEqual(fileFailures(null), []);
+  const rows = [{ spec: "aftersign/e2e/bad.spec.ts", status: "failed" }, { spec: "aftersign/e2e/ok.spec.ts", status: "passed" }];
+  const body = checkRunBody({ sha: "a", base: "b", rows, failures: [...f, { file: "ok.spec.ts", test: "t", message: "m" }, { file: "unplanned.spec.ts", test: "t", message: "m" }] });
+  assert.equal(body.output.text, [
+    "served-replay v1", "base b", "failed aftersign/e2e/bad.spec.ts", "passed aftersign/e2e/ok.spec.ts",
+    "failure aftersign/e2e/bad.spec.ts :: keeps the line :: Error: expect(received).toHaveLength(expected) | Expected length: 0 | Received length: 1 | Received array: [x]",
+    "failure aftersign/e2e/bad.spec.ts :: a : b :: failed with no error message in the report",
+  ].join("\n"));
+  assert.match(body.output.summary, /Failed tests:/);
+  assert.equal(body.conclusion, "failure");
 });
