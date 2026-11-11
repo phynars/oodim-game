@@ -157,20 +157,14 @@ test.describe("aftersign: production save+reload (prod-smoke)", () => {
       // persistence (bad bundler config, missing storage adapter, wrong
       // CSP, Worker save endpoint 404'ing), the restored beat falls back
       // to `packet-offered` and the next assertion fails.
+      //
+      // Restore contract (restoreFlagshipBeat, see
+      // apps/web/src/aftersign/flagshipBeatMigration.test.ts): a saved
+      // `packet-delivered` beat with `packet.delivered=true` is PROMOTED
+      // to `io-return-recognition` on load, so the reload lands on the
+      // recognition beat directly — there is no `packet-delivered` /
+      // "Return to Io" surface to tap after a reload any more.
       await page.reload({ waitUntil: "load" });
-      await waitForBeat(page, "packet-delivered");
-
-      // --- Prove the restored surface is interactive by tapping the ONE
-      // affordance that advances from a restored `packet-delivered`
-      // (`#deliverButton`, labelled "Return to Io").
-      const advance = page.locator("#deliverButton");
-      await expect(
-        advance,
-        "#deliverButton should be visible after restoring packet-delivered",
-      ).toBeVisible({ timeout: WAIT_MS });
-      await expect(advance).toBeEnabled({ timeout: WAIT_MS });
-      await expect(advance).toHaveText("Return to Io", { timeout: WAIT_MS });
-      await advance.tap();
 
       // --- The recognition beat has to render the AUTHORED returning
       // line, not an empty / fallback string. Going through
