@@ -108,7 +108,7 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
 test.describe("aftersign: production save+reload (prod-smoke)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
-  test("deployed build auto-saves at packet-delivered and restores it after a phone reload", async ({
+  test("deployed build auto-saves at packet-delivered and restores to io-return-recognition after a phone reload", async ({
     page,
   }, testInfo) => {
     test.setTimeout(TEST_TIMEOUT_MS);
