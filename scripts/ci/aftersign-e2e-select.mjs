@@ -5,7 +5,10 @@
 // change that provably cannot reach the build narrows the run:
 //
 //   a doc (`*.md`, `docs/`, `aftersign/docs/`)       → no spec
-//   a spec under aftersign/e2e/                      → that spec
+//   a spec under aftersign/e2e/                      → that spec, plus every
+//                                                      spec that lists a
+//                                                      directory (a guard over
+//                                                      the other specs)
 //   a test-side helper (aftersign/e2e/, e2e-shared/) → the specs that import
 //                                                      it, directly or through
 //                                                      other test-side files,
@@ -27,7 +30,14 @@ import { fileURLToPath } from "node:url";
 export const SPEC_DIR = "aftersign/e2e";
 const TEST_SIDE = [/^aftersign\/e2e\//, /^e2e-shared\//];
 const DOC = [/\.md$/i, /^docs\//, /^aftersign\/docs\//];
-const SPEC = /^aftersign\/e2e\/.+\.spec\.ts$/;
+// Playwright's default testMatch (aftersign/playwright.config.ts sets none).
+const SPEC = /^aftersign\/e2e\/.+\.(spec|test)\.[cm]?[jt]sx?$/;
+// Playwright reads a file argument as a regular expression: a path with any
+// other character could match no file and pass with no tests.
+const PLAIN_PATH = /^[\w./-]+$/;
+// A spec that lists a directory checks files it neither imports nor names
+// (the played-not-driven guard scans aftersign/e2e/): it runs with any spec.
+const SCANS_FILES = /\b(readdir|readdirSync|opendir|opendirSync|glob|globSync)\b/;
 const CODE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 const EXTENSIONS =["", ".ts", ".js", ".mjs", ".tsx", ".jsx", "/index.ts", "/index.js"];
 
@@ -85,6 +95,7 @@ export function selectSpecs({ changed, specs, read, exists }) {
   const picked = new Set();
   const helpers = [];
   for (const file of changed) {
+    if (!PLAIN_PATH.test(file)) return all(`a changed path has a character outside letters, digits, . _ / -: ${file}`);
     if (isDoc(file)) continue;
     if (SPEC.test(file)) {
       if (exists(file)) picked.add(file);
@@ -108,7 +119,15 @@ export function selectSpecs({ changed, specs, read, exists }) {
       if (helpers.some((h) => files.has(h) || text.includes(path.posix.basename(h)))) picked.add(spec);
     }
   }
+  if (picked.size > 0 || helpers.length > 0) {
+    for (const spec of specs) {
+      const { files, unresolved } = testSideClosure(spec, { read, exists });
+      if (unresolved) return all(`an import in ${spec} or its helpers does not resolve to a file`);
+      if ([...files].some((f) => SCANS_FILES.test(read(f)))) picked.add(spec);
+    }
+  }
   const list = [...picked].sort();
+  if (list.some((s) => !PLAIN_PATH.test(s))) return all("a selected spec path is not a plain path");
   if (list.length === 0) return { mode: "none", specs: [], reason: "only docs, or test files no e2e spec imports, changed" };
   return { mode: "some", specs: list, reason: `only test-side files changed; ${list.length} spec(s) can be affected` };
 }

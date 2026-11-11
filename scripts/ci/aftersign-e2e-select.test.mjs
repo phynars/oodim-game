@@ -61,6 +61,29 @@ test("fails closed: no list, a deleted helper, a deleted spec's leftovers, an un
   assert.equal(selectSpecs({ changed: ["aftersign/e2e/helpers/wait.ts"], ...repo(broken) }).mode, "all");
 });
 
+test("a spec that lists a directory (a guard over other specs) runs with any selected spec", () => {
+  const guarded = { ...FILES, "aftersign/e2e/guard.spec.ts": 'for (const f of readdirSync("aftersign/e2e")) check(f);' };
+  assert.deepEqual(selectSpecs({ changed: ["aftersign/e2e/c.spec.ts"], ...repo(guarded) }).specs, ["aftersign/e2e/c.spec.ts", "aftersign/e2e/guard.spec.ts"]);
+  // A new helper nobody imports yet is still a file the guard would scan.
+  const withHelper = { ...guarded, "aftersign/e2e/helpers/new.ts": "export {};" };
+  assert.deepEqual(selectSpecs({ changed: ["aftersign/e2e/helpers/new.ts"], ...repo(withHelper) }).specs, ["aftersign/e2e/guard.spec.ts"]);
+  // Docs only: still nothing to run.
+  assert.equal(selectSpecs({ changed: ["README.md"], ...repo(guarded) }).mode, "none");
+});
+
+test("a path Playwright would read as a regular expression runs the full suite", () => {
+  for (const file of ["aftersign/e2e/a(b).spec.ts", "aftersign/e2e/a+b.spec.ts", "aftersign/e2e/a b.spec.ts", "aftersign/e2e/a[1].spec.ts"]) {
+    assert.equal(selectSpecs({ changed: [file], ...repo({ ...FILES, [file]: "" }) }).mode, "all", file);
+  }
+});
+
+test("every file Playwright's default match runs counts as a spec (.test.ts, .spec.js, .spec.mjs, .spec.tsx)", () => {
+  for (const file of ["aftersign/e2e/n.test.ts", "aftersign/e2e/n.spec.js", "aftersign/e2e/n.spec.mjs", "aftersign/e2e/n.spec.tsx"]) {
+    const files = { ...FILES, [file]: "" };
+    assert.deepEqual(selectSpecs({ changed: [file], specs: [...repo(files).specs, file], read: (f) => files[f] ?? "", exists: (f) => f in files }).specs, [file]);
+  }
+});
+
 test("imports: static, side-effect, dynamic, require; .js written for a .ts file", () => {
   const src = 'import a from "./a";\nimport "./b.js";\nconst c = await import("../c");\nconst d = require("./d");\nexport { e } from "./e";\nimport x from "pkg";';
   assert.deepEqual(relativeImports(src).sort(), ["../c", "./a", "./b.js", "./d", "./e"]);
