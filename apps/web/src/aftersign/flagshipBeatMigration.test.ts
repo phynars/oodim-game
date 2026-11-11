@@ -21,13 +21,26 @@ describe("restoreFlagshipBeat", () => {
     ).toBe("packet-choice");
   });
 
-  it("passes a saved `packet-delivered` beat through when the packet is persisted as delivered", () => {
+  // #2747 — a reload that lands after deliverPacket()'s synchronous
+  // save but before its 1180ms recognition save leaves
+  // `beat="packet-delivered"` + `packet.delivered=true`. A completed
+  // delivery must never reopen on the intermediate delivery beat.
+  it("promotes a saved `packet-delivered` beat to `io-return-recognition` when the packet is persisted as delivered", () => {
     expect(
       restoreFlagshipBeat({
         savedBeat: "packet-delivered",
         packetDelivered: true,
       }),
-    ).toBe("packet-delivered");
+    ).toBe("io-return-recognition");
+  });
+
+  it("passes a saved `io-return-recognition` beat through unchanged", () => {
+    expect(
+      restoreFlagshipBeat({
+        savedBeat: "io-return-recognition",
+        packetDelivered: true,
+      }),
+    ).toBe("io-return-recognition");
   });
 
   it("returns the default fallback when there is no saved beat", () => {

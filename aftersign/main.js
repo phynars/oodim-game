@@ -1485,16 +1485,15 @@ const armReturningSessionBootLine = (delivered) => {
   // setTimeout, which moves the authoritative restore target to
   // `io-return-recognition` for most sessions — that beat is in the
   // skip list above and the gate here never runs. The gate still
-  // matters on three paths #2336 did NOT cover:
-  //   (a) a reload racing BEFORE the 1180ms second write commits used
-  //       to restore `packet-delivered`; since #2747 the shared
-  //       `restoreFlagshipBeat` guard promotes a delivered
-  //       `packet-delivered` save to `io-return-recognition`, so that
-  //       race no longer reaches here;
-  //   (b) `packet-delivered-cold-boot-affordance.spec.ts` which
-  //       deliberately drops the 1180ms callback to prove the
-  //       `packet-delivered` affordance;
-  //   (c) legacy/hand-seeded saves whose beat is not in the skip list.
+  // used to matter for a reload racing BEFORE the 1180ms second write
+  // commits (restoring `packet-delivered`). Since #2747 the shared
+  // `restoreFlagshipBeat` guard promotes every delivered
+  // `packet-delivered` save to `io-return-recognition` on BOTH restore
+  // paths, so neither that race nor
+  // `packet-delivered-cold-boot-affordance.spec.ts` (which drops the
+  // 1180ms callback to reproduce it) reaches this gate any more. The
+  // gate now runs only for legacy/hand-seeded saves whose restored
+  // beat is not in the skip list above.
   const committedSecondAction = state.player.secondAction;
   const rememberedSecondAction = secondActionFromMemory(state.npcs.io.memory);
   const bootRouteAttention =
