@@ -2180,7 +2180,7 @@ const publishState = () => {
           memories: state.npcs.io.memory,
           lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
           trustPosture: trustPostureForOutcome(state.delivery.outcome),
-          recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
+          recognitionDialogueSnippets: buildIoRecognitionSnippets({
             playerId: state.player.id,
             packetSealed: state.packet.sealed,
             memory: state.npcs.io.memory,
