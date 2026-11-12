@@ -987,6 +987,13 @@ const storageKey = `aftersign:kiosk-slice:${slot}`;
 const sessionId = `session-${slot}`;
 const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
+// The deployment worker can answer a cold slot read with a stale visitor
+// record during a concurrent save. Boot only hydrates records explicitly
+// addressed to this browser's resolved identity; a mismatched record is
+// treated as an empty slot rather than leaking another visitor's progress.
+const isStoredForBootPlayer = (save) =>
+  !save?.player?.id || save.player.id === bootstrapPlayerId;
+
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 // Browser storage is deliberately not part of the player-memory authority
@@ -1027,7 +1034,7 @@ const bootstrapPlayerId = resolvePlayerId({
 // can capture via `page.on("console", ...)` to diagnose a silent
 // boot regression instead of watching two slots hydrate identical
 // empty state and reporting "divergence failed".
-const stored = await readAuthoritativeSave({
+let stored = await readAuthoritativeSave({
   slot,
   playerId: bootstrapPlayerId,
 }).catch((err) => {
@@ -1040,6 +1047,7 @@ const stored = await readAuthoritativeSave({
 });
 // Recognition facts are owned by player-memory, independently of the full
 // authoritative save. An unavailable endpoint never blocks a playable boot.
+stored = isStoredForBootPlayer(stored) ? stored : null;
 const playerMemoryRecord = await readPlayerMemory({
   playerId: bootstrapPlayerId,
 }).catch((err) => {
