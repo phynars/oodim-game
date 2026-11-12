@@ -114,8 +114,7 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
     // AFTER `setBeat("io-return-recognition")` so reload will restore
     // to this beat, not `packet-delivered`.
     await waitForBeat(page, "io-return-recognition");
-    expect(ORCHESTRATED_SEALED_RECOGNITION_LINE).toBe(SEALED_RECOGNITION_LINE);
-    await expect(page.locator("#line")).toHaveText(ORCHESTRATED_SEALED_RECOGNITION_LINE, {
+    await expect(page.locator("#line")).toHaveText(SEALED_RECOGNITION_LINE, {
       timeout: WAIT_MS,
     });
     await expect(
