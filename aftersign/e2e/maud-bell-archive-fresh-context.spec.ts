@@ -59,14 +59,17 @@ async function reachOrraPayback(page: Page): Promise<void> {
   await waitForBeat(page, "io-return-recognition");
 }
 
-async function openFreshContext(browser: Browser, slot: string) {
+// Both contexts name the same player in the URL: on the deployed Worker each
+// browser mints its own id, so a fresh context would otherwise be a
+// different player.
+async function openFreshContext(browser: Browser, slot: string, player: string) {
   const context = await browser.newContext({
     viewport: PHONE_VIEWPORT,
     hasTouch: true,
     isMobile: true,
   });
   const page = await context.newPage();
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+  await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
   return { context, page };
 }
 
@@ -84,8 +87,9 @@ test.describe("Maud Bell Archive ending survives a fresh context (#2651)", () =>
       browser,
     }) => {
       test.setTimeout(240_000);
+      const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
       const slot = `maud-bell-archive-${choice}-${Date.now()}`;
-      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await reachOrraPayback(page);
 
       await tapVisible(
@@ -104,7 +108,7 @@ test.describe("Maud Bell Archive ending survives a fresh context (#2651)", () =>
       // The authoritative write is async after the tap; retry the whole
       // fresh-context boot until the saved slot reflects the selection.
       await expect(async () => {
-        const { context, page: returning } = await openFreshContext(browser, slot);
+        const { context, page: returning } = await openFreshContext(browser, slot, player);
         try {
           const restoredCard = returning.locator(`[data-ending-id="${endingId}"]`);
           await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });

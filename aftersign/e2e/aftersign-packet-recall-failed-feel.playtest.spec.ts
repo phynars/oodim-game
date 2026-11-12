@@ -50,7 +50,10 @@ const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
 
-const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`). On the deployed
+// Worker each browser mints its own id, so a save seeded under a fixed id
+// is never the one the page reads.
+const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 async function waitForReady(page: Page): Promise<void> {
@@ -150,7 +153,7 @@ test.describe("AFTERSIGN failed-route recall (phone tap)", () => {
     // `packet-offered`.
     await seedFailedRouteRiskSave(page, slot);
 
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=${slot}&player=${BOOTSTRAP_PLAYER_ID}`, { waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "packet-offered");
 

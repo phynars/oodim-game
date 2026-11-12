@@ -330,8 +330,11 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     browser,
   }) => {
     test.setTimeout(180_000);
+    // Both contexts name the same player in the URL: on the deployed Worker
+    // each browser mints its own id.
+    const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     const slot = `orra-payback-reload-${Date.now()}`;
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
     await reachRedTagIoReturnRecognition(page);
 
     const carryName = page.locator(
@@ -362,7 +365,7 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
       expect(seeded.cookies).toHaveLength(0);
       expect(seeded.origins).toHaveLength(0);
       const freshPage = await fresh.newPage();
-      await freshPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await freshPage.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await expectCommittedPaybackRestored(freshPage);
     } finally {
       await fresh.close();

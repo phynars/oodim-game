@@ -4,7 +4,7 @@ const COLD_START_MS = 90_000;
 
 test("mobile move pad drives the served avatar in one frame and releases clean", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/?slot=mobile-move-pad-served-feel");
+  await page.goto("/aftersign/?slot=mobile-move-pad-served-feel");
 
   await page.waitForFunction(() => window.__game?.version === 1, undefined, { timeout: 60_000 });
 

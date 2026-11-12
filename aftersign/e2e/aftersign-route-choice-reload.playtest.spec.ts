@@ -70,7 +70,10 @@ const PHONE_VIEWPORT = { width: 390, height: 844 };
 const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
-const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`). On the deployed
+// Worker each browser mints its own id, so a save seeded under a fixed id
+// is never the one the page reads.
+const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
@@ -191,7 +194,7 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       // `scene.beat` would restore as `packet-delivered` and the DOM
       // would paint the post-delivery "I ran early / I listened" fork
       // over an undelivered player.
-      await page.goto(`/aftersign/index.html?slot=${slot}`, {
+      await page.goto(`/aftersign/index.html?slot=${slot}&player=${BOOTSTRAP_PLAYER_ID}`, {
         waitUntil: "load",
       });
 

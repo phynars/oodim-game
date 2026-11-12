@@ -74,7 +74,7 @@ function snapshot(page: Page) {
 
 test("reloaded delivered save (route listened) boots on Io's returning line, then yields to recognition", async ({ page }) => {
   const slot = `io-return-boot-listened-${Date.now()}`;
-  await page.goto(`/?slot=${slot}`);
+  await page.goto(`/aftersign/?slot=${slot}`);
   await waitForReady(page);
   await deliverSealedAndSave(page, "acknowledge-kiosk");
 
@@ -94,7 +94,7 @@ test("reloaded delivered save (route listened) boots on Io's returning line, the
 
 test("reloaded delivered save (route skipped) boots on the skipped-route returning line", async ({ page }) => {
   const slot = `io-return-boot-skipped-${Date.now()}`;
-  await page.goto(`/?slot=${slot}`);
+  await page.goto(`/aftersign/?slot=${slot}`);
   await waitForReady(page);
   await deliverSealedAndSave(page, "skip-kiosk-acknowledge");
 

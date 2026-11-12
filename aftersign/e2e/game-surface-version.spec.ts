@@ -10,7 +10,7 @@ const COLD_START_MS = 90_000;
 
 test('window.__game publishes version 1 in the runnable packet-intent slice', async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto('/?slot=packet-intent-scene');
+  await page.goto('/aftersign/?slot=packet-intent-scene');
 
   await page.waitForFunction(() => window.__game?.version === 1, undefined, { timeout: 60_000 });
   const version = await page.evaluate(() => window.__game?.version);

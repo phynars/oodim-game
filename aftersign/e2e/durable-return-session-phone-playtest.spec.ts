@@ -128,7 +128,12 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     const slot = `durable-return-phone-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;
-    const url = `/aftersign/?slot=${slot}`;
+    // The "identified player" is named in the URL. On the deployed Worker
+    // each browser mints its own id and keeps it in localStorage, so after
+    // a storage clear or in a fresh context the player is the same one only
+    // when the URL says so.
+    const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const url = `/aftersign/?slot=${slot}&player=${player}`;
     await page.goto(url, { waitUntil: "load" });
     await waitForReady(page);
 
