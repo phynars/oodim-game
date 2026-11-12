@@ -262,6 +262,7 @@ import {
 import { createReducedMotionPreference } from "./src/reducedMotionPreference.js";
 import { resolvePlayerId } from "./src/playerIdentity.ts";
 import {
+  buildIoRecognitionSnippets,
   selectIoRecognitionDialogue,
 } from "./src/ioRecognitionOrchestration.ts";
 // Return-tone choice feel — pinned 39-value table (3 postures × 13
@@ -2123,7 +2124,7 @@ const publishState = () => {
         // per-tier memoryRef counts, AND per-tier feelCue numbers
         // (durationMs / cameraDollyCm / cameraYawDegrees / etc.) that
         // drive the DOM envelope at the recognition beat.
-        recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
+        recognitionDialogueSnippets: buildIoRecognitionSnippets({
           playerId: state.player.id,
           packetSealed: state.packet.sealed,
           memory: state.npcs.io.memory,

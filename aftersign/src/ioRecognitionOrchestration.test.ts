@@ -22,3 +22,16 @@ describe("selectIoRecognitionDialogue", () => {
     expect(selected.sourceMemoryIds).toEqual(["delivery-1", "route-1"]);
   });
 });
+
+describe("buildIoRecognitionSnippets", () => {
+  it("delegates to the recognition dialogue builder unchanged", () => {
+    const input = {
+      playerId: "courier",
+      packetSealed: false,
+      memory: [{ id: "delivery-1", kind: "delivery-outcome", object: "opened" }],
+    };
+    expect(buildIoRecognitionSnippets(input)).toEqual(
+      buildIoRecognitionDialogueSnippets(input),
+    );
+  });
+});
