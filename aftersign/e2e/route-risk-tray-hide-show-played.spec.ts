@@ -212,7 +212,7 @@ test.describe("AFTERSIGN route-risk tray — played hide→show cycle (#1795)", 
 
     // Walk the continue-beats loop back to packet-choice WITHOUT
     // tapping a route-risk button, so the memory axis is unchanged
-    // and the signature on re-show is still "fresh|hide:repair-the-loss".
+    // and the signature on re-show is still "<delivery-id>|fresh|hide:repair-the-loss".
     // Same tap script as `job-offers-played.spec.ts`.
     await tapReturnReason(page, "blunt");
     await waitForBeat(page, "return-tone-choice");
