@@ -76,7 +76,9 @@ log=$(mktemp)
 # throwaway directory, so every run starts from an empty server.
 WRANGLER_SEND_METRICS=false npx wrangler dev --local --ip 127.0.0.1 --port "$PORT" --persist-to "$state" > "$log" 2>&1 &
 worker=$!
-trap 'kill "$worker" 2>/dev/null || true' EXIT
+# npx starts wrangler, which starts workerd: stop the children too, so a
+# local run leaves no server holding public/ or the port.
+trap 'pkill -P "$worker" 2>/dev/null || true; kill "$worker" 2>/dev/null || true' EXIT
 
 ready=0
 for _ in $(seq 1 60); do
