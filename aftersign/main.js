@@ -1526,6 +1526,7 @@ const lineForBeat = () => {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
+        endingName: state.story.maudBellArchiveName,
       });
     }
     state.npcs.io.lastLine = "";

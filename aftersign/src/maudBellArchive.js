@@ -131,12 +131,21 @@ export const hasLiveMaudChoices = (doc) => {
 };
 
 /** Render Maud's name-selection beat into a supplied scene host. */
-export const renderMaudBellArchive = (doc, { storedName, endingId, onSelect } = {}) => {
+export const renderMaudBellArchive = (doc, { storedName, endingId, endingName, onSelect } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
   const host = doc.getElementById("episodeOneEnding") || doc.getElementById("line");
   if (!host) return null;
 
-  const restoredEnding = maudBellArchiveEndingForId(endingId);
+  // #2754: a restored ending shows the name the player chose, not the
+  // fallback. Legacy saves without a saved name fall back to the stored
+  // player name for the lit ending (that IS the remembered name).
+  const restoredBase = maudBellArchiveEndingForId(endingId);
+  const restoredEnding = restoredBase
+    ? maudBellArchiveEndingForChoice({
+        name: endingName || (restoredBase.light === "lit" ? storedName : undefined),
+        matchesMemory: restoredBase.light === "lit",
+      })
+    : null;
   if (restoredEnding) return renderMaudBellArchiveEnding(doc, host, restoredEnding);
 
   // The scene module owns the choice UI and outcome; this wrapper maps the
