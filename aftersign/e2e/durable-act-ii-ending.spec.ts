@@ -6,8 +6,9 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 //
 // On main only `story.maudBellArchiveEndingId` was saved, so the restored
 // card read "The bell rings for the courier." instead of the chosen name.
-// The name assertions below fail there; they pass once
-// `story.maudBellArchiveName` is persisted and restored.
+// The name assertions below fail there. The fix sets
+// `story.maudBellArchiveName` in Maud's onSelect (main.js), saves it in
+// persistence.js, hydrates it on boot, and passes it to the restore render.
 //
 // Taps only: every step is a `.tap()` on a visible element at 390×844.
 // The spec never writes to `window.__game`.

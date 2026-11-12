@@ -4507,8 +4507,11 @@ const choose = async (choiceId) => {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
+        endingName: state.story.maudBellArchiveName,
         onSelect: (_selected, ending) => {
           state.story.maudBellArchiveEndingId = ending.id;
+          // #2754: persist the chosen name so a restored card shows it.
+          state.story.maudBellArchiveName = ending.name ?? null;
           markStateDirty();
           // renderBellArchiveScene awaits this promise before rendering the
           // terminal card, so the ending id is durable before the card shows.

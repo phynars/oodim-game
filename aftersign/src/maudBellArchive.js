@@ -41,6 +41,7 @@ export const maudBellArchiveEndingForChoice = (choice) => {
     : {
         id: "maud-bell-archive-dark",
         light: "out",
+        name,
         line: `One district light goes out.${nameLine}`,
         dialogue: `Maud records ${name}. The archive closes.`,
       };
