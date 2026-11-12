@@ -49,6 +49,8 @@ export default defineConfig({
       "aftersign/src/episodeOneEnding.test.js",
       // #2710 — return-action feedback controller extracted from main.js
       "aftersign/src/presentation/ioReturnActionFeedbackController.test.js",
+      // #2766 — per-player memory replica must not seed a cold slot
+      "aftersign/src/runtime/playerMemory.test.js",
     ],
   },
 });

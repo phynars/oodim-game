@@ -1027,7 +1027,7 @@ const bootstrapPlayerId = resolvePlayerId({
 // can capture via `page.on("console", ...)` to diagnose a silent
 // boot regression instead of watching two slots hydrate identical
 // empty state and reporting "divergence failed".
-let stored = await readAuthoritativeSave({
+const stored = await readAuthoritativeSave({
   slot,
   playerId: bootstrapPlayerId,
 }).catch((err) => {
