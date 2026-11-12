@@ -17,7 +17,10 @@ type OfferedAction = {
 // seed, divergence, and played-action assertions remain unchanged.
 const WAIT_MS = 30_000;
 const COLD_START_MS = 90_000;
-const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`). On the deployed
+// Worker each browser mints its own id, so a save seeded under a fixed id
+// is never the one the page reads.
+const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 const PHONE_VIEWPORT = { width: 390, height: 844 };
 
@@ -97,7 +100,7 @@ async function collectOfferedActions(
   expect(verifyBody?.payload, `seed round-trip GET for slot ${slot} must return the payload the served page will read at boot`).not.toBeNull();
   expect(Array.isArray(verifyBody?.payload?.memory), `seed round-trip payload for slot ${slot} must carry a memory array (fresh: length 0; returning: length > 0)`).toBe(true);
 
-  await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+  await page.goto(`/aftersign/?slot=${slot}&player=${BOOTSTRAP_PLAYER_ID}`, { waitUntil: "load" });
   await waitForReady(page);
   expect(bootConsoleErrors, `boot must not log an [aftersign boot] readAuthoritativeSave failure for slot ${slot}`).toEqual([]);
 

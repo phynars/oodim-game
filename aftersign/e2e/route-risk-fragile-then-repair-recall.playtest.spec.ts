@@ -33,7 +33,10 @@ import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRis
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
 const COLD_START_MS = 120_000;
-const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`). On the deployed
+// Worker each browser mints its own id, so a save read back under a fixed
+// id is never the one the page wrote.
+const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 type SavedRouteRisk = { succeeded?: boolean; lastAction?: string };
@@ -140,7 +143,7 @@ test.describe("AFTERSIGN failed-route recalls reachable without seed (#2401 / #2
     test.setTimeout(COLD_START_MS);
 
     const slot = `route-risk-fragile-repair-${Date.now()}`;
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=${slot}&player=${BOOTSTRAP_PLAYER_ID}`, { waitUntil: "load" });
     await waitForReady(page);
 
     // ── ROUND 1 — fresh visit; no recall paragraph exists yet ─────────

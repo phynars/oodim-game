@@ -21,7 +21,7 @@ const waitForGame = async (page) => {
 test('scene exposes packet tap/hold intent through window.__game', async ({ page }) => {
   test.setTimeout(COLD_START_MS);
 
-  await page.goto('/?slot=packet-intent-scene');
+  await page.goto('/aftersign/?slot=packet-intent-scene');
   await waitForGame(page);
   await page.evaluate(() => window.__game.resetSliceSave());
 

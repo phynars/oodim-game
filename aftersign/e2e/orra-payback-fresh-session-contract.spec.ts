@@ -84,7 +84,10 @@ test.describe("Saint Orra payback fresh-session durability (#2264)", () => {
   }) => {
     test.setTimeout(180_000);
     const slot = `orra-payback-fresh-session-${Date.now()}`;
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    // Both contexts name the same player in the URL: on the deployed Worker
+    // each browser mints its own id.
+    const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
     await reachSealedRedTagReturn(page);
 
     const carryName = page.locator(
@@ -106,7 +109,7 @@ test.describe("Saint Orra payback fresh-session durability (#2264)", () => {
     });
     const returningPage = await returningContext.newPage();
     try {
-      await returningPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await returningPage.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await waitForReady(returningPage);
       const restored = returningPage.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]',

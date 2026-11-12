@@ -29,9 +29,11 @@ import { expect, test } from "@playwright/test";
 
 const WAIT_MS = 10_000;
 
-// See boot in aftersign/main.js (~line 556): the read is always keyed
-// on this fixed bootstrap id. Any seed must be PUT under it.
-const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`); the seed is PUT
+// under the same id. (The fixed `local-slice-player` id described above is
+// what a page on localhost gets; on the deployed Worker each browser mints
+// its own id, so a seed under the fixed id is never the one the page reads.)
+const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 const RETURNING_ROUTE_RISK_SAVE = {
@@ -126,7 +128,7 @@ test.describe("AFTERSIGN reset route-risk isolation", () => {
       `seed round-trip payload for slot ${slot} must carry the returning routeRisk the reset spec asserts on`,
     ).toEqual({ lastRoute: "fast", succeeded: true });
 
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=${slot}&player=${BOOTSTRAP_PLAYER_ID}`, { waitUntil: "load" });
     await page.waitForFunction(
       () => window.__game?.scene?.ready === true,
       undefined,

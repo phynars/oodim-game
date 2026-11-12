@@ -10,7 +10,10 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 // `save.authority = "server"` when it restores a server save (before, a
 // server restore kept emptySave()'s "local-fallback").
 
-const PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`). On the deployed
+// Worker each browser mints its own id, so two browser contexts are the
+// same player only when the URL names that player.
+const PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
 
@@ -85,7 +88,7 @@ async function assertRestoredAction(
   slot: string,
   actionId: ExpectedAction["actionId"],
 ): Promise<void> {
-  await page.goto(`/aftersign/?slot=${encodeURIComponent(slot)}`, { waitUntil: "load" });
+  await page.goto(`/aftersign/?slot=${encodeURIComponent(slot)}&player=${PLAYER_ID}`, { waitUntil: "load" });
   await waitForReady(page);
 
   const action = page.locator(`button[data-orra-payback-action="${actionId}"]`);

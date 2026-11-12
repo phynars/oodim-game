@@ -11,7 +11,7 @@ test("input-to-render feel contract samples active move input before assertion a
 }) => {
   test.setTimeout(COLD_START_MS);
 
-  await page.goto("/?slot=input-to-render-feel-contract");
+  await page.goto("/aftersign/?slot=input-to-render-feel-contract");
   await page.waitForFunction(() => window.__game?.version === 1, undefined, {
     timeout: WAIT_MS,
   });

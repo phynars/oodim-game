@@ -326,7 +326,10 @@ test.describe("Saint Orra red-tag recall", () => {
     test(`recalls the real first tap after carrying the tag: ${choiceId}`, async ({ page, browser }) => {
       test.setTimeout(150_000);
       const slot = `orra-recall-${choiceId}-${Date.now()}`;
-      await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      // The player is named in the URL (the fresh context below reuses
+      // page.url()): on the deployed Worker each browser mints its own id.
+      const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await waitForVersion(page);
 
       await runToEnding(page, "sealed", true, choiceId);
@@ -431,7 +434,10 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await page.setViewportSize(PHONE_VIEWPORT);
 
     const slot = `episode-one-ending-restore-${Date.now()}`;
-    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    // Both contexts name the same player in the URL: on the deployed Worker
+    // each browser mints its own id.
+    const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
     await waitForVersion(page);
     await runToEnding(page, "sealed");
     await expect(await readEndingCard(page)).toHaveAttribute("data-ending-id", "ending-bell-true");
@@ -447,7 +453,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     });
     const returningPage = await returningContext.newPage();
     try {
-      await returningPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await returningPage.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await waitForVersion(returningPage);
       await waitForEndingPublished(returningPage);
       const card = await readEndingCard(returningPage);

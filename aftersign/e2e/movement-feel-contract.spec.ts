@@ -10,7 +10,7 @@ const COLD_START_MS = 90_000;
 
 test("movement feel contract stays within one-frame response budget", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/?slot=movement-feel-contract");
+  await page.goto("/aftersign/?slot=movement-feel-contract");
 
   await page.waitForFunction(() => window.__game?.version === 1, undefined, { timeout: 60_000 });
 
@@ -25,7 +25,7 @@ test("movement feel contract stays within one-frame response budget", async ({ p
 
 test("keyboard traversal moves the avatar immediately while camera aim eases behind the target", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/?slot=movement-camera-keyboard-feel");
+  await page.goto("/aftersign/?slot=movement-camera-keyboard-feel");
 
   await page.waitForFunction(() => window.__game?.version === 1, undefined, { timeout: 60_000 });
 

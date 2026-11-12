@@ -40,7 +40,11 @@ test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 test("a fresh session with the same durable identity receives Io's prior exchange", async ({ browser, page }) => {
   test.setTimeout(180_000);
   const slot = `durable-memory-contract-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const url = `/aftersign/?slot=${slot}`;
+  // "The same durable identity" is named in the URL. On the deployed Worker
+  // each browser mints its own id, so a fresh context is the same player
+  // only when the URL says so.
+  const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const url = `/aftersign/?slot=${slot}&player=${player}`;
 
   await page.goto(url, { waitUntil: "load" });
   await waitForReady(page);

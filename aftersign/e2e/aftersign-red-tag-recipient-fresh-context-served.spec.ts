@@ -56,6 +56,10 @@ test.describe("AFTERSIGN third NPC — fresh-context red-tag recognition", () =>
   }) => {
     test.setTimeout(120_000);
     const slot = `red-tag-recipient-fresh-context-${Date.now()}`;
+    // Both contexts name the same player in the URL. On the deployed Worker
+    // each browser mints its own id, so a second context is the same player
+    // only when the URL says so; the save still comes back from the server.
+    const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     const deliveryContext = await browser.newContext({
       viewport: PHONE_VIEWPORT,
       hasTouch: true,
@@ -64,7 +68,7 @@ test.describe("AFTERSIGN third NPC — fresh-context red-tag recognition", () =>
     const deliveryPage = await deliveryContext.newPage();
 
     try {
-      await deliveryPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await deliveryPage.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await waitForReady(deliveryPage);
       await reachNextJobFromBoot(deliveryPage);
       await deliveryPage.locator("#packetButton").tap();
@@ -88,7 +92,7 @@ test.describe("AFTERSIGN third NPC — fresh-context red-tag recognition", () =>
     const restoredPage = await restoredContext.newPage();
 
     try {
-      await restoredPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await restoredPage.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await waitForReady(restoredPage);
       await waitForBeat(restoredPage, "io-return-recognition");
       const recipientLine = restoredPage.locator(RECIPIENT_LINE);

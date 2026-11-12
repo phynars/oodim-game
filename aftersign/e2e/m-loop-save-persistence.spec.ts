@@ -46,8 +46,8 @@ async function tap(page: Page, selector: string): Promise<void> {
   await control.tap();
 }
 
-async function boot(page: Page, slot: string): Promise<void> {
-  await page.goto(`/aftersign/?slot=${encodeURIComponent(slot)}`, {
+async function boot(page: Page, slot: string, player: string): Promise<void> {
+  await page.goto(`/aftersign/?slot=${encodeURIComponent(slot)}&player=${player}`, {
     waitUntil: "load",
   });
   await waitForBeat(page, "packet-offered");
@@ -103,15 +103,19 @@ test.describe("AFTERSIGN save persistence (vite-preview save surface)", () => {
     const stamp = `${Date.now()}-${testInfo.workerIndex}`;
     const primarySlot = `save-persistence-${stamp}`;
     const otherSlot = `save-isolation-${stamp}`;
+    // One player, named in the URL, on both pages: the save paths below are
+    // that player's. (A page on localhost would get the fixed id
+    // `local-slice-player`; on the deployed Worker each browser mints its own.)
+    const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     const primary = await browser.newPage();
     const other = await browser.newPage();
 
     try {
-      await boot(primary, primarySlot);
+      await boot(primary, primarySlot, player);
       await completeDelivery(primary);
       const saved = await reachNextJob(primary);
 
-      const savePath = `/aftersign/save/local-slice-player/${encodeURIComponent(primarySlot)}`;
+      const savePath = `/aftersign/save/${player}/${encodeURIComponent(primarySlot)}`;
       const [getResponse] = await Promise.all([
         primary.waitForResponse((candidate) =>
           candidate.request().method() === "GET"
@@ -134,8 +138,8 @@ test.describe("AFTERSIGN save persistence (vite-preview save surface)", () => {
       await waitForBeat(primary, "packet-offered");
       await expect(primary.locator("#offeredJobs button[data-offered-job-id]:visible").first()).toBeVisible();
 
-      await boot(other, otherSlot);
-      const otherSavePath = `/aftersign/save/local-slice-player/${encodeURIComponent(otherSlot)}`;
+      await boot(other, otherSlot, player);
+      const otherSavePath = `/aftersign/save/${player}/${encodeURIComponent(otherSlot)}`;
       const otherGet = await other.request.get(otherSavePath);
       // Cold slot: 200 with { payload: null, exists: false } (#2227).
       expect(otherGet.status()).toBe(200);

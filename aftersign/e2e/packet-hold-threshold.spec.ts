@@ -88,7 +88,7 @@ test("short tap stays sealed; sustained hold flips to opened past HOLD_TO_OPEN_M
   test.setTimeout(COLD_START_MS);
   watchPageErrors(page, "packet-hold-threshold");
 
-  await page.goto("/?slot=packet-hold-threshold", { waitUntil: "load" });
+  await page.goto("/aftersign/?slot=packet-hold-threshold", { waitUntil: "load" });
   await waitForGame(page);
   await page.evaluate(() => window.__game?.resetSliceSave());
 
@@ -219,7 +219,7 @@ test("deadzone release (181–449 ms) preserves the seal instead of cancelling",
   // defaults to SEALED. A false-sealed is recoverable (press again);
   // a false-opened spends trust. If this regresses to "cancelled" or
   // "opened", the flagship slice's Act I trust readability breaks.
-  await page.goto("/?slot=packet-hold-threshold");
+  await page.goto("/aftersign/?slot=packet-hold-threshold");
   await waitForGame(page);
   await page.evaluate(() => window.__game.resetSliceSave());
 

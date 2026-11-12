@@ -68,7 +68,10 @@ import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRis
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 10_000;
 const COLD_START_MS = 120_000;
-const PLAYER_ID = "local-slice-player";
+// One player per run, named in the page URL (`?player=`). On the deployed
+// Worker each browser mints its own id, so two browser contexts are the
+// same player only when the URL names that player.
+const PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 type RouteRiskSave = {
@@ -133,7 +136,7 @@ test.describe("AFTERSIGN fragile-packet durable-save contract", () => {
 
     try {
       const firstPage = await firstSession.newPage();
-      await firstPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await firstPage.goto(`/aftersign/?slot=${slot}&player=${PLAYER_ID}`, { waitUntil: "load" });
       await waitForReady(firstPage);
       await waitForBeat(firstPage, "packet-offered");
 
@@ -210,7 +213,7 @@ test.describe("AFTERSIGN fragile-packet durable-save contract", () => {
 
     try {
       const returningPage = await returningSession.newPage();
-      await returningPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+      await returningPage.goto(`/aftersign/?slot=${slot}&player=${PLAYER_ID}`, { waitUntil: "load" });
       await waitForReady(returningPage);
 
       // Cold-boot restore in a storage-free context parks the player

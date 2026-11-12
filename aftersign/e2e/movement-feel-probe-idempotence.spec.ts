@@ -10,7 +10,7 @@ const COLD_START_MS = 90_000;
 
 test("movement feel probe stays non-destructive across repeated assertions", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
-  await page.goto("/?slot=movement-feel-probe-idempotence");
+  await page.goto("/aftersign/?slot=movement-feel-probe-idempotence");
 
   await page.waitForFunction(() => window.__game?.version === 1, undefined, { timeout: 60_000 });
 
