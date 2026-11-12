@@ -44,6 +44,12 @@ review context.
   tsconfig. Type-level pins (`satisfies`, `Record<>` alignment tables)
   in this bucket ARE now visible — check the burn-down step's log
   rather than trusting them silently.
+- **Plain-JS files (`aftersign/*.js`, including `main.js`):** not
+  typechecked. `typecheck:aftersign` runs
+  `scripts/check-aftersign-js-names.mjs` over them, which reports only
+  a name that is used but never imported or declared (TS2304 / TS2552).
+  It exists because a removed import with a surviving call passes `tsc`
+  and fails only in the browser.
 
 The feel contract this module is being brought to — 1,220ms total,
 0.32m dolly, 4° yaw, sealed/opened branches, reduced-motion fallback —
