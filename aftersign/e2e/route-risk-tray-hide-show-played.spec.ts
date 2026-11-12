@@ -27,7 +27,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 //   FIRST PACKET-CHOICE (tray shown for the first time — signature stamp
 //     lands, buttons render).
 //     `#routeRiskChoice` is visible with `data-visible="true"`, exposes
-//     `data-render-signature="fresh|hide:repair-the-loss"` (memory axis:
+//     `data-render-signature="<delivery-id>|fresh|hide:repair-the-loss"` (memory axis:
 //     no run recorded yet, hide axis: `repair-the-loss`), and hosts
 //     exactly ONE real tappable `button[data-aftersign-tap-choice=
 //     "take-the-long-way"]` child — the kept-seal filter dropped
@@ -56,7 +56,9 @@ const COLD_START_MS = 45_000;
 // Null-memory render signature post-#2194: pure memory key is "fresh"
 // (no run recorded yet); hide axis appends `|hide:repair-the-loss`
 // because the kept-seal filter drops recovery on a fresh slot.
-const FRESH_SIGNATURE = "fresh|hide:repair-the-loss";
+// main.js prefixes the signature with `${state.delivery.id}|` so the
+// render cache distinguishes deliveries (#2769); match any delivery id.
+const FRESH_SIGNATURE = /^[^|]+\|fresh\|hide:repair-the-loss$/;
 
 async function waitForReady(page: Page): Promise<void> {
   await page.waitForFunction(
