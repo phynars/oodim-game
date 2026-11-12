@@ -20,6 +20,15 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # @playwright/test stays at the locked 1.61.1 (Kyoung, 2026-11-11).
+      # From 1.62 on, page timers fire seconds late and requestAnimationFrame
+      # starves in headless runs, which fails the timing specs: the aftersign
+      # beat-duration contract (6,847 ms against a 1,350 ms limit) and doom's
+      # mouselook frame-time (PR 1137 on 1.62.1 in August, PR 2719 on 1.65.0).
+      # A comment-based ignore did not hold. Remove this entry once those
+      # specs no longer depend on the browser's timer fidelity.
+      - dependency-name: "@playwright/test"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
     groups:
       dev-dependencies:
         dependency-type: "development"
