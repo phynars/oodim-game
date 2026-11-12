@@ -1040,7 +1040,6 @@ let stored = await readAuthoritativeSave({
 });
 // Recognition facts are owned by player-memory, independently of the full
 // authoritative save. An unavailable endpoint never blocks a playable boot.
-stored = isStoredForBootPlayer(stored) ? stored : null;
 const playerMemoryRecord = await readPlayerMemory({
   playerId: bootstrapPlayerId,
 }).catch((err) => {
