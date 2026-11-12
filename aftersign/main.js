@@ -262,9 +262,9 @@ import {
 import { createReducedMotionPreference } from "./src/reducedMotionPreference.js";
 import { resolvePlayerId } from "./src/playerIdentity.ts";
 import {
-  buildIoRecognitionDialogueSnippets,
-  selectIoRecognitionDialogueLine,
-} from "./src/ioRecognitionDialogue.ts";
+  buildIoRecognitionSnippets,
+  selectIoRecognitionDialogue,
+} from "./src/ioRecognitionOrchestration.ts";
 // Return-tone choice feel — pinned 39-value table (3 postures × 13
 // numbers) authored under apps/web/. Wiring it into main.js here is
 // what turns the module from a contract-only design token into a
@@ -1705,15 +1705,13 @@ const lineForBeat = () => {
       breakMode === "wrong-io-line" || orraContaminated
         ? !rememberedSealed
         : rememberedSealed;
-    const snippets = buildIoRecognitionDialogueSnippets({
+    // The orchestration boundary owns snippet construction and tier routing;
+    // this served composition root only provides the durable state it needs.
+    return selectIoRecognitionDialogue({
       playerId: state.player.id,
       packetSealed: speakAsSealed,
       memory: state.npcs.io.memory,
-    });
-    // Selector needs `memory` to gate deep-recall on the real
-    // second-action (route-attention `object === "done"`). Without
-    // this the fallback path always speaks the returning tier.
-    return selectIoRecognitionDialogueLine(snippets, { memory: state.npcs.io.memory }).line;
+    }).line;
   }
 
   if (state.scene.beat === "packet-offered") {
@@ -1880,12 +1878,9 @@ const syncIoLine = () => {
   } else if (state.scene.beat === "io-return-recognition") {
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
-    const snippets = buildIoRecognitionDialogueSnippets({
+    const selected = selectIoRecognitionDialogue({
       playerId: state.player.id,
       packetSealed: speakAsSealed,
-      memory: state.npcs.io.memory,
-    });
-    const selected = selectIoRecognitionDialogueLine(snippets, {
       memory: state.npcs.io.memory,
     });
     // Red-tag return keeps its OWN recognition line — do NOT append the
@@ -2129,7 +2124,7 @@ const publishState = () => {
         // per-tier memoryRef counts, AND per-tier feelCue numbers
         // (durationMs / cameraDollyCm / cameraYawDegrees / etc.) that
         // drive the DOM envelope at the recognition beat.
-        recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
+        recognitionDialogueSnippets: buildIoRecognitionSnippets({
           playerId: state.player.id,
           packetSealed: state.packet.sealed,
           memory: state.npcs.io.memory,
@@ -2186,7 +2181,7 @@ const publishState = () => {
           memories: state.npcs.io.memory,
           lastLineFeelCue: state.interaction.recognitionSnippetFeelCue,
           trustPosture: trustPostureForOutcome(state.delivery.outcome),
-          recognitionDialogueSnippets: buildIoRecognitionDialogueSnippets({
+          recognitionDialogueSnippets: buildIoRecognitionSnippets({
             playerId: state.player.id,
             packetSealed: state.packet.sealed,
             memory: state.npcs.io.memory,
