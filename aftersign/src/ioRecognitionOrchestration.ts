@@ -3,7 +3,7 @@ import {
   selectIoRecognitionDialogueLine,
   type IoRecognitionDialogueInput,
   type IoRecognitionDialogueSnippet,
-} from "./ioRecognitionDialogue";
+} from "./ioRecognitionDialogue.ts";
 
 export type IoRecognitionOrchestrationInput = IoRecognitionDialogueInput;
 

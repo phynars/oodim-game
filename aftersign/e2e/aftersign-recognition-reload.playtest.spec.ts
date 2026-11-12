@@ -62,11 +62,6 @@ const COLD_START_MS = 180_000;
 const WAIT_MS = 60_000;
 
 const SEALED_RECOGNITION_LINE = expectedIoRecognitionLine("sealed", false);
-const ORCHESTRATED_SEALED_RECOGNITION_LINE = selectIoRecognitionDialogue({
-  playerId: "recognition-reload-playtest",
-  packetSealed: true,
-  memory: [{ id: "delivery", kind: "delivery-outcome", object: "sealed" }],
-}).line;
 
 async function waitForBeat(page: Page, beatId: string): Promise<Locator> {
   const beatNode = page.locator(`[data-beat-id="${beatId}"]`);

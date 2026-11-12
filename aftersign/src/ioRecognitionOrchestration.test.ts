@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   selectIoRecognitionDialogue,
-} from "./ioRecognitionOrchestration";
+} from "./ioRecognitionOrchestration.ts";
 
 describe("selectIoRecognitionDialogue", () => {
   it("preserves the durable deep-recall outcome and its source facts", () => {
