@@ -1,7 +1,6 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
-import { selectIoRecognitionDialogue } from "../src/ioRecognitionOrchestration";
 
 // Playtest: after a phone-player reload, the story restores DIRECTLY to
 // `io-return-recognition` with the correct returning-tier line + the

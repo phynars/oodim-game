@@ -1,8 +1,10 @@
 import {
   buildIoRecognitionDialogueSnippets,
   selectIoRecognitionDialogueLine,
-  type IoRecognitionDialogueInput,
-  type IoRecognitionDialogueSnippet,
+} from "./ioRecognitionDialogue.ts";
+import type {
+  IoRecognitionDialogueInput,
+  IoRecognitionDialogueSnippet,
 } from "./ioRecognitionDialogue.ts";
 
 export type IoRecognitionOrchestrationInput = IoRecognitionDialogueInput;
@@ -18,8 +20,3 @@ export function selectIoRecognitionDialogue(
   const snippets = buildIoRecognitionDialogueSnippets(input);
   return selectIoRecognitionDialogueLine(snippets, { memory: input.memory });
 }
-
-export {
-  buildIoRecognitionDialogueSnippets,
-  selectIoRecognitionDialogueLine,
-};
