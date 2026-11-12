@@ -311,6 +311,13 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     await expect(routeRiskTray).toHaveAttribute("data-visible", "true", {
       timeout: WAIT_MS,
     });
+    // The render cache must distinguish this red-tag tray from the
+    // preceding blue-packet route state; otherwise a matching memory
+    // signature can retain the blue button nodes after delivery changes.
+    await expect(routeRiskTray).toHaveAttribute(
+      "data-render-signature",
+      /^red-tag\|/,
+    );
     // After a safe+succeeded round-1,
     // `computeOfferedActions({lastRoute:"safe",succeeded:true})`
     // returns `["take-the-shortcut","carry-a-fragile-packet"]`

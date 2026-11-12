@@ -3016,6 +3016,7 @@ const renderText = () => {
       // single cached signature. The pure signature alone sees `null`
       // on both sides and would otherwise skip a re-render.
       const routeRiskSignature =
+        `${state.delivery.id}|` +
         buildRouteRiskRenderSignature(routeRiskRender.memory) +
         (routeRiskRender.hideActions.length > 0
           ? `|hide:${routeRiskRender.hideActions.join(",")}`
