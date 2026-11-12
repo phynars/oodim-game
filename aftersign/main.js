@@ -1111,6 +1111,12 @@ const state = {
       || stored?.story?.maudBellArchiveEndingId === "maud-bell-archive-dark"
         ? stored.story.maudBellArchiveEndingId
         : null,
+    // #2754: restore the name chosen at Maud's archive so the restored
+    // card shows it instead of the fallback name.
+    maudBellArchiveName:
+      typeof stored?.story?.maudBellArchiveName === "string" && stored.story.maudBellArchiveName.trim()
+        ? stored.story.maudBellArchiveName
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -5491,6 +5497,7 @@ const resetSliceSave = async () => {
   // dead on the ending card until a manual reload (Mara PR #2569 F1).
   state.story.endingId = null;
   state.story.maudBellArchiveEndingId = null;
+  state.story.maudBellArchiveName = null;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);

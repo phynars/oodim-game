@@ -35,6 +35,7 @@ export const maudBellArchiveEndingForChoice = (choice) => {
     ? {
         id: "maud-bell-archive-lit",
         light: "lit",
+        name,
         line: `The district light stays lit.${nameLine}`,
         dialogue: `Maud records ${name}. The archive rests.`,
       }
