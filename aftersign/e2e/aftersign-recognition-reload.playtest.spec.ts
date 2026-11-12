@@ -135,4 +135,44 @@ test.describe("AFTERSIGN recognition reload playtest", () => {
       page.getByRole("button", { name: "Kind return", exact: true }),
     ).toBeVisible({ timeout: WAIT_MS });
   });
+
+  // Served-path guard for the main.js rewire onto
+  // `selectIoRecognitionDialogue` (aftersign/src/ioRecognitionOrchestration.ts).
+  // The deep-recall tier is the ONLY tier gated on `memory` reaching the
+  // selector (route-attention `object === "done"`). If the orchestration
+  // boundary dropped `memory`, this listened-route player would hear the
+  // RETURNING line instead. Reached by taps + reload only — no
+  // window.__game state injection.
+  test("speaks Io's deep-recall line after acknowledging the kiosk, across a phone-player reload", async ({
+    page,
+  }) => {
+    test.setTimeout(COLD_START_MS);
+
+    const slot = `recognition-reload-deep-${Date.now()}`;
+    await page.goto(`/aftersign/index.html?slot=${slot}`, { waitUntil: "load" });
+
+    await waitForBeat(page, "packet-offered");
+    const packet = page.locator("#packetButton");
+    await expect(packet, "#packetButton should be visible at packet-offered").toBeVisible({
+      timeout: WAIT_MS,
+    });
+    await packet.tap();
+
+    await waitForBeat(page, "packet-choice");
+    // acknowledge-kiosk flips routeListened=true → deep-recall tier
+    // (see premise 3 in the header comment).
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "packet-delivered");
+
+    await waitForBeat(page, "io-return-recognition");
+    const deepLine = expectedIoRecognitionLine("sealed", true);
+    await expect(page.locator("#line")).toHaveText(deepLine, { timeout: WAIT_MS });
+    await expect(page.locator("#line")).not.toHaveText(SEALED_RECOGNITION_LINE);
+
+    await page.reload({ waitUntil: "load" });
+
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).toHaveText(deepLine, { timeout: WAIT_MS });
+  });
 });
