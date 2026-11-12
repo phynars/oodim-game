@@ -689,7 +689,7 @@ import {
   emptySave,
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
-import { readPlayerMemory, writePlayerMemory } from "./src/runtime/playerMemory.js";
+import { readPlayerMemory, selectBootIoMemory, writePlayerMemory } from "./src/runtime/playerMemory.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
 import { targetLossElapsedMs } from "./src/targetLossFirstFrame.ts";
@@ -1224,15 +1224,9 @@ const state = {
       // best-effort replica whose writes may fail (quota / 429), so it is
       // only a FALLBACK when the save has no memory — a stale replica can
       // never override a fresher committed save.
-      memory: Array.isArray(stored?.memory) && stored.memory.length > 0
-        ? clone(stored.memory)
-        : Array.isArray(stored?.npcs?.io?.memory) && stored.npcs.io.memory.length > 0
-        ? clone(stored.npcs.io.memory)
-        : Array.isArray(durableIoMemory)
-        ? clone(durableIoMemory)
-        : Array.isArray(stored?.npcs?.io?.memory)
-        ? clone(stored.npcs.io.memory)
-        : [],
+      // #2766: player-memory is per-player, not per-slot — a cold slot
+      // (no save) must not inherit another slot's facts.
+      memory: selectBootIoMemory({ stored, durableIoMemory }),
       lastLine: null,
       lastLineMemoryRefs: [],
     },

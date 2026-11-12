@@ -147,4 +147,62 @@ test.describe("AFTERSIGN save slot contract", () => {
 
     await context.close();
   });
+
+  // #2766 — on game.oodim.com the /player-memory Durable Object is keyed by
+  // player id only (no slot). The local vite preview has no such route
+  // (404 → boot falls back to save memory), which is why this leak only
+  // showed on the deployed build. Reproduce the production path by serving
+  // a populated per-player record — another slot's sealed-delivery fact —
+  // and assert a cold slot (no save of its own) boots, and reloads, with
+  // Io remembering nothing.
+  test("a cold slot does not inherit another slot's per-player memory replica across reload", async ({
+    browser,
+  }) => {
+    test.setTimeout(COLD_START_MS);
+    const otherSlotFact = {
+      id: "io-remembers-blue-packet-sealed",
+      kind: "delivery-outcome",
+      deliveryId: "blue-packet",
+      predicate: "delivered-blue-packet",
+      object: "sealed",
+      sessionId: "session-other-slot",
+    };
+    const context = await browser.newContext();
+    await context.route("**/player-memory", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ facts: { ioMemory: [otherSlotFact] } }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ facts: {} }),
+      });
+    });
+    const page = await context.newPage();
+    watchPageErrors(page, "cold-slot-replica");
+
+    const coldSlot = `save-slot-cold-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await page.goto(`/aftersign/?slot=${coldSlot}`, { waitUntil: "load" });
+    await waitForGame(page);
+    const first = await snapshot(page);
+    expect(first.npcs.io.memory).toEqual([]);
+    expect(first.save).toMatchObject({ revision: 0, dirty: false });
+    await waitForBeat(page, "packet-offered");
+
+    // Player-driven reload of the same cold slot: still no save, so the
+    // per-player replica must still not seed Io.
+    await page.reload({ waitUntil: "load" });
+    await waitForGame(page);
+    const reloaded = await snapshot(page);
+    expect(reloaded.npcs.io.memory).toEqual([]);
+    expect(reloaded.packet.delivered).toBe(false);
+    await waitForBeat(page, "packet-offered");
+
+    await context.close();
+  });
 });

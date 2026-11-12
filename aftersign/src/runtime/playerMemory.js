@@ -29,6 +29,30 @@ export async function readPlayerMemory({ playerId, fetchImpl = fetch }) {
   return readJson(response);
 }
 
+// #2766 — choose the Io memory a booting slot hydrates with.
+// Player-memory is keyed by player id only (no slot), so it must never seed
+// a slot that has no authoritative save of its own: a cold slot would
+// otherwise inherit another slot's recognition facts (the live
+// save-slot-isolation / flagship-reload failures). Order:
+//   1. save.memory (non-empty)
+//   2. save.npcs.io.memory (non-empty)
+//   3. player-memory replica — ONLY when this slot has a save
+//   4. save.npcs.io.memory (possibly empty) / []
+export function selectBootIoMemory({ stored, durableIoMemory }) {
+  const copy = (value) => JSON.parse(JSON.stringify(value));
+  if (Array.isArray(stored?.memory) && stored.memory.length > 0) {
+    return copy(stored.memory);
+  }
+  const npcIoMemory = stored?.npcs?.io?.memory;
+  if (Array.isArray(npcIoMemory) && npcIoMemory.length > 0) {
+    return copy(npcIoMemory);
+  }
+  if (stored && typeof stored === "object" && Array.isArray(durableIoMemory)) {
+    return copy(durableIoMemory);
+  }
+  return Array.isArray(npcIoMemory) ? copy(npcIoMemory) : [];
+}
+
 export async function writePlayerMemory({ playerId, facts, fetchImpl = fetch }) {
   const response = await fetchImpl(PLAYER_MEMORY_PATH, {
     method: "POST",
