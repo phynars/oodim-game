@@ -8,8 +8,9 @@
 // playtest can show that a player sees a line.
 //
 // This script is NOT part of the game. aftersign/vite.config.ts inlines it
-// into index.html only when AFTERSIGN_RENDERED_OUT is set (the CI e2e step),
-// and the preview server appends what it posts to that file. It records the
+// into index.html only when AFTERSIGN_RENDERED_ENDPOINT is set (the CI e2e
+// step, through scripts/ci/worker-dev.sh), and the sink at that address
+// appends what it posts to $AFTERSIGN_RENDERED_OUT. It records the
 // text of every element a player could see, plus the aria-label / title /
 // placeholder / alt values, as each Playwright spec plays.
 //
@@ -26,7 +27,11 @@
 // `resetSliceSave` start a fresh player and clear it. Read-only methods
 // (get*, assert*, waitFor*, ...) and feel/style probes never taint.
 (() => {
-  const ENDPOINT = `${location.origin}/aftersign/__rendered`;
+  // The sink (scripts/rendered-text-sink.mjs) listens on its own port: the
+  // page comes from the real Worker, which has no route for test records.
+  // aftersign/vite.config.ts sets the address just before this script.
+  const ENDPOINT = window.__AFTERSIGN_RENDERED_ENDPOINT__;
+  if (!ENDPOINT) return;
   const ATTRS = ["aria-label", "title", "placeholder", "alt"];
   const TAINT_KEY = "aftersign:rendered-harness";
   // Harness methods that cannot change which text is on screen.
@@ -138,7 +143,10 @@
     if (pending.length === 0) return;
     const body = JSON.stringify(pending);
     pending = [];
-    fetch(ENDPOINT, { method: "POST", body, keepalive: true, headers: { "content-type": "application/json" } }).catch(() => {});
+    // text/plain + no-cors: the sink is on another port, and a JSON content
+    // type would put a preflight before every POST. A spec can close the page
+    // right after a line shows, so the record has to leave in one request.
+    fetch(ENDPOINT, { method: "POST", body, keepalive: true, mode: "no-cors", headers: { "content-type": "text/plain" } }).catch(() => {});
   };
 
   // Collect when the page is idle so the recorder never competes with a

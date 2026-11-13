@@ -12,7 +12,8 @@ the brief ever disagree, the brief wins — fix this doc to match the code.
 ## Served surface
 
 `aftersign/index.html` is the served page entry point
-(`game.oodim.com/aftersign/`; locally, vite preview). It loads module scripts
+(`game.oodim.com/aftersign/`; in the e2e, the same Worker run locally by
+`scripts/ci/worker-dev.sh`). It loads module scripts
 in this order:
 
 1. `./jobOfferPressing.js`

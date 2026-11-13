@@ -167,6 +167,7 @@ test("the real AFTERSIGN config's testIgnore parses (every entry is a .spec.ts)"
 
 // Runs the real recorder (scripts/rendered-text-recorder.js) in a VM with a
 // stub DOM, so the harness taint is tested without a browser (#2529).
+const SINK = "http://game.localhost:4474/";
 function recorderPage(storage = new Map()) {
   const els = [];
   const posted = [];
@@ -180,7 +181,9 @@ function recorderPage(storage = new Map()) {
     document: { body, createTreeWalker: walk },
     location: { origin: "http://x" }, NodeFilter: { SHOW_ELEMENT: 1 },
     sessionStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
-    fetch: (_u, o) => { posted.push(...JSON.parse(o.body)); return Promise.resolve(); },
+    // The build sets the sink's address before the recorder (vite.config.ts).
+    __AFTERSIGN_RENDERED_ENDPOINT__: SINK,
+    fetch: (u, o) => { assert.equal(u, SINK); posted.push(...JSON.parse(o.body)); return Promise.resolve(); },
     MutationObserver: class { constructor(cb) { observer = cb; } observe() {} }, setInterval: () => 0, setTimeout: () => 0,
     addEventListener: (type, fn) => { on[type] = fn; },
   });

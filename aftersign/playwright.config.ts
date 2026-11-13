@@ -1,10 +1,22 @@
 import { defineConfig, devices } from "@playwright/test";
+import dns from "node:dns";
 import { fileURLToPath } from "node:url";
 
-// AFTERSIGN gameplay/story harness. Mirrors the doom config: builds +
-// previews the aftersign/ product at /aftersign/ on its own port, forces
-// SwiftShader WebGL so the three.js scene initializes headless. The spec
-// suite asserts on the window.__game story/state contract (not pixels).
+// AFTERSIGN gameplay/story harness. Builds the aftersign/ product and plays
+// it at /aftersign/ on the REAL Worker run locally (WORKER MODE below),
+// forces SwiftShader WebGL so the three.js scene initializes headless. The
+// spec suite asserts on the window.__game story/state contract (not pixels).
+//
+// WORKER MODE (2026-11-12, the default): the webServer is
+// scripts/ci/worker-dev.sh, which builds, stages public/ the way the deploy
+// does and runs src/server.ts with its Durable Objects under `wrangler dev`.
+// Until then this lane played against `vite preview`, whose save endpoint is
+// a second implementation, which has no /player-memory, and where the client
+// gives every browser one shared player id (the host was `localhost`). A PR
+// could pass every spec here and fail on game.oodim.com (#2739, #2748).
+// The host is `game.localhost`: loopback, a secure context in Chromium, and
+// NOT in the client's local-host list (aftersign/src/playerIdentity.ts), so
+// each browser context gets its own player id, as a visitor does.
 //
 // Why this file exists (2026-07-05): without a playwright config, the
 // harness spec under aftersign/e2e/ has no runner — and a spec that never
@@ -21,9 +33,38 @@ import { fileURLToPath } from "node:url";
 // AFTERSIGN_BASE_URL=https://game.oodim.com/aftersign/ so the spec drives
 // the just-published build. Omitting webServer in served mode is
 // deliberate: a deployment verification must NOT be able to silently fall
-// back to a local Vite preview if the production URL is unreachable.
+// back to a local server if the production URL is unreachable.
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const servedBaseURL = process.env.AFTERSIGN_BASE_URL;
+const WORKER_PORT = 4374;
+const WORKER_HOST = "game.localhost";
+
+// Chromium maps *.localhost to loopback by itself. Node asks the OS, which
+// does not on every machine (Windows; a Linux box without nss-myhostname),
+// so the `request` fixture would fail to connect. This file is loaded by the
+// runner and by every worker process, so the mapping below reaches each of
+// them. Only names under .localhost are touched.
+const isLocalName = (host: unknown): boolean => typeof host === "string" && /(^|\.)localhost$/i.test(host);
+const systemLookup = dns.lookup;
+const systemLookupPromise = dns.promises.lookup;
+if (!(dns.lookup as { aftersignLocal?: boolean }).aftersignLocal) {
+  const lookup = function (this: unknown, host: string, options: unknown, callback?: unknown) {
+    if (!isLocalName(host)) return (systemLookup as (...a: unknown[]) => unknown).call(this, host, options, callback);
+    const done = (typeof options === "function" ? options : callback) as (...a: unknown[]) => void;
+    const all = typeof options === "object" && options !== null && (options as { all?: boolean }).all;
+    if (all) process.nextTick(done, null, [{ address: "127.0.0.1", family: 4 }]);
+    else process.nextTick(done, null, "127.0.0.1", 4);
+    return {};
+  };
+  (lookup as { aftersignLocal?: boolean }).aftersignLocal = true;
+  dns.lookup = lookup as typeof dns.lookup;
+  dns.promises.lookup = ((host: string, options?: unknown) => {
+    if (!isLocalName(host)) return (systemLookupPromise as (...a: unknown[]) => unknown)(host, options);
+    const one = { address: "127.0.0.1", family: 4 };
+    const all = typeof options === "object" && options !== null && (options as { all?: boolean }).all;
+    return Promise.resolve(all ? [one] : one);
+  }) as typeof dns.promises.lookup;
+}
 
 export default defineConfig({
   testDir: "e2e",
@@ -120,12 +161,12 @@ export default defineConfig({
   reporter: [["list"], ["json", { outputFile: "playwright-report/results.json" }]],
   use: {
     // In served mode, baseURL points at the deployed site; otherwise the
-    // local vite-preview webServer below. `trace`/`video` are promoted
+    // local Worker the webServer below starts. `trace`/`video` are promoted
     // from "retain-on-failure" to "on" in served mode because the served
     // run IS the release record — not just a failure diagnostic. The
     // deploy workflow uploads the whole aftersign/{playwright-report,
     // test-results} tree as the aftersign-m-loop-<SHA> artifact.
-    baseURL: servedBaseURL ?? "http://localhost:4374/aftersign/",
+    baseURL: servedBaseURL ?? `http://${WORKER_HOST}:${WORKER_PORT}/aftersign/`,
     trace: servedBaseURL ? "on" : "retain-on-failure",
     video: servedBaseURL ? "on" : "retain-on-failure",
   },
@@ -147,21 +188,19 @@ export default defineConfig({
       },
     },
   ],
-  // Two web servers: the aftersign vite preview (game bundle at :4374) and
-  // a static file server for the portfolio landing page (:4375). The landing
-  // server exists so aftersign/e2e/landing-discoverability.spec.ts can assert
-  // the AFTERSIGN card is present + linked correctly at game.oodim.com/ —
-  // discoverability is a first-touch surface for the flagship, so a broken
-  // card should fail the aftersign lane the same way a broken scene would.
+  // One web server: the real Worker (scripts/ci/worker-dev.sh builds, stages
+  // public/ and runs `wrangler dev`). It serves the game at /aftersign/ and
+  // the portfolio landing page at /, as game.oodim.com does, so
+  // aftersign/e2e/landing-discoverability.spec.ts reads the landing page
+  // from the same server (it had its own static server on :4375).
   //
-  // Why colocated here vs a dedicated landing lane: the assertion IS an
-  // aftersign concern — "is the flagship reachable from the portfolio
-  // index?" — so gating it on the aftersign lane is semantically correct.
-  // The aftersign filter in ci.yml triggers on aftersign/** and `shared`
-  // changes; a pure landing-only edit that breaks the AFTERSIGN card
-  // won't fail this lane, but that's an acceptable trade for now — the
-  // deploy pipeline copies landing/ verbatim, so the failure mode is
-  // "card missing on prod", caught by prod-smoke, not silent.
+  // The readiness probe uses the loopback address: it runs in this process
+  // before any spec, and does not need the host name.
+  //
+  // Outside CI a server already on the port is reused. On a machine where
+  // Node cannot start bash (Windows), run the script's three steps by hand
+  // first: `npm run build:aftersign`, stage public/, `npx wrangler dev
+  // --local --ip 127.0.0.1 --port 4374`.
   //
   // In SERVED mode (AFTERSIGN_BASE_URL set) webServer is undefined on
   // purpose: a deployment verification MUST NOT fall back to a local
@@ -170,24 +209,11 @@ export default defineConfig({
   webServer: servedBaseURL ? undefined : [
     {
       cwd: repoRoot,
-      command:
-        "npm run build:aftersign && npm run preview:aftersign -- --host localhost --port 4374 --strictPort",
-      url: "http://localhost:4374/aftersign/",
+      command: `bash scripts/ci/worker-dev.sh ${WORKER_PORT}`,
+      url: `http://127.0.0.1:${WORKER_PORT}/aftersign/`,
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-    },
-    {
-      cwd: repoRoot,
-      // Static-serve landing/ via a tiny Node script (no external deps, no
-      // registry fetch at test-time). See scripts/serve-landing.mjs for the
-      // full rationale — the earlier `npx --yes serve@14 …` variant was
-      // fragile in CI because it downloaded `serve` at run-time and any
-      // transient npm-registry hiccup surfaced as an aftersign-lane failure
-      // with no signal about the actual spec.
-      command: "node scripts/serve-landing.mjs 4375",
-      url: "http://localhost:4375/",
-      reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      // Build + stage + the Worker's first compile.
+      timeout: 240_000,
     },
   ],
 });
