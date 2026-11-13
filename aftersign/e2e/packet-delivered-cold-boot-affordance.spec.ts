@@ -136,7 +136,12 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
       const slot = `packet-delivered-cold-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;
-      const url = `/aftersign/?slot=${slot}`;
+      // One player per run, named in the page URL (`?player=`). On the
+      // deployed Worker each browser mints its own id, so without it the
+      // fresh context below is a NEW player and finds no save to restore
+      // (on `localhost` every browser shared one id, which hid this).
+      const player = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const url = `/aftersign/?slot=${slot}&player=${player}`;
 
       // --- ARM: play the sealed-packet delivery in the SEED context.
       // The packet stays sealed by default (see sibling durable-return-
