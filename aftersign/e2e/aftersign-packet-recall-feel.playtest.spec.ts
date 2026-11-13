@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { aftersignPacketRecallLine } from "../../apps/web/src/aftersign/aftersignPacketRecallCopy.js";
+import { ioNextJobLine } from "../src/ioNextJobDialogue.js";
 import {
   PACKET_RECALL_LINE_DATA_ATTR,
   PACKET_RECALL_LINE_ID,
@@ -136,6 +137,14 @@ test.describe("AFTERSIGN packet-recall (phone tap)", () => {
     await waitForBeat(page, "return-tone-choice");
     await tapChoice(page, "ask-for-next-job");
     await waitForBeat(page, "io-next-job");
+    // #2783: Io's next-job line now comes from resolveIoDialogue
+    // (aftersign/src/ioDialogueResolver.js). After these taps the served
+    // #line must still include the authored next-job handoff prompt.
+    const nextJobPromptText = ioNextJobLine();
+    expect(nextJobPromptText).not.toBe("");
+    await expect(page.locator("#line")).toContainText(nextJobPromptText, {
+      timeout: WAIT_MS,
+    });
     await tapChoice(page, "deliver-packet");
 
     // ── ROUND 2 — looped return; recall must render on a sibling ──────
