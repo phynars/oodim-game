@@ -283,6 +283,11 @@ import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test
 // extensioned `./bellArchiveScene.ts`, which has no relative imports.
 import { runBellArchiveSceneChecks } from "./src/bellArchiveScene.test.ts";
 import { runIoDialogueResolverChecks } from "./src/ioDialogueResolver.test.ts";
+// Delivery auto-advance timer uniqueness (#2788): pins the e2e
+// `dropDeliveryAutoAdvance` assumption that served JS has exactly one 1180 ms
+// timer. Uses node:fs, so it sits outside `aftersign/src/`; harness-only, so
+// named `.test.ts` (never served). It has no relative imports.
+import { runDeliveryTimerUniquenessChecks } from "./deliveryTimerUniqueness.test.ts";
 
 type Runner = {
   label: string;
@@ -444,6 +449,7 @@ const runners: Array<Runner | AsyncRunner> = [
   // being silently dropped.
   { label: "runBellArchiveSceneChecks", run: runBellArchiveSceneChecks },
   { label: "runIoDialogueResolverChecks", run: runIoDialogueResolverChecks },
+  { label: "runDeliveryTimerUniquenessChecks", run: runDeliveryTimerUniquenessChecks },
 ];
 
 async function main(): Promise<void> {
