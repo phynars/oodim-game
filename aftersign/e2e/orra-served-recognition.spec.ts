@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { IO_RETURN_MEMORY_ID } from "../../e2e-shared/flagshipStoryStateContract";
 import { ORRA_LINE_COPY_BY_ID } from "../src/orraRuntimeLane";
+import { recordSaveRequests, waitForLandedEndingSave } from "./helpers/saveRequests";
 
 const WAIT_MS = 60_000;
 const COLD_START_MS = 180_000;
@@ -124,13 +125,20 @@ test.describe("served Orra recognition lane", () => {
       }, breakMode);
     }
 
+    const saves = recordSaveRequests(page);
     for (const choiceId of ["light-vigil", "spare-vigil"] as const) {
       const slot = `orra-served-${choiceId}-${Date.now()}`;
       const breakQuery = breakMode ? `&breakMode=${encodeURIComponent(breakMode)}` : "";
       await page.goto(`/aftersign/?slot=${slot}${breakQuery}`, { waitUntil: "load" });
       await waitForVersion(page);
       await runIoBeats(page);
+      const endingsBefore = saves.landedEndingIds.length;
       await meetOrraAndChoose(page, choiceId);
+      // `save.dirty` can already read false from an earlier save, so
+      // reloadSavedRun's wait does not prove the vigil's save landed. Wait
+      // for the server to hold the ending first (a break mode may keep the
+      // save off the server, so only on the unbroken run).
+      if (!breakMode) await waitForLandedEndingSave(saves, endingsBefore, WAIT_MS);
       await reloadSavedRun(page);
       // The vigil tap commits story.endingId and force-saves. On reload the
       // ending is hydrated, #vigilChoice (and #meetOrraButton inside it) is

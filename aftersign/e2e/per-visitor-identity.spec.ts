@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 
 // Per-visitor save identity (the shared-save bug). Before this, every
 // visitor booted as `local-slice-player`, so once the Worker save
@@ -61,6 +62,8 @@ test.describe("AFTERSIGN per-visitor identity", () => {
       const contextA = await browser.newContext();
       cleanup.push(() => contextA.close());
       const pageA = await contextA.newPage();
+      // Deliver, then forceSave + a wait for `save.dirty === false`.
+      await dropDeliveryAutoAdvance(pageA);
       await pageA.goto(url, { waitUntil: "load" });
       await waitForBeat(pageA, "packet-offered");
 

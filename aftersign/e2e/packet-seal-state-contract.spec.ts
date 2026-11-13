@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 
 // The real game surface exposes `packet.sealed: boolean` and `scene.beat`
 // via publishState() in aftersign/index.html. This spec asserts the
@@ -72,6 +73,8 @@ test.describe("packet seal state contract", () => {
 
     const slot = `packet-seal-contract-sealed-return-${Date.now()}`;
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`.
+    await dropDeliveryAutoAdvance(page);
     await page.goto(`/aftersign/?slot=${slot}`);
     await waitForBeat(page, "packet-offered");
 

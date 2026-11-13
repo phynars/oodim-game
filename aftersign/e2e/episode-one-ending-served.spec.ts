@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 import { performPacketGesture } from "./helpers/packetGesture";
+import { recordSaveRequests, waitForLandedClear } from "./helpers/saveRequests";
 
 // AFTERSIGN M3-E1 (#2261) — Episode 1 ending beats A/B must be
 // REACHABLE through the real served funnel at 390×844 and each path
@@ -354,12 +355,17 @@ test.describe("Saint Orra red-tag recall", () => {
     test(`recalls the real first tap after a visible reset: ${choiceId}`, async ({ page }) => {
       test.setTimeout(150_000);
       const slot = `orra-recall-reset-${choiceId}-${Date.now()}`;
+      const saves = recordSaveRequests(page);
       await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
       await waitForVersion(page);
 
       const reset = page.locator("#resetButton");
       await expect(reset).toBeVisible({ timeout: WAIT_MS });
+      const clearsBefore = saves.landedClears;
       await reset.click();
+      // "Start fresh" rebuilds the state only after its save DELETE
+      // returns; taps made before that are wiped with the old state.
+      await waitForLandedClear(page, saves, clearsBefore, WAIT_MS);
 
       await runToEnding(page, "sealed", true, choiceId);
       await carryRedTagToSaintOrra(page);

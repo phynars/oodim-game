@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 
 // NPC-memory ROUND-TRIP across a hard session boundary.
 //
@@ -125,14 +126,7 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
 
     // deliverPacket()'s auto-advance is the only 1180 ms timer in the client.
     // Dropped before any page script runs (see the timing note above).
-    await page.addInitScript(() => {
-      const originalSetTimeout = window.setTimeout.bind(window);
-      type SetTimeoutFn = typeof window.setTimeout;
-      window.setTimeout = ((handler: TimerHandler, timeout?: number, ...rest: unknown[]) => {
-        if (timeout === 1180) return 0 as unknown as ReturnType<SetTimeoutFn>;
-        return originalSetTimeout(handler as never, timeout, ...rest);
-      }) as SetTimeoutFn;
-    });
+    await dropDeliveryAutoAdvance(page);
 
     // ---- Session A: sealed delivery mints the fact; persist it. ----
     await page.goto(url, { waitUntil: "load" });

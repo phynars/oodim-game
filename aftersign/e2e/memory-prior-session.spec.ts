@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 
 // Cold-start budget: SwiftShader init + first WebGL context can exceed
 // Playwright's default timeout in CI even when story/state logic is correct.
@@ -95,6 +96,8 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "prior-session");
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`.
+    await dropDeliveryAutoAdvance(page);
     await page.goto(`/aftersign/?slot=prior-session-${Date.now()}`, { waitUntil: "load" });
 
     await waitForBeat(page, "packet-offered");
@@ -204,6 +207,8 @@ test.describe("AFTERSIGN prior-session memory contract", () => {
     const slotA = `memory-isolation-a-${Date.now()}`;
     const slotB = `memory-isolation-b-${Date.now()}`;
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`.
+    await dropDeliveryAutoAdvance(page);
     await page.goto(`/aftersign/?slot=${slotA}`);
     await waitForBeat(page, "packet-offered");
     await page.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));
