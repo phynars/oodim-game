@@ -1,6 +1,6 @@
 import { defineConfig, type PreviewServer, type ViteDevServer } from "vite";
 import { fileURLToPath } from "node:url";
-import { appendFileSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 // AFTERSIGN — the flagship's first playable vertical slice (Io remembers the
@@ -186,35 +186,20 @@ const authoritativeSavePlugin = {
 
 // Rendered-text recording for served-reach's `rendered` rule (CI e2e step
 // only; see scripts/rendered-text-recorder.js). Inert unless
-// AFTERSIGN_RENDERED_OUT is set, so the deployed build never carries it.
-const renderedOut = process.env.AFTERSIGN_RENDERED_OUT;
+// AFTERSIGN_RENDERED_ENDPOINT is set, so the deployed build never carries it.
+// The endpoint is the sink scripts/ci/worker-dev.sh starts beside the Worker
+// (scripts/rendered-text-sink.mjs); the build only tells the recorder where
+// to post.
+const renderedEndpoint = process.env.AFTERSIGN_RENDERED_ENDPOINT;
 const renderedTextPlugin = {
   name: "aftersign-rendered-text",
   transformIndexHtml(html: string) {
-    if (!renderedOut) return html;
+    if (!renderedEndpoint) return html;
     const recorder = readFileSync(fileURLToPath(new URL("../scripts/rendered-text-recorder.js", import.meta.url)), "utf8");
-    return html.replace("</head>", `<script>${recorder}</script>\n</head>`);
-  },
-  configurePreviewServer(server: PreviewServer) {
-    if (!renderedOut) return;
-    server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-      if (req.method !== "POST" || req.url?.split("?")[0] !== "/aftersign/__rendered") return next();
-      readJsonBody(req)
-        .then((lines) => {
-          if (Array.isArray(lines)) {
-            // A line is a string (reached by real input) or `{ t, via }`
-            // (shown only after a harness call; see the recorder).
-            const text = lines
-              .filter((l) => typeof l === "string" || (l && typeof l.t === "string" && typeof l.via === "string"))
-              .map((l) => JSON.stringify(l))
-              .join("\n");
-            if (text) appendFileSync(renderedOut, text + "\n");
-          }
-          res.statusCode = 204;
-          res.end();
-        })
-        .catch(() => { res.statusCode = 400; res.end(); });
-    });
+    // A function replacement: a `$` in the recorder's text would be read as a
+    // pattern by a string replacement.
+    const script = `<script>window.__AFTERSIGN_RENDERED_ENDPOINT__=${JSON.stringify(renderedEndpoint)};${recorder}</script>\n</head>`;
+    return html.replace("</head>", () => script);
   },
 };
 

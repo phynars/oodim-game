@@ -3,10 +3,13 @@
 # (src/server.ts with its Durable Objects, run locally by `wrangler dev`),
 # serving the same staged build the deploy publishes.
 #
-# Why: the aftersign e2e lane runs against `vite preview`, whose save endpoint
-# is a second implementation (aftersign/vite.config.ts) and which has no
-# /player-memory route. The deployed Worker has both, backed by Durable
-# Objects. A change could pass every PR check and fail on game.oodim.com:
+# Why: on 11-11 the aftersign e2e lane ran against `vite preview`, whose save
+# endpoint is a second implementation (aftersign/vite.config.ts) and which has
+# no /player-memory route. The deployed Worker has both, backed by Durable
+# Objects. (Since 11-12 the e2e lane plays against the Worker too,
+# scripts/ci/worker-dev.sh; this job stays because it runs on every PR, not
+# only those the aftersign path filter picks, and it runs the deploy's smoke.)
+# A change could pass every PR check and fail on game.oodim.com:
 # game #2739 (11-10), then its fix #2748, which also broke the post-deploy
 # smoke and kept the deploy red for 8 h (11-11). The same failures reproduce
 # against a local `wrangler dev` in under a minute, so the check moves here,

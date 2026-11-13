@@ -110,13 +110,18 @@ async function openFreshPhoneContext(browser: Browser): Promise<Page> {
     isMobile: true,
   });
   const page = await context.newPage();
-  // A brand-new context: no cookies, no localStorage. Assert the storage
-  // gap explicitly so a later restore cannot be satisfied by the previous
-  // context's cached save.
+  // A brand-new context: no cookies, no saved game in localStorage. Assert
+  // the storage gap explicitly so a later restore cannot be satisfied by the
+  // previous context's cached save. The one key allowed is the player id:
+  // on the deployed Worker a first visit mints one per browser and keeps it
+  // there (aftersign/src/playerIdentity.ts); it holds no game state.
   await page.goto("/aftersign/", { waitUntil: "load" });
   await expect
-    .poll(() => page.evaluate(() => window.localStorage.length), { timeout: WAIT_MS })
-    .toBe(0);
+    .poll(
+      () => page.evaluate(() => Object.keys(window.localStorage).filter((key) => key !== "aftersign:player-id:v1")),
+      { timeout: WAIT_MS },
+    )
+    .toEqual([]);
   return page;
 }
 

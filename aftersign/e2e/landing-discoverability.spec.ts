@@ -12,19 +12,18 @@ import { test, expect } from "@playwright/test";
 //   3. the card renders its "AFTERSIGN" heading + an "In development" status
 //      pill (so the card copy hasn't collapsed to an empty shell).
 //
-// Runs under the aftersign playwright lane (see aftersign/playwright.config.ts
-// — a second webServer serves landing/ on :4375). Absolute URL used because
-// the config's baseURL points at the aftersign game (:4374/aftersign/).
+// Runs under the aftersign playwright lane (see aftersign/playwright.config.ts).
+// The landing page is the root of the server that serves the game: the local
+// Worker in CI, game.oodim.com in served mode. The config's baseURL points at
+// the game (/aftersign/), so the root of that origin is read from it.
 //
 // Scope note: this spec asserts the CARD's presence + link + status; it does
 // NOT verify visual polish, hover animation, or the copy word-for-word. Those
 // are landing-side concerns, not flagship-discoverability concerns.
 
-const LANDING_URL = "http://localhost:4375/";
-
 test.describe("landing page discoverability — AFTERSIGN card", () => {
-  test("AFTERSIGN card is visible and links to ./aftersign/", async ({ page }) => {
-    await page.goto(LANDING_URL);
+  test("AFTERSIGN card is visible and links to ./aftersign/", async ({ page, baseURL }) => {
+    await page.goto(new URL("/", baseURL).href);
 
     const card = page.getByRole("link", { name: /aftersign/i });
     await expect(card).toBeVisible();

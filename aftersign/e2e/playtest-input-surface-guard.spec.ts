@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const E2E_DIR = new URL(".", import.meta.url);
+// A file path, not a URL's `.pathname`: on Windows that is `/C:/...`, which
+// `join` turns into a path under a folder named `C:`.
+const E2E_DIR = fileURLToPath(new URL(".", import.meta.url));
 
 const PLAYED_ACCEPTANCE_SPEC_PATTERN = /(?:playtest|played).*\.spec\.ts$/;
 const BLOCK_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
@@ -17,7 +20,7 @@ const INTERNAL_INPUT_PATTERNS = [
 
 test("played acceptance specs use visible player input and do not drive choices through window.__game.input", () => {
   const acceptanceSpecs = readdirSync(E2E_DIR)
-    .map((fileName) => join(E2E_DIR.pathname, fileName))
+    .map((fileName) => join(E2E_DIR, fileName))
     .filter((filePath) => PLAYED_ACCEPTANCE_SPEC_PATTERN.test(basename(filePath)))
     .filter((filePath) => basename(filePath) !== basename(import.meta.url));
 

@@ -19,7 +19,11 @@ import { expect, test, type Page } from "@playwright/test";
 // Divergence is seeded through the REAL persistence lane: each slot's
 // payload is PUT into the server-authoritative endpoint that
 // `aftersign/main.js` reads at boot:
-//   /aftersign/save/local-slice-player/<slot>
+//   /aftersign/save/<player>/<slot>
+// The player is one id per run, named in the page URL (`?player=`). On the
+// deployed Worker each browser mints its own id, so a save seeded under a
+// fixed id is never the one the page reads (until 11-12 this spec seeded
+// `local-slice-player`, the id the client uses only on `localhost`).
 // There is no browser-local fallback in the normal lane; a localStorage
 // seed would be invisible to boot. The offered-set signal is Io's
 // durable top-level `memory` array, which boot hydrates into
@@ -41,7 +45,7 @@ import { expect, test, type Page } from "@playwright/test";
 const WAIT_MS = 10_000;
 const COLD_START_MS = 60_000;
 
-const BOOTSTRAP_PLAYER_ID = "local-slice-player";
+const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
 
 // Phone playtest: iPhone-class portrait viewport. Every interaction in
@@ -154,7 +158,7 @@ const EMPTY_MEMORY_SAVE = {
   packet: { delivered: false, route: null, sealed: true, deliveredAt: null },
   delivery: { outcome: "unknown" },
   player: {
-    id: "local-slice-player",
+    id: BOOTSTRAP_PLAYER_ID,
     name: null,
     flags: { io_intro_seen: true },
   },
@@ -172,7 +176,7 @@ const COMPLETED_MEMORY_SAVE = {
   },
   delivery: { outcome: "sealed" },
   player: {
-    id: "local-slice-player",
+    id: BOOTSTRAP_PLAYER_ID,
     name: null,
     flags: { io_intro_seen: true },
   },
@@ -215,7 +219,7 @@ test.describe("AFTERSIGN memory divergence — phone playtest", () => {
     // ─────────────────────────────────────────────────────────────
     // SLOT A — empty memory. The safe-default job is the only offer.
     // ─────────────────────────────────────────────────────────────
-    await page.goto(`/aftersign/?slot=${slotA}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=${slotA}&player=${BOOTSTRAP_PLAYER_ID}`, { waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "packet-offered");
 
@@ -259,7 +263,7 @@ test.describe("AFTERSIGN memory divergence — phone playtest", () => {
     // SLOT B — completed prior delivery in durable memory. The
     // completed set renders; the safe default is gone.
     // ─────────────────────────────────────────────────────────────
-    await page.goto(`/aftersign/?slot=${slotB}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?slot=${slotB}&player=${BOOTSTRAP_PLAYER_ID}`, { waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "packet-offered");
 
