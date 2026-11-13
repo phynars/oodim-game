@@ -26,6 +26,20 @@ Commit `1cd6148` adds the `ioRouteReturnRender` runtime helper and unit test, ex
 
 **Input/feedback assessment:** this is dialogue selection and renderer wiring from route state, with served flow coverage. It does not modify the mechanics or timing of the player action that created the route state.
 
+## Verification anchors
+
+The commit hashes above come from local `git log` / `git show --stat` output. Anyone without git history can check the runtime claims against `aftersign/main.js` at main `66304f1` instead:
+
+| Claim | Anchor |
+| --- | --- |
+| Boot reads from the authoritative save | `readAuthoritativeSave(` at `aftersign/main.js:1030` |
+| Route-attention taps commit durably | `persistAuthoritative({ dirty: true })` at `aftersign/main.js:3077` (also `:2446`, `:5480`) |
+| Explicit save awaits the authoritative writer | `persistAuthoritative({ dirty: false })` at `aftersign/main.js:4670` |
+| Isolated `local-only-save` diagnostic fallback | `breakMode === "local-only-save"` at `aftersign/main.js:4643`, `:4698` |
+| Io route-return helper is imported (the #2514 fix) | `import { stampIoRouteReturnLine }` at `aftersign/main.js:110` |
+
+These line numbers apply only to that SHA. If they drift, find the symbols by name.
+
 ## Conclusion
 
 Diego’s concern is only partly supported: #2637 crosses the persistence boundary immediately after player actions, so persistence regressions can affect the perceived consequence of a tap. #2554 and #2511 make results reachable and renderable after player input. None of these merged paths is evidence of an input-feel or feedback-timing change, and none substitutes for a human served-device replay with a deployed URL, SHA, and fresh-browser restoration result.
