@@ -28,6 +28,16 @@ import { test, expect, Page } from "@playwright/test";
 // deliver and forceSave), and treats either persisted beat ("packet-delivered"
 // or "io-return-recognition") as valid — the invariant we prove is the
 // MEMORY-FACT round-trip, not which beat the timer landed on.
+//
+// 11-13: one evaluate is not enough against the real Worker. forceSave()
+// awaits the save PUT and then the player-memory POST (on the old preview
+// server that route did not exist and answered at once). When the two take
+// longer than the timer, the beat changes mid-save and forceSave() returns
+// with `save.dirty === true`: seen once in CI on the Worker lane, and
+// reproduced by delaying POST /player-memory by 1.5 s. So session A's page
+// drops that one timer before the game boots (the same patch as
+// packet-delivered-cold-boot-affordance.spec.ts); the saved beat is then
+// always "packet-delivered" and nothing changes state during the save.
 
 // Cold-start budget: SwiftShader init + first WebGL context can exceed
 // Playwright's default timeout in CI even when story/state logic is correct.
@@ -112,6 +122,17 @@ test.describe("AFTERSIGN npc-memory round-trip (hard session boundary)", () => {
 
     const slot = `npc-memory-roundtrip-${Date.now()}`;
     const url = `/aftersign/?slot=${slot}`;
+
+    // deliverPacket()'s auto-advance is the only 1180 ms timer in the client.
+    // Dropped before any page script runs (see the timing note above).
+    await page.addInitScript(() => {
+      const originalSetTimeout = window.setTimeout.bind(window);
+      type SetTimeoutFn = typeof window.setTimeout;
+      window.setTimeout = ((handler: TimerHandler, timeout?: number, ...rest: unknown[]) => {
+        if (timeout === 1180) return 0 as unknown as ReturnType<SetTimeoutFn>;
+        return originalSetTimeout(handler as never, timeout, ...rest);
+      }) as SetTimeoutFn;
+    });
 
     // ---- Session A: sealed delivery mints the fact; persist it. ----
     await page.goto(url, { waitUntil: "load" });
