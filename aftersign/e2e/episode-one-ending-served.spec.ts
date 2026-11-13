@@ -366,6 +366,26 @@ test.describe("Saint Orra red-tag recall", () => {
       await expect(page.locator("#saintOrraRedTagRecall")).toHaveText(expectedLine);
     });
   }
+
+  // #2724 AC-5: the neutral fallback. The player reaches the ending without
+  // tapping either "Take the second packet" or "Ask what changed" (the vigil
+  // tray is visible at io-next-job either way), so `redTagFirstTap` stays
+  // null. The carry control still renders on the ending card, and Orra must
+  // not claim a first tap the player never made.
+  test("speaks the neutral courier line when the player never made a first tap", async ({ page }) => {
+    test.setTimeout(150_000);
+    const slot = `orra-recall-neutral-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+
+    await runToEnding(page, "sealed", false);
+    await carryRedTagToSaintOrra(page);
+
+    const recall = page.locator("#saintOrraRedTagRecall");
+    await expect(recall).toHaveText("You brought the red tag to my door. I remember the courier.");
+    await expect(recall).not.toContainText("at once");
+    await expect(recall).not.toContainText("asked what changed");
+  });
 });
 
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
