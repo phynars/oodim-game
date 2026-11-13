@@ -282,6 +282,7 @@ import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test
 // choices, and the persist-before-card gate. Sole relative import is the
 // extensioned `./bellArchiveScene.ts`, which has no relative imports.
 import { runBellArchiveSceneChecks } from "./src/bellArchiveScene.test.ts";
+import { runIoDialogueResolverChecks } from "./src/ioDialogueResolver.test.ts";
 
 type Runner = {
   label: string;
@@ -442,6 +443,7 @@ const runners: Array<Runner | AsyncRunner> = [
   // every runner so a rejected promise counts as a failure instead of
   // being silently dropped.
   { label: "runBellArchiveSceneChecks", run: runBellArchiveSceneChecks },
+  { label: "runIoDialogueResolverChecks", run: runIoDialogueResolverChecks },
 ];
 
 async function main(): Promise<void> {
