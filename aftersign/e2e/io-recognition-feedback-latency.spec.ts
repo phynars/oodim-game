@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 
 // Cold-start budget: SwiftShader init + first WebGL context can exceed
 // Playwright's default timeout in CI even when story/state logic is correct.
@@ -73,6 +74,8 @@ test("Io recognition line lands within the feel budget after a returning advance
   // mirrors memory-prior-session.spec.ts so the fixture is exactly what the
   // shipping game writes to localStorage — no fabricated keys.
   const slot = `io-recognition-latency-${Date.now()}`;
+  // Deliver, then forceSave + a wait for `save.dirty === false`.
+  await dropDeliveryAutoAdvance(page);
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
   await waitForBeat(page, "packet-offered");
@@ -140,6 +143,8 @@ test("full page reload restores delivered save straight to recognition with memo
   test.setTimeout(COLD_START_MS);
 
   const slot = `io-recognition-full-reload-${Date.now()}`;
+  // Deliver, then forceSave + a wait for `save.dirty === false`.
+  await dropDeliveryAutoAdvance(page);
   await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
 
   await waitForBeat(page, "packet-offered");

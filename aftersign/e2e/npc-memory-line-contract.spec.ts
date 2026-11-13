@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 import {
   buildRememberingLine,
   isRememberingLine,
@@ -103,6 +104,8 @@ test.describe("AFTERSIGN NPC memory-line contract", () => {
   }) => {
     test.setTimeout(COLD_START_MS);
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`.
+    await dropDeliveryAutoAdvance(page);
     await page.goto(`/aftersign/?slot=line-contract-sealed-${Date.now()}`, { waitUntil: "load" });
 
     await waitForBeat(page, "packet-offered");
@@ -144,6 +147,8 @@ test.describe("AFTERSIGN NPC memory-line contract", () => {
   }) => {
     test.setTimeout(COLD_START_MS);
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`.
+    await dropDeliveryAutoAdvance(page);
     await page.goto(`/aftersign/?slot=line-contract-opened-${Date.now()}`, { waitUntil: "load" });
 
     await waitForBeat(page, "packet-offered");

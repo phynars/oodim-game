@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 
 // Cold-start budget: SwiftShader init + esm.sh cold fetch of
 // three@0.165.0 (+ postprocessing subpaths) + first WebGL context can
@@ -91,6 +92,8 @@ test.describe("AFTERSIGN save slot contract", () => {
     const firstPage = await context.newPage();
     watchPageErrors(firstPage, "first");
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`.
+    await dropDeliveryAutoAdvance(firstPage);
     await firstPage.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForBeat(firstPage, "packet-offered");
     await firstPage.evaluate(() => window.__game!.input.choose("keep-packet-sealed"));

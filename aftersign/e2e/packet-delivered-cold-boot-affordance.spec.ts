@@ -30,6 +30,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // If the affordance regresses (button hidden, disabled, mis-labelled,
 // or wired to the wrong choice id) this spec reds.
 
+import { dropDeliveryAutoAdvance } from "./helpers/deliveryTimer";
 import { expectedIoRecognitionLine } from "../src/ioRecognitionDialogue";
 import { ioReturningSessionLines } from "../../packages/aftersign/src/ioReturningSession";
 
@@ -166,25 +167,7 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
       // `page.addInitScript` runs this before any page JS executes,
       // including the composer/three.js boot, so the patched timer
       // is in place when deliverPacket() queues its callback.
-      await page.addInitScript(() => {
-        const originalSetTimeout = window.setTimeout.bind(window);
-        // Preserve the Window & NodeJS.Timeout overload signatures.
-        type SetTimeoutFn = typeof window.setTimeout;
-        window.setTimeout = ((
-          handler: TimerHandler,
-          timeout?: number,
-          ...rest: unknown[]
-        ) => {
-          // deliverPacket()'s auto-advance is the only 1180ms timer in
-          // the aftersign client. Dropping that specific delay keeps
-          // the sealed `packet-delivered` save authoritative.
-          if (timeout === 1180) {
-            // Return a fake id so callers that store it don't blow up.
-            return 0 as unknown as ReturnType<SetTimeoutFn>;
-          }
-          return originalSetTimeout(handler as never, timeout, ...rest);
-        }) as SetTimeoutFn;
-      });
+      await dropDeliveryAutoAdvance(page);
 
       await page.goto(url, { waitUntil: "load" });
       await waitForReady(page);

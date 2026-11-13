@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { dropDeliveryAutoAdvance, forceSaveUntilClean } from "./helpers/deliveryTimer";
 
 import {
   IO_RETURN_LINES,
@@ -306,10 +307,9 @@ async function completePacketBeat(
 }
 
 async function persistAndClearReload(page: Page): Promise<void> {
-  await page.evaluate(() => window.__game!.input.forceSave());
-  await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-    timeout: WAIT_MS,
-  });
+  // The callers need deliverPacket()'s auto-advance (it publishes the
+  // memory beat), so the timer stays and the save is repeated until clean.
+  await forceSaveUntilClean(page, WAIT_MS);
   await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
   await readSurface(page);
 }
@@ -430,6 +430,9 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     test.setTimeout(COLD_START_MS);
     watchPageErrors(page, "npc-memory-roundtrip");
     const breakMode = currentBreakMode();
+    // Each iteration delivers, then forceSaves and waits for
+    // `save.dirty === false`; session B returns through `return-to-io`.
+    await dropDeliveryAutoAdvance(page);
 
     for (const outcome of ["sealed", "opened"] as const) {
       // Wrap each iteration in a labeled step so a Playwright trace
@@ -697,10 +700,7 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
         expect(report.peakHapticScale).toBeGreaterThan(1);
         expect(report.beatDurationMs).toBeGreaterThan(0);
 
-        await page.evaluate(() => window.__game!.input.forceSave());
-        await page.waitForFunction(() => window.__game?.save.dirty === false, undefined, {
-          timeout: WAIT_MS,
-        });
+        await forceSaveUntilClean(page, WAIT_MS);
         await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
         await readSurface(page);
         await waitForStoryIdle(page);
@@ -820,6 +820,9 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     const slot = `flagship-durable-${Date.now()}`;
     const url = `/aftersign/?slot=${slot}`;
 
+    // Deliver, then forceSave + a wait for `save.dirty === false`, then a
+    // before/after comparison that must not move under the timer.
+    await dropDeliveryAutoAdvance(page);
     await page.goto(url, { waitUntil: "load" });
     await readSurface(page);
 

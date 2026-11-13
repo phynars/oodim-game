@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { recordSaveRequests, waitForLandedSave } from "./helpers/saveRequests";
 
 // AFTERSIGN reload after "Ask for next job" (#2267, live-verify by Soren).
 //
@@ -96,6 +97,7 @@ test.describe("AFTERSIGN reload after 'Ask for next job' keeps red tag (#2267)",
   }) => {
     test.setTimeout(120_000);
     const slot = `reload-after-next-job-${Date.now()}`;
+    const saves = recordSaveRequests(page);
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
 
@@ -112,6 +114,9 @@ test.describe("AFTERSIGN reload after 'Ask for next job' keeps red tag (#2267)",
 
     // Reload the same slot — this re-runs boot and the state
     // constructor that hard-coded `delivery.id = "blue-packet"` on main.
+    // The beat renders before its save has landed; reload once the server
+    // holds `io-next-job`, or the reload restores the beat before it.
+    await waitForLandedSave(saves, "io-next-job");
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "io-next-job");
