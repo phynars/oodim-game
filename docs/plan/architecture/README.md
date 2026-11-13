@@ -206,9 +206,12 @@ sequenceDiagram
   Note over G,S: A later session reads the save at boot and shows the same ending
 ```
 
-On `main` today the "red tag?" input is armed by **Ask for next job**, not by an
-explicit accept, which is why the card can say "You accepted the red tag" when
-the player never did (game #2577; PR #2578 adds a separate accept fact).
+On `main` today **Ask for next job** can arm `secondPacketHandoffAccepted` so
+that the red-tag job identity survives the round boundary. It does not set the
+ending-acceptance fact. `redTagAccepted` is set only when the player visibly
+taps **Take the second packet**; legacy saves without that fact do not report an
+acceptance, except a save that already recorded the true `sealed-and-tagged`
+ending retains its recorded outcome on reload.
 
 ### Durable memory
 
@@ -229,6 +232,7 @@ classDiagram
     returnReason : kind | evasive | blunt
     routeRisk
     secondPacketHandoffAccepted
+    redTagAccepted
   }
   class Delivery {
     id : blue-packet | red-tag
