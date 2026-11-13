@@ -138,6 +138,12 @@ test.describe("AFTERSIGN save persistence (vite-preview save surface)", () => {
       await waitForBeat(primary, "packet-offered");
       await expect(primary.locator("#offeredJobs button[data-offered-job-id]:visible").first()).toBeVisible();
 
+      // One WebGL page alive at a time: under software rendering a second
+      // live scene in the same browser needs about 10 s to report ready in
+      // CI, which is this file's whole wait (seen on the sibling
+      // m-loop-e1-two-round-playtest, 11-13). The primary page's checks are
+      // done; closing it again in `finally` is a no-op.
+      await primary.close();
       await boot(other, otherSlot, player);
       const otherSavePath = `/aftersign/save/${player}/${encodeURIComponent(otherSlot)}`;
       const otherGet = await other.request.get(otherSavePath);

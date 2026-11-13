@@ -216,6 +216,14 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
       expect(recordAOfferIds, "record A must render the safe-default offer").toEqual([
         "job-offer-job-safe-delivery",
       ]);
+      // One WebGL page alive at a time. Under software rendering, a second
+      // live scene in the same browser takes seconds per frame: in CI the
+      // second page here needed 10.2 to 11.9 s to report ready (the first
+      // needed 0.3 s), right on the 10 s wait, so the test failed whenever
+      // the runner was a little slower (game PRs #2782 and #2784, 11-13).
+      // Record A is read again further down from a fresh page: the same
+      // boot from the server's save that a reload would do.
+      await pageA.close();
 
       // ── RECORD B — completed-loop memory ─────────────────────────────
       const pageB = await context.newPage();
@@ -247,16 +255,18 @@ test.describe("M-LOOP-E1 two-round phone playtest", () => {
         "two divergent memory records must present different tappable job controls",
       ).not.toEqual(recordAOfferIds);
 
-      // Record A's memory must be untouched by record B's play.
-      // pageA has been a background tab since pageB opened; a hidden
-      // page can have its frame loop throttled, so `scene.ready` may
-      // never flip within WAIT_MS. Foreground it before reloading.
-      await pageA.bringToFront();
-      await pageA.reload({ waitUntil: "load" });
-      await waitForReady(pageA);
-      await waitForBeat(pageA, "packet-offered");
+      // Record A's memory must be untouched by record B's play. Same
+      // browser context, so the same player; record B's page is closed
+      // first (one WebGL page at a time, see above).
+      await pageB.close();
+      const pageAAgain = await context.newPage();
+      await pageAAgain.goto(`/aftersign/?slot=m-loop-1819-a-${stamp}`, {
+        waitUntil: "load",
+      });
+      await waitForReady(pageAAgain);
+      await waitForBeat(pageAAgain, "packet-offered");
       expect(
-        await visibleOfferIds(pageA),
+        await visibleOfferIds(pageAAgain),
         "record A must still render its first-visit controls after record B looped",
       ).toEqual(recordAOfferIds);
     } finally {
