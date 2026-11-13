@@ -7,6 +7,8 @@ import {
   AFTERSIGN_DELIVERY_COMPLETE_COPY,
   aftersignDeliveryCompleteLine,
 } from "./aftersignDeliveryCompleteCopy.js";
+// @ts-ignore -- plain JS module without declarations.
+import { resolveIoDialogue } from "../../../../aftersign/src/ioDialogueResolver.js";
 
 // Re-review on PR #2247 (Soren Vask):
 //   1. The first draft resolved main.js via `new URL(..., import.meta.url)`
@@ -29,6 +31,12 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const servedRendererSource = readFileSync(
   resolve(here, "../../../../aftersign/main.js"),
+  "utf8",
+);
+// #2783: Io's non-terminal beat routing (incl. packet-delivered) moved
+// out of main.js into this resolver; main.js injects the copy lookups.
+const ioDialogueResolverSource = readFileSync(
+  resolve(here, "../../../../aftersign/src/ioDialogueResolver.js"),
   "utf8",
 );
 
@@ -104,29 +112,74 @@ describe("served delivery-complete wiring in aftersign/main.js", () => {
     expect(servedRendererSource).toContain(
       'import { aftersignDeliveryCompleteLine } from "../apps/web/src/aftersign/aftersignDeliveryCompleteCopy.js";',
     );
+    // #2783: the packet-delivered branch moved into
+    // aftersign/src/ioDialogueResolver.js. main.js must inject the frozen
+    // lookup and the live delivery id; the resolver must call it.
     expect(servedRendererSource).toContain(
-      "return aftersignDeliveryCompleteLine(state.delivery.id);",
+      'import { resolveIoDialogue } from "./src/ioDialogueResolver.js";',
+    );
+    expect(servedRendererSource).toContain(
+      "deliveryCompleteLine: aftersignDeliveryCompleteLine,",
+    );
+    expect(servedRendererSource).toContain("deliveryId: state.delivery.id,");
+    expect(ioDialogueResolverSource).toContain(
+      "return deliveryCompleteLine(deliveryId);",
     );
     // The two literals that used to live in the ternary must be
     // sourced only from the frozen module now. If either reappears
-    // in main.js (copy-paste regression), red the test.
+    // in main.js or the resolver (copy-paste regression), red the test.
     expect(servedRendererSource).not.toContain(RED_TAG_LINE);
     expect(servedRendererSource).not.toContain(BLUE_PACKET_LINE);
+    expect(ioDialogueResolverSource).not.toContain(RED_TAG_LINE);
+    expect(ioDialogueResolverSource).not.toContain(BLUE_PACKET_LINE);
   });
 
   it("never claims a seal state, because the packet-delivered beat shows it on both sealed and opened paths (PR #2558 F1)", () => {
-    // Pin the renderer shape that makes this invariant necessary: the
+    // Pin the resolver shape that makes this invariant necessary: the
     // packet-delivered branch falls through to the id-keyed line with
-    // no `state.packet.sealed` check.
-    const branchStart = servedRendererSource.indexOf('if (state.scene.beat === "packet-delivered") {');
+    // no `packet.sealed` check (#2783: branch lives in the resolver).
+    const branchStart = ioDialogueResolverSource.indexOf('if (beat === "packet-delivered") {');
     expect(branchStart).toBeGreaterThan(-1);
-    const branchEnd = servedRendererSource.indexOf(
-      "return aftersignDeliveryCompleteLine(state.delivery.id);",
+    const branchEnd = ioDialogueResolverSource.indexOf(
+      "return deliveryCompleteLine(deliveryId);",
       branchStart,
     );
     expect(branchEnd).toBeGreaterThan(branchStart);
-    const branch = servedRendererSource.slice(branchStart, branchEnd);
+    const branch = ioDialogueResolverSource.slice(branchStart, branchEnd);
     expect(branch).not.toContain("packet.sealed");
+
+    // Behavioral check with the REAL frozen copy (not a stub): the
+    // resolver returns the same id-keyed line for sealed and opened runs.
+    for (const deliveryId of ["red-tag", "blue-packet"]) {
+      const lines = [true, false].map((sealed) =>
+        resolveIoDialogue({
+          beat: "packet-delivered",
+          packet: { sealed },
+          player: { routeRisk: null },
+          npcs: { io: { memory: [] } },
+          deliveryId,
+          returningBootLine: null,
+          returningBootBeat: null,
+          routeOutcomeLine: () => null,
+          deliveryCompleteLine: aftersignDeliveryCompleteLine,
+        }),
+      );
+      expect(lines[0]).toBe(aftersignDeliveryCompleteLine(deliveryId));
+      expect(lines[1]).toBe(lines[0]);
+    }
+    expect(
+      resolveIoDialogue({
+        beat: "packet-delivered",
+        packet: { sealed: false },
+        player: { routeRisk: null },
+        npcs: { io: { memory: [] } },
+        deliveryId: "red-tag",
+        returningBootLine: null,
+        returningBootBeat: null,
+        routeOutcomeLine: () => null,
+        deliveryCompleteLine: aftersignDeliveryCompleteLine,
+      }),
+    ).toBe(RED_TAG_LINE);
 
     // Since the line is seal-blind, every entry (and the fallback) must
     // read true for a player who opened the packet and one who did not.

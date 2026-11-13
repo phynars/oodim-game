@@ -8,6 +8,7 @@
 // state contract is unchanged and asserted by the e2e suite.
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
+import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1520,14 +1521,8 @@ const getAudioController = () => {
 };
 
 const lineForBeat = () => {
-  // Act II has its own durable terminal result. Check it before the Act I
-  // ending branch so restoring this slot never reopens Maud's name choices.
+  // Ending cards remain DOM-owned composition concerns.
   if (state.story.maudBellArchiveEndingId) {
-    // PR #2660 F1 (round 3): only a RESTORED slot gets the ending-only
-    // card. While the live name-choice card is on screen (the player just
-    // tapped a name), publishState → syncIoLine lands here too; re-rendering
-    // would wipe the name buttons and block the decoy re-pick that
-    // orra-payback.playtest.spec.ts relies on. The tap handler owns that card.
     if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
@@ -1543,198 +1538,37 @@ const lineForBeat = () => {
       packetSealed: state.packet.sealed,
       redTagCarried: state.player.redTagAccepted === true,
     });
-    // Reload path: re-render the ending card and re-publish
-    // `story.endingId` onto window.__game so a restored session
-    // lands on the ending beat with the same surface the live run
-    // produced. renderEpisodeOneEnding is idempotent (short-circuits
-    // on a matching id+cause), so this is safe to call every tick.
-    // PR #2731 F1: once the player taps into Maud's bell archive, the
-    // #episodeOneEnding host holds the live Maud name-choice card. A
-    // non-matching firstElementChild makes renderEpisodeOneEnding call
-    // host.replaceChildren(), which would wipe [data-beat="maud-bell-archive"]
-    // on the publishState tick right after the tap. The Maud tap handler
-    // owns the host while its choices are live.
     if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderEpisodeOneEnding(document, resolvedEnding);
       renderSaintOrraEndingRecall();
     }
-    publishEpisodeOneEndingToWindowGame(
-      typeof window !== "undefined" ? window : undefined,
-      resolvedEnding,
-    );
-    // The ending card owns the terminal recall. Clear the active dialogue
-    // state as well as returning an empty line: dialogueController renders
-    // its getter after this resolver, and otherwise a prior prompt or
-    // returning-session ledger line remains visible beside the ending card.
+    publishEpisodeOneEndingToWindowGame(typeof window !== "undefined" ? window : undefined, resolvedEnding);
     state.npcs.io.lastLine = "";
     return "";
   }
-  // #957: If a returning-session boot line was computed at module init
-  // (delivered save, restored via readAuthoritativeSave / readStored),
-  // speak it while the scene is still at the persisted boot beat. As
-  // soon as the player advances (setBeat mutates state.scene.beat away
-  // from the recorded ioReturningBootBeat), the guard misses and the
-  // next branch's own verbatim-asserted copy wins — the returning line
-  // never overrides a downstream beat like `io-return-recognition`.
-  if (
-    ioReturningBootLine !== null
-    && ioReturningBootBeat !== null
-    && state.scene.beat === ioReturningBootBeat
-  ) {
-    return ioReturningBootLine;
-  }
-
-  if (state.scene.beat === "packet-choice") {
-    return state.packet.sealed
-      ? "Good. Some doors only open for people who can carry a secret without looking inside."
-      : "You opened it. The route still glows, but now the city knows curiosity got there first.";
-  }
-
-  if (state.scene.beat === "packet-delivered") {
-    const routeMemory = state.player.routeRisk;
-    if (routeMemory && routeMemory.succeeded) {
-      // aftersignRouteOutcomeLine returns null when the route token
-      // isn't one the copy has a line for — fall through to the base
-      // line rather than mis-crediting the player with a route Io
-      // never watched (Soren #1963 review: no silent default).
-      // #2179: pass lastAction so a fragile-packet run (also route class
-      // "fast") speaks the fragile line, not the shortcut's phrasing.
-      const routeLine = aftersignRouteOutcomeLine(routeMemory.lastRoute, routeMemory.lastAction);
-      if (routeLine) return routeLine;
-    }
-    return aftersignDeliveryCompleteLine(state.delivery.id);
-  }
-
-  if (state.scene.beat === "return-tone-choice") {
-    // M-CONTINUE-E1 (PR #1236): shipped consumer of
-    // `story/ioContinueBeats.ts`. The player has just tapped one of
-    // three recognition-beat tone buttons — that stamped
-    // `state.player.returnReason` on the RECOGNITION click handler.
-    // Here we render Io's REPLY line for that posture (the [0] entry
-    // in `buildIoContinueBeats(reason)`) into `#line`, so the same
-    // reason token that drives the return-tone FEEL surface
-    // (returnToneChoiceFeel.ts) also drives Io's WORDS — one axis,
-    // one lookup, no drift between voice and feel.
-    //
-    // Defensive: if no reason is recorded (shouldn't happen — this
-    // beat is only reachable via a stamped tone tap), anchor to
-    // "evasive" (the middle posture), matching `getIoReturnToneReply`'s
-    // own fallback rule.
-    const reason = state.player.returnReason ?? "evasive";
-    return buildIoContinueBeats(reason)[0].line;
-  }
-
-  if (state.scene.beat === "io-next-job") {
-    if (ioSecondPacketResponseLine) {
-      return ioSecondPacketResponseLine;
-    }
-    // M-CONTINUE-E1 (PR #1236): shipped consumer of
-    // `story/ioContinueBeats.ts`. The HANDOFF line (Io hands the
-    // player the red tag → Saint Orra) is the [1] entry in
-    // `buildIoContinueBeats(reason)` — invariant across postures,
-    // but sourced through the same module as the reply so a rewrite
-    // of the beat's copy lands the moment the module changes.
-    //
-    // Shipped consumer of `ioMemoryResponseLinesFor` (PR #1228): the
-    // player has TAPPED through delivery + return-tone to land here,
-    // so this is the first beat where Io speaks with a memory of who
-    // just walked back in. We prepend the dispatcher's authored
-    // reflection lines to the next-job pitch — one string, so
-    // `#line` still shows a single flowing utterance rather than a
-    // list. When the player has no durable facts (defensive: shouldn't
-    // happen at this beat, but honored so the surface stays crash-
-    // free), the handoff line still speaks (`remembersNoDurableFact`).
-    //
-    // Shipped consumer of `ioSecondPacketCopy.ts` (#1322): after the
-    // handoff, Io now visibly offers the second packet on the served
-    // page. The player's return posture maps to the copy module's
-    // gentle / guarded / defiant variants, and the same player name
-    // already persisted on state is threaded into the address line.
-    const reflection = ioMemoryResponseLinesFor({
-      playerFlags: state.player.flags,
-      npcMemoryFacts: state.npcs.io.memory,
-    })
-      .map((entry) => entry.text)
-      .join(" ");
-    // Shipped consumer of `findAftersignNpcMemoryRecallLine` (PR #1343).
-    // Io's authored recall line for the packet fork the player just
-    // committed — "You opened it..." vs "Still sealed. Good..." —
-    // rides on the SAME join as `reflection` + `handoffLine` inside
-    // this branch (the terminal-handoff beat resolved a few lines
-    // above), so the same tap that stamps `#line` also renders the
-    // recall assertion text on the served page. `state.packet.sealed`
-    // is the durable fork the module keys on (see the dialogue table
-    // in `apps/web/src/aftersign/npcMemoryRecallDialogue.ts`).
-    const recallRemembers = state.packet.sealed ? "packet-sealed" : "packet-opened";
-    const recallEntry = findAftersignNpcMemoryRecallLine({
-      npcId: "io",
-      remembers: recallRemembers,
-    });
-    const recallLine = recallEntry ? recallEntry.line : null;
-    const handoffLine = servedIoDialogue.nextJobPrompt();
-    const secondPacketCopy = servedIoDialogue.secondPacketAcknowledgement({
-      returnReason: state.player.returnReason,
-      playerName: state.player.name,
-    });
-    const secondPacketLine = secondPacketCopy.lines.join(" ");
-    return [reflection, recallLine, handoffLine, secondPacketLine].filter(Boolean).join(" ");
-  }
-
-  if (state.scene.beat === "io-return-recognition") {
-    // The second packet keeps its own recognition thread; sealed/opened is
-    // an outcome, not permission to collapse Saint Orra back to blue-route
-    // copy on the following return beat.
-    if (state.delivery.id === "red-tag") {
-      return "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it.";
-    }
-    // Red-guard hook (#653): wrong-io-line deliberately swaps the
-    // recognition line so the harness can prove it would catch a
-    // line/outcome mismatch. No-op when breakMode is "".
-    //
-    // Red-guard hook (#1180 M-ORRA-E1): orra-io-contamination COUPLES
-    // Io's returning-session line to Orra memory presence — the exact
-    // contamination the isolation invariant forbids. When active AND
-    // Orra has recognized (lit/spared vigil → state.npcs.orra.memory
-    // non-empty), invert speakAsSealed so the shipped Io line ceases
-    // to match the durable packet outcome. This is the ONLY code path
-    // that ever reads Orra state from an Io-line branch, and it is
-    // strictly gated on the break mode — default lane runs are byte
-    // -identical to pre-#1180 behavior (isolation holds), which is
-    // the property the served-page e2e (flagship-surface-contract.spec.ts)
-    // asserts green by default and RED under this mode. Feeds done-gate
-    // #1173.
-    const rememberedSealed = state.packet.sealed;
-    const orraContaminated =
-      breakMode === "orra-io-contamination"
-      && Array.isArray(state.npcs.orra?.memory)
-      && state.npcs.orra.memory.length > 0;
-    const speakAsSealed =
-      breakMode === "wrong-io-line" || orraContaminated
-        ? !rememberedSealed
-        : rememberedSealed;
-    // The orchestration boundary owns snippet construction and tier routing;
-    // this served composition root only provides the durable state it needs.
-    return selectIoRecognitionDialogue({
-      playerId: state.player.id,
-      packetSealed: speakAsSealed,
-      memory: state.npcs.io.memory,
-    }).line;
-  }
-
-  if (state.scene.beat === "packet-offered") {
-    // #2158 (M2): Io names what she remembers and the jobs it unlocked,
-    // from the SAME derivation the #offeredJobs tray renders below, plus
-    // how the player answered her on the way back (returnReason), so a
-    // returning courier hears why the buttons changed. No delivery
-    // memory → the unchanged IO_DEFAULT_OFFER_LINE.
-    return ioOfferLineFor(
-      state.npcs.io.memory,
-      selectIoJobOffers(offeredJobsMemoryFromIoMemory(state.npcs.io.memory)),
-      state.player.returnReason,
-    );
-  }
-
-  return IO_DEFAULT_OFFER_LINE;
+  return resolveIoDialogue({
+    beat: state.scene.beat,
+    packet: state.packet,
+    player: state.player,
+    npcs: state.npcs,
+    deliveryId: state.delivery.id,
+    returningBootLine: ioReturningBootLine,
+    returningBootBeat: ioReturningBootBeat,
+    secondPacketResponseLine: ioSecondPacketResponseLine,
+    breakMode,
+    defaultOfferLine: IO_DEFAULT_OFFER_LINE,
+    routeOutcomeLine: aftersignRouteOutcomeLine,
+    deliveryCompleteLine: aftersignDeliveryCompleteLine,
+    continueBeats: buildIoContinueBeats,
+    memoryResponseLines: ioMemoryResponseLinesFor,
+    memoryRecallLine: (remembers) => findAftersignNpcMemoryRecallLine({ npcId: "io", remembers })?.line ?? null,
+    nextJobPrompt: servedIoDialogue.nextJobPrompt,
+    secondPacketAcknowledgement: servedIoDialogue.secondPacketAcknowledgement,
+    recognitionDialogue: selectIoRecognitionDialogue,
+    offerLine: ioOfferLineFor,
+    jobOffers: selectIoJobOffers,
+    offersMemory: offeredJobsMemoryFromIoMemory,
+  });
 };
 
 const memoryFacts = () => {
