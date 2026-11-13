@@ -16,12 +16,14 @@
 // line, a `const DELAY = 1180`, etc.) reds this check. A maintainer must
 // then decide on purpose whether the e2e helper still holds.
 //
-// Lives at the `aftersign/` level, OUTSIDE `aftersign/tsconfig.json`'s
-// `include: ["src"]`, so it can use `node:fs` / `node:path` (same reason
-// as `routeChoicePressServedContract.ts`). It resolves `aftersign/` from
-// this module's own URL, not `process.cwd()`. It runs in the blocking pure
-// lane through `aftersign/pure-runner.ts`. It has no relative imports, so it
-// meets the runner's extension-resolution contract.
+// Named `*.test.ts` on purpose: it is harness-only code that is never
+// served, and scripts/served-reach.mjs (`NOT_SERVED_RE`) excludes test files
+// from its reach and rendered-text rules. It lives at the `aftersign/` level,
+// OUTSIDE `aftersign/tsconfig.json`'s `include: ["src"]`, so it can use
+// `node:fs` / `node:path`. It resolves `aftersign/` from this module's own
+// URL, not `process.cwd()`. It runs in the blocking pure lane through
+// `aftersign/pure-runner.ts`. It has no relative imports, so it meets the
+// runner's extension-resolution contract.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";

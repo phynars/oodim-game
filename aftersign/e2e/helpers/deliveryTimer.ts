@@ -17,7 +17,7 @@ import { expect, type Page } from "@playwright/test";
 // Call this BEFORE the first `page.goto`. It drops that one timer, so the
 // save written at `packet-delivered` stays the authoritative one and the
 // beat does not change under the spec. Its uniqueness is enforced by
-// `aftersign/deliveryTimerUniquenessContract.ts` (pure lane).
+// `aftersign/deliveryTimerUniqueness.test.ts` (pure lane).
 //
 // Do NOT use it in a spec that waits for the auto-advance to
 // `io-return-recognition` in the same page session: with the timer gone the
