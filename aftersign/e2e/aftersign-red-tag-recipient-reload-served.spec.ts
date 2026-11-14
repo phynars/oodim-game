@@ -102,11 +102,19 @@ test.describe("AFTERSIGN third remembering NPC — acknowledgment after served r
     await waitForBeat(page, "packet-offered");
     const packetButton = page.locator("#packetButton");
     await expect(packetButton).toHaveAttribute("data-packet-job", "red-tag");
+    // #2811: pick the night-transfer offer so Io's return line is
+    // keyed on player.selectedJobOfferId, which must survive reload.
+    const nightTransfer = page.locator("#job-offer-job-night-transfer");
+    await expect(nightTransfer).toBeVisible({ timeout: WAIT_MS });
+    await nightTransfer.tap();
     await packetButton.tap();
     await waitForBeat(page, "packet-choice");
     await tapChoice(page, "acknowledge-kiosk");
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).toContainText(
+      "Night transfer reached Saint Orra",
+    );
 
     const line = page.locator(RECIPIENT_LINE);
     await expect(line).toBeVisible({ timeout: WAIT_MS });
@@ -120,6 +128,12 @@ test.describe("AFTERSIGN third remembering NPC — acknowledgment after served r
     await page.reload({ waitUntil: "load" });
     await waitForReady(page);
     await waitForBeat(page, "io-return-recognition");
+
+    // #2811: Io's job-keyed line is rebuilt from the hydrated
+    // selectedJobOfferId, not the generic red-tag fallback.
+    await expect(page.locator("#line")).toContainText(
+      "Night transfer reached Saint Orra",
+    );
 
     // (4) The acknowledgment is still rendered after the reload. The
     // disposition id comes from the restored
