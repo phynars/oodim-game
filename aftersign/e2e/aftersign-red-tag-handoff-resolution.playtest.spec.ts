@@ -33,6 +33,9 @@ test.describe("AFTERSIGN red-tag handoff", () => {
     test.setTimeout(120_000);
     await page.goto(`/aftersign/?slot=red-tag-handoff-${Date.now()}`, { waitUntil: "load" });
     await reachRedTagHandoff(page);
+    // #2790: Io may only recall the red tag as delivered after the visible
+    // acceptance tap; without it the line would be a false memory.
+    await tapChoice(page, "accept-second-packet");
 
     await expect(page.locator("#packetButton")).toHaveAttribute("data-packet-job", "red-tag");
     await page.locator("#packetButton").tap();

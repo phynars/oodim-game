@@ -126,7 +126,11 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
       ),
     ).toHaveCount(0);
 
-    // Round 2 — tap the red-tag packet, acknowledge, deliver.
+    // Round 2 — accept the second packet (#2790 gates the recipient
+    // memory on it), then tap the red-tag packet, acknowledge, deliver.
+    await tapChoice(page, "accept-second-packet");
+    await page.locator("#deliverButton").tap();
+    await waitForBeat(page, "packet-offered");
     await packetButton.tap();
     await waitForBeat(page, "packet-choice");
 

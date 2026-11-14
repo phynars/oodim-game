@@ -67,6 +67,9 @@ test.describe("AFTERSIGN red-tag packet retention (#2201, #2258)", () => {
 
     const secondPacket = page.locator('button[data-choice-id="accept-second-packet"]');
     await expect(secondPacket).toHaveText("Take the second packet");
+    const askWhatChanged = page.locator('button[data-choice-id="ask-what-changed"]');
+    await expect(secondPacket).toHaveAttribute("aria-pressed", "false");
+    await expect(askWhatChanged).toHaveAttribute("aria-pressed", "false");
     await secondPacket.tap();
     await tap(page, "#deliverButton");
     await waitForBeat(page, "packet-offered");
@@ -105,5 +108,16 @@ test.describe("AFTERSIGN red-tag packet retention (#2201, #2258)", () => {
     await waitForBeat(page, "packet-choice");
     await expect(packetButton).toHaveText("Red tag — Saint Orra");
     await expect(page.locator("#routeRiskChoice")).toContainText("Long way — past the kiosk");
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).not.toContainText("red tag delivered to Saint Orra");
+    // #2790 — Saint Orra's recipient memory must not render without the
+    // accept-second-packet tap either.
+    await expect(page.locator("#aftersignRedTagRecipientLine")).toHaveCount(0);
+    await expect(
+      page.locator(
+        'text="You brought the red tag yourself. I remember the courier who did not leave it for the rain."',
+      ),
+    ).toHaveCount(0);
   });
 });

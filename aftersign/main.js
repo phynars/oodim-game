@@ -1552,6 +1552,7 @@ const lineForBeat = () => {
     player: state.player,
     npcs: state.npcs,
     deliveryId: state.delivery.id,
+    redTagAccepted: state.player.redTagAccepted === true,
     returningBootLine: ioReturningBootLine,
     returningBootBeat: ioReturningBootBeat,
     secondPacketResponseLine: ioSecondPacketResponseLine,
@@ -1749,7 +1750,7 @@ const syncIoLine = () => {
     // `lineForBeat()` directly, or via the `state.npcs.io.lastLine`
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
-    nextLine = state.delivery.id === "red-tag"
+    nextLine = state.delivery.id === "red-tag" && state.player.redTagAccepted === true
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
       : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
@@ -2668,7 +2669,14 @@ const renderText = () => {
   // line and `getAftersignStoryState().state.npcs` omits the
   // `red-tag-recipient` entry entirely, locking the F1 gating on
   // the served page itself (not just vitest).
-  if (isRedTagReturnBeat && typeof document !== "undefined") {
+  // #2790 — Saint Orra's "You brought the red tag yourself" only plays
+  // when the player actually accepted the second packet; an un-accepted
+  // red-tag delivery id must not stage a false memory.
+  if (
+    isRedTagReturnBeat &&
+    state.player.redTagAccepted === true &&
+    typeof document !== "undefined"
+  ) {
     const dialogue = resolveAftersignRememberingNpcDialogue(
       aftersignVerticalSlice,
       "red-tag-recipient",
@@ -3521,6 +3529,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     stampAftersignChoice(acknowledgeRouteButton, secondPacketCopy.choices[0].id);
     stampAftersignChoice(skipRouteButton, secondPacketCopy.choices[1].id);
     stampAftersignChoice(deliverButton, "deliver-packet");
+    for (const button of [acknowledgeRouteButton, skipRouteButton]) {
+      button.setAttribute("aria-pressed", "false");
+      delete button.dataset.aftersignSelected;
+      button.style.backgroundColor = "";
+      button.style.borderColor = "";
+    }
     // PR #1236: same cleanup as above — no recognition-beat stamps
     // should leak into a beat where the buttons carry different
     // choice ids.
@@ -5261,7 +5275,11 @@ const deliverPacket = (source = "hud-button") => {
   // payload by `createPersistHelpers`' `getRedTagDeliveredToThirdNpc`
   // thunk (see `aftersign/src/runtime/persistence.js`), so a reload
   // after delivery re-arms the acknowledgment line.
-  if (state.delivery && state.delivery.id === "red-tag") {
+  if (
+    state.delivery &&
+    state.delivery.id === "red-tag" &&
+    state.player.redTagAccepted === true
+  ) {
     aftersignVerticalSlice = recordAftersignThirdNpcRedTagDelivery(
       aftersignVerticalSlice,
     );

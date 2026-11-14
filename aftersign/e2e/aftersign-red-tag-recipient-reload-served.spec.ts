@@ -95,7 +95,11 @@ test.describe("AFTERSIGN third remembering NPC — acknowledgment after served r
       page.locator(`[${DISPOSITION_ATTR}="recognizes-player"]`),
     ).toHaveCount(0);
 
-    // (2) Red-tag delivery, tapped like a player would.
+    // (2) Red-tag delivery, tapped like a player would — accepting the
+    // second packet first (#2790 gates the recipient memory on it).
+    await tapChoice(page, "accept-second-packet");
+    await page.locator("#deliverButton").tap();
+    await waitForBeat(page, "packet-offered");
     const packetButton = page.locator("#packetButton");
     await expect(packetButton).toHaveAttribute("data-packet-job", "red-tag");
     await packetButton.tap();

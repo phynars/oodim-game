@@ -71,6 +71,10 @@ test.describe("AFTERSIGN third NPC — fresh-context red-tag recognition", () =>
       await deliveryPage.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
       await waitForReady(deliveryPage);
       await reachNextJobFromBoot(deliveryPage);
+      // #2790 — the recipient memory requires the explicit accept tap.
+      await tapChoice(deliveryPage, "accept-second-packet");
+      await deliveryPage.locator("#deliverButton").tap();
+      await waitForBeat(deliveryPage, "packet-offered");
       await deliveryPage.locator("#packetButton").tap();
       await waitForBeat(deliveryPage, "packet-choice");
       await tapChoice(deliveryPage, "acknowledge-kiosk");
