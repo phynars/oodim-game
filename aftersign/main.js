@@ -2365,7 +2365,8 @@ const renderMaudBellArchiveEntry = () => {
   if (
     !state.story.endingId ||
     !state.story.endingId.startsWith("ending-") ||
-    !document.getElementById("saintOrraRedTagRecall")
+    !state.player.redTagDeliveredToSaintOrra ||
+    !document.getElementById("saintOrraNameCase")
   ) {
     return;
   }
@@ -2395,6 +2396,17 @@ const renderSaintOrraEndingRecall = () => {
       ending.appendChild(recall);
     }
     setTextContentIfChanged(recall, saintOrraRecallLine());
+    let nameCase = document.getElementById("saintOrraNameCase");
+    if (!nameCase) {
+      nameCase = document.createElement("p");
+      nameCase.id = "saintOrraNameCase";
+      nameCase.setAttribute("data-beat-id", "orra-first-name");
+      ending.appendChild(nameCase);
+    }
+    setTextContentIfChanged(
+      nameCase,
+      `Saint Orra: Maud Underbell needs the name ${state.player.name}. Carry it sealed to the Bell Archive.`,
+    );
     // #2731 F1/F2 — the red-tag handler (choose "carry-red-tag-to-saint-orra")
     // only calls this function + publishState, never renderText, so the
     // Maud entry must be created here, right after the recall exists. The
@@ -2403,6 +2415,7 @@ const renderSaintOrraEndingRecall = () => {
     return;
   }
   recall?.remove();
+  document.getElementById("saintOrraNameCase")?.remove();
   if (!control) {
     control = document.createElement("button");
     control.type = "button";
@@ -4376,7 +4389,7 @@ const choose = async (choiceId) => {
     const offeredAction = orraPaybackActionForDelivery(state.delivery);
     const continuingEpisodeOneEnding = choiceId === "carry-name-to-bell-archive"
       && state.story.endingId?.startsWith("ending-")
-      && document.getElementById("saintOrraRedTagRecall");
+      && document.getElementById("saintOrraNameCase");
     if (
       !continuingEpisodeOneEnding
       && (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction)

@@ -153,6 +153,10 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
         }
       }
 
+      const orraNameCase = page.locator('#saintOrraNameCase[data-beat-id="orra-first-name"]');
+      await expect(orraNameCase).toBeVisible({ timeout: WAIT_MS });
+      await expect(orraNameCase).toContainText("Saint Orra: Maud Underbell needs the name");
+      await expect(orraNameCase).toContainText("Carry it sealed to the Bell Archive.");
       const maudEntry = page.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
       );
