@@ -7,6 +7,70 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-13 — Blind AI-stranger playtest #2 (M4 closeout) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`e7ff1b5` (the revision with the four fixes from playtest #1) in a 390×844
+headless phone page with touch on: a screenshot after the page settles, actions
+only by tapping visible text or a screen position. 28 commands, 05:35–05:39Z
+11-14. Nothing read the DOM state or `window.__game`.
+
+**Path:** Blue packet (seal kept) → I listened → Lit stair → Deliver packet →
+Kind return → Ask for next job → Take the second packet → Red tag — Saint Orra →
+Deliver next packet → Night transfer · medium risk → Deliver packet → Carry the
+name to the Bell Archive → a tap on the sliver of a hidden button (it was "the
+courier"). After the ending: Mara Vell → Orra Bell → Blunt return → Ask for next
+job → Meet Saint Orra → Light the vigil. Five scrolls and swipes that moved
+nothing are left out of the path.
+
+**"What did the bell ring, and why?" (verbatim, unprompted):**
+> The bell in the Bell Archive rang for "the courier", which is me. As I
+> understood it, I carried a sealed blue packet for Io without opening it and
+> came back gently, so she trusted me with a red tag for Saint Orra. Delivering
+> that put my name beside the route, and I carried the name to Maud's archive.
+> Maud asked which name the bell kept, the answer was the courier, and the
+> district light stayed lit.
+>
+> I am not confident about the "why". The game never explained what the bell is,
+> why it keeps a name, or what staying lit means. I also did not knowingly choose
+> the answer: the three name buttons were hidden when I tapped.
+
+**False-memory check (operator, against the screenshots):** one, a P1.
+- **"You found the box anyway", still (#2799).** After the second delivery the
+  card says "You found the box anyway. Next time, let me finish saving your
+  life." The player tapped "I listened", never "I ran early", and saw no box. The
+  first return screen of the same run does not show the line. This is the second
+  line of #2791; its "torn" line was not exercised here (the player did not tap
+  "Carry the fragile packet").
+
+**The choice was made blind (#2800), a P1.** After "Carry the name to the Bell
+Archive" the three name buttons sat below the card's visible edge, with only 2 to
+3 pixels of their top showing. Two wheel scrolls, a swipe and a 2 s wait moved
+nothing for about 40 s. A tap on that sliver answered the question, and only then
+did the card redraw with the labels readable. The bell rang for a name the player
+could not read.
+
+**Fixed since playtest #1, confirmed on screen:**
+- #2792: after the ending, "Mara Vell" and "Orra Bell" changed nothing; the
+  ending text stayed word for word through six more taps.
+- #2790: with "Take the second packet" tapped, Io's "red tag delivered to Saint
+  Orra" matches the player's taps, and no card contradicted it. The untapped form
+  of #2790 was not exercised on this path.
+
+**Friction (the player's words, shortened):** "Kind return" is highlighted before
+a choice on the first return screen; the top of long cards is cut off and cannot
+be scrolled back; "Night transfer · medium risk" is half hidden behind the
+"Deliver packet" row; "Red tag — Saint Orra", "Night transfer" and "Meet Saint
+Orra" give no visible feedback; the second return screen repeats the blue-seal
+lines of the first delivery; "Choose before you leave: Io will remember whether
+the seal stayed whole" stays on screen to the end; old choice buttons stay live
+after the ending, and "Light the vigil" then leaves an empty "IO" panel above it.
+
+**Verdict:** NOT PASSED. The answer names the bell's outcome, but the player
+could not see the names they chose between, and the game stated one memory the
+player cannot recognise from their taps. M4 stays open; #2799 and #2800 are filed
+for the team. The closeout is replayed on the revision that has both.
+
 ## 2026-11-13 — Blind AI-stranger playtest #1 (M4 closeout) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
