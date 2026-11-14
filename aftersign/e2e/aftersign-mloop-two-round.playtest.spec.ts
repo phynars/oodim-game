@@ -167,11 +167,15 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
       'button[data-choice-id="acknowledge-kiosk"]',
     );
     await expect(signedReceiptAcknowledgeRoute).toHaveText("I listened");
-    await signedReceiptAcknowledgeRoute.tap();
+    // #2799: the playtest player listened on round one and then delivered
+    // a later packet WITHOUT re-tapping a route control. That later
+    // delivery re-mints Io's memory with no route-attention fact; main
+    // read the missing fact as "ran early" and accused a player who
+    // listened. Deliver without the route tap to reach that state.
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
     await expect(
-      page.getByText("You found the box anyway. Next time, let me finish saving your life."),
+      page.getByText("You found the box anyway", { exact: false }),
     ).toHaveCount(0);
     await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
     await waitForBeat(page, "return-tone-choice");

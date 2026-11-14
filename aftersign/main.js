@@ -2513,7 +2513,15 @@ const renderText = () => {
   // The first explicit route choice is the player fact this return recalls.
   // Later deliveries can mint their own route-attention memory, but must not
   // turn an earlier "I listened" tap into the skipped-route accusation.
-  const rememberedRouteAttention = secondActionFromMemory(state.npcs.io.memory);
+  // #2799: `secondActionFromMemory` defaults a MISSING fact to SKIPPED, so
+  // a later delivery with no route tap (memory re-minted without a
+  // route-attention fact) read as "ran early" → "You found the box anyway".
+  // Only an explicit skipped fact (rememberedSkippedRoute) may select it.
+  const rememberedRouteAttention = rememberedSkippedRoute(state.npcs.io.memory)
+    ? SECOND_ACTION.SKIPPED
+    : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
+      ? SECOND_ACTION.DONE
+      : null;
   const routeAttention = state.player.secondAction === SECOND_ACTION.DONE
     ? "listened"
     : state.player.secondAction === SECOND_ACTION.SKIPPED
