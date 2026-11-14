@@ -1619,7 +1619,13 @@ const persistence = createPersistHelpers({
 });
 const { buildPersistPayload, persist } = persistence;
 const persistAuthoritative = async (options) => {
-  await persistence.persistAuthoritative(options);
+  const persisted = await persistence.persistAuthoritative(options);
+  if (!persisted) {
+    setSaveFailureNotice(true, { authoritative: true });
+    renderText();
+    publishState();
+    return false;
+  }
   // The full snapshot is already committed. Memory replication must not make
   // that successful player-visible save reject when its endpoint is unavailable.
   await writePlayerMemory({
@@ -1629,6 +1635,7 @@ const persistAuthoritative = async (options) => {
     // eslint-disable-next-line no-console
     console.warn("[aftersign player-memory] write failed; save already committed", err);
   });
+  return true;
 };
 
 // Apply an authored per-tier feel cue (or clear it) as CSS custom
@@ -4452,16 +4459,17 @@ const waitForStoryIdle = async () => {
   publishState();
 };
 
-const setLocalSaveFailureNotice = (failed) => {
+const setSaveFailureNotice = (failed, { authoritative = false } = {}) => {
   if (!line?.parentNode) return;
-  let notice = document.getElementById("localSaveFailureNotice");
+  const noticeId = authoritative ? "saveFailureNotice" : "localSaveFailureNotice";
+  let notice = document.getElementById(noticeId);
   if (!failed) {
     notice?.remove();
     return;
   }
   if (!notice) {
     notice = document.createElement("p");
-    notice.id = "localSaveFailureNotice";
+    notice.id = noticeId;
     notice.setAttribute("role", "status");
     notice.setAttribute("aria-live", "polite");
     notice.style.pointerEvents = "none";
@@ -4469,7 +4477,30 @@ const setLocalSaveFailureNotice = (failed) => {
   }
   setTextContentIfChanged(
     notice,
-    "Save failed locally. Your progress will retry on the next save.",
+    authoritative
+      ? "Save failed. Your progress will retry on the next save."
+      : "Save failed locally. Your progress will retry on the next save.",
+  );
+};
+
+const setAuthoritativeSaveFailureNotice = (failed) => {
+  if (!line?.parentNode) return;
+  let notice = document.getElementById("saveFailureNotice");
+  if (!failed) {
+    notice?.remove();
+    return;
+  }
+  if (!notice) {
+    notice = document.createElement("p");
+    notice.id = "saveFailureNotice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    notice.style.pointerEvents = "none";
+    line.insertAdjacentElement("afterend", notice);
+  }
+  setTextContentIfChanged(
+    notice,
+    "Save failed. Your progress will retry on the next save.",
   );
 };
 
@@ -4482,13 +4513,13 @@ const forceSave = async () => {
     const persisted = persist({ dirty: false });
     if (!persisted) {
       state.save.dirty = true;
-      setLocalSaveFailureNotice(true);
+      setSaveFailureNotice(true);
       markStateDirty();
       renderText();
       publishState();
       return false;
     }
-    setLocalSaveFailureNotice(false);
+    setSaveFailureNotice(false);
     state.save.authority = "local-fallback";
     state.save.lastLoadProof = {
       source: "local-fallback",
@@ -4501,7 +4532,16 @@ const forceSave = async () => {
     return true;
   }
 
-  await persistAuthoritative({ dirty: false });
+  const persisted = await persistAuthoritative({ dirty: false });
+  if (!persisted) {
+    state.save.dirty = true;
+    setSaveFailureNotice(true, { authoritative: true });
+    markStateDirty();
+    renderText();
+    publishState();
+    return false;
+  }
+  setSaveFailureNotice(false);
   state.save.lastLoadProof = {
     source: "server",
     revision: state.save.revision,
@@ -4510,6 +4550,7 @@ const forceSave = async () => {
   markStateDirty();
   renderText();
   publishState();
+  return true;
 };
 
 const reloadFromSave = async ({ clearLocalState = false } = {}) => {

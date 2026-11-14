@@ -317,6 +317,24 @@ describe("routeRiskMemory persistence round-trip (drives the served buildPersist
     expect(state.save.dirty).toBe(true);
   });
 
+  it("keeps the save dirty and reports failure when an authoritative write rejects", async () => {
+    const { state } = buildHelpers(null);
+    const failingHelpers = createPersistHelpers({
+      state,
+      slot: "test",
+      clone: (value: unknown) => JSON.parse(JSON.stringify(value)),
+      markStateDirty: () => {},
+      writeStored: () => true,
+      writeAuthoritativeSave: async () => {
+        throw new Error("authoritative save unavailable");
+      },
+    });
+
+    await expect(failingHelpers.persistAuthoritative({ dirty: false })).resolves.toBe(false);
+    expect(state.save.lastPersistedAt).toBeUndefined();
+    expect(state.save.dirty).toBe(true);
+  });
+
   it("carries state.player.routeRisk into the persist payload verbatim", () => {
     const initial = recordRouteRun({ route: "fast", succeeded: true });
     const { helpers } = buildHelpers(initial);
