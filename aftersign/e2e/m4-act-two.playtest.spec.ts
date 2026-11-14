@@ -214,6 +214,17 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(maud).toContainText(MAUD_TITLE);
       await expect(maud).toContainText(MAUD_PROMPT);
 
+      const nameButtons = page.locator("button[data-maud-name-choice]");
+      await expect(nameButtons).toHaveCount(3, { timeout: WAIT_MS });
+      for (let index = 0; index < 3; index += 1) {
+        const nameChoice = nameButtons.nth(index);
+        await expect(nameChoice).toBeVisible();
+        await expect(nameChoice).not.toHaveText(/^\s*$/);
+        const bounds = await nameChoice.boundingBox();
+        expect(bounds, `name choice ${index} has bounds`).not.toBeNull();
+        expect(bounds!.y).toBeGreaterThanOrEqual(0);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+      }
       const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
       await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
       const tappedName = await nameButton.textContent();

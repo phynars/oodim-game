@@ -804,6 +804,11 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
 const failureSting = document.querySelector(".failure-sting");
 const feedbackController = createFeedbackController({ document, failureSting });
 const dialogueController = createDialogueController({ line, speaker });
+const scrollDialogueToNewestSection = () => {
+  const panel = document.querySelector(".hud .panel");
+  if (!panel) return;
+  requestAnimationFrame(() => panel.scrollTo({ top: panel.scrollHeight, behavior: "auto" }));
+};
 const packetButton = document.querySelector("#packetButton");
 const packetPressFeedbackRenderer = createPacketPressFeedbackRenderer({
   button: packetButton,
@@ -4388,6 +4393,7 @@ const choose = async (choiceId) => {
             .finally(() => publishState());
         },
       });
+      scrollDialogueToNewestSection();
     }
     // The Orra choice remains terminal on this beat. Bell Archive instead
     // replaces the surface with Maud's name selection; the chosen Act II
