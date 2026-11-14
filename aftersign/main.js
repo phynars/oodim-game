@@ -2510,27 +2510,16 @@ const renderText = () => {
     state.delivery && typeof state.delivery.outcome === "string"
       ? state.delivery.outcome
       : "unknown";
-  // The first explicit route choice is the player fact this return recalls.
-  // Later deliveries can mint their own route-attention memory, but must not
-  // turn an earlier "I listened" tap into the skipped-route accusation.
-  // #2799: `secondActionFromMemory` defaults a MISSING fact to SKIPPED, so
-  // a later delivery with no route tap (memory re-minted without a
-  // route-attention fact) read as "ran early" → "You found the box anyway".
-  // Only an explicit skipped fact (rememberedSkippedRoute) may select it.
-  const rememberedRouteAttention = rememberedSkippedRoute(state.npcs.io.memory)
-    ? SECOND_ACTION.SKIPPED
+  // #2799: a later delivery with no fresh route tap keeps the earlier
+  // explicit route-attention fact in Io's memory (see the delivery mint
+  // site), so a player who listened on round one still reads "listened".
+  // A delivery with NO route fact ever (first-round no-tap) keeps the
+  // served no-tap=skipped sibling contract (io-voice-served.spec.ts).
+  const routeAttention = secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
+    ? "skipped"
     : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-      ? SECOND_ACTION.DONE
-      : null;
-  const routeAttention = state.player.secondAction === SECOND_ACTION.DONE
-    ? "listened"
-    : state.player.secondAction === SECOND_ACTION.SKIPPED
-      ? "skipped"
-      : rememberedRouteAttention === SECOND_ACTION.SKIPPED
-        ? "skipped"
-        : rememberedRouteAttention === SECOND_ACTION.DONE
-          ? "listened"
-          : undefined;
+      ? "listened"
+      : undefined;
   const recognitionLines = getIoReturningSessionRecognitionLines({
     packetOutcome: state.packet.sealed ? "sealed" : "opened",
     routeInstructionBehavior: routeAttention,
@@ -5301,7 +5290,25 @@ const deliverPacket = (source = "hud-button") => {
     );
   }
   const { packetOutcomeFact, secondActionFact } = memoryFacts();
-  state.npcs.io.memory = [packetOutcomeFact, secondActionFact].filter(Boolean);
+  // #2799: `state.player.secondAction` resets to null for each new packet,
+  // so a later delivery without a route tap mints no route-attention fact.
+  // Replacing memory wholesale then dropped the player's earlier explicit
+  // "I listened", and the missing fact read as "ran early" → "You found
+  // the box anyway". Carry the prior explicit fact forward when this
+  // delivery has none; a fresh tap still overrides it.
+  const priorMemory = Array.isArray(state.npcs.io.memory) ? state.npcs.io.memory : [];
+  const priorRouteAttention = secondActionFromMemory(priorMemory) === SECOND_ACTION.DONE
+    ? SECOND_ACTION.DONE
+    : rememberedSkippedRoute(priorMemory)
+      ? SECOND_ACTION.SKIPPED
+      : null;
+  const priorRouteAttentionFact = priorRouteAttention
+    ? buildSecondActionMemoryFact({ secondAction: priorRouteAttention, sessionId })
+    : null;
+  state.npcs.io.memory = [
+    packetOutcomeFact,
+    secondActionFact ?? priorRouteAttentionFact,
+  ].filter(Boolean);
   state.save.revision += 1;
   state.save.dirty = true;
   const beatStartedAt = performance.now();

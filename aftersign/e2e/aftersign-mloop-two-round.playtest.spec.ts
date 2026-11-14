@@ -171,12 +171,16 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     // a later packet WITHOUT re-tapping a route control. That later
     // delivery re-mints Io's memory with no route-attention fact; main
     // read the missing fact as "ran early" and accused a player who
-    // listened. Deliver without the route tap to reach that state.
+    // listened. Deliver without the route tap to reach that state. The
+    // fix carries the earlier explicit "I listened" fact forward, so no
+    // skipped-route sibling may render. (A first-round no-tap delivery,
+    // with no prior fact at all, still renders it — io-voice-served.spec.ts.)
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
     await expect(
       page.getByText("You found the box anyway", { exact: false }),
     ).toHaveCount(0);
+    await expect(page.locator("#ioSkippedRouteLine")).toHaveCount(0);
     await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
     await waitForBeat(page, "return-tone-choice");
     await tapChoice(page, "ask-for-next-job");
