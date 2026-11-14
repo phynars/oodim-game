@@ -14,7 +14,7 @@ export const SAINT_ORRA_RED_TAG_RETURN_ACKNOWLEDGMENT_ID =
   "saint-orra-red-tag-return";
 
 const SAINT_ORRA_RED_TAG_RETURN_LINE =
-  "You brought the red tag yourself. I remember the courier who did not leave it for the rain.";
+  "You brought the red tag yourself. I remember the route you carried to Saint Orra.";
 
 export function resolveSaintOrraRedTagReturnCopy(
   deliveredRedTag: boolean,

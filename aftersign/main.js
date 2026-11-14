@@ -1609,6 +1609,7 @@ const lineForBeat = () => {
     offerLine: ioOfferLineFor,
     jobOffers: selectIoJobOffers,
     offersMemory: offeredJobsMemoryFromIoMemory,
+    redTagReturnAcknowledgement: servedIoDialogue.redTagReturnAcknowledgement,
   });
 };
 
@@ -3378,6 +3379,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
               actionId: mloopAction.id,
               offerId: offer.id,
             });
+            state.player.selectedJobOfferId = offer.id;
             // A job selection must answer the player's tap on the served
             // dialogue surface. `#line.textContent` and `state.npcs.io.lastLine`
             // are OWNED by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
