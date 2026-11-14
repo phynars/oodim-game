@@ -2659,7 +2659,14 @@ const renderText = () => {
   // line and `getAftersignStoryState().state.npcs` omits the
   // `red-tag-recipient` entry entirely, locking the F1 gating on
   // the served page itself (not just vitest).
-  if (isRedTagReturnBeat && typeof document !== "undefined") {
+  // #2790 — Saint Orra's "You brought the red tag yourself" only plays
+  // when the player actually accepted the second packet; an un-accepted
+  // red-tag delivery id must not stage a false memory.
+  if (
+    isRedTagReturnBeat &&
+    state.player.redTagAccepted === true &&
+    typeof document !== "undefined"
+  ) {
     const dialogue = resolveAftersignRememberingNpcDialogue(
       aftersignVerticalSlice,
       "red-tag-recipient",
@@ -5245,7 +5252,11 @@ const deliverPacket = (source = "hud-button") => {
   // payload by `createPersistHelpers`' `getRedTagDeliveredToThirdNpc`
   // thunk (see `aftersign/src/runtime/persistence.js`), so a reload
   // after delivery re-arms the acknowledgment line.
-  if (state.delivery && state.delivery.id === "red-tag") {
+  if (
+    state.delivery &&
+    state.delivery.id === "red-tag" &&
+    state.player.redTagAccepted === true
+  ) {
     aftersignVerticalSlice = recordAftersignThirdNpcRedTagDelivery(
       aftersignVerticalSlice,
     );

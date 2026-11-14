@@ -111,5 +111,13 @@ test.describe("AFTERSIGN red-tag packet retention (#2201, #2258)", () => {
     await tap(page, "#deliverButton");
     await waitForBeat(page, "io-return-recognition");
     await expect(page.locator("#line")).not.toContainText("red tag delivered to Saint Orra");
+    // #2790 — Saint Orra's recipient memory must not render without the
+    // accept-second-packet tap either.
+    await expect(page.locator("#aftersignRedTagRecipientLine")).toHaveCount(0);
+    await expect(
+      page.locator(
+        'text="You brought the red tag yourself. I remember the courier who did not leave it for the rain."',
+      ),
+    ).toHaveCount(0);
   });
 });
