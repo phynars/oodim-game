@@ -7,6 +7,76 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-14 — Blind AI-stranger playtest #5 (M4 closeout) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`cc8ac29` (the revision with the change that followed playtest #4) in a 390×844
+headless phone page with touch on: a screenshot after the page settles, actions
+only by tapping visible text or a screen position. 28 commands, 13:00–13:05Z
+11-14. Nothing read the DOM state or `window.__game`.
+
+**Path:** Take the safe job → Blue packet (seal kept) → I listened → Lit stair →
+Deliver packet → Kind return → Ask for next job → Take the second packet → Red
+tag — Saint Orra (no change) → Deliver next packet → Night transfer · medium
+risk → Deliver packet → Carry the name to the Bell Archive → the courier. After
+the ending: Mara Vell → Orra Bell → Blunt return → Ask for next job → Meet Saint
+Orra → Deliver next packet. Left out: one wheel scroll that moved nothing and
+three swipes.
+
+**"What did the bell ring, and why?" (verbatim, unprompted):**
+> The bell (the Bell Archive's bell) rang for "the courier", which is the name I
+> picked when Maud asked "Which name did the bell keep?". Saint Orra had said
+> the archive "needs your name, "the courier"" and that "Mara Vell" and "Orra
+> Bell" were names "the archive offers to trap you".
+>
+> So: it rang my true name, because I gave the right name instead of a trap
+> name, and the district light stayed lit. I am confident about what it rang. I
+> am only moderately confident about why: the game never explains what the bell
+> is, why it keeps names, or what the district light means.
+
+**The box line is gone (#2810), checked on both paths.** This player tapped "I
+listened", and no card mentioned a box. Because the line was reported for a
+player with no route tap, the operator replayed that path on the same revision
+with a fresh player (Take the safe job → Blue packet → Deliver packet → Kind
+return → Ask for next job → Take the second packet → Deliver next packet →
+Deliver packet): neither return card says "You found the box anyway".
+
+**Still wrong: the second return card ignores the picked job (#2811, open).**
+The player picked "Night transfer · medium risk" and tapped "Deliver packet";
+the card said "I remember you: red tag delivered to Saint Orra" and nothing
+about the Night transfer. The player: "Either my job pick was ignored or Night
+transfer is the red-tag job; the screen does not say." The change for it was in
+review when this run was played.
+
+**New: a reply looks already chosen (#2815, P2).** On the first return card
+"Kind return" was drawn filled with a bright border before the player tapped
+it, the way "You listened" looked after its tap. In the operator's replay
+without the "I listened" tap it was drawn unfilled.
+
+**Lines the player could not match to anything seen:** "you waited for my whole
+route before the rain bit down" (no route was shown being read out); "Most
+couriers let the second signal die"; "Some doors only learn your name after you
+refuse them"; "You brought the red tag yourself. I remember the courier who did
+not leave it for the rain" (no such choice was shown).
+
+**Friction (the player's words, shortened):** no title or intro on the first
+screen; the "Offered jobs" list is a small scroll box with no indicator, "Night
+transfer · medium risk" is cut in half above the "Deliver packet" row and
+"Signed receipt · low risk" is hidden until a swipe; a wheel scroll does
+nothing; "Red tag — Saint Orra" looks like a button and does nothing; the card
+is tilted and soft after each "Deliver packet"; several Io lines run together
+as one paragraph after "Ask for next job"; "Choose before you leave: Io will
+remember whether the seal stayed whole" stays on screen to the end; the ending
+appears below the fold with no end marker; after the ending "Mara Vell" and
+"Orra Bell" change nothing, but the story controls still respond and loop back
+to the job stage with the ending text left on screen.
+
+**Verdict:** NOT PASSED. The bell answer passes again, and the line that failed
+playtests #2 to #4 is gone on both paths. But the game still told the player
+they delivered the red tag after they picked a different job, and one reply was
+drawn as chosen before any tap. M4 stays open; #2811 and #2815 are with the
+team. The closeout is replayed on the revision that has #2811.
+
 ## 2026-11-14 — Blind AI-stranger playtest #4 (M4 closeout) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
