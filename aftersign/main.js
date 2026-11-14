@@ -1552,6 +1552,7 @@ const lineForBeat = () => {
     player: state.player,
     npcs: state.npcs,
     deliveryId: state.delivery.id,
+    redTagAccepted: state.player.redTagAccepted === true,
     returningBootLine: ioReturningBootLine,
     returningBootBeat: ioReturningBootBeat,
     secondPacketResponseLine: ioSecondPacketResponseLine,
@@ -1739,7 +1740,7 @@ const syncIoLine = () => {
     // `lineForBeat()` directly, or via the `state.npcs.io.lastLine`
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
-    nextLine = state.delivery.id === "red-tag"
+    nextLine = state.delivery.id === "red-tag" && state.player.redTagAccepted === true
       ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
       : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
@@ -3511,6 +3512,12 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     stampAftersignChoice(acknowledgeRouteButton, secondPacketCopy.choices[0].id);
     stampAftersignChoice(skipRouteButton, secondPacketCopy.choices[1].id);
     stampAftersignChoice(deliverButton, "deliver-packet");
+    for (const button of [acknowledgeRouteButton, skipRouteButton]) {
+      button.setAttribute("aria-pressed", "false");
+      delete button.dataset.aftersignSelected;
+      button.style.backgroundColor = "";
+      button.style.borderColor = "";
+    }
     // PR #1236: same cleanup as above — no recognition-beat stamps
     // should leak into a beat where the buttons carry different
     // choice ids.
