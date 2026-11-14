@@ -76,9 +76,14 @@ export async function runIoDialogueResolverChecks(): Promise<void> {
     "io-next-job second-packet response wins",
   );
   assertEqual(
-    resolveIoDialogue(base({ beat: "io-return-recognition", deliveryId: "red-tag" })),
+    resolveIoDialogue(base({ beat: "io-return-recognition", deliveryId: "red-tag", redTagAccepted: true })),
     "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it.",
     "recognition red-tag line",
+  );
+  assertEqual(
+    resolveIoDialogue(base({ beat: "io-return-recognition", deliveryId: "red-tag" })),
+    "RECOG:true",
+    "recognition red-tag line requires the stored acceptance fact (#2790)",
   );
   assertEqual(resolveIoDialogue(base({ beat: "io-return-recognition" })), "RECOG:true", "recognition follows packet");
   assertEqual(
