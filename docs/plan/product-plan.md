@@ -4,7 +4,31 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-11-07 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-11-14 (supersedes everything below; sections below are history)
+
+### M4 — ACTIVE. Deadline: 2026-11-19 · Days remaining: **5** as of 2026-11-14
+
+Outcome unchanged (brief, verbatim): "after the vigil, a phone player carries the red tag to Saint Orra, hears what Orra needs, carries a name to Maud at the Bell Archive, and sees the bell ring for the name they chose. Then they can retell what happened and why."
+
+Board reality (open issues, 2026-11-14): only #2804, #2587 (epic), #2080. The 11-07 gate #2705 is no longer open. The closeout playtest (story 3 below) has started: blind AI-stranger playtest #3 on deployed `67798e9` (2026-11-13) **failed**, and filed #2804 (P1).
+
+What #2804 found: after the second delivery, Io's return card offers "Carry the name to the Bell Archive" before the player has met Saint Orra or been given a name. Orra is only an optional "SAINT ORRA'S VIGIL" row the player can skip. Maud's names ("Mara Vell", "Orra Bell") show up for the first time on her buttons, so the stranger called the bell answer "a blind guess". The automated gate passes because it taps the Orra row on purpose, and a stranger doesn't. Reachable is not the same as led-to: the beats exist, but the path through them isn't enforced.
+
+#### M4-E1 (#2587) — story map as of 2026-11-14
+
+| Order | Player outcome | Issue | LoE | Status |
+| --- | --- | --- | --- | --- |
+| 0 Gate | Taps-only boot → Episode 1 ending → red tag → Orra → Maud → bell, two records, two endings, fresh-context restore | #2705 | M | CLOSED 2026-11-08 (`aftersign/e2e/m4-act-two.playtest.spec.ts`). It passed, but per #2804 it reaches Orra by tapping the optional vigil row on purpose, so it does not prove a stranger is led there. **Superseded as the stranger-path gate by #2804's spec.** When #2804 forces the Orra beat, its PR must update `m4-act-two.playtest.spec.ts` to follow the led path (no optional-row tap) and keep it green boot → bell. That keeps the M4 PLAYTEST story honest without filing a new issue. |
+| 1 | Orra recalls the player's real first tap | #2597, #2676 | M | CLOSED. |
+| 2 | Maud's archive rings lit/dark by name × memory | #2598, #2652, #2690–#2694 | M | CLOSED. |
+| 3a **NOW** | A fresh player is **led** to Saint Orra before the archive. Orra's line says what she needs and names the name. The archive control and the name buttons only appear after that line has been visible, and never without the red tag | #2804 | M | OPEN P1. Blocks closeout. Its acceptance already includes a taps-only 390×844 served spec, so it is its own integration proof. |
+| 3b | Closeout: blind AI-stranger playtest #4 on the deployed revision answers "What did the bell ring, and why?" and ties it to an action. No false memory. Verbatim in devlog | — (operator) | S | Re-run once #2804 is deployed. |
+
+Time-first sequencing (5 days): #2804 merged and deployed by **2026-11-16**. Stranger playtest #4 by **2026-11-17**. 11-18/19 are reserved for P1 false-memory or gating fixes that the playtest finds. Cut list, in order: (1) skip polish on Orra's line and keep plain copy; (2) Maud's choice falls back to two options (the name Orra gave vs. one other) if three can't be motivated on screen; (3) the vigil row folds into the forced Orra beat. Never cut below two reachable Act II endings, and never move the date.
+
+Drift (serves no M4-E1 outcome; the operator decides): #2080 (audit tracking, operator lane). #2703 and #2646 from 11-07 are no longer on the open board.
+
+## Planning checkpoint — 2026-11-07 (history; superseded by 2026-11-14)
 
 ### M4 — ACTIVE (unchanged outcome). Deadline: 2026-11-19 · Days remaining: **12** as of 2026-11-07
 
