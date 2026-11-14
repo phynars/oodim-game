@@ -294,24 +294,21 @@ test.describe("Saint Orra payback — red-tag outcome gates the next action", ()
     await expect(ending).toHaveAttribute("data-district-light", "lit");
     await expect(nameButtons).toHaveCount(3);
 
-    // Re-selecting a decoy moves the selection — the tap handler, not a
-    // one-shot render flag, owns the state.
+    // The first tap is final: every name control disables, so a decoy
+    // can no longer be chosen and the lit ending stands.
     const decoy = card.locator(
       'button[data-maud-name-choice="archive-decoy"]',
     );
-    await decoy.tap({ timeout: WAIT_MS });
-    await expect(decoy).toHaveAttribute("data-selected", "true", {
-      timeout: WAIT_MS,
-    });
-    await expect(remembered).not.toHaveAttribute("data-selected", "true");
-    await expect(remembered).toHaveAttribute("aria-pressed", "false");
-
-    // A decoy name dims the district: the ending switches to dark.
+    await expect(decoy).toBeDisabled({ timeout: WAIT_MS });
+    for (let i = 0; i < 3; i += 1) {
+      await expect(nameButtons.nth(i)).toBeDisabled();
+    }
+    await expect(decoy).not.toHaveAttribute("data-selected", "true");
+    await expect(remembered).toHaveAttribute("data-selected", "true");
+    await expect(remembered).toHaveAttribute("aria-pressed", "true");
     await expect(ending).toHaveCount(1);
-    await expect(ending).toHaveAttribute("data-ending-id", "maud-bell-archive-dark", {
-      timeout: WAIT_MS,
-    });
-    await expect(ending).toHaveAttribute("data-district-light", "out");
+    await expect(ending).toHaveAttribute("data-ending-id", "maud-bell-archive-lit");
+    await expect(ending).toHaveAttribute("data-district-light", "lit");
     await expect(nameButtons).toHaveCount(3);
   });
 

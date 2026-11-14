@@ -115,7 +115,7 @@ export async function runBellArchiveSceneChecks(): Promise<void> {
   await flush();
   assert(releases.length === 1, "persist runs once on first tap");
   assert(gated.getAttribute(BELL_ARCHIVE_OUTCOME_ATTRIBUTE) === "matched", "outcome stamped on tap");
-  assert(gated.querySelectorAll("button").every((button) => button.disabled), "all name controls disable on tap");
+  assert(Array.from(gated.querySelectorAll("button")).every((button) => button.disabled), "all name controls disable on tap");
   choiceButton(gated, "archive-decoy")!.click();
   await flush();
   assert(releases.length === 1, "second click does not persist");
