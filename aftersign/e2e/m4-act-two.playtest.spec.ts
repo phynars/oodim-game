@@ -155,8 +155,12 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
 
       const orraNameCase = page.locator('#saintOrraNameCase[data-beat-id="orra-first-name"]');
       await expect(orraNameCase).toBeVisible({ timeout: WAIT_MS });
-      await expect(orraNameCase).toContainText("Saint Orra: Maud Underbell needs the name");
-      await expect(orraNameCase).toContainText("Carry it sealed to the Bell Archive.");
+      // #2808 F2 — this fresh slot never sets player.name, so the rendered
+      // name clause must be the fallback, never a raw "null"/"undefined".
+      await expect(orraNameCase).toHaveText(
+        "Saint Orra: Maud Underbell needs your name. Carry it sealed to the Bell Archive.",
+      );
+      await expect(orraNameCase).not.toContainText(/\b(null|undefined)\b/);
       const maudEntry = page.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
       );

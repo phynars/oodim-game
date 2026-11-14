@@ -2403,9 +2403,13 @@ const renderSaintOrraEndingRecall = () => {
       nameCase.setAttribute("data-beat-id", "orra-first-name");
       ending.appendChild(nameCase);
     }
+    // #2808 F1 — player.name is null on a fresh slot; never interpolate it raw.
+    const orraName = typeof state.player.name === "string" ? state.player.name.trim() : "";
     setTextContentIfChanged(
       nameCase,
-      `Saint Orra: Maud Underbell needs the name ${state.player.name}. Carry it sealed to the Bell Archive.`,
+      orraName
+        ? `Saint Orra: Maud Underbell needs the name ${orraName}. Carry it sealed to the Bell Archive.`
+        : "Saint Orra: Maud Underbell needs your name. Carry it sealed to the Bell Archive.",
     );
     // #2731 F1/F2 — the red-tag handler (choose "carry-red-tag-to-saint-orra")
     // only calls this function + publishState, never renderText, so the
