@@ -129,6 +129,27 @@ test.describe("Durable Act II ending (#2726)", () => {
     await assertRestored(browser, slot, player, DIM, outcome);
   });
 
+  test("disables every Act II name control after the first visible tap", async ({ page, browser }) => {
+    test.setTimeout(240_000);
+    const { player, slot } = ids("final");
+    await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
+    await reachOrraPayback(page);
+    await tapVisible(page, 'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])');
+
+    const first = page.locator('button[data-maud-name-choice="remembered-name"]');
+    await expect(first).toBeVisible({ timeout: WAIT_MS });
+    await first.tap();
+    const ending = page.locator('[data-ending-id="maud-bell-archive-lit"]');
+    await expect(ending).toBeVisible({ timeout: WAIT_MS });
+    const outcome = (await ending.locator(".episode-one-ending__outcome").textContent())?.trim() ?? "";
+    const nameControls = page.locator("button[data-maud-name-choice]");
+    await expect(nameControls).toHaveCount(3);
+    expect(await nameControls.evaluateAll((controls) => controls.every((control) => control.disabled))).toBe(true);
+    await expect(ending).toHaveAttribute("data-district-light", "lit");
+    await expect(ending.locator(".episode-one-ending__outcome")).toHaveText(outcome);
+    await assertRestored(browser, slot, player, LIT, outcome);
+  });
+
   test("does not reopen an Act II choice after restoring an ending", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const { player, slot } = ids("nochoice");
