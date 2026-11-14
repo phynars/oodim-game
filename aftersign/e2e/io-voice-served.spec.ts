@@ -318,24 +318,42 @@ test.describe("AFTERSIGN Io return-voice sibling paragraph (phone tap)", () => {
     );
     expect(openedAccent).toBe("#d46b62");
 
-    // PR #2721 F1 — skipped-route siblings on the played OPENED path.
-    // This path never taps the kiosk acknowledgement, so the served
-    // runtime's `secondActionFromMemory` resolves the route as skipped and
-    // `renderReturnRecognition` renders BOTH route siblings next to
-    // `#ioReturnLine` (CI observed `#ioSkippedRouteLine` count 1 here).
-    // Pin the extracted renderer's DOM output on this second played path.
-    const openedSkippedRouteLine = page.locator("#ioSkippedRouteLine");
-    await expect(openedSkippedRouteLine).toBeVisible({ timeout: WAIT_MS });
-    await expect(openedSkippedRouteLine).toHaveAttribute(
-      "data-aftersign-io-route-memory",
-      "skipped",
-    );
-    await expect(openedSkippedRouteLine).toHaveText(
-      IO_ROUTE_MEMORY_LINES.skipped.text,
-    );
-    // PR #2721 F1 — `#ioRouteReturnLine` requires an EXPLICIT remembered
-    // skipped fact (`rememberedSkippedRoute`, main.js `showSkippedRouteReturn`).
-    // This path never taps skip, so the route-return line is absent.
+    // A missing route choice is not an early-run choice. This player only
+    // touched the visible packet control and delivery action, so neither
+    // skipped-route sibling may claim they ran before Io finished speaking.
+    await expect(page.locator("#ioSkippedRouteLine")).toHaveCount(0);
+    await expect(page.locator("#ioRouteReturnLine")).toHaveCount(0);
+
+  });
+});
+
+test.describe("AFTERSIGN Io route-memory truth (phone tap)", () => {
+  test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
+
+  test("no route choice never creates Io's early-run return line across two deliveries", async ({ page }) => {
+    test.setTimeout(120_000);
+    await openAftersign(page, `io-no-route-choice-${Date.now()}`);
+
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    await page.locator('[data-choice-id="deliver-packet"]').tap();
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.getByText("You found the box anyway", { exact: false })).toHaveCount(0);
+    await expect(page.locator("#ioRouteReturnLine")).toHaveCount(0);
+
+    await page.locator('button[data-return-reason="kind"]:not([disabled])').tap();
+    await waitForBeat(page, "return-tone-choice");
+    await page.locator('[data-choice-id="ask-for-next-job"]').tap();
+    await waitForBeat(page, "io-next-job");
+    await page.locator('[data-choice-id="deliver-packet"]').tap();
+    await waitForBeat(page, "packet-offered");
+
+    await page.locator('button[data-offered-job-id="job-night-transfer"]').tap();
+    await page.locator("#packetButton").tap();
+    await waitForBeat(page, "packet-choice");
+    await page.locator('[data-choice-id="deliver-packet"]').tap();
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.getByText("You found the box anyway", { exact: false })).toHaveCount(0);
     await expect(page.locator("#ioRouteReturnLine")).toHaveCount(0);
   });
 });

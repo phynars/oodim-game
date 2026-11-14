@@ -68,7 +68,8 @@ export const buildSecondActionMemoryFact = ({ secondAction, sessionId }) => ({
 
 export const secondActionFromMemory = (memory = []) => {
   const fact = memory.find((entry) => entry.predicate === NPC_MEMORY_PREDICATE.KIOSK_SECOND_ACTION);
-  return fact?.object === SECOND_ACTION.DONE ? SECOND_ACTION.DONE : SECOND_ACTION.SKIPPED;
+  if (!fact) return undefined;
+  return fact.object === SECOND_ACTION.DONE ? SECOND_ACTION.DONE : SECOND_ACTION.SKIPPED;
 };
 
 /** #2511 — true ONLY when Io durably holds an explicit skipped
