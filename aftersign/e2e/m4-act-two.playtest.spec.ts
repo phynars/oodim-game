@@ -23,6 +23,11 @@ const RECALL_ASK = "You asked what changed before you carried it. I remember the
 // Verbatim from aftersign/src/bellArchiveScene.ts.
 const MAUD_TITLE = "Maud Underbell — Bell Archive";
 const MAUD_PROMPT = "Maud opens the archive. Which name did the bell keep?";
+// Verbatim from aftersign/main.js renderText() #saintOrraReturnNeed (fresh
+// slot: player.name unset → "the courier", the remembered-name choice).
+const ORRA_RETURN_NEED =
+  'Saint Orra: The red tag was mine. Maud Underbell\'s Bell Archive needs your name, "the courier". Carry it there — "Mara Vell" and "Orra Bell" are names the archive offers to trap you.';
+const ARCHIVE_CONTROL = 'button[data-orra-payback-action="carry-name-to-bell-archive"]';
 
 function slotUrl(slot: string, playerId: string): string {
   return `/aftersign/?slot=${slot}&player=${playerId}`;
@@ -108,6 +113,31 @@ const CASES = [
 test.describe("M4 phone Act II playtest (#2705)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
+  // #2804 directed variant: second delivery WITHOUT "Take the second
+  // packet". No red tag taken → no Orra need line and no name-carrying
+  // control on Io's return card.
+  test("#2804: second delivery without taking the red tag offers no archive control", async ({ page }) => {
+    test.setTimeout(180_000);
+    const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const slot = `m4-2804-skip-${runId}`;
+    const playerId = `e2e-m4-2804-skip-${runId}`;
+    await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
+
+    await reachNextJob(page);
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "packet-offered");
+    await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-night-transfer"]');
+    await tapVisible(page, "#packetButton");
+    await waitForBeat(page, "packet-choice");
+    await tapChoice(page, "acknowledge-kiosk");
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+
+    await expect(page.locator("#saintOrraReturnNeed")).toHaveCount(0);
+    await expect(page.locator(ARCHIVE_CONTROL)).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("Carry the name to the Bell Archive");
+  });
+
   for (const scenario of CASES) {
     test(`record ${scenario.label}: ${scenario.firstTap} → Episode 1 card → Orra recall, restored`, async ({ page, browser }) => {
       test.setTimeout(180_000);
@@ -153,6 +183,14 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
         }
       }
 
+      const orraNameCase = page.locator('#saintOrraNameCase[data-beat-id="orra-first-name"]');
+      await expect(orraNameCase).toBeVisible({ timeout: WAIT_MS });
+      // #2808 F2 — this fresh slot never sets player.name, so the rendered
+      // name clause must be the fallback, never a raw "null"/"undefined".
+      await expect(orraNameCase).toHaveText(
+        "Saint Orra: Maud Underbell needs your name. Carry it sealed to the Bell Archive.",
+      );
+      await expect(orraNameCase).not.toContainText(/\b(null|undefined)\b/);
       const maudEntry = page.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
       );
@@ -202,10 +240,22 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await tapChoice(page, "deliver-packet");
       await waitForBeat(page, "io-return-recognition");
 
+      // #2804 F2: Orra's need line (name to carry + decoys) is on screen
+      // before the archive control, and the control sits after it.
+      const orraNeed = page.locator('#saintOrraReturnNeed[data-beat-id="orra-return-need"]');
+      await expect(orraNeed).toBeVisible({ timeout: WAIT_MS });
+      await expect(orraNeed).toHaveText(ORRA_RETURN_NEED);
       const payback = page.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
       );
       await expect(payback).toBeVisible({ timeout: WAIT_MS });
+      expect(
+        await orraNeed.evaluate((need) => {
+          const button = document.getElementById("orraPaybackAction");
+          return !!button && !!(need.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING);
+        }),
+        "archive control renders after Orra's need line",
+      ).toBe(true);
       await expect(payback).toHaveText("Carry the name to the Bell Archive");
       await payback.tap();
 

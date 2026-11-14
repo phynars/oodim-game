@@ -65,6 +65,12 @@ async function seedRedTagReturn(
       name: null,
       flags: { io_intro_seen: true },
       secondPacketHandoffAccepted: true,
+      // #2804: the payback button is gated on the explicit accept fact.
+      // A real red-tag save always carries it — the accept tap sets
+      // `redTagAccepted` alongside `secondPacketHandoffAccepted`
+      // (main.js accept-second-packet branch), and boot restores it from
+      // `stored.player.redTagAccepted`. The seed mirrors that real save.
+      redTagAccepted: true,
     },
     memory: [],
     save: { revision: 1 },
