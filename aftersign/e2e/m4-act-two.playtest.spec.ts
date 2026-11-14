@@ -268,6 +268,15 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(ending).toContainText(tappedName || "");
       await expect(ending).toContainText(scenario.endingLight);
 
+      const bellOutcome = ending.locator(".episode-one-ending__outcome");
+      await expect(bellOutcome).toContainText(`The bell rings for ${tappedName || ""}.`);
+      await expect
+        .poll(async () => {
+          const bounds = await bellOutcome.boundingBox();
+          return !!bounds && bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
+        }, { message: "bell recipient line fully inside the viewport after a name tap", timeout: WAIT_MS })
+        .toBe(true);
+
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
         const restored = returning.locator(`[data-ending-id="${scenario.endingId}"]`);

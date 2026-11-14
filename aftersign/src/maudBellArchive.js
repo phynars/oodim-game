@@ -88,6 +88,11 @@ export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice) => {
   card.append(title, bell, outcome, dialogue, light);
   host.replaceChildren(card);
   ringBell(doc, bell);
+  // Keep the selected name's bell outcome visible in the card's existing
+  // scroll surface after the choice appends the ending.
+  if (typeof outcome.scrollIntoView === "function") {
+    outcome.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
   return card;
 };
 
