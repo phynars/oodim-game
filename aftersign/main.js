@@ -2466,7 +2466,7 @@ const renderText = () => {
       setOfferTrayVisibility(offeredJobs, false);
       while (offeredJobs.firstChild) offeredJobs.removeChild(offeredJobs.firstChild);
     }
-    for (const id of ["orraPaybackAction", "returnToOrra"]) {
+    for (const id of ["orraPaybackAction", "saintOrraReturnNeed", "returnToOrra"]) {
       document.getElementById(id)?.remove();
     }
     return;
@@ -2491,9 +2491,33 @@ const renderText = () => {
   const isPacketDeliveredBeat = state.scene.beat === "packet-delivered";
   const isReturnRecognitionBeat = state.scene.beat === "io-return-recognition";
   const isRedTagReturnBeat = isReturnRecognitionBeat && state.delivery.id === "red-tag";
-  const orraPaybackAction = isRedTagReturnBeat
+  // #2804 F1 — the name-carrying control is offered only when the player
+  // actually took the red tag (visible "Take the second packet" tap) AND
+  // Saint Orra's need line — naming the name to carry and the archive's
+  // decoys — is on screen first. Without the red tag there is no control.
+  const redTagTaken = state.player.redTagAccepted === true;
+  const orraPaybackAction = isRedTagReturnBeat && redTagTaken
     ? orraPaybackActionForDelivery(state.delivery)
     : null;
+  let orraReturnNeed = document.getElementById("saintOrraReturnNeed");
+  if (orraPaybackAction) {
+    if (!orraReturnNeed) {
+      orraReturnNeed = document.createElement("p");
+      orraReturnNeed.id = "saintOrraReturnNeed";
+      orraReturnNeed.setAttribute("data-beat-id", "orra-return-need");
+      line.insertAdjacentElement("afterend", orraReturnNeed);
+    }
+    const carriedName = typeof state.player.name === "string" && state.player.name.trim()
+      ? state.player.name.trim()
+      : "the courier";
+    setTextContentIfChanged(
+      orraReturnNeed,
+      `Saint Orra: The red tag was mine. Maud Underbell's Bell Archive needs your name, "${carriedName}". Carry it there — "Mara Vell" and "Orra Bell" are names the archive offers to trap you.`,
+    );
+  } else if (orraReturnNeed) {
+    orraReturnNeed.remove();
+    orraReturnNeed = null;
+  }
   let orraPaybackButton = document.getElementById("orraPaybackAction");
   // Soren PR #2264 review AI006: once the player has committed the
   // payback action (recorded on `state.player.orraPaybackAction` by
@@ -2510,7 +2534,8 @@ const renderText = () => {
       orraPaybackButton = document.createElement("button");
       orraPaybackButton.type = "button";
       orraPaybackButton.id = "orraPaybackAction";
-      line.insertAdjacentElement("afterend", orraPaybackButton);
+      // #2804: always after Orra's need line, never ahead of it.
+      orraReturnNeed.insertAdjacentElement("afterend", orraPaybackButton);
     }
     // ROOT CAUSE of the 180s e2e timeout (PR #2264): this button is
     // mounted after `#line` inside `.panel`, and `.hud` sets
@@ -4396,7 +4421,13 @@ const choose = async (choiceId) => {
       && document.getElementById("saintOrraNameCase");
     if (
       !continuingEpisodeOneEnding
-      && (state.scene.beat !== "io-return-recognition" || choiceId !== offeredAction)
+      && (
+        state.scene.beat !== "io-return-recognition"
+        || choiceId !== offeredAction
+        // #2804 F1: no red tag taken, or Orra's need line not shown → no carry.
+        || state.player.redTagAccepted !== true
+        || !document.getElementById("saintOrraReturnNeed")
+      )
     ) {
       return;
     }
