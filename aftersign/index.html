@@ -566,6 +566,12 @@
       .panel {
         position: relative;
         width: min(680px, 100%);
+        /* #2800: bound the card to the viewport (the fixed, bottom-
+           anchored .hud otherwise grows past the top edge where it can't
+           be scrolled back) and let it scroll by touch. 36px = the .hud's
+           18px top + bottom padding. vh first as a fallback for engines
+           without dvh. */
+        max-height: calc(100vh - 36px);
         max-height: calc(100dvh - 36px);
         overflow-y: auto;
         overscroll-behavior: contain;
