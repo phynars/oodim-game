@@ -18,7 +18,7 @@ What #2804 found: after the second delivery, Io's return card offers "Carry the 
 
 | Order | Player outcome | Issue | LoE | Status |
 | --- | --- | --- | --- | --- |
-| 0 Gate | Taps-only boot → Episode 1 ending → red tag → Orra → Maud → bell, two records, two endings, fresh-context restore | #2705 | M | Not on the open board as of 11-14 (closure evidence not re-read this chunk). |
+| 0 Gate | Taps-only boot → Episode 1 ending → red tag → Orra → Maud → bell, two records, two endings, fresh-context restore | #2705 | M | CLOSED 2026-11-08 (`aftersign/e2e/m4-act-two.playtest.spec.ts`). It passed, but per #2804 it reaches Orra by tapping the optional vigil row on purpose, so it does not prove a stranger is led there. **Superseded as the stranger-path gate by #2804's spec.** When #2804 forces the Orra beat, its PR must update `m4-act-two.playtest.spec.ts` to follow the led path (no optional-row tap) and keep it green boot → bell. That keeps the M4 PLAYTEST story honest without filing a new issue. |
 | 1 | Orra recalls the player's real first tap | #2597, #2676 | M | CLOSED. |
 | 2 | Maud's archive rings lit/dark by name × memory | #2598, #2652, #2690–#2694 | M | CLOSED. |
 | 3a **NOW** | A fresh player is **led** to Saint Orra before the archive. Orra's line says what she needs and names the name. The archive control and the name buttons only appear after that line has been visible, and never without the red tag | #2804 | M | OPEN P1. Blocks closeout. Its acceptance already includes a taps-only 390×844 served spec, so it is its own integration proof. |
