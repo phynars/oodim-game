@@ -7,6 +7,64 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-13 — Blind AI-stranger playtest #1 (M4 closeout) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`be95e3e` in a 390×844 headless phone page with touch on: a screenshot after the
+page settles, actions only by tapping visible text or a screen position. 26
+commands, 02:3xZ 11-14. Nothing read the DOM state or `window.__game`.
+
+**Path:** Blue packet (seal kept) → I listened → Lit stair → Carry the fragile
+packet → Deliver packet → Kind return → Ask for next job → Red tag — Saint Orra →
+Deliver next packet → Night transfer · medium risk → Deliver packet → Blunt
+return → Ask for next job → Meet Saint Orra → Light the vigil → Carry the red tag
+to Saint Orra → Carry the name to the Bell Archive → the courier → Mara Vell.
+Three swipes on the card (trying to scroll it) are left out of the path.
+
+**"What did the bell ring, and why?" (verbatim, unprompted):**
+> The bell rang a name. The first time it rang "for the wrong name", because (the
+> card said) I had been offered the red tag and not accepted it, so the archive
+> had to guess. Then I carried the tag to Saint Orra, went to the archive, and
+> told Maud the bell kept "the courier", so it rang for the courier — me — and
+> the light stayed lit. Then I poked "Mara Vell" and it rang for her instead and
+> the light went out. So as far as I can tell it rings whatever name I hand Maud.
+> I don't know who Mara Vell or Orra Bell are, or why one name keeps a light on
+> and another puts it out.
+
+**False-memory check (operator, against the screenshots):** three, each a P1.
+- **The red tag, stated both ways (#2790).** After the second delivery Io says "I
+  remember you: red tag delivered to Saint Orra" and "You brought the red tag
+  yourself". The Episode 1 ending card then says "The red tag was offered, but you
+  did not accept it." The player tapped neither "Take the second packet" nor "Ask
+  what changed"; "Take the second packet" was drawn highlighted before any tap.
+- **Torn, and "found the box anyway" (#2791).** With the seal kept and "I
+  listened" tapped, Io says "It came back torn anyway … until you mend the tear"
+  on the same screen as "You brought it back whole last time", and later "You
+  found the box anyway. Next time, let me finish saving your life." The player
+  never tapped "I ran early". (The tear may be an authored result of "Carry the
+  fragile packet"; nothing on screen showed it happen.)
+- **The ending can be rewritten (#2792).** After the lit ending for "the
+  courier", the three name buttons stayed live; tapping "Mara Vell" replaced it
+  with the dark ending. Not a memory claim, but it breaks "the bell rings for the
+  name they chose".
+
+**Friction (the player's words, shortened):** the card grew taller than the
+screen twice and its top could not be scrolled back; "Kind return" is highlighted
+before a choice and stays highlighted after "Blunt return"; "Red tag — Saint
+Orra" and "Night transfer · medium risk" give no visible feedback; "Light the
+vigil" jumps straight to an ending; "Episode 1 — complete" appears and the story
+then continues into Act II from the same card; the offered-jobs list scrolls
+inside the card with no cue; sound buttons sit among the story choices.
+
+**Automated half:** the served Act II specs pass on game.oodim.com at `be95e3e`
+(8 of 8: `durable-act-ii-ending`, `maud-bell-archive-fresh-context`,
+`orra-return-control`, `orra-served-recognition`).
+
+**Verdict:** NOT PASSED. The answer names the bell's outcome and ties it to the
+player's own choice, but the game stated memories the player cannot recognise
+from their taps, which blocks closeout. M4 stays open; #2790, #2791 and #2792
+are filed for the team. The closeout is replayed on the revision that fixes them.
+
 ## 2026-10-30 — Blind AI-stranger playtest #4 — PASSED → M3 (Episode 1) CLOSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
