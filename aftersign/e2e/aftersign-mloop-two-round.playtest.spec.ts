@@ -170,6 +170,9 @@ test.describe("AFTERSIGN M-LOOP round-two entry", () => {
     await signedReceiptAcknowledgeRoute.tap();
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "io-return-recognition");
+    await expect(
+      page.getByText("You found the box anyway. Next time, let me finish saving your life."),
+    ).toHaveCount(0);
     await page.locator('button[data-return-reason="blunt"]:not([disabled])').tap();
     await waitForBeat(page, "return-tone-choice");
     await tapChoice(page, "ask-for-next-job");

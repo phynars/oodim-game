@@ -2510,11 +2510,19 @@ const renderText = () => {
     state.delivery && typeof state.delivery.outcome === "string"
       ? state.delivery.outcome
       : "unknown";
-  const routeAttention = secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
-    ? "skipped"
-    : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
-      ? "listened"
-      : undefined;
+  // The first explicit route choice is the player fact this return recalls.
+  // Later deliveries can mint their own route-attention memory, but must not
+  // turn an earlier "I listened" tap into the skipped-route accusation.
+  const rememberedRouteAttention = secondActionFromMemory(state.npcs.io.memory);
+  const routeAttention = state.player.secondAction === SECOND_ACTION.DONE
+    ? "listened"
+    : state.player.secondAction === SECOND_ACTION.SKIPPED
+      ? "skipped"
+      : rememberedRouteAttention === SECOND_ACTION.SKIPPED
+        ? "skipped"
+        : rememberedRouteAttention === SECOND_ACTION.DONE
+          ? "listened"
+          : undefined;
   const recognitionLines = getIoReturningSessionRecognitionLines({
     packetOutcome: state.packet.sealed ? "sealed" : "opened",
     routeInstructionBehavior: routeAttention,
