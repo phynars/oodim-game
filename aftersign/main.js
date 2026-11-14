@@ -804,6 +804,46 @@ if (stateReadout && new URLSearchParams(window.location.search).get("debug") !==
 const failureSting = document.querySelector(".failure-sting");
 const feedbackController = createFeedbackController({ document, failureSting });
 const dialogueController = createDialogueController({ line, speaker });
+// #2800: the dialogue panel is a bounded scroll container (index.html
+// `.panel { max-height; overflow-y: auto }`). When a new section is
+// appended (Maud's Bell Archive name choices), keep it in view: scroll
+// the panel so the newest section's bottom edge is visible, now and on
+// every panel/section resize for a short settle window (the scene card
+// can still grow after the first frame, which a single rAF scroll misses).
+const scrollDialogueToNewestSection = (section) => {
+  const panel = document.querySelector(".hud .panel");
+  if (!panel) return;
+  const host = section || panel.lastElementChild;
+  // Prefer the row of live choices inside the newest section: if the
+  // section is taller than the card, its controls are what must show.
+  const resolveTarget = () => {
+    const choice = host?.querySelector?.("[data-maud-name-choice]");
+    return choice?.parentElement || host;
+  };
+  const pin = () => {
+    const target = resolveTarget();
+    if (target && target.isConnected && panel.contains(target)) {
+      const panelRect = panel.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const overflowBottom = targetRect.bottom - panelRect.bottom;
+      const roomAbove = targetRect.top - panelRect.top;
+      if (overflowBottom > 0) panel.scrollTop += Math.min(overflowBottom + 4, Math.max(0, roomAbove));
+      return;
+    }
+    panel.scrollTop = panel.scrollHeight;
+  };
+  pin();
+  requestAnimationFrame(() => {
+    pin();
+    requestAnimationFrame(pin);
+  });
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => pin());
+    observer.observe(panel);
+    if (host) observer.observe(host);
+    setTimeout(() => observer.disconnect(), 1500);
+  }
+};
 const packetButton = document.querySelector("#packetButton");
 const packetPressFeedbackRenderer = createPacketPressFeedbackRenderer({
   button: packetButton,
@@ -4388,6 +4428,7 @@ const choose = async (choiceId) => {
             .finally(() => publishState());
         },
       });
+      scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }
     // The Orra choice remains terminal on this beat. Bell Archive instead
     // replaces the surface with Maud's name selection; the chosen Act II

@@ -214,6 +214,46 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(maud).toContainText(MAUD_TITLE);
       await expect(maud).toContainText(MAUD_PROMPT);
 
+      // #2800: the card itself must fit the phone viewport (top edge
+      // reachable, not pushed above y=0 by the bottom-anchored HUD) and
+      // be a touch-scrollable container. On main the panel is unbounded,
+      // so its top sits above the viewport and this fails.
+      const panel = page.locator(".hud .panel");
+      await expect
+        .poll(async () => {
+          const box = await panel.boundingBox();
+          return box ? box.y >= 0 && box.y + box.height <= PHONE_VIEWPORT.height + 1 : false;
+        }, { message: "dialogue card fits inside the 390×844 viewport", timeout: WAIT_MS })
+        .toBe(true);
+      const panelStyle = await panel.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { overflowY: cs.overflowY, touchAction: cs.touchAction };
+      });
+      expect(["auto", "scroll"]).toContain(panelStyle.overflowY);
+
+      const nameButtons = page.locator("button[data-maud-name-choice]");
+      await expect(nameButtons).toHaveCount(3, { timeout: WAIT_MS });
+      for (let index = 0; index < 3; index += 1) {
+        const nameChoice = nameButtons.nth(index);
+        await expect(nameChoice).toBeVisible();
+        await expect(nameChoice).not.toHaveText(/^\s*$/);
+        // Poll: the newest-section scroll settles over a few frames.
+        await expect
+          .poll(async () => {
+            const bounds = await nameChoice.boundingBox();
+            if (!bounds) return false;
+            return bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
+          }, { message: `name choice ${index} fully inside the viewport`, timeout: WAIT_MS })
+          .toBe(true);
+        // Not clipped by the scroll container or covered: the button owns
+        // its own center point, i.e. a tap there lands on it.
+        const ownsCenter = await nameChoice.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return !!hit && (hit === el || el.contains(hit));
+        });
+        expect(ownsCenter, `name choice ${index} owns its center point`).toBe(true);
+      }
       const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
       await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
       const tappedName = await nameButton.textContent();
