@@ -158,6 +158,13 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     await expect(page.locator("#line")).toContainText("Night transfer reached Saint Orra");
     await expect(page.locator("#line")).not.toContainText("two reasons to trust you");
 
+    // #2811 review: the job-keyed line must survive a durable reload at
+    // this beat (selectedJobOfferId is hydrated from the save).
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).toContainText("Night transfer reached Saint Orra");
+
     const recipientLine = page.locator("#aftersignRedTagRecipientLine");
     await expect(recipientLine).toBeVisible({ timeout: WAIT_MS });
 

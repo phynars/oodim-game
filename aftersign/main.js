@@ -1219,6 +1219,14 @@ const state = {
     // for free — no new persistence branch. `computeOfferedActions`
     // reads it on the next run to diverge the offered-action set.
     routeRisk: stored?.player?.routeRisk ?? null,
+    // #2811 review: the job the player tapped at packet-offered keys
+    // Io's second-delivery return line (redTagReturnAcknowledgement).
+    // It rides the persist payload's clone(state.player); hydrate it
+    // here so a reload at io-return-recognition keeps the job-keyed line.
+    selectedJobOfferId:
+      typeof stored?.player?.selectedJobOfferId === "string"
+        ? stored.player.selectedJobOfferId
+        : null,
     // Set by the visible "Take the second packet" choice. The next offer
     // board uses this durable handoff marker to keep Io's red-tag route in
     // view instead of silently replacing the job at the round boundary.
@@ -5524,6 +5532,7 @@ const resetSliceSave = async () => {
     // player's kiosk acknowledgement.
     secondAction: null,
     returnReason: null,
+    selectedJobOfferId: null,
     // #2732: keep the red-tag record fields in the reset shape so the
     // first-tap guard in choose() sees `null`, not `undefined`.
     redTagAccepted: false,
