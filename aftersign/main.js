@@ -1792,7 +1792,7 @@ const syncIoLine = () => {
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
     nextLine = state.delivery.id === "red-tag" && state.player.redTagAccepted === true
-      ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
+      ? servedIoDialogue.redTagReturnAcknowledgement(state.player.selectedJobOfferId)
       : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
