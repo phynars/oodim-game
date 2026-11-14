@@ -2595,9 +2595,11 @@ const renderText = () => {
   // #2799: a later delivery with no fresh route tap keeps the earlier
   // explicit route-attention fact in Io's memory (see the delivery mint
   // site), so a player who listened on round one still reads "listened".
-  // A delivery with NO route fact ever (first-round no-tap) keeps the
-  // served no-tap=skipped sibling contract (io-voice-served.spec.ts).
-  const routeAttention = secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.SKIPPED
+  // #2810: a delivery with NO route fact (the player never tapped
+  // "I ran early") must not render the skipped-route sibling; only an
+  // explicit remembered skip may. `secondActionFromMemory` still maps
+  // absence to "skipped" for the memory-beat payload (M2-E1 contract).
+  const routeAttention = rememberedSkippedRoute(state.npcs.io.memory)
     ? "skipped"
     : secondActionFromMemory(state.npcs.io.memory) === SECOND_ACTION.DONE
       ? "listened"
