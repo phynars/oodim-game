@@ -1626,6 +1626,9 @@ const persistAuthoritative = async (options) => {
     publishState();
     return false;
   }
+  // A committed played save supersedes any earlier failed write, so clear
+  // the polite retry notice as soon as the server accepts a snapshot.
+  setSaveFailureNotice(false, { authoritative: true });
   // The full snapshot is already committed. Memory replication must not make
   // that successful player-visible save reject when its endpoint is unavailable.
   await writePlayerMemory({
@@ -4480,27 +4483,6 @@ const setSaveFailureNotice = (failed, { authoritative = false } = {}) => {
     authoritative
       ? "Save failed. Your progress will retry on the next save."
       : "Save failed locally. Your progress will retry on the next save.",
-  );
-};
-
-const setAuthoritativeSaveFailureNotice = (failed) => {
-  if (!line?.parentNode) return;
-  let notice = document.getElementById("saveFailureNotice");
-  if (!failed) {
-    notice?.remove();
-    return;
-  }
-  if (!notice) {
-    notice = document.createElement("p");
-    notice.id = "saveFailureNotice";
-    notice.setAttribute("role", "status");
-    notice.setAttribute("aria-live", "polite");
-    notice.style.pointerEvents = "none";
-    line.insertAdjacentElement("afterend", notice);
-  }
-  setTextContentIfChanged(
-    notice,
-    "Save failed. Your progress will retry on the next save.",
   );
 };
 
