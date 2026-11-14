@@ -6,9 +6,11 @@ import {
 } from "../../apps/web/src/aftersign/aftersignPacketRecallRender.ts";
 import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRiskChoiceIntent.ts";
 
-// AFTERSIGN #2401 / #2458 — a fresh player reaches BOTH failed-route
+// AFTERSIGN #2401 / #2458 / #2791 — a fresh player reaches BOTH failed-route
 // recalls through normal taps alone, with no seeded save. Supersedes
 // `route-risk-failure-reachable.playtest.spec.ts`.
+// #2791: a fragile carry unlocks recovery but does not establish a torn
+// packet or an early run, so its visible recall must not invent either fact.
 //
 // #2401 made the fragile packet record `succeeded: false`: a visible,
 // player-caused failure that unlocks `repair-the-loss` on the next run.
@@ -38,6 +40,9 @@ const COLD_START_MS = 120_000;
 // id is never the one the page wrote.
 const BOOTSTRAP_PLAYER_ID = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const SAVE_ENDPOINT_BASE = "/aftersign/save";
+const TORN_RECALL = "It came back torn anyway";
+const MEND_TEAR_RECALL = "mend the tear";
+const EARLY_RUN_RECALL = "You found the box anyway";
 
 type SavedRouteRisk = { succeeded?: boolean; lastAction?: string };
 
@@ -193,6 +198,10 @@ test.describe("AFTERSIGN failed-route recalls reachable without seed (#2401 / #2
     await expect(recall).toHaveAttribute(PACKET_RECALL_LINE_DATA_ATTR, "fragile");
     await expect(recall).toHaveText(fragileRecall);
     await expect(recall).not.toHaveText(failedRecall);
+    await expect(recall).not.toContainText(TORN_RECALL);
+    await expect(recall).not.toContainText(MEND_TEAR_RECALL);
+    await expect(recall).not.toContainText(EARLY_RUN_RECALL);
+    await expect(page.locator("#line")).not.toContainText(/brought it back whole/i);
 
     const isNextSibling = await page.evaluate(
       ({ lineId, recallId }) => {
@@ -243,6 +252,9 @@ test.describe("AFTERSIGN failed-route recalls reachable without seed (#2401 / #2
       "fragile",
     );
     await expect(recallAfterReload).toHaveText(fragileRecall);
+    await expect(recallAfterReload).not.toContainText(TORN_RECALL);
+    await expect(recallAfterReload).not.toContainText(MEND_TEAR_RECALL);
+    await expect(recallAfterReload).not.toContainText(EARLY_RUN_RECALL);
 
     // The fragile run failed, so the next tray is the recovery axis.
     const nextRunPacket = page.locator("#packetButton");
