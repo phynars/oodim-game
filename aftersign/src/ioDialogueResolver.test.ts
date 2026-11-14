@@ -35,6 +35,10 @@ const base = (overrides: Partial<Input> = {}): Input => ({
   secondPacketAcknowledgement: ({ returnReason, playerName }: { returnReason: string | null; playerName: string }) => ({
     lines: [`ACK:${returnReason}:${playerName}`],
   }),
+  redTagReturnAcknowledgement: (jobId: string | undefined) =>
+    jobId === "job-night-transfer"
+      ? "Night transfer reached Saint Orra. The red tag kept its route, and I kept your name beside it."
+      : "The red tag reached Saint Orra. The route kept its promise, and I kept your name beside it.",
   recognitionDialogue: ({ packetSealed }: { packetSealed: boolean }) => ({ line: `RECOG:${packetSealed}` }),
   offerLine: (_memory: unknown, offers: unknown, reason: string | null) => `OFFER:${String(offers)}:${reason}`,
   jobOffers: () => "JOBS",
@@ -76,9 +80,14 @@ export async function runIoDialogueResolverChecks(): Promise<void> {
     "io-next-job second-packet response wins",
   );
   assertEqual(
-    resolveIoDialogue(base({ beat: "io-return-recognition", deliveryId: "red-tag", redTagAccepted: true })),
-    "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it.",
-    "recognition red-tag line",
+    resolveIoDialogue(base({
+      beat: "io-return-recognition",
+      deliveryId: "red-tag",
+      redTagAccepted: true,
+      player: { ...base().player, selectedJobOfferId: "job-night-transfer" },
+    })),
+    "Night transfer reached Saint Orra. The red tag kept its route, and I kept your name beside it.",
+    "recognition red-tag line follows the selected job",
   );
   assertEqual(
     resolveIoDialogue(base({ beat: "io-return-recognition", deliveryId: "red-tag" })),
