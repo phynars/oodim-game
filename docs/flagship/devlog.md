@@ -7,6 +7,71 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-14 — Blind AI-stranger playtest #4 (M4 closeout) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`87dec57` (the revision with the change that followed playtest #3) in a 390×844
+headless phone page with touch on: a screenshot after the page settles, actions
+only by tapping visible text or a screen position. 26 commands, 08:41–08:48Z
+11-14. Nothing read the DOM state or `window.__game`.
+
+**Path:** Blue packet (seal kept) → Lit stair → Deliver packet → Kind return →
+Ask for next job → Take the second packet → Red tag — Saint Orra (no change) →
+Deliver next packet → Night transfer · medium risk → Deliver packet → Carry the
+name to the Bell Archive → the courier. After the ending: Mara Vell → Orra Bell
+→ Blunt return → Ask for next job → Meet Saint Orra → Ask what changed. The
+player tapped neither "I listened" nor "I ran early". Left out: one wheel scroll
+that moved nothing and two swipes.
+
+**"What did the bell ring, and why?" (verbatim, unprompted):**
+> The bell (the "Bell Archive") rang for "the courier", which is my name. As I
+> understood it, Saint Orra said Maud Underbell's Bell Archive needed my name,
+> "the courier", and that "Mara Vell" and "Orra Bell" were names the archive
+> offers to trap me. Maud asked "Which name did the bell keep?" and I answered
+> "the courier".
+>
+> Confidence on what it rang: high. Confidence on why: medium-low. My reading is
+> that I gave the true name instead of a trap name, so the district light stayed
+> lit. The game never explains what the bell is, why it needs a name, or what
+> the district light means.
+
+**#2804 is fixed on screen.** The second return card now carries Saint Orra's
+line ("The red tag was mine. Maud Underbell's Bell Archive needs your name, 'the
+courier'. Carry it there…") above "Carry the name to the Bell Archive". The
+player named the outcome and tied it to their own answer. #2805: the heading and
+"The bell rings for the courier." are visible after the name tap; the last two
+lines still need a swipe. #2792 still holds: after the ending, "Mara Vell" and
+"Orra Bell" changed nothing.
+
+**False-memory check (operator, against the screenshots and the command log):
+one, a P1 (#2810).** Both return cards say "You found the box anyway. Next time,
+let me finish saving your life." The command log has no tap on "I ran early" or
+"I listened". The player: "I never saw or chose anything about a box, and
+nothing I tapped interrupted Io." This is the third report of this line (#2791,
+#2799). Each change removed it for one path; with no recorded choice the game
+still reads the player as having run early.
+
+**Lines the player could not match to a tap (#2811, P2):** the second return
+card says "red tag delivered to Saint Orra" and nothing about "Night transfer",
+the job just picked; "You brought the red tag yourself. I remember the courier
+who did not leave it for the rain" with no such choice shown; and the first
+delivery's "You made it back. So did the blue seal, unbroken. That makes two
+reasons to trust you" repeated word for word.
+
+**Friction (the player's words, shortened):** no title or intro on the first
+screen; "Red tag — Saint Orra" looks like a button and does nothing; the card is
+tilted and soft after each "Deliver packet"; "Night transfer · medium risk" is
+cut in half above the "Deliver packet" row and sits in a scroll area inside a
+scroll area; several Io lines run together as one paragraph after "Ask for next
+job"; "Choose before you leave: Io will remember whether the seal stayed whole"
+stays on screen to the end; after the ending the story controls still respond
+and loop back to the job stage with the ending text left on screen.
+
+**Verdict:** NOT PASSED. The bell answer now passes: the player named what rang
+and why from what Orra told them. But the game told the player twice that they
+did something they did not do. M4 stays open; #2810 (P1) and #2811 (P2) are
+filed for the team. The closeout is replayed on the revision that has #2810.
+
 ## 2026-11-13 — Blind AI-stranger playtest #3 (M4 closeout) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
