@@ -7,6 +7,78 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-13 — Blind AI-stranger playtest #3 (M4 closeout) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`67798e9` (the revision with the two fixes from playtest #2) in a 390×844
+headless phone page with touch on: a screenshot after the page settles, actions
+only by tapping visible text or a screen position. 28 commands, 06:42–06:47Z
+11-14. Nothing read the DOM state or `window.__game`.
+
+**Path:** Blue packet (seal kept) → I listened → Lit stair → Deliver packet →
+Kind return → Ask for next job → Red tag — Saint Orra (no change) → Take the
+second packet → Deliver next packet → Night transfer · medium risk → Deliver
+packet → Carry the name to the Bell Archive → Mara Vell. After the ending: Orra
+Bell → Blunt return → Ask for next job → Meet Saint Orra → Wake kiosk sound.
+Left out: one wheel scroll that moved nothing, and two taps on the text "the
+courier" that the harness placed on Io's sentence "I remember the courier who
+did not leave it for the rain", not on the button (operator's reading of the
+harness: it taps the first visible match).
+
+**"What did the bell ring, and why?" (verbatim, unprompted):**
+> The bell rang for Mara Vell, and one district light went out.
+>
+> Why: I do not know from the story. As far as I could see, it rang for Mara
+> Vell only because I tapped the "Mara Vell" button when Maud asked "Which name
+> did the bell keep?". The name "Mara Vell" appeared nowhere before that button,
+> so the choice was a blind guess.
+>
+> Confidence: high on what it rang (the name and the light going out); low on
+> why.
+
+**False-memory check (operator, against the screenshots):** none.
+- #2799 fixed on screen: the second return card has no "You found the box
+  anyway".
+- #2800 fixed on screen: "the courier", "Mara Vell" and "Orra Bell" are fully
+  visible and readable before the tap.
+- #2792 still holds: after the ending, "Orra Bell" changed nothing.
+- The player flagged lines it could not place, none of them a stated false
+  action: "Say that too often…" after "Kind return" (the player's own line is
+  never shown), "Most couriers let the second signal die", and "the courier who
+  did not leave it for the rain".
+
+**The bell was reached without Saint Orra (#2804), a P1.** After the second
+delivery Io's card offered "Carry the name to the Bell Archive". The player had
+not seen Saint Orra, had not been told a name, and had passed the optional
+"Saint Orra's vigil" row untouched. Maud's three names were the first time
+"Mara Vell" and "Orra Bell" appeared. The answer was a guess, and the player
+said so.
+
+**Directed replay by the operator (not blind; same revision, fresh player), for
+the two paths the strangers skipped:**
+- #2791: with "Carry the fragile packet" tapped, the job board says "Io
+  remembers how carefully you carried the fragile packet" beside "You brought it
+  back whole last time". No "torn" line.
+- #2790: with no tap on "Take the second packet", the button is not drawn
+  selected, and Io's second return card does not say the red tag was delivered.
+  The card still offers "Carry the name to the Bell Archive" under one Io line
+  and an empty gap (part of #2804).
+
+**Friction (the player's words, shortened):** after the name tap only "The Bell
+Archive rings." is visible and the outcome lines are below the card's edge until
+a swipe (#2805); "Kind return" is highlighted before a choice on the first
+return screen; "Night transfer · medium risk" is cut in half above the "Deliver
+packet" row; the card is tilted and soft after each "Deliver packet"; seven Io
+lines run together as one paragraph after "Ask for next job"; "Choose before you
+leave: Io will remember whether the seal stayed whole" stays on screen to the
+end; old choice buttons stay live after the ending.
+
+**Verdict:** NOT PASSED. No false memory, and the player saw the names it chose
+between. But the answer ties the bell to nothing except the tap itself: the game
+let the player reach the archive without Orra's ask or a name to carry. M4 stays
+open; #2804 (P1) and #2805 (P2) are filed for the team. The closeout is replayed
+on the revision that has #2804.
+
 ## 2026-11-13 — Blind AI-stranger playtest #2 (M4 closeout) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
