@@ -126,17 +126,26 @@ export const createPersistHelpers = ({
       lastPersistedAt: new Date().toISOString(),
       authority: "server",
     };
-    await writeAuthoritativeSave({
-      slot,
-      playerId: state.player.id,
-      payload,
-    });
+    try {
+      await writeAuthoritativeSave({
+        slot,
+        playerId: state.player.id,
+        payload,
+      });
+    } catch {
+      // A server write failure is recoverable: preserve dirty state so a
+      // later save retries instead of silently losing the transition.
+      state.save.dirty = true;
+      markStateDirty();
+      return false;
+    }
     state.save.authority = "server";
     state.save.lastPersistedAt = payload.save.lastPersistedAt;
     if (state.save.dirty !== dirty) {
       state.save.dirty = dirty;
     }
     markStateDirty();
+    return true;
   };
 
   return {
