@@ -161,10 +161,20 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       // #2824: the whole terminal card must be readable on the phone screen
       // immediately after the player's visible vigil tap, without a swipe.
       await expect
-        .poll(async () => {
-          const cardBox = await card.boundingBox();
-          return !!cardBox && cardBox.y >= 0 && cardBox.y + cardBox.height <= PHONE_VIEWPORT.height;
-        }, {
+        .poll(async () => card.evaluate((el) => {
+          // The card lives inside the bounded, touch-scrollable HUD panel
+          // (#2800), so the window viewport is the wrong frame: a card
+          // clipped below the panel's scroll fold is still "inside" the
+          // window. Measure against the panel's visible box instead.
+          const panel = el.closest(".panel");
+          if (!panel) return false;
+          const c = el.getBoundingClientRect();
+          const p = panel.getBoundingClientRect();
+          return c.height > 0
+            && c.top >= p.top - 1
+            && c.bottom <= p.bottom + 1
+            && c.bottom <= window.innerHeight + 1;
+        }), {
           message: "episode-one ending card fits in the viewport without a player swipe",
           timeout: WAIT_MS,
         })
