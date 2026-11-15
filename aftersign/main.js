@@ -4065,6 +4065,20 @@ const routeChoiceController = createRouteChoiceController({
 });
 
 const choose = async (choiceId) => {
+  // Episode 1's ending card is terminal. Rendering hides the old controls,
+  // but a queued pointer event can still reach this handler after the ending
+  // commits; reject it before any controller can revive a prior beat.
+  if (state.story.endingId) {
+    // A terminal ending can render while the last choice's pointer sequence is
+    // still in flight. Restore the terminal beat in case that sequence had
+    // already advanced it before this guard ran.
+    if (state.scene.beat !== "episode-one-ending") {
+      setBeat("episode-one-ending");
+      publishState();
+    }
+    return;
+  }
+
   // Non-Orra choices still release the floor (prior behavior). Only the
   // Orra branches below GRANT it, so an Orra id rejected/handled by the
   // route controller can no longer grab the floor.
@@ -4192,6 +4206,7 @@ const choose = async (choiceId) => {
       });
       state.story.endingId = ending.id;
       state.story.endingCause = ending.cause ?? null;
+      setBeat("episode-one-ending");
       // The ending card is the terminal spoken surface; clear all earlier
       // beat-owned copy immediately because no later render is guaranteed
       // after this choice commits the ending.
