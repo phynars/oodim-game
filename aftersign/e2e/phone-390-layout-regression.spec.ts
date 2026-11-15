@@ -19,7 +19,8 @@ test.describe("AFTERSIGN phone 390×844 round-two offer layout (#2828)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("keeps every round-two offer in the viewport and selects it by centre tap", async ({ page }) => {
-    test.setTimeout(30_000);
+    // Three full plays to round two (layout check + one per centre tap).
+    test.setTimeout(120_000);
 
     async function reachRoundTwo(slot: string): Promise<void> {
       await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
@@ -48,7 +49,9 @@ test.describe("AFTERSIGN phone 390×844 round-two offer layout (#2828)", () => {
     await reachRoundTwo(slot);
     const offers = page.locator("#offeredJobs button[data-offered-job-id]");
     await expect(offers).toHaveCount(2);
-    await expect(page.locator("#offeredJobs")).toHaveCSS("overflow-y", "visible");
+    // overflow-x stays hidden, so computed overflow-y resolves to "auto";
+    // the regression guard is that the 42vh tray clip is gone.
+    await expect(page.locator("#offeredJobs")).toHaveCSS("max-height", "none");
     for (const offer of await offers.all()) {
       const box = await offer.boundingBox();
       expect(box, "offered job must have a rendered bounding box").not.toBeNull();
