@@ -444,9 +444,9 @@ recall line on the ending card). Epic #2579 is closed with M3.
 
 The next milestone is named below (M4, same day).
 
-## Active milestone: M4 — Act II, the red tag reaches Saint Orra (operator decision under founder delegation, 2026-10-30)
+## M4 — Act II, the red tag reaches Saint Orra (CLOSED 2026-11-14; operator decision under founder delegation, 2026-10-30)
 
-**M4 is the one active milestone. Deadline: 2026-11-19** (binding; three weekly
+**M4 was the one active milestone until it closed on 11-14. Deadline: 2026-11-19** (binding; three weekly
 sprints, W45–W47). Count days remaining from 11-19. Cut scope, never the date.
 
 **Why this one.** Every M3 playtest said some form of "I never actually carried
@@ -498,3 +498,88 @@ them, and they don't count toward the Definition of Done's one-in-four
 **Deferred until M4 closes:** Niko Thread, the Unaddressed Child, Act III (the
 Unlit Door), new districts, and the four-weekly-drops success criterion. Maud
 appears only at the Bell Archive.
+
+### M4: CLOSED 2026-11-14 (operator decision, founder approved)
+
+Both halves of the acceptance bar hold on deployed `d88b14f`, five days before
+11-19:
+- **Automated:** `aftersign/e2e/durable-act-ii-ending.spec.ts` reaches the lit
+  and the dimmed ending by taps only at 390×844 and restores the ending in a
+  fresh browser context. It is green in the `aftersign` CI shards of #2817 (the
+  change that became `d88b14f`), and the post-deploy `served-replay` on
+  `d88b14f` is green. There is no `main-e2e` workflow since 11-09; these two
+  runs stand in for it.
+- **Closeout:** blind AI-stranger playtest #6 PASSED. The answer names the
+  bell's outcome ("It rang my own name, and the district light stayed lit") and
+  ties it to the name the player picked. Io, Saint Orra, Maud and the ending
+  card state no false memory; one line is recorded as a judgment call ("you made
+  the safe route worth trusting again", shown to a player who took the lit stair
+  without tapping "Take the safe job"). Playtests #1–#5 did not pass; each
+  devlog entry names what failed and the issues filed for it. All six are
+  verbatim in `docs/flagship/devlog.md`.
+
+Carry-over (not memory claims, except the last): the friction list of playtest
+#6 in the devlog. It is the first work of M5. Epic #2587 is closed with M4.
+
+The next milestone is named below (M5, same day).
+
+## Active milestone: M5 — Act III, the Unlit Door closes Episode 1 (operator decision under founder delegation, 2026-11-14)
+
+**M5 is the one active milestone. Deadline: 2026-12-03** (binding; three weekly
+sprints, W47–W49). Count days remaining from 12-03. Cut scope, never the date.
+
+**Why this one.** The player who passed M4's closeout rang the right name and
+still wrote "The game never said what the bell is or why a name matters". The
+same player found no end screen: after the bell, "Ask for next job" walked back
+into the second-job stage with the ending text still on the card. Act II gives
+the player a bell with no consequence and an episode with no end. The concept's
+Act III, *The Door That Lies* (`docs/flagship/concept.md`), supplies both: the
+Unlit Door appears, the player decides what the record becomes, and "the first
+episode closes with an NPC recalling the player's first-session behavior in a
+way that changes the final conversation". The founder's metric still holds:
+**beats reachable on the served page** (08-14 amendment).
+
+**The outcome:** after the bell, a phone player sees the Unlit Door appear,
+hears from Maud what the bell's record means for someone, chooses one of three
+things at the door (keep the official record, protect the private lie, or hang
+a new sign), and has a last conversation with Io that changes with what the
+player did in their first session. Then Episode 1 ends on an end screen, and
+the player can retell what they did at the door and what Io remembered.
+
+**M5 metric: the first session decides the last conversation.**
+- Io's final lines recall, from the stored record, whether the player kept or
+  broke the blue seal in their first session, and that fact changes what Io
+  says about the door choice. Two first-session records reach two visibly
+  different final conversations on the served page.
+- The three door choices are stored and reach three different end screens.
+- A later session for the same slot shows the same door choice and end screen.
+- After the end screen no story control responds except "Start fresh".
+
+**Acceptance (played, not driven; standing rules C1–C8 in `docs/CONSTITUTION.md`):**
+- **Automated:** a served-page Playwright spec at 390×844 drives boot → Act II
+  bell → Unlit Door → door choice → final Io conversation → end screen, by taps
+  on visible controls only. It reaches all three door choices and both
+  first-session records, restores the end screen in a fresh browser context,
+  and is green in CI (`aftersign` shards and post-deploy `served-replay`) on
+  the closeout revision.
+- **Closeout:** a blind AI-stranger playtest on the deployed revision (M-LOOP
+  closeout rules unchanged). The player reaches the end screen and answers
+  once, unprompted: *"What did you do at the door, and what did Io remember
+  about how you started?"* Pass = the answer names the player's door choice and
+  the first-session fact Io recalled, and both match the recorded taps. No
+  false memory from Io, Orra, Maud or the end screen; a false memory is a P1
+  and blocks closeout. Transcript verbatim in `docs/flagship/devlog.md`.
+
+**How the work is planned:** epic #2821 (`epic:` title) with stories as its
+sub-issues, through the same research → spec → design → build chain as M4.
+
+**Carry-over, worked first** (playtest #6, `docs/flagship/devlog.md`; they sit
+on the path into Act III): no end screen and story controls that still respond
+after an ending; the ending below the fold; no title or intro on the first
+screen; the second job list cut off at 390×844; the stale "Choose before you
+leave…" line; "Red tag — Saint Orra" drawn as a button that does nothing; the
+"safe route" line shown to a player who never tapped "Take the safe job".
+
+**Deferred until M5 closes:** Niko Thread, the Unaddressed Child, new
+districts, Episode 2, and the four-weekly-drops success criterion. The cast
+stays Io, Saint Orra and Maud.
