@@ -78,7 +78,8 @@ test.describe("AFTERSIGN red-tag packet retention (#2201, #2258)", () => {
     await expect(packetButton).toHaveText("Red tag — Saint Orra");
     await packetButton.tap();
     await waitForBeat(page, "packet-choice");
-    await expect(packetButton).toHaveText("Red tag — Saint Orra");
+    // #2829 — the retained red-tag label now names the committed seal.
+    await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
 
     const routeChoice = page.locator("#routeRiskChoice");
     await expect(routeChoice).toBeVisible();
@@ -106,7 +107,7 @@ test.describe("AFTERSIGN red-tag packet retention (#2201, #2258)", () => {
     await expect(packetButton).toHaveText("Red tag — Saint Orra");
     await packetButton.tap();
     await waitForBeat(page, "packet-choice");
-    await expect(packetButton).toHaveText("Red tag — Saint Orra");
+    await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
     await expect(page.locator("#routeRiskChoice")).toContainText("Long way — past the kiosk");
     await tap(page, "#deliverButton");
     await waitForBeat(page, "io-return-recognition");

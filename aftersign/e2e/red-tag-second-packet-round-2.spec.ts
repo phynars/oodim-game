@@ -191,8 +191,8 @@ test.describe("AFTERSIGN red-tag second packet — four-surface round-2 contract
     // Label survives the beat flip (red-tag retention, PR #2201).
     // This is also pinned by the sibling retention spec; we check it
     // here so the walk's state is anchored before we move on to the
-    // delivery beat.
-    await expect(packetButton).toHaveText("Red tag — Saint Orra");
+    // delivery beat. #2829 — after the tap the label names the seal.
+    await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
 
     // Commit the sealed-default fork — same tap the sibling specs
     // use to reach `packet-delivered`.
