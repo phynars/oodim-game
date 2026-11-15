@@ -88,9 +88,15 @@ export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice) => {
   card.append(title, bell, outcome, dialogue, light);
   host.replaceChildren(card);
   ringBell(doc, bell);
-  // Keep the selected name's bell outcome visible in the card's existing
-  // scroll surface after the choice appends the ending.
-  if (typeof outcome.scrollIntoView === "function") {
+  // #2824: keep the WHOLE ending card visible in the bounded HUD panel after
+  // the choice appends it. Scrolling only the outcome line into view (the
+  // previous target) aligned the panel's bottom edge to that line, so the
+  // dialogue and district-light lines below it stayed under the fold and
+  // needed a swipe (blind playtest 6). `nearest` on the card aligns its
+  // bottom edge to the scrollport when it overflows below.
+  if (typeof card.scrollIntoView === "function") {
+    card.scrollIntoView({ block: "nearest", inline: "nearest" });
+  } else if (typeof outcome.scrollIntoView === "function") {
     outcome.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   return card;

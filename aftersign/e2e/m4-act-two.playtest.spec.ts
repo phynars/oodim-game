@@ -347,6 +347,27 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
           return !!bounds && bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
         }, { message: "bell recipient line fully inside the viewport after a name tap", timeout: WAIT_MS })
         .toBe(true);
+      // #2824 (playtest 6: "the last two lines need a swipe"): the WHOLE
+      // ending card — through its last line, the district light — must be
+      // inside the bounded HUD panel's visible box and the phone viewport,
+      // with no player scroll. On main only the outcome line was scrolled
+      // into view, leaving the dialogue + light lines below the panel fold.
+      await expect
+        .poll(async () => ending.evaluate((el) => {
+          const panel = el.closest(".panel");
+          const last = el.querySelector(".episode-one-ending__light");
+          if (!panel || !last) return "missing panel or last line";
+          const p = panel.getBoundingClientRect();
+          const c = el.getBoundingClientRect();
+          const l = last.getBoundingClientRect();
+          const bottomLimit = Math.min(p.bottom, window.innerHeight) + 1;
+          if (c.height <= 0) return "card has no height";
+          if (c.top < p.top - 1) return `card top ${c.top} above panel top ${p.top}`;
+          if (l.bottom > bottomLimit) return `last line bottom ${l.bottom} below fold ${bottomLimit}`;
+          if (c.bottom > bottomLimit) return `card bottom ${c.bottom} below fold ${bottomLimit}`;
+          return "fits";
+        }), { message: "whole Act II ending card, last line included, fits without a swipe", timeout: WAIT_MS })
+        .toBe("fits");
 
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
