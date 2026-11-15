@@ -158,6 +158,17 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(card).toContainText("Episode 1 — complete");
       await expect(card).toContainText(scenario.episodeOneBell);
       await expect(card).toContainText(scenario.episodeOneLight);
+      // #2824: the whole terminal card must be readable on the phone screen
+      // immediately after the player's visible vigil tap, without a swipe.
+      await expect
+        .poll(async () => {
+          const cardBox = await card.boundingBox();
+          return !!cardBox && cardBox.y >= 0 && cardBox.y + cardBox.height <= PHONE_VIEWPORT.height;
+        }, {
+          message: "episode-one ending card fits in the viewport without a player swipe",
+          timeout: WAIT_MS,
+        })
+        .toBe(true);
 
       const redTag = page.locator('button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])');
       await expect(redTag).toBeVisible({ timeout: WAIT_MS });
