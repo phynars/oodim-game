@@ -1594,6 +1594,10 @@ const lineForBeat = () => {
     });
     if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderEpisodeOneEnding(document, resolvedEnding);
+      // The ending is appended beneath the completed Act I dialogue. Pin its
+      // bottom into the bounded HUD panel so phone players can read the whole
+      // card without manually swiping.
+      scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
       renderSaintOrraEndingRecall();
     }
     publishEpisodeOneEndingToWindowGame(typeof window !== "undefined" ? window : undefined, resolvedEnding);
@@ -4233,6 +4237,10 @@ const choose = async (choiceId) => {
         ioLedgerLine.setAttribute("data-io-ledger-fact", "");
       }
       renderEpisodeOneEnding(document, ending);
+      // The ending is appended beneath the completed Act I dialogue. Pin its
+      // bottom into the bounded HUD panel so phone players can read the whole
+      // card without manually swiping.
+      scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
       renderSaintOrraEndingRecall();
       // Stamp `story.endingId` + `story.endingCause` onto window.__game
       // so #2259's consumer spec (and the sibling tap-driven e2e) can

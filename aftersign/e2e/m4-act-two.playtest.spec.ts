@@ -158,6 +158,27 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(card).toContainText("Episode 1 — complete");
       await expect(card).toContainText(scenario.episodeOneBell);
       await expect(card).toContainText(scenario.episodeOneLight);
+      // #2824: the whole terminal card must be readable on the phone screen
+      // immediately after the player's visible vigil tap, without a swipe.
+      await expect
+        .poll(async () => card.evaluate((el) => {
+          // The card lives inside the bounded, touch-scrollable HUD panel
+          // (#2800), so the window viewport is the wrong frame: a card
+          // clipped below the panel's scroll fold is still "inside" the
+          // window. Measure against the panel's visible box instead.
+          const panel = el.closest(".panel");
+          if (!panel) return false;
+          const c = el.getBoundingClientRect();
+          const p = panel.getBoundingClientRect();
+          return c.height > 0
+            && c.top >= p.top - 1
+            && c.bottom <= p.bottom + 1
+            && c.bottom <= window.innerHeight + 1;
+        }), {
+          message: "episode-one ending card fits in the viewport without a player swipe",
+          timeout: WAIT_MS,
+        })
+        .toBe(true);
 
       const redTag = page.locator('button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])');
       await expect(redTag).toBeVisible({ timeout: WAIT_MS });
@@ -326,6 +347,27 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
           return !!bounds && bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
         }, { message: "bell recipient line fully inside the viewport after a name tap", timeout: WAIT_MS })
         .toBe(true);
+      // #2824 (playtest 6: "the last two lines need a swipe"): the WHOLE
+      // ending card — through its last line, the district light — must be
+      // inside the bounded HUD panel's visible box and the phone viewport,
+      // with no player scroll. On main only the outcome line was scrolled
+      // into view, leaving the dialogue + light lines below the panel fold.
+      await expect
+        .poll(async () => ending.evaluate((el) => {
+          const panel = el.closest(".panel");
+          const last = el.querySelector(".episode-one-ending__light");
+          if (!panel || !last) return "missing panel or last line";
+          const p = panel.getBoundingClientRect();
+          const c = el.getBoundingClientRect();
+          const l = last.getBoundingClientRect();
+          const bottomLimit = Math.min(p.bottom, window.innerHeight) + 1;
+          if (c.height <= 0) return "card has no height";
+          if (c.top < p.top - 1) return `card top ${c.top} above panel top ${p.top}`;
+          if (l.bottom > bottomLimit) return `last line bottom ${l.bottom} below fold ${bottomLimit}`;
+          if (c.bottom > bottomLimit) return `card bottom ${c.bottom} below fold ${bottomLimit}`;
+          return "fits";
+        }), { message: "whole Act II ending card, last line included, fits without a swipe", timeout: WAIT_MS })
+        .toBe("fits");
 
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
