@@ -17,6 +17,12 @@ async function boot(page: Page, slot: string, player: string): Promise<void> {
 }
 
 test.describe("AFTERSIGN authoritative save failure notice", () => {
+  // Each test plays the full delivery plus the delayed recognition beat;
+  // against the served Worker that exceeds the 30s default.
+  test.beforeEach(() => {
+    test.setTimeout(120_000);
+  });
+
   test("a failed authoritative read keeps the played state and retry loads the recovered snapshot", async ({ page }, testInfo) => {
     const stamp = `${Date.now()}-${testInfo.workerIndex}`;
     const slot = `load-failure-${stamp}`;
@@ -37,6 +43,12 @@ test.describe("AFTERSIGN authoritative save failure notice", () => {
     await tap(page, 'button[data-choice-id="acknowledge-kiosk"]');
     await tap(page, 'button[data-choice-id="deliver-packet"]');
     await expect(page.locator('[data-beat-id="packet-delivered"]')).toBeVisible();
+    // Let the delayed recognition beat land before the read fails. A restore
+    // never reopens on `packet-delivered`: `restoreFlagshipBeat` (#2747)
+    // promotes a delivered save to `io-return-recognition`, so that is the
+    // beat both the kept state and the recovered snapshot render.
+    const recognition = page.locator('[data-beat-id="io-return-recognition"]');
+    await expect(recognition).toBeVisible({ timeout: WAIT_MS });
     await page.evaluate(async () => window.__game!.input.forceSave());
 
     failReads = true;
@@ -45,12 +57,20 @@ test.describe("AFTERSIGN authoritative save failure notice", () => {
     const notice = page.locator("#loadFailureNotice");
     await expect(notice).toHaveAttribute("role", "alert");
     await expect(notice).toContainText("Unable to load saved progress");
-    await expect(page.locator('[data-beat-id="packet-delivered"]')).toBeVisible();
+    await expect(recognition).toBeVisible();
 
     failReads = false;
+    const retryRead = page.waitForResponse(
+      (response) => response.url().includes("/aftersign/save/") && response.request().method() === "GET",
+      { timeout: WAIT_MS },
+    );
     await tap(page, "#retryLoadSave");
+    expect((await retryRead).ok()).toBe(true);
     await expect(notice).toHaveCount(0);
-    await expect(page.locator('[data-beat-id="packet-delivered"]')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.__game!.save.lastLoadProof?.source ?? null), { timeout: WAIT_MS })
+      .toBe("server");
+    await expect(recognition).toBeVisible();
   });
 
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
