@@ -1068,10 +1068,16 @@ const bootstrapPlayerId = resolvePlayerId({
 // can capture via `page.on("console", ...)` to diagnose a silent
 // boot regression instead of watching two slots hydrate identical
 // empty state and reporting "divergence failed".
+// #2819: a real boot-read failure (not a cold-slot 404 → null) is the
+// player-reachable path to the load-failure notice. The boot tail shows
+// `#loadFailureNotice` with its retry button instead of silently
+// presenting an empty slice as if no save existed.
+let bootLoadFailed = false;
 const stored = await readAuthoritativeSave({
   slot,
   playerId: bootstrapPlayerId,
 }).catch((err) => {
+  bootLoadFailed = true;
   // eslint-disable-next-line no-console
   console.error(
     "[aftersign boot] readAuthoritativeSave failed — booting with empty state",
@@ -4615,6 +4621,33 @@ const setSaveFailureNotice = (failed, { authoritative = false } = {}) => {
   );
 };
 
+const setLoadFailureNotice = (failed) => {
+  if (!line?.parentNode) return;
+  const noticeId = "loadFailureNotice";
+  let notice = document.getElementById(noticeId);
+  if (!failed) {
+    notice?.remove();
+    return;
+  }
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = noticeId;
+    notice.setAttribute("role", "alert");
+    notice.setAttribute("aria-live", "assertive");
+    const message = document.createElement("p");
+    message.textContent = "Unable to load saved progress. Your current progress is still here.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.id = "retryLoadSave";
+    retry.textContent = "Retry loading save";
+    retry.addEventListener("click", () => {
+      void reloadFromSave();
+    });
+    notice.append(message, retry);
+    line.insertAdjacentElement("afterend", notice);
+  }
+};
+
 const forceSave = async () => {
   if (breakMode === "local-only-save") {
     // #2715: `persist()` owns the local storage write AND reports a
@@ -4681,12 +4714,18 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     window.localStorage.removeItem(storageKey);
   }
 
-  const authoritativeSave = breakMode === "local-only-save"
-    ? null
-    : await readAuthoritativeSave({
-        slot,
-        playerId,
-      }).catch(() => null);
+  let authoritativeSave = null;
+  if (breakMode !== "local-only-save") {
+    try {
+      authoritativeSave = await readAuthoritativeSave({ slot, playerId });
+    } catch {
+      setLoadFailureNotice(true);
+      renderText();
+      publishState();
+      return;
+    }
+  }
+  setLoadFailureNotice(false);
   const saved = authoritativeSave;
 
   if (saved || clearLocalState || breakMode === "local-only-save") {
@@ -5930,6 +5969,9 @@ armReturningSessionBootLine(Boolean(stored?.packet?.delivered));
 // is interactive (scene.ready) and her intro has been seen — a restored
 // save keeps whatever it already recorded (#564 Phase 1).
 state.scene.ready = true;
+// #2819: surface the failed boot read (see `bootLoadFailed` above); the
+// notice's retry button re-runs the authoritative read via reloadFromSave.
+setLoadFailureNotice(bootLoadFailed);
 if (!state.player.flags.io_intro_seen) {
   state.player.flags.io_intro_seen = true;
   markStateDirty();
