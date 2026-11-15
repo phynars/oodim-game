@@ -258,7 +258,7 @@ async function runToEnding(
   outcome: "sealed" | "opened",
   acceptRedTag = true,
   secondPacketChoice: "accept-second-packet" | "ask-what-changed" = "accept-second-packet",
-): Promise<void> {
+): Promise<{ x: number; y: number }> {
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, outcome);
 
@@ -304,9 +304,18 @@ async function runToEnding(
   // tap would hit, so no runtime branch is bypassed. This is
   // the step that stamps `state.story.endingId` and renders
   // the ending card.
+  const oldNextJobBox = await page.locator("#deliverButton").boundingBox();
+  expect(oldNextJobBox).not.toBeNull();
+  if (!oldNextJobBox) {
+    throw new Error("Deliver next packet must have a phone-tappable location before the ending");
+  }
   await tapChoice(page, "light-vigil");
 
   await waitForEndingPublished(page);
+  return {
+    x: oldNextJobBox.x + oldNextJobBox.width / 2,
+    y: oldNextJobBox.y + oldNextJobBox.height / 2,
+  };
 }
 
 async function carryRedTagToSaintOrra(page: Page): Promise<void> {
@@ -407,7 +416,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForVersion(page);
 
-    await runToEnding(page, "sealed");
+    const oldNextJobLocation = await runToEnding(page, "sealed");
 
     const card = await readEndingCard(page);
     await expect(card).toHaveAttribute("data-ending-id", "ending-bell-true");
@@ -425,6 +434,15 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await expect(page.locator("#line")).not.toContainText(/blue packet sealed|accepted the red tag/i);
     await expect(page.locator("#line")).not.toContainText(/Choose before you leave/i);
     await expect(page.locator("#line")).not.toContainText(/handoff|delivered/i);
+    // The player taps the exact screen position previously occupied by the
+    // visible “Deliver next packet” control. Once the ending is rendered,
+    // that touch must not revive the second-job beat.
+    await page.mouse.click(oldNextJobLocation.x, oldNextJobLocation.y);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as {
+        __game?: { getSnapshot?: () => { scene?: { beat?: string } } };
+      }).__game?.getSnapshot?.().scene?.beat))
+      .not.toBe("io-next-job");
     await expectEndingOnlyControls(page);
 
     const snapshot = await readEndingSnapshot(page);
