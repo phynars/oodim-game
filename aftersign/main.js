@@ -4073,6 +4073,10 @@ const POST_ENDING_CHOICE_IDS = new Set([
   "carry-name-to-bell-archive",
   "leave-name-with-orra",
   "return-to-orra",
+  // A returning session (after reload) visits Io again; the ending card
+  // does not freeze later sessions (flagship-surface-contract M-ORRA-E1).
+  "return-to-io",
+  "choose-return-tone",
 ]);
 
 const choose = async (choiceId) => {
