@@ -23,7 +23,7 @@ test.describe("AFTERSIGN authoritative save failure notice", () => {
     test.setTimeout(120_000);
   });
 
-  test("a failed authoritative read keeps the played state and retry loads the recovered snapshot", async ({ page }, testInfo) => {
+  test("a failed boot read on return shows the load notice and retry loads the recovered snapshot", async ({ page }, testInfo) => {
     const stamp = `${Date.now()}-${testInfo.workerIndex}`;
     const slot = `load-failure-${stamp}`;
     const player = `load-failure-player-${stamp}`;
@@ -41,23 +41,30 @@ test.describe("AFTERSIGN authoritative save failure notice", () => {
     await tap(page, "button[data-offered-job-id]");
     await tap(page, "#packetButton");
     await tap(page, 'button[data-choice-id="acknowledge-kiosk"]');
+    const deliveredWrite = page.waitForResponse(
+      (response) =>
+        response.url().includes("/aftersign/save/") && response.request().method() === "PUT" && response.ok(),
+      { timeout: WAIT_MS },
+    );
     await tap(page, 'button[data-choice-id="deliver-packet"]');
     await expect(page.locator('[data-beat-id="packet-delivered"]')).toBeVisible();
-    // Let the delayed recognition beat land before the read fails. A restore
-    // never reopens on `packet-delivered`: `restoreFlagshipBeat` (#2747)
-    // promotes a delivered save to `io-return-recognition`, so that is the
-    // beat both the kept state and the recovered snapshot render.
+    await deliveredWrite;
+    // A restore never reopens on `packet-delivered`: `restoreFlagshipBeat`
+    // (#2747) promotes a delivered save to `io-return-recognition`, so that
+    // is the beat the recovered snapshot renders.
     const recognition = page.locator('[data-beat-id="io-return-recognition"]');
     await expect(recognition).toBeVisible({ timeout: WAIT_MS });
-    await page.evaluate(async () => window.__game!.input.forceSave());
 
+    // The player comes back (a real page reload) while the save service is
+    // down: the boot read fails and the notice must say so.
     failReads = true;
-    await page.evaluate(async () => window.__game!.input.forceReload());
+    await page.reload({ waitUntil: "load" });
 
     const notice = page.locator("#loadFailureNotice");
+    await expect(notice).toBeVisible({ timeout: WAIT_MS });
     await expect(notice).toHaveAttribute("role", "alert");
     await expect(notice).toContainText("Unable to load saved progress");
-    await expect(recognition).toBeVisible();
+    await expect(page.locator("#retryLoadSave")).toHaveText("Retry loading save");
 
     failReads = false;
     const retryRead = page.waitForResponse(
@@ -70,7 +77,7 @@ test.describe("AFTERSIGN authoritative save failure notice", () => {
     await expect
       .poll(() => page.evaluate(() => window.__game!.save.lastLoadProof?.source ?? null), { timeout: WAIT_MS })
       .toBe("server");
-    await expect(recognition).toBeVisible();
+    await expect(recognition).toBeVisible({ timeout: WAIT_MS });
   });
 
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
