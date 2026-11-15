@@ -3545,6 +3545,15 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     stampAftersignChoice(skipRouteButton, "skip-kiosk-acknowledge");
     stampAftersignChoice(deliverButton, "deliver-packet");
   } else if (isReturnRecognitionBeat) {
+    // These controls are reused from packet-choice, where a selected route
+    // deliberately remains highlighted. A return tone is a new choice, so it
+    // must not inherit that earlier visible selection state.
+    for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
+      button.setAttribute("aria-pressed", "false");
+      delete button.dataset.aftersignSelected;
+      button.style.backgroundColor = "";
+      button.style.borderColor = "";
+    }
     setTextContentIfChanged(acknowledgeRouteButton, "Kind return");
     setTextContentIfChanged(skipRouteButton, "Evasive return");
     setTextContentIfChanged(deliverButton, "Blunt return");

@@ -186,6 +186,19 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
       /^\s*Blunt return\s*$/,
     );
 
+    // The prior visible tap selected "You listened" on this reused first
+    // button. Each return reply starts unselected until its own player tap.
+    for (const selector of [
+      "#acknowledgeRouteButton",
+      "#skipRouteButton",
+      "#deliverButton",
+    ]) {
+      await expect(page.locator(selector)).toHaveAttribute("aria-pressed", "false");
+      await expect(page.locator(selector)).not.toHaveAttribute(
+        "data-aftersign-selected",
+      );
+    }
+
     // Feel-stamp proof — the applier ran because sealed=true +
     // routeAttention="listened" → returnToneReason="kind".
     await expectKindReturnFeelStamped(page);
@@ -200,7 +213,5 @@ test.describe("AFTERSIGN return-tone choice feel (phone tap)", () => {
     await expect(page.locator("#deliverButton")).toContainText(
       /ask for next job/i,
     );
-    await tap(page, "#deliverButton");
-    await waitForBeat(page, "io-next-job");
   });
 });
