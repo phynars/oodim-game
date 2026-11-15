@@ -45,6 +45,6 @@ test.describe("AFTERSIGN red-tag handoff", () => {
     await expect(delivery).toHaveText("Deliver red tag to Saint Orra");
     await delivery.tap();
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("body")).toContainText("red tag delivered to Saint Orra");
+    await expect(page.locator("body")).toContainText("red tag reached Saint Orra");
   });
 });

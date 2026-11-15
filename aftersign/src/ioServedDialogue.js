@@ -14,6 +14,15 @@ export const jobAcceptedReceipt = (label) =>
 /** The post-return prompt shown when Io offers the next job. */
 export const nextJobPrompt = () => ioNextJobLine();
 
+const RED_TAG_RETURN_LINES = Object.freeze({
+  "job-night-transfer": "Night transfer reached Saint Orra. The red tag kept its route, and I kept your name beside it.",
+});
+
+/** The second-delivery return acknowledgement, keyed to the job the player tapped. */
+export const redTagReturnAcknowledgement = (jobId) =>
+  RED_TAG_RETURN_LINES[jobId]
+  ?? "The red tag reached Saint Orra. The route kept its promise, and I kept your name beside it.";
+
 /** The second-packet acknowledgement keyed by the player's return reason. */
 export const secondPacketAcknowledgement = (input = {}) =>
   selectIoSecondPacketCopyForReturnReason(input);
@@ -21,5 +30,6 @@ export const secondPacketAcknowledgement = (input = {}) =>
 export const servedIoDialogue = Object.freeze({
   jobAcceptedReceipt,
   nextJobPrompt,
+  redTagReturnAcknowledgement,
   secondPacketAcknowledgement,
 });

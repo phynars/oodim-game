@@ -1219,6 +1219,14 @@ const state = {
     // for free — no new persistence branch. `computeOfferedActions`
     // reads it on the next run to diverge the offered-action set.
     routeRisk: stored?.player?.routeRisk ?? null,
+    // #2811 review: the job the player tapped at packet-offered keys
+    // Io's second-delivery return line (redTagReturnAcknowledgement).
+    // It rides the persist payload's clone(state.player); hydrate it
+    // here so a reload at io-return-recognition keeps the job-keyed line.
+    selectedJobOfferId:
+      typeof stored?.player?.selectedJobOfferId === "string"
+        ? stored.player.selectedJobOfferId
+        : null,
     // Set by the visible "Take the second packet" choice. The next offer
     // board uses this durable handoff marker to keep Io's red-tag route in
     // view instead of silently replacing the job at the round boundary.
@@ -1609,6 +1617,7 @@ const lineForBeat = () => {
     offerLine: ioOfferLineFor,
     jobOffers: selectIoJobOffers,
     offersMemory: offeredJobsMemoryFromIoMemory,
+    redTagReturnAcknowledgement: servedIoDialogue.redTagReturnAcknowledgement,
   });
 };
 
@@ -1791,7 +1800,7 @@ const syncIoLine = () => {
     // path syncIoLine feeds into) the beat reads identically. This
     // closes the AI008 two-writers-one-assertion race.
     nextLine = state.delivery.id === "red-tag" && state.player.redTagAccepted === true
-      ? "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it."
+      ? servedIoDialogue.redTagReturnAcknowledgement(state.player.selectedJobOfferId)
       : selected.line;
     nextMemoryRefs = [...selected.memoryRefs];
     nextFeelCue = { ...selected.feelCue };
@@ -3380,6 +3389,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
               actionId: mloopAction.id,
               offerId: offer.id,
             });
+            state.player.selectedJobOfferId = offer.id;
             // A job selection must answer the player's tap on the served
             // dialogue surface. `#line.textContent` and `state.npcs.io.lastLine`
             // are OWNED by `aftersign/src/ioRecognitionDialogue.ts::RETURNING_LINES`
@@ -5524,6 +5534,7 @@ const resetSliceSave = async () => {
     // player's kiosk acknowledgement.
     secondAction: null,
     returnReason: null,
+    selectedJobOfferId: null,
     // #2732: keep the red-tag record fields in the reset shape so the
     // first-tap guard in choose() sees `null`, not `undefined`.
     redTagAccepted: false,

@@ -110,13 +110,16 @@ test.describe("AFTERSIGN red-tag packet retention (#2201, #2258)", () => {
     await expect(page.locator("#routeRiskChoice")).toContainText("Long way — past the kiosk");
     await tap(page, "#deliverButton");
     await waitForBeat(page, "io-return-recognition");
-    await expect(page.locator("#line")).not.toContainText("red tag delivered to Saint Orra");
+    // Both accepted-red-tag return lines (the fallback and the
+    // job-keyed one from ioServedDialogue.redTagReturnAcknowledgement)
+    // contain "reached Saint Orra"; without the accept tap neither may show.
+    await expect(page.locator("#line")).not.toContainText(/reached Saint Orra/i);
     // #2790 — Saint Orra's recipient memory must not render without the
     // accept-second-packet tap either.
     await expect(page.locator("#aftersignRedTagRecipientLine")).toHaveCount(0);
     await expect(
       page.locator(
-        'text="You brought the red tag yourself. I remember the courier who did not leave it for the rain."',
+        'text="You brought the red tag yourself. I remember the route you carried to Saint Orra."',
       ),
     ).toHaveCount(0);
   });

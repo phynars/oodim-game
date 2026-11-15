@@ -122,7 +122,7 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     // spec before the deliver tap below.
     await expect(
       page.locator(
-        'text="You brought the red tag yourself. I remember the courier who did not leave it for the rain."',
+        'text="You brought the red tag yourself. I remember the route you carried to Saint Orra."',
       ),
     ).toHaveCount(0);
 
@@ -131,6 +131,9 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     await tapChoice(page, "accept-second-packet");
     await page.locator("#deliverButton").tap();
     await waitForBeat(page, "packet-offered");
+    const nightTransfer = page.locator("#job-offer-job-night-transfer");
+    await expect(nightTransfer).toBeVisible();
+    await nightTransfer.tap();
     await packetButton.tap();
     await waitForBeat(page, "packet-choice");
 
@@ -152,6 +155,15 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     // `isReturnRecognitionBeat && state.delivery.id === "red-tag"`,
     // which is exactly the state we just drove into.
     await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).toContainText("Night transfer reached Saint Orra");
+    await expect(page.locator("#line")).not.toContainText("two reasons to trust you");
+
+    // #2811 review: the job-keyed line must survive a durable reload at
+    // this beat (selectedJobOfferId is hydrated from the save).
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).toContainText("Night transfer reached Saint Orra");
 
     const recipientLine = page.locator("#aftersignRedTagRecipientLine");
     await expect(recipientLine).toBeVisible({ timeout: WAIT_MS });
@@ -163,7 +175,7 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
     // the PR edited stops shipping (served-reach regression), this
     // text is not on the page and the spec reds.
     await expect(recipientLine).toHaveText(
-      "You brought the red tag yourself. I remember the courier who did not leave it for the rain.",
+      "You brought the red tag yourself. I remember the route you carried to Saint Orra.",
     );
     await expect(recipientLine).toHaveAttribute(
       "data-aftersign-red-tag-recipient",

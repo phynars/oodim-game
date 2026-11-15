@@ -42,7 +42,7 @@ describe("third red-tag remembering NPC", () => {
     );
     expect(acknowledgment.acknowledgmentId).toBe("saint-orra-red-tag-return");
     expect(acknowledgment.lines).toEqual([
-      "You brought the red tag yourself. I remember the courier who did not leave it for the rain.",
+      "You brought the red tag yourself. I remember the route you carried to Saint Orra.",
     ]);
   });
 
@@ -56,7 +56,7 @@ describe("third red-tag remembering NPC", () => {
 
     expect(restored.redTagDeliveredToThirdNpc).toBe(true);
     expect(resolveAftersignRememberingNpcDialogue(restored, "red-tag-recipient").lines).toEqual([
-      "You brought the red tag yourself. I remember the courier who did not leave it for the rain.",
+      "You brought the red tag yourself. I remember the route you carried to Saint Orra.",
     ]);
     expect(
       getAftersignStoryState(restored, { playerId: "player", playerName: "Player" }).state.npcs,

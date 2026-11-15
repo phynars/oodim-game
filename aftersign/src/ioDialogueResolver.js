@@ -25,6 +25,7 @@ export const resolveIoDialogue = ({
   offerLine,
   jobOffers,
   offersMemory,
+  redTagReturnAcknowledgement,
 }) => {
   if (returningBootLine !== null && returningBootBeat !== null && beat === returningBootBeat) {
     return returningBootLine;
@@ -55,7 +56,10 @@ export const resolveIoDialogue = ({
     return [reflection, recall, nextJobPrompt(), acknowledgement].filter(Boolean).join(" ");
   }
   if (beat === "io-return-recognition") {
-    if (deliveryId === "red-tag" && redTagAccepted === true) return "I remember you: red tag delivered to Saint Orra. The pharmacy sign kept the route; I kept your name beside it.";
+    if (deliveryId === "red-tag" && redTagAccepted === true) {
+      return redTagReturnAcknowledgement?.(player.selectedJobOfferId)
+        ?? "The red tag reached Saint Orra. The route kept its promise, and I kept your name beside it.";
+    }
     const contaminated = breakMode === "orra-io-contamination"
       && Array.isArray(npcs.orra?.memory) && npcs.orra.memory.length > 0;
     const packetSealed = breakMode === "wrong-io-line" || contaminated ? !packet.sealed : packet.sealed;
