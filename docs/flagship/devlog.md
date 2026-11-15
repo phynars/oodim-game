@@ -7,6 +7,82 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-15 — Blind AI-stranger playtest #6 (M4 closeout) — PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`d88b14f` (the revision with the changes for #2811 and #2815) in a 390×844
+headless phone page with touch on: a screenshot after the page settles, actions
+only by tapping visible text or a screen position. 27 commands, 02:22–02:27Z
+11-15. Nothing read the DOM state or `window.__game`. The verdict is the
+operator's reading of the report against the recorded taps.
+
+**Path:** Blue packet (seal kept) → Lit stair → I listened → Deliver packet →
+Kind return → Ask for next job → Take the second packet → Red tag — Saint Orra
+(no change) → Deliver next packet → Night transfer · medium risk → Deliver
+packet → Carry the name to the Bell Archive → the courier. After the ending:
+Mara Vell → Blunt return → Orra Bell → Mute music → Ask for next job → Meet
+Saint Orra → Ask what changed. Left out: one wheel scroll that moved nothing and
+two swipes.
+
+**"What did the bell ring, and why?" (the player's answer, from memory):**
+> The bell rang for "the courier", which is me. Saint Orra said Maud
+> Underbell's Bell Archive "needs your name, "the courier"", and that "Mara
+> Vell" and "Orra Bell" are "names the archive offers to trap you." Maud asked
+> "Which name did the bell keep?" and I picked "the courier".
+>
+> What it rang: high confidence. It rang my own name, and the district light
+> stayed lit. Why: medium-low confidence. My reading is that I carried my true
+> name through without taking a trap name, having earned the route by keeping
+> the blue seal unbroken. The game never said what the bell is or why a name
+> matters.
+
+**The second return card names the picked job (#2811).** The player picked
+"Night transfer · medium risk"; the card said "Night transfer reached Saint
+Orra. The red tag kept its route, and I kept your name beside it."
+
+**No reply looks already chosen (#2815).** The player tapped "I listened" and
+then saw the first return card: "Kind return", "Evasive return" and "Blunt
+return" were all drawn the same before the tap.
+
+**No box line on either path (#2810).** This player tapped "I listened", so the
+operator replayed the no-tap path on the same revision with a fresh player
+(Take the safe job → Blue packet → Deliver packet → Kind return → Ask for next
+job → Take the second packet → Deliver next packet → Deliver packet). Neither
+return card mentions a box. That replay picked no job (its tap on "Signed
+receipt" landed on Io's sentence, not the button), and its second card said
+"The red tag reached Saint Orra", naming no job.
+
+**Why this is a pass.** The player named the bell's outcome and tied it to
+their own taps, and no line told the player they did something they did not.
+One line is a judgment call: "you made the safe route worth trusting again"
+was shown to a player who took "Lit stair" and never tapped "Take the safe
+job". The operator reads the lit stair as the safe route; the player flagged it
+as a partial match.
+
+**Lines the player could not match to anything seen:** "Careful. Say that too
+often and people will start handing you breakable things." (after "Kind
+return"; the player was never shown what they said); "Most couriers let the
+second signal die"; "Some doors only learn your name after you refuse them".
+
+**Friction, in the player's order (none filed yet):**
+- No title or intro: the first screen already has Io talking and every control;
+  the player could not tell a fresh start from a resumed game.
+- "Take the safe job" and "Safe delivery · low risk" vanished after the first
+  tap, before the player could use them.
+- "YOUR ROUTE CHOICE" holds three unrelated kinds of choice.
+- After "Deliver packet" and "Carry the name to the Bell Archive" the whole card
+  is drawn tilted with blurred text until the next tap.
+- "Red tag — Saint Orra" looks like a button and does nothing.
+- The second job list is cut off: "Night transfer" is sliced in half, "Signed
+  receipt" is hidden, a wheel scroll does nothing and only a swipe inside the
+  list shows them.
+- The ending lands below the fold: the last two lines need a swipe.
+- "Choose before you leave: Io will remember whether the seal stayed whole."
+  stays on every screen after the choice, the ending included.
+- There is no end screen. After the ending the story controls still respond:
+  "Ask for next job" returns to the second-job stage with the ending text still
+  shown.
+
 ## 2026-11-14 — Blind AI-stranger playtest #5 (M4 closeout) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
