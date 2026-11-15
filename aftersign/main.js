@@ -4615,6 +4615,33 @@ const setSaveFailureNotice = (failed, { authoritative = false } = {}) => {
   );
 };
 
+const setLoadFailureNotice = (failed) => {
+  if (!line?.parentNode) return;
+  const noticeId = "loadFailureNotice";
+  let notice = document.getElementById(noticeId);
+  if (!failed) {
+    notice?.remove();
+    return;
+  }
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = noticeId;
+    notice.setAttribute("role", "alert");
+    notice.setAttribute("aria-live", "assertive");
+    const message = document.createElement("p");
+    message.textContent = "Unable to load saved progress. Your current progress is still here.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.id = "retryLoadSave";
+    retry.textContent = "Retry loading save";
+    retry.addEventListener("click", () => {
+      void reloadFromSave();
+    });
+    notice.append(message, retry);
+    line.insertAdjacentElement("afterend", notice);
+  }
+};
+
 const forceSave = async () => {
   if (breakMode === "local-only-save") {
     // #2715: `persist()` owns the local storage write AND reports a
@@ -4681,12 +4708,18 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
     window.localStorage.removeItem(storageKey);
   }
 
-  const authoritativeSave = breakMode === "local-only-save"
-    ? null
-    : await readAuthoritativeSave({
-        slot,
-        playerId,
-      }).catch(() => null);
+  let authoritativeSave = null;
+  if (breakMode !== "local-only-save") {
+    try {
+      authoritativeSave = await readAuthoritativeSave({ slot, playerId });
+    } catch {
+      setLoadFailureNotice(true);
+      renderText();
+      publishState();
+      return;
+    }
+  }
+  setLoadFailureNotice(false);
   const saved = authoritativeSave;
 
   if (saved || clearLocalState || breakMode === "local-only-save") {
