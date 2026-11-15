@@ -3487,11 +3487,14 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
 
   renderMaudBellArchiveEntry();
 
-  if (state.story.endingId) {
+  if (!isPacketChoiceBeat) {
     const packetChoiceAffordance = document.querySelector(
       "[data-aftersign-packet-choice-affordance]",
     );
     if (packetChoiceAffordance) packetChoiceAffordance.remove();
+    if (packetButton.hasAttribute("aria-description")) {
+      packetButton.removeAttribute("aria-description");
+    }
   } else if (isPacketDeliveredBeat) {
     setTextContentIfChanged(deliverButton, "Return to Io");
     stampAftersignChoice(deliverButton, "return-to-io");
