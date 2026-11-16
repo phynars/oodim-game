@@ -3796,7 +3796,12 @@ const commitPacketOutcome = (outcome) => {
         // this same gesture, so the generic blue-packet copy must not erase
         // the route the player just accepted.
         if (state.delivery.id === "red-tag") {
-          packetButton.textContent = "Red tag — Saint Orra";
+          // The second-packet red tag remains on the established packet
+          // gesture path, but its result must be visible rather than silently
+          // re-rendering the same destination label.
+          packetButton.textContent = copy === "idle"
+            ? "Red tag — Saint Orra"
+            : "Red tag — Saint Orra · seal confirmed";
           packetButton.dataset.packetJob = "red-tag";
           packetButton.dataset.packetButtonCopyState = copy;
           return;

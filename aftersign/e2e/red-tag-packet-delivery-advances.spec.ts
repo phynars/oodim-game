@@ -1,33 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// #2356 — AFTERSIGN red-tag round-two keyboard activation.
-//
-// WHY A KEYBOARD SPEC. The round-two bug is a NON-POINTER activation
-// gap: the shipped pointerdown/pointerup funnel in `inputAdapters.js`
-// already commits SEALED for mouse + touch play, so Playwright's
-// `locator.click()` (which dispatches a full pointer sequence) does
-// NOT exercise the newly-added `click` listener — it hits the pointer
-// funnel instead and would pass on main too. The dead-affordance
-// symptom players report only shows up when activation arrives
-// without a pointer stream: `HTMLElement.click()` or keyboard
-// Enter/Space on the focused `<button>`.
-//
-// This spec drives the real non-pointer path: `focus()` +
-// `keyboard.press("Enter")` on `#packetButton` at the round-two
-// red-tag beat. On the base branch no `click` listener is attached,
-// so the keyboard activation is a no-op and the beat STAYS at
-// `packet-offered` — the `waitForBeat("packet-choice")` call times
-// out and the spec FAILS (the required base-branch failure for a
-// bug-issue PR). After the fix the keyboard activation routes
-// through `commitPacketOutcome(SEALED)` — the same funnel the
-// pointer path uses — and the beat advances to `packet-choice`.
-//
-// SCAFFOLDING. Mirrors `io-second-packet-copy-served.spec.ts`
-// exactly — `waitForReady` + `#deliverButton` / `#packetButton`
-// taps + beat-based polling. The earlier draft of this spec used
-// `getByRole("button", { name: "Safe delivery · low risk" })` which
-// can race the harness boot and stall the whole spec to the 30s
-// global timeout; the proven scaffolding below does not stall.
+// #2829 — the round-two red tag retains its packet gesture. The served
+// spec reaches it through the visible touch flow and proves its tap gives a
+// named, visible confirmation instead of silently re-rendering the label.
 
 const WAIT_MS = 10_000;
 
@@ -70,13 +45,8 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
     .toBe(beat);
 }
 
-test.describe("AFTERSIGN red-tag round-two keyboard activation (#2356)", () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-
-  test("round-two red-tag commits via keyboard activation (no pointer stream)", async ({
-    page,
-  }) => {
-    const slot = `red-tag-keyboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+async function reachRoundTwoRedTag(page: Page, slotPrefix: string) {
+    const slot = `${slotPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
     await waitForReady(page);
 
@@ -103,21 +73,39 @@ test.describe("AFTERSIGN red-tag round-two keyboard activation (#2356)", () => {
     await expect(page.locator("#deliverButton")).toHaveText("Deliver next packet");
     await tap(page, "#deliverButton");
 
-    // Now at round-two `packet-offered` with the red-tag label on
-    // `#packetButton`. Drive the KEYBOARD path explicitly — focus +
-    // Enter — which emits a `click` event with `detail === 0` and NO
-    // pointer stream. On main the new `click` listener is absent, so
-    // this activation is a no-op and `waitForBeat("packet-choice")`
-    // below times out (base-branch failure proof). After the fix the
-    // listener routes through `commitPacketOutcome(SEALED)`.
     await waitForBeat(page, "packet-offered");
     const packetButton = page.locator("#packetButton");
     await expect(packetButton).toBeVisible();
     await expect(packetButton).toHaveText("Red tag — Saint Orra");
+    return packetButton;
+}
 
+test.describe("AFTERSIGN red-tag round-two confirmation (#2829, #2356)", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  // #2829 — tap the visible red-tag tile. Main keeps the original label
+  // after this gesture, so the confirmation assertion fails there; the fix
+  // names the successful seal on the tile.
+  test("round-two red-tag tap visibly confirms the seal", async ({ page }) => {
+    const packetButton = await reachRoundTwoRedTag(page, "red-tag-tap");
+    await tap(page, "#packetButton");
+    await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
+    await waitForBeat(page, "packet-choice");
+  });
+
+  // #2356 — NON-POINTER activation. Playwright's tap/click dispatch a
+  // pointer stream that hits the pointerdown/pointerup funnel in
+  // `inputAdapters.js`; only focus() + keyboard Enter on the focused
+  // `<button>` exercises the `click` listener (detail === 0, no pointer
+  // events). Without that listener this activation is a no-op and the beat
+  // stays at `packet-offered`.
+  test("round-two red-tag commits via keyboard activation (no pointer stream)", async ({
+    page,
+  }) => {
+    const packetButton = await reachRoundTwoRedTag(page, "red-tag-keyboard");
     await packetButton.focus();
     await page.keyboard.press("Enter");
-
     await waitForBeat(page, "packet-choice");
+    await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
   });
 });
