@@ -1166,6 +1166,8 @@ const state = {
       typeof stored?.story?.maudBellArchiveName === "string" && stored.story.maudBellArchiveName.trim()
         ? stored.story.maudBellArchiveName
         : null,
+    // PR #2845 review: the Unlit Door stays open across a reload.
+    maudBellArchiveDoorOpen: stored?.story?.maudBellArchiveDoorOpen === true,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1584,6 +1586,7 @@ const lineForBeat = () => {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
+        doorOpen: state.story.maudBellArchiveDoorOpen === true,
         onOpenDoor: () => { void choose("open-unlit-door"); },
       });
     }
@@ -4554,6 +4557,13 @@ const choose = async (choiceId) => {
   }
 
   if (choiceId === "open-unlit-door") {
+    if (!state.story.maudBellArchiveEndingId || state.story.maudBellArchiveDoorOpen) return;
+    state.story.maudBellArchiveDoorOpen = true;
+    markStateDirty();
+    await persistAuthoritative({ dirty: true }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn(err);
+    });
     publishState();
     return;
   }
@@ -5576,6 +5586,7 @@ const resetSliceSave = async () => {
   state.story.endingId = null;
   state.story.maudBellArchiveEndingId = null;
   state.story.maudBellArchiveName = null;
+  state.story.maudBellArchiveDoorOpen = false;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);

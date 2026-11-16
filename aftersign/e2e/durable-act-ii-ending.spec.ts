@@ -150,6 +150,28 @@ test.describe("Durable Act II ending (#2726)", () => {
     await assertRestored(browser, slot, player, LIT, outcome);
   });
 
+  test("keeps the Unlit Door open in a fresh browser context after it is tapped", async ({ page, browser }) => {
+    test.setTimeout(240_000);
+    const { player, slot } = ids("door");
+    await completeEnding(page, slot, player, DIM);
+    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+    await expect(card).toHaveAttribute("data-unlit-door-open", "true");
+    await expect(card).toContainText("Orra Bell pays with this district's light.");
+    await expect(async () => {
+      const { context, page: returning } = await openFreshContext(browser, slot, player);
+      try {
+        const restored = returning.locator(`[data-ending-id="${DIM.endingId}"]`);
+        await expect(restored).toBeVisible({ timeout: WAIT_MS });
+        await expect(restored).toHaveAttribute("data-unlit-door-open", "true");
+        await expect(restored).toContainText("Orra Bell pays with this district's light.");
+        await expect(returning.locator('button[data-choice-id="open-unlit-door"]')).toHaveCount(0);
+      } finally {
+        await context.close();
+      }
+    }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
+  });
+
   test("does not reopen an Act II choice after restoring an ending", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const { player, slot } = ids("nochoice");
