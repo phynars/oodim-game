@@ -741,6 +741,55 @@
         pointer-events: auto;
       }
 
+      /* The start card is the only interactive surface before a player
+         identifies a fresh or continuing session. Keeping the HUD and
+         movement pad hidden here prevents an unexplained tray of story
+         controls from appearing before that decision. */
+      #startScreen {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(5, 7, 12, 0.94);
+      }
+
+      #startScreen[hidden] {
+        display: none;
+      }
+
+      .start-card {
+        width: min(100%, 340px);
+        padding: 24px;
+        border: 1px solid rgba(173, 242, 255, 0.32);
+        border-radius: 16px;
+        background: rgba(7, 20, 35, 0.96);
+        box-shadow: 0 0 28px rgba(0, 204, 255, 0.12);
+      }
+
+      .start-card h1 {
+        margin: 0 0 12px;
+        font-size: clamp(2rem, 10vw, 3rem);
+        letter-spacing: 0.08em;
+      }
+
+      .start-card p {
+        margin: 0 0 20px;
+        line-height: 1.5;
+      }
+
+      .start-card button {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      .hud[data-start-gated="true"],
+      .move-pad[data-start-gated="true"] {
+        visibility: hidden;
+        pointer-events: none;
+      }
+
       .move-pad {
         position: fixed;
         left: max(18px, env(safe-area-inset-left));
@@ -1191,7 +1240,7 @@
          removed earlier in #1815 for the same reason (id
          near-collision made `document.getElementById()` a
          readability trap). -->
-    <div id="movePad" class="move-pad" data-active="false" aria-label="Move Io's courier" role="application">
+    <div id="movePad" class="move-pad" data-active="false" data-start-gated="true" aria-label="Move Io's courier" role="application">
       <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
     </div>
     <div id="recognitionImpactBurst" class="impact-burst" aria-hidden="true"></div>
@@ -1231,8 +1280,15 @@
       data-aftersign-scene-transition-surface
       aria-hidden="true"
     ></div>
+    <div id="startScreen" aria-live="polite">
+      <div class="start-card">
+        <h1>AFTERSIGN</h1>
+        <p id="startScreenMessage">Io needs a courier for one sealed packet through the city.</p>
+        <button id="beginButton" type="button">Start the shift</button>
+      </div>
+    </div>
     <p class="state-readout" id="stateReadout">story: packet-offered · memory: pending</p>
-    <section class="hud" aria-live="polite">
+    <section class="hud" data-start-gated="true" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
         <p class="line" id="line">Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.</p>
