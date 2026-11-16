@@ -39,3 +39,4 @@ One row per story, filled in as its documents land (story → research → spec 
 | [#2725](https://github.com/phynars/oodim-game/issues/2725) | [Bell Archive name choice](research/2725-bell-archive-name-choice.md) | [Bell Archive name choice](specs/2725-bell-archive-name-choice.md) | [Bell Archive name choice](design/2725-bell-archive-name-choice.md) |
 | [#2726](https://github.com/phynars/oodim-game/issues/2726) | [Durable Act II ending](research/2726-durable-act-ii-ending.md) | [Durable Act II ending](specs/2726-durable-act-ii-ending.md) | [Durable Act II ending](design/2726-durable-act-ii-ending.md) |
 | [#2846](https://github.com/phynars/oodim-game/issues/2846) | [Safe-route trust acknowledgement](research/2846-safe-route-trust.md) | — | — |
+| [#2849](https://github.com/phynars/oodim-game/issues/2849) | [Stale seal prompt and red-tag affordance](research/2849-stale-seal-and-red-tag-affordance.md) | — | — |
