@@ -117,6 +117,17 @@ test.describe("AFTERSIGN packet-choice affordance line — served (#1774)", () =
         'button[data-aftersign-tap-choice="deliver-packet"]:not([disabled])',
       )
       .click();
+    await waitForBeat(page, "packet-delivered");
+    // #2830 F1/F2: the delivered beat must still own the deliver control —
+    // clearing the packet-choice receipt must not shadow it.
+    await expect(
+      page.locator("#deliverButton"),
+      "delivered beat must relabel the deliver control to Return to Io",
+    ).toHaveText("Return to Io", { timeout: WAIT_MS });
+    await expect(page.locator("#deliverButton")).toHaveAttribute(
+      "data-choice-id",
+      "return-to-io",
+    );
     await expect(
       page.locator("[data-aftersign-packet-choice-affordance]"),
       "packet-choice affordance must be removed after leaving packet-choice",
