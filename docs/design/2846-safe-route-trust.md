@@ -4,15 +4,18 @@
 
 ## Components
 
-The visible safe-job control records whether the player accepted the job. The Act II ending selects acknowledgement copy from that recorded fact; the served spec taps the rendered controls and reads the ending only for assertions.
+No new control and no new recorded fact. The player takes the job with the existing **Take the blue-seal job** control. They then tap a visible route: **Lit stair — under Io's window** or the shortcut. `aftersign/main.js` records the run as `state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action }`. At the `packet-offered` beat, `aftersignPacketRecallToken(routeRisk)` picks a token. `aftersignPacketRecallLine(token)` returns the playtest-6 copy, and `stampPacketRecallLine` renders `#packetRecallLine`. A `null` token removes the paragraph. The served spec taps the rendered controls and reads the game state only for assertions.
 
 ```mermaid
 flowchart LR
-  P[Player] --> J[Visible Take the safe job control]
-  J --> F[Recorded safe-job choice]
-  F --> E[Act II ending copy selector]
-  E --> C[Visible ending card]
+  P[Player] --> J[Take the blue-seal job]
+  J --> R[Visible route tap: Lit stair or shortcut]
+  R --> F[state.player.routeRisk lastRoute/succeeded/lastAction]
+  F --> K[aftersignPacketRecallToken]
+  K --> L[aftersignPacketRecallLine]
+  L --> C["#packetRecallLine at packet-offered"]
   T[Served Playwright spec] --> J
+  T --> R
   T --> C
 ```
 
@@ -22,27 +25,32 @@ flowchart LR
 sequenceDiagram
   participant P as Player
   participant UI as Served visible controls
-  participant G as AFTERSIGN game
-  participant E as Act II ending card
-  P->>UI: tap Take the safe job, or choose another visible path
-  UI->>G: record the player choice
-  G->>E: select acknowledgement from recorded choice
-  E-->>P: show only wording supported by that tap
+  participant G as aftersign/main.js
+  participant Copy as aftersignPacketRecallCopy.js
+  P->>UI: tap Take the blue-seal job, then a route
+  UI->>G: run route, write routeRisk
+  G->>Copy: aftersignPacketRecallToken(routeRisk)
+  Copy-->>G: "safe" | "fast" | "fragile" | "failed" | null
+  G->>UI: stampPacketRecallLine (null tears the paragraph down)
+  UI-->>P: recall names only the route tapped
 ```
 
 ## Data
 
-The build reads the existing recorded safe-job choice that distinguishes tapping **Take the safe job** from not tapping it. The decision is passed to the Act II ending-copy selection; it must not infer acceptance from the Lit stair route or other route facts. Persistence mechanics and save schema changes are out of scope for this story.
+The design reads only the existing `state.player.routeRisk` fact, `{ lastRoute, succeeded, lastAction }`. `aftersign/main.js` writes it when a route runs. A Lit stair run is `lastRoute: "safe"` and resolves to the `safe` token. The shortcut resolves to `fast` and the fragile carry to `fragile`. An absent `routeRisk` resolves to `null`, so no recall is shown. No "safe-job" fact exists in the code, and this story adds none. There is no save schema change.
 
 ## Test map
 
 | AC | Test file | Test name | Fails on main because |
 |---|---|---|---|
-| AC-1 | `aftersign/e2e/safe-route-trust.spec.ts` | `acknowledges taking the safe job at the Act II ending` | The served ending does not yet distinguish the recorded visible safe-job acceptance from the Lit stair route. |
-| AC-2 | `aftersign/e2e/safe-route-trust.spec.ts` | `does not credit the safe job when it was not tapped` | A Lit stair path that never taps **Take the safe job** can receive the safe-route trust wording. |
-| AC-3 | `aftersign/e2e/safe-route-trust.spec.ts` | `reaches both safe-job acknowledgement outcomes by visible pointer taps at 390×844` | The coverage must prove both paths through rendered controls rather than harness input. |
+| AC-1 | `aftersign/e2e/safe-route-trust.spec.ts` (new) | `lit stair recall names the lit stair, never the safe route` | No served spec asserts the playtest-6 line on `#packetRecallLine` after real taps. Only the unit pin in `aftersignPacketRecallSafeCopy.test.ts` covers it. |
+| AC-2 | `aftersign/e2e/safe-route-trust.spec.ts` (new) | `shortcut recall never borrows the lit stair line` | No served spec checks that the shortcut run's recall avoids lit-stair or safe-route wording. |
+| AC-3 | `apps/web/src/aftersign/aftersignPacketRecallSafeCopy.test.ts` | `absent route memory renders no recall` (new case) | No case in that file asserts that `aftersignPacketRecallToken(undefined)` gives `null` and `aftersignPacketRecallLine(null)` gives `""`. |
+| AC-4 | `aftersign/e2e/safe-route-trust.spec.ts` (new) | `reaches both recall outcomes by visible pointer taps at 390×844` | No served journey proves both outcomes through rendered controls. |
+
+The existing guard `expect(line).not.toMatch(/worth trusting again/i)` in `aftersignPacketRecallSafeCopy.test.ts` stays as it is.
 
 ## Risks
 
-- Route choice is not safe-job acceptance; treating the Lit stair as acceptance would violate C5.
-- A test that mutates `window.__game` would not prove the player can reach either outcome; it is assertion-only.
+- A route choice is not a job choice. The recall must not grow wording about "taking the safe job", because no such control or fact exists (C5).
+- A test that writes to `window.__game` would not prove the player can reach either outcome. The served spec is assertion-only.
