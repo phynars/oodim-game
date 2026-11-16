@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { AFTERSIGN_IO_LINES, buildIoMemorySentence } from "../ioVoiceContract";
@@ -38,7 +40,18 @@ import "./bootWindowGame";
 // `continue-on-error: true` since #836) and an unknown subset is red on
 // drift. Widening the lane's `include` back to the full glob is tracked in
 // #841 — until then, this file is the whole surface of the blocking lane.
+const servedMainSource = readFileSync(
+  fileURLToPath(new URL("../../../../../aftersign/main.js", import.meta.url)),
+  "utf8",
+);
+
 describe("Aftersign window.__game harness (#918)", () => {
+  it("keeps the served boot wired to the pointer-to-render timing seam", () => {
+    expect(servedMainSource).toMatch(/import\s*\{\s*measurePointerToRenderLatency\s*\}/);
+    expect(servedMainSource).toMatch(/document\.addEventListener\(\s*["']pointerdown["']/);
+    expect(servedMainSource).toMatch(/composer\.render\(\)[\s\S]{0,120}markPointerRendered/);
+  });
+
   // Public-surface guard for the `../verticalSliceState` barrel. The three
   // feel constants (`AFTERSIGN_KIOSK_SCENE_FEEL`,
   // `AFTERSIGN_IO_RECOGNITION_FEEL`, `AFTERSIGN_INTERACTION_CONFIRM_FEEL`)
