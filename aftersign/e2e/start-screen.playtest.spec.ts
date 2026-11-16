@@ -49,7 +49,7 @@ test.describe("AFTERSIGN start screen (#2840)", () => {
     await expect(startScreen).toBeVisible();
     await expect(startScreen).toContainText("AFTERSIGN");
     await expect(startScreen).toContainText(/Io needs a courier.*sealed packet/i);
-    await expect(page.locator("#beginButton")).toHaveText("Begin delivery");
+    await expect(page.locator("#beginButton")).toHaveText("Start the shift");
     await expect(page.locator("#packetButton")).not.toBeVisible();
     await expect(page.locator("#soundButton")).not.toBeVisible();
     await expect(page.locator("#resetButton")).not.toBeVisible();
@@ -85,7 +85,7 @@ test.describe("AFTERSIGN start screen (#2840)", () => {
       const startScreen = page.locator("#startScreen");
       await expect(startScreen).toContainText("Continuing — Io remembers you");
       await expect(startScreen).not.toContainText("Io needs a courier");
-      await expect(page.locator("#beginButton")).toHaveText("Continue delivery");
+      await expect(page.locator("#beginButton")).toHaveText("Resume the shift");
       await expect(page.locator("#packetButton")).not.toBeVisible();
 
       await page.locator("#beginButton").tap();

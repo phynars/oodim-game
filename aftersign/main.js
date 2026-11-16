@@ -1096,7 +1096,7 @@ const isContinuingSession = stored !== null;
 
 if (isContinuingSession) {
   startScreenMessage.textContent = "Continuing — Io remembers you and the delivery you left in motion.";
-  beginButton.textContent = "Continue delivery";
+  beginButton.textContent = "Resume the shift";
 }
 
 const dismissStartScreen = () => {
