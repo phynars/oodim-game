@@ -1087,6 +1087,24 @@ const stored = await readAuthoritativeSave({
   );
   return null;
 });
+
+const startScreen = document.querySelector("#startScreen");
+const startScreenMessage = document.querySelector("#startScreenMessage");
+const beginButton = document.querySelector("#beginButton");
+const startGatedSurfaces = document.querySelectorAll("[data-start-gated]");
+const isContinuingSession = stored !== null;
+
+if (isContinuingSession) {
+  startScreenMessage.textContent = "Continuing — Io remembers you and the delivery you left in motion.";
+  beginButton.textContent = "Continue delivery";
+}
+
+beginButton.addEventListener("click", () => {
+  startScreen.hidden = true;
+  startGatedSurfaces.forEach((surface) => surface.removeAttribute("data-start-gated"));
+  beginButton.focus();
+});
+
 // Recognition facts are owned by player-memory, independently of the full
 // authoritative save. An unavailable endpoint never blocks a playable boot.
 const playerMemoryRecord = await readPlayerMemory({
