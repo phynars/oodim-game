@@ -259,6 +259,52 @@ The served client also reads `/player-memory` at boot and best-effort writes
 Io-memory facts there after an authoritative save; an unavailable
 `/player-memory` endpoint falls back to the save and never rejects that save.
 
+### Planned (M5): Act III, the Unlit Door
+
+> **Not on `main` yet.** This section is the design target for the active M5
+> milestone ([BRIEF.md](../../flagship/BRIEF.md#active-milestone-m5--act-iii-the-unlit-door-closes-episode-1-operator-decision-under-founder-delegation-2026-11-14),
+> Act III in [concept.md](../../flagship/concept.md)). None of the beats,
+> fields or line ids below exist in code today; the diagrams above describe
+> what ships. Move each piece up into those diagrams when its PR merges.
+
+```mermaid
+sequenceDiagram
+  participant P as Player
+  participant UI as Panel + controls
+  participant G as main.js (beats)
+  participant S as Save API (Durable Object)
+
+  Note over G: after either Act II bell ending (shipped)
+  G->>UI: unlit-door (planned)
+  P->>UI: door-choice: official record / private lie / new sign (planned)
+  G->>G: Maud names the rung + its cost from the Act II bell record
+  G->>G: io-final reads first-session packet.sealed + story.doorChoice
+  G->>UI: episode-one-end (planned)
+  G->>S: PUT save (story.doorChoice, story.endingId)
+  Note over G,S: A fresh browser context restores the authoritative save at boot, including the door choice and end-screen id
+```
+
+Planned save field: `story.doorChoice` stores one of `keep-official-record`,
+`protect-private-lie`, or `hang-new-sign`, alongside the existing
+`story.endingId`. A fresh browser context uses the durable player id to reload
+that snapshot at boot and restores both fields from the save, not from browser
+storage.
+
+Planned beat order after either Act II bell ending: `unlit-door` →
+`door-choice` → `io-final` → `episode-one-end`. Maud's Unlit Door line takes
+the name rung from the Act II bell record and that record's stated cost. The
+choice is framed as a consequence of the exact name the player made the
+archive remember, not as a generic morality prompt.
+
+Planned `io-final` selection: it reads the first-session seal fact from the
+existing `packet.sealed` record and combines it with `story.doorChoice`. Its
+authored line id comes from this table:
+
+| First-session seal (`packet.sealed`) | `keep-official-record` | `protect-private-lie` | `hang-new-sign` |
+|---|---|---|---|
+| kept (`true`) | `io-final-sealed-official` | `io-final-sealed-private` | `io-final-sealed-sign` |
+| broken (`false`) | `io-final-opened-official` | `io-final-opened-private` | `io-final-opened-sign` |
+
 ### How a change reaches the player (top-down)
 
 ```mermaid

@@ -12,7 +12,7 @@ missing here, when a link here points nowhere, or when a doc breaks its shape
 |---|---|---|
 | [flagship/BRIEF.md](flagship/BRIEF.md) | Mandate, milestones, deadlines, closeout rules | Founder / operator |
 | [CONSTITUTION.md](CONSTITUTION.md) | Standing rules every spec checks (C1–C8), EARS acceptance format | Operator |
-| [plan/architecture/README.md](plan/architecture/README.md) | High-level architecture and diagrams | Operator |
+| [plan/architecture/README.md](plan/architecture/README.md) | High-level architecture, and diagrams of what ships, plus the planned (M5) Act III Unlit Door design | Operator |
 | [flagship/concept.md](flagship/concept.md) | World, cast, act structure | Team |
 | [flagship/devlog.md](flagship/devlog.md) | Closeout records and playtests | Operator |
 
