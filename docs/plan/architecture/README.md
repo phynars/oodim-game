@@ -200,15 +200,10 @@ sequenceDiagram
   G-->>UI: red-tag offer (Take the second packet / Ask what changed)
   P->>UI: Light or spare the vigil
   G->>E: resolveEpisodeOneEnding(packet sealed?, red tag?)
-  E-->>G: Act II bell ending
-  G->>UI: unlit-door
-  P->>UI: door-choice (official record / private lie / new sign)
-  G->>G: record Maud's rung name + its cost from the Act II bell record
-  G->>G: io-final reads first-session packet.sealed + story.doorChoice
-  G->>UI: episode-one-end
-  G->>S: PUT save (story.doorChoice, story.endingId)
+  E-->>G: endingId + endingCause + recall line
+  G->>S: PUT save (story.endingId)
   G-->>UI: ending card (data-ending-id, data-ending-cause)
-  Note over G,S: A fresh browser context restores the authoritative save at boot, including the door choice and end-screen id
+  Note over G,S: A later session reads the save at boot and shows the same ending
 ```
 
 On `main` today **Ask for next job** can arm `secondPacketHandoffAccepted` so
@@ -244,7 +239,6 @@ classDiagram
     outcome
   }
   class Story {
-    doorChoice : keep-official-record | protect-private-lie | hang-new-sign
     endingId
     endingCause
   }
@@ -260,25 +254,51 @@ classDiagram
 ```
 
 Only the player id lives in `localStorage` (`aftersign:player-id:v1`). The
-authoritative save remains the source of truth for the full player snapshot:
-`story.doorChoice` stores one of `keep-official-record`,
-`protect-private-lie`, or `hang-new-sign`, and `story.endingId` is the
-end-screen id. A fresh browser context uses the durable player id to reload
-that snapshot at boot, restoring both fields rather than deriving them from
-browser storage. The served client also reads `/player-memory` at boot and
-best-effort writes Io-memory facts there after an authoritative save; an
-unavailable `/player-memory` endpoint falls back to the save and never rejects
-that save.
+authoritative save remains the source of truth for the full player snapshot.
+The served client also reads `/player-memory` at boot and best-effort writes
+Io-memory facts there after an authoritative save; an unavailable
+`/player-memory` endpoint falls back to the save and never rejects that save.
 
-After either Act II bell ending, the Act III beat order is `unlit-door` →
+### Planned (M5): Act III, the Unlit Door
+
+> **Not on `main` yet.** This section is the design target for the active M5
+> milestone ([BRIEF.md](../../flagship/BRIEF.md#active-milestone-m5--act-iii-the-unlit-door-closes-episode-1-operator-decision-under-founder-delegation-2026-11-14),
+> Act III in [concept.md](../../flagship/concept.md)). None of the beats,
+> fields or line ids below exist in code today; the diagrams above describe
+> what ships. Move each piece up into those diagrams when its PR merges.
+
+```mermaid
+sequenceDiagram
+  participant P as Player
+  participant UI as Panel + controls
+  participant G as main.js (beats)
+  participant S as Save API (Durable Object)
+
+  Note over G: after either Act II bell ending (shipped)
+  G->>UI: unlit-door (planned)
+  P->>UI: door-choice: official record / private lie / new sign (planned)
+  G->>G: Maud names the rung + its cost from the Act II bell record
+  G->>G: io-final reads first-session packet.sealed + story.doorChoice
+  G->>UI: episode-one-end (planned)
+  G->>S: PUT save (story.doorChoice, story.endingId)
+  Note over G,S: A fresh browser context restores the authoritative save at boot, including the door choice and end-screen id
+```
+
+Planned save field: `story.doorChoice` stores one of `keep-official-record`,
+`protect-private-lie`, or `hang-new-sign`, alongside the existing
+`story.endingId`. A fresh browser context uses the durable player id to reload
+that snapshot at boot and restores both fields from the save, not from browser
+storage.
+
+Planned beat order after either Act II bell ending: `unlit-door` →
 `door-choice` → `io-final` → `episode-one-end`. Maud's Unlit Door line takes
-the name rung from the Act II bell record and that record's stated cost: the
-choice is therefore framed as a consequence of the exact name the player made
-the archive remember, not as a generic morality prompt.
+the name rung from the Act II bell record and that record's stated cost. The
+choice is framed as a consequence of the exact name the player made the
+archive remember, not as a generic morality prompt.
 
-`io-final` reads the first-session seal fact from the existing
-`packet.sealed` record and combines it with `story.doorChoice`. Its authored
-line id is selected from this table:
+Planned `io-final` selection: it reads the first-session seal fact from the
+existing `packet.sealed` record and combines it with `story.doorChoice`. Its
+authored line id comes from this table:
 
 | First-session seal (`packet.sealed`) | `keep-official-record` | `protect-private-lie` | `hang-new-sign` |
 |---|---|---|---|
