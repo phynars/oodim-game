@@ -3487,11 +3487,22 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
 
   renderMaudBellArchiveEntry();
 
-  if (state.story.endingId) {
-    const packetChoiceAffordance = document.querySelector(
+  // #2827: the packet-choice receipt (prompt line + aria-description) is
+  // scoped to the packet-choice beat. Clear it on every other beat as a
+  // standalone guarded step so it never shadows the beat chain below
+  // (the delivered branch must still stamp "Return to Io").
+  if (!isPacketChoiceBeat || state.story.endingId) {
+    const staleAffordance = document.querySelector(
       "[data-aftersign-packet-choice-affordance]",
     );
-    if (packetChoiceAffordance) packetChoiceAffordance.remove();
+    if (staleAffordance) staleAffordance.remove();
+    if (packetButton.hasAttribute("aria-description")) {
+      packetButton.removeAttribute("aria-description");
+    }
+  }
+
+  if (state.story.endingId) {
+    // Ending owns the controls; receipt already cleared above.
   } else if (isPacketDeliveredBeat) {
     setTextContentIfChanged(deliverButton, "Return to Io");
     stampAftersignChoice(deliverButton, "return-to-io");

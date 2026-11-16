@@ -20,7 +20,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
-const PHONE_VIEWPORT = { width: 375, height: 812 } as const;
+const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
 // Verbatim from `aftersign/src/packetChoiceAffordance.js`.
 const AFFORDANCE_LINE =
@@ -101,6 +101,47 @@ test.describe("AFTERSIGN packet-choice affordance line — served (#1774)", () =
     // And the same literal must land on `#packetButton[aria-description]`
     // so a screen-reader user hears the consequence on the object.
     await expect(page.locator("#packetButton")).toHaveAttribute(
+      "aria-description",
+      AFFORDANCE_LINE,
+    );
+
+    // Choose a visible packet fork, then use a visible route control to
+    // leave packet-choice. The receipt must not follow the player.
+    await page
+      .locator(
+        '#routeRiskChoice button[data-aftersign-tap-choice="take-the-long-way"]:not([disabled])',
+      )
+      .click();
+    await page
+      .locator(
+        'button[data-aftersign-tap-choice="deliver-packet"]:not([disabled])',
+      )
+      .click();
+    await waitForBeat(page, "packet-delivered");
+    // #2830 F1/F2: the delivered beat must still own the deliver control —
+    // clearing the packet-choice receipt must not shadow it.
+    await expect(
+      page.locator("#deliverButton"),
+      "delivered beat must relabel the deliver control to Return to Io",
+    ).toHaveText("Return to Io", { timeout: WAIT_MS });
+    await expect(page.locator("#deliverButton")).toHaveAttribute(
+      "data-choice-id",
+      "return-to-io",
+    );
+    await expect(
+      page.locator("[data-aftersign-packet-choice-affordance]"),
+      "packet-choice affordance must be removed after leaving packet-choice",
+    ).toHaveCount(0);
+    await expect(page.locator("#packetButton")).not.toHaveAttribute(
+      "aria-description",
+      AFFORDANCE_LINE,
+    );
+
+    // Reloading the persisted post-choice beat must not restore the receipt.
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await expect(page.locator("[data-aftersign-packet-choice-affordance]")).toHaveCount(0);
+    await expect(page.locator("#packetButton")).not.toHaveAttribute(
       "aria-description",
       AFFORDANCE_LINE,
     );
