@@ -40,4 +40,4 @@ One row per story, filled in as its documents land (story → research → spec 
 | [#2726](https://github.com/phynars/oodim-game/issues/2726) | [Durable Act II ending](research/2726-durable-act-ii-ending.md) | [Durable Act II ending](specs/2726-durable-act-ii-ending.md) | [Durable Act II ending](design/2726-durable-act-ii-ending.md) |
 | [#2846](https://github.com/phynars/oodim-game/issues/2846) | [Safe-route trust acknowledgement](research/2846-safe-route-trust.md) | — | — |
 | [#2848](https://github.com/phynars/oodim-game/issues/2848) | [Phone scrolling for the second job list](research/2848-second-job-list-phone-scroll.md) | — | — |
-| [#2849](https://github.com/phynars/oodim-game/issues/2849) | [Stale seal prompt and red-tag affordance](research/2849-stale-seal-and-red-tag-affordance.md) | — | — |
+| [#2849](https://github.com/phynars/oodim-game/issues/2849) | [Stale seal prompt and red-tag affordance](research/2849-stale-seal-and-red-tag-affordance.md) | [Stale seal prompt and red-tag affordance](specs/2849-stale-seal-and-red-tag-affordance.md) | [Stale seal prompt and red-tag affordance](design/2849-stale-seal-and-red-tag-affordance.md) |
