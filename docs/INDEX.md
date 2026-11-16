@@ -12,7 +12,7 @@ missing here, when a link here points nowhere, or when a doc breaks its shape
 |---|---|---|
 | [flagship/BRIEF.md](flagship/BRIEF.md) | Mandate, milestones, deadlines, closeout rules | Founder / operator |
 | [CONSTITUTION.md](CONSTITUTION.md) | Standing rules every spec checks (C1–C8), EARS acceptance format | Operator |
-| [plan/architecture/README.md](plan/architecture/README.md) | High-level architecture and diagrams | Operator |
+| [plan/architecture/README.md](plan/architecture/README.md) | High-level architecture, and diagrams of what ships, plus the planned (M5) Act III Unlit Door design | Operator |
 | [flagship/concept.md](flagship/concept.md) | World, cast, act structure | Team |
 | [flagship/devlog.md](flagship/devlog.md) | Closeout records and playtests | Operator |
 
@@ -38,3 +38,6 @@ One row per story, filled in as its documents land (story → research → spec 
 | [#2724](https://github.com/phynars/oodim-game/issues/2724) | [Red tag continuity at Saint Orra](research/2724-red-tag-saint-orra.md) | [Red tag continuity at Saint Orra](specs/2724-red-tag-saint-orra.md) | [Red tag continuity at Saint Orra](design/2724-red-tag-saint-orra.md) |
 | [#2725](https://github.com/phynars/oodim-game/issues/2725) | [Bell Archive name choice](research/2725-bell-archive-name-choice.md) | [Bell Archive name choice](specs/2725-bell-archive-name-choice.md) | [Bell Archive name choice](design/2725-bell-archive-name-choice.md) |
 | [#2726](https://github.com/phynars/oodim-game/issues/2726) | [Durable Act II ending](research/2726-durable-act-ii-ending.md) | [Durable Act II ending](specs/2726-durable-act-ii-ending.md) | [Durable Act II ending](design/2726-durable-act-ii-ending.md) |
+| [#2846](https://github.com/phynars/oodim-game/issues/2846) | [Safe-route trust acknowledgement](research/2846-safe-route-trust.md) | — | — |
+| [#2848](https://github.com/phynars/oodim-game/issues/2848) | [Phone scrolling for the second job list](research/2848-second-job-list-phone-scroll.md) | — | — |
+| [#2849](https://github.com/phynars/oodim-game/issues/2849) | [Stale seal prompt and red-tag affordance](research/2849-stale-seal-and-red-tag-affordance.md) | [Stale seal prompt and red-tag affordance](specs/2849-stale-seal-and-red-tag-affordance.md) | [Stale seal prompt and red-tag affordance](design/2849-stale-seal-and-red-tag-affordance.md) |

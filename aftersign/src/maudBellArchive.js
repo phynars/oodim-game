@@ -38,6 +38,7 @@ export const maudBellArchiveEndingForChoice = (choice) => {
         name,
         line: `The district light stays lit.${nameLine}`,
         dialogue: `Maud records ${name}. The archive rests.`,
+        doorDialogue: `Maud: ${name} was rung to keep this district lit. Mara Vell pays by carrying the darkness elsewhere.`,
       }
     : {
         id: "maud-bell-archive-dark",
@@ -45,6 +46,7 @@ export const maudBellArchiveEndingForChoice = (choice) => {
         name,
         line: `One district light goes out.${nameLine}`,
         dialogue: `Maud records ${name}. The archive closes.`,
+        doorDialogue: `Maud: ${name} was rung to close this archive. Orra Bell pays with this district's light.`,
       };
 };
 
@@ -58,7 +60,7 @@ export const maudBellArchiveEndingForId = (endingId) => {
   return null;
 };
 
-export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice) => {
+export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice, { onOpenDoor, doorOpen = false } = {}) => {
   const ending = endingOrChoice?.light
     ? endingOrChoice
     : maudBellArchiveEndingForChoice(endingOrChoice);
@@ -85,7 +87,25 @@ export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice) => {
   light.className = "episode-one-ending__light";
   light.setAttribute("data-district-light", ending.light);
   light.textContent = ending.light === "lit" ? "District light: lit" : "District light: out";
-  card.append(title, bell, outcome, dialogue, light);
+  const door = doc.createElement("button");
+  door.type = "button";
+  door.className = "maud-bell-archive__unlit-door";
+  door.setAttribute("data-choice-id", "open-unlit-door");
+  door.textContent = "Go to the Unlit Door";
+  door.style.pointerEvents = "auto";
+  const openDoor = () => {
+    dialogue.textContent = ending.doorDialogue;
+    card.setAttribute("data-unlit-door-open", "true");
+    door.remove();
+  };
+  door.addEventListener("click", () => {
+    onOpenDoor?.();
+    openDoor();
+  });
+  card.append(title, bell, outcome, dialogue, light, door);
+  // A restored save whose door was already opened shows Maud's door line,
+  // not the button again.
+  if (doorOpen) openDoor();
   host.replaceChildren(card);
   ringBell(doc, bell);
   // #2824: keep the WHOLE ending card visible in the bounded HUD panel after
@@ -144,7 +164,7 @@ export const hasLiveMaudChoices = (doc) => {
 };
 
 /** Render Maud's name-selection beat into a supplied scene host. */
-export const renderMaudBellArchive = (doc, { storedName, endingId, endingName, onSelect } = {}) => {
+export const renderMaudBellArchive = (doc, { storedName, endingId, endingName, doorOpen = false, onSelect, onOpenDoor } = {}) => {
   if (!doc || typeof doc.createElement !== "function") return null;
   const host = doc.getElementById("episodeOneEnding") || doc.getElementById("line");
   if (!host) return null;
@@ -159,7 +179,7 @@ export const renderMaudBellArchive = (doc, { storedName, endingId, endingName, o
         matchesMemory: restoredBase.light === "lit",
       })
     : null;
-  if (restoredEnding) return renderMaudBellArchiveEnding(doc, host, restoredEnding);
+  if (restoredEnding) return renderMaudBellArchiveEnding(doc, host, restoredEnding, { onOpenDoor, doorOpen });
 
   // The scene module owns the choice UI and outcome; this wrapper maps the
   // outcome onto the ending card and delegates persistence to onSelect.
@@ -177,7 +197,7 @@ export const renderMaudBellArchive = (doc, { storedName, endingId, endingName, o
       return onSelect(resolvedChoice, endingFor(resolved));
     },
     showEndingCard: (slot, resolved) => {
-      renderMaudBellArchiveEnding(doc, slot, endingFor(resolved));
+      renderMaudBellArchiveEnding(doc, slot, endingFor(resolved), { onOpenDoor });
     },
   });
   host.replaceChildren(card);
