@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { servedIoDialogue } from "../src/ioServedDialogue.js";
+import { aftersignJobAcceptedLine } from "../../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import {
   selectIoJobOffers,
   type PlayerMemory,
@@ -86,26 +87,31 @@ test.describe("AFTERSIGN Io job-accepted sibling paragraph (played)", () => {
     const safeLabel = freshOffer.label;
     await safeOffer.click();
 
-    const acceptedLine = page.locator("#ioJobAcceptedLine");
+    const acceptedLine = page.locator("#jobTakeAckLine");
     await expect(
       acceptedLine,
-      "exactly one canonical accepted-receipt paragraph must be present inside #offeredJobs after the offer tap",
+      "exactly one canonical accepted-receipt paragraph must be present after the offer tap",
     ).toHaveCount(1);
     await expect(acceptedLine).toBeVisible({ timeout: WAIT_MS });
     await expect(acceptedLine).toHaveAttribute(
-      "data-aftersign-io-job-accepted-line",
+      "data-aftersign-job-take-ack",
       "job-safe-delivery",
     );
-    const expectedFirstRunText = servedIoDialogue.jobAcceptedReceipt(safeLabel);
+    const expectedFirstRunText = aftersignJobAcceptedLine("job-safe-delivery");
     await expect(acceptedLine).toHaveText(expectedFirstRunText);
 
-    const acceptedInsideTray = page.locator(
-      "#offeredJobs #ioJobAcceptedLine",
-    );
+    // The retired inline receipt must not reappear as a second,
+    // overlapping acknowledgement (#2834).
     await expect(
-      acceptedInsideTray,
-      "canonical accepted-receipt line must be a descendant of #offeredJobs",
-    ).toHaveCount(1);
+      page.locator("#ioJobAcceptedLine"),
+      "the legacy #ioJobAcceptedLine receipt must not be stamped alongside the canonical one",
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(servedIoDialogue.jobAcceptedReceipt(safeLabel), {
+        exact: true,
+      }),
+      "the legacy label-templated receipt copy must not render",
+    ).toHaveCount(0);
 
     const postTapLineText = await readLineTextContent(page);
     expect(
@@ -145,10 +151,11 @@ test.describe("AFTERSIGN Io job-accepted sibling paragraph (played)", () => {
 
     await expect(acceptedLine).toHaveCount(1);
     await expect(acceptedLine).toHaveAttribute(
-      "data-aftersign-io-job-accepted-line",
+      "data-aftersign-job-take-ack",
       "job-night-transfer",
     );
-    const expectedLoopedText = servedIoDialogue.jobAcceptedReceipt(nightTransferLabel);
+    expect(nightTransferLabel).toBeTruthy();
+    const expectedLoopedText = aftersignJobAcceptedLine("job-night-transfer");
     await expect(acceptedLine).toHaveText(expectedLoopedText);
 
     expect(

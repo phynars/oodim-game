@@ -258,10 +258,16 @@ describe("AFTERSIGN M-LOOP divergence played acceptance surface", () => {
     expect(main).toContain("jobOfferController.input.press({");
     expect(main).toContain("jobOfferController.commit();");
     // State transition must precede the DOM receipt (pre-extraction order).
+    // The receipt is stamped by the canonical `stampJobAcceptedLine`
+    // writer (#jobTakeAckLine); the retired inline #ioJobAcceptedLine
+    // stamp must not come back as a second, overlapping acknowledgement.
+    const receiptStamp = "const acceptedNode = stampJobAcceptedLine(";
+    expect(main).toContain(receiptStamp);
+    expect(main).not.toContain('acceptedNode.id = "ioJobAcceptedLine";');
     expect(main.indexOf("jobOfferController.input.press({")).toBeLessThan(
-      main.indexOf('acceptedNode.id = "ioJobAcceptedLine";'),
+      main.indexOf(receiptStamp),
     );
-    expect(main.indexOf('acceptedNode.id = "ioJobAcceptedLine";')).toBeLessThan(
+    expect(main.indexOf(receiptStamp)).toBeLessThan(
       main.indexOf("jobOfferController.commit();"),
     );
     // The inline arithmetic that used to live at the call site is now the
