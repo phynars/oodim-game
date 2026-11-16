@@ -224,13 +224,23 @@ test.describe("AFTERSIGN aftersign-job-take feel (phone tap)", () => {
       SAFE_DELIVERY_ACTION_ID,
     );
 
-    // STORY/STATE CONTRACT — the tap visibly acknowledges the selected
-    // job through the canonical `#ioJobAcceptedLine` receipt. The separate
-    // served-copy playtest owns its exact text; this action-feel test keeps
-    // its own focus on the visible action and feedback contract.
-    await expect(page.locator("#ioJobAcceptedLine")).toHaveAttribute(
-      "data-aftersign-io-job-accepted-line",
-      SAFE_DELIVERY_JOB_ID,
+    // STORY/STATE CONTRACT — one canonical acknowledgement is visible for
+    // the selected job. This is the player-visible receipt; a second sibling
+    // acknowledgement would make the count fail.
+    const acknowledgement = page.locator(
+      `[data-aftersign-job-take-ack="${SAFE_DELIVERY_JOB_ID}"]`,
     );
+    await expect(acknowledgement).toHaveCount(1);
+    await expect(acknowledgement).toBeVisible();
+    await expect(page.locator("#ioJobAcceptedLine")).toHaveCount(0);
+
+    // Tapping the visible packet leaves the offer beat, taking the transient
+    // acknowledgement with it rather than leaving stale copy.
+    await page
+      .getByRole("button", {
+        name: "Tap the packet to preserve the seal, or hold to open it",
+      })
+      .tap();
+    await expect(acknowledgement).toHaveCount(0);
   });
 });
