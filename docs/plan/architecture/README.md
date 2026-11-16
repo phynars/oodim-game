@@ -278,9 +278,10 @@ flowchart LR
 
 - `main.js` is a ~6,000-line hub across three source trees; `served-reach`
   exists because edits elsewhere often never reached the page.
-- Io's lines come from many overlapping modules (two `ioLoopCopy`s, two
-  job-accepted lines rendered together, unserved memory-line tables). A
-  recall line must have one owning module (C5).
+- Io's canonical copy source is `aftersign/src/ioLoopCopy.js`; the
+  `apps/web` `ioLoopCopy` module is an adapter. Remaining risks are unresolved
+  served-copy ownership (for example, duplicated job-accepted lines and
+  unserved memory-line tables). A recall line must have one owning module (C5).
 - `dist-aftersign/` is committed but rebuilt by deploy, so the committed copy
   can be stale.
 
