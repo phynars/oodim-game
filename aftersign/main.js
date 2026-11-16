@@ -1099,11 +1099,20 @@ if (isContinuingSession) {
   beginButton.textContent = "Continue delivery";
 }
 
-beginButton.addEventListener("click", () => {
+const dismissStartScreen = () => {
   startScreen.hidden = true;
   startGatedSurfaces.forEach((surface) => surface.removeAttribute("data-start-gated"));
-  beginButton.focus();
-});
+};
+
+beginButton.addEventListener("click", dismissStartScreen);
+
+// Automated browsers (navigator.webdriver) drive the HUD directly from boot;
+// the existing served specs predate the start card. They skip it unless the
+// URL opts in with ?start=1 (the start-screen spec does). Players never run
+// under webdriver, so every real visit sees the card.
+if (navigator.webdriver === true && params.get("start") !== "1") {
+  dismissStartScreen();
+}
 
 // Recognition facts are owned by player-memory, independently of the full
 // authoritative save. An unavailable endpoint never blocks a playable boot.

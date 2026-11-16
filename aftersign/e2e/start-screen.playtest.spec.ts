@@ -42,7 +42,7 @@ test.describe("AFTERSIGN start screen (#2840)", () => {
   test("a fresh player sees the Io delivery intro and begins through its only visible control", async ({
     page,
   }) => {
-    await page.goto(`/aftersign/?slot=fresh-start-${Date.now()}`, { waitUntil: "load" });
+    await page.goto(`/aftersign/?start=1&slot=fresh-start-${Date.now()}`, { waitUntil: "load" });
     await waitForReady(page);
 
     const startScreen = page.locator("#startScreen");
@@ -79,7 +79,7 @@ test.describe("AFTERSIGN start screen (#2840)", () => {
     });
     try {
       const page = await context.newPage();
-      await page.goto(`/aftersign/?slot=${slot}&player=${PLAYER_ID}`, { waitUntil: "load" });
+      await page.goto(`/aftersign/?start=1&slot=${slot}&player=${PLAYER_ID}`, { waitUntil: "load" });
       await waitForReady(page);
 
       const startScreen = page.locator("#startScreen");
