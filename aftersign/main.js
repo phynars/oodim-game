@@ -1657,7 +1657,15 @@ const lineForBeat = () => {
     nextJobPrompt: servedIoDialogue.nextJobPrompt,
     secondPacketAcknowledgement: servedIoDialogue.secondPacketAcknowledgement,
     recognitionDialogue: selectIoRecognitionDialogue,
-    offerLine: ioOfferLineFor,
+    // A completed blue-seal decision is authoritative even if an older save
+    // lacks its Io-memory fact. Never fall back to the pre-decision offer
+    // reminder after that decision.
+    offerLine: (memory, offers, returnReason) => {
+      const resolved = ioOfferLineFor(memory, offers, returnReason);
+      return state.packet.sealed && resolved === IO_DEFAULT_OFFER_LINE
+        ? "You kept the blue seal closed. The city noticed; choose the work you can carry next."
+        : resolved;
+    },
     jobOffers: selectIoJobOffers,
     offersMemory: offeredJobsMemoryFromIoMemory,
     redTagReturnAcknowledgement: servedIoDialogue.redTagReturnAcknowledgement,
