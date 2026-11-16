@@ -19,7 +19,10 @@ export function applyPhoneOfferLayout(offeredJobs, viewport, visible) {
   offeredJobs.style.alignItems = "stretch";
   offeredJobs.style.flexWrap = "nowrap";
   offeredJobs.style.overflowX = "hidden";
-  offeredJobs.style.overflowY = "auto";
-  offeredJobs.style.maxHeight = "42vh";
-  offeredJobs.style.overscrollBehavior = "contain";
+  // The HUD panel already owns the viewport-bounded vertical scroll. A
+  // second 42vh scroll clip here hides later offers from wheel users and
+  // requires an in-tray swipe on phones.
+  offeredJobs.style.overflowY = "visible";
+  offeredJobs.style.maxHeight = "none";
+  offeredJobs.style.overscrollBehavior = "auto";
 }
