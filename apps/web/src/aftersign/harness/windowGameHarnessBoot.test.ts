@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { AFTERSIGN_IO_LINES, buildIoMemorySentence } from "../ioVoiceContract";
@@ -40,16 +38,79 @@ import "./bootWindowGame";
 // `continue-on-error: true` since #836) and an unknown subset is red on
 // drift. Widening the lane's `include` back to the full glob is tracked in
 // #841 — until then, this file is the whole surface of the blocking lane.
-const servedMainSource = readFileSync(
-  fileURLToPath(new URL("../../../../../aftersign/main.js", import.meta.url)),
-  "utf8",
-);
+type PointerToRenderSample = {
+  pointerAtMs: number;
+  renderedAtMs: number;
+  deltaMs: number;
+  frameBudgetMs: number;
+  withinBudget: boolean;
+};
+
+type PointerToRenderProbe = {
+  resetPointerToRenderLatency: () => void;
+  markPointerRendered: (input: { renderedAtMs: number; pointerId: number }) => void;
+  getPointerToRenderLatencyReport: () => {
+    latest?: PointerToRenderSample;
+    worst?: PointerToRenderSample;
+    samples: PointerToRenderSample[];
+  };
+};
+
+function pointerProbe(): PointerToRenderProbe {
+  const game = window.__game as unknown as { input?: PointerToRenderProbe } | undefined;
+  expect(game?.input?.getPointerToRenderLatencyReport).toEqual(expect.any(Function));
+  return game!.input!;
+}
+
+function tapDocument(pointerId: number): void {
+  // The harness listener only times taps on a visible tap-choice surface.
+  const target = document.createElement("button");
+  target.setAttribute("data-aftersign-tap-choice", "packet");
+  document.body.append(target);
+  const event = new Event("pointerdown", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "pointerId", { value: pointerId });
+  target.dispatchEvent(event);
+  target.remove();
+}
 
 describe("Aftersign window.__game harness (#918)", () => {
-  it("keeps the served boot wired to the pointer-to-render timing seam", () => {
-    expect(servedMainSource).toMatch(/import\s*\{\s*measurePointerToRenderLatency\s*\}/);
-    expect(servedMainSource).toMatch(/document\.addEventListener\(\s*["']pointerdown["']/);
-    expect(servedMainSource).toMatch(/composer\.render\(\)[\s\S]{0,120}markPointerRendered/);
+  // Pointer-to-render timing through the booted harness: a real
+  // `pointerdown` DOM event (not a hand-call to markPointerIntent)
+  // opens the intent, the render close-out folds it into a sample,
+  // and the report judges it against the 16.7ms one-frame budget.
+  it("times a real pointerdown against the render close-out on the booted harness", () => {
+    const probe = pointerProbe();
+    probe.resetPointerToRenderLatency();
+    const nowSpy = vi.spyOn(performance, "now");
+    try {
+      nowSpy.mockReturnValue(1_000);
+      tapDocument(7);
+      probe.markPointerRendered({ pointerId: 7, renderedAtMs: 1_012 });
+
+      nowSpy.mockReturnValue(2_000);
+      tapDocument(8);
+      probe.markPointerRendered({ pointerId: 8, renderedAtMs: 2_040 });
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    const report = probe.getPointerToRenderLatencyReport();
+    expect(report.samples).toHaveLength(2);
+    expect(report.samples[0]).toMatchObject({
+      pointerAtMs: 1_000,
+      renderedAtMs: 1_012,
+      deltaMs: 12,
+      withinBudget: true,
+    });
+    expect(report.latest).toMatchObject({ deltaMs: 40, withinBudget: false });
+    expect(report.worst).toMatchObject({ deltaMs: 40 });
+    expect(report.samples[0].frameBudgetMs).toBeGreaterThan(16);
+    expect(report.samples[0].frameBudgetMs).toBeLessThan(17);
+
+    // An orphaned render (no matching pointerdown) records nothing.
+    probe.markPointerRendered({ pointerId: 99, renderedAtMs: 3_000 });
+    expect(probe.getPointerToRenderLatencyReport().samples).toHaveLength(2);
+    probe.resetPointerToRenderLatency();
   });
 
   // Public-surface guard for the `../verticalSliceState` barrel. The three
