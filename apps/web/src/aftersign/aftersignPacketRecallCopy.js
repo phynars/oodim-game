@@ -11,7 +11,11 @@
 // `aftersignPacketRecallRender.consumer.test.ts` stays green across copy
 // edits — the test asserts that phrase, not the whole line.
 export const AFTERSIGN_PACKET_RECALL_COPY = Object.freeze({
-  safe: "Io remembers you brought the packet back sealed. She left the lamp burning: you made the safe route worth trusting again. Keep the route lit for the next packet.",
+  // Playtest 6 (epic #2821): the old "you made the safe route worth
+  // trusting again" credited a "safe" choice to players who only took the
+  // "Lit stair" route and never tapped "Take the safe job". Name the
+  // route the player actually tapped; never say "safe route" here.
+  safe: "Io remembers you brought the packet back sealed. She left the lamp burning: the lit stair you chose held. Keep the route lit for the next packet.",
   fast: "Io remembers you took the shortcut and beat the bell. The fast packet is waiting under the bell's shadow because she trusts you to outrun its echo again. Take it before the next ring finds it.",
   // Failed route: the packet comes home damaged. Reached by any failed
   // fact that is NOT the fragile carry — `repair-the-loss` (played) and

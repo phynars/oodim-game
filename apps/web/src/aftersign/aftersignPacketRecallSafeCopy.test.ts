@@ -31,6 +31,16 @@ describe("safe route recall names the lit route the player earned (#2334)", () =
     expect(line).not.toMatch(/Take the next packet\.$/);
   });
 
+  it("names the lit stair the player tapped, not a 'safe' choice they never made (epic #2821, playtest 6)", () => {
+    const line = AFTERSIGN_PACKET_RECALL_COPY.safe;
+    expect(line).toBe(
+      "Io remembers you brought the packet back sealed. She left the lamp burning: the lit stair you chose held. Keep the route lit for the next packet.",
+    );
+    expect(line).toMatch(/lit stair/i);
+    expect(line).not.toMatch(/safe route/i);
+    expect(line).not.toMatch(/worth trusting again/i);
+  });
+
   it("safe-route token still resolves to the authored safe line", () => {
     const line = aftersignPacketRecallLine(
       aftersignPacketRecallToken({ lastRoute: "safe", succeeded: true }),

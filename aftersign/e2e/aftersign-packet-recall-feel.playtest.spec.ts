@@ -165,6 +165,11 @@ test.describe("AFTERSIGN packet-recall (phone tap)", () => {
     const expected = aftersignPacketRecallLine("safe");
     expect(expected).not.toBe("");
     await expect(recall).toHaveText(expected);
+    // Playtest 6 (epic #2821): this player took a route, not "Take the safe
+    // job" — the recall must name the lit stair they chose, never claim
+    // they "made the safe route worth trusting again".
+    await expect(recall).toContainText("the lit stair you chose held");
+    await expect(recall).not.toContainText("worth trusting again");
 
     // Sibling, not overwrite: `#line` still owns the beat dialogue,
     // and the recall lives in a distinct DOM node right after it.
