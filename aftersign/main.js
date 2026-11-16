@@ -1584,6 +1584,7 @@ const lineForBeat = () => {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
+        onOpenDoor: () => { void choose("open-unlit-door"); },
       });
     }
     state.npcs.io.lastLine = "";
@@ -4061,6 +4062,7 @@ const POST_ENDING_CHOICE_IDS = new Set([
   "carry-red-tag-to-saint-orra",
   "carry-name-to-bell-archive",
   "leave-name-with-orra",
+  "open-unlit-door",
   "return-to-orra",
   // A returning session (after reload) visits Io again; the ending card
   // does not freeze later sessions (flagship-surface-contract M-ORRA-E1).
@@ -4515,6 +4517,7 @@ const choose = async (choiceId) => {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
+        onOpenDoor: () => { void choose("open-unlit-door"); },
         onSelect: (_selected, ending) => {
           state.story.maudBellArchiveEndingId = ending.id;
           // #2754: persist the chosen name so a restored card shows it.
@@ -4546,6 +4549,11 @@ const choose = async (choiceId) => {
     markStateDirty();
     await forceSave();
     renderSaintOrraEndingRecall();
+    publishState();
+    return;
+  }
+
+  if (choiceId === "open-unlit-door") {
     publishState();
     return;
   }

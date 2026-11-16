@@ -92,6 +92,7 @@ const CASES = [
     endingId: "maud-bell-archive-lit",
     endingLine: "The district light stays lit.",
     endingDialogue: "The archive rests.",
+    doorDialogue: "Mara Vell pays by carrying the darkness elsewhere.",
     endingLight: "District light: lit",
   },
   {
@@ -106,6 +107,7 @@ const CASES = [
     endingId: "maud-bell-archive-dark",
     endingLine: "One district light goes out.",
     endingDialogue: "The archive closes.",
+    doorDialogue: "Orra Bell pays with this district's light.",
     endingLight: "District light: out",
   },
 ] as const;
@@ -338,6 +340,14 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(ending).toContainText(scenario.endingDialogue);
       await expect(ending).toContainText(tappedName || "");
       await expect(ending).toContainText(scenario.endingLight);
+
+      const unlitDoor = ending.locator('button[data-choice-id="open-unlit-door"]');
+      await expect(unlitDoor).toBeVisible({ timeout: WAIT_MS });
+      await expect(unlitDoor).toHaveText("Go to the Unlit Door");
+      await unlitDoor.tap();
+      await expect(ending).toHaveAttribute("data-unlit-door-open", "true");
+      await expect(ending).toContainText(tappedName || "");
+      await expect(ending).toContainText(scenario.doorDialogue);
 
       const bellOutcome = ending.locator(".episode-one-ending__outcome");
       await expect(bellOutcome).toContainText(`The bell rings for ${tappedName || ""}.`);
