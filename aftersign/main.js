@@ -3270,10 +3270,23 @@ const renderText = () => {
         routeRiskCopy.setAttribute("data-aftersign-job-offer-route-risk", "true");
         routeRiskCopy.textContent = `Route: ${offerCopy.route} Risk: ${offerCopy.risk}`;
         offeredJobs.appendChild(routeRiskCopy);
+        // #2873 — The second-job tray needs enough phone-height budget to
+        // show the first offer in full, while remaining the native scroll
+        // target for later offers. The existing desktop geometry is left
+        // untouched; `overflowY` deliberately preserves touch and wheel
+        // scrolling on the rendered region rather than routing input through
+        // the game harness.
+        if (window.innerWidth <= 480) {
+          offeredJobs.style.boxSizing = "border-box";
+          offeredJobs.style.maxHeight = "calc(100dvh - 120px)";
+          offeredJobs.style.overflowY = "auto";
+          offeredJobs.style.overscrollBehavior = "contain";
+        }
+
         // #2544 — Io's offer line (offerCopy.ioLine). Appended AFTER the
         // offer buttons (end of the offer loop below) so the buttons keep
         // the position press-juice's hit-test expects inside the phone
-        // tray's 42vh scroll clip.
+        // tray's native scroll clip.
         //
         // Width: `contain: inline-size` gives the line a zero intrinsic
         // inline size, so its long copy cannot feed the tray's min/max-
