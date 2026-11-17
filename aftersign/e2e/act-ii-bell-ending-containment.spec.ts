@@ -55,18 +55,25 @@ test.describe("Act II bell ending containment (#2870)", () => {
     }
   });
 
-  test("keeps a completed bell ending after visible stale-control and Ask for next job taps", async ({ page }) => {
+  test("keeps a completed bell ending after taps on every visible earlier-stage control, and Ask for next job never returns", async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto(`/aftersign/?slot=${unique("bell-stale")}&player=${unique("player")}`, { waitUntil: "load" });
     const card = await endingByVisibleTaps(page, endings[0]);
     const endingId = await card.getAttribute("data-ending-id");
     const outcome = await card.locator(".episode-one-ending__outcome").textContent();
-    const staleControl = page.locator("#deliverButton:visible");
     const askForNextJob = page.locator('button[data-choice-id="ask-for-next-job"]:visible');
-    await expect(staleControl).toBeVisible();
-    await expect(askForNextJob).toBeVisible();
-    await staleControl.tap();
-    await askForNextJob.tap();
+    // These earlier-stage controls stay on screen beside Maud's card at
+    // 390x844. Ask for next job is gone once the ending commits, so the
+    // check is that tapping the stale controls can't bring it (or a new
+    // beat) back.
+    await expect(askForNextJob).toHaveCount(0);
+    for (const selector of ["#deliverButton", "#acknowledgeRouteButton", "#skipRouteButton", "#packetButton"]) {
+      const stale = page.locator(`${selector}:visible`);
+      await expect(stale).toBeVisible();
+      await stale.tap();
+      await expect(card).toBeVisible();
+      await expect(askForNextJob).toHaveCount(0);
+    }
     await expect(card).toBeVisible();
     await expect(card).toHaveAttribute("data-ending-id", endingId ?? "");
     await expect(card.locator(".episode-one-ending__outcome")).toHaveText(outcome ?? "");
