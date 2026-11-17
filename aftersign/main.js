@@ -4108,14 +4108,20 @@ const routeChoiceController = createRouteChoiceController({
 // card renders (the Saint Orra red-tag recall and the Maud / bell-archive
 // handoff live inside or beside #episodeOneEnding). Every other story
 // choice is terminal-blocked so a late tap cannot revive a prior beat.
+// PR #2880 F1: Act II's terminal card (maudBellArchiveEndingId) still accepts
+// the Unlit Door and its three door choices. POST_ENDING_CHOICE_IDS is gated
+// on Act I's endingId, which is null in Act II, so these need their own pass.
+const ACT_TWO_DOOR_CHOICE_IDS = new Set([
+  "open-unlit-door",
+  "keep-official-record",
+  "protect-private-lie",
+  "hang-new-sign",
+]);
 const POST_ENDING_CHOICE_IDS = new Set([
   "carry-red-tag-to-saint-orra",
   "carry-name-to-bell-archive",
   "leave-name-with-orra",
   "open-unlit-door",
-  "keep-official-record",
-  "protect-private-lie",
-  "hang-new-sign",
   "return-to-orra",
   // A returning session (after reload) visits Io again; the ending card
   // does not freeze later sessions (flagship-surface-contract M-ORRA-E1).
@@ -4132,7 +4138,7 @@ const choose = async (choiceId) => {
   );
   if (
     hasCompletedEnding
-    && !(state.story.maudBellArchiveEndingId && choiceId === "open-unlit-door")
+    && !(state.story.maudBellArchiveEndingId && ACT_TWO_DOOR_CHOICE_IDS.has(choiceId))
     && !(state.story.endingId && POST_ENDING_CHOICE_IDS.has(choiceId))
   ) {
     // A terminal ending can render while the last choice's pointer sequence is

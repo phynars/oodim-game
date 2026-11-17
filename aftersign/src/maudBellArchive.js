@@ -116,18 +116,33 @@ export const renderMaudBellArchiveEnding = (
       card.setAttribute("data-door-choice", doorChoice);
       return;
     }
+    // PR #2880 F3: one compact row in the slot the door button vacated, so
+    // the card (through its district-light line) still fits the HUD panel
+    // without a swipe (#2824).
     const choices = doc.createElement("div");
     choices.className = "maud-bell-archive__door-choices";
+    choices.style.display = "flex";
+    choices.style.gap = "4px";
+    choices.style.marginTop = "4px";
     for (const choice of doorChoices) {
       const button = doc.createElement("button");
       button.type = "button";
       button.setAttribute("data-choice-id", choice.id);
       button.textContent = choice.label;
       button.style.pointerEvents = "auto";
+      button.style.flex = "1 1 0";
+      button.style.minWidth = "0";
+      button.style.minHeight = "44px";
+      button.style.padding = "2px 4px";
+      button.style.fontSize = "12px";
+      button.style.lineHeight = "1.15";
       button.addEventListener("click", () => onChooseDoor?.(choice.id));
       choices.append(button);
     }
-    card.append(choices);
+    light.after(choices);
+    if (card.isConnected && typeof card.scrollIntoView === "function") {
+      card.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   };
   door.addEventListener("click", () => {
     onOpenDoor?.();
