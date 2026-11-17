@@ -47,7 +47,7 @@ import { recordSaveRequests, waitForLandedClear } from "./helpers/saveRequests";
 //     `#vigilChoice` tray (aftersign/index.html). The tray appears
 //     at the `io-next-job` beat whether or not the red tag has been
 //     accepted (#2577). The shipped document-level delegate in
-//     `aftersign/main.js` routes a click on either button through
+//     `aftersign/src/vigilChoiceController.js` routes a click on either button through
 //     the canonical `choose()` seam the input adapter would land
 //     on for a rendered tap — no runtime branch is bypassed.
 //     Fixes Soren's iter-5 AI007 blocker on PR #2265 ("the ending
@@ -309,6 +309,10 @@ async function runToEnding(
   if (!oldNextJobBox) {
     throw new Error("Deliver next packet must have a phone-tappable location before the ending");
   }
+  const vigilControl = page.locator('button[data-choice-id="light-vigil"]:not([disabled])');
+  await expect(vigilControl, "the visible vigil control must accept the player's tap").toBeVisible({
+    timeout: WAIT_MS,
+  });
   await tapChoice(page, "light-vigil");
 
   await waitForEndingPublished(page);

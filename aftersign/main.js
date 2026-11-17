@@ -692,6 +692,7 @@ import {
   emptySave,
 } from "./src/runtime/persistence.js";
 import { attachRuntimeInputAdapters } from "./src/runtime/inputAdapters.js";
+import { attachVigilChoiceController } from "./src/vigilChoiceController.js";
 import { readPlayerMemory, selectBootIoMemory, writePlayerMemory } from "./src/runtime/playerMemory.js";
 import { createCameraPoseSampler } from "./src/runtime/feedbackRuntime.js";
 import { targetLossFeedbackAt } from "./src/targetLossFeedback.ts";
@@ -5973,47 +5974,12 @@ attachRuntimeInputAdapters({
   markPointerIntent,
 });
 
-// M3-E1 (#2261) — Episode 1 vigil click delegate. The first-contact and
-// vigil buttons in `#vigilChoice` (aftersign/index.html) carry a
-// `data-choice-id="meet-orra" | "light-vigil" | "spare-vigil"` attribute instead
-// of being wired by `attachRuntimeInputAdapters` directly, because
-// the input adapters are specialized to the four DOM-reused control
-// buttons (packet / ack / skip / deliver) that round-robin their
-// `data-choice-id` across beats. The vigil buttons are dedicated to
-// a single choice each and only live under `#vigilChoice`, so a
-// narrow document-level delegate is the right surface. We scope the
-// delegate to EXACTLY the two vigil ids (not a generic
-// `[data-choice-id]` selector) so no other button's attribute can
-// accidentally be routed through this seam. Each tap dispatches
-// through the canonical `choose()` seam the ending commit lives on
-// — same path a `game.input.choose(id)` dispatch takes — so a
-// tap-played spec and a harness dispatch converge on one branch.
-document.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!target || typeof target.closest !== "function") return;
-  const vigilButton = target.closest(
-    "button[data-choice-id=\"light-vigil\"]:not([disabled]), button[data-choice-id=\"spare-vigil\"]:not([disabled]), button[data-choice-id=\"carry-red-tag-to-saint-orra\"]:not([disabled])",
-  ) || target.closest("button[data-choice-id=\"meet-orra\"]:not([disabled])");
-  if (!vigilButton) return;
-  const vigilId = vigilButton.getAttribute("data-choice-id");
-  if (
-    vigilId !== "meet-orra"
-    && vigilId !== "light-vigil"
-    && vigilId !== "spare-vigil"
-    && vigilId !== "carry-red-tag-to-saint-orra"
-  ) return;
-  // Fire-and-forget; `choose()` is async but all consumers (adapter
-  // click handlers above, harness `game.input.choose`) call it
-  // without awaiting the returned promise. Errors are intentionally
-  // not caught here — a thrown "Unknown AFTERSIGN choice" is the
-  // same loud failure a dispatch through `game.input.choose` would
-  // produce, and the two vigil ids are terminal branches in
-  // `choose()` by construction (see the orraAction + `meet-orra`
-  // branches in `aftersign/main.js`).
-  // Tap-confirm feel BEFORE choose(), matching the choice-click path
-  // contract (see the applyTapConfirmFeel call-site note near the top).
-  window.__game?.applyTapConfirmFeel?.(vigilId);
-  void choose(vigilId);
+// Dedicated vigil controls use a narrow document-level delegate because
+// runtime input adapters only own the DOM-reused packet/route controls.
+attachVigilChoiceController({
+  document,
+  choose,
+  applyTapConfirmFeel: (choiceId) => window.__game?.applyTapConfirmFeel?.(choiceId),
 });
 window.addEventListener("keydown", (event) => {
   pressedKeys.add(event.code);
