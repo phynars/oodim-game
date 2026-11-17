@@ -43,14 +43,21 @@ async function reachSecondJobList(page: Page): Promise<void> {
 
   // The first offer and every continuation are player-visible controls. The
   // test deliberately does not use window.__game to cause a story action.
+  // Same visible-control path as job-offers-played.spec.ts (the proven
+  // route to the completed-set offers): safe job, packet, kiosk, deliver,
+  // return tone, ask for next job, deliver again.
   await tapVisible(page, "#job-offer-job-safe-delivery");
-  await tapVisible(page, "#deliverButton");
+  await tapVisible(page, "#packetButton");
+  await waitForBeat(page, "packet-choice");
+  await tapVisible(page, 'button[data-choice-id="acknowledge-kiosk"]:not([disabled]) >> nth=0');
+  await tapVisible(page, 'button[data-choice-id="deliver-packet"]:not([disabled]) >> nth=0');
   await waitForBeat(page, "io-return-recognition");
-  await tapVisible(page, "#returnReason-kind");
+  await tapVisible(page, 'button[data-return-reason="kind"]:not([disabled]) >> nth=0');
   await waitForBeat(page, "return-tone-choice");
-  await tapVisible(page, "#deliverButton");
+  await tapVisible(page, 'button[data-choice-id="ask-for-next-job"]:not([disabled]) >> nth=0');
   await waitForBeat(page, "io-next-job");
-  await tapVisible(page, "#deliverButton");
+  await tapVisible(page, 'button[data-choice-id="deliver-packet"]:not([disabled]) >> nth=0');
+  await waitForBeat(page, "packet-offered");
   await expect(page.locator("#job-offer-job-night-transfer")).toBeVisible({
     timeout: WAIT_MS,
   });
@@ -90,6 +97,6 @@ test.describe("second job list phone scroll", () => {
     const offer = page.locator("#job-offer-job-signed-receipt");
     await expect(offer).toBeVisible();
     await offer.tap();
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __game?: { story?: { selectedJobOfferId?: unknown } } }).__game?.story?.selectedJobOfferId)).toBe("job-signed-receipt");
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __game?: { player?: { selectedJobOfferId?: unknown } } }).__game?.player?.selectedJobOfferId)).toBe("job-signed-receipt");
   });
 });
