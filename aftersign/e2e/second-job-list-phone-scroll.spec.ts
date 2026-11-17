@@ -63,40 +63,71 @@ async function reachSecondJobList(page: Page): Promise<void> {
   });
 }
 
+/**
+ * A player can only read/tap an offer if it is unclipped on screen: fully in
+ * the viewport AND the topmost element at its top and bottom edges (so no
+ * scroll clip, panel edge or "Deliver packet" row covers it). `toBeVisible`
+ * alone passes for clipped / off-screen nodes, which is the #2848 bug.
+ */
+async function expectFullyReadable(page: Page, selector: string, label: string): Promise<void> {
+  const offer = page.locator(selector);
+  await expect(offer, `${label} must be fully inside the 390x844 viewport`).toBeInViewport({ ratio: 1 });
+  await expect
+    .poll(
+      () =>
+        page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return "missing";
+          const r = el.getBoundingClientRect();
+          const x = r.left + r.width / 2;
+          for (const y of [r.top + 2, r.bottom - 2]) {
+            const hit = document.elementFromPoint(x, y);
+            if (!hit || !(hit === el || el.contains(hit))) {
+              return `covered at y=${Math.round(y)} by ${hit ? hit.tagName + "#" + hit.id + "." + hit.className : "nothing"}`;
+            }
+          }
+          return "readable";
+        }, selector),
+      { message: `${label} must not be clipped or covered`, timeout: WAIT_MS },
+    )
+    .toBe("readable");
+}
+
+async function wheelTray(page: Page): Promise<void> {
+  const tray = page.locator("#offeredJobs");
+  const box = await tray.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + Math.min(box!.height / 2, 40));
+  await page.mouse.wheel(0, 700);
+}
+
 test.describe("second job list phone scroll", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
   test("shows the complete Night transfer offer at 390x844", async ({ page }) => {
     await reachSecondJobList(page);
-    const offer = page.locator("#job-offer-job-night-transfer");
-    await expect(offer).toBeVisible();
-    const [offerBox, trayBox] = await Promise.all([offer.boundingBox(), page.locator("#offeredJobs").boundingBox()]);
-    expect(offerBox).not.toBeNull();
-    expect(trayBox).not.toBeNull();
-    expect(offerBox!.y).toBeGreaterThanOrEqual(trayBox!.y);
-    expect(offerBox!.y + offerBox!.height).toBeLessThanOrEqual(trayBox!.y + trayBox!.height);
+    await expectFullyReadable(page, "#job-offer-job-night-transfer", "Night transfer");
   });
 
   test("reveals Signed receipt by scrolling the rendered list at 390x844", async ({ page }) => {
     await reachSecondJobList(page);
-    const tray = page.locator("#offeredJobs");
-    const box = await tray.boundingBox();
-    expect(box).not.toBeNull();
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await page.mouse.wheel(0, 700);
-    await expect(page.locator("#job-offer-job-signed-receipt")).toBeVisible();
+    await wheelTray(page);
+    await expectFullyReadable(page, "#job-offer-job-signed-receipt", "Signed receipt");
   });
 
   test("selects Signed receipt by tapping its visible control after scrolling", async ({ page }) => {
     await reachSecondJobList(page);
-    const tray = page.locator("#offeredJobs");
-    const box = await tray.boundingBox();
-    expect(box).not.toBeNull();
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await page.mouse.wheel(0, 700);
-    const offer = page.locator("#job-offer-job-signed-receipt");
-    await expect(offer).toBeVisible();
-    await offer.tap();
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __game?: { player?: { selectedJobOfferId?: unknown } } }).__game?.player?.selectedJobOfferId)).toBe("job-signed-receipt");
+    await wheelTray(page);
+    await expectFullyReadable(page, "#job-offer-job-signed-receipt", "Signed receipt");
+    await page.locator("#job-offer-job-signed-receipt").tap();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { __game?: { player?: { selectedJobOfferId?: unknown } } }).__game?.player
+              ?.selectedJobOfferId,
+        ),
+      )
+      .toBe("job-signed-receipt");
   });
 });
