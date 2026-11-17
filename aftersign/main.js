@@ -1657,7 +1657,20 @@ const lineForBeat = () => {
     nextJobPrompt: servedIoDialogue.nextJobPrompt,
     secondPacketAcknowledgement: servedIoDialogue.secondPacketAcknowledgement,
     recognitionDialogue: selectIoRecognitionDialogue,
-    offerLine: ioOfferLineFor,
+    // A completed blue-seal decision is authoritative even if an older save
+    // lacks its Io-memory fact. Never fall back to the pre-decision offer
+    // reminder after that decision. "Decision made" = a delivery is on
+    // record, or the courier already answered Io at the return (the
+    // io-next-job → deliver-packet loop resets packet.delivered, but
+    // returnReason survives). A fresh slot has neither, so it keeps the
+    // default first offer.
+    offerLine: (memory, offers, returnReason) => {
+      const resolved = ioOfferLineFor(memory, offers, returnReason);
+      const sealDecisionMade = state.packet.delivered || Boolean(state.player.returnReason);
+      return sealDecisionMade && state.packet.sealed && resolved === IO_DEFAULT_OFFER_LINE
+        ? "You kept the blue seal closed. The city noticed; choose the work you can carry next."
+        : resolved;
+    },
     jobOffers: selectIoJobOffers,
     offersMemory: offeredJobsMemoryFromIoMemory,
     redTagReturnAcknowledgement: servedIoDialogue.redTagReturnAcknowledgement,
