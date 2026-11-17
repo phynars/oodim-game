@@ -150,27 +150,36 @@ test.describe("Durable Act II ending (#2726)", () => {
     await assertRestored(browser, slot, player, LIT, outcome);
   });
 
-  test("keeps the Unlit Door open in a fresh browser context after it is tapped", async ({ page, browser }) => {
-    test.setTimeout(240_000);
-    const { player, slot } = ids("door");
-    await completeEnding(page, slot, player, DIM);
-    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
-    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
-    await expect(card).toHaveAttribute("data-unlit-door-open", "true");
-    await expect(card).toContainText("Orra Bell pays with this district's light.");
-    await expect(async () => {
-      const { context, page: returning } = await openFreshContext(browser, slot, player);
-      try {
-        const restored = returning.locator(`[data-ending-id="${DIM.endingId}"]`);
-        await expect(restored).toBeVisible({ timeout: WAIT_MS });
-        await expect(restored).toHaveAttribute("data-unlit-door-open", "true");
-        await expect(restored).toContainText("Orra Bell pays with this district's light.");
-        await expect(returning.locator('button[data-choice-id="open-unlit-door"]')).toHaveCount(0);
-      } finally {
-        await context.close();
-      }
-    }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
-  });
+  for (const doorChoice of ["keep-official-record", "protect-private-lie", "hang-new-sign"]) {
+    test(`persists the ${doorChoice} Unlit Door choice after a visible tap`, async ({ page, browser }) => {
+      test.setTimeout(240_000);
+      const { player, slot } = ids(`door-${doorChoice}`);
+      await completeEnding(page, slot, player, DIM);
+      const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+      await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+      await expect(card).toHaveAttribute("data-unlit-door-open", "true");
+      await expect(card).toContainText("Orra Bell pays with this district's light.");
+      const doorChoices = card.locator('button[data-choice-id="keep-official-record"], button[data-choice-id="protect-private-lie"], button[data-choice-id="hang-new-sign"]');
+      await expect(doorChoices).toHaveCount(3);
+      await tapVisible(page, `button[data-choice-id="${doorChoice}"]`);
+      await expect(card).toHaveAttribute("data-door-choice", doorChoice);
+      await expect(doorChoices).toHaveCount(0);
+      await expect(async () => {
+        const { context, page: returning } = await openFreshContext(browser, slot, player);
+        try {
+          const restored = returning.locator(`[data-ending-id="${DIM.endingId}"]`);
+          await expect(restored).toBeVisible({ timeout: WAIT_MS });
+          await expect(restored).toHaveAttribute("data-unlit-door-open", "true");
+          await expect(restored).toHaveAttribute("data-door-choice", doorChoice);
+          await expect(restored).toContainText("Orra Bell pays with this district's light.");
+          await expect(returning.locator('button[data-choice-id="open-unlit-door"]')).toHaveCount(0);
+          await expect(returning.locator('button[data-choice-id="keep-official-record"], button[data-choice-id="protect-private-lie"], button[data-choice-id="hang-new-sign"]')).toHaveCount(0);
+        } finally {
+          await context.close();
+        }
+      }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
+    });
+  }
 
   test("does not reopen an Act II choice after restoring an ending", async ({ page, browser }) => {
     test.setTimeout(240_000);

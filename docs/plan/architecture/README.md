@@ -275,8 +275,8 @@ sequenceDiagram
   participant S as Save API (Durable Object)
 
   Note over G: after either Act II bell ending (shipped)
-  G->>UI: unlit-door (planned)
-  P->>UI: door-choice: official record / private lie / new sign (planned)
+  G->>UI: unlit-door (shipped)
+  P->>UI: door-choice: official record / private lie / new sign (shipped)
   G->>G: Maud names the rung + its cost from the Act II bell record
   G->>G: io-final reads first-session packet.sealed + story.doorChoice
   G->>UI: episode-one-end (planned)
@@ -284,14 +284,14 @@ sequenceDiagram
   Note over G,S: A fresh browser context restores the authoritative save at boot, including the door choice and end-screen id
 ```
 
-Planned save field: `story.doorChoice` stores one of `keep-official-record`,
+Shipped save field: `story.doorChoice` stores one of `keep-official-record`,
 `protect-private-lie`, or `hang-new-sign`, alongside the existing
 `story.endingId`. A fresh browser context uses the durable player id to reload
-that snapshot at boot and restores both fields from the save, not from browser
+that snapshot at boot and restores the door choice from the save, not browser
 storage.
 
-Planned beat order after either Act II bell ending: `unlit-door` →
-`door-choice` → `io-final` → `episode-one-end`. Maud's Unlit Door line takes
+Shipped beat order after either Act II bell ending: `unlit-door` →
+`door-choice`. `io-final` and `episode-one-end` remain planned. Maud's Unlit Door line takes
 the name rung from the Act II bell record and that record's stated cost. The
 choice is framed as a consequence of the exact name the player made the
 archive remember, not as a generic morality prompt.

@@ -1196,6 +1196,10 @@ const state = {
         : null,
     // PR #2845 review: the Unlit Door stays open across a reload.
     maudBellArchiveDoorOpen: stored?.story?.maudBellArchiveDoorOpen === true,
+    doorChoice:
+      ["keep-official-record", "protect-private-lie", "hang-new-sign"].includes(stored?.story?.doorChoice)
+        ? stored.story.doorChoice
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1615,7 +1619,9 @@ const lineForBeat = () => {
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
         doorOpen: state.story.maudBellArchiveDoorOpen === true,
+        doorChoice: state.story.doorChoice,
         onOpenDoor: () => { void choose("open-unlit-door"); },
+        onChooseDoor: (choiceId) => { void choose(choiceId); },
       });
     }
     state.npcs.io.lastLine = "";
@@ -4107,6 +4113,9 @@ const POST_ENDING_CHOICE_IDS = new Set([
   "carry-name-to-bell-archive",
   "leave-name-with-orra",
   "open-unlit-door",
+  "keep-official-record",
+  "protect-private-lie",
+  "hang-new-sign",
   "return-to-orra",
   // A returning session (after reload) visits Io again; the ending card
   // does not freeze later sessions (flagship-surface-contract M-ORRA-E1).
@@ -4569,6 +4578,8 @@ const choose = async (choiceId) => {
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
         onOpenDoor: () => { void choose("open-unlit-door"); },
+        onChooseDoor: (choiceId) => { void choose(choiceId); },
+        doorChoice: state.story.doorChoice,
         onSelect: (_selected, ending) => {
           state.story.maudBellArchiveEndingId = ending.id;
           // #2754: persist the chosen name so a restored card shows it.
@@ -4611,6 +4622,24 @@ const choose = async (choiceId) => {
     await persistAuthoritative({ dirty: true }).catch((err) => {
       // eslint-disable-next-line no-console
       console.warn(err);
+    });
+    publishState();
+    return;
+  }
+
+  if (["keep-official-record", "protect-private-lie", "hang-new-sign"].includes(choiceId)) {
+    if (!state.story.maudBellArchiveDoorOpen || state.story.doorChoice) return;
+    state.story.doorChoice = choiceId;
+    markStateDirty();
+    await forceSave();
+    renderMaudBellArchive(document, {
+      storedName: state.player.name,
+      endingId: state.story.maudBellArchiveEndingId,
+      endingName: state.story.maudBellArchiveName,
+      doorOpen: true,
+      doorChoice: state.story.doorChoice,
+      onOpenDoor: () => { void choose("open-unlit-door"); },
+      onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
     });
     publishState();
     return;
