@@ -4114,14 +4114,21 @@ const POST_ENDING_CHOICE_IDS = new Set([
 ]);
 
 const choose = async (choiceId) => {
-  // Episode 1's ending card is terminal. Rendering hides the old controls,
-  // but a queued pointer event can still reach this handler after the ending
-  // commits; reject it before any controller can revive a prior beat.
-  if (state.story.endingId && !POST_ENDING_CHOICE_IDS.has(choiceId)) {
+  // Both ending cards are terminal. Maud's card deliberately leaves the
+  // Unlit Door available, but no stale control from an earlier beat may
+  // replace its recorded bell outcome after the name choice has committed.
+  const hasCompletedEnding = Boolean(
+    state.story.endingId || state.story.maudBellArchiveEndingId,
+  );
+  if (
+    hasCompletedEnding
+    && !(state.story.maudBellArchiveEndingId && choiceId === "open-unlit-door")
+    && !(state.story.endingId && POST_ENDING_CHOICE_IDS.has(choiceId))
+  ) {
     // A terminal ending can render while the last choice's pointer sequence is
-    // still in flight. Restore the terminal beat in case that sequence had
-    // already advanced it before this guard ran.
-    if (state.scene.beat !== "episode-one-ending") {
+    // still in flight. Restore the Act I terminal beat only; Act II's card is
+    // rendered from its durable ending id on the recognition beat.
+    if (state.story.endingId && state.scene.beat !== "episode-one-ending") {
       setBeat("episode-one-ending");
       publishState();
     }

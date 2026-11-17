@@ -71,6 +71,11 @@ export const renderMaudBellArchiveEnding = (doc, host, endingOrChoice, { onOpenD
   card.setAttribute("data-district-light", ending.light);
   card.setAttribute("data-bell-ringing", "true");
   card.style.pointerEvents = "auto";
+  // Keep the complete terminal card inside the phone dialogue scrollport.
+  // The final light line and door control remain readable without a manual
+  // swipe even when preceding dialogue fills the panel.
+  card.style.maxHeight = "100%";
+  card.style.overflowY = "auto";
 
   const title = doc.createElement("strong");
   title.textContent = "Act II — Bell Archive";
