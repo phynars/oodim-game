@@ -48,4 +48,10 @@ describe("safe route recall names the lit route the player earned (#2334)", () =
     expect(line).toBe(AFTERSIGN_PACKET_RECALL_COPY.safe);
     expect(line).toMatch(/keep the route lit/i);
   });
+
+  it("absent route memory renders no recall", () => {
+    const token = aftersignPacketRecallToken(undefined);
+    expect(token).toBeNull();
+    expect(aftersignPacketRecallLine(token)).toBe("");
+  });
 });
