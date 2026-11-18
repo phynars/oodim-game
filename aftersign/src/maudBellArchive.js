@@ -253,7 +253,10 @@ export const renderMaudBellArchive = (
       return onSelect(resolvedChoice, endingFor(resolved));
     },
     showEndingCard: (slot, resolved) => {
-      renderMaudBellArchiveEnding(doc, slot, endingFor(resolved), { onOpenDoor });
+      // PR #2880 F1: forward the door-choice handler on the fresh-ending
+      // path too, not only on restore, so a player who just picked the name
+      // can commit a door choice with one tap.
+      renderMaudBellArchiveEnding(doc, slot, endingFor(resolved), { onOpenDoor, onChooseDoor });
     },
   });
   host.replaceChildren(card);
