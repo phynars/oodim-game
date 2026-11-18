@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { performPacketGesture } from "./helpers/packetGesture.js";
 
 // #2754 (story #2726) fail-to-pass: a completed Act II ending — outcome
 // (lit / out) AND the name shown with it — is restored from the
@@ -32,10 +33,11 @@ async function tapVisible(page: Page, selector: string): Promise<void> {
   await target.tap();
 }
 
-async function reachOrraPayback(page: Page): Promise<void> {
+async function reachOrraPayback(page: Page, firstPacket: "sealed" | "opened" = "sealed"): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-safe-delivery"]');
-  await tapVisible(page, "#packetButton");
+  if (firstPacket === "opened") await performPacketGesture(page, "opened", WAIT_MS);
+  else await tapVisible(page, "#packetButton");
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
@@ -67,9 +69,15 @@ const LIT: Case = { choice: "remembered-name", endingId: "maud-bell-archive-lit"
 const DIM: Case = { choice: "archive-decoy", endingId: "maud-bell-archive-dark", light: "out" };
 
 /** Complete the Act II ending by taps; return the visible outcome line. */
-async function completeEnding(page: Page, slot: string, player: string, c: Case): Promise<string> {
+async function completeEnding(
+  page: Page,
+  slot: string,
+  player: string,
+  c: Case,
+  firstPacket: "sealed" | "opened" = "sealed",
+): Promise<string> {
   await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
-  await reachOrraPayback(page);
+  await reachOrraPayback(page, firstPacket);
   await tapVisible(page, 'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])');
   const nameButton = page.locator(`button[data-maud-name-choice="${c.choice}"]`);
   await expect(nameButton).toBeVisible({ timeout: WAIT_MS });
@@ -150,6 +158,29 @@ test.describe("Durable Act II ending (#2726)", () => {
     await assertRestored(browser, slot, player, LIT, outcome);
   });
 
+  test("shows different sealed and opened Io final lines after visible door taps", async ({ page }) => {
+    test.setTimeout(480_000);
+    const sealed = ids("io-final-sealed");
+    await completeEnding(page, sealed.slot, sealed.player, DIM, "sealed");
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+    await tapVisible(page, 'button[data-choice-id="protect-private-lie"]');
+    const sealedLine = page.locator('[data-io-final-id="io-final-sealed-private"]');
+    await expect(sealedLine).toBeVisible();
+    await expect(sealedLine).toContainText("kept the seal");
+    await expect(sealedLine).toContainText("protected the private lie");
+    const sealedText = await sealedLine.textContent();
+
+    const opened = ids("io-final-opened");
+    await completeEnding(page, opened.slot, opened.player, DIM, "opened");
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+    await tapVisible(page, 'button[data-choice-id="protect-private-lie"]');
+    const openedLine = page.locator('[data-io-final-id="io-final-opened-private"]');
+    await expect(openedLine).toBeVisible();
+    await expect(openedLine).toContainText("broke the seal");
+    await expect(openedLine).toContainText("protected the private lie");
+    await expect(openedLine).not.toHaveText(sealedText ?? "");
+  });
+
   for (const doorChoice of ["keep-official-record", "protect-private-lie", "hang-new-sign"]) {
     test(`persists the ${doorChoice} Unlit Door choice after a visible tap`, async ({ page, browser }) => {
       test.setTimeout(240_000);
@@ -163,6 +194,7 @@ test.describe("Durable Act II ending (#2726)", () => {
       await expect(doorChoices).toHaveCount(3);
       await tapVisible(page, `button[data-choice-id="${doorChoice}"]`);
       await expect(card).toHaveAttribute("data-door-choice", doorChoice);
+      await expect(card.locator(`[data-io-final-id="io-final-sealed-${doorChoice === "keep-official-record" ? "official" : doorChoice === "protect-private-lie" ? "private" : "sign"}"]`)).toBeVisible();
       await expect(doorChoices).toHaveCount(0);
       await expect(async () => {
         const { context, page: returning } = await openFreshContext(browser, slot, player);

@@ -704,6 +704,7 @@ import {
   resolveEpisodeOneEnding,
 } from "./src/episodeOneEnding.js";
 import { hasLiveMaudChoices, renderMaudBellArchive } from "./src/maudBellArchive.js";
+import { resolveIoFinalDialogue } from "./src/ioFinalDialogue.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -1620,6 +1621,10 @@ const lineForBeat = () => {
         endingName: state.story.maudBellArchiveName,
         doorOpen: state.story.maudBellArchiveDoorOpen === true,
         doorChoice: state.story.doorChoice,
+        ioFinalDialogue: resolveIoFinalDialogue({
+          packetSealed: state.packet.sealed,
+          doorChoice: state.story.doorChoice,
+        }),
         onOpenDoor: () => { void choose("open-unlit-door"); },
         onChooseDoor: (choiceId) => { void choose(choiceId); },
       });
@@ -4644,6 +4649,10 @@ const choose = async (choiceId) => {
       endingName: state.story.maudBellArchiveName,
       doorOpen: true,
       doorChoice: state.story.doorChoice,
+      ioFinalDialogue: resolveIoFinalDialogue({
+        packetSealed: state.packet.sealed,
+        doorChoice: state.story.doorChoice,
+      }),
       onOpenDoor: () => { void choose("open-unlit-door"); },
       onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
     });
