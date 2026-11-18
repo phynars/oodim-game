@@ -1196,6 +1196,10 @@ const state = {
         : null,
     // PR #2845 review: the Unlit Door stays open across a reload.
     maudBellArchiveDoorOpen: stored?.story?.maudBellArchiveDoorOpen === true,
+    doorChoice:
+      ["keep-official-record", "protect-private-lie", "hang-new-sign"].includes(stored?.story?.doorChoice)
+        ? stored.story.doorChoice
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1615,7 +1619,9 @@ const lineForBeat = () => {
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
         doorOpen: state.story.maudBellArchiveDoorOpen === true,
+        doorChoice: state.story.doorChoice,
         onOpenDoor: () => { void choose("open-unlit-door"); },
+        onChooseDoor: (choiceId) => { void choose(choiceId); },
       });
     }
     state.npcs.io.lastLine = "";
@@ -4102,6 +4108,15 @@ const routeChoiceController = createRouteChoiceController({
 // card renders (the Saint Orra red-tag recall and the Maud / bell-archive
 // handoff live inside or beside #episodeOneEnding). Every other story
 // choice is terminal-blocked so a late tap cannot revive a prior beat.
+// PR #2880 F1: Act II's terminal card (maudBellArchiveEndingId) still accepts
+// the Unlit Door and its three door choices. POST_ENDING_CHOICE_IDS is gated
+// on Act I's endingId, which is null in Act II, so these need their own pass.
+const ACT_TWO_DOOR_CHOICE_IDS = new Set([
+  "open-unlit-door",
+  "keep-official-record",
+  "protect-private-lie",
+  "hang-new-sign",
+]);
 const POST_ENDING_CHOICE_IDS = new Set([
   "carry-red-tag-to-saint-orra",
   "carry-name-to-bell-archive",
@@ -4123,7 +4138,7 @@ const choose = async (choiceId) => {
   );
   if (
     hasCompletedEnding
-    && !(state.story.maudBellArchiveEndingId && choiceId === "open-unlit-door")
+    && !(state.story.maudBellArchiveEndingId && ACT_TWO_DOOR_CHOICE_IDS.has(choiceId))
     && !(state.story.endingId && POST_ENDING_CHOICE_IDS.has(choiceId))
   ) {
     // A terminal ending can render while the last choice's pointer sequence is
@@ -4569,6 +4584,8 @@ const choose = async (choiceId) => {
         endingId: state.story.maudBellArchiveEndingId,
         endingName: state.story.maudBellArchiveName,
         onOpenDoor: () => { void choose("open-unlit-door"); },
+        onChooseDoor: (choiceId) => { void choose(choiceId); },
+        doorChoice: state.story.doorChoice,
         onSelect: (_selected, ending) => {
           state.story.maudBellArchiveEndingId = ending.id;
           // #2754: persist the chosen name so a restored card shows it.
@@ -4611,6 +4628,24 @@ const choose = async (choiceId) => {
     await persistAuthoritative({ dirty: true }).catch((err) => {
       // eslint-disable-next-line no-console
       console.warn(err);
+    });
+    publishState();
+    return;
+  }
+
+  if (["keep-official-record", "protect-private-lie", "hang-new-sign"].includes(choiceId)) {
+    if (!state.story.maudBellArchiveDoorOpen || state.story.doorChoice) return;
+    state.story.doorChoice = choiceId;
+    markStateDirty();
+    await forceSave();
+    renderMaudBellArchive(document, {
+      storedName: state.player.name,
+      endingId: state.story.maudBellArchiveEndingId,
+      endingName: state.story.maudBellArchiveName,
+      doorOpen: true,
+      doorChoice: state.story.doorChoice,
+      onOpenDoor: () => { void choose("open-unlit-door"); },
+      onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
     });
     publishState();
     return;
@@ -5635,6 +5670,9 @@ const resetSliceSave = async () => {
   state.story.maudBellArchiveEndingId = null;
   state.story.maudBellArchiveName = null;
   state.story.maudBellArchiveDoorOpen = false;
+  // PR #2880 F1: the door choice is saved with the Act II ending, so Start
+  // fresh must clear it too, or a replayed ending renders it already chosen.
+  state.story.doorChoice = null;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
