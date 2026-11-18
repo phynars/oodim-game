@@ -181,6 +181,29 @@ test.describe("Durable Act II ending (#2726)", () => {
     });
   }
 
+  test("Start fresh clears the Unlit Door choice so a replayed ending can choose again", async ({ page }) => {
+    test.setTimeout(300_000);
+    const { player, slot } = ids("door-restart");
+    await completeEnding(page, slot, player, DIM);
+    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+    await tapVisible(page, 'button[data-choice-id="keep-official-record"]');
+    await expect(card).toHaveAttribute("data-door-choice", "keep-official-record");
+
+    await tapVisible(page, "#resetButton");
+    await expect(card).toHaveCount(0, { timeout: WAIT_MS });
+    await reachOrraPayback(page);
+    await tapVisible(page, 'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])');
+    await tapVisible(page, `button[data-maud-name-choice="${DIM.choice}"]`);
+    await expect(card).toBeVisible({ timeout: WAIT_MS });
+    await expect(card).not.toHaveAttribute("data-unlit-door-open", "true");
+    await expect(card).not.toHaveAttribute("data-door-choice", /.+/);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+    await expect(card.locator('button[data-choice-id="hang-new-sign"]')).toBeVisible({ timeout: WAIT_MS });
+    await tapVisible(page, 'button[data-choice-id="hang-new-sign"]');
+    await expect(card).toHaveAttribute("data-door-choice", "hang-new-sign");
+  });
+
   test("does not reopen an Act II choice after restoring an ending", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const { player, slot } = ids("nochoice");

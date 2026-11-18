@@ -5670,6 +5670,9 @@ const resetSliceSave = async () => {
   state.story.maudBellArchiveEndingId = null;
   state.story.maudBellArchiveName = null;
   state.story.maudBellArchiveDoorOpen = false;
+  // PR #2880 F1: the door choice is saved with the Act II ending, so Start
+  // fresh must clear it too, or a replayed ending renders it already chosen.
+  state.story.doorChoice = null;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
