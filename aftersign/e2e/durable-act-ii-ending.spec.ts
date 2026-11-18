@@ -186,6 +186,25 @@ test.describe("Durable Act II ending (#2726)", () => {
     await expect(openedLine).not.toHaveText(sealedText ?? "");
   });
 
+  // #2878: every opened-seal line must render from real taps. The first
+  // packet is opened, and the second packet (sealed) must not overwrite it.
+  for (const [doorChoice, lineId, phrase] of [
+    ["keep-official-record", "io-final-opened-official", "kept the official record"],
+    ["hang-new-sign", "io-final-opened-sign", "hung a new sign"],
+  ]) {
+    test(`shows the opened-seal Io line after a visible ${doorChoice} tap`, async ({ page }) => {
+      test.setTimeout(300_000);
+      const { player, slot } = ids(`io-final-opened-${doorChoice}`);
+      await completeEnding(page, slot, player, DIM, "opened");
+      await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+      await tapVisible(page, `button[data-choice-id="${doorChoice}"]`);
+      const line = page.locator(`[data-io-final-id="${lineId}"]`);
+      await expect(line).toBeVisible();
+      await expect(line).toContainText("broke the seal");
+      await expect(line).toContainText(phrase);
+    });
+  }
+
   for (const doorChoice of ["keep-official-record", "protect-private-lie", "hang-new-sign"]) {
     test(`persists the ${doorChoice} Unlit Door choice after a visible tap`, async ({ page, browser }) => {
       test.setTimeout(240_000);
