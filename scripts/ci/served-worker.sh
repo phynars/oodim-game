@@ -110,6 +110,13 @@ fi
 if [ -n "${GITHUB_ACTIONS:-}" ] && ! grep -q "[[:space:]]$SERVED_HOST\$" /etc/hosts; then
   echo "127.0.0.1 $SERVED_HOST" | sudo tee -a /etc/hosts > /dev/null
 fi
+# Stop here if Node still can't resolve the name: every request-fixture test
+# would fail with getaddrinfo ENOTFOUND, each after its retries (an avatar's
+# box had no mapping until 11-18). Node is what the tests use, so ask Node.
+if ! node -e 'require("dns").lookup(process.argv[1],(e)=>process.exit(e?1:0))' "$SERVED_HOST"; then
+  echo "::error::served-worker: $SERVED_HOST does not resolve here (Node dns.lookup). Map it to 127.0.0.1 (hosts file, or a dns.lookup preload in NODE_OPTIONS on Windows), or set SERVED_WORKER_HOST to a name that resolves to loopback."
+  exit 1
+fi
 
 rc=0
 echo "::group::prod smoke against the local Worker"
