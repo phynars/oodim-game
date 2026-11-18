@@ -452,6 +452,13 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     const snapshot = await readEndingSnapshot(page);
     expect(snapshot.endingId).toBe("ending-bell-true");
     expect(snapshot.endingCause).toBe("sealed-and-tagged");
+
+    // Terminal-ending renderer restore path: the visible Start fresh tap
+    // leaves the ending, and the controls hidden by the terminal branch
+    // (marked data-ending-hidden) are un-hidden again.
+    await page.locator("#resetButton").click();
+    await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
+    await expect(page.locator('[data-ending-hidden="true"]')).toHaveCount(0);
   });
 
   test("offered red tag without an acceptance tap never becomes an accepted-memory ending", async ({ page }) => {
