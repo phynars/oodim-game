@@ -39,7 +39,7 @@ export const createTerminalEndingRenderer = ({
   };
 
   const renderSaintOrraEndingRecall = () => {
-    const ending = document.querySelector("#episodeOneEnding [data-ending-id]");
+    const ending = document.getElementById("episodeOneEnding")?.querySelector("[data-ending-id]");
     if (!ending) return;
     let control = document.getElementById("carryRedTagToSaintOrra");
     let recall = document.getElementById("saintOrraRedTagRecall");
