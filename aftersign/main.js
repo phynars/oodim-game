@@ -14,6 +14,7 @@ import { createDialogueController } from "./src/presentation/dialogueController.
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
 import { createFeedbackController } from "./src/presentation/feedbackController.js";
 import { renderReturnRecognition } from "./src/presentation/returnRecognitionRenderer.js";
+import { createTerminalEndingRenderer } from "./src/presentation/terminalEndingRenderer.js";
 import { createPacketPressFeedbackRenderer } from "./src/packetPressFeedbackRenderer.js";
 import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
@@ -2422,86 +2423,18 @@ const endingHideableControls = () =>
     document.getElementById("skipRouteButton"),
   ].filter(Boolean);
 
-const saintOrraRecallLine = () => {
-  // Stored token (see choose() + hydrate whitelist), NOT the choice id.
-  if (state.player.redTagFirstTap === "take-second-packet") {
-    return "You took the red tag at once. I remember the hand that did not wait.";
-  }
-  if (state.player.redTagFirstTap === "ask-what-changed") {
-    return "You asked what changed before you carried it. I remember the question.";
-  }
-  return "You brought the red tag to my door. I remember the courier.";
-};
-
-const renderMaudBellArchiveEntry = () => {
-  if (
-    !state.story.endingId ||
-    !state.story.endingId.startsWith("ending-") ||
-    !state.player.redTagDeliveredToSaintOrra ||
-    !document.getElementById("saintOrraNameCase")
-  ) {
-    return;
-  }
-  const host = document.getElementById("episodeOneEnding");
-  if (!host || host.querySelector('[data-orra-payback-action="carry-name-to-bell-archive"]')) {
-    return;
-  }
-  const maudEntry = document.createElement("button");
-  maudEntry.type = "button";
-  maudEntry.dataset.orraPaybackAction = "carry-name-to-bell-archive";
-  maudEntry.style.pointerEvents = "auto";
-  maudEntry.textContent = "Carry the name to the Bell Archive";
-  maudEntry.addEventListener("click", () => choose("carry-name-to-bell-archive"));
-  host.append(maudEntry);
-};
-
-const renderSaintOrraEndingRecall = () => {
-  const ending = document.querySelector("#episodeOneEnding [data-ending-id]");
-  if (!ending) return;
-  let control = document.getElementById("carryRedTagToSaintOrra");
-  let recall = document.getElementById("saintOrraRedTagRecall");
-  if (state.player.redTagDeliveredToSaintOrra) {
-    control?.remove();
-    if (!recall) {
-      recall = document.createElement("p");
-      recall.id = "saintOrraRedTagRecall";
-      ending.appendChild(recall);
-    }
-    setTextContentIfChanged(recall, saintOrraRecallLine());
-    let nameCase = document.getElementById("saintOrraNameCase");
-    if (!nameCase) {
-      nameCase = document.createElement("p");
-      nameCase.id = "saintOrraNameCase";
-      nameCase.setAttribute("data-beat-id", "orra-first-name");
-      ending.appendChild(nameCase);
-    }
-    // #2808 F1 — player.name is null on a fresh slot; never interpolate it raw.
-    const orraName = typeof state.player.name === "string" ? state.player.name.trim() : "";
-    setTextContentIfChanged(
-      nameCase,
-      orraName
-        ? `Saint Orra: Maud Underbell needs the name ${orraName}. Carry it sealed to the Bell Archive.`
-        : "Saint Orra: Maud Underbell needs your name. Carry it sealed to the Bell Archive.",
-    );
-    // #2731 F1/F2 — the red-tag handler (choose "carry-red-tag-to-saint-orra")
-    // only calls this function + publishState, never renderText, so the
-    // Maud entry must be created here, right after the recall exists. The
-    // helper is idempotent (skips when the button is already in the host).
-    renderMaudBellArchiveEntry();
-    return;
-  }
-  recall?.remove();
-  document.getElementById("saintOrraNameCase")?.remove();
-  if (!control) {
-    control = document.createElement("button");
-    control.type = "button";
-    control.id = "carryRedTagToSaintOrra";
-    ending.appendChild(control);
-  }
-  control.style.pointerEvents = "auto";
-  control.setAttribute("data-choice-id", "carry-red-tag-to-saint-orra");
-  setTextContentIfChanged(control, "Carry the red tag to Saint Orra");
-};
+const { renderMaudBellArchiveEntry, renderSaintOrraEndingRecall, renderTerminalEndingControls } =
+  createTerminalEndingRenderer({
+    state,
+    document,
+    choose,
+    setTextContentIfChanged,
+    endingHideableControls,
+    routeChoice,
+    vigilChoice,
+    offeredJobs,
+    setOfferTrayVisibility,
+  });
 
 const renderText = () => {
   dialogueController.render({
@@ -2520,36 +2453,9 @@ const renderText = () => {
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
   });
-  // An ending is terminal for this episode. Keep only the ending card and
-  // the persistent reset/audio controls visible; no earlier story choice
-  // may imply that the player still has unfinished work to perform.
-  if (state.story.endingId) {
-    // Mark only nodes this branch hides, so Start fresh restores exactly
-    // those (and leaves nodes hidden for other reasons untouched).
-    for (const node of endingHideableControls()) {
-      if (!node.hidden) {
-        node.hidden = true;
-        node.dataset.endingHidden = "true";
-      }
-    }
-    routeChoice.dataset.visible = "false";
-    if (vigilChoice) vigilChoice.dataset.visible = "false";
-    if (offeredJobs) {
-      setOfferTrayVisibility(offeredJobs, false);
-      while (offeredJobs.firstChild) offeredJobs.removeChild(offeredJobs.firstChild);
-    }
-    for (const id of ["orraPaybackAction", "saintOrraReturnNeed", "returnToOrra"]) {
-      document.getElementById(id)?.remove();
-    }
-    return;
-  }
-  // Leaving the ending (Start fresh): undo only the terminal-branch hides.
-  for (const node of endingHideableControls()) {
-    if (node.dataset.endingHidden === "true") {
-      node.hidden = false;
-      delete node.dataset.endingHidden;
-    }
-  }
+  // An ending is terminal for this episode; the renderer hides only its
+  // supplied story controls and restores those exact nodes after Start fresh.
+  if (renderTerminalEndingControls()) return;
   // The recalled route is a prior-run fact. At the next offer, let Io
   // name it beside (not inside) the beat-owned dialogue line.
   const routeRisk = state.player.routeRisk;

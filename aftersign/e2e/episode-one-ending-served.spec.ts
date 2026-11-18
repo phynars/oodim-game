@@ -449,8 +449,15 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
       .not.toBe("io-next-job");
     await expectEndingOnlyControls(page);
 
+    // The player reaches the terminal state and exits it through the visible
+    // Start fresh control; no harness input is used to drive either action.
+    const reset = page.locator("#resetButton");
+    await reset.click();
+    await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
+    await expect(page.locator("#deliverButton")).not.toBeHidden();
+
     const snapshot = await readEndingSnapshot(page);
-    expect(snapshot.endingId).toBe("ending-bell-true");
+    expect(snapshot.endingId).toBeNull();
     expect(snapshot.endingCause).toBe("sealed-and-tagged");
   });
 
