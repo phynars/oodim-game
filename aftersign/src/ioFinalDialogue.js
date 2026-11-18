@@ -1,5 +1,7 @@
 // Io's final Act III reply is determined only by the first packet's seal
 // and the door action the player just committed.
+// main.js passes `state.story.firstPacketSealed` (recorded once at the
+// first delivery), not `state.packet.sealed`, which later packets overwrite.
 
 const FINAL_LINES = {
   "sealed:keep-official-record": {

@@ -76,6 +76,8 @@ export const createPersistHelpers = ({
       maudBellArchiveName: state.story?.maudBellArchiveName ?? null,
       maudBellArchiveDoorOpen: state.story?.maudBellArchiveDoorOpen === true,
       doorChoice: state.story?.doorChoice ?? null,
+      firstPacketSealed:
+        typeof state.story?.firstPacketSealed === "boolean" ? state.story.firstPacketSealed : null,
     },
     memory: clone(state.npcs.io.memory),
     npcs: {
