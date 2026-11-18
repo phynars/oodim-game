@@ -49,7 +49,12 @@ async function reachOrraPayback(page: Page, firstPacket: "sealed" | "opened" = "
   await tapChoice(page, "accept-second-packet");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-offered");
-  await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-night-transfer"]');
+  // Round-two offers depend on the first packet's seal: a sealed delivery
+  // offers the completed set (job-night-transfer); an opened-only history
+  // maps to { debtHeld } and offers job-wax-debt-repair instead
+  // (offeredJobsMemoryFromIoMemory.js; job-offer-debt-held-played.spec.ts).
+  const secondJob = firstPacket === "opened" ? "job-wax-debt-repair" : "job-night-transfer";
+  await tapVisible(page, `#offeredJobs button[data-offered-job-id="${secondJob}"]`);
   await tapVisible(page, "#packetButton");
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
