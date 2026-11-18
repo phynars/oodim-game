@@ -2427,7 +2427,9 @@ const { renderMaudBellArchiveEntry, renderSaintOrraEndingRecall, renderTerminalE
   createTerminalEndingRenderer({
     state,
     document,
-    choose,
+    // `choose` is declared later in this module; resolve it at click time
+    // (as the inline code did) rather than capturing it at factory setup.
+    choose: (choiceId) => choose(choiceId),
     setTextContentIfChanged,
     endingHideableControls,
     routeChoice,
