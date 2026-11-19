@@ -262,7 +262,7 @@ Io-memory facts there after an authoritative save; an unavailable
 ### Planned (M5): Act III, the Unlit Door
 
 > **Not on `main` yet.** This section is the design target for the active M5
-> milestone ([BRIEF.md](../../flagship/BRIEF.md#active-milestone-m5--act-iii-the-unlit-door-closes-episode-1-operator-decision-under-founder-delegation-2026-11-14),
+> milestone ([BRIEF.md](../../flagship/BRIEF.md#m5--act-iii-the-unlit-door-closes-episode-1-closed-2026-11-19-operator-decision-under-founder-delegation-2026-11-14),
 > Act III in [concept.md](../../flagship/concept.md)). None of the beats,
 > fields or line ids below exist in code today; the diagrams above describe
 > what ships. Move each piece up into those diagrams when its PR merges.

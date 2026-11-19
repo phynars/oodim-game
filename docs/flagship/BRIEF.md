@@ -523,7 +523,7 @@ Carry-over (not memory claims, except the last): the friction list of playtest
 
 The next milestone is named below (M5, same day).
 
-## Active milestone: M5 — Act III, the Unlit Door closes Episode 1 (operator decision under founder delegation, 2026-11-14)
+## M5 — Act III, the Unlit Door closes Episode 1 (CLOSED 2026-11-19; operator decision under founder delegation, 2026-11-14)
 
 **M5 is the one active milestone. Deadline: 2026-12-03** (binding; three weekly
 sprints, W47–W49). Count days remaining from 12-03. Cut scope, never the date.
@@ -583,3 +583,117 @@ leave…" line; "Red tag — Saint Orra" drawn as a button that does nothing; th
 **Deferred until M5 closes:** Niko Thread, the Unaddressed Child, new
 districts, Episode 2, and the four-weekly-drops success criterion. The cast
 stays Io, Saint Orra and Maud.
+
+### M5: CLOSED 2026-11-19 (operator decision under founder delegation)
+
+Both halves of the acceptance bar hold on deployed `0ba9ab5`, fourteen days
+before 12-03:
+- **Automated:** `aftersign/e2e/durable-act-ii-ending.spec.ts` reaches the three
+  door choices from a kept and from a broken first seal by taps only at
+  390×844, checks the six final Io lines, restores the door choice in a fresh
+  browser context, and checks that only "Start fresh" responds on each of the
+  six end screens. The check runs on `0ba9ab5` are green, the post-deploy
+  `served-replay` among them.
+- **Closeout:** blind AI-stranger playtest #7 PASSED. The answer names the door
+  choice ("I chose to hang a new sign") and the first-session fact Io recalled
+  ("keeping the blue packet's seal unbroken"), and both match the recorded
+  taps. No line from Io, Saint Orra, Maud or the end screen states something
+  the player did not do. Verbatim in `docs/flagship/devlog.md`.
+
+Carry-over: the friction list of playtest #7 in the devlog. The same player
+wrote "I am not sure which moment "the door" was" and "There is no "The End",
+no summary and no epilogue". It is the first work of M6. Epic #2821 is closed
+with M5.
+
+The next milestone is named below (M6, same day; the founder asked for its
+draft on 2026-11-19).
+
+## Active milestone: M6 — Episode 2 opens: the door decides the job (operator decision under founder delegation, 2026-11-19)
+
+**M6 is the one active milestone. Deadline: 2026-12-10** (binding; sprints
+W48–W50, plus what is left of W47). Count days remaining from 12-10. Cut
+scope, never the date.
+
+**Why this one.** Through M5, memory changed what characters say and which
+ending the player sees. It never changed what the player can do, and after the
+Episode 1 end screen the only live control is "Start fresh": a player who
+finished has no reason to return. The product plan's vision asks for more:
+"what the player can do next changes, not merely what Io says". Episode 2 is
+also the first step towards the brief's weekly-drops criterion, and Niko
+Thread (`docs/flagship/concept.md`, cast) is the first character who can
+recall a stored fact no one has used: the route the player took.
+
+**The outcome:** a phone player who has reached an Episode 1 end screen sees
+one new control, "Begin Episode 2", in that session or a later one. Tapping it
+returns them to the Night Post, where Io offers a first job that exists only
+because of what they did at the Unlit Door: one job for a player who kept the
+official record, another for one who protected the private lie, a third for
+one who hung a new sign. On the way, Niko Thread meets the player, says which
+route they took in Episode 1, and offers a shortcut the player can take or
+refuse. The first act of Episode 2 ends on a card that states what the player
+carried and what they answered Niko, and the player can retell both.
+
+**M6 metric: the door decides the job.**
+- The three stored door choices reach three different first jobs on the served
+  page: different visible job names, different controls and different stored
+  delivery ids, not one job with three captions.
+- Niko's first line differs between a player whose stored Episode 1 route was
+  the safe one and a player whose route was the risky one.
+- The answer to Niko's shortcut is stored, and a later session for the same
+  slot shows the same job, the same answer and the same end card.
+- "Begin Episode 2" is the only change to M5's end-screen lock: every Episode 1
+  story control stays locked, and "Start fresh" still works.
+
+**Acceptance (played, not driven; standing rules C1–C8 in `docs/CONSTITUTION.md`):**
+- **Automated:** a served-page Playwright spec at 390×844 drives boot →
+  Episode 1 end screen → "Begin Episode 2" → the door-decided job → Niko → the
+  Episode 2 Act I end card, by taps on visible controls only. It reaches all
+  three door-decided jobs and both stored routes, restores the end card in a
+  fresh browser context, and is green in CI (`aftersign` shards and
+  post-deploy `served-replay`) on the closeout revision.
+- **Closeout:** a blind AI-stranger playtest on the deployed revision (M-LOOP
+  closeout rules unchanged). The player reaches the Episode 2 Act I end card
+  and answers once, unprompted: *"What job were you offered when you came
+  back, and what did Niko know about you?"* Pass = the answer names the job
+  and ties it to the player's door choice, names the route Niko recalled, and
+  both match the recorded taps. No false memory from Io or Niko; a false
+  memory is a P1 and blocks closeout. Transcript verbatim in
+  `docs/flagship/devlog.md`.
+
+**How the work is planned:** epic #2893 (`epic:` title) with stories as its
+sub-issues, through the same research → spec → design → build chain as M5.
+The first two stories were filed with the epic into sprint W47: #2894 and
+#2895.
+
+**Carry-over, worked first** (playtest #7, `docs/flagship/devlog.md`; they sit
+on the path into Episode 2): "Go to the Unlit Door" shows no door and the card
+still reads "Act II — Bell Archive"; the door choices do not say what each one
+does and are clipped at the card's bottom corner; the end screen is one Io
+sentence with nothing that says Episode 1 is over; earlier controls are still
+drawn above the door choices; and three findings reported again after their M5
+stories closed (no title or intro on the first screen, the second job list cut
+off, "Red tag — Saint Orra" drawn as a button that does nothing).
+
+**Deferred until M6 closes:** the Unaddressed Child, new districts and new 3D
+scenes, Episode 2 beyond its first act, and the four-weekly-drops success
+criterion. The cast is Io, Saint Orra, Maud and Niko Thread.
+
+## After M6: who closes a milestone and names the next (founder decision, 2026-11-19)
+
+From M6's closeout on, the Meta-Moderator closes a built milestone and names
+the next one on its own. It starts the blind closeout playtest, judges the
+player's answer against the recorded taps under the M-LOOP closeout rules,
+and on a pass closes the milestone's epic and opens the next epic with its
+first stories. A playtest that does not pass opens no milestone: its
+findings are filed as issues under the open epic.
+
+**Where the active milestone is recorded.** After M6, the active milestone is
+the open `epic:` issue and its dated checkpoint at the top of
+`docs/plan/product-plan.md`. The milestone sections of this file, M6
+included once its epic closes, are history until the founder amends them. If
+this file and that checkpoint disagree about which milestone is active, the
+open epic and its checkpoint win; on every other rule this file wins.
+
+**This file stays the founder's.** No avatar edits it. The Meta-Moderator
+writes its closeout record and the next milestone into the product plan and
+the devlog.
