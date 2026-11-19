@@ -112,10 +112,20 @@ async function assertRestored(browser: Browser, slot: string, player: string, c:
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 }
 
-const ids = (tag: string) => ({
-  player: `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-  slot: `durable-act-ii-${tag}-${Date.now()}`,
-});
+// The Worker rejects slot/player ids outside ^[A-Za-z0-9_-]{1,64}$
+// (apps/web/src/aftersign/workerRequestGuards.ts SAFE_ID_PATTERN), so a long
+// tag silently loses the authoritative save. Fail loudly instead.
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const ids = (tag: string) => {
+  const result = {
+    player: `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    slot: `durable-act-ii-${tag}-${Date.now()}`,
+  };
+  for (const id of Object.values(result)) {
+    if (!SAFE_ID.test(id)) throw new Error(`test id exceeds Worker id shape: ${id}`);
+  }
+  return result;
+};
 
 test.describe("Durable Act II ending (#2726)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
@@ -194,7 +204,7 @@ test.describe("Durable Act II ending (#2726)", () => {
   ]) {
     test(`shows the opened-seal Io line after a visible ${doorChoice} tap`, async ({ page }) => {
       test.setTimeout(300_000);
-      const { player, slot } = ids(`io-final-opened-${doorChoice}`);
+      const { player, slot } = ids(`io-open-${doorChoice}`);
       await completeEnding(page, slot, player, DIM, "opened");
       await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
       await tapVisible(page, `button[data-choice-id="${doorChoice}"]`);
@@ -220,6 +230,8 @@ test.describe("Durable Act II ending (#2726)", () => {
       await expect(card).toHaveAttribute("data-door-choice", doorChoice);
       await expect(card.locator(`[data-io-final-id="io-final-sealed-${doorChoice === "keep-official-record" ? "official" : doorChoice === "protect-private-lie" ? "private" : "sign"}"]`)).toBeVisible();
       await expect(doorChoices).toHaveCount(0);
+      await expect(page.locator("#episodeOneEnding button:visible")).toHaveCount(0);
+      await expect(page.locator("#resetButton")).toBeVisible();
       await expect(async () => {
         const { context, page: returning } = await openFreshContext(browser, slot, player);
         try {
@@ -235,6 +247,55 @@ test.describe("Durable Act II ending (#2726)", () => {
         }
       }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
     });
+  }
+
+  // #2879: the Act III terminal surface must be the same durable, phone-sized
+  // end state for every first-packet seal record and each visible door choice.
+  // These runs use only visible taps; window.__game is never used to cause play.
+  for (const firstPacket of ["sealed", "opened"] as const) {
+    for (const doorChoice of ["keep-official-record", "protect-private-lie", "hang-new-sign"] as const) {
+      test(`locks the ${firstPacket}/${doorChoice} Act III end screen except Start fresh`, async ({ page, browser }) => {
+        test.setTimeout(300_000);
+        // Keep the slot inside the Worker's ^[A-Za-z0-9_-]{1,64}$ guard
+        // (workerRequestGuards.ts). `terminal-sealed-keep-official-record`
+        // made a 65-char slot, so every save 400'd and restore found nothing.
+        const { player, slot } = ids(`t-${firstPacket}-${doorChoice}`);
+        expect(slot.length).toBeLessThanOrEqual(64);
+        await completeEnding(page, slot, player, DIM, firstPacket);
+        await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+        await tapVisible(page, `button[data-choice-id="${doorChoice}"]`);
+
+        const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+        await expect(card).toBeVisible();
+        await expect(card).toHaveAttribute("data-door-choice", doorChoice);
+        const box = await card.boundingBox();
+        expect(box).not.toBeNull();
+        if (box) expect(box.y + box.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+        await expect(page.locator('#resetButton')).toBeVisible();
+        for (const selector of [
+          '#packetButton', '#deliverButton', '#acknowledgeRouteButton', '#skipRouteButton',
+          '#routeChoice button', '#vigilChoice button', '#offeredJobs button', '#returnToOrra',
+        ]) {
+          for (const control of await page.locator(selector).all()) await expect(control).toBeHidden();
+        }
+        await expect(page.locator('button[data-choice-id="open-unlit-door"]')).toHaveCount(0);
+        await expect(page.locator('button[data-choice-id="keep-official-record"], button[data-choice-id="protect-private-lie"], button[data-choice-id="hang-new-sign"]')).toHaveCount(0);
+
+        await expect(async () => {
+          const { context, page: restored } = await openFreshContext(browser, slot, player);
+          try {
+            const restoredCard = restored.locator(`[data-ending-id="${DIM.endingId}"]`);
+            await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });
+            await expect(restoredCard).toHaveAttribute("data-door-choice", doorChoice);
+            await expect(restored.locator('#resetButton')).toBeVisible();
+            await expect(restored.locator('button[data-choice-id="open-unlit-door"]')).toHaveCount(0);
+            await expect(restored.locator('button[data-choice-id="keep-official-record"], button[data-choice-id="protect-private-lie"], button[data-choice-id="hang-new-sign"]')).toHaveCount(0);
+          } finally {
+            await context.close();
+          }
+        }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
+      });
+    }
   }
 
   test("Start fresh clears the Unlit Door choice so a replayed ending can choose again", async ({ page }) => {
