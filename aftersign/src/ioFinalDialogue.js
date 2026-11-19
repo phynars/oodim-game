@@ -1,7 +1,9 @@
 // Io's final Act III reply is determined only by the first packet's seal
 // and the door action the player just committed.
-// main.js passes `state.story.firstPacketSealed` (recorded once at the
-// first delivery), not `state.packet.sealed`, which later packets overwrite.
+// main.js passes `firstPacketSealedForIoFinal()`: `state.story.firstPacketSealed`
+// (recorded once at the first delivery and persisted), else Io's durable
+// memory facts. It never reads `state.packet.sealed`, which the second packet
+// resets to sealed:true. `packetSealed` null/undefined → no line.
 
 const FINAL_LINES = {
   "sealed:keep-official-record": {

@@ -1628,7 +1628,7 @@ const lineForBeat = () => {
         doorOpen: state.story.maudBellArchiveDoorOpen === true,
         doorChoice: state.story.doorChoice,
         ioFinalDialogue: resolveIoFinalDialogue({
-          packetSealed: state.story.firstPacketSealed ?? state.packet.sealed,
+          packetSealed: firstPacketSealedForIoFinal(),
           doorChoice: state.story.doorChoice,
         }),
         onOpenDoor: () => { void choose("open-unlit-door"); },
@@ -4563,7 +4563,7 @@ const choose = async (choiceId) => {
       doorOpen: true,
       doorChoice: state.story.doorChoice,
       ioFinalDialogue: resolveIoFinalDialogue({
-        packetSealed: state.story.firstPacketSealed ?? state.packet.sealed,
+        packetSealed: firstPacketSealedForIoFinal(),
         doorChoice: state.story.doorChoice,
       }),
       onOpenDoor: () => { void choose("open-unlit-door"); },
@@ -5460,6 +5460,20 @@ let deliveryRecognitionTimeout = null;
 // above the pointer/click event ordering skew a single gesture produces
 // as `setBeat("io-return-recognition")` re-renders the button tree.
 const RECOGNITION_SETTLE_MS = 120;
+
+// PR #2882 F1: Io's final line reads the FIRST packet's seal. Never fall back
+// to `state.packet.sealed` — the second `deliver-packet` from `io-next-job`
+// resets it to sealed:true. Prefer the once-recorded story flag; for a save
+// written before that flag existed, derive from Io's durable memory facts
+// (the same `"sealed" | "opened"` objects offeredJobsMemoryFromIoMemory reads),
+// where any opened delivery means the seal was broken. Unknown → null (no line).
+function firstPacketSealedForIoFinal() {
+  if (typeof state.story.firstPacketSealed === "boolean") return state.story.firstPacketSealed;
+  const memory = Array.isArray(state.npcs?.io?.memory) ? state.npcs.io.memory : [];
+  if (memory.some((fact) => fact?.object === "opened")) return false;
+  if (memory.some((fact) => fact?.object === "sealed")) return true;
+  return null;
+}
 
 const deliverPacket = (source = "hud-button") => {
   triggerKioskFeedback(source);

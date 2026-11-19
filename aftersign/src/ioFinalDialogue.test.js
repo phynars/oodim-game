@@ -25,4 +25,9 @@ describe("resolveIoFinalDialogue", () => {
   it("does not speak before a valid visible door action", () => {
     expect(resolveIoFinalDialogue({ packetSealed: true, doorChoice: null })).toBeNull();
   });
+
+  it("does not guess a seal when the first packet's seal is unknown", () => {
+    expect(resolveIoFinalDialogue({ packetSealed: null, doorChoice: "protect-private-lie" })).toBeNull();
+    expect(resolveIoFinalDialogue({ packetSealed: undefined, doorChoice: "hang-new-sign" })).toBeNull();
+  });
 });
