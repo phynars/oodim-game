@@ -64,7 +64,7 @@ export const renderMaudBellArchiveEnding = (
   doc,
   host,
   endingOrChoice,
-  { onOpenDoor, onChooseDoor, doorOpen = false, doorChoice = null } = {},
+  { onOpenDoor, onChooseDoor, doorOpen = false, doorChoice = null, ioFinalDialogue = null } = {},
 ) => {
   const ending = endingOrChoice?.light
     ? endingOrChoice
@@ -114,6 +114,13 @@ export const renderMaudBellArchiveEnding = (
     door.remove();
     if (doorChoice) {
       card.setAttribute("data-door-choice", doorChoice);
+      if (ioFinalDialogue) {
+        const finalLine = doc.createElement("p");
+        finalLine.className = "maud-bell-archive__io-final";
+        finalLine.setAttribute("data-io-final-id", ioFinalDialogue.id);
+        finalLine.textContent = ioFinalDialogue.text;
+        light.after(finalLine);
+      }
       return;
     }
     // PR #2880 F3: one compact row in the slot the door button vacated, so
@@ -212,7 +219,7 @@ export const hasLiveMaudChoices = (doc) => {
 /** Render Maud's name-selection beat into a supplied scene host. */
 export const renderMaudBellArchive = (
   doc,
-  { storedName, endingId, endingName, doorOpen = false, doorChoice = null, onSelect, onOpenDoor, onChooseDoor } = {},
+  { storedName, endingId, endingName, doorOpen = false, doorChoice = null, ioFinalDialogue = null, onSelect, onOpenDoor, onChooseDoor } = {},
 ) => {
   if (!doc || typeof doc.createElement !== "function") return null;
   const host = doc.getElementById("episodeOneEnding") || doc.getElementById("line");
@@ -234,6 +241,7 @@ export const renderMaudBellArchive = (
       onChooseDoor,
       doorOpen,
       doorChoice,
+      ioFinalDialogue,
     });
   }
 

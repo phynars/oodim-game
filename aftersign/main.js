@@ -705,6 +705,7 @@ import {
   resolveEpisodeOneEnding,
 } from "./src/episodeOneEnding.js";
 import { hasLiveMaudChoices, renderMaudBellArchive } from "./src/maudBellArchive.js";
+import { resolveIoFinalDialogue } from "./src/ioFinalDialogue.js";
 import "./soundButtonSelected.js";
 
 /**
@@ -1201,6 +1202,11 @@ const state = {
       ["keep-official-record", "protect-private-lie", "hang-new-sign"].includes(stored?.story?.doorChoice)
         ? stored.story.doorChoice
         : null,
+    // #2878: Io's final Act III line depends on the FIRST packet's seal.
+    // `state.packet` and Io's memory are overwritten by later deliveries,
+    // so the first outcome is recorded once and saved separately.
+    firstPacketSealed:
+      typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1621,6 +1627,10 @@ const lineForBeat = () => {
         endingName: state.story.maudBellArchiveName,
         doorOpen: state.story.maudBellArchiveDoorOpen === true,
         doorChoice: state.story.doorChoice,
+        ioFinalDialogue: resolveIoFinalDialogue({
+          packetSealed: firstPacketSealedForIoFinal(),
+          doorChoice: state.story.doorChoice,
+        }),
         onOpenDoor: () => { void choose("open-unlit-door"); },
         onChooseDoor: (choiceId) => { void choose(choiceId); },
       });
@@ -4552,6 +4562,10 @@ const choose = async (choiceId) => {
       endingName: state.story.maudBellArchiveName,
       doorOpen: true,
       doorChoice: state.story.doorChoice,
+      ioFinalDialogue: resolveIoFinalDialogue({
+        packetSealed: firstPacketSealedForIoFinal(),
+        doorChoice: state.story.doorChoice,
+      }),
       onOpenDoor: () => { void choose("open-unlit-door"); },
       onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
     });
@@ -5447,12 +5461,30 @@ let deliveryRecognitionTimeout = null;
 // as `setBeat("io-return-recognition")` re-renders the button tree.
 const RECOGNITION_SETTLE_MS = 120;
 
+// PR #2882 F1: Io's final line reads the FIRST packet's seal. Never fall back
+// to `state.packet.sealed` — the second `deliver-packet` from `io-next-job`
+// resets it to sealed:true. Prefer the once-recorded story flag; for a save
+// written before that flag existed, derive from Io's durable memory facts
+// (the same `"sealed" | "opened"` objects offeredJobsMemoryFromIoMemory reads),
+// where any opened delivery means the seal was broken. Unknown → null (no line).
+function firstPacketSealedForIoFinal() {
+  if (typeof state.story.firstPacketSealed === "boolean") return state.story.firstPacketSealed;
+  const memory = Array.isArray(state.npcs?.io?.memory) ? state.npcs.io.memory : [];
+  if (memory.some((fact) => fact?.object === "opened")) return false;
+  if (memory.some((fact) => fact?.object === "sealed")) return true;
+  return null;
+}
+
 const deliverPacket = (source = "hud-button") => {
   triggerKioskFeedback(source);
   state.packet.delivered = true;
   state.packet.route = "blue rainline";
   state.packet.deliveredAt = new Date().toISOString();
   state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
+  // #2878: record the first packet's seal once; later packets never overwrite it.
+  if (typeof state.story.firstPacketSealed !== "boolean") {
+    state.story.firstPacketSealed = state.packet.sealed === true;
+  }
   // #2446 — when the completing delivery is the red-tag one, flip the
   // third remembering NPC's `redTagDeliveredToThirdNpc` flag through
   // the authored recorder. The resulting slice is read by the
@@ -5581,6 +5613,7 @@ const resetSliceSave = async () => {
   // PR #2880 F1: the door choice is saved with the Act II ending, so Start
   // fresh must clear it too, or a replayed ending renders it already chosen.
   state.story.doorChoice = null;
+  state.story.firstPacketSealed = null;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
