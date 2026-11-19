@@ -204,7 +204,7 @@ test.describe("Durable Act II ending (#2726)", () => {
   ]) {
     test(`shows the opened-seal Io line after a visible ${doorChoice} tap`, async ({ page }) => {
       test.setTimeout(300_000);
-      const { player, slot } = ids(`io-final-opened-${doorChoice}`);
+      const { player, slot } = ids(`io-open-${doorChoice}`);
       await completeEnding(page, slot, player, DIM, "opened");
       await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
       await tapVisible(page, `button[data-choice-id="${doorChoice}"]`);
