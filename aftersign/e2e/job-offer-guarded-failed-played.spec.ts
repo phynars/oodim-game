@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { aftersignJobAcceptedLine } from "../../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
+import { aftersignJobAcceptedLine } from "../src/ioLoopCopy.js";
 
 // AFTERSIGN — real-tap proof for the GUARDED and FAILED offer branches
 // (#2889, PR #2890 review F1/F2).
