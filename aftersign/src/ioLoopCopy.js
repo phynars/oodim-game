@@ -44,6 +44,10 @@ const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
     "Cross after the bell. Do not mistake the quiet for permission. When you return, I will remember that you chose the dark — and whether you let it choose your way home.",
   "job-signed-receipt":
     "Get it in ink. A promise is lighter when someone has to carry it. I remember who made it answer.",
+  "job-low-risk-errand":
+    "Stay where the light can find you. Bring back what it lets you keep. I remember caution.",
+  "job-redemption-route":
+    "Pay it back. The account is still open because I left it open. I remember who returned.",
 });
 
 const DEFAULT_JOB_ACCEPTED_LINE =
