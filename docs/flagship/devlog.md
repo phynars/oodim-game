@@ -7,6 +7,70 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-19 — Blind AI-stranger playtest #7 (M5 closeout) — PASSED → M5 CLOSED
+
+**AI stranger — not a human.** A fresh agent got only the URL. It played deployed
+`0ba9ab5` in a 390×844 headless phone page with touch on: a screenshot after the
+page settles, actions only by tapping visible text or a screen position. 28
+commands, 21:46–21:51Z 11-19. Nothing read the DOM state or `window.__game`.
+The verdict is the operator's reading of the report against the recorded taps.
+
+**Path:** Blue packet (seal kept) → I listened → Lit stair → Carry the fragile
+packet → Deliver packet → Kind return → Ask for next job → Take the second
+packet → Red tag — Saint Orra (no change) → Deliver next packet → Night
+transfer · medium risk → Deliver packet → Carry the name to the Bell Archive →
+the courier → Go to the Unlit Door → Hang a new sign. After the ending: Mute
+music → Wake kiosk sound → a tap and a drag on the top-left circle. Left out:
+one wheel scroll that moved nothing, two swipes, and a first tap on "Night
+transfer" by its text that changed nothing (the tap by position selected it).
+
+**"What did you do at the door, and what did Io remember about how you
+started?" (the player's answer, from memory):**
+> At the door I chose to hang a new sign, instead of keeping the official
+> record or protecting the private lie. Io remembered that I started by keeping
+> the blue packet's seal unbroken, and that I listened to her whole route
+> before running.
+>
+> I am not sure which moment "the door" was. I tapped "Go to the Unlit Door",
+> but the next screen still said "Act II — Bell Archive" and never showed or
+> named a door.
+
+**The final Io line:** "Io: You kept the seal, then hung a new sign. I will read
+the sign you chose to place." The "listened" part of the answer comes from an
+earlier Io line ("you waited for my whole route before the rain bit down"),
+which also matches the player's tap.
+
+**No false memory.** The player marked 23 lines about themselves: none false.
+Unsure, not counted as false: "Say that too often…" after "Kind return" (the
+game never shows what the player said), "Some doors only learn your name after
+you refuse them", "Io has one good fact about you" beside "I remember you
+twice", and Orra's "needs your name, "the courier"" before any name was chosen.
+
+**After the end screen** only "Wake kiosk sound", "Mute music" and "Start
+fresh" were drawn. The first two changed their own label; the circle did
+nothing to the story; "Start fresh" was not tapped.
+
+**Why this is a pass.** The answer names the door choice and the first-session
+fact Io recalled, both match the recorded taps, and no line told the player
+they did something they did not.
+
+**Friction, carried into M6 (epic #2893):**
+- "Go to the Unlit Door" shows no door; the card still reads "Act II — Bell
+  Archive".
+- The player "did not understand what "Keep the official record", "Protect the
+  private lie" or "Hang a new sign" would do"; the three buttons are small and
+  clipped by the card's bottom corner.
+- "There is no "The End", no summary and no epilogue": the end screen is one Io
+  sentence, and the player waited and swiped to be sure.
+- Earlier controls are still drawn above the door choices.
+- Reported again after their M5 stories closed: no title or intro on the first
+  screen (#2840), the second job list cut off with wheel scroll doing nothing
+  (#2848), "Red tag — Saint Orra" drawn as a button that does nothing (#2849).
+- After "Ask for next job", Io's remarks run together as one paragraph. The
+  vigil row ("Meet Saint Orra", "Light the vigil", "Spare the vigil") shows
+  before the player has met Saint Orra. The route buttons swap places after a
+  tap and the player could not tell what they had picked.
+
 ## 2026-11-15 — Blind AI-stranger playtest #6 (M4 closeout) — PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
