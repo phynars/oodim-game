@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { servedIoDialogue } from "../src/ioServedDialogue.js";
-import { aftersignJobAcceptedLine } from "../../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
+import { aftersignJobAcceptedLine } from "../src/ioLoopCopy.js";
 import {
   selectIoJobOffers,
   type PlayerMemory,
