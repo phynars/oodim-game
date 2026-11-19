@@ -79,7 +79,15 @@ export const createTerminalEndingRenderer = ({
   };
 
   const renderTerminalEndingControls = () => {
-    if (state.story.endingId) {
+    // The Act III Bell Archive outcome becomes Episode 1's terminal state
+    // once its Unlit Door choice is recorded. Keep its card readable while
+    // removing every remaining story control; only the persistent Start
+    // fresh control outside this renderer remains actionable.
+    const hasTerminalEpisodeEnd = Boolean(
+      state.story.endingId
+      || (state.story.maudBellArchiveEndingId && state.story.doorChoice),
+    );
+    if (hasTerminalEpisodeEnd) {
       for (const node of endingHideableControls()) {
         if (!node.hidden) {
           node.hidden = true;
