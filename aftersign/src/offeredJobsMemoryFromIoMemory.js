@@ -78,13 +78,29 @@ import {
  * @param {string} object
  * @returns {number}
  */
+function countMemoryFacts(memory, kind, object) {
+  if (!Array.isArray(memory)) return 0;
+  let count = 0;
+  for (const fact of memory) {
+    if (fact && fact.kind === kind && fact.object === object) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function countDeliveryOutcomes(memory, object) {
+  return countMemoryFacts(memory, NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME, object);
+}
+
+/** Count a durable route-attention outcome in Io's memory stream. */
+function countRouteAttention(memory, object) {
   if (!Array.isArray(memory)) return 0;
   let count = 0;
   for (const fact of memory) {
     if (
       fact
-      && fact.kind === NPC_MEMORY_FACT_KIND.DELIVERY_OUTCOME
+      && fact.kind === NPC_MEMORY_FACT_KIND.ROUTE_ATTENTION
       && fact.object === object
     ) {
       count += 1;
@@ -107,13 +123,27 @@ function countDeliveryOutcomes(memory, object) {
  */
 export function offeredJobsMemoryFromIoMemory(memory) {
   const sealedCount = countDeliveryOutcomes(memory, NPC_MEMORY_OBJECT.PACKET_SEALED);
+  const openedCount = countDeliveryOutcomes(memory, NPC_MEMORY_OBJECT.PACKET_OPENED);
+  const routeDoneCount = countRouteAttention(memory, NPC_MEMORY_OBJECT.ROUTE_DONE);
+  const routeSkippedCount = countRouteAttention(memory, NPC_MEMORY_OBJECT.ROUTE_SKIPPED);
+
+  // A sealed delivery paired with completing Io's route instructions is the
+  // durable proof for the trusted-courier branch. A skipped route keeps a
+  // courier guarded; opening the packet and leaving the route incomplete is
+  // a failed run. These signals deliberately precede the legacy completed /
+  // debt-held fallbacks below.
+  if (sealedCount > 0 && routeDoneCount > 0) {
+    return { trustPosture: "trusted-courier" };
+  }
+  if (sealedCount > 0 && routeSkippedCount > 0) {
+    return { trustPosture: "guarded" };
+  }
+  if (openedCount > 0 && routeSkippedCount > 0) {
+    return { priorOutcome: "failed" };
+  }
   if (sealedCount > 0) {
-    // Completed override — a proven courier isn't demoted by a
-    // stale wax debt they've since worked off (matches the primitive
-    // override order in `selectedJobIds`).
     return { priorOutcome: "completed" };
   }
-  const openedCount = countDeliveryOutcomes(memory, NPC_MEMORY_OBJECT.PACKET_OPENED);
   if (openedCount > 0) {
     return { debtHeld: openedCount };
   }

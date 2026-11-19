@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { IO_LOOP_CONSEQUENCE_COPY } from "../src/ioLoopConsequenceCopy.js";
+import { aftersignJobAcceptedLine } from "../../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 
 // AFTERSIGN — real-tap proof for the DEBT-HELD branch of the M-LOOP
 // offered-job axis (PR #1624, Soren's third REQUEST_CHANGES).
@@ -282,5 +283,8 @@ test.describe("AFTERSIGN debt-held offered job — real-tap played divergence", 
     // Real tap on the rendered button — the assertion Soren asked
     // for verbatim: "clicks the rendered `#job-offer-job-wax-debt-repair`".
     await debtOffer.click();
+    await expect(page.locator("#jobTakeAckLine")).toHaveText(
+      aftersignJobAcceptedLine("job-wax-debt-repair"),
+    );
   });
 });
