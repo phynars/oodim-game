@@ -17,6 +17,8 @@
 //   no_test — source changed, no test file changed → FAIL ("a bug fix
 //             without a test can't show it fixed anything").
 //   test-only PR (the bug was in a spec) → skip: base-vs-head is moot.
+//   no_source — the same PR closing a feature/enhancement/story issue → FAIL
+//             (tests alone deliver no new behaviour; game #2886, 11-18).
 //   otherwise: restore the BASE version of every non-test file, keep the
 //             PR's test files, run only those tests through the runner that
 //             actually discovers them, with one retry (a flake that passes
@@ -61,11 +63,17 @@ export function classify(files) {
   return { tests, source };
 }
 
-/** Pure decision for the plan step. */
-export function decide({ isBug, exempt, tests, source }) {
+/** Pure decision for the plan step. `isFeature`: a linked issue asks for NEW
+ *  behaviour (isFeatureIssue). A PR that changes no source cannot deliver
+ *  that, so it fails instead of skipping (game #2886, 11-18: one added
+ *  assertion on an existing card closed feature #2879 with no end screen
+ *  built). The test-only skip stays for bugs and fixes, where the bug can
+ *  sit in a spec. An approved exemption still applies. */
+export function decide({ isBug, isFeature = false, exempt, tests, source }) {
   if (!isBug) return { result: "skipped:not_bug_fix", fail: false };
   if (exempt) return { result: "skipped:exempt", fail: false };
   if (source.length > 0 && tests.length === 0) return { result: "no_test", fail: true };
+  if (source.length === 0 && isFeature) return { result: "no_source", fail: true };
   if (source.length === 0) return { result: "skipped:test_only", fail: false };
   return { result: "run", fail: false };
 }
@@ -129,6 +137,15 @@ export function isTddIssue({ title, labels }) {
   return isBugIssue({ title, labels }) || TDD_TITLE_RE.test(title ?? "") || (labels ?? []).some((l) => TDD_LABELS.includes(l));
 }
 
+// New behaviour: a `feature:`, `enhancement:` or `story:` title, or a
+// type:feature / type:enhancement label. Such an issue cannot be closed by
+// tests or docs alone (decide → no_source). Bugs and `fix:` are not in it.
+const FEATURE_TITLE_RE = /^\s*(feature|enhancement|story):/i;
+const FEATURE_LABELS = ["type:feature", "type:enhancement"];
+export function isFeatureIssue({ title, labels }) {
+  return FEATURE_TITLE_RE.test(title ?? "") || (labels ?? []).some((l) => FEATURE_LABELS.includes(l));
+}
+
 async function issueFacts(n) {
   const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/${n}`, {
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "User-Agent": "oodim-f2p", Accept: "application/vnd.github+json" },
@@ -145,7 +162,9 @@ function changedFiles(base, head) {
 async function plan() {
   const { body, base, head, pr } = event();
   const issues = linkedIssues(body);
-  const isBug = (await Promise.all(issues.map(issueFacts))).some(isTddIssue);
+  const facts = await Promise.all(issues.map(issueFacts));
+  const isBug = facts.some(isTddIssue);
+  const isFeature = facts.some(isFeatureIssue);
   // Only an approved exemption reaches decide(); the rest is reported.
   const ex = await exemptFromEvent(pr, "f2p");
   const exempt = ex.state === "approved" ? ex.reason : null;
@@ -155,12 +174,15 @@ async function plan() {
   }
   if (ex.state === "invalid" || ex.state === "unapproved") console.log(`::notice title=fail-to-pass: exemption not applied::${exemptNote(ex)}`);
   const { tests, source } = classify(changedFiles(base, head));
-  const d = decide({ isBug, exempt, tests, source });
+  const d = decide({ isBug, isFeature, exempt, tests, source });
   output("result", d.result);
   output("needs_browser", tests.some((t) => t.includes("/e2e/")) ? "true" : "false");
   summary(`### fail-to-pass gate\n- linked issues: ${issues.map((n) => "#" + n).join(", ") || "none"}; test-first issue (bug/fix/feature/enhancement/story): ${isBug}\n- changed tests: ${tests.length}, source files: ${source.length}${ex.state !== "none" ? `\n- ${exemptNote(ex)}` : ""}\n- plan: \`${d.result}\``);
   if (d.result === "no_test") {
     console.log(`::error title=fail-to-pass: change without a test::This PR closes a test-first issue (a 'bug:', 'fix:', 'feature:', 'enhancement:' or 'story:' title, or a type:bug/feature/enhancement label) and changes ${source.length} source file(s) but no *.test.* / *.spec.* file. Add a test that fails on main and passes here (if the fix truly has no assertable surface, ${EXEMPT_HINT}).`);
+  }
+  if (d.result === "no_source") {
+    console.log(`::error title=fail-to-pass: feature with no code change::This PR closes a feature/enhancement/story issue (new behaviour) but changes no source file, only ${tests.length} test file(s) and docs. Tests alone cannot deliver new behaviour: implement it, or if this PR is only part of the work, link the issue with 'Refs #N' instead of a closing keyword (or ${EXEMPT_HINT}).`);
   }
   console.log(`F2P_RESULT=${d.result}`);
   if (d.fail) process.exit(1);

@@ -2,7 +2,7 @@
 // fail-to-pass CI job before the gate itself: `node --test scripts/fail-to-pass.test.mjs`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classify, decide, exemptReason, isBugIssue, isTddIssue, linkedIssues, nodeTestRegistered, verdict } from "./fail-to-pass.mjs";
+import { classify, decide, exemptReason, isBugIssue, isFeatureIssue, isTddIssue, linkedIssues, nodeTestRegistered, verdict } from "./fail-to-pass.mjs";
 
 test("nodeTestRegistered: scripts run by `node --test` in CI or package.json are discovered", () => {
   const ci = "      - run: node --test scripts/served-reach.test.mjs\n          node --test scripts/pr-ci-evidence.test.mjs\n";
@@ -53,6 +53,28 @@ test("decide: scope, exemption, no-test failure, test-only skip", () => {
   assert.deepEqual(decide({ isBug: true, exempt: null, tests: t, source: [] }), { result: "skipped:test_only", fail: false });
   assert.deepEqual(decide({ isBug: true, exempt: null, tests: [], source: [] }), { result: "skipped:test_only", fail: false });
   assert.deepEqual(decide({ isBug: true, exempt: null, tests: t, source: s }), { result: "run", fail: false });
+});
+
+test("decide: a test- or docs-only PR cannot close a feature issue (game #2886 closed #2879, 11-18)", () => {
+  const t = ["aftersign/e2e/episode-one-ending-served.spec.ts"], s = ["aftersign/main.js"];
+  assert.deepEqual(decide({ isBug: true, isFeature: true, exempt: null, tests: t, source: [] }), { result: "no_source", fail: true });
+  assert.deepEqual(decide({ isBug: true, isFeature: true, exempt: null, tests: [], source: [] }), { result: "no_source", fail: true });
+  // Still runs normally with code, and an approved exemption still applies.
+  assert.deepEqual(decide({ isBug: true, isFeature: true, exempt: null, tests: t, source: s }), { result: "run", fail: false });
+  assert.deepEqual(decide({ isBug: true, isFeature: true, exempt: "no-surface x", tests: t, source: [] }), { result: "skipped:exempt", fail: false });
+  // A bug or fix can live in a spec: the skip stays.
+  assert.deepEqual(decide({ isBug: true, isFeature: false, exempt: null, tests: t, source: [] }), { result: "skipped:test_only", fail: false });
+});
+
+test("isFeatureIssue: feature/enhancement/story titles and type:feature/enhancement labels; bugs and fixes are not", () => {
+  assert.equal(isFeatureIssue({ title: 'feature: Episode 1 ends on an end screen that fits 390×844 and locks every story control except "Start fresh"', labels: ["agent-filed"] }), true);
+  assert.equal(isFeatureIssue({ title: "Enhancement: phone tray spacing", labels: [] }), true);
+  assert.equal(isFeatureIssue({ title: "story: ending card shows one archive line", labels: [] }), true);
+  assert.equal(isFeatureIssue({ title: "untyped", labels: ["type:feature"] }), true);
+  assert.equal(isFeatureIssue({ title: "fix: Io's line reads the wrong seal", labels: [] }), false);
+  assert.equal(isFeatureIssue({ title: "bug: reload loses the beat", labels: ["type:bug"] }), false);
+  assert.equal(isFeatureIssue({ title: "task: debug overlay cleanup", labels: [] }), false);
+  assert.equal(isFeatureIssue({ title: "", labels: [] }), false);
 });
 
 test("verdict: reproduced / no_repro / load-error inconclusive / undiscovered", () => {

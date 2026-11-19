@@ -1,8 +1,8 @@
 // Consumer test — mounts a fragment matching the served
 // `aftersign/index.html` shape (a `#line` paragraph inside a
 // dialogue container), then exercises the acceptance writer against
-// it and asserts the sibling paragraph lands with the exact copy
-// from `aftersignJobAcceptedCopy.js`.
+// it and asserts the sibling paragraph lands with the exact canonical
+// copy from `aftersign/src/ioLoopCopy.js`.
 //
 // Why this exists: PR #1884's first draft asserted the acceptance
 // line against `#line` (owned by the beat dialogue table — see
@@ -23,8 +23,10 @@ import {
   stampJobAcceptedLine,
 } from "./aftersignJobAcceptedRender.ts";
 import {
+  AFTERSIGN_JOB_ACCEPTED_COPY,
+  AFTERSIGN_JOB_ACCEPTED_JOB_IDS,
   aftersignJobAcceptedLine,
-} from "./aftersignJobAcceptedCopy.js";
+} from "../../../../aftersign/src/ioLoopCopy.js";
 
 function mountLineFixture(): void {
   document.body.innerHTML = `
@@ -39,6 +41,26 @@ function mountLineFixture(): void {
 describe("aftersignJobAcceptedRender served consumer", () => {
   beforeEach(() => {
     mountLineFixture();
+  });
+
+  it("resolves every canonical authored job ID to its non-default acknowledgement", () => {
+    expect([...AFTERSIGN_JOB_ACCEPTED_JOB_IDS].sort()).toEqual([
+      "job-night-transfer",
+      "job-safe-delivery",
+      "job-signed-receipt",
+    ]);
+    for (const jobId of AFTERSIGN_JOB_ACCEPTED_JOB_IDS) {
+      expect(AFTERSIGN_JOB_ACCEPTED_COPY[jobId]).toBe(aftersignJobAcceptedLine(jobId));
+      expect(aftersignJobAcceptedLine(jobId)).not.toBe(
+        aftersignJobAcceptedLine("job-not-authored"),
+      );
+    }
+  });
+
+  it("keeps the generic fallback for unknown and non-string job IDs", () => {
+    const fallback = aftersignJobAcceptedLine("job-not-authored");
+    expect(aftersignJobAcceptedLine()).toBe(fallback);
+    expect(aftersignJobAcceptedLine(42)).toBe(fallback);
   });
 
   it("inserts a sibling paragraph directly after #line with the safe-delivery ack copy", () => {
@@ -57,20 +79,30 @@ describe("aftersignJobAcceptedRender served consumer", () => {
     expect(lineEl!.nextElementSibling).toBe(ack);
   });
 
-  it("stamps the sealed-return ack copy on a subsequent jobId", () => {
-    const line = aftersignJobAcceptedLine("job-sealed-return");
-    stampJobAcceptedLine(document, "job-sealed-return", line);
+  it("stamps the night-transfer ack copy on a subsequent jobId", () => {
+    const line = aftersignJobAcceptedLine("job-night-transfer");
+    stampJobAcceptedLine(document, "job-night-transfer", line);
     const ack = document.getElementById(JOB_TAKE_ACK_LINE_ID);
     expect(ack!.textContent).toBe(line);
-    // Anchor the assertion in the new authored copy for
-    // `job-sealed-return` — "Take it back sealed. If the box refuses
-    // it, bring the refusal to me." (see `aftersignJobAcceptedCopy.js`).
-    // Substring pin proves the sealed-return branch — not the default
-    // fallback — resolved through `aftersignJobAcceptedLine()`.
-    expect(ack!.textContent).toContain("Take it back sealed");
+    // Substring pin proves the night-transfer branch (not the default
+    // fallback) resolved through `aftersignJobAcceptedLine()`; the
+    // canonical copy lives in `aftersign/src/ioLoopCopy.js`.
+    expect(ack!.textContent).toContain("Cross after the bell");
     expect(ack!.getAttribute(JOB_TAKE_ACK_LINE_DATA_ATTR)).toBe(
-      "job-sealed-return",
+      "job-night-transfer",
     );
+  });
+
+  it("gives offers with no served route yet the generic ack (#2889)", () => {
+    const fallback = aftersignJobAcceptedLine("job-not-authored");
+    for (const jobId of [
+      "job-sealed-return",
+      "job-private-ledger",
+      "job-low-risk-errand",
+      "job-redemption-route",
+    ]) {
+      expect(aftersignJobAcceptedLine(jobId)).toBe(fallback);
+    }
   });
 
   it("does NOT overwrite #line textContent (the beat dialogue table owns that)", () => {

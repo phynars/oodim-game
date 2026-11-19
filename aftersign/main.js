@@ -97,7 +97,6 @@ import {
   IO_RETURN_TONE_OPTIONS,
 } from "../apps/web/src/aftersign/story/ioContinueBeats.ts";
 import { servedIoDialogue } from "./src/ioServedDialogue.js";
-import { aftersignJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedCopy.js";
 import { stampJobAcceptedLine } from "../apps/web/src/aftersign/aftersignJobAcceptedRender.ts";
 import { stampIoSecondPacketPointer } from "../apps/web/src/aftersign/ioSecondPacketPointerRender.ts";
 // PR #1884 re-review (Mara Okonkwo) — Io's job-acceptance line, wired
@@ -469,7 +468,11 @@ import { ioLoopConsequenceLine } from "./src/ioLoopConsequenceCopy.js";
 import { renderAftersignIoLoopAffordance } from "./ioLoopAffordance.js";
 import { IO_DEFAULT_OFFER_LINE } from "./src/ioDefaultOfferCopy.js";
 import { ioOfferLineFor } from "./src/ioOfferMemoryLine.js";
-import { ioOfferCopyFor, ioOfferHeading } from "./src/ioLoopCopy.js";
+import {
+  aftersignJobAcceptedLine,
+  ioOfferCopyFor,
+  ioOfferHeading,
+} from "./src/ioLoopCopy.js";
 // #1812 (Refs #1812) — Io's return-recognition voice, wired into the
 // served page as a SIBLING paragraph next to `#line`. Same shape as
 // the `#ioConsequenceLine` sibling that `ioLoopConsequenceLine` above
