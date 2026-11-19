@@ -238,7 +238,16 @@ async function expectEndingOnlyControls(page: Page): Promise<void> {
       await expect(control, `${selector} must not be visible after the ending`).toBeHidden();
     }
   }
-  await expect(page.locator('#episodeOneEnding [data-ending-id]')).toBeVisible();
+  const endingCard = page.locator('#episodeOneEnding [data-ending-id]');
+  await expect(endingCard).toBeVisible();
+  const cardBox = await endingCard.boundingBox();
+  expect(cardBox, "ending card must occupy a visible phone-sized region").not.toBeNull();
+  if (cardBox) {
+    expect(cardBox.x).toBeGreaterThanOrEqual(0);
+    expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(PHONE_VIEWPORT.width);
+    expect(cardBox.y).toBeGreaterThanOrEqual(0);
+    expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+  }
   await expect(page.locator('#resetButton')).toBeVisible();
   await expect(page.locator('#soundButton')).toBeVisible();
 }
