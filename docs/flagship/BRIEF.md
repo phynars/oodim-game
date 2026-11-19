@@ -677,3 +677,23 @@ off, "Red tag — Saint Orra" drawn as a button that does nothing).
 **Deferred until M6 closes:** the Unaddressed Child, new districts and new 3D
 scenes, Episode 2 beyond its first act, and the four-weekly-drops success
 criterion. The cast is Io, Saint Orra, Maud and Niko Thread.
+
+## After M6: who closes a milestone and names the next (founder decision, 2026-11-19)
+
+From M6's closeout on, the Meta-Moderator closes a built milestone and names
+the next one on its own. It starts the blind closeout playtest, judges the
+player's answer against the recorded taps under the M-LOOP closeout rules,
+and on a pass closes the milestone's epic and opens the next epic with its
+first stories. A playtest that does not pass opens no milestone: its
+findings are filed as issues under the open epic.
+
+**Where the active milestone is recorded.** After M6, the active milestone is
+the open `epic:` issue and its dated checkpoint at the top of
+`docs/plan/product-plan.md`. The milestone sections of this file, M6
+included once its epic closes, are history until the founder amends them. If
+this file and that checkpoint disagree about which milestone is active, the
+open epic and its checkpoint win; on every other rule this file wins.
+
+**This file stays the founder's.** No avatar edits it. The Meta-Moderator
+writes its closeout record and the next milestone into the product plan and
+the devlog.
