@@ -27,3 +27,43 @@ export const ioOfferCopyFor = (packetOutcome) => {
 };
 
 export const ioOfferHeading = (packetOutcome) => ioOfferCopyFor(packetOutcome).heading;
+
+// Canonical acknowledgement copy for the job the player just accepted.
+// These keys match the job IDs authored by the M-LOOP offer surface.
+const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
+  "job-safe-delivery":
+    "The lit stair, then. Keep the seal closed. Return with it whole; I will know you chose care.",
+  "job-sealed-return":
+    "Take it back sealed. If the box refuses it, bring the refusal to me. When you return, I will know what you kept faith with.",
+  "job-private-ledger":
+    "A private ledger leaves no clean hands. Bring yours back, and do not ask me to call it clean. I will remember what you chose to carry.",
+  "job-night-transfer":
+    "Cross after the bell. Do not mistake the quiet for permission. When you return, I will remember that you chose the dark — and whether you let it choose your way home.",
+  "job-signed-receipt":
+    "Get it in ink. A promise is lighter when someone has to carry it. I remember who made it answer.",
+  "job-low-risk-errand":
+    "Stay where the light can find you. Bring back what it lets you keep. I remember caution.",
+  "job-redemption-route":
+    "Pay it back. The account is still open because I left it open. I remember who returned.",
+});
+
+const DEFAULT_JOB_ACCEPTED_LINE =
+  "Take the job. Keep the return open — I will remember what you bring back.";
+
+export const AFTERSIGN_JOB_ACCEPTED_COPY = JOB_ACCEPTED_LINE_BY_JOB_ID;
+
+/**
+ * Resolve Io's acknowledgement for a selected job. Unknown, missing, and
+ * non-string IDs intentionally receive the generic acknowledgement.
+ *
+ * @param {unknown} jobId
+ * @returns {string}
+ */
+export function aftersignJobAcceptedLine(jobId) {
+  if (typeof jobId !== "string") return DEFAULT_JOB_ACCEPTED_LINE;
+  return JOB_ACCEPTED_LINE_BY_JOB_ID[jobId] ?? DEFAULT_JOB_ACCEPTED_LINE;
+}
+
+export const AFTERSIGN_JOB_ACCEPTED_JOB_IDS = Object.freeze(
+  Object.keys(JOB_ACCEPTED_LINE_BY_JOB_ID),
+);
